@@ -38,6 +38,7 @@ SHEET_PI = "PI_ALL"
 SHEET_SUM = "변경요약_호기별"
 SHEET_LOG = "변경이력"
 SHEET_SNAP = "_SNAPSHOT_PI_ALL"
+SHEET_SPECIAL = "특이사항"
 
 # 관리 대상 호기(13개) — 엑셀 PI_ALL H:T 열 순서와 동일
 AOI_UNITS = [
@@ -78,6 +79,10 @@ SUM_HEADERS = [
 ]
 
 SNAP_HEADERS = ["Row_ID"] + META_FIELDS + AOI_UNITS
+
+# 특이사항 시트 — 종료 여부는 불리언(체크박스)
+SPECIAL_HEADERS = ["일자", "호기", "라트 번호", "S/M", "Layer", "목적", "진행 상황", "종료 여부", "특이사항"]
+SPECIAL_BOOL_COL = "종료 여부"
 
 # 빈 칸 취급 값 (호기 값이 비었다고 볼 토큰)
 _EMPTY_TOKENS = {"", "-", "—", "–"}
@@ -274,6 +279,7 @@ class ParamRepository:
         self.rows: list[ParamRow] = []
         self.history: list[dict[str, Any]] = []
         self.aoi_ip: dict[str, str] = {}        # 호기 -> IP (관련 자료 시트)
+        self.special: list[dict[str, Any]] = []  # 특이사항 시트 행들
         self._base: dict[str, dict[str, str]] = {}  # row_id -> 편집 전 스냅샷
 
     # ---- 읽기 --------------------------------------------------------------
@@ -283,6 +289,7 @@ class ParamRepository:
         self.rows = self._read_pi_all(wb)
         self.history = self._read_history(wb)
         self.aoi_ip = self._read_aoi_ip(wb)
+        self.special = self._read_special(wb)
         wb.close()
         self._ensure_row_ids()
         self._capture_base()
@@ -342,6 +349,37 @@ class ParamRepository:
             if a.startswith("AOI-") and b:
                 out[a] = b
         return out
+
+    @staticmethod
+    def _read_special(wb) -> list[dict[str, Any]]:
+        if SHEET_SPECIAL not in wb.sheetnames:
+            return []
+        ws = wb[SHEET_SPECIAL]
+        out: list[dict[str, Any]] = []
+        bool_idx = SPECIAL_HEADERS.index(SPECIAL_BOOL_COL)
+        for r in range(2, ws.max_row + 1):
+            vals = [ws.cell(r, i + 1).value for i in range(len(SPECIAL_HEADERS))]
+            # 종료여부(불리언)를 뺀 나머지가 전부 비면 빈 행으로 간주
+            content = [v for i, v in enumerate(vals) if i != bool_idx]
+            if all(v is None or _s(v) == "" for v in content):
+                continue
+            rec = {h: vals[i] for i, h in enumerate(SPECIAL_HEADERS)}
+            # 종료 여부는 항상 불리언으로 정규화
+            rec[SPECIAL_BOOL_COL] = bool(rec.get(SPECIAL_BOOL_COL)) if rec.get(SPECIAL_BOOL_COL) not in (None, "") else False
+            out.append(rec)
+        return out
+
+    def _write_special(self, wb) -> None:
+        ws = wb.create_sheet(SHEET_SPECIAL)
+        ws.append(SPECIAL_HEADERS)
+        for rec in self.special:
+            row = []
+            for h in SPECIAL_HEADERS:
+                v = rec.get(h)
+                if h == SPECIAL_BOOL_COL:
+                    v = bool(v)
+                row.append(v)
+            ws.append(row)
 
     def _ensure_row_ids(self) -> None:
         for i, pr in enumerate(self.rows, start=2):
@@ -426,7 +464,9 @@ class ParamRepository:
             elif ch.row_id in added_ids:
                 pr = next((p for p in self.rows if p.row_id == ch.row_id), None)
                 if pr and pr.row_id not in disk_by_id:
-                    new_pr = ParamRow(values=dict(pr.values), row_id=pr.row_id)
+                    # display_order 를 그대로 넘겨야 정렬 시 맨 위로 튀지 않음
+                    new_pr = ParamRow(values=dict(pr.values), row_id=pr.row_id,
+                                      display_order=pr.display_order)
                     disk_rows.append(new_pr)
                     disk_by_id[new_pr.row_id] = new_pr
 
@@ -451,6 +491,7 @@ class ParamRepository:
         self._write_summary(wb, disk_rows, prev_summary, changes, user, deleted)
         self._write_history(wb)
         self._write_snapshot(wb, disk_rows)
+        self._write_special(wb)
         self._atomic_save(wb)
 
         # 7) 메모리 상태 갱신
@@ -659,6 +700,7 @@ def create_empty_workbook(path: str) -> None:
     wb.create_sheet(SHEET_PI).append(PI_HEADERS)
     wb.create_sheet(SHEET_SUM).append(SUM_HEADERS)
     wb.create_sheet(SHEET_LOG).append(LOG_HEADERS)
+    wb.create_sheet(SHEET_SPECIAL).append(SPECIAL_HEADERS)
     snap = wb.create_sheet(SHEET_SNAP)
     snap.sheet_state = "hidden"
     snap.append(SNAP_HEADERS)
@@ -672,6 +714,7 @@ def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     repo.rows = ParamRepository._read_pi_all(wb)
     repo.history = ParamRepository._read_history(wb)
     repo.aoi_ip = ParamRepository._read_aoi_ip(wb)
+    repo.special = ParamRepository._read_special(wb)
     wb.close()
     repo._ensure_row_ids()
     repo._capture_base()
@@ -682,6 +725,7 @@ def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     repo._write_summary(out, repo.rows, {}, [], current_user(), [])
     repo._write_history(out)
     ParamRepository._write_snapshot(out, repo.rows)
+    repo._write_special(out)
     out.save(dest_xlsx)
     repo._capture_base()
     return repo

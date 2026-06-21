@@ -14,8 +14,8 @@ REM    - You may rename the .exe afterwards (Korean name is fine).
 REM ============================================================
 cd /d "%~dp0"
 
-echo [1/3] Installing build tools (openpyxl + pyinstaller) ...
-python -m pip install openpyxl pyinstaller
+echo [1/3] Installing build tools (openpyxl + tksheet + pyinstaller) ...
+python -m pip install openpyxl tksheet pyinstaller
 if errorlevel 1 (
     echo [ERROR] Package install failed. Check your PyPI mirror/proxy policy.
     pause
@@ -23,7 +23,7 @@ if errorlevel 1 (
 )
 
 echo [2/3] Building with PyInstaller ...
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name "PI_Param_Manager" --collect-submodules openpyxl run.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name "PI_Param_Manager" --collect-submodules openpyxl --collect-submodules tksheet run.py
 if errorlevel 1 (
     echo [ERROR] Build failed.
     pause

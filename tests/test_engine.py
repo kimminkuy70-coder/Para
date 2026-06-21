@@ -132,6 +132,41 @@ def test_comparison_view():
         print(f"  comparison view OK: rows={len(view)}, 누락있는행={len(with_missing)}")
 
 
+def test_special_roundtrip_and_edit():
+    with tempfile.TemporaryDirectory() as tmp:
+        dest, repo = _new_repo_from_sample(tmp)
+        assert len(repo.special) >= 2, f"특이사항 행 {len(repo.special)}"
+        # 종료 여부가 불리언인지
+        assert all(isinstance(r[engine.SPECIAL_BOOL_COL], bool) for r in repo.special)
+        done = [r for r in repo.special if r[engine.SPECIAL_BOOL_COL]]
+        assert len(done) >= 1, "종료 True 행이 있어야"
+        # 편집: 첫 행 종료여부 토글 + 새 특이사항 추가 후 저장
+        repo.special[0][engine.SPECIAL_BOOL_COL] = not repo.special[0][engine.SPECIAL_BOOL_COL]
+        repo.special.append({"일자": None, "호기": "AOI-99", "라트 번호": "TEST",
+                             "S/M": "X", "Layer": "PI2", "목적": "테스트",
+                             "진행 상황": "진행", "종료 여부": True, "특이사항": "메모"})
+        repo.save(user="tester")
+        r2 = ParamRepository(dest); r2.load()
+        assert any(x.get("호기") == "AOI-99" and x[engine.SPECIAL_BOOL_COL] is True for x in r2.special)
+        print(f"  special roundtrip+edit OK: rows={len(r2.special)}")
+
+
+def test_new_row_not_jumping_top():
+    with tempfile.TemporaryDirectory() as tmp:
+        dest, repo = _new_repo_from_sample(tmp)
+        pr = repo.add_row({"PI": "PI2", "Recipe": "ZZZ", "Zone": "ZZ",
+                           "Alg": "zz", "Parameter": "new_param"})
+        rid = pr.row_id
+        repo.save(user="tester")
+        r2 = ParamRepository(dest); r2.load()
+        # 정렬 후 PI2 그룹 내에서 맨 앞이 아니어야(=display_order 0 버그 없음)
+        pi2 = [p for p in r2.rows if engine._s(p.get("PI")) == "PI2"]
+        assert engine._s(pi2[0].row_id) != rid, "새 행이 PI2 그룹 맨 앞으로 튐(버그 재발)"
+        added = next(p for p in r2.rows if p.row_id == rid)
+        assert added.display_order > pi2[0].display_order
+        print(f"  new row order OK: added display_order={added.display_order}, first PI2={pi2[0].display_order}")
+
+
 def test_lock_and_conflict():
     with tempfile.TemporaryDirectory() as tmp:
         dest, _ = _new_repo_from_sample(tmp)

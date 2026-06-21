@@ -13,13 +13,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Checking openpyxl ...
-python -c "import openpyxl" 2>nul
+echo Checking dependencies (openpyxl, tksheet) ...
+python -c "import openpyxl, tksheet" 2>nul
 if errorlevel 1 (
-    echo Installing openpyxl ...
-    python -m pip install openpyxl
+    echo Installing openpyxl + tksheet ...
+    python -m pip install openpyxl tksheet
     if errorlevel 1 (
-        echo [ERROR] Failed to install openpyxl. Check your PyPI mirror/proxy.
+        echo [ERROR] Failed to install packages. Check your PyPI mirror/proxy.
         pause
         exit /b 1
     )

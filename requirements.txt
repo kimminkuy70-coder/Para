@@ -1,5 +1,8 @@
-# PI_ALL parameter manager - runtime dependency
-# Only ONE external package is required: openpyxl (MIT license).
-# tkinter is bundled with the official python.org Python (no install needed).
+# PI_ALL parameter manager - runtime dependencies
+# Two external packages only, both MIT licensed, both pure Python, no network:
+#   - openpyxl : Excel (.xlsx) read/write
+#   - tksheet  : spreadsheet-style table widget (built on the stdlib tkinter)
+# tkinter itself is bundled with the official python.org Python (no install needed).
 # Anaconda/conda is NOT used (avoids commercial license fees).
 openpyxl>=3.1,<4
+tksheet>=7.0,<8
