@@ -1,0 +1,19 @@
+# 파이썬
+__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller 빌드 산출물
+build/
+dist/
+*.spec
+
+# 가상환경
+.venv/
+venv/
+tkvenv/
+
+# 사용자 설정 / 임시
+.pi_param_manager.json
+*.editlock
+~$*.xlsx

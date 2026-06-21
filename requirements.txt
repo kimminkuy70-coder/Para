@@ -1,0 +1,5 @@
+# PI_ALL 장비 파라미터 관리 프로그램 의존성
+# - 실행에 필요한 외부 패키지는 openpyxl 단 1개(MIT 라이선스).
+# - tkinter 는 python.org 공식 Python 에 기본 포함(별도 설치 불필요).
+# - 아나콘다/conda 는 사용하지 않습니다. (라이선스 과금 회피)
+openpyxl>=3.1,<4
