@@ -98,6 +98,42 @@ def today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
+def format_kdate(value: Any) -> tuple[str, bool]:
+    """일자 값을 'YYYY년 M월 D일' 형식으로 변환.
+
+    허용 입력: 8자리(YYYYMMDD), YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD,
+    'YYYY년 M월 D일', datetime/date 객체.
+    반환: (표시문자열, 정상여부). 빈 값은 ("", True), 형식 오류는 ("일자 오류", False).
+    """
+    import re
+    from datetime import date as _date
+    from datetime import datetime as _dt
+
+    if value is None:
+        return "", True
+    if isinstance(value, (_dt, _date)):
+        return f"{value.year}년 {value.month}월 {value.day}일", True
+    s = str(value).strip()
+    if s == "":
+        return "", True
+    candidates: list[tuple[int, int, int]] = []
+    km = re.match(r"^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?$", s)
+    if km:
+        candidates.append((int(km.group(1)), int(km.group(2)), int(km.group(3))))
+    sm = re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$", s)
+    if sm:
+        candidates.append((int(sm.group(1)), int(sm.group(2)), int(sm.group(3))))
+    if re.fullmatch(r"\d{8}", s):
+        candidates.append((int(s[:4]), int(s[4:6]), int(s[6:8])))
+    for y, mo, d in candidates:
+        try:
+            dt = _date(y, mo, d)
+            return f"{dt.year}년 {dt.month}월 {dt.day}일", True
+        except ValueError:
+            continue
+    return "일자 오류", False
+
+
 def current_user() -> str:
     """Windows/OS 로그인 계정명 (VBA Environ("USERNAME") 대체)."""
     for key in ("USERNAME", "USER", "LOGNAME"):

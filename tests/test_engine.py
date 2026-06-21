@@ -167,6 +167,24 @@ def test_new_row_not_jumping_top():
         print(f"  new row order OK: added display_order={added.display_order}, first PI2={pi2[0].display_order}")
 
 
+def test_format_kdate():
+    from datetime import datetime
+    cases = {
+        "20260616": ("2026년 6월 16일", True),
+        "2026-06-19": ("2026년 6월 19일", True),
+        "2026/6/1": ("2026년 6월 1일", True),
+        "2026.12.31": ("2026년 12월 31일", True),
+        "2026년 6월 16일": ("2026년 6월 16일", True),
+        "": ("", True),
+        "abc": ("일자 오류", False),
+        "20261340": ("일자 오류", False),
+    }
+    for inp, expected in cases.items():
+        assert engine.format_kdate(inp) == expected, (inp, engine.format_kdate(inp))
+    assert engine.format_kdate(datetime(2026, 6, 19)) == ("2026년 6월 19일", True)
+    print("  format_kdate OK")
+
+
 def test_lock_and_conflict():
     with tempfile.TemporaryDirectory() as tmp:
         dest, _ = _new_repo_from_sample(tmp)
