@@ -91,6 +91,7 @@ class App(tk.Tk):
         self.val_cols = ["＋／－"] + META_FIELDS + AOI_UNITS
         self.collapsed: set[str] = set()   # 접힌 그룹 key 집합
         self.val_display: list[dict] = []  # 표시행 메타(헤더/leaf 매핑)
+        self._sized: set[int] = set()      # 기본 열너비 적용된 시트(사용자 조절 보존용)
 
         self._build_menu()
         self._build_header()
@@ -116,19 +117,29 @@ class App(tk.Tk):
         s.headers(headers)
         s.set_options(table_wrap="w", header_wrap="w", table_grid_fg="#cfd6df",
                       show_vertical_grid=True, show_horizontal_grid=True)
+        # column_width_resize: 열 경계 드래그로 너비 조절,
+        # double_click_column_resize: 경계 더블클릭 시 내용에 맞춰 자동 너비,
+        # row_height_resize: 행 경계 드래그로 높이 조절
         if editable:
             s.enable_bindings("single_select", "drag_select", "row_select", "column_select",
                               "arrowkeys", "copy", "paste", "cut", "delete", "edit_cell",
-                              "rc_select", "double_click_column_resize")
+                              "rc_select", "column_width_resize", "double_click_column_resize",
+                              "row_height_resize")
         else:
             s.enable_bindings("single_select", "drag_select", "row_select", "column_select",
-                              "arrowkeys", "copy", "double_click_column_resize")
+                              "arrowkeys", "copy", "column_width_resize",
+                              "double_click_column_resize", "row_height_resize")
         return s
 
     def _set_widths(self, sheet, headers):
+        # 최초 1회만 기본 너비 적용 -> 사용자가 드래그로 조절한 너비를 보존.
+        # (새 파일을 열면 open_file 에서 _sized 를 비워 기본값 재적용)
+        if id(sheet) in self._sized:
+            return
         for i, h in enumerate(headers):
             w = WIDTHS.get(h, AOI_W if h in AOI_UNITS else 100)
             sheet.column_width(column=i, width=w)
+        self._sized.add(id(sheet))
 
     def _fit_heights(self, sheet, ncols, max_rows=350):
         n = sheet.get_total_rows()
@@ -353,6 +364,7 @@ class App(tk.Tk):
         self.repo = repo
         self.path = path
         self.dirty = False
+        self._sized.clear()   # 새 파일 -> 기본 열너비 재적용
         if not self.read_only:
             engine.write_lock(path, self.user)
         self._cfg["last_path"] = path
