@@ -1,4 +1,4 @@
-"""tkinter GUI — 화면 계층.
+"""tkinter GUI — 화면 계층 (현대적 플랫 UI).
 
 표준 라이브러리 tkinter 만 사용한다(추가 설치/네트워크 없음).
 실제 로직은 engine 모듈에 있고, 이 파일은 화면과 사용자 조작만 담당한다.
@@ -21,12 +21,17 @@ from .engine import (
     AOI_UNITS,
     EDITABLE_FIELDS,
     LOG_HEADERS,
-    META_FIELDS,
     ParamRepository,
 )
+from .theme import apply_theme
 
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".pi_param_manager.json")
 HEARTBEAT_MS = 5 * 60 * 1000  # 5분마다 잠금 갱신
+
+# 컬럼별 권장 폭
+_WIDE = {"Parameter": 180, "비고": 200, "누락 호기": 190, "초기 추천값": 120,
+         "Recipe": 120, "Zone": 150, "Alg": 150, "Old Value": 110, "New Value": 110,
+         "Change Type": 110, "Update Date": 100, "Updated By": 90}
 
 
 def load_config() -> dict:
@@ -50,11 +55,12 @@ def save_config(cfg: dict) -> None:
 # --------------------------------------------------------------------------
 
 class EditableTree(ttk.Frame):
-    def __init__(self, master, columns, editable=True, on_edit=None, **kw):
-        super().__init__(master, **kw)
+    def __init__(self, master, columns, palette, editable=True, on_edit=None, **kw):
+        super().__init__(master, style="Surface.TFrame", **kw)
         self.columns = columns
         self.editable = editable
-        self.on_edit = on_edit  # 콜백(item_id, col_name, new_value)
+        self.on_edit = on_edit
+        self.p = palette
         self._editor: tk.Entry | None = None
 
         self.tree = ttk.Treeview(self, columns=columns, show="headings", selectmode="browse")
@@ -64,66 +70,78 @@ class EditableTree(ttk.Frame):
 
         for col in columns:
             self.tree.heading(col, text=col)
-            width = 130 if col in ("Parameter", "비고", "누락 호기", "초기 추천값") else 80
-            self.tree.column(col, width=width, anchor="w", stretch=False)
+            self.tree.column(col, width=_WIDE.get(col, 84), anchor="w", stretch=False)
 
-        self.tree.grid(row=0, column=0, sticky="nsew")
+        self.tree.grid(row=0, column=0, sticky="nsew", padx=(2, 0), pady=2)
         ysb.grid(row=0, column=1, sticky="ns")
         xsb.grid(row=1, column=0, sticky="ew")
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
 
-        # 줄무늬 + 강조 태그
-        self.tree.tag_configure("odd", background="#f4f6f8")
-        self.tree.tag_configure("missing", background="#fff3cd")
-        self.tree.tag_configure("diff", background="#f8d7da")
-        self.tree.tag_configure("common", background="#d4edda")
+        self.tree.tag_configure("odd", background=palette["stripe"])
+        self.tree.tag_configure("even", background=palette["surface"])
+        self.tree.tag_configure("missing", background=palette["missing"])
+        self.tree.tag_configure("diff", background=palette["diff"])
+        self.tree.tag_configure("common", background=palette["common"])
 
         if editable:
             self.tree.bind("<Double-1>", self._begin_edit)
 
     def clear(self):
         self._cancel_editor()
-        for i in self.tree.get_children():
-            self.tree.delete(i)
+        self.tree.delete(*self.tree.get_children())
 
     def insert_row(self, iid, values, tags=()):
         self.tree.insert("", "end", iid=iid, values=values, tags=tags)
+
+    def autosize(self, sample=60):
+        """헤더/내용 길이에 맞춰 컬럼 폭 간단 자동 조정."""
+        f = self.p["fonts"]["grid"]
+        hf = self.p["fonts"]["head"]
+        items = self.tree.get_children()[:sample]
+        for col in self.columns:
+            w = hf.measure(col) + 24
+            for it in items:
+                txt = str(self.tree.set(it, col))
+                w = max(w, f.measure(txt) + 20)
+            self.tree.column(col, width=min(max(w, 60), 320))
 
     # ---- 셀 편집 ----------------------------------------------------------
 
     def _begin_edit(self, event):
         if not self.editable:
             return
-        region = self.tree.identify("region", event.x, event.y)
-        if region != "cell":
+        if self.tree.identify("region", event.x, event.y) != "cell":
             return
-        col_id = self.tree.identify_column(event.x)  # '#n'
+        col_id = self.tree.identify_column(event.x)
         row_id = self.tree.identify_row(event.y)
         if not row_id or not col_id:
             return
-        col_index = int(col_id[1:]) - 1
-        col_name = self.columns[col_index]
-
-        x, y, w, h = self.tree.bbox(row_id, col_id)
+        col_name = self.columns[int(col_id[1:]) - 1]
+        bbox = self.tree.bbox(row_id, col_id)
+        if not bbox:
+            return
+        x, y, w, h = bbox
         value = self.tree.set(row_id, col_name)
         self._cancel_editor()
-        self._editor = tk.Entry(self.tree)
-        self._editor.insert(0, value)
-        self._editor.select_range(0, "end")
-        self._editor.focus_set()
-        self._editor.place(x=x, y=y, width=w, height=h)
-        self._editor.bind("<Return>", lambda e: self._commit_editor(row_id, col_name))
-        self._editor.bind("<Escape>", lambda e: self._cancel_editor())
-        self._editor.bind("<FocusOut>", lambda e: self._commit_editor(row_id, col_name))
+        ed = tk.Entry(self.tree, relief="flat", bg="#fffbe6",
+                      highlightthickness=2, highlightcolor=self.p["primary"],
+                      font=self.p["fonts"]["grid"])
+        ed.insert(0, value)
+        ed.select_range(0, "end")
+        ed.focus_set()
+        ed.place(x=x, y=y, width=w, height=h)
+        ed.bind("<Return>", lambda e: self._commit_editor(row_id, col_name))
+        ed.bind("<Escape>", lambda e: self._cancel_editor())
+        ed.bind("<FocusOut>", lambda e: self._commit_editor(row_id, col_name))
+        self._editor = ed
 
     def _commit_editor(self, row_id, col_name):
         if self._editor is None:
             return
         new_value = self._editor.get()
         self._cancel_editor()
-        old = self.tree.set(row_id, col_name)
-        if new_value != old:
+        if new_value != self.tree.set(row_id, col_name):
             self.tree.set(row_id, col_name, new_value)
             if self.on_edit:
                 self.on_edit(row_id, col_name, new_value)
@@ -142,7 +160,10 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("PI_ALL 장비 파라미터 관리")
-        self.geometry("1280x720")
+        self.geometry("1320x780")
+        self.minsize(960, 600)
+
+        self.p = apply_theme(self)
 
         self.repo: ParamRepository | None = None
         self.path: str | None = None
@@ -152,6 +173,8 @@ class App(tk.Tk):
         self._cfg = load_config()
 
         self._build_menu()
+        self._build_header()
+        self._build_toolbar()
         self._build_body()
         self._build_statusbar()
 
@@ -160,9 +183,9 @@ class App(tk.Tk):
 
         last = self._cfg.get("last_path")
         if last and os.path.exists(last):
-            self.open_file(last)
+            self.after(50, lambda: self.open_file(last))
         else:
-            self._set_status("파일을 열어 시작하세요. (파일 메뉴 > 열기 / 엑셀 가져오기)")
+            self._set_status("파일을 열어 시작하세요 — 파일 메뉴 ▸ 열기 / 엑셀 가져오기")
 
     # ---- UI 구성 ----------------------------------------------------------
 
@@ -175,7 +198,7 @@ class App(tk.Tk):
         m.add_command(label="기존 엑셀(.xlsm) 가져오기", command=self._menu_import)
         m.add_command(label="다른 이름으로 내보내기", command=self._menu_export)
         m.add_separator()
-        m.add_command(label="저장 (Ctrl+S)", command=self.save)
+        m.add_command(label="저장  (Ctrl+S)", command=self.save)
         m.add_command(label="새로고침(디스크 다시 읽기)", command=self._menu_reload)
         m.add_separator()
         m.add_command(label="종료", command=self._on_close)
@@ -188,65 +211,83 @@ class App(tk.Tk):
         self.config(menu=menubar)
         self.bind("<Control-s>", lambda e: self.save())
 
+    def _build_header(self):
+        bar = ttk.Frame(self, style="Header.TFrame", padding=(18, 12))
+        bar.pack(side="top", fill="x")
+        ttk.Label(bar, text="PI_ALL 장비 파라미터 관리", style="Title.TLabel").pack(side="left")
+        right = ttk.Frame(bar, style="Header.TFrame")
+        right.pack(side="right")
+        self.hdr_file = ttk.Label(right, text="파일 없음", style="HeaderInfo.TLabel")
+        self.hdr_file.pack(side="top", anchor="e")
+        self.hdr_user = ttk.Label(right, text=f"사용자: {self.user}", style="HeaderInfo.TLabel")
+        self.hdr_user.pack(side="top", anchor="e")
+
+    def _build_toolbar(self):
+        tb = ttk.Frame(self, style="Surface.TFrame", padding=(12, 9))
+        tb.pack(side="top", fill="x")
+        ttk.Button(tb, text="💾  저장", style="Primary.TButton", command=self.save).pack(side="left")
+        ttk.Button(tb, text="↻  새로고침", command=self._menu_reload).pack(side="left", padx=(8, 0))
+        ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=12, pady=2)
+        ttk.Button(tb, text="＋  행 추가", command=self._add_row).pack(side="left")
+        ttk.Button(tb, text="🗑  선택 행 삭제", command=self._delete_row).pack(side="left", padx=(8, 0))
+        ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=12, pady=2)
+        ttk.Button(tb, text="↧  엑셀 가져오기", command=self._menu_import).pack(side="left")
+        ttk.Button(tb, text="↥  내보내기", command=self._menu_export).pack(side="left", padx=(8, 0))
+
     def _build_body(self):
-        toolbar = ttk.Frame(self)
-        toolbar.pack(side="top", fill="x", padx=6, pady=4)
-        ttk.Button(toolbar, text="저장", command=self.save).pack(side="left", padx=2)
-        ttk.Button(toolbar, text="새로고침", command=self._menu_reload).pack(side="left", padx=2)
-        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=6)
-        ttk.Button(toolbar, text="행 추가", command=self._add_row).pack(side="left", padx=2)
-        ttk.Button(toolbar, text="선택 행 삭제", command=self._delete_row).pack(side="left", padx=2)
+        wrap = ttk.Frame(self, padding=(10, 6))
+        wrap.pack(fill="both", expand=True)
+        self.nb = ttk.Notebook(wrap)
+        self.nb.pack(fill="both", expand=True)
 
-        self.nb = ttk.Notebook(self)
-        self.nb.pack(fill="both", expand=True, padx=6, pady=4)
-
-        # 탭1: 파라미터 편집
         self.edit_cols = EDITABLE_FIELDS
-        self.tab_edit = EditableTree(self.nb, self.edit_cols, editable=True, on_edit=self._on_cell_edit)
-        self.nb.add(self.tab_edit, text="파라미터 편집")
+        self.tab_edit = EditableTree(self.nb, self.edit_cols, self.p, editable=True,
+                                     on_edit=self._on_cell_edit)
+        self.nb.add(self.tab_edit, text="  파라미터 편집  ")
 
-        # 탭2: 호기 비교/누락
         self.cmp_cols = ["PI", "Recipe", "Zone", "Alg", "Parameter", "공통", "값차이", "누락 호기"] + AOI_UNITS
-        self.tab_cmp = EditableTree(self.nb, self.cmp_cols, editable=False)
-        self.nb.add(self.tab_cmp, text="호기 비교 / 누락")
+        self.tab_cmp = EditableTree(self.nb, self.cmp_cols, self.p, editable=False)
+        self.nb.add(self.tab_cmp, text="  호기 비교 / 누락  ")
 
-        # 탭3: 변경 이력
-        self.tab_hist = ttk.Frame(self.nb)
+        self.tab_hist = ttk.Frame(self.nb, style="Surface.TFrame")
         self._build_history_tab(self.tab_hist)
-        self.nb.add(self.tab_hist, text="변경 이력")
+        self.nb.add(self.tab_hist, text="  변경 이력  ")
 
         self.nb.bind("<<NotebookTabChanged>>", lambda e: self._on_tab_changed())
 
     def _build_history_tab(self, parent):
-        bar = ttk.Frame(parent)
-        bar.pack(side="top", fill="x", padx=4, pady=4)
-        ttk.Label(bar, text="검색:").pack(side="left")
+        bar = ttk.Frame(parent, style="Surface.TFrame", padding=(10, 10))
+        bar.pack(side="top", fill="x")
+        ttk.Label(bar, text="검색", style="Surface.TLabel").pack(side="left")
         self.hist_query = tk.StringVar()
-        e = ttk.Entry(bar, textvariable=self.hist_query, width=30)
-        e.pack(side="left", padx=4)
+        e = ttk.Entry(bar, textvariable=self.hist_query, width=28)
+        e.pack(side="left", padx=(6, 16))
         e.bind("<KeyRelease>", lambda ev: self._refresh_history())
-        ttk.Label(bar, text="PI:").pack(side="left", padx=(10, 0))
+        ttk.Label(bar, text="PI", style="Surface.TLabel").pack(side="left")
         self.hist_pi = tk.StringVar(value="(전체)")
         self.hist_pi_cb = ttk.Combobox(bar, textvariable=self.hist_pi, width=10, state="readonly")
-        self.hist_pi_cb.pack(side="left", padx=4)
+        self.hist_pi_cb.pack(side="left", padx=(6, 16))
         self.hist_pi_cb.bind("<<ComboboxSelected>>", lambda ev: self._refresh_history())
-        ttk.Label(bar, text="호기:").pack(side="left", padx=(10, 0))
+        ttk.Label(bar, text="호기", style="Surface.TLabel").pack(side="left")
         self.hist_aoi = tk.StringVar(value="(전체)")
         self.hist_aoi_cb = ttk.Combobox(bar, textvariable=self.hist_aoi, width=10,
                                         state="readonly", values=["(전체)"] + AOI_UNITS)
-        self.hist_aoi_cb.pack(side="left", padx=4)
+        self.hist_aoi_cb.pack(side="left", padx=6)
         self.hist_aoi_cb.bind("<<ComboboxSelected>>", lambda ev: self._refresh_history())
 
         self.hist_view_cols = ["Update Date", "Updated By", "Recipe", "Zone", "Alg",
                                "Parameter", "AOI", "Old Value", "New Value", "Change Type"]
-        self.hist_tree = EditableTree(parent, self.hist_view_cols, editable=False)
-        self.hist_tree.pack(fill="both", expand=True, padx=4, pady=4)
+        self.hist_tree = EditableTree(parent, self.hist_view_cols, self.p, editable=False)
+        self.hist_tree.pack(fill="both", expand=True)
 
     def _build_statusbar(self):
         self.status = tk.StringVar()
-        bar = ttk.Frame(self)
+        bar = ttk.Frame(self, style="Surface.TFrame", padding=(12, 6))
         bar.pack(side="bottom", fill="x")
-        ttk.Label(bar, textvariable=self.status, anchor="w", relief="sunken").pack(fill="x")
+        ttk.Label(bar, textvariable=self.status, style="Surface.TLabel",
+                  font=self.p["fonts"]["sub"]).pack(side="left")
+        self.lock_lbl = ttk.Label(bar, text="", style="Surface.TLabel", font=self.p["fonts"]["sub"])
+        self.lock_lbl.pack(side="right")
 
     # ---- 파일 작업 --------------------------------------------------------
 
@@ -292,7 +333,6 @@ class App(tk.Tk):
             messagebox.showinfo("내보내기 완료", f"내보냈습니다:\n{dest}")
 
     def open_file(self, path: str):
-        # 기존 잠금 해제
         if self.path and not self.read_only:
             engine.release_lock(self.path, self.user)
 
@@ -323,6 +363,7 @@ class App(tk.Tk):
 
         self._check_conflicts()
         self._refresh_all()
+        self.tab_edit.autosize()
         self._update_title()
 
     def _menu_reload(self):
@@ -334,21 +375,25 @@ class App(tk.Tk):
 
     def save(self):
         if not self.repo or not self.path:
+            messagebox.showinfo("저장", "먼저 파일을 여세요.")
             return
         if self.read_only:
             messagebox.showwarning("읽기 전용", "읽기 전용으로 열려 있어 저장할 수 없습니다.")
             return
         self._check_conflicts()
+        self._set_status("저장 중…")
+        self.update_idletasks()
         try:
-            engine.write_lock(self.path, self.user)  # 잠금 갱신
+            engine.write_lock(self.path, self.user)
             stats = self.repo.save(user=self.user)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("저장 실패", str(e))
             return
         self.dirty = False
         self._refresh_all()
+        self._update_title()
         self._set_status(
-            f"저장 완료 — 변경 {stats['changes']}건, 추가 {stats['added']}건, 삭제 {stats['deleted']}건")
+            f"✓ 저장 완료 — 변경 {stats['changes']}건 · 추가 {stats['added']}건 · 삭제 {stats['deleted']}건")
 
     def _check_conflicts(self):
         if not self.path:
@@ -375,8 +420,7 @@ class App(tk.Tk):
             return
         for i, pr in enumerate(self.repo.rows):
             vals = [engine._s(pr.get(f)) for f in self.edit_cols]
-            tags = ("odd",) if i % 2 else ()
-            self.tab_edit.insert_row(pr.row_id, vals, tags)
+            self.tab_edit.insert_row(pr.row_id, vals, ("odd",) if i % 2 else ("even",))
 
     def _refresh_compare(self):
         self.tab_cmp.clear()
@@ -384,7 +428,7 @@ class App(tk.Tk):
             return
         for i, v in enumerate(self.repo.comparison_view()):
             base = [v["PI"], v["Recipe"], v["Zone"], v["Alg"], v["Parameter"],
-                    "O" if v["common"] else "", "차이" if v["value_diff"] else "",
+                    "●" if v["common"] else "", "▲" if v["value_diff"] else "",
                     ", ".join(v["missing"])]
             aoi_vals = [engine._s(v["values"][u]) for u in AOI_UNITS]
             row = [engine._s(x) for x in base] + aoi_vals
@@ -395,14 +439,12 @@ class App(tk.Tk):
             elif v["common"]:
                 tag = "common"
             else:
-                tag = "odd" if i % 2 else ""
-            self.tab_cmp.insert_row(v["row_id"], row, (tag,) if tag else ())
+                tag = "odd" if i % 2 else "even"
+            self.tab_cmp.insert_row(v["row_id"], row, (tag,))
 
     def _refresh_history_filters(self):
         if not self.repo:
             return
-        pis = sorted({engine._s(r.get("Recipe")) for r in self.repo.history if r.get("Recipe")})
-        # 이력에는 PI 컬럼이 없으므로 PI_ALL 의 PI 목록을 사용
         pis = sorted({engine._s(p.get("PI")) for p in self.repo.rows if p.get("PI")})
         self.hist_pi_cb["values"] = ["(전체)"] + pis
 
@@ -412,7 +454,6 @@ class App(tk.Tk):
         self.hist_tree.clear()
         q = self.hist_query.get().strip().lower()
         aoi_f = self.hist_aoi.get()
-        # PI 필터는 이력에 PI 컬럼이 없어 Parameter/Recipe 기준 텍스트 매칭으로 대체
         pi_f = self.hist_pi.get()
         pi_params = None
         if pi_f and pi_f != "(전체)":
@@ -429,9 +470,9 @@ class App(tk.Tk):
                 if q not in blob:
                     continue
             vals = [engine._s(rec.get(c)) for c in self.hist_view_cols]
-            self.hist_tree.insert_row(f"h{i}", vals, ("odd",) if shown % 2 else ())
+            self.hist_tree.insert_row(f"h{i}", vals, ("odd",) if shown % 2 else ("even",))
             shown += 1
-            if shown >= 2000:  # 과도한 렌더 방지
+            if shown >= 2000:
                 break
         self._set_status(f"이력 {shown}건 표시")
 
@@ -453,6 +494,7 @@ class App(tk.Tk):
         pr = self.repo.add_row()
         self.dirty = True
         self._refresh_edit()
+        self.nb.select(0)
         self.tab_edit.tree.see(pr.row_id)
         self.tab_edit.tree.selection_set(pr.row_id)
         self._update_title()
@@ -462,6 +504,7 @@ class App(tk.Tk):
             return
         sel = self.tab_edit.tree.selection()
         if not sel:
+            messagebox.showinfo("행 삭제", "삭제할 행을 먼저 선택하세요.")
             return
         if not messagebox.askyesno("행 삭제", "선택한 행을 삭제할까요? (저장 시 반영)"):
             return
@@ -475,6 +518,7 @@ class App(tk.Tk):
         idx = self.nb.index(self.nb.select())
         if idx == 1:
             self._refresh_compare()
+            self.tab_cmp.autosize()
         elif idx == 2:
             self._refresh_history()
 
@@ -490,7 +534,7 @@ class App(tk.Tk):
     def _show_help(self):
         messagebox.showinfo(
             "사용 안내",
-            "1) 파일 > '기존 엑셀(.xlsm) 가져오기' 로 처음 한 번 변환하거나,\n"
+            "1) 파일 ▸ '기존 엑셀(.xlsm) 가져오기' 로 처음 한 번 변환하거나,\n"
             "   '공용 파일 열기' 로 OneDrive 폴더의 .xlsx 를 엽니다.\n"
             "2) '파라미터 편집' 탭에서 셀을 더블클릭해 값을 고칩니다.\n"
             "3) [저장]을 누르면 변경이 이력에 자동 기록되고,\n"
@@ -505,13 +549,15 @@ class App(tk.Tk):
 
     def _update_title(self):
         name = os.path.basename(self.path) if self.path else "(파일 없음)"
-        mark = "*" if self.dirty else ""
-        ro = " [읽기전용]" if self.read_only else ""
-        self.title(f"PI_ALL 장비 파라미터 관리 — {name}{mark}{ro}  |  사용자: {self.user}")
-        self._set_status(
-            f"파일: {self.path or '-'}  |  사용자: {self.user}"
-            f"{'  |  읽기전용' if self.read_only else ''}"
-            f"{'  |  저장 안 됨' if self.dirty else ''}")
+        mark = " ●" if self.dirty else ""
+        ro = "  [읽기전용]" if self.read_only else ""
+        self.title(f"PI_ALL 장비 파라미터 관리 — {name}{mark}{ro}")
+        self.hdr_file.configure(text=f"{name}{mark}{ro}")
+        self.hdr_user.configure(text=f"사용자: {self.user}")
+        if self.repo:
+            self.lock_lbl.configure(
+                text=("읽기 전용" if self.read_only else "편집 중 · 잠금 보유") +
+                     f"   |   파라미터 {len(self.repo.rows)}행")
 
     def _set_status(self, text):
         self.status.set(text)
