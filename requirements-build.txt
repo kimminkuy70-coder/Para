@@ -1,3 +1,4 @@
-# .exe 빌드에만 필요한 패키지 (배포된 .exe 실행에는 불필요)
-# PyInstaller: GPL + 상업 배포 예외 조항 -> 사내/상업 .exe 배포 합법, 무료
+# Needed ONLY to build the .exe (not needed to run the built .exe).
+# PyInstaller: GPL with a commercial exception -> internal/commercial
+# .exe distribution is allowed and free.
 pyinstaller>=6.0

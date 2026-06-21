@@ -1,39 +1,36 @@
 @echo off
 REM ============================================================
-REM  단일 실행파일(.exe) 빌드 스크립트 (Windows 전용)
+REM  Build a single-file .exe (Windows only).
+REM  All-ASCII so it works on Korean Windows (cp949) too.
 REM
-REM  사전 준비 (인터넷이 필요한 유일한 단계 - 빌드 PC 1대에서만):
-REM    1) https://www.python.org 에서 Python 설치 (아나콘다 사용 금지)
-REM    2) (사내망이 PyPI 를 막으면 회사 승인 미러 사용)
+REM  Prerequisite (internet needed ONCE, on the build PC only):
+REM    1) Install Python from https://www.python.org  (NOT Anaconda)
+REM    2) If the corporate network blocks PyPI, use the approved mirror
 REM
-REM  결과물: dist\PI파라미터관리.exe  (이 파일만 각 PC에 배포)
-REM    - 배포된 .exe 는 Python/패키지 설치 불필요, 네트워크 불필요
+REM  Output: dist\PI_Param_Manager.exe
+REM    - Distribute that single .exe to each PC (or the OneDrive folder).
+REM    - The built .exe needs NO Python, NO packages, NO network.
+REM    - You may rename the .exe afterwards (Korean name is fine).
 REM ============================================================
-chcp 65001 >nul
 cd /d "%~dp0"
 
-echo [1/3] 빌드 도구 설치 (openpyxl + pyinstaller)
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-build.txt
+echo [1/3] Installing build tools (openpyxl + pyinstaller) ...
+python -m pip install openpyxl pyinstaller
 if errorlevel 1 (
-    echo [오류] 패키지 설치 실패. 사내 PyPI 미러/프록시 정책을 확인하세요.
+    echo [ERROR] Package install failed. Check your PyPI mirror/proxy policy.
     pause
     exit /b 1
 )
 
-echo [2/3] PyInstaller 빌드
-python -m PyInstaller --noconfirm --clean ^
-    --onefile --windowed ^
-    --name "PI파라미터관리" ^
-    --collect-submodules openpyxl ^
-    run.py
+echo [2/3] Building with PyInstaller ...
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name "PI_Param_Manager" --collect-submodules openpyxl run.py
 if errorlevel 1 (
-    echo [오류] 빌드 실패
+    echo [ERROR] Build failed.
     pause
     exit /b 1
 )
 
-echo [3/3] 완료
-echo   생성된 파일: dist\PI파라미터관리.exe
-echo   이 .exe 하나만 각 PC(또는 OneDrive 폴더)에 두면 됩니다.
+echo [3/3] Done.
+echo   Output: dist\PI_Param_Manager.exe
+echo   Put this single .exe on each PC or in the OneDrive folder.
 pause

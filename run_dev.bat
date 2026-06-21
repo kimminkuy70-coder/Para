@@ -1,23 +1,30 @@
 @echo off
 REM ============================================================
-REM  개발/테스트용 실행 (.exe 빌드 없이 바로 띄우기)
-REM  python.org 공식 Python 이 설치되어 있어야 합니다 (아나콘다 X)
+REM  Dev / test launcher (run WITHOUT building the .exe)
+REM  Requires the official python.org Python (NOT Anaconda).
+REM  All-ASCII so it works on Korean Windows (cp949) too.
 REM ============================================================
-chcp 65001 >nul
 cd /d "%~dp0"
 
 where python >nul 2>nul
 if errorlevel 1 (
-    echo [오류] Python 을 찾을 수 없습니다. https://www.python.org 에서 설치하세요.
+    echo [ERROR] Python not found. Install it from https://www.python.org
     pause
     exit /b 1
 )
 
-echo openpyxl 설치 확인 중...
+echo Checking openpyxl ...
 python -c "import openpyxl" 2>nul
 if errorlevel 1 (
-    echo openpyxl 를 설치합니다...
-    python -m pip install -r requirements.txt
+    echo Installing openpyxl ...
+    python -m pip install openpyxl
+    if errorlevel 1 (
+        echo [ERROR] Failed to install openpyxl. Check your PyPI mirror/proxy.
+        pause
+        exit /b 1
+    )
 )
 
+echo Starting PI_ALL Parameter Manager ...
 python -m param_manager
+if errorlevel 1 pause

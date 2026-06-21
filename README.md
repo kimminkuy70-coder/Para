@@ -36,9 +36,9 @@ python -m param_manager
 
 ### B. 배포용 .exe 만들기 (Windows, 빌드 PC 1대)
 ```bat
-build_exe.bat          REM dist\PI파라미터관리.exe 생성
+build_exe.bat          REM dist\PI_Param_Manager.exe 생성
 ```
-생성된 `dist\PI파라미터관리.exe` **하나만** 각 PC나 OneDrive 폴더에 두면 됩니다.
+생성된 `dist\PI_Param_Manager.exe` **하나만** 각 PC나 OneDrive 폴더에 두면 됩니다.
 (배포된 .exe는 Python·패키지·네트워크 모두 불필요)
 
 ### 처음 한 번: 기존 엑셀 가져오기
