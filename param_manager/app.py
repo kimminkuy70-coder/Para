@@ -84,7 +84,8 @@ class App(tk.Tk):
         self.dirty = False
         self._cfg = load_config()
         self.edit_ids: list[str] = []      # tab1 표시행 -> row_id
-        self.value_cols = ["초기 추천값"] + AOI_UNITS  # tab2 데이터 열
+        # 파라미터 편집/값 수정 공통 열 구성(메타 + 호기 값)
+        self.full_cols = META_FIELDS + AOI_UNITS
 
         self._build_menu()
         self._build_header()
@@ -197,17 +198,17 @@ class App(tk.Tk):
         self.nb = ttk.Notebook(wrap)
         self.nb.pack(fill="both", expand=True)
 
-        # 탭1: 파라미터 편집(메타)
+        # 탭1: 파라미터 편집(메타 + 호기 값 전부 편집)
         f1 = ttk.Frame(self.nb)
-        self.sh_edit = self._make_sheet(f1, META_FIELDS, frozen=5, editable=True)
+        self.sh_edit = self._make_sheet(f1, self.full_cols, frozen=5, editable=True)
         self.sh_edit.pack(fill="both", expand=True)
-        self.sh_edit.extra_bindings([("end_edit_cell", self._on_meta_edit),
-                                     ("end_paste", self._on_meta_edit)])
+        self.sh_edit.extra_bindings([("end_edit_cell", self._on_edit_full),
+                                     ("end_paste", self._on_edit_full)])
         self.nb.add(f1, text="  파라미터 편집  ")
 
-        # 탭2: 파라미터 값 수정(트리)
+        # 탭2: 파라미터 값 수정(편집과 동일 열 + 접기 화살표, 호기 값만 편집)
         f2 = ttk.Frame(self.nb)
-        self.sh_val = self._make_sheet(f2, self.value_cols, frozen=0, editable=True)
+        self.sh_val = self._make_sheet(f2, self.full_cols, frozen=5, editable=True)
         self.sh_val.pack(fill="both", expand=True)
         self.sh_val.extra_bindings([("end_edit_cell", self._on_value_edit),
                                     ("end_paste", self._on_value_edit)])
@@ -393,27 +394,36 @@ class App(tk.Tk):
         if not self.repo:
             return
         self.edit_ids = [pr.row_id for pr in self.repo.rows]
-        data = [[engine._s(pr.get(f)) for f in META_FIELDS] for pr in self.repo.rows]
+        data = [[engine._s(pr.get(f)) for f in self.full_cols] for pr in self.repo.rows]
         self.sh_edit.set_sheet_data(data, reset_col_positions=False, redraw=False)
-        self._set_widths(self.sh_edit, META_FIELDS)
-        self._fit_heights(self.sh_edit, len(META_FIELDS))
+        self._set_widths(self.sh_edit, self.full_cols)
+        self._fit_heights(self.sh_edit, len(self.full_cols))
         self.sh_edit.redraw()
 
     def _refresh_values(self):
+        """편집 탭과 동일한 열 구성 + 접기 화살표(트리). 호기 값만 편집 가능."""
         if not self.repo:
             return
-        # 트리 데이터 구성: 그룹 노드 + leaf(파라미터) 행
+        ncol = len(self.full_cols)
+        blank = [""] * ncol
+        idx = {h: i for i, h in enumerate(self.full_cols)}
         rows = sorted(self.repo.rows, key=lambda p: (engine.pi_order(p.get("PI")), p.display_order or 0))
-        tree: list[list] = []
+
+        tree: list[list] = []          # [iid, parent, *full_cols]
+        texts: list[str] = []          # 인덱스(트리) 라벨
         seen: set[str] = set()
         open_ids: list[str] = []
+        self.val_leaf_ids: set[str] = set()
 
-        def add_node(iid, parent, text, values=None):
+        def add_node(iid, parent, label, col_name, col_val):
             if iid in seen:
                 return
             seen.add(iid)
-            row = [iid, parent, text] + (values if values else [""] * len(self.value_cols))
+            row = [iid, parent] + list(blank)
+            if col_name and col_val:
+                row[2 + idx[col_name]] = col_val   # 그룹 값은 해당 열에 표시
             tree.append(row)
+            texts.append(label)
             open_ids.append(iid)
 
         for pr in rows:
@@ -425,31 +435,33 @@ class App(tk.Tk):
             i_rc = f"R::{pi}|{rc}"
             i_zn = f"Z::{pi}|{rc}|{zn}"
             i_al = f"A::{pi}|{rc}|{zn}|{al}"
-            add_node(i_pi, "", pi)
-            add_node(i_rc, i_pi, rc or "(빈 Recipe)")
-            add_node(i_zn, i_rc, zn or "(빈 Zone)")
-            add_node(i_al, i_zn, al or "(빈 Alg)")
-            # leaf = 파라미터 (iid = row_id 로 역매핑)
-            vals = [engine._s(pr.get(c)) for c in self.value_cols]
-            tree.append([pr.row_id, i_al, engine._s(pr.get("Parameter")) or "(빈 파라미터)"] + vals)
+            add_node(i_pi, "", pi, "PI", pi)
+            add_node(i_rc, i_pi, f"└ {rc or '(빈 Recipe)'}", "Recipe", rc)
+            add_node(i_zn, i_rc, f"  └ {zn or '(빈 Zone)'}", "Zone", zn)
+            add_node(i_al, i_zn, f"    └ {al or '(빈 Alg)'}", "Alg", al)
+            # leaf = 파라미터 (iid = row_id) — 전체 열을 편집 탭과 동일하게 채움
+            leaf = [pr.row_id, i_al] + [engine._s(pr.get(c)) for c in self.full_cols]
+            tree.append(leaf)
+            texts.append(f"      {engine._s(pr.get('Parameter')) or '(빈 파라미터)'}")
+            self.val_leaf_ids.add(pr.row_id)
 
-        # 구조 컬럼(iid/parent/text)은 데이터 열에서 제외 -> 값 열만 표시
-        self.sh_val.tree_build(data=tree, iid_column=0, parent_column=1, text_column=2,
+        self.sh_val.tree_build(data=tree, iid_column=0, parent_column=1, text_column=texts,
                                open_ids=open_ids, include_iid_column=False,
-                               include_parent_column=False, include_text_column=False)
-        # 초기 추천값(0번 데이터열)은 참고용 읽기 전용
+                               include_parent_column=False)
+        # 호기(AOI) 열만 편집 가능, 메타 열은 읽기 전용
         try:
-            self.sh_val.readonly_columns(columns=[0], readonly=True)
+            ro = [i for i, h in enumerate(self.full_cols) if h not in AOI_UNITS]
+            self.sh_val.readonly_columns(columns=ro, readonly=True)
+            self.sh_val.readonly_columns(columns=[i for i, h in enumerate(self.full_cols)
+                                                  if h in AOI_UNITS], readonly=False)
         except Exception:
             pass
-        # 트리(인덱스) 열을 넓혀 PI▸…▸파라미터 경로가 보이게(좌측 정렬)
         try:
-            self.sh_val.set_index_width(300)
+            self.sh_val.set_index_width(240)
             self.sh_val.set_options(index_align="left")
         except Exception:
             pass
-        for i, h in enumerate(self.value_cols):
-            self.sh_val.column_width(column=i, width=WIDTHS.get(h, AOI_W))
+        self._set_widths(self.sh_val, self.full_cols)
         self.sh_val.redraw()
 
     def _refresh_compare(self):
@@ -541,7 +553,8 @@ class App(tk.Tk):
 
     # ---- 편집 콜백 ---------------------------------------------------------
 
-    def _on_meta_edit(self, event=None):
+    def _on_edit_full(self, event=None):
+        """파라미터 편집 탭: 메타 + 호기 값 전부 repo 에 반영."""
         if not self.repo:
             return
         data = self.sh_edit.get_sheet_data()
@@ -551,24 +564,27 @@ class App(tk.Tk):
             pr = self._row_by_id(self.edit_ids[i])
             if pr is None:
                 continue
-            for j, field in enumerate(META_FIELDS):
+            for j, field in enumerate(self.full_cols):
                 pr.set(field, (row[j] if j < len(row) else "") or None)
         self._mark_dirty()
 
     def _on_value_edit(self, event=None):
+        """파라미터 값 수정 탭: leaf(파라미터) 행의 호기 값만 반영."""
         if not self.repo:
             return
         sel = self.sh_val.get_currently_selected()
         if not sel:
             return
         row, col = sel.row, sel.column
-        if col == 0:  # 초기추천값(읽기전용)
+        if col >= len(self.full_cols):
+            return
+        field = self.full_cols[col]
+        if field not in AOI_UNITS:   # 메타 열은 읽기 전용
             return
         iid = self.sh_val.rowitem(row)
         pr = self._row_by_id(iid)
-        if pr is None or col >= len(self.value_cols):
+        if pr is None:               # 그룹 헤더 행은 무시
             return
-        field = self.value_cols[col]
         val = self.sh_val.get_cell_data(row, col)
         pr.set(field, (val if val not in (None, "") else None))
         self._mark_dirty()
