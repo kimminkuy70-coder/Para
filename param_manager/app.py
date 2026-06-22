@@ -123,21 +123,30 @@ class App(tk.Tk):
                   show_x_scrollbar=True, show_y_scrollbar=True,
                   font=self.sheet_font, header_font=self.sheet_hfont, index_font=self.sheet_ifont)
         s.headers(headers)
+        # edit_cell_return/tab = "" : Enter/Tab 입력 후 같은 셀에 머무름
+        # (마지막 셀에서 (1,1)로 점프하던 동작 방지)
         s.set_options(table_wrap="w", header_wrap="w", table_grid_fg="#cfd6df",
-                      show_vertical_grid=True, show_horizontal_grid=True)
+                      show_vertical_grid=True, show_horizontal_grid=True,
+                      edit_cell_return="", edit_cell_tab="")
         # column_width_resize: 열 경계 드래그로 너비 조절,
         # double_click_column_resize: 경계 더블클릭 시 내용에 맞춰 자동 너비,
-        # row_height_resize: 행 경계 드래그로 높이 조절
+        # row_height_resize: 행 경계 드래그로 높이 조절,
+        # undo/redo: Ctrl+Z / Ctrl+Shift+Z(또는 Ctrl+Y)
         if editable:
             s.enable_bindings("single_select", "drag_select", "row_select", "column_select",
                               "arrowkeys", "copy", "paste", "cut", "delete", "edit_cell",
                               "rc_select", "column_width_resize", "double_click_column_resize",
-                              "row_height_resize")
+                              "row_height_resize", "undo", "redo")
         else:
             s.enable_bindings("single_select", "drag_select", "row_select", "column_select",
                               "arrowkeys", "copy", "column_width_resize",
                               "double_click_column_resize", "row_height_resize")
         return s
+
+    def _bind_undo(self, sheet, resync):
+        """undo/redo 후 repo 를 시트 내용으로 재동기화."""
+        sheet.bind("<<Undo>>", lambda e: resync())
+        sheet.bind("<<Redo>>", lambda e: resync())
 
     def _set_widths(self, sheet, headers):
         # 최초 1회만 기본 너비 적용 -> 사용자가 드래그로 조절한 너비를 보존.
@@ -228,6 +237,7 @@ class App(tk.Tk):
         self.sh_edit.pack(fill="both", expand=True)
         self.sh_edit.extra_bindings([("end_edit_cell", self._on_edit_full),
                                      ("end_paste", self._on_edit_full)])
+        self._bind_undo(self.sh_edit, self._on_edit_full)
         self.nb.add(f1)
 
         # 탭2: 호기별 값 수정(셀 안 +/- 토글로 접기/펼치기, 호기 값만 편집)
@@ -241,8 +251,9 @@ class App(tk.Tk):
         self.sh_val = self._make_sheet(f2, self.val_cols, frozen=5, editable=True)
         self.sh_val.pack(fill="both", expand=True)
         self.sh_val.extra_bindings([("end_edit_cell", self._on_value_edit),
-                                    ("end_paste", self._on_value_edit),
+                                    ("end_paste", self._sync_value_all),
                                     ("cell_select", self._on_val_click)])
+        self._bind_undo(self.sh_val, self._sync_value_all)
         self.nb.add(f2)
 
         # 탭3: 호기 비교/누락
@@ -271,8 +282,9 @@ class App(tk.Tk):
         self.sh_spec = self._make_sheet(f5, SPECIAL_HEADERS, frozen=2, editable=True)
         self.sh_spec.pack(fill="both", expand=True)
         self.sh_spec.extra_bindings([("end_edit_cell", self._on_special_edit),
-                                     ("end_paste", self._on_special_edit),
+                                     ("end_paste", self._sync_special_all),
                                      ("cell_select", self._on_spec_click)])
+        self._bind_undo(self.sh_spec, self._sync_special_all)
         self.nb.add(f5)
 
         # 탭6: 참고자료(엑셀 '관련 자료' 기반 4개 표, 제목 칸은 사용자가 입력)
@@ -286,6 +298,7 @@ class App(tk.Tk):
         self.sh_ref.pack(fill="both", expand=True)
         self.sh_ref.extra_bindings([("end_edit_cell", self._on_ref_edit),
                                     ("end_paste", self._on_ref_edit)])
+        self._bind_undo(self.sh_ref, self._on_ref_edit)
         self.nb.add(f6)
 
         self._apply_tab_names()
@@ -828,6 +841,39 @@ class App(tk.Tk):
             return
         val = self.sh_val.get_cell_data(row, col)
         pr.set(field, (val if val not in (None, "") else None))
+        self._mark_dirty()
+
+    def _sync_value_all(self, event=None):
+        """undo/redo·붙여넣기 후: 보이는 leaf 행의 호기 값을 모두 repo 에 재반영."""
+        if not self.repo:
+            return
+        data = self.sh_val.get_sheet_data()
+        aoi_idx = {self.val_cols.index(u): u for u in AOI_UNITS}
+        for r, info in enumerate(self.val_display):
+            if info.get("kind") != "leaf" or r >= len(data):
+                continue
+            pr = self._row_by_id(info.get("rowid"))
+            if pr is None:
+                continue
+            for ci, u in aoi_idx.items():
+                v = data[r][ci] if ci < len(data[r]) else ""
+                pr.set(u, v if v not in (None, "") else None)
+        self._mark_dirty()
+
+    def _sync_special_all(self, event=None):
+        """undo/redo·붙여넣기 후: 보이는 특이사항 행을 repo 에 재반영(종료여부 제외)."""
+        if not self.repo:
+            return
+        data = self.sh_spec.get_sheet_data()
+        bcol = SPECIAL_HEADERS.index(SPECIAL_BOOL_COL)
+        for r, orig in enumerate(self.spec_shown_idx):
+            if r >= len(data) or not (0 <= orig < len(self.repo.special)):
+                continue
+            rec = self.repo.special[orig]
+            for j, h in enumerate(SPECIAL_HEADERS):
+                if j == bcol:
+                    continue
+                rec[h] = data[r][j] if j < len(data[r]) else ""
         self._mark_dirty()
 
     def _on_special_edit(self, event=None):
