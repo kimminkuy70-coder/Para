@@ -41,6 +41,7 @@ SHEET_SNAP = "_SNAPSHOT_PI_ALL"
 SHEET_SPECIAL = "특이사항"
 SHEET_REF = "참고자료"
 SHEET_RELATED = "관련 자료"
+SHEET_COLORS = "_CELL_COLORS"   # 셀 색상(강조/채우기) 저장용 숨김 시트
 REF_COLS = 4   # 참고자료 그리드 열 수
 
 # 기본 관리 호기(새 빈 파일/감지 실패 시 사용). 실제 호기 목록은 파일에서 자동 인식.
@@ -367,6 +368,7 @@ class ParamRepository:
         self.aoi_ip: dict[str, str] = {}        # 호기 -> IP (관련 자료 시트)
         self.special: list[dict[str, Any]] = []  # 특이사항 시트 행들
         self.reference: list[list[str]] = []     # 참고자료 그리드
+        self.cell_colors: dict[str, str] = {}    # 셀키 -> 색상(hex)
         self.sheet_name: str = SHEET_PI          # 데이터 시트 이름(자동 인식)
         self.aoi_units: list = list(AOI_UNITS)   # 호기 목록(자동 인식)
         self._base: dict[str, dict[str, str]] = {}  # row_id -> 편집 전 스냅샷
@@ -382,9 +384,30 @@ class ParamRepository:
         self.aoi_ip = self._read_aoi_ip(wb)
         self.special = self._read_special(wb)
         self.reference = self._read_reference(wb)
+        self.cell_colors = self._read_colors(wb)
         wb.close()
         self._ensure_row_ids()
         self._capture_base()
+
+    @staticmethod
+    def _read_colors(wb) -> dict[str, str]:
+        out: dict[str, str] = {}
+        if SHEET_COLORS not in wb.sheetnames:
+            return out
+        ws = wb[SHEET_COLORS]
+        for r in range(2, ws.max_row + 1):
+            key = _s(ws.cell(r, 1).value)
+            color = _s(ws.cell(r, 2).value)
+            if key and color:
+                out[key] = color
+        return out
+
+    def _write_colors(self, wb) -> None:
+        ws = wb.create_sheet(SHEET_COLORS)
+        ws.sheet_state = "hidden"
+        ws.append(["Key", "Color"])
+        for key, color in self.cell_colors.items():
+            ws.append([key, color])
 
     @staticmethod
     def _read_pi_all(wb, sheet_name=None, aoi_units=None) -> list[ParamRow]:
@@ -644,6 +667,7 @@ class ParamRepository:
         self._write_snapshot(wb, disk_rows)
         self._write_special(wb)
         self._write_reference(wb)
+        self._write_colors(wb)
         self._atomic_save(wb)
 
         # 7) 메모리 상태 갱신
@@ -863,6 +887,9 @@ def create_empty_workbook(path: str) -> None:
     snap = wb.create_sheet(SHEET_SNAP)
     snap.sheet_state = "hidden"
     snap.append(SNAP_HEADERS)
+    colors = wb.create_sheet(SHEET_COLORS)
+    colors.sheet_state = "hidden"
+    colors.append(["Key", "Color"])
     wb.save(path)
 
 
@@ -890,6 +917,7 @@ def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     repo._write_snapshot(out, repo.rows)
     repo._write_special(out)
     repo._write_reference(out)
+    repo._write_colors(out)
     out.save(dest_xlsx)
     repo._capture_base()
     return repo

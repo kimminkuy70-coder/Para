@@ -18,9 +18,39 @@ from __future__ import annotations
 import json
 import os
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from tksheet import Sheet
+
+HIGHLIGHT_YELLOW = "#FFF24D"   # 강조(노란색)
+
+
+class Tooltip:
+    """위젯에 마우스를 올리면 안내(단축키 등)를 보여주는 간단한 툴팁."""
+
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip = None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _show(self, _=None):
+        if self.tip or not self.text:
+            return
+        x = self.widget.winfo_rootx() + 12
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(self.tip, text=self.text, bg="#1e293b", fg="#f8fafc",
+                 padx=8, pady=4, bd=0).pack()
+
+    def _hide(self, _=None):
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
 
 from . import engine
 from .engine import (
@@ -241,8 +271,14 @@ class App(tk.Tk):
         ttk.Button(tb, text="＋  행 추가", command=self._add_row).pack(side="left")
         ttk.Button(tb, text="🗑  선택 행 삭제", command=self._delete_row).pack(side="left", padx=(8, 0))
         ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=12, pady=2)
+        btn_hl = ttk.Button(tb, text="🟨  강조", command=lambda: self._fill_cells(None))
+        btn_hl.pack(side="left")
+        Tooltip(btn_hl, "선택한 셀을 노란색으로 강조 / 해제  (단축키 F4)")
+        ttk.Button(tb, text="🎨  채우기 색", command=self._fill_cells_pick).pack(side="left", padx=(8, 0))
+        ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=12, pady=2)
         ttk.Button(tb, text="↧  엑셀 가져오기", command=self._menu_import).pack(side="left")
         ttk.Button(tb, text="↥  내보내기", command=self._menu_export).pack(side="left", padx=(8, 0))
+        self.bind("<F4>", lambda e: self._fill_cells(None))
 
     # ---- 본문(탭) ----------------------------------------------------------
 
@@ -618,6 +654,7 @@ class App(tk.Tk):
         self.sh_edit.set_sheet_data(data, reset_col_positions=False, redraw=False)
         self._set_widths(self.sh_edit, self.full_cols)
         self._fit_heights(self.sh_edit, len(self.full_cols))
+        self._apply_cell_colors(self.sh_edit, "edit")
         self.sh_edit.redraw()
 
     @staticmethod
@@ -696,6 +733,7 @@ class App(tk.Tk):
                 self.sh_val.highlight_cells(row=r, column=c, bg="#e3edfb", fg="#1d4ed8")
         except Exception:
             pass
+        self._apply_cell_colors(self.sh_val, "value")
         self._fit_heights(self.sh_val, len(self.val_cols))
         self.sh_val.redraw()
 
@@ -832,6 +870,7 @@ class App(tk.Tk):
                 self.sh_spec.highlight_cells(row=r, column=dcol, bg=self.p["diff"], fg="#b91c1c")
         except Exception:
             pass
+        self._apply_cell_colors(self.sh_spec, "special")
         self._fit_heights(self.sh_spec, len(SPECIAL_HEADERS))
         self.sh_spec.redraw()
         self._set_status(f"특이사항 {len(data)}건 표시")
@@ -876,6 +915,7 @@ class App(tk.Tk):
                     self.sh_ref.highlight_rows(rows=[r], bg="#dbe7fb", fg="#1d4ed8", redraw=False)
         except Exception:
             pass
+        self._apply_cell_colors(self.sh_ref, "reference")
         self._fit_heights(self.sh_ref, engine.REF_COLS, max_rows=400)
         self.sh_ref.redraw()
 
@@ -1074,6 +1114,138 @@ class App(tk.Tk):
                     self.repo.remove_row(self.edit_ids[r])
             self._refresh_edit()
         self._mark_dirty()
+
+    # ---- 셀 강조 / 채우기 색 ----------------------------------------------
+
+    @staticmethod
+    def _fg_for(bg: str) -> str:
+        """배경색 밝기에 따라 글자색(검정/흰색) 자동 선택."""
+        try:
+            r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
+            return "#1f2937" if (0.299 * r + 0.587 * g + 0.114 * b) > 150 else "#ffffff"
+        except Exception:
+            return "#1f2937"
+
+    def _color_target(self):
+        """현재 탭의 (시트, 종류). 색칠 가능한 탭만 반환."""
+        tab = self._current_tab()
+        return {0: (self.sh_edit, "edit"), 1: (self.sh_val, "value"),
+                4: (self.sh_spec, "special"), 5: (self.sh_ref, "reference")}.get(tab)
+
+    def _cell_key(self, kind, r, c):
+        if kind in ("edit", "value"):
+            cols = self.full_cols if kind == "edit" else self.val_cols
+            if c >= len(cols):
+                return None
+            if kind == "edit":
+                if r >= len(self.edit_ids):
+                    return None
+                rid = self.edit_ids[r]
+            else:
+                if r >= len(self.val_display) or self.val_display[r].get("kind") != "leaf":
+                    return None
+                rid = self.val_display[r]["rowid"]
+            return f"P|{rid}|{cols[c]}"
+        if kind == "special":
+            if r >= len(self.spec_shown_idx):
+                return None
+            return f"S|{self.spec_shown_idx[r]}|{c}"
+        if kind == "reference":
+            return f"R|{r}|{c}"
+        return None
+
+    def _selected_cells(self, sheet):
+        cells = set(sheet.get_selected_cells())
+        if not cells:
+            sel = sheet.get_currently_selected()
+            if sel:
+                cells = {(sel.row, sel.column)}
+        return cells
+
+    def _fill_cells(self, color):
+        """color=None 이면 노란색 토글(이미 노랑이면 해제), 아니면 해당 색으로 채움."""
+        if not self.repo or self.read_only:
+            return
+        target = self._color_target()
+        if not target:
+            self._set_status("이 탭에서는 셀 색을 칠할 수 없습니다. (항목/값/특이사항/참고자료 탭에서 가능)")
+            return
+        sheet, kind = target
+        cells = self._selected_cells(sheet)
+        if not cells:
+            return
+        cc = self.repo.cell_colors
+        keys = [k for (r, c) in cells if (k := self._cell_key(kind, r, c))]
+        if not keys:
+            return
+        if color is None:  # 노란색 토글
+            all_yellow = all(cc.get(k) == HIGHLIGHT_YELLOW for k in keys)
+            for k in keys:
+                if all_yellow:
+                    cc.pop(k, None)
+                else:
+                    cc[k] = HIGHLIGHT_YELLOW
+        else:
+            for k in keys:
+                cc[k] = color
+        self._mark_dirty()
+        self._refresh_color_tab(kind)
+
+    def _fill_cells_pick(self):
+        if not self.repo or self.read_only:
+            return
+        if not self._color_target():
+            self._set_status("이 탭에서는 셀 색을 칠할 수 없습니다.")
+            return
+        rgb, hexv = colorchooser.askcolor(color=HIGHLIGHT_YELLOW, title="채우기 색 선택")
+        if hexv:
+            self._fill_cells(hexv.upper())
+
+    def _refresh_color_tab(self, kind):
+        {"edit": self._refresh_edit, "value": self._refresh_values,
+         "special": self._refresh_special, "reference": self._refresh_reference}[kind]()
+
+    def _apply_cell_colors(self, sheet, kind):
+        """저장된 셀 색을 해당 탭에 다시 적용(refresh 끝에서 호출)."""
+        if not self.repo or not self.repo.cell_colors:
+            return
+        cc = self.repo.cell_colors
+        try:
+            if kind in ("edit", "value"):
+                cols = self.full_cols if kind == "edit" else self.val_cols
+                col_idx = {h: i for i, h in enumerate(cols)}
+                if kind == "edit":
+                    row_idx = {rid: i for i, rid in enumerate(self.edit_ids)}
+                else:
+                    row_idx = {d["rowid"]: i for i, d in enumerate(self.val_display)
+                               if d.get("kind") == "leaf"}
+                for key, color in cc.items():
+                    if not key.startswith("P|"):
+                        continue
+                    _, rid, field = key.split("|", 2)
+                    r = row_idx.get(rid); c = col_idx.get(field)
+                    if r is not None and c is not None:
+                        sheet.highlight_cells(row=r, column=c, bg=color,
+                                              fg=self._fg_for(color), redraw=False)
+            elif kind == "special":
+                pos = {orig: i for i, orig in enumerate(self.spec_shown_idx)}
+                for key, color in cc.items():
+                    if not key.startswith("S|"):
+                        continue
+                    _, o, c = key.split("|")
+                    r = pos.get(int(o))
+                    if r is not None:
+                        sheet.highlight_cells(row=r, column=int(c), bg=color,
+                                              fg=self._fg_for(color), redraw=False)
+            elif kind == "reference":
+                for key, color in cc.items():
+                    if not key.startswith("R|"):
+                        continue
+                    _, r, c = key.split("|")
+                    sheet.highlight_cells(row=int(r), column=int(c), bg=color,
+                                          fg=self._fg_for(color), redraw=False)
+        except Exception:
+            pass
 
     # ---- 탭/기타 ----------------------------------------------------------
 
