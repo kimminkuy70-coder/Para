@@ -68,7 +68,7 @@ def save_config(cfg: dict) -> None:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("PI_ALL 장비 파라미터 관리")
+        self.title("Camtek AOI 장비 파라미터 관리")
         self.geometry("1360x800")
         self.minsize(1000, 640)
 
@@ -83,6 +83,7 @@ class App(tk.Tk):
         self.read_only = False
         self.user = engine.current_user()
         self.dirty = False
+        self.active_kind: str | None = None   # 현재 연 장비 종류 "PI"/"RDL"
         self._cfg = load_config()
         self.edit_ids: list[str] = []      # tab1 표시행 -> row_id
         # 호기 목록(파일에서 자동 인식; 기본은 PI 13개)
@@ -217,13 +218,19 @@ class App(tk.Tk):
     def _build_header(self):
         bar = ttk.Frame(self, style="Header.TFrame", padding=(18, 12))
         bar.pack(side="top", fill="x")
-        ttk.Label(bar, text="PI_ALL 장비 파라미터 관리", style="Title.TLabel").pack(side="left")
+        ttk.Label(bar, text="Camtek AOI 장비 파라미터 관리", style="Title.TLabel").pack(side="left")
+        # 장비 종류 전환 버튼(PI / RDL)
+        self.btn_pi = ttk.Button(bar, text="PI", width=6, command=lambda: self._switch_kind("PI"))
+        self.btn_pi.pack(side="left", padx=(20, 0))
+        self.btn_rdl = ttk.Button(bar, text="RDL", width=6, command=lambda: self._switch_kind("RDL"))
+        self.btn_rdl.pack(side="left", padx=(8, 0))
         right = ttk.Frame(bar, style="Header.TFrame")
         right.pack(side="right")
         self.hdr_file = ttk.Label(right, text="파일 없음", style="HeaderInfo.TLabel")
         self.hdr_file.pack(side="top", anchor="e")
         self.hdr_user = ttk.Label(right, text=f"사용자: {self.user}", style="HeaderInfo.TLabel")
         self.hdr_user.pack(side="top", anchor="e")
+        self._update_kind_buttons()
 
     def _build_toolbar(self):
         tb = ttk.Frame(self, style="Surface.TFrame", padding=(12, 9))
@@ -451,7 +458,59 @@ class App(tk.Tk):
             engine.export_copy(self.path, dest)
             messagebox.showinfo("내보내기 완료", f"내보냈습니다:\n{dest}")
 
-    def open_file(self, path: str):
+    # ---- 장비 종류(PI / RDL) 전환 ----------------------------------------
+
+    def _kind_of(self, repo) -> str | None:
+        sn = getattr(repo, "sheet_name", "") if repo else ""
+        if sn == "RDL_ALL":
+            return "RDL"
+        if sn == "PI_ALL":
+            return "PI"
+        return None
+
+    def _update_kind_buttons(self):
+        for kind, btn in (("PI", self.btn_pi), ("RDL", self.btn_rdl)):
+            active = (self.active_kind == kind)
+            btn.configure(style="Primary.TButton" if active else "Ghost.TButton")
+
+    def _switch_kind(self, kind: str):
+        if self.dirty and not messagebox.askyesno(
+                "전환", "저장하지 않은 변경이 있습니다. 버리고 전환할까요?"):
+            return
+        path = self._cfg.get(f"{kind.lower()}_path")
+        if path and os.path.exists(path):
+            self.open_file(path, kind=kind)
+        else:
+            self._setup_kind(kind)
+
+    def _setup_kind(self, kind: str):
+        """해당 장비 파일이 아직 지정되지 않았을 때: 파일 선택/가져오기 후 기억."""
+        if not messagebox.askyesno(
+                f"{kind} 파일 지정",
+                f"{kind} 장비 파라미터 파일이 아직 지정되지 않았습니다.\n\n"
+                f"지금 지정하시겠습니까?\n"
+                f"(공용 .xlsx 를 선택하거나, 기존 엑셀 .xlsm 을 가져옵니다)"):
+            return
+        src = filedialog.askopenfilename(
+            title=f"{kind} 파일 선택 (.xlsx 공용 파일 또는 .xlsm)",
+            filetypes=[("Excel", "*.xlsx *.xlsm"), ("모든 파일", "*.*")])
+        if not src:
+            return
+        if src.lower().endswith(".xlsm"):
+            dest = filedialog.asksaveasfilename(
+                title=f"{kind} 공용 파일로 저장할 .xlsx 경로",
+                defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")])
+            if not dest:
+                return
+            try:
+                engine.import_from_xlsm(src, dest)
+            except Exception as e:  # noqa: BLE001
+                messagebox.showerror("가져오기 실패", str(e))
+                return
+            src = dest
+        self.open_file(src, kind=kind)
+
+    def open_file(self, path: str, kind: str | None = None):
         if self.path and not self.read_only:
             engine.release_lock(self.path, self.user)
         self.read_only = False
@@ -474,6 +533,11 @@ class App(tk.Tk):
         self._reconfigure_columns()   # 파일의 호기 목록/시트명에 맞춰 열 재구성
         if not self.read_only:
             engine.write_lock(path, self.user)
+        # 장비 종류 결정/기억 (버튼으로 연 경우 우선, 아니면 시트명으로 추정)
+        self.active_kind = kind or self._kind_of(repo)
+        if self.active_kind:
+            self._cfg[f"{self.active_kind.lower()}_path"] = path
+        self._update_kind_buttons()
         self._cfg["last_path"] = path
         save_config(self._cfg)
         self._check_conflicts()
@@ -1052,7 +1116,7 @@ class App(tk.Tk):
         name = os.path.basename(self.path) if self.path else "(파일 없음)"
         mark = " ●" if self.dirty else ""
         ro = "  [읽기전용]" if self.read_only else ""
-        self.title(f"PI_ALL 장비 파라미터 관리 — {name}{mark}{ro}")
+        self.title(f"Camtek AOI 장비 파라미터 관리 — {name}{mark}{ro}")
         self.hdr_file.configure(text=f"{name}{mark}{ro}")
         self.hdr_user.configure(text=f"사용자: {self.user}")
         if self.repo:
