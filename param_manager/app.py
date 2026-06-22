@@ -85,13 +85,21 @@ class App(tk.Tk):
         self.dirty = False
         self._cfg = load_config()
         self.edit_ids: list[str] = []      # tab1 표시행 -> row_id
-        # 파라미터 편집: 메타 + 호기 값 전부
+        # 파라미터 항목 수정 / 호기별 값 수정 공통 열(메타 + 호기 값)
         self.full_cols = META_FIELDS + AOI_UNITS
-        # 파라미터 값 수정: 맨 앞 +/- 접기 버튼 열 + 편집과 동일한 열 구성
-        self.val_cols = ["＋／－"] + META_FIELDS + AOI_UNITS
+        self.val_cols = list(self.full_cols)   # 호기별 값 수정: 동일 열 + 셀 안 +/- 토글
         self.collapsed: set[str] = set()   # 접힌 그룹 key 집합
         self.val_display: list[dict] = []  # 표시행 메타(헤더/leaf 매핑)
+        self.val_toggles: dict[tuple, str] = {}  # (행,열)->그룹key (셀 안 +/- 위치)
         self._sized: set[int] = set()      # 기본 열너비 적용된 시트(사용자 조절 보존용)
+        self.spec_shown_idx: list[int] = []
+        # 탭 기본 이름(키->기본 표시명). 사용자가 더블클릭으로 바꾸면 config 에 저장.
+        self.tab_keys = ["edit", "value", "compare", "history", "special", "reference"]
+        self.tab_default = {
+            "edit": "파라미터 항목 수정", "value": "호기별 값 수정",
+            "compare": "호기 비교 / 누락", "history": "변경 이력",
+            "special": "특이사항", "reference": "참고자료",
+        }
 
         self._build_menu()
         self._build_header()
@@ -214,42 +222,42 @@ class App(tk.Tk):
         self.nb = ttk.Notebook(wrap)
         self.nb.pack(fill="both", expand=True)
 
-        # 탭1: 파라미터 편집(메타 + 호기 값 전부 편집)
+        # 탭1: 파라미터 항목 수정(메타 + 호기 값 전부 편집)
         f1 = ttk.Frame(self.nb)
         self.sh_edit = self._make_sheet(f1, self.full_cols, frozen=5, editable=True)
         self.sh_edit.pack(fill="both", expand=True)
         self.sh_edit.extra_bindings([("end_edit_cell", self._on_edit_full),
                                      ("end_paste", self._on_edit_full)])
-        self.nb.add(f1, text="  파라미터 편집  ")
+        self.nb.add(f1)
 
-        # 탭2: 파라미터 값 수정(맨 앞 +/- 접기 버튼 + 편집과 동일 열, 호기 값만 편집)
+        # 탭2: 호기별 값 수정(셀 안 +/- 토글로 접기/펼치기, 호기 값만 편집)
         f2 = ttk.Frame(self.nb, style="Surface.TFrame")
         vbar = ttk.Frame(f2, style="Surface.TFrame", padding=(10, 8))
         vbar.pack(side="top", fill="x")
         ttk.Button(vbar, text="모두 펼치기", command=lambda: self._val_expand_all(True)).pack(side="left")
         ttk.Button(vbar, text="모두 접기", command=lambda: self._val_expand_all(False)).pack(side="left", padx=(8, 0))
-        ttk.Label(vbar, text="  상위 항목 왼쪽의 ＋／－ 를 클릭해 접고 펼칩니다 (호기 값만 편집 가능)",
+        ttk.Label(vbar, text="  PI/Recipe/Zone/Alg 셀의 ＋／－ 를 클릭해 그 그룹을 접고 펼칩니다 (호기 값만 편집 가능)",
                   style="Muted.TLabel").pack(side="left", padx=8)
-        self.sh_val = self._make_sheet(f2, self.val_cols, frozen=6, editable=True)
+        self.sh_val = self._make_sheet(f2, self.val_cols, frozen=5, editable=True)
         self.sh_val.pack(fill="both", expand=True)
         self.sh_val.extra_bindings([("end_edit_cell", self._on_value_edit),
                                     ("end_paste", self._on_value_edit),
                                     ("cell_select", self._on_val_click)])
-        self.nb.add(f2, text="  파라미터 값 수정  ")
+        self.nb.add(f2)
 
         # 탭3: 호기 비교/누락
         f3 = ttk.Frame(self.nb)
         self.cmp_cols = ["PI", "Recipe", "Zone", "Alg", "Parameter"] + AOI_UNITS + ["누락 호기"]
         self.sh_cmp = self._make_sheet(f3, self.cmp_cols, frozen=5, editable=False)
         self.sh_cmp.pack(fill="both", expand=True)
-        self.nb.add(f3, text="  호기 비교 / 누락  ")
+        self.nb.add(f3)
 
         # 탭4: 변경 이력
         f4 = ttk.Frame(self.nb, style="Surface.TFrame")
         self._build_history_tab(f4)
-        self.nb.add(f4, text="  변경 이력  ")
+        self.nb.add(f4)
 
-        # 탭5: 특이사항(검색 + 종료여부 체크박스 + 일자 자동변환)
+        # 탭5: 특이사항(검색 + 종료여부 ☑/☐ 클릭 토글 + 일자 자동변환)
         f5 = ttk.Frame(self.nb, style="Surface.TFrame")
         sbar = ttk.Frame(f5, style="Surface.TFrame", padding=(10, 10))
         sbar.pack(side="top", fill="x")
@@ -258,15 +266,31 @@ class App(tk.Tk):
         se = ttk.Entry(sbar, textvariable=self.spec_query, width=30)
         se.pack(side="left", padx=(6, 0))
         se.bind("<KeyRelease>", lambda ev: self._refresh_special())
-        ttk.Label(sbar, text="  (일자는 20260616 처럼 입력하면 자동 변환)",
+        ttk.Label(sbar, text="  (일자는 20260616 처럼 입력 → 자동 변환 · 종료 여부는 ☑/☐ 클릭)",
                   style="Muted.TLabel").pack(side="left", padx=8)
         self.sh_spec = self._make_sheet(f5, SPECIAL_HEADERS, frozen=2, editable=True)
         self.sh_spec.pack(fill="both", expand=True)
         self.sh_spec.extra_bindings([("end_edit_cell", self._on_special_edit),
-                                     ("end_paste", self._on_special_edit)])
-        self.nb.add(f5, text="  특이사항  ")
+                                     ("end_paste", self._on_special_edit),
+                                     ("cell_select", self._on_spec_click)])
+        self.nb.add(f5)
 
+        # 탭6: 참고자료(엑셀 '관련 자료' 기반 4개 표, 제목 칸은 사용자가 입력)
+        f6 = ttk.Frame(self.nb, style="Surface.TFrame")
+        rbar = ttk.Frame(f6, style="Surface.TFrame", padding=(10, 8))
+        rbar.pack(side="top", fill="x")
+        ttk.Button(rbar, text="＋  표 추가", command=self._ref_add_table).pack(side="left")
+        ttk.Label(rbar, text="  표 제목/내용을 셀에서 직접 수정하세요 (제목 행은 파랑 강조)",
+                  style="Muted.TLabel").pack(side="left", padx=8)
+        self.sh_ref = self._make_sheet(f6, ["", "", "", ""], frozen=0, editable=True)
+        self.sh_ref.pack(fill="both", expand=True)
+        self.sh_ref.extra_bindings([("end_edit_cell", self._on_ref_edit),
+                                    ("end_paste", self._on_ref_edit)])
+        self.nb.add(f6)
+
+        self._apply_tab_names()
         self.nb.bind("<<NotebookTabChanged>>", lambda e: self._on_tab_changed())
+        self.nb.bind("<Double-1>", self._on_tab_doubleclick)
 
     def _build_history_tab(self, parent):
         bar = ttk.Frame(parent, style="Surface.TFrame", padding=(10, 10))
@@ -292,6 +316,61 @@ class App(tk.Tk):
                           "Parameter", "AOI", "Old Value", "New Value", "Change Type"]
         self.sh_hist = self._make_sheet(parent, self.hist_cols, frozen=6, editable=False)
         self.sh_hist.pack(fill="both", expand=True)
+
+    # ---- 탭 이름(더블클릭 변경) -------------------------------------------
+
+    def _tab_name(self, key: str) -> str:
+        custom = (self._cfg.get("tab_names") or {}).get(key)
+        return custom or self.tab_default[key]
+
+    def _apply_tab_names(self):
+        for i, key in enumerate(self.tab_keys):
+            try:
+                self.nb.tab(i, text=f"  {self._tab_name(key)}  ")
+            except Exception:
+                pass
+
+    def _on_tab_doubleclick(self, event):
+        try:
+            idx = self.nb.index(f"@{event.x},{event.y}")
+        except Exception:
+            return
+        if idx < 0 or idx >= len(self.tab_keys):
+            return
+        key = self.tab_keys[idx]
+        cur = self._tab_name(key)
+        top = tk.Toplevel(self)
+        top.title("탭 이름 변경")
+        top.transient(self)
+        top.resizable(False, False)
+        ttk.Label(top, text="새 탭 이름:", padding=(12, 10, 12, 4)).pack(anchor="w")
+        var = tk.StringVar(value=cur)
+        ent = ttk.Entry(top, textvariable=var, width=30)
+        ent.pack(padx=12, fill="x")
+        ent.focus_set()
+        ent.select_range(0, "end")
+
+        def commit(_=None):
+            name = var.get().strip() or self.tab_default[key]
+            names = dict(self._cfg.get("tab_names") or {})
+            if name == self.tab_default[key]:
+                names.pop(key, None)
+            else:
+                names[key] = name
+            self._cfg["tab_names"] = names
+            save_config(self._cfg)
+            self._apply_tab_names()
+            top.destroy()
+
+        btns = ttk.Frame(top, padding=(12, 10))
+        btns.pack(fill="x")
+        ttk.Button(btns, text="확인", style="Primary.TButton", command=commit).pack(side="right")
+        ttk.Button(btns, text="취소", command=top.destroy).pack(side="right", padx=(0, 6))
+        ent.bind("<Return>", commit)
+        ent.bind("<Escape>", lambda e: top.destroy())
+        top.update_idletasks()
+        top.geometry(f"+{self.winfo_rootx() + event.x}+{self.winfo_rooty() + event.y + 20}")
+        return "break"
 
     def _build_statusbar(self):
         self.status = tk.StringVar()
@@ -422,6 +501,7 @@ class App(tk.Tk):
         self._refresh_history_filters()
         self._refresh_history()
         self._refresh_special()
+        self._refresh_reference()
 
     def _refresh_edit(self):
         if not self.repo:
@@ -433,87 +513,95 @@ class App(tk.Tk):
         self._fit_heights(self.sh_edit, len(self.full_cols))
         self.sh_edit.redraw()
 
+    @staticmethod
+    def _grp_keys(pr):
+        pi = engine._s(pr.get("PI")) or "(빈 PI)"
+        rc = engine._s(pr.get("Recipe")); zn = engine._s(pr.get("Zone")); al = engine._s(pr.get("Alg"))
+        return [f"PI::{pi}", f"R::{pi}|{rc}", f"Z::{pi}|{rc}|{zn}", f"A::{pi}|{rc}|{zn}|{al}"], (pi, rc, zn, al)
+
     def _refresh_values(self):
-        """편집과 동일한 열 구성 + 맨 앞 ＋／－ 접기 버튼(직접 구현한 아웃라인).
-        헤더(상위 그룹) 행과 파라미터(leaf) 행으로 구성, 호기 값만 편집 가능."""
+        """편집과 동일한 열 구성. 별도 헤더 행 없이 PI/Recipe/Zone/Alg 셀 안에
+        ＋／－ 토글을 넣어 그 그룹을 접고/펼친다. 호기 값만 편집 가능."""
         if not self.repo:
             return
         rows = sorted(self.repo.rows, key=lambda p: (engine.pi_order(p.get("PI")), p.display_order or 0))
+        n = len(rows)
         ncol = len(self.val_cols)
-        meta_n = len(META_FIELDS)
+        gcols = ["PI", "Recipe", "Zone", "Alg"]   # 토글이 들어가는 그룹 열
         data: list[list] = []
         self.val_display = []
-        header_rows: list[int] = []
-        seen_groups: set[str] = set()
-
-        def collapsed_ancestor(keys) -> bool:
-            return any(k in self.collapsed for k in keys)
-
-        for pr in rows:
-            pi = engine._s(pr.get("PI")) or "(빈 PI)"
-            rc = engine._s(pr.get("Recipe"))
-            zn = engine._s(pr.get("Zone"))
-            al = engine._s(pr.get("Alg"))
-            k_pi = f"PI::{pi}"
-            k_rc = f"R::{pi}|{rc}"
-            k_zn = f"Z::{pi}|{rc}|{zn}"
-            k_al = f"A::{pi}|{rc}|{zn}|{al}"
-            levels = [(k_pi, [], "PI", pi),
-                      (k_rc, [k_pi], "Recipe", rc),
-                      (k_zn, [k_pi, k_rc], "Zone", zn),
-                      (k_al, [k_pi, k_rc, k_zn], "Alg", al)]
-            # 그룹 헤더 행(처음 등장 시 1번만)
-            for key, ancestors, colname, val in levels:
-                if key in seen_groups:
-                    continue
-                seen_groups.add(key)
-                if collapsed_ancestor(ancestors):
-                    continue  # 상위가 접혀 있으면 헤더도 숨김
-                sym = "＋" if key in self.collapsed else "－"
-                row = [sym] + [""] * (ncol - 1)
-                row[1 + META_FIELDS.index(colname)] = val
-                header_rows.append(len(data))
-                self.val_display.append({"kind": "header", "key": key})
+        self.val_toggles = {}
+        prev = None   # 직전에 '표시된' 행의 (pi,rc,zn,al)
+        i = 0
+        while i < n:
+            pr = rows[i]
+            keys, vals = self._grp_keys(pr)
+            # 접힌 최상위 조상 레벨 찾기
+            coll = next((L for L in range(4) if keys[L] in self.collapsed), None)
+            if coll is not None:
+                # 그룹 요약 행 1개만 표시하고 같은 그룹의 나머지 행은 건너뜀
+                row = [""] * ncol
+                for L in range(4):
+                    col = self.full_cols.index(gcols[L])
+                    same = prev is not None and prev[:L + 1] == vals[:L + 1]
+                    if L < coll:
+                        if not same:
+                            row[col] = "－ " + (vals[L] or "")
+                            self.val_toggles[(len(data), col)] = keys[L]
+                    elif L == coll:
+                        row[col] = "＋ " + (vals[L] or "")
+                        self.val_toggles[(len(data), col)] = keys[L]
+                self.val_display.append({"kind": "summary"})
                 data.append(row)
-            # leaf(파라미터) 행
-            if collapsed_ancestor([k_pi, k_rc, k_zn, k_al]):
+                prefix = tuple(keys[:coll + 1])
+                while i < n and tuple(self._grp_keys(rows[i])[0][:coll + 1]) == prefix:
+                    i += 1
+                prev = vals
                 continue
-            leaf = [""] + [engine._s(pr.get(c)) for c in self.full_cols]
+            # 펼쳐진 leaf 행: 전체 값 표시 + 그룹 시작 셀에 '－' 토글
+            row = [""] * ncol
+            for fi, f in enumerate(self.full_cols):
+                row[fi] = engine._s(pr.get(f))
+            for L in range(4):
+                col = self.full_cols.index(gcols[L])
+                same = prev is not None and prev[:L + 1] == vals[:L + 1]
+                if same:
+                    row[col] = ""        # 반복 그룹 값은 비워 가독성↑(엑셀 병합 느낌)
+                else:
+                    row[col] = "－ " + (vals[L] or "")
+                    self.val_toggles[(len(data), col)] = keys[L]
             self.val_display.append({"kind": "leaf", "rowid": pr.row_id})
-            data.append(leaf)
+            data.append(row)
+            prev = vals
+            i += 1
 
         self.sh_val.set_sheet_data(data, reset_col_positions=False, redraw=False)
         self._set_widths(self.sh_val, self.val_cols)
-        # +/- 및 메타 열은 읽기전용(호기 값만 편집). 헤더 행 편집은 콜백에서 무시.
         try:
             ro_cols = [i for i, h in enumerate(self.val_cols) if h not in AOI_UNITS]
             self.sh_val.readonly_columns(columns=ro_cols, readonly=True)
         except Exception:
             pass
-        # 헤더 행 배경 강조
+        # 토글 셀 강조(연한 파랑)
         try:
             self.sh_val.dehighlight_all()
-            for r in header_rows:
-                self.sh_val.highlight_rows(rows=[r], bg="#eef2f9", fg="#1f2937", redraw=False)
+            for (r, c) in self.val_toggles:
+                self.sh_val.highlight_cells(row=r, column=c, bg="#e3edfb", fg="#1d4ed8")
         except Exception:
             pass
         self._fit_heights(self.sh_val, len(self.val_cols))
         self.sh_val.redraw()
 
     def _on_val_click(self, event=None):
-        """+/- 열(0번) 클릭 시 해당 그룹 접기/펼치기."""
+        """PI/Recipe/Zone/Alg 셀의 ＋／－ 클릭 시 해당 그룹 접기/펼치기."""
         if not self.repo:
             return
         sel = self.sh_val.get_currently_selected()
-        if not sel or sel.column != 0:
+        if not sel:
             return
-        r = sel.row
-        if r >= len(self.val_display):
+        key = self.val_toggles.get((sel.row, sel.column))
+        if not key:
             return
-        info = self.val_display[r]
-        if info["kind"] != "header":
-            return
-        key = info["key"]
         if key in self.collapsed:
             self.collapsed.discard(key)
         else:
@@ -526,12 +614,9 @@ class App(tk.Tk):
         if expand:
             self.collapsed.clear()
         else:
-            # 모든 그룹 key 수집 후 접기
             keys = set()
             for pr in self.repo.rows:
-                pi = engine._s(pr.get("PI")) or "(빈 PI)"
-                rc = engine._s(pr.get("Recipe")); zn = engine._s(pr.get("Zone")); al = engine._s(pr.get("Alg"))
-                keys.update({f"PI::{pi}", f"R::{pi}|{rc}", f"Z::{pi}|{rc}|{zn}", f"A::{pi}|{rc}|{zn}|{al}"})
+                keys.update(self._grp_keys(pr)[0])
             self.collapsed = keys
         self._refresh_values()
 
@@ -611,7 +696,7 @@ class App(tk.Tk):
             for h in SPECIAL_HEADERS:
                 v = rec.get(h)
                 if h == SPECIAL_BOOL_COL:
-                    v = bool(v)
+                    v = "☑" if bool(v) else "☐"   # 클릭 토글되는 체크 기호
                 elif h == "일자":
                     disp, ok = engine.format_kdate(v)
                     v = disp
@@ -630,9 +715,11 @@ class App(tk.Tk):
         self.sh_spec.set_sheet_data(data, reset_col_positions=False, redraw=False)
         self._set_widths(self.sh_spec, SPECIAL_HEADERS)
         try:
-            self.sh_spec.checkbox_column(bcol, checked=False)
-            for r, row in enumerate(data):
-                self.sh_spec.set_cell_data(r, bcol, bool(row[bcol]))
+            self.sh_spec.readonly_columns(columns=[bcol], readonly=True)  # 기호 클릭만 허용
+            self.sh_spec.align(rows="all", columns=[bcol], align="center", redraw=False)
+        except Exception:
+            pass
+        try:
             self.sh_spec.dehighlight_all()
             for r in err_rows:        # 일자 오류 셀 강조
                 self.sh_spec.highlight_cells(row=r, column=dcol, bg=self.p["diff"], fg="#b91c1c")
@@ -641,6 +728,68 @@ class App(tk.Tk):
         self._fit_heights(self.sh_spec, len(SPECIAL_HEADERS))
         self.sh_spec.redraw()
         self._set_status(f"특이사항 {len(data)}건 표시")
+
+    def _on_spec_click(self, event=None):
+        """종료 여부 열(☑/☐) 클릭 시 토글."""
+        if not self.repo:
+            return
+        sel = self.sh_spec.get_currently_selected()
+        if not sel:
+            return
+        bcol = SPECIAL_HEADERS.index(SPECIAL_BOOL_COL)
+        if sel.column != bcol:
+            return
+        if sel.row >= len(self.spec_shown_idx):
+            return
+        orig = self.spec_shown_idx[sel.row]
+        if 0 <= orig < len(self.repo.special):
+            cur = bool(self.repo.special[orig].get(SPECIAL_BOOL_COL))
+            self.repo.special[orig][SPECIAL_BOOL_COL] = not cur
+            self.sh_spec.set_cell_data(sel.row, bcol, "☑" if not cur else "☐")
+            self.sh_spec.redraw()
+            self._mark_dirty()
+
+    # ---- 참고자료 ----------------------------------------------------------
+
+    def _refresh_reference(self):
+        if not self.repo:
+            return
+        grid = [list(r) + [""] * (engine.REF_COLS - len(r)) for r in self.repo.reference]
+        if not grid:
+            grid = [["", "", "", ""]]
+        self.sh_ref.set_sheet_data(grid, reset_col_positions=False, redraw=False)
+        for i, w in enumerate((300, 220, 160, 160)):
+            self.sh_ref.column_width(column=i, width=w)
+        # 제목 행 강조: '표 제목' 또는 '표N 제목' 포함 셀
+        try:
+            self.sh_ref.dehighlight_all()
+            for r, row in enumerate(grid):
+                first = engine._s(row[0])
+                if "제목" in first or (first and all(engine._s(c) == "" for c in row[1:]) and first not in ("항목",)):
+                    self.sh_ref.highlight_rows(rows=[r], bg="#dbe7fb", fg="#1d4ed8", redraw=False)
+        except Exception:
+            pass
+        self._fit_heights(self.sh_ref, engine.REF_COLS, max_rows=400)
+        self.sh_ref.redraw()
+
+    def _on_ref_edit(self, event=None):
+        if not self.repo:
+            return
+        self.repo.reference = [[engine._s(c) for c in row]
+                               for row in self.sh_ref.get_sheet_data()]
+        self._mark_dirty()
+
+    def _ref_add_table(self):
+        if not self.repo:
+            return
+        self.repo.reference = list(self.repo.reference) + [
+            ["", "", "", ""],
+            ["표 제목(여기에 입력)", "", "", ""],
+            ["항목", "값", "", ""],
+            ["", "", "", ""],
+        ]
+        self._refresh_reference()
+        self._mark_dirty()
 
     # ---- 편집 콜백 ---------------------------------------------------------
 
@@ -682,27 +831,25 @@ class App(tk.Tk):
         self._mark_dirty()
 
     def _on_special_edit(self, event=None):
-        """검색 필터로 일부만 보일 수 있으므로, 표시행->원본 인덱스로 매핑해 갱신."""
+        """편집된 셀만 원본 인덱스에 반영(종료여부 기호/재포맷된 일자 덮어쓰기 방지)."""
         if not self.repo:
             return
-        data = self.sh_spec.get_sheet_data()
+        sel = self.sh_spec.get_currently_selected()
+        if not sel:
+            return
         bcol = SPECIAL_HEADERS.index(SPECIAL_BOOL_COL)
-        shown = getattr(self, "spec_shown_idx", list(range(len(data))))
-        for i, row in enumerate(data):
-            if i >= len(shown):
-                break
-            orig = shown[i]
-            if orig >= len(self.repo.special):
-                continue
-            rec = self.repo.special[orig]
-            for j, h in enumerate(SPECIAL_HEADERS):
-                v = row[j] if j < len(row) else None
-                if j == bcol:
-                    v = bool(v)
-                rec[h] = v
+        if sel.column == bcol:    # 종료여부는 클릭 핸들러가 처리
+            return
+        if sel.row >= len(self.spec_shown_idx) or sel.column >= len(SPECIAL_HEADERS):
+            return
+        orig = self.spec_shown_idx[sel.row]
+        if not (0 <= orig < len(self.repo.special)):
+            return
+        field = SPECIAL_HEADERS[sel.column]
+        self.repo.special[orig][field] = self.sh_spec.get_cell_data(sel.row, sel.column)
         self._mark_dirty()
-        # 일자 포맷/오류 표시를 즉시 반영
-        self._refresh_special()
+        if field == "일자":       # 입력 즉시 자동 변환/오류 표시
+            self._refresh_special()
 
     def _row_by_id(self, rid):
         return next((p for p in self.repo.rows if p.row_id == rid), None) if self.repo else None
@@ -724,7 +871,10 @@ class App(tk.Tk):
         if not self.repo or self.read_only:
             return
         tab = self._current_tab()
-        if tab == 4:  # 특이사항
+        if tab == 5:  # 참고자료: 빈 행 추가
+            self.repo.reference = list(self.repo.reference) + [["", "", "", ""]]
+            self._refresh_reference()
+        elif tab == 4:  # 특이사항
             self.repo.special.append({h: (False if h == SPECIAL_BOOL_COL else "") for h in SPECIAL_HEADERS})
             self._refresh_special()
             self.nb.select(4)
@@ -744,6 +894,20 @@ class App(tk.Tk):
         if not self.repo or self.read_only:
             return
         tab = self._current_tab()
+        if tab == 5:  # 참고자료
+            sel = sorted({c[0] for c in self.sh_ref.get_selected_cells()} |
+                         set(self.sh_ref.get_selected_rows()), reverse=True)
+            if not sel:
+                messagebox.showinfo("행 삭제", "삭제할 참고자료 행을 선택하세요.")
+                return
+            ref = list(self.repo.reference)
+            for r in sel:
+                if 0 <= r < len(ref):
+                    del ref[r]
+            self.repo.reference = ref
+            self._refresh_reference()
+            self._mark_dirty()
+            return
         if tab == 4:
             sel = sorted({c[0] for c in self.sh_spec.get_selected_cells()} |
                          set(self.sh_spec.get_selected_rows()), reverse=True)
@@ -781,6 +945,8 @@ class App(tk.Tk):
             self._refresh_compare()
         elif idx == 3:
             self._refresh_history()
+        elif idx == 5:
+            self._refresh_reference()
 
     def _show_aoi_ip(self):
         if not self.repo or not self.repo.aoi_ip:

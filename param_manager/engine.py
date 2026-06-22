@@ -39,6 +39,9 @@ SHEET_SUM = "변경요약_호기별"
 SHEET_LOG = "변경이력"
 SHEET_SNAP = "_SNAPSHOT_PI_ALL"
 SHEET_SPECIAL = "특이사항"
+SHEET_REF = "참고자료"
+SHEET_RELATED = "관련 자료"
+REF_COLS = 4   # 참고자료 그리드 열 수
 
 # 관리 대상 호기(13개) — 엑셀 PI_ALL H:T 열 순서와 동일
 AOI_UNITS = [
@@ -316,6 +319,7 @@ class ParamRepository:
         self.history: list[dict[str, Any]] = []
         self.aoi_ip: dict[str, str] = {}        # 호기 -> IP (관련 자료 시트)
         self.special: list[dict[str, Any]] = []  # 특이사항 시트 행들
+        self.reference: list[list[str]] = []     # 참고자료 그리드
         self._base: dict[str, dict[str, str]] = {}  # row_id -> 편집 전 스냅샷
 
     # ---- 읽기 --------------------------------------------------------------
@@ -326,6 +330,7 @@ class ParamRepository:
         self.history = self._read_history(wb)
         self.aoi_ip = self._read_aoi_ip(wb)
         self.special = self._read_special(wb)
+        self.reference = self._read_reference(wb)
         wb.close()
         self._ensure_row_ids()
         self._capture_base()
@@ -385,6 +390,59 @@ class ParamRepository:
             if a.startswith("AOI-") and b:
                 out[a] = b
         return out
+
+    @staticmethod
+    def _read_reference(wb) -> list[list[str]]:
+        """참고자료 그리드를 읽는다. 없으면 기존 '관련 자료'에서 4개 표로 구성."""
+        if SHEET_REF in wb.sheetnames:
+            ws = wb[SHEET_REF]
+            grid: list[list[str]] = []
+            for r in range(1, ws.max_row + 1):
+                row = [_s(ws.cell(r, c + 1).value) for c in range(REF_COLS)]
+                grid.append(row)
+            # 끝쪽 빈 행 정리
+            while grid and all(v == "" for v in grid[-1]):
+                grid.pop()
+            return grid
+        return ParamRepository._build_reference_from_related(wb)
+
+    @staticmethod
+    def _build_reference_from_related(wb) -> list[list[str]]:
+        """기존 '관련 자료' 시트를 4개 표(블록)로 분해해 세로로 쌓는다.
+        각 표 앞에 비어있는 '제목' 행을 둔다(사용자가 표 이름을 채움)."""
+        grid: list[list[str]] = []
+        if SHEET_RELATED not in wb.sheetnames:
+            # 관련 자료가 없으면 빈 4개 표 골격만
+            for i in range(1, 5):
+                grid.append([f"표{i} 제목(여기에 입력)", "", "", ""])
+                grid.append(["항목", "값", "", ""])
+                grid.append(["", "", "", ""])
+            return grid
+        ws = wb[SHEET_RELATED]
+        # 블록 정의: (제목 플레이스홀더, [열 인덱스(1-based)])
+        blocks = [
+            ("표 제목(여기에 입력)", [1, 2]),       # 장비번호 / IP주소
+            ("표 제목(여기에 입력)", [4, 5]),       # 파트장 / 번호
+            ("표 제목(여기에 입력)", [7, 8]),       # 공정 / PM 계정
+            ("표 제목(여기에 입력)", [10, 11, 12]),  # 기타 매핑
+        ]
+        for title, cols in blocks:
+            grid.append([title] + [""] * (REF_COLS - 1))
+            for r in range(1, ws.max_row + 1):
+                vals = [_s(ws.cell(r, c).value) for c in cols]
+                if all(v == "" for v in vals):
+                    continue
+                if vals and "Gen5" in vals[0]:   # 시트 상단 제목 줄 스킵
+                    continue
+                row = vals + [""] * (REF_COLS - len(vals))
+                grid.append(row[:REF_COLS])
+            grid.append([""] * REF_COLS)
+        return grid
+
+    def _write_reference(self, wb) -> None:
+        ws = wb.create_sheet(SHEET_REF)
+        for row in self.reference:
+            ws.append((list(row) + [""] * REF_COLS)[:REF_COLS])
 
     @staticmethod
     def _read_special(wb) -> list[dict[str, Any]]:
@@ -528,6 +586,7 @@ class ParamRepository:
         self._write_history(wb)
         self._write_snapshot(wb, disk_rows)
         self._write_special(wb)
+        self._write_reference(wb)
         self._atomic_save(wb)
 
         # 7) 메모리 상태 갱신
@@ -737,6 +796,11 @@ def create_empty_workbook(path: str) -> None:
     wb.create_sheet(SHEET_SUM).append(SUM_HEADERS)
     wb.create_sheet(SHEET_LOG).append(LOG_HEADERS)
     wb.create_sheet(SHEET_SPECIAL).append(SPECIAL_HEADERS)
+    ref = wb.create_sheet(SHEET_REF)
+    for i in range(1, 5):
+        ref.append([f"표{i} 제목(여기에 입력)", "", "", ""])
+        ref.append(["항목", "값", "", ""])
+        ref.append(["", "", "", ""])
     snap = wb.create_sheet(SHEET_SNAP)
     snap.sheet_state = "hidden"
     snap.append(SNAP_HEADERS)
@@ -751,6 +815,7 @@ def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     repo.history = ParamRepository._read_history(wb)
     repo.aoi_ip = ParamRepository._read_aoi_ip(wb)
     repo.special = ParamRepository._read_special(wb)
+    repo.reference = ParamRepository._read_reference(wb)
     wb.close()
     repo._ensure_row_ids()
     repo._capture_base()
@@ -762,6 +827,7 @@ def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     repo._write_history(out)
     ParamRepository._write_snapshot(out, repo.rows)
     repo._write_special(out)
+    repo._write_reference(out)
     out.save(dest_xlsx)
     repo._capture_base()
     return repo

@@ -167,6 +167,22 @@ def test_new_row_not_jumping_top():
         print(f"  new row order OK: added display_order={added.display_order}, first PI2={pi2[0].display_order}")
 
 
+def test_reference_build_and_roundtrip():
+    with tempfile.TemporaryDirectory() as tmp:
+        dest, repo = _new_repo_from_sample(tmp)
+        assert len(repo.reference) > 30, len(repo.reference)
+        # 첫 표: 제목행 + 장비번호/IP 헤더 + 데이터
+        assert any("제목" in r[0] for r in repo.reference[:2])
+        flat = [c for row in repo.reference for c in row]
+        assert "장비 번호" in flat and "AOI-01" in flat and "10.142.80.25" in flat
+        # 편집 후 저장/재로드 유지
+        repo.reference[0][0] = "호기 IP 목록"
+        repo.save(user="tester")
+        r2 = ParamRepository(dest); r2.load()
+        assert r2.reference[0][0] == "호기 IP 목록"
+        print(f"  reference build+roundtrip OK: rows={len(r2.reference)}")
+
+
 def test_format_kdate():
     from datetime import datetime
     cases = {
