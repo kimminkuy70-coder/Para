@@ -85,8 +85,10 @@ class App(tk.Tk):
         self.dirty = False
         self._cfg = load_config()
         self.edit_ids: list[str] = []      # tab1 표시행 -> row_id
+        # 호기 목록(파일에서 자동 인식; 기본은 PI 13개)
+        self.aoi = list(AOI_UNITS)
         # 파라미터 항목 수정 / 호기별 값 수정 공통 열(메타 + 호기 값)
-        self.full_cols = META_FIELDS + AOI_UNITS
+        self.full_cols = META_FIELDS + self.aoi
         self.val_cols = list(self.full_cols)   # 호기별 값 수정: 동일 열 + 셀 안 +/- 토글
         self.collapsed: set[str] = set()   # 접힌 그룹 key 집합
         self.val_display: list[dict] = []  # 표시행 메타(헤더/leaf 매핑)
@@ -141,7 +143,19 @@ class App(tk.Tk):
             s.enable_bindings("single_select", "drag_select", "row_select", "column_select",
                               "arrowkeys", "copy", "column_width_resize",
                               "double_click_column_resize", "row_height_resize")
+        # 열 너비를 드래그로 바꾸면 줄바꿈에 맞춰 행 높이 재계산(글씨 잘림 방지)
+        s.CH.bind("<ButtonRelease-1>", lambda e: self.after(15, lambda: self._refit(s)), add="+")
         return s
+
+    def _refit(self, sheet):
+        try:
+            ncols = sheet.MT.total_data_cols()
+        except Exception:
+            data = sheet.get_sheet_data()
+            ncols = len(data[0]) if data else 0
+        if ncols:
+            self._fit_heights(sheet, ncols)
+            sheet.redraw()
 
     def _bind_undo(self, sheet, resync):
         """undo/redo 후 repo 를 시트 내용으로 재동기화."""
@@ -154,7 +168,7 @@ class App(tk.Tk):
         if id(sheet) in self._sized:
             return
         for i, h in enumerate(headers):
-            w = WIDTHS.get(h, AOI_W if h in AOI_UNITS else 100)
+            w = WIDTHS.get(h, AOI_W if h in self.aoi else 100)
             sheet.column_width(column=i, width=w)
         self._sized.add(id(sheet))
 
@@ -258,7 +272,7 @@ class App(tk.Tk):
 
         # 탭3: 호기 비교/누락
         f3 = ttk.Frame(self.nb)
-        self.cmp_cols = ["PI", "Recipe", "Zone", "Alg", "Parameter"] + AOI_UNITS + ["누락 호기"]
+        self.cmp_cols = ["PI", "Recipe", "Zone", "Alg", "Parameter"] + self.aoi + ["누락 호기"]
         self.sh_cmp = self._make_sheet(f3, self.cmp_cols, frozen=5, editable=False)
         self.sh_cmp.pack(fill="both", expand=True)
         self.nb.add(f3)
@@ -321,7 +335,7 @@ class App(tk.Tk):
         ttk.Label(bar, text="호기", style="Surface.TLabel").pack(side="left")
         self.hist_aoi = tk.StringVar(value="(전체)")
         self.hist_aoi_cb = ttk.Combobox(bar, textvariable=self.hist_aoi, width=10,
-                                        state="readonly", values=["(전체)"] + AOI_UNITS)
+                                        state="readonly", values=["(전체)"] + self.aoi)
         self.hist_aoi_cb.pack(side="left", padx=6)
         self.hist_aoi_cb.bind("<<ComboboxSelected>>", lambda ev: self._refresh_history())
 
@@ -457,6 +471,7 @@ class App(tk.Tk):
         self.path = path
         self.dirty = False
         self._sized.clear()   # 새 파일 -> 기본 열너비 재적용
+        self._reconfigure_columns()   # 파일의 호기 목록/시트명에 맞춰 열 재구성
         if not self.read_only:
             engine.write_lock(path, self.user)
         self._cfg["last_path"] = path
@@ -464,6 +479,21 @@ class App(tk.Tk):
         self._check_conflicts()
         self._refresh_all()
         self._update_title()
+
+    def _reconfigure_columns(self):
+        """로드한 파일의 호기 목록(repo.aoi_units)에 맞춰 열/헤더를 다시 구성."""
+        self.aoi = list(self.repo.aoi_units) if (self.repo and self.repo.aoi_units) else list(AOI_UNITS)
+        self.full_cols = META_FIELDS + self.aoi
+        self.val_cols = list(self.full_cols)
+        self.cmp_cols = ["PI", "Recipe", "Zone", "Alg", "Parameter"] + self.aoi + ["누락 호기"]
+        try:
+            self.sh_edit.headers(self.full_cols)
+            self.sh_val.headers(self.val_cols)
+            self.sh_cmp.headers(self.cmp_cols)
+            self.hist_aoi_cb["values"] = ["(전체)"] + self.aoi
+        except Exception:
+            pass
+        self._sized.clear()
 
     def _menu_reload(self):
         if not self.path:
@@ -591,7 +621,7 @@ class App(tk.Tk):
         self.sh_val.set_sheet_data(data, reset_col_positions=False, redraw=False)
         self._set_widths(self.sh_val, self.val_cols)
         try:
-            ro_cols = [i for i, h in enumerate(self.val_cols) if h not in AOI_UNITS]
+            ro_cols = [i for i, h in enumerate(self.val_cols) if h not in set(self.aoi)]
             self.sh_val.readonly_columns(columns=ro_cols, readonly=True)
         except Exception:
             pass
@@ -640,7 +670,7 @@ class App(tk.Tk):
         tags = []  # (row_index, color)
         for i, v in enumerate(self.repo.comparison_view()):
             base = [v["PI"], v["Recipe"], v["Zone"], v["Alg"], v["Parameter"]]
-            aoi = [engine._s(v["values"][u]) for u in AOI_UNITS]
+            aoi = [engine._s(v["values"].get(u)) for u in self.aoi]
             data.append([engine._s(x) for x in base] + aoi + [", ".join(v["missing"])])
             if v["value_diff"]:
                 tags.append((i, self.p["diff"]))
@@ -832,7 +862,7 @@ class App(tk.Tk):
         if col >= len(self.val_cols):
             return
         field = self.val_cols[col]
-        if field not in AOI_UNITS:   # +/- 및 메타 열은 편집 불가
+        if field not in set(self.aoi):   # 메타 열은 편집 불가
             return
         if row >= len(self.val_display) or self.val_display[row]["kind"] != "leaf":
             return               # 그룹 헤더 행은 무시
@@ -848,7 +878,7 @@ class App(tk.Tk):
         if not self.repo:
             return
         data = self.sh_val.get_sheet_data()
-        aoi_idx = {self.val_cols.index(u): u for u in AOI_UNITS}
+        aoi_idx = {self.val_cols.index(u): u for u in self.aoi}
         for r, info in enumerate(self.val_display):
             if info.get("kind") != "leaf" or r >= len(data):
                 continue

@@ -43,29 +43,74 @@ SHEET_REF = "참고자료"
 SHEET_RELATED = "관련 자료"
 REF_COLS = 4   # 참고자료 그리드 열 수
 
-# 관리 대상 호기(13개) — 엑셀 PI_ALL H:T 열 순서와 동일
+# 기본 관리 호기(새 빈 파일/감지 실패 시 사용). 실제 호기 목록은 파일에서 자동 인식.
 AOI_UNITS = [
     "AOI-3", "AOI-13", "AOI-15", "AOI-16", "AOI-17", "AOI-18", "AOI-19",
     "AOI-20", "AOI-21", "AOI-22", "AOI-23", "AOI-24", "AOI-25",
 ]
 
-# 메타(상위) 항목 — PI_ALL A:G
+# 데이터 시트 후보 이름(PI / RDL 등 동일 양식)
+SHEET_CANDIDATES = ["PI_ALL", "RDL_ALL"]
+
+# 메타(상위) 항목 — A:G
 META_FIELDS = ["PI", "Recipe", "Zone", "Alg", "Parameter", "초기 추천값", "비고"]
 
-# 화면에서 편집 가능한 전체 필드
+# 데이터 시트 뒤쪽 파생/필터 열(호기 열 자동 인식 시 제외 대상)
+DERIVED_TAIL = [
+    "공통 여부", "값 차이 여부", "누락 호기",
+    "Recipe_Filter", "Zone_Filter", "Alg_Filter",
+    "SourceSheet", "SourceRow", "Parameter_Key",
+    "Row_ID", "Display_Order",
+]
+
+
+def editable_fields(aoi_units) -> list:
+    return list(META_FIELDS) + list(aoi_units)
+
+
+def pi_headers(aoi_units) -> list:
+    return list(META_FIELDS) + list(aoi_units) + list(DERIVED_TAIL)
+
+
+def snap_headers(aoi_units) -> list:
+    return ["Row_ID"] + list(META_FIELDS) + list(aoi_units)
+
+
+def detect_sheet_name(wb) -> str | None:
+    """데이터 시트 이름 자동 인식: PI_ALL/RDL_ALL 우선, 없으면 헤더로 추정."""
+    for name in SHEET_CANDIDATES:
+        if name in wb.sheetnames:
+            return name
+    for ws in wb.worksheets:
+        hdr = {_s(ws.cell(1, c).value) for c in range(1, ws.max_column + 1)}
+        if "Parameter" in hdr and "PI" in hdr:
+            return ws.title
+    return None
+
+
+def detect_aoi_units(wb, sheet_name) -> list:
+    """헤더에서 호기 열을 자동 인식(메타/파생 열을 제외한 나머지, 순서 유지)."""
+    if not sheet_name or sheet_name not in wb.sheetnames:
+        return list(AOI_UNITS)
+    ws = wb[sheet_name]
+    meta = set(META_FIELDS)
+    derived = set(DERIVED_TAIL)
+    seen = set()
+    units = []
+    for c in range(1, ws.max_column + 1):
+        name = _s(ws.cell(1, c).value)
+        if not name or name in meta or name in derived or name in seen:
+            continue
+        seen.add(name)
+        units.append(name)
+    return units or list(AOI_UNITS)
+
+
+# 화면에서 편집 가능한 전체 필드(기본)
 EDITABLE_FIELDS = META_FIELDS + AOI_UNITS
 
-# PI_ALL 전체 헤더(A:AE, 31열) — 파생/필터 열은 저장 시 자동 계산
-PI_HEADERS = (
-    META_FIELDS
-    + AOI_UNITS
-    + [
-        "공통 여부", "값 차이 여부", "누락 호기",
-        "Recipe_Filter", "Zone_Filter", "Alg_Filter",
-        "SourceSheet", "SourceRow", "Parameter_Key",
-        "Row_ID", "Display_Order",
-    ]
-)
+# PI_ALL 전체 헤더(기본)
+PI_HEADERS = pi_headers(AOI_UNITS)
 
 LOG_HEADERS = [
     "Version", "Update Date", "Updated By", "Sheet", "Recipe", "Zone", "Alg",
@@ -81,7 +126,7 @@ SUM_HEADERS = [
     "PI_Order", "AOI_Order",
 ]
 
-SNAP_HEADERS = ["Row_ID"] + META_FIELDS + AOI_UNITS
+SNAP_HEADERS = snap_headers(AOI_UNITS)
 
 # 특이사항 시트 — 종료 여부는 불리언(체크박스)
 SPECIAL_HEADERS = ["일자", "호기", "라트 번호", "S/M", "Layer", "목적", "진행 상황", "종료 여부", "특이사항"]
@@ -171,9 +216,10 @@ def pi_order(pi_val: str) -> int:
     return int(digits) if digits else 999
 
 
-def aoi_order(aoi: str) -> int:
+def aoi_order(aoi: str, aoi_units=None) -> int:
+    units = aoi_units if aoi_units is not None else AOI_UNITS
     try:
-        return AOI_UNITS.index(aoi) + 1
+        return list(units).index(aoi) + 1
     except ValueError:
         return 999
 
@@ -184,11 +230,12 @@ def aoi_order(aoi: str) -> int:
 
 @dataclass
 class ParamRow:
-    """PI_ALL 한 행 = 하나의 파라미터(메타 + 13개 호기 값)."""
+    """데이터 시트 한 행 = 하나의 파라미터(메타 + 호기 값들)."""
 
     values: dict[str, Any] = field(default_factory=dict)  # 필드명 -> 값
     row_id: str = ""
     display_order: int = 0
+    aoi_units: list = field(default_factory=lambda: list(AOI_UNITS))  # 이 행이 쓰는 호기 목록
 
     def get(self, field_name: str) -> Any:
         return self.values.get(field_name)
@@ -198,16 +245,16 @@ class ParamRow:
 
     def snapshot(self) -> dict[str, str]:
         """편집 가능한 필드만 비교용 문자열 dict 로."""
-        return {f: _s(self.values.get(f)) for f in EDITABLE_FIELDS}
+        return {f: _s(self.values.get(f)) for f in editable_fields(self.aoi_units)}
 
     def parameter_key(self) -> str:
         return "|".join(_s(self.values.get(f)) for f in ("PI", "Recipe", "Zone", "Alg", "Parameter"))
 
     def missing_units(self) -> list[str]:
-        return [u for u in AOI_UNITS if is_blank(self.values.get(u))]
+        return [u for u in self.aoi_units if is_blank(self.values.get(u))]
 
     def filled_values(self) -> list[Any]:
-        return [self.values.get(u) for u in AOI_UNITS if not is_blank(self.values.get(u))]
+        return [self.values.get(u) for u in self.aoi_units if not is_blank(self.values.get(u))]
 
     def has_value_diff(self) -> bool:
         vals = {_s(v) for v in self.filled_values()}
@@ -320,13 +367,17 @@ class ParamRepository:
         self.aoi_ip: dict[str, str] = {}        # 호기 -> IP (관련 자료 시트)
         self.special: list[dict[str, Any]] = []  # 특이사항 시트 행들
         self.reference: list[list[str]] = []     # 참고자료 그리드
+        self.sheet_name: str = SHEET_PI          # 데이터 시트 이름(자동 인식)
+        self.aoi_units: list = list(AOI_UNITS)   # 호기 목록(자동 인식)
         self._base: dict[str, dict[str, str]] = {}  # row_id -> 편집 전 스냅샷
 
     # ---- 읽기 --------------------------------------------------------------
 
     def load(self) -> None:
         wb = openpyxl.load_workbook(self.path, data_only=True)
-        self.rows = self._read_pi_all(wb)
+        self.sheet_name = detect_sheet_name(wb) or SHEET_PI
+        self.aoi_units = detect_aoi_units(wb, self.sheet_name)
+        self.rows = self._read_pi_all(wb, self.sheet_name, self.aoi_units)
         self.history = self._read_history(wb)
         self.aoi_ip = self._read_aoi_ip(wb)
         self.special = self._read_special(wb)
@@ -336,24 +387,28 @@ class ParamRepository:
         self._capture_base()
 
     @staticmethod
-    def _read_pi_all(wb) -> list[ParamRow]:
-        if SHEET_PI not in wb.sheetnames:
+    def _read_pi_all(wb, sheet_name=None, aoi_units=None) -> list[ParamRow]:
+        sheet_name = sheet_name or detect_sheet_name(wb) or SHEET_PI
+        if sheet_name not in wb.sheetnames:
             return []
-        ws = wb[SHEET_PI]
+        if aoi_units is None:
+            aoi_units = detect_aoi_units(wb, sheet_name)
+        ws = wb[sheet_name]
         # 헤더 인덱스 매핑(헤더명 기준; 열 위치가 달라도 동작)
         header = {}
         for c in range(1, ws.max_column + 1):
             name = _s(ws.cell(1, c).value)
             if name:
                 header.setdefault(name, c)
+        fields = editable_fields(aoi_units)
         rows: list[ParamRow] = []
         for r in range(2, ws.max_row + 1):
-            # Parameter(E)가 비면 데이터 행 아님 (VBA 규칙과 동일)
+            # Parameter 가 비면 데이터 행 아님
             pcol = header.get("Parameter", 5)
             if is_blank(ws.cell(r, pcol).value):
                 continue
-            pr = ParamRow()
-            for fname in EDITABLE_FIELDS:
+            pr = ParamRow(aoi_units=list(aoi_units))
+            for fname in fields:
                 col = header.get(fname)
                 pr.values[fname] = ws.cell(r, col).value if col else None
             rid_col = header.get("Row_ID")
@@ -489,19 +544,21 @@ class ParamRepository:
 
     def detect_changes(self) -> list[ChangeRecord]:
         """현재 self.rows 와 편집 전 스냅샷(self._base)을 비교."""
+        aoi_set = set(self.aoi_units)
+        fields = editable_fields(self.aoi_units)
         changes: list[ChangeRecord] = []
         for pr in self.rows:
             base = self._base.get(pr.row_id)
             cur = pr.snapshot()
             if base is None:
                 # 신규 행: 비어있지 않은 필드를 추가로 기록
-                for f in EDITABLE_FIELDS:
-                    if cur[f]:
-                        changes.append(ChangeRecord(pr.row_id, f, "", pr.values.get(f), f in AOI_UNITS))
+                for f in fields:
+                    if cur.get(f):
+                        changes.append(ChangeRecord(pr.row_id, f, "", pr.values.get(f), f in aoi_set))
                 continue
-            for f in EDITABLE_FIELDS:
-                if base.get(f, "") != cur[f]:
-                    changes.append(ChangeRecord(pr.row_id, f, base.get(f, ""), pr.values.get(f), f in AOI_UNITS))
+            for f in fields:
+                if base.get(f, "") != cur.get(f, ""):
+                    changes.append(ChangeRecord(pr.row_id, f, base.get(f, ""), pr.values.get(f), f in aoi_set))
         return changes
 
     def deleted_row_ids(self) -> list[str]:
@@ -524,7 +581,7 @@ class ParamRepository:
                 "missing": pr.missing_units(),
                 "value_diff": pr.has_value_diff(),
                 "common": pr.is_common(),
-                "values": {u: pr.get(u) for u in AOI_UNITS},
+                "values": {u: pr.get(u) for u in self.aoi_units},
             })
         return out
 
@@ -543,7 +600,7 @@ class ParamRepository:
         # 1) 디스크 최신 상태(다른 사람 수정 포함)를 병합 베이스로
         if os.path.exists(self.path):
             disk_wb = openpyxl.load_workbook(self.path, data_only=True)
-            disk_rows = self._read_pi_all(disk_wb)
+            disk_rows = self._read_pi_all(disk_wb, self.sheet_name, self.aoi_units)
             prev_summary = self._read_summary(disk_wb)
             disk_wb.close()
         else:
@@ -560,7 +617,7 @@ class ParamRepository:
                 if pr and pr.row_id not in disk_by_id:
                     # display_order 를 그대로 넘겨야 정렬 시 맨 위로 튀지 않음
                     new_pr = ParamRow(values=dict(pr.values), row_id=pr.row_id,
-                                      display_order=pr.display_order)
+                                      display_order=pr.display_order, aoi_units=list(self.aoi_units))
                     disk_rows.append(new_pr)
                     disk_by_id[new_pr.row_id] = new_pr
 
@@ -600,7 +657,7 @@ class ParamRepository:
         rec["Version"] = "v" + datetime.now().strftime("%Y%m%d_%H%M%S")
         rec["Update Date"] = today_str()
         rec["Updated By"] = user
-        rec["Sheet"] = SHEET_PI
+        rec["Sheet"] = self.sheet_name
         if pr is not None:
             rec["Recipe"] = pr.get("Recipe")
             rec["Zone"] = pr.get("Zone")
@@ -617,14 +674,15 @@ class ParamRepository:
 
     # ---- 시트 쓰기 ---------------------------------------------------------
 
-    @staticmethod
-    def _write_pi_all(wb, rows: list[ParamRow]) -> None:
-        ws = wb.create_sheet(SHEET_PI)
-        ws.append(PI_HEADERS)
-        idx = {h: i for i, h in enumerate(PI_HEADERS)}
+    def _write_pi_all(self, wb, rows: list[ParamRow]) -> None:
+        headers = pi_headers(self.aoi_units)
+        fields = editable_fields(self.aoi_units)
+        ws = wb.create_sheet(self.sheet_name)
+        ws.append(headers)
+        idx = {h: i for i, h in enumerate(headers)}
         for pr in rows:
-            line: list[Any] = [None] * len(PI_HEADERS)
-            for f in EDITABLE_FIELDS:
+            line: list[Any] = [None] * len(headers)
+            for f in fields:
                 line[idx[f]] = pr.get(f)
             line[idx["공통 여부"]] = "공통" if pr.is_common() else "미확인"
             line[idx["값 차이 여부"]] = "차이있음" if pr.has_value_diff() else "동일"
@@ -632,7 +690,7 @@ class ParamRepository:
             line[idx["Recipe_Filter"]] = pr.get("Recipe")
             line[idx["Zone_Filter"]] = pr.get("Zone")
             line[idx["Alg_Filter"]] = pr.get("Alg")
-            line[idx["SourceSheet"]] = "PI_ALL"
+            line[idx["SourceSheet"]] = self.sheet_name
             line[idx["Parameter_Key"]] = pr.parameter_key()
             line[idx["Row_ID"]] = pr.row_id
             line[idx["Display_Order"]] = pr.display_order
@@ -671,7 +729,7 @@ class ParamRepository:
         written_keys: set[str] = set()
 
         for pr in rows:
-            for u in AOI_UNITS:
+            for u in self.aoi_units:
                 stable_key = f"{pr.row_id}|{u}"
                 written_keys.add(stable_key)
                 prev = prev_summary.get(stable_key, {})
@@ -721,13 +779,13 @@ class ParamRepository:
                     _s(pr.get("PI")), u, _s(pr.get("Recipe")), _s(pr.get("Zone")),
                     _s(pr.get("Alg")), _s(pr.get("Parameter")),
                 ])
-                line[idx["Source_Cell"]] = f"{SHEET_PI}!{u}"
+                line[idx["Source_Cell"]] = f"{self.sheet_name}!{u}"
                 line[idx["Row_ID"]] = pr.row_id
                 line[idx["Stable_Key"]] = stable_key
                 line[idx["Display_Order"]] = pr.display_order
                 line[idx["Status"]] = "Active"
                 line[idx["PI_Order"]] = pi_order(pr.get("PI"))
-                line[idx["AOI_Order"]] = aoi_order(u)
+                line[idx["AOI_Order"]] = aoi_order(u, self.aoi_units)
                 ws.append(line)
 
         # 삭제된 행: 기존 요약을 Deleted 로 보존
@@ -747,13 +805,12 @@ class ParamRepository:
         for rec in self.history:
             ws.append([rec.get(h) for h in LOG_HEADERS])
 
-    @staticmethod
-    def _write_snapshot(wb, rows: list[ParamRow]) -> None:
+    def _write_snapshot(self, wb, rows: list[ParamRow]) -> None:
         ws = wb.create_sheet(SHEET_SNAP)
         ws.sheet_state = "hidden"
-        ws.append(SNAP_HEADERS)
+        ws.append(snap_headers(self.aoi_units))
         for pr in rows:
-            line = [pr.row_id] + [pr.get(f) for f in META_FIELDS] + [pr.get(u) for u in AOI_UNITS]
+            line = [pr.row_id] + [pr.get(f) for f in META_FIELDS] + [pr.get(u) for u in self.aoi_units]
             ws.append(line)
 
     def _atomic_save(self, wb) -> None:
@@ -773,7 +830,9 @@ class ParamRepository:
     # ---- 행 편집 헬퍼 ------------------------------------------------------
 
     def add_row(self, values: dict[str, Any] | None = None) -> ParamRow:
-        pr = ParamRow(values={f: None for f in EDITABLE_FIELDS}, row_id=new_row_id())
+        fields = editable_fields(self.aoi_units)
+        pr = ParamRow(values={f: None for f in fields}, row_id=new_row_id(),
+                      aoi_units=list(self.aoi_units))
         if values:
             pr.values.update(values)
         pr.display_order = (max((p.display_order for p in self.rows), default=1) + 1)
@@ -808,10 +867,13 @@ def create_empty_workbook(path: str) -> None:
 
 
 def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
-    """기존 .xlsm(VBA 파일)에서 데이터를 읽어 새 .xlsx 로 변환 저장."""
+    """기존 엑셀(.xlsm/.xlsx)에서 데이터를 읽어 새 .xlsx 로 변환 저장.
+    시트 이름(PI_ALL/RDL_ALL 등)과 호기 열을 자동 인식한다."""
     wb = openpyxl.load_workbook(src_path, data_only=True)
     repo = ParamRepository(dest_xlsx)
-    repo.rows = ParamRepository._read_pi_all(wb)
+    repo.sheet_name = detect_sheet_name(wb) or SHEET_PI
+    repo.aoi_units = detect_aoi_units(wb, repo.sheet_name)
+    repo.rows = ParamRepository._read_pi_all(wb, repo.sheet_name, repo.aoi_units)
     repo.history = ParamRepository._read_history(wb)
     repo.aoi_ip = ParamRepository._read_aoi_ip(wb)
     repo.special = ParamRepository._read_special(wb)
@@ -822,10 +884,10 @@ def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     # 변경이력 없이 그대로 기록 (변경감지 대상 0)
     out = openpyxl.Workbook()
     out.remove(out.active)
-    ParamRepository._write_pi_all(out, repo.rows)
+    repo._write_pi_all(out, repo.rows)
     repo._write_summary(out, repo.rows, {}, [], current_user(), [])
     repo._write_history(out)
-    ParamRepository._write_snapshot(out, repo.rows)
+    repo._write_snapshot(out, repo.rows)
     repo._write_special(out)
     repo._write_reference(out)
     out.save(dest_xlsx)
