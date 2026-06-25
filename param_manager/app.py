@@ -183,6 +183,13 @@ class App(tk.Tk):
         s.MT.bind("<ButtonRelease-1>", lambda e: self.after(20, lambda: self._restore_widths(s)), add="+")
         return s
 
+    def _fix_selection(self, sheet):
+        """행높이/열너비 변경 후 선택 박스를 현재 셀 좌표로 다시 그림(어긋남 방지)."""
+        try:
+            sheet.recreate_all_selection_boxes()
+        except Exception:
+            pass
+
     def _refit(self, sheet):
         try:
             ncols = sheet.MT.total_data_cols()
@@ -191,6 +198,7 @@ class App(tk.Tk):
             ncols = len(data[0]) if data else 0
         if ncols:
             self._fit_heights(sheet, ncols)
+            self._fix_selection(sheet)
             sheet.redraw()
 
     def _bind_undo(self, sheet, resync):
@@ -225,6 +233,7 @@ class App(tk.Tk):
             heights += [28] * (n - limit)
         try:
             sheet.set_row_heights(heights)
+            sheet.recreate_all_selection_boxes()
         except Exception:
             pass
 
@@ -314,8 +323,9 @@ class App(tk.Tk):
         self.sh_val = self._make_sheet(f2, self.val_cols, frozen=5, editable=True)
         self.sh_val.pack(fill="both", expand=True)
         self.sh_val.extra_bindings([("end_edit_cell", self._on_value_edit),
-                                    ("end_paste", self._sync_value_all),
-                                    ("cell_select", self._on_val_click)])
+                                    ("end_paste", self._sync_value_all)])
+        # +/- 접기 토글은 '마우스 클릭'에만(방향키 이동으로는 토글 안 되게)
+        self.sh_val.MT.bind("<ButtonRelease-1>", lambda e: self.after(0, self._on_val_click), add="+")
         self._bind_undo(self.sh_val, self._sync_value_all)
         self.nb.add(f2)
 
@@ -345,8 +355,9 @@ class App(tk.Tk):
         self.sh_spec = self._make_sheet(f5, SPECIAL_HEADERS, frozen=2, editable=True)
         self.sh_spec.pack(fill="both", expand=True)
         self.sh_spec.extra_bindings([("end_edit_cell", self._on_special_edit),
-                                     ("end_paste", self._sync_special_all),
-                                     ("cell_select", self._on_spec_click)])
+                                     ("end_paste", self._sync_special_all)])
+        # 종료여부 토글은 '마우스 클릭'에만(방향키로는 토글 안 되게)
+        self.sh_spec.MT.bind("<ButtonRelease-1>", lambda e: self.after(0, self._on_spec_click), add="+")
         self._bind_undo(self.sh_spec, self._sync_special_all)
         self.nb.add(f5)
 
@@ -1246,6 +1257,24 @@ class App(tk.Tk):
         self._mark_dirty()
         self._refresh_color_tab(kind)
 
+    def _fill_cells_clear(self):
+        """선택한 셀의 채우기 색 제거(색 없음)."""
+        if not self.repo or self.read_only:
+            return
+        target = self._color_target()
+        if not target:
+            return
+        sheet, kind = target
+        cc = self.repo.cell_colors
+        removed = False
+        for (r, c) in self._selected_cells(sheet):
+            key = self._cell_key(kind, r, c)
+            if key and cc.pop(key, None) is not None:
+                removed = True
+        if removed:
+            self._mark_dirty()
+            self._refresh_color_tab(kind)
+
     def _recent_colors(self) -> list:
         rc = self._cfg.get("recent_colors")
         if not isinstance(rc, list) or not rc:
@@ -1293,7 +1322,8 @@ class App(tk.Tk):
         btns = ttk.Frame(pop, padding=(12, 8))
         btns.pack(fill="x")
         ttk.Button(btns, text="다른 색…", command=more).pack(side="left")
-        ttk.Button(btns, text="강조(노랑)", command=lambda: self._apply_pick(HIGHLIGHT_YELLOW, pop)).pack(side="left", padx=6)
+        ttk.Button(btns, text="색 없음",
+                   command=lambda: (pop.destroy(), self._fill_cells_clear())).pack(side="left", padx=6)
         ttk.Button(btns, text="취소", command=pop.destroy).pack(side="right")
         pop.update_idletasks()
         pop.geometry(f"+{self.winfo_rootx() + 200}+{self.winfo_rooty() + 120}")
@@ -1413,6 +1443,7 @@ class App(tk.Tk):
                 sheet.column_width(column=i, width=int(want[i]))
                 changed = True
         if changed:
+            self._fix_selection(sheet)
             sheet.redraw()
 
     # ---- 탭/기타 ----------------------------------------------------------
