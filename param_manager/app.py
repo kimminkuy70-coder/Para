@@ -125,6 +125,8 @@ class App(tk.Tk):
         self.val_display: list[dict] = []  # 표시행 메타(헤더/leaf 매핑)
         self.val_toggles: dict[tuple, str] = {}  # (행,열)->그룹key (셀 안 +/- 위치)
         self._sized: set[int] = set()      # 기본 열너비 적용된 시트(사용자 조절 보존용)
+        self._wlock: dict[int, list] = {}  # 시트별 의도된 열너비(편집 중 변경 방지)
+        self._clip_colors: dict[tuple, str] = {}  # 복사한 셀들의 (상대행,상대열)->색
         self.spec_shown_idx: list[int] = []
         # 탭 기본 이름(키->기본 표시명). 사용자가 더블클릭으로 바꾸면 config 에 저장.
         self.tab_keys = ["edit", "value", "compare", "history", "special", "reference"]
@@ -174,8 +176,11 @@ class App(tk.Tk):
             s.enable_bindings("single_select", "drag_select", "row_select", "column_select",
                               "arrowkeys", "copy", "column_width_resize",
                               "double_click_column_resize", "row_height_resize")
-        # 열 너비를 드래그로 바꾸면 줄바꿈에 맞춰 행 높이 재계산(글씨 잘림 방지)
-        s.CH.bind("<ButtonRelease-1>", lambda e: self.after(15, lambda: self._refit(s)), add="+")
+        # 헤더 경계 드래그 끝 -> 행높이 재계산 + 그 너비를 '의도된 너비'로 기억
+        s.CH.bind("<ButtonRelease-1>",
+                  lambda e: self.after(15, lambda: (self._refit(s), self._snapshot_widths(s))), add="+")
+        # 본문 클릭/편집으로 열 너비가 바뀌면 의도된 너비로 복원(특이사항 너비 버그 방지)
+        s.MT.bind("<ButtonRelease-1>", lambda e: self.after(20, lambda: self._restore_widths(s)), add="+")
         return s
 
     def _refit(self, sheet):
@@ -202,6 +207,7 @@ class App(tk.Tk):
             w = WIDTHS.get(h, AOI_W if h in self.aoi else 100)
             sheet.column_width(column=i, width=w)
         self._sized.add(id(sheet))
+        self.after(30, lambda: self._snapshot_widths(sheet))   # 의도된 너비 기록
 
     def _fit_heights(self, sheet, ncols, max_rows=350):
         n = sheet.get_total_rows()
@@ -361,6 +367,13 @@ class App(tk.Tk):
         self._apply_tab_names()
         self.nb.bind("<<NotebookTabChanged>>", lambda e: self._on_tab_changed())
         self.nb.bind("<Double-1>", self._on_tab_doubleclick)
+
+        # 복사/잘라내기/붙여넣기 시 셀 색도 함께 처리
+        for sh, kind in ((self.sh_edit, "edit"), (self.sh_val, "value"),
+                         (self.sh_spec, "special"), (self.sh_ref, "reference")):
+            sh.bind("<<Copy>>", lambda e, s=sh, k=kind: self._on_clip_copy(s, k, cut=False))
+            sh.bind("<<Cut>>", lambda e, s=sh, k=kind: self._on_clip_copy(s, k, cut=True))
+            sh.bind("<<Paste>>", lambda e, s=sh, k=kind: self._on_clip_paste(s, k))
 
     def _build_history_tab(self, parent):
         bar = ttk.Frame(parent, style="Surface.TFrame", padding=(10, 10))
@@ -1047,27 +1060,69 @@ class App(tk.Tk):
         except Exception:
             return 0
 
+    def _sel_row(self, sheet):
+        """현재 선택된 행 인덱스(없으면 None)."""
+        sel = sheet.get_currently_selected()
+        if sel is not None and getattr(sel, "row", None) is not None:
+            return sel.row
+        rows = sheet.get_selected_rows()
+        if rows:
+            return min(rows)
+        cells = sheet.get_selected_cells()
+        if cells:
+            return min(r for r, _ in cells)
+        return None
+
     def _add_row(self):
         if not self.repo or self.read_only:
             return
         tab = self._current_tab()
-        if tab == 5:  # 참고자료: 빈 행 추가
-            self.repo.reference = list(self.repo.reference) + [["", "", "", ""]]
+        if tab == 5:  # 참고자료: 선택 행 아래에 빈 행
+            ref = list(self.repo.reference)
+            r = self._sel_row(self.sh_ref)
+            pos = (r + 1) if r is not None else len(ref)
+            ref.insert(pos, ["", "", "", ""])
+            self.repo.reference = ref
             self._refresh_reference()
-        elif tab == 4:  # 특이사항
-            self.repo.special.append({h: (False if h == SPECIAL_BOOL_COL else "") for h in SPECIAL_HEADERS})
+            self.sh_ref.set_currently_selected(pos, 0)
+        elif tab == 4:  # 특이사항: 선택 행 아래
+            blank = {h: (False if h == SPECIAL_BOOL_COL else "") for h in SPECIAL_HEADERS}
+            r = self._sel_row(self.sh_spec)
+            if r is not None and r < len(self.spec_shown_idx):
+                orig = self.spec_shown_idx[r]
+                self.repo.special.insert(orig + 1, blank)
+            else:
+                self.repo.special.append(blank)
             self._refresh_special()
             self.nb.select(4)
-        else:  # 파라미터 정의
-            pr = self.repo.add_row()
-            self._refresh_edit()
+        else:  # 파라미터: 항목수정/값수정 탭에서 선택 행 아래 삽입(같은 그룹 prefill)
+            sheet = self.sh_val if tab == 1 else self.sh_edit
+            r = self._sel_row(sheet)
+            above_id = None
+            if tab == 1:  # 값수정(트리): 선택 leaf 의 row_id
+                if r is not None and r < len(self.val_display) and self.val_display[r].get("kind") == "leaf":
+                    above_id = self.val_display[r]["rowid"]
+            else:  # 항목수정: edit_ids
+                if r is not None and r < len(self.edit_ids):
+                    above_id = self.edit_ids[r]
+            if above_id is not None:
+                idx = next((i for i, p in enumerate(self.repo.rows) if p.row_id == above_id), None)
+            else:
+                idx = None
+            if idx is not None:
+                src = self.repo.rows[idx]
+                prefill = {f: src.get(f) for f in ("PI", "Recipe", "Zone", "Alg")}
+                pr = self.repo.insert_row_after(idx, prefill)
+            else:
+                pr = self.repo.add_row()
             self.nb.select(0)
+            self._refresh_edit()
             try:
-                self.sh_edit.see(row=len(self.repo.rows) - 1, column=0)
+                newr = next(i for i, rid in enumerate(self.edit_ids) if rid == pr.row_id)
+                self.sh_edit.set_currently_selected(newr, 0)
+                self.sh_edit.see(row=newr, column=0)
             except Exception:
                 pass
-            self.edit_ids = [p.row_id for p in self.repo.rows]
-            _ = pr
         self._mark_dirty()
 
     def _delete_row(self):
@@ -1191,15 +1246,57 @@ class App(tk.Tk):
         self._mark_dirty()
         self._refresh_color_tab(kind)
 
+    def _recent_colors(self) -> list:
+        rc = self._cfg.get("recent_colors")
+        if not isinstance(rc, list) or not rc:
+            rc = ["#FFF24D", "#FCA5A5", "#86EFAC", "#93C5FD", "#FDBA74", "#D8B4FE"]
+        return rc
+
+    def _add_recent_color(self, color):
+        rc = [c for c in self._recent_colors() if c.upper() != color.upper()]
+        rc.insert(0, color.upper())
+        self._cfg["recent_colors"] = rc[:12]
+        save_config(self._cfg)
+
+    def _apply_pick(self, color, popup=None):
+        if popup is not None:
+            popup.destroy()
+        if color:
+            self._add_recent_color(color)
+            self._fill_cells(color.upper())
+
     def _fill_cells_pick(self):
         if not self.repo or self.read_only:
             return
         if not self._color_target():
             self._set_status("이 탭에서는 셀 색을 칠할 수 없습니다.")
             return
-        rgb, hexv = colorchooser.askcolor(color=HIGHLIGHT_YELLOW, title="채우기 색 선택")
-        if hexv:
-            self._fill_cells(hexv.upper())
+        # 최근 사용 색 스와치 + '다른 색…'(시스템 색 선택) 팝업 — 재시작해도 유지
+        pop = tk.Toplevel(self)
+        pop.title("채우기 색")
+        pop.transient(self)
+        pop.resizable(False, False)
+        ttk.Label(pop, text="최근 사용한 색", padding=(12, 10, 12, 4)).pack(anchor="w")
+        grid = ttk.Frame(pop, padding=(12, 0))
+        grid.pack(fill="x")
+        for i, c in enumerate(self._recent_colors()):
+            b = tk.Button(grid, bg=c, width=3, height=1, relief="ridge", bd=1,
+                          activebackground=c, command=lambda col=c: self._apply_pick(col, pop))
+            b.grid(row=i // 6, column=i % 6, padx=3, pady=3)
+
+        def more():
+            pop.destroy()
+            _, hexv = colorchooser.askcolor(color=self._recent_colors()[0], title="다른 색 선택")
+            if hexv:
+                self._apply_pick(hexv)
+
+        btns = ttk.Frame(pop, padding=(12, 8))
+        btns.pack(fill="x")
+        ttk.Button(btns, text="다른 색…", command=more).pack(side="left")
+        ttk.Button(btns, text="강조(노랑)", command=lambda: self._apply_pick(HIGHLIGHT_YELLOW, pop)).pack(side="left", padx=6)
+        ttk.Button(btns, text="취소", command=pop.destroy).pack(side="right")
+        pop.update_idletasks()
+        pop.geometry(f"+{self.winfo_rootx() + 200}+{self.winfo_rooty() + 120}")
 
     def _refresh_color_tab(self, kind):
         {"edit": self._refresh_edit, "value": self._refresh_values,
@@ -1246,6 +1343,77 @@ class App(tk.Tk):
                                           fg=self._fg_for(color), redraw=False)
         except Exception:
             pass
+
+    def _value_sync(self, kind):
+        return {"edit": self._on_edit_full, "value": self._sync_value_all,
+                "special": self._sync_special_all, "reference": self._on_ref_edit}[kind]
+
+    def _on_clip_copy(self, sheet, kind, cut=False):
+        """복사/잘라내기: 선택 셀들의 색을 좌상단 기준 상대좌표로 저장."""
+        if not self.repo:
+            return
+        cells = self._selected_cells(sheet)
+        if not cells:
+            return
+        r0 = min(r for r, _ in cells)
+        c0 = min(c for _, c in cells)
+        cc = self.repo.cell_colors
+        self._clip_colors = {}
+        for (r, c) in cells:
+            key = self._cell_key(kind, r, c)
+            if key and key in cc:
+                self._clip_colors[(r - r0, c - c0)] = cc[key]
+        if cut:
+            removed = False
+            for (r, c) in cells:
+                key = self._cell_key(kind, r, c)
+                if key and cc.pop(key, None) is not None:
+                    removed = True
+            self._value_sync(kind)()   # 잘라낸 값(빈칸) 동기화
+            if removed or True:
+                self._refresh_color_tab(kind)
+                self._mark_dirty()
+
+    def _on_clip_paste(self, sheet, kind):
+        """붙여넣기: 값 동기화 후, 저장해둔 색을 붙여넣기 기준 셀부터 적용."""
+        if not self.repo:
+            return
+        self._value_sync(kind)()       # tksheet 가 붙여넣은 값 먼저 repo 반영
+        if self._clip_colors:
+            sel = sheet.get_currently_selected()
+            if sel is not None:
+                ar, ac = sel.row, sel.column
+                cc = self.repo.cell_colors
+                for (dr, dc), color in self._clip_colors.items():
+                    key = self._cell_key(kind, ar + dr, ac + dc)
+                    if key:
+                        cc[key] = color
+        self._mark_dirty()
+        self._refresh_color_tab(kind)
+
+    # ---- 열너비 잠금(편집/클릭으로 너비 안 변하게) -------------------------
+
+    def _snapshot_widths(self, sheet):
+        try:
+            self._wlock[id(sheet)] = list(sheet.get_column_widths())
+        except Exception:
+            pass
+
+    def _restore_widths(self, sheet):
+        want = self._wlock.get(id(sheet))
+        if not want:
+            return
+        try:
+            cur = list(sheet.get_column_widths())
+        except Exception:
+            return
+        changed = False
+        for i in range(min(len(cur), len(want))):
+            if abs(cur[i] - want[i]) > 1:
+                sheet.column_width(column=i, width=int(want[i]))
+                changed = True
+        if changed:
+            sheet.redraw()
 
     # ---- 탭/기타 ----------------------------------------------------------
 

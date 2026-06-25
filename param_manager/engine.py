@@ -863,6 +863,24 @@ class ParamRepository:
         self.rows.append(pr)
         return pr
 
+    def insert_row_after(self, index: int, values: dict[str, Any] | None = None) -> ParamRow:
+        """rows[index] 바로 아래에 새 행 삽입. display_order 는 이웃 사이 값으로
+        지정해 정렬(저장) 후에도 그 위치를 유지한다."""
+        fields = editable_fields(self.aoi_units)
+        pr = ParamRow(values={f: None for f in fields}, row_id=new_row_id(),
+                      aoi_units=list(self.aoi_units))
+        if values:
+            pr.values.update(values)
+        if 0 <= index < len(self.rows):
+            cur = self.rows[index].display_order or (index + 2)
+            nxt = self.rows[index + 1].display_order if index + 1 < len(self.rows) else cur + 1
+            pr.display_order = (cur + nxt) / 2 if nxt > cur else cur + 0.5
+            self.rows.insert(index + 1, pr)
+        else:
+            pr.display_order = (max((p.display_order for p in self.rows), default=1) + 1)
+            self.rows.append(pr)
+        return pr
+
     def remove_row(self, row_id: str) -> None:
         self.rows = [pr for pr in self.rows if pr.row_id != row_id]
 
