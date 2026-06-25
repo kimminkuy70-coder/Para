@@ -290,6 +290,8 @@ class App(tk.Tk):
         btn_hl.pack(side="left")
         Tooltip(btn_hl, "선택한 셀을 노란색으로 강조 / 해제  (단축키 F4)")
         ttk.Button(tb, text="🎨  채우기 색", command=self._fill_cells_pick).pack(side="left", padx=(8, 0))
+        ttk.Button(tb, text="▣  테두리 표시", command=self._apply_border).pack(side="left", padx=(8, 0))
+        ttk.Button(tb, text="▢  테두리 해제", command=self._clear_border).pack(side="left", padx=(8, 0))
         ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=12, pady=2)
         ttk.Button(tb, text="↧  엑셀 가져오기", command=self._menu_import).pack(side="left")
         ttk.Button(tb, text="↥  내보내기", command=self._menu_export).pack(side="left", padx=(8, 0))
@@ -379,12 +381,13 @@ class App(tk.Tk):
         self.nb.bind("<<NotebookTabChanged>>", lambda e: self._on_tab_changed())
         self.nb.bind("<Double-1>", self._on_tab_doubleclick)
 
-        # 복사/잘라내기/붙여넣기 시 셀 색도 함께 처리
+        # 복사/잘라내기/붙여넣기 시 셀 색도 함께 처리 + 테두리 캔버스 렌더링
         for sh, kind in ((self.sh_edit, "edit"), (self.sh_val, "value"),
                          (self.sh_spec, "special"), (self.sh_ref, "reference")):
             sh.bind("<<Copy>>", lambda e, s=sh, k=kind: self._on_clip_copy(s, k, cut=False))
             sh.bind("<<Cut>>", lambda e, s=sh, k=kind: self._on_clip_copy(s, k, cut=True))
             sh.bind("<<Paste>>", lambda e, s=sh, k=kind: self._on_clip_paste(s, k))
+            sh.bind("<<SheetRedrawn>>", lambda e, s=sh, k=kind: self._draw_borders(s, k))
 
     def _build_history_tab(self, parent):
         bar = ttk.Frame(parent, style="Surface.TFrame", padding=(10, 10))
@@ -1274,6 +1277,114 @@ class App(tk.Tk):
         if removed:
             self._mark_dirty()
             self._refresh_color_tab(kind)
+
+    # ---- 셀 테두리(바깥 경계만 굵게) --------------------------------------
+
+    def _apply_border(self):
+        """선택 영역의 바깥 경계 셀에만 해당 변(상/하/좌/우)을 굵게."""
+        if not self.repo or self.read_only:
+            return
+        target = self._color_target()
+        if not target:
+            self._set_status("이 탭에서는 테두리를 칠할 수 없습니다.")
+            return
+        sheet, kind = target
+        cells = self._selected_cells(sheet)
+        if not cells:
+            return
+        r1 = min(r for r, _ in cells); r2 = max(r for r, _ in cells)
+        c1 = min(c for _, c in cells); c2 = max(c for _, c in cells)
+        cb = self.repo.cell_borders
+        for r in range(r1, r2 + 1):
+            for c in range(c1, c2 + 1):
+                e = ""
+                if r == r1: e += "T"
+                if r == r2: e += "B"
+                if c == c1: e += "L"
+                if c == c2: e += "R"
+                if not e:
+                    continue
+                key = self._cell_key(kind, r, c)
+                if not key:
+                    continue
+                cb[key] = "".join(sorted(set(cb.get(key, "") + e)))
+        self._mark_dirty()
+        self._refresh_color_tab(kind)
+
+    def _clear_border(self):
+        """선택한 셀들의 테두리 제거."""
+        if not self.repo or self.read_only:
+            return
+        target = self._color_target()
+        if not target:
+            return
+        sheet, kind = target
+        cb = self.repo.cell_borders
+        removed = False
+        for (r, c) in self._selected_cells(sheet):
+            key = self._cell_key(kind, r, c)
+            if key and cb.pop(key, None) is not None:
+                removed = True
+        if removed:
+            self._mark_dirty()
+            self._refresh_color_tab(kind)
+
+    def _draw_borders(self, sheet, kind):
+        """저장된 테두리를 캔버스에 굵은 선으로 그림(<<SheetRedrawn>>마다 호출)."""
+        cv = sheet.MT
+        try:
+            cv.delete("uborder")
+        except Exception:
+            return
+        if not self.repo or not self.repo.cell_borders:
+            return
+        cb = self.repo.cell_borders
+        items = []   # (r, c, edges)
+        if kind in ("edit", "value"):
+            cols = self.full_cols if kind == "edit" else self.val_cols
+            ci = {h: i for i, h in enumerate(cols)}
+            if kind == "edit":
+                ri = {rid: i for i, rid in enumerate(self.edit_ids)}
+            else:
+                ri = {d["rowid"]: i for i, d in enumerate(self.val_display) if d.get("kind") == "leaf"}
+            for key, edges in cb.items():
+                if not key.startswith("P|"):
+                    continue
+                _, rid, field = key.split("|", 2)
+                r = ri.get(rid); c = ci.get(field)
+                if r is not None and c is not None:
+                    items.append((r, c, edges))
+        elif kind == "special":
+            pos = {orig: i for i, orig in enumerate(self.spec_shown_idx)}
+            for key, edges in cb.items():
+                if not key.startswith("S|"):
+                    continue
+                _, o, c = key.split("|")
+                r = pos.get(int(o))
+                if r is not None:
+                    items.append((r, int(c), edges))
+        elif kind == "reference":
+            for key, edges in cb.items():
+                if not key.startswith("R|"):
+                    continue
+                _, r, c = key.split("|")
+                items.append((int(r), int(c), edges))
+        W, color = 3, "#333333"
+        for (r, c, edges) in items:
+            try:
+                x1, y1, x2, y2 = sheet.MT.get_cell_coords(r, c)
+            except Exception:
+                continue
+            if not (x2 and y2):
+                continue
+            if "T" in edges:
+                cv.create_line(x1, y1, x2, y1, fill=color, width=W, tags="uborder")
+            if "B" in edges:
+                cv.create_line(x1, y2, x2, y2, fill=color, width=W, tags="uborder")
+            if "L" in edges:
+                cv.create_line(x1, y1, x1, y2, fill=color, width=W, tags="uborder")
+            if "R" in edges:
+                cv.create_line(x2, y1, x2, y2, fill=color, width=W, tags="uborder")
 
     def _recent_colors(self) -> list:
         rc = self._cfg.get("recent_colors")

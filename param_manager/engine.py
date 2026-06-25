@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import openpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 # --------------------------------------------------------------------------
 # 스키마 상수 — 기존 엑셀 파일과 호환되도록 정의
@@ -42,6 +43,7 @@ SHEET_SPECIAL = "특이사항"
 SHEET_REF = "참고자료"
 SHEET_RELATED = "관련 자료"
 SHEET_COLORS = "_CELL_COLORS"   # 셀 색상(강조/채우기) 저장용 숨김 시트
+SHEET_BORDERS = "_CELL_BORDERS"  # 셀 테두리 저장용 숨김 시트
 REF_COLS = 4   # 참고자료 그리드 열 수
 
 # 기본 관리 호기(새 빈 파일/감지 실패 시 사용). 실제 호기 목록은 파일에서 자동 인식.
@@ -145,6 +147,32 @@ def now_str() -> str:
 
 def today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
+
+
+# 엑셀 저장 서식용 상수/헬퍼 ------------------------------------------------
+HDR_FILL = PatternFill("solid", fgColor="FF1E293B")
+HDR_FONT = Font(bold=True, color="FFF8FAFC")
+GRP_TOP = Border(top=Side(style="medium", color="FF94A3B8"))
+WRAP_TOP = Alignment(wrap_text=True, vertical="top")
+COL_WIDTH = {"PI": 9, "Recipe": 16, "Zone": 22, "Alg": 22, "Parameter": 26,
+             "초기 추천값": 14, "비고": 34}
+
+
+def _argb(hexcolor: str) -> str:
+    h = str(hexcolor).lstrip("#").upper()
+    if len(h) == 8:
+        return h
+    if len(h) == 6:
+        return "FF" + h
+    return "FFFFFFFF"
+
+
+def _border_from_edges(edges: str, color="FF333333", style="medium") -> Border:
+    s = Side(style=style, color=color)
+    return Border(top=s if "T" in edges else None,
+                  bottom=s if "B" in edges else None,
+                  left=s if "L" in edges else None,
+                  right=s if "R" in edges else None)
 
 
 def format_kdate(value: Any) -> tuple[str, bool]:
@@ -369,6 +397,9 @@ class ParamRepository:
         self.special: list[dict[str, Any]] = []  # 특이사항 시트 행들
         self.reference: list[list[str]] = []     # 참고자료 그리드
         self.cell_colors: dict[str, str] = {}    # 셀키 -> 색상(hex)
+        self.cell_borders: dict[str, str] = {}   # 셀키 -> 테두리 변(예: "TBLR" 부분집합)
+        self._colors_base: dict[str, str] = {}   # 저장 병합용 스냅샷
+        self._borders_base: dict[str, str] = {}
         self.sheet_name: str = SHEET_PI          # 데이터 시트 이름(자동 인식)
         self.aoi_units: list = list(AOI_UNITS)   # 호기 목록(자동 인식)
         self._base: dict[str, dict[str, str]] = {}  # row_id -> 편집 전 스냅샷
@@ -384,30 +415,56 @@ class ParamRepository:
         self.aoi_ip = self._read_aoi_ip(wb)
         self.special = self._read_special(wb)
         self.reference = self._read_reference(wb)
-        self.cell_colors = self._read_colors(wb)
+        self.cell_colors = self._read_kv(wb, SHEET_COLORS)
+        self.cell_borders = self._read_kv(wb, SHEET_BORDERS)
         wb.close()
         self._ensure_row_ids()
         self._capture_base()
+        self._colors_base = dict(self.cell_colors)
+        self._borders_base = dict(self.cell_borders)
+
+    @staticmethod
+    def _read_kv(wb, sheet) -> dict[str, str]:
+        out: dict[str, str] = {}
+        if sheet not in wb.sheetnames:
+            return out
+        ws = wb[sheet]
+        for r in range(2, ws.max_row + 1):
+            key = _s(ws.cell(r, 1).value)
+            val = _s(ws.cell(r, 2).value)
+            if key and val:
+                out[key] = val
+        return out
 
     @staticmethod
     def _read_colors(wb) -> dict[str, str]:
-        out: dict[str, str] = {}
-        if SHEET_COLORS not in wb.sheetnames:
-            return out
-        ws = wb[SHEET_COLORS]
-        for r in range(2, ws.max_row + 1):
-            key = _s(ws.cell(r, 1).value)
-            color = _s(ws.cell(r, 2).value)
-            if key and color:
-                out[key] = color
-        return out
+        return ParamRepository._read_kv(wb, SHEET_COLORS)
+
+    @staticmethod
+    def _write_kv(wb, sheet, data, header) -> None:
+        ws = wb.create_sheet(sheet)
+        ws.sheet_state = "hidden"
+        ws.append(header)
+        for k, v in data.items():
+            ws.append([k, v])
 
     def _write_colors(self, wb) -> None:
-        ws = wb.create_sheet(SHEET_COLORS)
-        ws.sheet_state = "hidden"
-        ws.append(["Key", "Color"])
-        for key, color in self.cell_colors.items():
-            ws.append([key, color])
+        self._write_kv(wb, SHEET_COLORS, self.cell_colors, ["Key", "Color"])
+
+    def _write_borders(self, wb) -> None:
+        self._write_kv(wb, SHEET_BORDERS, self.cell_borders, ["Key", "Edges"])
+
+    @staticmethod
+    def _merge_kv(disk: dict, cur: dict, base: dict) -> dict:
+        """디스크본에 내 세션 변경(추가/수정/삭제)만 반영해 병합."""
+        merged = dict(disk)
+        for k, v in cur.items():
+            if base.get(k) != v:
+                merged[k] = v
+        for k in base:
+            if k not in cur:
+                merged.pop(k, None)
+        return merged
 
     @staticmethod
     def _read_pi_all(wb, sheet_name=None, aoi_units=None) -> list[ParamRow]:
@@ -518,9 +575,30 @@ class ParamRepository:
         return grid
 
     def _write_reference(self, wb) -> None:
+        from openpyxl.utils import get_column_letter
         ws = wb.create_sheet(SHEET_REF)
         for row in self.reference:
             ws.append((list(row) + [""] * REF_COLS)[:REF_COLS])
+        for i, w in enumerate((34, 22, 16, 16)):
+            ws.column_dimensions[get_column_letter(i + 1)].width = w
+        title_fill = PatternFill("solid", fgColor="FFDBE7FB")
+        for r in range(1, ws.max_row + 1):
+            first = _s(ws.cell(r, 1).value)
+            is_title = "제목" in first or (first and all(_s(ws.cell(r, c).value) == ""
+                                                       for c in range(2, REF_COLS + 1)) and first != "항목")
+            for c in range(1, REF_COLS + 1):
+                cell = ws.cell(r, c)
+                cell.alignment = WRAP_TOP
+                if is_title:
+                    cell.font = Font(bold=True, color="FF1D4ED8")
+                    cell.fill = title_fill
+                key = f"R|{r - 1}|{c - 1}"
+                col = self.cell_colors.get(key)
+                if col and not is_title:
+                    cell.fill = PatternFill("solid", fgColor=_argb(col))
+                edges = self.cell_borders.get(key)
+                if edges:
+                    cell.border = _border_from_edges(edges)
 
     @staticmethod
     def _read_special(wb) -> list[dict[str, Any]]:
@@ -552,6 +630,30 @@ class ParamRepository:
                     v = bool(v)
                 row.append(v)
             ws.append(row)
+        self._style_simple_sheet(ws, "S", len(SPECIAL_HEADERS),
+                                 widths=[12, 10, 16, 8, 9, 14, 18, 9, 40])
+
+    def _style_simple_sheet(self, ws, prefix, ncol, widths=None):
+        from openpyxl.utils import get_column_letter
+        for c in range(1, ncol + 1):
+            cell = ws.cell(1, c)
+            cell.fill = HDR_FILL
+            cell.font = HDR_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        if widths:
+            for i, w in enumerate(widths[:ncol]):
+                ws.column_dimensions[get_column_letter(i + 1)].width = w
+        ws.freeze_panes = "A2"
+        for r in range(2, ws.max_row + 1):
+            for c in range(1, ncol + 1):
+                ws.cell(r, c).alignment = WRAP_TOP
+                key = f"{prefix}|{r - 2}|{c - 1}"
+                col = self.cell_colors.get(key)
+                if col:
+                    ws.cell(r, c).fill = PatternFill("solid", fgColor=_argb(col))
+                edges = self.cell_borders.get(key)
+                if edges:
+                    ws.cell(r, c).border = _border_from_edges(edges)
 
     def _ensure_row_ids(self) -> None:
         for i, pr in enumerate(self.rows, start=2):
@@ -625,10 +727,15 @@ class ParamRepository:
             disk_wb = openpyxl.load_workbook(self.path, data_only=True)
             disk_rows = self._read_pi_all(disk_wb, self.sheet_name, self.aoi_units)
             prev_summary = self._read_summary(disk_wb)
+            disk_colors = self._read_kv(disk_wb, SHEET_COLORS)
+            disk_borders = self._read_kv(disk_wb, SHEET_BORDERS)
             disk_wb.close()
         else:
-            disk_rows, prev_summary = [], {}
+            disk_rows, prev_summary, disk_colors, disk_borders = [], {}, {}, {}
         disk_by_id = {pr.row_id: pr for pr in disk_rows if pr.row_id}
+        # 색/테두리도 디스크본과 병합(동시 작업 시 서로 안 지워지게)
+        self.cell_colors = self._merge_kv(disk_colors, self.cell_colors, self._colors_base)
+        self.cell_borders = self._merge_kv(disk_borders, self.cell_borders, self._borders_base)
 
         # 2) 내가 바꾼 셀만 디스크 상태 위에 적용 (행 단위 병합)
         for ch in changes:
@@ -668,11 +775,14 @@ class ParamRepository:
         self._write_special(wb)
         self._write_reference(wb)
         self._write_colors(wb)
+        self._write_borders(wb)
         self._atomic_save(wb)
 
         # 7) 메모리 상태 갱신
         self.rows = disk_rows
         self._capture_base()
+        self._colors_base = dict(self.cell_colors)
+        self._borders_base = dict(self.cell_borders)
         return {"changes": len(changes), "added": len(added_ids), "deleted": len(deleted)}
 
     def _append_history_record(self, user: str, ch: ChangeRecord) -> None:
@@ -719,6 +829,62 @@ class ParamRepository:
             line[idx["Row_ID"]] = pr.row_id
             line[idx["Display_Order"]] = pr.display_order
             ws.append(line)
+        self._style_data_sheet(ws, rows, headers, idx, fields)
+
+    def _style_data_sheet(self, ws, rows, headers, idx, fields):
+        """엑셀로 직접 봐도 가독성 좋게 서식 적용(헤더/틀고정/그룹/색/테두리)."""
+        from openpyxl.utils import get_column_letter
+        ncol = len(headers)
+        # 헤더
+        for c in range(1, ncol + 1):
+            cell = ws.cell(1, c)
+            cell.fill = HDR_FILL
+            cell.font = HDR_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.row_dimensions[1].height = 22
+        # 열 너비 + 보조열 숨김
+        derived = set(DERIVED_TAIL)
+        for h, i in idx.items():
+            col = get_column_letter(i + 1)
+            if h in derived:
+                ws.column_dimensions[col].hidden = True
+            else:
+                ws.column_dimensions[col].width = COL_WIDTH.get(h, 10 if h in self.aoi_units else 12)
+        # 틀 고정: 헤더행 + Parameter 열까지
+        try:
+            pcol = idx.get("Parameter", 4)
+            ws.freeze_panes = ws.cell(2, pcol + 2)
+        except Exception:
+            pass
+        # 데이터 셀: 줄바꿈 정렬 + PI 그룹 구분선 + PI 단위 접기(아웃라인)
+        try:
+            ws.sheet_properties.outlinePr.summaryBelow = False
+        except Exception:
+            pass
+        prev_pi = None
+        for i, pr in enumerate(rows):
+            er = i + 2
+            for f in fields:
+                ws.cell(er, idx[f] + 1).alignment = WRAP_TOP
+            pi = _s(pr.get("PI"))
+            if prev_pi is not None and pi != prev_pi:        # PI 바뀌는 경계
+                for c in range(1, ncol + 1):
+                    ws.cell(er, c).border = GRP_TOP
+            elif prev_pi is not None:
+                ws.row_dimensions[er].outline_level = 1      # 같은 PI -> 접기 그룹
+            prev_pi = pi
+        # 사용자 셀 색/테두리 반영
+        for i, pr in enumerate(rows):
+            er = i + 2
+            for f in fields:
+                cell = ws.cell(er, idx[f] + 1)
+                key = f"P|{pr.row_id}|{f}"
+                col = self.cell_colors.get(key)
+                if col:
+                    cell.fill = PatternFill("solid", fgColor=_argb(col))
+                edges = self.cell_borders.get(key)
+                if edges:
+                    cell.border = _border_from_edges(edges)
 
     @staticmethod
     def _read_summary(wb) -> dict[str, dict[str, Any]]:
@@ -908,6 +1074,9 @@ def create_empty_workbook(path: str) -> None:
     colors = wb.create_sheet(SHEET_COLORS)
     colors.sheet_state = "hidden"
     colors.append(["Key", "Color"])
+    borders = wb.create_sheet(SHEET_BORDERS)
+    borders.sheet_state = "hidden"
+    borders.append(["Key", "Edges"])
     wb.save(path)
 
 
@@ -923,9 +1092,13 @@ def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     repo.aoi_ip = ParamRepository._read_aoi_ip(wb)
     repo.special = ParamRepository._read_special(wb)
     repo.reference = ParamRepository._read_reference(wb)
+    repo.cell_colors = ParamRepository._read_kv(wb, SHEET_COLORS)
+    repo.cell_borders = ParamRepository._read_kv(wb, SHEET_BORDERS)
     wb.close()
     repo._ensure_row_ids()
     repo._capture_base()
+    repo._colors_base = dict(repo.cell_colors)
+    repo._borders_base = dict(repo.cell_borders)
     # 변경이력 없이 그대로 기록 (변경감지 대상 0)
     out = openpyxl.Workbook()
     out.remove(out.active)
@@ -936,6 +1109,7 @@ def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     repo._write_special(out)
     repo._write_reference(out)
     repo._write_colors(out)
+    repo._write_borders(out)
     out.save(dest_xlsx)
     repo._capture_base()
     return repo
