@@ -55,6 +55,14 @@ AOI_UNITS = [
 # 데이터 시트 후보 이름(PI / RDL 등 동일 양식)
 SHEET_CANDIDATES = ["PI_ALL", "RDL_ALL"]
 
+# 사내 보유 장비(호기) 고정 목록 — 초기 격자 화면 및 호기 열 보장에 사용.
+# 파일에 일부 호기 열이 없어도 이 목록 기준으로 빈 열을 추가한다.
+MACHINES = (
+    [f"AOI-{i}" for i in range(1, 26)]          # AOI-1 ~ AOI-25
+    + [f"AOI-K{i}" for i in range(1, 7)]        # AOI-K1 ~ AOI-K6
+    + ["AOI-M", "AOI-M2", "AOI-R1"]
+)
+
 # 메타(상위) 항목 — A:G
 META_FIELDS = ["PI", "Recipe", "Zone", "Alg", "Parameter", "초기 추천값", "비고"]
 
@@ -1049,6 +1057,18 @@ class ParamRepository:
 
     def remove_row(self, row_id: str) -> None:
         self.rows = [pr for pr in self.rows if pr.row_id != row_id]
+
+    def ensure_machines(self, machines=MACHINES) -> None:
+        """장비 격자(33호기)가 항상 호기 열로 존재하도록 보장.
+        파일에 없던 호기는 빈 열로 추가(기존 순서 유지 후 누락분 뒤에 추가)."""
+        seen = set(self.aoi_units)
+        added = [m for m in machines if m not in seen]
+        if added:
+            self.aoi_units = list(self.aoi_units) + added
+        for pr in self.rows:
+            pr.aoi_units = list(self.aoi_units)
+            for m in self.aoi_units:
+                pr.values.setdefault(m, None)
 
 
 # --------------------------------------------------------------------------
