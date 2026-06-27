@@ -19,6 +19,8 @@ import os
 import tkinter as tk
 from tkinter import colorchooser, filedialog, messagebox, ttk
 
+from tksheet import Sheet
+
 from . import engine
 from .engine import MACHINES, ParamRepository
 from .theme import apply_theme
@@ -80,6 +82,8 @@ class EquipApp(tk.Tk):
         self._drag = None
         self._row_widgets: list = []         # [(param_row, frame, alg)]
         self._note_pop = None
+        self._cur_sheet = None               # 특이사항/참고자료 tksheet
+        self._cur_kind = None
 
         # 되돌리기/다시(동작 단위 스냅샷 스택)
         self._undo: list = []
@@ -426,10 +430,7 @@ class EquipApp(tk.Tk):
                           font=self.fonts["bold"], padx=16, pady=8, cursor="hand2",
                           command=lambda zz=z: self._set_zone(zz))
             b.pack(side="left", padx=(0, 4))
-            b.bind("<Double-Button-1>",
-                   lambda e, zz=z, w=b, s=st: self._edit_popup(
-                       w, zz, lambda new, old=zz, ss=s: self._rename_zone(ss, old, new)))
-            b.bind("<Button-3>", lambda e, zz=z, s=st: self._zone_menu(e, s, zz))
+            b.bind("<Button-3>", lambda e, zz=z, w=b, s=st: self._zone_menu(e, s, zz, w))
         if not self.read_only:
             tk.Button(ztab, text="＋Zone", relief="flat", bd=0, bg=self.p["surface"],
                       fg=self.p["primary"], font=self.fonts["bold"], padx=12, pady=8,
@@ -437,7 +438,7 @@ class EquipApp(tk.Tk):
             tk.Button(ztab, text="＋Alg", relief="flat", bd=0, bg=self.p["surface"],
                       fg=self.p["primary"], font=self.fonts["bold"], padx=12, pady=8,
                       cursor="hand2", command=lambda s=st: self._add_alg(s)).pack(side="left", padx=2)
-        tk.Label(ztab, text="  (탭 더블클릭=이름수정, 우클릭=삭제)", bg=self.p["bg"],
+        tk.Label(ztab, text="  (Zone/Alg 우클릭=이름수정·삭제)", bg=self.p["bg"],
                  fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
         # ---- 2분할: 좌(선택호기, 고정폭) / 우(다른호기, 가로스크롤) ----
@@ -537,10 +538,8 @@ class EquipApp(tk.Tk):
                      font=self.fonts["sub"]).pack(side="right")
             hdr.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
             alg_lbl.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
-            alg_lbl.bind("<Double-Button-1>",
-                         lambda e, aa=a, w=alg_lbl, s=st: self._edit_popup(
-                             w, aa, lambda new, old=aa, ss=s: self._rename_alg(ss, old, new)))
-            alg_lbl.bind("<Button-3>", lambda e, aa=a, s=st: self._alg_menu(e, s, aa))
+            hdr.bind("<Button-3>", lambda e, aa=a, w=alg_lbl, s=st: self._alg_menu(e, s, aa, w))
+            alg_lbl.bind("<Button-3>", lambda e, aa=a, w=alg_lbl, s=st: self._alg_menu(e, s, aa, w))
             tk.Frame(rinner, bg="#e2e8f0").grid(row=r, column=0, sticky="nsew")
             r += 1
             if coll:
@@ -586,8 +585,8 @@ class EquipApp(tk.Tk):
         chip.bind("<Button-3>", lambda e, p=pr: self._clear_color(p))
 
         name = engine._s(pr.get("Parameter")) or "(이름 없음)"
-        nbg = col or self.p["surface"]
-        lbl = tk.Label(row, text=name, bg=nbg, fg=self.p["text"],
+        # 글자 영역(이름 라벨)에는 색을 칠하지 않는다 — 색은 색칩으로만 표시
+        lbl = tk.Label(row, text=name, bg=self.p["surface"], fg=self.p["text"],
                        font=self.fonts["base"], width=20, anchor="w")
         lbl.pack(side="left")
         lbl.bind("<Double-Button-1>",
@@ -606,7 +605,7 @@ class EquipApp(tk.Tk):
             rent.config(state="disabled")
         rent.pack(side="left", padx=(4, 6))
         rent.bind("<FocusOut>", lambda e, p=pr, v=rvar: self._set_reco(p, v))
-        rent.bind("<Return>", lambda e, p=pr, v=rvar: self._set_reco(p, v))
+        rent.bind("<Return>", lambda e, p=pr, v=rvar: (self._set_reco(p, v), self.focus_set()))
 
         # 선택 호기 입력칸
         var = tk.StringVar(value=engine._s(pr.get(machine)))
@@ -617,7 +616,8 @@ class EquipApp(tk.Tk):
             ent.config(state="disabled")
         ent.pack(side="left", padx=2)
         ent.bind("<FocusOut>", lambda e, p=pr, m=machine, v=var: self._set_value(p, m, v))
-        ent.bind("<Return>", lambda e, p=pr, m=machine, v=var: self._set_value(p, m, v))
+        ent.bind("<Return>", lambda e, p=pr, m=machine, v=var:
+                 (self._set_value(p, m, v), self.focus_set()))
         ent._param = pr
 
         has_note = bool(engine._s(pr.get("비고")))
@@ -771,21 +771,29 @@ class EquipApp(tk.Tk):
             pop.destroy()
         self._render()
 
-    def _zone_menu(self, e, st, zone):
+    def _zone_menu(self, e, st, zone, anchor=None):
         m = tk.Menu(self, tearoff=0)
-        m.add_command(label=f"Zone '{zone}' 삭제",
-                      command=lambda: self._delete_zone(st, zone),
-                      state=("disabled" if self.read_only else "normal"))
+        st_ = "disabled" if self.read_only else "normal"
+        m.add_command(label="Zone 이름 수정", state=st_,
+                      command=lambda: self._edit_popup(
+                          anchor or self, zone,
+                          lambda new: self._rename_zone(st, zone, new)))
+        m.add_command(label=f"Zone '{zone}' 삭제", state=st_,
+                      command=lambda: self._delete_zone(st, zone))
         try:
             m.tk_popup(e.x_root, e.y_root)
         finally:
             m.grab_release()
 
-    def _alg_menu(self, e, st, alg):
+    def _alg_menu(self, e, st, alg, anchor=None):
         m = tk.Menu(self, tearoff=0)
-        m.add_command(label=f"Alg '{alg}' 삭제",
-                      command=lambda: self._delete_alg(st, alg),
-                      state=("disabled" if self.read_only else "normal"))
+        st_ = "disabled" if self.read_only else "normal"
+        m.add_command(label="Alg 이름 수정", state=st_,
+                      command=lambda: self._edit_popup(
+                          anchor or self, alg,
+                          lambda new: self._rename_alg(st, alg, new)))
+        m.add_command(label=f"Alg '{alg}' 삭제", state=st_,
+                      command=lambda: self._delete_alg(st, alg))
         try:
             m.tk_popup(e.x_root, e.y_root)
         finally:
@@ -1207,21 +1215,130 @@ class EquipApp(tk.Tk):
             r.display_order = i + 1
 
     # ====================================================================
-    #  특이사항 / 참고자료 뷰
+    #  특이사항 / 참고자료 뷰 (tksheet — 열너비조절/자동줄바꿈/색칠/행열삭제)
     # ====================================================================
-    def _scroll_area(self):
-        """본문에 스크롤 가능한 inner Frame 생성해 반환."""
-        canvas = tk.Canvas(self.body, bg=self.p["bg"], highlightthickness=0)
-        vsb = ttk.Scrollbar(self.body, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=8)
-        vsb.pack(side="right", fill="y", pady=8)
-        inner = tk.Frame(canvas, bg=self.p["bg"])
-        canvas.create_window((0, 0), window=inner, anchor="nw", tags="inner")
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig("inner", width=e.width))
-        self._scope_wheel(canvas, canvas)
-        return inner
+    def _make_table(self, headers, data, col_edit=False):
+        s = Sheet(self.body, theme="light blue",
+                  show_x_scrollbar=True, show_y_scrollbar=True,
+                  font=(self.p["family"], 10, "normal"),
+                  header_font=(self.p["family"], 10, "bold"))
+        if headers is not None:
+            s.headers(headers)
+        s.set_sheet_data(data, reset_col_positions=True)
+        s.set_options(table_wrap="w", header_wrap="w",
+                      show_vertical_grid=True, show_horizontal_grid=True,
+                      edit_cell_return="", edit_cell_tab="")
+        binds = ["single_select", "drag_select", "row_select", "column_select",
+                 "arrowkeys", "copy", "rc_select", "column_width_resize",
+                 "double_click_column_resize", "row_height_resize"]
+        if not self.read_only:
+            binds += ["paste", "cut", "delete", "edit_cell",
+                      "rc_insert_row", "rc_delete_row"]
+            if col_edit:
+                binds += ["rc_insert_column", "rc_delete_column"]
+        s.enable_bindings(*binds)
+        return s
+
+    def _fit_table_heights(self, s, ncol):
+        try:
+            n = s.get_total_rows()
+        except Exception:
+            return
+        for r in range(min(n, 400)):
+            try:
+                h = max((s.MT.get_wrapped_cell_height(r, c) for c in range(ncol)), default=28)
+            except Exception:
+                h = 28
+            try:
+                s.row_height(row=r, height=max(28, h))
+            except Exception:
+                pass
+        try:
+            s.redraw()
+        except Exception:
+            pass
+
+    def _toolbar(self, kind):
+        bar = tk.Frame(self.body, bg=self.p["bg"])
+        bar.pack(side="top", fill="x", padx=10, pady=(8, 0))
+        if self.read_only:
+            tk.Label(bar, text="읽기 전용 — 다른 사용자가 편집 중", bg=self.p["bg"],
+                     fg=self.p["danger"], font=self.fonts["sub"]).pack(side="left")
+            return bar
+        tk.Label(bar, text="선택 셀:", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left", padx=(0, 4))
+        tk.Button(bar, text="강조(노랑)", relief="flat", bd=0, bg=HIGHLIGHT_YELLOW,
+                  fg="#5a4b00", cursor="hand2",
+                  command=lambda: self._table_fill(kind, HIGHLIGHT_YELLOW)).pack(side="left", padx=2)
+        tk.Button(bar, text="색 선택", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], cursor="hand2",
+                  command=lambda: self._table_fill(kind, None)).pack(side="left", padx=2)
+        tk.Button(bar, text="색 없음", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["danger"], cursor="hand2",
+                  command=lambda: self._table_fill(kind, "CLEAR")).pack(side="left", padx=2)
+        tk.Label(bar, text="  (열 경계 드래그=너비 · 우클릭=행/열 삽입·삭제 · 셀 직접 입력)",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left", padx=8)
+        return bar
+
+    def _table_cells(self, s):
+        try:
+            cells = list(s.get_selected_cells())
+        except Exception:
+            cells = []
+        if not cells:
+            sel = s.get_currently_selected()
+            if sel and getattr(sel, "row", None) is not None:
+                cells = [(sel.row, sel.column)]
+        return cells
+
+    def _table_fill(self, kind, color):
+        if not self._guard():
+            return
+        s = self._cur_sheet
+        cells = self._table_cells(s)
+        if not cells:
+            self._set_status("색을 칠할 셀을 먼저 선택하세요.")
+            return
+        if color is None:
+            _, color = colorchooser.askcolor(
+                title="셀 색 선택",
+                initialcolor=self.recent_colors[0] if self.recent_colors else "#FFF24D")
+            if not color:
+                return
+        self._push_undo()
+        cc = self.repo.cell_colors
+        for (r, c) in cells:
+            key = f"S|{r}|{c}" if kind == "special" else f"R|{r}|{c}"
+            if color == "CLEAR":
+                cc.pop(key, None)
+            else:
+                cc[key] = color
+        if color not in (None, "CLEAR"):
+            self._remember_color(color)
+        self.dirty = True
+        self._render()
+
+    def _apply_table_colors(self, s, kind):
+        cc = self.repo.cell_colors
+        pre = "S|" if kind == "special" else "R|"
+        for key, color in cc.items():
+            if not key.startswith(pre):
+                continue
+            try:
+                _, r, c = key.split("|")
+                s.highlight_cells(row=int(r), column=int(c), bg=color,
+                                  fg=self._fg_for(color), redraw=False)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _fg_for(hexcolor):
+        try:
+            h = str(hexcolor).lstrip("#")
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            return "#111111" if (0.299 * r + 0.587 * g + 0.114 * b) > 150 else "#ffffff"
+        except Exception:
+            return "#111111"
 
     def _view_special(self):
         if not self.repo:
@@ -1229,59 +1346,83 @@ class EquipApp(tk.Tk):
                      bg=self.p["bg"], fg=self.p["muted"]).pack(pady=30)
             return
         from .engine import SPECIAL_BOOL_COL, SPECIAL_HEADERS
-        inner = self._scroll_area()
-        widths = {"일자": 12, "호기": 9, "라트 번호": 16, "S/M": 6, "Layer": 8,
-                  "목적": 14, "진행 상황": 18, "종료 여부": 8, "특이사항": 40}
-        # 헤더
-        for c, h in enumerate(SPECIAL_HEADERS):
-            tk.Label(inner, text=h, bg=self.p["header_bar"], fg="#f8fafc",
-                     font=self.fonts["bold"], width=widths.get(h, 12),
-                     anchor="w", padx=4).grid(row=0, column=c, sticky="nsew", padx=1, pady=1)
-        # 데이터
-        for ri, rec in enumerate(self.repo.special, start=1):
-            for c, h in enumerate(SPECIAL_HEADERS):
-                if h == SPECIAL_BOOL_COL:
-                    bv = tk.BooleanVar(value=bool(rec.get(h)))
-                    cb = tk.Checkbutton(inner, variable=bv, bg=self.p["surface"],
-                                        command=lambda r=rec, v=bv: self._special_set(r, SPECIAL_BOOL_COL, v.get()))
-                    if self.read_only:
-                        cb.config(state="disabled")
-                    cb.grid(row=ri, column=c, sticky="nsew", padx=1, pady=1)
-                else:
-                    sv = tk.StringVar(value=engine._s(rec.get(h)))
-                    e = tk.Entry(inner, textvariable=sv, width=widths.get(h, 12),
-                                 font=self.fonts["base"], relief="solid", bd=1)
-                    if self.read_only:
-                        e.config(state="disabled")
-                    e.grid(row=ri, column=c, sticky="nsew", padx=1, pady=1)
-                    e.bind("<FocusOut>", lambda ev, r=rec, hh=h, v=sv: self._special_set(r, hh, v.get()))
-        # 추가 버튼
+        self._toolbar("special")
         if not self.read_only:
-            tk.Button(inner, text="＋ 특이사항 추가", relief="flat", bd=0,
+            btnbar = tk.Frame(self.body, bg=self.p["bg"])
+            btnbar.pack(side="top", fill="x", padx=10)
+            tk.Button(btnbar, text="＋ 특이사항(행) 추가", relief="flat", bd=0,
                       bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["bold"],
-                      cursor="hand2", command=self._special_add).grid(
-                row=len(self.repo.special) + 1, column=0, columnspan=3, sticky="w", pady=6)
+                      cursor="hand2", command=self._special_add).pack(side="left", pady=4)
+        bcol = SPECIAL_HEADERS.index(SPECIAL_BOOL_COL)
+        data = []
+        for rec in self.repo.special:
+            row = []
+            for h in SPECIAL_HEADERS:
+                v = rec.get(h)
+                if h == SPECIAL_BOOL_COL:
+                    v = "☑" if bool(v) else "☐"
+                elif h == "일자":
+                    v = engine.format_kdate(v)[0]
+                else:
+                    v = engine._s(v)
+                row.append(v)
+            data.append(row)
+        s = self._make_table(SPECIAL_HEADERS, data, col_edit=False)
+        s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
+        for i, w in enumerate((95, 80, 130, 55, 70, 110, 150, 70, 340)):
+            try:
+                s.column_width(column=i, width=w)
+            except Exception:
+                pass
+        s.extra_bindings([("end_edit_cell", lambda e: self._special_sync()),
+                          ("rc_delete_row", lambda e: self.after(10, self._special_sync)),
+                          ("rc_insert_row", lambda e: self.after(10, self._special_sync))])
+        s.MT.bind("<ButtonRelease-1>",
+                  lambda e: self.after(10, lambda: self._special_toggle(s, bcol)), add="+")
+        s.CH.bind("<ButtonRelease-1>",
+                  lambda e: self.after(15, lambda: self._fit_table_heights(s, len(SPECIAL_HEADERS))), add="+")
+        self._cur_sheet, self._cur_kind = s, "special"
+        self._apply_table_colors(s, "special")
+        self._fit_table_heights(s, len(SPECIAL_HEADERS))
 
-    def _special_set(self, rec, field, value):
+    def _special_sync(self):
+        if self.read_only or self._cur_kind != "special":
+            return
+        from .engine import SPECIAL_BOOL_COL, SPECIAL_HEADERS
+        s = self._cur_sheet
+        data = s.get_sheet_data()
+        self._push_undo()
+        new = []
+        for row in data:
+            rec = {}
+            for c, h in enumerate(SPECIAL_HEADERS):
+                v = row[c] if c < len(row) else ""
+                if h == SPECIAL_BOOL_COL:
+                    rec[h] = (engine._s(v) == "☑")
+                else:
+                    rec[h] = engine._s(v) or None
+            new.append(rec)
+        self.repo.special = new
+        self.dirty = True
+        self._set_status("특이사항 변경됨")
+
+    def _special_toggle(self, s, bcol):
         if self.read_only:
             return
-        cur = rec.get(field)
-        if field == "종료 여부":
-            value = bool(value)
-        new = value if value != "" else None
-        if engine._s(cur) != engine._s(new) or (field == "종료 여부" and bool(cur) != value):
-            self._push_undo()
-            rec[field] = new if field != "종료 여부" else value
-            self.dirty = True
-            self._set_status("특이사항 변경됨")
+        sel = s.get_currently_selected()
+        if not sel or getattr(sel, "column", None) != bcol:
+            return
+        cur = s.get_cell_data(sel.row, bcol)
+        s.set_cell_data(sel.row, bcol, "☐" if engine._s(cur) == "☑" else "☑")
+        s.redraw()
+        self._special_sync()
 
     def _special_add(self):
         if not self._guard():
             return
         self._push_undo()
         from .engine import SPECIAL_HEADERS
-        rec = {h: (False if h == "종료 여부" else None) for h in SPECIAL_HEADERS}
-        self.repo.special.append(rec)
+        self.repo.special.append({h: (False if h == "종료 여부" else None) for h in SPECIAL_HEADERS})
         self.dirty = True
         self._render()
 
@@ -1290,39 +1431,42 @@ class EquipApp(tk.Tk):
             tk.Label(self.body, text="먼저 ⋯파일 메뉴에서 공용 파일을 여세요.",
                      bg=self.p["bg"], fg=self.p["muted"]).pack(pady=30)
             return
-        inner = self._scroll_area()
-        tk.Label(inner, text="참고자료 (호기 IP 등). 셀을 직접 수정할 수 있습니다.",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).grid(
-            row=0, column=0, columnspan=engine.REF_COLS, sticky="w", pady=(0, 6))
-        grid = [list(r) + [""] * (engine.REF_COLS - len(r)) for r in self.repo.reference]
-        for ri, rowv in enumerate(grid):
-            for ci in range(engine.REF_COLS):
-                sv = tk.StringVar(value=engine._s(rowv[ci]) if ci < len(rowv) else "")
-                e = tk.Entry(inner, textvariable=sv, width=26, font=self.fonts["base"],
-                             relief="solid", bd=1)
-                if self.read_only:
-                    e.config(state="disabled")
-                e.grid(row=ri + 1, column=ci, sticky="nsew", padx=1, pady=1)
-                e.bind("<FocusOut>", lambda ev, r=ri, c=ci, v=sv: self._ref_set(r, c, v.get()))
+        self._toolbar("reference")
         if not self.read_only:
-            tk.Button(inner, text="＋ 행 추가", relief="flat", bd=0, bg=self.p["surface"],
+            btnbar = tk.Frame(self.body, bg=self.p["bg"])
+            btnbar.pack(side="top", fill="x", padx=10)
+            tk.Button(btnbar, text="＋ 행 추가", relief="flat", bd=0, bg=self.p["surface"],
                       fg=self.p["primary"], font=self.fonts["bold"], cursor="hand2",
-                      command=self._ref_add).grid(
-                row=len(grid) + 1, column=0, sticky="w", pady=6)
+                      command=self._ref_add).pack(side="left", pady=4)
+        ncol = max(engine.REF_COLS, max((len(r) for r in self.repo.reference), default=engine.REF_COLS))
+        grid = [list(r) + [""] * (ncol - len(r)) for r in self.repo.reference] or [[""] * ncol]
+        s = self._make_table(None, [[engine._s(c) for c in row] for row in grid], col_edit=True)
+        s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
+        for i, w in enumerate((300, 220, 160, 160)):
+            if i < ncol:
+                try:
+                    s.column_width(column=i, width=w)
+                except Exception:
+                    pass
+        s.extra_bindings([("end_edit_cell", lambda e: self._ref_sync()),
+                          ("rc_delete_row", lambda e: self.after(10, self._ref_sync)),
+                          ("rc_insert_row", lambda e: self.after(10, self._ref_sync)),
+                          ("rc_delete_column", lambda e: self.after(10, self._ref_sync)),
+                          ("rc_insert_column", lambda e: self.after(10, self._ref_sync))])
+        s.CH.bind("<ButtonRelease-1>",
+                  lambda e: self.after(15, lambda: self._fit_table_heights(s, ncol)), add="+")
+        self._cur_sheet, self._cur_kind = s, "reference"
+        self._apply_table_colors(s, "reference")
+        self._fit_table_heights(s, ncol)
 
-    def _ref_set(self, r, c, value):
-        if self.read_only:
+    def _ref_sync(self):
+        if self.read_only or self._cur_kind != "reference":
             return
-        ref = self.repo.reference
-        while len(ref) <= r:
-            ref.append([""] * engine.REF_COLS)
-        while len(ref[r]) <= c:
-            ref[r].append("")
-        if engine._s(ref[r][c]) != engine._s(value):
-            self._push_undo()
-            ref[r][c] = value
-            self.dirty = True
-            self._set_status("참고자료 변경됨")
+        s = self._cur_sheet
+        self._push_undo()
+        self.repo.reference = [[engine._s(c) for c in row] for row in s.get_sheet_data()]
+        self.dirty = True
+        self._set_status("참고자료 변경됨")
 
     def _ref_add(self):
         if not self._guard():
