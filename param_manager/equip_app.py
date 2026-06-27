@@ -79,12 +79,27 @@ class EquipApp(tk.Tk):
         self.collapsed: set = set()          # 접힌 Alg 키
         self._drag = None
         self._row_widgets: list = []         # [(param_row, frame, alg)]
+        self._note_pop = None
+
+        # 되돌리기/다시(동작 단위 스냅샷 스택)
+        self._undo: list = []
+        self._redo: list = []
+
+        # 행 높이(좌/우 정렬용 픽셀)
+        self.HDR_H = 30
+        self.SEC_H = 32
+        self.ROW_H = 30
 
         self._build_chrome()
         self._render()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind_all("<F4>", lambda e: self._highlight_focused())
+        self.bind_all("<Control-z>", lambda e: self.undo())
+        self.bind_all("<Control-y>", lambda e: self.redo())
+        self.bind_all("<Control-Z>", lambda e: self.undo())
+        self.bind_all("<Control-Shift-Z>", lambda e: self.redo())
+        self.bind_all("<Control-Shift-z>", lambda e: self.redo())
 
     # ====================================================================
     #  상단 공통 크롬(뒤로/앞으로/브레드크럼/저장/파일)
@@ -107,6 +122,15 @@ class EquipApp(tk.Tk):
                                   activebackground="#475569",
                                   command=lambda: self.navigate(screen="s0"))
         self.btn_home.pack(side="left", padx=4, pady=11)
+
+        self.btn_undo = tk.Button(bar, text="↶ 되돌리기", relief="flat", bd=0,
+                                  bg="#334155", fg="#f8fafc", padx=10, pady=6,
+                                  activebackground="#475569", command=self.undo)
+        self.btn_undo.pack(side="left", padx=(12, 2), pady=11)
+        self.btn_redo = tk.Button(bar, text="↷ 다시", relief="flat", bd=0,
+                                  bg="#334155", fg="#f8fafc", padx=10, pady=6,
+                                  activebackground="#475569", command=self.redo)
+        self.btn_redo.pack(side="left", padx=2, pady=11)
 
         self.lbl_crumb = tk.Label(bar, text="", bg=self.p["header_bar"],
                                   fg="#cbd5e1", font=self.fonts["sub"])
@@ -205,6 +229,10 @@ class EquipApp(tk.Tk):
             self._render()
 
     def _render(self):
+        # 이전 화면의 휠 바인딩 잔재 제거(다른 창까지 스크롤되는 문제 방지)
+        self.unbind_all("<MouseWheel>")
+        self.btn_undo.config(state=("normal" if self._undo and not self.read_only else "disabled"))
+        self.btn_redo.config(state=("normal" if self._redo and not self.read_only else "disabled"))
         for w in self.body.winfo_children():
             w.destroy()
         if self.view == "special":
@@ -375,16 +403,19 @@ class EquipApp(tk.Tk):
         outer = tk.Frame(self.body, bg=self.p["bg"])
         outer.pack(fill="both", expand=True)
 
-        # Recipe 제목줄
+        # 제목줄: "AOI-25 : PI"
         head = tk.Frame(outer, bg=self.p["surface"],
                         highlightbackground=self.p["border"], highlightthickness=1)
         head.pack(fill="x", padx=12, pady=(10, 0))
-        tk.Label(head, text=f"  {st['recipe'] or st['pi']}", bg=self.p["surface"],
-                 fg=self.p["text"], font=self.fonts["title"]).pack(side="left", pady=8)
-        tk.Label(head, text=f"선택 호기: {st['machine']}   ", bg=self.p["surface"],
-                 fg=self.p["primary"], font=self.fonts["bold"]).pack(side="right", pady=8)
+        tk.Label(head, text=f"  {st['machine']} : {st['recipe'] or st['pi']}",
+                 bg=self.p["surface"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(side="left", pady=8)
+        ro = "  [읽기 전용]" if self.read_only else ""
+        tk.Label(head, text=f"좌=선택 호기(편집) · 우=다른 호기(참고){ro}   ",
+                 bg=self.p["surface"], fg=(self.p["danger"] if self.read_only else self.p["muted"]),
+                 font=self.fonts["sub"]).pack(side="right", pady=8)
 
-        # Zone 가로 탭
+        # Zone 가로 탭 + Zone/Alg 추가
         ztab = tk.Frame(outer, bg=self.p["bg"])
         ztab.pack(fill="x", padx=12, pady=(8, 0))
         for z in zones:
@@ -395,83 +426,66 @@ class EquipApp(tk.Tk):
                           font=self.fonts["bold"], padx=16, pady=8, cursor="hand2",
                           command=lambda zz=z: self._set_zone(zz))
             b.pack(side="left", padx=(0, 4))
-            # 더블클릭 → Zone 이름 수정
             b.bind("<Double-Button-1>",
                    lambda e, zz=z, w=b, s=st: self._edit_popup(
                        w, zz, lambda new, old=zz, ss=s: self._rename_zone(ss, old, new)))
-        tk.Label(ztab, text="  (탭 더블클릭=Zone 이름 수정)", bg=self.p["bg"],
+            b.bind("<Button-3>", lambda e, zz=z, s=st: self._zone_menu(e, s, zz))
+        if not self.read_only:
+            tk.Button(ztab, text="＋Zone", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["primary"], font=self.fonts["bold"], padx=12, pady=8,
+                      cursor="hand2", command=lambda s=st: self._add_zone(s)).pack(side="left", padx=(8, 2))
+            tk.Button(ztab, text="＋Alg", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["primary"], font=self.fonts["bold"], padx=12, pady=8,
+                      cursor="hand2", command=lambda s=st: self._add_alg(s)).pack(side="left", padx=2)
+        tk.Label(ztab, text="  (탭 더블클릭=이름수정, 우클릭=삭제)", bg=self.p["bg"],
                  fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
-        # 스크롤 영역(Alg 섹션 + 파라미터 행)
-        canvas = tk.Canvas(outer, bg=self.p["bg"], highlightthickness=0)
-        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        canvas.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=10)
-        vsb.pack(side="right", fill="y", pady=10)
-        self._canvas = canvas
-        inner = tk.Frame(canvas, bg=self.p["bg"])
-        canvas.create_window((0, 0), window=inner, anchor="nw", tags="inner")
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig("inner", width=e.width))
-        canvas.bind_all("<MouseWheel>",
-                        lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        # ---- 2분할: 좌(선택호기, 고정폭) / 우(다른호기, 가로스크롤) ----
+        mid = tk.Frame(outer, bg=self.p["bg"])
+        mid.pack(fill="both", expand=True, padx=12, pady=10)
+        vbar = ttk.Scrollbar(mid, orient="vertical", command=self._yview_both)
+        vbar.pack(side="right", fill="y")
+        self._vbar = vbar
+
+        LEFT_W = 540
+        left_wrap = tk.Frame(mid, bg=self.p["bg"], width=LEFT_W)
+        left_wrap.pack(side="left", fill="y")
+        left_wrap.pack_propagate(False)
+        lcanvas = tk.Canvas(left_wrap, bg=self.p["bg"], highlightthickness=0)
+        lcanvas.pack(side="left", fill="both", expand=True)
+        linner = tk.Frame(lcanvas, bg=self.p["bg"])
+        lcanvas.create_window((0, 0), window=linner, anchor="nw", tags="inner")
+        lcanvas.bind("<Configure>", lambda e: lcanvas.itemconfig("inner", width=e.width))
+        lcanvas.config(yscrollcommand=vbar.set)
+
+        right_wrap = tk.Frame(mid, bg=self.p["bg"])
+        right_wrap.pack(side="left", fill="both", expand=True)
+        hbar = ttk.Scrollbar(right_wrap, orient="horizontal")
+        hbar.pack(side="bottom", fill="x")
+        rcanvas = tk.Canvas(right_wrap, bg=self.p["bg"], highlightthickness=0)
+        rcanvas.pack(side="left", fill="both", expand=True)
+        hbar.config(command=rcanvas.xview)
+        rcanvas.config(xscrollcommand=hbar.set)
+        rinner = tk.Frame(rcanvas, bg=self.p["bg"])
+        rcanvas.create_window((0, 0), window=rinner, anchor="nw")
+
+        self._left_canvas, self._right_canvas = lcanvas, rcanvas
 
         self._row_widgets = []
-        zrows = [r for r in rows if engine._s(r.get("Zone")) == self.cur_zone]
-        # Alg 그룹(등장 순서 유지)
-        algs = []
-        for r in zrows:
-            a = engine._s(r.get("Alg"))
-            if a not in algs:
-                algs.append(a)
-        for a in algs:
-            self._build_alg_section(inner, st, a, [r for r in zrows
-                                                   if engine._s(r.get("Alg")) == a])
+        others = [m for m in self.repo.aoi_units if m != st["machine"]]
+        self._build_panes(linner, rinner, st, others)
 
-        if not zrows:
-            tk.Label(inner, text="이 Zone 에 표시할 파라미터가 없습니다.",
-                     bg=self.p["bg"], fg=self.p["muted"]).pack(pady=20)
+        def _upd(_=None):
+            lcanvas.configure(scrollregion=lcanvas.bbox("all"))
+            rcanvas.configure(scrollregion=rcanvas.bbox("all"))
+        linner.bind("<Configure>", _upd)
+        rinner.bind("<Configure>", _upd)
+        self.after(60, _upd)
+        self._scope_wheel(mid, lcanvas, rcanvas)
 
     def _set_zone(self, z):
         self.cur_zone = z
         self._render()
-
-    def _build_alg_section(self, parent, st, alg, prows):
-        key = f"{self.cur_zone}|{alg}"
-        coll = key in self.collapsed
-        sec = tk.Frame(parent, bg=self.p["bg"])
-        sec.pack(fill="x", pady=(10, 0))
-
-        hdr = tk.Frame(sec, bg="#e2e8f0", cursor="hand2")
-        hdr.pack(fill="x")
-        arrow = "▶" if coll else "▼"
-        alg_lbl = tk.Label(hdr, text=f" {arrow}  {alg or '(Alg 없음)'}", bg="#e2e8f0",
-                           fg=self.p["text"], font=self.fonts["bold"], anchor="w")
-        alg_lbl.pack(side="left", fill="x", expand=True, ipady=6)
-        tk.Label(hdr, text=f"{len(prows)}개  ", bg="#e2e8f0",
-                 fg=self.p["muted"], font=self.fonts["sub"]).pack(side="right")
-        for w in (hdr, *hdr.winfo_children()):
-            w.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
-        # 더블클릭 → Alg 이름 수정(접힘 토글보다 우선)
-        alg_lbl.bind("<Double-Button-1>",
-                     lambda e, a=alg, w=alg_lbl, s=st: self._edit_popup(
-                         w, a, lambda new, old=a, ss=s: self._rename_alg(ss, old, new)))
-
-        if coll:
-            return
-
-        body = tk.Frame(sec, bg=self.p["surface"],
-                        highlightbackground=self.p["border"], highlightthickness=1)
-        body.pack(fill="x")
-        for pr in prows:
-            self._build_param_row(body, st, pr, alg)
-        # 파라미터 추가 버튼(Alg 하위)
-        add = tk.Button(body, text="＋ 파라미터 추가", relief="flat", bd=0,
-                        bg=self.p["surface"], fg=self.p["primary"],
-                        font=self.fonts["bold"], cursor="hand2", anchor="w", padx=12,
-                        activebackground=self.p["primary_lt"],
-                        command=lambda: self._add_param(st, alg))
-        add.pack(fill="x", pady=2)
 
     def _toggle_alg(self, key):
         if key in self.collapsed:
@@ -480,13 +494,83 @@ class EquipApp(tk.Tk):
             self.collapsed.add(key)
         self._render()
 
-    def _build_param_row(self, parent, st, pr, alg):
+    # ---- 2분할 행 빌더 -------------------------------------------------
+    def _grid_row(self, linner, rinner, r, h):
+        linner.rowconfigure(r, minsize=h)
+        rinner.rowconfigure(r, minsize=h)
+        linner.columnconfigure(0, weight=1)
+
+    def _build_panes(self, linner, rinner, st, others):
+        zrows = [x for x in self._filtered_rows(st)
+                 if engine._s(x.get("Zone")) == self.cur_zone]
+        r = 0
+        # 헤더행: 좌 라벨 / 우 호기명
+        self._grid_row(linner, rinner, r, self.HDR_H)
+        tk.Label(linner, text="  파라미터 〔추천값〕", bg=self.p["head_bg"],
+                 fg=self.p["muted"], font=self.fonts["sub"], anchor="w").grid(
+            row=r, column=0, sticky="nsew")
+        hf = tk.Frame(rinner, bg=self.p["head_bg"])
+        hf.grid(row=r, column=0, sticky="nsew")
+        for m in others:
+            tk.Label(hf, text=m, bg=self.p["head_bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"], width=10, anchor="center").pack(side="left")
+        r += 1
+
+        algs = []
+        for x in zrows:
+            a = engine._s(x.get("Alg"))
+            if a not in algs:
+                algs.append(a)
+        for a in algs:
+            key = f"{self.cur_zone}|{a}"
+            coll = key in self.collapsed
+            prows = [x for x in zrows if engine._s(x.get("Alg")) == a]
+            # 섹션 헤더
+            self._grid_row(linner, rinner, r, self.SEC_H)
+            hdr = tk.Frame(linner, bg="#e2e8f0", cursor="hand2")
+            hdr.grid(row=r, column=0, sticky="nsew")
+            arrow = "▶" if coll else "▼"
+            alg_lbl = tk.Label(hdr, text=f" {arrow}  {a or '(Alg 없음)'}", bg="#e2e8f0",
+                               fg=self.p["text"], font=self.fonts["bold"], anchor="w")
+            alg_lbl.pack(side="left", fill="x", expand=True)
+            tk.Label(hdr, text=f"{len(prows)}개  ", bg="#e2e8f0", fg=self.p["muted"],
+                     font=self.fonts["sub"]).pack(side="right")
+            hdr.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
+            alg_lbl.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
+            alg_lbl.bind("<Double-Button-1>",
+                         lambda e, aa=a, w=alg_lbl, s=st: self._edit_popup(
+                             w, aa, lambda new, old=aa, ss=s: self._rename_alg(ss, old, new)))
+            alg_lbl.bind("<Button-3>", lambda e, aa=a, s=st: self._alg_menu(e, s, aa))
+            tk.Frame(rinner, bg="#e2e8f0").grid(row=r, column=0, sticky="nsew")
+            r += 1
+            if coll:
+                continue
+            for pr in prows:
+                self._grid_row(linner, rinner, r, self.ROW_H)
+                self._build_left_row(linner, r, st, pr, a)
+                self._build_right_row(rinner, r, pr, others)
+                r += 1
+            if not self.read_only:
+                self._grid_row(linner, rinner, r, self.ROW_H)
+                tk.Button(linner, text="＋ 파라미터 추가", relief="flat", bd=0,
+                          bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["bold"],
+                          cursor="hand2", anchor="w", padx=12,
+                          command=lambda s=st, aa=a: self._add_param(s, aa)).grid(
+                    row=r, column=0, sticky="nsew", pady=1)
+                tk.Frame(rinner, bg=self.p["surface"]).grid(row=r, column=0, sticky="nsew", pady=1)
+                r += 1
+
+        if not zrows:
+            self._grid_row(linner, rinner, r, self.ROW_H)
+            tk.Label(linner, text="이 Zone에 파라미터가 없습니다. ＋Alg / ＋파라미터로 추가하세요.",
+                     bg=self.p["bg"], fg=self.p["muted"]).grid(row=r, column=0, sticky="w")
+
+    def _build_left_row(self, linner, r, st, pr, alg):
         machine = st["machine"]
-        row = tk.Frame(parent, bg=self.p["surface"])
-        row.pack(fill="x", padx=6, pady=1)
+        row = tk.Frame(linner, bg=self.p["surface"])
+        row.grid(row=r, column=0, sticky="nsew", pady=1)
         self._row_widgets.append((pr, row, alg))
 
-        # 드래그 그립(꾹 눌러 이동)
         grip = tk.Label(row, text="⋮⋮", bg=self.p["surface"], fg=self.p["muted"],
                         font=self.fonts["bold"], cursor="fleur", width=2)
         grip.pack(side="left")
@@ -494,67 +578,292 @@ class EquipApp(tk.Tk):
         grip.bind("<B1-Motion>", self._drag_move)
         grip.bind("<ButtonRelease-1>", lambda e, s=st: self._drag_drop(e, s))
 
-        # 색칩(파라미터별 색/강조)
         col = self.repo.cell_colors.get(_color_key(pr.row_id), "")
         chip = tk.Label(row, text=" ", bg=(col or self.p["border"]), width=2,
                         cursor="hand2", relief="flat")
-        chip.pack(side="left", padx=(2, 8))
-        chip.bind("<Button-1>", lambda e, p=pr: self._pick_color(p))
+        chip.pack(side="left", padx=(2, 6))
+        chip.bind("<Button-1>", lambda e, p=pr, w=chip: self._color_popup(p, w))
         chip.bind("<Button-3>", lambda e, p=pr: self._clear_color(p))
 
-        # 파라미터 이름 {단위/추천값}
         name = engine._s(pr.get("Parameter")) or "(이름 없음)"
-        rec = engine._s(pr.get("초기 추천값"))
-        ntxt = name + (f"  〔{rec}〕" if rec else "")
         nbg = col or self.p["surface"]
-        lbl = tk.Label(row, text=ntxt, bg=nbg, fg=self.p["text"],
-                       font=self.fonts["base"], width=34, anchor="w")
+        lbl = tk.Label(row, text=name, bg=nbg, fg=self.p["text"],
+                       font=self.fonts["base"], width=20, anchor="w")
         lbl.pack(side="left")
-        # 더블클릭 → 파라미터 이름 수정
         lbl.bind("<Double-Button-1>",
                  lambda e, p=pr, w=lbl: self._edit_popup(
                      w, engine._s(p.get("Parameter")),
                      lambda new, pp=p: self._rename_param(pp, new)))
-
-        # 우클릭 → 변경 내역 보기
         for w in (row, lbl):
             w.bind("<Button-3>", lambda e, p=pr: self._param_menu(e, p))
 
+        # 추천값(초기 추천값) — 모든 호기 공통. 직접 수정 가능
+        rvar = tk.StringVar(value=engine._s(pr.get("초기 추천값")))
+        rent = tk.Entry(row, textvariable=rvar, font=self.fonts["sub"], width=6,
+                        relief="solid", bd=1, justify="center", fg=self.p["muted"],
+                        disabledbackground=self.p["head_bg"])
+        if self.read_only:
+            rent.config(state="disabled")
+        rent.pack(side="left", padx=(4, 6))
+        rent.bind("<FocusOut>", lambda e, p=pr, v=rvar: self._set_reco(p, v))
+        rent.bind("<Return>", lambda e, p=pr, v=rvar: self._set_reco(p, v))
+
         # 선택 호기 입력칸
         var = tk.StringVar(value=engine._s(pr.get(machine)))
-        ent = tk.Entry(row, textvariable=var, font=self.fonts["base"], width=14,
+        ent = tk.Entry(row, textvariable=var, font=self.fonts["base"], width=12,
                        relief="solid", bd=1, justify="center",
                        disabledbackground=self.p["head_bg"])
         if self.read_only:
             ent.config(state="disabled")
-        ent.pack(side="left", padx=8)
+        ent.pack(side="left", padx=2)
         ent.bind("<FocusOut>", lambda e, p=pr, m=machine, v=var: self._set_value(p, m, v))
         ent.bind("<Return>", lambda e, p=pr, m=machine, v=var: self._set_value(p, m, v))
-
-        # 강조(F4) 표시용으로 입력칸에 현재 파라미터 연결
         ent._param = pr
 
-        # ? 버튼 — 비고(메모) 보기/수정
         has_note = bool(engine._s(pr.get("비고")))
         qbtn = tk.Button(row, text="?", width=2, relief="flat", bd=0, cursor="hand2",
                          font=self.fonts["bold"],
                          bg=(self.p["primary_lt"] if has_note else self.p["head_bg"]),
                          fg=(self.p["primary"] if has_note else self.p["muted"]))
         qbtn.config(command=lambda p=pr, w=qbtn: self._show_note(p, w))
-        qbtn.pack(side="left", padx=(2, 4))
+        qbtn.pack(side="left", padx=(4, 2))
 
-        # 다른 호기 값(옅게)
-        others = []
-        for m in self.repo.aoi_units:
-            if m == machine:
-                continue
+    def _build_right_row(self, rinner, r, pr, others):
+        f = tk.Frame(rinner, bg=self.p["surface"])
+        f.grid(row=r, column=0, sticky="nsew", pady=1)
+        for m in others:
             v = engine._s(pr.get(m))
-            if v:
-                others.append(f"{m}:{v}")
-        otxt = "   ".join(others) if others else "다른 호기 값 없음"
-        ol = tk.Label(row, text=otxt, bg=self.p["surface"], fg="#aab2bd",
-                      font=self.fonts["sub"], anchor="w", justify="left")
-        ol.pack(side="left", fill="x", expand=True, padx=(10, 4))
+            tk.Label(f, text=(v or "·"), bg=self.p["surface"], fg="#aab2bd",
+                     font=self.fonts["sub"], width=10, anchor="center").pack(side="left")
+
+    # ---- 스크롤 동기/스코프 -------------------------------------------
+    def _yview_both(self, *args):
+        for c in (getattr(self, "_left_canvas", None), getattr(self, "_right_canvas", None)):
+            if c is not None:
+                c.yview(*args)
+
+    def _scope_wheel(self, widget, *canvases):
+        """포인터가 widget 위에 있을 때만 휠 스크롤(다른 창/빈영역 영향 차단).
+        내용이 화면보다 짧으면 스크롤하지 않는다."""
+        def on(e):
+            ref = canvases[0]
+            bbox = ref.bbox("all")
+            if not bbox or (bbox[3] - bbox[1]) <= ref.winfo_height():
+                return
+            n = int(-e.delta / 120)
+            for c in canvases:
+                c.yview_scroll(n, "units")
+        widget.bind("<Enter>", lambda e: self.bind_all("<MouseWheel>", on))
+        widget.bind("<Leave>", lambda e: self.unbind_all("<MouseWheel>"))
+
+    # ====================================================================
+    #  되돌리기 / 다시 (동작 단위 스냅샷)
+    # ====================================================================
+    def _snapshot_state(self) -> dict:
+        rp = self.repo
+        return {
+            "rows": [(r.row_id, dict(r.values), r.display_order, list(r.aoi_units))
+                     for r in rp.rows],
+            "colors": dict(rp.cell_colors),
+            "borders": dict(rp.cell_borders),
+            "special": [dict(s) for s in rp.special],
+            "reference": [list(x) for x in rp.reference],
+            "aoi_units": list(rp.aoi_units),
+        }
+
+    def _restore_state(self, snap: dict) -> None:
+        from .engine import ParamRow
+        rp = self.repo
+        rp.aoi_units = list(snap["aoi_units"])
+        rp.rows = [ParamRow(values=dict(v), row_id=rid, display_order=do, aoi_units=list(au))
+                   for (rid, v, do, au) in snap["rows"]]
+        rp.cell_colors = dict(snap["colors"])
+        rp.cell_borders = dict(snap["borders"])
+        rp.special = [dict(s) for s in snap["special"]]
+        rp.reference = [list(x) for x in snap["reference"]]
+
+    def _push_undo(self) -> None:
+        """변경 직전 상태를 되돌리기 스택에 저장."""
+        if not self.repo:
+            return
+        self._undo.append(self._snapshot_state())
+        self._undo = self._undo[-60:]
+        self._redo.clear()
+
+    def undo(self):
+        if self.read_only or not self.repo or not self._undo:
+            self._set_status("되돌릴 동작이 없습니다.")
+            return
+        self._redo.append(self._snapshot_state())
+        self._restore_state(self._undo.pop())
+        self.dirty = True
+        self._close_note()
+        self._set_status("되돌리기 완료")
+        self._render()
+
+    def redo(self):
+        if self.read_only or not self.repo or not self._redo:
+            self._set_status("다시 실행할 동작이 없습니다.")
+            return
+        self._undo.append(self._snapshot_state())
+        self._restore_state(self._redo.pop())
+        self.dirty = True
+        self._close_note()
+        self._set_status("다시 실행 완료")
+        self._render()
+
+    # ====================================================================
+    #  추천값 / 색 팝업 / Zone·Alg 추가·삭제
+    # ====================================================================
+    def _set_reco(self, pr, var):
+        if self.read_only:
+            return
+        new = var.get()
+        if engine._s(pr.get("초기 추천값")) != engine._s(new):
+            self._push_undo()
+            pr.set("초기 추천값", new if new != "" else None)
+            self.dirty = True
+            self._set_status(f"추천값 변경: {engine._s(pr.get('Parameter'))} = {new}")
+
+    def _color_popup(self, pr, anchor):
+        """최근 사용자 지정 색 팔레트(껐다 켜도 유지) + 색 선택/해제."""
+        if not self._guard():
+            return
+        self._close_note()
+        pop = tk.Toplevel(self)
+        self._note_pop = pop
+        pop.wm_overrideredirect(True)
+        pop.attributes("-topmost", True)
+        pop.wm_geometry(f"+{anchor.winfo_rootx()}+{anchor.winfo_rooty() + anchor.winfo_height() + 2}")
+        frame = tk.Frame(pop, bg=self.p["surface"], highlightbackground=self.p["border"],
+                         highlightthickness=1)
+        frame.pack()
+        tk.Label(frame, text="최근 색", bg=self.p["surface"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(anchor="w", padx=6, pady=(6, 0))
+        sw = tk.Frame(frame, bg=self.p["surface"])
+        sw.pack(padx=6, pady=4)
+        palette = self.recent_colors or [HIGHLIGHT_YELLOW, "#fee2e2", "#dcfce7",
+                                         "#dbeafe", "#fde68a"]
+        for hx in palette[:10]:
+            tk.Button(sw, bg=hx, width=2, height=1, relief="flat", bd=1, cursor="hand2",
+                      command=lambda c=hx, p=pr: self._apply_color(p, c, pop)).pack(side="left", padx=2)
+        bar = tk.Frame(frame, bg=self.p["surface"])
+        bar.pack(fill="x", padx=6, pady=(0, 6))
+        tk.Button(bar, text="강조(노랑)", relief="flat", bd=0, bg=HIGHLIGHT_YELLOW,
+                  fg="#5a4b00", cursor="hand2",
+                  command=lambda p=pr: self._apply_color(p, HIGHLIGHT_YELLOW, pop)).pack(side="left", padx=2)
+        tk.Button(bar, text="다른 색…", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], cursor="hand2",
+                  command=lambda p=pr: self._pick_color(p, pop)).pack(side="left", padx=2)
+        tk.Button(bar, text="색 없음", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["danger"], cursor="hand2",
+                  command=lambda p=pr: (self._clear_color(p), pop.destroy())).pack(side="left", padx=2)
+        pop.bind("<Escape>", lambda e: pop.destroy())
+
+    def _apply_color(self, pr, hx, pop=None):
+        if not self._guard():
+            return
+        self._push_undo()
+        self.repo.cell_colors[_color_key(pr.row_id)] = hx
+        self._remember_color(hx)
+        self.dirty = True
+        if pop is not None:
+            pop.destroy()
+        self._render()
+
+    def _zone_menu(self, e, st, zone):
+        m = tk.Menu(self, tearoff=0)
+        m.add_command(label=f"Zone '{zone}' 삭제",
+                      command=lambda: self._delete_zone(st, zone),
+                      state=("disabled" if self.read_only else "normal"))
+        try:
+            m.tk_popup(e.x_root, e.y_root)
+        finally:
+            m.grab_release()
+
+    def _alg_menu(self, e, st, alg):
+        m = tk.Menu(self, tearoff=0)
+        m.add_command(label=f"Alg '{alg}' 삭제",
+                      command=lambda: self._delete_alg(st, alg),
+                      state=("disabled" if self.read_only else "normal"))
+        try:
+            m.tk_popup(e.x_root, e.y_root)
+        finally:
+            m.grab_release()
+
+    def _add_zone(self, st):
+        if not self._guard():
+            return
+        name = simpledialog_safe(self, "새 Zone 이름")
+        if not name:
+            return
+        self._push_undo()
+        pr = self.repo.add_row({"PI": st["pi"], "Recipe": st["recipe"], "Zone": name,
+                                "Alg": "", "Parameter": ""})
+        self.cur_zone = name
+        self.dirty = True
+        self._set_status(f"Zone 추가: {name}")
+        self._render()
+
+    def _add_alg(self, st):
+        if not self._guard():
+            return
+        if not self.cur_zone:
+            messagebox.showinfo("Alg 추가", "먼저 Zone을 선택/추가하세요.")
+            return
+        name = simpledialog_safe(self, "새 Alg 이름")
+        if not name:
+            return
+        self._push_undo()
+        # 현재 Zone 마지막 행 아래에 삽입
+        idx = -1
+        for i, r in enumerate(self.repo.rows):
+            if (engine._s(r.get("PI")) == st["pi"]
+                    and engine._s(r.get("Recipe")) == st["recipe"]
+                    and engine._s(r.get("Zone")) == self.cur_zone):
+                idx = i
+        vals = {"PI": st["pi"], "Recipe": st["recipe"], "Zone": self.cur_zone,
+                "Alg": name, "Parameter": ""}
+        if idx >= 0:
+            self.repo.insert_row_after(idx, vals)
+        else:
+            self.repo.add_row(vals)
+        self.dirty = True
+        self._set_status(f"Alg 추가: {name}")
+        self._render()
+
+    def _delete_zone(self, st, zone):
+        if not self._guard():
+            return
+        if not messagebox.askyesno("Zone 삭제",
+                                   f"Zone '{zone}'의 모든 파라미터를 삭제할까요? (현재 Recipe)"):
+            return
+        self._push_undo()
+        ids = [r.row_id for r in self._filtered_rows(st)
+               if engine._s(r.get("Zone")) == zone]
+        for rid in ids:
+            self.repo.remove_row(rid)
+        if self.cur_zone == zone:
+            self.cur_zone = None
+        self.dirty = True
+        self._set_status(f"Zone 삭제: {zone} ({len(ids)}개 파라미터)")
+        self._render()
+
+    def _delete_alg(self, st, alg):
+        if not self._guard():
+            return
+        if not messagebox.askyesno("Alg 삭제",
+                                   f"현재 Zone의 Alg '{alg}' 파라미터를 삭제할까요?"):
+            return
+        self._push_undo()
+        ids = [r.row_id for r in self._filtered_rows(st)
+               if engine._s(r.get("Zone")) == self.cur_zone
+               and engine._s(r.get("Alg")) == alg]
+        for rid in ids:
+            self.repo.remove_row(rid)
+        self.dirty = True
+        self._set_status(f"Alg 삭제: {alg} ({len(ids)}개 파라미터)")
+        self._render()
 
     # ---- 값/색/추가/삭제 ----------------------------------------------
     def _set_value(self, pr, machine, var):
@@ -562,6 +871,7 @@ class EquipApp(tk.Tk):
             return
         new = var.get()
         if engine._s(pr.get(machine)) != engine._s(new):
+            self._push_undo()
             pr.set(machine, new if new != "" else None)
             self.dirty = True
             self._set_status(f"변경됨: {engine._s(pr.get('Parameter'))} [{machine}] = {new}")
@@ -593,6 +903,7 @@ class EquipApp(tk.Tk):
     def _rename_zone(self, st, old, new):
         if not new or new == old:
             return
+        self._push_undo()
         for r in self._filtered_rows(st):
             if engine._s(r.get("Zone")) == old:
                 r.set("Zone", new)
@@ -605,6 +916,7 @@ class EquipApp(tk.Tk):
     def _rename_alg(self, st, old, new):
         if not new or new == old:
             return
+        self._push_undo()
         for r in self._filtered_rows(st):
             if engine._s(r.get("Zone")) == self.cur_zone and engine._s(r.get("Alg")) == old:
                 r.set("Alg", new)
@@ -620,6 +932,7 @@ class EquipApp(tk.Tk):
     def _rename_param(self, pr, new):
         if not new or new == engine._s(pr.get("Parameter")):
             return
+        self._push_undo()
         pr.set("Parameter", new)
         self.dirty = True
         self._set_status(f"파라미터 이름 변경: {new}")
@@ -643,6 +956,7 @@ class EquipApp(tk.Tk):
         if not messagebox.askyesno("삭제",
                                    f"'{engine._s(pr.get('Parameter'))}' 파라미터를 삭제할까요?"):
             return
+        self._push_undo()
         self.repo.remove_row(pr.row_id)
         self.dirty = True
         self._render()
@@ -680,6 +994,7 @@ class EquipApp(tk.Tk):
                 engine._s(h.get("Updated By")), engine._s(h.get("Change Type"))))
         vsb = ttk.Scrollbar(win, orient="vertical", command=tv.yview)
         tv.configure(yscrollcommand=vsb.set)
+        tv.bind("<MouseWheel>", lambda e: tv.yview_scroll(int(-e.delta / 120), "units"))
         tv.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 12))
         vsb.pack(side="right", fill="y", pady=(0, 12), padx=(0, 12))
         if not recs:
@@ -736,6 +1051,7 @@ class EquipApp(tk.Tk):
 
         def save(_=None):
             new = txt.get("1.0", "end").strip()
+            self._push_undo()
             pr.set("비고", new if new else None)
             self.dirty = True
             pop.destroy()
@@ -753,14 +1069,17 @@ class EquipApp(tk.Tk):
                  font=self.fonts["sub"]).pack(side="left")
         pop.bind("<Escape>", lambda e: pop.destroy())
 
-    def _pick_color(self, pr):
+    def _pick_color(self, pr, pop=None):
         if not self._guard():
             return
         rgb, hx = colorchooser.askcolor(title="파라미터 색 선택",
                                         initialcolor=self.recent_colors[0]
                                         if self.recent_colors else "#FFF24D")
+        if pop is not None:
+            pop.destroy()
         if not hx:
             return
+        self._push_undo()
         self.repo.cell_colors[_color_key(pr.row_id)] = hx
         self._remember_color(hx)
         self.dirty = True
@@ -769,6 +1088,9 @@ class EquipApp(tk.Tk):
     def _clear_color(self, pr):
         if not self._guard():
             return
+        if _color_key(pr.row_id) not in self.repo.cell_colors:
+            return
+        self._push_undo()
         self.repo.cell_colors.pop(_color_key(pr.row_id), None)
         self.dirty = True
         self._render()
@@ -780,6 +1102,7 @@ class EquipApp(tk.Tk):
         pr = getattr(w, "_param", None)
         if pr is None:
             return
+        self._push_undo()
         self.repo.cell_colors[_color_key(pr.row_id)] = HIGHLIGHT_YELLOW
         self._remember_color(HIGHLIGHT_YELLOW)
         self.dirty = True
@@ -796,6 +1119,7 @@ class EquipApp(tk.Tk):
     def _add_param(self, st, alg):
         if not self._guard():
             return
+        self._push_undo()
         # 같은 Zone/Alg 마지막 행 아래에 삽입(메타 상속)
         idx = -1
         for i, r in enumerate(self.repo.rows):
@@ -863,6 +1187,7 @@ class EquipApp(tk.Tk):
         if not target or target[0] is src:
             return
         tpr, talg = target
+        self._push_undo()
         # 다른 Alg 로 이동 시 Alg 갱신
         if engine._s(src.get("Alg")) != talg:
             src.set("Alg", talg)
@@ -895,8 +1220,7 @@ class EquipApp(tk.Tk):
         canvas.create_window((0, 0), window=inner, anchor="nw", tags="inner")
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda e: canvas.itemconfig("inner", width=e.width))
-        canvas.bind_all("<MouseWheel>",
-                        lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        self._scope_wheel(canvas, canvas)
         return inner
 
     def _view_special(self):
@@ -946,6 +1270,7 @@ class EquipApp(tk.Tk):
             value = bool(value)
         new = value if value != "" else None
         if engine._s(cur) != engine._s(new) or (field == "종료 여부" and bool(cur) != value):
+            self._push_undo()
             rec[field] = new if field != "종료 여부" else value
             self.dirty = True
             self._set_status("특이사항 변경됨")
@@ -953,6 +1278,7 @@ class EquipApp(tk.Tk):
     def _special_add(self):
         if not self._guard():
             return
+        self._push_undo()
         from .engine import SPECIAL_HEADERS
         rec = {h: (False if h == "종료 여부" else None) for h in SPECIAL_HEADERS}
         self.repo.special.append(rec)
@@ -993,6 +1319,7 @@ class EquipApp(tk.Tk):
         while len(ref[r]) <= c:
             ref[r].append("")
         if engine._s(ref[r][c]) != engine._s(value):
+            self._push_undo()
             ref[r][c] = value
             self.dirty = True
             self._set_status("참고자료 변경됨")
@@ -1000,6 +1327,7 @@ class EquipApp(tk.Tk):
     def _ref_add(self):
         if not self._guard():
             return
+        self._push_undo()
         self.repo.reference.append([""] * engine.REF_COLS)
         self.dirty = True
         self._render()
