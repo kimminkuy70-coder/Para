@@ -539,8 +539,8 @@ class EquipApp(tk.Tk):
         qbtn = tk.Button(row, text="?", width=2, relief="flat", bd=0, cursor="hand2",
                          font=self.fonts["bold"],
                          bg=(self.p["primary_lt"] if has_note else self.p["head_bg"]),
-                         fg=(self.p["primary"] if has_note else self.p["muted"]),
-                         command=lambda p=pr, w=row: self._show_note(p, w))
+                         fg=(self.p["primary"] if has_note else self.p["muted"]))
+        qbtn.config(command=lambda p=pr, w=qbtn: self._show_note(p, w))
         qbtn.pack(side="left", padx=(2, 4))
 
         # 다른 호기 값(옅게)
@@ -687,12 +687,25 @@ class EquipApp(tk.Tk):
                      bg=self.p["bg"], fg=self.p["muted"]).place(relx=0.5, rely=0.5, anchor="center")
 
     # ---- 비고 메모 팝업(엑셀 메모처럼) --------------------------------
+    def _close_note(self):
+        pop = getattr(self, "_note_pop", None)
+        if pop is not None:
+            try:
+                pop.destroy()
+            except Exception:
+                pass
+            self._note_pop = None
+
     def _show_note(self, pr, anchor):
+        # 이미 열린 비고 팝업이 있으면 먼저 닫는다(하나만 유지)
+        self._close_note()
         note = engine._s(pr.get("비고"))
         pop = tk.Toplevel(self)
+        self._note_pop = pop
         pop.wm_overrideredirect(True)
         pop.attributes("-topmost", True)
-        x = anchor.winfo_rootx() + anchor.winfo_width() - 40
+        # ? 버튼 바로 아래에 위치
+        x = anchor.winfo_rootx()
         y = anchor.winfo_rooty() + anchor.winfo_height() + 2
         pop.wm_geometry(f"+{x}+{y}")
         frame = tk.Frame(pop, bg="#fff8c4", highlightbackground="#caa500",
