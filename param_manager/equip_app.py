@@ -67,7 +67,10 @@ class EquipApp(tk.Tk):
         self.dirty = False
         self.recent_colors: list = self._cfg.get("recent_colors", [])
 
-        # 내비게이션 스택(뒤로/앞으로)
+        # 상단 3탭(파라미터 / 특이사항 / 참고자료)
+        self.view = "param"
+
+        # 내비게이션 스택(뒤로/앞으로) — 파라미터 탭 전용
         self.nav: list[dict] = [{"screen": "s0"}]
         self.nav_idx = 0
 
@@ -123,18 +126,56 @@ class EquipApp(tk.Tk):
                                   font=self.fonts["title"])
         self.title_lbl.pack(side="right", padx=16)
 
-        # 본문 컨테이너
-        self.body = tk.Frame(self, bg=self.p["bg"])
-        self.body.pack(side="top", fill="both", expand=True)
+        # 묶음: 파라미터 탭에서만 보이는 내비 위젯
+        self._nav_widgets = [self.btn_back, self.btn_fwd, self.btn_home, self.lbl_crumb]
+
+        # 상단 3탭(파라미터 / 특이사항 / 참고자료)
+        self.tabbar = tk.Frame(self, bg=self.p["head_bg"], height=40)
+        self.tabbar.pack(side="top", fill="x")
+        self.tabbar.pack_propagate(False)
+        self._tab_btns = {}
+        for key, label in (("param", "파라미터"), ("special", "특이사항"),
+                           ("reference", "참고자료")):
+            b = tk.Button(self.tabbar, text=label, relief="flat", bd=0,
+                          font=self.fonts["bold"], padx=22, pady=8, cursor="hand2",
+                          command=lambda k=key: self._set_view(k))
+            b.pack(side="left", padx=(8 if key == "param" else 2, 2), pady=4)
+            self._tab_btns[key] = b
 
         # 상태바
         self.status = tk.Label(self, text="", anchor="w", bg=self.p["head_bg"],
                                fg=self.p["muted"], font=self.fonts["sub"], padx=10)
         self.status.pack(side="bottom", fill="x")
 
+        # 본문 컨테이너
+        self.body = tk.Frame(self, bg=self.p["bg"])
+        self.body.pack(side="top", fill="both", expand=True)
+        self._sync_tab_style()
+
+    def _sync_tab_style(self):
+        for k, b in self._tab_btns.items():
+            on = (k == self.view)
+            b.config(bg=(self.p["primary"] if on else self.p["head_bg"]),
+                     fg=("#ffffff" if on else self.p["muted"]))
+
+    def _set_view(self, key):
+        self.view = key
+        self._sync_tab_style()
+        # 내비 위젯은 파라미터 탭에서만
+        for w in self._nav_widgets:
+            (w.pack(side="left") if key == "param" else w.pack_forget())
+        self._render()
+
     def _set_status(self, msg: str):
         self.status.config(text=msg)
         self.update_idletasks()
+
+    def _guard(self) -> bool:
+        """읽기 전용이면 변경 동작 차단."""
+        if self.read_only:
+            self._set_status("읽기 전용 — 다른 사용자가 편집 중이라 수정할 수 없습니다.")
+            return False
+        return True
 
     # ====================================================================
     #  내비게이션
@@ -166,6 +207,12 @@ class EquipApp(tk.Tk):
     def _render(self):
         for w in self.body.winfo_children():
             w.destroy()
+        if self.view == "special":
+            self._view_special()
+            return
+        if self.view == "reference":
+            self._view_reference()
+            return
         st = self._state()
         self.btn_back.config(state=("normal" if self.nav_idx > 0 else "disabled"))
         self.btn_fwd.config(state=("normal" if self.nav_idx < len(self.nav) - 1 else "disabled"))
@@ -348,6 +395,12 @@ class EquipApp(tk.Tk):
                           font=self.fonts["bold"], padx=16, pady=8, cursor="hand2",
                           command=lambda zz=z: self._set_zone(zz))
             b.pack(side="left", padx=(0, 4))
+            # 더블클릭 → Zone 이름 수정
+            b.bind("<Double-Button-1>",
+                   lambda e, zz=z, w=b, s=st: self._edit_popup(
+                       w, zz, lambda new, old=zz, ss=s: self._rename_zone(ss, old, new)))
+        tk.Label(ztab, text="  (탭 더블클릭=Zone 이름 수정)", bg=self.p["bg"],
+                 fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
         # 스크롤 영역(Alg 섹션 + 파라미터 행)
         canvas = tk.Canvas(outer, bg=self.p["bg"], highlightthickness=0)
@@ -392,13 +445,17 @@ class EquipApp(tk.Tk):
         hdr = tk.Frame(sec, bg="#e2e8f0", cursor="hand2")
         hdr.pack(fill="x")
         arrow = "▶" if coll else "▼"
-        tk.Label(hdr, text=f" {arrow}  {alg or '(Alg 없음)'}", bg="#e2e8f0",
-                 fg=self.p["text"], font=self.fonts["bold"], anchor="w").pack(
-            side="left", fill="x", expand=True, ipady=6)
+        alg_lbl = tk.Label(hdr, text=f" {arrow}  {alg or '(Alg 없음)'}", bg="#e2e8f0",
+                           fg=self.p["text"], font=self.fonts["bold"], anchor="w")
+        alg_lbl.pack(side="left", fill="x", expand=True, ipady=6)
         tk.Label(hdr, text=f"{len(prows)}개  ", bg="#e2e8f0",
                  fg=self.p["muted"], font=self.fonts["sub"]).pack(side="right")
         for w in (hdr, *hdr.winfo_children()):
             w.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
+        # 더블클릭 → Alg 이름 수정(접힘 토글보다 우선)
+        alg_lbl.bind("<Double-Button-1>",
+                     lambda e, a=alg, w=alg_lbl, s=st: self._edit_popup(
+                         w, a, lambda new, old=a, ss=s: self._rename_alg(ss, old, new)))
 
         if coll:
             return
@@ -453,6 +510,15 @@ class EquipApp(tk.Tk):
         lbl = tk.Label(row, text=ntxt, bg=nbg, fg=self.p["text"],
                        font=self.fonts["base"], width=34, anchor="w")
         lbl.pack(side="left")
+        # 더블클릭 → 파라미터 이름 수정
+        lbl.bind("<Double-Button-1>",
+                 lambda e, p=pr, w=lbl: self._edit_popup(
+                     w, engine._s(p.get("Parameter")),
+                     lambda new, pp=p: self._rename_param(pp, new)))
+
+        # 우클릭 → 변경 내역 보기
+        for w in (row, lbl):
+            w.bind("<Button-3>", lambda e, p=pr: self._param_menu(e, p))
 
         # 선택 호기 입력칸
         var = tk.StringVar(value=engine._s(pr.get(machine)))
@@ -467,6 +533,15 @@ class EquipApp(tk.Tk):
 
         # 강조(F4) 표시용으로 입력칸에 현재 파라미터 연결
         ent._param = pr
+
+        # ? 버튼 — 비고(메모) 보기/수정
+        has_note = bool(engine._s(pr.get("비고")))
+        qbtn = tk.Button(row, text="?", width=2, relief="flat", bd=0, cursor="hand2",
+                         font=self.fonts["bold"],
+                         bg=(self.p["primary_lt"] if has_note else self.p["head_bg"]),
+                         fg=(self.p["primary"] if has_note else self.p["muted"]),
+                         command=lambda p=pr, w=row: self._show_note(p, w))
+        qbtn.pack(side="left", padx=(2, 4))
 
         # 다른 호기 값(옅게)
         others = []
@@ -483,13 +558,191 @@ class EquipApp(tk.Tk):
 
     # ---- 값/색/추가/삭제 ----------------------------------------------
     def _set_value(self, pr, machine, var):
+        if self.read_only:
+            return
         new = var.get()
         if engine._s(pr.get(machine)) != engine._s(new):
             pr.set(machine, new if new != "" else None)
             self.dirty = True
             self._set_status(f"변경됨: {engine._s(pr.get('Parameter'))} [{machine}] = {new}")
 
+    # ---- 인라인 편집 팝업(셀 위 떠있는 Entry) -------------------------
+    def _edit_popup(self, widget, current, on_commit):
+        if not self._guard():
+            return
+        top = tk.Toplevel(self)
+        top.wm_overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.wm_geometry(f"+{widget.winfo_rootx()}+{widget.winfo_rooty()}")
+        var = tk.StringVar(value=current)
+        ent = tk.Entry(top, textvariable=var, font=self.fonts["base"],
+                       width=max(20, len(current) + 6), relief="solid", bd=1)
+        ent.pack()
+        ent.focus_set()
+        ent.select_range(0, "end")
+
+        def commit(_=None):
+            val = var.get().strip()
+            top.destroy()
+            on_commit(val)
+
+        ent.bind("<Return>", commit)
+        ent.bind("<Escape>", lambda e: top.destroy())
+        ent.bind("<FocusOut>", lambda e: top.destroy())
+
+    def _rename_zone(self, st, old, new):
+        if not new or new == old:
+            return
+        for r in self._filtered_rows(st):
+            if engine._s(r.get("Zone")) == old:
+                r.set("Zone", new)
+        if self.cur_zone == old:
+            self.cur_zone = new
+        self.dirty = True
+        self._set_status(f"Zone 이름 변경: {old} → {new} (현재 Recipe)")
+        self._render()
+
+    def _rename_alg(self, st, old, new):
+        if not new or new == old:
+            return
+        for r in self._filtered_rows(st):
+            if engine._s(r.get("Zone")) == self.cur_zone and engine._s(r.get("Alg")) == old:
+                r.set("Alg", new)
+        # 접힘 상태 키 이동
+        ok, nk = f"{self.cur_zone}|{old}", f"{self.cur_zone}|{new}"
+        if ok in self.collapsed:
+            self.collapsed.discard(ok)
+            self.collapsed.add(nk)
+        self.dirty = True
+        self._set_status(f"Alg 이름 변경: {old} → {new} (현재 Zone)")
+        self._render()
+
+    def _rename_param(self, pr, new):
+        if not new or new == engine._s(pr.get("Parameter")):
+            return
+        pr.set("Parameter", new)
+        self.dirty = True
+        self._set_status(f"파라미터 이름 변경: {new}")
+        self._render()
+
+    # ---- 우클릭 메뉴 + 변경 내역 창 -----------------------------------
+    def _param_menu(self, e, pr):
+        m = tk.Menu(self, tearoff=0)
+        m.add_command(label="변경 내역 보기", command=lambda: self._show_history(pr))
+        m.add_separator()
+        if not self.read_only:
+            m.add_command(label="이 파라미터 삭제", command=lambda: self._delete_param(pr))
+        try:
+            m.tk_popup(e.x_root, e.y_root)
+        finally:
+            m.grab_release()
+
+    def _delete_param(self, pr):
+        if not self._guard():
+            return
+        if not messagebox.askyesno("삭제",
+                                   f"'{engine._s(pr.get('Parameter'))}' 파라미터를 삭제할까요?"):
+            return
+        self.repo.remove_row(pr.row_id)
+        self.dirty = True
+        self._render()
+
+    def _show_history(self, pr):
+        recipe = engine._s(pr.get("Recipe"))
+        zone = engine._s(pr.get("Zone"))
+        alg = engine._s(pr.get("Alg"))
+        param = engine._s(pr.get("Parameter"))
+        recs = [h for h in self.repo.history
+                if engine._s(h.get("Parameter")) == param
+                and engine._s(h.get("Recipe")) == recipe
+                and engine._s(h.get("Zone")) == zone
+                and engine._s(h.get("Alg")) == alg]
+        recs.reverse()  # 최신순
+
+        win = tk.Toplevel(self)
+        win.title(f"변경 내역 — {param}")
+        win.geometry("820x460")
+        win.configure(bg=self.p["bg"])
+        tk.Label(win, text=f"{recipe} ▸ {zone} ▸ {alg} ▸ {param}",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"],
+                 anchor="w").pack(fill="x", padx=12, pady=(10, 4))
+
+        cols = ("일시", "호기", "이전값", "새값", "변경자", "유형")
+        tv = ttk.Treeview(win, columns=cols, show="headings")
+        widths = (140, 70, 130, 130, 90, 110)
+        for c, w in zip(cols, widths):
+            tv.heading(c, text=c)
+            tv.column(c, width=w, anchor="w")
+        for h in recs:
+            tv.insert("", "end", values=(
+                engine._s(h.get("Update Date")), engine._s(h.get("AOI")),
+                engine._s(h.get("Old Value")), engine._s(h.get("New Value")),
+                engine._s(h.get("Updated By")), engine._s(h.get("Change Type"))))
+        vsb = ttk.Scrollbar(win, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=vsb.set)
+        tv.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 12))
+        vsb.pack(side="right", fill="y", pady=(0, 12), padx=(0, 12))
+        if not recs:
+            tk.Label(win, text="이 파라미터의 변경 내역이 없습니다.",
+                     bg=self.p["bg"], fg=self.p["muted"]).place(relx=0.5, rely=0.5, anchor="center")
+
+    # ---- 비고 메모 팝업(엑셀 메모처럼) --------------------------------
+    def _show_note(self, pr, anchor):
+        note = engine._s(pr.get("비고"))
+        pop = tk.Toplevel(self)
+        pop.wm_overrideredirect(True)
+        pop.attributes("-topmost", True)
+        x = anchor.winfo_rootx() + anchor.winfo_width() - 40
+        y = anchor.winfo_rooty() + anchor.winfo_height() + 2
+        pop.wm_geometry(f"+{x}+{y}")
+        frame = tk.Frame(pop, bg="#fff8c4", highlightbackground="#caa500",
+                         highlightthickness=1)
+        frame.pack()
+        tk.Label(frame, text=f"비고 — {engine._s(pr.get('Parameter'))}", bg="#fff8c4",
+                 fg="#7a5d00", font=self.fonts["sub"], anchor="w").pack(
+            fill="x", padx=8, pady=(6, 0))
+        txt = tk.Text(frame, width=42, height=6, font=self.fonts["base"],
+                      bg="#fffce8", fg=self.p["text"], relief="flat", wrap="word")
+        txt.insert("1.0", note or "(비고 없음 — 더블클릭해 입력)")
+        txt.config(state="disabled")
+        txt.pack(padx=8, pady=6)
+
+        bar = tk.Frame(frame, bg="#fff8c4")
+        bar.pack(fill="x", padx=8, pady=(0, 6))
+        state = {"editing": False}
+
+        def enable_edit(_=None):
+            if self.read_only or state["editing"]:
+                return
+            state["editing"] = True
+            txt.config(state="normal", bg="#ffffff")
+            if not note:
+                txt.delete("1.0", "end")
+            txt.focus_set()
+            save_btn.pack(side="right")
+
+        def save(_=None):
+            new = txt.get("1.0", "end").strip()
+            pr.set("비고", new if new else None)
+            self.dirty = True
+            pop.destroy()
+            self._set_status(f"비고 저장: {engine._s(pr.get('Parameter'))}")
+            self._render()
+
+        txt.bind("<Double-Button-1>", enable_edit)
+        save_btn = tk.Button(bar, text="저장", relief="flat", bd=0,
+                             bg=self.p["primary"], fg="#ffffff", padx=10,
+                             cursor="hand2", command=save)
+        tk.Button(bar, text="닫기", relief="flat", bd=0, bg="#e8e0b0",
+                  fg="#7a5d00", padx=10, cursor="hand2",
+                  command=pop.destroy).pack(side="right", padx=(0, 4))
+        tk.Label(bar, text="더블클릭=수정", bg="#fff8c4", fg="#9a7d20",
+                 font=self.fonts["sub"]).pack(side="left")
+        pop.bind("<Escape>", lambda e: pop.destroy())
+
     def _pick_color(self, pr):
+        if not self._guard():
+            return
         rgb, hx = colorchooser.askcolor(title="파라미터 색 선택",
                                         initialcolor=self.recent_colors[0]
                                         if self.recent_colors else "#FFF24D")
@@ -501,11 +754,15 @@ class EquipApp(tk.Tk):
         self._render()
 
     def _clear_color(self, pr):
+        if not self._guard():
+            return
         self.repo.cell_colors.pop(_color_key(pr.row_id), None)
         self.dirty = True
         self._render()
 
     def _highlight_focused(self):
+        if self.read_only:
+            return
         w = self.focus_get()
         pr = getattr(w, "_param", None)
         if pr is None:
@@ -524,6 +781,8 @@ class EquipApp(tk.Tk):
         save_config(self._cfg)
 
     def _add_param(self, st, alg):
+        if not self._guard():
+            return
         # 같은 Zone/Alg 마지막 행 아래에 삽입(메타 상속)
         idx = -1
         for i, r in enumerate(self.repo.rows):
@@ -554,6 +813,8 @@ class EquipApp(tk.Tk):
 
     # ---- 드래그 이동(순서변경 / 다른 Alg 이동) ------------------------
     def _drag_start(self, e, pr):
+        if self.read_only:
+            return
         self._drag = {"row": pr, "float": None}
 
     def _drag_move(self, e):
@@ -608,6 +869,129 @@ class EquipApp(tk.Tk):
             r.display_order = i + 1
 
     # ====================================================================
+    #  특이사항 / 참고자료 뷰
+    # ====================================================================
+    def _scroll_area(self):
+        """본문에 스크롤 가능한 inner Frame 생성해 반환."""
+        canvas = tk.Canvas(self.body, bg=self.p["bg"], highlightthickness=0)
+        vsb = ttk.Scrollbar(self.body, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=8)
+        vsb.pack(side="right", fill="y", pady=8)
+        inner = tk.Frame(canvas, bg=self.p["bg"])
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="inner")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("inner", width=e.width))
+        canvas.bind_all("<MouseWheel>",
+                        lambda e: canvas.yview_scroll(int(-e.delta / 120), "units"))
+        return inner
+
+    def _view_special(self):
+        if not self.repo:
+            tk.Label(self.body, text="먼저 ⋯파일 메뉴에서 공용 파일을 여세요.",
+                     bg=self.p["bg"], fg=self.p["muted"]).pack(pady=30)
+            return
+        from .engine import SPECIAL_BOOL_COL, SPECIAL_HEADERS
+        inner = self._scroll_area()
+        widths = {"일자": 12, "호기": 9, "라트 번호": 16, "S/M": 6, "Layer": 8,
+                  "목적": 14, "진행 상황": 18, "종료 여부": 8, "특이사항": 40}
+        # 헤더
+        for c, h in enumerate(SPECIAL_HEADERS):
+            tk.Label(inner, text=h, bg=self.p["header_bar"], fg="#f8fafc",
+                     font=self.fonts["bold"], width=widths.get(h, 12),
+                     anchor="w", padx=4).grid(row=0, column=c, sticky="nsew", padx=1, pady=1)
+        # 데이터
+        for ri, rec in enumerate(self.repo.special, start=1):
+            for c, h in enumerate(SPECIAL_HEADERS):
+                if h == SPECIAL_BOOL_COL:
+                    bv = tk.BooleanVar(value=bool(rec.get(h)))
+                    cb = tk.Checkbutton(inner, variable=bv, bg=self.p["surface"],
+                                        command=lambda r=rec, v=bv: self._special_set(r, SPECIAL_BOOL_COL, v.get()))
+                    if self.read_only:
+                        cb.config(state="disabled")
+                    cb.grid(row=ri, column=c, sticky="nsew", padx=1, pady=1)
+                else:
+                    sv = tk.StringVar(value=engine._s(rec.get(h)))
+                    e = tk.Entry(inner, textvariable=sv, width=widths.get(h, 12),
+                                 font=self.fonts["base"], relief="solid", bd=1)
+                    if self.read_only:
+                        e.config(state="disabled")
+                    e.grid(row=ri, column=c, sticky="nsew", padx=1, pady=1)
+                    e.bind("<FocusOut>", lambda ev, r=rec, hh=h, v=sv: self._special_set(r, hh, v.get()))
+        # 추가 버튼
+        if not self.read_only:
+            tk.Button(inner, text="＋ 특이사항 추가", relief="flat", bd=0,
+                      bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["bold"],
+                      cursor="hand2", command=self._special_add).grid(
+                row=len(self.repo.special) + 1, column=0, columnspan=3, sticky="w", pady=6)
+
+    def _special_set(self, rec, field, value):
+        if self.read_only:
+            return
+        cur = rec.get(field)
+        if field == "종료 여부":
+            value = bool(value)
+        new = value if value != "" else None
+        if engine._s(cur) != engine._s(new) or (field == "종료 여부" and bool(cur) != value):
+            rec[field] = new if field != "종료 여부" else value
+            self.dirty = True
+            self._set_status("특이사항 변경됨")
+
+    def _special_add(self):
+        if not self._guard():
+            return
+        from .engine import SPECIAL_HEADERS
+        rec = {h: (False if h == "종료 여부" else None) for h in SPECIAL_HEADERS}
+        self.repo.special.append(rec)
+        self.dirty = True
+        self._render()
+
+    def _view_reference(self):
+        if not self.repo:
+            tk.Label(self.body, text="먼저 ⋯파일 메뉴에서 공용 파일을 여세요.",
+                     bg=self.p["bg"], fg=self.p["muted"]).pack(pady=30)
+            return
+        inner = self._scroll_area()
+        tk.Label(inner, text="참고자료 (호기 IP 등). 셀을 직접 수정할 수 있습니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).grid(
+            row=0, column=0, columnspan=engine.REF_COLS, sticky="w", pady=(0, 6))
+        grid = [list(r) + [""] * (engine.REF_COLS - len(r)) for r in self.repo.reference]
+        for ri, rowv in enumerate(grid):
+            for ci in range(engine.REF_COLS):
+                sv = tk.StringVar(value=engine._s(rowv[ci]) if ci < len(rowv) else "")
+                e = tk.Entry(inner, textvariable=sv, width=26, font=self.fonts["base"],
+                             relief="solid", bd=1)
+                if self.read_only:
+                    e.config(state="disabled")
+                e.grid(row=ri + 1, column=ci, sticky="nsew", padx=1, pady=1)
+                e.bind("<FocusOut>", lambda ev, r=ri, c=ci, v=sv: self._ref_set(r, c, v.get()))
+        if not self.read_only:
+            tk.Button(inner, text="＋ 행 추가", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["primary"], font=self.fonts["bold"], cursor="hand2",
+                      command=self._ref_add).grid(
+                row=len(grid) + 1, column=0, sticky="w", pady=6)
+
+    def _ref_set(self, r, c, value):
+        if self.read_only:
+            return
+        ref = self.repo.reference
+        while len(ref) <= r:
+            ref.append([""] * engine.REF_COLS)
+        while len(ref[r]) <= c:
+            ref[r].append("")
+        if engine._s(ref[r][c]) != engine._s(value):
+            ref[r][c] = value
+            self.dirty = True
+            self._set_status("참고자료 변경됨")
+
+    def _ref_add(self):
+        if not self._guard():
+            return
+        self.repo.reference.append([""] * engine.REF_COLS)
+        self.dirty = True
+        self._render()
+
+    # ====================================================================
     #  파일 / 저장 / 잠금
     # ====================================================================
     def _file_menu(self):
@@ -651,10 +1035,14 @@ class EquipApp(tk.Tk):
         self.read_only = False
         lock = engine.read_lock(path)
         if lock and not lock.is_stale() and lock.user != self.user:
-            self.read_only = messagebox.askyesno(
-                "편집 잠금",
+            # 먼저 접속한 사용자가 있음 → 강제 읽기 전용(확인만 가능)
+            self.read_only = True
+            messagebox.showwarning(
+                "편집 중인 사용자 있음",
                 f"현재 '{lock.user}' 님이 편집 중입니다 (시작 {lock.time}).\n\n"
-                "읽기 전용으로 열까요?\n(아니오 = 잠금 무시하고 편집 — 충돌 위험)")
+                "읽기 전용으로 열립니다. 파라미터 확인만 가능하며 수정/저장은 잠깁니다.\n"
+                "(상대가 종료하면 다시 열어 편집할 수 있습니다. "
+                f"응답 없는 잠금은 {engine.LOCK_STALE_MINUTES}분 후 자동 해제됩니다.)")
         repo = ParamRepository(path)
         try:
             repo.load()
