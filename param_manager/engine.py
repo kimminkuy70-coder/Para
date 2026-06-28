@@ -1058,9 +1058,10 @@ class ParamRepository:
     def remove_row(self, row_id: str) -> None:
         self.rows = [pr for pr in self.rows if pr.row_id != row_id]
 
-    def ensure_machines(self, machines=MACHINES) -> None:
-        """장비 격자(33호기)가 항상 호기 열로 존재하도록 보장.
-        파일에 없던 호기는 빈 열로 추가(기존 순서 유지 후 누락분 뒤에 추가)."""
+    def ensure_machines(self, machines=MACHINES) -> list:
+        """장비 격자(전체 호기)가 항상 호기 열로 존재하도록 보장.
+        파일에 없던 호기는 빈 열로 추가(기존 순서 유지 후 누락분 뒤에 추가).
+        반환: 새로 추가된 호기 목록(없으면 빈 리스트)."""
         seen = set(self.aoi_units)
         added = [m for m in machines if m not in seen]
         if added:
@@ -1069,6 +1070,7 @@ class ParamRepository:
             pr.aoi_units = list(self.aoi_units)
             for m in self.aoi_units:
                 pr.values.setdefault(m, None)
+        return added
 
 
 # --------------------------------------------------------------------------

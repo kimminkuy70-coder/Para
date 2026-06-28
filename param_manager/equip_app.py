@@ -1531,7 +1531,7 @@ class EquipApp(tk.Tk):
         repo = ParamRepository(path)
         try:
             repo.load()
-            repo.ensure_machines()
+            added = repo.ensure_machines()
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("열기 실패", str(e))
             return False
@@ -1539,6 +1539,17 @@ class EquipApp(tk.Tk):
         self.dirty = False
         if not self.read_only:
             engine.write_lock(path, self.user)
+            # 파일에 신규 호기 열이 빠져 있으면 즉시 디스크에 반영(저장)
+            if added:
+                try:
+                    repo.save(user=self.user)
+                    messagebox.showinfo(
+                        "신규 호기 반영",
+                        f"엑셀 PI_ALL 시트에 신규 호기 {len(added)}개 열을 추가해 저장했습니다.\n"
+                        + ", ".join(added))
+                except Exception as e:  # noqa: BLE001
+                    messagebox.showwarning("신규 호기 반영 실패",
+                                           f"신규 호기 열 저장 중 오류: {e}")
         self._cfg[f"{kind.lower()}_path"] = path
         save_config(self._cfg)
         conflicts = engine.find_conflict_copies(path)
