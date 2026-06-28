@@ -463,9 +463,19 @@ class EquipApp(tk.Tk):
         lhdr = tk.Frame(hdr_strip, bg=self.p["head_bg"], width=LEFT_W)
         lhdr.pack(side="left", fill="y")
         lhdr.pack_propagate(False)
-        tk.Label(lhdr, text="  파라미터 〔추천값〕  값", bg=self.p["head_bg"],
-                 fg=self.p["muted"], font=self.fonts["sub"], anchor="w").pack(
-            side="left", fill="both", expand=True)
+        hb = self.p["head_bg"]
+        hfg = self.p["muted"]
+        # 좌측 행 레이아웃(grip/chip/이름/추천값/값/?)에 맞춰 컬럼 제목 정렬
+        tk.Label(lhdr, text="", bg=hb, width=2, font=self.fonts["bold"]).pack(side="left")           # grip
+        tk.Label(lhdr, text="", bg=hb, width=2).pack(side="left", padx=(2, 6))                       # chip
+        tk.Label(lhdr, text="파라미터", bg=hb, fg=hfg, font=self.fonts["base"],
+                 width=20, anchor="w").pack(side="left")
+        tk.Label(lhdr, text="추천값", bg=hb, fg=self.p["primary"], font=self.fonts["sub"],
+                 width=6, anchor="center").pack(side="left", padx=(4, 6))
+        tk.Label(lhdr, text=f"{st['machine']} 값", bg=hb, fg=self.p["primary"],
+                 font=self.fonts["sub"], width=12, anchor="center").pack(side="left", padx=2)
+        tk.Label(lhdr, text="비고", bg=hb, fg=hfg, font=self.fonts["sub"],
+                 width=2).pack(side="left", padx=(4, 2))
         tk.Frame(hdr_strip, bg="#94a3b8", width=3).pack(side="left", fill="y")
         rhead = tk.Canvas(hdr_strip, bg=self.p["head_bg"], highlightthickness=0)
         rhead.pack(side="left", fill="both", expand=True)
