@@ -1695,6 +1695,11 @@ class EquipApp(tk.Tk):
                         "신규 호기 반영",
                         f"엑셀 PI_ALL 시트에 신규 호기 {len(added)}개 열을 추가해 저장했습니다.\n"
                         + ", ".join(added))
+                except PermissionError:
+                    messagebox.showwarning(
+                        "신규 호기 반영 보류",
+                        "신규 호기 열을 추가했지만 파일에 저장하지 못했습니다(권한/잠금).\n"
+                        "Excel에서 이 파일을 닫은 뒤 저장 버튼을 누르면 반영됩니다.")
                 except Exception as e:  # noqa: BLE001
                     messagebox.showwarning("신규 호기 반영 실패",
                                            f"신규 호기 열 저장 중 오류: {e}")
@@ -1763,6 +1768,18 @@ class EquipApp(tk.Tk):
         try:
             engine.write_lock(self.path, self.user)
             stats = self.repo.save(user=self.user)
+        except PermissionError:
+            messagebox.showerror(
+                "저장 실패 — 권한/잠금",
+                "파일에 저장할 수 없습니다 (권한 거부).\n\n"
+                "다음을 확인하세요:\n"
+                "1. 이 파일을 Excel에서 열어두지 않았는지 (열려 있으면 닫고 다시 저장)\n"
+                "2. 파일 속성의 '읽기 전용' 체크 해제\n"
+                "3. OneDrive 동기화가 끝났는지\n"
+                "4. 다른 사람이 편집 중이면 그 사람이 닫은 뒤 저장\n\n"
+                f"경로: {self.path}")
+            self._set_status("저장 실패 — 파일이 열려있거나 권한이 없습니다.")
+            return
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("저장 실패", str(e))
             return
