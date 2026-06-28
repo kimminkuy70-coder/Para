@@ -93,6 +93,9 @@ class EquipApp(tk.Tk):
         self.HDR_H = 30
         self.SEC_H = 34
         self.ROW_H = 34
+        self.LINE_PX = 16          # 우측 줄바꿈 셀의 한 줄 높이
+        self.CELL_CHARS = 9        # 우측 셀(폭 10) 한 줄에 들어가는 대략 글자수
+        self.MAX_LINES = 5         # 우측 셀 최대 줄 수(행 높이 폭주 방지)
 
         self._build_chrome()
         self._render()
@@ -490,7 +493,29 @@ class EquipApp(tk.Tk):
         linner.bind("<Configure>", _upd)
         rinner.bind("<Configure>", _upd)
         self.after(60, _upd)
+        # 줄바꿈으로 행 높이가 달라질 수 있어, 실제 높이를 측정해 좌우를 동일하게 맞춤
+        self.after(70, self._equalize_panes)
         self._scope_wheel(mid, lcanvas, rcanvas, hcanvas=rcanvas)
+
+    def _equalize_panes(self):
+        """좌/우 각 행을 실제 요구 높이의 큰 쪽으로 맞춰 정렬(줄바꿈 대응)."""
+        li, ri = getattr(self, "_pane_l", None), getattr(self, "_pane_r", None)
+        if li is None or ri is None:
+            return
+        try:
+            self.update_idletasks()
+            for r in range(getattr(self, "_pane_n", 0)):
+                lw = li.grid_slaves(row=r, column=0)
+                rw = ri.grid_slaves(row=r, column=0)
+                hl = lw[0].winfo_reqheight() if lw else 0
+                hr = rw[0].winfo_reqheight() if rw else 0
+                h = max(hl, hr, self.ROW_H)
+                li.rowconfigure(r, minsize=h)
+                ri.rowconfigure(r, minsize=h)
+            self._left_canvas.configure(scrollregion=self._left_canvas.bbox("all"))
+            self._right_canvas.configure(scrollregion=self._right_canvas.bbox("all"))
+        except Exception:
+            pass
 
     def _set_zone(self, z):
         self.cur_zone = z
@@ -558,9 +583,11 @@ class EquipApp(tk.Tk):
             if coll:
                 continue
             for pr in prows:
-                self._grid_row(linner, rinner, r, self.ROW_H)
+                lines = self._row_lines(pr, others)
+                rh = max(self.ROW_H, lines * self.LINE_PX + 10)
+                self._grid_row(linner, rinner, r, rh)
                 self._build_left_row(linner, r, st, pr, a)
-                self._build_right_row(rinner, r, pr, others)
+                self._build_right_row(rinner, r, pr, others, lines)
                 r += 1
             if not self.read_only:
                 self._grid_row(linner, rinner, r, self.ROW_H)
@@ -576,6 +603,9 @@ class EquipApp(tk.Tk):
             self._grid_row(linner, rinner, r, self.ROW_H)
             tk.Label(linner, text="이 Zone에 파라미터가 없습니다. ＋Alg / ＋파라미터로 추가하세요.",
                      bg=self.p["bg"], fg=self.p["muted"]).grid(row=r, column=0, sticky="w")
+            r += 1
+        # 줄바꿈 후 좌우 행 높이 정렬용 참조 저장
+        self._pane_l, self._pane_r, self._pane_n = linner, rinner, r
 
     def _build_left_row(self, linner, r, st, pr, alg):
         machine = st["machine"]
@@ -641,23 +671,23 @@ class EquipApp(tk.Tk):
         qbtn.config(command=lambda p=pr, w=qbtn: self._show_note(p, w))
         qbtn.pack(side="left", padx=(4, 2))
 
-    def _build_right_row(self, rinner, r, pr, others):
+    def _build_right_row(self, rinner, r, pr, others, lines=1):
         f = tk.Frame(rinner, bg=self.p["surface"])
         f.grid(row=r, column=0, sticky="nsew")
         for m in others:
-            # 다른 호기 값도 직접 수정 가능(해당 호기 컬럼에 반영) — 엑셀형 격자 셀
-            var = tk.StringVar(value=engine._s(pr.get(m)))
-            e = tk.Entry(f, textvariable=var, width=10, justify="center",
-                         font=self.fonts["sub"], fg="#6b7280",
-                         relief="solid", bd=1, highlightthickness=0,
-                         disabledbackground=self.p["head_bg"])
+            # 다른 호기 값 — 자동 줄바꿈 + 직접 수정(해당 호기 컬럼 반영). 엑셀형 격자 셀
+            v = engine._s(pr.get(m))
+            t = tk.Text(f, width=10, height=lines, wrap="word",
+                        font=self.fonts["sub"], fg="#6b7280", bg=self.p["surface"],
+                        relief="solid", bd=1, highlightthickness=0, padx=2, pady=1)
+            if v:
+                t.insert("1.0", v)
             if self.read_only:
-                e.config(state="disabled")
-            e.pack(side="left", fill="y")
-            e.bind("<FocusOut>", lambda ev, p=pr, mm=m, v=var: self._set_value(p, mm, v))
-            e.bind("<Return>", lambda ev, p=pr, mm=m, v=var:
-                   (self._set_value(p, mm, v), self.focus_set()))
-            e._param = pr
+                t.config(state="disabled")
+            t.pack(side="left", fill="y")
+            t.bind("<FocusOut>",
+                   lambda ev, p=pr, mm=m, w=t: self._set_value_str(p, mm, w.get("1.0", "end")))
+            t._param = pr
 
     # ---- 스크롤 동기/스코프 -------------------------------------------
     def _yview_both(self, *args):
@@ -931,14 +961,27 @@ class EquipApp(tk.Tk):
 
     # ---- 값/색/추가/삭제 ----------------------------------------------
     def _set_value(self, pr, machine, var):
+        self._set_value_str(pr, machine, var.get())
+
+    def _set_value_str(self, pr, machine, new):
         if self.read_only:
             return
-        new = var.get()
-        if engine._s(pr.get(machine)) != engine._s(new):
+        new = engine._s(new)
+        if engine._s(pr.get(machine)) != new:
             self._push_undo()
             pr.set(machine, new if new != "" else None)
             self.dirty = True
             self._set_status(f"변경됨: {engine._s(pr.get('Parameter'))} [{machine}] = {new}")
+
+    def _row_lines(self, pr, others) -> int:
+        """우측 셀들 중 가장 긴 값 기준으로 필요한 줄 수(자동 줄바꿈)."""
+        import math
+        mx = 1
+        for m in others:
+            v = engine._s(pr.get(m))
+            if v:
+                mx = max(mx, math.ceil(len(v) / self.CELL_CHARS))
+        return min(mx, self.MAX_LINES)
 
     # ---- 인라인 편집 팝업(셀 위 떠있는 Entry) -------------------------
     def _edit_popup(self, widget, current, on_commit):
