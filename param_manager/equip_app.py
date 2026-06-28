@@ -511,11 +511,15 @@ class EquipApp(tk.Tk):
         r = 0
         # 헤더행: 좌 라벨 / 우 호기명
         self._grid_row(linner, rinner, r, self.HDR_H)
-        tk.Label(linner, text="  파라미터 〔추천값〕", bg=self.p["head_bg"],
-                 fg=self.p["muted"], font=self.fonts["sub"], anchor="w").grid(
-            row=r, column=0, sticky="nsew")
-        hf = tk.Frame(rinner, bg=self.p["head_bg"])
+        lh = tk.Frame(linner, bg=self.p["head_bg"], height=self.HDR_H)
+        lh.grid(row=r, column=0, sticky="nsew")
+        lh.pack_propagate(False)
+        tk.Label(lh, text="  파라미터 〔추천값〕  값", bg=self.p["head_bg"],
+                 fg=self.p["muted"], font=self.fonts["sub"], anchor="w").pack(
+            side="left", fill="both", expand=True)
+        hf = tk.Frame(rinner, bg=self.p["head_bg"], height=self.HDR_H)
         hf.grid(row=r, column=0, sticky="nsew")
+        hf.pack_propagate(False)
         for m in others:
             tk.Label(hf, text=m, bg=self.p["head_bg"], fg=self.p["text"],
                      font=self.fonts["sub"], width=10, anchor="center",
@@ -534,8 +538,9 @@ class EquipApp(tk.Tk):
             prows = [x for x in zrows if engine._s(x.get("Alg")) == a]
             # 섹션 헤더
             self._grid_row(linner, rinner, r, self.SEC_H)
-            hdr = tk.Frame(linner, bg="#e2e8f0", cursor="hand2")
+            hdr = tk.Frame(linner, bg="#e2e8f0", cursor="hand2", height=self.SEC_H)
             hdr.grid(row=r, column=0, sticky="nsew")
+            hdr.pack_propagate(False)
             arrow = "▶" if coll else "▼"
             alg_lbl = tk.Label(hdr, text=f" {arrow}  {a or '(Alg 없음)'}", bg="#e2e8f0",
                                fg=self.p["text"], font=self.fonts["bold"], anchor="w")
@@ -546,7 +551,9 @@ class EquipApp(tk.Tk):
             alg_lbl.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
             hdr.bind("<Button-3>", lambda e, aa=a, w=alg_lbl, s=st: self._alg_menu(e, s, aa, w))
             alg_lbl.bind("<Button-3>", lambda e, aa=a, w=alg_lbl, s=st: self._alg_menu(e, s, aa, w))
-            tk.Frame(rinner, bg="#e2e8f0").grid(row=r, column=0, sticky="nsew")
+            rsec = tk.Frame(rinner, bg="#e2e8f0", height=self.SEC_H)
+            rsec.grid(row=r, column=0, sticky="nsew")
+            rsec.pack_propagate(False)
             r += 1
             if coll:
                 continue
@@ -557,12 +564,17 @@ class EquipApp(tk.Tk):
                 r += 1
             if not self.read_only:
                 self._grid_row(linner, rinner, r, self.ROW_H)
-                tk.Button(linner, text="＋ 파라미터 추가", relief="flat", bd=0,
+                addf = tk.Frame(linner, bg=self.p["surface"], height=self.ROW_H)
+                addf.grid(row=r, column=0, sticky="nsew")
+                addf.pack_propagate(False)
+                tk.Button(addf, text="＋ 파라미터 추가", relief="flat", bd=0,
                           bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["bold"],
                           cursor="hand2", anchor="w", padx=12,
-                          command=lambda s=st, aa=a: self._add_param(s, aa)).grid(
-                    row=r, column=0, sticky="nsew", pady=1)
-                tk.Frame(rinner, bg=self.p["surface"]).grid(row=r, column=0, sticky="nsew", pady=1)
+                          command=lambda s=st, aa=a: self._add_param(s, aa)).pack(
+                    side="left", fill="both", expand=True)
+                raddf = tk.Frame(rinner, bg=self.p["surface"], height=self.ROW_H)
+                raddf.grid(row=r, column=0, sticky="nsew")
+                raddf.pack_propagate(False)
                 r += 1
 
         if not zrows:
@@ -572,8 +584,9 @@ class EquipApp(tk.Tk):
 
     def _build_left_row(self, linner, r, st, pr, alg):
         machine = st["machine"]
-        row = tk.Frame(linner, bg=self.p["surface"])
-        row.grid(row=r, column=0, sticky="nsew", pady=1)
+        row = tk.Frame(linner, bg=self.p["surface"], height=self.ROW_H)
+        row.grid(row=r, column=0, sticky="nsew")
+        row.pack_propagate(False)   # 정확한 행 높이 고정(좌우 정렬 유지)
         self._row_widgets.append((pr, row, alg))
 
         grip = tk.Label(row, text="⋮⋮", bg=self.p["surface"], fg=self.p["muted"],
@@ -635,8 +648,9 @@ class EquipApp(tk.Tk):
         qbtn.pack(side="left", padx=(4, 2))
 
     def _build_right_row(self, rinner, r, pr, others):
-        f = tk.Frame(rinner, bg=self.p["surface"])
+        f = tk.Frame(rinner, bg=self.p["surface"], height=self.ROW_H)
         f.grid(row=r, column=0, sticky="nsew")
+        f.pack_propagate(False)
         for m in others:
             v = engine._s(pr.get(m))
             # 엑셀처럼 가로/세로 격자 경계(셀 테두리)
