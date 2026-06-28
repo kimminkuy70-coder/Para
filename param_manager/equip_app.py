@@ -89,10 +89,10 @@ class EquipApp(tk.Tk):
         self._undo: list = []
         self._redo: list = []
 
-        # 행 높이(좌/우 정렬용 픽셀)
+        # 행 높이(좌/우 정렬용 픽셀) — 내용(입력칸)보다 크게 잡아 minsize 로 행높이 고정
         self.HDR_H = 30
-        self.SEC_H = 32
-        self.ROW_H = 30
+        self.SEC_H = 34
+        self.ROW_H = 34
 
         self._build_chrome()
         self._render()
@@ -234,10 +234,11 @@ class EquipApp(tk.Tk):
 
     def _render(self):
         # 이전 화면의 휠 바인딩 잔재 제거(다른 창까지 스크롤되는 문제 방지)
-        self.unbind_all("<MouseWheel>")
-        self.unbind_all("<Shift-MouseWheel>")
-        self.unbind_all("<Button-6>")
-        self.unbind_all("<Button-7>")
+        for seq in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-6>", "<Button-7>"):
+            try:
+                self.unbind_all(seq)
+            except tk.TclError:
+                pass
         self.btn_undo.config(state=("normal" if self._undo and not self.read_only else "disabled"))
         self.btn_redo.config(state=("normal" if self._redo and not self.read_only else "disabled"))
         for w in self.body.winfo_children():
@@ -514,15 +515,13 @@ class EquipApp(tk.Tk):
         r = 0
         # 헤더행: 좌 라벨 / 우 호기명
         self._grid_row(linner, rinner, r, self.HDR_H)
-        lh = tk.Frame(linner, bg=self.p["head_bg"], height=self.HDR_H)
+        lh = tk.Frame(linner, bg=self.p["head_bg"])
         lh.grid(row=r, column=0, sticky="nsew")
-        lh.pack_propagate(False)
         tk.Label(lh, text="  파라미터 〔추천값〕  값", bg=self.p["head_bg"],
                  fg=self.p["muted"], font=self.fonts["sub"], anchor="w").pack(
             side="left", fill="both", expand=True)
-        hf = tk.Frame(rinner, bg=self.p["head_bg"], height=self.HDR_H)
+        hf = tk.Frame(rinner, bg=self.p["head_bg"])
         hf.grid(row=r, column=0, sticky="nsew")
-        hf.pack_propagate(False)
         for m in others:
             tk.Label(hf, text=m, bg=self.p["head_bg"], fg=self.p["text"],
                      font=self.fonts["sub"], width=10, anchor="center",
@@ -541,9 +540,8 @@ class EquipApp(tk.Tk):
             prows = [x for x in zrows if engine._s(x.get("Alg")) == a]
             # 섹션 헤더
             self._grid_row(linner, rinner, r, self.SEC_H)
-            hdr = tk.Frame(linner, bg="#e2e8f0", cursor="hand2", height=self.SEC_H)
+            hdr = tk.Frame(linner, bg="#e2e8f0", cursor="hand2")
             hdr.grid(row=r, column=0, sticky="nsew")
-            hdr.pack_propagate(False)
             arrow = "▶" if coll else "▼"
             alg_lbl = tk.Label(hdr, text=f" {arrow}  {a or '(Alg 없음)'}", bg="#e2e8f0",
                                fg=self.p["text"], font=self.fonts["bold"], anchor="w")
@@ -554,9 +552,8 @@ class EquipApp(tk.Tk):
             alg_lbl.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
             hdr.bind("<Button-3>", lambda e, aa=a, w=alg_lbl, s=st: self._alg_menu(e, s, aa, w))
             alg_lbl.bind("<Button-3>", lambda e, aa=a, w=alg_lbl, s=st: self._alg_menu(e, s, aa, w))
-            rsec = tk.Frame(rinner, bg="#e2e8f0", height=self.SEC_H)
+            rsec = tk.Frame(rinner, bg="#e2e8f0")
             rsec.grid(row=r, column=0, sticky="nsew")
-            rsec.pack_propagate(False)
             r += 1
             if coll:
                 continue
@@ -567,17 +564,12 @@ class EquipApp(tk.Tk):
                 r += 1
             if not self.read_only:
                 self._grid_row(linner, rinner, r, self.ROW_H)
-                addf = tk.Frame(linner, bg=self.p["surface"], height=self.ROW_H)
-                addf.grid(row=r, column=0, sticky="nsew")
-                addf.pack_propagate(False)
-                tk.Button(addf, text="＋ 파라미터 추가", relief="flat", bd=0,
+                tk.Button(linner, text="＋ 파라미터 추가", relief="flat", bd=0,
                           bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["bold"],
                           cursor="hand2", anchor="w", padx=12,
-                          command=lambda s=st, aa=a: self._add_param(s, aa)).pack(
-                    side="left", fill="both", expand=True)
-                raddf = tk.Frame(rinner, bg=self.p["surface"], height=self.ROW_H)
-                raddf.grid(row=r, column=0, sticky="nsew")
-                raddf.pack_propagate(False)
+                          command=lambda s=st, aa=a: self._add_param(s, aa)).grid(
+                    row=r, column=0, sticky="nsew")
+                tk.Frame(rinner, bg=self.p["surface"]).grid(row=r, column=0, sticky="nsew")
                 r += 1
 
         if not zrows:
@@ -587,9 +579,8 @@ class EquipApp(tk.Tk):
 
     def _build_left_row(self, linner, r, st, pr, alg):
         machine = st["machine"]
-        row = tk.Frame(linner, bg=self.p["surface"], height=self.ROW_H)
+        row = tk.Frame(linner, bg=self.p["surface"])
         row.grid(row=r, column=0, sticky="nsew")
-        row.pack_propagate(False)   # 정확한 행 높이 고정(좌우 정렬 유지)
         self._row_widgets.append((pr, row, alg))
 
         grip = tk.Label(row, text="⋮⋮", bg=self.p["surface"], fg=self.p["muted"],
@@ -651,9 +642,8 @@ class EquipApp(tk.Tk):
         qbtn.pack(side="left", padx=(4, 2))
 
     def _build_right_row(self, rinner, r, pr, others):
-        f = tk.Frame(rinner, bg=self.p["surface"], height=self.ROW_H)
+        f = tk.Frame(rinner, bg=self.p["surface"])
         f.grid(row=r, column=0, sticky="nsew")
-        f.pack_propagate(False)
         for m in others:
             # 다른 호기 값도 직접 수정 가능(해당 호기 컬럼에 반영) — 엑셀형 격자 셀
             var = tk.StringVar(value=engine._s(pr.get(m)))
@@ -705,14 +695,19 @@ class EquipApp(tk.Tk):
             self.bind_all("<MouseWheel>", on_v)
             if hcanvas is not None:
                 self.bind_all("<Shift-MouseWheel>", on_h)
-                self.bind_all("<Button-6>", on_h_linux)   # 리눅스 가로 휠
-                self.bind_all("<Button-7>", on_h_linux)
+                # 리눅스 가로 휠(Button-6/7) — 일부 X 서버엔 없으므로 예외 무시
+                for seq in ("<Button-6>", "<Button-7>"):
+                    try:
+                        self.bind_all(seq, on_h_linux)
+                    except tk.TclError:
+                        pass
 
         def leave(_=None):
-            self.unbind_all("<MouseWheel>")
-            self.unbind_all("<Shift-MouseWheel>")
-            self.unbind_all("<Button-6>")
-            self.unbind_all("<Button-7>")
+            for seq in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-6>", "<Button-7>"):
+                try:
+                    self.unbind_all(seq)
+                except tk.TclError:
+                    pass
 
         widget.bind("<Enter>", enter)
         widget.bind("<Leave>", leave)
