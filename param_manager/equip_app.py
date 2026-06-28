@@ -235,6 +235,9 @@ class EquipApp(tk.Tk):
     def _render(self):
         # 이전 화면의 휠 바인딩 잔재 제거(다른 창까지 스크롤되는 문제 방지)
         self.unbind_all("<MouseWheel>")
+        self.unbind_all("<Shift-MouseWheel>")
+        self.unbind_all("<Button-6>")
+        self.unbind_all("<Button-7>")
         self.btn_undo.config(state=("normal" if self._undo and not self.read_only else "disabled"))
         self.btn_redo.config(state=("normal" if self._redo and not self.read_only else "disabled"))
         for w in self.body.winfo_children():
@@ -415,7 +418,7 @@ class EquipApp(tk.Tk):
                  bg=self.p["surface"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(side="left", pady=8)
         ro = "  [읽기 전용]" if self.read_only else ""
-        tk.Label(head, text=f"좌=선택 호기(편집) · 우=다른 호기(참고){ro}   ",
+        tk.Label(head, text=f"좌=선택 호기 · 우=다른 호기(직접 수정 가능) · Shift+휠=가로스크롤{ro}   ",
                  bg=self.p["surface"], fg=(self.p["danger"] if self.read_only else self.p["muted"]),
                  font=self.fonts["sub"]).pack(side="right", pady=8)
 
@@ -486,7 +489,7 @@ class EquipApp(tk.Tk):
         linner.bind("<Configure>", _upd)
         rinner.bind("<Configure>", _upd)
         self.after(60, _upd)
-        self._scope_wheel(mid, lcanvas, rcanvas)
+        self._scope_wheel(mid, lcanvas, rcanvas, hcanvas=rcanvas)
 
     def _set_zone(self, z):
         self.cur_zone = z
@@ -652,12 +655,19 @@ class EquipApp(tk.Tk):
         f.grid(row=r, column=0, sticky="nsew")
         f.pack_propagate(False)
         for m in others:
-            v = engine._s(pr.get(m))
-            # 엑셀처럼 가로/세로 격자 경계(셀 테두리)
-            tk.Label(f, text=(v or ""), bg=self.p["surface"], fg="#8a93a0",
-                     font=self.fonts["sub"], width=10, anchor="center",
-                     bd=0, highlightthickness=1,
-                     highlightbackground="#d4dae2").pack(side="left", fill="y")
+            # 다른 호기 값도 직접 수정 가능(해당 호기 컬럼에 반영) — 엑셀형 격자 셀
+            var = tk.StringVar(value=engine._s(pr.get(m)))
+            e = tk.Entry(f, textvariable=var, width=10, justify="center",
+                         font=self.fonts["sub"], fg="#6b7280",
+                         relief="solid", bd=1, highlightthickness=0,
+                         disabledbackground=self.p["head_bg"])
+            if self.read_only:
+                e.config(state="disabled")
+            e.pack(side="left", fill="y")
+            e.bind("<FocusOut>", lambda ev, p=pr, mm=m, v=var: self._set_value(p, mm, v))
+            e.bind("<Return>", lambda ev, p=pr, mm=m, v=var:
+                   (self._set_value(p, mm, v), self.focus_set()))
+            e._param = pr
 
     # ---- 스크롤 동기/스코프 -------------------------------------------
     def _yview_both(self, *args):
@@ -665,19 +675,47 @@ class EquipApp(tk.Tk):
             if c is not None:
                 c.yview(*args)
 
-    def _scope_wheel(self, widget, *canvases):
+    def _scope_wheel(self, widget, *canvases, hcanvas=None):
         """포인터가 widget 위에 있을 때만 휠 스크롤(다른 창/빈영역 영향 차단).
-        내용이 화면보다 짧으면 스크롤하지 않는다."""
-        def on(e):
+        세로: 내용이 화면보다 짧으면 무시. 가로(hcanvas): Shift+휠 / 가로 휠."""
+        def on_v(e):
             ref = canvases[0]
             bbox = ref.bbox("all")
             if not bbox or (bbox[3] - bbox[1]) <= ref.winfo_height():
                 return
-            n = int(-e.delta / 120)
+            n = int(-e.delta / 120) or (-1 if e.delta > 0 else 1)
             for c in canvases:
                 c.yview_scroll(n, "units")
-        widget.bind("<Enter>", lambda e: self.bind_all("<MouseWheel>", on))
-        widget.bind("<Leave>", lambda e: self.unbind_all("<MouseWheel>"))
+            return "break"
+
+        def on_h(e):
+            if hcanvas is None:
+                return
+            n = int(-e.delta / 120) or (-1 if e.delta > 0 else 1)
+            hcanvas.xview_scroll(n, "units")
+            return "break"
+
+        def on_h_linux(e):
+            if hcanvas is None:
+                return
+            hcanvas.xview_scroll(-1 if e.num == 6 else 1, "units")
+            return "break"
+
+        def enter(_=None):
+            self.bind_all("<MouseWheel>", on_v)
+            if hcanvas is not None:
+                self.bind_all("<Shift-MouseWheel>", on_h)
+                self.bind_all("<Button-6>", on_h_linux)   # 리눅스 가로 휠
+                self.bind_all("<Button-7>", on_h_linux)
+
+        def leave(_=None):
+            self.unbind_all("<MouseWheel>")
+            self.unbind_all("<Shift-MouseWheel>")
+            self.unbind_all("<Button-6>")
+            self.unbind_all("<Button-7>")
+
+        widget.bind("<Enter>", enter)
+        widget.bind("<Leave>", leave)
 
     # ====================================================================
     #  되돌리기 / 다시 (동작 단위 스냅샷)
