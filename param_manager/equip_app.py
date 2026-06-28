@@ -459,6 +459,10 @@ class EquipApp(tk.Tk):
         lcanvas.bind("<Configure>", lambda e: lcanvas.itemconfig("inner", width=e.width))
         lcanvas.config(yscrollcommand=vbar.set)
 
+        # 좌(선택 호기) / 우(다른 호기) 경계 세로선
+        divider = tk.Frame(mid, bg="#94a3b8", width=3)
+        divider.pack(side="left", fill="y")
+
         right_wrap = tk.Frame(mid, bg=self.p["bg"])
         right_wrap.pack(side="left", fill="both", expand=True)
         hbar = ttk.Scrollbar(right_wrap, orient="horizontal")
@@ -513,8 +517,10 @@ class EquipApp(tk.Tk):
         hf = tk.Frame(rinner, bg=self.p["head_bg"])
         hf.grid(row=r, column=0, sticky="nsew")
         for m in others:
-            tk.Label(hf, text=m, bg=self.p["head_bg"], fg=self.p["muted"],
-                     font=self.fonts["sub"], width=10, anchor="center").pack(side="left")
+            tk.Label(hf, text=m, bg=self.p["head_bg"], fg=self.p["text"],
+                     font=self.fonts["sub"], width=10, anchor="center",
+                     bd=0, highlightthickness=1,
+                     highlightbackground="#b8c0cc").pack(side="left", fill="y")
         r += 1
 
         algs = []
@@ -630,11 +636,14 @@ class EquipApp(tk.Tk):
 
     def _build_right_row(self, rinner, r, pr, others):
         f = tk.Frame(rinner, bg=self.p["surface"])
-        f.grid(row=r, column=0, sticky="nsew", pady=1)
+        f.grid(row=r, column=0, sticky="nsew")
         for m in others:
             v = engine._s(pr.get(m))
-            tk.Label(f, text=(v or "·"), bg=self.p["surface"], fg="#aab2bd",
-                     font=self.fonts["sub"], width=10, anchor="center").pack(side="left")
+            # 엑셀처럼 가로/세로 격자 경계(셀 테두리)
+            tk.Label(f, text=(v or ""), bg=self.p["surface"], fg="#8a93a0",
+                     font=self.fonts["sub"], width=10, anchor="center",
+                     bd=0, highlightthickness=1,
+                     highlightbackground="#d4dae2").pack(side="left", fill="y")
 
     # ---- 스크롤 동기/스코프 -------------------------------------------
     def _yview_both(self, *args):
