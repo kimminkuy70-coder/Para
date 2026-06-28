@@ -94,8 +94,9 @@ class EquipApp(tk.Tk):
         self.SEC_H = 34
         self.ROW_H = 34
         self.LINE_PX = 16          # 우측 줄바꿈 셀의 한 줄 높이
-        self.CELL_CHARS = 9        # 우측 셀(폭 10) 한 줄에 들어가는 대략 글자수
+        self.CELL_CHARS = 10       # 우측 셀 한 줄에 들어가는 대략 글자수
         self.MAX_LINES = 5         # 우측 셀 최대 줄 수(행 높이 폭주 방지)
+        self.COL_W = 84            # 우측 호기 셀 고정 폭(px) — 헤더/값 정렬용
 
         self._build_chrome()
         self._render()
@@ -449,14 +450,45 @@ class EquipApp(tk.Tk):
                  fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
         # ---- 2분할: 좌(선택호기, 고정폭) / 우(다른호기, 가로스크롤) ----
+        LEFT_W = 540
+        others = [m for m in self.repo.aoi_units if m != st["machine"]]
+
         mid = tk.Frame(outer, bg=self.p["bg"])
         mid.pack(fill="both", expand=True, padx=12, pady=10)
-        vbar = ttk.Scrollbar(mid, orient="vertical", command=self._yview_both)
+
+        # === 상단 고정 헤더(세로 스크롤해도 항상 보임) ===
+        hdr_strip = tk.Frame(mid, bg=self.p["head_bg"], height=self.HDR_H)
+        hdr_strip.pack(side="top", fill="x")
+        hdr_strip.pack_propagate(False)
+        lhdr = tk.Frame(hdr_strip, bg=self.p["head_bg"], width=LEFT_W)
+        lhdr.pack(side="left", fill="y")
+        lhdr.pack_propagate(False)
+        tk.Label(lhdr, text="  파라미터 〔추천값〕  값", bg=self.p["head_bg"],
+                 fg=self.p["muted"], font=self.fonts["sub"], anchor="w").pack(
+            side="left", fill="both", expand=True)
+        tk.Frame(hdr_strip, bg="#94a3b8", width=3).pack(side="left", fill="y")
+        rhead = tk.Canvas(hdr_strip, bg=self.p["head_bg"], highlightthickness=0)
+        rhead.pack(side="left", fill="both", expand=True)
+        rhead_inner = tk.Frame(rhead, bg=self.p["head_bg"])
+        rhead.create_window((0, 0), window=rhead_inner, anchor="nw")
+        for m in others:
+            cell = tk.Frame(rhead_inner, width=self.COL_W, height=self.HDR_H,
+                            bg=self.p["head_bg"], highlightthickness=1,
+                            highlightbackground="#b8c0cc")
+            cell.pack_propagate(False)
+            cell.pack(side="left")
+            tk.Label(cell, text=m, bg=self.p["head_bg"], fg=self.p["text"],
+                     font=self.fonts["sub"], anchor="center").pack(fill="both", expand=True)
+        self._rhead = rhead
+
+        # === 본문(스크롤) ===
+        body = tk.Frame(mid, bg=self.p["bg"])
+        body.pack(side="top", fill="both", expand=True)
+        vbar = ttk.Scrollbar(body, orient="vertical", command=self._yview_both)
         vbar.pack(side="right", fill="y")
         self._vbar = vbar
 
-        LEFT_W = 540
-        left_wrap = tk.Frame(mid, bg=self.p["bg"], width=LEFT_W)
+        left_wrap = tk.Frame(body, bg=self.p["bg"], width=LEFT_W)
         left_wrap.pack(side="left", fill="y")
         left_wrap.pack_propagate(False)
         lcanvas = tk.Canvas(left_wrap, bg=self.p["bg"], highlightthickness=0)
@@ -466,31 +498,39 @@ class EquipApp(tk.Tk):
         lcanvas.bind("<Configure>", lambda e: lcanvas.itemconfig("inner", width=e.width))
         lcanvas.config(yscrollcommand=vbar.set)
 
-        # 좌(선택 호기) / 우(다른 호기) 경계 세로선
-        divider = tk.Frame(mid, bg="#94a3b8", width=3)
+        divider = tk.Frame(body, bg="#94a3b8", width=3)
         divider.pack(side="left", fill="y")
 
-        right_wrap = tk.Frame(mid, bg=self.p["bg"])
+        right_wrap = tk.Frame(body, bg=self.p["bg"])
         right_wrap.pack(side="left", fill="both", expand=True)
         hbar = ttk.Scrollbar(right_wrap, orient="horizontal")
         hbar.pack(side="bottom", fill="x")
         rcanvas = tk.Canvas(right_wrap, bg=self.p["bg"], highlightthickness=0)
         rcanvas.pack(side="left", fill="both", expand=True)
-        hbar.config(command=rcanvas.xview)
-        rcanvas.config(xscrollcommand=hbar.set)
         rinner = tk.Frame(rcanvas, bg=self.p["bg"])
         rcanvas.create_window((0, 0), window=rinner, anchor="nw")
+
+        # 가로 스크롤: 본문 캔버스와 고정 헤더를 같은 위치로 동기화
+        def _xsync(*a):
+            hbar.set(*a)
+            rhead.xview_moveto(rcanvas.xview()[0])
+        rcanvas.config(xscrollcommand=_xsync)
+
+        def _hcmd(*a):
+            rcanvas.xview(*a)
+            rhead.xview_moveto(rcanvas.xview()[0])
+        hbar.config(command=_hcmd)
 
         self._left_canvas, self._right_canvas = lcanvas, rcanvas
 
         self._row_widgets = []
-        others = [m for m in self.repo.aoi_units if m != st["machine"]]
         self._build_panes(linner, rinner, st, others)
 
         def _upd(_=None):
             try:
                 lcanvas.configure(scrollregion=lcanvas.bbox("all"))
                 rcanvas.configure(scrollregion=rcanvas.bbox("all"))
+                rhead.configure(scrollregion=rhead.bbox("all"))
             except tk.TclError:
                 pass
         linner.bind("<Configure>", _upd)
@@ -540,22 +580,7 @@ class EquipApp(tk.Tk):
     def _build_panes(self, linner, rinner, st, others):
         zrows = [x for x in self._filtered_rows(st)
                  if engine._s(x.get("Zone")) == self.cur_zone]
-        r = 0
-        # 헤더행: 좌 라벨 / 우 호기명
-        self._grid_row(linner, rinner, r, self.HDR_H)
-        lh = tk.Frame(linner, bg=self.p["head_bg"])
-        lh.grid(row=r, column=0, sticky="nsew")
-        tk.Label(lh, text="  파라미터 〔추천값〕  값", bg=self.p["head_bg"],
-                 fg=self.p["muted"], font=self.fonts["sub"], anchor="w").pack(
-            side="left", fill="both", expand=True)
-        hf = tk.Frame(rinner, bg=self.p["head_bg"])
-        hf.grid(row=r, column=0, sticky="nsew")
-        for m in others:
-            tk.Label(hf, text=m, bg=self.p["head_bg"], fg=self.p["text"],
-                     font=self.fonts["sub"], width=10, anchor="center",
-                     bd=0, highlightthickness=1,
-                     highlightbackground="#b8c0cc").pack(side="left", fill="y")
-        r += 1
+        r = 0   # 호기명 헤더는 상단 고정 스트립으로 분리됨
 
         algs = []
         for x in zrows:
@@ -678,16 +703,20 @@ class EquipApp(tk.Tk):
         f = tk.Frame(rinner, bg=self.p["surface"])
         f.grid(row=r, column=0, sticky="nsew")
         for m in others:
-            # 다른 호기 값 — 자동 줄바꿈 + 직접 수정(해당 호기 컬럼 반영). 엑셀형 격자 셀
+            # 고정폭 셀(헤더와 동일 COL_W) + 자동 줄바꿈 + 직접 수정. 엑셀형 격자
             v = engine._s(pr.get(m))
-            t = tk.Text(f, width=10, height=lines, wrap="word",
-                        font=self.fonts["sub"], fg="#6b7280", bg=self.p["surface"],
-                        relief="solid", bd=1, highlightthickness=0, padx=2, pady=1)
+            cell = tk.Frame(f, width=self.COL_W, bg=self.p["surface"],
+                            highlightthickness=1, highlightbackground="#d4dae2")
+            cell.pack_propagate(False)
+            cell.pack(side="left", fill="y")
+            t = tk.Text(cell, wrap="word", font=self.fonts["sub"], fg="#6b7280",
+                        bg=self.p["surface"], relief="flat", bd=0,
+                        highlightthickness=0, padx=2, pady=1)
             if v:
                 t.insert("1.0", v)
             if self.read_only:
                 t.config(state="disabled")
-            t.pack(side="left", fill="y")
+            t.pack(fill="both", expand=True)
             t.bind("<FocusOut>",
                    lambda ev, p=pr, mm=m, w=t: self._set_value_str(p, mm, w.get("1.0", "end")))
             t._param = pr
