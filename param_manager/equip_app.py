@@ -488,8 +488,11 @@ class EquipApp(tk.Tk):
         self._build_panes(linner, rinner, st, others)
 
         def _upd(_=None):
-            lcanvas.configure(scrollregion=lcanvas.bbox("all"))
-            rcanvas.configure(scrollregion=rcanvas.bbox("all"))
+            try:
+                lcanvas.configure(scrollregion=lcanvas.bbox("all"))
+                rcanvas.configure(scrollregion=rcanvas.bbox("all"))
+            except tk.TclError:
+                pass
         linner.bind("<Configure>", _upd)
         rinner.bind("<Configure>", _upd)
         self.after(60, _upd)
@@ -691,9 +694,14 @@ class EquipApp(tk.Tk):
 
     # ---- 스크롤 동기/스코프 -------------------------------------------
     def _yview_both(self, *args):
-        for c in (getattr(self, "_left_canvas", None), getattr(self, "_right_canvas", None)):
-            if c is not None:
-                c.yview(*args)
+        # 좌측을 마스터로 스크롤하고 우측은 같은 위치(fraction)로 맞춤.
+        # (우측은 가로 스크롤바 때문에 뷰포트가 더 짧아 units 스크롤이 어긋나므로 moveto 로 동기화)
+        l = getattr(self, "_left_canvas", None)
+        r = getattr(self, "_right_canvas", None)
+        if l is not None:
+            l.yview(*args)
+            if r is not None:
+                r.yview_moveto(l.yview()[0])
 
     def _scope_wheel(self, widget, *canvases, hcanvas=None):
         """포인터가 widget 위에 있을 때만 휠 스크롤(다른 창/빈영역 영향 차단).
@@ -704,8 +712,10 @@ class EquipApp(tk.Tk):
             if not bbox or (bbox[3] - bbox[1]) <= ref.winfo_height():
                 return
             n = int(-e.delta / 120) or (-1 if e.delta > 0 else 1)
-            for c in canvases:
-                c.yview_scroll(n, "units")
+            ref.yview_scroll(n, "units")
+            top = ref.yview()[0]
+            for c in canvases[1:]:   # 나머지 캔버스는 마스터 위치로 동기화
+                c.yview_moveto(top)
             return "break"
 
         def on_h(e):
