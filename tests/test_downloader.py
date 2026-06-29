@@ -29,7 +29,7 @@ def _put_config(d: Path, with_zones=True, rtp=True, optic=True):
 def _tree_legacy(root: Path):
     sr = root / "AOI-18" / "Scanresult"
     for wafer in ("WAF1", "WAF2"):
-        _put_config(sr / "TB500_PI2 - Multi" / "Setup1" / "VHK-PI2" / wafer)
+        _put_config(sr / "TB500_RDL2 - Multi" / "Setup1" / "VHK-RDL2" / wafer)
     _put_config(sr / "TB500_RDL4 - Multi" / "Setup1" / "VHK-RDL4" / "W3", with_zones=False)
     return sr
 
@@ -47,11 +47,11 @@ def test_discover_legacy():
         root = Path(tmp)
         _tree_legacy(root)
         found = dl.discover(str(root / "AOI-18"))
-        assert "TB500_PI2 - Multi" in found
-        assert len(found["TB500_PI2 - Multi"]) == 2, found["TB500_PI2 - Multi"]
-        c = found["TB500_PI2 - Multi"][0]
+        assert "TB500_RDL2 - Multi" in found
+        assert len(found["TB500_RDL2 - Multi"]) == 2, found["TB500_RDL2 - Multi"]
+        c = found["TB500_RDL2 - Multi"][0]
         assert c.equipment == "AOI-18" and c.has_rtp
-        print(f"  legacy discover OK: PI2={len(found['TB500_PI2 - Multi'])} variant0={c.variant}")
+        print(f"  legacy discover OK: RDL2={len(found['TB500_RDL2 - Multi'])} variant0={c.variant}")
 
 
 def test_discover_real_x5_x20():
@@ -105,6 +105,19 @@ def test_manual_real_path():
         assert c.variant == "x20" and c.recipe_name == "TB500_RDL4 - Multi"
         assert c.equipment == "AOI-20" and c.has_rtp
         print(f"  manual real path OK: {c.recipe_name}/{c.variant}")
+
+
+def test_pi_excluded():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        base = _tree_real(root)
+        # PI 계열 폴더도 만들어 둠 → 결과에 나오면 안 됨
+        _put_config(base / "TB500_PI2 - Multi" / "PI")
+        _put_config(base / "TB500_PI2 - Multi" / "PI_bubble")
+        found = dl.discover(str(root / "AOI-20"))
+        assert not any("PI" in r for r in found), found.keys()
+        assert any("RDL" in r for r in found)
+        print(f"  PI 제외 OK: recipes={sorted(found.keys())}")
 
 
 def test_split_paths():

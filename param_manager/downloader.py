@@ -28,16 +28,16 @@ from pathlib import Path, PureWindowsPath
 TARGET_FOLDER_NAME = "Zones"
 TARGET_FILES = ["RTP.txt", "OpticPreset.ini"]
 
-# 자동 탐색 대상 Recipe (필요 시 사용자가 추가/수정 가능하도록 모듈 변수로 노출)
+# 자동 탐색 대상 Recipe.
+# 현재는 RDL 만 지원(x5/x20 변형). PI(PI2~4, PI/PI_bubble) 는 추후 지원 예정.
 TARGET_RECIPE_NAMES = [
-    "TB500_PI2 - Multi",
-    "TB500_PI3 - Multi",
-    "TB500_PI4 - Multi",
     "TB500_RDL1 - Multi",
     "TB500_RDL2 - Multi",
     "TB500_RDL3 - Multi",
     "TB500_RDL4 - Multi",
 ]
+# PI 계열은 현재 미지원 — 탐색에서 제외(폴더가 있어도 후보로 잡지 않음)
+PI_EXCLUDE_RE = re.compile(r"(?i)TB500[_ ]*PI")
 
 
 # --------------------------------------------------------------------------
@@ -182,6 +182,13 @@ def _find_recipe_dirs(root: Path, recipes: list[str] | None, max_depth: int = 4)
     found: list[Path] = []
     seen = set()
 
+    def is_recipe(name: str) -> bool:
+        if PI_EXCLUDE_RE.search(name):      # PI 계열 미지원 → 제외
+            return False
+        if wanted:
+            return name in wanted           # 지정 목록이 있으면 그것만
+        return _RECIPE_RE.match(name) is not None
+
     def walk(d: Path, depth: int):
         if depth > max_depth:
             return
@@ -190,9 +197,7 @@ def _find_recipe_dirs(root: Path, recipes: list[str] | None, max_depth: int = 4)
         except OSError:
             return
         for p in entries:
-            is_recipe = (p.name in wanted) or (not wanted and _RECIPE_RE.match(p.name)) \
-                or (_RECIPE_RE.match(p.name) is not None)
-            if is_recipe and p not in seen:
+            if is_recipe(p.name) and p not in seen:
                 seen.add(p)
                 found.append(p)
             else:

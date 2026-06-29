@@ -1802,8 +1802,8 @@ class EquipApp(tk.Tk):
 
         tk.Label(win, text="장비 폴더에서 파라미터 원본 가져오기", bg=self.p["bg"],
                  fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", padx=14, pady=(12, 2))
-        tk.Label(win, text="호기 경로를 한 줄에 하나씩 입력 → [후보 검색] → Recipe별 Wafer 선택 → [다운로드]. "
-                          "원본은 읽기만 하며 수정하지 않습니다.",
+        tk.Label(win, text="호기 경로를 한 줄에 하나씩 입력 → [후보 검색] → Recipe·변형(x5/x20) 선택 → [다운로드]. "
+                          "원본은 읽기만 하며 수정하지 않습니다. (현재 RDL만 지원, PI 추후)",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(anchor="w", padx=14)
 
         top = tk.Frame(win, bg=self.p["bg"])
