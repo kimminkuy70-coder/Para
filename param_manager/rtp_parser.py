@@ -200,8 +200,10 @@ def detect_meta(config_dir: Path) -> dict:
             layer, recipe = "PI", "PI" + pim.group(1)
         elif re.search(r"(?i)\bPI\b", joined):
             layer, recipe = "PI", "PI"
-    return {"equipment": equip, "layer": layer, "recipe": recipe,
-            "mag": mag if layer == "RDL" else "-"}
+    # 변형(variant): RDL = x5/x20(파일에서 판정), PI = 기본 "PI"(PI/PI_bubble 은
+    # 파일에 신호가 없어 자동 판정 불가 → 사람이 취사선택에서 PI_bubble 로 조정).
+    variant = (mag if layer == "RDL" else "PI") if layer else "-"
+    return {"equipment": equip, "layer": layer, "recipe": recipe, "mag": variant}
 
 
 # --------------------------------------------------------------------------

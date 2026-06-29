@@ -69,8 +69,8 @@ def test_detect_meta_pi():
         d = Path(tmp) / "AOI-15" / "R_TB500_LIVE_PI4"
         _mk(d, optic=OPTIC_X20)
         meta = rp.detect_meta(d)
-        assert meta["layer"] == "PI" and meta["recipe"] == "PI4" and meta["mag"] == "-", meta
-        print(f"  detect_meta PI OK: {meta['recipe']}")
+        assert meta["layer"] == "PI" and meta["recipe"] == "PI4" and meta["mag"] == "PI", meta
+        print(f"  detect_meta PI OK: {meta['recipe']}/{meta['mag']}")
 
 
 def test_scan_and_pivot():

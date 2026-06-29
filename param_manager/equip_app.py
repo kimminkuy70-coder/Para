@@ -2096,6 +2096,8 @@ class EquipApp(tk.Tk):
             "rep": rep, "matched": matched,
             "sel": tk.BooleanVar(value=(source == "existing")),  # 기존은 기본 유지
             "name": tk.StringVar(value=name), "note": tk.StringVar(value=note),
+            # 변형: 신규 PI 는 PI/PI_bubble 을 반드시 직접 선택(미정="")해야 저장됨
+            "variant": tk.StringVar(value=("" if (layer == "PI" and source == "new") else mag)),
         }
 
     @staticmethod
@@ -2132,21 +2134,33 @@ class EquipApp(tk.Tk):
                   cursor="hand2", command=lambda: [it["sel"].set(False) for it in items]).pack(side="right", padx=2, pady=2)
         hdr = tk.Frame(self._cur_inner, bg=self.p["head_bg"])
         hdr.pack(fill="x")
-        for txt, w in (("✓", 3), ("Zone", 16), ("Alg", 20), ("파라미터(추천이름)", 26),
-                       ("비고(번역)", 30), ("대표값/호기", 16)):
+        for txt, w in (("✓", 3), ("변형(PI/PI_bubble)", 16), ("Zone", 16), ("Alg", 18),
+                       ("파라미터(추천이름)", 24), ("비고(번역)", 28), ("대표값/호기", 16)):
             tk.Label(hdr, text=txt, bg=self.p["head_bg"], fg=self.p["muted"],
                      font=self.fonts["sub"], width=w, anchor="w").pack(side="left")
         for it in items:
             row = tk.Frame(self._cur_inner, bg=self.p["surface"])
             row.pack(fill="x")
             tk.Checkbutton(row, variable=it["sel"], bg=self.p["surface"], width=2).pack(side="left")
+            vbox = tk.Frame(row, bg=self.p["surface"], width=130)
+            vbox.pack(side="left")
+            vbox.pack_propagate(False)
+            if it["layer"] == "PI":
+                # PI 는 PI / PI_bubble 을 직접 선택(미정이면 저장 차단)
+                tk.Radiobutton(vbox, text="PI", variable=it["variant"], value="PI",
+                               bg=self.p["surface"], font=self.fonts["sub"]).pack(side="left")
+                tk.Radiobutton(vbox, text="PI_bubble", variable=it["variant"], value="PI_bubble",
+                               bg=self.p["surface"], font=self.fonts["sub"]).pack(side="left")
+            else:
+                tk.Entry(vbox, textvariable=it["variant"], font=self.fonts["sub"],
+                         relief="solid", bd=1, justify="center").pack(side="left", fill="x", expand=True)
             tk.Label(row, text=it["zone"], bg=self.p["surface"], fg=self.p["text"],
                      font=self.fonts["sub"], width=16, anchor="w").pack(side="left")
             tk.Label(row, text=it["alg"], bg=self.p["surface"], fg=self.p["muted"],
-                     font=self.fonts["sub"], width=20, anchor="w").pack(side="left")
-            tk.Entry(row, textvariable=it["name"], font=self.fonts["sub"], width=26,
+                     font=self.fonts["sub"], width=18, anchor="w").pack(side="left")
+            tk.Entry(row, textvariable=it["name"], font=self.fonts["sub"], width=24,
                      relief="solid", bd=1).pack(side="left", padx=1)
-            tk.Entry(row, textvariable=it["note"], font=self.fonts["sub"], width=30,
+            tk.Entry(row, textvariable=it["note"], font=self.fonts["sub"], width=28,
                      relief="solid", bd=1).pack(side="left", padx=1)
             nval = len([v for v in it["values"].values() if engine._s(v) != ""])
             tag = "" if it["matched"] else "  ✦신규"
@@ -2172,8 +2186,9 @@ class EquipApp(tk.Tk):
     def _cur_records(self, items):
         recs = []
         for it in items:
-            rec = {"PI": it["recipe"], "Recipe": it["mag"], "Zone": it["zone"],
-                   "Alg": it["alg"], "Parameter": it["name"].get().strip() or it["param"],
+            rec = {"PI": it["recipe"], "Recipe": it["variant"].get().strip() or it["mag"],
+                   "Zone": it["zone"], "Alg": it["alg"],
+                   "Parameter": it["name"].get().strip() or it["param"],
                    "초기 추천값": it["rep"], "비고": it["note"].get().strip()}
             for m, v in it["values"].items():
                 if engine._s(v) != "":
@@ -2185,6 +2200,24 @@ class EquipApp(tk.Tk):
         sel = [it for it in self._cur_items if it["sel"].get()]
         if not sel:
             self._cur_status.config(text="선택된 항목이 없습니다.")
+            return
+        # PI 항목은 PI / PI_bubble 을 반드시 정해야 함
+        undecided = [it for it in sel
+                     if it["layer"] == "PI" and it["variant"].get().strip() not in ("PI", "PI_bubble")]
+        if undecided:
+            grps = sorted({f"{it['recipe']}" for it in undecided})
+            messagebox.showwarning(
+                "변형 미정",
+                f"선택한 PI 항목 {len(undecided)}개의 변형(PI / PI_bubble)이 정해지지 않았습니다.\n"
+                f"해당 Recipe: {', '.join(grps)}\n\n"
+                "각 항목의 PI / PI_bubble 을 선택한 뒤 저장하세요.",
+                parent=self._cur_win)
+            # 첫 미정 그룹으로 이동
+            first = undecided[0]
+            g = f"{first['layer']} / {first['recipe']} / {first['mag']}"
+            if g in list(self._cur_group["values"]):
+                self._cur_group.set(g)
+                self._cur_render()
             return
         # Layer 로 분리: PI → PI_ALL 시트, RDL → RDL_ALL 시트(각각 다른 파일)
         pi_items = [it for it in sel if it["layer"] == "PI"]
