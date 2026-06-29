@@ -23,6 +23,7 @@ from tksheet import Sheet
 
 from . import downloader as dl
 from . import engine
+from . import rtp_parser as rtp
 from .engine import MACHINES, ParamRepository
 from .theme import apply_theme
 
@@ -1638,6 +1639,7 @@ class EquipApp(tk.Tk):
         m.add_command(label="기존 엑셀(.xlsm) 가져오기 → RDL",
                       command=lambda: self._import_dialog("RDL"))
         m.add_separator()
+        m.add_command(label="파라미터 폴더 분석 → 취사선택…", command=self._curate_dialog)
         m.add_command(label="장비 폴더에서 파라미터 다운로드…", command=self._download_dialog)
         m.add_separator()
         m.add_command(label="다른 이름으로 내보내기", command=self._export_dialog)
@@ -1936,6 +1938,209 @@ class EquipApp(tk.Tk):
         detail = "\n".join(done) + ("\n\n[오류]\n" + "\n".join(errs) if errs else "")
         messagebox.showinfo("다운로드 결과",
                             detail or "다운로드한 항목이 없습니다.", parent=self._dl_win)
+
+    # ====================================================================
+    #  파라미터 폴더 분석 → 취사선택(큐레이션)
+    # ====================================================================
+    def _curate_dialog(self):
+        win = tk.Toplevel(self)
+        win.title("파라미터 폴더 분석 → 취사선택")
+        win.geometry("1180x720")
+        win.configure(bg=self.p["bg"])
+        self._cur_win = win
+        self._cur_items = []
+        self._cur_machines = []
+
+        tk.Label(win, text="파라미터 폴더 분석 → 취사선택", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=14, pady=(12, 0))
+        tk.Label(win, text="다운받아 둔 폴더(호기/Recipe/x5·x20 구조)를 선택해 분석 → Recipe·배율별로 "
+                          "쓸 파라미터를 체크. 추천이름·비고(번역)는 사전에서 자동 표시, 직접 수정 가능.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(anchor="w", padx=14)
+
+        top = tk.Frame(win, bg=self.p["bg"])
+        top.pack(fill="x", padx=14, pady=8)
+        self._cur_path = tk.StringVar(value=self._cfg.get("param_folder", ""))
+        tk.Entry(top, textvariable=self._cur_path, font=self.fonts["base"],
+                 relief="solid", bd=1).pack(side="left", fill="x", expand=True)
+        tk.Button(top, text="폴더 선택", relief="flat", bd=0, bg=self.p["surface"],
+                  cursor="hand2", command=self._cur_pick).pack(side="left", padx=6)
+        tk.Button(top, text="분석", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                  padx=14, cursor="hand2", command=self._cur_analyze).pack(side="left")
+
+        sel = tk.Frame(win, bg=self.p["bg"])
+        sel.pack(fill="x", padx=14)
+        tk.Label(sel, text="Recipe·배율:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        self._cur_group = ttk.Combobox(sel, state="readonly", width=30)
+        self._cur_group.pack(side="left", padx=6)
+        self._cur_group.bind("<<ComboboxSelected>>", lambda e: self._cur_render())
+        self._cur_only_match = tk.BooleanVar(value=False)
+        tk.Checkbutton(sel, text="사전 매칭만 보기", variable=self._cur_only_match,
+                       bg=self.p["bg"], command=self._cur_render).pack(side="left", padx=8)
+        tk.Button(sel, text="모두 선택", relief="flat", bd=0, bg=self.p["surface"],
+                  cursor="hand2", command=lambda: self._cur_select_all(True)).pack(side="left", padx=2)
+        tk.Button(sel, text="모두 해제", relief="flat", bd=0, bg=self.p["surface"],
+                  cursor="hand2", command=lambda: self._cur_select_all(False)).pack(side="left", padx=2)
+
+        mid = tk.Frame(win, bg=self.p["surface"], highlightbackground=self.p["border"],
+                       highlightthickness=1)
+        mid.pack(fill="both", expand=True, padx=14, pady=6)
+        canvas = tk.Canvas(mid, bg=self.p["surface"], highlightthickness=0)
+        vsb = ttk.Scrollbar(mid, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+        self._cur_inner = tk.Frame(canvas, bg=self.p["surface"])
+        canvas.create_window((0, 0), window=self._cur_inner, anchor="nw", tags="i")
+        self._cur_inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        canvas.bind("<Enter>", lambda e: canvas.bind_all(
+            "<MouseWheel>", lambda ev: canvas.yview_scroll(int(-ev.delta / 120), "units")))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        bot = tk.Frame(win, bg=self.p["bg"])
+        bot.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Button(bot, text="선택 항목으로 양식 만들기(.xlsx)", relief="flat", bd=0, bg=self.p["ok"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=self._cur_save).pack(side="left")
+        self._cur_status = tk.Label(bot, text="", bg=self.p["bg"], fg=self.p["muted"],
+                                    font=self.fonts["sub"])
+        self._cur_status.pack(side="left", padx=12)
+
+    def _cur_pick(self):
+        d = filedialog.askdirectory(title="파라미터 폴더 선택")
+        if d:
+            self._cur_path.set(d)
+
+    def _cur_analyze(self):
+        path = self._cur_path.get().strip()
+        if not path or not os.path.isdir(path):
+            self._cur_status.config(text="폴더를 선택하세요.")
+            return
+        self._cfg["param_folder"] = path
+        save_config(self._cfg)
+        self._cur_status.config(text="분석 중…")
+        self.update_idletasks()
+        try:
+            cfgs = rtp.scan_tree(path)
+            rows, machines = rtp.build_pivot(cfgs)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("분석 실패", str(e), parent=self._cur_win)
+            return
+        self._cur_machines = machines
+        self._cur_items = []
+        groups = []
+        for r in rows:
+            rec = rtp.recommend(r["layer"], r["recipe"], r["mag"], r["zone"], r["alg"], r["param"])
+            name = (rec or {}).get("param") or r["param"]
+            note = (rec or {}).get("desc_kr") or ""
+            vals = {m: v for m, v in r["values"].items() if engine._s(v) != ""}
+            rep = self._cur_rep(vals)
+            it = {
+                "layer": r["layer"], "recipe": r["recipe"], "mag": r["mag"],
+                "zone": r["zone"], "alg": r["alg"], "param": r["param"],
+                "values": r["values"], "rep": rep, "matched": rec is not None,
+                "sel": tk.BooleanVar(value=rec is not None),
+                "name": tk.StringVar(value=name),
+                "note": tk.StringVar(value=note),
+            }
+            self._cur_items.append(it)
+            g = f"{r['layer']} / {r['recipe']} / {r['mag']}"
+            if g not in groups:
+                groups.append(g)
+        self._cur_group["values"] = groups
+        if groups:
+            self._cur_group.current(0)
+        matched = sum(1 for it in self._cur_items if it["matched"])
+        self._cur_status.config(
+            text=f"분석 완료: {len(self._cur_items)}개 항목, 호기 {len(machines)}, "
+                 f"사전매칭 {matched}. Recipe·배율 선택 후 체크.")
+        self._cur_render()
+
+    @staticmethod
+    def _cur_rep(vals: dict) -> str:
+        if not vals:
+            return ""
+        from collections import Counter
+        return Counter(engine._s(v) for v in vals.values()).most_common(1)[0][0]
+
+    def _cur_group_items(self):
+        if not self._cur_group.get():
+            return []
+        layer, recipe, mag = [x.strip() for x in self._cur_group.get().split("/")]
+        out = []
+        for it in self._cur_items:
+            if it["layer"] == layer and it["recipe"] == recipe and it["mag"] == mag:
+                if self._cur_only_match.get() and not it["matched"]:
+                    continue
+                out.append(it)
+        return out
+
+    def _cur_render(self):
+        for w in self._cur_inner.winfo_children():
+            w.destroy()
+        items = self._cur_group_items()
+        hdr = tk.Frame(self._cur_inner, bg=self.p["head_bg"])
+        hdr.pack(fill="x")
+        for txt, w in (("✓", 3), ("Zone", 16), ("Alg", 20), ("파라미터(추천이름)", 26),
+                       ("비고(번역)", 30), ("대표값/호기", 16)):
+            tk.Label(hdr, text=txt, bg=self.p["head_bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"], width=w, anchor="w").pack(side="left")
+        for it in items:
+            row = tk.Frame(self._cur_inner, bg=self.p["surface"])
+            row.pack(fill="x")
+            tk.Checkbutton(row, variable=it["sel"], bg=self.p["surface"], width=2).pack(side="left")
+            tk.Label(row, text=it["zone"], bg=self.p["surface"], fg=self.p["text"],
+                     font=self.fonts["sub"], width=16, anchor="w").pack(side="left")
+            tk.Label(row, text=it["alg"], bg=self.p["surface"], fg=self.p["muted"],
+                     font=self.fonts["sub"], width=20, anchor="w").pack(side="left")
+            e1 = tk.Entry(row, textvariable=it["name"], font=self.fonts["sub"], width=26,
+                          relief="solid", bd=1)
+            e1.pack(side="left", padx=1)
+            e2 = tk.Entry(row, textvariable=it["note"], font=self.fonts["sub"], width=30,
+                          relief="solid", bd=1)
+            e2.pack(side="left", padx=1)
+            nval = len([v for v in it["values"].values() if engine._s(v) != ""])
+            tag = "" if it["matched"] else "  ✦신규"
+            tk.Label(row, text=f"{it['rep']}  ({nval}호기){tag}", bg=self.p["surface"],
+                     fg=("#9aa3af" if it["matched"] else self.p["danger"]),
+                     font=self.fonts["sub"], width=18, anchor="w").pack(side="left")
+        self._cur_status.config(text=f"{self._cur_group.get()} — {len(items)}개 표시")
+
+    def _cur_select_all(self, on: bool):
+        for it in self._cur_group_items():
+            it["sel"].set(on)
+
+    def _cur_save(self):
+        sel = [it for it in self._cur_items if it["sel"].get()]
+        if not sel:
+            self._cur_status.config(text="선택된 항목이 없습니다.")
+            return
+        dest = filedialog.asksaveasfilename(
+            title="양식 저장(.xlsx)", defaultextension=".xlsx",
+            filetypes=[("Excel", "*.xlsx")], parent=self._cur_win)
+        if not dest:
+            return
+        records = []
+        for it in sel:
+            rec = {"PI": it["recipe"], "Recipe": it["mag"], "Zone": it["zone"],
+                   "Alg": it["alg"], "Parameter": it["name"].get().strip() or it["param"],
+                   "초기 추천값": it["rep"], "비고": it["note"].get().strip()}
+            for m, v in it["values"].items():
+                if engine._s(v) != "":
+                    rec[m] = v
+            records.append(rec)
+        try:
+            engine.create_from_records(dest, records, self._cur_machines, user=self.user)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("저장 실패", str(e), parent=self._cur_win)
+            return
+        self._cur_status.config(text=f"{len(sel)}개 파라미터로 양식 저장 완료.")
+        if messagebox.askyesno("완료", f"{len(sel)}개 파라미터 양식을 저장했습니다.\n지금 열까요?\n{dest}",
+                               parent=self._cur_win):
+            self._cur_win.destroy()
+            self._do_open(dest, "PI")
+            self.navigate(screen="s0")
 
     def _on_close(self):
         if self.dirty and not messagebox.askyesno(

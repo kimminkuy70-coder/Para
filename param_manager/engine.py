@@ -1102,6 +1102,52 @@ def create_empty_workbook(path: str) -> None:
     wb.save(path)
 
 
+def create_from_records(dest_xlsx: str, records: list, machines=None,
+                        user: str | None = None) -> "ParamRepository":
+    """취사선택 결과(레코드 목록)로 새 공용 파일(.xlsx)을 생성.
+
+    records: 각 dict 는 메타(PI/Recipe/Zone/Alg/Parameter/초기 추천값/비고)와
+             호기 값(예: {"AOI-3": "1", ...})을 함께 담는다.
+    machines: 호기 열 목록(None 이면 레코드에서 수집 + 전체 호기 보장).
+    """
+    user = user or current_user()
+    repo = ParamRepository(dest_xlsx)
+    # 호기 목록 = 지정값 ∪ 레코드 등장 호기 (메타 제외)
+    meta = set(META_FIELDS)
+    seen = list(machines or [])
+    for rec in records:
+        for k in rec:
+            if k not in meta and k not in seen:
+                seen.append(k)
+    repo.aoi_units = seen or list(AOI_UNITS)
+    repo.sheet_name = SHEET_PI
+    fields = editable_fields(repo.aoi_units)
+    repo.rows = []
+    for i, rec in enumerate(records):
+        vals = {f: None for f in fields}
+        for k, v in rec.items():
+            if k in vals or k in repo.aoi_units:
+                vals[k] = v
+        pr = ParamRow(values=vals, row_id=new_row_id(), display_order=i + 2,
+                      aoi_units=list(repo.aoi_units))
+        repo.rows.append(pr)
+    repo.ensure_machines()
+    repo._capture_base()
+    out = openpyxl.Workbook()
+    out.remove(out.active)
+    repo._write_pi_all(out, repo.rows)
+    repo._write_summary(out, repo.rows, {}, [], user, [])
+    repo._write_history(out)
+    repo._write_snapshot(out, repo.rows)
+    repo._write_special(out)
+    repo._write_reference(out)
+    repo._write_colors(out)
+    repo._write_borders(out)
+    out.save(dest_xlsx)
+    repo._capture_base()
+    return repo
+
+
 def import_from_xlsm(src_path: str, dest_xlsx: str) -> ParamRepository:
     """기존 엑셀(.xlsm/.xlsx)에서 데이터를 읽어 새 .xlsx 로 변환 저장.
     시트 이름(PI_ALL/RDL_ALL 등)과 호기 열을 자동 인식한다."""
