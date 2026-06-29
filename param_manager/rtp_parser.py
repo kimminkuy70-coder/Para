@@ -200,10 +200,43 @@ def detect_meta(config_dir: Path) -> dict:
             layer, recipe = "PI", "PI" + pim.group(1)
         elif re.search(r"(?i)\bPI\b", joined):
             layer, recipe = "PI", "PI"
-    # 변형(variant): RDL = x5/x20(파일에서 판정), PI = 기본 "PI"(PI/PI_bubble 은
-    # 파일에 신호가 없어 자동 판정 불가 → 사람이 취사선택에서 PI_bubble 로 조정).
-    variant = (mag if layer == "RDL" else "PI") if layer else "-"
+
+    # 변형(variant):
+    #   RDL = x5/x20 (폴더명/OpticPreset Scan2d Mag 로 판정)
+    #   PI  = 폴더명(PI / PI_bubble)로 판정 — 사람이 'PI레시피/PI|PI_bubble/파일' 형태로
+    #         폴더를 만들어 주어야 인식. 그 형태가 아니면 ""(미지정 → 불러오지 않음).
+    if layer == "RDL":
+        variant = mag
+    elif layer == "PI":
+        nm = re.sub(r"[^a-z]", "", name.lower())
+        if "bubble" in nm:
+            variant = "PI_bubble"
+        elif nm == "pi":
+            variant = "PI"
+        else:
+            variant = ""        # PI/PI_bubble 하위폴더로 지정 안 됨
+    else:
+        variant = "-"
     return {"equipment": equip, "layer": layer, "recipe": recipe, "mag": variant}
+
+
+def config_valid(cfg) -> bool:
+    """변형이 제대로 인식됐는지(불러올 수 있는지)."""
+    if cfg.layer == "PI":
+        return cfg.mag in ("PI", "PI_bubble")
+    if cfg.layer == "RDL":
+        return bool(cfg.mag) and cfg.mag not in ("-", "")
+    return False
+
+
+def invalid_reason(cfg) -> str:
+    if not cfg.layer:
+        return "Layer(PI/RDL) 인식 실패"
+    if cfg.layer == "PI":
+        return "PI 변형 폴더(PI / PI_bubble) 미지정"
+    if cfg.layer == "RDL":
+        return "RDL 배율(x5/x20) 인식 실패"
+    return "구조 인식 실패"
 
 
 # --------------------------------------------------------------------------

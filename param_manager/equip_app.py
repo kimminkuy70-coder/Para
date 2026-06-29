@@ -2025,7 +2025,47 @@ class EquipApp(tk.Tk):
         self._cur_status.config(text="분석 중…")
         self.update_idletasks()
         try:
-            rows, machines = rtp.build_pivot(rtp.scan_tree(path))
+            cfgs = rtp.scan_tree(path)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("분석 실패", str(e), parent=self._cur_win)
+            return
+
+        valid = [c for c in cfgs if rtp.config_valid(c)]
+        invalid = [c for c in cfgs if not rtp.config_valid(c)]
+        # 변형 미지정(구조 안 맞는) 폴더 → 불러오지 않고 안내
+        if invalid:
+            lines = []
+            for c in invalid[:25]:
+                lines.append(f"· {c.config_dir.name}  ({rtp.invalid_reason(c)})")
+            more = f"\n…외 {len(invalid) - 25}개" if len(invalid) > 25 else ""
+            messagebox.showwarning(
+                "변형 미지정 폴더(불러오지 않음)",
+                f"아래 {len(invalid)}개 폴더는 변형이 지정되지 않아 불러오지 않습니다.\n"
+                "PI 는 'PI레시피/PI' 또는 'PI레시피/PI_bubble' 하위폴더로,\n"
+                "RDL 은 'Recipe/x5' 또는 'Recipe/x20' 하위폴더로 만들어 주세요.\n\n"
+                + "\n".join(lines) + more, parent=self._cur_win)
+        if not valid:
+            messagebox.showerror(
+                "불러올 항목 없음",
+                "변형(PI/PI_bubble · x5/x20)이 제대로 지정된 폴더가 없습니다.\n"
+                "폴더 구조를 맞춘 뒤 다시 시도하세요.", parent=self._cur_win)
+            self._cur_status.config(text="인식된 유효 폴더 없음.")
+            return
+        # 제대로 인식된 것 불러올지 확인
+        vsum = {}
+        for c in valid:
+            vsum.setdefault(f"{c.layer} {c.recipe} {c.mag}", 0)
+            vsum[f"{c.layer} {c.recipe} {c.mag}"] += 1
+        if not messagebox.askyesno(
+                "인식 결과",
+                f"제대로 인식된 설정 {len(valid)}개를 불러올까요?"
+                + (f"  (미지정 {len(invalid)}개 제외)" if invalid else "") + "\n\n"
+                + ", ".join(f"{k}×{v}" for k, v in sorted(vsum.items())),
+                parent=self._cur_win):
+            self._cur_status.config(text="불러오기 취소.")
+            return
+        try:
+            rows, machines = rtp.build_pivot(valid)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("분석 실패", str(e), parent=self._cur_win)
             return

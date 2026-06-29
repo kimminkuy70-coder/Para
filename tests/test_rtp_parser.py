@@ -66,11 +66,23 @@ def test_detect_meta_mag():
 
 def test_detect_meta_pi():
     with tempfile.TemporaryDirectory() as tmp:
-        d = Path(tmp) / "AOI-15" / "R_TB500_LIVE_PI4"
-        _mk(d, optic=OPTIC_X20)
-        meta = rp.detect_meta(d)
-        assert meta["layer"] == "PI" and meta["recipe"] == "PI4" and meta["mag"] == "PI", meta
-        print(f"  detect_meta PI OK: {meta['recipe']}/{meta['mag']}")
+        base = Path(tmp) / "AOI-15" / "R_TB500_LIVE_PI4"
+        _mk(base / "PI", optic=OPTIC_X20)
+        _mk(base / "PI_bubble", optic=OPTIC_X20)
+        m1 = rp.detect_meta(base / "PI")
+        m2 = rp.detect_meta(base / "PI_bubble")
+        assert m1["layer"] == "PI" and m1["recipe"] == "PI4" and m1["mag"] == "PI", m1
+        assert m2["mag"] == "PI_bubble", m2
+        # PI/PI_bubble 하위폴더 없이 바로 RTP 면 변형 미지정("") → 무효
+        bad = Path(tmp) / "AOI-15b" / "R_TB500_LIVE_PI3"
+        _mk(bad, optic=OPTIC_X20)
+        mb = rp.detect_meta(bad)
+        assert mb["layer"] == "PI" and mb["mag"] == "", mb
+        cfgs = rp.scan_tree(Path(tmp))
+        valid = [c for c in cfgs if rp.config_valid(c)]
+        invalid = [c for c in cfgs if not rp.config_valid(c)]
+        assert len(valid) == 2 and len(invalid) == 1, (len(valid), len(invalid))
+        print(f"  detect_meta PI OK: PI/PI_bubble valid={len(valid)} invalid={len(invalid)}")
 
 
 def test_scan_and_pivot():
