@@ -89,6 +89,22 @@ def test_scan_and_pivot():
         print(f"  scan+pivot OK: configs={len(cfgs)} rows={len(rows)} machines={machines}")
 
 
+def test_parse_optic_light():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        d = root / "AOI-20" / "TB500_RDL4 - Multi" / "x20"
+        _mk(d, optic="[General]\nSignature=3\n[Scan2d]\nMag=20\nCameraName=TDI\nExposure=200\n")
+        cfgs = rtp.scan_tree(root)
+        rows, _ = rtp.build_pivot(cfgs)
+        light = [r for r in rows if r["zone"] == "LIGHT"]
+        assert light, "LIGHT zone 있어야"
+        algs = {r["alg"] for r in light}
+        assert "Scan2d" in algs and "General" in algs, algs
+        mag = [r for r in light if r["param"] == "Mag"][0]
+        assert "20" in mag["values"].values()
+        print(f"  optic→LIGHT OK: {len(light)}개, algs={sorted(algs)}")
+
+
 def test_template_recommend():
     tmpl = rp.load_template()
     assert len(tmpl) > 1000, len(tmpl)

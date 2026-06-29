@@ -82,6 +82,25 @@ def parse_rtp(path: str | Path) -> list[RtpRow]:
     return out
 
 
+def parse_optic(path: str | Path, zone: str = "LIGHT") -> list[RtpRow]:
+    """OpticPreset.ini → 광학/광원 파라미터를 LIGHT Zone 으로.
+    Zone=LIGHT, Alg=섹션명([General]/[AutoFocus]/[Scan2d]/[x20]…), Parameter=키."""
+    p = Path(path)
+    if not p.is_file():
+        return []
+    cfg = configparser.ConfigParser(strict=False)
+    cfg.optionxform = str
+    try:
+        cfg.read(p, encoding="utf-8")
+    except Exception:
+        return []
+    out: list[RtpRow] = []
+    for sec in cfg.sections():
+        for key, val in cfg.items(sec):
+            out.append(RtpRow(zone, sec, key, (val or "").strip(), "", ""))
+    return out
+
+
 # --------------------------------------------------------------------------
 # 이름 정규화(raw → 화면 표시명)  — 템플릿의 'RTP 파라미터'와 맞추기 위함
 # --------------------------------------------------------------------------
@@ -207,8 +226,10 @@ def scan_tree(root: str | Path) -> list[ParsedConfig]:
     res: list[ParsedConfig] = []
     for cdir in find_config_dirs(root):
         meta = detect_meta(cdir)
+        rows = parse_rtp(cdir / "RTP.txt")
+        rows += parse_optic(cdir / "OpticPreset.ini")   # LIGHT Zone(광학/광원)
         res.append(ParsedConfig(meta["equipment"], meta["layer"], meta["recipe"],
-                                meta["mag"], cdir, parse_rtp(cdir / "RTP.txt")))
+                                meta["mag"], cdir, rows))
     return res
 
 
@@ -250,14 +271,21 @@ def load_template() -> list[dict]:
     return _TEMPLATE_CACHE
 
 
-def template_index() -> dict:
-    """(layer,recipe,mag,zone_norm,alg_norm,param_norm) → 템플릿 항목(추천이름/비고)."""
-    idx = {}
-    for t in load_template():
-        k = (t.get("layer"), t.get("recipe"), t.get("mag"),
-             norm_key(t.get("zone")), norm_key(t.get("alg")), norm_key(t.get("param")))
-        idx[k] = t
-    return idx
+_IDX_CACHE = None
+_ZAP_CACHE = None
+
+
+def template_index():
+    """(full key → 항목), (zone/alg/param key → 항목) 두 인덱스 캐시 생성."""
+    global _IDX_CACHE, _ZAP_CACHE
+    if _IDX_CACHE is None:
+        _IDX_CACHE = {}
+        _ZAP_CACHE = {}
+        for t in load_template():
+            zk, ak, pk = norm_key(t.get("zone")), norm_key(t.get("alg")), norm_key(t.get("param"))
+            _IDX_CACHE[(t.get("layer"), t.get("recipe"), t.get("mag"), zk, ak, pk)] = t
+            _ZAP_CACHE.setdefault((zk, ak, pk), t)
+    return _IDX_CACHE, _ZAP_CACHE
 
 
 def refresh_values(repo, folder: str | Path) -> dict:
@@ -304,14 +332,10 @@ def refresh_values(repo, folder: str | Path) -> dict:
 
 def recommend(layer, recipe, mag, zone, alg, param) -> dict | None:
     """파싱된 항목에 대해 추천이름/비고(설명번역) 찾기. 없으면 None."""
-    idx = template_index()
-    k = (layer, recipe, mag, norm_key(zone), norm_key(alg), norm_key(param))
-    if k in idx:
-        return idx[k]
+    full, zap = template_index()
+    zk, ak, pk = norm_key(zone), norm_key(alg), norm_key(param)
+    k = (layer, recipe, mag, zk, ak, pk)
+    if k in full:
+        return full[k]
     # 배율/recipe 무시하고 zone/alg/param 만으로도 시도(번역 재활용)
-    for t in load_template():
-        if (norm_key(t.get("zone")) == norm_key(zone)
-                and norm_key(t.get("alg")) == norm_key(alg)
-                and norm_key(t.get("param")) == norm_key(param)):
-            return t
-    return None
+    return zap.get((zk, ak, pk))
