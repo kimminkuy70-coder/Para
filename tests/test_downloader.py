@@ -67,6 +67,19 @@ def test_discover_real_x5_x20():
         print(f"  real x5/x20 discover OK: RDL4 variants={variants}, equip={c.equipment}")
 
 
+def test_discover_at_recipe_level():
+    """입력 경로가 호기 위가 아니라 Recipe 폴더 직접이어도 x5/x20 을 잡아야."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        base = _tree_real(root)
+        recipe_path = base / "TB500_RDL4 - Multi"
+        found = dl.discover(str(recipe_path))
+        assert "TB500_RDL4 - Multi" in found, found.keys()
+        variants = sorted(c.variant for c in found["TB500_RDL4 - Multi"])
+        assert variants == ["x20", "x5"], variants
+        print(f"  recipe-level discover OK: {variants}")
+
+
 def test_copy_x5_x20_separately():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)

@@ -265,10 +265,23 @@ def discover(root_text: str, recipes: list[str] | None = None) -> dict[str, list
         raise FileNotFoundError(f"경로가 없습니다: {root}")
     equipment = _equipment_of(root) or root.name
     result: dict[str, list[WaferCandidate]] = {}
-    for recipe_dir in _find_recipe_dirs(root, recipes):
+
+    recipe_dirs = _find_recipe_dirs(root, recipes)
+    # 입력 경로 자체가 Recipe 폴더(TB500_RDL...)일 수도 있다 → 포함
+    if _RECIPE_RE.match(root.name) and not PI_EXCLUDE_RE.search(root.name):
+        recipe_dirs = [root] + [d for d in recipe_dirs if d != root]
+
+    for recipe_dir in recipe_dirs:
         cands = find_wafer_candidates(recipe_dir, equipment, recipe_dir.name)
         if cands:
             result.setdefault(recipe_dir.name, []).extend(cands)
+
+    # 어떤 Recipe 폴더도 못 찾았는데 root 아래에 설정폴더(x5/x20 등)가 바로 있으면
+    # root 를 Recipe 로 취급해 변형(x5/x20)을 후보로 잡는다.
+    if not result:
+        cands = find_wafer_candidates(root, equipment, root.name)
+        if cands:
+            result[root.name] = cands
     return result
 
 
