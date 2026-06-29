@@ -1102,25 +1102,63 @@ def create_empty_workbook(path: str) -> None:
     wb.save(path)
 
 
+def _record_key(rec: dict) -> tuple:
+    """레코드 식별 키(중복/병합 판정): Recipe·변형·Zone·Alg·Parameter."""
+    def n(x):
+        return _s(x).strip().lower()
+    return (n(rec.get("PI")), n(rec.get("Recipe")), n(rec.get("Zone")),
+            n(rec.get("Alg")), n(rec.get("Parameter")))
+
+
 def create_from_records(dest_xlsx: str, records: list, machines=None,
-                        user: str | None = None) -> "ParamRepository":
-    """취사선택 결과(레코드 목록)로 새 공용 파일(.xlsx)을 생성.
+                        user: str | None = None, sheet_name: str = SHEET_PI,
+                        merge: bool = False) -> "ParamRepository":
+    """취사선택 결과(레코드 목록)로 공용 파일(.xlsx)을 생성/병합.
 
     records: 각 dict 는 메타(PI/Recipe/Zone/Alg/Parameter/초기 추천값/비고)와
              호기 값(예: {"AOI-3": "1", ...})을 함께 담는다.
-    machines: 호기 열 목록(None 이면 레코드에서 수집 + 전체 호기 보장).
+    machines: 호기 열 목록(None 이면 레코드에서 수집).
+    sheet_name: 데이터 시트("PI_ALL"/"RDL_ALL") — PI/RDL 분리 저장용.
+    merge=True 이고 dest 가 이미 있으면: 기존 행/값/색을 그대로 두고, 기존에 없던
+            레코드만 새로 추가(기존 PI/RDL 작업 보존).
     """
     user = user or current_user()
-    repo = ParamRepository(dest_xlsx)
-    # 호기 목록 = 지정값 ∪ 레코드 등장 호기 (메타 제외)
     meta = set(META_FIELDS)
+
+    # 병합 모드: 기존 파일 로드 후 없던 항목만 추가하고 repo.save 로 저장
+    if merge and os.path.exists(dest_xlsx):
+        repo = ParamRepository(dest_xlsx)
+        repo.load()
+        existing = {_record_key({"PI": pr.get("PI"), "Recipe": pr.get("Recipe"),
+                                 "Zone": pr.get("Zone"), "Alg": pr.get("Alg"),
+                                 "Parameter": pr.get("Parameter")}) for pr in repo.rows}
+        # 새 호기 열 보장
+        for rec in records:
+            for k in rec:
+                if k not in meta and k not in repo.aoi_units:
+                    repo.aoi_units.append(k)
+        added = 0
+        for rec in records:
+            if _record_key(rec) in existing:
+                continue                      # 기존 항목 유지(값/구조 보존)
+            pr = repo.add_row({k: v for k, v in rec.items()
+                               if k in meta or k in repo.aoi_units})
+            existing.add(_record_key(rec))
+            added += 1
+        repo.ensure_machines()
+        repo.save(user=user)
+        repo._added_count = added
+        return repo
+
+    # 새로 생성(덮어쓰기)
+    repo = ParamRepository(dest_xlsx)
     seen = list(machines or [])
     for rec in records:
         for k in rec:
             if k not in meta and k not in seen:
                 seen.append(k)
     repo.aoi_units = seen or list(AOI_UNITS)
-    repo.sheet_name = SHEET_PI
+    repo.sheet_name = sheet_name
     fields = editable_fields(repo.aoi_units)
     repo.rows = []
     for i, rec in enumerate(records):
@@ -1145,6 +1183,7 @@ def create_from_records(dest_xlsx: str, records: list, machines=None,
     repo._write_borders(out)
     out.save(dest_xlsx)
     repo._capture_base()
+    repo._added_count = len(repo.rows)
     return repo
 
 

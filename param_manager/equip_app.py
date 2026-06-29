@@ -2006,6 +2006,9 @@ class EquipApp(tk.Tk):
         tk.Button(bot, text="선택 항목으로 양식 만들기(.xlsx)", relief="flat", bd=0, bg=self.p["ok"],
                   fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   command=self._cur_save).pack(side="left")
+        self._cur_merge = tk.BooleanVar(value=True)
+        tk.Checkbutton(bot, text="기존 양식과 병합(기존 PI/RDL 값·항목 유지)",
+                       variable=self._cur_merge, bg=self.p["bg"]).pack(side="left", padx=10)
         self._cur_status = tk.Label(bot, text="", bg=self.p["bg"], fg=self.p["muted"],
                                     font=self.fonts["sub"])
         self._cur_status.pack(side="left", padx=12)
@@ -2114,35 +2117,63 @@ class EquipApp(tk.Tk):
         for it in self._cur_group_items():
             it["sel"].set(on)
 
-    def _cur_save(self):
-        sel = [it for it in self._cur_items if it["sel"].get()]
-        if not sel:
-            self._cur_status.config(text="선택된 항목이 없습니다.")
-            return
-        dest = filedialog.asksaveasfilename(
-            title="양식 저장(.xlsx)", defaultextension=".xlsx",
-            filetypes=[("Excel", "*.xlsx")], parent=self._cur_win)
-        if not dest:
-            return
-        records = []
-        for it in sel:
+    def _cur_records(self, items):
+        recs = []
+        for it in items:
             rec = {"PI": it["recipe"], "Recipe": it["mag"], "Zone": it["zone"],
                    "Alg": it["alg"], "Parameter": it["name"].get().strip() or it["param"],
                    "초기 추천값": it["rep"], "비고": it["note"].get().strip()}
             for m, v in it["values"].items():
                 if engine._s(v) != "":
                     rec[m] = v
-            records.append(rec)
+            recs.append(rec)
+        return recs
+
+    def _cur_save(self):
+        sel = [it for it in self._cur_items if it["sel"].get()]
+        if not sel:
+            self._cur_status.config(text="선택된 항목이 없습니다.")
+            return
+        # Layer 로 분리: PI → PI_ALL 시트, RDL → RDL_ALL 시트(각각 다른 파일)
+        pi_items = [it for it in sel if it["layer"] == "PI"]
+        rdl_items = [it for it in sel if it["layer"] == "RDL"]
+        other = [it for it in sel if it["layer"] not in ("PI", "RDL")]
+        if other:
+            pi_items += other   # Layer 미상은 PI 쪽에
+
+        base = filedialog.asksaveasfilename(
+            title="양식 저장 위치/이름(.xlsx) — PI/RDL 은 각각 _PI/_RDL 로 저장",
+            defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")], parent=self._cur_win)
+        if not base:
+            return
+        merge = self._cur_merge.get()
+        stem = base[:-5] if base.lower().endswith(".xlsx") else base
+        done = []
         try:
-            engine.create_from_records(dest, records, self._cur_machines, user=self.user)
+            if pi_items:
+                p = f"{stem}_PI.xlsx"
+                engine.create_from_records(p, self._cur_records(pi_items), self._cur_machines,
+                                           user=self.user, sheet_name="PI_ALL", merge=merge)
+                self._cfg["pi_path"] = p
+                done.append(("PI", p, len(pi_items)))
+            if rdl_items:
+                p = f"{stem}_RDL.xlsx"
+                engine.create_from_records(p, self._cur_records(rdl_items), self._cur_machines,
+                                           user=self.user, sheet_name="RDL_ALL", merge=merge)
+                self._cfg["rdl_path"] = p
+                done.append(("RDL", p, len(rdl_items)))
+            save_config(self._cfg)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("저장 실패", str(e), parent=self._cur_win)
             return
-        self._cur_status.config(text=f"{len(sel)}개 파라미터로 양식 저장 완료.")
-        if messagebox.askyesno("완료", f"{len(sel)}개 파라미터 양식을 저장했습니다.\n지금 열까요?\n{dest}",
+        mode = "병합" if merge else "새로 생성"
+        summary = "\n".join(f"{k}: {n}개 → {os.path.basename(p)}" for k, p, n in done)
+        self._cur_status.config(text=f"저장 완료({mode}): " + ", ".join(f"{k} {n}" for k, p, n in done))
+        first = done[0]
+        if messagebox.askyesno("완료", f"양식 저장 완료({mode}).\n{summary}\n\n지금 열까요? ({first[0]})",
                                parent=self._cur_win):
             self._cur_win.destroy()
-            self._do_open(dest, "PI")
+            self._do_open(first[1], first[0])
             self.navigate(screen="s0")
 
     def _refresh_from_folder(self):
