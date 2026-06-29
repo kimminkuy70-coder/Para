@@ -1978,12 +1978,10 @@ class EquipApp(tk.Tk):
         self._cur_group.pack(side="left", padx=6)
         self._cur_group.bind("<<ComboboxSelected>>", lambda e: self._cur_render())
         self._cur_only_match = tk.BooleanVar(value=False)
-        tk.Checkbutton(sel, text="사전 매칭만 보기", variable=self._cur_only_match,
+        tk.Checkbutton(sel, text="사전 매칭만(신규 항목) 보기", variable=self._cur_only_match,
                        bg=self.p["bg"], command=self._cur_render).pack(side="left", padx=8)
-        tk.Button(sel, text="모두 선택", relief="flat", bd=0, bg=self.p["surface"],
-                  cursor="hand2", command=lambda: self._cur_select_all(True)).pack(side="left", padx=2)
-        tk.Button(sel, text="모두 해제", relief="flat", bd=0, bg=self.p["surface"],
-                  cursor="hand2", command=lambda: self._cur_select_all(False)).pack(side="left", padx=2)
+        tk.Label(sel, text="  기존 양식(위) + 새로 불러온 항목(아래)을 각각 전체선택으로 고르세요.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
         mid = tk.Frame(win, bg=self.p["surface"], highlightbackground=self.p["border"],
                        highlightthickness=1)
@@ -2006,9 +2004,8 @@ class EquipApp(tk.Tk):
         tk.Button(bot, text="선택 항목으로 양식 만들기(.xlsx)", relief="flat", bd=0, bg=self.p["ok"],
                   fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   command=self._cur_save).pack(side="left")
-        self._cur_merge = tk.BooleanVar(value=True)
-        tk.Checkbutton(bot, text="기존 양식과 병합(기존 PI/RDL 값·항목 유지)",
-                       variable=self._cur_merge, bg=self.p["bg"]).pack(side="left", padx=10)
+        tk.Label(bot, text="(선택한 항목만 최종 양식이 됩니다. 기존에서 빼면 빠지고, 새로 고르면 추가)",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left", padx=8)
         self._cur_status = tk.Label(bot, text="", bg=self.p["bg"], fg=self.p["muted"],
                                     font=self.fonts["sub"])
         self._cur_status.pack(side="left", padx=12)
@@ -2028,64 +2025,111 @@ class EquipApp(tk.Tk):
         self._cur_status.config(text="분석 중…")
         self.update_idletasks()
         try:
-            cfgs = rtp.scan_tree(path)
-            rows, machines = rtp.build_pivot(cfgs)
+            rows, machines = rtp.build_pivot(rtp.scan_tree(path))
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("분석 실패", str(e), parent=self._cur_win)
             return
-        self._cur_machines = machines
+
         self._cur_items = []
+        existing_keys = set()
+
+        # 1) 기존 양식(현재 저장돼 있는 PI/RDL 파일)을 먼저 불러온다
+        for kind, layer in (("pi_path", "PI"), ("rdl_path", "RDL")):
+            fp = self._cfg.get(kind)
+            if not fp or not os.path.exists(fp):
+                continue
+            try:
+                erepo = ParamRepository(fp)
+                erepo.load()
+            except Exception:  # noqa: BLE001
+                continue
+            for m in erepo.aoi_units:
+                if m not in machines:
+                    machines.append(m)
+            for pr in erepo.rows:
+                recipe = engine._s(pr.get("PI"))
+                mag = engine._s(pr.get("Recipe")) or "-"
+                zone = engine._s(pr.get("Zone")); alg = engine._s(pr.get("Alg"))
+                param = engine._s(pr.get("Parameter"))
+                vals = {m: pr.get(m) for m in erepo.aoi_units}
+                key = (layer, recipe, mag, rtp.norm_key(zone), rtp.norm_key(alg), rtp.norm_key(param))
+                existing_keys.add(key)
+                self._cur_items.append(self._cur_make_item(
+                    "existing", layer, recipe, mag, zone, alg, param, vals,
+                    name=param, note=engine._s(pr.get("비고")), matched=True,
+                    rep=engine._s(pr.get("초기 추천값")) or self._cur_rep(vals)))
+
+        # 2) 폴더에서 새로 불러온 항목 — 기존에 이미 있는 것은 제외
+        self._cur_machines = machines
         groups = []
         for r in rows:
+            key = (r["layer"], r["recipe"], r["mag"],
+                   rtp.norm_key(r["zone"]), rtp.norm_key(r["alg"]), rtp.norm_key(r["param"]))
+            if key in existing_keys:
+                continue
             rec = rtp.recommend(r["layer"], r["recipe"], r["mag"], r["zone"], r["alg"], r["param"])
-            name = (rec or {}).get("param") or r["param"]
-            note = (rec or {}).get("desc_kr") or ""
-            vals = {m: v for m, v in r["values"].items() if engine._s(v) != ""}
-            rep = self._cur_rep(vals)
-            it = {
-                "layer": r["layer"], "recipe": r["recipe"], "mag": r["mag"],
-                "zone": r["zone"], "alg": r["alg"], "param": r["param"],
-                "values": r["values"], "rep": rep, "matched": rec is not None,
-                "sel": tk.BooleanVar(value=rec is not None),
-                "name": tk.StringVar(value=name),
-                "note": tk.StringVar(value=note),
-            }
-            self._cur_items.append(it)
-            g = f"{r['layer']} / {r['recipe']} / {r['mag']}"
+            self._cur_items.append(self._cur_make_item(
+                "new", r["layer"], r["recipe"], r["mag"], r["zone"], r["alg"], r["param"],
+                r["values"], name=(rec or {}).get("param") or rtp.display_name(r["param"]),
+                note=(rec or {}).get("desc_kr") or "", matched=rec is not None,
+                rep=self._cur_rep({m: v for m, v in r["values"].items() if engine._s(v) != ""})))
+
+        for it in self._cur_items:
+            g = f"{it['layer']} / {it['recipe']} / {it['mag']}"
             if g not in groups:
                 groups.append(g)
         self._cur_group["values"] = groups
         if groups:
             self._cur_group.current(0)
-        matched = sum(1 for it in self._cur_items if it["matched"])
+        ne = sum(1 for it in self._cur_items if it["source"] == "existing")
+        nn = len(self._cur_items) - ne
         self._cur_status.config(
-            text=f"분석 완료: {len(self._cur_items)}개 항목, 호기 {len(machines)}, "
-                 f"사전매칭 {matched}. Recipe·배율 선택 후 체크.")
+            text=f"분석 완료: 기존 {ne} + 새로 {nn} = {len(self._cur_items)}항목, 호기 {len(machines)}. "
+                 f"Recipe·배율 선택 후 기존/새로 각각 전체선택.")
         self._cur_render()
+
+    def _cur_make_item(self, source, layer, recipe, mag, zone, alg, param, vals,
+                       name, note, matched, rep):
+        return {
+            "source": source, "layer": layer, "recipe": recipe, "mag": mag,
+            "zone": zone, "alg": alg, "param": param, "values": dict(vals),
+            "rep": rep, "matched": matched,
+            "sel": tk.BooleanVar(value=(source == "existing")),  # 기존은 기본 유지
+            "name": tk.StringVar(value=name), "note": tk.StringVar(value=note),
+        }
 
     @staticmethod
     def _cur_rep(vals: dict) -> str:
-        if not vals:
+        vv = [engine._s(v) for v in vals.values() if engine._s(v) != ""]
+        if not vv:
             return ""
         from collections import Counter
-        return Counter(engine._s(v) for v in vals.values()).most_common(1)[0][0]
+        return Counter(vv).most_common(1)[0][0]
 
-    def _cur_group_items(self):
+    def _cur_group_items(self, source=None):
         if not self._cur_group.get():
             return []
         layer, recipe, mag = [x.strip() for x in self._cur_group.get().split("/")]
         out = []
         for it in self._cur_items:
-            if it["layer"] == layer and it["recipe"] == recipe and it["mag"] == mag:
-                if self._cur_only_match.get() and not it["matched"]:
-                    continue
-                out.append(it)
+            if it["layer"] != layer or it["recipe"] != recipe or it["mag"] != mag:
+                continue
+            if source and it["source"] != source:
+                continue
+            if it["source"] == "new" and self._cur_only_match.get() and not it["matched"]:
+                continue
+            out.append(it)
         return out
 
-    def _cur_render(self):
-        for w in self._cur_inner.winfo_children():
-            w.destroy()
-        items = self._cur_group_items()
+    def _cur_section(self, title, items, color):
+        bar = tk.Frame(self._cur_inner, bg=color)
+        bar.pack(fill="x", pady=(8, 0))
+        tk.Label(bar, text=f"  {title} ({len(items)})", bg=color, fg="#ffffff",
+                 font=self.fonts["bold"], anchor="w").pack(side="left", ipady=3)
+        tk.Button(bar, text="전체선택", relief="flat", bd=0, bg="#ffffff",
+                  cursor="hand2", command=lambda: [it["sel"].set(True) for it in items]).pack(side="right", padx=2, pady=2)
+        tk.Button(bar, text="전체해제", relief="flat", bd=0, bg="#ffffff",
+                  cursor="hand2", command=lambda: [it["sel"].set(False) for it in items]).pack(side="right", padx=2, pady=2)
         hdr = tk.Frame(self._cur_inner, bg=self.p["head_bg"])
         hdr.pack(fill="x")
         for txt, w in (("✓", 3), ("Zone", 16), ("Alg", 20), ("파라미터(추천이름)", 26),
@@ -2100,22 +2144,30 @@ class EquipApp(tk.Tk):
                      font=self.fonts["sub"], width=16, anchor="w").pack(side="left")
             tk.Label(row, text=it["alg"], bg=self.p["surface"], fg=self.p["muted"],
                      font=self.fonts["sub"], width=20, anchor="w").pack(side="left")
-            e1 = tk.Entry(row, textvariable=it["name"], font=self.fonts["sub"], width=26,
-                          relief="solid", bd=1)
-            e1.pack(side="left", padx=1)
-            e2 = tk.Entry(row, textvariable=it["note"], font=self.fonts["sub"], width=30,
-                          relief="solid", bd=1)
-            e2.pack(side="left", padx=1)
+            tk.Entry(row, textvariable=it["name"], font=self.fonts["sub"], width=26,
+                     relief="solid", bd=1).pack(side="left", padx=1)
+            tk.Entry(row, textvariable=it["note"], font=self.fonts["sub"], width=30,
+                     relief="solid", bd=1).pack(side="left", padx=1)
             nval = len([v for v in it["values"].values() if engine._s(v) != ""])
             tag = "" if it["matched"] else "  ✦신규"
             tk.Label(row, text=f"{it['rep']}  ({nval}호기){tag}", bg=self.p["surface"],
                      fg=("#9aa3af" if it["matched"] else self.p["danger"]),
                      font=self.fonts["sub"], width=18, anchor="w").pack(side="left")
-        self._cur_status.config(text=f"{self._cur_group.get()} — {len(items)}개 표시")
 
-    def _cur_select_all(self, on: bool):
-        for it in self._cur_group_items():
-            it["sel"].set(on)
+    def _cur_render(self):
+        for w in self._cur_inner.winfo_children():
+            w.destroy()
+        ex = self._cur_group_items("existing")
+        nw = self._cur_group_items("new")
+        if ex:
+            self._cur_section("기존 양식 (유지할 것 선택)", ex, "#1d4ed8")
+        if nw:
+            self._cur_section("새로 불러옴 (추가할 것 선택)", nw, self.p["ok"])
+        if not ex and not nw:
+            tk.Label(self._cur_inner, text="이 그룹에 표시할 항목이 없습니다.",
+                     bg=self.p["surface"], fg=self.p["muted"]).pack(pady=20)
+        self._cur_status.config(
+            text=f"{self._cur_group.get()} — 기존 {len(ex)} / 새로 {len(nw)}")
 
     def _cur_records(self, items):
         recs = []
@@ -2146,31 +2198,30 @@ class EquipApp(tk.Tk):
             defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")], parent=self._cur_win)
         if not base:
             return
-        merge = self._cur_merge.get()
         stem = base[:-5] if base.lower().endswith(".xlsx") else base
         done = []
         try:
+            # 선택한 항목만으로 새로 생성(기존에서 뺀 건 빠지고, 새로 고른 건 추가됨)
             if pi_items:
                 p = f"{stem}_PI.xlsx"
                 engine.create_from_records(p, self._cur_records(pi_items), self._cur_machines,
-                                           user=self.user, sheet_name="PI_ALL", merge=merge)
+                                           user=self.user, sheet_name="PI_ALL")
                 self._cfg["pi_path"] = p
                 done.append(("PI", p, len(pi_items)))
             if rdl_items:
                 p = f"{stem}_RDL.xlsx"
                 engine.create_from_records(p, self._cur_records(rdl_items), self._cur_machines,
-                                           user=self.user, sheet_name="RDL_ALL", merge=merge)
+                                           user=self.user, sheet_name="RDL_ALL")
                 self._cfg["rdl_path"] = p
                 done.append(("RDL", p, len(rdl_items)))
             save_config(self._cfg)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("저장 실패", str(e), parent=self._cur_win)
             return
-        mode = "병합" if merge else "새로 생성"
         summary = "\n".join(f"{k}: {n}개 → {os.path.basename(p)}" for k, p, n in done)
-        self._cur_status.config(text=f"저장 완료({mode}): " + ", ".join(f"{k} {n}" for k, p, n in done))
+        self._cur_status.config(text="저장 완료: " + ", ".join(f"{k} {n}" for k, p, n in done))
         first = done[0]
-        if messagebox.askyesno("완료", f"양식 저장 완료({mode}).\n{summary}\n\n지금 열까요? ({first[0]})",
+        if messagebox.askyesno("완료", f"양식 저장 완료.\n{summary}\n\n지금 열까요? ({first[0]})",
                                parent=self._cur_win):
             self._cur_win.destroy()
             self._do_open(first[1], first[0])
