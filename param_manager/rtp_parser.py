@@ -82,9 +82,27 @@ def parse_rtp(path: str | Path) -> list[RtpRow]:
     return out
 
 
+# OpticPreset 에서 자동 제외할 잡키(파라미터가 아닌 식별자/스캔별 측정값 등)
+OPTIC_NOISE_KEYS = {
+    "id", "zwafer", "focusposabovechuck", "creationmeasuredistance1",
+    "creationmeasuredistance2", "creationmeasureintensity1", "creationmeasureintensity2",
+}
+_GUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def _is_optic_noise(key: str, val: str) -> bool:
+    k = re.sub(r"[^a-z0-9]", "", key.lower())
+    if k in OPTIC_NOISE_KEYS:
+        return True
+    if _GUID_RE.match(val.strip().lower()):       # GUID 값
+        return True
+    return False
+
+
 def parse_optic(path: str | Path, zone: str = "LIGHT") -> list[RtpRow]:
     """OpticPreset.ini → 광학/광원 파라미터를 LIGHT Zone 으로.
-    Zone=LIGHT, Alg=섹션명([General]/[AutoFocus]/[Scan2d]/[x20]…), Parameter=키."""
+    Zone=LIGHT, Alg=섹션명([General]/[AutoFocus]/[Scan2d]/[x20]…), Parameter=키.
+    명백한 잡키(GUID Id, 스캔별 측정 위치 등)와 빈 값은 자동 제외."""
     p = Path(path)
     if not p.is_file():
         return []
@@ -97,7 +115,10 @@ def parse_optic(path: str | Path, zone: str = "LIGHT") -> list[RtpRow]:
     out: list[RtpRow] = []
     for sec in cfg.sections():
         for key, val in cfg.items(sec):
-            out.append(RtpRow(zone, sec, key, (val or "").strip(), "", ""))
+            v = (val or "").strip()
+            if v == "" or _is_optic_noise(key, v):
+                continue
+            out.append(RtpRow(zone, sec, key, v, "", ""))
     return out
 
 
