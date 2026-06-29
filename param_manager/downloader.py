@@ -45,32 +45,34 @@ TARGET_RECIPE_NAMES = [
 # --------------------------------------------------------------------------
 @dataclass
 class WaferCandidate:
-    """Recipe 하위에서 발견한 Wafer 1개(다운로드 후보)."""
+    """Recipe 하위에서 발견한 설정 1벌(다운로드 후보).
+
+    variant = Recipe 아래 구분 경로. 실제 데이터에선 보통 'x5' / 'x20' (배율),
+    구형/심층 구조에선 'Setup1/VHK-RDL4/07335326EWE7' 처럼 될 수 있다.
+    이 variant 가 프로그램의 Recipe 변형(PI/PI_bubble, x5/x20)에 대응한다.
+    config_dir = RTP.txt/OpticPreset.ini/Zones 가 들어있는 폴더.
+    """
     equipment: str
     recipe_name: str
-    setup: str
-    recipe_code: str
-    wafer: str
-    wafer_dir: Path
+    variant: str
+    config_dir: Path
     modified_time: float = 0.0
     has_zones: bool = False
     has_rtp: bool = False
     has_optic: bool = False
 
+    # 하위호환(수동 파싱이 채울 수 있음)
+    setup: str = ""
+    recipe_code: str = ""
+    wafer: str = ""
+
     @property
     def label(self) -> str:
         from datetime import datetime
-        ts = ""
-        if self.modified_time:
-            ts = datetime.fromtimestamp(self.modified_time).strftime("%Y-%m-%d %H:%M")
-        tags = []
-        if self.has_zones:
-            tags.append("Zones")
-        if self.has_rtp:
-            tags.append("RTP")
-        if self.has_optic:
-            tags.append("Optic")
-        return f"{self.wafer}  [{', '.join(tags) or '없음'}]  {ts}  ({self.setup}/{self.recipe_code})"
+        ts = datetime.fromtimestamp(self.modified_time).strftime("%Y-%m-%d %H:%M") if self.modified_time else ""
+        tags = [t for t, on in (("Zones", self.has_zones), ("RTP", self.has_rtp),
+                                ("Optic", self.has_optic)) if on]
+        return f"{self.variant or self.config_dir.name}  [{', '.join(tags) or '없음'}]  {ts}"
 
 
 # --------------------------------------------------------------------------
@@ -134,59 +136,134 @@ def _targets_in(wafer_dir: Path) -> tuple[bool, bool, bool]:
 
 
 def parse_manual_wafer(path_text: str) -> WaferCandidate:
-    """수동 입력 Wafer 경로 → 후보 객체(존재/대상 확인 포함)."""
-    meta = parse_scanresult_path(path_text)
+    """수동 입력 경로 → 후보. Scanresult 구조면 그걸로, 아니면 폴더명을 variant 로."""
     wd = Path(path_text)
     if not wd.exists() or not wd.is_dir():
-        raise FileNotFoundError(f"Wafer 경로가 없거나 폴더가 아닙니다: {wd}")
+        raise FileNotFoundError(f"경로가 없거나 폴더가 아닙니다: {wd}")
     z, r, o = _targets_in(wd)
     try:
         mt = wd.stat().st_mtime
     except OSError:
         mt = 0.0
-    return WaferCandidate(meta["equipment"], meta["recipe_name"], meta["setup"],
-                          meta["recipe_code"], meta["wafer"], wd, mt, z, r, o)
+    try:
+        meta = parse_scanresult_path(path_text)
+        variant = "/".join(x for x in (meta["setup"], meta["recipe_code"], meta["wafer"]) if x)
+        return WaferCandidate(meta["equipment"], meta["recipe_name"], variant or wd.name,
+                              wd, mt, z, r, o, meta["setup"], meta["recipe_code"], meta["wafer"])
+    except ValueError:
+        # Scanresult 구조가 아니면(예: ...\\TB500_RDL4 - Multi\\x20) 폴더명으로 추정
+        recipe = wd.parent.name if wd.parent.name else ""
+        return WaferCandidate(_equipment_of(wd), recipe, wd.name, wd, mt, z, r, o)
 
 
 # --------------------------------------------------------------------------
-# 자동 탐색
+# 자동 탐색 (구조 깊이에 유연 — x5/x20 직하부터 Setup/code/wafer 심층까지)
 # --------------------------------------------------------------------------
-def find_wafer_candidates(recipe_root: Path, equipment: str, recipe_name: str) -> list[WaferCandidate]:
-    """Recipe 폴더 아래 Setup→RecipeCode→Wafer 3단계만 훑어 후보 수집(전체 rglob 안 함)."""
-    out: list[WaferCandidate] = []
-    if not recipe_root.exists() or not recipe_root.is_dir():
-        return out
-    for setup_dir in recipe_root.iterdir():
-        if not setup_dir.is_dir():
-            continue
-        for code_dir in setup_dir.iterdir():
-            if not code_dir.is_dir():
-                continue
-            for wafer_dir in code_dir.iterdir():
-                if not wafer_dir.is_dir():
-                    continue
-                z, r, o = _targets_in(wafer_dir)
-                if not (z or r or o):
-                    continue
-                try:
-                    mt = wafer_dir.stat().st_mtime
-                except OSError:
-                    mt = 0.0
-                out.append(WaferCandidate(equipment, recipe_name, setup_dir.name,
-                                          code_dir.name, wafer_dir.name, wafer_dir, mt, z, r, o))
-    # 최신순(사람이 고르기 쉽게)
-    out.sort(key=lambda c: c.modified_time, reverse=True)
+_AOI_RE = re.compile(r"(?i)^AOI[-_]?\w+$")
+_RECIPE_RE = re.compile(r"(?i)^TB500[_ ].+")
+
+
+def _equipment_of(path: Path) -> str:
+    """경로 조상 중 'AOI-xx' 형태 폴더명을 호기로 추정."""
+    for parent in [path, *path.parents]:
+        if _AOI_RE.match(parent.name):
+            return parent.name
+    return ""
+
+
+def _has_target_dir(d: Path) -> bool:
+    z, r, o = _targets_in(d)
+    return z or r or o
+
+
+def _find_recipe_dirs(root: Path, recipes: list[str] | None, max_depth: int = 4) -> list[Path]:
+    """root 아래에서 Recipe 폴더(지정 목록 또는 TB500_* )를 깊이 제한 탐색."""
+    wanted = set(recipes or [])
+    found: list[Path] = []
+    seen = set()
+
+    def walk(d: Path, depth: int):
+        if depth > max_depth:
+            return
+        try:
+            entries = [p for p in d.iterdir() if p.is_dir()]
+        except OSError:
+            return
+        for p in entries:
+            is_recipe = (p.name in wanted) or (not wanted and _RECIPE_RE.match(p.name)) \
+                or (_RECIPE_RE.match(p.name) is not None)
+            if is_recipe and p not in seen:
+                seen.add(p)
+                found.append(p)
+            else:
+                walk(p, depth + 1)
+    walk(root, 0)
+    return found
+
+
+def _find_config_dirs(recipe_dir: Path, max_depth: int = 4) -> list[tuple[str, Path]]:
+    """Recipe 폴더 아래에서 RTP/Optic/Zones 를 직접 가진 폴더(변형)들을 찾는다.
+    반환: [(variant_label, dir)]. variant = recipe_dir 기준 상대경로(예: 'x5')."""
+    out: list[tuple[str, Path]] = []
+
+    def walk(d: Path, depth: int):
+        if depth > max_depth:
+            return
+        if _has_target_dir(d):
+            rel = d.relative_to(recipe_dir)
+            out.append((str(rel) if str(rel) != "." else d.name, d))
+            return  # 대상 폴더를 찾으면 그 아래로 더 내려가지 않음
+        try:
+            subs = [p for p in d.iterdir() if p.is_dir() and p.name.lower() != TARGET_FOLDER_NAME.lower()]
+        except OSError:
+            return
+        for p in subs:
+            walk(p, depth + 1)
+
+    # Recipe 폴더 자체가 바로 대상일 수도, 하위(x5/x20 등)일 수도
+    if _has_target_dir(recipe_dir):
+        out.append((recipe_dir.name, recipe_dir))
+    else:
+        try:
+            for p in (x for x in recipe_dir.iterdir() if x.is_dir()):
+                walk(p, 1)
+        except OSError:
+            pass
     return out
 
 
-def discover(aoi_root_text: str, recipes: list[str] | None = None) -> dict[str, list[WaferCandidate]]:
-    """호기 경로 → {recipe_name: [후보...]} (각 Recipe 후보 전체, 최신순)."""
-    recipes = recipes or TARGET_RECIPE_NAMES
-    root = get_scanresult_root(aoi_root_text)
-    equipment = root.parent.name
+def find_wafer_candidates(recipe_dir: Path, equipment: str, recipe_name: str) -> list[WaferCandidate]:
+    out: list[WaferCandidate] = []
+    for variant, d in _find_config_dirs(recipe_dir):
+        z, r, o = _targets_in(d)
+        try:
+            mt = d.stat().st_mtime
+        except OSError:
+            mt = 0.0
+        out.append(WaferCandidate(equipment, recipe_name, variant, d, mt, z, r, o))
+    out.sort(key=lambda c: (c.variant.lower(), -c.modified_time))
+    return out
+
+
+def discover(root_text: str, recipes: list[str] | None = None) -> dict[str, list[WaferCandidate]]:
+    """호기/상위 경로 → {recipe_name: [후보(변형)들...]}.
+
+    - Scanresult 폴더가 있으면 그 아래를, 없으면 입력 경로 자체를 기준으로 탐색.
+    - Recipe 아래의 x5/x20 같은 변형을 각각 후보로 잡는다(구조 깊이에 유연).
+    """
+    root = Path(root_text)
+    # Scanresult 가 바로 아래 있으면 사용(구형 구조 호환)
+    sr = root / "Scanresult"
+    if sr.is_dir():
+        root = sr
+    if not root.exists():
+        raise FileNotFoundError(f"경로가 없습니다: {root}")
+    equipment = _equipment_of(root) or root.name
     result: dict[str, list[WaferCandidate]] = {}
-    for recipe in recipes:
-        result[recipe] = find_wafer_candidates(root / recipe, equipment, recipe)
+    for recipe_dir in _find_recipe_dirs(root, recipes):
+        cands = find_wafer_candidates(recipe_dir, equipment, recipe_dir.name)
+        if cands:
+            result.setdefault(recipe_dir.name, []).extend(cands)
     return result
 
 
@@ -252,17 +329,20 @@ def collect_target_items(wafer_root: Path) -> tuple[Path, list[Path]]:
 
 
 def dest_base_for(cand: WaferCandidate, download_root: Path) -> Path:
-    return (download_root / safe_name(cand.equipment) / safe_name(cand.recipe_name)
-            / safe_name(cand.setup) / safe_name(cand.recipe_code) / safe_name(cand.wafer))
+    base = download_root / safe_name(cand.equipment) / safe_name(cand.recipe_name)
+    for part in str(cand.variant).replace("\\", "/").split("/"):
+        if part and part != ".":
+            base = base / safe_name(part)
+    return base
 
 
 def copy_wafer(cand: WaferCandidate, download_root: Path,
                overwrite: bool = False, verify: bool = False) -> dict:
-    """선택된 Wafer 의 대상만 복사. 복사 결과/목적지 폴더 반환."""
+    """선택된 설정폴더의 대상만 복사. 복사 결과/목적지 폴더 반환."""
     download_root = Path(download_root)
-    wafer_root = cand.wafer_dir
+    wafer_root = cand.config_dir
     if not wafer_root.exists() or not wafer_root.is_dir():
-        raise FileNotFoundError(f"Wafer 경로가 없습니다: {wafer_root}")
+        raise FileNotFoundError(f"설정 폴더가 없습니다: {wafer_root}")
     dst_base = dest_base_for(cand, download_root)
     zones, files = collect_target_items(wafer_root)
     rows = []

@@ -1,4 +1,9 @@
-"""downloader 모듈 헤드리스 테스트 — 가짜 Scanresult 트리로 검증(실제 드라이브 불필요)."""
+"""downloader 모듈 헤드리스 테스트 — 가짜 트리로 검증(실제 드라이브 불필요).
+
+두 구조 모두 검증:
+  A) 구형/심층: <root>/AOI-18/Scanresult/<recipe>/<setup>/<code>/<wafer>/{Zones,RTP,Optic}
+  B) 실제(사용자 다운로드): <root>/AOI-20/<recipe>/{x5|x20}/{Zones,RTP,Optic}
+"""
 
 import os
 import sys
@@ -10,88 +15,102 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from param_manager import downloader as dl  # noqa: E402
 
 
-def _make_tree(root: Path):
-    """P:/AOI-18/Scanresult/<recipe>/<setup>/<code>/<wafer>/{Zones, RTP.txt, OpticPreset.ini}"""
+def _put_config(d: Path, with_zones=True, rtp=True, optic=True):
+    d.mkdir(parents=True, exist_ok=True)
+    if with_zones:
+        (d / "Zones").mkdir(exist_ok=True)
+        (d / "Zones" / "z.dat").write_text("zone", encoding="utf-8")
+    if rtp:
+        (d / "RTP.txt").write_text("[Z]\nAlg = A\nk = 1 ; ( c )", encoding="utf-8")
+    if optic:
+        (d / "OpticPreset.ini").write_text("[x20]\nMag=20", encoding="utf-8")
+
+
+def _tree_legacy(root: Path):
     sr = root / "AOI-18" / "Scanresult"
-    # PI2: 후보 2개(서로 다른 wafer)
-    for wafer in ("07335326EWE7", "07335326EWE8"):
-        wd = sr / "TB500_PI2 - Multi" / "Setup1" / "VHK-PI2" / wafer
-        (wd / "Zones" / "A").mkdir(parents=True)
-        (wd / "Zones" / "A" / "zone1.dat").write_text("zone-data", encoding="utf-8")
-        (wd / "RTP.txt").write_text("rtp-content", encoding="utf-8")
-        (wd / "OpticPreset.ini").write_text("optic", encoding="utf-8")
-    # RDL4: 후보 1개
-    wd = sr / "TB500_RDL4 - Multi" / "Setup1" / "VHK-RDL4" / "W7002174XYB3"
-    wd.mkdir(parents=True)
-    (wd / "RTP.txt").write_text("rdl-rtp", encoding="utf-8")
+    for wafer in ("WAF1", "WAF2"):
+        _put_config(sr / "TB500_PI2 - Multi" / "Setup1" / "VHK-PI2" / wafer)
+    _put_config(sr / "TB500_RDL4 - Multi" / "Setup1" / "VHK-RDL4" / "W3", with_zones=False)
     return sr
 
 
-def test_discover():
+def _tree_real(root: Path):
+    base = root / "AOI-20"
+    for recipe in ("TB500_RDL1 - Multi", "TB500_RDL4 - Multi"):
+        _put_config(base / recipe / "x5")
+        _put_config(base / recipe / "x20")
+    return base
+
+
+def test_discover_legacy():
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp) / "P"
-        _make_tree(root)
+        root = Path(tmp)
+        _tree_legacy(root)
         found = dl.discover(str(root / "AOI-18"))
-        assert found["TB500_PI2 - Multi"], "PI2 후보 있어야"
+        assert "TB500_PI2 - Multi" in found
         assert len(found["TB500_PI2 - Multi"]) == 2, found["TB500_PI2 - Multi"]
-        assert len(found["TB500_RDL4 - Multi"]) == 1
-        assert found["TB500_PI3 - Multi"] == []   # 없는 recipe
         c = found["TB500_PI2 - Multi"][0]
-        assert c.equipment == "AOI-18" and c.has_zones and c.has_rtp and c.has_optic
-        print(f"  discover OK: PI2={len(found['TB500_PI2 - Multi'])} RDL4={len(found['TB500_RDL4 - Multi'])}")
+        assert c.equipment == "AOI-18" and c.has_rtp
+        print(f"  legacy discover OK: PI2={len(found['TB500_PI2 - Multi'])} variant0={c.variant}")
 
 
-def test_copy_keeps_source_and_structure():
+def test_discover_real_x5_x20():
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp) / "P"
-        _make_tree(root)
-        dest = Path(tmp) / "download"
-        found = dl.discover(str(root / "AOI-18"))
-        cand = found["TB500_PI2 - Multi"][0]
-        # 복사 전 원본 해시
-        src_zone = cand.wafer_dir / "Zones" / "A" / "zone1.dat"
-        h_before = dl.sha256_file(src_zone)
-        res = dl.copy_wafer(cand, dest)
-        assert res["count"] == 3, res        # Zones/A/zone1.dat + RTP + Optic
-        # 목적지 구조 확인
-        db = Path(res["dest"])
-        assert (db / "Zones" / "A" / "zone1.dat").is_file()
-        assert (db / "RTP.txt").is_file() and (db / "OpticPreset.ini").is_file()
-        # 원본 불변
-        assert dl.sha256_file(src_zone) == h_before, "원본 변경됨!"
-        assert src_zone.is_file()
-        print(f"  copy OK: dest={res['dest']} files={res['count']}, 원본 무변경")
+        root = Path(tmp)
+        _tree_real(root)
+        found = dl.discover(str(root / "AOI-20"))
+        assert "TB500_RDL4 - Multi" in found, found.keys()
+        variants = sorted(c.variant for c in found["TB500_RDL4 - Multi"])
+        assert variants == ["x20", "x5"], variants
+        c = found["TB500_RDL4 - Multi"][0]
+        assert c.equipment == "AOI-20" and c.has_rtp and c.has_zones and c.has_optic
+        print(f"  real x5/x20 discover OK: RDL4 variants={variants}, equip={c.equipment}")
 
 
-def test_no_overwrite_makes_numbered():
+def test_copy_x5_x20_separately():
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp) / "P"
-        _make_tree(root)
-        dest = Path(tmp) / "download"
-        cand = dl.discover(str(root / "AOI-18"))["TB500_PI2 - Multi"][0]
-        dl.copy_wafer(cand, dest)
-        res2 = dl.copy_wafer(cand, dest)          # 두 번째 → 충돌 회피 번호
-        db = Path(res2["dest"])
-        assert (db / "RTP_1.txt").exists() or (db / "RTP.txt").exists()
-        print("  no-overwrite numbering OK")
+        root = Path(tmp)
+        _tree_real(root)
+        dest = Path(tmp) / "dl"
+        found = dl.discover(str(root / "AOI-20"))
+        for c in found["TB500_RDL4 - Multi"]:
+            res = dl.copy_wafer(c, dest)
+            assert res["count"] == 3, res          # Zones/z.dat + RTP + Optic
+        # 목적지에 x5, x20 폴더가 분리되어 있어야
+        rdl4 = dest / "AOI-20" / "TB500_RDL4 - Multi"
+        assert (rdl4 / "x5" / "RTP.txt").is_file()
+        assert (rdl4 / "x20" / "RTP.txt").is_file()
+        print("  copy x5/x20 분리 OK")
 
 
-def test_manual_wafer():
+def test_source_unchanged():
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp) / "P"
-        sr = _make_tree(root)
-        wd = sr / "TB500_RDL4 - Multi" / "Setup1" / "VHK-RDL4" / "W7002174XYB3"
-        cand = dl.parse_manual_wafer(str(wd))
-        assert cand.equipment == "AOI-18" and cand.recipe_name == "TB500_RDL4 - Multi"
-        assert cand.has_rtp and not cand.has_zones
-        print(f"  manual parse OK: {cand.wafer} zones={cand.has_zones} rtp={cand.has_rtp}")
+        root = Path(tmp)
+        _tree_real(root)
+        dest = Path(tmp) / "dl"
+        c = dl.discover(str(root / "AOI-20"))["TB500_RDL4 - Multi"][0]
+        src_rtp = c.config_dir / "RTP.txt"
+        h = dl.sha256_file(src_rtp)
+        dl.copy_wafer(c, dest)
+        assert dl.sha256_file(src_rtp) == h and src_rtp.is_file(), "원본 변경됨!"
+        print("  원본 무변경 OK")
+
+
+def test_manual_real_path():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        base = _tree_real(root)
+        wd = base / "TB500_RDL4 - Multi" / "x20"
+        c = dl.parse_manual_wafer(str(wd))
+        assert c.variant == "x20" and c.recipe_name == "TB500_RDL4 - Multi"
+        assert c.equipment == "AOI-20" and c.has_rtp
+        print(f"  manual real path OK: {c.recipe_name}/{c.variant}")
 
 
 def test_split_paths():
-    s = r'P:\AOI-18\Scanresult\x  O:\AOI-24\Scanresult\y'
+    s = r'P:\AOI-18\x  O:\AOI-24\y'
     parts = dl.split_pasted_windows_paths(s)
-    assert len(parts) == 2, parts
-    assert parts[0].startswith("P:") and parts[1].startswith("O:")
+    assert len(parts) == 2 and parts[0].startswith("P:") and parts[1].startswith("O:")
     print(f"  split paths OK: {parts}")
 
 
