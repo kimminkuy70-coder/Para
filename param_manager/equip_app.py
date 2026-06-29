@@ -21,6 +21,7 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from tksheet import Sheet
 
+from . import downloader as dl
 from . import engine
 from .engine import MACHINES, ParamRepository
 from .theme import apply_theme
@@ -1637,6 +1638,8 @@ class EquipApp(tk.Tk):
         m.add_command(label="기존 엑셀(.xlsm) 가져오기 → RDL",
                       command=lambda: self._import_dialog("RDL"))
         m.add_separator()
+        m.add_command(label="장비 폴더에서 파라미터 다운로드…", command=self._download_dialog)
+        m.add_separator()
         m.add_command(label="다른 이름으로 내보내기", command=self._export_dialog)
         m.add_command(label="새로고침(다시 읽기)", command=self._reload)
         try:
@@ -1786,6 +1789,153 @@ class EquipApp(tk.Tk):
         self.dirty = False
         self._set_status(f"저장 완료 — 변경 {stats.get('changes', 0)}건")
         self._render()
+
+    # ====================================================================
+    #  장비 폴더에서 파라미터 다운로드 (para-auto)
+    # ====================================================================
+    def _download_dialog(self):
+        win = tk.Toplevel(self)
+        win.title("장비 폴더에서 파라미터 다운로드")
+        win.geometry("960x640")
+        win.configure(bg=self.p["bg"])
+        self._dl_win = win
+
+        tk.Label(win, text="장비 폴더에서 파라미터 원본 가져오기", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win, text="호기 경로를 한 줄에 하나씩 입력 → [후보 검색] → Recipe별 Wafer 선택 → [다운로드]. "
+                          "원본은 읽기만 하며 수정하지 않습니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(anchor="w", padx=14)
+
+        top = tk.Frame(win, bg=self.p["bg"])
+        top.pack(fill="x", padx=14, pady=8)
+        tk.Label(top, text="호기 경로(여러 개, 예: P:\\AOI-18)", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["sub"]).pack(anchor="w")
+        self._dl_paths = tk.Text(top, height=4, font=self.fonts["base"], relief="solid", bd=1)
+        self._dl_paths.pack(fill="x", pady=(2, 6))
+
+        row = tk.Frame(top, bg=self.p["bg"])
+        row.pack(fill="x")
+        tk.Label(row, text="다운로드 폴더:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        self._dl_dest = tk.StringVar(
+            value=self._cfg.get("download_root", os.path.join(os.path.expanduser("~"), "Downloads", "AOI_Params")))
+        tk.Entry(row, textvariable=self._dl_dest, font=self.fonts["base"],
+                 relief="solid", bd=1).pack(side="left", fill="x", expand=True, padx=6)
+        tk.Button(row, text="찾아보기", relief="flat", bd=0, bg=self.p["surface"],
+                  cursor="hand2", command=self._dl_pick_dest).pack(side="left")
+        tk.Button(row, text="후보 검색", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=14, cursor="hand2",
+                  command=self._dl_search).pack(side="left", padx=(8, 0))
+
+        # 결과(스크롤): Recipe별 후보 선택 행
+        mid = tk.Frame(win, bg=self.p["surface"], highlightbackground=self.p["border"],
+                       highlightthickness=1)
+        mid.pack(fill="both", expand=True, padx=14, pady=6)
+        canvas = tk.Canvas(mid, bg=self.p["surface"], highlightthickness=0)
+        vsb = ttk.Scrollbar(mid, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+        self._dl_inner = tk.Frame(canvas, bg=self.p["surface"])
+        canvas.create_window((0, 0), window=self._dl_inner, anchor="nw", tags="i")
+        self._dl_inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+
+        bot = tk.Frame(win, bg=self.p["bg"])
+        bot.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Button(bot, text="선택 항목 다운로드", relief="flat", bd=0, bg=self.p["ok"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=self._dl_run).pack(side="left")
+        self._dl_status = tk.Label(bot, text="", bg=self.p["bg"], fg=self.p["muted"],
+                                   font=self.fonts["sub"])
+        self._dl_status.pack(side="left", padx=12)
+
+        self._dl_rows = []
+
+    def _dl_pick_dest(self):
+        d = filedialog.askdirectory(title="다운로드 폴더 선택")
+        if d:
+            self._dl_dest.set(d)
+
+    def _dl_search(self):
+        for w in self._dl_inner.winfo_children():
+            w.destroy()
+        self._dl_rows = []
+        paths = []
+        for line in self._dl_paths.get("1.0", "end").splitlines():
+            paths += dl.split_pasted_windows_paths(line)
+        if not paths:
+            self._dl_status.config(text="호기 경로를 입력하세요.")
+            return
+        any_found = False
+        for aoi in paths:
+            try:
+                found = dl.discover(aoi)
+            except Exception as e:  # noqa: BLE001
+                tk.Label(self._dl_inner, text=f"✗ {aoi} — {e}", bg=self.p["surface"],
+                         fg=self.p["danger"], font=self.fonts["sub"], anchor="w").pack(
+                    fill="x", padx=8, pady=2)
+                continue
+            tk.Label(self._dl_inner, text=f"■ {aoi}", bg=self.p["surface"], fg=self.p["text"],
+                     font=self.fonts["bold"], anchor="w").pack(fill="x", padx=8, pady=(8, 0))
+            for recipe, cands in found.items():
+                self._dl_make_row(aoi, recipe, cands)
+                any_found = True
+        self._dl_status.config(text="후보 검색 완료. Recipe별로 선택 후 다운로드하세요."
+                               if any_found else "후보를 찾지 못했습니다.")
+
+    def _dl_make_row(self, aoi, recipe, cands):
+        fr = tk.Frame(self._dl_inner, bg=self.p["surface"])
+        fr.pack(fill="x", padx=18, pady=1)
+        tk.Label(fr, text=recipe, bg=self.p["surface"], fg=self.p["text"],
+                 font=self.fonts["base"], width=20, anchor="w").pack(side="left")
+        opts = ["(다운로드 안 함)"] + [c.label for c in cands] + ["(수동 경로 입력)"]
+        var = tk.StringVar(value=cands[0].label if cands else "(수동 경로 입력)")
+        cb = ttk.Combobox(fr, textvariable=var, values=opts, state="readonly", width=70)
+        cb.pack(side="left", padx=6, fill="x", expand=True)
+        manual = tk.Entry(fr, font=self.fonts["sub"], relief="solid", bd=1)
+        row = {"aoi": aoi, "recipe": recipe, "cands": cands, "var": var, "manual": manual}
+
+        def on_sel(_=None):
+            if var.get() == "(수동 경로 입력)":
+                manual.pack(side="left", padx=6, fill="x", expand=True)
+            else:
+                manual.pack_forget()
+        cb.bind("<<ComboboxSelected>>", on_sel)
+        on_sel()
+        self._dl_rows.append(row)
+
+    def _dl_run(self):
+        dest_root = self._dl_dest.get().strip()
+        if not dest_root:
+            self._dl_status.config(text="다운로드 폴더를 지정하세요.")
+            return
+        self._cfg["download_root"] = dest_root
+        save_config(self._cfg)
+        done, errs = [], []
+        for row in self._dl_rows:
+            sel = row["var"].get()
+            if sel == "(다운로드 안 함)":
+                continue
+            try:
+                if sel == "(수동 경로 입력)":
+                    p = row["manual"].get().strip()
+                    if not p:
+                        continue
+                    cand = dl.parse_manual_wafer(p)
+                else:
+                    cand = next(c for c in row["cands"] if c.label == sel)
+                res = dl.copy_wafer(cand, dest_root)
+                done.append(f"{row['recipe']}: {res['count']}개 → {res['dest']}")
+            except Exception as e:  # noqa: BLE001
+                errs.append(f"{row['recipe']}: {e}")
+        msg = f"다운로드 완료 {len(done)}건"
+        if errs:
+            msg += f", 오류 {len(errs)}건"
+        self._dl_status.config(text=msg)
+        detail = "\n".join(done) + ("\n\n[오류]\n" + "\n".join(errs) if errs else "")
+        messagebox.showinfo("다운로드 결과",
+                            detail or "다운로드한 항목이 없습니다.", parent=self._dl_win)
 
     def _on_close(self):
         if self.dirty and not messagebox.askyesno(
