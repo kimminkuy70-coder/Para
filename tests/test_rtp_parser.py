@@ -94,8 +94,8 @@ def test_parse_optic_light():
         root = Path(tmp)
         d = root / "AOI-20" / "TB500_RDL4 - Multi" / "x20"
         _mk(d, optic="[General]\nSignature=3\n[Scan2d]\nMag=20\nCameraName=TDI\nExposure=200\n")
-        cfgs = rtp.scan_tree(root)
-        rows, _ = rtp.build_pivot(cfgs)
+        cfgs = rp.scan_tree(root)
+        rows, _ = rp.build_pivot(cfgs)
         light = [r for r in rows if r["zone"] == "LIGHT"]
         assert light, "LIGHT zone 있어야"
         algs = {r["alg"] for r in light}
