@@ -18,6 +18,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import engine
+
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 TEMPLATE_PATH = os.path.join(DATA_DIR, "rtp_template.json")
 
@@ -256,6 +258,48 @@ def template_index() -> dict:
              norm_key(t.get("zone")), norm_key(t.get("alg")), norm_key(t.get("param")))
         idx[k] = t
     return idx
+
+
+def refresh_values(repo, folder: str | Path) -> dict:
+    """이미 만든 양식(repo)의 구조는 그대로 두고, 폴더의 최신 파일에서 호기별
+    값만 다시 채운다. 매칭 키 = (PI=Recipe, Recipe=배율, Zone, Alg, Parameter).
+    새 호기가 나타나면 열을 추가한다. 반환: 갱신 통계."""
+    rows, machines = build_pivot(scan_tree(folder))
+    idx = {}
+    for r in rows:
+        k = (engine._s(r["recipe"]), engine._s(r["mag"]),
+             norm_key(r["zone"]), norm_key(r["alg"]), norm_key(r["param"]))
+        idx[k] = r
+
+    # 새 호기 열 보장
+    for m in machines:
+        if m and m not in repo.aoi_units:
+            repo.aoi_units.append(m)
+            for pr in repo.rows:
+                pr.aoi_units = list(repo.aoi_units)
+                pr.values.setdefault(m, None)
+
+    upd_rows = upd_cells = unmatched = 0
+    for pr in repo.rows:
+        k = (engine._s(pr.get("PI")), engine._s(pr.get("Recipe")),
+             norm_key(pr.get("Zone")), norm_key(pr.get("Alg")), norm_key(pr.get("Parameter")))
+        r = idx.get(k)
+        if not r:
+            unmatched += 1
+            continue
+        changed = False
+        for m, v in r["values"].items():
+            if engine._s(v) == "":
+                continue
+            if engine._s(pr.get(m)) != engine._s(v):
+                pr.set(m, v)
+                upd_cells += 1
+                changed = True
+        if changed:
+            upd_rows += 1
+    return {"updated_rows": upd_rows, "updated_cells": upd_cells,
+            "unmatched_rows": unmatched, "machines": machines,
+            "folder_items": len(idx)}
 
 
 def recommend(layer, recipe, mag, zone, alg, param) -> dict | None:

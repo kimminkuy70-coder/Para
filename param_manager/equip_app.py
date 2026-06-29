@@ -105,6 +105,7 @@ class EquipApp(tk.Tk):
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind_all("<F4>", lambda e: self._highlight_focused())
+        self.after(200, self._auto_open_last)   # 첫 실행: 마지막 양식 자동 열기
         self.bind_all("<Control-z>", lambda e: self.undo())
         self.bind_all("<Control-y>", lambda e: self.redo())
         self.bind_all("<Control-Z>", lambda e: self.undo())
@@ -1640,6 +1641,7 @@ class EquipApp(tk.Tk):
                       command=lambda: self._import_dialog("RDL"))
         m.add_separator()
         m.add_command(label="파라미터 폴더 분석 → 취사선택…", command=self._curate_dialog)
+        m.add_command(label="파라미터 폴더에서 값 갱신(구조 유지)…", command=self._refresh_from_folder)
         m.add_command(label="장비 폴더에서 파라미터 다운로드…", command=self._download_dialog)
         m.add_separator()
         m.add_command(label="다른 이름으로 내보내기", command=self._export_dialog)
@@ -1709,6 +1711,7 @@ class EquipApp(tk.Tk):
                     messagebox.showwarning("신규 호기 반영 실패",
                                            f"신규 호기 열 저장 중 오류: {e}")
         self._cfg[f"{kind.lower()}_path"] = path
+        self._cfg["last_form"] = path
         save_config(self._cfg)
         conflicts = engine.find_conflict_copies(path)
         if conflicts:
@@ -2141,6 +2144,57 @@ class EquipApp(tk.Tk):
             self._cur_win.destroy()
             self._do_open(dest, "PI")
             self.navigate(screen="s0")
+
+    def _refresh_from_folder(self):
+        """현재 열린 양식의 구조는 유지하고 폴더의 최신 파일에서 값만 갱신."""
+        if not self.repo:
+            messagebox.showinfo("값 갱신", "먼저 양식 파일을 여세요.")
+            return
+        if self.read_only:
+            messagebox.showwarning("읽기 전용", "읽기 전용이라 값을 갱신할 수 없습니다.")
+            return
+        folder = self._cfg.get("param_folder", "")
+        if not folder or not os.path.isdir(folder):
+            folder = filedialog.askdirectory(title="값을 읽어올 파라미터 폴더 선택")
+            if not folder:
+                return
+        else:
+            folder = filedialog.askdirectory(title="값을 읽어올 파라미터 폴더 선택",
+                                             initialdir=folder) or folder
+        self._cfg["param_folder"] = folder
+        save_config(self._cfg)
+        self._set_status("폴더에서 값 갱신 중…")
+        self.update_idletasks()
+        try:
+            self._push_undo()
+            stats = rtp.refresh_values(self.repo, folder)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("값 갱신 실패", str(e))
+            return
+        self.repo.ensure_machines()
+        self.dirty = True
+        self._render()
+        messagebox.showinfo(
+            "값 갱신 완료",
+            f"폴더 항목 {stats['folder_items']}개 중 매칭으로\n"
+            f"갱신된 행 {stats['updated_rows']}개, 셀 {stats['updated_cells']}개.\n"
+            f"매칭 안 된 행 {stats['unmatched_rows']}개(이름/구조 다름 → 그대로 둠).\n"
+            f"호기 {len(stats['machines'])}개 인식.")
+
+    def _auto_open_last(self):
+        """첫 실행 시 마지막으로 연 양식 파일을 자동으로 연다."""
+        path = self._cfg.get("last_form")
+        if path and os.path.exists(path) and not self.repo:
+            try:
+                self._do_open(path, self._cfg_kind_for(path))
+                self.navigate(screen="s0")
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _cfg_kind_for(self, path) -> str:
+        if self._cfg.get("rdl_path") == path:
+            return "RDL"
+        return "PI"
 
     def _on_close(self):
         if self.dirty and not messagebox.askyesno(
