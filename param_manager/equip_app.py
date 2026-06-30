@@ -2186,10 +2186,10 @@ class EquipApp(tk.Tk):
             vbox.pack(side="left")
             vbox.pack_propagate(False)
             if it["layer"] == "PI":
-                # PI 는 PI / PI_bubble 을 직접 선택(미정이면 저장 차단)
+                # PI 는 PI / PI-bubble 을 직접 선택(미정이면 저장 차단). 기존 양식 라벨과 통일
                 tk.Radiobutton(vbox, text="PI", variable=it["variant"], value="PI",
                                bg=self.p["surface"], font=self.fonts["sub"]).pack(side="left")
-                tk.Radiobutton(vbox, text="PI_bubble", variable=it["variant"], value="PI_bubble",
+                tk.Radiobutton(vbox, text="PI-bubble", variable=it["variant"], value="PI-bubble",
                                bg=self.p["surface"], font=self.fonts["sub"]).pack(side="left")
             else:
                 tk.Entry(vbox, textvariable=it["variant"], font=self.fonts["sub"],
@@ -2241,9 +2241,9 @@ class EquipApp(tk.Tk):
         if not sel:
             self._cur_status.config(text="선택된 항목이 없습니다.")
             return
-        # PI 항목은 PI / PI_bubble 을 반드시 정해야 함
+        # PI 항목은 변형이 정해져야 함(빈 값=미정만 차단. 기존 양식의 PI/PI-bubble 등은 통과)
         undecided = [it for it in sel
-                     if it["layer"] == "PI" and it["variant"].get().strip() not in ("PI", "PI_bubble")]
+                     if it["layer"] == "PI" and it["variant"].get().strip() == ""]
         if undecided:
             grps = sorted({f"{it['recipe']}" for it in undecided})
             messagebox.showwarning(

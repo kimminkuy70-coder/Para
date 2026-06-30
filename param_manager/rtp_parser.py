@@ -205,12 +205,13 @@ def detect_meta(config_dir: Path) -> dict:
     #   RDL = x5/x20 (폴더명/OpticPreset Scan2d Mag 로 판정)
     #   PI  = 폴더명(PI / PI_bubble)로 판정 — 사람이 'PI레시피/PI|PI_bubble/파일' 형태로
     #         폴더를 만들어 주어야 인식. 그 형태가 아니면 ""(미지정 → 불러오지 않음).
+    #   변형 라벨은 기존 양식과 동일하게 'PI' / 'PI-bubble'(하이픈)로 통일.
     if layer == "RDL":
         variant = mag
     elif layer == "PI":
         nm = re.sub(r"[^a-z]", "", name.lower())
         if "bubble" in nm:
-            variant = "PI_bubble"
+            variant = "PI-bubble"
         elif nm == "pi":
             variant = "PI"
         else:
@@ -223,7 +224,7 @@ def detect_meta(config_dir: Path) -> dict:
 def config_valid(cfg) -> bool:
     """변형이 제대로 인식됐는지(불러올 수 있는지)."""
     if cfg.layer == "PI":
-        return cfg.mag in ("PI", "PI_bubble")
+        return cfg.mag in ("PI", "PI-bubble", "PI_bubble")
     if cfg.layer == "RDL":
         return bool(cfg.mag) and cfg.mag not in ("-", "")
     return False

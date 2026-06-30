@@ -72,7 +72,7 @@ def test_detect_meta_pi():
         m1 = rp.detect_meta(base / "PI")
         m2 = rp.detect_meta(base / "PI_bubble")
         assert m1["layer"] == "PI" and m1["recipe"] == "PI4" and m1["mag"] == "PI", m1
-        assert m2["mag"] == "PI_bubble", m2
+        assert m2["mag"] == "PI-bubble", m2
         # PI/PI_bubble 하위폴더 없이 바로 RTP 면 변형 미지정("") → 무효
         bad = Path(tmp) / "AOI-15b" / "R_TB500_LIVE_PI3"
         _mk(bad, optic=OPTIC_X20)
