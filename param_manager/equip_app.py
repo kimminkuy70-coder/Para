@@ -287,6 +287,14 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  S0 — 호기 격자
     # ====================================================================
+    def _all_machines(self) -> list:
+        """고정 34호기 + 사용자가 추가한 커스텀 호기(중복 제거, 순서 유지)."""
+        out = list(MACHINES)
+        for m in self._cfg.get("custom_machines", []):
+            if m and m not in out:
+                out.append(m)
+        return out
+
     def _screen_machines(self):
         wrap = tk.Frame(self.body, bg=self.p["bg"])
         wrap.pack(fill="both", expand=True, padx=24, pady=18)
@@ -298,7 +306,9 @@ class EquipApp(tk.Tk):
         grid = tk.Frame(wrap, bg=self.p["bg"])
         grid.pack(fill="both", expand=True)
         cols = 8
-        for i, m in enumerate(MACHINES):
+        machines = self._all_machines()
+        custom = set(self._cfg.get("custom_machines", []))
+        for i, m in enumerate(machines):
             r, c = divmod(i, cols)
             b = tk.Button(grid, text=m, width=10, height=3, relief="flat", bd=0,
                           bg=self.p["surface"], fg=self.p["text"],
@@ -308,8 +318,74 @@ class EquipApp(tk.Tk):
             b.grid(row=r, column=c, padx=6, pady=6, sticky="nsew")
             b.bind("<Enter>", lambda e, w=b: w.config(bg=self.p["primary_lt"]))
             b.bind("<Leave>", lambda e, w=b: w.config(bg=self.p["surface"]))
+            if m in custom:
+                # 사용자가 추가한 호기 — 우클릭으로 삭제 메뉴
+                b.bind("<Button-3>", lambda e, mm=m: self._machine_ctx(e, mm))
+        # 맨 끝 칸: ＋ 호기 추가
+        i = len(machines)
+        r, c = divmod(i, cols)
+        add = tk.Button(grid, text="＋ 호기 추가", width=10, height=3, relief="flat",
+                        bd=0, bg=self.p["head_bg"], fg=self.p["text"],
+                        activebackground=self.p["primary_lt"],
+                        font=self.fonts["bold"], cursor="hand2",
+                        command=self._add_machine_dialog)
+        add.grid(row=r, column=c, padx=6, pady=6, sticky="nsew")
         for c in range(cols):
             grid.columnconfigure(c, weight=1)
+
+    def _add_machine_dialog(self):
+        """새 AOI 호기(열) 추가 — 다른 호기들과 동일한 파라미터로 운용."""
+        from tkinter import simpledialog
+        name = simpledialog.askstring(
+            "호기 추가",
+            "추가할 호기 이름을 입력하세요.\n(예: AOI-26, AOI-K7)",
+            parent=self)
+        if name is None:
+            return
+        name = name.strip()
+        if not name:
+            return
+        if name in self._all_machines():
+            messagebox.showinfo("이미 있음", f"'{name}' 호기는 이미 있습니다.")
+            return
+        custom = list(self._cfg.get("custom_machines", []))
+        custom.append(name)
+        self._cfg["custom_machines"] = custom
+        save_config(self._cfg)
+        # 현재 열려 있는 파일에 즉시 열 추가(다른 파일은 다음에 열 때 자동 반영)
+        saved = False
+        if self.repo is not None and not self.read_only:
+            added = self.repo.ensure_machines(self._all_machines())
+            if added:
+                try:
+                    self.repo.save(user=self.user)
+                    saved = True
+                except Exception:  # noqa: BLE001
+                    self.dirty = True
+        self._render()
+        msg = f"호기 '{name}' 추가 완료. 기존 호기와 동일한 파라미터로 운용됩니다."
+        if self.repo is not None and not saved and not self.read_only:
+            msg += "\n(현재 파일에는 열을 추가했으나 저장은 보류 — 저장 버튼으로 반영)"
+        elif self.repo is None:
+            msg += "\n(PI/RDL 파일을 열면 해당 호기 열이 자동 추가됩니다.)"
+        messagebox.showinfo("호기 추가", msg)
+
+    def _machine_ctx(self, event, machine):
+        m = tk.Menu(self, tearoff=0)
+        m.add_command(label=f"'{machine}' 호기 삭제",
+                      command=lambda: self._remove_custom_machine(machine))
+        m.tk_popup(event.x_root, event.y_root)
+
+    def _remove_custom_machine(self, machine):
+        if not messagebox.askyesno(
+                "호기 삭제",
+                f"'{machine}' 호기를 목록에서 제거할까요?\n"
+                "(이미 저장된 파일의 열/값은 그대로 남습니다.)"):
+            return
+        custom = [m for m in self._cfg.get("custom_machines", []) if m != machine]
+        self._cfg["custom_machines"] = custom
+        save_config(self._cfg)
+        self._render()
 
     # ====================================================================
     #  S1 — PI / RDL
@@ -1686,7 +1762,7 @@ class EquipApp(tk.Tk):
         repo = ParamRepository(path)
         try:
             repo.load()
-            added = repo.ensure_machines()
+            added = repo.ensure_machines(self._all_machines())
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("열기 실패", str(e))
             return False
@@ -1736,7 +1812,7 @@ class EquipApp(tk.Tk):
             return
         try:
             repo = engine.import_from_xlsm(src, dest)
-            repo.ensure_machines()
+            repo.ensure_machines(self._all_machines())
             repo.save(user=self.user)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("가져오기 실패", str(e))
@@ -2326,7 +2402,7 @@ class EquipApp(tk.Tk):
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("값 갱신 실패", str(e))
             return
-        self.repo.ensure_machines()
+        self.repo.ensure_machines(self._all_machines())
         self.dirty = True
         self._render()
         messagebox.showinfo(
