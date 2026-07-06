@@ -1,0 +1,216 @@
+"""ini_parser / workdirs / refresh / extract_io / collector 헤드리스 테스트."""
+
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from param_manager import collector, engine, extract_io, ini_parser, refresh, workdirs  # noqa: E402
+from param_manager import rtp_parser  # noqa: E402
+
+GLOBAL_RTP = """[GLOBAL_RTP]
+MaxFaultsPerWafer = 3000 ; comment
+ApplyDieCalib = 1
+DuplicateRange_um = 10.5
+"""
+
+ZONE_INI = """[General]
+ZoneName = PI Opening / Mask Zone
+[Surface]
+High_Delta = 25 ; bright delta
+BrightLength = 5
+[Genesis]
+BrightSeedTh = 7
+"""
+
+OPTIC = """[General]
+Name = preset
+[Scan2d]
+Mag = 5
+CameraName = TDI
+ScanSpeed = 80
+"""
+
+
+def _mk_recipe(d: Path, with_zones_subdir=True):
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "GlobalRTP.ini").write_text(GLOBAL_RTP, encoding="utf-8")
+    (d / "OpticPreset.ini").write_text(OPTIC, encoding="utf-8")
+    if with_zones_subdir:
+        (d / "Zones").mkdir(exist_ok=True)
+        (d / "Zones" / "Zone1.ini").write_text(ZONE_INI, encoding="utf-8")
+    else:
+        (d / "Zone1.ini").write_text(ZONE_INI, encoding="utf-8")
+
+
+def test_parse_ini_file():
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "GlobalRTP.ini"
+        p.write_text(GLOBAL_RTP, encoding="utf-8")
+        rows = ini_parser.parse_ini_file(p)
+        assert len(rows) == 3, rows
+        by_key = {r.key: r for r in rows}
+        r = by_key["MaxFaultsPerWafer"]
+        assert r.zone == "GlobalRTP" and r.param == "Max Defects Per Wafer"
+        assert r.raw == 3000 and r.value == 3000
+        assert by_key["ApplyDieCalib"].value == "Checked"       # BOOL 변환
+        z = Path(tmp) / "Zone1.ini"
+        z.write_text(ZONE_INI, encoding="utf-8")
+        zr = ini_parser.parse_ini_file(z)
+        bz = {r.key: r for r in zr}
+        assert bz["High_Delta"].zone == "PI Opening / Mask Zone"
+        assert bz["High_Delta"].alg == "Surface"
+        assert bz["High_Delta"].param == "Contrast Delta - Bright"
+        assert bz["BrightLength"].value == round(5 * ini_parser.SCALE, 6)  # LINEAR
+        assert bz["BrightSeedTh"].param == "Bright Sensitivity"
+    print("  parse_ini_file OK: 표시매핑/BOOL/LINEAR 변환")
+
+
+def test_scan_tree_and_meta():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _mk_recipe(root / "AOI-13" / "R_TB500_LIVE_PI3" / "PI")           # 장비형 구조
+        _mk_recipe(root / "AOI-13" / "R_TB500_LIVE_PI3" / "PI_BUBBLE",
+                   with_zones_subdir=False)                                # staging 평탄 구조
+        _mk_recipe(root / "AOI-20" / "TB500_RDL4 - Multi" / "x5")
+        cfgs = ini_parser.scan_tree(root)
+        assert len(cfgs) == 3, [c.config_dir for c in cfgs]
+        by_mag = {(c.recipe, c.mag): c for c in cfgs}
+        assert ("PI3", "PI") in by_mag and ("PI3", "PI-bubble") in by_mag
+        assert ("RDL4", "x5") in by_mag
+        c = by_mag[("PI3", "PI")]
+        assert c.equipment == "AOI-13" and c.layer == "PI"
+        assert all(rtp_parser.config_valid(c) for c in cfgs)
+        # default 오버라이드(수집 단계에서 이미 아는 값)
+        one = ini_parser.scan_tree(root / "AOI-20", default_level="RDL4",
+                                   default_equipment="AOI-99")
+        assert one[0].equipment == "AOI-99" and one[0].recipe == "RDL4"
+    print("  scan_tree OK: PI/PI-bubble/x5 + 평탄/Zones 구조 + 오버라이드")
+
+
+def test_pivot_and_refresh_plan():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _mk_recipe(root / "AOI-13" / "PI3" / "PI")
+        rows, machines = ini_parser.build_pivot(ini_parser.scan_tree(root))
+        assert machines == ["AOI-13"]
+        assert any(r["extract"]["key"] == "High_Delta" for r in rows)
+
+        # 공용 파일: 같은 키 1행(값 옛것) + 안 맞는 행 1개
+        dest = os.path.join(tmp, "form_PI.xlsx")
+        recs = [
+            {"PI": "PI3", "Recipe": "PI", "Zone": "PI Opening / Mask Zone",
+             "Alg": "Surface", "Parameter": "Contrast Delta - Bright",
+             "초기 추천값": "25", "AOI-13": "99"},
+            {"PI": "PI3", "Recipe": "PI", "Zone": "없는 Zone", "Alg": "X",
+             "Parameter": "그런 파라미터 없음"},
+        ]
+        repo = engine.create_from_records(dest, recs, ["AOI-13"], sheet_name="PI_ALL")
+        plan = refresh.plan_refresh(repo, rows, machines)
+        assert plan.matched_rows == 1 and plan.unmatched_rows == 1
+        chg = [c for c in plan.changes if c.param == "Contrast Delta - Bright"]
+        assert len(chg) == 1 and chg[0].old == "99" and chg[0].new == "25"
+        stats = refresh.apply_refresh(repo, plan)
+        assert stats["updated_cells"] == len(plan.changes)
+        pr = next(p for p in repo.rows if engine._s(p.get("Parameter")) == "Contrast Delta - Bright")
+        assert engine._s(pr.get("AOI-13")) == "25"
+    print("  pivot+refresh OK: 미리보기 diff → 적용")
+
+
+def test_workdirs_and_backup():
+    with tempfile.TemporaryDirectory() as tmp:
+        shared = os.path.join(tmp, "TB500_PI.xlsx")
+        Path(shared).write_bytes(b"dummy")
+        base = workdirs.base_dir_for(shared)
+        ini = workdirs.initial_run_dir(base, "PI3", "AOI-13", "20260706_1430")
+        fin = workdirs.final_run_dir(base, "PI3", "AOI-13", "20260706_1430")
+        assert ini.endswith(os.path.join("initial", "PI3", "AOI-13", "20260706_1430"))
+        assert fin.endswith(os.path.join("final", "PI3", "AOI-13", "20260706_1430"))
+        st = workdirs.staging_dir(ini)
+        assert os.path.isdir(st) and st.endswith("staging")
+        b1 = workdirs.backup_shared_file(shared)
+        b2 = workdirs.backup_shared_file(shared)
+        assert os.path.isfile(b1) and os.path.isfile(b2) and b1 != b2
+        assert os.path.dirname(b1).endswith("백업")
+        assert Path(shared).read_bytes() == b"dummy"   # 원본 무변경
+    print("  workdirs OK: initial/final/레벨/호기/일시 + 백업 중복회피")
+
+
+def test_extract_snapshot_roundtrip():
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = os.path.join(tmp, "01_초안_AOI-13_PI3.xlsx")
+        recs = [{"PI": "PI3", "Recipe": "PI", "Zone": "Z", "Alg": "Surface",
+                 "Parameter": "P1", "AOI-13": "1"},
+                {"PI": "PI3", "Recipe": "PI", "Zone": "Z", "Alg": "Surface",
+                 "Parameter": "P2", "AOI-13": "2"}]
+        exts = [{"src_file": "Zone1.ini", "section": "Surface", "key": "K1",
+                 "raw": 1, "transform": "RAW", "source_path": "/x/Zone1.ini"},
+                None]
+        extract_io.write_snapshot(dest, recs, ["AOI-13"], "PI_ALL", exts,
+                                  stage="initial", level="PI3", aoi="AOI-13",
+                                  source="/src", user="tester")
+        # 공용 파일처럼 다시 열림 + 맵 왕복
+        repo = engine.ParamRepository(dest)
+        repo.load()
+        assert len(repo.rows) == 2 and "AOI-13" in repo.aoi_units
+        amap = extract_io.read_extract_map(dest)
+        assert len(amap) == 2
+        r0 = amap[repo.rows[0].row_id]
+        assert r0["key"] == "K1" and r0["section"] == "Surface"
+    print("  extract_io OK: 스냅샷 생성 → ParamRepository/맵 왕복")
+
+
+def test_collector_plan_and_copy():
+    with tempfile.TemporaryDirectory() as tmp:
+        # 가짜 장비 트리: Job/<job>/<setup>/Recipes/<recipe>/{고정2 + Zones}
+        job_root = Path(tmp) / "Job"
+        rec = job_root / "R_TB500_LIVE_PI3 AOI-13" / "6324" / "Recipes" / "PI3"
+        _mk_recipe(rec)
+        picks = []
+
+        def chooser(kind, title, items, multi):
+            picks.append(kind)
+            return list(items) if multi else [items[0]]
+
+        staging = Path(tmp) / "staging"
+        planned, plan = collector.collect_equipment(
+            "10.0.0.1", staging, chooser, use_net_use=False,
+            job_root_override=job_root)
+        assert len(planned) == 3          # GlobalRTP + OpticPreset + Zone1
+        assert plan.job_keyword == "PI3" and plan.recipe_names == ["PI3"]
+        assert (staging / "PI3" / "GlobalRTP.ini").is_file()
+        assert (staging / collector.LOG_NAME).is_file()
+        # 원본 무변경
+        assert (rec / "GlobalRTP.ini").read_text(encoding="utf-8") == GLOBAL_RTP
+        # 2대째: plan 재사용 → chooser 호출 없이 자동 매칭
+        picks.clear()
+        staging2 = Path(tmp) / "staging2"
+        planned2, _ = collector.collect_equipment(
+            "10.0.0.2", staging2, chooser, use_net_use=False,
+            plan=plan, job_root_override=job_root)
+        assert not picks and len(planned2) == 3
+        # 키워드/레시피 매칭 단위 확인
+        sel, missing = collector.match_recipes_by_names(
+            [rec.parent / "PI3", rec.parent / "PI BUBBLE"], ["PI_BUBBLE"])
+        assert missing == [] and sel[0].name == "PI BUBBLE"
+    print("  collector OK: 계획 수집/자동 재사용/원본 무변경")
+
+
+if __name__ == "__main__":
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    passed = 0
+    for t in tests:
+        print(f"[RUN] {t.__name__}")
+        try:
+            t()
+            passed += 1
+            print(f"[PASS] {t.__name__}\n")
+        except Exception as e:  # noqa: BLE001
+            import traceback
+            print(f"[FAIL] {t.__name__}: {e}")
+            traceback.print_exc()
+            print()
+    print(f"==== {passed}/{len(tests)} passed ====")
+    sys.exit(0 if passed == len(tests) else 1)
