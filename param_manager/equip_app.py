@@ -3238,7 +3238,8 @@ class EquipApp(tk.Tk):
         self._run_busy("양식 생성 중…", work, done)
 
     def _form_open_existing(self):
-        """기존 저장 양식 열기 — 파일 선택 후 버전이 있으면 버전 선택창."""
+        """기존 저장 양식 열기 — 파일 선택 후 버전이 있으면 버전 선택창.
+        현재본은 실제 Excel로 편집(저장 시 덮어쓰기/새 버전) 가능, 과거 버전은 보기 전용."""
         p = filedialog.askopenfilename(title="기존 양식 파일(.xlsx) 선택",
                                        filetypes=[("Excel", "*.xlsx")])
         if not p:
@@ -3250,10 +3251,56 @@ class EquipApp(tk.Tk):
             if picked is None:
                 return
             target = picked
+        is_current = (os.path.abspath(target) == os.path.abspath(p))
+        if is_current and messagebox.askyesno(
+                "열기 방식",
+                "이 양식을 실제 Excel로 편집하시겠습니까?\n\n"
+                "[예] = Excel로 편집(저장 후 덮어쓰기/새 버전 선택)\n"
+                "[아니오] = 프로그램 화면으로 보기(읽기 전용)"):
+            opened = self._open_in_excel(p)
+            self._existing_finish_dialog(p, opened)
+            return
         if self._do_open(target, self._detect_kind(target)):
             self.view = "param"
             self._sync_tab_style()
             self.navigate(screen="s0")
+
+    def _existing_finish_dialog(self, canonical, opened):
+        """기존 양식을 Excel로 편집한 뒤 저장 방식(덮어쓰기/새 버전)을 고른다."""
+        win = tk.Toplevel(self)
+        win.title("양식 편집 완료")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        tk.Label(win, text=("Excel에서 편집·저장한 뒤 저장 방식을 고르세요.\n"
+                            + ("" if opened else "(Excel 자동 열기 실패 — 파일을 직접 여세요)\n")
+                            + f"파일: {canonical}"),
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["sub"],
+                 justify="left", wraplength=520).pack(padx=16, pady=(14, 10))
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=(0, 14))
+
+        def overwrite():
+            win.destroy()
+            messagebox.showinfo("저장 완료", "현재본을 덮어썼습니다(Excel 저장분 그대로).")
+
+        def new_version():
+            try:
+                v = versioning.save_new_version(canonical)
+            except Exception as e:  # noqa: BLE001
+                messagebox.showerror("새 버전 저장 실패", str(e), parent=win)
+                return
+            win.destroy()
+            messagebox.showinfo("새 버전 저장",
+                                f"현재본을 새 버전으로 보존했습니다:\n{os.path.basename(v)}")
+        tk.Button(bt, text="다시 열기", relief="flat", bd=0, bg=self.p["surface"], padx=12,
+                  pady=6, cursor="hand2",
+                  command=lambda: self._open_in_excel(canonical)).pack(side="left")
+        tk.Button(bt, text="새 버전으로 저장", relief="flat", bd=0, bg=self.p["ok"],
+                  fg="#ffffff", padx=14, pady=6, cursor="hand2",
+                  command=new_version).pack(side="right")
+        tk.Button(bt, text="덮어쓰기(현재본만)", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=14, pady=6, cursor="hand2",
+                  command=overwrite).pack(side="right", padx=6)
 
     def _pick_version(self, canonical, versions):
         """버전 선택창. 반환: 선택 경로(현재본=canonical 포함) 또는 None(취소)."""
