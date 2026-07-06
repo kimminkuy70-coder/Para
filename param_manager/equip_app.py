@@ -17,13 +17,19 @@ from __future__ import annotations
 import json
 import os
 import tkinter as tk
+from pathlib import Path
 from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from tksheet import Sheet
 
+from . import collector
 from . import downloader as dl
 from . import engine
+from . import extract_io
+from . import ini_parser
+from . import refresh as refresh_mod
 from . import rtp_parser as rtp
+from . import workdirs
 from .engine import MACHINES, ParamRepository
 from .theme import apply_theme
 
@@ -1716,8 +1722,8 @@ class EquipApp(tk.Tk):
         m.add_command(label="기존 엑셀(.xlsm) 가져오기 → RDL",
                       command=lambda: self._import_dialog("RDL"))
         m.add_separator()
-        m.add_command(label="파라미터 폴더 분석 → 취사선택…", command=self._curate_dialog)
-        m.add_command(label="파라미터 폴더에서 값 갱신(구조 유지)…", command=self._refresh_from_folder)
+        m.add_command(label="파라미터 불러오기(통합) — 수집·취사선택·양식·값갱신…",
+                      command=self._curate_dialog)
         m.add_command(label="장비 폴더에서 파라미터 다운로드…", command=self._download_dialog)
         m.add_separator()
         m.add_command(label="다른 이름으로 내보내기", command=self._export_dialog)
@@ -2023,24 +2029,37 @@ class EquipApp(tk.Tk):
     # ====================================================================
     def _curate_dialog(self):
         win = tk.Toplevel(self)
-        win.title("파라미터 폴더 분석 → 취사선택")
-        win.geometry("1180x720")
+        win.title("파라미터 불러오기(통합)")
+        win.geometry("1180x760")
         win.configure(bg=self.p["bg"])
         self._cur_win = win
         self._cur_items = []
         self._cur_machines = []
+        self._cur_sources = []          # 수집 결과 [(path, level, aoi)]
+        self._cur_pivot_rows = []       # 값 갱신용 파싱 피벗
+        self._cur_pivot_machines = []
+        self._cur_stamp = None          # 실행일시(폴더 배치용)
 
-        tk.Label(win, text="파라미터 폴더 분석 → 취사선택", bg=self.p["bg"], fg=self.p["text"],
+        tk.Label(win, text="파라미터 불러오기(통합) — 수집 → 취사선택 → 양식/값갱신",
+                 bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=14, pady=(12, 0))
-        tk.Label(win, text="다운받아 둔 폴더(호기/Recipe/x5·x20 구조)를 선택해 분석 → Recipe·배율별로 "
-                          "쓸 파라미터를 체크. 추천이름·비고(번역)는 사전에서 자동 표시, 직접 수정 가능.",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(anchor="w", padx=14)
+        tk.Label(win, text="① 장비에서 수집(읽기전용 복사) 또는 받아둔 로컬 폴더 분석 "
+                          "(GlobalRTP.ini·OpticPreset.ini·Zones 기준, RTP.txt 미사용) → "
+                          "② 화면에서 쓸 파라미터 체크(01_초안 자동 저장) → "
+                          "③ 양식 만들기 또는 열린 공용 파일 값 갱신(백업 자동).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=14)
 
         top = tk.Frame(win, bg=self.p["bg"])
         top.pack(fill="x", padx=14, pady=8)
+        tk.Button(top, text="① 장비에서 수집…", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=14, cursor="hand2",
+                  command=self._cur_collect_dialog).pack(side="left")
+        tk.Label(top, text="  또는 로컬 폴더:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
         self._cur_path = tk.StringVar(value=self._cfg.get("param_folder", ""))
         tk.Entry(top, textvariable=self._cur_path, font=self.fonts["base"],
-                 relief="solid", bd=1).pack(side="left", fill="x", expand=True)
+                 relief="solid", bd=1).pack(side="left", fill="x", expand=True, padx=(4, 0))
         tk.Button(top, text="폴더 선택", relief="flat", bd=0, bg=self.p["surface"],
                   cursor="hand2", command=self._cur_pick).pack(side="left", padx=6)
         tk.Button(top, text="분석", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
@@ -2077,10 +2096,13 @@ class EquipApp(tk.Tk):
 
         bot = tk.Frame(win, bg=self.p["bg"])
         bot.pack(fill="x", padx=14, pady=(0, 12))
-        tk.Button(bot, text="선택 항목으로 양식 만들기(.xlsx)", relief="flat", bd=0, bg=self.p["ok"],
-                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+        tk.Button(bot, text="③ 선택 항목으로 양식 만들기(.xlsx)", relief="flat", bd=0,
+                  bg=self.p["ok"], fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   command=self._cur_save).pack(side="left")
-        tk.Label(bot, text="(선택한 항목만 최종 양식이 됩니다. 기존에서 빼면 빠지고, 새로 고르면 추가)",
+        tk.Button(bot, text="③ 열린 공용 파일 값 갱신(백업 후)", relief="flat", bd=0,
+                  bg=self.p["primary"], fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=self._cur_update_values).pack(side="left", padx=(8, 0))
+        tk.Label(bot, text="(양식: 선택 항목만 새 파일로 / 값갱신: 열린 파일 구조 유지·값만)",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left", padx=8)
         self._cur_status = tk.Label(bot, text="", bg=self.p["bg"], fg=self.p["muted"],
                                     font=self.fonts["sub"])
@@ -2091,17 +2113,26 @@ class EquipApp(tk.Tk):
         if d:
             self._cur_path.set(d)
 
-    def _cur_analyze(self):
-        path = self._cur_path.get().strip()
-        if not path or not os.path.isdir(path):
-            self._cur_status.config(text="폴더를 선택하세요.")
-            return
-        self._cfg["param_folder"] = path
-        save_config(self._cfg)
+    def _cur_analyze(self, from_collect: bool = False):
+        """소스(수집 결과 또는 로컬 폴더)를 ini 기준으로 파싱해 취사선택 목록 구성.
+        파싱 소스 = GlobalRTP.ini + OpticPreset.ini + Zones/*.ini (RTP.txt 미사용)."""
+        sources = list(self._cur_sources) if from_collect else []
+        if not sources:
+            path = self._cur_path.get().strip()
+            if not path or not os.path.isdir(path):
+                self._cur_status.config(text="폴더를 선택하거나 장비에서 수집하세요.")
+                return
+            self._cfg["param_folder"] = path
+            save_config(self._cfg)
+            sources = [(path, "", "")]
+            self._cur_sources = []
         self._cur_status.config(text="분석 중…")
         self.update_idletasks()
         try:
-            cfgs = rtp.scan_tree(path)
+            cfgs = []
+            for spath, level, aoi in sources:
+                cfgs += ini_parser.scan_tree(spath, default_level=level,
+                                             default_equipment=aoi)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("분석 실패", str(e), parent=self._cur_win)
             return
@@ -2117,13 +2148,13 @@ class EquipApp(tk.Tk):
             messagebox.showwarning(
                 "변형 미지정 폴더(불러오지 않음)",
                 f"아래 {len(invalid)}개 폴더는 변형이 지정되지 않아 불러오지 않습니다.\n"
-                "PI 는 'PI레시피/PI' 또는 'PI레시피/PI_bubble' 하위폴더로,\n"
-                "RDL 은 'Recipe/x5' 또는 'Recipe/x20' 하위폴더로 만들어 주세요.\n\n"
+                "PI 는 폴더명에 PI/PI3…(기본) 또는 BUBBLE 포함,\n"
+                "RDL 은 x5/x20 폴더(또는 OpticPreset 의 Scan2d Mag)여야 합니다.\n\n"
                 + "\n".join(lines) + more, parent=self._cur_win)
         if not valid:
             messagebox.showerror(
                 "불러올 항목 없음",
-                "변형(PI/PI_bubble · x5/x20)이 제대로 지정된 폴더가 없습니다.\n"
+                "설정 파일(GlobalRTP.ini/OpticPreset.ini/Zones)을 가진 유효 폴더가 없습니다.\n"
                 "폴더 구조를 맞춘 뒤 다시 시도하세요.", parent=self._cur_win)
             self._cur_status.config(text="인식된 유효 폴더 없음.")
             return
@@ -2141,10 +2172,14 @@ class EquipApp(tk.Tk):
             self._cur_status.config(text="불러오기 취소.")
             return
         try:
-            rows, machines = rtp.build_pivot(valid)
+            rows, machines = ini_parser.build_pivot(valid)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("분석 실패", str(e), parent=self._cur_win)
             return
+        self._cur_pivot_rows = rows          # 값 갱신(③)용 원본 피벗
+        self._cur_pivot_machines = list(machines)
+        if not self._cur_stamp:
+            self._cur_stamp = workdirs.run_stamp()
 
         self._cur_items = []
         existing_keys = set()
@@ -2186,9 +2221,10 @@ class EquipApp(tk.Tk):
             rec = rtp.recommend(r["layer"], r["recipe"], r["mag"], r["zone"], r["alg"], r["param"])
             self._cur_items.append(self._cur_make_item(
                 "new", r["layer"], r["recipe"], r["mag"], r["zone"], r["alg"], r["param"],
-                r["values"], name=(rec or {}).get("param") or rtp.display_name(r["param"]),
+                r["values"], name=(rec or {}).get("param") or r["param"],
                 note=(rec or {}).get("desc_kr") or "", matched=rec is not None,
-                rep=self._cur_rep({m: v for m, v in r["values"].items() if engine._s(v) != ""})))
+                rep=self._cur_rep({m: v for m, v in r["values"].items() if engine._s(v) != ""}),
+                ext=r.get("extract")))
 
         for it in self._cur_items:
             g = f"{it['layer']} / {it['recipe']} / {it['mag']}"
@@ -2199,21 +2235,32 @@ class EquipApp(tk.Tk):
             self._cur_group.current(0)
         ne = sum(1 for it in self._cur_items if it["source"] == "existing")
         nn = len(self._cur_items) - ne
+        # ② 01_초안 자동 저장 — 새로 파싱된 전체(취사선택 전 스냅샷)
+        snap_note = ""
+        try:
+            new_items = [it for it in self._cur_items if it["source"] == "new"]
+            written = self._write_stage_snapshots("initial", new_items)
+            if written:
+                snap_note = f" 01_초안 {len(written)}개 저장."
+        except Exception as e:  # noqa: BLE001
+            snap_note = f" (01_초안 저장 실패: {e})"
         self._cur_status.config(
-            text=f"분석 완료: 기존 {ne} + 새로 {nn} = {len(self._cur_items)}항목, 호기 {len(machines)}. "
-                 f"Recipe·배율 선택 후 기존/새로 각각 전체선택.")
+            text=f"분석 완료: 기존 {ne} + 새로 {nn} = {len(self._cur_items)}항목, "
+                 f"호기 {len(machines)}.{snap_note}")
         self._cur_render()
 
     def _cur_make_item(self, source, layer, recipe, mag, zone, alg, param, vals,
-                       name, note, matched, rep):
+                       name, note, matched, rep, ext=None):
         return {
             "source": source, "layer": layer, "recipe": recipe, "mag": mag,
             "zone": zone, "alg": alg, "param": param, "values": dict(vals),
             "rep": rep, "matched": matched,
+            "ext": ext,   # 재추출 메타(설정파일/섹션/키/변환) — _EXTRACT_MAP 기록용
             "sel": tk.BooleanVar(value=(source == "existing")),  # 기존은 기본 유지
             "name": tk.StringVar(value=name), "note": tk.StringVar(value=note),
-            # 변형: 신규 PI 는 PI/PI_bubble 을 반드시 직접 선택(미정="")해야 저장됨
-            "variant": tk.StringVar(value=("" if (layer == "PI" and source == "new") else mag)),
+            # 변형: 폴더명으로 판정된 값(PI/PI-bubble/x5/x20)을 기본 선택.
+            # ini 인식이 실패해 ""이면 사용자가 직접 골라야 저장됨(기존 정책).
+            "variant": tk.StringVar(value=mag),
         }
 
     @staticmethod
@@ -2299,18 +2346,62 @@ class EquipApp(tk.Tk):
         self._cur_status.config(
             text=f"{self._cur_group.get()} — 기존 {len(ex)} / 새로 {len(nw)}")
 
-    def _cur_records(self, items):
-        recs = []
+    def _cur_records(self, items, only_machine=None):
+        """items → (공용 스키마 레코드, 재추출 메타) 병렬 목록.
+        only_machine 지정 시 그 호기 값만 싣는다(호기별 스냅샷용)."""
+        recs, exts = [], []
         for it in items:
             rec = {"PI": it["recipe"], "Recipe": it["variant"].get().strip() or it["mag"],
                    "Zone": it["zone"], "Alg": it["alg"],
                    "Parameter": it["name"].get().strip() or it["param"],
                    "초기 추천값": it["rep"], "비고": it["note"].get().strip()}
             for m, v in it["values"].items():
-                if engine._s(v) != "":
-                    rec[m] = v
+                if not m or engine._s(v) == "":
+                    continue
+                if only_machine is not None and m != only_machine:
+                    continue
+                rec[m] = v
             recs.append(rec)
-        return recs
+            exts.append(it.get("ext"))
+        return recs, exts
+
+    def _snapshot_base_dir(self, default=None) -> str | None:
+        """initial/final/백업 폴더의 루트 = 공용 파일이 있는 폴더."""
+        for p in (self.path, self._cfg.get("pi_path"), self._cfg.get("rdl_path")):
+            if p and os.path.isfile(p):
+                return workdirs.base_dir_for(p)
+        return default
+
+    def _write_stage_snapshots(self, stage: str, items, base: str | None = None):
+        """items 를 (레시피레벨, 호기)별로 나눠 01_초안/02_확정 파일 기록.
+        반환: 생성 파일 경로 목록. base 미지정 시 공용 파일 폴더."""
+        base = base or self._snapshot_base_dir()
+        if not base or not items:
+            return []
+        if not self._cur_stamp:
+            self._cur_stamp = workdirs.run_stamp()
+        groups: dict[tuple, list] = {}   # (레벨, 호기, layer) → 항목들
+        for it in items:
+            level = engine._s(it["recipe"]) or "레벨미상"
+            for m, v in it["values"].items():
+                if m and engine._s(v) != "":
+                    groups.setdefault((level, m, it["layer"]), []).append(it)
+        prefix = "01_초안" if stage == "initial" else "02_확정"
+        run_dir_fn = (workdirs.initial_run_dir if stage == "initial"
+                      else workdirs.final_run_dir)
+        written = []
+        for (level, m, layer), its in groups.items():
+            if not its:
+                continue
+            sheet = "RDL_ALL" if layer == "RDL" else "PI_ALL"
+            rundir = run_dir_fn(base, level, m, self._cur_stamp)
+            dest = os.path.join(rundir, f"{prefix}_{m}_{level}.xlsx")
+            recs, exts = self._cur_records(its, only_machine=m)
+            extract_io.write_snapshot(
+                dest, recs, [m], sheet, exts, stage=stage, level=level, aoi=m,
+                source=self._cur_path.get().strip(), user=self.user)
+            written.append(dest)
+        return written
 
     def _cur_save(self):
         sel = [it for it in self._cur_items if it["sel"].get()]
@@ -2353,13 +2444,15 @@ class EquipApp(tk.Tk):
             # 선택한 항목만으로 새로 생성(기존에서 뺀 건 빠지고, 새로 고른 건 추가됨)
             if pi_items:
                 p = f"{stem}_PI.xlsx"
-                engine.create_from_records(p, self._cur_records(pi_items), self._cur_machines,
+                engine.create_from_records(p, self._cur_records(pi_items)[0],
+                                           self._cur_machines,
                                            user=self.user, sheet_name="PI_ALL")
                 self._cfg["pi_path"] = p
                 done.append(("PI", p, len(pi_items)))
             if rdl_items:
                 p = f"{stem}_RDL.xlsx"
-                engine.create_from_records(p, self._cur_records(rdl_items), self._cur_machines,
+                engine.create_from_records(p, self._cur_records(rdl_items)[0],
+                                           self._cur_machines,
                                            user=self.user, sheet_name="RDL_ALL")
                 self._cfg["rdl_path"] = p
                 done.append(("RDL", p, len(rdl_items)))
@@ -2367,7 +2460,17 @@ class EquipApp(tk.Tk):
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("저장 실패", str(e), parent=self._cur_win)
             return
-        summary = "\n".join(f"{k}: {n}개 → {os.path.basename(p)}" for k, p, n in done)
+        # ③ 02_확정 스냅샷(호기·레벨별) — 새로 불러온 항목만(재추출 메타 보유)
+        fin_note = ""
+        try:
+            fin = self._write_stage_snapshots(
+                "final", [it for it in sel if it["source"] == "new"],
+                base=os.path.dirname(stem))
+            if fin:
+                fin_note = f"\n02_확정 {len(fin)}개 저장(final 폴더)."
+        except Exception as e:  # noqa: BLE001
+            fin_note = f"\n(02_확정 저장 실패: {e})"
+        summary = "\n".join(f"{k}: {n}개 → {os.path.basename(p)}" for k, p, n in done) + fin_note
         self._cur_status.config(text="저장 완료: " + ", ".join(f"{k} {n}" for k, p, n in done))
         first = done[0]
         if messagebox.askyesno("완료", f"양식 저장 완료.\n{summary}\n\n지금 열까요? ({first[0]})",
@@ -2376,41 +2479,241 @@ class EquipApp(tk.Tk):
             self._do_open(first[1], first[0])
             self.navigate(screen="s0")
 
-    def _refresh_from_folder(self):
-        """현재 열린 양식의 구조는 유지하고 폴더의 최신 파일에서 값만 갱신."""
+    # ---- ③ 값 갱신: 백업 → 미리보기 → 적용 → 02_확정 -------------------
+    def _cur_update_values(self):
+        """열린 공용 파일의 구조는 유지하고, 분석된 최신 파싱값으로 값만 갱신."""
+        if not self._cur_pivot_rows:
+            self._cur_status.config(text="먼저 수집/분석을 실행하세요.")
+            return
         if not self.repo:
-            messagebox.showinfo("값 갱신", "먼저 양식 파일을 여세요.")
+            messagebox.showinfo("값 갱신", "먼저 공용 양식 파일을 여세요.",
+                                parent=self._cur_win)
             return
         if self.read_only:
-            messagebox.showwarning("읽기 전용", "읽기 전용이라 값을 갱신할 수 없습니다.")
+            messagebox.showwarning("읽기 전용", "읽기 전용이라 값을 갱신할 수 없습니다.",
+                                   parent=self._cur_win)
             return
-        folder = self._cfg.get("param_folder", "")
-        if not folder or not os.path.isdir(folder):
-            folder = filedialog.askdirectory(title="값을 읽어올 파라미터 폴더 선택")
-            if not folder:
-                return
-        else:
-            folder = filedialog.askdirectory(title="값을 읽어올 파라미터 폴더 선택",
-                                             initialdir=folder) or folder
-        self._cfg["param_folder"] = folder
-        save_config(self._cfg)
-        self._set_status("폴더에서 값 갱신 중…")
-        self.update_idletasks()
+        plan = refresh_mod.plan_refresh(self.repo, self._cur_pivot_rows,
+                                        self._cur_pivot_machines)
+        if not plan.changes and not plan.new_machines:
+            messagebox.showinfo(
+                "값 갱신", "변경할 값이 없습니다(모두 최신).\n"
+                f"매칭 {plan.matched_rows}행 / 매칭 안 됨 {plan.unmatched_rows}행.",
+                parent=self._cur_win)
+            return
+        # 변경 미리보기(적용 전 확인) — 세부목표: 대대적 변동 전 안전장치
+        lines = [f"· {c.pi} {c.recipe} | {c.zone} > {c.alg} > {c.param} "
+                 f"| {c.machine}: {c.old or '(빈값)'} → {c.new}"
+                 for c in plan.changes[:30]]
+        more = f"\n…외 {len(plan.changes) - 30}건" if len(plan.changes) > 30 else ""
+        newm = (f"\n새 호기 열 추가: {', '.join(plan.new_machines)}"
+                if plan.new_machines else "")
+        if not messagebox.askyesno(
+                "값 갱신 미리보기",
+                f"변경될 셀 {len(plan.changes)}건 (매칭 {plan.matched_rows}행, "
+                f"매칭 안 됨 {plan.unmatched_rows}행 → 그대로 둠){newm}\n\n"
+                + "\n".join(lines) + more
+                + "\n\n적용 전에 공용 파일 백업본을 자동 생성합니다. 진행할까요?",
+                parent=self._cur_win):
+            self._cur_status.config(text="값 갱신 취소.")
+            return
         try:
-            self._push_undo()
-            stats = rtp.refresh_values(self.repo, folder)
+            backup = workdirs.backup_shared_file(self.path)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("값 갱신 실패", str(e))
+            messagebox.showerror("백업 실패", f"백업을 만들지 못해 중단합니다.\n{e}",
+                                 parent=self._cur_win)
             return
+        self._push_undo()
+        stats = refresh_mod.apply_refresh(self.repo, plan)
         self.repo.ensure_machines(self._all_machines())
         self.dirty = True
         self._render()
+        fin_note = ""
+        try:
+            fin = self._write_stage_snapshots(
+                "final", [it for it in self._cur_items if it["source"] == "new"])
+            if fin:
+                fin_note = f"\n02_확정 {len(fin)}개 저장(final 폴더)."
+        except Exception as e:  # noqa: BLE001
+            fin_note = f"\n(02_확정 저장 실패: {e})"
         messagebox.showinfo(
             "값 갱신 완료",
-            f"폴더 항목 {stats['folder_items']}개 중 매칭으로\n"
             f"갱신된 행 {stats['updated_rows']}개, 셀 {stats['updated_cells']}개.\n"
-            f"매칭 안 된 행 {stats['unmatched_rows']}개(이름/구조 다름 → 그대로 둠).\n"
-            f"호기 {len(stats['machines'])}개 인식.")
+            f"매칭 안 된 행 {stats['unmatched_rows']}개(구조 다름 → 그대로 둠).\n"
+            f"백업: {backup}{fin_note}\n\n"
+            "변경은 아직 메모리에만 있습니다. 저장 버튼으로 공용 파일에 기록하세요.",
+            parent=self._cur_win)
+
+    # ---- ① 장비 네트워크 수집 ------------------------------------------
+    def _ip_to_aoi(self, ip: str) -> str:
+        """참고자료/관련자료의 IP표로 IP → AOI-호기 역매핑. 못 찾으면 ''."""
+        rev = {}
+        if self.repo:
+            for k, v in (self.repo.aoi_ip or {}).items():
+                rev[engine._s(v)] = engine._s(k)
+            for row in (self.repo.reference or []):
+                if len(row) >= 2 and engine._s(row[0]).upper().startswith("AOI") \
+                        and engine._s(row[1]):
+                    rev.setdefault(engine._s(row[1]), engine._s(row[0]).upper())
+        return rev.get(engine._s(ip), "")
+
+    def _pick_list_chooser(self, kind, title, items, multi):
+        """collector 용 모달 선택창. 반환: 선택 목록 또는 None(취소)."""
+        win = tk.Toplevel(self._cur_win)
+        win.title(title)
+        win.configure(bg=self.p["bg"])
+        win.grab_set()
+        tk.Label(win, text=title, bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w", padx=12, pady=(10, 2))
+        if multi:
+            tk.Label(win, text="여러 개 선택: Ctrl/Shift+클릭", bg=self.p["bg"],
+                     fg=self.p["muted"], font=self.fonts["sub"]).pack(anchor="w", padx=12)
+        fr = tk.Frame(win, bg=self.p["bg"])
+        fr.pack(fill="both", expand=True, padx=12, pady=6)
+        sb = ttk.Scrollbar(fr, orient="vertical")
+        lb = tk.Listbox(fr, selectmode=("extended" if multi else "browse"),
+                        height=min(22, max(8, len(items))), width=80,
+                        font=self.fonts["base"], yscrollcommand=sb.set)
+        sb.config(command=lb.yview)
+        lb.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        for it in items:
+            lb.insert("end", it.name if isinstance(it, Path) else str(it))
+        if items:
+            lb.selection_set(0)
+        result = {"val": None}
+
+        def ok(_=None):
+            sel = [items[i] for i in lb.curselection()]
+            result["val"] = sel or None
+            win.destroy()
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=12, pady=(0, 10))
+        tk.Button(bt, text="선택", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                  padx=16, cursor="hand2", command=ok).pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=16, cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+        lb.bind("<Double-Button-1>", ok)
+        win.wait_window()
+        return result["val"]
+
+    def _cur_collect_dialog(self):
+        """장비 IP 입력 → net use(선택) → Job/Setup/Recipe 선택 → 읽기전용 수집."""
+        win = tk.Toplevel(self._cur_win)
+        win.title("장비에서 수집(읽기전용)")
+        win.geometry("640x430")
+        win.configure(bg=self.p["bg"])
+        tk.Label(win, text="장비 네트워크(\\\\IP\\c$\\Job)에서 설정 파일 수집",
+                 bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win, text="원본은 절대 수정하지 않고 읽기·복사만 합니다. 장비 1대씩 접속 후 즉시\n"
+                          "연결을 해제하며, 비밀번호는 이번 실행 메모리에만 보관됩니다.\n"
+                          "탐색기로 이미 연결해 두었다면 'net use 접속' 체크를 해제하세요(수동 접속과 동일).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=14)
+
+        frm = tk.Frame(win, bg=self.p["bg"])
+        frm.pack(fill="both", expand=True, padx=14, pady=8)
+        tk.Label(frm, text="장비 IP(여러 개, 쉼표/줄바꿈 구분) — 첫 장비에서 고른 "
+                          "Job·Recipe 선택을 다음 장비에 자동 적용:",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w")
+        ips_txt = tk.Text(frm, height=4, font=self.fonts["base"], relief="solid", bd=1)
+        ips_txt.pack(fill="x", pady=(2, 8))
+
+        row = tk.Frame(frm, bg=self.p["bg"])
+        row.pack(fill="x")
+        tk.Label(row, text="접속 ID:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        uid_var = tk.StringVar(value=self._cfg.get("collect_user", "amkor"))
+        tk.Entry(row, textvariable=uid_var, width=14, font=self.fonts["base"],
+                 relief="solid", bd=1).pack(side="left", padx=(4, 12))
+        tk.Label(row, text="비밀번호:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        pw_var = tk.StringVar()
+        tk.Entry(row, textvariable=pw_var, width=18, show="*", font=self.fonts["base"],
+                 relief="solid", bd=1).pack(side="left", padx=(4, 12))
+        net_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(row, text="net use 접속(끝나면 자동 해제)", variable=net_var,
+                       bg=self.p["bg"], font=self.fonts["sub"]).pack(side="left")
+
+        status = tk.Label(frm, text="", bg=self.p["bg"], fg=self.p["muted"],
+                          font=self.fonts["sub"], justify="left", anchor="w")
+        status.pack(fill="x", pady=6)
+
+        def run():
+            ips = collector.split_ips(ips_txt.get("1.0", "end"))
+            if not ips:
+                status.config(text="IP를 입력하세요.")
+                return
+            if net_var.get() and not collector.is_windows():
+                status.config(text="net use 접속은 Windows 에서만 가능합니다. "
+                                   "체크 해제 후 이미 연결된 경로로 시도하세요.")
+                return
+            base = self._snapshot_base_dir()
+            if not base:
+                messagebox.showinfo(
+                    "저장 위치", "수집 파일을 둘 기준(공용 파일)이 없습니다.\n"
+                    "먼저 공용 파일을 열거나, 저장 폴더를 직접 선택하세요.", parent=win)
+                base = filedialog.askdirectory(title="수집 저장 기준 폴더 선택",
+                                               parent=win)
+                if not base:
+                    return
+            self._cfg["collect_user"] = uid_var.get().strip() or "amkor"
+            save_config(self._cfg)
+            self._cur_stamp = workdirs.run_stamp()
+            self._cur_sources = []
+            plan = None
+            errors = []
+            for i, ip in enumerate(ips, 1):
+                aoi = self._ip_to_aoi(ip) or ip.replace(".", "_")
+                status.config(text=f"[{i}/{len(ips)}] {ip} ({aoi}) 수집 중…")
+                win.update_idletasks()
+
+                def staging_for(kw, aoi=aoi):
+                    rd = workdirs.initial_run_dir(base, kw or "레벨미상", aoi,
+                                                  self._cur_stamp)
+                    return workdirs.staging_dir(rd)
+
+                def confirm(planned, ip=ip):
+                    lines = [f"· {src}" for src, _, _ in planned[:15]]
+                    more = (f"\n…외 {len(planned) - 15}개"
+                            if len(planned) > 15 else "")
+                    return messagebox.askyesno(
+                        "복사 확인",
+                        f"[{ip}] 총 {len(planned)}개 파일을 로컬로 복사합니다"
+                        "(원본은 읽기만):\n" + "\n".join(lines) + more, parent=win)
+                try:
+                    _, plan, root = collector.collect_equipment(
+                        ip, staging_for, self._pick_list_chooser,
+                        username=uid_var.get().strip() or "amkor",
+                        password=pw_var.get(), use_net_use=net_var.get(),
+                        plan=plan, confirm=confirm)
+                    self._cur_sources.append(
+                        (str(root), plan.job_keyword, aoi))
+                except collector.UserCancelled:
+                    errors.append(f"{ip}: 사용자가 취소")
+                except Exception as e:  # noqa: BLE001
+                    errors.append(f"{ip}: {e}")
+            pw_var.set("")               # 비밀번호는 실행 후 즉시 소거
+            done = len(self._cur_sources)
+            msg = f"수집 완료 {done}건" + (f", 실패 {len(errors)}건" if errors else "")
+            if errors:
+                messagebox.showwarning("수집 결과", msg + "\n\n" + "\n".join(errors),
+                                       parent=win)
+            status.config(text=msg)
+            if done:
+                win.destroy()
+                self._cur_analyze(from_collect=True)
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Button(bt, text="수집 시작", relief="flat", bd=0, bg=self.p["ok"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=run).pack(side="left")
+        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=16, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="left", padx=8)
 
     def _auto_open_last(self):
         """첫 실행 시 마지막으로 연 양식 파일을 자동으로 연다."""

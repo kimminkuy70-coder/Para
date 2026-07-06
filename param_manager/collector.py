@@ -214,13 +214,16 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
                       use_net_use: bool = True,
                       plan: CollectPlan | None = None,
                       job_root_override: Path | None = None,
-                      ) -> tuple[list[tuple[Path, str, str]], CollectPlan]:
+                      confirm=None,
+                      ) -> tuple[list[tuple[Path, str, str]], CollectPlan, Path]:
     """장비 1대에서 Recipe 파일 수집 계획을 세우고 staging 으로 복사.
 
     chooser(kind, title, items, multi) -> list[Path] | None(취소).
     plan 이 있으면 Job(키워드)/Setup/Recipe 를 자동 매칭하고, 애매하면 chooser 로.
+    staging_root 는 경로 또는 콜러블(job_keyword) -> 경로 — 레시피 레벨(PI3/RDL4)이
+    Job 선택 후에야 확정되므로, 레벨별 폴더 배치는 콜러블로 지연 결정한다.
     job_root_override 는 테스트용(로컬 가짜 트리).
-    반환: (복사된 계획 목록, 다음 장비용 CollectPlan).
+    반환: (복사된 계획 목록, 다음 장비용 CollectPlan, 실제 staging 경로).
     """
     connected = False
     if use_net_use:
@@ -247,6 +250,8 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
             if not picked:
                 raise UserCancelled("Job 폴더 선택이 취소되었습니다.")
             job_folder = picked[0]
+        job_keyword = (plan.job_keyword if plan and plan.job_keyword
+                       else auto_detect_job_keyword(job_folder.name))
 
         # 2) Setup/Recipes
         setup_candidates = find_setup_candidates(job_folder)
@@ -284,16 +289,19 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
         planned = plan_files(selected)
         if not planned:
             raise RuntimeError("복사할 설정 파일(GlobalRTP/OpticPreset/Zones)이 없습니다.")
-        copy_planned(planned, Path(staging_root), header_lines=[
+        if confirm is not None and not confirm(planned):
+            raise UserCancelled("사용자가 복사를 취소했습니다.")
+        root = Path(staging_root(job_keyword)) if callable(staging_root) \
+            else Path(staging_root)
+        copy_planned(planned, root, header_lines=[
             f"IP={ip}", f"JobRoot={job_root}", f"JobFolder={job_folder}",
             f"SetupFolder={setup_folder}", f"RecipesRoot={recipes_root}",
         ])
         new_plan = CollectPlan(
-            job_keyword=(plan.job_keyword if plan and plan.job_keyword
-                         else auto_detect_job_keyword(job_folder.name)),
+            job_keyword=job_keyword,
             job_name=job_folder.name, setup_name=setup_folder.name,
             recipe_names=[p.name for p in selected])
-        return planned, new_plan
+        return planned, new_plan, root
     finally:
         if connected:
             disconnect_admin_share(ip)

@@ -175,9 +175,10 @@ def test_collector_plan_and_copy():
             return list(items) if multi else [items[0]]
 
         staging = Path(tmp) / "staging"
-        planned, plan = collector.collect_equipment(
+        planned, plan, used_root = collector.collect_equipment(
             "10.0.0.1", staging, chooser, use_net_use=False,
             job_root_override=job_root)
+        assert Path(used_root) == staging
         assert len(planned) == 3          # GlobalRTP + OpticPreset + Zone1
         assert plan.job_keyword == "PI3" and plan.recipe_names == ["PI3"]
         assert (staging / "PI3" / "GlobalRTP.ini").is_file()
@@ -186,11 +187,18 @@ def test_collector_plan_and_copy():
         assert (rec / "GlobalRTP.ini").read_text(encoding="utf-8") == GLOBAL_RTP
         # 2대째: plan 재사용 → chooser 호출 없이 자동 매칭
         picks.clear()
-        staging2 = Path(tmp) / "staging2"
-        planned2, _ = collector.collect_equipment(
+        # staging 을 콜러블로 — Job 키워드 확정 후 레벨별 폴더 결정
+        got_kw = []
+
+        def staging2(kw):
+            got_kw.append(kw)
+            return Path(tmp) / "staging2" / kw
+
+        planned2, _, root2 = collector.collect_equipment(
             "10.0.0.2", staging2, chooser, use_net_use=False,
             plan=plan, job_root_override=job_root)
         assert not picks and len(planned2) == 3
+        assert got_kw == ["PI3"] and Path(root2).name == "PI3"
         # 키워드/레시피 매칭 단위 확인
         sel, missing = collector.match_recipes_by_names(
             [rec.parent / "PI3", rec.parent / "PI BUBBLE"], ["PI_BUBBLE"])
