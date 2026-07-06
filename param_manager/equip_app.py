@@ -522,8 +522,9 @@ class EquipApp(tk.Tk):
         tk.Label(head, text=f"  {st['machine']} : {st['recipe'] or st['pi']}",
                  bg=self.p["surface"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(side="left", pady=8)
-        ro = "  [읽기 전용]" if self.read_only else ""
-        tk.Label(head, text=f"좌=선택 호기 · 우=다른 호기(직접 수정 가능) · Shift+휠=가로스크롤{ro}   ",
+        ro = "  [파일 읽기 전용]" if self.read_only else ""
+        tk.Label(head, text=f"좌=선택 호기 · 우=다른 호기 · 값은 읽기 전용(‘값 업데이트’로 채움) "
+                          f"· Shift+휠=가로스크롤{ro}   ",
                  bg=self.p["surface"], fg=(self.p["danger"] if self.read_only else self.p["muted"]),
                  font=self.fonts["sub"]).pack(side="right", pady=8)
 

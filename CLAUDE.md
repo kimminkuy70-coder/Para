@@ -2,8 +2,26 @@
 
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
 프로그램(Python/tkinter). 기존 Excel(.xlsm)+VBA 도구를 대체.
-현재 작업 브랜치: `claude/program-load-feature-overhaul-bc4xbf`
-(불러오기 기능 대개편 — extractor 통합. 설계·인수인계: `docs/불러오기_통합_설계.md`).
+현재 작업 브랜치: `claude/program-dev-prompt-file-f2oept`
+(AOI 스펙 UI 재편 — bc4xbf 기계장치 재사용. 진행/인수인계: `docs/AOI_구현_진행.md`.
+기계장치 원설계: `docs/불러오기_통합_설계.md`).
+
+## AOI 스펙 재편(2026-07, 확정) — 화면 구조
+
+- 탭: **파라미터 값 확인 / 양식 만들기 / 특이사항 / 참고자료**.
+- '파라미터 값 확인' = 호기 값 **읽기 전용**(`values_readonly`). 값은 '값 업데이트'로만 채움.
+  상단 액션바: 값 파일 열기 / 값 업데이트 / 이력 확인 / ⋯더보기(레거시 메뉴).
+- **⋯파일 = 특이사항/참고자료 엑셀 불러오기만**(단순화). 나머지는 ⋯더보기로 이동.
+- **양식 만들기**: 레시피(PI2·3·4 / RDL1~4) → 신규(장비/로컬)/기존(버전) → `formbuilder`로
+  initial 생성 → **실제 Excel** 편집 → **[편집 완료]** → final. 원형 initial 별도 보존.
+  저장 시 **덮어쓰기/새 버전**(이전 보존).
+- **값 업데이트**: 양식 기준 → 여러 장비 → **레시피 선택 알림** → `collate`(설정키 매칭,
+  이름 변경에 견고) → **불일치 표기/생성 확인** → 레시피별 **항상 새 버전**(`versioning`).
+- **이력 확인**: 두 버전 → `history.diff_files` → 변경내역 엑셀(+비고 메모).
+- 오래 걸리는 작업은 `_run_busy` **로딩 모달 + 백그라운드 스레드**(순수작업만)로 응답없음 방지.
+
+새 헤드리스 모듈(모두 테스트됨): `versioning.py`, `formbuilder.py`, `collate.py`,
+`history.py`. 매칭 정규화는 **한글 보존**(rtp_parser.norm_key 는 한글을 버리므로 미사용).
 
 ## 이미 확정된 결정 (재질문 금지)
 
@@ -53,9 +71,16 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 ```
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_ini_parser.py   # 6  (ini 파서/수집/경로/백업/스냅샷/값갱신)
+python3 tests/test_versioning.py   # 2  (항상 새 버전 저장/목록/라벨)
+python3 tests/test_formbuilder.py  # 2  (initial 생성·편집→final 양식)
+python3 tests/test_collate.py      # 2  (설정키 매칭·불일치)
+python3 tests/test_history.py      # 1  (버전 비교·변경내역 엑셀)
+python3 tests/test_pipeline.py     # 1  (파싱→양식→취합→새버전→이력 통합)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
 ```
+※ GUI(tkinter/tksheet)·Windows(net use)·Excel 은 개발환경 미지원 → GUI 는
+`python3 -m py_compile param_manager/*.py` 정적검증. 실기 확인은 Windows 필요.
 
 ## 핵심 파일
 
@@ -65,8 +90,17 @@ python3 tests/test_downloader.py   # 8
 - `param_manager/workdirs.py` — initial/final/백업 폴더 규칙 + 백업 생성.
 - `param_manager/extract_io.py` — 01_초안/02_확정 스냅샷(공용 양식 + `_EXTRACT_MAP`).
 - `param_manager/refresh.py` — 값 갱신 미리보기(plan)/적용(apply) 분리.
-- `param_manager/equip_app.py` — tkinter GUI. 통합 마법사(`_curate_dialog`, `_cur_*`),
-  수집 다이얼로그(`_cur_collect_dialog`), 값 갱신(`_cur_update_values`), 다운로드 메뉴.
+- `param_manager/versioning.py` — **항상 새 버전 저장**(`버전/{stem}/…_vNNN_…`)·목록·라벨.
+- `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(편집용 초안,
+  '사용'/'최종 Parameter' 열)·`build_final_from_initial`(편집본→공용 양식+`_EXTRACT_MAP`).
+- `param_manager/collate.py` — **값 취합**: 양식+파싱 → 레시피별 호기 값 열, 설정키 매칭
+  (이름 변경 견고)·불일치 검출. `write_collated` 로 저장.
+- `param_manager/history.py` — **이력 확인**: `diff_files`(값변경/추가/삭제)·`write_diff_excel`
+  (변경내역+비고 메모).
+- `param_manager/equip_app.py` — tkinter GUI. AOI 재편: 탭(값 확인/양식 만들기),
+  `_view_form`·`_form_finalize`(실제 Excel 왕복), `_update_values_dialog`·`_update_write_results`
+  (취합·새버전), `_history_dialog`, `_run_busy`(로딩 모달), `_file_menu`(특이사항/참고자료).
+  레거시 통합 마법사(`_curate_dialog`, `_cur_*`)는 ⋯더보기로 유지.
 - `param_manager/engine.py` — `create_from_records`(PI_ALL/RDL_ALL 시트 기록), 잠금/병합/이력.
 - `param_manager/rtp_parser.py` — 레거시 RTP.txt 파서(새 경로 미사용) + `config_valid`/
   `recommend`/`norm_key` 는 공용 유틸로 계속 사용.
