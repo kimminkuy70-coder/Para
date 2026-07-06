@@ -16,25 +16,33 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from tksheet import Sheet
 
+from . import collate
 from . import collector
 from . import downloader as dl
 from . import engine
 from . import extract_io
+from . import formbuilder
+from . import history as history_mod
 from . import ini_parser
 from . import refresh as refresh_mod
 from . import rtp_parser as rtp
+from . import versioning
 from . import workdirs
 from .engine import MACHINES, ParamRepository
 from .theme import apply_theme
 
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".pi_param_manager.json")
 HIGHLIGHT_YELLOW = "#FFF24D"   # 강조(노랑)
+
+# 양식 만들기에서 고르는 레시피(레벨) — 스펙: PI2/PI3/PI4, RDL1~RDL4
+RECIPE_LEVELS = {"PI": ["PI2", "PI3", "PI4"], "RDL": ["RDL1", "RDL2", "RDL3", "RDL4"]}
 
 
 def load_config() -> dict:
@@ -77,8 +85,11 @@ class EquipApp(tk.Tk):
         self.dirty = False
         self.recent_colors: list = self._cfg.get("recent_colors", [])
 
-        # 상단 3탭(파라미터 / 특이사항 / 참고자료)
+        # 상단 탭(파라미터 값 확인 / 양식 만들기 / 특이사항 / 참고자료)
         self.view = "param"
+        # 스펙: '파라미터 값 확인' 화면에서 호기 값 '직접 수정' 기능 제거(읽기 전용).
+        # 값은 '파라미터 값 업데이트'(장비 수집)로만 채운다. 이름/추천값/비고/색은 편집 유지.
+        self.values_readonly = True
 
         # 내비게이션 스택(뒤로/앞으로) — 파라미터 탭 전용
         self.nav: list[dict] = [{"screen": "s0"}]
@@ -175,8 +186,8 @@ class EquipApp(tk.Tk):
         self.tabbar.pack(side="top", fill="x")
         self.tabbar.pack_propagate(False)
         self._tab_btns = {}
-        for key, label in (("param", "파라미터"), ("special", "특이사항"),
-                           ("reference", "참고자료")):
+        for key, label in (("param", "파라미터 값 확인"), ("form", "양식 만들기"),
+                           ("special", "특이사항"), ("reference", "참고자료")):
             b = tk.Button(self.tabbar, text=label, relief="flat", bd=0,
                           font=self.fonts["bold"], padx=22, pady=8, cursor="hand2",
                           command=lambda k=key: self._set_view(k))
@@ -262,10 +273,14 @@ class EquipApp(tk.Tk):
         if self.view == "reference":
             self._view_reference()
             return
+        if self.view == "form":
+            self._view_form()
+            return
         st = self._state()
         self.btn_back.config(state=("normal" if self.nav_idx > 0 else "disabled"))
         self.btn_fwd.config(state=("normal" if self.nav_idx < len(self.nav) - 1 else "disabled"))
         self._update_crumb(st)
+        self._param_actionbar()
         scr = st.get("screen", "s0")
         if scr == "s0":
             self._screen_machines()
@@ -778,8 +793,8 @@ class EquipApp(tk.Tk):
         ent = tk.Entry(row, textvariable=var, font=self.fonts["base"], width=12,
                        relief="solid", bd=1, justify="center",
                        disabledbackground=self.p["head_bg"])
-        if self.read_only:
-            ent.config(state="disabled")
+        if self.read_only or self.values_readonly:
+            ent.config(state="disabled")     # 값 확인은 읽기 전용(스펙)
         ent.pack(side="left", padx=2)
         ent.bind("<FocusOut>", lambda e, p=pr, m=machine, v=var: self._set_value(p, m, v))
         ent.bind("<Return>", lambda e, p=pr, m=machine, v=var:
@@ -809,8 +824,8 @@ class EquipApp(tk.Tk):
                         highlightthickness=0, padx=2, pady=1)
             if v:
                 t.insert("1.0", v)
-            if self.read_only:
-                t.config(state="disabled")
+            if self.read_only or self.values_readonly:
+                t.config(state="disabled")   # 값 확인은 읽기 전용(스펙)
             t.pack(fill="both", expand=True)
             t.bind("<FocusOut>",
                    lambda ev, p=pr, mm=m, w=t: self._set_value_str(p, mm, w.get("1.0", "end")))
@@ -1712,7 +1727,105 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  파일 / 저장 / 잠금
     # ====================================================================
-    def _file_menu(self):
+    # ====================================================================
+    #  로딩 모달 + 백그라운드 실행(응답없음 방지 — 스펙 1.1.3)
+    # ====================================================================
+    def _run_busy(self, title, work, on_done, parent=None):
+        """'로딩 중' 모달을 띄우고 work()를 백그라운드 스레드에서 실행한다.
+        work: 인자 없는 함수 — **GUI 위젯을 절대 건드리지 않는** 순수 작업만
+              (파싱/취합/저장/비교 등). 반환값은 on_done(ok, result)로 전달.
+        on_done(ok, result): 메인 스레드에서 호출(위젯 조작 안전). ok=False면
+              result 는 예외 객체."""
+        parent = parent or self
+        win = tk.Toplevel(parent)
+        win.title(title)
+        win.configure(bg=self.p["bg"])
+        win.transient(parent)
+        win.resizable(False, False)
+        tk.Label(win, text="⏳ " + title, bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(padx=28, pady=(18, 4))
+        tk.Label(win, text="잠시만 기다려 주세요…", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(padx=28, pady=(0, 6))
+        pb = ttk.Progressbar(win, mode="indeterminate", length=280)
+        pb.pack(padx=28, pady=(0, 18))
+        pb.start(12)
+        try:
+            win.grab_set()
+        except tk.TclError:
+            pass
+        box = {"done": False, "ok": False, "res": None}
+
+        def runner():
+            try:
+                box["res"], box["ok"] = work(), True
+            except Exception as e:  # noqa: BLE001
+                box["res"], box["ok"] = e, False
+            finally:
+                box["done"] = True
+
+        threading.Thread(target=runner, daemon=True).start()
+
+        def poll():
+            if box["done"]:
+                pb.stop()
+                try:
+                    win.grab_release()
+                except tk.TclError:
+                    pass
+                win.destroy()
+                on_done(box["ok"], box["res"])
+                return
+            win.after(90, poll)
+
+        win.after(90, poll)
+
+    # ====================================================================
+    #  '파라미터 값 확인' 상단 액션 바 + ⋯파일(특이사항/참고자료만)
+    # ====================================================================
+    def _param_actionbar(self):
+        bar = tk.Frame(self.body, bg=self.p["head_bg"])
+        bar.pack(side="top", fill="x")
+        tk.Button(bar, text="📂 값 파일 열기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=12, pady=5, cursor="hand2",
+                  command=self._open_value_file).pack(side="left", padx=(10, 4), pady=5)
+        tk.Button(bar, text="🔄 파라미터 값 업데이트", relief="flat", bd=0,
+                  bg=self.p["primary"], fg="#ffffff", padx=12, pady=5, cursor="hand2",
+                  command=self._update_values_dialog).pack(side="left", padx=4, pady=5)
+        tk.Button(bar, text="🕑 파라미터 이력 확인", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=12, pady=5, cursor="hand2",
+                  command=self._history_dialog).pack(side="left", padx=4, pady=5)
+        tk.Label(bar, text="  (값은 읽기 전용 — '값 업데이트'로만 채웁니다)",
+                 bg=self.p["head_bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left", padx=6)
+        tk.Button(bar, text="⋯ 더보기", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["muted"], padx=10, pady=5, cursor="hand2",
+                  command=self._more_menu).pack(side="right", padx=(4, 10), pady=5)
+
+    def _detect_kind(self, path) -> str:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(path, read_only=True)
+            names = wb.sheetnames
+            wb.close()
+            if any("RDL" in engine._s(n).upper() for n in names):
+                return "RDL"
+        except Exception:  # noqa: BLE001
+            pass
+        return "PI"
+
+    def _open_value_file(self):
+        """취합/양식 엑셀(.xlsx)을 화면으로 불러와 값 확인(PI/RDL 자동 판별)."""
+        p = filedialog.askopenfilename(
+            title="값 파일(취합/양식 .xlsx) 열기",
+            filetypes=[("Excel", "*.xlsx"), ("모든 파일", "*.*")])
+        if not p:
+            return
+        if self._do_open(p, self._detect_kind(p)):
+            self.view = "param"
+            self._sync_tab_style()
+            self.navigate(screen="s0")
+
+    def _more_menu(self):
         m = tk.Menu(self, tearoff=0)
         m.add_command(label="PI 공용 파일 열기(.xlsx)", command=lambda: self._open_dialog("PI"))
         m.add_command(label="RDL 공용 파일 열기(.xlsx)", command=lambda: self._open_dialog("RDL"))
@@ -1721,18 +1834,110 @@ class EquipApp(tk.Tk):
                       command=lambda: self._import_dialog("PI"))
         m.add_command(label="기존 엑셀(.xlsm) 가져오기 → RDL",
                       command=lambda: self._import_dialog("RDL"))
-        m.add_separator()
-        m.add_command(label="파라미터 불러오기(통합) — 수집·취사선택·양식·값갱신…",
-                      command=self._curate_dialog)
         m.add_command(label="장비 폴더에서 파라미터 다운로드…", command=self._download_dialog)
         m.add_separator()
+        m.add_command(label="파라미터 불러오기(통합 마법사)…", command=self._curate_dialog)
         m.add_command(label="다른 이름으로 내보내기", command=self._export_dialog)
         m.add_command(label="새로고침(다시 읽기)", command=self._reload)
+        try:
+            m.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+        finally:
+            m.grab_release()
+
+    def _file_menu(self):
+        """스펙 1.1.1.1 — ⋯파일 기능 단순화: 특이사항/참고자료 엑셀 불러오기만."""
+        m = tk.Menu(self, tearoff=0)
+        m.add_command(label="특이사항 엑셀(.xlsx) 불러오기",
+                      command=self._load_special_excel)
+        m.add_command(label="참고자료 엑셀(.xlsx) 불러오기",
+                      command=self._load_reference_excel)
         try:
             m.tk_popup(self.btn_file.winfo_rootx(),
                        self.btn_file.winfo_rooty() + self.btn_file.winfo_height())
         finally:
             m.grab_release()
+
+    def _load_special_excel(self):
+        if not self.repo:
+            messagebox.showinfo("특이사항 불러오기",
+                                "먼저 값 파일을 열어 두세요('값 파일 열기').")
+            return
+        p = filedialog.askopenfilename(title="특이사항 엑셀(.xlsx)",
+                                       filetypes=[("Excel", "*.xlsx")])
+        if not p:
+            return
+        from .engine import SPECIAL_BOOL_COL, SPECIAL_HEADERS
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(p, data_only=True)
+            ws = wb[wb.sheetnames[0]]
+            heads = [engine._s(c.value).strip() for c in ws[1]]
+            hidx = {h: i for i, h in enumerate(heads) if h in SPECIAL_HEADERS}
+            rows = []
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if row is None or all(v in (None, "") for v in row):
+                    continue
+                rec = {}
+                for h in SPECIAL_HEADERS:
+                    v = row[hidx[h]] if h in hidx and hidx[h] < len(row) else None
+                    if h == SPECIAL_BOOL_COL:
+                        rec[h] = engine._s(v).strip() in ("☑", "Y", "1", "True", "종료", "예")
+                    else:
+                        rec[h] = v
+                rows.append(rec)
+            wb.close()
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("불러오기 실패", str(e))
+            return
+        if not rows:
+            messagebox.showinfo("특이사항 불러오기", "읽을 행이 없습니다.")
+            return
+        replace = messagebox.askyesno(
+            "특이사항 불러오기",
+            f"{len(rows)}행을 읽었습니다.\n\n[예]=기존 특이사항을 이 내용으로 교체\n"
+            "[아니오]=기존 아래에 이어붙이기")
+        self._push_undo()
+        self.repo.special = rows if replace else (list(self.repo.special) + rows)
+        self.dirty = True
+        self.view = "special"
+        self._sync_tab_style()
+        self._render()
+
+    def _load_reference_excel(self):
+        if not self.repo:
+            messagebox.showinfo("참고자료 불러오기",
+                                "먼저 값 파일을 열어 두세요('값 파일 열기').")
+            return
+        p = filedialog.askopenfilename(title="참고자료 엑셀(.xlsx)",
+                                       filetypes=[("Excel", "*.xlsx")])
+        if not p:
+            return
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(p, data_only=True)
+            ws = wb[wb.sheetnames[0]]
+            grid = []
+            for row in ws.iter_rows(values_only=True):
+                if row is None or all(v in (None, "") for v in row):
+                    continue
+                grid.append([engine._s(v) for v in row])
+            wb.close()
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("불러오기 실패", str(e))
+            return
+        if not grid:
+            messagebox.showinfo("참고자료 불러오기", "읽을 행이 없습니다.")
+            return
+        replace = messagebox.askyesno(
+            "참고자료 불러오기",
+            f"{len(grid)}행을 읽었습니다.\n\n[예]=기존 참고자료를 교체\n"
+            "[아니오]=기존 아래에 이어붙이기")
+        self._push_undo()
+        self.repo.reference = grid if replace else (list(self.repo.reference) + grid)
+        self.dirty = True
+        self.view = "reference"
+        self._sync_tab_style()
+        self._render()
 
     def _load_kind(self, kind) -> bool:
         """해당 종류의 공용 파일을 로드(이미 같은 파일이면 재사용)."""
@@ -2559,7 +2764,7 @@ class EquipApp(tk.Tk):
 
     def _pick_list_chooser(self, kind, title, items, multi):
         """collector 용 모달 선택창. 반환: 선택 목록 또는 None(취소)."""
-        win = tk.Toplevel(self._cur_win)
+        win = tk.Toplevel(getattr(self, "_chooser_parent", None) or self)
         win.title(title)
         win.configure(bg=self.p["bg"])
         win.grab_set()
@@ -2714,6 +2919,566 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"],
                   padx=16, pady=6, cursor="hand2",
                   command=win.destroy).pack(side="left", padx=8)
+
+    # ====================================================================
+    #  실제 Excel 열기 + 소스 수집/파싱 공용 헬퍼
+    # ====================================================================
+    def _open_in_excel(self, path) -> bool:
+        """저장된 initial/양식 파일을 실제 Excel(또는 OS 기본 앱)로 연다."""
+        import shutil
+        import subprocess
+        try:
+            if os.name == "nt":
+                os.startfile(path)          # noqa: E1101 (Windows 전용)
+                return True
+            opener = shutil.which("xdg-open") or shutil.which("open")
+            if opener:
+                subprocess.Popen([opener, path])
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
+    def _ask_base_dir(self, title="작업 폴더(공용 파일 위치)를 선택하세요") -> str | None:
+        base = self._snapshot_base_dir()
+        if base:
+            return base
+        d = filedialog.askdirectory(title=title)
+        return d or None
+
+    def _collect_dialog(self, level_hint: str, on_sources):
+        """장비 IP 수집 전용 모달. 완료되면 on_sources(sources, base) 호출.
+        sources = [(staging_root, job_keyword, aoi)]. (양식/값 업데이트 공용)"""
+        base = self._ask_base_dir()
+        if not base:
+            return
+        win = tk.Toplevel(self)
+        win.title("장비에서 수집(읽기전용)")
+        win.geometry("620x380")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        self._chooser_parent = win
+        tk.Label(win, text="장비 네트워크(\\\\IP\\c$\\Job)에서 설정 파일 수집",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                 anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win, text="원본은 읽기·복사만. 장비 1대씩 접속 후 즉시 해제, 비밀번호는 "
+                          "이번 실행 메모리에만 보관.", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"], justify="left").pack(anchor="w", padx=14)
+        tk.Label(win, text="장비 IP(여러 개, 쉼표/줄바꿈):", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["sub"]).pack(anchor="w", padx=14, pady=(8, 0))
+        ips_txt = tk.Text(win, height=4, font=self.fonts["base"], relief="solid", bd=1)
+        ips_txt.pack(fill="x", padx=14, pady=(2, 8))
+        row = tk.Frame(win, bg=self.p["bg"])
+        row.pack(fill="x", padx=14)
+        tk.Label(row, text="접속 ID:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        uid_var = tk.StringVar(value=self._cfg.get("collect_user", "amkor"))
+        tk.Entry(row, textvariable=uid_var, width=12, relief="solid", bd=1).pack(
+            side="left", padx=(4, 10))
+        tk.Label(row, text="비밀번호:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        pw_var = tk.StringVar()
+        tk.Entry(row, textvariable=pw_var, width=16, show="*", relief="solid", bd=1).pack(
+            side="left", padx=(4, 10))
+        net_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(row, text="net use 접속(자동 해제)", variable=net_var,
+                       bg=self.p["bg"], font=self.fonts["sub"]).pack(side="left")
+        status = tk.Label(win, text="", bg=self.p["bg"], fg=self.p["muted"],
+                          font=self.fonts["sub"])
+        status.pack(fill="x", padx=14, pady=6)
+
+        def run():
+            ips = collector.split_ips(ips_txt.get("1.0", "end"))
+            if not ips:
+                status.config(text="IP를 입력하세요.")
+                return
+            if net_var.get() and not collector.is_windows():
+                status.config(text="net use 는 Windows 전용입니다. 체크를 끄고 이미 "
+                                   "연결된 경로로 시도하세요.")
+                return
+            self._cfg["collect_user"] = uid_var.get().strip() or "amkor"
+            save_config(self._cfg)
+            stamp = workdirs.run_stamp()
+            sources, errors = [], []
+            plan = None
+            for i, ip in enumerate(ips, 1):
+                aoi = self._ip_to_aoi(ip) or ip.replace(".", "_")
+                status.config(text=f"[{i}/{len(ips)}] {ip} ({aoi}) 수집 중…")
+                win.update_idletasks()
+
+                def staging_for(kw, aoi=aoi):
+                    rd = workdirs.initial_run_dir(base, kw or level_hint or "레벨미상",
+                                                  aoi, stamp)
+                    return workdirs.staging_dir(rd)
+
+                def confirm(planned, ip=ip):
+                    lines = [f"· {src}" for src, _, _ in planned[:15]]
+                    more = f"\n…외 {len(planned) - 15}개" if len(planned) > 15 else ""
+                    return messagebox.askyesno(
+                        "복사 확인", f"[{ip}] {len(planned)}개 파일을 로컬로 복사"
+                        "(원본은 읽기만):\n" + "\n".join(lines) + more, parent=win)
+                try:
+                    _, plan, root = collector.collect_equipment(
+                        ip, staging_for, self._pick_list_chooser,
+                        username=uid_var.get().strip() or "amkor",
+                        password=pw_var.get(), use_net_use=net_var.get(),
+                        plan=plan, confirm=confirm)
+                    sources.append((str(root), plan.job_keyword, aoi))
+                except collector.UserCancelled:
+                    errors.append(f"{ip}: 취소")
+                except Exception as e:  # noqa: BLE001
+                    errors.append(f"{ip}: {e}")
+            pw_var.set("")
+            if errors:
+                messagebox.showwarning("수집 결과",
+                                       f"완료 {len(sources)}건, 실패 {len(errors)}건\n\n"
+                                       + "\n".join(errors), parent=win)
+            win.destroy()
+            if sources:
+                on_sources(sources, base)
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=14, pady=(4, 12))
+        tk.Button(bt, text="수집 시작", relief="flat", bd=0, bg=self.p["ok"], fg="#ffffff",
+                  padx=16, pady=6, cursor="hand2", command=run).pack(side="left")
+        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=8)
+
+    def _parse_sources_busy(self, sources, on_ready, default_level=""):
+        """수집 결과(또는 로컬 폴더) → 파싱 피벗을 백그라운드로 계산."""
+        def work():
+            cfgs = []
+            for root, kw, aoi in sources:
+                cfgs += ini_parser.scan_tree(root, default_level=kw or default_level,
+                                             default_equipment=aoi)
+            valid = [c for c in cfgs if rtp.config_valid(c)]
+            rows, machines = ini_parser.build_pivot(valid)
+            return rows, machines, [c for c in cfgs if not rtp.config_valid(c)]
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("파싱 실패", str(res))
+                return
+            rows, machines, invalid = res
+            if not rows:
+                messagebox.showwarning("파싱 결과", "인식된 설정(config) 폴더가 없습니다.\n"
+                                       "GlobalRTP.ini/OpticPreset.ini/Zones 구조를 확인하세요.")
+                return
+            on_ready(rows, machines)
+        self._run_busy("파싱 중…", work, done)
+
+    # ====================================================================
+    #  양식 만들기 탭(스펙 1.1.2) — 신규(장비/로컬)/기존(버전) → 실제 Excel → final
+    # ====================================================================
+    def _view_form(self):
+        if not hasattr(self, "_form_kind"):
+            self._form_kind = tk.StringVar(value="PI")
+            self._form_level = tk.StringVar(value="PI3")
+        wrap = tk.Frame(self.body, bg=self.p["bg"])
+        wrap.pack(fill="both", expand=True, padx=24, pady=18)
+        tk.Label(wrap, text="양식 만들기", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w")
+        tk.Label(wrap, text="레시피를 고르고, 장비 폴더에서 새로 불러오거나 기존 저장 양식을 "
+                          "엽니다. initial 엑셀을 실제 Excel로 편집·저장한 뒤 '편집 완료'를 "
+                          "누르면 final(양식) 파일이 만들어집니다(원형 initial은 따로 보존).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=900).pack(anchor="w", pady=(2, 14))
+
+        # 1) 레시피 선택
+        box = tk.LabelFrame(wrap, text=" ① 레시피 선택 ", bg=self.p["bg"], fg=self.p["text"],
+                            font=self.fonts["bold"], padx=12, pady=10)
+        box.pack(fill="x")
+        krow = tk.Frame(box, bg=self.p["bg"])
+        krow.pack(fill="x")
+        level_combo = ttk.Combobox(krow, textvariable=self._form_level, state="readonly",
+                                   width=10, values=RECIPE_LEVELS["PI"])
+
+        def on_kind():
+            vals = RECIPE_LEVELS[self._form_kind.get()]
+            level_combo.config(values=vals)
+            if self._form_level.get() not in vals:
+                self._form_level.set(vals[0])
+        for k in ("PI", "RDL"):
+            tk.Radiobutton(krow, text=k, variable=self._form_kind, value=k,
+                           bg=self.p["bg"], font=self.fonts["bold"],
+                           command=on_kind).pack(side="left", padx=(0, 10))
+        tk.Label(krow, text="레시피:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left", padx=(10, 4))
+        level_combo.pack(side="left")
+        on_kind()
+
+        # 2) 소스 선택
+        box2 = tk.LabelFrame(wrap, text=" ② 불러오기 방식 ", bg=self.p["bg"], fg=self.p["text"],
+                             font=self.fonts["bold"], padx=12, pady=10)
+        box2.pack(fill="x", pady=(14, 0))
+        tk.Button(box2, text="🖥  장비 폴더에서 신규 불러오기", relief="flat", bd=0,
+                  bg=self.p["primary"], fg="#ffffff", padx=16, pady=8, cursor="hand2",
+                  command=lambda: self._form_new(from_equipment=True)).pack(side="left")
+        tk.Button(box2, text="📁  로컬 폴더에서 신규 불러오기", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
+                  command=lambda: self._form_new(from_equipment=False)).pack(side="left", padx=8)
+        tk.Button(box2, text="🗂  기존 저장 양식 열기(버전)", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
+                  command=self._form_open_existing).pack(side="left")
+
+    def _form_canonical(self, level: str, base: str) -> str:
+        """레시피 레벨별 양식 파일의 표준 경로(cfg 기억, 없으면 base에 기본명)."""
+        key = f"form_path_{level}"
+        p = self._cfg.get(key)
+        if p:
+            return p
+        return os.path.join(base, f"양식_{level}.xlsx")
+
+    def _form_new(self, from_equipment: bool):
+        level = self._form_level.get()
+        kind = self._form_kind.get()
+
+        def after_pivot(rows, machines):
+            self._form_build_and_edit(rows, machines, level, kind)
+
+        if from_equipment:
+            self._collect_dialog(level, lambda sources, base:
+                                 self._parse_sources_busy(sources, after_pivot,
+                                                          default_level=level))
+        else:
+            d = filedialog.askdirectory(title=f"{level} 레시피 파일이 있는 로컬 폴더 선택")
+            if not d:
+                return
+            self._parse_sources_busy([(d, level, "")], after_pivot, default_level=level)
+
+    def _form_build_and_edit(self, rows, machines, level, kind):
+        base = self._ask_base_dir()
+        if not base:
+            return
+        stamp = workdirs.run_stamp()
+        aoi = next((m for m in machines if m), "로컬")
+        idir = workdirs.initial_run_dir(base, level, aoi, stamp)
+        init_path = os.path.join(idir, f"01_초안_{level}.xlsx")
+
+        def work():
+            formbuilder.build_initial_workbook(rows, init_path, level=level,
+                                               source=f"{level} / {aoi}")
+            # 원형(편집 전) 보존 — 스펙 요구
+            import shutil
+            orig = os.path.join(idir, f"원형_01_초안_{level}.xlsx")
+            shutil.copy2(init_path, orig)
+            return orig
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("초안 생성 실패", str(res))
+                return
+            opened = self._open_in_excel(init_path)
+            self._form_finalize_dialog(init_path, res, level, kind, base, opened)
+        self._run_busy("초안 엑셀 생성 중…", work, done)
+
+    def _form_finalize_dialog(self, init_path, orig_path, level, kind, base, opened):
+        win = tk.Toplevel(self)
+        win.title("양식 편집 완료")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        msg = (f"초안이 생성되었습니다:\n{init_path}\n\n"
+               + ("실제 Excel로 열었습니다. " if opened else
+                  "이 환경에서 Excel을 자동으로 열지 못했습니다. 위 파일을 직접 여세요.\n")
+               + "Excel에서 '사용' 열과 '최종 Parameter'를 편집·저장한 뒤,\n"
+               "아래 '편집 완료 → 양식 생성'을 누르세요.\n"
+               f"(편집 전 원형은 보존됨: {os.path.basename(orig_path)})")
+        tk.Label(win, text=msg, bg=self.p["bg"], fg=self.p["text"], font=self.fonts["sub"],
+                 justify="left", wraplength=560).pack(padx=16, pady=(14, 10))
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=(0, 14))
+        tk.Button(bt, text="다시 열기", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=12, pady=6, cursor="hand2",
+                  command=lambda: self._open_in_excel(init_path)).pack(side="left")
+        tk.Button(bt, text="편집 완료 → 양식 생성", relief="flat", bd=0, bg=self.p["ok"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=lambda: self._form_finalize(init_path, level, kind, base, win)
+                  ).pack(side="right")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=12,
+                  pady=6, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
+
+    def _form_finalize(self, init_path, level, kind, base, win):
+        canonical = self._form_canonical(level, base)
+        mode = "new"
+        if os.path.exists(canonical):
+            ans = messagebox.askyesnocancel(
+                "저장 방식", f"양식 파일이 이미 있습니다:\n{canonical}\n\n"
+                "[예]=덮어쓰기   [아니오]=새 버전으로 저장(이전 보존)   [취소]",
+                parent=win)
+            if ans is None:
+                return
+            mode = "overwrite" if ans else "version"
+
+        def work():
+            if mode == "version" and os.path.exists(canonical):
+                versioning.save_new_version(canonical)   # 이전 내용 버전 폴더에 보존
+            res = formbuilder.build_final_from_initial(
+                init_path, canonical, user=self.user, level=level,
+                source=f"{level} 양식")
+            return res
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("양식 생성 실패", str(res), parent=win)
+                return
+            self._cfg[f"form_path_{level}"] = canonical
+            self._cfg[f"{kind.lower()}_path"] = canonical
+            save_config(self._cfg)
+            win.destroy()
+            if messagebox.askyesno(
+                    "양식 생성 완료",
+                    f"final(양식) 생성 완료: {os.path.basename(canonical)}\n"
+                    f"항목 {res['kept']}개(제외 {res['dropped']}개), 시트 {res['sheet']}.\n\n"
+                    "지금 화면으로 열까요?"):
+                self._do_open(canonical, kind)
+                self.view = "param"
+                self._sync_tab_style()
+                self.navigate(screen="s0")
+        self._run_busy("양식 생성 중…", work, done)
+
+    def _form_open_existing(self):
+        """기존 저장 양식 열기 — 파일 선택 후 버전이 있으면 버전 선택창."""
+        p = filedialog.askopenfilename(title="기존 양식 파일(.xlsx) 선택",
+                                       filetypes=[("Excel", "*.xlsx")])
+        if not p:
+            return
+        versions = versioning.list_versions(p)
+        target = p
+        if versions:
+            picked = self._pick_version(p, versions)
+            if picked is None:
+                return
+            target = picked
+        if self._do_open(target, self._detect_kind(target)):
+            self.view = "param"
+            self._sync_tab_style()
+            self.navigate(screen="s0")
+
+    def _pick_version(self, canonical, versions):
+        """버전 선택창. 반환: 선택 경로(현재본=canonical 포함) 또는 None(취소)."""
+        win = tk.Toplevel(self)
+        win.title("버전 선택")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="열 버전을 선택하세요", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w", padx=12, pady=(10, 4))
+        items = [("현재본 (최신 저장본)", canonical)] + [
+            (versioning.label_for(canonical, v), v) for v in reversed(versions)]
+        lb = tk.Listbox(win, height=min(16, max(4, len(items))), width=54,
+                        font=self.fonts["base"])
+        for label, _ in items:
+            lb.insert("end", label)
+        lb.selection_set(0)
+        lb.pack(fill="both", expand=True, padx=12, pady=6)
+        res = {"val": None}
+
+        def ok(_=None):
+            sel = lb.curselection()
+            if sel:
+                res["val"] = items[sel[0]][1]
+            win.destroy()
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=12, pady=(0, 10))
+        tk.Button(bt, text="열기", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                  padx=16, cursor="hand2", command=ok).pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+        lb.bind("<Double-Button-1>", ok)
+        win.wait_window()
+        return res["val"]
+
+    # ====================================================================
+    #  파라미터 값 업데이트(스펙 1.1.1.1) — IP 여러 대 → 레시피별 취합(새 버전)
+    # ====================================================================
+    def _update_values_dialog(self):
+        form_path = self.path
+        if not form_path or not os.path.exists(form_path):
+            form_path = filedialog.askopenfilename(
+                title="기준이 될 양식 파일(.xlsx) 선택",
+                filetypes=[("Excel", "*.xlsx")])
+            if not form_path:
+                return
+
+        def after_pivot(rows, machines, base):
+            self._update_collate_flow(form_path, rows, machines, base)
+
+        # 소스: 장비 IP 또는 로컬 폴더
+        win = tk.Toplevel(self)
+        win.title("파라미터 값 업데이트")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        tk.Label(win, text="파라미터 값 업데이트", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win, text=f"기준 양식: {os.path.basename(form_path)}\n"
+                          "여러 장비에서 값을 읽어 레시피(PI#/RDL#)마다 호기별 취합 엑셀을 "
+                          "새 버전으로 만듭니다.", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"], justify="left").pack(anchor="w", padx=16)
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=16)
+
+        def from_equip():
+            win.destroy()
+            self._collect_dialog("", lambda sources, base:
+                                 self._parse_sources_busy(
+                                     sources, lambda r, m: after_pivot(r, m, base)))
+
+        def from_local():
+            win.destroy()
+            d = filedialog.askdirectory(title="장비에서 받아둔 로컬 폴더 선택")
+            if not d:
+                return
+            base = self._snapshot_base_dir() or os.path.dirname(form_path)
+            self._parse_sources_busy([(d, "", "")],
+                                     lambda r, m: after_pivot(r, m, base))
+        tk.Button(bt, text="🖥 장비 IP에서 수집", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=8, cursor="hand2",
+                  command=from_equip).pack(side="left")
+        tk.Button(bt, text="📁 로컬 폴더에서", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=16, pady=8, cursor="hand2",
+                  command=from_local).pack(side="left", padx=8)
+
+    def _update_collate_flow(self, form_path, rows, machines, base):
+        # 어떤 레시피(레벨)를 취합할지 선택 알림창(스펙 1.1.1.1.1)
+        levels = sorted({engine._s(r.get("recipe")).strip()
+                         for r in rows if engine._s(r.get("recipe")).strip()})
+        if not levels:
+            messagebox.showwarning("값 업데이트", "파싱 결과에서 레시피 레벨(PI#/RDL#)을 "
+                                   "인식하지 못했습니다.")
+            return
+        chosen = self._pick_levels(levels)
+        if not chosen:
+            return
+
+        def work():
+            return collate.collate(form_path, rows, selected_levels=chosen)
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("취합 실패", str(res))
+                return
+            self._update_write_results(res, form_path, base)
+        self._run_busy("취합 중…", work, done)
+
+    def _pick_levels(self, levels):
+        """레시피 레벨 다중 선택 알림창. 반환: 선택 목록 또는 None."""
+        win = tk.Toplevel(self)
+        win.title("레시피 선택")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="취합할 레시피(PI#/RDL#)를 선택하세요", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w", padx=14,
+                                                                  pady=(12, 6))
+        vars_ = {}
+        for lv in levels:
+            v = tk.BooleanVar(value=True)
+            vars_[lv] = v
+            tk.Checkbutton(win, text=lv, variable=v, bg=self.p["bg"],
+                           font=self.fonts["base"]).pack(anchor="w", padx=20)
+        res = {"val": None}
+
+        def ok():
+            sel = [lv for lv, v in vars_.items() if v.get()]
+            res["val"] = sel or None
+            win.destroy()
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=14, pady=12)
+        tk.Button(bt, text="선택", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                  padx=16, cursor="hand2", command=ok).pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+        win.wait_window()
+        return res["val"]
+
+    def _update_write_results(self, results, form_path, base):
+        out_dir = os.path.join(base, "취합")
+        os.makedirs(out_dir, exist_ok=True)
+        stem = os.path.splitext(os.path.basename(form_path))[0]
+        made = []
+        for res in results:
+            if res.mismatches:
+                names = ", ".join(sorted({m["param"] for m in res.mismatches})[:12])
+                more = f" 외 {len(res.mismatches) - 12}개" if len(res.mismatches) > 12 else ""
+                go = messagebox.askyesno(
+                    "항목 불일치",
+                    f"[{res.level}] 양식과 장비 파일의 파라미터가 일부 맞지 않습니다.\n"
+                    f"불일치 {len(res.mismatches)}개: {names}{more}\n\n"
+                    "이 항목들은 '불일치'로 표기하고 취합 파일을 만들까요?")
+                if not go:
+                    continue
+            canonical = os.path.join(out_dir, f"{stem}_{res.level}_취합.xlsx")
+            # 항상 새 버전으로 저장(이전 버전 보존) + 현재본 갱신
+            dest = versioning.next_version_path(canonical)
+            collate.write_collated(res, dest, source=f"값 업데이트 {res.level}",
+                                   user=self.user)
+            import shutil
+            shutil.copy2(dest, canonical)     # '현재본' 최신 포인터
+            made.append((res.level, canonical, dest, res.matched_rows,
+                         len(res.mismatches), res.filled_cells))
+        if not made:
+            messagebox.showinfo("값 업데이트", "생성된 취합 파일이 없습니다.")
+            return
+        lines = [f"· {lv}: 매칭 {mt}행 / 불일치 {mm} / 값 {fc}칸  → "
+                 f"{os.path.basename(can)}" for lv, can, ver, mt, mm, fc in made]
+        first = made[0]
+        if messagebox.askyesno(
+                "값 업데이트 완료",
+                "레시피별 취합 파일을 새 버전으로 저장했습니다:\n\n" + "\n".join(lines)
+                + "\n\n첫 취합 파일을 지금 화면으로 열까요?"):
+            self._do_open(first[1], self._detect_kind(first[1]))
+            self.view = "param"
+            self._sync_tab_style()
+            self.navigate(screen="s0")
+
+    # ====================================================================
+    #  파라미터 이력 확인(스펙 1.1.1.2) — 두 취합 버전 비교 + 변경내역 엑셀
+    # ====================================================================
+    def _history_dialog(self):
+        old_p = filedialog.askopenfilename(
+            title="이전(비교 기준) 취합/양식 엑셀 선택", filetypes=[("Excel", "*.xlsx")])
+        if not old_p:
+            return
+        new_p = filedialog.askopenfilename(
+            title="최신(달라진) 취합/양식 엑셀 선택", filetypes=[("Excel", "*.xlsx")])
+        if not new_p:
+            return
+
+        def work():
+            return history_mod.diff_files(old_p, new_p)
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("이력 비교 실패", str(res))
+                return
+            diff = res
+            n = len(diff.changes)
+            if n == 0 and not diff.added_rows and not diff.removed_rows:
+                messagebox.showinfo("파라미터 이력", "두 파일 사이에 바뀐 값이 없습니다.")
+                return
+            preview = "\n".join(
+                f"· {c.param} | {c.machine}: {c.old or '(빈)'} → {c.new} ({c.kind})"
+                for c in diff.changes[:20])
+            more = f"\n…외 {n - 20}건" if n > 20 else ""
+            go = messagebox.askyesno(
+                "파라미터 이력",
+                f"값 변경 {n}건, 행 추가 {len(diff.added_rows)} / 삭제 "
+                f"{len(diff.removed_rows)}.\n\n{preview}{more}\n\n"
+                "변경내역 엑셀을 저장할까요? (비고 열에 특이사항을 적을 수 있습니다)")
+            if not go:
+                return
+            dest = filedialog.asksaveasfilename(
+                title="변경내역 엑셀 저장", defaultextension=".xlsx",
+                initialfile="변경내역.xlsx", filetypes=[("Excel", "*.xlsx")])
+            if not dest:
+                return
+            history_mod.write_diff_excel(
+                diff, dest, old_label=os.path.basename(old_p),
+                new_label=os.path.basename(new_p))
+            if messagebox.askyesno("저장 완료",
+                                   f"{os.path.basename(dest)} 저장 완료.\n지금 Excel로 열까요?"):
+                self._open_in_excel(dest)
+        self._run_busy("이력 비교 중…", work, done)
 
     def _auto_open_last(self):
         """첫 실행 시 마지막으로 연 양식 파일을 자동으로 연다."""

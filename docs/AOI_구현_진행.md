@@ -65,18 +65,30 @@
 - [x] `collate.py` — 양식 파일 + 파싱 피벗 → **호기별 값 열 추가 취합**(레시피별) + **불일치
       항목 목록**. `refresh.plan_refresh` 재사용. (테스트)
 
-## 4. GUI 재편(equip_app.py — 정적검증만; Windows 실기 검증 필요)
+## 4. GUI 재편(equip_app.py — 정적검증(py_compile)만; Windows 실기 검증 필요)
 
-- [ ] G1. 상단 탭: `파라미터`→`파라미터 값 확인`, `양식 만들기` 탭 추가. (탭 순서/스타일)
-- [ ] G2. `파라미터 값 확인` 화면 **읽기전용화**: 값 셀 편집 팝업/`_set_value` 진입 차단
-      (보기·색·비고·이력 확인은 유지). 상단에 `[값 업데이트]` `[이력 확인]` 버튼.
-- [ ] G3. `⋯파일` 메뉴 단순화 → 특이사항/참고자료 엑셀 불러오기만. (양식/값 열기는 각 기능에서)
-- [ ] G4. `양식 만들기` 탭: PI/RDL·레시피 선택 → 신규(수집/로컬)/기존(버전) → 실제 Excel+완료.
-- [ ] G5. `파라미터 값 업데이트` 다이얼로그: IP 입력 → 레시피 선택 알림 → 수집 → collate →
-      불일치 알림/표기/생성확인 → **새 버전 저장**(레시피별) → 화면 표시.
-- [ ] G6. `파라미터 이력 확인` 다이얼로그: 취합 엑셀 버전 2개 선택 → history diff 표시 →
-      diff 엑셀 저장 + 비고 메모.
-- [ ] G7. `로딩중` 모달 + 백그라운드(threading/after)로 수집·파싱·저장 래핑.
+- [x] G1. 상단 탭: `파라미터`→`파라미터 값 확인`, `양식 만들기` 탭 추가.
+- [x] G2. `파라미터 값 확인` 값 셀 **읽기전용**(`values_readonly`; 좌 선택호기값·우 타호기값
+      모두 disabled). 이름/추천값/비고/색 편집은 유지. 상단 액션바에 `[값 파일 열기]`
+      `[값 업데이트]` `[이력 확인]` `[⋯더보기(레거시)]`.
+- [x] G3. `⋯파일` 메뉴 단순화 → `특이사항 엑셀 불러오기`/`참고자료 엑셀 불러오기`만.
+      (`_load_special_excel`/`_load_reference_excel` = 교체/이어붙이기. 나머지 레거시는 ⋯더보기)
+- [x] G4. `양식 만들기` 탭(`_view_form`): PI/RDL·레시피 선택 → 신규(장비 `_collect_dialog`/
+      로컬)/기존(`_form_open_existing`+버전선택) → `formbuilder.build_initial_workbook` →
+      실제 Excel(`_open_in_excel`) → `[편집 완료]`(`_form_finalize`) → `build_final_from_initial`.
+      원형 initial 별도 보존, 저장 시 덮어쓰기/새버전 선택.
+- [x] G5. `_update_values_dialog`: 양식 기준 → 장비 IP/로컬 → 레시피 선택 알림(`_pick_levels`)
+      → `collate.collate` → 불일치 알림/표기/생성확인 → `versioning.next_version_path`로
+      **레시피별 새 버전 저장** + 현재본 갱신 → 화면 표시.
+- [x] G6. `_history_dialog`: 이전/최신 엑셀 2개 → `history.diff_files` → 미리보기 →
+      `write_diff_excel`(비고 메모 열) 저장 → Excel 열기.
+- [x] G7. `_run_busy` 로딩 모달 + 백그라운드 스레드(순수작업만) + `after()` 폴링. 파싱/취합/
+      양식생성/이력비교/초안생성에 적용. (수집 choose 단계는 GUI라 메인스레드 유지)
+
+### 남은 검증(Windows/실기 필요 — 이 개발환경은 tkinter/tksheet/Excel/net use 미지원)
+
+- 실제 Excel 열기·편집 완료 왕복, net use 장비 수집, 한글 폴더/버전 저장, 마법사 표시.
+- 정적검증: `python3 -m py_compile param_manager/*.py` 통과.
 
 ## 5. 테스트
 
