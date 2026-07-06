@@ -12,10 +12,15 @@ Zone 을 이용해 **원본 설정키 기준**으로 매칭한다(이름 변경�
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from . import engine, extract_io
-from .rtp_parser import norm_key
+
+
+def norm_key(name: str) -> str:
+    """매칭용 정규화 — 한글 보존(사람이 붙인 한글 파라미터명 대응)."""
+    return re.sub(r"[^0-9a-z가-힣µ]", "", str(name).lower())
 
 
 @dataclass
