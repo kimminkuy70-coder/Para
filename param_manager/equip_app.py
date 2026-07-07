@@ -116,6 +116,8 @@ class EquipApp(tk.Tk):
         self.CELL_CHARS = 10       # 우측 셀 한 줄에 들어가는 대략 글자수
         self.MAX_LINES = 5         # 우측 셀 최대 줄 수(행 높이 폭주 방지)
         self.COL_W = 84            # 우측 호기 셀 고정 폭(px) — 헤더/값 정렬용
+        self.NAME_W = 210          # 좌측 파라미터 이름 열 폭(px) — 줄바꿈 기준
+        self.VAL_W = 120           # 좌측 선택호기 값 열 폭(px) — 줄바꿈 기준
 
         self._build_chrome()
         self._render()
@@ -566,17 +568,21 @@ class EquipApp(tk.Tk):
         lhdr.pack_propagate(False)
         hb = self.p["head_bg"]
         hfg = self.p["muted"]
-        # 좌측 행 레이아웃(grip/chip/이름/추천값/값/?)에 맞춰 컬럼 제목 정렬
+        # 좌측 행 레이아웃(grip/chip/이름/값/비고)에 맞춰 컬럼 제목 정렬(추천값 열 제거)
         tk.Label(lhdr, text="", bg=hb, width=2, font=self.fonts["bold"]).pack(side="left")           # grip
         tk.Label(lhdr, text="", bg=hb, width=2).pack(side="left", padx=(2, 6))                       # chip
-        tk.Label(lhdr, text="파라미터", bg=hb, fg=hfg, font=self.fonts["base"],
-                 width=20, anchor="w").pack(side="left")
-        tk.Label(lhdr, text="추천값", bg=hb, fg=self.p["primary"], font=self.fonts["sub"],
-                 width=6, anchor="center").pack(side="left", padx=(4, 6))
-        tk.Label(lhdr, text=f"{st['machine']} 값", bg=hb, fg=self.p["primary"],
-                 font=self.fonts["sub"], width=12, anchor="center").pack(side="left", padx=2)
+        nbox = tk.Frame(lhdr, bg=hb, width=self.NAME_W)
+        nbox.pack(side="left", fill="y")
+        nbox.pack_propagate(False)
+        tk.Label(nbox, text="파라미터", bg=hb, fg=hfg, font=self.fonts["base"],
+                 anchor="w").pack(side="left", fill="both", expand=True)
+        vbox = tk.Frame(lhdr, bg=hb, width=self.VAL_W)
+        vbox.pack(side="left", fill="y", padx=(4, 0))
+        vbox.pack_propagate(False)
+        tk.Label(vbox, text=f"{st['machine']} 값", bg=hb, fg=self.p["primary"],
+                 font=self.fonts["sub"], anchor="center").pack(side="left", fill="both", expand=True)
         tk.Label(lhdr, text="비고", bg=hb, fg=hfg, font=self.fonts["sub"],
-                 width=2).pack(side="left", padx=(4, 2))
+                 width=2).pack(side="left", padx=(6, 2))
         tk.Frame(hdr_strip, bg="#94a3b8", width=3).pack(side="left", fill="y")
         rhead = tk.Canvas(hdr_strip, bg=self.p["head_bg"], highlightthickness=0)
         rhead.pack(side="left", fill="both", expand=True)
@@ -748,13 +754,17 @@ class EquipApp(tk.Tk):
 
     def _build_left_row(self, linner, r, st, pr, alg):
         machine = st["machine"]
+        # grid 로 열 폭 고정 + 이름/값은 wraplength 로 줄바꿈(잘림 방지). 행 높이는
+        # _equalize_panes 가 좌/우 실제 높이의 큰 쪽으로 맞춰 정렬한다.
         row = tk.Frame(linner, bg=self.p["surface"])
         row.grid(row=r, column=0, sticky="nsew")
+        row.columnconfigure(2, minsize=self.NAME_W)
+        row.columnconfigure(3, minsize=self.VAL_W)
         self._row_widgets.append((pr, row, alg))
 
         grip = tk.Label(row, text="⋮⋮", bg=self.p["surface"], fg=self.p["muted"],
                         font=self.fonts["bold"], cursor="fleur", width=2)
-        grip.pack(side="left")
+        grip.grid(row=0, column=0, sticky="n")
         grip.bind("<ButtonPress-1>", lambda e, p=pr: self._drag_start(e, p))
         grip.bind("<B1-Motion>", self._drag_move)
         grip.bind("<ButtonRelease-1>", lambda e, s=st: self._drag_drop(e, s))
@@ -762,15 +772,16 @@ class EquipApp(tk.Tk):
         col = self.repo.cell_colors.get(_color_key(pr.row_id), "")
         chip = tk.Label(row, text=" ", bg=(col or self.p["border"]), width=2,
                         cursor="hand2", relief="flat")
-        chip.pack(side="left", padx=(2, 6))
+        chip.grid(row=0, column=1, sticky="n", padx=(2, 6), pady=2)
         chip.bind("<Button-1>", lambda e, p=pr, w=chip: self._color_popup(p, w))
         chip.bind("<Button-3>", lambda e, p=pr: self._clear_color(p))
 
         name = engine._s(pr.get("Parameter")) or "(이름 없음)"
-        # 글자 영역(이름 라벨)에는 색을 칠하지 않는다 — 색은 색칩으로만 표시
+        # 이름 셀: 줄바꿈(잘림 방지). 색은 색칩으로만 표시.
         lbl = tk.Label(row, text=name, bg=self.p["surface"], fg=self.p["text"],
-                       font=self.fonts["base"], width=20, anchor="w")
-        lbl.pack(side="left")
+                       font=self.fonts["base"], anchor="nw", justify="left",
+                       wraplength=self.NAME_W - 10)
+        lbl.grid(row=0, column=2, sticky="nsew")
         lbl.bind("<Double-Button-1>",
                  lambda e, p=pr, w=lbl: self._edit_popup(
                      w, engine._s(p.get("Parameter")),
@@ -778,29 +789,12 @@ class EquipApp(tk.Tk):
         for w in (row, lbl):
             w.bind("<Button-3>", lambda e, p=pr: self._param_menu(e, p))
 
-        # 추천값(초기 추천값) — 모든 호기 공통. 직접 수정 가능
-        rvar = tk.StringVar(value=engine._s(pr.get("초기 추천값")))
-        rent = tk.Entry(row, textvariable=rvar, font=self.fonts["sub"], width=6,
-                        relief="solid", bd=1, justify="center", fg=self.p["muted"],
-                        disabledbackground=self.p["head_bg"])
-        if self.read_only:
-            rent.config(state="disabled")
-        rent.pack(side="left", padx=(4, 6))
-        rent.bind("<FocusOut>", lambda e, p=pr, v=rvar: self._set_reco(p, v))
-        rent.bind("<Return>", lambda e, p=pr, v=rvar: (self._set_reco(p, v), self.focus_set()))
-
-        # 선택 호기 입력칸
-        var = tk.StringVar(value=engine._s(pr.get(machine)))
-        ent = tk.Entry(row, textvariable=var, font=self.fonts["base"], width=12,
-                       relief="solid", bd=1, justify="center",
-                       disabledbackground=self.p["head_bg"])
-        if self.read_only or self.values_readonly:
-            ent.config(state="disabled")     # 값 확인은 읽기 전용(스펙)
-        ent.pack(side="left", padx=2)
-        ent.bind("<FocusOut>", lambda e, p=pr, m=machine, v=var: self._set_value(p, m, v))
-        ent.bind("<Return>", lambda e, p=pr, m=machine, v=var:
-                 (self._set_value(p, m, v), self.focus_set()))
-        ent._param = pr
+        # 선택 호기 값 — 읽기 전용(스펙), 줄바꿈 표시
+        valtext = engine._s(pr.get(machine))
+        val = tk.Label(row, text=valtext, bg="#f8fafc", fg=self.p["text"],
+                       font=self.fonts["base"], anchor="nw", justify="left",
+                       wraplength=self.VAL_W - 10, relief="solid", bd=1)
+        val.grid(row=0, column=3, sticky="nsew", padx=2, pady=1)
 
         has_note = bool(engine._s(pr.get("비고")))
         qbtn = tk.Button(row, text="?", width=2, relief="flat", bd=0, cursor="hand2",
@@ -808,7 +802,7 @@ class EquipApp(tk.Tk):
                          bg=(self.p["primary_lt"] if has_note else self.p["head_bg"]),
                          fg=(self.p["primary"] if has_note else self.p["muted"]))
         qbtn.config(command=lambda p=pr, w=qbtn: self._show_note(p, w))
-        qbtn.pack(side="left", padx=(4, 2))
+        qbtn.grid(row=0, column=4, sticky="n", padx=(4, 2))
 
     def _build_right_row(self, rinner, r, pr, others, lines=1):
         f = tk.Frame(rinner, bg=self.p["surface"])
@@ -951,16 +945,6 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  추천값 / 색 팝업 / Zone·Alg 추가·삭제
     # ====================================================================
-    def _set_reco(self, pr, var):
-        if self.read_only:
-            return
-        new = var.get()
-        if engine._s(pr.get("초기 추천값")) != engine._s(new):
-            self._push_undo()
-            pr.set("초기 추천값", new if new != "" else None)
-            self.dirty = True
-            self._set_status(f"추천값 변경: {engine._s(pr.get('Parameter'))} = {new}")
-
     def _color_popup(self, pr, anchor):
         """최근 사용자 지정 색 팔레트(껐다 켜도 유지) + 색 선택/해제."""
         if not self._guard():
@@ -1124,9 +1108,13 @@ class EquipApp(tk.Tk):
             self._set_status(f"변경됨: {engine._s(pr.get('Parameter'))} [{machine}] = {new}")
 
     def _row_lines(self, pr, others) -> int:
-        """우측 셀들 중 가장 긴 값 기준으로 필요한 줄 수(자동 줄바꿈)."""
+        """좌측 파라미터명/값 + 우측 셀들 중 가장 긴 것 기준 필요한 줄 수(초기 추정).
+        최종 행 높이는 _equalize_panes 가 실제 위젯 높이로 다시 맞춘다."""
         import math
         mx = 1
+        name = engine._s(pr.get("Parameter"))
+        if name:
+            mx = max(mx, math.ceil(len(name) / 16))     # 좌측 이름 줄바꿈 반영
         for m in others:
             v = engine._s(pr.get(m))
             if v:
