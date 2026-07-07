@@ -20,7 +20,12 @@ from typing import Any
 
 from . import rtp_parser
 
-SCALE = 0.8452
+# 변환 계수(픽셀→µ). 장비/레시피(변형)마다 다르므로 사용자가 양식 만들 때 고른다.
+# 정확값(사용자 확정): 기본형 0.8456665875666588, 다른 배율 0.7696441409644141
+# (장비 화면 'RTP {0.77}' 이 후자의 반올림 표기).
+DEFAULT_SCALE = 0.8456665875666588
+KNOWN_SCALES = [0.8456665875666588, 0.7696441409644141]
+SCALE = DEFAULT_SCALE   # 하위호환 별칭(과거 코드/테스트에서 참조)
 
 # 파일명이 고정인 설정파일 → 상위항목
 FIXED_FILE_TOP = {
@@ -102,8 +107,9 @@ def parse_raw_value(text: str) -> Any:
     return s
 
 
-def transform_value(raw_value: Any, transform: str) -> Any:
-    """변환방식(RAW/BOOL/REGION/CLASSIFY/LINEAR/AREA)에 따라 표시값 계산."""
+def transform_value(raw_value: Any, transform: str, scale: float = DEFAULT_SCALE) -> Any:
+    """변환방식(RAW/BOOL/REGION/CLASSIFY/LINEAR/AREA)에 따라 표시값 계산.
+    LINEAR→×scale, AREA→×scale². scale 은 변형(레시피)마다 다를 수 있어 인자로 받는다."""
     t = (transform or "RAW").strip().upper()
     try:
         num = float(raw_value)
@@ -123,10 +129,10 @@ def transform_value(raw_value: Any, transform: str) -> Any:
             if n == 28:
                 return "28-B R Other"
         return raw_value
-    if t == "LINEAR_0.8452":
-        return round(num * SCALE, 6) if num is not None else raw_value
-    if t in ("AREA_0.8452^2", "AREA_0.8452**2"):
-        return round(num * SCALE * SCALE, 6) if num is not None else raw_value
+    if t.startswith("LINEAR"):        # LINEAR_* (계수는 인자 scale 사용)
+        return round(num * scale, 6) if num is not None else raw_value
+    if t.startswith("AREA"):          # AREA_*(면적: scale²)
+        return round(num * scale * scale, 6) if num is not None else raw_value
     return raw_value
 
 
@@ -199,8 +205,8 @@ class ExtractRow:
     source_path: str = ""
 
 
-def parse_ini_file(file_path: Path) -> list[ExtractRow]:
-    """설정파일 1개 → ExtractRow 목록."""
+def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE) -> list[ExtractRow]:
+    """설정파일 1개 → ExtractRow 목록. scale = LINEAR/AREA 변환 계수(변형별)."""
     sections = parse_ini_sections(file_path)
     top = infer_top_item(file_path, sections)
     zone = TOP_TO_ZONE.get(top, top)
@@ -210,7 +216,7 @@ def parse_ini_file(file_path: Path) -> list[ExtractRow]:
             alg, display, unit, trans = lookup_display(top, section, key)
             out.append(ExtractRow(
                 zone=zone, alg=alg, param=display,
-                value=transform_value(raw, trans), unit=unit,
+                value=transform_value(raw, trans, scale), unit=unit,
                 src_file=file_path.name, section=section, key=key,
                 raw=raw, transform=trans, source_path=str(file_path)))
     return out
@@ -324,14 +330,19 @@ class ParsedConfig:
 
 
 def scan_tree(root: str | Path, default_level: str = "",
-              default_equipment: str = "") -> list[ParsedConfig]:
-    """폴더트리 → config 폴더별 ParsedConfig (ini 소스 전용, RTP.txt 미사용)."""
+              default_equipment: str = "", scale: float = DEFAULT_SCALE,
+              scales: dict | None = None) -> list[ParsedConfig]:
+    """폴더트리 → config 폴더별 ParsedConfig (ini 소스 전용, RTP.txt 미사용).
+    scale = 기본 변환 계수. scales = {변형라벨: 계수}(예: {'PI':.., 'PI-bubble':..}) —
+    폴더의 변형(mag)에 맞는 계수를 골라 적용(없으면 scale)."""
+    scales = scales or {}
     res: list[ParsedConfig] = []
     for cdir in find_config_dirs(Path(root)):
         meta = detect_meta(cdir, default_level, default_equipment)
+        use_scale = scales.get(meta["mag"], scale)
         rows: list[ExtractRow] = []
         for f in config_ini_files(cdir):
-            rows += parse_ini_file(f)
+            rows += parse_ini_file(f, use_scale)
         res.append(ParsedConfig(meta["equipment"], meta["layer"], meta["recipe"],
                                 meta["mag"], cdir, rows))
     return res

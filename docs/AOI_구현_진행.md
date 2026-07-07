@@ -90,6 +90,25 @@
 - 실제 Excel 열기·편집 완료 왕복, net use 장비 수집, 한글 폴더/버전 저장, 마법사 표시.
 - 정적검증: `python3 -m py_compile param_manager/*.py` 통과.
 
+## R. 2차 수정안(스크린샷 피드백, 2026-07 사용자 확정)
+
+확정: ①계수는 **변형별로** 물어봄, ②계수 선택창 **기본값 없음**(2개+직접입력), ③추천값 열
+**파일에서도 완전 제거**.
+
+- [x] R1. **변환 계수 인자화**(스샷2): `ini_parser.transform_value(raw, transform, scale)` —
+      LINEAR→×scale, AREA→×scale². `parse_ini_file/scan_tree`에 `scale`/`scales`(변형별) 전달.
+      정확값: `0.8456665875666588`, `0.7696441409644141`(장비 0.77). 단일 `SCALE`(0.8452) 폐기.
+- [x] R2. **스키마에서 `초기 추천값` 완전 제거**: `engine.META_FIELDS`에서 삭제 +
+      `LEGACY_META`로 구파일 하위호환(호기열 오인 방지, 저장 시 자연 제거). `SUM_HEADERS`/
+      `comparison_view`/summary write/formbuilder/collate 참조 정리.
+- [ ] R3(GUI). 추천값 열 화면 제거(헤더/`_build_left_row`/`_set_reco`), 셀 **줄바꿈+행높이**
+      (좌 파라미터명·값 wraplength, `_row_lines`에 좌측 반영), **IP↔호기 매칭창**(수집 시
+      각 IP→AOI 콤보, 참고자료 프리필; ip-파생 열 생성 폐지), **계수 선택창**(양식 만들 때
+      변형별), 계수 양식에 저장→값 업데이트가 읽어 재파싱, **기타 레시피 분기**(PI/RDL 외
+      직접 입력). `run.py`→equip_app 로 일치.
+
+계수 저장 위치: 양식 파일 `추출_요약` 시트(변형별 계수) — 값 업데이트가 읽어 재파싱에 적용.
+
 ## 5. 테스트
 
 ```

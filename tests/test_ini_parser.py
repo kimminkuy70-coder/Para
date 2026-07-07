@@ -206,6 +206,31 @@ def test_collector_plan_and_copy():
     print("  collector OK: 계획 수집/자동 재사용/원본 무변경")
 
 
+def test_scale_param_per_variant():
+    # 변환 계수 인자화: LINEAR→×scale, AREA→×scale²
+    assert ini_parser.transform_value(1000, "LINEAR_x", scale=0.5) == 500.0
+    assert ini_parser.transform_value(1000, "AREA_x", scale=0.5) == 250.0
+    assert ini_parser.transform_value(1, "BOOL", scale=0.5) == "Checked"
+    with tempfile.TemporaryDirectory() as tmp:
+        # 변형 두 개(PI / PI BUBBLE) — 같은 파라미터, 계수만 다르게 적용
+        for name in ("PI", "PI BUBBLE"):
+            d = Path(tmp) / "R_TB500_PI3" / name
+            d.mkdir(parents=True)
+            (d / "GlobalRTP.ini").write_text(GLOBAL_RTP, encoding="utf-8")
+            (d / "Zones").mkdir()
+            (d / "Zones" / "Z.ini").write_text(ZONE_INI, encoding="utf-8")
+        scales = {"PI": 0.5, "PI-bubble": 0.25}
+        cfgs = ini_parser.scan_tree(Path(tmp) / "R_TB500_PI3", default_level="PI3",
+                                    scales=scales)
+        by_variant = {c.mag: c for c in cfgs}
+        # BrightLength=5 (LINEAR) → PI: 5*0.5=2.5, PI-bubble: 5*0.25=1.25
+        def bright_len(cfg):
+            return next(r.value for r in cfg.rows if r.key == "BrightLength")
+        assert bright_len(by_variant["PI"]) == 2.5
+        assert bright_len(by_variant["PI-bubble"]) == 1.25
+    print("  scale OK: transform 계수 인자화 + 변형별 scales 적용")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
