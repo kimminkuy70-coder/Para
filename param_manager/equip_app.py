@@ -23,6 +23,7 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from tksheet import Sheet
 
+from . import coef_detector
 from . import collate
 from . import collector
 from . import downloader as dl
@@ -2247,32 +2248,51 @@ class EquipApp(tk.Tk):
             on_ready(rows, machines)
         self._run_busy("파싱 중…", work, done)
 
-    def _ask_scales(self, variants):
-        """변형별 변환계수 입력창(정확값 2개 + 직접입력, 기본값 없음).
+    def _ask_scales(self, variants, recommended=None):
+        """변형별 변환계수 입력창. recommended={변형: coef_detector 결과}면 RTP.txt로
+        추정한 값을 **추천값으로 미리 채우고** 신뢰도를 표시(사용자가 확정/수정).
         반환: {변형: 계수(float)} 또는 None(취소)."""
+        recommended = recommended or {}
         win = tk.Toplevel(self)
-        win.title("변환 계수 선택(변형별)")
+        win.title("변환 계수 확인(변형별)")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
-        tk.Label(win, text="변형(레시피)마다 변환 계수를 지정하세요.", bg=self.p["bg"],
+        tk.Label(win, text="변형(레시피)별 변환 계수를 확인하세요.", bg=self.p["bg"],
                  fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w", padx=14,
                                                                   pady=(12, 2))
-        tk.Label(win, text="장비 'RTP {계수} Microns' 값. 예: 0.8456665875666588 / "
-                          "0.7696441409644141. 목록에서 고르거나 직접 입력.",
+        tk.Label(win, text="RTP.txt(표시값)와 ini(원본값)를 비교해 계수를 자동 추정했습니다. "
+                          "추천값을 확인하고 필요하면 수정하세요(목록에서 고르거나 직접 입력).",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=14)
+                 justify="left", wraplength=560).pack(anchor="w", padx=14)
         opts = [f"{s:.16g}" for s in ini_parser.KNOWN_SCALES]
         grid = tk.Frame(win, bg=self.p["bg"])
         grid.pack(fill="both", expand=True, padx=14, pady=8)
+        tk.Label(grid, text="변형", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).grid(row=0, column=0, sticky="w")
+        tk.Label(grid, text="계수(추천값 자동 입력)", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).grid(row=0, column=1, sticky="w", padx=8)
+        tk.Label(grid, text="추정 근거", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).grid(row=0, column=2, sticky="w")
         vars_ = {}
-        for i, v in enumerate(variants):
+        for i, v in enumerate(variants, start=1):
             tk.Label(grid, text=v, bg=self.p["bg"], fg=self.p["text"],
                      font=self.fonts["base"]).grid(row=i, column=0, sticky="w", pady=4)
-            var = tk.StringVar(value="")
+            dec = recommended.get(v) or {}
+            coef = dec.get("Coefficient")
+            var = tk.StringVar(value=(f"{coef:.16g}" if coef is not None else ""))
             ttk.Combobox(grid, textvariable=var, values=opts, width=26).grid(
                 row=i, column=1, padx=8, pady=4)
             vars_[v] = var
+            if coef is not None:
+                note = f"RTP 추정 {dec.get('Display')} · 신뢰도 {dec.get('Confidence')} " \
+                       f"(증거 {dec.get('Count', 0)}건)"
+                fg = self.p["ok"] if dec.get("Confidence") == "High" else self.p["text"]
+            else:
+                note = "RTP.txt 없음/근거 부족 — 직접 입력하세요"
+                fg = self.p["danger"]
+            tk.Label(grid, text=note, bg=self.p["bg"], fg=fg,
+                     font=self.fonts["sub"]).grid(row=i, column=2, sticky="w", padx=6)
         res = {"val": None}
 
         def ok():
@@ -2416,6 +2436,7 @@ class EquipApp(tk.Tk):
     def _scales_then_build(self, sources, level, kind, run_dir, related, st):
         def detect():
             variants = []
+            dirs = {}                       # 변형 → config 폴더(계수 추정용)
             for rootp, kw, aoi in sources:
                 for c in ini_parser.scan_tree(rootp, default_level=kw or level,
                                               default_equipment=aoi):
@@ -2424,13 +2445,25 @@ class EquipApp(tk.Tk):
                     v = c.mag or "(기본)"
                     if v not in variants:
                         variants.append(v)
-            return variants or ["(기본)"]
+                        dirs[v] = c.config_dir
+            variants = variants or ["(기본)"]
+            # RTP.txt + ini 로 변형별 계수 자동 추정(추천값)
+            reco = {}
+            for v in variants:
+                d = dirs.get(v)
+                if d is not None:
+                    try:
+                        reco[v] = coef_detector.detect_from_dir(d)
+                    except Exception:  # noqa: BLE001
+                        reco[v] = None
+            return variants, reco
 
         def after_detect(ok, res):
             if not ok:
                 messagebox.showerror("변형 감지 실패", str(res))
                 return
-            scales_ui = self._ask_scales(res)
+            variants, reco = res
+            scales_ui = self._ask_scales(variants, reco)
             if scales_ui is None:
                 return
             scale_map = {("" if k == "(기본)" else k): v for k, v in scales_ui.items()}

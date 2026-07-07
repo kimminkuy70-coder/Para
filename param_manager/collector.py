@@ -29,7 +29,8 @@ from datetime import datetime
 from pathlib import Path
 
 COPY_DELAY_SEC = 0.10
-FIXED_FILES = ["GlobalRTP.ini", "OpticPreset.ini"]
+# RTP.txt 도 함께 복사한다 — 변환 계수 자동 추정(coef_detector)에 사용.
+FIXED_FILES = ["GlobalRTP.ini", "OpticPreset.ini", "RTP.txt"]
 LOG_NAME = "_수집로그.txt"
 
 
