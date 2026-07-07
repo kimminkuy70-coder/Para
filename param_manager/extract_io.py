@@ -9,6 +9,7 @@ engine.create_from_records 를 그대로 사용하므로 프로그램에서 다�
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 
@@ -18,6 +19,7 @@ from . import engine
 
 SHEET_MAP = "_EXTRACT_MAP"
 SHEET_SUMMARY = "추출_요약"
+SCALES_LABEL = "변환계수(JSON)"      # 추출_요약에 저장되는 변형별 계수
 MAP_HEADERS = ["Row_ID", "설정파일", "설정 Section", "설정 Parameter",
                "Raw Value", "변환방식", "Unit", "Source Path"]
 
@@ -25,12 +27,14 @@ MAP_HEADERS = ["Row_ID", "설정파일", "설정 Section", "설정 Parameter",
 def write_snapshot(dest_xlsx: str, records: list[dict], machines: list[str],
                    sheet_name: str, extracts: list[dict | None],
                    stage: str, level: str = "", aoi: str = "",
-                   source: str = "", user: str | None = None) -> str:
+                   source: str = "", user: str | None = None,
+                   scales: dict | None = None) -> str:
     """records(공용 스키마 dict 목록)로 스냅샷 파일 생성.
 
     extracts: records 와 같은 길이/순서의 재추출 메타
               ({src_file, section, key, raw?, transform, source_path} 또는 None).
     stage: "initial" / "final" (요약 표기용).
+    scales: 변형별 변환계수 {변형: 계수} — 값 업데이트가 같은 계수로 재파싱하도록 보존.
     반환: dest_xlsx.
     """
     os.makedirs(os.path.dirname(os.path.abspath(dest_xlsx)), exist_ok=True)
@@ -56,10 +60,34 @@ def write_snapshot(dest_xlsx: str, records: list[dict], machines: list[str],
                  ("레시피 레벨", level), ("호기", aoi), ("소스", source),
                  ("파라미터 수", len(records)), ("시트", sheet_name)]:
         sm.append([k, engine._s(v)])
+    if scales:
+        sm.append([SCALES_LABEL, json.dumps(scales, ensure_ascii=False)])
     sm.column_dimensions["A"].width = 16
     sm.column_dimensions["B"].width = 80
     wb.save(dest_xlsx)
     return dest_xlsx
+
+
+def read_scales(xlsx_path: str) -> dict:
+    """양식/스냅샷의 추출_요약에서 변형별 변환계수 {변형: 계수} 판독. 없으면 {}."""
+    try:
+        wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+    except Exception:  # noqa: BLE001
+        return {}
+    if SHEET_SUMMARY not in wb.sheetnames:
+        wb.close()
+        return {}
+    ws = wb[SHEET_SUMMARY]
+    out: dict = {}
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row and engine._s(row[0]) == SCALES_LABEL and len(row) > 1 and row[1]:
+            try:
+                out = {k: float(v) for k, v in json.loads(row[1]).items()}
+            except Exception:  # noqa: BLE001
+                out = {}
+            break
+    wb.close()
+    return out
 
 
 def read_extract_map(xlsx_path: str) -> dict[str, dict]:

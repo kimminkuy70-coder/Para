@@ -2751,6 +2751,61 @@ class EquipApp(tk.Tk):
                     rev.setdefault(engine._s(row[1]), engine._s(row[0]).upper())
         return rev.get(engine._s(ip), "")
 
+    def _map_ips_to_machines(self, ips, parent=None):
+        """각 IP를 어느 호기(AOI-xx)에 넣을지 지정하는 매칭창.
+        반환: {ip: 호기} 또는 None(취소). 참고자료 IP표로 자동 추정 프리필."""
+        parent = parent or self
+        win = tk.Toplevel(parent)
+        win.title("IP ↔ 호기 매칭")
+        win.configure(bg=self.p["bg"])
+        win.transient(parent)
+        win.grab_set()
+        tk.Label(win, text="각 IP의 값을 어느 호기(AOI-xx) 열에 채울지 지정하세요.",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                 anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win, text="IP로 새 열을 만들지 않고, 지정한 기존 호기 열에 값을 갱신합니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(
+                 anchor="w", padx=14)
+        machines = self._all_machines()
+        rows = {}
+        grid = tk.Frame(win, bg=self.p["bg"])
+        grid.pack(fill="both", expand=True, padx=14, pady=8)
+        for i, ip in enumerate(ips):
+            tk.Label(grid, text=ip, bg=self.p["bg"], fg=self.p["text"],
+                     font=self.fonts["base"]).grid(row=i, column=0, sticky="w", pady=3)
+            tk.Label(grid, text="→", bg=self.p["bg"], fg=self.p["muted"]).grid(
+                row=i, column=1, padx=8)
+            var = tk.StringVar(value=self._ip_to_aoi(ip))
+            cb = ttk.Combobox(grid, textvariable=var, values=machines, width=16)
+            cb.grid(row=i, column=2, sticky="w", pady=3)
+            rows[ip] = var
+        res = {"val": None}
+
+        def ok():
+            mapping = {ip: v.get().strip() for ip, v in rows.items()}
+            missing = [ip for ip, m in mapping.items() if not m]
+            if missing:
+                messagebox.showwarning("호기 미지정",
+                                       "다음 IP의 호기를 지정하세요:\n" + ", ".join(missing),
+                                       parent=win)
+                return
+            dups = [m for m in set(mapping.values())
+                    if list(mapping.values()).count(m) > 1]
+            if dups and not messagebox.askyesno(
+                    "호기 중복", f"같은 호기에 여러 IP가 지정됨: {', '.join(sorted(set(dups)))}\n"
+                    "나중 IP 값이 앞 값을 덮어씁니다. 계속할까요?", parent=win):
+                return
+            res["val"] = mapping
+            win.destroy()
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Button(bt, text="확인", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                  padx=16, cursor="hand2", command=ok).pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+        win.wait_window()
+        return res["val"]
+
     def _pick_list_chooser(self, kind, title, items, multi):
         """collector 용 모달 선택창. 반환: 선택 목록 또는 None(취소)."""
         win = tk.Toplevel(getattr(self, "_chooser_parent", None) or self)
@@ -2985,13 +3040,17 @@ class EquipApp(tk.Tk):
                 status.config(text="net use 는 Windows 전용입니다. 체크를 끄고 이미 "
                                    "연결된 경로로 시도하세요.")
                 return
+            # IP ↔ 호기(AOI-xx) 매칭 — IP로 새 열을 만들지 않고 지정 호기 열에 값을 채운다
+            ip_map = self._map_ips_to_machines(ips, parent=win)
+            if ip_map is None:
+                return
             self._cfg["collect_user"] = uid_var.get().strip() or "amkor"
             save_config(self._cfg)
             stamp = workdirs.run_stamp()
             sources, errors = [], []
             plan = None
             for i, ip in enumerate(ips, 1):
-                aoi = self._ip_to_aoi(ip) or ip.replace(".", "_")
+                aoi = ip_map.get(ip) or self._ip_to_aoi(ip) or ip.replace(".", "_")
                 status.config(text=f"[{i}/{len(ips)}] {ip} ({aoi}) 수집 중…")
                 win.update_idletasks()
 
@@ -3033,13 +3092,14 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=16,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=8)
 
-    def _parse_sources_busy(self, sources, on_ready, default_level=""):
-        """수집 결과(또는 로컬 폴더) → 파싱 피벗을 백그라운드로 계산."""
+    def _parse_sources_busy(self, sources, on_ready, default_level="", scales=None):
+        """수집 결과(또는 로컬 폴더) → 파싱 피벗을 백그라운드로 계산.
+        scales={변형: 계수} 면 변형별 변환계수 적용."""
         def work():
             cfgs = []
             for root, kw, aoi in sources:
                 cfgs += ini_parser.scan_tree(root, default_level=kw or default_level,
-                                             default_equipment=aoi)
+                                             default_equipment=aoi, scales=scales)
             valid = [c for c in cfgs if rtp.config_valid(c)]
             rows, machines = ini_parser.build_pivot(valid)
             return rows, machines, [c for c in cfgs if not rtp.config_valid(c)]
@@ -3080,17 +3140,24 @@ class EquipApp(tk.Tk):
         krow = tk.Frame(box, bg=self.p["bg"])
         krow.pack(fill="x")
         level_combo = ttk.Combobox(krow, textvariable=self._form_level, state="readonly",
-                                   width=10, values=RECIPE_LEVELS["PI"])
+                                   width=14, values=RECIPE_LEVELS["PI"])
 
         def on_kind():
-            vals = RECIPE_LEVELS[self._form_kind.get()]
-            level_combo.config(values=vals)
-            if self._form_level.get() not in vals:
-                self._form_level.set(vals[0])
-        for k in ("PI", "RDL"):
-            tk.Radiobutton(krow, text=k, variable=self._form_kind, value=k,
-                           bg=self.p["bg"], font=self.fonts["bold"],
-                           command=on_kind).pack(side="left", padx=(0, 10))
+            k = self._form_kind.get()
+            if k in RECIPE_LEVELS:      # PI / RDL — 목록에서 선택
+                vals = RECIPE_LEVELS[k]
+                level_combo.config(values=vals, state="readonly")
+                if self._form_level.get() not in vals:
+                    self._form_level.set(vals[0])
+            else:                        # 기타 — 직접 입력(비-PI/RDL 레시피)
+                level_combo.config(values=[], state="normal")
+                if self._form_level.get() in RECIPE_LEVELS["PI"] + RECIPE_LEVELS["RDL"]:
+                    self._form_level.set("")
+        for k in ("PI", "RDL", "기타"):
+            tk.Radiobutton(krow, text=("기타(직접 입력)" if k == "기타" else k),
+                           variable=self._form_kind, value=k, bg=self.p["bg"],
+                           font=self.fonts["bold"], command=on_kind).pack(side="left",
+                                                                          padx=(0, 10))
         tk.Label(krow, text="레시피:", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["sub"]).pack(side="left", padx=(10, 4))
         level_combo.pack(side="left")
@@ -3110,6 +3177,16 @@ class EquipApp(tk.Tk):
                   bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
                   command=self._form_open_existing).pack(side="left")
 
+    def _form_levels(self, form_path: str) -> list:
+        """양식 파일의 PI(레시피 레벨) 고유값 목록."""
+        try:
+            repo = engine.ParamRepository(form_path)
+            repo.load()
+            return sorted({engine._s(pr.get("PI")).strip() for pr in repo.rows
+                           if engine._s(pr.get("PI")).strip()})
+        except Exception:  # noqa: BLE001
+            return []
+
     def _form_canonical(self, level: str, base: str) -> str:
         """레시피 레벨별 양식 파일의 표준 경로(cfg 기억, 없으면 base에 기본명)."""
         key = f"form_path_{level}"
@@ -3119,23 +3196,103 @@ class EquipApp(tk.Tk):
         return os.path.join(base, f"양식_{level}.xlsx")
 
     def _form_new(self, from_equipment: bool):
-        level = self._form_level.get()
+        level = self._form_level.get().strip()
         kind = self._form_kind.get()
-
-        def after_pivot(rows, machines):
-            self._form_build_and_edit(rows, machines, level, kind)
-
+        if not level:
+            messagebox.showwarning("레시피 미지정",
+                                   "레시피(레벨)를 선택하거나 '기타'에서 직접 입력하세요.")
+            return
+        if kind == "기타":
+            kind = "RDL" if level.upper().startswith("RDL") else "PI"  # 저장 시트 판별용
         if from_equipment:
             self._collect_dialog(level, lambda sources, base:
-                                 self._parse_sources_busy(sources, after_pivot,
-                                                          default_level=level))
+                                 self._scales_then_build(sources, level, kind))
         else:
             d = filedialog.askdirectory(title=f"{level} 레시피 파일이 있는 로컬 폴더 선택")
             if not d:
                 return
-            self._parse_sources_busy([(d, level, "")], after_pivot, default_level=level)
+            self._scales_then_build([(d, level, "")], level, kind)
 
-    def _form_build_and_edit(self, rows, machines, level, kind):
+    def _scales_then_build(self, sources, level, kind):
+        """변형(PI/PI-bubble/x5/x20 등)을 감지해 변형별 변환계수를 물은 뒤 파싱→초안."""
+        def detect():
+            variants = []
+            for root, kw, aoi in sources:
+                for c in ini_parser.scan_tree(root, default_level=kw or level,
+                                              default_equipment=aoi):
+                    if not rtp.config_valid(c):
+                        continue
+                    v = c.mag or "(기본)"
+                    if v not in variants:
+                        variants.append(v)
+            return variants or ["(기본)"]
+
+        def after_detect(ok, res):
+            if not ok:
+                messagebox.showerror("변형 감지 실패", str(res))
+                return
+            scales_ui = self._ask_scales(res)
+            if scales_ui is None:
+                return
+            scale_map = {("" if k == "(기본)" else k): v for k, v in scales_ui.items()}
+
+            def parse_ready(rows, machines):
+                self._form_build_and_edit(rows, machines, level, kind, scale_map)
+            self._parse_sources_busy(sources, parse_ready, default_level=level,
+                                     scales=scale_map)
+        self._run_busy("변형(레시피) 감지 중…", detect, after_detect)
+
+    def _ask_scales(self, variants):
+        """변형별 변환계수 입력창(정확값 2개 + 직접입력, 기본값 없음).
+        반환: {변형: 계수(float)} 또는 None(취소)."""
+        win = tk.Toplevel(self)
+        win.title("변환 계수 선택(변형별)")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="변형(레시피)마다 변환 계수를 지정하세요.", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w", padx=14,
+                                                                  pady=(12, 2))
+        tk.Label(win, text="장비 'RTP {계수} Microns' 값. 예: 0.8456665875666588 / "
+                          "0.7696441409644141. 목록에서 고르거나 직접 입력.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=14)
+        opts = [f"{s:.16g}" for s in ini_parser.KNOWN_SCALES]
+        grid = tk.Frame(win, bg=self.p["bg"])
+        grid.pack(fill="both", expand=True, padx=14, pady=8)
+        vars_ = {}
+        for i, v in enumerate(variants):
+            tk.Label(grid, text=v, bg=self.p["bg"], fg=self.p["text"],
+                     font=self.fonts["base"]).grid(row=i, column=0, sticky="w", pady=4)
+            var = tk.StringVar(value="")
+            ttk.Combobox(grid, textvariable=var, values=opts, width=26).grid(
+                row=i, column=1, padx=8, pady=4)
+            vars_[v] = var
+        res = {"val": None}
+
+        def ok():
+            out = {}
+            for v, var in vars_.items():
+                s = var.get().strip()
+                try:
+                    out[v] = float(s)
+                except ValueError:
+                    messagebox.showwarning("계수 오류",
+                                           f"'{v}'의 계수를 숫자로 입력하세요(현재: '{s}').",
+                                           parent=win)
+                    return
+            res["val"] = out
+            win.destroy()
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Button(bt, text="확인", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                  padx=16, cursor="hand2", command=ok).pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+        win.wait_window()
+        return res["val"]
+
+    def _form_build_and_edit(self, rows, machines, level, kind, scales=None):
         base = self._ask_base_dir()
         if not base:
             return
@@ -3158,10 +3315,11 @@ class EquipApp(tk.Tk):
                 messagebox.showerror("초안 생성 실패", str(res))
                 return
             opened = self._open_in_excel(init_path)
-            self._form_finalize_dialog(init_path, res, level, kind, base, opened)
+            self._form_finalize_dialog(init_path, res, level, kind, base, opened, scales)
         self._run_busy("초안 엑셀 생성 중…", work, done)
 
-    def _form_finalize_dialog(self, init_path, orig_path, level, kind, base, opened):
+    def _form_finalize_dialog(self, init_path, orig_path, level, kind, base, opened,
+                              scales=None):
         win = tk.Toplevel(self)
         win.title("양식 편집 완료")
         win.configure(bg=self.p["bg"])
@@ -3181,12 +3339,12 @@ class EquipApp(tk.Tk):
                   command=lambda: self._open_in_excel(init_path)).pack(side="left")
         tk.Button(bt, text="편집 완료 → 양식 생성", relief="flat", bd=0, bg=self.p["ok"],
                   fg="#ffffff", padx=16, pady=6, cursor="hand2",
-                  command=lambda: self._form_finalize(init_path, level, kind, base, win)
-                  ).pack(side="right")
+                  command=lambda: self._form_finalize(init_path, level, kind, base, win,
+                                                      scales)).pack(side="right")
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=12,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
 
-    def _form_finalize(self, init_path, level, kind, base, win):
+    def _form_finalize(self, init_path, level, kind, base, win, scales=None):
         canonical = self._form_canonical(level, base)
         mode = "new"
         if os.path.exists(canonical):
@@ -3203,7 +3361,7 @@ class EquipApp(tk.Tk):
                 versioning.save_new_version(canonical)   # 이전 내용 버전 폴더에 보존
             res = formbuilder.build_final_from_initial(
                 init_path, canonical, user=self.user, level=level,
-                source=f"{level} 양식")
+                source=f"{level} 양식", scales=scales)
             return res
 
         def done(ok, res):
@@ -3353,11 +3511,19 @@ class EquipApp(tk.Tk):
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=16)
 
+        # 양식을 만들 때 저장해 둔 변형별 변환계수를 그대로 써서 재파싱(일관성)
+        scales = extract_io.read_scales(form_path)
+        # 비-PI/RDL(기타) 양식이면 자동 레벨 인식이 안 되므로 양식의 레벨을 파싱에 주입
+        flevels = self._form_levels(form_path)
+        custom = [l for l in flevels if not l.upper().startswith(("PI", "RDL"))]
+        dlevel = custom[0] if (len(flevels) == 1 and custom) else ""
+
         def from_equip():
             win.destroy()
-            self._collect_dialog("", lambda sources, base:
+            self._collect_dialog(dlevel, lambda sources, base:
                                  self._parse_sources_busy(
-                                     sources, lambda r, m: after_pivot(r, m, base)))
+                                     sources, lambda r, m: after_pivot(r, m, base),
+                                     default_level=dlevel, scales=scales))
 
         def from_local():
             win.destroy()
@@ -3365,8 +3531,9 @@ class EquipApp(tk.Tk):
             if not d:
                 return
             base = self._snapshot_base_dir() or os.path.dirname(form_path)
-            self._parse_sources_busy([(d, "", "")],
-                                     lambda r, m: after_pivot(r, m, base))
+            self._parse_sources_busy([(d, dlevel, "")],
+                                     lambda r, m: after_pivot(r, m, base),
+                                     default_level=dlevel, scales=scales)
         tk.Button(bt, text="🖥 장비 IP에서 수집", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=16, pady=8, cursor="hand2",
                   command=from_equip).pack(side="left")

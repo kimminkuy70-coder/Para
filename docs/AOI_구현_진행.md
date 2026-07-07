@@ -101,13 +101,18 @@
 - [x] R2. **스키마에서 `초기 추천값` 완전 제거**: `engine.META_FIELDS`에서 삭제 +
       `LEGACY_META`로 구파일 하위호환(호기열 오인 방지, 저장 시 자연 제거). `SUM_HEADERS`/
       `comparison_view`/summary write/formbuilder/collate 참조 정리.
-- [ ] R3(GUI). 추천값 열 화면 제거(헤더/`_build_left_row`/`_set_reco`), 셀 **줄바꿈+행높이**
-      (좌 파라미터명·값 wraplength, `_row_lines`에 좌측 반영), **IP↔호기 매칭창**(수집 시
-      각 IP→AOI 콤보, 참고자료 프리필; ip-파생 열 생성 폐지), **계수 선택창**(양식 만들 때
-      변형별), 계수 양식에 저장→값 업데이트가 읽어 재파싱, **기타 레시피 분기**(PI/RDL 외
-      직접 입력). `run.py`→equip_app 로 일치.
+- [x] R3(GUI). 추천값 열 화면 제거(헤더/`_build_left_row`/`_set_reco` 삭제), 셀 **줄바꿈+
+      행높이**(좌 grid 열 `NAME_W/VAL_W`+wraplength, `_row_lines`에 좌측 반영, `_equalize_panes`),
+      **IP↔호기 매칭창**(`_map_ips_to_machines`; 참고자료 프리필, 중복 경고; ip-파생 열 폐지),
+      **계수 선택창**(`_ask_scales`, 변형별, 기본값 없음, 정확값 2개+직접입력), 변형 감지
+      (`_scales_then_build`)→계수→파싱(`scan_tree(scales=)`)→초안, 계수는 양식 `추출_요약`에
+      저장(`extract_io.write_snapshot(scales=)`/`read_scales`), 값 업데이트가 읽어 재파싱,
+      **기타 레시피 분기**(`_view_form` PI/RDL/기타; 값 업데이트는 `_form_levels`로 custom
+      레벨 주입). `run.py`→equip_app 로 통일.
 
-계수 저장 위치: 양식 파일 `추출_요약` 시트(변형별 계수) — 값 업데이트가 읽어 재파싱에 적용.
+계수 저장 위치: 양식 파일 `추출_요약` 시트 `변환계수(JSON)` 행 — 값 업데이트가 읽어 재적용.
+검증: `test_formbuilder`(계수 저장/판독), `test_ini_parser`(변형별 scales) 등 헤드리스 통과.
+GUI(매칭창/계수창/줄바꿈)는 py_compile 정적검증 — Windows 실기 확인 필요.
 
 ## 5. 테스트
 

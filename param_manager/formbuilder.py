@@ -143,7 +143,8 @@ def _detect_sheet(records: list[dict]) -> str:
 def build_final_from_initial(initial_xlsx: str, dest_xlsx: str,
                              sheet_name: str | None = None,
                              user: str | None = None, level: str = "",
-                             aoi: str = "", source: str = "") -> dict:
+                             aoi: str = "", source: str = "",
+                             scales: dict | None = None) -> dict:
     """편집된 initial → final(양식) 엑셀. 반환: {'path','kept','dropped','sheet'}.
 
     - '사용'=N/빈행/Parameter 공란 행은 제외.
@@ -182,5 +183,5 @@ def build_final_from_initial(initial_xlsx: str, dest_xlsx: str,
     sheet = sheet_name or _detect_sheet(records)
     extract_io.write_snapshot(
         dest_xlsx, records, machines=[], sheet_name=sheet, extracts=extracts,
-        stage="final", level=level, aoi=aoi, source=source, user=user)
+        stage="final", level=level, aoi=aoi, source=source, user=user, scales=scales)
     return {"path": dest_xlsx, "kept": len(records), "dropped": dropped, "sheet": sheet}

@@ -82,6 +82,21 @@ def test_build_initial_and_final():
         print("  formbuilder OK: initial 생성 + 사용/이름편집 반영 final + _EXTRACT_MAP")
 
 
+def test_final_stores_scales():
+    with tempfile.TemporaryDirectory() as tmp:
+        rows, _ = _pivot(tmp)
+        init = os.path.join(tmp, "init.xlsx")
+        formbuilder.build_initial_workbook(rows, init, level="PI3")
+        final = os.path.join(tmp, "form.xlsx")
+        scales = {"PI": 0.8456665875666588, "PI-bubble": 0.7696441409644141}
+        formbuilder.build_final_from_initial(init, final, level="PI3", scales=scales)
+        got = extract_io.read_scales(final)
+        assert got == scales, got
+        # '초기 추천값'(대표값)은 최종 스키마에 없어야 함
+        assert "초기 추천값" not in engine.META_FIELDS
+    print("  formbuilder OK: 변형별 계수 양식에 저장/판독 + 추천값 스키마 제거")
+
+
 def test_final_rejects_when_all_unused():
     with tempfile.TemporaryDirectory() as tmp:
         rows, _ = _pivot(tmp)

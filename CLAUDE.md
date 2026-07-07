@@ -28,10 +28,15 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 아래는 사용자와 이미 합의가 끝난 사항이다. 같은 내용을 AskUserQuestion으로 **다시 묻지 말 것**.
 세션이 새로 시작돼 맥락이 리셋돼도 이 파일을 신뢰하고 그대로 진행한다.
 
-- **스키마**: 새 컬럼 추가 안 함. 기존 META_FIELDS = `[PI, Recipe, Zone, Alg, Parameter,
-  초기 추천값, 비고]` 유지.
-  - `PI` 컬럼 = 레시피 레벨(PI2/PI3/PI4, RDL1~RDL4)
+- **스키마**: META_FIELDS = `[PI, Recipe, Zone, Alg, Parameter, 비고]`.
+  - **`초기 추천값` 열은 2차 수정안으로 제거**(파일에서도). 구 파일은 `engine.LEGACY_META`로
+    하위호환(호기열 오인 방지, 저장 시 자연 제거).
+  - `PI` 컬럼 = 레시피 레벨(PI2/PI3/PI4, RDL1~RDL4, **기타 커스텀 레벨 허용**)
   - `Recipe` 컬럼 = 변형(variant): PI계열은 `PI` / `PI-bubble`, RDL계열은 `x5` / `x20`
+- **변환 계수(scale)**: 단일 하드코딩 금지. `ini_parser.transform_value(raw, transform, scale)`
+  변형별 계수(예: PI vs PI-bubble). 정확값 `0.8456665875666588`/`0.7696441409644141`.
+  양식 만들 때 **변형별로 물어봐** 양식 `추출_요약`에 저장 → 값 업데이트가 읽어 재적용.
+- **IP↔호기**: 값 업데이트 수집 시 IP를 **호기(AOI-xx)에 매칭**(IP-파생 열 생성 금지).
 - **변형 라벨 표기**: 버블은 하이픈 `PI-bubble`로 통일(언더스코어 `PI_bubble` 아님).
 - **파일 분리 저장**: PI 계열 → `{stem}_PI.xlsx`(시트 PI_ALL), RDL 계열 → `{stem}_RDL.xlsx`
   (시트 RDL_ALL). 하나로 섞지 않음.
