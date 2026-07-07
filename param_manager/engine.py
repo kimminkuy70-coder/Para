@@ -63,8 +63,12 @@ MACHINES = (
     + ["AOI-M", "AOI-M2", "AOI-R1"]
 )
 
-# 메타(상위) 항목 — A:G
-META_FIELDS = ["PI", "Recipe", "Zone", "Alg", "Parameter", "초기 추천값", "비고"]
+# 메타(상위) 항목 — A:F ('초기 추천값' 열은 2차 수정안으로 제거)
+META_FIELDS = ["PI", "Recipe", "Zone", "Alg", "Parameter", "비고"]
+
+# 구(舊) 파일 하위호환: 예전 파일에 남아 있는 '초기 추천값' 열을 호기 열로 오인하지
+# 않도록 자동 인식에서 제외한다(저장 시 자연스럽게 사라진다).
+LEGACY_META = {"초기 추천값"}
 
 # 데이터 시트 뒤쪽 파생/필터 열(호기 열 자동 인식 시 제외 대상)
 DERIVED_TAIL = [
@@ -104,7 +108,7 @@ def detect_aoi_units(wb, sheet_name) -> list:
     if not sheet_name or sheet_name not in wb.sheetnames:
         return list(AOI_UNITS)
     ws = wb[sheet_name]
-    meta = set(META_FIELDS)
+    meta = set(META_FIELDS) | LEGACY_META
     derived = set(DERIVED_TAIL)
     seen = set()
     units = []
@@ -130,7 +134,7 @@ LOG_HEADERS = [
 ]
 
 SUM_HEADERS = [
-    "PI", "AOI", "Recipe", "Zone", "Alg", "Parameter", "초기 추천값", "비고",
+    "PI", "AOI", "Recipe", "Zone", "Alg", "Parameter", "비고",
     "현재값", "최초값", "이전값", "변경횟수", "최초 변경일시", "마지막 변경일시",
     "마지막 변경자", "마지막 변경유형", "Source", "Comment", "Summary_Key",
     "Source_Cell", "Row_ID", "Stable_Key", "Display_Order", "Status",
@@ -163,7 +167,7 @@ HDR_FONT = Font(bold=True, color="FFF8FAFC")
 GRP_TOP = Border(top=Side(style="medium", color="FF94A3B8"))
 WRAP_TOP = Alignment(wrap_text=True, vertical="top")
 COL_WIDTH = {"PI": 9, "Recipe": 16, "Zone": 22, "Alg": 22, "Parameter": 26,
-             "초기 추천값": 14, "비고": 34}
+             "비고": 34}
 
 
 def _argb(hexcolor: str) -> str:
@@ -710,7 +714,6 @@ class ParamRepository:
                 "Zone": pr.get("Zone"),
                 "Alg": pr.get("Alg"),
                 "Parameter": pr.get("Parameter"),
-                "초기 추천값": pr.get("초기 추천값"),
                 "missing": pr.missing_units(),
                 "value_diff": pr.has_value_diff(),
                 "common": pr.is_common(),
@@ -938,7 +941,6 @@ class ParamRepository:
                 line[idx["Zone"]] = pr.get("Zone")
                 line[idx["Alg"]] = pr.get("Alg")
                 line[idx["Parameter"]] = pr.get("Parameter")
-                line[idx["초기 추천값"]] = pr.get("초기 추천값")
                 line[idx["비고"]] = pr.get("비고")
                 line[idx["현재값"]] = pr.get(u)
 
@@ -1115,7 +1117,7 @@ def create_from_records(dest_xlsx: str, records: list, machines=None,
                         merge: bool = False) -> "ParamRepository":
     """취사선택 결과(레코드 목록)로 공용 파일(.xlsx)을 생성/병합.
 
-    records: 각 dict 는 메타(PI/Recipe/Zone/Alg/Parameter/초기 추천값/비고)와
+    records: 각 dict 는 메타(PI/Recipe/Zone/Alg/Parameter/비고)와
              호기 값(예: {"AOI-3": "1", ...})을 함께 담는다.
     machines: 호기 열 목록(None 이면 레코드에서 수집).
     sheet_name: 데이터 시트("PI_ALL"/"RDL_ALL") — PI/RDL 분리 저장용.

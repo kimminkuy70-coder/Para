@@ -25,7 +25,7 @@ from . import engine, extract_io
 INIT_SHEET = "양식초안"
 INIT_HEADERS = [
     "사용", "PI", "Recipe", "Zone", "Alg", "추천 Parameter", "최종 Parameter",
-    "초기 추천값", "비고",
+    "대표값(참고)", "비고",
     # ↓ 참고/재추출 메타(값 갱신 매칭용) — 사람이 굳이 안 건드려도 됨
     "설정파일", "설정 Section", "설정 Parameter", "Raw Value", "변환방식",
 ]
@@ -167,7 +167,6 @@ def build_final_from_initial(initial_xlsx: str, dest_xlsx: str,
             "PI": pi, "Recipe": engine._s(r.get("Recipe")).strip(),
             "Zone": engine._s(r.get("Zone")).strip(),
             "Alg": engine._s(r.get("Alg")).strip(), "Parameter": param,
-            "초기 추천값": engine._s(r.get("초기 추천값")).strip(),
             "비고": engine._s(r.get("비고")).strip(),
         })
         extracts.append({
