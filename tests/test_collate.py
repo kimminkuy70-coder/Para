@@ -1,4 +1,4 @@
-"""collate 테스트 — 양식(이름변경 포함) + 파싱 → 호기별 취합 + 불일치."""
+"""collate(재설계) 테스트 — 레시피별 시트·전체 호기·직전본 이어받기·불일치."""
 import os
 import sys
 import tempfile
@@ -8,97 +8,98 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import openpyxl  # noqa: E402
 
-from param_manager import collate, engine, formbuilder, ini_parser  # noqa: E402
+from param_manager import collate, engine, formbuilder, ini_parser, workdirs  # noqa: E402
 
-GLOBAL_RTP = """[GLOBAL_RTP]
-MaxFaultsPerWafer = 3000
-ApplyDieCalib = 1
-"""
-ZONE_INI = """[General]
-ZoneName = PI Opening
-[Surface]
-High_Delta = 25
-"""
-GLOBAL_RTP_B = """[GLOBAL_RTP]
-MaxFaultsPerWafer = 5000
-ApplyDieCalib = 0
-"""
+GLOBAL = "[GLOBAL_RTP]\nMaxFaultsPerWafer = {v}\nApplyDieCalib = 1\n"
+ZONE = "[General]\nZoneName = PI Opening\n[Surface]\nHigh_Delta = 25\n"
 
 
-def _pivot(root, equip, with_zone=True, gtext=GLOBAL_RTP):
+def _pivot(root, equip, wafer="3000"):
     rec = Path(root) / "R_TB500_PI3" / "PI"
     rec.mkdir(parents=True, exist_ok=True)
-    (rec / "GlobalRTP.ini").write_text(gtext, encoding="utf-8")
-    if with_zone:
-        (rec / "Zones").mkdir(exist_ok=True)
-        (rec / "Zones" / "Zone1.ini").write_text(ZONE_INI, encoding="utf-8")
+    (rec / "GlobalRTP.ini").write_text(GLOBAL.format(v=wafer), encoding="utf-8")
+    (rec / "Zones").mkdir(exist_ok=True)
+    (rec / "Zones" / "Z.ini").write_text(ZONE, encoding="utf-8")
     cfgs = ini_parser.scan_tree(Path(root) / "R_TB500_PI3", default_equipment=equip)
     return ini_parser.build_pivot(cfgs)[0]
 
 
-def _make_form(tmp) -> str:
-    """장비 A(AOI-13) 파싱으로 양식 생성 + Parameter 하나를 사람이 개명."""
-    rows = _pivot(os.path.join(tmp, "A"), "AOI-13")
+def _make_form(save_dir, tmp):
+    """PI3 양식을 양식/PI3/{stamp}/ 에 배치."""
+    rows = _pivot(os.path.join(tmp, "A"), "AOI-24")
     init = os.path.join(tmp, "init.xlsx")
     formbuilder.build_initial_workbook(rows, init, level="PI3")
-    # 'Max Defects Per Wafer' → '웨이퍼당 최대결함' 으로 개명
-    wb = openpyxl.load_workbook(init)
-    ws = wb[formbuilder.INIT_SHEET]
-    heads = [c.value for c in ws[1]]
-    fi = heads.index("최종 Parameter") + 1
-    gi = heads.index("추천 Parameter") + 1
-    for r in range(2, ws.max_row + 1):
-        if ws.cell(r, gi).value == "Max Defects Per Wafer":
-            ws.cell(r, fi).value = "웨이퍼당 최대결함"
-    wb.save(init); wb.close()
-    form = os.path.join(tmp, "TB500_PI.xlsx")
-    formbuilder.build_final_from_initial(init, form, level="PI3")
-    return form
+    st = workdirs.stamp()
+    run = workdirs.form_run_dir(save_dir, "PI3", st)
+    final = workdirs.form_final_path(run, "PI3", "AOI-24", st)
+    formbuilder.build_final_from_initial(init, final, level="PI3")
+    return final
 
 
-def test_collate_matches_despite_rename():
+def test_build_collation_carryover_and_allmachines():
     with tempfile.TemporaryDirectory() as tmp:
-        form = _make_form(tmp)
-        # 장비 B(AOI-14): 값이 다르고, 이름은 원래 표시명으로 파싱됨
-        pivot_b = _pivot(os.path.join(tmp, "B"), "AOI-14", gtext=GLOBAL_RTP_B)
-        results = collate.collate(form, pivot_b)
-        assert len(results) == 1
-        res = results[0]
-        assert res.level == "PI3" and res.sheet == "PI_ALL"
-        # 개명된 행도 원본 설정키(MaxFaultsPerWafer)로 매칭되어 값이 채워져야 함
-        assert res.mismatches == [], res.mismatches
-        assert "AOI-14" in res.machines
-        renamed = [r for r in res.records if r.get("Parameter") == "웨이퍼당 최대결함"]
-        assert renamed and engine._s(renamed[0].get("AOI-14")) == "5000"
+        save = os.path.join(tmp, "저장폴더")
+        os.makedirs(save)
+        _make_form(save, tmp)
+        machines = ["AOI-24", "AOI-25", "AOI-26"]
 
-        # 저장 → 공용 양식 + 값
-        dest = os.path.join(tmp, "취합.xlsx")
-        collate.write_collated(res, dest, source="AOI-14")
-        repo = engine.ParamRepository(dest); repo.load()
-        assert "AOI-14" in repo.aoi_units
-        got = {engine._s(pr.get("Parameter")): engine._s(pr.get("AOI-14"))
+        # 1) 직전 취합본: AOI-25 값(wafer=5000)
+        p25 = _pivot(os.path.join(tmp, "B25"), "AOI-25", wafer="5000")
+        prev = collate.build_collation(save, ["PI3"], p25, machines)
+        prev_path = workdirs.collate_path(save, workdirs.stamp())
+        collate.write_collation(prev_path, prev, machines)
+
+        # 2) 이번 수집: AOI-24 값(wafer=7000) + 직전(AOI-25) 이어받기
+        p24 = _pivot(os.path.join(tmp, "B24"), "AOI-24", wafer="7000")
+        results = collate.build_collation(save, ["PI3"], p24, machines,
+                                          prev_collate_path=prev_path)
+        res = results["PI3"]
+        assert not res.missing_form and res.mismatches == []
+        # 대상 행: Max Defects Per Wafer
+        row = next(r for r in res.records
+                   if r["Parameter"] == "Max Defects Per Wafer")
+        assert engine._s(row["AOI-24"]) == "7000"      # 이번 수집
+        assert engine._s(row["AOI-25"]) == "5000"      # 직전 이어받기
+        assert engine._s(row.get("AOI-26")) == ""      # 미수집 → 빈칸
+
+        # 3) 저장 → 로드 왕복(멀티시트)
+        dest = workdirs.collate_path(save, workdirs.stamp())
+        collate.write_collation(dest, results, machines)
+        sheets, mac = collate.load_collation(dest)
+        assert "PI3" in sheets and set(machines) <= set(mac)
+
+        # 4) 값 확인용 repo 병합
+        repo = collate.load_as_repo(dest, machines)
+        assert repo.aoi_units == machines
+        got = {engine._s(pr.get("Parameter")): engine._s(pr.get("AOI-24"))
                for pr in repo.rows}
-        assert got.get("웨이퍼당 최대결함") == "5000"
-    print("  collate OK: 개명된 양식도 설정키로 매칭 + 호기 값 채움")
+        assert got["Max Defects Per Wafer"] == "7000"
+    print("  collate OK: 전체 호기 + 직전 이어받기 + 멀티시트 왕복 + repo 병합")
 
 
-def test_collate_detects_mismatch():
+def test_missing_form_and_mismatch():
     with tempfile.TemporaryDirectory() as tmp:
-        form = _make_form(tmp)            # GlobalRTP(2) + Zone(1) = 3 항목
-        # 장비 C: GlobalRTP 만(Zone 없음) → Zone 파라미터가 불일치로 잡혀야
-        pivot_c = _pivot(os.path.join(tmp, "C"), "AOI-15", with_zone=False)
-        res = collate.collate(form, pivot_c)[0]
-        assert res.mismatches, "Zone 항목 불일치가 안 잡힘"
+        save = os.path.join(tmp, "저장폴더")
+        os.makedirs(save)
+        _make_form(save, tmp)
+        machines = ["AOI-24"]
+        # 양식 없는 레시피 RDL4 요청 → missing_form
+        p = _pivot(os.path.join(tmp, "C"), "AOI-24")
+        results = collate.build_collation(save, ["PI3", "RDL4"], p, machines)
+        assert results["RDL4"].missing_form is True
+        assert results["PI3"].missing_form is False
+
+        # 불일치: Zone 항목 없는 장비(GlobalRTP만)
+        recD = Path(tmp) / "D" / "R_TB500_PI3" / "PI"
+        recD.mkdir(parents=True)
+        (recD / "GlobalRTP.ini").write_text(GLOBAL.format(v="1"), encoding="utf-8")
+        cfgs = ini_parser.scan_tree(Path(tmp) / "D" / "R_TB500_PI3",
+                                    default_equipment="AOI-24")
+        pD = ini_parser.build_pivot(cfgs)[0]
+        res = collate.build_collation(save, ["PI3"], pD, machines)["PI3"]
         params = {m["param"] for m in res.mismatches}
         assert "Contrast Delta - Bright" in params
-        # 불일치 행은 저장 시 비고에 [불일치] 표기
-        dest = os.path.join(tmp, "취합C.xlsx")
-        collate.write_collated(res, dest)
-        repo = engine.ParamRepository(dest); repo.load()
-        notes = [engine._s(pr.get("비고")) for pr in repo.rows
-                 if engine._s(pr.get("Parameter")) == "Contrast Delta - Bright"]
-        assert notes and notes[0].startswith("[불일치]")
-    print("  collate OK: 불일치 검출 + 비고 [불일치] 표기")
+    print("  collate OK: 양식 없음(missing_form) + 불일치 검출")
 
 
 if __name__ == "__main__":

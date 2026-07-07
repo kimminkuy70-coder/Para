@@ -1,10 +1,9 @@
-"""파라미터 이력 확인(AOI 스펙 1.1.1.2) — 헤드리스 로직.
+"""파라미터 이력 확인(3차 재설계) — 취합 파일 2개(멀티시트) 비교.
 
-저장된 취합/양식 엑셀 2개(예: 이전 버전 vs 최신 버전)를 비교해 무엇이 바뀌었는지
-알아내고, 달라진 부분을 **엑셀(변경내역)** 으로 만든다. 각 변경 행에는 사람이
-채울 **비고(메모)** 열을 둔다(특이사항 기록).
+'파라미터 값 취합' 폴더의 취합 파일 2개를 골라, **달라진 부분만** 뽑아
+새 창(표)·엑셀로 보여준다. 취합 파일은 레시피별 시트 구조이므로 시트별로 비교한다.
 
-매칭 키 = (PI, Recipe(변형), norm Zone, norm Alg, norm Parameter) — refresh/collate 와 동일.
+매칭 키 = (PI, Recipe(변형), norm Zone, norm Alg, norm Parameter). 한글 이름 보존.
 """
 
 from __future__ import annotations
@@ -15,21 +14,20 @@ from dataclasses import dataclass, field
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from . import engine
+from . import collate, engine
+
+DIFF_SHEET = "변경내역"
+DIFF_HEADERS = ["레시피(시트)", "PI", "Recipe", "Zone", "Alg", "Parameter", "호기",
+                "이전 값", "새 값", "구분", "비고(메모)"]
 
 
 def norm_key(name: str) -> str:
-    """매칭용 정규화 — 한글 이름도 보존(rtp_parser.norm_key 는 한글을 버려서
-    사람이 붙인 한글 파라미터명이 뭉개짐). 대소문자/공백/기호만 무시."""
     return re.sub(r"[^0-9a-z가-힣µ]", "", str(name).lower())
-
-DIFF_SHEET = "변경내역"
-DIFF_HEADERS = ["PI", "Recipe", "Zone", "Alg", "Parameter", "호기",
-                "이전 값", "새 값", "구분", "비고(메모)"]
 
 
 @dataclass
 class Change:
+    sheet: str
     pi: str
     recipe: str
     zone: str
@@ -44,117 +42,100 @@ class Change:
 @dataclass
 class HistoryDiff:
     changes: list[Change] = field(default_factory=list)
-    added_rows: list[dict] = field(default_factory=list)     # 새 파일에만 있는 파라미터
-    removed_rows: list[dict] = field(default_factory=list)   # 이전 파일에만 있는 파라미터
+    added_rows: list[dict] = field(default_factory=list)
+    removed_rows: list[dict] = field(default_factory=list)
     machines: list[str] = field(default_factory=list)
 
 
-def _row_key(pr) -> tuple:
-    return (engine._s(pr.get("PI")).strip().lower(),
-            engine._s(pr.get("Recipe")).strip().lower(),
-            norm_key(pr.get("Zone")), norm_key(pr.get("Alg")),
-            norm_key(pr.get("Parameter")))
+def _row_key(rd: dict) -> tuple:
+    return (engine._s(rd.get("PI")).strip().lower(),
+            engine._s(rd.get("Recipe")).strip().lower(),
+            norm_key(rd.get("Zone")), norm_key(rd.get("Alg")),
+            norm_key(rd.get("Parameter")))
 
 
-def _load(path):
-    repo = engine.ParamRepository(path)
-    repo.load()
-    return repo
-
-
-def _meta(pr) -> dict:
-    return {"PI": engine._s(pr.get("PI")), "Recipe": engine._s(pr.get("Recipe")),
-            "Zone": engine._s(pr.get("Zone")), "Alg": engine._s(pr.get("Alg")),
-            "Parameter": engine._s(pr.get("Parameter"))}
+def _meta(rd: dict, sheet: str) -> dict:
+    return {"sheet": sheet, "PI": engine._s(rd.get("PI")),
+            "Recipe": engine._s(rd.get("Recipe")), "Zone": engine._s(rd.get("Zone")),
+            "Alg": engine._s(rd.get("Alg")), "Parameter": engine._s(rd.get("Parameter"))}
 
 
 def diff_files(old_path: str, new_path: str) -> HistoryDiff:
-    """이전(old) → 최신(new) 취합 엑셀 비교."""
-    old, new = _load(old_path), _load(new_path)
-    machines = list(dict.fromkeys(list(old.aoi_units) + list(new.aoi_units)))
+    """이전(old) → 최신(new) 취합 파일 비교(레시피 시트별)."""
+    old_sheets, om = collate.load_collation(old_path)
+    new_sheets, nm = collate.load_collation(new_path)
+    machines = list(dict.fromkeys(list(om) + list(nm)))
     diff = HistoryDiff(machines=machines)
-
-    old_idx = {_row_key(pr): pr for pr in old.rows}
-    new_idx = {_row_key(pr): pr for pr in new.rows}
-
-    for k, npr in new_idx.items():
-        opr = old_idx.get(k)
-        if opr is None:
-            diff.added_rows.append(_meta(npr))
-            continue
-        for m in machines:
-            ov, nv = engine._s(opr.get(m)), engine._s(npr.get(m))
-            if ov == nv:
+    recipes = list(dict.fromkeys(list(old_sheets) + list(new_sheets)))
+    for recipe in recipes:
+        oidx = {_row_key(rd): rd for rd in old_sheets.get(recipe, [])}
+        nidx = {_row_key(rd): rd for rd in new_sheets.get(recipe, [])}
+        for k, nrd in nidx.items():
+            ord_ = oidx.get(k)
+            if ord_ is None:
+                diff.added_rows.append(_meta(nrd, recipe))
                 continue
-            if ov == "" and nv != "":
-                kind = "추가"
-            elif ov != "" and nv == "":
-                kind = "삭제"
-            else:
-                kind = "값변경"
-            meta = _meta(npr)
-            diff.changes.append(Change(
-                pi=meta["PI"], recipe=meta["Recipe"], zone=meta["Zone"],
-                alg=meta["Alg"], param=meta["Parameter"], machine=m,
-                old=ov, new=nv, kind=kind))
-    for k, opr in old_idx.items():
-        if k not in new_idx:
-            diff.removed_rows.append(_meta(opr))
+            for m in machines:
+                ov, nv = engine._s(ord_.get(m)), engine._s(nrd.get(m))
+                if ov == nv:
+                    continue
+                kind = "추가" if ov == "" else "삭제" if nv == "" else "값변경"
+                meta = _meta(nrd, recipe)
+                diff.changes.append(Change(
+                    sheet=recipe, pi=meta["PI"], recipe=meta["Recipe"],
+                    zone=meta["Zone"], alg=meta["Alg"], param=meta["Parameter"],
+                    machine=m, old=ov, new=nv, kind=kind))
+        for k, ord_ in oidx.items():
+            if k not in nidx:
+                diff.removed_rows.append(_meta(ord_, recipe))
     return diff
 
 
 def write_diff_excel(diff: HistoryDiff, dest_xlsx: str,
                      old_label: str = "", new_label: str = "",
                      memos: dict | None = None) -> str:
-    """변경내역 엑셀 생성. memos: {(pi,recipe,zone,alg,param,machine): 메모} 선택.
-    반환: dest_xlsx."""
+    """변경내역 엑셀 생성(비고 메모 열 포함)."""
     memos = memos or {}
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = DIFF_SHEET
     ws.append(DIFF_HEADERS)
     for c in diff.changes:
-        mkey = (c.pi, c.recipe, c.zone, c.alg, c.param, c.machine)
-        ws.append([c.pi, c.recipe, c.zone, c.alg, c.param, c.machine,
+        mkey = (c.sheet, c.param, c.machine)
+        ws.append([c.sheet, c.pi, c.recipe, c.zone, c.alg, c.param, c.machine,
                    c.old, c.new, c.kind, engine._s(memos.get(mkey, ""))])
-
-    hdr_fill = PatternFill("solid", fgColor="1F4E78")
+    fill = PatternFill("solid", fgColor="1F4E78")
     white = Font(color="FFFFFF", bold=True)
     for cell in ws[1]:
-        cell.fill = hdr_fill
+        cell.fill = fill
         cell.font = white
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.freeze_panes = "A2"
-    for col, w in zip("ABCDEFGHIJ", (8, 12, 18, 16, 26, 10, 16, 16, 10, 40)):
+    for col, w in zip("ABCDEFGHIJK", (14, 8, 12, 16, 14, 24, 10, 16, 16, 8, 34)):
         ws.column_dimensions[col].width = w
-    # 구분별 색
     fills = {"값변경": "FFF2CC", "추가": "D9EAD3", "삭제": "F4CCCC"}
     for r in range(2, ws.max_row + 1):
-        kind = ws.cell(r, 9).value
-        if kind in fills:
-            f = PatternFill("solid", fgColor=fills[kind])
-            for c in ws[r]:
-                c.fill = f
+        k = ws.cell(r, 10).value
+        if k in fills:
+            f = PatternFill("solid", fgColor=fills[k])
+            for cc in ws[r]:
+                cc.fill = f
 
-    # 추가/삭제된 파라미터 행 요약 시트
     sm = wb.create_sheet("행 추가·삭제")
-    sm.append(["구분", "PI", "Recipe", "Zone", "Alg", "Parameter"])
+    sm.append(["구분", "레시피(시트)", "PI", "Recipe", "Zone", "Alg", "Parameter"])
     for r in diff.added_rows:
-        sm.append(["추가", r["PI"], r["Recipe"], r["Zone"], r["Alg"], r["Parameter"]])
+        sm.append(["추가", r["sheet"], r["PI"], r["Recipe"], r["Zone"], r["Alg"], r["Parameter"]])
     for r in diff.removed_rows:
-        sm.append(["삭제", r["PI"], r["Recipe"], r["Zone"], r["Alg"], r["Parameter"]])
-    for col, w in zip("ABCDEF", (8, 8, 12, 18, 16, 26)):
-        sm.column_dimensions[col].width = w
+        sm.append(["삭제", r["sheet"], r["PI"], r["Recipe"], r["Zone"], r["Alg"], r["Parameter"]])
 
     info = wb.create_sheet("정보", 0)
     info.append(["항목", "값"])
-    info.append(["이전(old)", old_label])
-    info.append(["최신(new)", new_label])
-    info.append(["값 변경 셀", len(diff.changes)])
-    info.append(["행 추가", len(diff.added_rows)])
-    info.append(["행 삭제", len(diff.removed_rows)])
-    info.append(["안내", "'변경내역' 시트의 '비고(메모)' 열에 특이사항을 적어두세요."])
+    for k, v in [("이전(old)", old_label), ("최신(new)", new_label),
+                 ("값 변경 셀", len(diff.changes)), ("행 추가", len(diff.added_rows)),
+                 ("행 삭제", len(diff.removed_rows)),
+                 ("안내", "'변경내역' 시트의 '비고(메모)'에 특이사항을 적으세요.")]:
+        info.append([k, engine._s(v)])
     info.column_dimensions["A"].width = 14
-    info.column_dimensions["B"].width = 70
+    info.column_dimensions["B"].width = 60
     wb.save(dest_xlsx)
     return dest_xlsx
