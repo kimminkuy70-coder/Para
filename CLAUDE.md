@@ -3,30 +3,44 @@
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
 프로그램(Python/tkinter). 기존 Excel(.xlsm)+VBA 도구를 대체.
 현재 작업 브랜치: `claude/program-dev-prompt-file-f2oept`
-(AOI 스펙 UI 재편 — bc4xbf 기계장치 재사용. 진행/인수인계: `docs/AOI_구현_진행.md`.
-기계장치 원설계: `docs/불러오기_통합_설계.md`).
+(**3차 재설계: 저장 폴더 기준 구조**. 설계/인수인계: `docs/재설계_저장폴더_구조.md`.
+이전 단계: `docs/AOI_구현_진행.md`).
 
-## AOI 스펙 재편(2026-07, 확정) — 화면 구조
+## 3차 재설계(2026-07, 확정) — 저장 폴더 모델
 
+- **첫 실행에 저장 폴더 1곳 지정**(config `save_dir`). 이후 모든 산출물이 그 안에.
+- **참고자료.xlsx / 특이사항.xlsx = 독립 파일**(저장폴더 안). 없으면 생성/선택.
+  (공용 파일 안 시트 모델 폐기 → `refdata.py`.)
+- **호기 목록 = 참고자료 기준**(고정 34호기 폐기). 호기 추가 = 이름+IP → 참고자료 기록.
+- 폴더: `{저장폴더}/양식/{레시피}/{생성시간}/{레시피}_{호기}호기_참조_{시간}.xlsx`(확정),
+  그 아래 `관련파일/`(원본ini·`_원본_`·`_수정본_`). `{저장폴더}/파라미터 값 취합/
+  파라미터 값 취합_{시간}.xlsx`(레시피별 시트, 참고자료 전체 호기 열). 규칙은 `workdirs.py`.
 - 탭: **파라미터 값 확인 / 양식 만들기 / 특이사항 / 참고자료**.
-- '파라미터 값 확인' = 호기 값 **읽기 전용**(`values_readonly`). 값은 '값 업데이트'로만 채움.
-  상단 액션바: 값 파일 열기 / 값 업데이트 / 이력 확인 / ⋯더보기(레거시 메뉴).
-- **⋯파일 = 특이사항/참고자료 엑셀 불러오기만**(단순화). 나머지는 ⋯더보기로 이동.
-- **양식 만들기**: 레시피(PI2·3·4 / RDL1~4) → 신규(장비/로컬)/기존(버전) → `formbuilder`로
-  initial 생성 → **실제 Excel** 편집 → **[편집 완료]** → final. 원형 initial 별도 보존.
-  저장 시 **덮어쓰기/새 버전**(이전 보존).
-- **값 업데이트**: 양식 기준 → 여러 장비 → **레시피 선택 알림** → `collate`(설정키 매칭,
-  이름 변경에 견고) → **불일치 표기/생성 확인** → 레시피별 **항상 새 버전**(`versioning`).
-- **이력 확인**: 두 버전 → `history.diff_files` → 변경내역 엑셀(+비고 메모).
-- 오래 걸리는 작업은 `_run_busy` **로딩 모달 + 백그라운드 스레드**(순수작업만)로 응답없음 방지.
+- '값 확인' = **최신 취합 자동 로드**(멀티시트 병합, 읽기전용). 액션바: 값 업데이트 /
+  이력 확인 / 최신 취합 새로고침. ⋯파일 = 저장폴더 변경 / 다시 읽기 / 장비 다운로드.
+- **양식 만들기**: 레시피(PI2·3·4/RDL1~4/**기타 직접입력**) → 신규(장비/로컬) →
+  **변형별 계수 질의**(`ini_parser.transform_value(raw,transform,scale)`; 정확값
+  `0.8456665875666588`/`0.7696441409644141`, 양식 `추출_요약`에 저장) → `formbuilder`
+  수정본 생성 → **실제 Excel** 편집 → **[편집 완료]** → 확정. 원본(편집 전) 별도 보존.
+  "이전 버전 불러오기" = 생성시간 폴더 선택.
+- **값 업데이트**: 레시피 선택 알림 → **IP↔호기 매칭창**(IP로 새 열 만들지 않음) →
+  `collate.build_collation`(설정키 매칭, **직전 취합본 이어받기**, 불일치 검출) →
+  `파라미터 값 취합_{시간}.xlsx`.
+- **이력 확인**: 취합 폴더 파일 2개 선택 → `history.diff_files`(멀티시트) → **다른 부분만**
+  새 창(Treeview) + 변경내역 엑셀(비고 메모).
+- 오래 걸리는 작업은 `_run_busy` 로딩 모달 + 백그라운드 스레드.
 
-새 헤드리스 모듈(모두 테스트됨): `versioning.py`, `formbuilder.py`, `collate.py`,
-`history.py`. 매칭 정규화는 **한글 보존**(rtp_parser.norm_key 는 한글을 버리므로 미사용).
+헤드리스 모듈(모두 테스트됨): `refdata.py`, `workdirs.py`, `formbuilder.py`, `collate.py`,
+`history.py`. 매칭 정규화는 **한글 보존**. (`versioning.py`는 폴더 버전으로 대체·삭제됨.)
 
 ## 이미 확정된 결정 (재질문 금지)
 
 아래는 사용자와 이미 합의가 끝난 사항이다. 같은 내용을 AskUserQuestion으로 **다시 묻지 말 것**.
 세션이 새로 시작돼 맥락이 리셋돼도 이 파일을 신뢰하고 그대로 진행한다.
+
+> **주의**: 아래 항목 중 폴더 배치(initial/final/백업)·파일 분리 저장(_PI/_RDL)·취사선택 UI·
+> 통합 마법사·값 갱신 안전장치·네트워크 수집 다이얼로그 세부는 **위 '3차 재설계'가 우선**하며
+> 일부는 대체·삭제됐다. 스키마/계수/보안 제약은 유효.
 
 - **스키마**: META_FIELDS = `[PI, Recipe, Zone, Alg, Parameter, 비고]`.
   - **`초기 추천값` 열은 2차 수정안으로 제거**(파일에서도). 구 파일은 `engine.LEGACY_META`로
@@ -74,13 +88,13 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 ## 테스트 (venv 없으면 시스템 python3 + openpyxl 로도 동작)
 
 ```
+python3 tests/test_refdata.py      # 3  (참고자료/특이사항 독립 파일 I/O·호기·IP)
+python3 tests/test_ini_parser.py   # 7  (ini 파서/수집/경로/백업/변형별 계수)
+python3 tests/test_formbuilder.py  # 3  (초안 생성·편집→확정 양식·계수 저장)
+python3 tests/test_collate.py      # 2  (레시피별 시트·전체 호기·직전 이어받기·불일치)
+python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
+python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
-python3 tests/test_ini_parser.py   # 6  (ini 파서/수집/경로/백업/스냅샷/값갱신)
-python3 tests/test_versioning.py   # 2  (항상 새 버전 저장/목록/라벨)
-python3 tests/test_formbuilder.py  # 2  (initial 생성·편집→final 양식)
-python3 tests/test_collate.py      # 2  (설정키 매칭·불일치)
-python3 tests/test_history.py      # 1  (버전 비교·변경내역 엑셀)
-python3 tests/test_pipeline.py     # 1  (파싱→양식→취합→새버전→이력 통합)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
 ```
@@ -92,21 +106,28 @@ python3 tests/test_downloader.py   # 8
 - `param_manager/ini_parser.py` — **새 1차 파서**: GlobalRTP/OpticPreset/Zones ini →
   Para 스키마(Zone/Alg/Parameter) 정규화, KNOWN_DISPLAY_MAP·SCALE(0.8452) 변환, 피벗.
 - `param_manager/collector.py` — 장비 네트워크 읽기전용 수집(net use, plan 자동 재사용).
-- `param_manager/workdirs.py` — initial/final/백업 폴더 규칙 + 백업 생성.
-- `param_manager/extract_io.py` — 01_초안/02_확정 스냅샷(공용 양식 + `_EXTRACT_MAP`).
-- `param_manager/refresh.py` — 값 갱신 미리보기(plan)/적용(apply) 분리.
-- `param_manager/versioning.py` — **항상 새 버전 저장**(`버전/{stem}/…_vNNN_…`)·목록·라벨.
-- `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(편집용 초안,
-  '사용'/'최종 Parameter' 열)·`build_final_from_initial`(편집본→공용 양식+`_EXTRACT_MAP`).
-- `param_manager/collate.py` — **값 취합**: 양식+파싱 → 레시피별 호기 값 열, 설정키 매칭
-  (이름 변경 견고)·불일치 검출. `write_collated` 로 저장.
-- `param_manager/history.py` — **이력 확인**: `diff_files`(값변경/추가/삭제)·`write_diff_excel`
-  (변경내역+비고 메모).
-- `param_manager/equip_app.py` — tkinter GUI. AOI 재편: 탭(값 확인/양식 만들기),
-  `_view_form`·`_form_finalize`(실제 Excel 왕복), `_update_values_dialog`·`_update_write_results`
-  (취합·새버전), `_history_dialog`, `_run_busy`(로딩 모달), `_file_menu`(특이사항/참고자료).
-  레거시 통합 마법사(`_curate_dialog`, `_cur_*`)는 ⋯더보기로 유지.
-- `param_manager/engine.py` — `create_from_records`(PI_ALL/RDL_ALL 시트 기록), 잠금/병합/이력.
+- `param_manager/refdata.py` — **참고자료/특이사항 독립 파일 I/O**: `REF_HEADERS=[호기,IP,비고]`,
+  load/save/create_blank, `machines()`/`ip_for()`/`add_machine()`.
+- `param_manager/workdirs.py` — **저장폴더 기준 경로**: `form_run_dir/form_final_path/
+  form_original_path/form_draft_path/related_dir/list_form_versions/collate_path/
+  latest_collate/list_collate_files`. (구 initial/final/백업 함수는 레거시.)
+- `param_manager/extract_io.py` — 스냅샷(공용 양식 + `_EXTRACT_MAP`) + `write_snapshot(scales=)`/
+  `read_scales`(변형별 계수 저장/판독).
+- `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(수정본, '사용'/
+  '최종 Parameter')·`build_final_from_initial`(→확정 양식+`_EXTRACT_MAP`+계수).
+- `param_manager/collate.py` — **값 취합(멀티시트)**: `build_collation`(레시피별 시트, 참고자료
+  전체 호기, 직전본 이어받기, 설정키 매칭·불일치), `write_collation`/`load_collation`/
+  `load_as_repo`(값 확인 병합).
+- `param_manager/history.py` — **이력 확인**: `diff_files`(멀티시트 값변경/추가/삭제)·
+  `write_diff_excel`(변경내역+비고 메모).
+- `param_manager/equip_app.py` — tkinter GUI(저장폴더 모델). `_startup`/`_choose_save_dir`/
+  `_load_refdata`/`_load_latest_collate`, 호기 그리드=참고자료, `_view_special`/`_view_reference`
+  (독립 파일), `_view_form`/`_form_new`/`_form_build_and_edit`/`_form_finalize`(실제 Excel),
+  `_load_previous_form`, `_ask_scales`(변형별 계수), `_map_ips_to_machines`(IP↔호기),
+  `_update_values_dialog`/`_update_collate_flow`/`_update_write_results`, `_history_dialog`/
+  `_show_diff_window`, `_run_busy`(로딩), `_file_menu`(저장폴더/다시읽기/다운로드).
+- `param_manager/engine.py` — `create_from_records`(PI_ALL/RDL_ALL 기록), `ParamRow`/`ParamRepository`,
+  `LEGACY_META`(구파일 초기추천값 무시). 잠금/병합/이력은 새 경로에서 미사용.
 - `param_manager/rtp_parser.py` — 레거시 RTP.txt 파서(새 경로 미사용) + `config_valid`/
   `recommend`/`norm_key` 는 공용 유틸로 계속 사용.
 - `param_manager/data/rtp_template.json` — 추천 이름 + 한글 설명 통일안(1928 항목).
