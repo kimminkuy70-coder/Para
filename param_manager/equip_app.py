@@ -91,10 +91,13 @@ class EquipApp(tk.Tk):
         self.dirty = False
         self.recent_colors: list = self._cfg.get("recent_colors", [])
 
-        # 3차 재설계: 저장 폴더 + 참고자료/특이사항 독립 파일
+        # 3차 재설계: 저장 폴더 + 3개 독립 파일(장비 IP / 참고자료 / 특이사항)
         self.save_dir: str | None = self._cfg.get("save_dir")
-        self.ref_rows: list[dict] = []       # 참고자료 [{호기, IP, 비고}]
+        self.ip_rows: list[dict] = []        # 장비 IP 주소 [{호기, IP}] — 호기 기준
+        self.ref_grid: list[list] = []       # 참고자료(자유형 메모 그리드)
+        self.ref_colors: dict = {}           # 참고자료 셀 색상 {(r,c): '#hex'}
         self.special_rows: list[dict] = []   # 특이사항 행들
+        self.special_colors: dict = {}       # 특이사항 셀 색상
 
         # 상단 탭(파라미터 값 확인 / 양식 만들기 / 특이사항 / 참고자료)
         self.view = "param"
@@ -200,7 +203,8 @@ class EquipApp(tk.Tk):
         self.tabbar.pack_propagate(False)
         self._tab_btns = {}
         for key, label in (("param", "파라미터 값 확인"), ("form", "양식 만들기"),
-                           ("special", "특이사항"), ("reference", "참고자료")):
+                           ("special", "특이사항"), ("reference", "참고자료"),
+                           ("ip", "장비 IP")):
             b = tk.Button(self.tabbar, text=label, relief="flat", bd=0,
                           font=self.fonts["bold"], padx=22, pady=8, cursor="hand2",
                           command=lambda k=key: self._set_view(k))
@@ -286,6 +290,9 @@ class EquipApp(tk.Tk):
         if self.view == "reference":
             self._view_reference()
             return
+        if self.view == "ip":
+            self._view_ip()
+            return
         if self.view == "form":
             self._view_form()
             return
@@ -322,8 +329,8 @@ class EquipApp(tk.Tk):
     #  S0 — 호기 격자
     # ====================================================================
     def _all_machines(self) -> list:
-        """호기 목록 = 참고자료 기준(3차 재설계). 참고자료가 비면 빈 목록."""
-        return refdata.machines(self.ref_rows)
+        """호기 목록 = '장비 IP 주소' 파일 기준. 비면 빈 목록."""
+        return refdata.machines(self.ip_rows)
 
     def _screen_machines(self):
         wrap = tk.Frame(self.body, bg=self.p["bg"])
@@ -399,13 +406,13 @@ class EquipApp(tk.Tk):
             if not name:
                 messagebox.showwarning("입력", "호기 이름을 입력하세요.", parent=win)
                 return
-            added = refdata.add_machine(self.ref_rows, name, ip_var.get().strip())
+            added = refdata.add_machine(self.ip_rows, name, ip_var.get().strip())
             self._save_refdata()
             win.destroy()
             self._render()
             messagebox.showinfo(
                 "호기 추가",
-                (f"호기 '{name}' 를 참고자료에 추가했습니다." if added
+                (f"호기 '{name}' 를 '장비 IP 주소'에 추가했습니다." if added
                  else f"'{name}' 는 이미 있어 IP만 갱신했습니다.")
                 + "\n다음 취합부터 이 호기 열이 포함됩니다.")
         bt = tk.Frame(win, bg=self.p["bg"])
@@ -424,11 +431,11 @@ class EquipApp(tk.Tk):
     def _remove_custom_machine(self, machine):
         if not messagebox.askyesno(
                 "호기 삭제",
-                f"'{machine}' 호기를 참고자료에서 제거할까요?\n"
+                f"'{machine}' 호기를 '장비 IP 주소'에서 제거할까요?\n"
                 "(이미 만들어진 취합 파일의 열/값은 그대로 남습니다.)"):
             return
-        self.ref_rows = [r for r in self.ref_rows
-                         if engine._s(r.get("호기")).strip() != machine]
+        self.ip_rows = [r for r in self.ip_rows
+                        if engine._s(r.get("호기")).strip() != machine]
         self._save_refdata()
         self._render()
 
@@ -1482,7 +1489,7 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  특이사항 / 참고자료 뷰 (tksheet — 열너비조절/자동줄바꿈/색칠/행열삭제)
     # ====================================================================
-    def _make_table(self, headers, data, col_edit=False):
+    def _make_table(self, headers, data, col_edit=False, force_edit=False):
         s = Sheet(self.body, theme="light blue",
                   show_x_scrollbar=True, show_y_scrollbar=True,
                   font=(self.p["family"], 10, "normal"),
@@ -1496,7 +1503,8 @@ class EquipApp(tk.Tk):
         binds = ["single_select", "drag_select", "row_select", "column_select",
                  "arrowkeys", "copy", "rc_select", "column_width_resize",
                  "double_click_column_resize", "row_height_resize"]
-        if not self.read_only:
+        # 특이사항/참고자료/장비IP 는 독립 파일이라 값 확인 읽기전용과 무관하게 편집 가능
+        if force_edit or not self.read_only:
             binds += ["paste", "cut", "delete", "edit_cell",
                       "rc_insert_row", "rc_delete_row"]
             if col_edit:
@@ -1526,10 +1534,6 @@ class EquipApp(tk.Tk):
     def _toolbar(self, kind):
         bar = tk.Frame(self.body, bg=self.p["bg"])
         bar.pack(side="top", fill="x", padx=10, pady=(8, 0))
-        if self.read_only:
-            tk.Label(bar, text="읽기 전용 — 다른 사용자가 편집 중", bg=self.p["bg"],
-                     fg=self.p["danger"], font=self.fonts["sub"]).pack(side="left")
-            return bar
         tk.Label(bar, text="선택 셀:", bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left", padx=(0, 4))
         tk.Button(bar, text="강조(노랑)", relief="flat", bd=0, bg=HIGHLIGHT_YELLOW,
@@ -1557,8 +1561,6 @@ class EquipApp(tk.Tk):
         return cells
 
     def _table_fill(self, kind, color):
-        if not self._guard():
-            return
         s = self._cur_sheet
         cells = self._table_cells(s)
         if not cells:
@@ -1570,30 +1572,24 @@ class EquipApp(tk.Tk):
                 initialcolor=self.recent_colors[0] if self.recent_colors else "#FFF24D")
             if not color:
                 return
-        self._push_undo()
-        cc = self.repo.cell_colors
+        cc = self.special_colors if kind == "special" else self.ref_colors
         for (r, c) in cells:
-            key = f"S|{r}|{c}" if kind == "special" else f"R|{r}|{c}"
             if color == "CLEAR":
-                cc.pop(key, None)
+                cc.pop((r, c), None)
             else:
-                cc[key] = color
+                cc[(r, c)] = color
         if color not in (None, "CLEAR"):
             self._remember_color(color)
-        self.dirty = True
+        self._save_refdata()          # 색상 즉시 파일에 저장
         self._render()
 
     def _apply_table_colors(self, s, kind):
-        cc = self.repo.cell_colors
-        pre = "S|" if kind == "special" else "R|"
-        for key, color in cc.items():
-            if not key.startswith(pre):
-                continue
+        cc = self.special_colors if kind == "special" else self.ref_colors
+        for (r, c), color in cc.items():
             try:
-                _, r, c = key.split("|")
                 s.highlight_cells(row=int(r), column=int(c), bg=color,
                                   fg=self._fg_for(color), redraw=False)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
 
     @staticmethod
@@ -1613,10 +1609,11 @@ class EquipApp(tk.Tk):
         return False
 
     def _view_special(self):
-        """특이사항 = 저장폴더의 특이사항.xlsx (편집 시 즉시 저장)."""
+        """특이사항 = 저장폴더의 특이사항.xlsx (편집·셀 색상 즉시 저장)."""
         if not self._need_save_dir():
             return
         from .engine import SPECIAL_BOOL_COL, SPECIAL_HEADERS
+        self._toolbar("special")
         btnbar = tk.Frame(self.body, bg=self.p["bg"])
         btnbar.pack(side="top", fill="x", padx=10)
         tk.Button(btnbar, text="＋ 특이사항(행) 추가", relief="flat", bd=0,
@@ -1638,7 +1635,7 @@ class EquipApp(tk.Tk):
                     v = engine._s(v)
                 row.append(v)
             data.append(row)
-        s = self._make_table(SPECIAL_HEADERS, data, col_edit=False)
+        s = self._make_table(SPECIAL_HEADERS, data, col_edit=False, force_edit=True)
         s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
         for i, w in enumerate((95, 80, 130, 55, 70, 110, 150, 70, 340)):
             try:
@@ -1653,6 +1650,7 @@ class EquipApp(tk.Tk):
         s.CH.bind("<ButtonRelease-1>",
                   lambda e: self.after(15, lambda: self._fit_table_heights(s, len(SPECIAL_HEADERS))), add="+")
         self._cur_sheet, self._cur_kind = s, "special"
+        self._apply_table_colors(s, "special")
         self._fit_table_heights(s, len(SPECIAL_HEADERS))
 
     def _special_sync(self):
@@ -1691,36 +1689,83 @@ class EquipApp(tk.Tk):
         self._render()
 
     def _view_reference(self):
-        """참고자료 = 저장폴더의 참고자료.xlsx (호기·IP·비고, 편집 시 즉시 저장)."""
+        """참고자료 = 저장폴더의 참고자료.xlsx (사람 자유 메모, 셀 색상 저장)."""
+        if not self._need_save_dir():
+            return
+        self._toolbar("reference")
+        btnbar = tk.Frame(self.body, bg=self.p["bg"])
+        btnbar.pack(side="top", fill="x", padx=10)
+        tk.Button(btnbar, text="＋ 행 추가", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["primary"], font=self.fonts["bold"], cursor="hand2",
+                  command=self._ref_add).pack(side="left", pady=4)
+        tk.Label(btnbar, text="  (자유 메모 · 참고자료.xlsx 에 자동 저장 · 우클릭=행/열 삽입·삭제)",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+        grid = [list(r) for r in self.ref_grid] or [list(refdata.REF_DEFAULT_HEADERS)]
+        ncol = max((len(r) for r in grid), default=3)
+        grid = [row + [""] * (ncol - len(row)) for row in grid]
+        s = self._make_table(None, [[engine._s(c) for c in row] for row in grid],
+                             col_edit=True, force_edit=True)
+        s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
+        for i, w in enumerate((160, 300, 200, 160)):
+            if i < ncol:
+                try:
+                    s.column_width(column=i, width=w)
+                except Exception:
+                    pass
+        s.extra_bindings([("end_edit_cell", lambda e: self._ref_sync()),
+                          ("rc_delete_row", lambda e: self.after(10, self._ref_sync)),
+                          ("rc_insert_row", lambda e: self.after(10, self._ref_sync)),
+                          ("rc_delete_column", lambda e: self.after(10, self._ref_sync)),
+                          ("rc_insert_column", lambda e: self.after(10, self._ref_sync))])
+        s.CH.bind("<ButtonRelease-1>",
+                  lambda e: self.after(15, lambda: self._fit_table_heights(s, ncol)), add="+")
+        self._cur_sheet, self._cur_kind = s, "reference"
+        self._apply_table_colors(s, "reference")
+        self._fit_table_heights(s, ncol)
+
+    def _ref_sync(self):
+        if self._cur_kind != "reference":
+            return
+        self.ref_grid = [[engine._s(c) for c in row]
+                         for row in self._cur_sheet.get_sheet_data()]
+        self._save_refdata()
+        self._set_status("참고자료 저장됨")
+
+    def _ref_add(self):
+        ncol = max((len(r) for r in self.ref_grid), default=3)
+        self.ref_grid.append([""] * ncol)
+        self._render()
+
+    def _view_ip(self):
+        """장비 IP 주소 = 저장폴더의 장비 IP 주소.xlsx (호기·IP, 호기 버튼의 기준)."""
         if not self._need_save_dir():
             return
         btnbar = tk.Frame(self.body, bg=self.p["bg"])
-        btnbar.pack(side="top", fill="x", padx=10)
+        btnbar.pack(side="top", fill="x", padx=10, pady=(8, 0))
         tk.Button(btnbar, text="＋ 호기(행) 추가", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["primary"], font=self.fonts["bold"], cursor="hand2",
-                  command=self._ref_add).pack(side="left", pady=4)
-        tk.Label(btnbar, text="  (참고자료.xlsx 에 자동 저장 · 호기 버튼의 기준)",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
-        headers = refdata.REF_HEADERS
-        data = [[engine._s(r.get("호기")), engine._s(r.get("IP")), engine._s(r.get("비고"))]
-                for r in self.ref_rows] or [["", "", ""]]
-        s = self._make_table(headers, data, col_edit=False)
+                  command=self._ip_add).pack(side="left", pady=4)
+        tk.Label(btnbar, text="  (호기·IP · 장비 IP 주소.xlsx 에 자동 저장 · 호기 버튼·값 "
+                              "업데이트의 기준)", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+        headers = refdata.IP_HEADERS
+        data = [[engine._s(r.get("호기")), engine._s(r.get("IP"))]
+                for r in self.ip_rows] or [["", ""]]
+        s = self._make_table(headers, data, col_edit=False, force_edit=True)
         s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
-        for i, w in enumerate((160, 200, 360)):
+        for i, w in enumerate((160, 220)):
             try:
                 s.column_width(column=i, width=w)
             except Exception:
                 pass
-        s.extra_bindings([("end_edit_cell", lambda e: self._ref_sync()),
-                          ("rc_delete_row", lambda e: self.after(10, self._ref_sync)),
-                          ("rc_insert_row", lambda e: self.after(10, self._ref_sync))])
-        s.CH.bind("<ButtonRelease-1>",
-                  lambda e: self.after(15, lambda: self._fit_table_heights(s, len(headers))), add="+")
-        self._cur_sheet, self._cur_kind = s, "reference"
+        s.extra_bindings([("end_edit_cell", lambda e: self._ip_sync()),
+                          ("rc_delete_row", lambda e: self.after(10, self._ip_sync)),
+                          ("rc_insert_row", lambda e: self.after(10, self._ip_sync))])
+        self._cur_sheet, self._cur_kind = s, "ip"
         self._fit_table_heights(s, len(headers))
 
-    def _ref_sync(self):
-        if self._cur_kind != "reference":
+    def _ip_sync(self):
+        if self._cur_kind != "ip":
             return
         rows = []
         for row in self._cur_sheet.get_sheet_data():
@@ -1728,14 +1773,13 @@ class EquipApp(tk.Tk):
             if not ho:
                 continue
             rows.append({"호기": ho,
-                         "IP": engine._s(row[1]).strip() if len(row) > 1 else "",
-                         "비고": engine._s(row[2]).strip() if len(row) > 2 else ""})
-        self.ref_rows = rows
+                         "IP": engine._s(row[1]).strip() if len(row) > 1 else ""})
+        self.ip_rows = rows
         self._save_refdata()
-        self._set_status("참고자료 저장됨(호기 목록 갱신)")
+        self._set_status("장비 IP 저장됨(호기 목록 갱신)")
 
-    def _ref_add(self):
-        self.ref_rows.append({"호기": "", "IP": "", "비고": ""})
+    def _ip_add(self):
+        self.ip_rows.append({"호기": "", "IP": ""})
         self._render()
 
     # ====================================================================
@@ -2007,9 +2051,9 @@ class EquipApp(tk.Tk):
     #  파라미터 폴더 분석 → 취사선택(큐레이션)
     # ====================================================================
     def _ip_to_aoi(self, ip: str) -> str:
-        """참고자료(호기·IP)로 IP → 호기 역매핑. 못 찾으면 ''."""
+        """'장비 IP 주소'로 IP → 호기 역매핑. 못 찾으면 ''."""
         ip = engine._s(ip).strip()
-        for r in self.ref_rows:
+        for r in self.ip_rows:
             if engine._s(r.get("IP")).strip() == ip:
                 return engine._s(r.get("호기")).strip()
         return ""
@@ -2818,20 +2862,27 @@ class EquipApp(tk.Tk):
     def _load_refdata(self):
         if not self.save_dir:
             return
+        ipp = self._ensure_file(refdata.ip_path(self.save_dir), "장비 IP 주소",
+                                refdata.create_blank_ip)
         rp = self._ensure_file(refdata.ref_path(self.save_dir), "참고자료",
                                refdata.create_blank_reference)
         sp = self._ensure_file(refdata.special_path(self.save_dir), "특이사항",
                                refdata.create_blank_special)
         try:
-            self.ref_rows = refdata.load_reference(rp)
+            self.ip_rows = refdata.load_ip(ipp)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("장비 IP 로드 실패", str(e))
+            self.ip_rows = []
+        try:
+            self.ref_grid, self.ref_colors = refdata.load_reference(rp)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("참고자료 로드 실패", str(e))
-            self.ref_rows = []
+            self.ref_grid, self.ref_colors = [], {}
         try:
-            self.special_rows = refdata.load_special(sp)
+            self.special_rows, self.special_colors = refdata.load_special(sp)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("특이사항 로드 실패", str(e))
-            self.special_rows = []
+            self.special_rows, self.special_colors = [], {}
         self._set_status(f"저장 폴더: {self.save_dir}  (호기 {len(self._all_machines())}대)")
 
     def _load_latest_collate(self):
@@ -2853,12 +2904,15 @@ class EquipApp(tk.Tk):
             self.repo = None
 
     def _save_refdata(self):
-        """현재 참고자료/특이사항을 저장 폴더의 파일에 기록."""
+        """현재 장비 IP/참고자료/특이사항을 저장 폴더의 파일에 기록(색상 포함)."""
         if not self.save_dir:
             return
         try:
-            refdata.save_reference(refdata.ref_path(self.save_dir), self.ref_rows)
-            refdata.save_special(refdata.special_path(self.save_dir), self.special_rows)
+            refdata.save_ip(refdata.ip_path(self.save_dir), self.ip_rows)
+            refdata.save_reference(refdata.ref_path(self.save_dir), self.ref_grid,
+                                   self.ref_colors)
+            refdata.save_special(refdata.special_path(self.save_dir), self.special_rows,
+                                 self.special_colors)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("저장 실패", str(e))
 

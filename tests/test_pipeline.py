@@ -31,13 +31,13 @@ def test_full_pipeline():
     with tempfile.TemporaryDirectory() as tmp:
         save = os.path.join(tmp, "저장폴더")
         os.makedirs(save)
-        # 참고자료: 호기 3대
-        refp = refdata.ref_path(save)
-        refdata.save_reference(refp, [
-            {"호기": "AOI-24", "IP": "10.0.0.24", "비고": ""},
-            {"호기": "AOI-25", "IP": "10.0.0.25", "비고": ""},
-            {"호기": "AOI-26", "IP": "10.0.0.26", "비고": ""}])
-        machines = refdata.machines(refdata.load_reference(refp))
+        # 장비 IP 주소: 호기 3대 (호기 목록의 기준)
+        ipp = refdata.ip_path(save)
+        refdata.save_ip(ipp, [
+            {"호기": "AOI-24", "IP": "10.0.0.24"},
+            {"호기": "AOI-25", "IP": "10.0.0.25"},
+            {"호기": "AOI-26", "IP": "10.0.0.26"}])
+        machines = refdata.machines(refdata.load_ip(ipp))
         assert machines == ["AOI-24", "AOI-25", "AOI-26"]
 
         # 양식 만들기: PI3 (개명 포함) → 양식/PI3/{stamp}/ 확정본
