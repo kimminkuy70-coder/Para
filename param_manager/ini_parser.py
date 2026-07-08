@@ -203,11 +203,60 @@ class ExtractRow:
     raw: Any = None      # Raw Value
     transform: str = "RAW"
     source_path: str = ""
+    use_default: bool = True   # 양식 초안에서 '사용' 기본값(False=N, 사람이 검토)
+
+
+# OpticPreset.ini LIGHT/Scan2d 통일 (사용자 확정 2026-07)
+#   - 최신 Scan2d 섹션(파일 맨 아래 [Scan2d#])의 아래 키만 사용=Y 로 통일.
+#   - 최신 Scan2d 이름을 담는 합성 파라미터 행 추가.
+#   - 그 외(오래된 Scan2d 제외, 비-Scan2d 섹션)는 사용=N 으로 사람이 검토.
+OPTIC_ALG = "Scan2d"
+SCAN2D_LATEST_PARAM = "Scan2d 최신 항목 이름"
+OPTIC_SCAN2D_KEEP = {
+    "LightSrcDif_ColorFilter", "LightSrcDif2_ColorFilter", "LightSrcRef_ColorFilter",
+    "LightSrcDif_NominalGL", "LightSrcDif2_NominalGL", "LightSrcRef_NominalGL",
+    "LightSrcDif_NominalGL_On", "LightSrcDif2_NominalGL_On", "LightSrcRef_NominalGL_On",
+}
+_SCAN2D_SEC_RE = re.compile(r"(?i)^scan2d\d+$")
+
+
+def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT") -> list[ExtractRow]:
+    """OpticPreset.ini 전용 — 최신 Scan2d 통일 + 합성 행 + 나머지 N."""
+    scan2d = [s for s in sections if _SCAN2D_SEC_RE.match(s)]
+    latest = scan2d[-1] if scan2d else None      # 파일 맨 아래(=최신)
+    out: list[ExtractRow] = []
+    for section, kv in sections.items():
+        if _SCAN2D_SEC_RE.match(section) and section != latest:
+            continue                              # 오래된 Scan2d 섹션 제외
+        is_latest = (section == latest)
+        for key, raw in kv.items():
+            if rtp_parser._is_optic_noise(key, str(raw)):
+                continue
+            alg = OPTIC_ALG if is_latest else section
+            use = (key in OPTIC_SCAN2D_KEEP) if is_latest else False
+            out.append(ExtractRow(
+                zone=zone, alg=alg, param=key, value=raw, unit="",
+                src_file=file_path.name, section=section, key=key, raw=raw,
+                transform="RAW", source_path=str(file_path), use_default=use))
+    if latest:                                    # 최신 Scan2d 이름 합성 행
+        out.append(ExtractRow(
+            zone=zone, alg=OPTIC_ALG, param=SCAN2D_LATEST_PARAM, value=latest,
+            unit="", src_file=file_path.name, section=latest, key=SCAN2D_LATEST_PARAM,
+            raw=latest, transform="RAW", source_path=str(file_path), use_default=True))
+    return out
+
+
+def _is_optic_file(file_path: Path) -> bool:
+    base = re.sub(r"_\d+$", "", file_path.stem.lower())
+    return base == "opticpreset"
 
 
 def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE) -> list[ExtractRow]:
     """설정파일 1개 → ExtractRow 목록. scale = LINEAR/AREA 변환 계수(변형별)."""
     sections = parse_ini_sections(file_path)
+    # OpticPreset 이고 Scan2d 섹션이 있으면 최신 Scan2d 통일 규칙 적용
+    if _is_optic_file(file_path) and any(_SCAN2D_SEC_RE.match(s) for s in sections):
+        return _parse_optic(file_path, sections)
     top = infer_top_item(file_path, sections)
     zone = TOP_TO_ZONE.get(top, top)
     out: list[ExtractRow] = []
@@ -360,7 +409,7 @@ def build_pivot(configs: list[ParsedConfig]) -> tuple[list[dict], list[str]]:
         for r in cfg.rows:
             key = (cfg.layer, cfg.recipe, cfg.mag, r.zone, r.alg, r.param)
             ent = table.setdefault(key, {
-                "unit": r.unit, "values": {}, "raws": {},
+                "unit": r.unit, "values": {}, "raws": {}, "use": r.use_default,
                 "extract": {"src_file": r.src_file, "section": r.section,
                             "key": r.key, "transform": r.transform,
                             "source_path": r.source_path},
@@ -372,5 +421,5 @@ def build_pivot(configs: list[ParsedConfig]) -> tuple[list[dict], list[str]]:
         rows.append({"layer": layer, "recipe": recipe, "mag": mag, "zone": zone,
                      "alg": alg, "param": param, "desc_en": "", "unit": ent["unit"],
                      "values": ent["values"], "raws": ent["raws"],
-                     "extract": ent["extract"]})
+                     "use": ent["use"], "extract": ent["extract"]})
     return rows, machines

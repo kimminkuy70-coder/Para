@@ -107,7 +107,10 @@ python3 tests/test_downloader.py   # 8
 ## 핵심 파일
 
 - `param_manager/ini_parser.py` — **새 1차 파서**: GlobalRTP/OpticPreset/Zones ini →
-  Para 스키마(Zone/Alg/Parameter) 정규화, KNOWN_DISPLAY_MAP·SCALE(0.8452) 변환, 피벗.
+  Para 스키마(Zone/Alg/Parameter) 정규화, KNOWN_DISPLAY_MAP·계수 변환, 피벗.
+  **OpticPreset LIGHT/Scan2d 통일**(`_parse_optic`): 최신 Scan2d 섹션(맨 아래 `[Scan2d#]`)만
+  alg=`Scan2d`로 통일, `OPTIC_SCAN2D_KEEP`(9개)만 사용=Y, `Scan2d 최신 항목 이름` 합성행 추가,
+  나머지·오래된 Scan2d는 사용=N(검토용). `ExtractRow.use_default`→피벗 `use`→formbuilder.
 - `param_manager/collector.py` — 장비 네트워크 읽기전용 수집(net use, plan 자동 재사용).
   `FIXED_FILES`에 **RTP.txt 포함**(계수 자동 추정용). RTP.txt는 recipe 폴더에 위치.
 - `param_manager/coef_detector.py` — **변환 계수 자동 추정**: RTP.txt(표시값)↔Zone ini(원본값)

@@ -231,6 +231,51 @@ def test_scale_param_per_variant():
     print("  scale OK: transform 계수 인자화 + 변형별 scales 적용")
 
 
+OPTIC_MULTI = """[General]
+Name = preset
+SomeParam = 5
+[Scan2d1]
+LightSrcDif_ColorFilter = Old1
+[Scan2d2]
+LightSrcDif_ColorFilter = Old2
+[Scan2d3]
+LightSrcDif_ColorFilter = Gray
+LightSrcDif2_ColorFilter = Gray
+LightSrcRef_ColorFilter = CSI_1
+LightSrcDif_NominalGL = 49.6969316003874
+LightSrcDif2_NominalGL = 32.0987714085474
+LightSrcRef_NominalGL = 632.24986535243
+LightSrcDif_NominalGL_On = 0
+LightSrcDif2_NominalGL_On = 0
+LightSrcRef_NominalGL_On = 1
+CameraName = TDI
+Mag = 5
+"""
+
+
+def test_optic_latest_scan2d():
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "OpticPreset.ini"
+        p.write_text(OPTIC_MULTI, encoding="utf-8")
+        rows = ini_parser.parse_ini_file(p)
+        by = {(r.section, r.key): r for r in rows}
+        # 오래된 Scan2d1/2 는 제외
+        assert not any(r.section in ("Scan2d1", "Scan2d2") for r in rows)
+        # 최신 Scan2d3 의 통일 키(9개)는 alg=Scan2d, 사용=Y
+        r = by[("Scan2d3", "LightSrcDif_ColorFilter")]
+        assert r.alg == "Scan2d" and r.value == "Gray" and r.use_default is True
+        assert by[("Scan2d3", "LightSrcRef_NominalGL_On")].use_default is True
+        # 통일 목록 밖(CameraName/Mag)은 사용=N
+        assert by[("Scan2d3", "Mag")].use_default is False
+        # 비-Scan2d(General)는 사용=N, alg=General
+        assert by[("General", "SomeParam")].alg == "General"
+        assert by[("General", "SomeParam")].use_default is False
+        # 합성 행: 최신 Scan2d 이름
+        syn = by[("Scan2d3", ini_parser.SCAN2D_LATEST_PARAM)]
+        assert syn.value == "Scan2d3" and syn.use_default is True and syn.alg == "Scan2d"
+    print("  optic OK: 최신 Scan2d 통일(9개 Y)+합성행+나머지 N")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

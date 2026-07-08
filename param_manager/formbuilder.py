@@ -42,8 +42,9 @@ def _rep_value(values: dict) -> str:
 
 def _row_from_pivot(r: dict) -> list:
     ext = r.get("extract") or {}
+    use = "Y" if r.get("use", True) else "N"     # OpticPreset 비-통일 항목은 N(검토용)
     return [
-        "Y", engine._s(r.get("recipe")), engine._s(r.get("mag")),
+        use, engine._s(r.get("recipe")), engine._s(r.get("mag")),
         engine._s(r.get("zone")), engine._s(r.get("alg")),
         engine._s(r.get("param")), engine._s(r.get("param")),  # 최종=추천 기본값
         _rep_value(r.get("values") or {}), "",
