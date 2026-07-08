@@ -136,6 +136,17 @@ def transform_value(raw_value: Any, transform: str, scale: float = DEFAULT_SCALE
     return raw_value
 
 
+def label_transform(transform: str, scale: float) -> str:
+    """변환방식 라벨에 **실제 사용한 계수**를 반영(KNOWN_DISPLAY_MAP의 0.8452 표기 대체).
+    LINEAR/AREA 만 계수 표기, 나머지(RAW/BOOL/…)는 그대로."""
+    t = (transform or "RAW").strip().upper()
+    if t.startswith("LINEAR"):
+        return f"LINEAR_{scale:.16g}"
+    if t.startswith("AREA"):
+        return f"AREA_{scale:.16g}^2"
+    return transform
+
+
 def lookup_display(top: str, section: str, param: str) -> tuple[str, str, str, str]:
     """(상위항목, 섹션, 키) → (Alg, 표시 Parameter, 단위, 변환방식)."""
     for key in [(top, section, param), ("*", section, param), ("*", "*", param)]:
@@ -290,7 +301,8 @@ def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE) -> list[Extrac
                 zone=zone, alg=alg, param=display,
                 value=transform_value(raw, trans, scale), unit=unit,
                 src_file=file_path.name, section=section, key=key,
-                raw=raw, transform=trans, source_path=str(file_path)))
+                raw=raw, transform=label_transform(trans, scale),  # 실제 계수 반영
+                source_path=str(file_path)))
     return out
 
 

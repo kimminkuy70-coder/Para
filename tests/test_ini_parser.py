@@ -224,11 +224,15 @@ def test_scale_param_per_variant():
                                     scales=scales)
         by_variant = {c.mag: c for c in cfgs}
         # BrightLength=5 (LINEAR) → PI: 5*0.5=2.5, PI-bubble: 5*0.25=1.25
-        def bright_len(cfg):
-            return next(r.value for r in cfg.rows if r.key == "BrightLength")
-        assert bright_len(by_variant["PI"]) == 2.5
-        assert bright_len(by_variant["PI-bubble"]) == 1.25
-    print("  scale OK: transform 계수 인자화 + 변형별 scales 적용")
+        def brow(cfg):
+            return next(r for r in cfg.rows if r.key == "BrightLength")
+        assert brow(by_variant["PI"]).value == 2.5
+        assert brow(by_variant["PI-bubble"]).value == 1.25
+        # 변환방식 라벨이 실제 계수를 반영(하드코딩 0.8452 아님)
+        assert brow(by_variant["PI"]).transform == "LINEAR_0.5"
+        assert brow(by_variant["PI-bubble"]).transform == "LINEAR_0.25"
+        assert "0.8452" not in brow(by_variant["PI"]).transform
+    print("  scale OK: 계수 인자화 + 변형별 적용 + 변환방식 라벨에 실제 계수 반영")
 
 
 # 실제 구조: [Scan2d] 섹션에 Alg 키(=최신 Scan2d명) + 파라미터들. [Scan2d1]은 잡음/인스턴스.
