@@ -175,11 +175,22 @@ def _sanitize(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*]+', "_", str(name)).strip().strip(".") or "item"
 
 
+def _assert_local_write_target(path: Path) -> None:
+    """안전장치: 쓰기 대상(staging)은 반드시 로컬이어야 한다.
+    네트워크(UNC `\\\\server\\...` 또는 `//`) 경로면 거부해 **장비 원본을 보호**한다."""
+    s = str(path)
+    if s.startswith("\\\\") or s.startswith("//"):
+        raise RuntimeError(
+            "안전장치: 네트워크(UNC) 경로에는 절대 쓰지 않습니다(장비 원본 보호).\n"
+            f"쓰기 대상이 로컬이어야 합니다: {path}")
+
+
 def copy_planned(planned: list[tuple[Path, str, str]], staging_root: Path,
                  header_lines: list[str] | None = None) -> tuple[int, Path]:
     """계획 목록을 staging 으로 복사(원본 읽기 전용) + 로그 기록.
     반환: (복사 개수, 로그 경로)."""
     staging_root = Path(staging_root)
+    _assert_local_write_target(staging_root)          # 원본(네트워크)에 쓰기 원천 차단
     staging_root.mkdir(parents=True, exist_ok=True)
     log_path = staging_root / LOG_NAME
     copied = 0
@@ -199,7 +210,10 @@ def copy_planned(planned: list[tuple[Path, str, str]], staging_root: Path,
                     n += 1
                 dest = dest_dir / f"{stem}_{n}{suffix}"
             # READ-ONLY SOURCE ACCESS: 원본은 읽기만, 쓰기는 로컬 dest 에만.
-            shutil.copy2(src, dest)
+            # 원본과 동일 경로 덮어쓰기 금지(이중 안전장치).
+            if Path(src).resolve() == dest.resolve():
+                raise RuntimeError(f"안전장치: 원본과 동일 경로에 쓰기 금지: {src}")
+            shutil.copy2(src, dest)                    # src 는 읽기만, dest(로컬)에만 씀
             copied += 1
             log.write(f"COPIED: {src} -> {dest}\n")
             if COPY_DELAY_SEC > 0:
