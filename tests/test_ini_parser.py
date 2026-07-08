@@ -231,14 +231,13 @@ def test_scale_param_per_variant():
     print("  scale OK: transform 계수 인자화 + 변형별 scales 적용")
 
 
+# 실제 구조: [Scan2d] 섹션에 Alg 키(=최신 Scan2d명) + 파라미터들. [Scan2d1]은 잡음/인스턴스.
 OPTIC_MULTI = """[General]
 Name = preset
-SomeParam = 5
-[Scan2d1]
-LightSrcDif_ColorFilter = Old1
-[Scan2d2]
-LightSrcDif_ColorFilter = Old2
-[Scan2d3]
+[Scan2d]
+Alg = Scan2d1
+GO = RefOnly
+GainOffsetMode = RefOnly
 LightSrcDif_ColorFilter = Gray
 LightSrcDif2_ColorFilter = Gray
 LightSrcRef_ColorFilter = CSI_1
@@ -248,8 +247,10 @@ LightSrcRef_NominalGL = 632.24986535243
 LightSrcDif_NominalGL_On = 0
 LightSrcDif2_NominalGL_On = 0
 LightSrcRef_NominalGL_On = 1
-CameraName = TDI
-Mag = 5
+Mag = 10
+Material = ABC
+[Scan2d1]
+Id = 0f8b1a2c-1111-2222-3333-444455556666
 """
 
 
@@ -259,21 +260,25 @@ def test_optic_latest_scan2d():
         p.write_text(OPTIC_MULTI, encoding="utf-8")
         rows = ini_parser.parse_ini_file(p)
         by = {(r.section, r.key): r for r in rows}
-        # 오래된 Scan2d1/2 는 제외
-        assert not any(r.section in ("Scan2d1", "Scan2d2") for r in rows)
-        # 최신 Scan2d3 의 통일 키(9개)는 alg=Scan2d, 사용=Y
-        r = by[("Scan2d3", "LightSrcDif_ColorFilter")]
-        assert r.alg == "Scan2d" and r.value == "Gray" and r.use_default is True
-        assert by[("Scan2d3", "LightSrcRef_NominalGL_On")].use_default is True
-        # 통일 목록 밖(CameraName/Mag)은 사용=N
-        assert by[("Scan2d3", "Mag")].use_default is False
-        # 비-Scan2d(General)는 사용=N, alg=General
-        assert by[("General", "SomeParam")].alg == "General"
-        assert by[("General", "SomeParam")].use_default is False
-        # 합성 행: 최신 Scan2d 이름
-        syn = by[("Scan2d3", ini_parser.SCAN2D_LATEST_PARAM)]
-        assert syn.value == "Scan2d3" and syn.use_default is True and syn.alg == "Scan2d"
-    print("  optic OK: 최신 Scan2d 통일(9개 Y)+합성행+나머지 N")
+        # [Scan2d1](잡음 인스턴스)은 제외
+        assert not any(r.section == "Scan2d1" for r in rows)
+        # KEEP 9개는 alg=Scan2d, 사용=Y (버그: 예전엔 N 이었음)
+        for k in ini_parser.OPTIC_SCAN2D_KEEP:
+            assert by[("Scan2d", k)].use_default is True, k
+            assert by[("Scan2d", k)].alg == "Scan2d"
+        # KEEP 밖(GO/Mag/Material)은 사용=N
+        assert by[("Scan2d", "GO")].use_default is False
+        assert by[("Scan2d", "Mag")].use_default is False
+        # 'Alg' 키 자체는 파라미터 행으로 나오지 않음
+        assert ("Scan2d", "Alg") not in by
+        # 합성 행: 최신 이름 = Alg 값(Scan2d1), alg=Scan2d, 사용=Y
+        syn = by[("Scan2d", ini_parser.SCAN2D_LATEST_PARAM)]
+        assert syn.value == "Scan2d1" and syn.use_default is True and syn.alg == "Scan2d"
+        # 배치: 합성 행이 첫 KEEP 행 바로 위
+        keys = [(r.section, r.key) for r in rows]
+        first_keep = min(keys.index(("Scan2d", k)) for k in ini_parser.OPTIC_SCAN2D_KEEP)
+        assert keys[first_keep - 1] == ("Scan2d", ini_parser.SCAN2D_LATEST_PARAM)
+    print("  optic OK: [Scan2d]+Alg키 → KEEP 9개 Y, 합성행(Alg값) 첫 KEEP 위, 나머지 N")
 
 
 if __name__ == "__main__":

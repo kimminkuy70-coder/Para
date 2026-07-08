@@ -207,9 +207,10 @@ class ExtractRow:
 
 
 # OpticPreset.ini LIGHT/Scan2d 통일 (사용자 확정 2026-07)
-#   - 최신 Scan2d 섹션(파일 맨 아래 [Scan2d#])의 아래 키만 사용=Y 로 통일.
-#   - 최신 Scan2d 이름을 담는 합성 파라미터 행 추가.
-#   - 그 외(오래된 Scan2d 제외, 비-Scan2d 섹션)는 사용=N 으로 사람이 검토.
+#   - Scan2d 섹션(이름 [Scan2d] 또는 [Scan2d#]) 중 **KEEP 키를 가진 마지막(맨 아래)** =
+#     최신(target). 그 섹션의 KEEP 9개만 사용=Y, 나머지·다른 섹션은 사용=N(검토용).
+#   - '최신 Scan2d 이름'은 target 섹션의 'Alg' 키 값(없으면 섹션명). 합성 파라미터 행으로
+#     추가하되 **첫 KEEP 행 바로 위**에 놓는다. alg 는 'Scan2d' 로 통일.
 OPTIC_ALG = "Scan2d"
 SCAN2D_LATEST_PARAM = "Scan2d 최신 항목 이름"
 OPTIC_SCAN2D_KEEP = {
@@ -217,32 +218,54 @@ OPTIC_SCAN2D_KEEP = {
     "LightSrcDif_NominalGL", "LightSrcDif2_NominalGL", "LightSrcRef_NominalGL",
     "LightSrcDif_NominalGL_On", "LightSrcDif2_NominalGL_On", "LightSrcRef_NominalGL_On",
 }
-_SCAN2D_SEC_RE = re.compile(r"(?i)^scan2d\d+$")
+_SCAN2D_SEC_RE = re.compile(r"(?i)^scan2d\d*$")   # [Scan2d] 또는 [Scan2d#]
+
+
+def _pick_optic_target(sections: dict) -> str | None:
+    """최신 Scan2d(target) 섹션 = KEEP 키를 가진 마지막 Scan2d 섹션(파일 아래)."""
+    scan = [s for s in sections if _SCAN2D_SEC_RE.match(s)]
+    if not scan:
+        return None
+    with_keep = [s for s in scan if any(k in OPTIC_SCAN2D_KEEP for k in sections[s])]
+    return (with_keep or scan)[-1]
 
 
 def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT") -> list[ExtractRow]:
-    """OpticPreset.ini 전용 — 최신 Scan2d 통일 + 합성 행 + 나머지 N."""
-    scan2d = [s for s in sections if _SCAN2D_SEC_RE.match(s)]
-    latest = scan2d[-1] if scan2d else None      # 파일 맨 아래(=최신)
+    """OpticPreset.ini 전용 — 최신 Scan2d 통일 + 합성 행(첫 KEEP 위) + 나머지 N."""
+    target = _pick_optic_target(sections)
+    # 최신 이름: target 안 'Alg' 키 값 우선(원 요청: LIGHT의 Alg 값이 Scan2d#), 없으면 섹션명
+    latest_name = ""
+    if target is not None:
+        latest_name = str(sections[target].get("Alg") or target)
+
+    def _synth() -> ExtractRow:
+        return ExtractRow(
+            zone=zone, alg=OPTIC_ALG, param=SCAN2D_LATEST_PARAM, value=latest_name,
+            unit="", src_file=file_path.name, section=target or "", key=SCAN2D_LATEST_PARAM,
+            raw=latest_name, transform="RAW", source_path=str(file_path), use_default=True)
+
     out: list[ExtractRow] = []
     for section, kv in sections.items():
-        if _SCAN2D_SEC_RE.match(section) and section != latest:
-            continue                              # 오래된 Scan2d 섹션 제외
-        is_latest = (section == latest)
+        if _SCAN2D_SEC_RE.match(section) and section != target:
+            continue                              # target 아닌 Scan2d 섹션 제외
+        is_target = (section == target)
+        synth_done = False
         for key, raw in kv.items():
+            if is_target and key == "Alg":
+                continue                          # Alg 키는 합성행 값으로만 사용
             if rtp_parser._is_optic_noise(key, str(raw)):
                 continue
-            alg = OPTIC_ALG if is_latest else section
-            use = (key in OPTIC_SCAN2D_KEEP) if is_latest else False
+            keep = is_target and key in OPTIC_SCAN2D_KEEP
+            if keep and not synth_done:            # 첫 KEEP 바로 위에 합성행
+                out.append(_synth())
+                synth_done = True
+            alg = OPTIC_ALG if is_target else section
             out.append(ExtractRow(
                 zone=zone, alg=alg, param=key, value=raw, unit="",
                 src_file=file_path.name, section=section, key=key, raw=raw,
-                transform="RAW", source_path=str(file_path), use_default=use))
-    if latest:                                    # 최신 Scan2d 이름 합성 행
-        out.append(ExtractRow(
-            zone=zone, alg=OPTIC_ALG, param=SCAN2D_LATEST_PARAM, value=latest,
-            unit="", src_file=file_path.name, section=latest, key=SCAN2D_LATEST_PARAM,
-            raw=latest, transform="RAW", source_path=str(file_path), use_default=True))
+                transform="RAW", source_path=str(file_path), use_default=keep))
+        if is_target and not synth_done and latest_name:   # KEEP 없으면 섹션 끝에
+            out.append(_synth())
     return out
 
 
