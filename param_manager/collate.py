@@ -159,15 +159,30 @@ def write_collation(dest_xlsx: str, results: dict[str, CollateRecipe],
     return dest_xlsx
 
 
+# 양식 파일(engine.create_from_records)이 남기는 부가 시트 — 취합 로드 시 제외.
+# (요약/스냅샷/이력 시트도 'Parameter' 헤더가 있어 중복 로드 원인이 됨)
+_AUX_SHEETS = {
+    engine.SHEET_SUM, engine.SHEET_SNAP, engine.SHEET_LOG, engine.SHEET_SPECIAL,
+    engine.SHEET_REF, engine.SHEET_RELATED, engine.SHEET_COLORS, engine.SHEET_BORDERS,
+    extract_io.SHEET_MAP, extract_io.SHEET_SUMMARY,
+}
+
+
 def load_collation(path: str) -> tuple[dict[str, list[dict]], list[str]]:
-    """취합 파일 → ({시트(레시피): [행dict]}, 호기목록). 행dict=헤더명→값."""
+    """취합 파일 → ({시트(레시피): [행dict]}, 호기목록). 행dict=헤더명→값.
+    양식 파일의 부가 시트(요약/스냅샷/이력 등)는 제외해 중복 로드를 막는다."""
     wb = openpyxl.load_workbook(path, data_only=True)
     sheets: dict[str, list[dict]] = {}
     machines: list[str] = []
     meta = set(engine.META_FIELDS)
     for ws in wb.worksheets:
+        if ws.title in _AUX_SHEETS:
+            continue
         heads = [engine._s(c.value).strip() for c in ws[1]]
-        if "Parameter" not in heads:
+        # 데이터 시트 판별: 앞부분이 META 스키마(PI·Zone·Alg·Parameter)로 시작
+        if "Parameter" not in heads or "Zone" not in heads or "PI" not in heads:
+            continue
+        if heads[:1] != ["PI"]:              # 요약(PI,AOI…)·스냅샷(Row_ID…) 제외
             continue
         for h in heads:
             if h and h not in meta and h not in machines:

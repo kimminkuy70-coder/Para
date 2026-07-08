@@ -102,6 +102,27 @@ def test_missing_form_and_mismatch():
     print("  collate OK: 양식 없음(missing_form) + 불일치 검출")
 
 
+def test_load_form_no_duplicate_rows():
+    """버그1 회귀: 양식 파일(요약/스냅샷 부가시트 포함)을 값확인용으로 로드해도
+    파라미터가 중복 복제되지 않아야 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        save = os.path.join(tmp, "저장폴더")
+        os.makedirs(save)
+        form = _make_form(save, tmp)         # engine.create_from_records → 부가시트 다수
+        # 양식의 실제 파라미터 수
+        repo0 = engine.ParamRepository(form)
+        repo0.load()
+        n = len(repo0.rows)
+        assert n > 0
+        # load_collation/load_as_repo 는 PI_ALL 데이터만(부가시트 제외)
+        sheets, _ = collate.load_collation(form)
+        total = sum(len(rows) for rows in sheets.values())
+        assert total == n, f"중복 로드: {total} != {n}"
+        repo = collate.load_as_repo(form, ["AOI-24"])
+        assert len(repo.rows) == n, f"repo 중복: {len(repo.rows)} != {n}"
+    print("  collate OK: 양식 부가시트 제외 — 값확인 로드 시 중복 없음")
+
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

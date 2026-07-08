@@ -2274,7 +2274,8 @@ class EquipApp(tk.Tk):
         def work():
             cfgs = []
             for rootp, kw, aoi in sources:
-                cfgs += ini_parser.scan_tree(rootp, default_level=kw or default_level,
+                # 사용자가 고른 레시피 레벨(default_level)이 장비 Job 키워드(kw)보다 우선.
+                cfgs += ini_parser.scan_tree(rootp, default_level=default_level or kw,
                                              default_equipment=aoi, scales=scales)
             valid = [c for c in cfgs if rtp.config_valid(c)]
             rows, machines = ini_parser.build_pivot(valid)
@@ -2482,7 +2483,7 @@ class EquipApp(tk.Tk):
             variants = []
             dirs = {}                       # 변형 → config 폴더(계수 추정용)
             for rootp, kw, aoi in sources:
-                for c in ini_parser.scan_tree(rootp, default_level=kw or level,
+                for c in ini_parser.scan_tree(rootp, default_level=level or kw,
                                               default_equipment=aoi):
                     if not rtp.config_valid(c):
                         continue
@@ -2632,8 +2633,8 @@ class EquipApp(tk.Tk):
             f = workdirs.latest_form(self.save_dir, r)
             if f:
                 scales.update(extract_io.read_scales(f))
-        custom = [r for r in chosen if not r.upper().startswith(("PI", "RDL"))]
-        dlevel = custom[0] if (len(chosen) == 1 and custom) else ""
+        # 레시피 1개만 고르면 그 레벨을 파싱에 주입(장비 Job 키워드 오탐 방지 — 양식과 일치).
+        dlevel = chosen[0] if len(chosen) == 1 else ""
 
         win = tk.Toplevel(self)
         win.title("파라미터 값 업데이트")
