@@ -111,6 +111,10 @@ python3 tests/test_downloader.py   # 8
   **OpticPreset LIGHT/Scan2d 통일**(`_parse_optic`): 최신 Scan2d 섹션(맨 아래 `[Scan2d#]`)만
   alg=`Scan2d`로 통일, `OPTIC_SCAN2D_KEEP`(9개)만 사용=Y, `Scan2d 최신 항목 이름` 합성행 추가,
   나머지·오래된 Scan2d는 사용=N(검토용). `ExtractRow.use_default`→피벗 `use`→formbuilder.
+  **변환 판정(`resolve_transform`)**: 표시명에 **µ(마이크로) 있으면 변환**(area→AREA,else LINEAR),
+  **없으면 RAW**(예: 'Min Defect Width'는 변환 안 함). BOOL/REGION/CLASSIFY는 유지.
+  **GlobalRTP**(`GLOBALRTP_KEEP`): `Max Defects Per Wafer/Die`만 기본 사용=Y, 나머지 N.
+  변환방식 라벨은 실제 계수 반영(`label_transform`).
 - `param_manager/collector.py` — 장비 네트워크 읽기전용 수집(net use, plan 자동 재사용).
   `FIXED_FILES`에 **RTP.txt 포함**(계수 자동 추정용). RTP.txt는 recipe 폴더에 위치.
 - `param_manager/coef_detector.py` — **변환 계수 자동 추정**: RTP.txt(표시값)↔Zone ini(원본값)

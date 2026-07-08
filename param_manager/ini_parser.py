@@ -39,6 +39,9 @@ TOP_TO_ZONE = {
     "OpticPreset": "LIGHT",
 }
 
+# GlobalRTP Zone: 양식 초안에서 기본 사용=Y 로 둘 파라미터(표시명). 나머지는 N(검토용).
+GLOBALRTP_KEEP = {"Max Defects Per Wafer", "Max Defects Per Die"}
+
 # 확정된 PI3 표시 매핑(extractor 검증본): (상위항목, 섹션, 키) → (Alg, 표시명, 단위, 변환)
 KNOWN_DISPLAY_MAP = {
     ("Global", "GLOBAL_RTP", "MaxFaultsPerWafer"): ("GlobalRTP", "Max Defects Per Wafer", "", "RAW"),
@@ -145,6 +148,28 @@ def label_transform(transform: str, scale: float) -> str:
     if t.startswith("AREA"):
         return f"AREA_{scale:.16g}^2"
     return transform
+
+
+def _has_micron(name: str) -> bool:
+    """파라미터(표시)명에 µ(마이크로) 표기가 있는가 — 변환 대상 판정용."""
+    s = str(name)
+    return "µ" in s or "μ" in s      # µ(U+00B5) / μ(U+03BC)
+
+
+def resolve_transform(display: str, transform: str) -> str:
+    """계수 변환 여부는 **표시명에 µ(마이크로)가 있는지**로 결정(사용자 규칙 2026-07).
+    - BOOL/REGION/CLASSIFY 는 그대로(특수 변환).
+    - µ 있으면 변환: 'area' 포함 시 AREA(면적), 아니면 LINEAR.
+    - µ 없으면 RAW(변환 안 함) — 예: 'Min Defect Width - Bright'.
+    """
+    t = (transform or "RAW").strip().upper()
+    if t in ("BOOL", "REGION", "CLASSIFY"):
+        return transform
+    if _has_micron(display):
+        if t.startswith("AREA") or "area" in str(display).lower():
+            return "AREA"
+        return "LINEAR"
+    return "RAW"
 
 
 def lookup_display(top: str, section: str, param: str) -> tuple[str, str, str, str]:
@@ -293,16 +318,20 @@ def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE) -> list[Extrac
         return _parse_optic(file_path, sections)
     top = infer_top_item(file_path, sections)
     zone = TOP_TO_ZONE.get(top, top)
+    is_global = (top == "Global")            # GlobalRTP.ini
     out: list[ExtractRow] = []
     for section, kv in sections.items():
         for key, raw in kv.items():
             alg, display, unit, trans = lookup_display(top, section, key)
+            trans = resolve_transform(display, trans)   # µ 있으면 변환, 없으면 RAW
+            # GlobalRTP: Max Defects Per Die/Wafer 만 기본 Y, 나머지는 N(검토용)
+            use = (display in GLOBALRTP_KEEP) if is_global else True
             out.append(ExtractRow(
                 zone=zone, alg=alg, param=display,
                 value=transform_value(raw, trans, scale), unit=unit,
                 src_file=file_path.name, section=section, key=key,
                 raw=raw, transform=label_transform(trans, scale),  # 실제 계수 반영
-                source_path=str(file_path)))
+                source_path=str(file_path), use_default=use))
     return out
 
 

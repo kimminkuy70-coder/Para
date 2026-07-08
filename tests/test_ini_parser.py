@@ -285,6 +285,32 @@ def test_optic_latest_scan2d():
     print("  optic OK: [Scan2d]+Alg키 → KEEP 9개 Y, 합성행(Alg값) 첫 KEEP 위, 나머지 N")
 
 
+def test_micron_transform_and_globalrtp_keep():
+    with tempfile.TemporaryDirectory() as tmp:
+        # #2 GlobalRTP: Max Defects Per Die/Wafer 만 기본 Y
+        g = Path(tmp) / "GlobalRTP.ini"
+        g.write_text("[GLOBAL_RTP]\nMaxFaultsPerWafer=3000\nMaxFaultsPerDie=50\n"
+                     "ApplyDieCalib=1\nDuplicateRange_um=10\n", encoding="utf-8")
+        gr = {r.param: r for r in ini_parser.parse_ini_file(g)}
+        assert gr["Max Defects Per Wafer"].use_default is True
+        assert gr["Max Defects Per Die"].use_default is True
+        assert gr["Apply Die Calib"].use_default is False
+        assert gr["Apply Die Calib"].transform == "BOOL"        # 특수 변환 유지
+        assert gr["Duplicate Range um"].use_default is False     # 'um'(µ 아님) → 변환 안 함
+        assert gr["Duplicate Range um"].transform == "RAW"
+
+        # #3 µ 규칙: Width(µ 없음)=RAW, Length/Area(µ)=변환
+        z = Path(tmp) / "Zone.ini"
+        z.write_text("[General]\nZoneName=PI Opening\n[Surface]\n"
+                     "BrightDiameter=100\nBrightLength=100\nBrightArea=100\n", encoding="utf-8")
+        zr = {r.key: r for r in ini_parser.parse_ini_file(z, scale=0.5)}
+        assert zr["BrightDiameter"].transform == "RAW"           # 'Width'(µ 없음)
+        assert zr["BrightDiameter"].value == 100                 # 변환 안 함
+        assert zr["BrightLength"].transform.startswith("LINEAR") and zr["BrightLength"].value == 50.0
+        assert zr["BrightArea"].transform.startswith("AREA") and zr["BrightArea"].value == 25.0
+    print("  transform OK: µ 있으면 변환(Length/Area)·없으면 RAW(Width) + GlobalRTP 2개만 Y")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
