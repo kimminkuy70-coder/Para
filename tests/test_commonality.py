@@ -258,6 +258,62 @@ def test_build_comparison_outliers():
     print("  commonality OK: 호기 비교(행=Lot/호기) + 과반수 이탈 색칠")
 
 
+def test_sm_variant_expansion_and_fail_flag():
+    """S/M 'CFG' → 변형 폴더(CFG X20 / CFG #14 REWORK / CFG-RW_0517S) 모두 후보로.
+    fail여부=Y 는 각 항목에 반영."""
+    with tempfile.TemporaryDirectory() as tmp:
+        dev6412 = Path(tmp) / "AOI-9" / "Scanresult" / "2D@X-DEVZ_0A" / "6412"
+        for sm in ("CFG X20", "CFG #14 REWORK", "CFG-RW_0517S"):
+            w = dev6412 / sm / "w1"
+            (w / "Zones").mkdir(parents=True)
+            (w / "Zones" / "Z.ini").write_text(ZONE.format(delta=25), encoding="utf-8")
+            (w / "RTP.txt").write_text("x", encoding="utf-8")
+        root = commonality.scanresult_root(tmp, "AOI-9")
+        variants = commonality.resolve_lot_variants(root, "DEVZ", "6412", "CFG",
+                                                    "AOI-9", fail=True)
+        got = sorted(v.label for v in variants if v.exists)
+        assert got == sorted(["CFG X20", "CFG #14 REWORK", "CFG-RW_0517S"]), got
+        assert all(v.fail for v in variants)
+        # resolve_plan 도 변형을 펼치고 fail 을 반영
+        plan = [{"디바이스명": "DEVZ", "공정번호": "6412", "S/M": "CFG",
+                 "AOI호기": "AOI-9", "fail여부": "Y"}]
+        lots = commonality.resolve_plan(root, plan)
+        assert len([l for l in lots if l.exists]) == 3
+        assert all(l.fail for l in lots)
+    print("  commonality OK: S/M 변형 다중 후보 + fail여부 반영")
+
+
+def test_fail_flag_colors_result_and_comparison():
+    """fail S/M 이 결과 엑셀→비교표(fail_rows)→노란색 색칠로 이어진다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        w1 = _make_wafer(tmp, "AOI-6", "2D@DEVF_x", "6700", "AAA", "CX1", delta=25)
+        w2 = _make_wafer(tmp, "AOI-6", "2D@DEVF_x", "6700", "BBB", "CX2", delta=25)
+        piv, labels = commonality.parse_lots([("AAA", w1), ("BBB", w2)], level="PI3")
+        form = _build_form(tmp, piv)
+        res = commonality.collate_lots("PI3", form, piv, labels)
+        out = os.path.join(tmp, "AOI-6.xlsx")
+        commonality.write_lot_result(out, "PI3", "AOI-6", res, labels,
+                                     fail_labels=["BBB"])
+        data = commonality.read_lot_result(out)
+        assert data["fails"] == {"BBB"}
+        comp = commonality.build_comparison([out])
+        bbb = next(i for i, r in enumerate(comp["rows"]) if r["S/M"] == "BBB")
+        aaa = next(i for i, r in enumerate(comp["rows"]) if r["S/M"] == "AAA")
+        assert bbb in comp["fail_rows"] and aaa not in comp["fail_rows"]
+        cmp_path = os.path.join(tmp, "cmp.xlsx")
+        commonality.write_comparison(cmp_path, comp)
+        wb = openpyxl.load_workbook(cmp_path)
+        ws = wb["취합비교"]
+        got = False
+        for r in range(2, ws.max_row + 1):
+            if ws.cell(row=r, column=1).value == "BBB":
+                rgb = ws.cell(row=r, column=1).fill.fgColor.rgb or ""
+                assert str(rgb).endswith(commonality.FAIL_FILL), rgb
+                got = True
+        assert got
+    print("  commonality OK: fail S/M → 결과·비교표 노란색 색칠")
+
+
 def test_zone_group_sort_adjacent():
     """비슷한 Zone(AL PAD / PAD)이 비교표 열에서 인접하게 정렬돼야 한다."""
     labels = [

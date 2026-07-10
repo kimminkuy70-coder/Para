@@ -2830,39 +2830,84 @@ class EquipApp(tk.Tk):
         self._run_busy("Lot 폴더 확인 중…", work, done)
 
     def _cm_confirm_lots(self):
+        """찾은 S/M 폴더(변형 포함)를 체크박스로 표시 — 기본 전체 선택."""
         lots = self._cm.get("lots") or []
         win = tk.Toplevel(self)
-        win.title("Lot 폴더 확인")
+        win.title("S/M 폴더 선택")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
-        tk.Label(win, text="아래 Lot 폴더로 진행합니다. 없는 폴더는 사유를 확인하세요.",
+        win.geometry("720x520")
+        tk.Label(win, text="조사할 S/M 폴더를 선택하세요(변형 이름 포함). 기본은 전체 선택.",
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
-                 anchor="w", padx=14, pady=(12, 6))
-        box = tk.Frame(win, bg=self.p["bg"])
-        box.pack(fill="both", expand=True, padx=14)
-        txt = tk.Text(box, height=min(16, max(4, len(lots) + 1)), width=88,
-                      font=self.fonts["sub"], wrap="none")
-        txt.pack(fill="both", expand=True)
+                 anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win, text="노란색 = fail(계획 fail여부=Y) · ✗ = 폴더 없음(선택 불가)",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(
+                 anchor="w", padx=14, pady=(0, 6))
+        # 스크롤 영역
+        outer = tk.Frame(win, bg=self.p["bg"])
+        outer.pack(fill="both", expand=True, padx=14)
+        canvas = tk.Canvas(outer, bg=self.p["bg"], highlightthickness=0)
+        vbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=self.p["bg"])
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="i")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
+
+        self._cm_sel_vars = []       # [(BooleanVar, LotFolder)]
         for l in lots:
+            var = tk.BooleanVar(value=bool(l.exists))   # 기본 전체 선택(존재하는 것)
+            self._cm_sel_vars.append((var, l))
+            row = tk.Frame(inner, bg=self.p["bg"])
+            row.pack(fill="x", pady=1)
+            cb = tk.Checkbutton(row, variable=var, bg=self.p["bg"],
+                                activebackground=self.p["bg"], selectcolor=self.p["surface"],
+                                state=("normal" if l.exists else "disabled"))
+            cb.pack(side="left")
             mark = "✓" if l.exists else "✗"
-            line = f"{mark}  {l.label}  ·  {l.device}/{l.lot}/{l.sm}"
-            if l.exists:
-                line += f"  →  {l.wafer_dir.name}"
-            else:
-                line += f"  ({l.reason})"
-            txt.insert("end", line + "\n")
-        txt.config(state="disabled")
+            detail = (f"{l.wafer_dir.name}" if l.exists else l.reason)
+            txt = f"{mark}  {l.label}   ·   {l.device}/{l.lot}   →   {detail}"
+            lbl = tk.Label(row, text=txt, bg=(self.p["bg"] if not l.fail else "#FFF6C8"),
+                           fg=(self.p["text"] if l.exists else self.p["muted"]),
+                           font=self.fonts["sub"], anchor="w")
+            lbl.pack(side="left", fill="x", expand=True)
+
+        def set_all(v):
+            for var, l in self._cm_sel_vars:
+                if l.exists:
+                    var.set(v)
+
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=14, pady=12)
-        tk.Button(bt, text="＋ Lot 폴더 추가", relief="flat", bd=0, bg=self.p["surface"],
-                  padx=12, pady=5, cursor="hand2",
-                  command=lambda: (win.destroy(), self._cm_add_lot())).pack(side="left")
-        tk.Button(bt, text="이대로 진행(복사)", relief="flat", bd=0, bg=self.p["primary"],
-                  fg="#ffffff", padx=14, pady=5, cursor="hand2",
-                  command=lambda: (win.destroy(), self._cm_copy())).pack(side="right")
+        tk.Button(bt, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=10, pady=4, cursor="hand2",
+                  command=lambda: set_all(True)).pack(side="left")
+        tk.Button(bt, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=10, pady=4, cursor="hand2",
+                  command=lambda: set_all(False)).pack(side="left", padx=4)
+        tk.Button(bt, text="＋ 폴더 추가", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=10, pady=4, cursor="hand2",
+                  command=lambda: (win.destroy(), self._cm_add_lot())).pack(side="left", padx=4)
+        tk.Button(bt, text="선택한 폴더로 진행(복사)", relief="flat", bd=0,
+                  bg=self.p["primary"], fg="#ffffff", padx=14, pady=5, cursor="hand2",
+                  command=lambda: self._cm_confirm_proceed(win)).pack(side="right")
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=12,
                   pady=5, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
+
+    def _cm_confirm_proceed(self, win):
+        selected = [l for var, l in getattr(self, "_cm_sel_vars", [])
+                    if var.get() and l.exists]
+        if not selected:
+            messagebox.showwarning("선택 없음", "복사할 S/M 폴더를 하나 이상 선택하세요.",
+                                   parent=win)
+            return
+        self._cm["selected"] = selected
+        win.destroy()
+        self._cm_copy()
 
     def _cm_add_lot(self):
         m = self._cm.get("machine")
@@ -2885,12 +2930,15 @@ class EquipApp(tk.Tk):
 
         def ok():
             root = self._cm_scan_root()
-            lot = cm.resolve_lot(root, vs["디바이스명"].get().strip(),
-                                 vs["공정번호"].get().strip(), vs["S/M"].get().strip(), m)
-            self._cm.setdefault("lots", []).append(lot)
+            found = cm.resolve_lot_variants(root, vs["디바이스명"].get().strip(),
+                                            vs["공정번호"].get().strip(),
+                                            vs["S/M"].get().strip(), m)
+            self._cm.setdefault("lots", []).extend(found)
             win.destroy()
-            if not lot.exists:
-                messagebox.showwarning("폴더 없음", f"폴더를 찾지 못했습니다: {lot.reason}")
+            ok_n = [l for l in found if l.exists]
+            if not ok_n:
+                messagebox.showwarning("폴더 없음",
+                                       f"폴더를 찾지 못했습니다: {found[0].reason}")
             self._cm_confirm_lots()
         tk.Button(win, text="추가", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=16, pady=5, cursor="hand2", command=ok).pack(
@@ -2898,34 +2946,40 @@ class EquipApp(tk.Tk):
 
     def _cm_copy(self):
         m = self._cm["machine"]
-        lots = [l for l in (self._cm.get("lots") or []) if l.exists]
+        # 선택 모드에서 고른 폴더 우선, 없으면 존재하는 전부.
+        lots = self._cm.get("selected") or \
+            [l for l in (self._cm.get("lots") or []) if l.exists]
         if not lots:
-            messagebox.showwarning("복사 대상 없음", "찾은 Lot 폴더가 없습니다.")
+            messagebox.showwarning("복사 대상 없음", "찾은 S/M 폴더가 없습니다.")
             return
         st = workdirs.stamp()
         run_dir = workdirs.commonality_run_dir(self.save_dir, m, st)
         staging = workdirs.commonality_staging(run_dir)
 
         def work():
-            lot_dirs = []
+            lot_dirs, fail_labels = [], []
             for l in lots:
                 res = cm.copy_lot(l, staging, verify=True)
                 lot_dirs.append((l.label, res["dest"]))
-            return run_dir, st, lot_dirs
+                if l.fail:
+                    fail_labels.append(l.label)
+            return run_dir, st, lot_dirs, fail_labels
 
         def done(ok, res):
             if not ok:
                 messagebox.showerror("복사 실패", str(res))
                 return
-            run_dir, st, lot_dirs = res
-            self._cm.update(run_dir=run_dir, st=st, staging=staging, lot_dirs=lot_dirs)
+            run_dir, st, lot_dirs, fail_labels = res
+            self._cm.update(run_dir=run_dir, st=st, staging=staging,
+                            lot_dirs=lot_dirs, fail_labels=fail_labels)
             self._cm.pop("form_path", None)
             self._cm.pop("result_path", None)
             self._render()
             messagebox.showinfo("복사 완료",
-                                f"{len(lot_dirs)}개 Lot을 안전 복사했습니다(원본 수정 없음).\n"
-                                f"위치: {staging}")
-        self._run_busy("Lot 파일 안전 복사 중…", work, done)
+                                f"{len(lot_dirs)}개 S/M 폴더를 안전 복사했습니다(원본 수정 없음).\n"
+                                + (f"fail 표시 {len(fail_labels)}개.\n" if fail_labels else "")
+                                + f"위치: {staging}")
+        self._run_busy("S/M 폴더 안전 복사 중…", work, done)
 
     def _cm_structure_check(self):
         from pathlib import Path
@@ -3070,9 +3124,11 @@ class EquipApp(tk.Tk):
         pivot, labels = self._cm.get("pivot"), self._cm.get("labels")
         result = workdirs.commonality_result_path(self._cm["run_dir"], recipe, m, st)
 
+        fail_labels = self._cm.get("fail_labels") or []
+
         def work():
             res = cm.collate_lots(recipe, form, pivot, labels)
-            cm.write_lot_result(result, recipe, m, res, labels)
+            cm.write_lot_result(result, recipe, m, res, labels, fail_labels)
             return res
 
         def done(ok, res):
@@ -3152,6 +3208,15 @@ class EquipApp(tk.Tk):
                     s.column_width(column=i, width=(70 if i < 2 else 96))
                 except Exception:  # noqa: BLE001
                     pass
+            # fail=Y S/M 행: 식별칸(S/M·호기) 노란색
+            for ri in comparison.get("fail_rows") or set():
+                if ri < len(rows):
+                    for cix in (0, 1):
+                        try:
+                            s.highlight_cells(row=ri, column=cix,
+                                              bg=f"#{cm.FAIL_FILL}", fg="#5A4A00")
+                        except Exception:  # noqa: BLE001
+                            pass
             # 과반수 이탈 셀 색칠
             col_idx = {c: i for i, c in enumerate(columns)}
             for (ri, pl) in comparison["outliers"]:
