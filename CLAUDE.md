@@ -42,7 +42,7 @@ Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'C
 호기 1대씩: ① 호기 선택(루트 config 저장) → ② Lot 계획 엑셀(디바이스명/공정번호/S·M/AOI호기)
 업로드→호기 필터→폴더 실재 확인 → ③ 안전 복사(downloader, 원본 read-only) → ④ 양식 만들기
 (제목 지정, 양식 만들기와 동일: OpticPreset 추림·계수·추천, **Lot 구조 diff 확인**) →
-⑤ Lot별 값 조사(collate 재사용)→호기 결과 엑셀 → ⑥ 호기 취합·비교(행=공정번호/호기, 과반수
+⑤ Lot별 값 조사(collate 재사용)→호기 결과 엑셀 → ⑥ 호기 취합·비교(행=S/M/호기, Zone그룹 정렬, 과반수
 이탈 색칠) + ⑦ tksheet 뷰어(변경열만 필터·이탈 요약). 헤드리스=`commonality.py`(테스트됨),
 경로=`workdirs.commonality_*`, GUI=`equip_app._view_commonality`/`_cm_*`.
 
@@ -108,7 +108,7 @@ python3 tests/test_formbuilder.py  # 3  (초안 생성·편집→확정 양식·
 python3 tests/test_collate.py      # 2  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_commonality.py  # 10 (Lot 계획·폴더해석·폴더변형·다중레시피/중간폴더·안전복사·구조diff·취합·이탈색칠)
+python3 tests/test_commonality.py  # 11 (Lot 계획·폴더해석·폴더변형·다중레시피/중간폴더·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)

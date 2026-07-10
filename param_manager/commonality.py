@@ -271,7 +271,8 @@ def resolve_lot(scan_root: Path, device: str, lot: str, sm: str,
     """디바이스명 + 공정번호 + S/M → LotFolder(웨이퍼 폴더 확정 + 대상파일 확인).
     lot 인자 = 공정번호(폴더 레벨). 같은 디바이스/공정이 여러 레시피 폴더로
     나뉘어 있을 수 있어 **모든 후보를 탐색**해 실제로 존재하는 조합을 찾는다."""
-    label = "_".join(x for x in (lot, sm) if x) or device or "lot"
+    # 표시/식별 라벨 = S/M 만(사용자 지정). S/M 이 없으면 공정번호→디바이스 폴백.
+    label = engine._s(sm).strip() or engine._s(lot).strip() or device or "lot"
     lf = LotFolder(device=device, lot=lot, sm=sm, machine=machine, label=label)
     dev_dirs = _find_children(scan_root, device)
     if not dev_dirs:
@@ -459,7 +460,7 @@ def read_lot_result(path: str) -> dict:
 
 
 # --------------------------------------------------------------------------
-# Step 6: 호기 취합·비교 (행=공정번호/호기, 열=파라미터, 과반수 이탈 색칠)
+# Step 6: 호기 취합·비교 (행=S/M/호기, 열=파라미터[Zone 그룹 정렬], 과반수 이탈 색칠)
 # --------------------------------------------------------------------------
 def _param_label(rec: dict) -> str:
     """비교 표의 파라미터 열 이름 — Zone/Alg/Parameter 조합(중복 회피)."""
@@ -468,15 +469,25 @@ def _param_label(rec: dict) -> str:
     return " / ".join(p for p in parts if p) or engine._s(rec.get("Parameter"))
 
 
+def _zone_sort_key(param_label: str) -> tuple:
+    """비슷한 Zone 을 인접시키는 정렬 키. Zone 의 **마지막 단어**로 그룹핑해
+    'AL PAD' 와 'PAD'(둘 다 'pad')가 붙어 나오게 한다."""
+    zone = param_label.split(" / ", 1)[0]
+    words = re.findall(r"[0-9A-Za-z]+", zone)
+    tail = words[-1].lower() if words else zone.lower()
+    return (tail, zone.lower(), param_label.lower())
+
+
 def build_comparison(result_files: list[str]) -> dict:
     """여러 호기 결과 엑셀 → 비교 표.
 
     반환:
-      {"columns": ["공정번호","호기", param1, param2, ...],
-       "rows": [{"공정번호","호기", param: value, ...}, ...],
+      {"columns": ["S/M","호기", param1, param2, ...],
+       "rows": [{"S/M","호기", param: value, ...}, ...],
        "outliers": {(row_idx, param), ...},   # 과반수와 다른 셀
        "changed_params": [param, ...]}        # 값이 갈리는 파라미터만
-    각 (호기, 공정) 조합이 한 행. 파라미터 열은 모든 파일의 합집합(순서 보존).
+    각 (호기, S/M) 조합이 한 행. 파라미터 열은 **비슷한 Zone 끼리 묶어** 정렬
+    (AL PAD/PAD 인접). 1열=S/M, 2열=호기.
     """
     params: list[str] = []
     param_seen: set = set()
@@ -484,7 +495,7 @@ def build_comparison(result_files: list[str]) -> dict:
     for path in result_files:
         data = read_lot_result(path)
         machine = data["machine"] or Path(path).stem
-        # 파라미터 열(순서 보존) 및 Lot별 값 맵
+        # 파라미터 열 및 S/M별 값 맵
         by_param_value: dict[str, dict[str, object]] = {}
         for rec in data["records"]:
             pl = _param_label(rec)
@@ -493,10 +504,13 @@ def build_comparison(result_files: list[str]) -> dict:
                 params.append(pl)
             by_param_value[pl] = {lot: rec.get(lot) for lot in data["lots"]}
         for lot in data["lots"]:
-            row = {"공정번호": lot, "호기": machine}
+            row = {"S/M": lot, "호기": machine}
             for pl in by_param_value:
                 row[pl] = by_param_value[pl].get(lot)
             rows.append(row)
+
+    # 비슷한 Zone 끼리 인접하도록 파라미터 열 정렬(엑셀/뷰어 공통)
+    params.sort(key=_zone_sort_key)
 
     # 과반수(mode) 대비 이탈 셀 + 값이 갈리는 파라미터
     outliers: set = set()
@@ -513,7 +527,7 @@ def build_comparison(result_files: list[str]) -> dict:
             v = engine._s(r.get(pl))
             if v != "" and v != common:
                 outliers.add((i, pl))
-    return {"columns": ["공정번호", "호기"] + params, "rows": rows,
+    return {"columns": ["S/M", "호기"] + params, "rows": rows,
             "outliers": outliers, "changed_params": changed}
 
 
@@ -522,7 +536,7 @@ def write_comparison(dest_xlsx: str, comparison: dict,
     """비교 표 → 엑셀(과반수 이탈 셀 색칠). changed_only=True 면 변경 파라미터만."""
     params = (comparison["changed_params"] if changed_only
               else comparison["columns"][2:])
-    columns = ["공정번호", "호기"] + list(params)
+    columns = list(comparison["columns"][:2]) + list(params)   # ['S/M','호기',...]
     rows = comparison["rows"]
     outliers = comparison["outliers"]
 

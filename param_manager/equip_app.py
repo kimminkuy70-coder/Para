@@ -3134,7 +3134,7 @@ class EquipApp(tk.Tk):
             changed_only = only_var.get()
             params = (comparison["changed_params"] if changed_only
                       else comparison["columns"][2:])
-            columns = ["공정번호", "호기"] + list(params)
+            columns = list(comparison["columns"][:2]) + list(params)  # ['S/M','호기',…]
             rows = comparison["rows"]
             data = [[engine._s(r.get(c)) for c in columns] for r in rows]
             s = Sheet(holder, theme="light blue", headers=columns, data=data,
@@ -3143,7 +3143,15 @@ class EquipApp(tk.Tk):
                       header_font=(self.p["family"], 10, "bold"))
             s.enable_bindings("single_select", "drag_select", "arrowkeys", "copy",
                               "column_width_resize", "row_select", "column_select")
-            s.set_options(show_vertical_grid=True, show_horizontal_grid=True)
+            # 헤더/셀 자동 줄바꿈(긴 파라미터 이름이 잘리지 않게)
+            s.set_options(show_vertical_grid=True, show_horizontal_grid=True,
+                          header_wrap="w", table_wrap="w")
+            # 파라미터 열은 좁은 고정폭 → 헤더가 여러 줄로 줄바꿈되어 다 보인다.
+            for i, c in enumerate(columns):
+                try:
+                    s.column_width(column=i, width=(70 if i < 2 else 96))
+                except Exception:  # noqa: BLE001
+                    pass
             # 과반수 이탈 셀 색칠
             col_idx = {c: i for i, c in enumerate(columns)}
             for (ri, pl) in comparison["outliers"]:
@@ -3153,6 +3161,21 @@ class EquipApp(tk.Tk):
                                           bg=f"#{cm.MISMATCH_FILL}", fg="#7A4E00")
                     except Exception:  # noqa: BLE001
                         pass
+            # 헤더 줄바꿈이 보이도록 헤더 높이를 넉넉히(버전별 API 방어적 시도)
+            for setter in (
+                lambda: s.set_options(default_header_height=("pixels", 64)),
+                lambda: s.set_options(default_header_height=64),
+                lambda: s.set_header_height(height=64),
+            ):
+                try:
+                    setter()
+                    break
+                except Exception:  # noqa: BLE001
+                    continue
+            try:
+                s.redraw()
+            except Exception:  # noqa: BLE001
+                pass
             s.pack(fill="both", expand=True)
 
         tk.Label(bar, text="  변경/이상치 뷰어 — 노란 셀 = 과반수와 다른 값",

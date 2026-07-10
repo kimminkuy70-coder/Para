@@ -166,8 +166,9 @@ def test_copy_lot_read_only():
         for p, (content, mtime) in before.items():
             assert p.read_bytes() == content and p.stat().st_mtime_ns == mtime
         # 사본은 로컬 staging 에만
-        assert (Path(dest) / "6400_HPG" / "Zones" / "Z.ini").is_file()
-        assert (Path(dest) / "6400_HPG" / "RTP.txt").is_file()
+        assert lot.label == "HPG"           # 라벨 = S/M 만
+        assert (Path(dest) / "HPG" / "Zones" / "Z.ini").is_file()
+        assert (Path(dest) / "HPG" / "RTP.txt").is_file()
     print("  commonality OK: 안전복사(원본 read-only) + 대상만 복사")
 
 
@@ -237,7 +238,7 @@ def test_build_comparison_outliers():
         commonality.write_lot_result(f9, "PI3", "AOI-9", r9, lab9)
 
         comp = commonality.build_comparison([f6, f9])
-        assert comp["columns"][:2] == ["공정번호", "호기"]
+        assert comp["columns"][:2] == ["S/M", "호기"]
         assert len(comp["rows"]) == 3          # 세 (Lot,호기) 행
         # Contrast Delta - Bright 열이 변경 파라미터
         cd = next(c for c in comp["columns"] if "Contrast Delta - Bright" in c)
@@ -253,8 +254,24 @@ def test_build_comparison_outliers():
         commonality.write_comparison(cmp_path, comp, changed_only=True)
         wb = openpyxl.load_workbook(cmp_path)
         ws = wb["취합비교"]
-        assert ws.cell(row=1, column=1).value == "공정번호"
+        assert ws.cell(row=1, column=1).value == "S/M"
     print("  commonality OK: 호기 비교(행=Lot/호기) + 과반수 이탈 색칠")
+
+
+def test_zone_group_sort_adjacent():
+    """비슷한 Zone(AL PAD / PAD)이 비교표 열에서 인접하게 정렬돼야 한다."""
+    labels = [
+        "Surface / Alg / X",
+        "PAD / Surface / C",
+        "LIGHT / Scan2d / Latest",
+        "AL PAD / Surface / M",
+    ]
+    ordered = sorted(labels, key=commonality._zone_sort_key)
+    # AL PAD 와 PAD 는 서로 이웃(둘 다 'pad' 그룹)
+    i_alpad = ordered.index("AL PAD / Surface / M")
+    i_pad = ordered.index("PAD / Surface / C")
+    assert abs(i_alpad - i_pad) == 1, ordered
+    print("  commonality OK: Zone 그룹 정렬(AL PAD ↔ PAD 인접)")
 
 
 if __name__ == "__main__":
