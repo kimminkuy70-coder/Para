@@ -38,11 +38,11 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 ## Commonality 조사 (브랜치 `claude/commonality-survey`, 설계: `docs/commonality_조사_설계.md`)
 
 Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'Commonality 조사'.
-경로 `{루트}/{호기}/Scanresult/{2D@디바이스_레시피}/{LOT}/{S/M}/{웨이퍼}/`(이름순 첫 웨이퍼).
-호기 1대씩: ① 호기 선택(루트 config 저장) → ② Lot 계획 엑셀(디바이스명/LOT/S·M/AOI호기)
+경로 `{루트}/{호기}/Scanresult/{2D@디바이스_레시피}/{공정번호}/{S/M}/{웨이퍼}/`(이름순 첫 웨이퍼).
+호기 1대씩: ① 호기 선택(루트 config 저장) → ② Lot 계획 엑셀(디바이스명/공정번호/S·M/AOI호기)
 업로드→호기 필터→폴더 실재 확인 → ③ 안전 복사(downloader, 원본 read-only) → ④ 양식 만들기
 (제목 지정, 양식 만들기와 동일: OpticPreset 추림·계수·추천, **Lot 구조 diff 확인**) →
-⑤ Lot별 값 조사(collate 재사용)→호기 결과 엑셀 → ⑥ 호기 취합·비교(행=LOT/호기, 과반수
+⑤ Lot별 값 조사(collate 재사용)→호기 결과 엑셀 → ⑥ 호기 취합·비교(행=공정번호/호기, 과반수
 이탈 색칠) + ⑦ tksheet 뷰어(변경열만 필터·이탈 요약). 헤드리스=`commonality.py`(테스트됨),
 경로=`workdirs.commonality_*`, GUI=`equip_app._view_commonality`/`_cm_*`.
 

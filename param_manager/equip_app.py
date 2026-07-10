@@ -2672,7 +2672,7 @@ class EquipApp(tk.Tk):
 
         # Step 2 — Lot 계획 엑셀
         n_plan = len(cm.get("plan_rows") or [])
-        self._cm_step(inner, 2, "Lot 계획 엑셀 (디바이스명/LOT번호/S·M/AOI호기)",
+        self._cm_step(inner, 2, "Lot 계획 엑셀 (디바이스명/공정번호/S·M/AOI호기)",
                       f"업로드된 계획: {n_plan}행(이 호기 {mlabel} 기준 필터)"
                       if n_plan else "템플릿을 만들어 채운 뒤 업로드하세요.", [
                           ("템플릿 만들기", self._cm_make_template, False),
@@ -2875,7 +2875,7 @@ class EquipApp(tk.Tk):
         frm.pack(padx=16, pady=14)
         vs = {}
         for i, (key, lab) in enumerate((("디바이스명", "디바이스명"),
-                                        ("LOT번호", "LOT번호"), ("S/M", "S/M"))):
+                                        ("공정번호", "공정번호"), ("S/M", "S/M"))):
             tk.Label(frm, text=lab + ":", bg=self.p["bg"], fg=self.p["text"],
                      font=self.fonts["sub"]).grid(row=i, column=0, sticky="w", pady=3)
             v = tk.StringVar()
@@ -2886,7 +2886,7 @@ class EquipApp(tk.Tk):
         def ok():
             root = self._cm_scan_root()
             lot = cm.resolve_lot(root, vs["디바이스명"].get().strip(),
-                                 vs["LOT번호"].get().strip(), vs["S/M"].get().strip(), m)
+                                 vs["공정번호"].get().strip(), vs["S/M"].get().strip(), m)
             self._cm.setdefault("lots", []).append(lot)
             win.destroy()
             if not lot.exists:
@@ -3134,7 +3134,7 @@ class EquipApp(tk.Tk):
             changed_only = only_var.get()
             params = (comparison["changed_params"] if changed_only
                       else comparison["columns"][2:])
-            columns = ["LOT", "호기"] + list(params)
+            columns = ["공정번호", "호기"] + list(params)
             rows = comparison["rows"]
             data = [[engine._s(r.get(c)) for c in columns] for r in rows]
             s = Sheet(holder, theme="light blue", headers=columns, data=data,

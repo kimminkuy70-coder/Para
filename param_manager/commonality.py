@@ -7,7 +7,7 @@ Scanresult 아래 여러 **Lot**(웨이퍼 로트)의 파라미터 값을 조사
 복사는 downloader 의 안전 복사(.part→replace, 해시 검증)를 재사용한다.
 
 경로 구조:
-  {루트}/{AOI-호기}/Scanresult/{2D@디바이스_레시피}/{LOT번호}/{S/M}/{웨이퍼번호}/
+  {루트}/{AOI-호기}/Scanresult/{2D@디바이스_레시피}/{공정번호}/{S/M}/{웨이퍼번호}/
       ├─ Zones/*        (하위 ini 전체)
       ├─ RTP.txt        (표시값 — 변환계수 추정)
       └─ OpticPreset.ini
@@ -15,7 +15,7 @@ Scanresult 아래 여러 **Lot**(웨이퍼 로트)의 파라미터 값을 조사
 
 흐름(GUI 가 호출):
   1) 호기 선택 → scanresult_root()
-  2) Lot 계획 엑셀(디바이스명/LOT번호/S·M/AOI호기) → read_plan()/filter_plan_for_machine()
+  2) Lot 계획 엑셀(디바이스명/공정번호/S·M/AOI호기) → read_plan()/filter_plan_for_machine()
      → resolve_plan()(폴더 실재 확인)
   3) copy_lot()(안전 복사)
   4) parse_lots()(대표 Lot 양식 만들기 소스) + structure_diff()(Lot 간 구조 확인)
@@ -36,9 +36,9 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from . import collate, downloader, engine, ini_parser
 
 # --------------------------------------------------------------------------
-# Lot 계획 엑셀 (디바이스명 / LOT번호 / S/M / AOI호기)
+# Lot 계획 엑셀 (디바이스명 / 공정번호 / S/M / AOI호기)
 # --------------------------------------------------------------------------
-PLAN_HEADERS = ["디바이스명", "LOT번호", "S/M", "AOI호기"]
+PLAN_HEADERS = ["디바이스명", "공정번호", "S/M", "AOI호기"]
 
 # 취합 비교에서 값이 과반수와 다를 때 칠하는 색(연한 주황).
 MISMATCH_FILL = "FFF2CC"
@@ -67,9 +67,9 @@ def create_plan_template(path: str, rows: list[dict] | None = None) -> str:
         ["Lot 계획 — 작성 방법"],
         ["1) 디바이스명: Scanresult 아래 '2D@..' 폴더명에 포함된 디바이스명"],
         ["   예) 2D@R3-S6WH11001-00001_... → 디바이스명 'S6WH11001-00001'"],
-        ["2) LOT번호: 디바이스 폴더 아래 LOT 폴더명(예: 6321)"],
-        ["3) S/M: LOT 아래 폴더명(예: HPG / TVS)"],
-        ["4) AOI호기: 이 Lot 이 검사된 호기(예: AOI-6). 선택한 호기 행만 조사합니다."],
+        ["2) 공정번호: 디바이스 폴더 아래 공정 폴더명(예: 6412)"],
+        ["3) S/M: 공정 폴더 아래 폴더명(예: HPG / TVS / HCH)"],
+        ["4) AOI호기: 이 공정이 검사된 호기(예: AOI-6). 선택한 호기 행만 조사합니다."],
     ]:
         info.append(line)
     info.column_dimensions["A"].width = 70
@@ -89,8 +89,8 @@ def read_plan(path: str) -> list[dict]:
             continue
         rec = {h: engine._s(row[i]).strip() if i < len(row) else ""
                for h, i in hidx.items()}
-        # 디바이스명/LOT 중 하나라도 있으면 유효 행
-        if rec.get("디바이스명") or rec.get("LOT번호"):
+        # 디바이스명/공정번호 중 하나라도 있으면 유효 행
+        if rec.get("디바이스명") or rec.get("공정번호"):
             out.append(rec)
     wb.close()
     return out
@@ -103,7 +103,7 @@ def filter_plan_for_machine(plan_rows: list[dict], machine: str) -> list[dict]:
 
 
 # --------------------------------------------------------------------------
-# 폴더 해석 (디바이스명 + LOT + S/M → 실제 웨이퍼 폴더)
+# 폴더 해석 (디바이스명 + 공정번호 + S/M → 실제 웨이퍼 폴더)
 # --------------------------------------------------------------------------
 def _norm(s) -> str:
     """매칭용 정규화 — 소문자화 + 영숫자/한글만(구분자 -,_,공백,@ 제거)."""
@@ -227,7 +227,8 @@ def _first_wafer(sm_dir: Path) -> Path | None:
 
 def resolve_lot(scan_root: Path, device: str, lot: str, sm: str,
                 machine: str = "") -> LotFolder:
-    """디바이스명 + LOT + S/M → LotFolder(웨이퍼 폴더 확정 + 대상파일 확인)."""
+    """디바이스명 + 공정번호 + S/M → LotFolder(웨이퍼 폴더 확정 + 대상파일 확인).
+    lot 인자 = 공정번호(폴더 레벨)."""
     label = "_".join(x for x in (lot, sm) if x) or device or "lot"
     lf = LotFolder(device=device, lot=lot, sm=sm, machine=machine, label=label)
     dev_dir = _find_child(scan_root, device)
@@ -236,7 +237,7 @@ def resolve_lot(scan_root: Path, device: str, lot: str, sm: str,
         return lf
     lot_dir = _find_child(dev_dir, lot)
     if lot_dir is None:
-        lf.reason = f"LOT 폴더 없음: {lot}"
+        lf.reason = f"공정 폴더 없음: {lot}"
         return lf
     sm_dir = _find_child(lot_dir, sm) if sm else lot_dir
     if sm_dir is None:
@@ -261,7 +262,7 @@ def resolve_plan(scan_root: Path, plan_rows: list[dict]) -> list[LotFolder]:
     out = []
     for r in plan_rows:
         out.append(resolve_lot(scan_root, r.get("디바이스명", ""),
-                               r.get("LOT번호", ""), r.get("S/M", ""),
+                               r.get("공정번호", ""), r.get("S/M", ""),
                                r.get("AOI호기", "")))
     return out
 
@@ -406,7 +407,7 @@ def read_lot_result(path: str) -> dict:
 
 
 # --------------------------------------------------------------------------
-# Step 6: 호기 취합·비교 (행=LOT/호기, 열=파라미터, 과반수 이탈 색칠)
+# Step 6: 호기 취합·비교 (행=공정번호/호기, 열=파라미터, 과반수 이탈 색칠)
 # --------------------------------------------------------------------------
 def _param_label(rec: dict) -> str:
     """비교 표의 파라미터 열 이름 — Zone/Alg/Parameter 조합(중복 회피)."""
@@ -419,11 +420,11 @@ def build_comparison(result_files: list[str]) -> dict:
     """여러 호기 결과 엑셀 → 비교 표.
 
     반환:
-      {"columns": ["LOT","호기", param1, param2, ...],
-       "rows": [{"LOT","호기", param: value, ...}, ...],
+      {"columns": ["공정번호","호기", param1, param2, ...],
+       "rows": [{"공정번호","호기", param: value, ...}, ...],
        "outliers": {(row_idx, param), ...},   # 과반수와 다른 셀
        "changed_params": [param, ...]}        # 값이 갈리는 파라미터만
-    각 (호기, Lot) 조합이 한 행. 파라미터 열은 모든 파일의 합집합(순서 보존).
+    각 (호기, 공정) 조합이 한 행. 파라미터 열은 모든 파일의 합집합(순서 보존).
     """
     params: list[str] = []
     param_seen: set = set()
@@ -440,7 +441,7 @@ def build_comparison(result_files: list[str]) -> dict:
                 params.append(pl)
             by_param_value[pl] = {lot: rec.get(lot) for lot in data["lots"]}
         for lot in data["lots"]:
-            row = {"LOT": lot, "호기": machine}
+            row = {"공정번호": lot, "호기": machine}
             for pl in by_param_value:
                 row[pl] = by_param_value[pl].get(lot)
             rows.append(row)
@@ -460,7 +461,7 @@ def build_comparison(result_files: list[str]) -> dict:
             v = engine._s(r.get(pl))
             if v != "" and v != common:
                 outliers.add((i, pl))
-    return {"columns": ["LOT", "호기"] + params, "rows": rows,
+    return {"columns": ["공정번호", "호기"] + params, "rows": rows,
             "outliers": outliers, "changed_params": changed}
 
 
@@ -469,7 +470,7 @@ def write_comparison(dest_xlsx: str, comparison: dict,
     """비교 표 → 엑셀(과반수 이탈 셀 색칠). changed_only=True 면 변경 파라미터만."""
     params = (comparison["changed_params"] if changed_only
               else comparison["columns"][2:])
-    columns = ["LOT", "호기"] + list(params)
+    columns = ["공정번호", "호기"] + list(params)
     rows = comparison["rows"]
     outliers = comparison["outliers"]
 

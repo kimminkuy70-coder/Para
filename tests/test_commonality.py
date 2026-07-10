@@ -31,12 +31,12 @@ def test_plan_template_roundtrip_and_filter():
     with tempfile.TemporaryDirectory() as tmp:
         p = os.path.join(tmp, "plan.xlsx")
         commonality.create_plan_template(p, rows=[
-            {"디바이스명": "S6WH11001-00001", "LOT번호": "6321", "S/M": "HPG", "AOI호기": "AOI-6"},
-            {"디바이스명": "S6WH11001-00001", "LOT번호": "6323", "S/M": "TVS", "AOI호기": "AOI-9"},
+            {"디바이스명": "S6WH11001-00001", "공정번호": "6321", "S/M": "HPG", "AOI호기": "AOI-6"},
+            {"디바이스명": "S6WH11001-00001", "공정번호": "6323", "S/M": "TVS", "AOI호기": "AOI-9"},
         ])
         rows = commonality.read_plan(p)
         assert len(rows) == 2
-        assert rows[0]["LOT번호"] == "6321"
+        assert rows[0]["공정번호"] == "6321"
         only6 = commonality.filter_plan_for_machine(rows, "aoi_6")   # 정규화 매칭
         assert len(only6) == 1 and only6[0]["S/M"] == "HPG"
     print("  commonality OK: 계획 엑셀 왕복 + 호기 필터(정규화)")
@@ -48,8 +48,8 @@ def test_resolve_plan_found_and_missing():
         _make_wafer(tmp, "AOI-6", "2D@R2-DEVA-1_0855360PD-0A", "6321", "HPG", "CX01")
         root = commonality.scanresult_root(tmp, "AOI-6")
         plan = [
-            {"디바이스명": "DEVA-1", "LOT번호": "6321", "S/M": "HPG", "AOI호기": "AOI-6"},
-            {"디바이스명": "DEVA-1", "LOT번호": "9999", "S/M": "HPG", "AOI호기": "AOI-6"},
+            {"디바이스명": "DEVA-1", "공정번호": "6321", "S/M": "HPG", "AOI호기": "AOI-6"},
+            {"디바이스명": "DEVA-1", "공정번호": "9999", "S/M": "HPG", "AOI호기": "AOI-6"},
         ]
         lots = commonality.resolve_plan(root, plan)
         found = [l for l in lots if l.exists]
@@ -58,7 +58,7 @@ def test_resolve_plan_found_and_missing():
         # 이름순 첫 웨이퍼 = CX01
         assert found[0].wafer_dir.name == "CX01"
         assert found[0].has_zones and found[0].has_rtp and found[0].has_optic
-        assert "LOT" in missing[0].reason
+        assert "공정" in missing[0].reason
     print("  commonality OK: 폴더 해석(디바이스+LOT+S/M) + 이름순 첫 웨이퍼 + 실패사유")
 
 
@@ -77,7 +77,7 @@ def test_real_world_folder_variants():
         root = commonality.scanresult_root(tmp, "AOI-09")
         assert root.name == "Scanresult_260401"
         # 계획 필터도 AOI-9 == AOI-09
-        plan = [{"디바이스명": "L6WZ30001-00001", "LOT번호": "6412", "S/M": "HCH",
+        plan = [{"디바이스명": "L6WZ30001-00001", "공정번호": "6412", "S/M": "HCH",
                  "AOI호기": "AOI-09"}]
         assert len(commonality.filter_plan_for_machine(plan, "AOI-9")) == 1
         # 폴더 해석 성공(디바이스명 포함 매칭)
@@ -85,7 +85,7 @@ def test_real_world_folder_variants():
         assert lot.exists and lot.wafer_dir.name == "65349540001"
         # LOT 오타(6421)면 실패 + 사유
         bad = commonality.resolve_lot(root, "L6WZ30001-00001", "6421", "HCH", "AOI-9")
-        assert not bad.exists and "LOT" in bad.reason
+        assert not bad.exists and "공정" in bad.reason
     print("  commonality OK: Scanresult_260401 폴더명 + AOI-9/AOI-09 + LOT 오타 사유")
 
 
@@ -175,7 +175,7 @@ def test_build_comparison_outliers():
         commonality.write_lot_result(f9, "PI3", "AOI-9", r9, lab9)
 
         comp = commonality.build_comparison([f6, f9])
-        assert comp["columns"][:2] == ["LOT", "호기"]
+        assert comp["columns"][:2] == ["공정번호", "호기"]
         assert len(comp["rows"]) == 3          # 세 (Lot,호기) 행
         # Contrast Delta - Bright 열이 변경 파라미터
         cd = next(c for c in comp["columns"] if "Contrast Delta - Bright" in c)
@@ -191,7 +191,7 @@ def test_build_comparison_outliers():
         commonality.write_comparison(cmp_path, comp, changed_only=True)
         wb = openpyxl.load_workbook(cmp_path)
         ws = wb["취합비교"]
-        assert ws.cell(row=1, column=1).value == "LOT"
+        assert ws.cell(row=1, column=1).value == "공정번호"
     print("  commonality OK: 호기 비교(행=Lot/호기) + 과반수 이탈 색칠")
 
 
