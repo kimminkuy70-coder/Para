@@ -134,7 +134,10 @@ Scanresult 폴더의 여러 **Lot**(웨이퍼 로트)들에 대해 파라미터�
 
 ## 5. 확정된 결정 (사용자 승인 2026-07)
 1. **IP↔Scanresult 루트**: **호기별 루트를 config(`commonality_roots`)에 저장** — 첫 사용
-   시 폴더 브라우즈로 지정 후 자동 재사용. `commonality.scanresult_root(base, 호기)`.
+   시 폴더 브라우즈로 지정 후 자동 재사용. `commonality.scanresult_root(base, 호기)`는
+   `Scanresult*` 변형(백업본 `Scanresult_260401` 등)·호기 0패딩(AOI-9==AOI-09)을 흡수.
+   **백업본이 여러 개면 조사할 Scanresult 폴더를 사용자가 직접 지정**(자동 최신선택 없음;
+   폴더를 직접 고르면 그대로 사용).
 2. **폴더 매칭**: **디바이스명 + LOT번호 + S/M 모두**로 폴더 특정(정규화 비교, 정확
    일치 우선→포함). 이름순 첫 웨이퍼.
 3. **Step 7 뷰어**: **tksheet 격자** — 과반수 이탈 셀 색칠 + "변경된 파라미터만 보기"

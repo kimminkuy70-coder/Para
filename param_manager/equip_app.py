@@ -2767,10 +2767,13 @@ class EquipApp(tk.Tk):
             return
         messagebox.showinfo(
             "Scanresult 루트",
-            f"'{m}' 의 Scanresult 상위 폴더를 선택하세요.\n"
-            "예: X:\\ (그 아래 AOI-6\\Scanresult\\...) 또는 AOI 호기 폴더 자체.\n"
-            "한 번 지정하면 이 호기에 대해 자동 재사용됩니다(읽기 전용).")
-        d = filedialog.askdirectory(title=f"{m} Scanresult 상위 폴더 선택")
+            f"'{m}' 의 조사할 폴더를 선택하세요(읽기 전용).\n"
+            "• 백업본이 여러 개면(예: Scanresult_260401) 조사할 그 Scanresult 폴더를 "
+            "직접 고르세요 — 고른 폴더를 그대로 사용합니다.\n"
+            "• 호기 폴더(예: …\\AOI-9)나 상위 드라이브를 골라도 되며, 그 경우 아래의 "
+            "Scanresult 폴더를 자동으로 찾습니다.\n"
+            "한 번 지정하면 이 호기에 대해 자동 재사용됩니다.")
+        d = filedialog.askdirectory(title=f"{m} 조사할 Scanresult(또는 상위) 폴더 선택")
         if not d:
             return
         self._cm_roots()[m] = d
