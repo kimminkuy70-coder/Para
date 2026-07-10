@@ -85,6 +85,9 @@ FORM_DIR = "양식"
 COLLATE_DIR = "파라미터 값 취합"
 RELATED_DIR = "관련파일"
 COLLATE_PREFIX = "파라미터 값 취합"
+COMMONALITY_DIR = "commonality"
+COMMONALITY_COMPARE_DIR = "commonality_취합"
+COMMONALITY_COMPARE_PREFIX = "취합비교"
 
 
 def stamp() -> str:
@@ -183,3 +186,64 @@ def list_collate_files(save_dir: str) -> list[str]:
 def latest_collate(save_dir: str) -> str | None:
     files = list_collate_files(save_dir)
     return files[0] if files else None
+
+
+# --------------------------------------------------------------------------
+# Commonality 조사 경로  {저장폴더}/commonality/{호기}/{생성시간}/
+# --------------------------------------------------------------------------
+def commonality_root(save_dir: str) -> str:
+    d = os.path.join(save_dir, COMMONALITY_DIR)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def commonality_run_dir(save_dir: str, machine: str, st: str | None = None) -> str:
+    d = os.path.join(commonality_root(save_dir), _sanitize(machine), st or stamp())
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def commonality_staging(run_dir: str) -> str:
+    d = os.path.join(run_dir, STAGING_DIR)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def commonality_form_path(run_dir: str, recipe: str, machine: str, st: str) -> str:
+    return os.path.join(run_dir, f"양식_{_sanitize(recipe)}_{_sanitize(machine)}_{st}.xlsx")
+
+
+def commonality_result_path(run_dir: str, recipe: str, machine: str, st: str) -> str:
+    return os.path.join(run_dir, f"조사_{_sanitize(machine)}_{_sanitize(recipe)}_{st}.xlsx")
+
+
+def list_commonality_results(save_dir: str) -> list[str]:
+    """저장폴더 아래 모든 호기 결과 엑셀(조사_*.xlsx) 경로 — 최신순."""
+    root = os.path.join(save_dir, COMMONALITY_DIR)
+    if not os.path.isdir(root):
+        return []
+    out = []
+    for machine in os.listdir(root):
+        mdir = os.path.join(root, machine)
+        if not os.path.isdir(mdir):
+            continue
+        for st in os.listdir(mdir):
+            run = os.path.join(mdir, st)
+            if not os.path.isdir(run):
+                continue
+            for f in os.listdir(run):
+                if f.startswith("조사_") and f.lower().endswith(".xlsx"):
+                    out.append(os.path.join(run, f))
+    out.sort(key=lambda p: os.path.basename(p), reverse=True)
+    return out
+
+
+def commonality_compare_dir(save_dir: str) -> str:
+    d = os.path.join(save_dir, COMMONALITY_COMPARE_DIR)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def commonality_compare_path(save_dir: str, st: str | None = None) -> str:
+    return os.path.join(commonality_compare_dir(save_dir),
+                        f"{COMMONALITY_COMPARE_PREFIX}_{st or stamp()}.xlsx")

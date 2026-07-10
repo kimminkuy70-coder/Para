@@ -35,6 +35,17 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 헤드리스 모듈(모두 테스트됨): `refdata.py`, `workdirs.py`, `formbuilder.py`, `collate.py`,
 `history.py`. 매칭 정규화는 **한글 보존**. (`versioning.py`는 폴더 버전으로 대체·삭제됨.)
 
+## Commonality 조사 (브랜치 `claude/commonality-survey`, 설계: `docs/commonality_조사_설계.md`)
+
+Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'Commonality 조사'.
+경로 `{루트}/{호기}/Scanresult/{2D@디바이스_레시피}/{LOT}/{S/M}/{웨이퍼}/`(이름순 첫 웨이퍼).
+호기 1대씩: ① 호기 선택(루트 config 저장) → ② Lot 계획 엑셀(디바이스명/LOT/S·M/AOI호기)
+업로드→호기 필터→폴더 실재 확인 → ③ 안전 복사(downloader, 원본 read-only) → ④ 양식 만들기
+(제목 지정, 양식 만들기와 동일: OpticPreset 추림·계수·추천, **Lot 구조 diff 확인**) →
+⑤ Lot별 값 조사(collate 재사용)→호기 결과 엑셀 → ⑥ 호기 취합·비교(행=LOT/호기, 과반수
+이탈 색칠) + ⑦ tksheet 뷰어(변경열만 필터·이탈 요약). 헤드리스=`commonality.py`(테스트됨),
+경로=`workdirs.commonality_*`, GUI=`equip_app._view_commonality`/`_cm_*`.
+
 ## 이미 확정된 결정 (재질문 금지)
 
 아래는 사용자와 이미 합의가 끝난 사항이다. 같은 내용을 AskUserQuestion으로 **다시 묻지 말 것**.
@@ -97,6 +108,8 @@ python3 tests/test_formbuilder.py  # 3  (초안 생성·편집→확정 양식·
 python3 tests/test_collate.py      # 2  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
+python3 tests/test_commonality.py  # 6  (Lot 계획·폴더해석·안전복사·구조diff·취합·이탈색칠)
+python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -145,3 +158,11 @@ python3 tests/test_downloader.py   # 8
   `recommend`/`norm_key` 는 공용 유틸로 계속 사용.
 - `param_manager/data/rtp_template.json` — 추천 이름 + 한글 설명 통일안(1928 항목).
 - `param_manager/downloader.py` — ScanResult 폴더 다운로드(별도 메뉴, 읽기 전용).
+  Commonality 가 경로 파싱/안전복사를 재사용(`parse_scanresult_path`/`copy_one_file`/
+  `collect_target_items`/`TARGET_FOLDER_NAME`/`TARGET_FILES`).
+- `param_manager/commonality.py` — **Commonality 조사 헤드리스**: Lot 계획 엑셀
+  (`create_plan_template`/`read_plan`/`filter_plan_for_machine`), 폴더 해석
+  (`scanresult_root`/`resolve_lot`/`resolve_plan`, 디바이스명+LOT+S/M, 이름순 첫 웨이퍼),
+  안전복사(`copy_lot`), Lot 파싱→통합 피벗(`parse_lots`)·구조 diff(`structure_diff`),
+  값 취합(`collate_lots`/`write_lot_result`/`read_lot_result`), 호기 비교
+  (`build_comparison`/`write_comparison`, 과반수 이탈 색칠 `MISMATCH_FILL`).

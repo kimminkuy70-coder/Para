@@ -132,19 +132,21 @@ Scanresult 폴더의 여러 **Lot**(웨이퍼 로트)들에 대해 파라미터�
 - 오래 걸리는 복사·파싱은 `_run_busy` 로딩 모달 + 백그라운드 스레드(기존 패턴).
 - 원본 보호·네트워크 규칙은 collector/downloader와 동일(읽기·복사만).
 
-## 5. 미결정 항목 (구현 착수 전 확인)
-1. **IP↔Scanresult 루트 매핑**: 호기별 매핑 드라이브(X:/W:)인지, `\\IP\...` 접근인지.
-   → 잠정: 호기별 루트를 config 에 저장(첫 지정 후 재사용).
-2. **S/M 의미**와 폴더 3번째 레벨(HPG/TVS)이 S/M 이 맞는지.
-3. **LOT번호 매칭**: `{LOT}` 레벨과 정확 일치인지 포함 매칭인지.
-4. **Step 7 뷰어**: 위 tksheet 격자(과반수 이탈 색칠 + 변경열만 필터 + 이탈 요약)로 확정?
+## 5. 확정된 결정 (사용자 승인 2026-07)
+1. **IP↔Scanresult 루트**: **호기별 루트를 config(`commonality_roots`)에 저장** — 첫 사용
+   시 폴더 브라우즈로 지정 후 자동 재사용. `commonality.scanresult_root(base, 호기)`.
+2. **폴더 매칭**: **디바이스명 + LOT번호 + S/M 모두**로 폴더 특정(정규화 비교, 정확
+   일치 우선→포함). 이름순 첫 웨이퍼.
+3. **Step 7 뷰어**: **tksheet 격자** — 과반수 이탈 셀 색칠 + "변경된 파라미터만 보기"
+   필터 + 이탈 요약. (외부 시각화 라이브러리 금지.)
+4. (참고 대기) **S/M 의미**(HPG/TVS): 현재 폴더 3번째 레벨로만 취급. 의미 확인되면
+   라벨/필터에 반영.
 
-## 6. 구현 순서(제안)
-1. `commonality.py` 헤드리스 코어 + 테스트(경로 파싱·Lot 해석·구조 diff·취합 색칠).
-2. Step 4~5(양식·값 조사) — 기존 formbuilder/ini_parser 연결.
-3. Step 6 취합·비교 엑셀.
-4. GUI 탭·다이얼로그 배선(`_run_busy`).
-5. Step 7 뷰어.
-6. 문서/CLAUDE.md 갱신.
-```
-```
+## 6. 구현 현황
+- [x] `commonality.py` 헤드리스 코어 + `tests/test_commonality.py`(6종 통과)
+- [x] Step 4~5(양식·값 조사) — formbuilder/ini_parser/collate 연결
+- [x] Step 6 취합·비교 엑셀(과반수 이탈 색칠)
+- [x] `workdirs` commonality 경로(`commonality_*`)
+- [x] GUI 탭 'Commonality 조사' + 단계 카드/다이얼로그(`_view_commonality`, `_cm_*`)
+- [x] Step 7 뷰어(`_cm_open_viewer`, tksheet)
+- 실기 확인(Windows/tksheet/Excel) 필요 — GUI 는 `py_compile` 정적검증만 가능.

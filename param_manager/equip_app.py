@@ -26,6 +26,7 @@ from tksheet import Sheet
 from . import coef_detector
 from . import collate
 from . import collector
+from . import commonality as cm
 from . import downloader as dl
 from . import engine
 from . import extract_io
@@ -98,6 +99,9 @@ class EquipApp(tk.Tk):
         self.ref_colors: dict = {}           # 참고자료 셀 색상 {(r,c): '#hex'}
         self.special_rows: list[dict] = []   # 특이사항 행들
         self.special_colors: dict = {}       # 특이사항 셀 색상
+
+        # Commonality 조사 진행 상태(호기 1대씩) — 세션 메모리
+        self._cm: dict = {}                  # {machine, root, plan, lots, staging, ...}
 
         # 상단 탭(파라미터 값 확인 / 양식 만들기 / 특이사항 / 참고자료)
         self.view = "param"
@@ -203,6 +207,7 @@ class EquipApp(tk.Tk):
         self.tabbar.pack_propagate(False)
         self._tab_btns = {}
         for key, label in (("param", "파라미터 값 확인"), ("form", "양식 만들기"),
+                           ("commonality", "Commonality 조사"),
                            ("special", "특이사항"), ("reference", "참고자료"),
                            ("ip", "장비 IP")):
             b = tk.Button(self.tabbar, text=label, relief="flat", bd=0,
@@ -295,6 +300,9 @@ class EquipApp(tk.Tk):
             return
         if self.view == "form":
             self._view_form()
+            return
+        if self.view == "commonality":
+            self._view_commonality()
             return
         st = self._state()
         self.btn_back.config(state=("normal" if self.nav_idx > 0 else "disabled"))
@@ -2585,6 +2593,585 @@ class EquipApp(tk.Tk):
                     f"위치: {run_dir}\n\n지금 화면으로 열어 볼까요?"):
                 self._open_collation_view(final)
         self._run_busy("양식 확정 중…", work, done)
+
+    # ====================================================================
+    #  Commonality 조사 (Scanresult Lot 파라미터 공통성/변경 조사)
+    # ====================================================================
+    def _cm_roots(self) -> dict:
+        return self._cfg.setdefault("commonality_roots", {})
+
+    def _cm_step(self, parent, n, title, desc, buttons, done=False):
+        """조사 단계 카드 1개. buttons=[(라벨, 콜백, 강조여부)]."""
+        card = tk.Frame(parent, bg=self.p["surface"], bd=0, highlightthickness=1,
+                        highlightbackground=self.p["head_bg"])
+        card.pack(fill="x", padx=4, pady=5)
+        head = tk.Frame(card, bg=self.p["surface"])
+        head.pack(fill="x", padx=12, pady=(10, 2))
+        mark = "✓ " if done else f"{n}. "
+        tk.Label(head, text=mark + title, bg=self.p["surface"],
+                 fg=(self.p["ok"] if done else self.p["text"]),
+                 font=self.fonts["bold"]).pack(side="left")
+        if desc:
+            tk.Label(card, text=desc, bg=self.p["surface"], fg=self.p["muted"],
+                     font=self.fonts["sub"], justify="left", wraplength=760).pack(
+                     anchor="w", padx=12, pady=(0, 6))
+        if buttons:
+            bar = tk.Frame(card, bg=self.p["surface"])
+            bar.pack(fill="x", padx=12, pady=(0, 10))
+            for lbl, cb, primary in buttons:
+                tk.Button(bar, text=lbl, relief="flat", bd=0,
+                          bg=(self.p["primary"] if primary else self.p["head_bg"]),
+                          fg=("#ffffff" if primary else self.p["text"]),
+                          padx=12, pady=5, cursor="hand2", command=cb).pack(
+                          side="left", padx=(0, 6))
+        return card
+
+    def _view_commonality(self):
+        wrap = tk.Frame(self.body, bg=self.p["bg"])
+        wrap.pack(fill="both", expand=True)
+        canvas = tk.Canvas(wrap, bg=self.p["bg"], highlightthickness=0)
+        vbar = ttk.Scrollbar(wrap, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=self.p["bg"])
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="i")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
+
+        tk.Label(inner, text="Commonality 조사", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=8, pady=(14, 2))
+        tk.Label(inner, text="Scanresult 아래 여러 Lot의 파라미터가 바뀌었는지 조사합니다. "
+                            "호기 1대씩 진행 → 호기 취합·비교로 마무리.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=8, pady=(0, 8))
+
+        if not self.save_dir:
+            tk.Label(inner, text="먼저 저장 폴더를 지정하세요(파라미터 값 확인 탭의 ⋯파일).",
+                     bg=self.p["bg"], fg=self.p["danger"],
+                     font=self.fonts["sub"]).pack(anchor="w", padx=8)
+            return
+
+        cm = self._cm
+        machine = cm.get("machine")
+
+        # Step 1 — 호기 선택 + Scanresult 루트
+        mlabel = machine or "(미선택)"
+        root = self._cm_roots().get(machine, "") if machine else ""
+        desc1 = f"선택 호기: {mlabel}"
+        if machine:
+            desc1 += f"\nScanresult 루트: {root or '(미지정 — 지정 필요)'}"
+        self._cm_step(inner, 1, "조사할 장비(호기) 선택", desc1, [
+            ("호기 선택", self._cm_pick_machine, True),
+            *([("Scanresult 루트 지정", self._cm_choose_root, False)] if machine else []),
+        ], done=bool(machine and root))
+
+        if not (machine and root):
+            return
+
+        # Step 2 — Lot 계획 엑셀
+        n_plan = len(cm.get("plan_rows") or [])
+        self._cm_step(inner, 2, "Lot 계획 엑셀 (디바이스명/LOT번호/S·M/AOI호기)",
+                      f"업로드된 계획: {n_plan}행(이 호기 {mlabel} 기준 필터)"
+                      if n_plan else "템플릿을 만들어 채운 뒤 업로드하세요.", [
+                          ("템플릿 만들기", self._cm_make_template, False),
+                          ("계획 업로드", self._cm_upload_plan, True),
+                      ], done=bool(cm.get("lots")))
+
+        # Step 3 — 폴더 확인 + 복사
+        lots = cm.get("lots") or []
+        if lots:
+            ok = [l for l in lots if l.exists]
+            self._cm_step(inner, 3, "폴더 확인 및 안전 복사(원본 수정 금지)",
+                          f"조사 대상 Lot: {len(ok)}개(찾음). "
+                          f"복사됨: {'예' if cm.get('lot_dirs') else '아니오'}", [
+                              ("Lot 폴더 확인/추가", self._cm_confirm_lots, False),
+                              ("복사 실행", self._cm_copy, True),
+                          ], done=bool(cm.get("lot_dirs")))
+
+        # Step 4 — 양식 만들기
+        if cm.get("lot_dirs"):
+            self._cm_step(inner, 4, "조사할 파라미터 양식 만들기",
+                          f"양식 제목(레시피): {cm.get('recipe') or '(미지정)'}\n"
+                          "양식 만들기와 동일 방식(OpticPreset 추림·변환계수·추천 파라미터). "
+                          "Lot 간 구조가 다르면 확인창을 띄웁니다.", [
+                              ("Lot 구조 확인", self._cm_structure_check, False),
+                              ("양식 만들기/편집", self._cm_make_form, True),
+                          ], done=bool(cm.get("form_path")))
+
+        # Step 5 — 값 조사
+        if cm.get("form_path"):
+            self._cm_step(inner, 5, "Lot별 파라미터 값 조사 → 호기 결과 엑셀",
+                          f"결과: {os.path.basename(cm['result_path'])}"
+                          if cm.get("result_path") else "확정 양식 기준으로 Lot별 값을 채웁니다.",
+                          [("값 조사 실행", self._cm_collate, True),
+                           *([("결과 열기", lambda: self._open_in_excel(cm["result_path"]),
+                              False)] if cm.get("result_path") else [])],
+                          done=bool(cm.get("result_path")))
+
+        # Step 6/7 — 호기 취합·비교 + 뷰어 (호기 무관, 항상 노출)
+        n_res = len(workdirs.list_commonality_results(self.save_dir))
+        self._cm_step(inner, 6, "호기별 조사 결과 취합·비교 + 뷰어",
+                      f"저장된 호기 결과 파일: {n_res}개. 파라미터 항목 비교 후 "
+                      "과반수와 다른 값을 색칠하고, 변경/이상치 뷰어를 엽니다.", [
+                          ("취합·비교 + 뷰어 열기", self._cm_compare, True),
+                      ])
+
+        # 새 호기 진행
+        tk.Button(inner, text="＋ 다른 호기로 새로 시작", relief="flat", bd=0,
+                  bg=self.p["head_bg"], fg=self.p["text"], padx=12, pady=5,
+                  cursor="hand2", command=self._cm_new).pack(anchor="w", padx=8, pady=10)
+
+    def _cm_new(self):
+        self._cm = {}
+        self._render()
+
+    def _cm_pick_machine(self):
+        machines = self._all_machines()
+        if not machines:
+            messagebox.showinfo("호기 없음", "장비 IP 주소에 호기가 없습니다. "
+                                "'장비 IP' 탭에서 먼저 등록하세요.")
+            return
+        win = tk.Toplevel(self)
+        win.title("조사할 호기 선택")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="Commonality 조사할 호기를 1대 선택하세요.", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["bold"]).pack(padx=16, pady=(12, 8))
+        lb = tk.Listbox(win, height=min(12, len(machines)), width=24,
+                        font=self.fonts["sub"], activestyle="dotbox")
+        for m in machines:
+            lb.insert("end", m)
+        lb.pack(padx=16, pady=(0, 8))
+
+        def ok():
+            sel = lb.curselection()
+            if not sel:
+                return
+            m = machines[sel[0]]
+            self._cm = {"machine": m}
+            win.destroy()
+            if not self._cm_roots().get(m):
+                self._cm_choose_root()
+            else:
+                self._render()
+        tk.Button(win, text="선택", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=5, cursor="hand2", command=ok).pack(
+                  pady=(0, 12))
+
+    def _cm_choose_root(self):
+        m = self._cm.get("machine")
+        if not m:
+            return
+        messagebox.showinfo(
+            "Scanresult 루트",
+            f"'{m}' 의 Scanresult 상위 폴더를 선택하세요.\n"
+            "예: X:\\ (그 아래 AOI-6\\Scanresult\\...) 또는 AOI 호기 폴더 자체.\n"
+            "한 번 지정하면 이 호기에 대해 자동 재사용됩니다(읽기 전용).")
+        d = filedialog.askdirectory(title=f"{m} Scanresult 상위 폴더 선택")
+        if not d:
+            return
+        self._cm_roots()[m] = d
+        save_config(self._cfg)
+        self._render()
+
+    def _cm_scan_root(self):
+        m = self._cm["machine"]
+        base = self._cm_roots().get(m, "")
+        return cm.scanresult_root(base, m)
+
+    def _cm_make_template(self):
+        path = filedialog.asksaveasfilename(
+            title="Lot 계획 템플릿 저장", defaultextension=".xlsx",
+            initialfile="Lot계획.xlsx", filetypes=[("Excel", "*.xlsx")])
+        if not path:
+            return
+        cm.create_plan_template(path)
+        if messagebox.askyesno("템플릿 생성",
+                               f"템플릿을 만들었습니다:\n{path}\n\n지금 Excel로 열까요?"):
+            self._open_in_excel(path)
+
+    def _cm_upload_plan(self):
+        m = self._cm.get("machine")
+        path = filedialog.askopenfilename(title="작성한 Lot 계획 엑셀 선택",
+                                          filetypes=[("Excel", "*.xlsx")])
+        if not path:
+            return
+
+        def work():
+            rows = cm.read_plan(path)
+            mine = cm.filter_plan_for_machine(rows, m)
+            root = self._cm_scan_root()
+            lots = cm.resolve_plan(root, mine)
+            return mine, lots
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("계획 읽기 실패", str(res))
+                return
+            mine, lots = res
+            self._cm["plan_path"] = path
+            self._cm["plan_rows"] = mine
+            self._cm["lots"] = lots
+            self._cm.pop("lot_dirs", None)
+            self._cm.pop("form_path", None)
+            self._cm.pop("result_path", None)
+            self._render()
+            if not mine:
+                messagebox.showwarning("계획 필터", f"'{m}' 호기에 해당하는 행이 없습니다. "
+                                       "AOI호기 열을 확인하세요.")
+            else:
+                self._cm_confirm_lots()
+        self._run_busy("Lot 폴더 확인 중…", work, done)
+
+    def _cm_confirm_lots(self):
+        lots = self._cm.get("lots") or []
+        win = tk.Toplevel(self)
+        win.title("Lot 폴더 확인")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="아래 Lot 폴더로 진행합니다. 없는 폴더는 사유를 확인하세요.",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                 anchor="w", padx=14, pady=(12, 6))
+        box = tk.Frame(win, bg=self.p["bg"])
+        box.pack(fill="both", expand=True, padx=14)
+        txt = tk.Text(box, height=min(16, max(4, len(lots) + 1)), width=88,
+                      font=self.fonts["sub"], wrap="none")
+        txt.pack(fill="both", expand=True)
+        for l in lots:
+            mark = "✓" if l.exists else "✗"
+            line = f"{mark}  {l.label}  ·  {l.device}/{l.lot}/{l.sm}"
+            if l.exists:
+                line += f"  →  {l.wafer_dir.name}"
+            else:
+                line += f"  ({l.reason})"
+            txt.insert("end", line + "\n")
+        txt.config(state="disabled")
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=14, pady=12)
+        tk.Button(bt, text="＋ Lot 폴더 추가", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=12, pady=5, cursor="hand2",
+                  command=lambda: (win.destroy(), self._cm_add_lot())).pack(side="left")
+        tk.Button(bt, text="이대로 진행(복사)", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=14, pady=5, cursor="hand2",
+                  command=lambda: (win.destroy(), self._cm_copy())).pack(side="right")
+        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=12,
+                  pady=5, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
+
+    def _cm_add_lot(self):
+        m = self._cm.get("machine")
+        win = tk.Toplevel(self)
+        win.title("Lot 폴더 추가")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        frm = tk.Frame(win, bg=self.p["bg"])
+        frm.pack(padx=16, pady=14)
+        vs = {}
+        for i, (key, lab) in enumerate((("디바이스명", "디바이스명"),
+                                        ("LOT번호", "LOT번호"), ("S/M", "S/M"))):
+            tk.Label(frm, text=lab + ":", bg=self.p["bg"], fg=self.p["text"],
+                     font=self.fonts["sub"]).grid(row=i, column=0, sticky="w", pady=3)
+            v = tk.StringVar()
+            tk.Entry(frm, textvariable=v, width=26, relief="solid", bd=1).grid(
+                row=i, column=1, padx=6, pady=3)
+            vs[key] = v
+
+        def ok():
+            root = self._cm_scan_root()
+            lot = cm.resolve_lot(root, vs["디바이스명"].get().strip(),
+                                 vs["LOT번호"].get().strip(), vs["S/M"].get().strip(), m)
+            self._cm.setdefault("lots", []).append(lot)
+            win.destroy()
+            if not lot.exists:
+                messagebox.showwarning("폴더 없음", f"폴더를 찾지 못했습니다: {lot.reason}")
+            self._cm_confirm_lots()
+        tk.Button(win, text="추가", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=5, cursor="hand2", command=ok).pack(
+                  pady=(0, 12))
+
+    def _cm_copy(self):
+        m = self._cm["machine"]
+        lots = [l for l in (self._cm.get("lots") or []) if l.exists]
+        if not lots:
+            messagebox.showwarning("복사 대상 없음", "찾은 Lot 폴더가 없습니다.")
+            return
+        st = workdirs.stamp()
+        run_dir = workdirs.commonality_run_dir(self.save_dir, m, st)
+        staging = workdirs.commonality_staging(run_dir)
+
+        def work():
+            lot_dirs = []
+            for l in lots:
+                res = cm.copy_lot(l, staging, verify=True)
+                lot_dirs.append((l.label, res["dest"]))
+            return run_dir, st, lot_dirs
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("복사 실패", str(res))
+                return
+            run_dir, st, lot_dirs = res
+            self._cm.update(run_dir=run_dir, st=st, staging=staging, lot_dirs=lot_dirs)
+            self._cm.pop("form_path", None)
+            self._cm.pop("result_path", None)
+            self._render()
+            messagebox.showinfo("복사 완료",
+                                f"{len(lot_dirs)}개 Lot을 안전 복사했습니다(원본 수정 없음).\n"
+                                f"위치: {staging}")
+        self._run_busy("Lot 파일 안전 복사 중…", work, done)
+
+    def _cm_structure_check(self):
+        from pathlib import Path
+        lot_dirs = [(lbl, Path(d))
+                    for lbl, d in (self._cm.get("lot_dirs") or [])]
+        if not lot_dirs:
+            return
+        level = self._cm.get("recipe", "")
+
+        def work():
+            return cm.structure_diff(lot_dirs, level=level)
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("구조 확인 실패", str(res))
+                return
+            if res["identical"]:
+                messagebox.showinfo("구조 확인", "모든 Lot의 파라미터 구조가 동일합니다.")
+                return
+            lines = ["Lot 간 파라미터 구조가 다릅니다(빠진 항목):\n"]
+            for lbl, info in res["lots"].items():
+                if info["missing"]:
+                    lines.append(f"[{lbl}] 빠짐 {len(info['missing'])}개: "
+                                 + ", ".join(info["missing"][:6])
+                                 + (" …" if len(info["missing"]) > 6 else ""))
+            messagebox.showwarning("구조 불일치", "\n".join(lines))
+        self._run_busy("Lot 구조 비교 중…", work, done)
+
+    def _cm_make_form(self):
+        from tkinter import simpledialog
+        recipe = self._cm.get("recipe") or ""
+        recipe = simpledialog.askstring(
+            "양식 제목", "조사 양식 제목(레시피명)을 입력하세요(예: PI3, RDL2, 또는 직접 입력):",
+            initialvalue=recipe, parent=self)
+        if not recipe:
+            return
+        recipe = recipe.strip()
+        self._cm["recipe"] = recipe
+        from pathlib import Path as _P
+        lot_dirs = [(lbl, _P(d)) for lbl, d in self._cm["lot_dirs"]]
+
+        # 변형·계수 감지(첫 Lot config 폴더 기준) → _ask_scales
+        def detect():
+            variants, dirs = [], {}
+            for _lbl, d in lot_dirs:
+                for c in ini_parser.scan_tree(d, default_level=recipe):
+                    v = c.mag or "(기본)"
+                    if v not in variants:
+                        variants.append(v)
+                        dirs[v] = c.config_dir
+            variants = variants or ["(기본)"]
+            reco = {}
+            for v in variants:
+                dd = dirs.get(v)
+                try:
+                    reco[v] = coef_detector.detect_from_dir(dd) if dd else None
+                except Exception:  # noqa: BLE001
+                    reco[v] = None
+            return variants, reco
+
+        def after(ok, res):
+            if not ok:
+                messagebox.showerror("변형 감지 실패", str(res))
+                return
+            variants, reco = res
+            scales_ui = self._ask_scales(variants, reco)
+            if scales_ui is None:
+                return
+            scale_map = {("" if k == "(기본)" else k): v for k, v in scales_ui.items()}
+            self._cm["scales"] = scale_map
+            self._cm_build_form(lot_dirs, recipe, scale_map)
+        self._run_busy("변형·계수 감지 중…", detect, after)
+
+    def _cm_build_form(self, lot_dirs, recipe, scale_map):
+        m, st = self._cm["machine"], self._cm["st"]
+        run_dir = self._cm["run_dir"]
+        draft = os.path.join(run_dir, f"양식초안_{recipe}_{m}_{st}.xlsx")
+
+        def work():
+            pivot, labels = cm.parse_lots(lot_dirs, level=recipe, scales=scale_map)
+            formbuilder.build_initial_workbook(pivot, draft, level=recipe,
+                                               source=f"commonality {recipe} / {m}")
+            return pivot, labels
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("초안 생성 실패", str(res))
+                return
+            pivot, labels = res
+            self._cm["pivot"], self._cm["labels"] = pivot, labels
+            opened = self._open_in_excel(draft)
+            self._cm_form_finalize_dialog(draft, recipe, opened)
+        self._run_busy("조사 양식 초안 생성 중…", work, done)
+
+    def _cm_form_finalize_dialog(self, draft, recipe, opened):
+        win = tk.Toplevel(self)
+        win.title("조사 양식 편집 완료")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        msg = (f"수정본 생성:\n{draft}\n\n"
+               + ("실제 Excel로 열었습니다. " if opened else
+                  "Excel을 자동으로 열지 못했습니다. 위 파일을 직접 여세요.\n")
+               + "'사용'·'최종 Parameter'를 편집·저장한 뒤 '편집 완료'를 누르세요.")
+        tk.Label(win, text=msg, bg=self.p["bg"], fg=self.p["text"], font=self.fonts["sub"],
+                 justify="left", wraplength=560).pack(padx=16, pady=(14, 10))
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=(0, 14))
+        tk.Button(bt, text="다시 열기", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=12, pady=6, cursor="hand2",
+                  command=lambda: self._open_in_excel(draft)).pack(side="left")
+        tk.Button(bt, text="편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=lambda: self._cm_form_finalize(draft, recipe, win)).pack(
+                  side="right")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=12,
+                  pady=6, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
+
+    def _cm_form_finalize(self, draft, recipe, win):
+        m, st = self._cm["machine"], self._cm["st"]
+        form = workdirs.commonality_form_path(self._cm["run_dir"], recipe, m, st)
+
+        def work():
+            return formbuilder.build_final_from_initial(
+                draft, form, user=self.user, level=recipe,
+                source=f"commonality {recipe}", scales=self._cm.get("scales"))
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("양식 확정 실패", str(res), parent=win)
+                return
+            win.destroy()
+            self._cm["form_path"] = form
+            self._render()
+            messagebox.showinfo("양식 확정", f"확정 양식 생성: {os.path.basename(form)}\n"
+                                f"항목 {res['kept']}개(제외 {res['dropped']}개).")
+        self._run_busy("조사 양식 확정 중…", work, done)
+
+    def _cm_collate(self):
+        recipe = self._cm["recipe"]
+        form = self._cm["form_path"]
+        m, st = self._cm["machine"], self._cm["st"]
+        pivot, labels = self._cm.get("pivot"), self._cm.get("labels")
+        result = workdirs.commonality_result_path(self._cm["run_dir"], recipe, m, st)
+
+        def work():
+            res = cm.collate_lots(recipe, form, pivot, labels)
+            cm.write_lot_result(result, recipe, m, res, labels)
+            return res
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("값 조사 실패", str(res))
+                return
+            self._cm["result_path"] = result
+            self._render()
+            messagebox.showinfo("값 조사 완료",
+                                f"호기 결과 저장: {os.path.basename(result)}\n"
+                                f"매칭 {res.matched_rows}행, 채운 셀 {res.filled_cells}개.\n"
+                                + (f"불일치 {len(res.mismatches)}건." if res.mismatches else ""))
+        self._run_busy("Lot별 값 조사 중…", work, done)
+
+    def _cm_compare(self):
+        results = workdirs.list_commonality_results(self.save_dir)
+        if not results:
+            messagebox.showinfo("취합·비교", "저장된 호기 결과가 없습니다. 먼저 값 조사를 하세요.")
+            return
+        picked = filedialog.askopenfilenames(
+            title="취합·비교할 호기 결과 파일 선택(여러 개)",
+            initialdir=workdirs.commonality_root(self.save_dir),
+            filetypes=[("Excel", "*.xlsx")])
+        files = list(picked) if picked else results
+        st = workdirs.stamp()
+        out = workdirs.commonality_compare_path(self.save_dir, st)
+
+        def work():
+            comp = cm.build_comparison(files)
+            cm.write_comparison(out, comp, changed_only=False)
+            return comp
+
+        def done(ok, res):
+            if not ok:
+                messagebox.showerror("취합·비교 실패", str(res))
+                return
+            messagebox.showinfo("취합·비교 완료",
+                                f"비교 파일 저장: {os.path.basename(out)}\n"
+                                f"행 {len(res['rows'])}개, 변경 파라미터 "
+                                f"{len(res['changed_params'])}개.")
+            self._cm_open_viewer(res, out)
+        self._run_busy("호기 취합·비교 중…", work, done)
+
+    def _cm_open_viewer(self, comparison, out_path):
+        """변경/이상치 뷰어 — tksheet 격자(과반수 이탈 셀 색칠 + 변경열만 필터)."""
+        win = tk.Toplevel(self)
+        win.title("Commonality 뷰어 — 변경/이상치")
+        win.configure(bg=self.p["bg"])
+        win.geometry("1000x620")
+        bar = tk.Frame(win, bg=self.p["head_bg"])
+        bar.pack(fill="x")
+        only_var = tk.BooleanVar(value=True)
+        holder = tk.Frame(win, bg=self.p["bg"])
+        holder.pack(fill="both", expand=True)
+
+        def render():
+            for w in holder.winfo_children():
+                w.destroy()
+            changed_only = only_var.get()
+            params = (comparison["changed_params"] if changed_only
+                      else comparison["columns"][2:])
+            columns = ["LOT", "호기"] + list(params)
+            rows = comparison["rows"]
+            data = [[engine._s(r.get(c)) for c in columns] for r in rows]
+            s = Sheet(holder, theme="light blue", headers=columns, data=data,
+                      show_x_scrollbar=True, show_y_scrollbar=True,
+                      font=(self.p["family"], 10, "normal"),
+                      header_font=(self.p["family"], 10, "bold"))
+            s.enable_bindings("single_select", "drag_select", "arrowkeys", "copy",
+                              "column_width_resize", "row_select", "column_select")
+            s.set_options(show_vertical_grid=True, show_horizontal_grid=True)
+            # 과반수 이탈 셀 색칠
+            col_idx = {c: i for i, c in enumerate(columns)}
+            for (ri, pl) in comparison["outliers"]:
+                if pl in col_idx and ri < len(rows):
+                    try:
+                        s.highlight_cells(row=ri, column=col_idx[pl],
+                                          bg=f"#{cm.MISMATCH_FILL}", fg="#7A4E00")
+                    except Exception:  # noqa: BLE001
+                        pass
+            s.pack(fill="both", expand=True)
+
+        tk.Label(bar, text="  변경/이상치 뷰어 — 노란 셀 = 과반수와 다른 값",
+                 bg=self.p["head_bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(side="left", padx=8, pady=6)
+        tk.Checkbutton(bar, text="변경된 파라미터만 보기", variable=only_var,
+                       bg=self.p["head_bg"], fg=self.p["text"], selectcolor=self.p["bg"],
+                       activebackground=self.p["head_bg"], font=self.fonts["sub"],
+                       command=render).pack(side="left", padx=8)
+        tk.Button(bar, text="비교 엑셀 열기", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=10, pady=4, cursor="hand2",
+                  command=lambda: self._open_in_excel(out_path)).pack(side="right", padx=8)
+
+        # 파라미터별 이탈 요약
+        summ = tk.Frame(win, bg=self.p["bg"])
+        summ.pack(fill="x")
+        n_changed = len(comparison["changed_params"])
+        tk.Label(summ, text=f"  변경 파라미터 {n_changed}개 · 이탈 셀 "
+                            f"{len(comparison['outliers'])}개",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left", padx=8, pady=4)
+        render()
 
     def _load_previous_form(self):
         """이전 버전 불러오기 — 레시피 → 생성시간(버전) 선택 → 확정 양식 열기."""
