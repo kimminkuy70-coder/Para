@@ -621,3 +621,77 @@ def write_comparison(dest_xlsx: str, comparison: dict,
     ws.column_dimensions["B"].width = 10
     wb.save(dest_xlsx)
     return dest_xlsx
+
+
+# --------------------------------------------------------------------------
+# 여러 '취합비교' 파일을 하나로 합치기 (호기별 비교표 → 통합 비교표)
+# --------------------------------------------------------------------------
+def read_comparison_file(path: str) -> dict:
+    """'취합비교' 엑셀 → {columns, rows, fail_rows}. fail_rows=S/M칸이 노란색인 행."""
+    wb = openpyxl.load_workbook(path)          # 스타일(색) 보존
+    ws = wb["취합비교"] if "취합비교" in wb.sheetnames else wb[wb.sheetnames[0]]
+    heads = [engine._s(c.value).strip() for c in ws[1]]
+    rows: list[dict] = []
+    fail_rows: set = set()
+    for row in ws.iter_rows(min_row=2):
+        vals = [c.value for c in row]
+        if all(v in (None, "") for v in vals):
+            continue
+        rec = {heads[i]: vals[i] for i in range(len(heads)) if i < len(vals) and heads[i]}
+        if str(row[0].fill.fgColor.rgb or "").upper().endswith(FAIL_FILL):
+            fail_rows.add(len(rows))
+        rows.append(rec)
+    wb.close()
+    return {"columns": heads, "rows": rows, "fail_rows": fail_rows}
+
+
+def merge_comparisons(files: list[str]) -> dict:
+    """여러 '취합비교' 파일 → 하나의 통합 비교(dict). build_comparison 과 같은 형식.
+
+    - 행: 모든 파일의 (S/M, 호기) 행을 그대로 쌓음.
+    - 열: 파라미터 열을 **이름 합집합** + 비슷한 Zone 끼리 정렬(AL PAD/PAD 인접).
+    - 색칠: 합친 전체 기준으로 과반수 이탈 재계산 + 원본 fail(노란색) 행 유지.
+    """
+    params: list[str] = []
+    seen: set = set()
+    rows: list[dict] = []
+    fail_rows: set = set()
+    for path in files:
+        data = read_comparison_file(path)
+        heads = data["columns"]
+        pcols = [h for h in heads[2:] if h]
+        for p in pcols:
+            if p not in seen:
+                seen.add(p)
+                params.append(p)
+        sm_h = heads[0] if heads else "S/M"
+        mc_h = heads[1] if len(heads) > 1 else "호기"
+        for k, rec in enumerate(data["rows"]):
+            if k in data["fail_rows"]:
+                fail_rows.add(len(rows))
+            row = {"S/M": rec.get(sm_h), "호기": rec.get(mc_h)}
+            for p in pcols:
+                row[p] = rec.get(p)
+            rows.append(row)
+
+    params.sort(key=_zone_sort_key)
+    outliers: set = set()
+    changed: list[str] = []
+    for pl in params:
+        vals = [engine._s(r.get(pl)) for r in rows if engine._s(r.get(pl)) != ""]
+        if not vals:
+            continue
+        common, _ = Counter(vals).most_common(1)[0]
+        if len(set(vals)) > 1:
+            changed.append(pl)
+        for i, r in enumerate(rows):
+            v = engine._s(r.get(pl))
+            if v != "" and v != common:
+                outliers.add((i, pl))
+    return {"columns": ["S/M", "호기"] + params, "rows": rows,
+            "outliers": outliers, "fail_rows": fail_rows, "changed_params": changed}
+
+
+def merge_comparison_files(files: list[str], dest_xlsx: str) -> str:
+    """여러 '취합비교' 파일을 하나의 엑셀로 합쳐 저장. 반환: dest_xlsx."""
+    return write_comparison(dest_xlsx, merge_comparisons(files), changed_only=False)

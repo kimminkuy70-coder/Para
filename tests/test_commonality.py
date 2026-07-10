@@ -314,6 +314,43 @@ def test_fail_flag_colors_result_and_comparison():
     print("  commonality OK: fail S/M → 결과·비교표 노란색 색칠")
 
 
+def test_merge_comparison_files():
+    """여러 '취합비교' 파일 → 통합(행 합산·열 합집합·이탈 재계산)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        # 파일 A: 파라미터 P1,P2 / 행 2개
+        compA = {"columns": ["S/M", "호기", "Z / A / P1", "Z / A / P2"],
+                 "rows": [{"S/M": "AAA", "호기": "AOI-6", "Z / A / P1": "10", "Z / A / P2": "5"},
+                          {"S/M": "BBB", "호기": "AOI-6", "Z / A / P1": "10", "Z / A / P2": "9"}],
+                 "outliers": set(), "fail_rows": set(), "changed_params": []}
+        # 파일 B: 파라미터 P2,P3(P1 없음) / 행 1개
+        compB = {"columns": ["S/M", "호기", "Z / A / P2", "Z / A / P3"],
+                 "rows": [{"S/M": "CCC", "호기": "AOI-7", "Z / A / P2": "5", "Z / A / P3": "1"}],
+                 "outliers": set(), "fail_rows": set(), "changed_params": []}
+        fa = os.path.join(tmp, "취합비교_A.xlsx")
+        fb = os.path.join(tmp, "취합비교_B.xlsx")
+        commonality.write_comparison(fa, compA)
+        commonality.write_comparison(fb, compB)
+
+        merged = commonality.merge_comparisons([fa, fb])
+        # 행: 2 + 1 = 3
+        assert len(merged["rows"]) == 3
+        # 열: P1,P2,P3 합집합(3개)
+        params = merged["columns"][2:]
+        assert set(params) == {"Z / A / P1", "Z / A / P2", "Z / A / P3"}
+        # P2 값 = 5,9,5 → 과반수 5, BBB(9)만 이탈
+        p2 = "Z / A / P2"
+        bad = {i for (i, c) in merged["outliers"] if c == p2}
+        vals = [engine._s(r.get(p2)) for r in merged["rows"]]
+        assert vals.count("9") == 1 and bad == {vals.index("9")}
+        # 파일로도 저장되는지
+        out = os.path.join(tmp, "통합.xlsx")
+        commonality.merge_comparison_files([fa, fb], out)
+        ws = openpyxl.load_workbook(out)["취합비교"]
+        assert ws.cell(row=1, column=1).value == "S/M"
+        assert ws.max_row == 4      # 헤더 + 3행
+    print("  commonality OK: 취합비교 파일 병합(행합산·열합집합·이탈 재계산)")
+
+
 def test_zone_group_sort_adjacent():
     """비슷한 Zone(AL PAD / PAD)이 비교표 열에서 인접하게 정렬돼야 한다."""
     labels = [
