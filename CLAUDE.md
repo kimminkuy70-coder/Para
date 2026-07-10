@@ -108,7 +108,7 @@ python3 tests/test_formbuilder.py  # 3  (초안 생성·편집→확정 양식·
 python3 tests/test_collate.py      # 2  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_commonality.py  # 6  (Lot 계획·폴더해석·안전복사·구조diff·취합·이탈색칠)
+python3 tests/test_commonality.py  # 7  (Lot 계획·폴더해석·폴더변형·안전복사·구조diff·취합·이탈색칠)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)

@@ -62,6 +62,33 @@ def test_resolve_plan_found_and_missing():
     print("  commonality OK: 폴더 해석(디바이스+LOT+S/M) + 이름순 첫 웨이퍼 + 실패사유")
 
 
+def test_real_world_folder_variants():
+    """실제 환경 변형 흡수: Scanresult_260401 폴더명 + AOI-9 vs AOI-09(0패딩)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        # 실제 경로: W:/AOI-9/Scanresult_260401/2D@RE-DEV..._x/6412/HCH/wafer
+        w = (Path(tmp) / "AOI-9" / "Scanresult_260401"
+             / "2D@RE-L6WZ30001-00001_0852445PD-0C" / "6412" / "HCH" / "65349540001")
+        (w / "Zones").mkdir(parents=True)
+        (w / "Zones" / "Z.ini").write_text(ZONE.format(delta=25), encoding="utf-8")
+        (w / "OpticPreset.ini").write_text(OPTIC, encoding="utf-8")
+        (w / "RTP.txt").write_text("x", encoding="utf-8")
+
+        # base=tmp, 선택 호기="AOI-09"(0패딩 다름) → 루트가 AOI-9/Scanresult_260401 로 해석
+        root = commonality.scanresult_root(tmp, "AOI-09")
+        assert root.name == "Scanresult_260401"
+        # 계획 필터도 AOI-9 == AOI-09
+        plan = [{"디바이스명": "L6WZ30001-00001", "LOT번호": "6412", "S/M": "HCH",
+                 "AOI호기": "AOI-09"}]
+        assert len(commonality.filter_plan_for_machine(plan, "AOI-9")) == 1
+        # 폴더 해석 성공(디바이스명 포함 매칭)
+        lot = commonality.resolve_lot(root, "L6WZ30001-00001", "6412", "HCH", "AOI-9")
+        assert lot.exists and lot.wafer_dir.name == "65349540001"
+        # LOT 오타(6421)면 실패 + 사유
+        bad = commonality.resolve_lot(root, "L6WZ30001-00001", "6421", "HCH", "AOI-9")
+        assert not bad.exists and "LOT" in bad.reason
+    print("  commonality OK: Scanresult_260401 폴더명 + AOI-9/AOI-09 + LOT 오타 사유")
+
+
 def test_copy_lot_read_only():
     with tempfile.TemporaryDirectory() as tmp:
         w = _make_wafer(tmp, "AOI-6", "2D@DEVB_x", "6400", "HPG", "CX10")

@@ -97,9 +97,9 @@ def read_plan(path: str) -> list[dict]:
 
 
 def filter_plan_for_machine(plan_rows: list[dict], machine: str) -> list[dict]:
-    """선택한 호기(AOI호기) 행만 필터. 정규화 비교(대소문자/구분자 무시)."""
-    mk = _norm(machine)
-    return [r for r in plan_rows if _norm(r.get("AOI호기")) == mk]
+    """선택한 호기(AOI호기) 행만 필터. 호기 정규화 비교(AOI-9 == AOI-09)."""
+    mk = _aoi_norm(machine)
+    return [r for r in plan_rows if _aoi_norm(r.get("AOI호기")) == mk]
 
 
 # --------------------------------------------------------------------------
@@ -108,6 +108,15 @@ def filter_plan_for_machine(plan_rows: list[dict], machine: str) -> list[dict]:
 def _norm(s) -> str:
     """매칭용 정규화 — 소문자화 + 영숫자/한글만(구분자 -,_,공백,@ 제거)."""
     return re.sub(r"[^0-9a-z가-힣]", "", str(s or "").lower())
+
+
+def _aoi_norm(s) -> str:
+    """호기 식별용 정규화 — 숫자의 앞 0 무시(AOI-9 == AOI-09 == AOI_9)."""
+    s = str(s or "")
+    letters = re.sub(r"[^a-z]", "", s.lower())
+    m = re.search(r"(\d+)", s)
+    num = str(int(m.group(1))) if m else ""
+    return letters + num
 
 
 @dataclass
@@ -125,21 +134,60 @@ class LotFolder:
     reason: str = ""                  # 실패 사유(폴더 없음 등)
 
 
+def _is_scanresult_name(name: str) -> bool:
+    """'Scanresult' 및 변형(Scanresult_260401 등) 인식."""
+    return _norm(name).startswith("scanresult")
+
+
+def _find_scanresult_dir(parent: Path) -> Path | None:
+    """parent 바로 아래에서 'Scanresult*' 폴더(이름순 첫)."""
+    if not parent.is_dir():
+        return None
+    try:
+        hits = sorted((p for p in parent.iterdir()
+                       if p.is_dir() and _is_scanresult_name(p.name)),
+                      key=lambda x: x.name.lower())
+    except OSError:
+        return None
+    return hits[0] if hits else None
+
+
+def _find_machine_dir(parent: Path, machine: str) -> Path | None:
+    """parent 아래에서 호기 폴더(AOI 번호 정규화 — AOI-9 == AOI-09)."""
+    if not parent.is_dir():
+        return None
+    mk = _aoi_norm(machine)
+    if not mk:
+        return None
+    try:
+        for p in parent.iterdir():
+            if p.is_dir() and _aoi_norm(p.name) == mk:
+                return p
+    except OSError:
+        return None
+    return None
+
+
 def scanresult_root(root_base: str, machine: str) -> Path:
-    """호기 루트 base → '{base}/{호기}/Scanresult'. base 가 이미 호기별이면 그대로."""
+    """호기 루트 base → Scanresult 폴더. 실제 폴더 변형에 견고하게:
+      - Scanresult 폴더명 변형(Scanresult_260401 등) 인식,
+      - 호기 폴더 AOI 번호 0 패딩 차이(AOI-9 == AOI-09) 흡수.
+    base 는 W:\\ 같은 상위, W:\\AOI-9(호기폴더), 또는 Scanresult 폴더 자체 모두 허용."""
     base = Path(root_base)
-    # base 가 이미 .../{호기} 또는 .../{호기}/Scanresult 인 경우도 허용
-    if base.name.lower() == "scanresult":
+    if _is_scanresult_name(base.name):        # base 가 Scanresult* 자체
         return base
-    cand = base / machine / "Scanresult"
-    if cand.is_dir():
-        return cand
-    cand2 = base / "Scanresult"
-    if cand2.is_dir():
-        return cand2
-    if (base / machine).is_dir():
-        return base / machine / "Scanresult"
-    return cand
+    sr = _find_scanresult_dir(base)           # base 가 호기 폴더 → 바로 아래 Scanresult*
+    if sr:
+        return sr
+    mdir = _find_machine_dir(base, machine)   # base 아래 호기 폴더 탐색(0패딩 흡수)
+    if mdir is None and (base / machine).is_dir():
+        mdir = base / machine
+    if mdir is not None:
+        sr = _find_scanresult_dir(mdir)
+        if sr:
+            return sr
+        return mdir / "Scanresult"
+    return base / machine / "Scanresult"
 
 
 def _find_child(parent: Path, name: str, *, contains: bool = True) -> Path | None:
