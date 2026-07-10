@@ -89,6 +89,68 @@ def test_real_world_folder_variants():
     print("  commonality OK: Scanresult_260401 폴더명 + AOI-9/AOI-09 + LOT 오타 사유")
 
 
+def test_multiple_recipe_folders_and_multimachine_filter():
+    """같은 디바이스가 여러 2D@ 레시피 폴더로 나뉘고, 공정 폴더가 두 번째
+    폴더에만 있어도 찾아야 한다. 또 'AOI-4,6,9' 한 칸 여러 호기 필터."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "AOI-9" / "Scanresult_260401"
+        # 디바이스 L6WZ30001-00001 의 레시피 폴더 2개: _0A(6412 없음), _0C(6412 있음)
+        (base / "2D@RE-L6WZ30001-00001_0852445PD-0A" / "9999" / "ZZZ" / "w0"
+         / "Zones").mkdir(parents=True)
+        good = (base / "2D@RE-L6WZ30001-00001_0852445PD-0C" / "6412" / "HCH"
+                / "65349540001")
+        (good / "Zones").mkdir(parents=True)
+        (good / "Zones" / "Z.ini").write_text(ZONE.format(delta=25), encoding="utf-8")
+        (good / "OpticPreset.ini").write_text(OPTIC, encoding="utf-8")
+        (good / "RTP.txt").write_text("x", encoding="utf-8")
+
+        root = commonality.scanresult_root(tmp, "AOI-9")
+        lot = commonality.resolve_lot(root, "L6WZ30001-00001", "6412", "HCH", "AOI-9")
+        assert lot.exists, f"두 번째 레시피 폴더의 6412 를 못 찾음: {lot.reason}"
+        assert lot.wafer_dir.name == "65349540001"
+
+        # 여러 호기 한 칸: AOI-4,6,9 → AOI-9 로 필터되어야 함
+        plan = [{"디바이스명": "D", "공정번호": "6412", "S/M": "YYH", "AOI호기": "AOI-4,6,9"},
+                {"디바이스명": "D", "공정번호": "6412", "S/M": "YYA", "AOI호기": "AOI-05"}]
+        got = commonality.filter_plan_for_machine(plan, "AOI-09")
+        assert len(got) == 1 and got[0]["S/M"] == "YYH"
+    print("  commonality OK: 여러 레시피 폴더 탐색 + 여러 호기 한 칸 필터")
+
+
+def test_intermediate_level_and_no_numeric_mismatch():
+    """공정 폴더가 중간 폴더 아래 있어도 찾고(BFS), 6412 가 64120 에 오매칭 안 됨."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "AOI-9" / "Scanresult"
+        dev = base / "2D@X-DEVQ-1_0A"
+        # 헷갈리게 하는 폴더: 64120(오매칭 유발) + 중간폴더 SUB 아래 진짜 6412
+        (dev / "64120" / "AAA" / "w0" / "Zones").mkdir(parents=True)
+        good = dev / "SUB" / "6412" / "HCH" / "wafer1"
+        (good / "Zones").mkdir(parents=True)
+        (good / "Zones" / "Z.ini").write_text(ZONE.format(delta=25), encoding="utf-8")
+        (good / "RTP.txt").write_text("x", encoding="utf-8")
+        root = commonality.scanresult_root(tmp, "AOI-9")
+        lot = commonality.resolve_lot(root, "DEVQ-1", "6412", "HCH", "AOI-9")
+        assert lot.exists and lot.wafer_dir.name == "wafer1", lot.reason
+        assert "6412" in str(lot.wafer_dir) and "64120" not in str(lot.wafer_dir)
+    print("  commonality OK: 중간 폴더 BFS + 숫자 오매칭 방지(6412≠64120)")
+
+
+def test_read_plan_legacy_header():
+    """구 템플릿 헤더(LOT번호)도 공정번호로 읽혀야 한다(하위호환)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        p = os.path.join(tmp, "old.xlsx")
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Lot목록"
+        ws.append(["디바이스명", "LOT번호", "S/M", "AOI호기"])   # 구 헤더
+        ws.append(["S6WC61001-00001", 6412, "YYA", "AOI-09"])    # 숫자 6412
+        wb.save(p)
+        rows = commonality.read_plan(p)
+        assert rows[0]["공정번호"] == "6412"     # 별칭 + 문자열화
+        assert commonality.filter_plan_for_machine(rows, "AOI-9")[0]["S/M"] == "YYA"
+    print("  commonality OK: 구 헤더(LOT번호) 하위호환 + 숫자 공정번호")
+
+
 def test_copy_lot_read_only():
     with tempfile.TemporaryDirectory() as tmp:
         w = _make_wafer(tmp, "AOI-6", "2D@DEVB_x", "6400", "HPG", "CX10")

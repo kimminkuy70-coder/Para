@@ -39,6 +39,9 @@ from . import collate, downloader, engine, ini_parser
 # Lot 계획 엑셀 (디바이스명 / 공정번호 / S/M / AOI호기)
 # --------------------------------------------------------------------------
 PLAN_HEADERS = ["디바이스명", "공정번호", "S/M", "AOI호기"]
+# 구 템플릿(LOT번호) 하위호환 — 읽을 때 공정번호로 통일.
+_HEADER_ALIASES = {"LOT번호": "공정번호", "LOT": "공정번호", "공정 번호": "공정번호",
+                   "공정 Number": "공정번호"}
 
 # 취합 비교에서 값이 과반수와 다를 때 칠하는 색(연한 주황).
 MISMATCH_FILL = "FFF2CC"
@@ -82,6 +85,7 @@ def read_plan(path: str) -> list[dict]:
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb["Lot목록"] if "Lot목록" in wb.sheetnames else wb[wb.sheetnames[0]]
     heads = [engine._s(c.value).strip() for c in ws[1]]
+    heads = [_HEADER_ALIASES.get(h, h) for h in heads]   # 구 'LOT번호' → '공정번호'
     hidx = {h: i for i, h in enumerate(heads) if h}
     out = []
     for row in ws.iter_rows(min_row=2, values_only=True):
@@ -96,10 +100,18 @@ def read_plan(path: str) -> list[dict]:
     return out
 
 
+def _machine_ids(text) -> set:
+    """호기 셀에서 호기 번호 집합 추출. 'AOI-09'→{9}, 'AOI-4,6,9'→{4,6,9}."""
+    return {int(n) for n in re.findall(r"\d+", str(text or ""))}
+
+
 def filter_plan_for_machine(plan_rows: list[dict], machine: str) -> list[dict]:
-    """선택한 호기(AOI호기) 행만 필터. 호기 정규화 비교(AOI-9 == AOI-09)."""
-    mk = _aoi_norm(machine)
-    return [r for r in plan_rows if _aoi_norm(r.get("AOI호기")) == mk]
+    """선택한 호기 행만 필터. 0패딩(AOI-9==AOI-09)·여러 호기 한 칸(AOI-4,6,9) 지원."""
+    want = _machine_ids(machine)
+    if not want:
+        return []
+    wnum = next(iter(want))               # 선택 호기는 1개
+    return [r for r in plan_rows if wnum in _machine_ids(r.get("AOI호기"))]
 
 
 # --------------------------------------------------------------------------
@@ -190,27 +202,56 @@ def scanresult_root(root_base: str, machine: str) -> Path:
     return base / machine / "Scanresult"
 
 
-def _find_child(parent: Path, name: str, *, contains: bool = True) -> Path | None:
-    """parent 아래에서 name 과 일치(정규화)하는 폴더. 정확 일치 우선, 없으면 포함."""
+def _find_children(parent: Path, name: str, *, contains: bool = True) -> list[Path]:
+    """parent 아래에서 name 과 일치(정규화)하는 폴더 **후보 전부**(이름순).
+    정확 일치가 있으면 그 집합, 없으면 포함 매칭 집합. 같은 디바이스가 여러
+    레시피 폴더(2D@..._0A/_0C 등)로 나뉘어 있을 수 있어 후보를 모두 돌려준다."""
     if not parent.is_dir():
-        return None
+        return []
     try:
-        dirs = [p for p in parent.iterdir() if p.is_dir()]
+        dirs = sorted((p for p in parent.iterdir() if p.is_dir()),
+                      key=lambda x: x.name.lower())
     except OSError:
-        return None
+        return []
     nk = _norm(name)
     if not nk:
-        return None
-    for p in dirs:                       # 1) 정규화 정확 일치
-        if _norm(p.name) == nk:
-            return p
-    if contains:                         # 2) 정규화 포함(디바이스명이 폴더명 일부)
-        hits = [p for p in dirs if nk in _norm(p.name)]
-        if len(hits) == 1:
-            return hits[0]
-        if hits:                         # 여러 개면 이름순 첫 번째(결정적)
-            return sorted(hits, key=lambda x: x.name.lower())[0]
-    return None
+        return []
+    exact = [p for p in dirs if _norm(p.name) == nk]
+    if exact:
+        return exact
+    if contains:
+        return [p for p in dirs if nk in _norm(p.name)]
+    return []
+
+
+def _find_child(parent: Path, name: str, *, contains: bool = True) -> Path | None:
+    """후보 중 첫 번째(하위호환)."""
+    hits = _find_children(parent, name, contains=contains)
+    return hits[0] if hits else None
+
+
+def _bfs_exact(parent: Path, name: str, max_depth: int = 3) -> list[Path]:
+    """parent 이하 max_depth 단계까지 **정규화 정확일치** 폴더(가장 얕은 깊이 우선).
+    공정번호처럼 숫자라 포함매칭이 위험할 때, 중간 폴더가 한 단계 더 있어도 찾는다."""
+    nk = _norm(name)
+    if not parent.is_dir() or not nk:
+        return []
+    level = [parent]
+    for _ in range(max_depth):
+        found, nxt = [], []
+        for d in level:
+            try:
+                kids = [p for p in d.iterdir() if p.is_dir()]
+            except OSError:
+                kids = []
+            for k in kids:
+                if _norm(k.name) == nk:
+                    found.append(k)
+                nxt.append(k)
+        if found:
+            return sorted(found, key=lambda x: x.name.lower())
+        level = nxt
+    return []
 
 
 def _first_wafer(sm_dir: Path) -> Path | None:
@@ -228,32 +269,43 @@ def _first_wafer(sm_dir: Path) -> Path | None:
 def resolve_lot(scan_root: Path, device: str, lot: str, sm: str,
                 machine: str = "") -> LotFolder:
     """디바이스명 + 공정번호 + S/M → LotFolder(웨이퍼 폴더 확정 + 대상파일 확인).
-    lot 인자 = 공정번호(폴더 레벨)."""
+    lot 인자 = 공정번호(폴더 레벨). 같은 디바이스/공정이 여러 레시피 폴더로
+    나뉘어 있을 수 있어 **모든 후보를 탐색**해 실제로 존재하는 조합을 찾는다."""
     label = "_".join(x for x in (lot, sm) if x) or device or "lot"
     lf = LotFolder(device=device, lot=lot, sm=sm, machine=machine, label=label)
-    dev_dir = _find_child(scan_root, device)
-    if dev_dir is None:
+    dev_dirs = _find_children(scan_root, device)
+    if not dev_dirs:
         lf.reason = f"디바이스 폴더 없음: {device}"
         return lf
-    lot_dir = _find_child(dev_dir, lot)
-    if lot_dir is None:
+    reached_lot = reached_sm = False
+    for dev_dir in dev_dirs:
+        # 공정번호는 숫자 → 정확일치만(6412 가 64120/16412 에 오매칭되지 않게).
+        # 바로 아래 없으면 중간 폴더 한두 단계까지 하위탐색.
+        lot_dirs = _find_children(dev_dir, lot, contains=False) \
+            or _bfs_exact(dev_dir, lot, max_depth=3)
+        for lot_dir in lot_dirs:
+            reached_lot = True
+            sm_dirs = (_find_children(lot_dir, sm) or _bfs_exact(lot_dir, sm, 2)) \
+                if sm else [lot_dir]
+            for sm_dir in sm_dirs:
+                reached_sm = True
+                wafer = _first_wafer(sm_dir)
+                if wafer is None:
+                    continue
+                z = (wafer / downloader.TARGET_FOLDER_NAME).is_dir()
+                r = (wafer / "RTP.txt").is_file()
+                o = (wafer / "OpticPreset.ini").is_file()
+                lf.wafer_dir, lf.exists = wafer, True
+                lf.has_zones, lf.has_rtp, lf.has_optic = z, r, o
+                if not (z or r or o):
+                    lf.reason = "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
+                return lf
+    if not reached_lot:
         lf.reason = f"공정 폴더 없음: {lot}"
-        return lf
-    sm_dir = _find_child(lot_dir, sm) if sm else lot_dir
-    if sm_dir is None:
+    elif not reached_sm:
         lf.reason = f"S/M 폴더 없음: {sm}"
-        return lf
-    wafer = _first_wafer(sm_dir)
-    if wafer is None:
+    else:
         lf.reason = "웨이퍼 폴더 없음"
-        return lf
-    z = (wafer / downloader.TARGET_FOLDER_NAME).is_dir()
-    r = (wafer / "RTP.txt").is_file()
-    o = (wafer / "OpticPreset.ini").is_file()
-    lf.wafer_dir, lf.exists = wafer, True
-    lf.has_zones, lf.has_rtp, lf.has_optic = z, r, o
-    if not (z or r or o):
-        lf.reason = "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
     return lf
 
 
