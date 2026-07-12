@@ -89,6 +89,28 @@ def test_real_world_folder_variants():
     print("  commonality OK: Scanresult_260401 폴더명 + AOI-9/AOI-09 + LOT 오타 사유")
 
 
+def test_multiple_scanresult_backups():
+    """호기 폴더 아래 Scanresult 백업본이 여러 개면 전부 탐색해 Lot 을 찾는다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        mdir = Path(tmp) / "AOI-9"
+        # 현재본엔 6412 없음, 백업본에만 있음
+        (mdir / "Scanresult" / "2D@X-DEVZ_0A" / "9999" / "AAA" / "w0" / "Zones").mkdir(parents=True)
+        good = (mdir / "SCANRESULT_BACKUP_260805" / "2D@X-DEVZ_0A" / "6412" / "HCH" / "w1")
+        (good / "Zones").mkdir(parents=True)
+        (good / "Zones" / "Z.ini").write_text(ZONE.format(delta=25), encoding="utf-8")
+        (good / "RTP.txt").write_text("x", encoding="utf-8")
+        # 또 다른 백업본
+        (mdir / "Scanresult_260402").mkdir(parents=True)
+
+        roots = commonality.scanresult_roots(tmp, "AOI-9")
+        assert len(roots) == 3, [p.name for p in roots]   # 3개 모두 탐색 대상
+        # 호기 폴더만 줘도(=tmp 아래 AOI-9) 백업본의 6412 를 찾음
+        lot = commonality.resolve_lot(roots, "DEVZ", "6412", "HCH", "AOI-9")
+        assert lot.exists and lot.wafer_dir.name == "w1", lot.reason
+        assert "BACKUP" in str(lot.wafer_dir)
+    print("  commonality OK: Scanresult 백업본 다중 탐색(호기 폴더만 지정)")
+
+
 def test_multiple_recipe_folders_and_multimachine_filter():
     """같은 디바이스가 여러 2D@ 레시피 폴더로 나뉘고, 공정 폴더가 두 번째
     폴더에만 있어도 찾아야 한다. 또 'AOI-4,6,9' 한 칸 여러 호기 필터."""

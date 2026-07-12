@@ -162,16 +162,21 @@ def _is_scanresult_name(name: str) -> bool:
     return _norm(name).startswith("scanresult")
 
 
-def _find_scanresult_dir(parent: Path) -> Path | None:
-    """parent 바로 아래에서 'Scanresult*' 폴더(이름순 첫)."""
+def _find_scanresult_dirs(parent: Path) -> list[Path]:
+    """parent 바로 아래 'Scanresult*' 폴더 **전부**(백업본 포함, 이름순)."""
     if not parent.is_dir():
-        return None
+        return []
     try:
-        hits = sorted((p for p in parent.iterdir()
+        return sorted((p for p in parent.iterdir()
                        if p.is_dir() and _is_scanresult_name(p.name)),
                       key=lambda x: x.name.lower())
     except OSError:
-        return None
+        return []
+
+
+def _find_scanresult_dir(parent: Path) -> Path | None:
+    """parent 바로 아래 'Scanresult*' 폴더 하나(이름순 첫, 하위호환)."""
+    hits = _find_scanresult_dirs(parent)
     return hits[0] if hits else None
 
 
@@ -191,26 +196,34 @@ def _find_machine_dir(parent: Path, machine: str) -> Path | None:
     return None
 
 
-def scanresult_root(root_base: str, machine: str) -> Path:
-    """호기 루트 base → Scanresult 폴더. 실제 폴더 변형에 견고하게:
-      - Scanresult 폴더명 변형(Scanresult_260401 등) 인식,
-      - 호기 폴더 AOI 번호 0 패딩 차이(AOI-9 == AOI-09) 흡수.
-    base 는 W:\\ 같은 상위, W:\\AOI-9(호기폴더), 또는 Scanresult 폴더 자체 모두 허용."""
+def scanresult_roots(root_base: str, machine: str) -> list[Path]:
+    """호기 폴더만 지정하면 그 아래 **Scanresult 폴더 전부**(백업본 포함) 반환.
+
+    예: W:\\AOI-9 아래 Scanresult / Scanresult_260402 / SCANRESULT_BACKUP_260805 가
+    있으면 **모두** 반환해 Lot 을 여기저기서 찾는다.
+    base 는 W:\\ 같은 상위, W:\\AOI-9(호기폴더), 또는 Scanresult 폴더 자체 모두 허용:
+      - base 가 Scanresult* 자체 → [base]
+      - base 아래에 Scanresult* 들 → 그 전부
+      - base 아래 호기 폴더(AOI-9==AOI-09) → 그 아래 Scanresult* 전부
+    실제 폴더 변형(이름·0패딩)에 견고. 아무것도 없으면 기본 경로 1개."""
     base = Path(root_base)
     if _is_scanresult_name(base.name):        # base 가 Scanresult* 자체
-        return base
-    sr = _find_scanresult_dir(base)           # base 가 호기 폴더 → 바로 아래 Scanresult*
-    if sr:
-        return sr
-    mdir = _find_machine_dir(base, machine)   # base 아래 호기 폴더 탐색(0패딩 흡수)
+        return [base]
+    here = _find_scanresult_dirs(base)        # base 가 호기 폴더 → 바로 아래 전부
+    if here:
+        return here
+    mdir = _find_machine_dir(base, machine)   # base 아래 호기 폴더(0패딩 흡수)
     if mdir is None and (base / machine).is_dir():
         mdir = base / machine
     if mdir is not None:
-        sr = _find_scanresult_dir(mdir)
-        if sr:
-            return sr
-        return mdir / "Scanresult"
-    return base / machine / "Scanresult"
+        sub = _find_scanresult_dirs(mdir)
+        return sub or [mdir / "Scanresult"]
+    return [base / machine / "Scanresult"]
+
+
+def scanresult_root(root_base: str, machine: str) -> Path:
+    """단일 Scanresult 경로(하위호환) — 첫 번째."""
+    return scanresult_roots(root_base, machine)[0]
 
 
 def _find_children(parent: Path, name: str, *, contains: bool = True) -> list[Path]:
@@ -292,46 +305,57 @@ def _make_lotfolder(device, lot, sm, machine, sm_dir: Path, wafer: Path,
     return lf
 
 
-def resolve_lot_variants(scan_root: Path, device: str, lot: str, sm: str,
+def _as_roots(scan_roots) -> list[Path]:
+    """단일 Path/str 또는 리스트를 Scanresult 루트 목록으로 정규화."""
+    if isinstance(scan_roots, (list, tuple, set)):
+        return [Path(p) for p in scan_roots]
+    return [Path(scan_roots)]
+
+
+def resolve_lot_variants(scan_roots, device: str, lot: str, sm: str,
                          machine: str = "", fail: bool = False) -> list[LotFolder]:
     """디바이스+공정+S/M → **찾은 S/M 폴더마다** LotFolder(변형 이름 다중 지원).
 
+    scan_roots 는 Scanresult 루트 **하나 또는 여러 개**(백업본 포함) — 전부 탐색한다.
     S/M 폴더는 정확 일치가 있으면 그것만, 없으면 **포함 매칭 후보 전부**
     (예: 'CFG' → 'CFG X20' / 'CFG #14 REWORK' / 'CFG-RW_0517S'). 못 찾으면
     사유가 담긴 LotFolder 1개를 돌려준다(exists=False)."""
     fallback = LotFolder(device=device, lot=lot, sm=sm, machine=machine,
                          label=(engine._s(sm).strip() or engine._s(lot).strip()
                                 or device or "lot"), fail=fail)
-    dev_dirs = _find_children(scan_root, device)
-    if not dev_dirs:
-        fallback.reason = f"디바이스 폴더 없음: {device}"
-        return [fallback]
     out: list[LotFolder] = []
     seen: set = set()
-    reached_lot = reached_sm = False
-    for dev_dir in dev_dirs:
-        # 공정번호는 숫자 → 정확일치만(6412 가 64120/16412 에 오매칭 방지) + BFS 폴백.
-        lot_dirs = _find_children(dev_dir, lot, contains=False) \
-            or _bfs_exact(dev_dir, lot, max_depth=3)
-        for lot_dir in lot_dirs:
-            reached_lot = True
-            # S/M: 정확 일치 우선, 없으면 포함(변형) 전부, 그래도 없으면 BFS.
-            sm_dirs = (_find_children(lot_dir, sm) or _bfs_exact(lot_dir, sm, 2)) \
-                if sm else [lot_dir]
-            for sm_dir in sm_dirs:
-                reached_sm = True
-                wafer = _first_wafer(sm_dir)
-                if wafer is None:
-                    continue
-                key = str(wafer.resolve()) if wafer else str(sm_dir)
-                if key in seen:
-                    continue
-                seen.add(key)
-                out.append(_make_lotfolder(device, lot, sm, machine, sm_dir,
-                                           wafer, fail))
+    dev_found = reached_lot = reached_sm = False
+    for scan_root in _as_roots(scan_roots):        # 백업 포함 모든 Scanresult 탐색
+        dev_dirs = _find_children(scan_root, device)
+        if not dev_dirs:
+            continue
+        dev_found = True
+        for dev_dir in dev_dirs:
+            # 공정번호는 숫자 → 정확일치만(6412 가 64120/16412 에 오매칭 방지) + BFS 폴백.
+            lot_dirs = _find_children(dev_dir, lot, contains=False) \
+                or _bfs_exact(dev_dir, lot, max_depth=3)
+            for lot_dir in lot_dirs:
+                reached_lot = True
+                # S/M: 정확 일치 우선, 없으면 포함(변형) 전부, 그래도 없으면 BFS.
+                sm_dirs = (_find_children(lot_dir, sm) or _bfs_exact(lot_dir, sm, 2)) \
+                    if sm else [lot_dir]
+                for sm_dir in sm_dirs:
+                    reached_sm = True
+                    wafer = _first_wafer(sm_dir)
+                    if wafer is None:
+                        continue
+                    key = str(wafer.resolve()) if wafer else str(sm_dir)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(_make_lotfolder(device, lot, sm, machine, sm_dir,
+                                               wafer, fail))
     if out:
         return sorted(out, key=lambda l: l.label.lower())
-    if not reached_lot:
+    if not dev_found:
+        fallback.reason = f"디바이스 폴더 없음: {device}"
+    elif not reached_lot:
         fallback.reason = f"공정 폴더 없음: {lot}"
     elif not reached_sm:
         fallback.reason = f"S/M 폴더 없음: {sm}"
@@ -340,20 +364,20 @@ def resolve_lot_variants(scan_root: Path, device: str, lot: str, sm: str,
     return [fallback]
 
 
-def resolve_lot(scan_root: Path, device: str, lot: str, sm: str,
+def resolve_lot(scan_roots, device: str, lot: str, sm: str,
                 machine: str = "") -> LotFolder:
     """단일 반환(하위호환) — 변형 후보 중 첫 번째."""
-    return resolve_lot_variants(scan_root, device, lot, sm, machine)[0]
+    return resolve_lot_variants(scan_roots, device, lot, sm, machine)[0]
 
 
-def resolve_plan(scan_root: Path, plan_rows: list[dict]) -> list[LotFolder]:
+def resolve_plan(scan_roots, plan_rows: list[dict]) -> list[LotFolder]:
     """계획 행들 → LotFolder 목록. S/M 변형은 각각 별도 항목으로 펼친다.
-    각 항목에 fail여부(Y)를 반영한다. 순서 보존."""
+    scan_roots 는 Scanresult 루트 하나 또는 여러 개(백업본 포함). fail여부(Y) 반영."""
     out = []
     for r in plan_rows:
         fail = _is_yes(r.get("fail여부"))
         out.extend(resolve_lot_variants(
-            scan_root, r.get("디바이스명", ""), r.get("공정번호", ""),
+            scan_roots, r.get("디바이스명", ""), r.get("공정번호", ""),
             r.get("S/M", ""), r.get("AOI호기", ""), fail))
     return out
 

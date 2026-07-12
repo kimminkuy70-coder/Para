@@ -2656,15 +2656,22 @@ class EquipApp(tk.Tk):
         cm = self._cm
         machine = cm.get("machine")
 
-        # Step 1 — 호기 선택 + Scanresult 루트
+        # Step 1 — 호기 선택 + 호기 폴더(그 아래 Scanresult 전부 자동 탐색)
         mlabel = machine or "(미선택)"
         root = self._cm_roots().get(machine, "") if machine else ""
         desc1 = f"선택 호기: {mlabel}"
         if machine:
-            desc1 += f"\nScanresult 루트: {root or '(미지정 — 지정 필요)'}"
+            desc1 += f"\n호기 폴더: {root or '(미지정 — 지정 필요)'}"
+            if root:
+                try:
+                    srs = cm.scanresult_roots(root, machine)
+                    names = ", ".join(p.name for p in srs)
+                    desc1 += f"\n탐색 대상 Scanresult({len(srs)}): {names}"
+                except Exception:  # noqa: BLE001
+                    pass
         self._cm_step(inner, 1, "조사할 장비(호기) 선택", desc1, [
             ("호기 선택", self._cm_pick_machine, True),
-            *([("Scanresult 루트 지정", self._cm_choose_root, False)] if machine else []),
+            *([("호기 폴더 지정", self._cm_choose_root, False)] if machine else []),
         ], done=bool(machine and root))
 
         if not (machine and root):
@@ -2767,23 +2774,23 @@ class EquipApp(tk.Tk):
             return
         messagebox.showinfo(
             "Scanresult 루트",
-            f"'{m}' 의 조사할 폴더를 선택하세요(읽기 전용).\n"
-            "• 백업본이 여러 개면(예: Scanresult_260401) 조사할 그 Scanresult 폴더를 "
-            "직접 고르세요 — 고른 폴더를 그대로 사용합니다.\n"
-            "• 호기 폴더(예: …\\AOI-9)나 상위 드라이브를 골라도 되며, 그 경우 아래의 "
-            "Scanresult 폴더를 자동으로 찾습니다.\n"
+            f"'{m}' 의 **호기 폴더**를 선택하세요(예: …\\AOI-9, 읽기 전용).\n"
+            "• 그 아래 Scanresult 폴더는 자동으로 찾습니다.\n"
+            "• 백업본이 여러 개(Scanresult / Scanresult_260402 / "
+            "SCANRESULT_BACKUP_260805 등)면 **전부 탐색**해 Lot 을 찾습니다.\n"
+            "• Scanresult 폴더 하나만 직접 골라도 됩니다(그 폴더만 사용).\n"
             "한 번 지정하면 이 호기에 대해 자동 재사용됩니다.")
-        d = filedialog.askdirectory(title=f"{m} 조사할 Scanresult(또는 상위) 폴더 선택")
+        d = filedialog.askdirectory(title=f"{m} 호기 폴더(또는 Scanresult) 선택")
         if not d:
             return
         self._cm_roots()[m] = d
         save_config(self._cfg)
         self._render()
 
-    def _cm_scan_root(self):
+    def _cm_scan_roots(self):
         m = self._cm["machine"]
         base = self._cm_roots().get(m, "")
-        return cm.scanresult_root(base, m)
+        return cm.scanresult_roots(base, m)
 
     def _cm_make_template(self):
         path = filedialog.asksaveasfilename(
@@ -2806,8 +2813,8 @@ class EquipApp(tk.Tk):
         def work():
             rows = cm.read_plan(path)
             mine = cm.filter_plan_for_machine(rows, m)
-            root = self._cm_scan_root()
-            lots = cm.resolve_plan(root, mine)
+            scan_roots = self._cm_scan_roots()
+            lots = cm.resolve_plan(scan_roots, mine)
             return mine, lots
 
         def done(ok, res):
@@ -2929,8 +2936,8 @@ class EquipApp(tk.Tk):
             vs[key] = v
 
         def ok():
-            root = self._cm_scan_root()
-            found = cm.resolve_lot_variants(root, vs["디바이스명"].get().strip(),
+            scan_roots = self._cm_scan_roots()
+            found = cm.resolve_lot_variants(scan_roots, vs["디바이스명"].get().strip(),
                                             vs["공정번호"].get().strip(),
                                             vs["S/M"].get().strip(), m)
             self._cm.setdefault("lots", []).extend(found)
