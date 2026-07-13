@@ -3570,7 +3570,17 @@ class EquipApp(tk.Tk):
     #  첫 실행 / 저장 폴더 / 참고자료·특이사항 로드 (3차 재설계)
     # ====================================================================
     def _startup(self):
-        if not self.save_dir or not os.path.isdir(self.save_dir):
+        if self.save_dir and os.path.isdir(self.save_dir):
+            # 매 실행 확인: 기존 폴더 유지 / 새 폴더 연결(하위 엑셀 다시 읽음).
+            keep = messagebox.askyesno(
+                "저장 폴더 확인",
+                "기존 저장 폴더를 그대로 사용할까요?\n\n"
+                f"현재 폴더:\n{self.save_dir}\n\n"
+                "[예] 이 폴더 유지\n"
+                "[아니오] 다른 폴더 연결(그 폴더의 엑셀들을 다시 읽습니다)")
+            if not keep:
+                self._choose_save_dir(first=False)   # 취소하면 기존 폴더 유지
+        else:
             if not self._choose_save_dir(first=True):
                 self._set_status("저장 폴더가 지정되지 않았습니다. ⋯파일에서 지정하세요.")
                 return
