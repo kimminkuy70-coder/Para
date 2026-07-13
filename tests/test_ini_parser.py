@@ -34,7 +34,7 @@ ScanSpeed = 80
 """
 
 
-def _mk_recipe(d: Path, with_zones_subdir=True):
+def _mk_recipe(d: Path, with_zones_subdir=True, extra_ini=None):
     d.mkdir(parents=True, exist_ok=True)
     (d / "GlobalRTP.ini").write_text(GLOBAL_RTP, encoding="utf-8")
     (d / "OpticPreset.ini").write_text(OPTIC, encoding="utf-8")
@@ -43,6 +43,9 @@ def _mk_recipe(d: Path, with_zones_subdir=True):
         (d / "Zones" / "Zone1.ini").write_text(ZONE_INI, encoding="utf-8")
     else:
         (d / "Zone1.ini").write_text(ZONE_INI, encoding="utf-8")
+    # config 폴더 바로 아래의 '쓸데없는' ini — 파서가 제외해야 한다.
+    for name in (extra_ini or []):
+        (d / name).write_text("[Junk]\nFoo = 1\n", encoding="utf-8")
 
 
 def test_parse_ini_file():
@@ -71,9 +74,9 @@ def test_parse_ini_file():
 def test_scan_tree_and_meta():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        _mk_recipe(root / "AOI-13" / "R_TB500_LIVE_PI3" / "PI")           # 장비형 구조
-        _mk_recipe(root / "AOI-13" / "R_TB500_LIVE_PI3" / "PI_BUBBLE",
-                   with_zones_subdir=False)                                # staging 평탄 구조
+        _mk_recipe(root / "AOI-13" / "R_TB500_LIVE_PI3" / "PI",
+                   extra_ini=["CameraSetup.ini", "Backup.ini"])            # 쓸데없는 ini
+        _mk_recipe(root / "AOI-13" / "R_TB500_LIVE_PI3" / "PI_BUBBLE")     # 장비형 구조
         _mk_recipe(root / "AOI-20" / "TB500_RDL4 - Multi" / "x5")
         cfgs = ini_parser.scan_tree(root)
         assert len(cfgs) == 3, [c.config_dir for c in cfgs]
@@ -87,7 +90,28 @@ def test_scan_tree_and_meta():
         one = ini_parser.scan_tree(root / "AOI-20", default_level="RDL4",
                                    default_equipment="AOI-99")
         assert one[0].equipment == "AOI-99" and one[0].recipe == "RDL4"
-    print("  scan_tree OK: PI/PI-bubble/x5 + 평탄/Zones 구조 + 오버라이드")
+    print("  scan_tree OK: PI/PI-bubble/x5 + Zones 구조 + 쓸데없는 ini 제외 + 오버라이드")
+
+
+def test_config_dir_only_fixed_plus_zones():
+    """config 폴더 = GlobalRTP.ini/OpticPreset.ini + Zones/*.ini 만 파싱.
+    폴더 바로 아래 다른 .ini(카메라/백업 등)는 양식에 끼면 안 된다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp) / "PI"
+        _mk_recipe(d, extra_ini=["CameraSetup.ini", "HW_Config.ini"])
+        names = {p.name for p in ini_parser.config_ini_files(d)}
+        assert names == {"GlobalRTP.ini", "OpticPreset.ini", "Zone1.ini"}, names
+        assert "CameraSetup.ini" not in names and "HW_Config.ini" not in names
+        # 파싱 결과에도 Junk Zone 이 없어야 함
+        rows, _ = ini_parser.build_pivot(
+            ini_parser.scan_tree(d, default_level="PI3", default_equipment="AOI-1"))
+        zones = {r["zone"] for r in rows}
+        assert "CameraSetup" not in zones and "HW Config" not in zones and "Junk" not in zones
+        # _N 접미사(복사 중복회피)도 고정명으로 인식
+        (d / "GlobalRTP_2.ini").write_text(GLOBAL_RTP, encoding="utf-8")
+        names2 = {p.name for p in ini_parser.config_ini_files(d)}
+        assert "GlobalRTP_2.ini" in names2
+    print("  config_ini_files OK: 고정2 + Zones/* 만(쓸데없는 ini 제외, _N 인식)")
 
 
 def test_pivot_and_refresh_plan():

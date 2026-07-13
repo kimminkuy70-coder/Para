@@ -372,9 +372,17 @@ def is_config_dir(d: Path) -> bool:
 
 def config_ini_files(d: Path) -> list[Path]:
     """config 폴더의 파싱 대상 ini 목록.
-    staging(평탄 복사)과 장비 원본(Zones 하위) 구조 둘 다 지원."""
-    files = sorted([p for p in d.glob("*.ini") if p.is_file()],
-                   key=lambda x: x.name.lower())
+    **폴더 바로 아래는 GlobalRTP.ini / OpticPreset.ini 만**(그 외 다른 .ini 는 제외 —
+    양식에 쓸데없는 항목이 끼지 않게), **Zones/ 하위는 .ini 전부**.
+    복사 중복회피로 붙는 _N 접미사(GlobalRTP_2.ini 등)도 고정명으로 인식."""
+    fixed = set(FIXED_FILE_TOP)          # {"globalrtp.ini", "opticpreset.ini"}
+    files = []
+    for p in sorted(d.glob("*.ini"), key=lambda x: x.name.lower()):
+        if not p.is_file():
+            continue
+        base = re.sub(r"_\d+$", "", p.stem.lower()) + p.suffix.lower()
+        if p.name.lower() in fixed or base in fixed:
+            files.append(p)
     zones = d / "Zones"
     if zones.is_dir():
         files += sorted([p for p in zones.glob("*.ini") if p.is_file()],

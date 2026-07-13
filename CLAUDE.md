@@ -108,7 +108,7 @@ Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'C
 ```
 python3 tests/test_refdata.py      # 3  (참고자료/특이사항 독립 파일 I/O·호기·IP)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
-python3 tests/test_ini_parser.py   # 7  (ini 파서/수집/경로/백업/변형별 계수)
+python3 tests/test_ini_parser.py   # 10 (ini 파서/수집/경로/백업/변형별 계수/config폴더 고정2+Zones만)
 python3 tests/test_formbuilder.py  # 3  (초안 생성·편집→확정 양식·계수 저장)
 python3 tests/test_collate.py      # 2  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
@@ -134,8 +134,11 @@ python3 tests/test_downloader.py   # 8
   **없으면 RAW**(예: 'Min Defect Width'는 변환 안 함). BOOL/REGION/CLASSIFY는 유지.
   **GlobalRTP**(`GLOBALRTP_KEEP`): `Max Defects Per Wafer/Die`만 기본 사용=Y, 나머지 N.
   변환방식 라벨은 실제 계수 반영(`label_transform`).
+  **config 폴더 파싱 대상(`config_ini_files`)**: 폴더 바로 아래는 **GlobalRTP.ini/
+  OpticPreset.ini 만**(그 외 .ini 제외 — 쓸데없는 항목 방지, _N 접미사 인식) + **Zones/*.ini 전부**.
 - `param_manager/collector.py` — 장비 네트워크 읽기전용 수집(net use, plan 자동 재사용).
   `FIXED_FILES`에 **RTP.txt 포함**(계수 자동 추정용). RTP.txt는 recipe 폴더에 위치.
+  **Zones/ 하위구조 보존 복사**(staging 에 `Zones/*.ini` 그대로 — 파서 규칙과 일치).
 - `param_manager/coef_detector.py` — **변환 계수 자동 추정**: RTP.txt(표시값)↔Zone ini(원본값)
   known 쌍 비교(LINEAR=disp/raw, AREA=√). 1.0 근처(직접단위) 제외, 군집·신뢰도. `detect_from_dir`.
 - `param_manager/refdata.py` — **참고자료/특이사항 독립 파일 I/O**: `REF_HEADERS=[호기,IP,비고]`,

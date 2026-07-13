@@ -167,7 +167,8 @@ def plan_files(recipe_dirs: list[Path]) -> list[tuple[Path, str, str]]:
         zones = recipe_dir / "Zones"
         if zones.is_dir():
             for p in sorted(zones.glob("*.ini"), key=lambda x: x.name.lower()):
-                planned.append((p, recipe_dir.name, p.name))
+                # Zones 하위구조 보존(파서가 폴더 바로 아래 .ini 는 고정2만 읽음).
+                planned.append((p, recipe_dir.name, f"Zones/{p.name}"))
     return planned
 
 
@@ -201,14 +202,14 @@ def copy_planned(planned: list[tuple[Path, str, str]], staging_root: Path,
             log.write(line.rstrip("\n") + "\n")
         for src, recipe_name, dest_name in planned:
             dest_dir = staging_root / _sanitize(recipe_name)
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest = dest_dir / dest_name
+            dest = dest_dir / dest_name              # dest_name 에 'Zones/' 가 있을 수 있음
+            dest.parent.mkdir(parents=True, exist_ok=True)
             if dest.exists():
                 stem, suffix = dest.stem, dest.suffix
                 n = 2
-                while (dest_dir / f"{stem}_{n}{suffix}").exists():
+                while (dest.parent / f"{stem}_{n}{suffix}").exists():
                     n += 1
-                dest = dest_dir / f"{stem}_{n}{suffix}"
+                dest = dest.parent / f"{stem}_{n}{suffix}"
             # READ-ONLY SOURCE ACCESS: 원본은 읽기만, 쓰기는 로컬 dest 에만.
             # 원본과 동일 경로 덮어쓰기 금지(이중 안전장치).
             if Path(src).resolve() == dest.resolve():
