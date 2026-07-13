@@ -237,19 +237,34 @@ class EquipApp(tk.Tk):
     def _set_view(self, key):
         self.view = key
         self._sync_tab_style()
-        # 내비 위젯은 파라미터 탭에서만
-        for w in self._nav_widgets:
-            (w.pack(side="left") if key == "param" else w.pack_forget())
-        self._render()
+        self._render()      # 내비 위젯 표시/숨김은 _render 가 일괄 처리
+
+    def _sync_nav_widgets(self):
+        """뒤로/앞으로/처음/크럼 은 '파라미터 값 확인' 탭에서만 보이게. 어떤 경로로
+        view 가 바뀌든(_set_view/직접대입+navigate) _render 가 호출하므로 항상 일치."""
+        want = (self.view == "param")
+        if getattr(self, "_nav_shown", None) == want:
+            return
+        self._nav_shown = want
+        if want:
+            self.btn_back.pack(side="left", padx=(12, 4), pady=11, before=self.btn_undo)
+            self.btn_fwd.pack(side="left", padx=4, pady=11, before=self.btn_undo)
+            self.btn_home.pack(side="left", padx=4, pady=11, before=self.btn_undo)
+            self.lbl_crumb.pack(side="left", padx=16)      # undo/redo 뒤에 이어붙음
+        else:
+            for w in self._nav_widgets:
+                w.pack_forget()
 
     def _set_status(self, msg: str):
         self.status.config(text=msg)
         self.update_idletasks()
 
     def _guard(self) -> bool:
-        """읽기 전용이면 변경 동작 차단."""
+        """읽기 전용이면 변경 동작 차단.
+        '파라미터 값 확인'은 설계상 읽기전용(값은 '값 업데이트'로 채움) — 잠금/다른 사용자 아님."""
         if self.read_only:
-            self._set_status("읽기 전용 — 다른 사용자가 편집 중이라 수정할 수 없습니다.")
+            self._set_status("이 화면은 읽기 전용입니다(값 확인). 값은 '파라미터 값 업데이트'로 "
+                             "채우고, 양식 수정은 '양식 만들기 → 기존 양식 수정하기'를 쓰세요.")
             return False
         return True
 
@@ -281,6 +296,7 @@ class EquipApp(tk.Tk):
             self._render()
 
     def _render(self):
+        self._sync_nav_widgets()      # 뒤로/앞으로/처음 표시를 view 와 항상 일치
         # 이전 화면의 휠 바인딩 잔재 제거(다른 창까지 스크롤되는 문제 방지)
         for seq in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-6>", "<Button-7>"):
             try:
@@ -886,6 +902,8 @@ class EquipApp(tk.Tk):
                         highlightthickness=0, padx=2, pady=1)
             if v:
                 t.insert("1.0", v)
+            t.tag_add("cctr", "1.0", "end")           # 헤더(가운데)와 정렬 맞춤
+            t.tag_configure("cctr", justify="center")
             if self.read_only or self.values_readonly:
                 t.config(state="disabled")   # 값 확인은 읽기 전용(스펙)
             t.pack(fill="both", expand=True)
@@ -2517,9 +2535,65 @@ class EquipApp(tk.Tk):
         tk.Button(box2, text="📁  로컬 폴더에서 신규 불러오기", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
                   command=lambda: self._form_new(from_equipment=False)).pack(side="left", padx=8)
-        tk.Button(box2, text="🗂  이전 버전 불러오기", relief="flat", bd=0,
+        tk.Button(box2, text="✏  기존 양식 수정하기", relief="flat", bd=0,
+                  bg=self.p["ok"], fg="#ffffff", padx=16, pady=8, cursor="hand2",
+                  command=self._edit_existing_form).pack(side="left")
+        tk.Button(box2, text="🗂  이전 버전 보기(읽기전용)", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
-                  command=self._load_previous_form).pack(side="left")
+                  command=self._load_previous_form).pack(side="left", padx=8)
+
+    def _edit_existing_form(self):
+        """기존 양식 수정하기 — 저장해 둔 양식(수정본 초안)을 다시 Excel로 열어 편집→확정.
+        원본 버전은 보존하고 **새 버전**으로 확정한다(이전 버전 보기는 읽기전용)."""
+        import glob as _glob
+        import re as _re
+        import shutil as _shutil
+        if not self.save_dir:
+            messagebox.showinfo("저장 폴더", "먼저 저장 폴더를 지정하세요(⋯파일).")
+            return
+        recipes = workdirs.list_recipes(self.save_dir)
+        if not recipes:
+            messagebox.showinfo("기존 양식", "저장된 양식이 없습니다. 먼저 양식을 만드세요.")
+            return
+        pick = self._pick_list_chooser("recipe", "수정할 레시피 선택", recipes, False)
+        if not pick:
+            return
+        level = pick[0]
+        versions = workdirs.list_form_versions(self.save_dir, level)
+        if not versions:
+            messagebox.showinfo("기존 양식", f"'{level}' 에 저장된 확정 양식이 없습니다.")
+            return
+        labels = [f"{st}   ({os.path.basename(p)})" for st, p in versions]
+        chosen = self._pick_list_chooser("ver", "수정할 버전 선택(최신순)", labels, False)
+        if not chosen:
+            return
+        final_path = dict(zip(labels, [p for _, p in versions]))[chosen[0]]
+        run_dir = os.path.dirname(final_path)
+        related = workdirs.related_dir(run_dir)
+        kind = "RDL" if level.upper().startswith("RDL") else "PI"
+        m = _re.search(r"_(.+?)호기_참조_", os.path.basename(final_path))
+        aoi = m.group(1) if m else "로컬"
+        drafts = sorted(_glob.glob(os.path.join(related, "*수정본*.xlsx")))
+        if not drafts:
+            if messagebox.askyesno(
+                    "편집용 초안 없음",
+                    "이 버전에는 편집용 초안(수정본)이 없습니다.\n"
+                    "확정 양식 파일을 바로 Excel로 열어 수정할까요?\n"
+                    "(Excel에서 값/변환방식을 고쳐 저장하면 그대로 반영됩니다.)"):
+                self._open_in_excel(final_path)
+            return
+        # 원본 버전 보존 — 새 버전 폴더로 초안 복사 후 편집→확정
+        new_st = workdirs.stamp()
+        new_run = workdirs.form_run_dir(self.save_dir, level, new_st)
+        new_draft = workdirs.form_draft_path(workdirs.related_dir(new_run), level, aoi, new_st)
+        try:
+            _shutil.copy2(drafts[-1], new_draft)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("초안 복사 실패", str(e))
+            return
+        opened = self._open_in_excel(new_draft)
+        self._form_finalize_dialog(new_draft, drafts[-1], level, kind, None,
+                                   new_run, aoi, new_st, opened)
 
     def _form_new(self, from_equipment: bool):
         if not self.save_dir:
