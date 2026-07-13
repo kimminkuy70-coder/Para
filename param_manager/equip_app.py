@@ -3198,8 +3198,11 @@ class EquipApp(tk.Tk):
 
         fail_labels = self._cm.get("fail_labels") or []
 
+        def cl(_lot, mag):
+            return coefstore.lookup(self.coef_rows, m, mag)   # commonality 는 호기 고정
+
         def work():
-            res = cm.collate_lots(recipe, form, pivot, labels)
+            res = cm.collate_lots(recipe, form, pivot, labels, coef_lookup=cl)
             cm.write_lot_result(result, recipe, m, res, labels, fail_labels)
             return res
 
@@ -3430,9 +3433,13 @@ class EquipApp(tk.Tk):
         machines_all = self._all_machines()
         prev = workdirs.latest_collate(self.save_dir)
 
+        def cl(ho, mag):
+            return coefstore.lookup(self.coef_rows, ho, mag)   # 호기별 계수
+
         def work():
             return collate.build_collation(self.save_dir, chosen, pivot_rows,
-                                           machines_all, prev_collate_path=prev)
+                                           machines_all, prev_collate_path=prev,
+                                           coef_lookup=cl)
 
         def done(ok, res):
             if not ok:

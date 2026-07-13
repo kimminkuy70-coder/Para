@@ -36,6 +36,38 @@ def _make_form(save_dir, tmp):
     return final
 
 
+def test_form_transform_reapplied_on_update():
+    """값 업데이트가 **양식의 변환방식**을 수집 raw 에 재적용해야 한다.
+    (사람이 양식에서 AREA 로 고쳤는데 값 업데이트가 raw 그대로 넣던 버그 회귀.)"""
+    from param_manager import extract_io
+    with tempfile.TemporaryDirectory() as tmp:
+        form = os.path.join(tmp, "form.xlsx")
+        recs = [{"PI": "PI3", "Recipe": "PI", "Zone": "RDL", "Alg": "Uniform Surface",
+                 "Parameter": "Rich Events Min Area (area, µ)", "비고": ""}]
+        exts = [{"src_file": "RDL.ini", "section": "Uniform Surface",
+                 "key": "RichEventsMinArea", "raw": 2,
+                 "transform": "AREA_0.7707763913156815^2", "source_path": ""}]
+        extract_io.write_snapshot(form, recs, machines=[], sheet_name="PI_ALL",
+                                  extracts=exts, stage="final", level="PI3")
+        # 수집 피벗: 같은 설정키, raw=2, 파싱은 RAW(변환 안 됨)로 들어왔다고 가정
+        pivot = [{"layer": "RDL", "recipe": "PI3", "mag": "PI", "zone": "RDL",
+                  "alg": "Uniform Surface", "param": "RichEventsMinArea",
+                  "values": {"AOI-6": 2}, "raws": {"AOI-6": 2},
+                  "mags": {"AOI-6": "3.14"}, "use": True,
+                  "extract": {"src_file": "RDL.ini", "section": "Uniform Surface",
+                              "key": "RichEventsMinArea", "transform": "RAW",
+                              "source_path": ""}}]
+        # 계수 콜백 없음 → 양식 라벨의 계수(0.7707..) 재적용
+        res = collate.collate_recipe("PI3", form, pivot, ["AOI-6"])
+        got = float(engine._s(res.records[0].get("AOI-6")))
+        assert abs(got - round(2 * 0.7707763913156815 ** 2, 6)) < 1e-6, got
+        # coef_lookup(호기별 계수)가 있으면 그게 우선(예: 0.5 → 2*0.25=0.5)
+        res2 = collate.collate_recipe("PI3", form, pivot, ["AOI-6"],
+                                      coef_lookup=lambda ho, mag: 0.5)
+        assert abs(float(engine._s(res2.records[0].get("AOI-6"))) - 0.5) < 1e-9
+    print("  collate OK: 양식 변환방식+계수 재적용(라벨/장비별 우선순위)")
+
+
 def test_build_collation_carryover_and_allmachines():
     with tempfile.TemporaryDirectory() as tmp:
         save = os.path.join(tmp, "저장폴더")

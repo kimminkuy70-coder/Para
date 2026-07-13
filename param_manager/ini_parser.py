@@ -150,6 +150,19 @@ def label_transform(transform: str, scale: float) -> str:
     return transform
 
 
+def scale_from_label(transform: str) -> float | None:
+    """변환방식 라벨(예: 'LINEAR_0.845..' / 'AREA_0.770..^2')에서 계수 추출. 없으면 None.
+    양식의 변환방식 열에 사람이 박아둔 계수를 값 업데이트가 그대로 재적용할 때 사용."""
+    m = re.search(r"(?:LINEAR|AREA)[_\s]*([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)",
+                  str(transform or ""), flags=re.IGNORECASE)
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except ValueError:
+        return None
+
+
 def _has_micron(name: str) -> bool:
     """파라미터(표시)명에 µ(마이크로) 표기가 있는가 — 변환 대상 판정용."""
     s = str(name)
@@ -522,17 +535,19 @@ def build_pivot(configs: list[ParsedConfig]) -> tuple[list[dict], list[str]]:
         for r in cfg.rows:
             key = (cfg.layer, cfg.recipe, cfg.mag, r.zone, r.alg, r.param)
             ent = table.setdefault(key, {
-                "unit": r.unit, "values": {}, "raws": {}, "use": r.use_default,
+                "unit": r.unit, "values": {}, "raws": {}, "mags": {},
+                "use": r.use_default,
                 "extract": {"src_file": r.src_file, "section": r.section,
                             "key": r.key, "transform": r.transform,
                             "source_path": r.source_path},
             })
             ent["values"][cfg.equipment] = r.value
             ent["raws"][cfg.equipment] = r.raw
+            ent["mags"][cfg.equipment] = cfg.mag_value   # 장비별 MAG(계수 재적용용)
     rows = []
     for (layer, recipe, mag, zone, alg, param), ent in table.items():
         rows.append({"layer": layer, "recipe": recipe, "mag": mag, "zone": zone,
                      "alg": alg, "param": param, "desc_en": "", "unit": ent["unit"],
-                     "values": ent["values"], "raws": ent["raws"],
+                     "values": ent["values"], "raws": ent["raws"], "mags": ent["mags"],
                      "use": ent["use"], "extract": ent["extract"]})
     return rows, machines

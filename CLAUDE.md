@@ -155,7 +155,9 @@ python3 tests/test_downloader.py   # 8
   '최종 Parameter')·`build_final_from_initial`(→확정 양식+`_EXTRACT_MAP`+계수).
 - `param_manager/collate.py` — **값 취합(멀티시트)**: `build_collation`(레시피별 시트, 참고자료
   전체 호기, 직전본 이어받기, 설정키 매칭·불일치), `write_collation`/`load_collation`/
-  `load_as_repo`(값 확인 병합).
+  `load_as_repo`(값 확인 병합). **값은 양식의 변환방식(_EXTRACT_MAP transform)을 수집 raw 에
+  재적용**(사람이 양식에서 고친 변환방식·계수 반영). 계수 우선순위: `coef_lookup(호기,MAG)`
+  → 라벨 계수(`ini_parser.scale_from_label`) → 기본. commonality 도 같은 경로 재사용.
 - `param_manager/history.py` — **이력 확인**: `diff_files`(멀티시트 값변경/추가/삭제)·
   `write_diff_excel`(변경내역+비고 메모).
 - `param_manager/equip_app.py` — tkinter GUI(저장폴더 모델). `_startup`/`_choose_save_dir`/

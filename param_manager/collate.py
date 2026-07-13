@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from . import engine, extract_io, workdirs
+from . import engine, extract_io, ini_parser, workdirs
 
 
 def norm_key(name: str) -> str:
@@ -71,8 +71,16 @@ def _build_parsed_index(pivot_rows: list[dict]) -> tuple[dict, dict]:
 # --------------------------------------------------------------------------
 def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
                    machines_all: list[str],
-                   prev_values: dict | None = None) -> CollateRecipe:
-    """양식(레시피 1개) + 파싱 + 전체 호기 + 직전값 → CollateRecipe."""
+                   prev_values: dict | None = None,
+                   coef_lookup=None) -> CollateRecipe:
+    """양식(레시피 1개) + 파싱 + 전체 호기 + 직전값 → CollateRecipe.
+
+    값은 **양식의 변환방식**(_EXTRACT_MAP transform)을 수집 raw 에 재적용해 채운다
+    (사람이 양식에서 고친 변환방식·계수가 그대로 반영됨). 계수 우선순위:
+      1) coef_lookup(호기, MAG)  — 장비별 변환계수.xlsx,
+      2) 변환방식 라벨에 박힌 계수(AREA_0.77..^2),
+      3) 기본(DEFAULT_SCALE).
+    """
     repo = engine.ParamRepository(form_path)
     repo.load()
     emap = extract_io.read_extract_map(form_path)
@@ -105,8 +113,28 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
                 "reason": "이번 수집 장비에서 설정키를 찾지 못함"})
         else:
             res.matched_rows += 1
-            for m, v in (match.get("values") or {}).items():
-                if m in machines_all and engine._s(v) != "":
+            ftrans = engine._s(meta.get("transform")).strip() or "RAW"
+            label_coef = ini_parser.scale_from_label(ftrans)
+            raws = match.get("raws") or {}
+            values = match.get("values") or {}
+            mags = match.get("mags") or {}
+            for m in machines_all:
+                raw = raws.get(m)
+                if engine._s(raw) == "":
+                    v = values.get(m)                 # raw 없으면 파싱값 폴백
+                else:
+                    coef = None
+                    if coef_lookup is not None:
+                        try:
+                            coef = coef_lookup(m, mags.get(m))
+                        except Exception:  # noqa: BLE001
+                            coef = None
+                    if coef is None:
+                        coef = label_coef
+                    if coef is None:
+                        coef = ini_parser.DEFAULT_SCALE
+                    v = ini_parser.transform_value(raw, ftrans, coef)
+                if engine._s(v) != "":
                     rec[m] = v
                     res.filled_cells += 1
         res.records.append(rec)
@@ -115,8 +143,10 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
 
 def build_collation(save_dir: str, recipes: list[str], pivot_rows: list[dict],
                     machines_all: list[str],
-                    prev_collate_path: str | None = None) -> dict[str, CollateRecipe]:
-    """레시피별 취합 결과. 양식은 각 레시피의 최신 확정본에서 가져온다."""
+                    prev_collate_path: str | None = None,
+                    coef_lookup=None) -> dict[str, CollateRecipe]:
+    """레시피별 취합 결과. 양식은 각 레시피의 최신 확정본에서 가져온다.
+    coef_lookup(호기, MAG)→계수: 값 재적용 시 장비별 변환계수 적용(없으면 라벨/기본)."""
     prev = load_prev_values(prev_collate_path) if prev_collate_path else {}
     out: dict[str, CollateRecipe] = {}
     for recipe in recipes:
@@ -126,7 +156,7 @@ def build_collation(save_dir: str, recipes: list[str], pivot_rows: list[dict],
                                         missing_form=True)
             continue
         out[recipe] = collate_recipe(recipe, form, pivot_rows, machines_all,
-                                     prev.get(recipe, {}))
+                                     prev.get(recipe, {}), coef_lookup=coef_lookup)
     return out
 
 

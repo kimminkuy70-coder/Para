@@ -462,9 +462,11 @@ def structure_diff(lot_dirs: list[tuple[str, Path]], level: str = "",
 # Step 5: 양식 기준 Lot별 값 → 호기 결과 엑셀
 # --------------------------------------------------------------------------
 def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
-                 lot_labels: list[str]) -> collate.CollateRecipe:
-    """확정 양식 + 통합 피벗 → Lot 열 채운 CollateRecipe(collate 재사용)."""
-    return collate.collate_recipe(recipe, form_path, pivot_rows, lot_labels)
+                 lot_labels: list[str], coef_lookup=None) -> collate.CollateRecipe:
+    """확정 양식 + 통합 피벗 → Lot 열 채운 CollateRecipe(collate 재사용).
+    값은 양식 변환방식 재적용. coef_lookup(lot라벨, MAG)→계수(commonality 는 호기 고정)."""
+    return collate.collate_recipe(recipe, form_path, pivot_rows, lot_labels,
+                                  coef_lookup=coef_lookup)
 
 
 def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
