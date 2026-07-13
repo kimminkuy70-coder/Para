@@ -488,7 +488,7 @@ def scan_tree(root: str | Path, default_level: str = "",
         use_scale = None
         if coef_lookup is not None:
             try:
-                use_scale = coef_lookup(meta["equipment"], mag_value, cdir)
+                use_scale = coef_lookup(meta["equipment"], mag_value, cdir, meta["mag"])
             except Exception:  # noqa: BLE001
                 use_scale = None
         if use_scale is None:

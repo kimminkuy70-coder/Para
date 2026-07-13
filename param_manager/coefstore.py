@@ -166,7 +166,7 @@ def upsert(rows: list[dict], machine: str, mag, coef, variant: str = "",
 
 
 def make_lookup(rows: list[dict]):
-    """scan_tree(coef_lookup=...) 용 콜백. (equipment, mag_value, config_dir)->계수|None."""
-    def _cb(equipment, mag_value, config_dir=None):
+    """scan_tree(coef_lookup=...) 용 콜백. (equipment, mag_value, config_dir, variant)->계수|None."""
+    def _cb(equipment, mag_value, config_dir=None, variant=""):
         return lookup(rows, equipment, mag_value)
     return _cb

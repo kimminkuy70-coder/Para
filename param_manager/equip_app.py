@@ -24,6 +24,7 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 from tksheet import Sheet
 
 from . import coef_detector
+from . import coefstore
 from . import collate
 from . import collector
 from . import commonality as cm
@@ -102,6 +103,7 @@ class EquipApp(tk.Tk):
 
         # Commonality 조사 진행 상태(호기 1대씩) — 세션 메모리
         self._cm: dict = {}                  # {machine, root, plan, lots, staging, ...}
+        self.coef_rows: list[dict] = []      # 변환계수.xlsx [호기,MAG,변형,계수,비고]
 
         # 상단 탭(파라미터 값 확인 / 양식 만들기 / 특이사항 / 참고자료)
         self.view = "param"
@@ -340,6 +342,23 @@ class EquipApp(tk.Tk):
         """호기 목록 = '장비 IP 주소' 파일 기준. 비면 빈 목록."""
         return refdata.machines(self.ip_rows)
 
+    def _coef_label_for(self, machine: str) -> str:
+        """선택 호기의 변환계수(변형별 모두) 표시 문자열. 장비 렌즈 특성 = 호기+MAG."""
+        rows = coefstore.machine_coefs(self.coef_rows, machine)
+        if not rows:
+            return "  · 변환계수 미등록(변환계수.xlsx)"
+        parts = []
+        for r in rows:
+            tag = engine._s(r.get("변형")).strip() or (
+                f"MAG {engine._s(r.get('MAG')).strip()}" if r.get("MAG") else "")
+            val = engine._s(r.get("계수")).strip()
+            try:
+                val = f"{float(val):.4g}"
+            except ValueError:
+                pass
+            parts.append(f"{tag}={val}" if tag else val)
+        return "  · 변환계수  " + " · ".join(parts)
+
     def _screen_machines(self):
         wrap = tk.Frame(self.body, bg=self.p["bg"])
         wrap.pack(fill="both", expand=True, padx=24, pady=18)
@@ -567,6 +586,11 @@ class EquipApp(tk.Tk):
         tk.Label(head, text=f"  {st['machine']} : {st['recipe'] or st['pi']}",
                  bg=self.p["surface"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(side="left", pady=8)
+        # 변환계수(장비 렌즈 특성 = 호기+MAG) — 변형별 모두 표시
+        coef_txt = self._coef_label_for(st["machine"])
+        tk.Label(head, text=coef_txt, bg=self.p["surface"],
+                 fg=(self.p["primary"] if "계수" in coef_txt else self.p["muted"]),
+                 font=self.fonts["bold"], cursor="hand2").pack(side="left", padx=(6, 0))
         ro = "  [파일 읽기 전용]" if self.read_only else ""
         tk.Label(head, text=f"좌=선택 호기 · 우=다른 호기 · 값은 읽기 전용(‘값 업데이트’로 채움) "
                           f"· Shift+휠=가로스크롤{ro}   ",
@@ -2277,16 +2301,54 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=16,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=8)
 
+    def _coef_lookup_cb(self, fixed_machine=None):
+        """scan_tree 용 변환계수 콜백 — (호기,MAG) 저장소 우선, 없으면 RTP.txt 로 자동
+        추정해 upsert(사람값 우선). fixed_machine 을 주면(commonality: 조사 호기 1대)
+        파싱 태그(equipment=S/M)를 무시하고 그 호기로 조회·저장. 반환: (콜백, 변경 dict)."""
+        state = {"changed": 0}
+
+        def cb(equipment, mag_value, config_dir=None, variant=""):
+            if fixed_machine:
+                equipment = fixed_machine
+            c = coefstore.lookup(self.coef_rows, equipment, mag_value)
+            if c is not None:
+                return c
+            if config_dir is not None and engine._s(equipment).strip():
+                try:
+                    coef = coef_detector.detect_from_dir(config_dir).get("Coefficient")
+                except Exception:  # noqa: BLE001
+                    coef = None
+                if coef:
+                    if coefstore.upsert(self.coef_rows, equipment, mag_value, coef, variant):
+                        state["changed"] += 1
+                    try:
+                        return float(coef)
+                    except (TypeError, ValueError):
+                        return None
+            return None
+        return cb, state
+
+    def _coef_save_if_changed(self, state):
+        if state.get("changed") and self.save_dir:
+            try:
+                coefstore.save(coefstore.coef_path(self.save_dir), self.coef_rows)
+            except Exception:  # noqa: BLE001
+                pass
+
     def _parse_sources_busy(self, sources, on_ready, default_level="", scales=None):
-        """수집/로컬 폴더 → 파싱 피벗을 백그라운드로 계산. scales={변형:계수}."""
+        """수집/로컬 폴더 → 파싱 피벗을 백그라운드로 계산. 변환계수는 (호기,MAG) 저장소
+        기준(없으면 RTP.txt 자동추정·저장). scales 는 폴백."""
         def work():
+            cb, state = self._coef_lookup_cb()
             cfgs = []
             for rootp, kw, aoi in sources:
                 # 사용자가 고른 레시피 레벨(default_level)이 장비 Job 키워드(kw)보다 우선.
                 cfgs += ini_parser.scan_tree(rootp, default_level=default_level or kw,
-                                             default_equipment=aoi, scales=scales)
+                                             default_equipment=aoi, scales=scales,
+                                             coef_lookup=cb)
             valid = [c for c in cfgs if rtp.config_valid(c)]
             rows, machines = ini_parser.build_pivot(valid)
+            self._coef_save_if_changed(state)
             return rows, machines
 
         def done(ok, res):
@@ -3066,7 +3128,10 @@ class EquipApp(tk.Tk):
         draft = os.path.join(run_dir, f"양식초안_{recipe}_{m}_{st}.xlsx")
 
         def work():
-            pivot, labels = cm.parse_lots(lot_dirs, level=recipe, scales=scale_map)
+            cb, cstate = self._coef_lookup_cb(fixed_machine=m)   # 조사 호기 1대 기준
+            pivot, labels = cm.parse_lots(lot_dirs, level=recipe, scales=scale_map,
+                                          coef_lookup=cb)
+            self._coef_save_if_changed(cstate)
             formbuilder.build_initial_workbook(pivot, draft, level=recipe,
                                                source=f"commonality {recipe} / {m}")
             return pivot, labels
@@ -3554,6 +3619,13 @@ class EquipApp(tk.Tk):
                                refdata.create_blank_reference)
         sp = self._ensure_file(refdata.special_path(self.save_dir), "특이사항",
                                refdata.create_blank_special)
+        cfp = self._ensure_file(coefstore.coef_path(self.save_dir), "변환계수",
+                                coefstore.create_blank)
+        try:
+            self.coef_rows = coefstore.load(cfp)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("변환계수 로드 실패", str(e))
+            self.coef_rows = []
         try:
             self.ip_rows = refdata.load_ip(ipp)
         except Exception as e:  # noqa: BLE001

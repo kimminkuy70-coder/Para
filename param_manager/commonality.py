@@ -405,25 +405,26 @@ def copy_lot(lot: LotFolder, dest_root: str, verify: bool = True) -> dict:
 # Lot 파싱 → 통합 피벗(값=Lot별) + 구조 diff
 # --------------------------------------------------------------------------
 def _lot_configs(config_dir: Path, lot_label: str, level: str,
-                 scales: dict | None) -> list[ini_parser.ParsedConfig]:
+                 scales: dict | None, coef_lookup=None) -> list[ini_parser.ParsedConfig]:
     """Lot 1개의 config 폴더 → ParsedConfig 목록(equipment=lot_label 로 태깅)."""
     return ini_parser.scan_tree(config_dir, default_level=level,
-                                default_equipment=lot_label, scales=scales)
+                                default_equipment=lot_label, scales=scales,
+                                coef_lookup=coef_lookup)
 
 
 def parse_lots(lot_dirs: list[tuple[str, Path]], level: str = "",
-               scales: dict | None = None) -> tuple[list[dict], list[str]]:
+               scales: dict | None = None, coef_lookup=None) -> tuple[list[dict], list[str]]:
     """[(lot_label, config_dir)] → (통합 피벗, lot_label 목록).
 
     build_pivot 이 값을 equipment(=lot_label) 별로 모아주므로, 그대로
     collate.collate_recipe(machines_all=lot_labels) 에 넘길 수 있다.
-    """
+    변환계수는 조사 호기 1대 기준이므로 coef_lookup 은 **호기 고정** 콜백을 넘긴다."""
     all_cfgs: list[ini_parser.ParsedConfig] = []
     labels: list[str] = []
     for label, cdir in lot_dirs:
         if label not in labels:
             labels.append(label)
-        all_cfgs += _lot_configs(Path(cdir), label, level, scales)
+        all_cfgs += _lot_configs(Path(cdir), label, level, scales, coef_lookup)
     pivot_rows, _ = ini_parser.build_pivot(all_cfgs)
     return pivot_rows, labels
 
