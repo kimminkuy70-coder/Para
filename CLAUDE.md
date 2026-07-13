@@ -49,9 +49,13 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     하위호환(호기열 오인 방지, 저장 시 자연 제거).
   - `PI` 컬럼 = 레시피 레벨(PI2/PI3/PI4, RDL1~RDL4, **기타 커스텀 레벨 허용**)
   - `Recipe` 컬럼 = 변형(variant): PI계열은 `PI` / `PI-bubble`, RDL계열은 `x5` / `x20`
-- **변환 계수(scale)**: 단일 하드코딩 금지. `ini_parser.transform_value(raw, transform, scale)`
-  변형별 계수(예: PI vs PI-bubble). 정확값 `0.8456665875666588`/`0.7696441409644141`.
-  양식 만들 때 **변형별로 물어봐** 양식 `추출_요약`에 저장 → 값 업데이트가 읽어 재적용.
+- **변환 계수(scale)**: 단일 하드코딩 금지. `ini_parser.transform_value(raw, transform, scale)`.
+  **장비 렌즈 특성 → 계수는 (호기 + MAG)마다 다름(2026-07 확정)**. 같은 호기·같은 MAG면
+  레시피 달라도 동일. MAG = OpticPreset 최신 Scan2d 의 `Mag`(예 3.14, `ini_parser.read_optic_mag`).
+  저장 = 저장폴더 `변환계수.xlsx`[호기,MAG,변형,계수,비고](`coefstore.py`, 사람 관리 + 수집 시
+  RTP.txt 자동추정 upsert). 적용 = `scan_tree(coef_lookup=)`가 (호기,MAG)로 조회(없으면 자동
+  추정→저장, 그래도 없으면 구 `scales`/기본). 값확인 화면 `AOI-xx : PI` 옆에 변형별 계수 표시.
+  구 방식(변형별 `추출_요약`)은 폴백으로 유지. 정확값 `0.8456665875666588`/`0.7696441409644141`.
 - **IP↔호기**: 값 업데이트 수집 시 IP를 **호기(AOI-xx)에 매칭**(IP-파생 열 생성 금지).
 - **변형 라벨 표기**: 버블은 하이픈 `PI-bubble`로 통일(언더스코어 `PI_bubble` 아님).
 - **파일 분리 저장**: PI 계열 → `{stem}_PI.xlsx`(시트 PI_ALL), RDL 계열 → `{stem}_RDL.xlsx`
@@ -97,6 +101,7 @@ python3 tests/test_formbuilder.py  # 3  (초안 생성·편집→확정 양식·
 python3 tests/test_collate.py      # 2  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
+python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -121,6 +126,11 @@ python3 tests/test_downloader.py   # 8
   known 쌍 비교(LINEAR=disp/raw, AREA=√). 1.0 근처(직접단위) 제외, 군집·신뢰도. `detect_from_dir`.
 - `param_manager/refdata.py` — **참고자료/특이사항 독립 파일 I/O**: `REF_HEADERS=[호기,IP,비고]`,
   load/save/create_blank, `machines()`/`ip_for()`/`add_machine()`.
+- `param_manager/coefstore.py` — **변환계수.xlsx (호기+MAG) 저장소**: `[호기,MAG,변형,계수,비고]`
+  load/save/create_blank, `lookup(rows,호기,MAG)`(숫자 근사), `upsert`(사람값 우선),
+  `machine_coefs`(표시), `make_lookup`(scan_tree 콜백). MAG=OpticPreset Scan2d Mag(read_optic_mag).
+  값확인 화면 `AOI-xx : PI` 옆 계수 표시(`equip_app._coef_label_for`), 파싱 시 장비별 적용
+  (`_coef_lookup_cb`→`_parse_sources_busy`).
 - `param_manager/workdirs.py` — **저장폴더 기준 경로**: `form_run_dir/form_final_path/
   form_original_path/form_draft_path/related_dir/list_form_versions/collate_path/
   latest_collate/list_collate_files`. (구 initial/final/백업 함수는 레거시.)

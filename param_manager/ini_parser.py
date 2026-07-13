@@ -266,6 +266,33 @@ def _pick_optic_target(sections: dict) -> str | None:
     return (with_keep or scan)[-1]
 
 
+def read_optic_mag(config_dir: Path) -> str:
+    """OpticPreset.ini 의 **최신 Scan2d(target) 섹션 Mag 값**(예: '3.14') 반환.
+    변환계수 키(호기+MAG)용 — 없으면 ''. OpticPreset 은 레시피(PI/PI-bubble)마다 다르다."""
+    for name in ("OpticPreset.ini", "opticpreset.ini"):
+        p = Path(config_dir) / name
+        if p.is_file():
+            try:
+                sections = parse_ini_sections(p)
+            except Exception:  # noqa: BLE001
+                return ""
+            target = _pick_optic_target(sections)
+            if target is not None:
+                mag = sections[target].get("Mag")
+                if mag not in (None, ""):
+                    return str(mag).strip()
+            # target 못 잡아도 아무 Scan2d 의 Mag
+            for s, kv in sections.items():
+                if _SCAN2D_SEC_RE.match(s) and kv.get("Mag") not in (None, ""):
+                    return str(kv["Mag"]).strip()
+            break
+    # 하위 폴더(Zones 등이 아닌 실제 OpticPreset)도 탐색
+    hits = sorted(Path(config_dir).rglob("OpticPreset.ini"))
+    if hits and hits[0] != Path(config_dir) / "OpticPreset.ini":
+        return read_optic_mag(hits[0].parent)
+    return ""
+
+
 def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT") -> list[ExtractRow]:
     """OpticPreset.ini 전용 — 최신 Scan2d 통일 + 합성 행(첫 KEEP 위) + 나머지 N."""
     target = _pick_optic_target(sections)
@@ -440,24 +467,38 @@ class ParsedConfig:
     mag: str
     config_dir: Path
     rows: list[ExtractRow] = field(default_factory=list)
+    mag_value: str = ""        # OpticPreset Scan2d 의 실제 Mag(예: '3.14') — 계수 키
+    scale_used: float = DEFAULT_SCALE   # 이 폴더에 적용된 변환계수
 
 
 def scan_tree(root: str | Path, default_level: str = "",
               default_equipment: str = "", scale: float = DEFAULT_SCALE,
-              scales: dict | None = None) -> list[ParsedConfig]:
+              scales: dict | None = None, coef_lookup=None) -> list[ParsedConfig]:
     """폴더트리 → config 폴더별 ParsedConfig (ini 소스 전용, RTP.txt 미사용).
-    scale = 기본 변환 계수. scales = {변형라벨: 계수}(예: {'PI':.., 'PI-bubble':..}) —
-    폴더의 변형(mag)에 맞는 계수를 골라 적용(없으면 scale)."""
+
+    변환계수 결정 우선순위(장비 렌즈 특성 = 장비×MAG 마다 다름):
+      1) coef_lookup(equipment, mag_value, config_dir) 가 값을 주면 그걸 사용,
+      2) 없으면 scales[변형라벨](구 방식), 3) 그래도 없으면 scale(기본).
+    coef_lookup 은 '변환계수.xlsx'(호기+MAG) 를 읽는 콜백(GUI/호출측이 주입)."""
     scales = scales or {}
     res: list[ParsedConfig] = []
     for cdir in find_config_dirs(Path(root)):
         meta = detect_meta(cdir, default_level, default_equipment)
-        use_scale = scales.get(meta["mag"], scale)
+        mag_value = read_optic_mag(cdir)
+        use_scale = None
+        if coef_lookup is not None:
+            try:
+                use_scale = coef_lookup(meta["equipment"], mag_value, cdir, meta["mag"])
+            except Exception:  # noqa: BLE001
+                use_scale = None
+        if use_scale is None:
+            use_scale = scales.get(meta["mag"], scale)
         rows: list[ExtractRow] = []
         for f in config_ini_files(cdir):
             rows += parse_ini_file(f, use_scale)
         res.append(ParsedConfig(meta["equipment"], meta["layer"], meta["recipe"],
-                                meta["mag"], cdir, rows))
+                                meta["mag"], cdir, rows, mag_value=mag_value,
+                                scale_used=use_scale))
     return res
 
 
