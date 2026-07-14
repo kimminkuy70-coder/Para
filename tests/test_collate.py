@@ -68,6 +68,38 @@ def test_form_transform_reapplied_on_update():
     print("  collate OK: 양식 변환방식+계수 재적용(라벨/장비별 우선순위)")
 
 
+def test_micron_name_forces_convert():
+    """이름에 µ 있으면 저장된 변환방식이 RAW 여도 항상 변환. µ 없으면 저장값 존중."""
+    from param_manager import extract_io
+    with tempfile.TemporaryDirectory() as tmp:
+        form = os.path.join(tmp, "f.xlsx")
+        recs = [{"PI": "PI3", "Recipe": "PI", "Zone": "Scan Area", "Alg": "Surface",
+                 "Parameter": "Min Defect Area - Bright (area, µ)", "비고": ""},
+                {"PI": "PI3", "Recipe": "PI", "Zone": "Scan Area", "Alg": "Surface",
+                 "Parameter": "Min Defect Width - Bright", "비고": ""}]
+        exts = [{"src_file": "z.ini", "section": "Surface", "key": "BrightArea",
+                 "raw": 10000, "transform": "RAW", "source_path": ""},   # 저장 RAW(불일치)
+                {"src_file": "z.ini", "section": "Surface", "key": "BrightDiameter",
+                 "raw": 50, "transform": "RAW", "source_path": ""}]
+        extract_io.write_snapshot(form, recs, machines=[], sheet_name="PI_ALL",
+                                  extracts=exts, stage="final", level="PI3")
+
+        def piv(key, val):
+            return {"layer": "PI", "recipe": "PI3", "mag": "PI", "zone": "Scan Area",
+                    "alg": "Surface", "param": key, "values": {"AOI-6": val},
+                    "raws": {"AOI-6": val}, "mags": {"AOI-6": "3.14"}, "use": True,
+                    "extract": {"src_file": "z.ini", "section": "Surface", "key": key,
+                                "transform": "RAW", "source_path": ""}}
+        rows = [piv("BrightArea", 10000), piv("BrightDiameter", 50)]
+        res = collate.collate_recipe("PI3", form, rows, ["AOI-6"],
+                                     coef_lookup=lambda h, m: 0.77)
+        by = {engine._s(r["Parameter"]): engine._s(r.get("AOI-6")) for r in res.records}
+        assert by["Min Defect Area - Bright (area, µ)"] == \
+            engine._s(round(10000 * 0.77 ** 2, 6))            # µ → AREA
+        assert by["Min Defect Width - Bright"] == "50"        # µ 없음 → RAW
+    print("  collate OK: µ 이름은 항상 변환 / µ 없으면 RAW 유지")
+
+
 def test_build_collation_carryover_and_allmachines():
     with tempfile.TemporaryDirectory() as tmp:
         save = os.path.join(tmp, "저장폴더")

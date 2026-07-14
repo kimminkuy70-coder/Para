@@ -113,8 +113,14 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
                 "reason": "이번 수집 장비에서 설정키를 찾지 못함"})
         else:
             res.matched_rows += 1
-            ftrans = engine._s(meta.get("transform")).strip() or "RAW"
-            label_coef = ini_parser.scale_from_label(ftrans)
+            stored_t = engine._s(meta.get("transform")).strip() or "RAW"
+            pname = engine._s(pr.get("Parameter"))
+            # µ(마이크로) 규칙: 이름에 µ 있으면 **항상 변환**(이름 기준). 이름과 저장된
+            # 변환방식이 어긋나도(옛 양식·지도 미매칭·LIGHT 고정 RAW) 일관되게 변환.
+            # µ 없으면 저장된 변환방식 존중(수동 편집·BOOL/REGION/CLASSIFY/RAW).
+            ftrans = (ini_parser.resolve_transform(pname, stored_t)
+                      if ini_parser._has_micron(pname) else stored_t)
+            label_coef = ini_parser.scale_from_label(stored_t)
             raws = match.get("raws") or {}
             values = match.get("values") or {}
             mags = match.get("mags") or {}
