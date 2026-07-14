@@ -1329,8 +1329,11 @@ class EquipApp(tk.Tk):
         win.wait_window()
         return res["val"]
 
-    def _pick_list_chooser(self, kind, title, items, multi):
-        """collector 용 모달 선택창. 반환: 선택 목록 또는 None(취소)."""
+    def _pick_list_chooser(self, kind, title, items, multi,
+                           labels=None, preselect=None, note=""):
+        """collector 용 모달 선택창. 반환: 선택 목록 또는 None(취소).
+        labels: 항목별 표시 문구(기본 = 항목 이름). preselect: 미리 선택할 인덱스들.
+        note: 목록 위 안내문(예: 취합 대상 레시피)."""
         # 버그 수정: _chooser_parent 가 이미 닫힌 창이면(장비 수집창 사용 후 등)
         # Toplevel 생성이 TclError 로 죽어 목록창이 아예 안 떴다 → 살아있을 때만 사용.
         parent = getattr(self, "_chooser_parent", None)
@@ -1350,6 +1353,9 @@ class EquipApp(tk.Tk):
         win.focus_force()
         tk.Label(win, text=title, bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["bold"]).pack(anchor="w", padx=12, pady=(10, 2))
+        if note:
+            tk.Label(win, text=note, bg=self.p["bg"], fg=self.p["primary"],
+                     font=self.fonts["sub"], justify="left").pack(anchor="w", padx=12)
         if multi:
             tk.Label(win, text="여러 개 선택: Ctrl/Shift+클릭", bg=self.p["bg"],
                      fg=self.p["muted"], font=self.fonts["sub"]).pack(anchor="w", padx=12)
@@ -1362,9 +1368,18 @@ class EquipApp(tk.Tk):
         sb.config(command=lb.yview)
         lb.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
-        for it in items:
-            lb.insert("end", it.name if isinstance(it, Path) else str(it))
-        if items:
+        for i, it in enumerate(items):
+            base = it.name if isinstance(it, Path) else str(it)
+            lb.insert("end", labels[i] if labels else base)
+        if preselect:
+            for i in preselect:
+                if 0 <= i < len(items):
+                    lb.selection_set(i)
+                    if not multi:
+                        break
+            if preselect:
+                lb.see(preselect[0])
+        elif items:
             lb.selection_set(0)
         result = {"val": None}
 
@@ -1401,63 +1416,181 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  장비 수집 / 파싱 (양식 만들기·값 업데이트 공용)
     # ====================================================================
-    def _collect_dialog(self, staging_root, on_sources, level_hint=""):
-        """장비 IP 수집 모달. IP↔호기 매칭 후 staging_root/{호기}/ 로 읽기전용 복사.
+    def _collect_dialog(self, staging_root, on_sources, level_hint="", levels=None):
+        """장비 수집 모달 — ① 장비 IP 목록에서 선택(1순위, 호기별 비밀번호) +
+        ② IP 직접 입력(2순위). staging_root/{호기}/ 로 읽기전용 복사.
+        levels: 취합 대상 레시피 목록 — Job/Recipe 폴더 선택창에 매칭 표시.
         완료 시 on_sources(sources) 호출. sources=[(폴더, job_keyword, 호기)]."""
+        levels = [lv for lv in (levels or ([level_hint] if level_hint else [])) if lv]
         win = tk.Toplevel(self)
         win.title("장비에서 수집(읽기전용)")
-        win.geometry("620x380")
+        win.geometry("720x640")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         self._chooser_parent = win
         tk.Label(win, text="장비 네트워크(\\\\IP\\c$\\Job)에서 설정 파일 수집",
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                  anchor="w", padx=14, pady=(12, 2))
-        tk.Label(win, text="원본은 읽기·복사만. 장비 1대씩 접속 후 즉시 해제, 비밀번호는 "
-                          "이번 실행 메모리에만 보관.", bg=self.p["bg"], fg=self.p["muted"],
+        sub = "원본은 읽기·복사만. 장비 1대씩 접속 후 즉시 해제, 비밀번호는 " \
+              "이번 실행 메모리에만 보관."
+        if levels:
+            sub += f"\n취합 대상 레시피: {', '.join(levels)}"
+        tk.Label(win, text=sub, bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"], justify="left").pack(anchor="w", padx=14)
-        tk.Label(win, text="장비 IP(여러 개, 쉼표/줄바꿈):", bg=self.p["bg"],
-                 fg=self.p["text"], font=self.fonts["sub"]).pack(anchor="w", padx=14, pady=(8, 0))
-        ips_txt = tk.Text(win, height=4, font=self.fonts["base"], relief="solid", bd=1)
-        ips_txt.pack(fill="x", padx=14, pady=(2, 8))
+
+        # ── ① 장비 IP 목록에서 선택(1순위) — 호기별 비밀번호 입력
+        box1 = tk.LabelFrame(win, text=" ① 장비 목록에서 선택 (호기별 비밀번호) ",
+                             bg=self.p["bg"], fg=self.p["text"],
+                             font=self.fonts["bold"], padx=8, pady=6)
+        box1.pack(fill="both", expand=True, padx=14, pady=(8, 4))
+        listing = [(engine._s(r.get("호기")).strip(), engine._s(r.get("IP")).strip())
+                   for r in self.ip_rows
+                   if engine._s(r.get("호기")).strip() and engine._s(r.get("IP")).strip()]
+        rows_ui = []                     # [(check_var, 호기, ip, pw_var)]
+        if listing:
+            cv = tk.Canvas(box1, bg=self.p["bg"], highlightthickness=0, height=200)
+            vsb = ttk.Scrollbar(box1, orient="vertical", command=cv.yview)
+            inner = tk.Frame(cv, bg=self.p["bg"])
+            cv.create_window((0, 0), window=inner, anchor="nw")
+            cv.configure(yscrollcommand=vsb.set)
+            cv.pack(side="left", fill="both", expand=True)
+            vsb.pack(side="right", fill="y")
+            inner.bind("<Configure>",
+                       lambda e: cv.configure(scrollregion=cv.bbox("all")))
+
+            def _wheel(e):
+                cv.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1),
+                                "units")
+                return "break"
+            for w in (cv, inner):
+                w.bind("<MouseWheel>", _wheel)
+            for i, (aoi, ip) in enumerate(listing):
+                ck = tk.BooleanVar(value=False)
+                pw = tk.StringVar()
+                tk.Checkbutton(inner, text=f"{aoi}", variable=ck, bg=self.p["bg"],
+                               font=self.fonts["bold"], width=10, anchor="w").grid(
+                    row=i, column=0, sticky="w", pady=1)
+                tk.Label(inner, text=ip, bg=self.p["bg"], fg=self.p["muted"],
+                         font=self.fonts["base"], width=16, anchor="w").grid(
+                    row=i, column=1, sticky="w")
+                tk.Label(inner, text="비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
+                         font=self.fonts["sub"]).grid(row=i, column=2, sticky="e")
+                pe = tk.Entry(inner, textvariable=pw, width=16, show="*",
+                              relief="solid", bd=1)
+                pe.grid(row=i, column=3, sticky="w", padx=(4, 2), pady=1)
+                pe.bind("<FocusIn>", lambda e, c=ck: c.set(True))  # 비번 입력=선택
+                rows_ui.append((ck, aoi, ip, pw))
+        else:
+            tk.Label(box1, text="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 "
+                              "호기·IP를 등록하면 여기서 바로 선택할 수 있습니다.",
+                     bg=self.p["bg"], fg=self.p["danger"],
+                     font=self.fonts["sub"]).pack(anchor="w", padx=4, pady=4)
+        conv = tk.Frame(win, bg=self.p["bg"])
+        conv.pack(fill="x", padx=14)
+        common_pw = tk.StringVar()
+        tk.Label(conv, text="공통 비밀번호:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        tk.Entry(conv, textvariable=common_pw, width=16, show="*", relief="solid",
+                 bd=1).pack(side="left", padx=(4, 4))
+
+        def apply_common():
+            for ck, _aoi, _ip, pw in rows_ui:
+                if ck.get() and not pw.get():
+                    pw.set(common_pw.get())
+        tk.Button(conv, text="선택 장비의 빈 칸에 적용", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=10, cursor="hand2",
+                  command=apply_common).pack(side="left")
+        tk.Label(conv, text="  (비밀번호가 같은 장비는 이걸로 한 번에)",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+
+        # ── ② IP 직접 입력(2순위) — 목록에 없는 장비
+        box2 = tk.LabelFrame(win, text=" ② IP 직접 입력 (목록에 없는 장비, 쉼표/줄바꿈) ",
+                             bg=self.p["bg"], fg=self.p["muted"],
+                             font=self.fonts["sub"], padx=8, pady=4)
+        box2.pack(fill="x", padx=14, pady=(6, 4))
+        ips_txt = tk.Text(box2, height=2, font=self.fonts["base"], relief="solid", bd=1)
+        ips_txt.pack(fill="x", pady=(2, 4))
+        drow = tk.Frame(box2, bg=self.p["bg"])
+        drow.pack(fill="x")
+        direct_pw = tk.StringVar()
+        tk.Label(drow, text="직접 입력 IP 비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+        tk.Entry(drow, textvariable=direct_pw, width=16, show="*", relief="solid",
+                 bd=1).pack(side="left", padx=(4, 0))
+
+        # ── 공통 설정(접속 ID / net use)
         row = tk.Frame(win, bg=self.p["bg"])
-        row.pack(fill="x", padx=14)
+        row.pack(fill="x", padx=14, pady=(6, 0))
         tk.Label(row, text="접속 ID:", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["sub"]).pack(side="left")
         uid_var = tk.StringVar(value=self._cfg.get("collect_user", "amkor"))
         tk.Entry(row, textvariable=uid_var, width=12, relief="solid", bd=1).pack(
             side="left", padx=(4, 10))
-        tk.Label(row, text="비밀번호:", bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["sub"]).pack(side="left")
-        pw_var = tk.StringVar()
-        tk.Entry(row, textvariable=pw_var, width=16, show="*", relief="solid", bd=1).pack(
-            side="left", padx=(4, 10))
         net_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(row, text="net use 접속(자동 해제)", variable=net_var,
+        tk.Checkbutton(row, text="net use 접속(자동 해제) — 끄면 탐색기로 미리 연결한 "
+                                "세션 사용(비밀번호 불필요)", variable=net_var,
                        bg=self.p["bg"], font=self.fonts["sub"]).pack(side="left")
         status = tk.Label(win, text="", bg=self.p["bg"], fg=self.p["muted"],
                           font=self.fonts["sub"])
         status.pack(fill="x", padx=14, pady=6)
 
+        # Job/Recipe 폴더 선택창에 '어떤 취합 레시피인지' 자동 매칭 표시 + 미리선택
+        def chooser(kind, title, items, multi):
+            if kind in ("job", "recipe") and levels:
+                labels, pre = [], []
+                for i, it in enumerate(items):
+                    nm = it.name if isinstance(it, Path) else str(it)
+                    hit = next((lv for lv in levels
+                                if collector.contains_keyword(nm, lv)), "")
+                    labels.append(f"{nm}    ◀ {hit} 레시피" if hit else nm)
+                    if hit:
+                        pre.append(i)
+                return self._pick_list_chooser(
+                    kind, title, items, multi, labels=labels, preselect=pre,
+                    note=f"취합 대상 레시피: {', '.join(levels)} — "
+                         "'◀' 표시가 자동 매칭된 폴더입니다.")
+            return self._pick_list_chooser(kind, title, items, multi)
+
         def run():
-            ips = collector.split_ips(ips_txt.get("1.0", "end"))
-            if not ips:
-                status.config(text="IP를 입력하세요.")
+            # 1순위: 목록에서 체크한 장비(호기 확정, 호기별 비밀번호)
+            targets = []                     # [(ip, aoi, pw)]
+            for ck, aoi, ip, pw in rows_ui:
+                if ck.get():
+                    targets.append((ip, aoi, pw.get() or common_pw.get()))
+            # 2순위: 직접 입력 IP(호기는 IP↔호기 매칭창에서)
+            direct_ips = collector.split_ips(ips_txt.get("1.0", "end"))
+            direct_ips = [ip for ip in direct_ips
+                          if ip not in {t[0] for t in targets}]
+            if not targets and not direct_ips:
+                status.config(text="장비를 선택하거나 IP를 입력하세요.")
                 return
             if net_var.get() and not collector.is_windows():
                 status.config(text="net use 는 Windows 전용입니다. 체크를 끄고 이미 "
                                    "연결된 경로로 시도하세요.")
                 return
-            ip_map = self._map_ips_to_machines(ips, parent=win)
-            if ip_map is None:
-                return
+            if direct_ips:
+                ip_map = self._map_ips_to_machines(direct_ips, parent=win)
+                if ip_map is None:
+                    return
+                for ip in direct_ips:
+                    aoi = ip_map.get(ip) or self._ip_to_aoi(ip) or ip.replace(".", "_")
+                    targets.append((ip, aoi, direct_pw.get() or common_pw.get()))
+            # net use 모드인데 비밀번호가 빈 장비 확인
+            if net_var.get():
+                nopw = [f"{aoi}({ip})" for ip, aoi, pw in targets if not pw]
+                if nopw and not messagebox.askyesno(
+                        "비밀번호 없음",
+                        "다음 장비는 비밀번호가 비어 있습니다:\n"
+                        + ", ".join(nopw)
+                        + "\n\n빈 비밀번호로 접속을 시도할까요?", parent=win):
+                    return
             self._cfg["collect_user"] = uid_var.get().strip() or "amkor"
             save_config(self._cfg)
             sources, errors = [], []
             plan = None
-            for i, ip in enumerate(ips, 1):
-                aoi = ip_map.get(ip) or self._ip_to_aoi(ip) or ip.replace(".", "_")
-                status.config(text=f"[{i}/{len(ips)}] {ip} ({aoi}) 수집 중…")
+            for i, (ip, aoi, pw) in enumerate(targets, 1):
+                status.config(text=f"[{i}/{len(targets)}] {ip} ({aoi}) 수집 중…")
                 win.update_idletasks()
 
                 def staging_for(kw, aoi=aoi):
@@ -1465,24 +1598,28 @@ class EquipApp(tk.Tk):
                     os.makedirs(d, exist_ok=True)
                     return d
 
-                def confirm(planned, ip=ip):
+                def confirm(planned, ip=ip, aoi=aoi):
                     lines = [f"· {src}" for src, _, _ in planned[:15]]
                     more = f"\n…외 {len(planned) - 15}개" if len(planned) > 15 else ""
                     return messagebox.askyesno(
-                        "복사 확인", f"[{ip}] {len(planned)}개 파일을 로컬로 복사"
-                        "(원본은 읽기만):\n" + "\n".join(lines) + more, parent=win)
+                        "복사 확인", f"[{aoi} · {ip}] {len(planned)}개 파일을 로컬로 "
+                        "복사(원본은 읽기만):\n" + "\n".join(lines) + more, parent=win)
                 try:
                     _, plan, rootp = collector.collect_equipment(
-                        ip, staging_for, self._pick_list_chooser,
+                        ip, staging_for, chooser,
                         username=uid_var.get().strip() or "amkor",
-                        password=pw_var.get(), use_net_use=net_var.get(),
+                        password=pw, use_net_use=net_var.get(),
                         plan=plan, confirm=confirm)
                     sources.append((str(rootp), plan.job_keyword, aoi))
                 except collector.UserCancelled:
-                    errors.append(f"{ip}: 취소")
+                    errors.append(f"{aoi}({ip}): 취소")
                 except Exception as e:  # noqa: BLE001
-                    errors.append(f"{ip}: {e}")
-            pw_var.set("")
+                    errors.append(f"{aoi}({ip}): {e}")
+            # 비밀번호는 메모리에만 — 사용 후 즉시 소거
+            for _ck, _aoi, _ip, pw in rows_ui:
+                pw.set("")
+            common_pw.set("")
+            direct_pw.set("")
             if errors:
                 messagebox.showwarning("수집 결과",
                                        f"완료 {len(sources)}건, 실패 {len(errors)}건\n\n"
@@ -1630,21 +1767,45 @@ class EquipApp(tk.Tk):
         return res["val"]
 
     def _pick_levels(self, levels, title="취합할 레시피를 선택하세요"):
-        """레시피 다중 선택 알림창. 반환: 선택 목록 또는 None."""
+        """레시피 다중 선택 알림창 — 레시피별 최신 양식 정보 표시. 반환: 목록/None."""
         win = tk.Toplevel(self)
         win.title("레시피 선택")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
         tk.Label(win, text=title, bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["bold"]).pack(anchor="w", padx=14, pady=(12, 6))
+                 font=self.fonts["bold"]).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win, text="선택한 레시피마다 장비 Job 폴더에서 해당 Recipe 폴더를 "
+                          "고르게 됩니다(자동 매칭 표시).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=14, pady=(0, 6))
         vars_ = {}
-        for lv in levels:
+        grid = tk.Frame(win, bg=self.p["bg"])
+        grid.pack(fill="x", padx=20, pady=(0, 4))
+        for i, lv in enumerate(levels):
             v = tk.BooleanVar(value=True)
             vars_[lv] = v
-            tk.Checkbutton(win, text=lv, variable=v, bg=self.p["bg"],
-                           font=self.fonts["base"]).pack(anchor="w", padx=20)
+            tk.Checkbutton(grid, text=lv, variable=v, bg=self.p["bg"],
+                           font=self.fonts["bold"]).grid(row=i, column=0,
+                                                         sticky="w", pady=2)
+            # 최신 확정 양식 정보(생성시간·파일명) — 어떤 양식으로 취합되는지 보여줌
+            info = "양식 없음"
+            try:
+                vs = workdirs.list_form_versions(self.save_dir, lv)
+                if vs:
+                    st_, p_ = vs[0]
+                    info = f"최신 양식 {st_}  ({os.path.basename(p_)})"
+            except Exception:  # noqa: BLE001
+                pass
+            tk.Label(grid, text=info, bg=self.p["bg"],
+                     fg=(self.p["muted"] if info != "양식 없음" else self.p["danger"]),
+                     font=self.fonts["sub"]).grid(row=i, column=1, sticky="w",
+                                                  padx=(14, 0))
         res = {"val": None}
+
+        def set_all(v):
+            for var in vars_.values():
+                var.set(v)
 
         def ok():
             sel = [lv for lv, v in vars_.items() if v.get()]
@@ -1656,6 +1817,12 @@ class EquipApp(tk.Tk):
                   padx=16, cursor="hand2", command=ok).pack(side="left")
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=16,
                   cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+        tk.Button(bt, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["muted"], padx=12, cursor="hand2",
+                  command=lambda: set_all(False)).pack(side="right")
+        tk.Button(bt, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["muted"], padx=12, cursor="hand2",
+                  command=lambda: set_all(True)).pack(side="right", padx=6)
         win.wait_window()
         return res["val"]
 
@@ -2696,7 +2863,7 @@ class EquipApp(tk.Tk):
                 lambda sources: self._parse_sources_busy(
                     sources, lambda rows, machines: self._update_collate_flow(chosen, rows),
                     default_level=dlevel, scales=scales),
-                level_hint=dlevel)
+                level_hint=dlevel, levels=chosen)
 
         def from_local():
             win.destroy()
