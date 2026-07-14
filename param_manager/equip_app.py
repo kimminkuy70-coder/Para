@@ -542,7 +542,8 @@ class EquipApp(tk.Tk):
         tk.Label(head, text=coef_txt, bg=self.p["surface"],
                  fg=(self.p["primary"] if "계수" in coef_txt else self.p["muted"]),
                  font=self.fonts["bold"]).pack(side="left", padx=(6, 0))
-        tk.Label(head, text="읽기 전용 · 값 채우기 = ‘파라미터 값 업데이트’   ",
+        tk.Label(head, text="왼쪽=선택 호기(값·비고) · 오른쪽=다른 호기 비교 · "
+                          "읽기 전용(값 채우기는 ‘파라미터 값 업데이트’)   ",
                  bg=self.p["surface"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="right", pady=8)
 
@@ -589,15 +590,18 @@ class EquipApp(tk.Tk):
         # ── 단일 tksheet 그리드(가상 스크롤 — 대량 행/호기에도 빠름)
         holder = tk.Frame(outer, bg=self.p["bg"])
         holder.pack(fill="both", expand=True, padx=12, pady=(8, 10))
-        headers = (["Zone"] if q else []) + ["Alg", "Parameter",
-                                             f"★ {machine}"] + others + ["비고"]
+        # 실제 장비화면과 유사하게: **보고 있는 호기 블록(Parameter·값·비고)** 을 왼쪽에
+        # 붙여 두고, 다른 호기들은 비교용으로 그 오른쪽에 이어 붙인다(비고가 맨 끝으로
+        # 밀려 장비화면과 달라졌던 문제 수정). 열 순서:
+        #   [Zone(검색시)] · Alg · Parameter · ★{선택호기} · 비고 · (다른 호기…)
+        headers = (["Zone"] if q else []) + [
+            "Alg", "Parameter", f"★ {machine}", "비고"] + others
         data = []
         for r in show:
             row = ([engine._s(r.get("Zone"))] if q else []) + [
                 engine._s(r.get("Alg")), engine._s(r.get("Parameter")),
-                engine._s(r.get(machine))]
+                engine._s(r.get(machine)), engine._s(r.get("비고"))]
             row += [engine._s(r.get(m)) for m in others]
-            row.append(engine._s(r.get("비고")))
             data.append(row)
         s = Sheet(holder, theme="light blue",
                   show_x_scrollbar=True, show_y_scrollbar=True,
@@ -611,24 +615,26 @@ class EquipApp(tk.Tk):
                           "column_select", "arrowkeys", "copy", "rc_select",
                           "column_width_resize", "double_click_column_resize",
                           "row_height_resize")
-        # 열 너비: 이름/비고는 넓게, 호기 값은 일정 폭
-        base = 0
+        # 열 너비: 이름/비고 넓게, 호기 값은 일정 폭
+        base = 1 if q else 0
+        c_alg, c_param, c_sel, c_note = base, base + 1, base + 2, base + 3
+        c_others0 = base + 4
         try:
             if q:
-                s.column_width(column=0, width=130)
-                base = 1
-            s.column_width(column=base + 0, width=150)       # Alg
-            s.column_width(column=base + 1, width=280)       # Parameter
-            s.column_width(column=base + 2, width=110)       # 선택 호기
+                s.column_width(column=0, width=120)          # Zone
+            s.column_width(column=c_alg, width=140)          # Alg
+            s.column_width(column=c_param, width=280)        # Parameter
+            s.column_width(column=c_sel, width=120)          # ★ 선택 호기
+            s.column_width(column=c_note, width=200)         # 비고
             for i in range(len(others)):
-                s.column_width(column=base + 3 + i, width=92)
-            s.column_width(column=base + 3 + len(others), width=220)  # 비고
+                s.column_width(column=c_others0 + i, width=92)
         except Exception:  # noqa: BLE001
             pass
-        # 선택 호기 열 강조 + Alg 그룹 줄무늬(같은 Alg 덩어리 교차 배경)
+        # 선택 호기 블록(값·비고) 강조 + Alg 그룹 줄무늬(같은 Alg 덩어리 교차 배경)
         try:
-            s.highlight_columns(columns=[base + 2], bg=self.p["primary_lt"],
+            s.highlight_columns(columns=[c_sel], bg=self.p["primary_lt"],
                                 fg=self.p["text"])
+            s.highlight_columns(columns=[c_note], bg="#fff8e1", fg=self.p["text"])
             stripe_rows, cur_alg, band = [], None, 0
             for i, r in enumerate(show):
                 a = engine._s(r.get("Alg"))
