@@ -109,6 +109,44 @@ def build_initial_workbook(pivot_rows: list[dict], dest_xlsx: str,
     return dest_xlsx
 
 
+def rename_level(xlsx: str, old: str, new: str) -> int:
+    """양식(초안/확정) 엑셀 안의 레시피 레벨 이름을 old→new 로 바꾼다.
+
+    바꾸는 곳: 모든 시트의 'PI' 헤더 열에서 값이 old 인 셀,
+    사용법 시트의 '레시피 레벨: old' 줄, 추출_요약 시트의 ('레시피 레벨', old) 행.
+    반환: 바뀐 셀 수. (파일 제목/폴더명 변경은 호출측 담당.)
+    """
+    old_s, new_s = engine._s(old).strip(), engine._s(new).strip()
+    if not new_s or old_s == new_s:
+        return 0
+    wb = openpyxl.load_workbook(xlsx)
+    changed = 0
+    for ws in wb.worksheets:
+        heads = [engine._s(c.value).strip() for c in ws[1]]
+        if "PI" in heads:
+            ci = heads.index("PI") + 1
+            for r in range(2, ws.max_row + 1):
+                c = ws.cell(row=r, column=ci)
+                if engine._s(c.value).strip() == old_s:
+                    c.value = new_s
+                    changed += 1
+        # 요약형: ('레시피 레벨', old) 두 칸 행 (추출_요약)
+        if heads[:2] == ["항목", "값"]:
+            for r in range(2, ws.max_row + 1):
+                if engine._s(ws.cell(row=r, column=1).value) == "레시피 레벨" and \
+                        engine._s(ws.cell(row=r, column=2).value).strip() == old_s:
+                    ws.cell(row=r, column=2).value = new_s
+                    changed += 1
+        # 안내문형: '레시피 레벨: old' 한 칸 줄 (사용법)
+        for r in range(1, ws.max_row + 1):
+            c = ws.cell(row=r, column=1)
+            if engine._s(c.value) == f"레시피 레벨: {old_s}":
+                c.value = f"레시피 레벨: {new_s}"
+                changed += 1
+    wb.save(xlsx)
+    return changed
+
+
 def _is_used(val) -> bool:
     s = engine._s(val).strip().upper()
     if s in _USED_TRUE:

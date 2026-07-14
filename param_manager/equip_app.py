@@ -2190,10 +2190,23 @@ class EquipApp(tk.Tk):
 
     def _pick_list_chooser(self, kind, title, items, multi):
         """collector 용 모달 선택창. 반환: 선택 목록 또는 None(취소)."""
-        win = tk.Toplevel(getattr(self, "_chooser_parent", None) or self)
+        # 버그 수정: _chooser_parent 가 이미 닫힌 창이면(장비 수집창 사용 후 등)
+        # Toplevel 생성이 TclError 로 죽어 목록창이 아예 안 떴다 → 살아있을 때만 사용.
+        parent = getattr(self, "_chooser_parent", None)
+        try:
+            if parent is None or not parent.winfo_exists():
+                parent = self
+        except tk.TclError:
+            parent = self
+        win = tk.Toplevel(parent)
         win.title(title)
         win.configure(bg=self.p["bg"])
-        win.grab_set()
+        try:
+            win.grab_set()
+        except tk.TclError:
+            pass
+        win.lift()
+        win.focus_force()
         tk.Label(win, text=title, bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["bold"]).pack(anchor="w", padx=12, pady=(10, 2))
         if multi:
@@ -2595,29 +2608,61 @@ class EquipApp(tk.Tk):
         final_path = dict(zip(labels, [p for _, p in versions]))[chosen[0]]
         run_dir = os.path.dirname(final_path)
         related = workdirs.related_dir(run_dir)
-        kind = "RDL" if level.upper().startswith("RDL") else "PI"
         m = _re.search(r"_(.+?)호기_참조_", os.path.basename(final_path))
         aoi = m.group(1) if m else "로컬"
+
+        # 레시피 이름 수정(선택) — 바꾸면 폴더/파일 제목과 엑셀 안 PI 값도 함께 변경
+        from tkinter import simpledialog
+        new_level = simpledialog.askstring(
+            "레시피 이름",
+            f"레시피 이름을 확인/수정하세요.\n"
+            f"(바꾸면 저장 폴더·파일 제목과 엑셀 안의 PI(레시피) 값도 함께 바뀝니다)",
+            initialvalue=level, parent=self)
+        if new_level is None:
+            return
+        new_level = new_level.strip() or level
+        renamed = (new_level != level)
+        kind = "RDL" if new_level.upper().startswith("RDL") else "PI"
+
         drafts = sorted(_glob.glob(os.path.join(related, "*수정본*.xlsx")))
+        new_st = workdirs.stamp()
         if not drafts:
-            if messagebox.askyesno(
+            # 편집용 초안이 없는 옛 버전 — 확정본을 **새 버전으로 복사**해 원본을
+            # 보존한 채 Excel 로 열어 수정(이름 수정도 복사본에만 적용).
+            if not messagebox.askyesno(
                     "편집용 초안 없음",
                     "이 버전에는 편집용 초안(수정본)이 없습니다.\n"
-                    "확정 양식 파일을 바로 Excel로 열어 수정할까요?\n"
-                    "(Excel에서 값/변환방식을 고쳐 저장하면 그대로 반영됩니다.)"):
-                self._open_in_excel(final_path)
+                    "확정 양식을 새 버전으로 복사해 Excel로 열어 수정할까요?\n"
+                    "(원본 버전은 그대로 보존됩니다.)"):
+                return
+            new_run = workdirs.form_run_dir(self.save_dir, new_level, new_st)
+            new_final = workdirs.form_final_path(new_run, new_level, aoi, new_st)
+            try:
+                _shutil.copy2(final_path, new_final)
+                if renamed:
+                    formbuilder.rename_level(new_final, level, new_level)
+            except Exception as e:  # noqa: BLE001
+                messagebox.showerror("복사 실패", str(e))
+                return
+            self._open_in_excel(new_final)
+            self._set_status(f"새 버전으로 복사: {os.path.basename(new_final)} — "
+                             "Excel에서 저장하면 그대로 반영됩니다.")
             return
-        # 원본 버전 보존 — 새 버전 폴더로 초안 복사 후 편집→확정
-        new_st = workdirs.stamp()
-        new_run = workdirs.form_run_dir(self.save_dir, level, new_st)
-        new_draft = workdirs.form_draft_path(workdirs.related_dir(new_run), level, aoi, new_st)
+        # 원본 버전 보존 — 새 버전 폴더로 초안 복사(+이름 반영) 후 편집→확정
+        new_run = workdirs.form_run_dir(self.save_dir, new_level, new_st)
+        new_draft = workdirs.form_draft_path(workdirs.related_dir(new_run),
+                                             new_level, aoi, new_st)
         try:
             _shutil.copy2(drafts[-1], new_draft)
+            if renamed:
+                formbuilder.rename_level(new_draft, level, new_level)
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("초안 복사 실패", str(e))
             return
         opened = self._open_in_excel(new_draft)
-        self._form_finalize_dialog(new_draft, drafts[-1], level, kind, None,
+        # 원본 확정본의 변형별 변환계수를 새 버전에도 이어받는다(없으면 None)
+        old_scales = extract_io.read_scales(final_path) or None
+        self._form_finalize_dialog(new_draft, drafts[-1], new_level, kind, old_scales,
                                    new_run, aoi, new_st, opened)
 
     def _form_new(self, from_equipment: bool):

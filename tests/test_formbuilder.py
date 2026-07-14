@@ -97,6 +97,53 @@ def test_final_stores_scales():
     print("  formbuilder OK: 변형별 계수 양식에 저장/판독 + 추천값 스키마 제거")
 
 
+def test_rename_level_draft_and_final():
+    """레시피 이름 수정: 초안(양식초안 PI 열·사용법)과 확정본(PI_ALL PI 열·추출_요약)
+    안의 레벨 이름이 함께 바뀌고, 확정 재생성 시 새 이름이 유지된다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        rows, _ = _pivot(tmp)
+        init = os.path.join(tmp, "init.xlsx")
+        formbuilder.build_initial_workbook(rows, init, level="PI3", source="AOI-13")
+        final = os.path.join(tmp, "form.xlsx")
+        formbuilder.build_final_from_initial(init, final, level="PI3", aoi="AOI-13")
+
+        # 초안 이름 변경 → PI 열 전부 + 사용법 줄
+        n = formbuilder.rename_level(init, "PI3", "PI3-NEW")
+        assert n >= len(rows) + 1, n
+        wb = openpyxl.load_workbook(init)
+        ws = wb[formbuilder.INIT_SHEET]
+        pi = formbuilder.INIT_HEADERS.index("PI")
+        vals = {r[pi] for r in ws.iter_rows(min_row=2, values_only=True)}
+        assert vals == {"PI3-NEW"}, vals
+        info = [c.value for c in wb["사용법"]["A"]]
+        assert "레시피 레벨: PI3-NEW" in info
+        wb.close()
+
+        # 이름 바뀐 초안 → 확정 재생성: 새 이름이 그대로 반영
+        final2 = os.path.join(tmp, "form2.xlsx")
+        formbuilder.build_final_from_initial(init, final2, level="PI3-NEW")
+        repo = engine.ParamRepository(final2)
+        repo.load()
+        assert {engine._s(pr.get("PI")) for pr in repo.rows} == {"PI3-NEW"}
+
+        # 확정본 직접 이름 변경(초안 없는 옛 버전 대응) → PI_ALL + 추출_요약
+        n2 = formbuilder.rename_level(final, "PI3", "PI3-NEW")
+        assert n2 > 0
+        repo2 = engine.ParamRepository(final)
+        repo2.load()
+        assert {engine._s(pr.get("PI")) for pr in repo2.rows} == {"PI3-NEW"}
+        wb = openpyxl.load_workbook(final)
+        sm = wb[extract_io.SHEET_SUMMARY]
+        d = {engine._s(r[0]): engine._s(r[1])
+             for r in sm.iter_rows(min_row=2, values_only=True) if r and r[0]}
+        assert d.get("레시피 레벨") == "PI3-NEW", d
+        wb.close()
+        # 같은 이름/빈 이름은 no-op
+        assert formbuilder.rename_level(final, "PI3-NEW", "PI3-NEW") == 0
+        assert formbuilder.rename_level(final, "PI3-NEW", "") == 0
+    print("  formbuilder OK: rename_level — 초안/확정/요약 레벨 이름 일괄 변경")
+
+
 def test_final_rejects_when_all_unused():
     with tempfile.TemporaryDirectory() as tmp:
         rows, _ = _pivot(tmp)
