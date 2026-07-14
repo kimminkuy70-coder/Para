@@ -65,10 +65,6 @@ def save_config(cfg: dict) -> None:
         pass
 
 
-def _color_key(row_id: str) -> str:
-    """파라미터 행 강조/색 저장 키(app.py 의 P|RowID|field 규약과 호환)."""
-    return f"P|{row_id}|Parameter"
-
 
 def _sanitize_name(s: str) -> str:
     import re
@@ -91,7 +87,6 @@ class EquipApp(tk.Tk):
         self.path: str | None = None
         self.kind: str | None = None         # "PI" / "RDL"
         self.read_only = False
-        self.dirty = False
         self.recent_colors: list = self._cfg.get("recent_colors", [])
 
         # 3차 재설계: 저장 폴더 + 3개 독립 파일(장비 IP / 참고자료 / 특이사항)
@@ -108,49 +103,24 @@ class EquipApp(tk.Tk):
 
         # 상단 탭(파라미터 값 확인 / 양식 만들기 / 특이사항 / 참고자료)
         self.view = "param"
-        # 스펙: '파라미터 값 확인' 화면에서 호기 값 '직접 수정' 기능 제거(읽기 전용).
-        # 값은 '파라미터 값 업데이트'(장비 수집)로만 채운다. 이름/추천값/비고/색은 편집 유지.
-        self.values_readonly = True
+        # '파라미터 값 확인'은 항상 읽기 전용(최신 취합 스냅샷 표시). 값 채우기는
+        # '파라미터 값 업데이트', 양식 수정은 '양식 만들기 → 기존 양식 수정하기'.
 
         # 내비게이션 스택(뒤로/앞으로) — 파라미터 탭 전용
         self.nav: list[dict] = [{"screen": "s0"}]
         self.nav_idx = 0
 
-        # S4 보조 상태
+        # 값 확인 화면 보조 상태
         self.cur_zone: str | None = None
-        self.collapsed: set = set()          # 접힌 Alg 키
-        self._drag = None
-        self._row_widgets: list = []         # [(param_row, frame, alg)]
-        self._note_pop = None
+        self._param_query = ""               # 파라미터 검색어(값 확인 화면)
         self._cur_sheet = None               # 특이사항/참고자료 tksheet
         self._cur_kind = None
-
-        # 되돌리기/다시(동작 단위 스냅샷 스택)
-        self._undo: list = []
-        self._redo: list = []
-
-        # 행 높이(좌/우 정렬용 픽셀) — 내용(입력칸)보다 크게 잡아 minsize 로 행높이 고정
-        self.HDR_H = 30
-        self.SEC_H = 34
-        self.ROW_H = 34
-        self.LINE_PX = 16          # 우측 줄바꿈 셀의 한 줄 높이
-        self.CELL_CHARS = 10       # 우측 셀 한 줄에 들어가는 대략 글자수
-        self.MAX_LINES = 5         # 우측 셀 최대 줄 수(행 높이 폭주 방지)
-        self.COL_W = 84            # 우측 호기 셀 고정 폭(px) — 헤더/값 정렬용
-        self.NAME_W = 210          # 좌측 파라미터 이름 열 폭(px) — 줄바꿈 기준
-        self.VAL_W = 120           # 좌측 선택호기 값 열 폭(px) — 줄바꿈 기준
 
         self._build_chrome()
         self._render()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.bind_all("<F4>", lambda e: self._highlight_focused())
         self.after(200, self._startup)   # 저장폴더 지정 → 참고자료/특이사항 로드 → 최신 취합
-        self.bind_all("<Control-z>", lambda e: self.undo())
-        self.bind_all("<Control-y>", lambda e: self.redo())
-        self.bind_all("<Control-Z>", lambda e: self.undo())
-        self.bind_all("<Control-Shift-Z>", lambda e: self.redo())
-        self.bind_all("<Control-Shift-z>", lambda e: self.redo())
 
     # ====================================================================
     #  상단 공통 크롬(뒤로/앞으로/브레드크럼/저장/파일)
@@ -173,15 +143,6 @@ class EquipApp(tk.Tk):
                                   activebackground="#475569",
                                   command=lambda: self.navigate(screen="s0"))
         self.btn_home.pack(side="left", padx=4, pady=11)
-
-        self.btn_undo = tk.Button(bar, text="↶ 되돌리기", relief="flat", bd=0,
-                                  bg="#334155", fg="#f8fafc", padx=10, pady=6,
-                                  activebackground="#475569", command=self.undo)
-        self.btn_undo.pack(side="left", padx=(12, 2), pady=11)
-        self.btn_redo = tk.Button(bar, text="↷ 다시", relief="flat", bd=0,
-                                  bg="#334155", fg="#f8fafc", padx=10, pady=6,
-                                  activebackground="#475569", command=self.redo)
-        self.btn_redo.pack(side="left", padx=2, pady=11)
 
         self.lbl_crumb = tk.Label(bar, text="", bg=self.p["header_bar"],
                                   fg="#cbd5e1", font=self.fonts["sub"])
@@ -217,6 +178,10 @@ class EquipApp(tk.Tk):
                           font=self.fonts["bold"], padx=22, pady=8, cursor="hand2",
                           command=lambda k=key: self._set_view(k))
             b.pack(side="left", padx=(8 if key == "param" else 2, 2), pady=4)
+            b.bind("<Enter>", lambda e, k=key, w=b:
+                   w.config(bg=self.p["primary_lt"]) if k != self.view else None)
+            b.bind("<Leave>", lambda e, k=key, w=b:
+                   w.config(bg=self.p["head_bg"]) if k != self.view else None)
             self._tab_btns[key] = b
 
         # 상태바
@@ -241,33 +206,32 @@ class EquipApp(tk.Tk):
         self._render()      # 내비 위젯 표시/숨김은 _render 가 일괄 처리
 
     def _sync_nav_widgets(self):
-        """뒤로/앞으로/처음/크럼 은 '파라미터 값 확인' 탭에서만 보이게. 어떤 경로로
-        view 가 바뀌든(_set_view/직접대입+navigate) _render 가 호출하므로 항상 일치."""
+        """뒤로/앞으로/처음/크럼 은 '파라미터 값 확인' 탭에서만, 저장 버튼은 편집
+        가능한 탭(특이사항/참고자료/장비 IP)에서만 보이게. 어떤 경로로 view 가
+        바뀌든(_set_view/직접대입+navigate) _render 가 호출하므로 항상 일치."""
         want = (self.view == "param")
-        if getattr(self, "_nav_shown", None) == want:
-            return
-        self._nav_shown = want
-        if want:
-            self.btn_back.pack(side="left", padx=(12, 4), pady=11, before=self.btn_undo)
-            self.btn_fwd.pack(side="left", padx=4, pady=11, before=self.btn_undo)
-            self.btn_home.pack(side="left", padx=4, pady=11, before=self.btn_undo)
-            self.lbl_crumb.pack(side="left", padx=16)      # undo/redo 뒤에 이어붙음
-        else:
-            for w in self._nav_widgets:
-                w.pack_forget()
+        if getattr(self, "_nav_shown", None) != want:
+            self._nav_shown = want
+            if want:
+                self.btn_back.pack(side="left", padx=(12, 4), pady=11)
+                self.btn_fwd.pack(side="left", padx=4, pady=11)
+                self.btn_home.pack(side="left", padx=4, pady=11)
+                self.lbl_crumb.pack(side="left", padx=16)
+            else:
+                for w in self._nav_widgets:
+                    w.pack_forget()
+        editable = (self.view in ("special", "reference", "ip"))
+        if getattr(self, "_save_shown", None) != editable:
+            self._save_shown = editable
+            if editable:
+                self.btn_save.pack(side="right", padx=4, pady=11,
+                                   before=self.title_lbl)
+            else:
+                self.btn_save.pack_forget()
 
     def _set_status(self, msg: str):
         self.status.config(text=msg)
         self.update_idletasks()
-
-    def _guard(self) -> bool:
-        """읽기 전용이면 변경 동작 차단.
-        '파라미터 값 확인'은 설계상 읽기전용(값은 '값 업데이트'로 채움) — 잠금/다른 사용자 아님."""
-        if self.read_only:
-            self._set_status("이 화면은 읽기 전용입니다(값 확인). 값은 '파라미터 값 업데이트'로 "
-                             "채우고, 양식 수정은 '양식 만들기 → 기존 양식 수정하기'를 쓰세요.")
-            return False
-        return True
 
     # ====================================================================
     #  내비게이션
@@ -304,8 +268,6 @@ class EquipApp(tk.Tk):
                 self.unbind_all(seq)
             except tk.TclError:
                 pass
-        self.btn_undo.config(state=("normal" if self._undo and not self.read_only else "disabled"))
-        self.btn_redo.config(state=("normal" if self._redo and not self.read_only else "disabled"))
         for w in self.body.winfo_children():
             w.destroy()
         if self.view == "special":
@@ -331,12 +293,8 @@ class EquipApp(tk.Tk):
         scr = st.get("screen", "s0")
         if scr == "s0":
             self._screen_machines()
-        elif scr == "s1":
-            self._screen_kind(st)
-        elif scr == "s2":
-            self._screen_pi(st)
-        elif scr == "s3":
-            self._screen_recipe(st)
+        elif scr in ("s1", "s2", "s3"):      # 구 단계(종류→레벨→Recipe)는 한 화면으로 통합
+            self._screen_recipe_pick(st)
         elif scr == "s4":
             self._screen_equipment(st)
 
@@ -484,104 +442,79 @@ class EquipApp(tk.Tk):
         self._render()
 
     # ====================================================================
-    #  S1 — PI / RDL
+    #  S1 — 레시피 선택(레벨+변형 한 화면, 구 종류→레벨→Recipe 3단계 통합)
     # ====================================================================
-    def _screen_kind(self, st):
-        wrap = self._choice_wrap(f"{st['machine']} — 종류 선택", "PI 또는 RDL 을 선택하세요.")
-        for kind, desc in (("PI", "PI Core Parameter"), ("RDL", "RDL Parameter")):
-            self._big_button(wrap, kind, desc,
-                             lambda k=kind: self._enter_kind(k))
-
-    def _enter_kind(self, kind):
-        if not self.repo or not self.repo.rows:
-            messagebox.showinfo("데이터 없음",
-                                "표시할 취합 데이터가 없습니다.\n"
-                                "먼저 ‘파라미터 값 업데이트’로 취합을 만드세요.")
-            return
-        self.navigate(screen="s2", kind=kind)
-
-    # ====================================================================
-    #  S2 — PI 값(PI2/PI3/PI4 …)
-    # ====================================================================
-    def _screen_pi(self, st):
-        wrap = self._choice_wrap(f"{st['machine']} ▸ {st['kind']} — 레시피 선택",
-                                 "취합 데이터에서 인식된 레시피(레벨)입니다.")
-        kind = st.get("kind", "PI")
-        vals = [v for v in self._distinct("PI")
-                if (v.upper().startswith("RDL") if kind == "RDL"
-                    else not v.upper().startswith("RDL"))]
-        if not vals:
-            tk.Label(wrap, text="데이터가 없습니다.", bg=self.p["bg"],
-                     fg=self.p["muted"]).pack()
-            return
-        for v in vals:
-            n = sum(1 for r in self.repo.rows if engine._s(r.get("PI")) == v)
-            self._big_button(wrap, v, f"파라미터 {n}개",
-                             lambda vv=v: self.navigate(screen="s3", pi=vv))
-
-    # ====================================================================
-    #  S3 — Recipe(PI / PI_bubble …)
-    # ====================================================================
-    def _screen_recipe(self, st):
-        wrap = self._choice_wrap(f"{st['machine']} ▸ {st['kind']} ▸ {st['pi']} — Recipe 선택",
-                                 "파일에서 자동 인식된 Recipe 입니다.")
-        vals = self._distinct("Recipe", pi=st["pi"])
-        if not vals:
-            tk.Label(wrap, text="Recipe 데이터가 없습니다.", bg=self.p["bg"],
-                     fg=self.p["muted"]).pack()
-            return
-        for v in vals:
-            n = sum(1 for r in self.repo.rows
-                    if engine._s(r.get("PI")) == st["pi"] and engine._s(r.get("Recipe")) == v)
-            self._big_button(wrap, v or "(빈 Recipe)", f"파라미터 {n}개",
-                             lambda vv=v: self.navigate(screen="s4", recipe=vv))
-
-    # ---- 선택 화면 공통 위젯 ------------------------------------------
-    def _choice_wrap(self, title, sub):
+    def _screen_recipe_pick(self, st):
         wrap = tk.Frame(self.body, bg=self.p["bg"])
         wrap.pack(fill="both", expand=True, padx=28, pady=22)
-        tk.Label(wrap, text=title, bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["title"]).pack(anchor="w", pady=(0, 2))
-        tk.Label(wrap, text=sub, bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(anchor="w", pady=(0, 18))
-        inner = tk.Frame(wrap, bg=self.p["bg"])
-        inner.pack(anchor="w")
-        return inner
+        tk.Label(wrap, text=f"{st['machine']} — 레시피 선택", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", pady=(0, 2))
+        tk.Label(wrap, text="확인할 레시피를 선택하세요(최신 취합에서 인식된 목록).",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(anchor="w", pady=(0, 14))
+        if not self.repo or not self.repo.rows:
+            tk.Label(wrap, text="표시할 취합 데이터가 없습니다.\n"
+                              "상단 '파라미터 값 업데이트'로 먼저 값을 수집하세요.",
+                     bg=self.p["bg"], fg=self.p["danger"], font=self.fonts["bold"],
+                     justify="left").pack(anchor="w", pady=8)
+            return
+        # (레벨 PI, 변형 Recipe) 조합별 파라미터 수 집계 — PI 계열/RDL 계열로 묶어 표시
+        combos: dict[tuple, int] = {}
+        for r in self.repo.rows:
+            key = (engine._s(r.get("PI")), engine._s(r.get("Recipe")))
+            if key[0]:
+                combos[key] = combos.get(key, 0) + 1
+        groups = [("PI 레시피", [k for k in combos if not k[0].upper().startswith("RDL")]),
+                  ("RDL 레시피", [k for k in combos if k[0].upper().startswith("RDL")])]
+        for glabel, keys in groups:
+            if not keys:
+                continue
+            tk.Label(wrap, text=glabel, bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["bold"]).pack(anchor="w", pady=(10, 0))
+            row = tk.Frame(wrap, bg=self.p["bg"])
+            row.pack(anchor="w", fill="x")
+            for pi, rec in sorted(keys):
+                kind = "RDL" if pi.upper().startswith("RDL") else "PI"
+                self._big_button(
+                    row, f"{pi}" + (f"  ·  {rec}" if rec else ""),
+                    f"파라미터 {combos[(pi, rec)]}개",
+                    lambda p_=pi, r_=rec, k_=kind: self.navigate(
+                        screen="s4", kind=k_, pi=p_, recipe=r_))
 
+    # ---- 선택 화면 공통 위젯 ------------------------------------------
     def _big_button(self, parent, text, desc, cmd):
-        card = tk.Frame(parent, bg=self.p["surface"], width=240, height=110,
+        card = tk.Frame(parent, bg=self.p["surface"], width=250, height=96,
                         highlightbackground=self.p["border"], highlightthickness=1,
                         cursor="hand2")
-        card.pack(side="left", padx=8, pady=8)
+        card.pack(side="left", padx=(0, 10), pady=8)
         card.pack_propagate(False)
         tk.Label(card, text=text, bg=self.p["surface"], fg=self.p["primary"],
-                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(20, 2))
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(16, 2))
         tk.Label(card, text=desc, bg=self.p["surface"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(anchor="w", padx=16)
-        for w in (card, *card.winfo_children()):
+        kids = card.winfo_children()
+
+        def paint(bg, border):
+            card.config(bg=bg, highlightbackground=border)
+            for k in kids:                      # 글자 라벨 배경도 함께(박스 자국 방지)
+                k.config(bg=bg)
+        for w in (card, *kids):
             w.bind("<Button-1>", lambda e: cmd())
-            w.bind("<Enter>", lambda e: card.config(bg=self.p["primary_lt"]))
-            w.bind("<Leave>", lambda e: card.config(bg=self.p["surface"]))
+            w.bind("<Enter>", lambda e: paint(self.p["primary_lt"], self.p["primary"]))
+            w.bind("<Leave>", lambda e: paint(self.p["surface"], self.p["border"]))
         return card
 
-    def _distinct(self, field, pi=None) -> list:
-        seen, out = set(), []
-        for r in self.repo.rows:
-            if pi is not None and engine._s(r.get("PI")) != pi:
-                continue
-            v = engine._s(r.get(field))
-            if v not in seen:
-                seen.add(v)
-                out.append(v)
-        return [v for v in out if v != ""] or ([""] if "" in seen else [])
-
     # ====================================================================
-    #  S4 — 장비 화면
+    #  S4 — 파라미터 값 확인(tksheet, 읽기 전용) : Zone 탭 + 검색 + 단일 그리드
     # ====================================================================
     def _filtered_rows(self, st) -> list:
         return [r for r in self.repo.rows
                 if engine._s(r.get("PI")) == st["pi"]
                 and engine._s(r.get("Recipe")) == st["recipe"]]
+
+    def _set_zone(self, z):
+        self.cur_zone = z
+        self._render()
 
     def _screen_equipment(self, st):
         rows = self._filtered_rows(st)
@@ -592,857 +525,155 @@ class EquipApp(tk.Tk):
                 zones.append(z)
         if self.cur_zone not in zones:
             self.cur_zone = zones[0] if zones else None
+        machine = st["machine"]
+        others = [m for m in self.repo.aoi_units if m != machine]
 
         outer = tk.Frame(self.body, bg=self.p["bg"])
         outer.pack(fill="both", expand=True)
 
-        # 제목줄: "AOI-25 : PI"
+        # ── 제목줄: "AOI-25 : PI3" + 변환계수 + 읽기전용 안내
         head = tk.Frame(outer, bg=self.p["surface"],
                         highlightbackground=self.p["border"], highlightthickness=1)
         head.pack(fill="x", padx=12, pady=(10, 0))
-        tk.Label(head, text=f"  {st['machine']} : {st['recipe'] or st['pi']}",
+        tk.Label(head, text=f"  {machine} : {st['recipe'] or st['pi']}",
                  bg=self.p["surface"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(side="left", pady=8)
-        # 변환계수(장비 렌즈 특성 = 호기+MAG) — 변형별 모두 표시
-        coef_txt = self._coef_label_for(st["machine"])
+        coef_txt = self._coef_label_for(machine)
         tk.Label(head, text=coef_txt, bg=self.p["surface"],
                  fg=(self.p["primary"] if "계수" in coef_txt else self.p["muted"]),
-                 font=self.fonts["bold"], cursor="hand2").pack(side="left", padx=(6, 0))
-        ro = "  [파일 읽기 전용]" if self.read_only else ""
-        tk.Label(head, text=f"좌=선택 호기 · 우=다른 호기 · 값은 읽기 전용(‘값 업데이트’로 채움) "
-                          f"· Shift+휠=가로스크롤{ro}   ",
-                 bg=self.p["surface"], fg=(self.p["danger"] if self.read_only else self.p["muted"]),
+                 font=self.fonts["bold"]).pack(side="left", padx=(6, 0))
+        tk.Label(head, text="읽기 전용 · 값 채우기 = ‘파라미터 값 업데이트’   ",
+                 bg=self.p["surface"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="right", pady=8)
 
-        # Zone 가로 탭 + Zone/Alg 추가
+        # ── Zone 탭 + 파라미터 검색
         ztab = tk.Frame(outer, bg=self.p["bg"])
         ztab.pack(fill="x", padx=12, pady=(8, 0))
         for z in zones:
-            sel = (z == self.cur_zone)
+            sel = (z == self.cur_zone) and not self._param_query
             b = tk.Button(ztab, text=z or "(Zone 없음)", relief="flat", bd=0,
                           bg=(self.p["primary"] if sel else self.p["surface"]),
                           fg=("#ffffff" if sel else self.p["text"]),
-                          font=self.fonts["bold"], padx=16, pady=8, cursor="hand2",
-                          command=lambda zz=z: self._set_zone(zz))
+                          font=self.fonts["bold"], padx=16, pady=7, cursor="hand2",
+                          command=lambda zz=z: self._zone_clicked(zz))
             b.pack(side="left", padx=(0, 4))
-            b.bind("<Button-3>", lambda e, zz=z, w=b, s=st: self._zone_menu(e, s, zz, w))
-        if not self.read_only:
-            tk.Button(ztab, text="＋Zone", relief="flat", bd=0, bg=self.p["surface"],
-                      fg=self.p["primary"], font=self.fonts["bold"], padx=12, pady=8,
-                      cursor="hand2", command=lambda s=st: self._add_zone(s)).pack(side="left", padx=(8, 2))
-            tk.Button(ztab, text="＋Alg", relief="flat", bd=0, bg=self.p["surface"],
-                      fg=self.p["primary"], font=self.fonts["bold"], padx=12, pady=8,
-                      cursor="hand2", command=lambda s=st: self._add_alg(s)).pack(side="left", padx=2)
-        tk.Label(ztab, text="  (Zone/Alg 우클릭=이름수정·삭제)", bg=self.p["bg"],
-                 fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+        sbox = tk.Frame(ztab, bg=self.p["bg"])
+        sbox.pack(side="right")
+        tk.Label(sbox, text="🔍", bg=self.p["bg"], fg=self.p["muted"]).pack(side="left")
+        self._search_var = tk.StringVar(value=self._param_query)
+        ent = tk.Entry(sbox, textvariable=self._search_var, width=26,
+                       relief="solid", bd=1, font=self.fonts["base"])
+        ent.pack(side="left", padx=(4, 2), ipady=3)
+        ent.bind("<KeyRelease>", self._search_changed)
+        if getattr(self, "_search_focus", False):
+            self._search_focus = False
+            ent.focus_set()
+            ent.icursor("end")
+        if self._param_query:
+            tk.Button(sbox, text="✕", relief="flat", bd=0, bg=self.p["bg"],
+                      fg=self.p["danger"], cursor="hand2",
+                      command=self._search_clear).pack(side="left")
+            tk.Label(ztab, text="  검색 중 — 모든 Zone에서 찾습니다",
+                     bg=self.p["bg"], fg=self.p["primary"],
+                     font=self.fonts["sub"]).pack(side="right", padx=6)
 
-        # ---- 2분할: 좌(선택호기, 고정폭) / 우(다른호기, 가로스크롤) ----
-        LEFT_W = 540
-        others = [m for m in self.repo.aoi_units if m != st["machine"]]
+        # ── 표시할 행: 검색 중이면 전체 Zone에서, 아니면 현재 Zone만
+        q = self._param_query.casefold()
+        if q:
+            show = [r for r in rows if q in engine._s(r.get("Parameter")).casefold()
+                    or q in engine._s(r.get("Alg")).casefold()
+                    or q in engine._s(r.get("비고")).casefold()]
+        else:
+            show = [r for r in rows if engine._s(r.get("Zone")) == self.cur_zone]
 
-        mid = tk.Frame(outer, bg=self.p["bg"])
-        mid.pack(fill="both", expand=True, padx=12, pady=10)
-
-        # === 상단 고정 헤더(세로 스크롤해도 항상 보임) ===
-        hdr_strip = tk.Frame(mid, bg=self.p["head_bg"], height=self.HDR_H)
-        hdr_strip.pack(side="top", fill="x")
-        hdr_strip.pack_propagate(False)
-        lhdr = tk.Frame(hdr_strip, bg=self.p["head_bg"], width=LEFT_W)
-        lhdr.pack(side="left", fill="y")
-        lhdr.pack_propagate(False)
-        hb = self.p["head_bg"]
-        hfg = self.p["muted"]
-        # 좌측 행 레이아웃(grip/chip/이름/값/비고)에 맞춰 컬럼 제목 정렬(추천값 열 제거)
-        tk.Label(lhdr, text="", bg=hb, width=2, font=self.fonts["bold"]).pack(side="left")           # grip
-        tk.Label(lhdr, text="", bg=hb, width=2).pack(side="left", padx=(2, 6))                       # chip
-        nbox = tk.Frame(lhdr, bg=hb, width=self.NAME_W)
-        nbox.pack(side="left", fill="y")
-        nbox.pack_propagate(False)
-        tk.Label(nbox, text="파라미터", bg=hb, fg=hfg, font=self.fonts["base"],
-                 anchor="w").pack(side="left", fill="both", expand=True)
-        vbox = tk.Frame(lhdr, bg=hb, width=self.VAL_W)
-        vbox.pack(side="left", fill="y", padx=(4, 0))
-        vbox.pack_propagate(False)
-        tk.Label(vbox, text=f"{st['machine']} 값", bg=hb, fg=self.p["primary"],
-                 font=self.fonts["sub"], anchor="center").pack(side="left", fill="both", expand=True)
-        tk.Label(lhdr, text="비고", bg=hb, fg=hfg, font=self.fonts["sub"],
-                 width=2).pack(side="left", padx=(6, 2))
-        tk.Frame(hdr_strip, bg="#94a3b8", width=3).pack(side="left", fill="y")
-        rhead = tk.Canvas(hdr_strip, bg=self.p["head_bg"], highlightthickness=0)
-        rhead.pack(side="left", fill="both", expand=True)
-        rhead_inner = tk.Frame(rhead, bg=self.p["head_bg"])
-        rhead.create_window((0, 0), window=rhead_inner, anchor="nw")
-        for m in others:
-            cell = tk.Frame(rhead_inner, width=self.COL_W, height=self.HDR_H,
-                            bg=self.p["head_bg"], highlightthickness=1,
-                            highlightbackground="#b8c0cc")
-            cell.pack_propagate(False)
-            cell.pack(side="left")
-            tk.Label(cell, text=m, bg=self.p["head_bg"], fg=self.p["text"],
-                     font=self.fonts["sub"], anchor="center").pack(fill="both", expand=True)
-        self._rhead = rhead
-
-        # === 본문(스크롤) ===
-        body = tk.Frame(mid, bg=self.p["bg"])
-        body.pack(side="top", fill="both", expand=True)
-        vbar = ttk.Scrollbar(body, orient="vertical", command=self._yview_both)
-        vbar.pack(side="right", fill="y")
-        self._vbar = vbar
-
-        left_wrap = tk.Frame(body, bg=self.p["bg"], width=LEFT_W)
-        left_wrap.pack(side="left", fill="y")
-        left_wrap.pack_propagate(False)
-        lcanvas = tk.Canvas(left_wrap, bg=self.p["bg"], highlightthickness=0)
-        lcanvas.pack(side="left", fill="both", expand=True)
-        linner = tk.Frame(lcanvas, bg=self.p["bg"])
-        lcanvas.create_window((0, 0), window=linner, anchor="nw", tags="inner")
-        lcanvas.bind("<Configure>", lambda e: lcanvas.itemconfig("inner", width=e.width))
-        lcanvas.config(yscrollcommand=vbar.set)
-
-        divider = tk.Frame(body, bg="#94a3b8", width=3)
-        divider.pack(side="left", fill="y")
-
-        right_wrap = tk.Frame(body, bg=self.p["bg"])
-        right_wrap.pack(side="left", fill="both", expand=True)
-        hbar = ttk.Scrollbar(right_wrap, orient="horizontal")
-        hbar.pack(side="bottom", fill="x")
-        rcanvas = tk.Canvas(right_wrap, bg=self.p["bg"], highlightthickness=0)
-        rcanvas.pack(side="left", fill="both", expand=True)
-        rinner = tk.Frame(rcanvas, bg=self.p["bg"])
-        rcanvas.create_window((0, 0), window=rinner, anchor="nw")
-
-        # 가로 스크롤: 본문 캔버스와 고정 헤더를 같은 위치로 동기화
-        def _xsync(*a):
-            hbar.set(*a)
-            rhead.xview_moveto(rcanvas.xview()[0])
-        rcanvas.config(xscrollcommand=_xsync)
-
-        def _hcmd(*a):
-            rcanvas.xview(*a)
-            rhead.xview_moveto(rcanvas.xview()[0])
-        hbar.config(command=_hcmd)
-
-        self._left_canvas, self._right_canvas = lcanvas, rcanvas
-
-        self._row_widgets = []
-        self._build_panes(linner, rinner, st, others)
-
-        def _upd(_=None):
-            try:
-                lcanvas.configure(scrollregion=lcanvas.bbox("all"))
-                rbb = rcanvas.bbox("all")
-                rcanvas.configure(scrollregion=rbb)
-                # 헤더 가로 스크롤 영역을 **본문과 동일한 x 범위**로 강제한다.
-                # (헤더 자체 bbox 로 두면 폭이 미세하게 달라져 fraction 동기화가
-                #  오른쪽으로 갈수록 누적으로 어긋난다 — '옆으로 갈수록 틀어짐' 버그)
-                if rbb:
-                    rhead.configure(scrollregion=(rbb[0], 0, rbb[2], self.HDR_H))
-                    rhead.xview_moveto(rcanvas.xview()[0])
-            except tk.TclError:
-                pass
-        linner.bind("<Configure>", _upd)
-        rinner.bind("<Configure>", _upd)
-        self.after(60, _upd)
-        # 줄바꿈으로 행 높이가 달라질 수 있어, 실제 높이를 측정해 좌우를 동일하게 맞춤
-        self.after(70, self._equalize_panes)
-        self._scope_wheel(mid, lcanvas, rcanvas, hcanvas=rcanvas)
-
-    def _equalize_panes(self):
-        """좌/우 각 행을 실제 요구 높이의 큰 쪽으로 맞춰 정렬(줄바꿈 대응)."""
-        li, ri = getattr(self, "_pane_l", None), getattr(self, "_pane_r", None)
-        if li is None or ri is None:
-            return
+        # ── 단일 tksheet 그리드(가상 스크롤 — 대량 행/호기에도 빠름)
+        holder = tk.Frame(outer, bg=self.p["bg"])
+        holder.pack(fill="both", expand=True, padx=12, pady=(8, 10))
+        headers = (["Zone"] if q else []) + ["Alg", "Parameter",
+                                             f"★ {machine}"] + others + ["비고"]
+        data = []
+        for r in show:
+            row = ([engine._s(r.get("Zone"))] if q else []) + [
+                engine._s(r.get("Alg")), engine._s(r.get("Parameter")),
+                engine._s(r.get(machine))]
+            row += [engine._s(r.get(m)) for m in others]
+            row.append(engine._s(r.get("비고")))
+            data.append(row)
+        s = Sheet(holder, theme="light blue",
+                  show_x_scrollbar=True, show_y_scrollbar=True,
+                  font=(self.p["family"], 10, "normal"),
+                  header_font=(self.p["family"], 10, "bold"))
+        s.headers(headers)
+        s.set_sheet_data(data, reset_col_positions=True)
+        s.set_options(table_wrap="w", header_wrap="w",
+                      show_vertical_grid=True, show_horizontal_grid=True)
+        s.enable_bindings("single_select", "drag_select", "row_select",
+                          "column_select", "arrowkeys", "copy", "rc_select",
+                          "column_width_resize", "double_click_column_resize",
+                          "row_height_resize")
+        # 열 너비: 이름/비고는 넓게, 호기 값은 일정 폭
+        base = 0
         try:
-            self.update_idletasks()
-            for r in range(getattr(self, "_pane_n", 0)):
-                lw = li.grid_slaves(row=r, column=0)
-                rw = ri.grid_slaves(row=r, column=0)
-                hl = lw[0].winfo_reqheight() if lw else 0
-                hr = rw[0].winfo_reqheight() if rw else 0
-                h = max(hl, hr, self.ROW_H)
-                li.rowconfigure(r, minsize=h)
-                ri.rowconfigure(r, minsize=h)
-            self._left_canvas.configure(scrollregion=self._left_canvas.bbox("all"))
-            self._right_canvas.configure(scrollregion=self._right_canvas.bbox("all"))
-        except Exception:
+            if q:
+                s.column_width(column=0, width=130)
+                base = 1
+            s.column_width(column=base + 0, width=150)       # Alg
+            s.column_width(column=base + 1, width=280)       # Parameter
+            s.column_width(column=base + 2, width=110)       # 선택 호기
+            for i in range(len(others)):
+                s.column_width(column=base + 3 + i, width=92)
+            s.column_width(column=base + 3 + len(others), width=220)  # 비고
+        except Exception:  # noqa: BLE001
             pass
-
-    def _set_zone(self, z):
-        self.cur_zone = z
-        self._render()
-
-    def _toggle_alg(self, key):
-        if key in self.collapsed:
-            self.collapsed.discard(key)
-        else:
-            self.collapsed.add(key)
-        self._render()
-
-    # ---- 2분할 행 빌더 -------------------------------------------------
-    def _grid_row(self, linner, rinner, r, h):
-        linner.rowconfigure(r, minsize=h)
-        rinner.rowconfigure(r, minsize=h)
-        linner.columnconfigure(0, weight=1)
-
-    def _build_panes(self, linner, rinner, st, others):
-        zrows = [x for x in self._filtered_rows(st)
-                 if engine._s(x.get("Zone")) == self.cur_zone]
-        r = 0   # 호기명 헤더는 상단 고정 스트립으로 분리됨
-
-        algs = []
-        for x in zrows:
-            a = engine._s(x.get("Alg"))
-            if a not in algs:
-                algs.append(a)
-        for a in algs:
-            key = f"{self.cur_zone}|{a}"
-            coll = key in self.collapsed
-            prows = [x for x in zrows if engine._s(x.get("Alg")) == a]
-            # 섹션 헤더
-            self._grid_row(linner, rinner, r, self.SEC_H)
-            hdr = tk.Frame(linner, bg="#e2e8f0", cursor="hand2")
-            hdr.grid(row=r, column=0, sticky="nsew")
-            arrow = "▶" if coll else "▼"
-            alg_lbl = tk.Label(hdr, text=f" {arrow}  {a or '(Alg 없음)'}", bg="#e2e8f0",
-                               fg=self.p["text"], font=self.fonts["bold"], anchor="w")
-            alg_lbl.pack(side="left", fill="x", expand=True)
-            tk.Label(hdr, text=f"{len(prows)}개  ", bg="#e2e8f0", fg=self.p["muted"],
-                     font=self.fonts["sub"]).pack(side="right")
-            hdr.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
-            alg_lbl.bind("<Button-1>", lambda e, k=key: self._toggle_alg(k))
-            hdr.bind("<Button-3>", lambda e, aa=a, w=alg_lbl, s=st: self._alg_menu(e, s, aa, w))
-            alg_lbl.bind("<Button-3>", lambda e, aa=a, w=alg_lbl, s=st: self._alg_menu(e, s, aa, w))
-            rsec = tk.Frame(rinner, bg="#e2e8f0")
-            rsec.grid(row=r, column=0, sticky="nsew")
-            r += 1
-            if coll:
-                continue
-            for pr in prows:
-                lines = self._row_lines(pr, others)
-                rh = max(self.ROW_H, lines * self.LINE_PX + 10)
-                self._grid_row(linner, rinner, r, rh)
-                self._build_left_row(linner, r, st, pr, a)
-                self._build_right_row(rinner, r, pr, others, lines)
-                r += 1
-            if not self.read_only:
-                self._grid_row(linner, rinner, r, self.ROW_H)
-                tk.Button(linner, text="＋ 파라미터 추가", relief="flat", bd=0,
-                          bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["bold"],
-                          cursor="hand2", anchor="w", padx=12,
-                          command=lambda s=st, aa=a: self._add_param(s, aa)).grid(
-                    row=r, column=0, sticky="nsew")
-                tk.Frame(rinner, bg=self.p["surface"]).grid(row=r, column=0, sticky="nsew")
-                r += 1
-
-        if not zrows:
-            self._grid_row(linner, rinner, r, self.ROW_H)
-            tk.Label(linner, text="이 Zone에 파라미터가 없습니다. ＋Alg / ＋파라미터로 추가하세요.",
-                     bg=self.p["bg"], fg=self.p["muted"]).grid(row=r, column=0, sticky="w")
-            r += 1
-        # 줄바꿈 후 좌우 행 높이 정렬용 참조 저장
-        self._pane_l, self._pane_r, self._pane_n = linner, rinner, r
-
-    def _build_left_row(self, linner, r, st, pr, alg):
-        machine = st["machine"]
-        # grid 로 열 폭 고정 + 이름/값은 wraplength 로 줄바꿈(잘림 방지). 행 높이는
-        # _equalize_panes 가 좌/우 실제 높이의 큰 쪽으로 맞춰 정렬한다.
-        row = tk.Frame(linner, bg=self.p["surface"])
-        row.grid(row=r, column=0, sticky="nsew")
-        row.columnconfigure(2, minsize=self.NAME_W)
-        row.columnconfigure(3, minsize=self.VAL_W)
-        self._row_widgets.append((pr, row, alg))
-
-        grip = tk.Label(row, text="⋮⋮", bg=self.p["surface"], fg=self.p["muted"],
-                        font=self.fonts["bold"], cursor="fleur", width=2)
-        grip.grid(row=0, column=0, sticky="n")
-        grip.bind("<ButtonPress-1>", lambda e, p=pr: self._drag_start(e, p))
-        grip.bind("<B1-Motion>", self._drag_move)
-        grip.bind("<ButtonRelease-1>", lambda e, s=st: self._drag_drop(e, s))
-
-        col = self.repo.cell_colors.get(_color_key(pr.row_id), "")
-        chip = tk.Label(row, text=" ", bg=(col or self.p["border"]), width=2,
-                        cursor="hand2", relief="flat")
-        chip.grid(row=0, column=1, sticky="n", padx=(2, 6), pady=2)
-        chip.bind("<Button-1>", lambda e, p=pr, w=chip: self._color_popup(p, w))
-        chip.bind("<Button-3>", lambda e, p=pr: self._clear_color(p))
-
-        name = engine._s(pr.get("Parameter")) or "(이름 없음)"
-        # 이름 셀: 줄바꿈(잘림 방지). 색은 색칩으로만 표시.
-        lbl = tk.Label(row, text=name, bg=self.p["surface"], fg=self.p["text"],
-                       font=self.fonts["base"], anchor="nw", justify="left",
-                       wraplength=self.NAME_W - 10)
-        lbl.grid(row=0, column=2, sticky="nsew")
-        lbl.bind("<Double-Button-1>",
-                 lambda e, p=pr, w=lbl: self._edit_popup(
-                     w, engine._s(p.get("Parameter")),
-                     lambda new, pp=p: self._rename_param(pp, new)))
-        for w in (row, lbl):
-            w.bind("<Button-3>", lambda e, p=pr: self._param_menu(e, p))
-
-        # 선택 호기 값 — 읽기 전용(스펙), 줄바꿈 표시
-        valtext = engine._s(pr.get(machine))
-        val = tk.Label(row, text=valtext, bg="#f8fafc", fg=self.p["text"],
-                       font=self.fonts["base"], anchor="nw", justify="left",
-                       wraplength=self.VAL_W - 10, relief="solid", bd=1)
-        val.grid(row=0, column=3, sticky="nsew", padx=2, pady=1)
-
-        has_note = bool(engine._s(pr.get("비고")))
-        qbtn = tk.Button(row, text="?", width=2, relief="flat", bd=0, cursor="hand2",
-                         font=self.fonts["bold"],
-                         bg=(self.p["primary_lt"] if has_note else self.p["head_bg"]),
-                         fg=(self.p["primary"] if has_note else self.p["muted"]))
-        qbtn.config(command=lambda p=pr, w=qbtn: self._show_note(p, w))
-        qbtn.grid(row=0, column=4, sticky="n", padx=(4, 2))
-
-    def _build_right_row(self, rinner, r, pr, others, lines=1):
-        f = tk.Frame(rinner, bg=self.p["surface"])
-        f.grid(row=r, column=0, sticky="nsew")
-        for m in others:
-            # 고정폭 셀(헤더와 동일 COL_W) + 자동 줄바꿈 + 직접 수정. 엑셀형 격자
-            v = engine._s(pr.get(m))
-            cell = tk.Frame(f, width=self.COL_W, bg=self.p["surface"],
-                            highlightthickness=1, highlightbackground="#d4dae2")
-            cell.pack_propagate(False)
-            cell.pack(side="left", fill="y")
-            t = tk.Text(cell, wrap="word", font=self.fonts["sub"], fg="#6b7280",
-                        bg=self.p["surface"], relief="flat", bd=0,
-                        highlightthickness=0, padx=2, pady=1)
-            if v:
-                t.insert("1.0", v)
-            t.tag_add("cctr", "1.0", "end")           # 헤더(가운데)와 정렬 맞춤
-            t.tag_configure("cctr", justify="center")
-            if self.read_only or self.values_readonly:
-                t.config(state="disabled")   # 값 확인은 읽기 전용(스펙)
-            t.pack(fill="both", expand=True)
-            t.bind("<FocusOut>",
-                   lambda ev, p=pr, mm=m, w=t: self._set_value_str(p, mm, w.get("1.0", "end")))
-            t._param = pr
-
-    # ---- 스크롤 동기/스코프 -------------------------------------------
-    def _yview_both(self, *args):
-        # 좌측을 마스터로 스크롤하고 우측은 같은 위치(fraction)로 맞춤.
-        # (우측은 가로 스크롤바 때문에 뷰포트가 더 짧아 units 스크롤이 어긋나므로 moveto 로 동기화)
-        l = getattr(self, "_left_canvas", None)
-        r = getattr(self, "_right_canvas", None)
-        if l is not None:
-            l.yview(*args)
-            if r is not None:
-                r.yview_moveto(l.yview()[0])
-
-    def _scope_wheel(self, widget, *canvases, hcanvas=None):
-        """포인터가 widget 위에 있을 때만 휠 스크롤(다른 창/빈영역 영향 차단).
-        세로: 내용이 화면보다 짧으면 무시. 가로(hcanvas): Shift+휠 / 가로 휠."""
-        def on_v(e):
-            ref = canvases[0]
-            bbox = ref.bbox("all")
-            if not bbox or (bbox[3] - bbox[1]) <= ref.winfo_height():
-                return
-            n = int(-e.delta / 120) or (-1 if e.delta > 0 else 1)
-            ref.yview_scroll(n, "units")
-            top = ref.yview()[0]
-            for c in canvases[1:]:   # 나머지 캔버스는 마스터 위치로 동기화
-                c.yview_moveto(top)
-            return "break"
-
-        def on_h(e):
-            if hcanvas is None:
-                return
-            n = int(-e.delta / 120) or (-1 if e.delta > 0 else 1)
-            hcanvas.xview_scroll(n, "units")
-            return "break"
-
-        def on_h_linux(e):
-            if hcanvas is None:
-                return
-            hcanvas.xview_scroll(-1 if e.num == 6 else 1, "units")
-            return "break"
-
-        def enter(_=None):
-            self.bind_all("<MouseWheel>", on_v)
-            if hcanvas is not None:
-                self.bind_all("<Shift-MouseWheel>", on_h)
-                # 리눅스 가로 휠(Button-6/7) — 일부 X 서버엔 없으므로 예외 무시
-                for seq in ("<Button-6>", "<Button-7>"):
-                    try:
-                        self.bind_all(seq, on_h_linux)
-                    except tk.TclError:
-                        pass
-
-        def leave(_=None):
-            for seq in ("<MouseWheel>", "<Shift-MouseWheel>", "<Button-6>", "<Button-7>"):
-                try:
-                    self.unbind_all(seq)
-                except tk.TclError:
-                    pass
-
-        widget.bind("<Enter>", enter)
-        widget.bind("<Leave>", leave)
-
-    # ====================================================================
-    #  되돌리기 / 다시 (동작 단위 스냅샷)
-    # ====================================================================
-    def _snapshot_state(self) -> dict:
-        rp = self.repo
-        return {
-            "rows": [(r.row_id, dict(r.values), r.display_order, list(r.aoi_units))
-                     for r in rp.rows],
-            "colors": dict(rp.cell_colors),
-            "borders": dict(rp.cell_borders),
-            "special": [dict(s) for s in rp.special],
-            "reference": [list(x) for x in rp.reference],
-            "aoi_units": list(rp.aoi_units),
-        }
-
-    def _restore_state(self, snap: dict) -> None:
-        from .engine import ParamRow
-        rp = self.repo
-        rp.aoi_units = list(snap["aoi_units"])
-        rp.rows = [ParamRow(values=dict(v), row_id=rid, display_order=do, aoi_units=list(au))
-                   for (rid, v, do, au) in snap["rows"]]
-        rp.cell_colors = dict(snap["colors"])
-        rp.cell_borders = dict(snap["borders"])
-        rp.special = [dict(s) for s in snap["special"]]
-        rp.reference = [list(x) for x in snap["reference"]]
-
-    def _push_undo(self) -> None:
-        """변경 직전 상태를 되돌리기 스택에 저장."""
-        if not self.repo:
-            return
-        self._undo.append(self._snapshot_state())
-        self._undo = self._undo[-60:]
-        self._redo.clear()
-
-    def undo(self):
-        if self.read_only or not self.repo or not self._undo:
-            self._set_status("되돌릴 동작이 없습니다.")
-            return
-        self._redo.append(self._snapshot_state())
-        self._restore_state(self._undo.pop())
-        self.dirty = True
-        self._close_note()
-        self._set_status("되돌리기 완료")
-        self._render()
-
-    def redo(self):
-        if self.read_only or not self.repo or not self._redo:
-            self._set_status("다시 실행할 동작이 없습니다.")
-            return
-        self._undo.append(self._snapshot_state())
-        self._restore_state(self._redo.pop())
-        self.dirty = True
-        self._close_note()
-        self._set_status("다시 실행 완료")
-        self._render()
-
-    # ====================================================================
-    #  추천값 / 색 팝업 / Zone·Alg 추가·삭제
-    # ====================================================================
-    def _color_popup(self, pr, anchor):
-        """최근 사용자 지정 색 팔레트(껐다 켜도 유지) + 색 선택/해제."""
-        if not self._guard():
-            return
-        self._close_note()
-        pop = tk.Toplevel(self)
-        self._note_pop = pop
-        pop.wm_overrideredirect(True)
-        pop.attributes("-topmost", True)
-        pop.wm_geometry(f"+{anchor.winfo_rootx()}+{anchor.winfo_rooty() + anchor.winfo_height() + 2}")
-        frame = tk.Frame(pop, bg=self.p["surface"], highlightbackground=self.p["border"],
-                         highlightthickness=1)
-        frame.pack()
-        tk.Label(frame, text="최근 색", bg=self.p["surface"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(anchor="w", padx=6, pady=(6, 0))
-        sw = tk.Frame(frame, bg=self.p["surface"])
-        sw.pack(padx=6, pady=4)
-        palette = self.recent_colors or [HIGHLIGHT_YELLOW, "#fee2e2", "#dcfce7",
-                                         "#dbeafe", "#fde68a"]
-        for hx in palette[:10]:
-            tk.Button(sw, bg=hx, width=2, height=1, relief="flat", bd=1, cursor="hand2",
-                      command=lambda c=hx, p=pr: self._apply_color(p, c, pop)).pack(side="left", padx=2)
-        bar = tk.Frame(frame, bg=self.p["surface"])
-        bar.pack(fill="x", padx=6, pady=(0, 6))
-        tk.Button(bar, text="강조(노랑)", relief="flat", bd=0, bg=HIGHLIGHT_YELLOW,
-                  fg="#5a4b00", cursor="hand2",
-                  command=lambda p=pr: self._apply_color(p, HIGHLIGHT_YELLOW, pop)).pack(side="left", padx=2)
-        tk.Button(bar, text="다른 색…", relief="flat", bd=0, bg=self.p["head_bg"],
-                  fg=self.p["text"], cursor="hand2",
-                  command=lambda p=pr: self._pick_color(p, pop)).pack(side="left", padx=2)
-        tk.Button(bar, text="색 없음", relief="flat", bd=0, bg=self.p["head_bg"],
-                  fg=self.p["danger"], cursor="hand2",
-                  command=lambda p=pr: (self._clear_color(p), pop.destroy())).pack(side="left", padx=2)
-        pop.bind("<Escape>", lambda e: pop.destroy())
-
-    def _apply_color(self, pr, hx, pop=None):
-        if not self._guard():
-            return
-        self._push_undo()
-        self.repo.cell_colors[_color_key(pr.row_id)] = hx
-        self._remember_color(hx)
-        self.dirty = True
-        if pop is not None:
-            pop.destroy()
-        self._render()
-
-    def _zone_menu(self, e, st, zone, anchor=None):
-        m = tk.Menu(self, tearoff=0)
-        st_ = "disabled" if self.read_only else "normal"
-        m.add_command(label="Zone 이름 수정", state=st_,
-                      command=lambda: self._edit_popup(
-                          anchor or self, zone,
-                          lambda new: self._rename_zone(st, zone, new)))
-        m.add_command(label=f"Zone '{zone}' 삭제", state=st_,
-                      command=lambda: self._delete_zone(st, zone))
+        # 선택 호기 열 강조 + Alg 그룹 줄무늬(같은 Alg 덩어리 교차 배경)
         try:
-            m.tk_popup(e.x_root, e.y_root)
-        finally:
-            m.grab_release()
+            s.highlight_columns(columns=[base + 2], bg=self.p["primary_lt"],
+                                fg=self.p["text"])
+            stripe_rows, cur_alg, band = [], None, 0
+            for i, r in enumerate(show):
+                a = engine._s(r.get("Alg"))
+                if a != cur_alg:
+                    cur_alg, band = a, band ^ 1
+                if band:
+                    stripe_rows.append(i)
+            if stripe_rows:
+                s.highlight_rows(rows=stripe_rows, bg=self.p["stripe"],
+                                 fg=self.p["text"], highlight_index=False)
+        except Exception:  # noqa: BLE001
+            pass
+        s.pack(fill="both", expand=True)
+        self._fit_table_heights(s, len(headers))
+        if not show:
+            tk.Label(holder, text=("검색 결과가 없습니다." if q else
+                                   "이 Zone에 파라미터가 없습니다."),
+                     bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["bold"]).place(relx=0.5, rely=0.4,
+                                                    anchor="center")
 
-    def _alg_menu(self, e, st, alg, anchor=None):
-        m = tk.Menu(self, tearoff=0)
-        st_ = "disabled" if self.read_only else "normal"
-        m.add_command(label="Alg 이름 수정", state=st_,
-                      command=lambda: self._edit_popup(
-                          anchor or self, alg,
-                          lambda new: self._rename_alg(st, alg, new)))
-        m.add_command(label=f"Alg '{alg}' 삭제", state=st_,
-                      command=lambda: self._delete_alg(st, alg))
-        try:
-            m.tk_popup(e.x_root, e.y_root)
-        finally:
-            m.grab_release()
+    def _zone_clicked(self, z):
+        self._param_query = ""               # Zone 클릭 = 검색 해제 후 해당 Zone
+        self._set_zone(z)
 
-    def _add_zone(self, st):
-        if not self._guard():
-            return
-        name = simpledialog_safe(self, "새 Zone 이름")
-        if not name:
-            return
-        self._push_undo()
-        pr = self.repo.add_row({"PI": st["pi"], "Recipe": st["recipe"], "Zone": name,
-                                "Alg": "", "Parameter": ""})
-        self.cur_zone = name
-        self.dirty = True
-        self._set_status(f"Zone 추가: {name}")
-        self._render()
-
-    def _add_alg(self, st):
-        if not self._guard():
-            return
-        if not self.cur_zone:
-            messagebox.showinfo("Alg 추가", "먼저 Zone을 선택/추가하세요.")
-            return
-        name = simpledialog_safe(self, "새 Alg 이름")
-        if not name:
-            return
-        self._push_undo()
-        # 현재 Zone 마지막 행 아래에 삽입
-        idx = -1
-        for i, r in enumerate(self.repo.rows):
-            if (engine._s(r.get("PI")) == st["pi"]
-                    and engine._s(r.get("Recipe")) == st["recipe"]
-                    and engine._s(r.get("Zone")) == self.cur_zone):
-                idx = i
-        vals = {"PI": st["pi"], "Recipe": st["recipe"], "Zone": self.cur_zone,
-                "Alg": name, "Parameter": ""}
-        if idx >= 0:
-            self.repo.insert_row_after(idx, vals)
-        else:
-            self.repo.add_row(vals)
-        self.dirty = True
-        self._set_status(f"Alg 추가: {name}")
-        self._render()
-
-    def _delete_zone(self, st, zone):
-        if not self._guard():
-            return
-        if not messagebox.askyesno("Zone 삭제",
-                                   f"Zone '{zone}'의 모든 파라미터를 삭제할까요? (현재 Recipe)"):
-            return
-        self._push_undo()
-        ids = [r.row_id for r in self._filtered_rows(st)
-               if engine._s(r.get("Zone")) == zone]
-        for rid in ids:
-            self.repo.remove_row(rid)
-        if self.cur_zone == zone:
-            self.cur_zone = None
-        self.dirty = True
-        self._set_status(f"Zone 삭제: {zone} ({len(ids)}개 파라미터)")
-        self._render()
-
-    def _delete_alg(self, st, alg):
-        if not self._guard():
-            return
-        if not messagebox.askyesno("Alg 삭제",
-                                   f"현재 Zone의 Alg '{alg}' 파라미터를 삭제할까요?"):
-            return
-        self._push_undo()
-        ids = [r.row_id for r in self._filtered_rows(st)
-               if engine._s(r.get("Zone")) == self.cur_zone
-               and engine._s(r.get("Alg")) == alg]
-        for rid in ids:
-            self.repo.remove_row(rid)
-        self.dirty = True
-        self._set_status(f"Alg 삭제: {alg} ({len(ids)}개 파라미터)")
-        self._render()
-
-    # ---- 값/색/추가/삭제 ----------------------------------------------
-    def _set_value(self, pr, machine, var):
-        self._set_value_str(pr, machine, var.get())
-
-    def _set_value_str(self, pr, machine, new):
-        if self.read_only:
-            return
-        new = engine._s(new)
-        if engine._s(pr.get(machine)) != new:
-            self._push_undo()
-            pr.set(machine, new if new != "" else None)
-            self.dirty = True
-            self._set_status(f"변경됨: {engine._s(pr.get('Parameter'))} [{machine}] = {new}")
-
-    def _row_lines(self, pr, others) -> int:
-        """좌측 파라미터명/값 + 우측 셀들 중 가장 긴 것 기준 필요한 줄 수(초기 추정).
-        최종 행 높이는 _equalize_panes 가 실제 위젯 높이로 다시 맞춘다."""
-        import math
-        mx = 1
-        name = engine._s(pr.get("Parameter"))
-        if name:
-            mx = max(mx, math.ceil(len(name) / 16))     # 좌측 이름 줄바꿈 반영
-        for m in others:
-            v = engine._s(pr.get(m))
-            if v:
-                mx = max(mx, math.ceil(len(v) / self.CELL_CHARS))
-        return min(mx, self.MAX_LINES)
-
-    # ---- 인라인 편집 팝업(셀 위 떠있는 Entry) -------------------------
-    def _edit_popup(self, widget, current, on_commit):
-        if not self._guard():
-            return
-        top = tk.Toplevel(self)
-        top.wm_overrideredirect(True)
-        top.attributes("-topmost", True)
-        top.wm_geometry(f"+{widget.winfo_rootx()}+{widget.winfo_rooty()}")
-        var = tk.StringVar(value=current)
-        ent = tk.Entry(top, textvariable=var, font=self.fonts["base"],
-                       width=max(20, len(current) + 6), relief="solid", bd=1)
-        ent.pack()
-        ent.focus_set()
-        ent.select_range(0, "end")
-
-        def commit(_=None):
-            val = var.get().strip()
-            top.destroy()
-            on_commit(val)
-
-        ent.bind("<Return>", commit)
-        ent.bind("<Escape>", lambda e: top.destroy())
-        ent.bind("<FocusOut>", lambda e: top.destroy())
-
-    def _rename_zone(self, st, old, new):
-        if not new or new == old:
-            return
-        self._push_undo()
-        for r in self._filtered_rows(st):
-            if engine._s(r.get("Zone")) == old:
-                r.set("Zone", new)
-        if self.cur_zone == old:
-            self.cur_zone = new
-        self.dirty = True
-        self._set_status(f"Zone 이름 변경: {old} → {new} (현재 Recipe)")
-        self._render()
-
-    def _rename_alg(self, st, old, new):
-        if not new or new == old:
-            return
-        self._push_undo()
-        for r in self._filtered_rows(st):
-            if engine._s(r.get("Zone")) == self.cur_zone and engine._s(r.get("Alg")) == old:
-                r.set("Alg", new)
-        # 접힘 상태 키 이동
-        ok, nk = f"{self.cur_zone}|{old}", f"{self.cur_zone}|{new}"
-        if ok in self.collapsed:
-            self.collapsed.discard(ok)
-            self.collapsed.add(nk)
-        self.dirty = True
-        self._set_status(f"Alg 이름 변경: {old} → {new} (현재 Zone)")
-        self._render()
-
-    def _rename_param(self, pr, new):
-        if not new or new == engine._s(pr.get("Parameter")):
-            return
-        self._push_undo()
-        pr.set("Parameter", new)
-        self.dirty = True
-        self._set_status(f"파라미터 이름 변경: {new}")
-        self._render()
-
-    # ---- 우클릭 메뉴 + 변경 내역 창 -----------------------------------
-    def _param_menu(self, e, pr):
-        m = tk.Menu(self, tearoff=0)
-        m.add_command(label="변경 내역 보기", command=lambda: self._show_history(pr))
-        m.add_separator()
-        if not self.read_only:
-            m.add_command(label="이 파라미터 삭제", command=lambda: self._delete_param(pr))
-        try:
-            m.tk_popup(e.x_root, e.y_root)
-        finally:
-            m.grab_release()
-
-    def _delete_param(self, pr):
-        if not self._guard():
-            return
-        if not messagebox.askyesno("삭제",
-                                   f"'{engine._s(pr.get('Parameter'))}' 파라미터를 삭제할까요?"):
-            return
-        self._push_undo()
-        self.repo.remove_row(pr.row_id)
-        self.dirty = True
-        self._render()
-
-    def _show_history(self, pr):
-        recipe = engine._s(pr.get("Recipe"))
-        zone = engine._s(pr.get("Zone"))
-        alg = engine._s(pr.get("Alg"))
-        param = engine._s(pr.get("Parameter"))
-        recs = [h for h in self.repo.history
-                if engine._s(h.get("Parameter")) == param
-                and engine._s(h.get("Recipe")) == recipe
-                and engine._s(h.get("Zone")) == zone
-                and engine._s(h.get("Alg")) == alg]
-        recs.reverse()  # 최신순
-
-        win = tk.Toplevel(self)
-        win.title(f"변경 내역 — {param}")
-        win.geometry("820x460")
-        win.configure(bg=self.p["bg"])
-        tk.Label(win, text=f"{recipe} ▸ {zone} ▸ {alg} ▸ {param}",
-                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"],
-                 anchor="w").pack(fill="x", padx=12, pady=(10, 4))
-
-        cols = ("일시", "호기", "이전값", "새값", "변경자", "유형")
-        tv = ttk.Treeview(win, columns=cols, show="headings")
-        widths = (140, 70, 130, 130, 90, 110)
-        for c, w in zip(cols, widths):
-            tv.heading(c, text=c)
-            tv.column(c, width=w, anchor="w")
-        for h in recs:
-            tv.insert("", "end", values=(
-                engine._s(h.get("Update Date")), engine._s(h.get("AOI")),
-                engine._s(h.get("Old Value")), engine._s(h.get("New Value")),
-                engine._s(h.get("Updated By")), engine._s(h.get("Change Type"))))
-        vsb = ttk.Scrollbar(win, orient="vertical", command=tv.yview)
-        tv.configure(yscrollcommand=vsb.set)
-        tv.bind("<MouseWheel>", lambda e: tv.yview_scroll(int(-e.delta / 120), "units"))
-        tv.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(0, 12))
-        vsb.pack(side="right", fill="y", pady=(0, 12), padx=(0, 12))
-        if not recs:
-            tk.Label(win, text="이 파라미터의 변경 내역이 없습니다.",
-                     bg=self.p["bg"], fg=self.p["muted"]).place(relx=0.5, rely=0.5, anchor="center")
-
-    # ---- 비고 메모 팝업(엑셀 메모처럼) --------------------------------
-    def _close_note(self):
-        pop = getattr(self, "_note_pop", None)
-        if pop is not None:
+    def _search_changed(self, _e=None):
+        # 타이핑 멈춘 뒤 250ms 후 한 번만 다시 그림(입력 중 렉 방지)
+        pending = getattr(self, "_search_after", None)
+        if pending:
             try:
-                pop.destroy()
-            except Exception:
+                self.after_cancel(pending)
+            except Exception:  # noqa: BLE001
                 pass
-            self._note_pop = None
 
-    def _show_note(self, pr, anchor):
-        # 이미 열린 비고 팝업이 있으면 먼저 닫는다(하나만 유지)
-        self._close_note()
-        note = engine._s(pr.get("비고"))
-        pop = tk.Toplevel(self)
-        self._note_pop = pop
-        pop.wm_overrideredirect(True)
-        pop.attributes("-topmost", True)
-        # ? 버튼 바로 아래에 위치
-        x = anchor.winfo_rootx()
-        y = anchor.winfo_rooty() + anchor.winfo_height() + 2
-        pop.wm_geometry(f"+{x}+{y}")
-        frame = tk.Frame(pop, bg="#fff8c4", highlightbackground="#caa500",
-                         highlightthickness=1)
-        frame.pack()
-        tk.Label(frame, text=f"비고 — {engine._s(pr.get('Parameter'))}", bg="#fff8c4",
-                 fg="#7a5d00", font=self.fonts["sub"], anchor="w").pack(
-            fill="x", padx=8, pady=(6, 0))
-        txt = tk.Text(frame, width=42, height=6, font=self.fonts["base"],
-                      bg="#fffce8", fg=self.p["text"], relief="flat", wrap="word")
-        txt.insert("1.0", note or "(비고 없음 — 더블클릭해 입력)")
-        txt.config(state="disabled")
-        txt.pack(padx=8, pady=6)
+        def apply():
+            self._search_after = None
+            newq = self._search_var.get().strip()
+            if newq != self._param_query:
+                self._param_query = newq
+                self._search_focus = True    # 다시 그린 뒤 검색창 포커스 유지
+                self._render()
+        self._search_after = self.after(250, apply)
 
-        bar = tk.Frame(frame, bg="#fff8c4")
-        bar.pack(fill="x", padx=8, pady=(0, 6))
-        state = {"editing": False}
-
-        def enable_edit(_=None):
-            if self.read_only or state["editing"]:
-                return
-            state["editing"] = True
-            txt.config(state="normal", bg="#ffffff")
-            if not note:
-                txt.delete("1.0", "end")
-            txt.focus_set()
-            save_btn.pack(side="right")
-
-        def save(_=None):
-            new = txt.get("1.0", "end").strip()
-            self._push_undo()
-            pr.set("비고", new if new else None)
-            self.dirty = True
-            pop.destroy()
-            self._set_status(f"비고 저장: {engine._s(pr.get('Parameter'))}")
-            self._render()
-
-        txt.bind("<Double-Button-1>", enable_edit)
-        save_btn = tk.Button(bar, text="저장", relief="flat", bd=0,
-                             bg=self.p["primary"], fg="#ffffff", padx=10,
-                             cursor="hand2", command=save)
-        tk.Button(bar, text="닫기", relief="flat", bd=0, bg="#e8e0b0",
-                  fg="#7a5d00", padx=10, cursor="hand2",
-                  command=pop.destroy).pack(side="right", padx=(0, 4))
-        tk.Label(bar, text="더블클릭=수정", bg="#fff8c4", fg="#9a7d20",
-                 font=self.fonts["sub"]).pack(side="left")
-        pop.bind("<Escape>", lambda e: pop.destroy())
-
-    def _pick_color(self, pr, pop=None):
-        if not self._guard():
-            return
-        rgb, hx = colorchooser.askcolor(title="파라미터 색 선택",
-                                        initialcolor=self.recent_colors[0]
-                                        if self.recent_colors else "#FFF24D")
-        if pop is not None:
-            pop.destroy()
-        if not hx:
-            return
-        self._push_undo()
-        self.repo.cell_colors[_color_key(pr.row_id)] = hx
-        self._remember_color(hx)
-        self.dirty = True
-        self._render()
-
-    def _clear_color(self, pr):
-        if not self._guard():
-            return
-        if _color_key(pr.row_id) not in self.repo.cell_colors:
-            return
-        self._push_undo()
-        self.repo.cell_colors.pop(_color_key(pr.row_id), None)
-        self.dirty = True
-        self._render()
-
-    def _highlight_focused(self):
-        if self.read_only:
-            return
-        w = self.focus_get()
-        pr = getattr(w, "_param", None)
-        if pr is None:
-            return
-        self._push_undo()
-        self.repo.cell_colors[_color_key(pr.row_id)] = HIGHLIGHT_YELLOW
-        self._remember_color(HIGHLIGHT_YELLOW)
-        self.dirty = True
+    def _search_clear(self):
+        self._param_query = ""
         self._render()
 
     def _remember_color(self, hx):
@@ -1452,96 +683,6 @@ class EquipApp(tk.Tk):
         self.recent_colors = self.recent_colors[:10]
         self._cfg["recent_colors"] = self.recent_colors
         save_config(self._cfg)
-
-    def _add_param(self, st, alg):
-        if not self._guard():
-            return
-        self._push_undo()
-        # 같은 Zone/Alg 마지막 행 아래에 삽입(메타 상속)
-        idx = -1
-        for i, r in enumerate(self.repo.rows):
-            if (engine._s(r.get("PI")) == st["pi"]
-                    and engine._s(r.get("Recipe")) == st["recipe"]
-                    and engine._s(r.get("Zone")) == self.cur_zone
-                    and engine._s(r.get("Alg")) == alg):
-                idx = i
-        vals = {"PI": st["pi"], "Recipe": st["recipe"], "Zone": self.cur_zone,
-                "Alg": alg, "Parameter": ""}
-        if idx >= 0:
-            self.repo.insert_row_after(idx, vals)
-        else:
-            self.repo.add_row(vals)
-        self.dirty = True
-        self._render()
-        # 새 파라미터 이름 입력 안내
-        new = simpledialog_safe(self, "새 파라미터 이름")
-        if new:
-            # 방금 추가한 행(빈 이름) 찾아 이름 지정
-            for r in self.repo.rows:
-                if (engine._s(r.get("Zone")) == self.cur_zone
-                        and engine._s(r.get("Alg")) == alg
-                        and engine._s(r.get("Parameter")) == ""):
-                    r.set("Parameter", new)
-                    break
-            self._render()
-
-    # ---- 드래그 이동(순서변경 / 다른 Alg 이동) ------------------------
-    def _drag_start(self, e, pr):
-        if self.read_only:
-            return
-        self._drag = {"row": pr, "float": None}
-
-    def _drag_move(self, e):
-        if not self._drag:
-            return
-        if self._drag["float"] is None:
-            f = tk.Toplevel(self)
-            f.wm_overrideredirect(True)
-            f.attributes("-alpha", 0.85)
-            tk.Label(f, text=f"⋮⋮ {engine._s(self._drag['row'].get('Parameter')) or '(이름 없음)'}",
-                     bg=self.p["primary"], fg="#ffffff", padx=10, pady=4).pack()
-            self._drag["float"] = f
-        self._drag["float"].wm_geometry(f"+{e.x_root + 12}+{e.y_root + 8}")
-
-    def _drag_drop(self, e, st):
-        if not self._drag:
-            return
-        if self._drag["float"] is not None:
-            self._drag["float"].destroy()
-        src = self._drag["row"]
-        self._drag = None
-        # 커서 y 위치로 드롭 대상 행/Alg 결정
-        target = None
-        for pr, frame, alg in self._row_widgets:
-            try:
-                top = frame.winfo_rooty()
-                bot = top + frame.winfo_height()
-            except Exception:
-                continue
-            if top <= e.y_root <= bot:
-                target = (pr, alg)
-                break
-        if not target or target[0] is src:
-            return
-        tpr, talg = target
-        self._push_undo()
-        # 다른 Alg 로 이동 시 Alg 갱신
-        if engine._s(src.get("Alg")) != talg:
-            src.set("Alg", talg)
-        # display_order 를 대상 이웃 사이로
-        self._reorder(src, tpr)
-        self.dirty = True
-        self._render()
-
-    def _reorder(self, src, tpr):
-        rows = self.repo.rows
-        if src in rows:
-            rows.remove(src)
-        idx = rows.index(tpr)
-        rows.insert(idx, src)
-        # display_order 재부여(전역 순번)
-        for i, r in enumerate(rows):
-            r.display_order = i + 1
 
     # ====================================================================
     #  특이사항 / 참고자료 뷰 (tksheet — 열너비조절/자동줄바꿈/색칠/행열삭제)
@@ -4018,11 +3159,6 @@ class EquipApp(tk.Tk):
     def _on_close(self):
         self.destroy()
 
-
-def simpledialog_safe(parent, title) -> str | None:
-    """tkinter.simpledialog 를 지연 임포트해 새 파라미터 이름을 입력받는다."""
-    from tkinter import simpledialog
-    return simpledialog.askstring(title, "이름:", parent=parent)
 
 
 def main():
