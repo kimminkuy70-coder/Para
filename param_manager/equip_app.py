@@ -2297,15 +2297,16 @@ class EquipApp(tk.Tk):
         tk.Label(win, text=sub, bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"], justify="left").pack(anchor="w", padx=14)
 
-        # ── ① 장비 IP 목록에서 선택(1순위) — 호기별 비밀번호 입력
-        box1 = tk.LabelFrame(win, text=" ① 장비 목록에서 선택 (호기별 비밀번호) ",
+        default_uid = self._cfg.get("collect_user", "amkor")
+        # ── ① 장비 IP 목록에서 선택(1순위) — 호기별 접속 ID·비밀번호 입력
+        box1 = tk.LabelFrame(win, text=" ① 장비 목록에서 선택 (호기별 접속 ID·비밀번호) ",
                              bg=self.p["bg"], fg=self.p["text"],
                              font=self.fonts["bold"], padx=8, pady=6)
         box1.pack(fill="both", expand=True, padx=14, pady=(8, 4))
         listing = [(engine._s(r.get("호기")).strip(), engine._s(r.get("IP")).strip())
                    for r in self.ip_rows
                    if engine._s(r.get("호기")).strip() and engine._s(r.get("IP")).strip()]
-        rows_ui = []                     # [(check_var, 호기, ip, pw_var)]
+        rows_ui = []                     # [(check_var, 호기, ip, id_var, pw_var)]
         if listing:
             cv = tk.Canvas(box1, bg=self.p["bg"], highlightthickness=0, height=200)
             vsb = ttk.Scrollbar(box1, orient="vertical", command=cv.yview)
@@ -2325,6 +2326,7 @@ class EquipApp(tk.Tk):
                 w.bind("<MouseWheel>", _wheel)
             for i, (aoi, ip) in enumerate(listing):
                 ck = tk.BooleanVar(value=False)
+                uid = tk.StringVar(value=default_uid)
                 pw = tk.StringVar()
                 tk.Checkbutton(inner, text=f"{aoi}", variable=ck, bg=self.p["bg"],
                                font=self.fonts["bold"], width=10, anchor="w").grid(
@@ -2332,13 +2334,19 @@ class EquipApp(tk.Tk):
                 tk.Label(inner, text=ip, bg=self.p["bg"], fg=self.p["muted"],
                          font=self.fonts["base"], width=16, anchor="w").grid(
                     row=i, column=1, sticky="w")
-                tk.Label(inner, text="비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
+                tk.Label(inner, text="ID:", bg=self.p["bg"], fg=self.p["muted"],
                          font=self.fonts["sub"]).grid(row=i, column=2, sticky="e")
+                ue = tk.Entry(inner, textvariable=uid, width=12, relief="solid", bd=1)
+                ue.grid(row=i, column=3, sticky="w", padx=(4, 6), pady=1)
+                tk.Label(inner, text="비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
+                         font=self.fonts["sub"]).grid(row=i, column=4, sticky="e")
                 pe = tk.Entry(inner, textvariable=pw, width=16, show="*",
                               relief="solid", bd=1)
-                pe.grid(row=i, column=3, sticky="w", padx=(4, 2), pady=1)
-                pe.bind("<FocusIn>", lambda e, c=ck: c.set(True))  # 비번 입력=선택
-                rows_ui.append((ck, aoi, ip, pw))
+                pe.grid(row=i, column=5, sticky="w", padx=(4, 2), pady=1)
+                # ID/비번 칸 클릭 시 그 장비 자동 선택
+                for e_ in (ue, pe):
+                    e_.bind("<FocusIn>", lambda e, c=ck: c.set(True))
+                rows_ui.append((ck, aoi, ip, uid, pw))
         else:
             tk.Label(box1, text="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 "
                               "호기·IP를 등록하면 여기서 바로 선택할 수 있습니다.",
@@ -2346,20 +2354,28 @@ class EquipApp(tk.Tk):
                      font=self.fonts["sub"]).pack(anchor="w", padx=4, pady=4)
         conv = tk.Frame(win, bg=self.p["bg"])
         conv.pack(fill="x", padx=14)
+        common_uid = tk.StringVar(value=default_uid)
         common_pw = tk.StringVar()
+        tk.Label(conv, text="공통 ID:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        tk.Entry(conv, textvariable=common_uid, width=12, relief="solid",
+                 bd=1).pack(side="left", padx=(4, 8))
         tk.Label(conv, text="공통 비밀번호:", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["sub"]).pack(side="left")
         tk.Entry(conv, textvariable=common_pw, width=16, show="*", relief="solid",
                  bd=1).pack(side="left", padx=(4, 4))
 
         def apply_common():
-            for ck, _aoi, _ip, pw in rows_ui:
-                if ck.get() and not pw.get():
-                    pw.set(common_pw.get())
-        tk.Button(conv, text="선택 장비의 빈 칸에 적용", relief="flat", bd=0,
+            for ck, _aoi, _ip, uid, pw in rows_ui:
+                if ck.get():
+                    if common_uid.get().strip():
+                        uid.set(common_uid.get().strip())
+                    if not pw.get():
+                        pw.set(common_pw.get())
+        tk.Button(conv, text="선택 장비에 적용", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=10, cursor="hand2",
                   command=apply_common).pack(side="left")
-        tk.Label(conv, text="  (비밀번호가 같은 장비는 이걸로 한 번에)",
+        tk.Label(conv, text="  (ID·비밀번호가 같은 장비는 이걸로 한 번에)",
                  bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left")
 
@@ -2372,20 +2388,20 @@ class EquipApp(tk.Tk):
         ips_txt.pack(fill="x", pady=(2, 4))
         drow = tk.Frame(box2, bg=self.p["bg"])
         drow.pack(fill="x")
+        direct_uid = tk.StringVar(value=default_uid)
         direct_pw = tk.StringVar()
-        tk.Label(drow, text="직접 입력 IP 비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
+        tk.Label(drow, text="직접 입력 IP — 접속 ID:", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+        tk.Entry(drow, textvariable=direct_uid, width=12, relief="solid",
+                 bd=1).pack(side="left", padx=(4, 8))
+        tk.Label(drow, text="비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left")
         tk.Entry(drow, textvariable=direct_pw, width=16, show="*", relief="solid",
                  bd=1).pack(side="left", padx=(4, 0))
 
-        # ── 공통 설정(접속 ID / net use)
+        # ── 공통 설정(net use)
         row = tk.Frame(win, bg=self.p["bg"])
         row.pack(fill="x", padx=14, pady=(6, 0))
-        tk.Label(row, text="접속 ID:", bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["sub"]).pack(side="left")
-        uid_var = tk.StringVar(value=self._cfg.get("collect_user", "amkor"))
-        tk.Entry(row, textvariable=uid_var, width=12, relief="solid", bd=1).pack(
-            side="left", padx=(4, 10))
         net_var = tk.BooleanVar(value=True)
         tk.Checkbutton(row, text="net use 접속(자동 해제) — 끄면 탐색기로 미리 연결한 "
                                 "세션 사용(비밀번호 불필요)", variable=net_var,
@@ -2412,11 +2428,12 @@ class EquipApp(tk.Tk):
             return self._pick_list_chooser(kind, title, items, multi)
 
         def run():
-            # 1순위: 목록에서 체크한 장비(호기 확정, 호기별 비밀번호)
-            targets = []                     # [(ip, aoi, pw)]
-            for ck, aoi, ip, pw in rows_ui:
+            # 1순위: 목록에서 체크한 장비(호기 확정, 호기별 접속 ID·비밀번호)
+            targets = []                     # [(ip, aoi, uid, pw)]
+            for ck, aoi, ip, uid, pw in rows_ui:
                 if ck.get():
-                    targets.append((ip, aoi, pw.get() or common_pw.get()))
+                    u = uid.get().strip() or common_uid.get().strip() or "amkor"
+                    targets.append((ip, aoi, u, pw.get() or common_pw.get()))
             # 2순위: 직접 입력 IP(호기는 IP↔호기 매칭창에서)
             direct_ips = collector.split_ips(ips_txt.get("1.0", "end"))
             direct_ips = [ip for ip in direct_ips
@@ -2432,23 +2449,26 @@ class EquipApp(tk.Tk):
                 ip_map = self._map_ips_to_machines(direct_ips, parent=win)
                 if ip_map is None:
                     return
+                du = direct_uid.get().strip() or common_uid.get().strip() or "amkor"
                 for ip in direct_ips:
                     aoi = ip_map.get(ip) or self._ip_to_aoi(ip) or ip.replace(".", "_")
-                    targets.append((ip, aoi, direct_pw.get() or common_pw.get()))
+                    targets.append((ip, aoi, du, direct_pw.get() or common_pw.get()))
             # net use 모드인데 비밀번호가 빈 장비 확인
             if net_var.get():
-                nopw = [f"{aoi}({ip})" for ip, aoi, pw in targets if not pw]
+                nopw = [f"{aoi}({ip})" for ip, aoi, _u, pw in targets if not pw]
                 if nopw and not messagebox.askyesno(
                         "비밀번호 없음",
                         "다음 장비는 비밀번호가 비어 있습니다:\n"
                         + ", ".join(nopw)
                         + "\n\n빈 비밀번호로 접속을 시도할까요?", parent=win):
                     return
-            self._cfg["collect_user"] = uid_var.get().strip() or "amkor"
+            # 마지막으로 쓴 접속 ID 를 기본값으로 저장(공통/첫 장비 기준)
+            self._cfg["collect_user"] = (common_uid.get().strip()
+                                         or targets[0][2] or "amkor")
             save_config(self._cfg)
             sources, errors = [], []
             plan = None
-            for i, (ip, aoi, pw) in enumerate(targets, 1):
+            for i, (ip, aoi, uid, pw) in enumerate(targets, 1):
                 status.config(text=f"[{i}/{len(targets)}] {ip} ({aoi}) 수집 중…")
                 win.update_idletasks()
 
@@ -2466,7 +2486,7 @@ class EquipApp(tk.Tk):
                 try:
                     _, plan, rootp = collector.collect_equipment(
                         ip, staging_for, chooser,
-                        username=uid_var.get().strip() or "amkor",
+                        username=uid or "amkor",
                         password=pw, use_net_use=net_var.get(),
                         plan=plan, confirm=confirm)
                     sources.append((str(rootp), plan.job_keyword, aoi))
@@ -2475,7 +2495,7 @@ class EquipApp(tk.Tk):
                 except Exception as e:  # noqa: BLE001
                     errors.append(f"{aoi}({ip}): {e}")
             # 비밀번호는 메모리에만 — 사용 후 즉시 소거
-            for _ck, _aoi, _ip, pw in rows_ui:
+            for _ck, _aoi, _ip, _uid, pw in rows_ui:
                 pw.set("")
             common_pw.set("")
             direct_pw.set("")
