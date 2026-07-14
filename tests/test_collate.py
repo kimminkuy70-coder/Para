@@ -141,6 +141,49 @@ def test_build_collation_carryover_and_allmachines():
     print("  collate OK: 전체 호기 + 직전 이어받기 + 멀티시트 왕복 + repo 병합")
 
 
+def test_build_collation_keeps_other_recipes():
+    """버그 회귀: 한 레시피만 업데이트해도 직전 취합본의 **다른 레시피 시트**는
+    사라지지 않고 그대로 누적돼야 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        save = os.path.join(tmp, "저장폴더")
+        os.makedirs(save)
+        _make_form(save, tmp)                     # PI3 양식만 존재
+        machines = ["AOI-24", "AOI-25"]
+
+        # 직전 취합본: PI3 + (양식 없는) 손수 만든 RDL1 시트
+        prev = {
+            "PI3": collate.CollateRecipe(
+                recipe="PI3", machines=list(machines),
+                records=[{"PI": "PI3", "Recipe": "PI", "Zone": "RDL",
+                          "Alg": "General", "Parameter": "Max Defects Per Wafer",
+                          "비고": "", "AOI-24": "111", "AOI-25": "222"}]),
+            "RDL1": collate.CollateRecipe(
+                recipe="RDL1", machines=list(machines),
+                records=[{"PI": "RDL1", "Recipe": "x5", "Zone": "Z",
+                          "Alg": "Surface", "Parameter": "High_Delta",
+                          "비고": "", "AOI-24": "9", "AOI-25": "8"}]),
+        }
+        prev_path = workdirs.collate_path(save, workdirs.stamp())
+        collate.write_collation(prev_path, prev, machines)
+
+        # 이번엔 PI3 만 다시 취합 — RDL1 은 건드리지 않는다
+        p24 = _pivot(os.path.join(tmp, "B24"), "AOI-24", wafer="7000")
+        results = collate.build_collation(save, ["PI3"], p24, machines,
+                                          prev_collate_path=prev_path)
+        assert "PI3" in results and "RDL1" in results, list(results)
+        # RDL1 은 직전 값 그대로 이어져야 함
+        rdl = results["RDL1"]
+        row = rdl.records[0]
+        assert engine._s(row["Parameter"]) == "High_Delta"
+        assert engine._s(row["AOI-24"]) == "9" and engine._s(row["AOI-25"]) == "8"
+        # 저장 왕복 후에도 두 시트 모두 존재
+        dest = workdirs.collate_path(save, workdirs.stamp())
+        collate.write_collation(dest, results, machines)
+        sheets, _ = collate.load_collation(dest)
+        assert "PI3" in sheets and "RDL1" in sheets, list(sheets)
+    print("  collate OK: 한 레시피 업데이트 시 다른 레시피 시트 누적 유지")
+
+
 def test_missing_form_and_mismatch():
     with tempfile.TemporaryDirectory() as tmp:
         save = os.path.join(tmp, "저장폴더")

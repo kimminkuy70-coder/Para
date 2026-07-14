@@ -30,6 +30,7 @@ from . import collector
 from . import commonality as cm
 from . import downloader as dl
 from . import engine
+from . import exporter
 from . import extract_io
 from . import formbuilder
 from . import history as history_mod
@@ -729,8 +730,14 @@ class EquipApp(tk.Tk):
         def _upd(_=None):
             try:
                 lcanvas.configure(scrollregion=lcanvas.bbox("all"))
-                rcanvas.configure(scrollregion=rcanvas.bbox("all"))
-                rhead.configure(scrollregion=rhead.bbox("all"))
+                rbb = rcanvas.bbox("all")
+                rcanvas.configure(scrollregion=rbb)
+                # 헤더 가로 스크롤 영역을 **본문과 동일한 x 범위**로 강제한다.
+                # (헤더 자체 bbox 로 두면 폭이 미세하게 달라져 fraction 동기화가
+                #  오른쪽으로 갈수록 누적으로 어긋난다 — '옆으로 갈수록 틀어짐' 버그)
+                if rbb:
+                    rhead.configure(scrollregion=(rbb[0], 0, rbb[2], self.HDR_H))
+                    rhead.xview_moveto(rcanvas.xview()[0])
             except tk.TclError:
                 pass
         linner.bind("<Configure>", _upd)
@@ -1902,6 +1909,9 @@ class EquipApp(tk.Tk):
         tk.Button(bar, text="↻ 최신 취합 새로고침", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=12, pady=5, cursor="hand2",
                   command=self._refresh_view).pack(side="left", padx=4, pady=5)
+        tk.Button(bar, text="📤 내보내기", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=12, pady=5, cursor="hand2",
+                  command=self._export_dialog).pack(side="left", padx=4, pady=5)
         tk.Label(bar, text="  (최신 '파라미터 값 취합'을 자동 표시 · 값 읽기전용)",
                  bg=self.p["head_bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left", padx=6)
@@ -1919,9 +1929,24 @@ class EquipApp(tk.Tk):
         self.navigate(screen="s0")
 
     def _refresh_view(self):
+        """최신 '파라미터 값 취합' 파일을 디스크에서 다시 읽어 값 확인 화면에 반영.
+        (값 자동 수집은 '파라미터 값 업데이트'가 담당 — 여기서는 최신 취합본 재로드.)"""
         self._load_refdata()
+        latest = workdirs.latest_collate(self.save_dir) if self.save_dir else None
         self._load_latest_collate()
-        self._render()
+        # 값 확인 화면으로 전환 후 처음 화면부터 다시 그림(취합이 바뀌면 즉시 반영)
+        self.view = "param"
+        self._sync_tab_style()
+        self.navigate(screen="s0")
+        if not self.save_dir:
+            self._set_status("저장 폴더가 지정되지 않았습니다.")
+        elif not latest:
+            self._set_status("표시할 '파라미터 값 취합' 파일이 아직 없습니다. "
+                             "'파라미터 값 업데이트'로 먼저 취합을 만드세요.")
+        else:
+            n = len(self.repo.rows) if self.repo else 0
+            self._set_status(f"최신 취합 재로드: {os.path.basename(latest)} · "
+                             f"{len(self._all_machines())}호기 / {n}행")
 
     def _change_save_dir(self):
         if self._choose_save_dir():
@@ -3525,9 +3550,14 @@ class EquipApp(tk.Tk):
     def _update_write_results(self, results, machines_all):
         made = {}
         notes = []
+        carried = []
         for recipe, res in results.items():
             if res.missing_form:
                 notes.append(f"· {recipe}: 양식 없음(건너뜀)")
+                continue
+            if getattr(res, "carried", False):
+                made[recipe] = res           # 직전 취합본에서 그대로 유지(누적)
+                carried.append(recipe)
                 continue
             if res.mismatches:
                 names = ", ".join(sorted({m["param"] for m in res.mismatches})[:12])
@@ -3551,7 +3581,10 @@ class EquipApp(tk.Tk):
         self._sync_tab_style()
         self.navigate(screen="s0")
         summary = "\n".join(f"· {r}: 매칭 {made[r].matched_rows}행 / 값 {made[r].filled_cells}칸"
-                            for r in made)
+                            for r in made if r not in carried)
+        if carried:
+            summary += ("\n" if summary else "") + \
+                f"· (유지) {', '.join(carried)}: 직전 취합본 값 그대로"
         extra = ("\n\n" + "\n".join(notes)) if notes else ""
         messagebox.showinfo(
             "값 업데이트 완료",
@@ -3639,6 +3672,178 @@ class EquipApp(tk.Tk):
                      font=self.fonts["sub"]).pack(side="left", padx=8)
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=14,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="right")
+
+    # ====================================================================
+    #  내보내기 — 레시피·호기·항목 선택(값 수정 가능) → Excel 저장
+    # ====================================================================
+    def _export_dialog(self):
+        if not self.save_dir:
+            messagebox.showinfo("내보내기", "먼저 저장 폴더를 지정하세요.")
+            return
+        latest = workdirs.latest_collate(self.save_dir)
+        if not latest:
+            messagebox.showinfo("내보내기", "내보낼 '파라미터 값 취합'이 아직 없습니다.\n"
+                                "'파라미터 값 업데이트'로 먼저 취합을 만드세요.")
+            return
+        try:
+            sheets, machines = collate.load_collation(latest)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("내보내기", f"취합 파일을 읽지 못했습니다:\n{e}")
+            return
+        if not sheets:
+            messagebox.showinfo("내보내기", "취합 파일에 레시피 시트가 없습니다.")
+            return
+        # 1) 레시피 선택
+        recs = self._pick_list_chooser(
+            "export", "① 내보낼 레시피 선택(여러 개 가능)", list(sheets.keys()), True)
+        if not recs:
+            return
+        # 2) 호기 선택
+        if not machines:
+            messagebox.showinfo("내보내기", "취합에 호기 열이 없습니다.")
+            return
+        mac = self._pick_list_chooser(
+            "export", "② 내보낼 장비 호기 선택(여러 개 가능)", machines, True)
+        if not mac:
+            return
+        # 3) 항목 선택 + 값 수정 창
+        self._export_editor(latest, {r: sheets[r] for r in recs}, mac)
+
+    def _export_editor(self, latest, sheets, machines):
+        """③ zone/alg/parameter 선택(포함 토글) + 값 수정(더블클릭) → ④ 엑셀 내보내기.
+        수정한 값은 **내보내는 파일에만** 적용되고 원본 취합/양식은 건드리지 않는다."""
+        win = tk.Toplevel(self)
+        win.title("내보내기 — 항목 선택 및 값 수정")
+        win.geometry("1120x680")
+        win.configure(bg=self.p["bg"])
+        tk.Label(win, text="내보낼 항목을 고르고(포함 열 클릭), 값은 더블클릭해 수정하세요. "
+                          "수정한 값은 내보내는 파일에만 적용됩니다.",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                 anchor="w", padx=12, pady=(10, 4))
+
+        cols = ["inc", "레시피", "Zone", "Alg", "Parameter"] + list(machines)
+        wrap = tk.Frame(win, bg=self.p["bg"])
+        wrap.pack(fill="both", expand=True, padx=12, pady=4)
+        tv = ttk.Treeview(wrap, columns=cols, show="headings", height=24)
+        heads = {"inc": "포함", "레시피": "레시피", "Zone": "Zone", "Alg": "Alg",
+                 "Parameter": "Parameter"}
+        widths = {"inc": 46, "레시피": 80, "Zone": 130, "Alg": 130, "Parameter": 260}
+        for c in cols:
+            tv.heading(c, text=heads.get(c, c))
+            tv.column(c, width=widths.get(c, 90),
+                      anchor=("center" if c == "inc" else "w"))
+        self._exp_map = {}
+        for recipe, rows in sheets.items():
+            for rd in rows:
+                vals = ["✓", recipe, engine._s(rd.get("Zone")),
+                        engine._s(rd.get("Alg")), engine._s(rd.get("Parameter"))]
+                vals += [engine._s(rd.get(m)) for m in machines]
+                it = tv.insert("", "end", values=vals)
+                self._exp_map[it] = (recipe, dict(rd))
+        vs = ttk.Scrollbar(wrap, orient="vertical", command=tv.yview)
+        hs = ttk.Scrollbar(wrap, orient="horizontal", command=tv.xview)
+        tv.configure(yscrollcommand=vs.set, xscrollcommand=hs.set)
+        tv.grid(row=0, column=0, sticky="nsew")
+        vs.grid(row=0, column=1, sticky="ns")
+        hs.grid(row=1, column=0, sticky="ew")
+        wrap.rowconfigure(0, weight=1)
+        wrap.columnconfigure(0, weight=1)
+
+        def toggle(item):
+            tv.set(item, "inc", "" if tv.set(item, "inc") == "✓" else "✓")
+
+        def on_click(e):
+            if tv.identify_region(e.x, e.y) != "cell":
+                return
+            if tv.identify_column(e.x) != "#1":     # 포함 열만
+                return
+            item = tv.identify_row(e.y)
+            if item:
+                toggle(item)
+
+        def on_double(e):
+            if tv.identify_region(e.x, e.y) != "cell":
+                return
+            col = tv.identify_column(e.x)            # 예: '#7'
+            item = tv.identify_row(e.y)
+            if not item or not col:
+                return
+            cidx = int(col[1:]) - 1
+            if cidx < 0 or cidx >= len(cols):
+                return
+            cname = cols[cidx]
+            if cname not in machines:                # 호기 값만 수정 가능
+                return
+            box = tv.bbox(item, col)
+            if not box:
+                return
+            x, y, w, h = box
+            ent = tk.Entry(tv)
+            ent.place(x=x, y=y, width=w, height=h)
+            ent.insert(0, tv.set(item, cname))
+            ent.focus_set()
+            ent.select_range(0, "end")
+
+            def commit(_=None):
+                tv.set(item, cname, ent.get())
+                ent.destroy()
+            ent.bind("<Return>", commit)
+            ent.bind("<FocusOut>", commit)
+            ent.bind("<Escape>", lambda _e: ent.destroy())
+
+        tv.bind("<Button-1>", on_click, add="+")
+        tv.bind("<Double-Button-1>", on_double)
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=12, pady=(2, 10))
+
+        def set_all(v):
+            for it in tv.get_children():
+                tv.set(it, "inc", v)
+        tk.Button(bt, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=12, pady=6, cursor="hand2",
+                  command=lambda: set_all("✓")).pack(side="left")
+        tk.Button(bt, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=12, pady=6, cursor="hand2",
+                  command=lambda: set_all("")).pack(side="left", padx=6)
+
+        def do_export():
+            recipe_records = {}
+            for it in tv.get_children():
+                if tv.set(it, "inc") != "✓":
+                    continue
+                recipe, orig = self._exp_map[it]
+                base = {f: orig.get(f) for f in engine.META_FIELDS}
+                for m in machines:
+                    base[m] = tv.set(it, m)
+                recipe_records.setdefault(recipe, []).append(base)
+            if not recipe_records:
+                messagebox.showinfo("내보내기", "포함할 항목을 하나 이상 선택하세요.",
+                                    parent=win)
+                return
+            dest = filedialog.asksaveasfilename(
+                title="내보내기 엑셀 저장", defaultextension=".xlsx",
+                initialfile=f"파라미터_내보내기_{workdirs.stamp()}.xlsx",
+                filetypes=[("Excel", "*.xlsx")], parent=win)
+            if not dest:
+                return
+            try:
+                exporter.write_export(dest, recipe_records, list(machines),
+                                      title="내보내기")
+            except Exception as ex:  # noqa: BLE001
+                messagebox.showerror("내보내기 실패", str(ex), parent=win)
+                return
+            win.destroy()
+            if messagebox.askyesno("내보내기 완료",
+                                   f"{os.path.basename(dest)} 저장 완료.\n"
+                                   "지금 Excel로 열까요?"):
+                self._open_in_excel(dest)
+        tk.Button(bt, text="📤 엑셀로 내보내기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=do_export).pack(side="right")
+        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=6)
 
     # ====================================================================
     #  첫 실행 / 저장 폴더 / 참고자료·특이사항 로드 (3차 재설계)

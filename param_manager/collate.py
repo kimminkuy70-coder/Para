@@ -40,6 +40,7 @@ class CollateRecipe:
     matched_rows: int = 0
     filled_cells: int = 0
     missing_form: bool = False                            # 해당 레시피 양식이 없음
+    carried: bool = False                                 # 이번에 안 고르고 직전본에서 유지
 
 
 # --------------------------------------------------------------------------
@@ -163,6 +164,18 @@ def build_collation(save_dir: str, recipes: list[str], pivot_rows: list[dict],
             continue
         out[recipe] = collate_recipe(recipe, form, pivot_rows, machines_all,
                                      prev.get(recipe, {}), coef_lookup=coef_lookup)
+    # 누적: 직전 취합본에 있던 **다른 레시피 시트**는 그대로 유지(이번에 안 고른 레시피가
+    # 사라지지 않게). 이번에 고른 레시피는 위에서 새로 취합한 결과가 우선.
+    if prev_collate_path:
+        try:
+            sheets, _ = load_collation(prev_collate_path)
+        except Exception:  # noqa: BLE001
+            sheets = {}
+        for r, rows in sheets.items():
+            if r not in recipes:
+                out.setdefault(r, CollateRecipe(recipe=r, records=rows,
+                                                machines=list(machines_all),
+                                                carried=True))
     return out
 
 
