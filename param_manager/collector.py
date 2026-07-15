@@ -150,6 +150,8 @@ class CollectPlan:
     job_name: str = ""
     setup_name: str = ""
     recipe_names: list[str] = field(default_factory=list)
+    # 레시피(레벨)별 폴더 매칭 재사용: {레벨: [폴더명]} (복수 레시피 수집용)
+    recipe_map: dict = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------
@@ -231,15 +233,23 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
                       plan: CollectPlan | None = None,
                       job_root_override: Path | None = None,
                       confirm=None,
-                      ) -> tuple[list[tuple[Path, str, str]], CollectPlan, Path]:
+                      target_levels: list[str] | None = None,
+                      match_recipes=None,
+                      ) -> tuple[list[tuple[Path, str, str]], CollectPlan, list]:
     """장비 1대에서 Recipe 파일 수집 계획을 세우고 staging 으로 복사.
 
     chooser(kind, title, items, multi) -> list[Path] | None(취소).
     plan 이 있으면 Job(키워드)/Setup/Recipe 를 자동 매칭하고, 애매하면 chooser 로.
     staging_root 는 경로 또는 콜러블(job_keyword) -> 경로 — 레시피 레벨(PI3/RDL4)이
     Job 선택 후에야 확정되므로, 레벨별 폴더 배치는 콜러블로 지연 결정한다.
+
+    target_levels 를 주면(값 업데이트에서 고른 레시피들) **레시피(레벨)별로 장비
+    폴더를 매칭**한다: match_recipes(all_recipe_dirs, target_levels) -> {레벨: [Path]}.
+    각 레벨은 staging 아래 별도 하위폴더(레벨명)로 복사돼 파싱 시 그 레벨로 인식된다.
+
     job_root_override 는 테스트용(로컬 가짜 트리).
-    반환: (복사된 계획 목록, 다음 장비용 CollectPlan, 실제 staging 경로).
+    반환: (복사된 계획 목록, 다음 장비용 CollectPlan, sources) —
+      sources = [(staging_폴더, 레벨_또는_job키워드)] (호기별 소스, 파싱 default_level 로 사용).
     """
     connected = False
     if use_net_use:
@@ -289,8 +299,56 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
             chosen = next((s, r) for s, r in setup_candidates if s == picked[0])
         setup_folder, recipes_root = chosen
 
-        # 3) Recipe 폴더(복수)
+        # 3) Recipe 폴더 선택
         all_recipes = list_dirs(recipes_root)
+        base = Path(staging_root(job_keyword)) if callable(staging_root) \
+            else Path(staging_root)
+        header = [
+            f"IP={ip}", f"JobRoot={job_root}", f"JobFolder={job_folder}",
+            f"SetupFolder={setup_folder}", f"RecipesRoot={recipes_root}",
+        ]
+
+        # 3-A) 레시피(레벨)별 매칭 모드 — 고른 레시피마다 장비 폴더를 지정
+        if target_levels and match_recipes is not None:
+            mapping = None
+            if plan and plan.recipe_map:              # 이전 장비 매칭 재사용
+                m, ok = {}, True
+                for lvl in target_levels:
+                    sel, missing = match_recipes_by_names(
+                        all_recipes, plan.recipe_map.get(lvl) or [])
+                    if not sel or missing:
+                        ok = False
+                        break
+                    m[lvl] = sel
+                if ok:
+                    mapping = m
+            if mapping is None:
+                mapping = match_recipes(all_recipes, list(target_levels))
+                if not mapping:
+                    raise UserCancelled("레시피 매칭이 취소되었습니다.")
+            per_level, planned_all = [], []
+            for lvl, dirs in mapping.items():
+                pl = plan_files(dirs)
+                if not pl:
+                    continue
+                per_level.append((lvl, base / _sanitize(lvl), pl))
+                planned_all += pl
+            if not planned_all:
+                raise RuntimeError("복사할 설정 파일(GlobalRTP/OpticPreset/Zones)이 없습니다.")
+            if confirm is not None and not confirm(planned_all):
+                raise UserCancelled("사용자가 복사를 취소했습니다.")
+            sources = []
+            for lvl, ldir, pl in per_level:
+                copy_planned(pl, ldir, header_lines=header + [f"Level={lvl}"])
+                sources.append((str(ldir), lvl))
+            new_plan = CollectPlan(
+                job_keyword=job_keyword, job_name=job_folder.name,
+                setup_name=setup_folder.name,
+                recipe_map={lvl: [p.name for p in dirs]
+                            for lvl, dirs in mapping.items()})
+            return planned_all, new_plan, sources
+
+        # 3-B) 단일 선택 모드(기존) — 폴더 여러 개를 한 번에 골라 한 폴더로 복사
         selected = None
         if plan and plan.recipe_names:
             sel, missing = match_recipes_by_names(all_recipes, plan.recipe_names)
@@ -307,17 +365,12 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
             raise RuntimeError("복사할 설정 파일(GlobalRTP/OpticPreset/Zones)이 없습니다.")
         if confirm is not None and not confirm(planned):
             raise UserCancelled("사용자가 복사를 취소했습니다.")
-        root = Path(staging_root(job_keyword)) if callable(staging_root) \
-            else Path(staging_root)
-        copy_planned(planned, root, header_lines=[
-            f"IP={ip}", f"JobRoot={job_root}", f"JobFolder={job_folder}",
-            f"SetupFolder={setup_folder}", f"RecipesRoot={recipes_root}",
-        ])
+        copy_planned(planned, base, header_lines=header)
         new_plan = CollectPlan(
             job_keyword=job_keyword,
             job_name=job_folder.name, setup_name=setup_folder.name,
             recipe_names=[p.name for p in selected])
-        return planned, new_plan, root
+        return planned, new_plan, [(str(base), job_keyword)]
     finally:
         if connected:
             disconnect_admin_share(ip)

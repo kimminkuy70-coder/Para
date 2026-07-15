@@ -199,10 +199,11 @@ def test_collector_plan_and_copy():
             return list(items) if multi else [items[0]]
 
         staging = Path(tmp) / "staging"
-        planned, plan, used_root = collector.collect_equipment(
+        planned, plan, sources = collector.collect_equipment(
             "10.0.0.1", staging, chooser, use_net_use=False,
             job_root_override=job_root)
-        assert Path(used_root) == staging
+        # 단일 모드 반환: sources = [(폴더, job키워드)]
+        assert sources == [(str(staging), "PI3")]
         assert len(planned) == 3          # GlobalRTP + OpticPreset + Zone1
         assert plan.job_keyword == "PI3" and plan.recipe_names == ["PI3"]
         assert (staging / "PI3" / "GlobalRTP.ini").is_file()
@@ -211,23 +212,61 @@ def test_collector_plan_and_copy():
         assert (rec / "GlobalRTP.ini").read_text(encoding="utf-8") == GLOBAL_RTP
         # 2대째: plan 재사용 → chooser 호출 없이 자동 매칭
         picks.clear()
-        # staging 을 콜러블로 — Job 키워드 확정 후 레벨별 폴더 결정
         got_kw = []
 
         def staging2(kw):
             got_kw.append(kw)
             return Path(tmp) / "staging2" / kw
 
-        planned2, _, root2 = collector.collect_equipment(
+        planned2, _, sources2 = collector.collect_equipment(
             "10.0.0.2", staging2, chooser, use_net_use=False,
             plan=plan, job_root_override=job_root)
         assert not picks and len(planned2) == 3
-        assert got_kw == ["PI3"] and Path(root2).name == "PI3"
+        assert got_kw == ["PI3"] and Path(sources2[0][0]).name == "PI3"
         # 키워드/레시피 매칭 단위 확인
         sel, missing = collector.match_recipes_by_names(
             [rec.parent / "PI3", rec.parent / "PI BUBBLE"], ["PI_BUBBLE"])
         assert missing == [] and sel[0].name == "PI BUBBLE"
     print("  collector OK: 계획 수집/자동 재사용/원본 무변경")
+
+
+def test_collector_per_level_matching():
+    """복수 레시피 매칭 모드: 레벨마다 장비 폴더를 골라 레벨별 하위폴더로 복사."""
+    with tempfile.TemporaryDirectory() as tmp:
+        job_root = Path(tmp) / "Job"
+        recroot = job_root / "R_TB500 AOI-13" / "6324" / "Recipes"
+        for name in ("PI3", "PI3_BUBBLE", "PI4"):
+            _mk_recipe(recroot / name)
+
+        # match_recipes: 레벨 이름이 폴더에 포함되면 그 폴더들을 배정
+        def match_recipes(all_recipes, levels):
+            out = {}
+            for lvl in levels:
+                hits = [p for p in all_recipes
+                        if collector.contains_keyword(p.name, lvl)]
+                if hits:
+                    out[lvl] = hits
+            return out
+
+        def chooser(kind, title, items, multi):   # Job/Setup 은 정상, recipe 는 금지
+            assert kind != "recipe", "레벨 매칭 모드에선 단일 recipe chooser 금지"
+            return list(items) if multi else [items[0]]
+
+        staging = Path(tmp) / "staging"
+        planned, plan, sources = collector.collect_equipment(
+            "10.0.0.9", staging, chooser, use_net_use=False,
+            job_root_override=job_root,
+            target_levels=["PI3", "PI4"], match_recipes=match_recipes)
+        smap = {lvl: d for d, lvl in sources}
+        assert set(smap) == {"PI3", "PI4"}
+        # PI3 폴더에 PI3 + PI3_BUBBLE 둘 다 복사(이름 포함)
+        assert (Path(smap["PI3"]) / "PI3" / "GlobalRTP.ini").is_file()
+        assert (Path(smap["PI3"]) / "PI3_BUBBLE" / "GlobalRTP.ini").is_file()
+        assert (Path(smap["PI4"]) / "PI4" / "GlobalRTP.ini").is_file()
+        # 다음 장비 재사용용 recipe_map 저장
+        assert set(plan.recipe_map) == {"PI3", "PI4"}
+        assert "PI3_BUBBLE" in plan.recipe_map["PI3"]
+    print("  collector OK: 레시피(레벨)별 장비 폴더 매칭·레벨별 복사")
 
 
 def test_scale_param_per_variant():

@@ -1446,6 +1446,94 @@ class EquipApp(tk.Tk):
                 return engine._s(r.get("호기")).strip()
         return ""
 
+    def _match_recipes_dialog(self, all_recipes, target_levels, aoi="", parent=None):
+        """레시피(레벨)마다 장비 Recipe 폴더를 매칭하는 창(복수 선택).
+        레벨 1개든 여러 개든 같은 화면. 이름이 겹치는 폴더는 자동 체크(추천).
+        반환: {레벨: [Path]} 또는 None(취소). all_recipes = Path 목록."""
+        parent = parent or self
+        win = tk.Toplevel(parent)
+        win.title("레시피 ↔ 장비 폴더 매칭" + (f" — {aoi}" if aoi else ""))
+        win.geometry("720x560")
+        win.configure(bg=self.p["bg"])
+        win.transient(parent)
+        try:
+            win.grab_set()
+        except tk.TclError:
+            pass
+        tk.Label(win, text="선택한 레시피마다 장비 폴더를 지정하세요(복수 선택 가능).",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                 anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win, text="이름이 맞는 폴더는 자동으로 체크했습니다(◀ 추천). 확인 후 조정하세요.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(
+                 anchor="w", padx=14, pady=(0, 6))
+
+        canvas = tk.Canvas(win, bg=self.p["bg"], highlightthickness=0)
+        vbar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=self.p["bg"])
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="i")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="top", fill="both", expand=True, padx=14)
+        vbar.pack(side="right", fill="y")
+
+        def _wheel(e):
+            canvas.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1),
+                                "units")
+            return "break"
+        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _wheel))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        vars_: dict = {}                       # {level: [(BooleanVar, Path)]}
+        for lvl in target_levels:
+            box = tk.LabelFrame(inner, text=f"  {lvl}  ", bg=self.p["bg"],
+                                fg=self.p["primary"], font=self.fonts["bold"],
+                                padx=8, pady=4)
+            box.pack(fill="x", expand=True, pady=(6, 2))
+            vars_[lvl] = []
+            if not all_recipes:
+                tk.Label(box, text="(장비에서 Recipe 폴더를 찾지 못함)", bg=self.p["bg"],
+                         fg=self.p["danger"], font=self.fonts["sub"]).pack(anchor="w")
+            for p in all_recipes:
+                name = p.name if isinstance(p, Path) else str(p)
+                hit = collector.contains_keyword(name, lvl)
+                v = tk.BooleanVar(value=hit)
+                vars_[lvl].append((v, p))
+                tk.Checkbutton(box, text=name + ("   ◀ 추천" if hit else ""),
+                               variable=v, bg=self.p["bg"],
+                               fg=(self.p["text"] if hit else self.p["muted"]),
+                               font=self.fonts["sub"], anchor="w").pack(anchor="w")
+
+        res = {"val": None}
+
+        def ok():
+            mapping = {}
+            for lvl, items in vars_.items():
+                sel = [p for v, p in items if v.get()]
+                if sel:
+                    mapping[lvl] = sel
+            if not mapping:
+                messagebox.showwarning("매칭", "레시피별 장비 폴더를 하나 이상 선택하세요.",
+                                       parent=win)
+                return
+            empty = [lvl for lvl in target_levels if lvl not in mapping]
+            if empty and not messagebox.askyesno(
+                    "일부 레시피 미지정",
+                    "폴더를 고르지 않은 레시피: " + ", ".join(empty)
+                    + "\n이 레시피는 이번에 수집하지 않습니다. 계속할까요?", parent=win):
+                return
+            res["val"] = mapping
+            win.destroy()
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(side="bottom", fill="x", padx=14, pady=10)
+        tk.Button(bt, text="확인", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                  padx=16, pady=6, cursor="hand2", command=ok).pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+        win.wait_window()
+        return res["val"]
+
     def _map_ips_to_machines(self, ips, parent=None):
         """각 IP를 어느 호기(AOI-xx)에 넣을지 지정하는 매칭창.
         반환: {ip: 호기} 또는 None(취소). 참고자료 IP표로 자동 추정 프리필."""
@@ -1796,13 +1884,18 @@ class EquipApp(tk.Tk):
                     return messagebox.askyesno(
                         "복사 확인", f"[{aoi} · {ip}] {len(planned)}개 파일을 로컬로 "
                         "복사(원본은 읽기만):\n" + "\n".join(lines) + more, parent=win)
+                def match_cb(all_recipes, tlevels, aoi=aoi):
+                    return self._match_recipes_dialog(all_recipes, tlevels, aoi,
+                                                      parent=win)
                 try:
-                    _, plan, rootp = collector.collect_equipment(
+                    _, plan, srcs = collector.collect_equipment(
                         ip, staging_for, chooser,
                         username=uid or "amkor",
                         password=pw, use_net_use=net_var.get(),
-                        plan=plan, confirm=confirm)
-                    sources.append((str(rootp), plan.job_keyword, aoi))
+                        plan=plan, confirm=confirm,
+                        target_levels=(levels or None), match_recipes=match_cb)
+                    for d, lvl in srcs:                 # 레벨별(또는 단일) 소스
+                        sources.append((d, lvl, aoi))
                 except collector.UserCancelled:
                     errors.append(f"{aoi}({ip}): 취소")
                 except Exception as e:  # noqa: BLE001
