@@ -587,74 +587,134 @@ class EquipApp(tk.Tk):
         else:
             show = [r for r in rows if engine._s(r.get("Zone")) == self.cur_zone]
 
-        # ── 단일 tksheet 그리드(가상 스크롤 — 대량 행/호기에도 빠름)
+        # ── 2분할 tksheet: 좌(선택 호기 블록, 고정) / 우(다른 호기, 가로 스크롤).
+        # 세로 스크롤은 두 시트를 sync_scroll 로 묶어 항상 같은 행이 나란히 보인다
+        # (실제 장비화면처럼 왼쪽 고정 + 오른쪽만 비교 스크롤). tksheet 라 대량에도 빠름.
         holder = tk.Frame(outer, bg=self.p["bg"])
         holder.pack(fill="both", expand=True, padx=12, pady=(8, 10))
-        # 실제 장비화면과 유사하게: **보고 있는 호기 블록(Parameter·값·비고)** 을 왼쪽에
-        # 붙여 두고, 다른 호기들은 비교용으로 그 오른쪽에 이어 붙인다(비고가 맨 끝으로
-        # 밀려 장비화면과 달라졌던 문제 수정). 열 순서:
-        #   [Zone(검색시)] · Alg · Parameter · ★{선택호기} · 비고 · (다른 호기…)
-        headers = (["Zone"] if q else []) + [
-            "Alg", "Parameter", f"★ {machine}", "비고"] + others
-        data = []
-        for r in show:
-            row = ([engine._s(r.get("Zone"))] if q else []) + [
-                engine._s(r.get("Alg")), engine._s(r.get("Parameter")),
-                engine._s(r.get(machine)), engine._s(r.get("비고"))]
-            row += [engine._s(r.get(m)) for m in others]
-            data.append(row)
-        s = Sheet(holder, theme="light blue",
-                  show_x_scrollbar=True, show_y_scrollbar=True,
-                  font=(self.p["family"], 10, "normal"),
-                  header_font=(self.p["family"], 10, "bold"))
-        s.headers(headers)
-        s.set_sheet_data(data, reset_col_positions=True)
-        s.set_options(table_wrap="w", header_wrap="w",
-                      show_vertical_grid=True, show_horizontal_grid=True)
-        s.enable_bindings("single_select", "drag_select", "row_select",
-                          "column_select", "arrowkeys", "copy", "rc_select",
-                          "column_width_resize", "double_click_column_resize",
-                          "row_height_resize")
-        # 열 너비: 이름/비고 넓게, 호기 값은 일정 폭
-        base = 1 if q else 0
-        c_alg, c_param, c_sel, c_note = base, base + 1, base + 2, base + 3
-        c_others0 = base + 4
-        try:
-            if q:
-                s.column_width(column=0, width=120)          # Zone
-            s.column_width(column=c_alg, width=140)          # Alg
-            s.column_width(column=c_param, width=280)        # Parameter
-            s.column_width(column=c_sel, width=120)          # ★ 선택 호기
-            s.column_width(column=c_note, width=200)         # 비고
-            for i in range(len(others)):
-                s.column_width(column=c_others0 + i, width=92)
-        except Exception:  # noqa: BLE001
-            pass
-        # 선택 호기 블록(값·비고) 강조 + Alg 그룹 줄무늬(같은 Alg 덩어리 교차 배경)
-        try:
-            s.highlight_columns(columns=[c_sel], bg=self.p["primary_lt"],
-                                fg=self.p["text"])
-            s.highlight_columns(columns=[c_note], bg="#fff8e1", fg=self.p["text"])
-            stripe_rows, cur_alg, band = [], None, 0
-            for i, r in enumerate(show):
-                a = engine._s(r.get("Alg"))
-                if a != cur_alg:
-                    cur_alg, band = a, band ^ 1
-                if band:
-                    stripe_rows.append(i)
-            if stripe_rows:
-                s.highlight_rows(rows=stripe_rows, bg=self.p["stripe"],
-                                 fg=self.p["text"], highlight_index=False)
-        except Exception:  # noqa: BLE001
-            pass
-        s.pack(fill="both", expand=True)
-        self._fit_table_heights(s, len(headers))
         if not show:
             tk.Label(holder, text=("검색 결과가 없습니다." if q else
                                    "이 Zone에 파라미터가 없습니다."),
                      bg=self.p["bg"], fg=self.p["muted"],
                      font=self.fonts["bold"]).place(relx=0.5, rely=0.4,
                                                     anchor="center")
+            return
+
+        # 좌측(고정) 열: [Zone(검색시)] · Alg · Parameter · ★선택호기 · 비고
+        left_headers = (["Zone"] if q else []) + [
+            "Alg", "Parameter", f"★ {machine}", "비고"]
+        left_widths = ([120] if q else []) + [130, 260, 110, 190]
+        left_data, right_data = [], []
+        for r in show:
+            lrow = ([engine._s(r.get("Zone"))] if q else []) + [
+                engine._s(r.get("Alg")), engine._s(r.get("Parameter")),
+                engine._s(r.get(machine)), engine._s(r.get("비고"))]
+            left_data.append(lrow)
+            right_data.append([engine._s(r.get(m)) for m in others])
+
+        def _mk(parent, headers, data, wraps):
+            sh = Sheet(parent, theme="light blue",
+                       show_x_scrollbar=True, show_y_scrollbar=True,
+                       font=(self.p["family"], 10, "normal"),
+                       header_font=(self.p["family"], 10, "bold"))
+            sh.headers(headers)
+            sh.set_sheet_data(data or [[]], reset_col_positions=True)
+            sh.set_options(table_wrap=wraps, header_wrap="w",
+                           show_vertical_grid=True, show_horizontal_grid=True)
+            sh.enable_bindings("single_select", "drag_select", "row_select",
+                               "column_select", "arrowkeys", "copy", "rc_select",
+                               "column_width_resize", "double_click_column_resize")
+            sh.hide("row_index")
+            return sh
+
+        # Alg 그룹 교차 줄무늬(두 시트 공통)
+        stripe_rows, cur_alg, band = [], None, 0
+        for i, r in enumerate(show):
+            a = engine._s(r.get("Alg"))
+            if a != cur_alg:
+                cur_alg, band = a, band ^ 1
+            if band:
+                stripe_rows.append(i)
+
+        # 좌측 고정 시트(자체 세로 스크롤바 숨김 — 우측 스크롤바가 둘 다 움직임)
+        LEFT_W = sum(left_widths) + 8
+        lwrap = tk.Frame(holder, bg=self.p["bg"], width=LEFT_W)
+        lwrap.pack(side="left", fill="y")
+        lwrap.pack_propagate(False)
+        ls = _mk(lwrap, left_headers, left_data, "w")
+        try:
+            for ci, w in enumerate(left_widths):
+                ls.column_width(column=ci, width=w)
+            c_sel = (1 if q else 0) + 2
+            c_note = c_sel + 1
+            ls.highlight_columns(columns=[c_sel], bg=self.p["primary_lt"],
+                                 fg=self.p["text"])
+            ls.highlight_columns(columns=[c_note], bg="#fff8e1", fg=self.p["text"])
+            if stripe_rows:
+                ls.highlight_rows(rows=stripe_rows, bg=self.p["stripe"],
+                                  fg=self.p["text"], highlight_index=False)
+        except Exception:  # noqa: BLE001
+            pass
+        ls.hide("y_scrollbar")
+        ls.hide("x_scrollbar")
+        ls.pack(fill="both", expand=True)
+
+        # 좌/우 구분선
+        tk.Frame(holder, bg="#94a3b8", width=2).pack(side="left", fill="y")
+
+        # 우측 비교 시트(다른 호기) — 없으면 안내
+        if others:
+            rwrap = tk.Frame(holder, bg=self.p["bg"])
+            rwrap.pack(side="left", fill="both", expand=True)
+            rs = _mk(rwrap, list(others), right_data, "")
+            try:
+                for i in range(len(others)):
+                    rs.column_width(column=i, width=92)
+                if stripe_rows:
+                    rs.highlight_rows(rows=stripe_rows, bg=self.p["stripe"],
+                                      fg=self.p["text"], highlight_index=False)
+            except Exception:  # noqa: BLE001
+                pass
+            rs.pack(fill="both", expand=True)
+            ls.sync_scroll(rs)                    # 세로 스크롤 동기화(양방향)
+            self.after(60, lambda: self._equalize_sheet_heights(
+                ls, len(left_headers), rs, len(others), len(show)))
+        else:
+            tk.Label(holder, text="비교할 다른 호기가 없습니다.", bg=self.p["bg"],
+                     fg=self.p["muted"]).pack(side="left", padx=10)
+            self.after(60, lambda: self._equalize_sheet_heights(
+                ls, len(left_headers), None, 0, len(show)))
+
+    def _equalize_sheet_heights(self, ls, nleft, rs, nright, nrows):
+        """좌/우 시트의 각 행 높이를 **둘 중 큰 쪽**으로 맞춰 나란히 정렬한다
+        (좌측 Parameter 줄바꿈으로 행 높이가 달라져 어긋나는 것 방지).
+        행 수가 매우 많으면(>500) 단일 줄 고정 높이로 빠르게 처리."""
+        try:
+            if not ls.winfo_exists():
+                return
+            self.update_idletasks()
+            if nrows > 500:
+                for r in range(nrows):
+                    ls.row_height(row=r, height=28, redraw=False)
+                    if rs is not None:
+                        rs.row_height(row=r, height=28, redraw=False)
+            else:
+                for r in range(nrows):
+                    hl = max((ls.MT.get_wrapped_cell_height(r, c)
+                              for c in range(nleft)), default=28)
+                    hr = 28
+                    if rs is not None and nright:
+                        hr = max((rs.MT.get_wrapped_cell_height(r, c)
+                                  for c in range(nright)), default=28)
+                    h = max(28, hl, hr)
+                    ls.row_height(row=r, height=h, redraw=False)
+                    if rs is not None:
+                        rs.row_height(row=r, height=h, redraw=False)
+            ls.redraw()
+            if rs is not None:
+                rs.redraw()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _zone_clicked(self, z):
         self._param_query = ""               # Zone 클릭 = 검색 해제 후 해당 Zone
