@@ -446,40 +446,66 @@ class EquipApp(tk.Tk):
     # ====================================================================
     def _screen_recipe_pick(self, st):
         wrap = tk.Frame(self.body, bg=self.p["bg"])
-        wrap.pack(fill="both", expand=True, padx=28, pady=22)
+        wrap.pack(fill="both", expand=True, padx=28, pady=(22, 8))
         tk.Label(wrap, text=f"{st['machine']} — 레시피 선택", bg=self.p["bg"],
                  fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", pady=(0, 2))
-        tk.Label(wrap, text="확인할 레시피를 선택하세요(최신 취합에서 인식된 목록).",
+        tk.Label(wrap, text="확인할 레시피를 선택하세요(레시피(레벨)별로 한 줄씩 묶었습니다).",
                  bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(anchor="w", pady=(0, 14))
+                 font=self.fonts["sub"]).pack(anchor="w", pady=(0, 8))
         if not self.repo or not self.repo.rows:
             tk.Label(wrap, text="표시할 취합 데이터가 없습니다.\n"
                               "상단 '파라미터 값 업데이트'로 먼저 값을 수집하세요.",
                      bg=self.p["bg"], fg=self.p["danger"], font=self.fonts["bold"],
                      justify="left").pack(anchor="w", pady=8)
             return
-        # (레벨 PI, 변형 Recipe) 조합별 파라미터 수 집계 — PI 계열/RDL 계열로 묶어 표시
+        # 레벨(PI 컬럼)별로 묶고, 그 안에서 변형(Recipe) 카드. 레벨이 많으면 세로 스크롤.
         combos: dict[tuple, int] = {}
+        levels: list[str] = []
         for r in self.repo.rows:
-            key = (engine._s(r.get("PI")), engine._s(r.get("Recipe")))
-            if key[0]:
-                combos[key] = combos.get(key, 0) + 1
-        groups = [("PI 레시피", [k for k in combos if not k[0].upper().startswith("RDL")]),
-                  ("RDL 레시피", [k for k in combos if k[0].upper().startswith("RDL")])]
-        for glabel, keys in groups:
-            if not keys:
+            lvl, var = engine._s(r.get("PI")), engine._s(r.get("Recipe"))
+            if not lvl:
                 continue
-            tk.Label(wrap, text=glabel, bg=self.p["bg"], fg=self.p["muted"],
-                     font=self.fonts["bold"]).pack(anchor="w", pady=(10, 0))
-            row = tk.Frame(wrap, bg=self.p["bg"])
-            row.pack(anchor="w", fill="x")
-            for pi, rec in sorted(keys):
-                kind = "RDL" if pi.upper().startswith("RDL") else "PI"
+            if lvl not in levels:
+                levels.append(lvl)
+            combos[(lvl, var)] = combos.get((lvl, var), 0) + 1
+        # PI 계열 먼저, RDL 계열 뒤, 그 안은 이름순
+        levels.sort(key=lambda l: (l.upper().startswith("RDL"), l))
+
+        # 세로 스크롤 캔버스
+        cwrap = tk.Frame(wrap, bg=self.p["bg"])
+        cwrap.pack(fill="both", expand=True)
+        canvas = tk.Canvas(cwrap, bg=self.p["bg"], highlightthickness=0)
+        vbar = ttk.Scrollbar(cwrap, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=self.p["bg"])
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="i")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
+
+        def _wheel(e):
+            canvas.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1),
+                                "units")
+            return "break"
+        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _wheel))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        for lvl in levels:
+            variants = sorted(v for (l, v) in combos if l == lvl)
+            kind = "RDL" if lvl.upper().startswith("RDL") else "PI"
+            block = tk.Frame(inner, bg=self.p["bg"])
+            block.pack(fill="x", anchor="w", pady=(6, 2))
+            tk.Label(block, text=lvl, bg=self.p["bg"], fg=self.p["text"],
+                     font=self.fonts["bold"]).pack(anchor="w", pady=(4, 2))
+            rowf = tk.Frame(block, bg=self.p["bg"])
+            rowf.pack(anchor="w", fill="x")
+            for var in variants:
                 self._big_button(
-                    row, f"{pi}" + (f"  ·  {rec}" if rec else ""),
-                    f"파라미터 {combos[(pi, rec)]}개",
-                    lambda p_=pi, r_=rec, k_=kind: self.navigate(
-                        screen="s4", kind=k_, pi=p_, recipe=r_))
+                    rowf, var or "(기본)", f"파라미터 {combos[(lvl, var)]}개",
+                    lambda l_=lvl, v_=var, k_=kind: self.navigate(
+                        screen="s4", kind=k_, pi=l_, recipe=v_))
 
     # ---- 선택 화면 공통 위젯 ------------------------------------------
     def _big_button(self, parent, text, desc, cmd):
@@ -600,17 +626,34 @@ class EquipApp(tk.Tk):
                                                     anchor="center")
             return
 
-        # 좌측(고정) 열: [Zone(검색시)] · Alg · Parameter · ★선택호기 · 비고
-        left_headers = (["Zone"] if q else []) + [
-            "Alg", "Parameter", f"★ {machine}", "비고"]
-        left_widths = ([120] if q else []) + [130, 260, 110, 190]
+        # 좌측(고정) 열: [Zone(검색시)] · Parameter · ★선택호기 · 비고
+        # Alg 는 열에서 빼고 **그룹 헤더 행**으로 위에 한 번씩 표시(장비화면식).
+        left_headers = (["Zone"] if q else []) + ["Parameter", f"★ {machine}", "비고"]
+        left_widths = ([120] if q else []) + [300, 120, 210]
+        base = 1 if q else 0
+        c_sel = base + 1
+        c_note = base + 2
+
         left_data, right_data = [], []
+        header_rows: list[int] = []
+        param_row_of: dict[int, object] = {}     # 시트행 → 취합 행(비고 편집용)
+        cur_alg, li = None, 0
         for r in show:
-            lrow = ([engine._s(r.get("Zone"))] if q else []) + [
-                engine._s(r.get("Alg")), engine._s(r.get("Parameter")),
-                engine._s(r.get(machine)), engine._s(r.get("비고"))]
-            left_data.append(lrow)
+            a = engine._s(r.get("Alg"))
+            if a != cur_alg:
+                cur_alg = a
+                left_data.append(([""] if q else []) +
+                                 [f"▸ {a or '(Alg 없음)'}", "", ""])
+                right_data.append(["" for _ in others])
+                header_rows.append(li)
+                li += 1
+            left_data.append(([engine._s(r.get("Zone"))] if q else []) + [
+                engine._s(r.get("Parameter")), engine._s(r.get(machine)),
+                engine._s(r.get("비고"))])
             right_data.append([engine._s(r.get(m)) for m in others])
+            param_row_of[li] = r
+            li += 1
+        nrows = li
 
         def _mk(parent, headers, data, wraps):
             sh = Sheet(parent, theme="light blue",
@@ -627,16 +670,7 @@ class EquipApp(tk.Tk):
             sh.hide("row_index")
             return sh
 
-        # Alg 그룹 교차 줄무늬(두 시트 공통)
-        stripe_rows, cur_alg, band = [], None, 0
-        for i, r in enumerate(show):
-            a = engine._s(r.get("Alg"))
-            if a != cur_alg:
-                cur_alg, band = a, band ^ 1
-            if band:
-                stripe_rows.append(i)
-
-        # 좌측 고정 시트(자체 세로 스크롤바 숨김 — 우측 스크롤바가 둘 다 움직임)
+        # 좌측 고정 시트(자체 스크롤바 숨김 — 우측 스크롤바가 세로로 둘 다 움직임)
         LEFT_W = sum(left_widths) + 8
         lwrap = tk.Frame(holder, bg=self.p["bg"], width=LEFT_W)
         lwrap.pack(side="left", fill="y")
@@ -645,19 +679,32 @@ class EquipApp(tk.Tk):
         try:
             for ci, w in enumerate(left_widths):
                 ls.column_width(column=ci, width=w)
-            c_sel = (1 if q else 0) + 2
-            c_note = c_sel + 1
             ls.highlight_columns(columns=[c_sel], bg=self.p["primary_lt"],
                                  fg=self.p["text"])
             ls.highlight_columns(columns=[c_note], bg="#fff8e1", fg=self.p["text"])
-            if stripe_rows:
-                ls.highlight_rows(rows=stripe_rows, bg=self.p["stripe"],
+            if header_rows:
+                ls.highlight_rows(rows=header_rows, bg="#e2e8f0",
                                   fg=self.p["text"], highlight_index=False)
         except Exception:  # noqa: BLE001
             pass
         ls.hide("y_scrollbar")
         ls.hide("x_scrollbar")
         ls.pack(fill="both", expand=True)
+        # 좌측은 **가로로 절대 안 움직이게** 고정: 우측 가로 스크롤이 sync 로 전파돼도
+        # 좌측 x 이동/스크롤바 콜백을 무력화(휠/스크롤바 두 경로 모두 차단).
+        ls.MT.set_xviews = lambda *a, **k: None
+        ls.MT._xscrollbar = lambda *a, **k: None
+
+        # 비고 셀 더블클릭 = 편집(그 외 읽기 전용). 편집값은 최신 취합본에 저장.
+        def _on_note_dbl(e):
+            rr = ls.identify_row(e)
+            cc = ls.identify_column(e)
+            if rr is None or cc != c_note:
+                return
+            pr = param_row_of.get(rr)
+            if pr is not None:
+                self._edit_note_cell(ls, rr, c_note, pr, e)
+        ls.MT.bind("<Double-Button-1>", _on_note_dbl, add="+")
 
         # 좌/우 구분선
         tk.Frame(holder, bg="#94a3b8", width=2).pack(side="left", fill="y")
@@ -670,20 +717,79 @@ class EquipApp(tk.Tk):
             try:
                 for i in range(len(others)):
                     rs.column_width(column=i, width=92)
-                if stripe_rows:
-                    rs.highlight_rows(rows=stripe_rows, bg=self.p["stripe"],
+                if header_rows:
+                    rs.highlight_rows(rows=header_rows, bg="#e2e8f0",
                                       fg=self.p["text"], highlight_index=False)
             except Exception:  # noqa: BLE001
                 pass
             rs.pack(fill="both", expand=True)
             ls.sync_scroll(rs)                    # 세로 스크롤 동기화(양방향)
             self.after(60, lambda: self._equalize_sheet_heights(
-                ls, len(left_headers), rs, len(others), len(show)))
+                ls, len(left_headers), rs, len(others), nrows))
         else:
             tk.Label(holder, text="비교할 다른 호기가 없습니다.", bg=self.p["bg"],
                      fg=self.p["muted"]).pack(side="left", padx=10)
             self.after(60, lambda: self._equalize_sheet_heights(
-                ls, len(left_headers), None, 0, len(show)))
+                ls, len(left_headers), None, 0, nrows))
+
+    def _edit_note_cell(self, sheet, r, c, pr, event):
+        """비고 셀 인라인 편집 팝업(작은 Entry) → 취합 행·최신 취합본에 저장."""
+        top = tk.Toplevel(self)
+        top.wm_overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.wm_geometry(f"+{event.x_root}+{event.y_root}")
+        var = tk.StringVar(value=engine._s(pr.get("비고")))
+        ent = tk.Entry(top, textvariable=var, font=self.fonts["base"],
+                       width=32, relief="solid", bd=1)
+        ent.pack()
+        ent.focus_set()
+        ent.select_range(0, "end")
+
+        def commit(_=None):
+            new = var.get().strip()
+            top.destroy()
+            if new == engine._s(pr.get("비고")):
+                return
+            pr.set("비고", new if new else None)
+            try:
+                sheet.set_cell_data(r, c, new)
+            except Exception:  # noqa: BLE001
+                pass
+            self._persist_note(pr, new)
+            self._set_status(f"비고 저장: {engine._s(pr.get('Parameter'))}")
+        ent.bind("<Return>", commit)
+        ent.bind("<Escape>", lambda e: top.destroy())
+        ent.bind("<FocusOut>", lambda e: top.destroy())
+
+    def _persist_note(self, pr, note):
+        """최신 '파라미터 값 취합' 파일에서 이 파라미터 행을 찾아 비고를 갱신·저장."""
+        path = workdirs.latest_collate(self.save_dir) if self.save_dir else None
+        if not path or not os.path.isfile(path):
+            return
+        import openpyxl
+        key = tuple(engine._s(pr.get(f)).strip()
+                    for f in ("PI", "Recipe", "Zone", "Alg", "Parameter"))
+        try:
+            wb = openpyxl.load_workbook(path)
+            changed = False
+            for ws in wb.worksheets:
+                heads = [engine._s(c.value).strip() for c in ws[1]]
+                if "Parameter" not in heads or "비고" not in heads:
+                    continue
+                idx = {h: i for i, h in enumerate(heads)}
+                need = ("PI", "Recipe", "Zone", "Alg", "Parameter")
+                if not all(h in idx for h in need):
+                    continue
+                for row in ws.iter_rows(min_row=2):
+                    rk = tuple(engine._s(row[idx[h]].value).strip() for h in need)
+                    if rk == key:
+                        row[idx["비고"]].value = note or None
+                        changed = True
+            if changed:
+                wb.save(path)
+            wb.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _equalize_sheet_heights(self, ls, nleft, rs, nright, nrows):
         """좌/우 시트의 각 행 높이를 **둘 중 큰 쪽**으로 맞춰 나란히 정렬한다
@@ -1721,6 +1827,109 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=16,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=8)
 
+    def _resolve_local_machine_dir(self, root: str, aoi: str):
+        """지정 로컬 폴더 아래에서 호기(aoi) 폴더를 찾는다.
+        1) {root}/{호기} 정확히, 2) 없으면 이름에 호기가 포함된 하위 폴더."""
+        import re as _re
+        cand = os.path.join(root, _sanitize_name(aoi))
+        if os.path.isdir(cand):
+            return cand
+        key = _re.sub(r"[^0-9a-z]", "", aoi.lower())
+        try:
+            for n in sorted(os.listdir(root)):
+                p = os.path.join(root, n)
+                if os.path.isdir(p) and key and key in _re.sub(r"[^0-9a-z]", "", n.lower()):
+                    return p
+        except OSError:
+            pass
+        return None
+
+    def _local_pick_sources(self, on_sources, level_hint=""):
+        """로컬 불러오기 — 폴더 직접 선택 대신 **호기 선택 창**을 띄우고, 지정된 로컬
+        상위 폴더에서 그 호기 폴더를 자동으로 찾아 sources 를 만든다(req6).
+        on_sources([(folder, level_hint, 호기)]) 호출. 지정 폴더는 config 에 기억."""
+        machines = self._all_machines()
+        if not machines:
+            messagebox.showinfo("로컬 불러오기", "참고자료(장비 IP)에 호기가 없습니다. "
+                                "'장비 IP' 탭에서 호기를 먼저 등록하세요.")
+            return
+        root = self._cfg.get("local_root", "")
+        if not root or not os.path.isdir(root):
+            messagebox.showinfo("로컬 상위 폴더 지정",
+                                "장비에서 받아둔 파일들이 들어 있는 **상위 폴더**를 지정하세요.\n"
+                                "(그 아래 호기 이름 폴더에서 자동으로 찾습니다.)")
+            root = filedialog.askdirectory(title="로컬 상위 폴더 선택")
+            if not root:
+                return
+            self._cfg["local_root"] = root
+            save_config(self._cfg)
+
+        win = tk.Toplevel(self)
+        win.title("로컬에서 불러오기 — 호기 선택")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="불러올 호기를 선택하세요(지정 로컬 폴더에서 자동으로 찾습니다).",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                 anchor="w", padx=14, pady=(12, 2))
+        root_var = tk.StringVar(value=root)
+        rrow = tk.Frame(win, bg=self.p["bg"])
+        rrow.pack(fill="x", padx=14, pady=(0, 6))
+        tk.Label(rrow, text="로컬 상위 폴더:", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+        tk.Label(rrow, textvariable=root_var, bg=self.p["bg"], fg=self.p["primary"],
+                 font=self.fonts["sub"]).pack(side="left", padx=(4, 8))
+
+        def change_root():
+            d = filedialog.askdirectory(title="로컬 상위 폴더 선택", parent=win)
+            if d:
+                root_var.set(d)
+                self._cfg["local_root"] = d
+                save_config(self._cfg)
+                refresh()
+        tk.Button(rrow, text="폴더 변경", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=8, cursor="hand2",
+                  command=change_root).pack(side="left")
+
+        listfrm = tk.Frame(win, bg=self.p["bg"])
+        listfrm.pack(fill="both", expand=True, padx=14)
+        vars_ = {}
+
+        def refresh():
+            for w in listfrm.winfo_children():
+                w.destroy()
+            vars_.clear()
+            for m in machines:
+                found = self._resolve_local_machine_dir(root_var.get(), m)
+                v = tk.BooleanVar(value=bool(found))
+                vars_[m] = (v, found)
+                r = tk.Frame(listfrm, bg=self.p["bg"])
+                r.pack(fill="x", anchor="w")
+                tk.Checkbutton(r, text=m, variable=v, bg=self.p["bg"],
+                               font=self.fonts["bold"], width=10, anchor="w",
+                               state=("normal" if found else "disabled")).pack(side="left")
+                tk.Label(r, text=(found if found else "폴더 없음"), bg=self.p["bg"],
+                         fg=(self.p["muted"] if found else self.p["danger"]),
+                         font=self.fonts["sub"], anchor="w").pack(side="left", padx=(6, 0))
+        refresh()
+
+        def ok():
+            sources = [(found, level_hint, m)
+                       for m, (v, found) in vars_.items() if v.get() and found]
+            if not sources:
+                messagebox.showwarning("호기 선택", "불러올 호기를 선택하세요(폴더가 있는 호기).",
+                                       parent=win)
+                return
+            win.destroy()
+            on_sources(sources)
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=14, pady=12)
+        tk.Button(bt, text="불러오기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=ok).pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+
     def _coef_lookup_cb(self, fixed_machine=None):
         """scan_tree 용 변환계수 콜백 — (호기,MAG) 저장소 우선, 없으면 RTP.txt 로 자동
         추정해 upsert(사람값 우선). fixed_machine 을 주면(commonality: 조사 호기 1대)
@@ -1964,7 +2173,7 @@ class EquipApp(tk.Tk):
         tk.Button(box2, text="🖥  장비 폴더에서 신규 불러오기", relief="flat", bd=0,
                   bg=self.p["primary"], fg="#ffffff", padx=16, pady=8, cursor="hand2",
                   command=lambda: self._form_new(from_equipment=True)).pack(side="left")
-        tk.Button(box2, text="📁  로컬 폴더에서 신규 불러오기", relief="flat", bd=0,
+        tk.Button(box2, text="📁  로컬(호기 선택)에서 신규 불러오기", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
                   command=lambda: self._form_new(from_equipment=False)).pack(side="left", padx=8)
         tk.Button(box2, text="✏  기존 양식 수정하기", relief="flat", bd=0,
@@ -2034,7 +2243,7 @@ class EquipApp(tk.Tk):
             try:
                 _shutil.copy2(final_path, new_final)
                 if renamed:
-                    formbuilder.rename_level(new_final, level, new_level)
+                    formbuilder.force_level(new_final, new_level)   # PI 열 전체 통일
             except Exception as e:  # noqa: BLE001
                 messagebox.showerror("복사 실패", str(e))
                 return
@@ -2049,15 +2258,16 @@ class EquipApp(tk.Tk):
         try:
             _shutil.copy2(drafts[-1], new_draft)
             if renamed:
-                formbuilder.rename_level(new_draft, level, new_level)
+                formbuilder.force_level(new_draft, new_level)   # PI 열 전체 통일
         except Exception as e:  # noqa: BLE001
             messagebox.showerror("초안 복사 실패", str(e))
             return
         opened = self._open_in_excel(new_draft)
         # 원본 확정본의 변형별 변환계수를 새 버전에도 이어받는다(없으면 None)
         old_scales = extract_io.read_scales(final_path) or None
+        # prev_form=원본 확정본 → 편집 확정 후 기존 값 이어받기·신규 항목 업데이트 안내(req5)
         self._form_finalize_dialog(new_draft, drafts[-1], new_level, kind, old_scales,
-                                   new_run, aoi, new_st, opened)
+                                   new_run, aoi, new_st, opened, prev_form=final_path)
 
     def _form_new(self, from_equipment: bool):
         if not self.save_dir:
@@ -2079,12 +2289,13 @@ class EquipApp(tk.Tk):
                 related,
                 lambda sources: self._scales_then_build(sources, level, kind,
                                                         run_dir, related, st),
-                level_hint=level)
+                level_hint=level, levels=[level])
         else:
-            d = filedialog.askdirectory(title=f"{level} 레시피 파일이 있는 로컬 폴더 선택")
-            if not d:
-                return
-            self._scales_then_build([(d, level, "")], level, kind, run_dir, related, st)
+            # req6: 폴더 직접 선택 대신 호기 선택 → 지정 로컬 폴더에서 자동 로드
+            self._local_pick_sources(
+                lambda sources: self._scales_then_build(sources, level, kind,
+                                                        run_dir, related, st),
+                level_hint=level)
 
     def _scales_then_build(self, sources, level, kind, run_dir, related, st):
         def detect():
@@ -2149,7 +2360,8 @@ class EquipApp(tk.Tk):
                                        aoi, st, opened)
         self._run_busy("초안(수정본) 엑셀 생성 중…", work, done)
 
-    def _form_finalize_dialog(self, draft, orig, level, kind, scales, run_dir, aoi, st, opened):
+    def _form_finalize_dialog(self, draft, orig, level, kind, scales, run_dir, aoi, st,
+                              opened, prev_form=None):
         win = tk.Toplevel(self)
         win.title("양식 편집 완료")
         win.configure(bg=self.p["bg"])
@@ -2169,11 +2381,13 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
                   fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   command=lambda: self._form_finalize(draft, level, kind, scales,
-                                                      run_dir, aoi, st, win)).pack(side="right")
+                                                      run_dir, aoi, st, win,
+                                                      prev_form=prev_form)).pack(side="right")
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=12,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
 
-    def _form_finalize(self, draft, level, kind, scales, run_dir, aoi, st, win):
+    def _form_finalize(self, draft, level, kind, scales, run_dir, aoi, st, win,
+                       prev_form=None):
         final = workdirs.form_final_path(run_dir, level, aoi, st)
 
         def work():
@@ -2186,6 +2400,10 @@ class EquipApp(tk.Tk):
                 messagebox.showerror("양식 확정 실패", str(res), parent=win)
                 return
             win.destroy()
+            # 기존 양식 수정 확정 → 이전 값 이어받기 + 신규 항목 값 업데이트 안내(req5)
+            if prev_form:
+                self._post_finalize_merge(final, prev_form, level, res)
+                return
             if messagebox.askyesno(
                     "양식 확정 완료",
                     f"확정 양식 생성: {os.path.basename(final)}\n"
@@ -2193,6 +2411,53 @@ class EquipApp(tk.Tk):
                     f"위치: {run_dir}\n\n지금 화면으로 열어 볼까요?"):
                 self._open_collation_view(final)
         self._run_busy("양식 확정 중…", work, done)
+
+    def _post_finalize_merge(self, final, prev_form, level, res):
+        """기존 양식 수정 확정 후: 이전 취합 값을 새 양식 구조로 이어받아 저장하고,
+        새(변경) 파라미터는 빈칸으로 둔 뒤 '지금 값 업데이트할까요?' 를 물어본다."""
+        machines = self._all_machines()
+        prev_collate = workdirs.latest_collate(self.save_dir)
+
+        # 신규 파라미터 = 새 양식엔 있고 이전 양식엔 없던 항목
+        try:
+            old_keys = formbuilder.form_params(prev_form)
+            new_keys = formbuilder.form_params(final)
+            added = new_keys - old_keys
+        except Exception:  # noqa: BLE001
+            added = set()
+
+        def work():
+            # 빈 파싱(pivot 없음) + 직전 취합 이어받기 → 기존값 채움, 신규는 빈칸
+            cl = (lambda ho, mag: coefstore.lookup(self.coef_rows, ho, mag))
+            out = collate.build_collation(self.save_dir, [level], [], machines,
+                                          prev_collate_path=prev_collate, coef_lookup=cl)
+            made = {r: v for r, v in out.items() if not v.missing_form}
+            dest = workdirs.collate_path(self.save_dir, workdirs.stamp())
+            collate.write_collation(dest, made, machines)
+            return dest
+
+        def done(ok, dest):
+            if not ok:
+                messagebox.showerror("값 이어받기 실패", str(dest))
+                return
+            self._load_latest_collate()
+            self.view = "param"
+            self._sync_tab_style()
+            self.navigate(screen="s0")
+            n_add = len(added)
+            base_msg = (f"확정 양식: {os.path.basename(final)}\n"
+                        f"항목 {res['kept']}개. 기존 파라미터 값은 이전 취합본에서 "
+                        "이어받았습니다.")
+            if n_add and messagebox.askyesno(
+                    "새 항목 값 업데이트",
+                    base_msg + f"\n\n새로(변경) 추가된 파라미터 {n_add}개는 값이 "
+                    "비어 있습니다.\n지금 이 항목들의 값을 장비/로컬에서 업데이트할까요?"):
+                self._start_value_update(chosen=[level])
+            else:
+                messagebox.showinfo("양식 확정 완료", base_msg
+                                    + (f"\n새 항목 {n_add}개는 빈칸으로 두었습니다."
+                                       if n_add else ""))
+        self._run_busy("이전 값 이어받는 중…", work, done)
 
     # ====================================================================
     #  Commonality 조사 (Scanresult Lot 파라미터 공통성/변경 조사)
@@ -2918,6 +3183,12 @@ class EquipApp(tk.Tk):
         chosen = self._pick_levels(recipes)          # 레시피 선택 알림창
         if not chosen:
             return
+        self._start_value_update(chosen)
+
+    def _start_value_update(self, chosen):
+        """레시피(chosen)가 정해진 상태에서 장비/로컬 수집 → 취합 흐름 시작."""
+        if not chosen:
+            return
         # 각 레시피 최신 양식의 변환계수 병합(재파싱에 사용)
         scales = {}
         for r in chosen:
@@ -2953,17 +3224,16 @@ class EquipApp(tk.Tk):
 
         def from_local():
             win.destroy()
-            d = filedialog.askdirectory(title="장비에서 받아둔 로컬 폴더 선택")
-            if not d:
-                return
-            self._parse_sources_busy(
-                [(d, dlevel, "")],
-                lambda rows, machines: self._update_collate_flow(chosen, rows),
-                default_level=dlevel, scales=scales)
+            # req6: 폴더 직접 선택 대신 호기 선택 → 지정 로컬 폴더에서 자동 로드
+            self._local_pick_sources(
+                lambda sources: self._parse_sources_busy(
+                    sources, lambda rows, machines: self._update_collate_flow(chosen, rows),
+                    default_level=dlevel, scales=scales),
+                level_hint=dlevel)
         tk.Button(bt, text="🖥 장비 IP에서 수집", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=16, pady=8, cursor="hand2",
                   command=from_equip).pack(side="left")
-        tk.Button(bt, text="📁 로컬 폴더에서", relief="flat", bd=0, bg=self.p["surface"],
+        tk.Button(bt, text="📁 로컬(호기 선택)에서", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=16, pady=8, cursor="hand2",
                   command=from_local).pack(side="left", padx=8)
 
@@ -3161,8 +3431,11 @@ class EquipApp(tk.Tk):
                  anchor="w", padx=12, pady=(10, 4))
 
         cols = ["inc", "레시피", "Zone", "Alg", "Parameter"] + list(machines)
+        # 버튼 바를 먼저 하단에 고정(창이 짧아도 항상 보이게), 목록은 남은 공간을 채움
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(side="bottom", fill="x", padx=12, pady=(2, 10))
         wrap = tk.Frame(win, bg=self.p["bg"])
-        wrap.pack(fill="both", expand=True, padx=12, pady=4)
+        wrap.pack(side="top", fill="both", expand=True, padx=12, pady=4)
         tv = ttk.Treeview(wrap, columns=cols, show="headings", height=24)
         heads = {"inc": "포함", "레시피": "레시피", "Zone": "Zone", "Alg": "Alg",
                  "Parameter": "Parameter"}
@@ -3230,11 +3503,31 @@ class EquipApp(tk.Tk):
             ent.bind("<FocusOut>", commit)
             ent.bind("<Escape>", lambda _e: ent.destroy())
 
+        def on_enter(_e=None):
+            # 행 선택 후 Enter = 포함 토글 + 아래 행으로 이동(연속 조작 편하게)
+            item = tv.focus() or (tv.selection()[0] if tv.selection() else "")
+            if not item:
+                kids = tv.get_children()
+                item = kids[0] if kids else ""
+            if not item:
+                return "break"
+            toggle(item)
+            nxt = tv.next(item)
+            if nxt:
+                tv.selection_set(nxt)
+                tv.focus(nxt)
+                tv.see(nxt)
+            return "break"
+
         tv.bind("<Button-1>", on_click, add="+")
         tv.bind("<Double-Button-1>", on_double)
-
-        bt = tk.Frame(win, bg=self.p["bg"])
-        bt.pack(fill="x", padx=12, pady=(2, 10))
+        tv.bind("<Return>", on_enter)
+        tv.bind("<KP_Enter>", on_enter)
+        kids0 = tv.get_children()
+        if kids0:                                # 첫 행 포커스 → 바로 Enter 조작 가능
+            tv.selection_set(kids0[0])
+            tv.focus(kids0[0])
+        tv.focus_set()
 
         def set_all(v):
             for it in tv.get_children():

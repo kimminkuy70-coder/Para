@@ -144,6 +144,50 @@ def test_rename_level_draft_and_final():
     print("  formbuilder OK: rename_level — 초안/확정/요약 레벨 이름 일괄 변경")
 
 
+def test_force_level_and_form_params():
+    """force_level: PI 열 전체를 새 이름으로 강제(옛 값이 폴더명과 달라도).
+    form_params: (Zone,Alg,Parameter) 키 집합으로 두 양식 비교."""
+    with tempfile.TemporaryDirectory() as tmp:
+        rows, _ = _pivot(tmp)
+        init = os.path.join(tmp, "init.xlsx")
+        formbuilder.build_initial_workbook(rows, init, level="PI3/x5", source="AOI-13")
+        final = os.path.join(tmp, "form.xlsx")
+        formbuilder.build_final_from_initial(init, final, level="PI3/x5", aoi="AOI-13")
+
+        # 폴더명(list_recipes)은 'PI3_x5'로 sanitize 됐다고 가정 → rename 은 매칭 실패지만
+        # force_level 은 현재 값과 무관하게 전부 새 이름으로 통일
+        n = formbuilder.force_level(final, "PI3-NEW")
+        assert n > 0
+        repo = engine.ParamRepository(final)
+        repo.load()
+        assert {engine._s(pr.get("PI")) for pr in repo.rows} == {"PI3-NEW"}
+        wb = openpyxl.load_workbook(final)
+        sm = wb[extract_io.SHEET_SUMMARY]
+        d = {engine._s(r[0]): engine._s(r[1])
+             for r in sm.iter_rows(min_row=2, values_only=True) if r and r[0]}
+        assert d.get("레시피 레벨") == "PI3-NEW"
+        wb.close()
+
+        # form_params 비교: 같은 양식이면 차집합 0, 파라미터 추가 시 검출
+        keys1 = formbuilder.form_params(final)
+        assert keys1 and formbuilder.form_params(final) - keys1 == set()
+
+        recs = [{"PI": "PI3", "Recipe": "PI", "Zone": "Z", "Alg": "S",
+                 "Parameter": "OldOnly", "비고": ""},
+                {"PI": "PI3", "Recipe": "PI", "Zone": "Z", "Alg": "S",
+                 "Parameter": "NewOne", "비고": ""}]
+        f2 = os.path.join(tmp, "f2.xlsx")
+        extract_io.write_snapshot(f2, recs, machines=[], sheet_name="PI_ALL",
+                                  extracts=[None, None], stage="final", level="PI3")
+        f1 = os.path.join(tmp, "f1.xlsx")
+        extract_io.write_snapshot(f1, recs[:1], machines=[], sheet_name="PI_ALL",
+                                  extracts=[None], stage="final", level="PI3")
+        added = formbuilder.form_params(f2) - formbuilder.form_params(f1)
+        names = {k[2] for k in added}
+        assert any("newone" == n for n in names), names
+    print("  formbuilder OK: force_level 강제 통일 + form_params 신규항목 검출")
+
+
 def test_final_rejects_when_all_unused():
     with tempfile.TemporaryDirectory() as tmp:
         rows, _ = _pivot(tmp)

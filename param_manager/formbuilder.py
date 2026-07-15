@@ -147,6 +147,66 @@ def rename_level(xlsx: str, old: str, new: str) -> int:
     return changed
 
 
+def force_level(xlsx: str, new: str) -> int:
+    """양식(초안/확정) 엑셀의 레시피 레벨을 **현재 값과 무관하게** new 로 통일한다.
+    (rename_level 은 old 값이 폴더명과 달라 매칭 실패할 수 있어, 이름 변경 확정 시
+    이 함수로 PI 열 전체를 new 로 강제한다. 한 양식=한 레벨 전제.)
+    반환: 바뀐 셀 수.
+    """
+    new_s = engine._s(new).strip()
+    if not new_s:
+        return 0
+    wb = openpyxl.load_workbook(xlsx)
+    changed = 0
+    for ws in wb.worksheets:
+        heads = [engine._s(c.value).strip() for c in ws[1]]
+        if "PI" in heads:
+            ci = heads.index("PI") + 1
+            for r in range(2, ws.max_row + 1):
+                c = ws.cell(row=r, column=ci)
+                if engine._s(c.value).strip() and engine._s(c.value).strip() != new_s:
+                    c.value = new_s
+                    changed += 1
+        if heads[:2] == ["항목", "값"]:
+            for r in range(2, ws.max_row + 1):
+                if engine._s(ws.cell(row=r, column=1).value) == "레시피 레벨":
+                    ws.cell(row=r, column=2).value = new_s
+                    changed += 1
+        for r in range(1, ws.max_row + 1):
+            c = ws.cell(row=r, column=1)
+            if engine._s(c.value).startswith("레시피 레벨:"):
+                c.value = f"레시피 레벨: {new_s}"
+                changed += 1
+    wb.save(xlsx)
+    return changed
+
+
+def form_params(xlsx: str) -> set[tuple]:
+    """양식(확정 PI_ALL/RDL_ALL)의 파라미터 키 집합 — (Zone, Alg, Parameter) 정규화.
+    두 양식 비교(신규 파라미터 검출)용."""
+    import re
+    def _n(s):
+        return re.sub(r"[^0-9a-z가-힣µ]", "", engine._s(s).lower())
+    out = set()
+    try:
+        wb = openpyxl.load_workbook(xlsx, data_only=True)
+    except Exception:  # noqa: BLE001
+        return out
+    for ws in wb.worksheets:
+        heads = [engine._s(c.value).strip() for c in ws[1]]
+        if not ({"Zone", "Alg", "Parameter"} <= set(heads)) or heads[:1] != ["PI"]:
+            continue
+        iz, ia, ip = heads.index("Zone"), heads.index("Alg"), heads.index("Parameter")
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row and any(v not in (None, "") for v in row):
+                p = row[ip] if ip < len(row) else ""
+                if engine._s(p).strip():
+                    out.add((_n(row[iz] if iz < len(row) else ""),
+                             _n(row[ia] if ia < len(row) else ""), _n(p)))
+    wb.close()
+    return out
+
+
 def _is_used(val) -> bool:
     s = engine._s(val).strip().upper()
     if s in _USED_TRUE:
