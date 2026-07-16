@@ -184,6 +184,37 @@ def test_build_collation_keeps_other_recipes():
     print("  collate OK: 한 레시피 업데이트 시 다른 레시피 시트 누적 유지")
 
 
+def test_delete_recipe_sheet():
+    """레시피 삭제 = 취합 파일에서 그 레벨 시트 제거(실제 엑셀 반영)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = os.path.join(tmp, "취합.xlsx")
+        made = {
+            "PI3": collate.CollateRecipe(recipe="PI3", machines=["AOI-1"],
+                records=[{"PI": "PI3", "Recipe": "PI", "Zone": "Z", "Alg": "S",
+                          "Parameter": "P1", "비고": "", "AOI-1": "1"}]),
+            "RDL1": collate.CollateRecipe(recipe="RDL1", machines=["AOI-1"],
+                records=[{"PI": "RDL1", "Recipe": "x5", "Zone": "Z", "Alg": "S",
+                          "Parameter": "P2", "비고": "", "AOI-1": "2"}]),
+        }
+        collate.write_collation(dest, made, ["AOI-1"])
+        # 삭제 전 두 시트
+        sheets, _ = collate.load_collation(dest)
+        assert set(sheets) == {"PI3", "RDL1"}
+        # PI3 삭제
+        n = collate.delete_recipe(dest, "PI3")
+        assert n == 1
+        sheets2, _ = collate.load_collation(dest)
+        assert set(sheets2) == {"RDL1"}
+        # 없는 레시피 삭제 → 0
+        assert collate.delete_recipe(dest, "PI9") == 0
+        # 마지막 하나까지 삭제해도 파일은 유효(취합없음 시트)
+        assert collate.delete_recipe(dest, "RDL1") == 1
+        import openpyxl
+        wb = openpyxl.load_workbook(dest)
+        assert wb.sheetnames  # 최소 1개 시트 유지
+    print("  collate OK: delete_recipe 시트 삭제(엑셀 반영)")
+
+
 def test_missing_form_and_mismatch():
     with tempfile.TemporaryDirectory() as tmp:
         save = os.path.join(tmp, "저장폴더")

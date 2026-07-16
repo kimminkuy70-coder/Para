@@ -182,6 +182,36 @@ def build_collation(save_dir: str, recipes: list[str], pivot_rows: list[dict],
 # --------------------------------------------------------------------------
 # 저장 / 로드(멀티시트)
 # --------------------------------------------------------------------------
+def delete_recipe(path: str, recipe: str) -> int:
+    """취합 파일에서 특정 레시피(레벨)의 **시트를 삭제**한다(실제 엑셀 반영).
+    시트 판별: 시트명 == _safe_sheet(recipe), 또는 그 시트의 데이터 PI 값이 전부 recipe.
+    반환: 삭제한 시트 수. (시트가 0개가 되면 '취합없음' 빈 시트를 남긴다.)"""
+    wb = openpyxl.load_workbook(path)
+    target_title = _safe_sheet(recipe)
+    lvl = engine._s(recipe).strip().lower()
+    removed = 0
+    for ws in list(wb.worksheets):
+        if ws.title in _AUX_SHEETS:
+            continue
+        heads = [engine._s(c.value).strip() for c in ws[1]]
+        if heads[:1] != ["PI"] or "Parameter" not in heads:
+            continue
+        pi_i = heads.index("PI")
+        pis = {engine._s(row[pi_i]).strip().lower()
+               for row in ws.iter_rows(min_row=2, values_only=True)
+               if row and any(v not in (None, "") for v in row)}
+        match = (ws.title == target_title) or (pis and pis <= {lvl})
+        if match:
+            wb.remove(ws)
+            removed += 1
+    if removed:
+        if not [ws for ws in wb.worksheets if ws.title not in _AUX_SHEETS]:
+            wb.create_sheet("취합없음")
+        wb.save(path)
+    wb.close()
+    return removed
+
+
 def write_collation(dest_xlsx: str, results: dict[str, CollateRecipe],
                     machines_all: list[str]) -> str:
     """레시피별 시트로 취합 파일 저장. 헤더 = META_FIELDS + 전체 호기."""

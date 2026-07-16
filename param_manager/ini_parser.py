@@ -271,21 +271,37 @@ _SCAN2D_SEC_RE = re.compile(r"(?i)^scan2d\d*$")   # [Scan2d] 또는 [Scan2d#]
 
 
 def _pick_optic_target(sections: dict) -> str | None:
-    """최신(target) 섹션 = OpticPreset.ini 에서 **KEEP(광원) 키를 가진 마지막 섹션**.
-    섹션 이름은 장비마다 다를 수 있으므로([Scan2d#]·[Engineer optic] 등) 이름이 아니라
-    '광원 키를 가진 마지막 [섹션]' 으로 고른다(사용자 확정 2026-07)."""
+    """최신(target) 섹션을 고른다(사용자 확정 2026-07):
+    1순위 = **CameraName=TDI 섹션 중 마지막**(광원 키 있으면 그 중 마지막).
+    이름은 장비마다 다를 수 있어([Scan2d#]·[Engineer optic] 등) 이름이 아니라
+    'TDI 카메라 + 광원 키를 가진 마지막 [섹션]' 으로 고른다. TDI 없으면 광원 키 마지막.
+    """
     if not sections:
         return None
     names = list(sections)
-    # 1순위: KEEP(광원) 키를 가진 마지막 섹션 — 이름 무관
-    with_keep = [s for s in names if any(k in OPTIC_SCAN2D_KEEP for k in sections[s])]
+
+    def _is_tdi(s):
+        return str(sections[s].get("CameraName", "")).strip().upper() == "TDI"
+
+    def _has_keep(s):
+        return any(k in OPTIC_SCAN2D_KEEP for k in sections[s])
+
+    # 1순위: CameraName=TDI 섹션 (광원 키 있으면 우선) 중 마지막
+    tdi = [s for s in names if _is_tdi(s)]
+    tdi_keep = [s for s in tdi if _has_keep(s)]
+    if tdi_keep:
+        return tdi_keep[-1]
+    if tdi:
+        return tdi[-1]
+    # 2순위: 광원 키를 가진 마지막 섹션 — 이름 무관
+    with_keep = [s for s in names if _has_keep(s)]
     if with_keep:
         return with_keep[-1]
-    # 2순위(하위호환): Scan2d 이름 섹션 마지막
+    # 3순위(하위호환): Scan2d 이름 섹션 마지막
     scan = [s for s in names if _SCAN2D_SEC_RE.match(s)]
     if scan:
         return scan[-1]
-    # 3순위: 그래도 없으면 마지막 섹션
+    # 4순위: 그래도 없으면 마지막 섹션
     return names[-1]
 
 

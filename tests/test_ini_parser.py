@@ -230,6 +230,27 @@ def test_collector_plan_and_copy():
     print("  collector OK: 계획 수집/자동 재사용/원본 무변경")
 
 
+def test_optic_target_tdi():
+    """OpticPreset target = CameraName=TDI 섹션 중 마지막(이름 무관)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "OpticPreset.ini"
+        p.write_text(
+            "[optic A]\nCameraName=TDI\nMag=10\n"
+            "LightSrcRef_NominalGL=476.28\nLightSrcRef_ColorFilter=CSI3\n"
+            "LightSrcRef_NominalGL_On=1\n"
+            "[optic B]\nCameraName=AreaScan\nMag=3.14\n"
+            "LightSrcRef_NominalGL=999\nLightSrcRef_ColorFilter=CSI5\n"
+            "LightSrcRef_NominalGL_On=1\n", encoding="utf-8")
+        secs = ini_parser.parse_ini_sections(p)
+        assert ini_parser._pick_optic_target(secs) == "optic A"   # TDI 우선
+        assert ini_parser.read_optic_mag(Path(tmp)) == "10"
+        # TDI 없으면 광원 키 마지막
+        p.write_text("[x]\nLightSrcRef_NominalGL=1\n[y]\nLightSrcRef_NominalGL=2\n",
+                     encoding="utf-8")
+        assert ini_parser._pick_optic_target(ini_parser.parse_ini_sections(p)) == "y"
+    print("  ini_parser OK: OpticPreset CameraName=TDI 마지막 섹션 선택")
+
+
 def test_level_folder_match():
     m = collector.level_folder_match
     assert m("R_TB500_LIVE_PI3 - Enhanced", "Enhanced PI3")

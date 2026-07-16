@@ -498,20 +498,63 @@ class EquipApp(tk.Tk):
         canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _wheel))
         canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
+        tk.Label(inner, text="(레시피(레벨) 이름·카드를 우클릭하면 그 레시피를 취합에서 "
+                            "삭제할 수 있습니다)", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(anchor="w", pady=(0, 4))
         for lvl in levels:
             variants = sorted(v for (l, v) in combos if l == lvl)
             kind = "RDL" if lvl.upper().startswith("RDL") else "PI"
             block = tk.Frame(inner, bg=self.p["bg"])
             block.pack(fill="x", anchor="w", pady=(6, 2))
-            tk.Label(block, text=lvl, bg=self.p["bg"], fg=self.p["text"],
-                     font=self.fonts["bold"]).pack(anchor="w", pady=(4, 2))
+            hdr = tk.Label(block, text=lvl, bg=self.p["bg"], fg=self.p["text"],
+                           font=self.fonts["bold"], cursor="hand2")
+            hdr.pack(anchor="w", pady=(4, 2))
+            hdr.bind("<Button-3>", lambda e, l_=lvl: self._recipe_delete_menu(e, l_))
             rowf = tk.Frame(block, bg=self.p["bg"])
             rowf.pack(anchor="w", fill="x")
             for var in variants:
-                self._big_button(
+                card = self._big_button(
                     rowf, var or "(기본)", f"파라미터 {combos[(lvl, var)]}개",
                     lambda l_=lvl, v_=var, k_=kind: self.navigate(
                         screen="s4", kind=k_, pi=l_, recipe=v_))
+                self._bind_right(card,
+                                 lambda e, l_=lvl: self._recipe_delete_menu(e, l_))
+
+    def _bind_right(self, widget, handler):
+        widget.bind("<Button-3>", handler)
+        for c in widget.winfo_children():
+            self._bind_right(c, handler)
+
+    def _recipe_delete_menu(self, event, level):
+        m = tk.Menu(self, tearoff=0)
+        m.add_command(label=f"🗑  '{level}' 레시피 삭제 (취합 시트 제거)",
+                      command=lambda: self._delete_recipe(level))
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
+
+    def _delete_recipe(self, level):
+        latest = workdirs.latest_collate(self.save_dir) if self.save_dir else None
+        if not latest:
+            messagebox.showinfo("레시피 삭제", "취합 파일이 없습니다.")
+            return
+        if not messagebox.askyesno(
+                "레시피 삭제",
+                f"'{level}' 레시피를 취합 파일에서 삭제할까요?\n"
+                f"({os.path.basename(latest)} 의 해당 시트를 제거합니다 — 되돌릴 수 없음)"):
+            return
+        try:
+            n = collate.delete_recipe(latest, level)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("레시피 삭제 실패", str(e))
+            return
+        if not n:
+            messagebox.showinfo("레시피 삭제", f"'{level}' 에 해당하는 시트를 찾지 못했습니다.")
+            return
+        self._load_latest_collate()          # 파일 반영본 다시 로드
+        self._render()                        # 레시피 선택 화면 갱신(카드 제거)
+        self._set_status(f"'{level}' 레시피 삭제됨 — 취합 시트 {n}개 제거")
 
     # ---- 선택 화면 공통 위젯 ------------------------------------------
     def _big_button(self, parent, text, desc, cmd):
