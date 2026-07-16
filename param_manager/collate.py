@@ -266,20 +266,25 @@ def load_prev_values(path: str | None) -> dict[str, dict]:
 
 
 def load_as_repo(path: str, machines_all: list[str]) -> engine.ParamRepository:
-    """취합 파일(멀티시트) → 값 확인 화면용 in-memory ParamRepository(모든 시트 병합)."""
-    sheets, _ = load_collation(path)
+    """취합 파일(멀티시트) → 값 확인 화면용 in-memory ParamRepository(모든 시트 병합).
+
+    호기 열 = 참고자료(machines_all) + **취합 파일에 실제로 있는 호기 열의 합집합**.
+    (참고자료에 없는 호기로 취합된 값이 화면에서 빠지던 버그 방지 — 파일의 값은 항상 표시.)
+    """
+    sheets, file_machines = load_collation(path)
+    machines = list(machines_all) + [m for m in file_machines if m not in machines_all]
     repo = engine.ParamRepository(path)
-    repo.aoi_units = list(machines_all)
+    repo.aoi_units = machines
     repo.rows = []
     i = 0
     for recipe, rows in sheets.items():
         for rd in rows:
             vals = {f: rd.get(f) for f in engine.META_FIELDS}
-            for m in machines_all:
+            for m in machines:
                 vals[m] = rd.get(m)
             repo.rows.append(engine.ParamRow(
                 values=vals, row_id=engine.new_row_id(), display_order=i + 2,
-                aoi_units=list(machines_all)))
+                aoi_units=list(machines)))
             i += 1
     repo.cell_colors = {}
     return repo

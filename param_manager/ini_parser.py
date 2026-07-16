@@ -271,12 +271,22 @@ _SCAN2D_SEC_RE = re.compile(r"(?i)^scan2d\d*$")   # [Scan2d] 또는 [Scan2d#]
 
 
 def _pick_optic_target(sections: dict) -> str | None:
-    """최신 Scan2d(target) 섹션 = KEEP 키를 가진 마지막 Scan2d 섹션(파일 아래)."""
-    scan = [s for s in sections if _SCAN2D_SEC_RE.match(s)]
-    if not scan:
+    """최신(target) 섹션 = OpticPreset.ini 에서 **KEEP(광원) 키를 가진 마지막 섹션**.
+    섹션 이름은 장비마다 다를 수 있으므로([Scan2d#]·[Engineer optic] 등) 이름이 아니라
+    '광원 키를 가진 마지막 [섹션]' 으로 고른다(사용자 확정 2026-07)."""
+    if not sections:
         return None
-    with_keep = [s for s in scan if any(k in OPTIC_SCAN2D_KEEP for k in sections[s])]
-    return (with_keep or scan)[-1]
+    names = list(sections)
+    # 1순위: KEEP(광원) 키를 가진 마지막 섹션 — 이름 무관
+    with_keep = [s for s in names if any(k in OPTIC_SCAN2D_KEEP for k in sections[s])]
+    if with_keep:
+        return with_keep[-1]
+    # 2순위(하위호환): Scan2d 이름 섹션 마지막
+    scan = [s for s in names if _SCAN2D_SEC_RE.match(s)]
+    if scan:
+        return scan[-1]
+    # 3순위: 그래도 없으면 마지막 섹션
+    return names[-1]
 
 
 def read_optic_mag(config_dir: Path) -> str:
@@ -353,8 +363,8 @@ def _is_optic_file(file_path: Path) -> bool:
 def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE) -> list[ExtractRow]:
     """설정파일 1개 → ExtractRow 목록. scale = LINEAR/AREA 변환 계수(변형별)."""
     sections = parse_ini_sections(file_path)
-    # OpticPreset 이고 Scan2d 섹션이 있으면 최신 Scan2d 통일 규칙 적용
-    if _is_optic_file(file_path) and any(_SCAN2D_SEC_RE.match(s) for s in sections):
+    # OpticPreset 은 **마지막 광원 섹션**(이름 무관) 통일 규칙 적용
+    if _is_optic_file(file_path) and _pick_optic_target(sections) is not None:
         return _parse_optic(file_path, sections)
     top = infer_top_item(file_path, sections)
     zone = TOP_TO_ZONE.get(top, top)

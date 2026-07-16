@@ -350,8 +350,13 @@ class EquipApp(tk.Tk):
         grid = tk.Frame(wrap, bg=self.p["bg"])
         grid.pack(fill="both", expand=True)
         cols = 8
-        machines = self._all_machines()
-        custom = set(machines)          # 모든 호기가 참고자료 기반(우클릭 삭제 가능)
+        custom = set(self._all_machines())   # 참고자료 기반 호기(우클릭 삭제 가능)
+        # 표시 목록 = 참고자료 호기 + 최신 취합에 값이 있는 호기(참고자료에 없어도 보이게)
+        machines = list(self._all_machines())
+        if self.repo:
+            for m in self.repo.aoi_units:
+                if m not in machines:
+                    machines.append(m)
         for i, m in enumerate(machines):
             r, c = divmod(i, cols)
             b = tk.Button(grid, text=m, width=10, height=3, relief="flat", bd=0,
@@ -1447,25 +1452,27 @@ class EquipApp(tk.Tk):
         return ""
 
     def _match_recipes_dialog(self, all_recipes, target_levels, aoi="", parent=None):
-        """레시피(레벨)마다 장비 Recipe 폴더를 매칭하는 창(복수 선택).
-        레벨 1개든 여러 개든 같은 화면. 이름이 겹치는 폴더는 자동 체크(추천).
-        반환: {레벨: [Path]} 또는 None(취소). all_recipes = Path 목록."""
+        """레시피(레벨)마다 장비 **Job 폴더**를 매칭하는 창(복수 선택).
+        레벨(PI2/PI3/PI4 …)이 서로 다른 Job 폴더에 있을 수 있어 레벨별로 Job 을 고른다.
+        레벨 1개든 여러 개든 같은 화면. 이름 토큰이 맞는 폴더는 자동 체크(추천).
+        반환: {레벨: [Path]} 또는 None(취소). all_recipes = Job 폴더 Path 목록."""
         parent = parent or self
         win = tk.Toplevel(parent)
-        win.title("레시피 ↔ 장비 폴더 매칭" + (f" — {aoi}" if aoi else ""))
-        win.geometry("720x560")
+        win.title("레시피 ↔ Job 폴더 매칭" + (f" — {aoi}" if aoi else ""))
+        win.geometry("760x580")
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         try:
             win.grab_set()
         except tk.TclError:
             pass
-        tk.Label(win, text="선택한 레시피마다 장비 폴더를 지정하세요(복수 선택 가능).",
+        tk.Label(win, text="선택한 레시피마다 장비 Job 폴더를 지정하세요(복수 선택 가능).",
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                  anchor="w", padx=14, pady=(12, 2))
-        tk.Label(win, text="이름이 맞는 폴더는 자동으로 체크했습니다(◀ 추천). 확인 후 조정하세요.",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(
-                 anchor="w", padx=14, pady=(0, 6))
+        tk.Label(win, text="이름이 맞는 폴더는 자동 체크했습니다(◀ 추천). 각 레시피의 Job 폴더를 "
+                          "고르면 그 폴더 안의 Recipe 를 전부 수집합니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=14, pady=(0, 6))
 
         canvas = tk.Canvas(win, bg=self.p["bg"], highlightthickness=0)
         vbar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
@@ -1493,11 +1500,11 @@ class EquipApp(tk.Tk):
             box.pack(fill="x", expand=True, pady=(6, 2))
             vars_[lvl] = []
             if not all_recipes:
-                tk.Label(box, text="(장비에서 Recipe 폴더를 찾지 못함)", bg=self.p["bg"],
+                tk.Label(box, text="(장비에서 Job 폴더를 찾지 못함)", bg=self.p["bg"],
                          fg=self.p["danger"], font=self.fonts["sub"]).pack(anchor="w")
             for p in all_recipes:
                 name = p.name if isinstance(p, Path) else str(p)
-                hit = collector.contains_keyword(name, lvl)
+                hit = collector.level_folder_match(name, lvl)
                 v = tk.BooleanVar(value=hit)
                 vars_[lvl].append((v, p))
                 tk.Checkbutton(box, text=name + ("   ◀ 추천" if hit else ""),

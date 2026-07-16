@@ -124,6 +124,16 @@ def match_by_keyword(items: list[Path], keyword: str) -> list[Path]:
     return [p for p in items if contains_keyword(p.name, keyword)]
 
 
+def level_folder_match(folder_name: str, level: str) -> bool:
+    """레벨(레시피)명의 **모든 단어 토큰**이 폴더명 안에 있으면 매칭(순서 무관).
+    예: level='Enhanced PI3' ↔ 'R_TB500_LIVE_PI3 - Enhanced' → 참(enhanced·pi3 둘 다 포함).
+    'Enhanced PI2' ↔ 위 폴더 → 거짓(pi2 없음)."""
+    nn = re.sub(r"[^a-z0-9]", "", str(folder_name).lower())
+    toks = [re.sub(r"[^a-z0-9]", "", t.lower()) for t in re.split(r"\s+", str(level))]
+    toks = [t for t in toks if t]
+    return bool(toks) and all(t in nn for t in toks)
+
+
 def match_recipes_by_names(recipe_dirs: list[Path],
                            names: list[str]) -> tuple[list[Path], list[str]]:
     """계획된 Recipe 폴더명(정확 일치 → 느슨한 포함 매칭)으로 선택.
@@ -262,8 +272,68 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
         if not job_root.exists():
             raise RuntimeError(f"Job 폴더가 없거나 접근할 수 없습니다: {job_root}")
 
-        # 1) Job 폴더
+        # 1) Job 폴더 목록
         job_dirs = list_dirs(job_root)
+
+        # === 레시피(레벨)별 Job 폴더 매칭 모드 (복수 레시피) ===
+        # 레시피 레벨(PI2/PI3/PI4 …)이 서로 **다른 Job 폴더**에 있으므로, Job 단계에서
+        # 레벨마다 폴더를 매칭하고 그 Job 안의 Recipe 를 전부 수집한다.
+        if target_levels and match_recipes is not None:
+            mapping = None
+            if plan and plan.recipe_map:              # 이전 장비 매칭 재사용(Job명 기준)
+                m, ok = {}, True
+                for lvl in target_levels:
+                    sel, missing = match_recipes_by_names(
+                        job_dirs, plan.recipe_map.get(lvl) or [])
+                    if not sel or missing:
+                        ok = False
+                        break
+                    m[lvl] = sel
+                if ok:
+                    mapping = m
+            if mapping is None:
+                mapping = match_recipes(job_dirs, list(target_levels))   # {레벨:[Job]}
+                if not mapping:
+                    raise UserCancelled("레시피↔Job 폴더 매칭이 취소되었습니다.")
+            base = Path(staging_root("")) if callable(staging_root) else Path(staging_root)
+            per_level, planned_all = [], []
+            for lvl, jobs in mapping.items():
+                recipe_dirs = []
+                for job in jobs:
+                    cands = find_setup_candidates(job)
+                    if not cands:
+                        continue
+                    if len(cands) == 1:
+                        recipes_root = cands[0][1]
+                    else:
+                        picked = chooser(
+                            "setup", f"'{lvl}' · {job.name} — Setup/Recipes 선택",
+                            [s for s, _ in cands], False)
+                        if not picked:
+                            raise UserCancelled("Setup 선택이 취소되었습니다.")
+                        recipes_root = next(r for s, r in cands if s == picked[0])
+                    recipe_dirs += list_dirs(recipes_root)
+                pl = plan_files(recipe_dirs)
+                if not pl:
+                    continue
+                per_level.append((lvl, base / _sanitize(lvl), pl,
+                                  [j.name for j in jobs]))
+                planned_all += pl
+            if not planned_all:
+                raise RuntimeError("복사할 설정 파일(GlobalRTP/OpticPreset/Zones)이 없습니다.")
+            if confirm is not None and not confirm(planned_all):
+                raise UserCancelled("사용자가 복사를 취소했습니다.")
+            sources, recipe_map = [], {}
+            for lvl, ldir, pl, jobnames in per_level:
+                copy_planned(pl, ldir, header_lines=[
+                    f"IP={ip}", f"JobRoot={job_root}", f"Level={lvl}",
+                    f"Jobs={jobnames}"])
+                sources.append((str(ldir), lvl))
+                recipe_map[lvl] = jobnames
+            new_plan = CollectPlan(job_keyword="", recipe_map=recipe_map)
+            return planned_all, new_plan, sources
+
+        # === 단일 모드(기존): Job 1개 → Setup → Recipe ===
         job_folder = None
         if plan and plan.job_keyword:
             hits = match_by_keyword(job_dirs, plan.job_keyword)
@@ -279,7 +349,6 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
         job_keyword = (plan.job_keyword if plan and plan.job_keyword
                        else auto_detect_job_keyword(job_folder.name))
 
-        # 2) Setup/Recipes
         setup_candidates = find_setup_candidates(job_folder)
         if not setup_candidates:
             raise RuntimeError(f"Recipes 폴더를 찾지 못했습니다: {job_folder}")
@@ -299,7 +368,6 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
             chosen = next((s, r) for s, r in setup_candidates if s == picked[0])
         setup_folder, recipes_root = chosen
 
-        # 3) Recipe 폴더 선택
         all_recipes = list_dirs(recipes_root)
         base = Path(staging_root(job_keyword)) if callable(staging_root) \
             else Path(staging_root)
@@ -307,48 +375,6 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
             f"IP={ip}", f"JobRoot={job_root}", f"JobFolder={job_folder}",
             f"SetupFolder={setup_folder}", f"RecipesRoot={recipes_root}",
         ]
-
-        # 3-A) 레시피(레벨)별 매칭 모드 — 고른 레시피마다 장비 폴더를 지정
-        if target_levels and match_recipes is not None:
-            mapping = None
-            if plan and plan.recipe_map:              # 이전 장비 매칭 재사용
-                m, ok = {}, True
-                for lvl in target_levels:
-                    sel, missing = match_recipes_by_names(
-                        all_recipes, plan.recipe_map.get(lvl) or [])
-                    if not sel or missing:
-                        ok = False
-                        break
-                    m[lvl] = sel
-                if ok:
-                    mapping = m
-            if mapping is None:
-                mapping = match_recipes(all_recipes, list(target_levels))
-                if not mapping:
-                    raise UserCancelled("레시피 매칭이 취소되었습니다.")
-            per_level, planned_all = [], []
-            for lvl, dirs in mapping.items():
-                pl = plan_files(dirs)
-                if not pl:
-                    continue
-                per_level.append((lvl, base / _sanitize(lvl), pl))
-                planned_all += pl
-            if not planned_all:
-                raise RuntimeError("복사할 설정 파일(GlobalRTP/OpticPreset/Zones)이 없습니다.")
-            if confirm is not None and not confirm(planned_all):
-                raise UserCancelled("사용자가 복사를 취소했습니다.")
-            sources = []
-            for lvl, ldir, pl in per_level:
-                copy_planned(pl, ldir, header_lines=header + [f"Level={lvl}"])
-                sources.append((str(ldir), lvl))
-            new_plan = CollectPlan(
-                job_keyword=job_keyword, job_name=job_folder.name,
-                setup_name=setup_folder.name,
-                recipe_map={lvl: [p.name for p in dirs]
-                            for lvl, dirs in mapping.items()})
-            return planned_all, new_plan, sources
-
-        # 3-B) 단일 선택 모드(기존) — 폴더 여러 개를 한 번에 골라 한 폴더로 복사
         selected = None
         if plan and plan.recipe_names:
             sel, missing = match_recipes_by_names(all_recipes, plan.recipe_names)
