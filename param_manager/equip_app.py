@@ -113,6 +113,7 @@ class EquipApp(tk.Tk):
         # 값 확인 화면 보조 상태
         self.cur_zone: str | None = None
         self._param_query = ""               # 파라미터 검색어(값 확인 화면)
+        self._view_colors = None             # 값 확인 셀 색상(저장폴더별, 지연 로드)
         self._cur_sheet = None               # 특이사항/참고자료 tksheet
         self._cur_kind = None
 
@@ -574,7 +575,7 @@ class EquipApp(tk.Tk):
                  fg=(self.p["primary"] if "계수" in coef_txt else self.p["muted"]),
                  font=self.fonts["bold"]).pack(side="left", padx=(6, 0))
         tk.Label(head, text="왼쪽=선택 호기(값·비고) · 오른쪽=다른 호기 비교 · "
-                          "읽기 전용(값 채우기는 ‘파라미터 값 업데이트’)   ",
+                          "셀 우클릭=색칠 · 비고 더블클릭=편집   ",
                  bg=self.p["surface"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="right", pady=8)
 
@@ -669,8 +670,9 @@ class EquipApp(tk.Tk):
             sh.set_sheet_data(data or [[]], reset_col_positions=True)
             sh.set_options(table_wrap=wraps, header_wrap="w",
                            show_vertical_grid=True, show_horizontal_grid=True)
+            # rc_select 제외: 우클릭이 드래그 선택을 지우지 않게(여러 셀 한번에 색칠)
             sh.enable_bindings("single_select", "drag_select", "row_select",
-                               "column_select", "arrowkeys", "copy", "rc_select",
+                               "column_select", "arrowkeys", "copy",
                                "column_width_resize", "double_click_column_resize")
             sh.hide("row_index")
             return sh
@@ -714,6 +716,7 @@ class EquipApp(tk.Tk):
         # 좌/우 구분선
         tk.Frame(holder, bg="#94a3b8", width=2).pack(side="left", fill="y")
 
+        rs = None
         # 우측 비교 시트(다른 호기) — 없으면 안내
         if others:
             rwrap = tk.Frame(holder, bg=self.p["bg"])
@@ -736,6 +739,174 @@ class EquipApp(tk.Tk):
                      fg=self.p["muted"]).pack(side="left", padx=10)
             self.after(60, lambda: self._equalize_sheet_heights(
                 ls, len(left_headers), None, 0, nrows))
+
+        # ── 셀 색칠(좌/우 각 셀) — 우클릭 메뉴로 색 지정, 저장폴더에 영구 저장
+        self._paint_ctx = {
+            "ls": ls, "rs": rs, "machine": machine, "others": list(others),
+            "c_param": base, "c_sel": c_sel, "c_note": c_note,
+            "zone_col": (0 if q else None), "param_row_of": param_row_of,
+        }
+        ls.MT.bind("<Button-3>", lambda e: self._cell_paint_menu(e, "left"), add="+")
+        if rs is not None:
+            rs.MT.bind("<Button-3>", lambda e: self._cell_paint_menu(e, "right"),
+                       add="+")
+        self._apply_cell_colors()
+
+    # ---- 셀 색칠 저장/적용 --------------------------------------------
+    def _view_colors_path(self):
+        return (os.path.join(self.save_dir, "값확인_셀색상.json")
+                if self.save_dir else None)
+
+    def _ensure_view_colors(self) -> dict:
+        if getattr(self, "_view_colors", None) is None:
+            self._view_colors = {}
+            p = self._view_colors_path()
+            if p and os.path.isfile(p):
+                try:
+                    with open(p, encoding="utf-8") as fh:
+                        self._view_colors = json.load(fh)
+                except Exception:  # noqa: BLE001
+                    self._view_colors = {}
+        return self._view_colors
+
+    def _save_view_colors(self):
+        p = self._view_colors_path()
+        if not p:
+            return
+        try:
+            with open(p, "w", encoding="utf-8") as fh:
+                json.dump(self._view_colors, fh, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            pass
+
+    @staticmethod
+    def _pkey(r):
+        return tuple(engine._s(r.get(f)).strip()
+                     for f in ("PI", "Recipe", "Zone", "Alg", "Parameter"))
+
+    def _paint_target(self, side, c):
+        """(side, 열 index) → 색 저장 대상 문자열(호기명/'비고'/'param'/'zone')."""
+        ctx = self._paint_ctx
+        if side == "left":
+            if c == ctx["c_param"]:
+                return "param"
+            if c == ctx["c_sel"]:
+                return ctx["machine"]
+            if c == ctx["c_note"]:
+                return "비고"
+            if ctx["zone_col"] is not None and c == ctx["zone_col"]:
+                return "zone"
+            return None
+        others = ctx["others"]
+        return others[c] if 0 <= c < len(others) else None
+
+    def _cell_paint_menu(self, event, side):
+        ctx = getattr(self, "_paint_ctx", None)
+        if not ctx:
+            return
+        sheet = ctx["ls"] if side == "left" else ctx["rs"]
+        if sheet is None:
+            return
+        try:
+            cells = [tuple(x) for x in sheet.get_selected_cells()]
+        except Exception:  # noqa: BLE001
+            cells = []
+        rr, cc = sheet.identify_row(event), sheet.identify_column(event)
+        if not cells and rr is not None and cc is not None:
+            cells = [(rr, cc)]
+        # 헤더행/무효 대상 제외
+        cells = [(r, c) for (r, c) in cells
+                 if r in ctx["param_row_of"] and self._paint_target(side, c)]
+        if not cells:
+            return
+        m = tk.Menu(self, tearoff=0)
+        palette = [("강조(노랑)", HIGHLIGHT_YELLOW), ("초록", "#dcfce7"),
+                   ("빨강", "#fee2e2"), ("파랑", "#dbeafe")]
+        for label, hx in palette:
+            m.add_command(label=f"■ {label}",
+                          command=lambda h=hx: self._paint_cells(side, cells, h))
+        m.add_command(label="다른 색…",
+                      command=lambda: self._paint_cells(side, cells, None, pick=True))
+        m.add_separator()
+        m.add_command(label="색 없음",
+                      command=lambda: self._paint_cells(side, cells, ""))
+        try:
+            m.tk_popup(event.x_root, event.y_root)
+        finally:
+            m.grab_release()
+
+    def _paint_cells(self, side, cells, hx, pick=False):
+        ctx = self._paint_ctx
+        sheet = ctx["ls"] if side == "left" else ctx["rs"]
+        if pick:
+            _, hx = colorchooser.askcolor(title="셀 색 선택",
+                                          initialcolor=HIGHLIGHT_YELLOW)
+            if not hx:
+                return
+        store = self._ensure_view_colors()
+        for (r, c) in cells:
+            pr = ctx["param_row_of"].get(r)
+            target = self._paint_target(side, c)
+            if pr is None or not target:
+                continue
+            key = "\x1f".join(self._pkey(pr) + (target,))
+            try:
+                if hx == "":
+                    store.pop(key, None)
+                    sheet.dehighlight_cells(cells=[(r, c)], redraw=False)
+                else:
+                    store[key] = hx
+                    sheet.highlight_cells(cells=[(r, c)], bg=hx, redraw=False)
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            sheet.redraw()
+        except Exception:  # noqa: BLE001
+            pass
+        self._save_view_colors()
+
+    def _apply_cell_colors(self):
+        """저장된 셀 색을 현재 좌/우 시트에 다시 적용(렌더 시 호출)."""
+        ctx = getattr(self, "_paint_ctx", None)
+        if not ctx:
+            return
+        store = self._ensure_view_colors()
+        if not store:
+            return
+        ls, rs = ctx["ls"], ctx["rs"]
+        machine, others = ctx["machine"], ctx["others"]
+        # pkey → 시트행
+        row_of = {}
+        for sr, pr in ctx["param_row_of"].items():
+            row_of[self._pkey(pr)] = sr
+        for key, hx in list(store.items()):
+            parts = key.split("\x1f")
+            if len(parts) != 6 or not hx:
+                continue
+            pkey, target = tuple(parts[:5]), parts[5]
+            sr = row_of.get(pkey)
+            if sr is None:
+                continue
+            try:
+                if target == "param":
+                    ls.highlight_cells(row=sr, column=ctx["c_param"], bg=hx, redraw=False)
+                elif target == "비고":
+                    ls.highlight_cells(row=sr, column=ctx["c_note"], bg=hx, redraw=False)
+                elif target == "zone" and ctx["zone_col"] is not None:
+                    ls.highlight_cells(row=sr, column=ctx["zone_col"], bg=hx, redraw=False)
+                elif target == machine:
+                    ls.highlight_cells(row=sr, column=ctx["c_sel"], bg=hx, redraw=False)
+                elif rs is not None and target in others:
+                    rs.highlight_cells(row=sr, column=others.index(target), bg=hx,
+                                       redraw=False)
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            ls.redraw()
+            if rs is not None:
+                rs.redraw()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _edit_note_cell(self, sheet, r, c, pr, event):
         """비고 셀 인라인 편집 팝업(작은 Entry) → 취합 행·최신 취합본에 저장."""
@@ -3712,6 +3883,7 @@ class EquipApp(tk.Tk):
         self.save_dir = d
         self._cfg["save_dir"] = d
         save_config(self._cfg)
+        self._view_colors = None            # 폴더 바뀌면 셀 색상 다시 로드
         return True
 
     def _ensure_file(self, path, label, creator) -> str | None:
