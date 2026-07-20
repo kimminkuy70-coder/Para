@@ -2987,6 +2987,26 @@ class EquipApp(tk.Tk):
                     break
             return "break"
 
+        def _move_sel(delta):
+            # 화살표(↑/↓)로 선택 행 이동. 접힌(파괴된) 행은 건너뜀. 선택 없으면 처음/끝부터.
+            en = sel["entry"]
+            if en is None:
+                seq = ordered_entries if delta > 0 else list(reversed(ordered_entries))
+                for e in seq:
+                    if _focus_entry(e):
+                        break
+                return "break"
+            try:
+                idx = ordered_entries.index(en)
+            except ValueError:
+                return "break"
+            rng = (range(idx + 1, len(ordered_entries)) if delta > 0
+                   else range(idx - 1, -1, -1))
+            for i in rng:
+                if _focus_entry(ordered_entries[i]):
+                    break
+            return "break"
+
         # 계층 트리: 변형 → Zone → Alg → [entry]
         from collections import OrderedDict
         tree = OrderedDict()
@@ -3027,13 +3047,17 @@ class EquipApp(tk.Tk):
                                 font=self.fonts["bold"], anchor="w")
                 disp.pack(side="left", padx=(2, 0))
                 e["disp"] = disp
-                e["_row"] = row                   # Enter 이동용 행 참조(접으면 None)
+                e["_row"] = row                   # Enter·화살표 이동용 행 참조(접으면 None)
                 recompute(e)
-                # 행 클릭=선택, Enter=선택/해제 후 다음 체크박스로 이동
+                # 행 클릭=선택, Enter=선택/해제 후 다음 이동, ↑/↓=행 이동
                 for w in (row, lraw, lrawv, larr, disp):
                     w.bind("<Button-1>", lambda ev, en=e, rw=row: select_row(en, rw))
                     w.bind("<Return>", toggle_selected)
+                    w.bind("<Down>", lambda ev: _move_sel(1))
+                    w.bind("<Up>", lambda ev: _move_sel(-1))
                 row.bind("<Return>", toggle_selected)
+                row.bind("<Down>", lambda ev: _move_sel(1))
+                row.bind("<Up>", lambda ev: _move_sel(-1))
 
         def _upd_scroll():
             try:
