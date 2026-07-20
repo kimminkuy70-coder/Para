@@ -31,6 +31,7 @@ from . import commonality as cm
 from . import downloader as dl
 from . import editor_model
 from . import engine
+from . import errlog
 from . import exporter
 from . import extract_io
 from . import formbuilder
@@ -574,7 +575,7 @@ class EquipApp(tk.Tk):
         try:
             n = collate.delete_recipe(latest, level)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("레시피 삭제 실패", str(e))
+            self._err("E101", "레시피 삭제 실패", e)
             return
         if not n:
             messagebox.showinfo("레시피 삭제", f"'{level}' 에 해당하는 시트를 찾지 못했습니다.")
@@ -1401,6 +1402,33 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  파일 / 저장 / 잠금
     # ====================================================================
+    #  오류 코드 + 로그(원인 파악용) — 에러 발생 지점마다 고유 코드(E###) 부여.
+    #    코드는 소스에 그대로 있어(grep 가능), 사용자가 화면의 코드를 알려주면
+    #    개발자가 즉시 발생 지점을 찾는다. 전체 traceback 은 로그 파일에 남긴다.
+    # ====================================================================
+    def _log_path(self):
+        return errlog.log_path(getattr(self, "save_dir", None))
+
+    def _write_log(self, code, title, exc=None):
+        errlog.write_log(getattr(self, "save_dir", None), code, title, exc)
+
+    def _err(self, code, title, exc=None, parent=None, extra=None):
+        """오류를 사용자에게 코드와 함께 보여주고 로그에 남긴다.
+        code: 발생 지점 고유 코드(E### — 소스에서 grep 가능).
+        exc : 예외 객체(또는 문자열). 화면엔 요약, 로그엔 전체 traceback."""
+        errlog.write_log(getattr(self, "save_dir", None), code, title, exc)
+        msg = errlog.user_message(code, title, exc, extra, self._log_path())
+        try:
+            messagebox.showerror(f"오류 {code}", msg, parent=parent or self)
+        except Exception:  # noqa: BLE001
+            pass
+        return code
+
+    def _logerr(self, code, exc=None):
+        """치명적이지 않은(폴백 처리되는) 오류를 팝업 없이 로그에만 남긴다.
+        예: tksheet 스타일 적용 실패 — 화면은 계속 동작하나 원인은 기록."""
+        errlog.write_log(getattr(self, "save_dir", None), code, "(비치명 · 폴백)", exc)
+
     # ====================================================================
     #  로딩 모달 + 백그라운드 실행(응답없음 방지 — 스펙 1.1.3)
     # ====================================================================
@@ -1481,7 +1509,7 @@ class EquipApp(tk.Tk):
             self.repo = collate.load_as_repo(path, self._all_machines())
             self.path, self.read_only = path, True
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("열기 실패", str(e))
+            self._err("E102", "열기 실패", e)
             return
         self.view = "param"
         self._sync_tab_style()
@@ -2324,7 +2352,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("파싱 실패", str(res))
+                self._err("E110", "파싱 실패", res)
                 return
             rows, machines = res
             if not rows:
@@ -2575,7 +2603,7 @@ class EquipApp(tk.Tk):
         try:
             rows, scales = formbuilder.form_to_pivot(final_path)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("양식 불러오기 실패", str(e))
+            self._err("E111", "양식 불러오기 실패", e)
             return
         if renamed:
             for r in rows:                       # 편집기 PI = new_level 로 확정
@@ -2597,7 +2625,7 @@ class EquipApp(tk.Tk):
 
             def d(ok, res):
                 if not ok:
-                    messagebox.showerror("양식 확정 실패", str(res))
+                    self._err("E112", "양식 확정 실패(기존 양식 수정)", res)
                     return
                 win.destroy()
                 # 이전 값 이어받기 + 신규 항목 업데이트 안내(원본 확정본 기준)
@@ -2616,7 +2644,7 @@ class EquipApp(tk.Tk):
                     if renamed:
                         formbuilder.force_level(new_draft, new_level)
                 except Exception as e:  # noqa: BLE001
-                    messagebox.showerror("초안 복사 실패", str(e))
+                    self._err("E113", "초안 복사 실패", e)
                     return
                 opened = self._open_in_excel(new_draft)
                 self._form_finalize_dialog(new_draft, drafts[-1], new_level, kind,
@@ -2629,7 +2657,7 @@ class EquipApp(tk.Tk):
                     if renamed:
                         formbuilder.force_level(new_final, new_level)
                 except Exception as e:  # noqa: BLE001
-                    messagebox.showerror("복사 실패", str(e))
+                    self._err("E114", "복사 실패", e)
                     return
                 self._open_in_excel(new_final)
                 self._set_status(f"새 버전으로 복사: {os.path.basename(new_final)} — "
@@ -2694,7 +2722,7 @@ class EquipApp(tk.Tk):
 
         def after_detect(ok, res):
             if not ok:
-                messagebox.showerror("변형 감지 실패", str(res))
+                self._err("E115", "변형(레시피) 감지 실패", res)
                 return
             variants, reco = res
             scales_ui = self._ask_scales(variants, reco)
@@ -2804,15 +2832,20 @@ class EquipApp(tk.Tk):
         # 격자 구성·확정 규칙·표시값 계산이 동일하게 동작한다.
         label_values = editor_model.LABEL_VALUES
         _method = editor_model.method_of
-        entries = editor_model.build_entries(rows, base_keys=base_keys,
-                                             default_use=default_use)
-        variants = editor_model.variants_of(entries)
+        try:                                          # 파라미터 해석(파일 의존)
+            entries = editor_model.build_entries(rows, base_keys=base_keys,
+                                                 default_use=default_use)
+            variants = editor_model.variants_of(entries)
+        except Exception as _e:  # noqa: BLE001
+            self._err("E200", "편집기 열기 실패(파라미터 해석)", _e)
+            return
         coef_vars = {}
         for v in variants:
             c = scales.get(v, ini_parser.DEFAULT_SCALE)
             try:
                 coef_vars[v] = tk.StringVar(value=f"{float(c):.16g}")
-            except Exception:  # noqa: BLE001
+            except Exception as _e:  # noqa: BLE001
+                self._logerr("E210", _e)             # 계수 표기 실패→기본값 폴백
                 coef_vars[v] = tk.StringVar(value=f"{ini_parser.DEFAULT_SCALE:.16g}")
 
         def coef_of(variant):
@@ -2867,25 +2900,35 @@ class EquipApp(tk.Tk):
 
         multi_variant = len(variants) > 1
         HDR = ["사용", "항목", "분류(변환방식)", "원본값", "표시값(계수적용)"]
-        grid = editor_model.build_grid(entries, multi_variant, disp_of)
+        try:                                          # 격자 구성(파일 의존)
+            grid = editor_model.build_grid(entries, multi_variant, disp_of)
+        except Exception as _e:  # noqa: BLE001
+            self._err("E201", "편집기 열기 실패(격자 구성)", _e, parent=win)
+            win.destroy()
+            return
         data = grid["data"]; kinds = grid["kinds"]
         row_entry = grid["row_entry"]
         descend_param = grid["descend_param"]; descend_head = grid["descend_head"]
         ancestors = grid["ancestors"]
 
-        sheet = Sheet(body, theme="light blue", headers=HDR, data=data,
-                      show_row_index=False, show_x_scrollbar=True,
-                      show_y_scrollbar=True,
-                      font=(self.p["family"], 10, "normal"),
-                      header_font=(self.p["family"], 10, "bold"))
-        sheet.enable_bindings("single_select", "drag_select", "row_select",
-                              "arrowkeys", "column_width_resize",
-                              "double_click_column_resize", "copy", "edit_cell")
-        sheet.pack(fill="both", expand=True)
+        try:                                          # 표(tksheet) 생성
+            sheet = Sheet(body, theme="light blue", headers=HDR, data=data,
+                          show_row_index=False, show_x_scrollbar=True,
+                          show_y_scrollbar=True,
+                          font=(self.p["family"], 10, "normal"),
+                          header_font=(self.p["family"], 10, "bold"))
+            sheet.enable_bindings("single_select", "drag_select", "row_select",
+                                  "arrowkeys", "column_width_resize",
+                                  "double_click_column_resize", "copy", "edit_cell")
+            sheet.pack(fill="both", expand=True)
+        except Exception as _e:  # noqa: BLE001
+            self._err("E202", "편집기 표(tksheet) 생성 실패", _e, parent=win)
+            win.destroy()
+            return
         try:
             sheet.set_column_widths([56, 430, 250, 130, 150])
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as _e:  # noqa: BLE001
+            self._logerr("E211", _e)
 
         header_rows = [i for i, k in enumerate(kinds) if k != "param"]
         param_r = [i for i, k in enumerate(kinds) if k == "param"]
@@ -2934,23 +2977,23 @@ class EquipApp(tk.Tk):
         # 사용(체크박스) 열 전체 — 헤더행=그룹 토글, 파라미터행=개별 선택
         try:
             sheet.checkbox("A", check_function=on_check, redraw=False)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as _e:  # noqa: BLE001
+            self._logerr("E212", _e)
         # 분류(변환방식): 파라미터 행만 셀 단위 드롭다운(헤더 행엔 드롭다운 없음).
         #   열 단위로 걸면 헤더 행에서도 드롭다운이 떠 셀 단위로 개별 적용한다.
         for r in param_r:
             try:
                 sheet.dropdown(f"C{r + 1}", values=label_values, edit_data=False,
                                selection_function=on_dd, redraw=False)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as _e:  # noqa: BLE001
+                self._logerr("E213", _e)
         # 읽기전용: 원본값/표시값 열 전체 + 헤더행의 항목·분류 셀
         try:
             sheet.readonly("D"); sheet.readonly("E")
             for hr in header_rows:
                 sheet.readonly(f"B{hr + 1}"); sheet.readonly(f"C{hr + 1}")
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as _e:  # noqa: BLE001
+            self._logerr("E214", _e)
         # 계층 헤더 행 색칠(가독성)
         for tag, color in (("variant", "#dbe4f0"), ("zone", "#e2e8f0"),
                            ("alg", "#eef2f7")):
@@ -2959,12 +3002,12 @@ class EquipApp(tk.Tk):
                 try:
                     sheet.highlight_rows(rows=rws, bg=color, fg=self.p["text"],
                                          highlight_index=False, redraw=False)
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as _e:  # noqa: BLE001
+                    self._logerr("E215", _e)
         try:
             sheet.set_options(table_wrap="", header_wrap="w")
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as _e:  # noqa: BLE001
+            self._logerr("E216", _e)
         sheet.refresh()
 
         # 하단: 전체 선택/해제 + 확정/취소
@@ -2998,7 +3041,7 @@ class EquipApp(tk.Tk):
 
             def done(ok, res):
                 if not ok:
-                    messagebox.showerror("초안 생성 실패", str(res))
+                    self._err("E203", "초안(수정본) 엑셀 생성 실패", res)
                     return
                 opened = self._open_in_excel(draft)
                 self._form_finalize_dialog(draft, res, level, kind, scales, run_dir,
@@ -3007,17 +3050,22 @@ class EquipApp(tk.Tk):
 
         def confirm():
             # 격자 셀에서 현재 상태를 읽어 selected 구성 → editor_model 이 저장 규칙 적용
-            selected = []
-            for r in param_r:
-                e = row_entry[r]
-                selected.append({
-                    "use": bool(sheet.get_cell_data(r, 0)),
-                    "name": sheet.get_cell_data(r, 1),
-                    "reco": e["reco"], "variant": e["variant"],
-                    "zone": e["zone"], "alg": e["alg"], "ext": e["ext"],
-                    "method": sheet.get_cell_data(r, 2),
-                    "coef": coef_of(e["variant"])})
-            records, extracts, used_scales = editor_model.build_records(selected, level)
+            try:
+                selected = []
+                for r in param_r:
+                    e = row_entry[r]
+                    selected.append({
+                        "use": bool(sheet.get_cell_data(r, 0)),
+                        "name": sheet.get_cell_data(r, 1),
+                        "reco": e["reco"], "variant": e["variant"],
+                        "zone": e["zone"], "alg": e["alg"], "ext": e["ext"],
+                        "method": sheet.get_cell_data(r, 2),
+                        "coef": coef_of(e["variant"])})
+                records, extracts, used_scales = editor_model.build_records(
+                    selected, level)
+            except Exception as _e:  # noqa: BLE001
+                self._err("E204", "양식 확정 실패(선택 항목 해석)", _e, parent=win)
+                return
             if not records:
                 messagebox.showinfo("확정", "선택된 파라미터가 없습니다.", parent=win)
                 return
@@ -3037,7 +3085,7 @@ class EquipApp(tk.Tk):
 
             def done(ok, res):
                 if not ok:
-                    messagebox.showerror("양식 확정 실패", str(res))
+                    self._err("E205", "양식 확정 실패(파일 저장)", res, parent=win)
                     return
                 win.destroy()
                 if messagebox.askyesno(
@@ -3089,7 +3137,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("양식 확정 실패", str(res), parent=win)
+                self._err("E118", "양식 확정 실패", res, parent=win)
                 return
             win.destroy()
             # 기존 양식 수정 확정 → 이전 값 이어받기 + 신규 항목 값 업데이트 안내(req5)
@@ -3377,7 +3425,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("계획 읽기 실패", str(res))
+                self._err("E120", "Lot 계획 읽기 실패", res)
                 return
             mine, lots = res
             self._cm["plan_path"] = path
@@ -3533,7 +3581,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("복사 실패", str(res))
+                self._err("E121", "안전 복사 실패", res)
                 return
             run_dir, st, lot_dirs, fail_labels = res
             self._cm.update(run_dir=run_dir, st=st, staging=staging,
@@ -3560,7 +3608,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("구조 확인 실패", str(res))
+                self._err("E122", "Lot 구조 확인 실패", res)
                 return
             if res["identical"]:
                 messagebox.showinfo("구조 확인", "모든 Lot의 파라미터 구조가 동일합니다.")
@@ -3608,7 +3656,7 @@ class EquipApp(tk.Tk):
 
         def after(ok, res):
             if not ok:
-                messagebox.showerror("변형 감지 실패", str(res))
+                self._err("E123", "변형(레시피) 감지 실패", res)
                 return
             variants, reco = res
             scales_ui = self._ask_scales(variants, reco)
@@ -3634,7 +3682,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("파싱 실패", str(res))
+                self._err("E124", "파싱 실패", res)
                 return
             pivot, labels = res
             self._cm["pivot"], self._cm["labels"] = pivot, labels
@@ -3738,7 +3786,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("양식 확정 실패", str(res), parent=win)
+                self._err("E125", "양식 확정 실패", res, parent=win)
                 return
             win.destroy()
             self._cm["form_path"] = form
@@ -3766,7 +3814,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("값 조사 실패", str(res))
+                self._err("E126", "Lot 값 조사 실패", res)
                 return
             self._cm["result_path"] = result
             self._render()
@@ -3796,7 +3844,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("취합·비교 실패", str(res))
+                self._err("E127", "호기 취합·비교 실패", res)
                 return
             messagebox.showinfo("취합·비교 완료",
                                 f"비교 파일 저장: {os.path.basename(out)}\n"
@@ -4006,7 +4054,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("취합 실패", str(res))
+                self._err("E128", "취합 실패", res)
                 return
             self._update_write_results(res, machines_all)
         self._run_busy("취합 중…", work, done)
@@ -4081,7 +4129,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("이력 비교 실패", str(res))
+                self._err("E129", "이력 비교 실패", res)
                 return
             diff = res
             if not diff.changes and not diff.added_rows and not diff.removed_rows:
@@ -4152,7 +4200,7 @@ class EquipApp(tk.Tk):
         try:
             sheets, machines = collate.load_collation(latest)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("내보내기", f"취합 파일을 읽지 못했습니다:\n{e}")
+            self._err("E130", "내보내기 실패(취합 파일 읽기)", e)
             return
         if not sheets:
             messagebox.showinfo("내보내기", "취합 파일에 레시피 시트가 없습니다.")
@@ -4318,7 +4366,7 @@ class EquipApp(tk.Tk):
                 exporter.write_export(dest, recipe_records, list(machines),
                                       title="내보내기")
             except Exception as ex:  # noqa: BLE001
-                messagebox.showerror("내보내기 실패", str(ex), parent=win)
+                self._err("E131", "내보내기 실패", ex, parent=win)
                 return
             win.destroy()
             if messagebox.askyesno("내보내기 완료",
@@ -4390,7 +4438,7 @@ class EquipApp(tk.Tk):
             import shutil
             shutil.copy2(picked, path)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("복사 실패", str(e))
+            self._err("E132", "복사 실패", e)
             creator(path)
         return path
 
@@ -4408,22 +4456,22 @@ class EquipApp(tk.Tk):
         try:
             self.coef_rows = coefstore.load(cfp)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("변환계수 로드 실패", str(e))
+            self._err("E140", "변환계수 로드 실패", e)
             self.coef_rows = []
         try:
             self.ip_rows = refdata.load_ip(ipp)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("장비 IP 로드 실패", str(e))
+            self._err("E141", "장비 IP 로드 실패", e)
             self.ip_rows = []
         try:
             self.ref_grid, self.ref_colors = refdata.load_reference(rp)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("참고자료 로드 실패", str(e))
+            self._err("E142", "참고자료 로드 실패", e)
             self.ref_grid, self.ref_colors = [], {}
         try:
             self.special_rows, self.special_colors = refdata.load_special(sp)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("특이사항 로드 실패", str(e))
+            self._err("E143", "특이사항 로드 실패", e)
             self.special_rows, self.special_colors = [], {}
         self._set_status(f"저장 폴더: {self.save_dir}  (호기 {len(self._all_machines())}대)")
 
@@ -4456,7 +4504,7 @@ class EquipApp(tk.Tk):
             refdata.save_special(refdata.special_path(self.save_dir), self.special_rows,
                                  self.special_colors)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("저장 실패", str(e))
+            self._err("E144", "저장 실패", e)
 
     def _on_close(self):
         self.destroy()

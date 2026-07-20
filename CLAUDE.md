@@ -117,6 +117,7 @@ python3 tests/test_commonality.py  # 14 (Lot계획·폴더해석·폴더/SM변�
 python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
+python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -154,6 +155,12 @@ python3 tests/test_downloader.py   # 8
   `read_scales`(변형별 계수 저장/판독).
 - `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(수정본, '사용'/
   '최종 Parameter')·`build_final_from_initial`(→확정 양식+`_EXTRACT_MAP`+계수).
+- `param_manager/errlog.py` — **오류 코드·로그**(v1.1): 발생 지점마다 고유 코드 `E###`
+  부여. `log_path`/`write_log`(전체 traceback 를 `저장폴더/오류_로그.txt` 에 append)·
+  `user_message`(코드 포함 안내). equip_app `_err`(팝업+로그)/`_logerr`(로그만·비치명)/
+  `_write_log` 가 위임. **코드는 소스에 그대로 있어 grep 가능** → 사용자가 화면의 코드를
+  알려주면 발생 지점 즉시 특정. 편집기 열기/격자/표생성/확정 = E200~E205, 스타일 폴백 =
+  E210~E216, 나머지 실패 지점 = E101~E144. `tests/test_errlog.py` 검증.
 - `param_manager/editor_model.py` — **화면 편집기 GUI비의존 로직**(v1.1, tksheet 편집기가 호출):
   `build_entries`(사용규칙: base_keys/default_use/파서플래그)·`build_grid`(평면 격자+변형/Zone/Alg
   헤더행+계층 매핑)·`build_records`(선택→저장 records/extracts/계수, 기존 confirm 규칙)·
