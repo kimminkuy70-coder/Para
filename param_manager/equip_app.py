@@ -29,6 +29,7 @@ from . import collate
 from . import collector
 from . import commonality as cm
 from . import downloader as dl
+from . import editor_model
 from . import engine
 from . import exporter
 from . import extract_io
@@ -2790,16 +2791,7 @@ class EquipApp(tk.Tk):
         return res["val"]
 
     # ---- 프로그램 화면 파라미터 편집기(양식/commonality 공통) -----------
-    TRANSFORM_KINDS = ["RAW", "LINEAR", "AREA", "BOOL", "REGION", "CLASSIFY"]
-    # 드롭다운 표기(영어 + 괄호 간단 설명). 저장/계산은 앞의 영어(방식)만 사용.
-    TRANSFORM_LABELS = [
-        ("RAW", "RAW (원본값 그대로)"),
-        ("LINEAR", "LINEAR (선형 · 값×계수)"),
-        ("AREA", "AREA (면적 · 값×계수²)"),
-        ("BOOL", "BOOL (1→체크 / 0→해제)"),
-        ("REGION", "REGION (영역 표시)"),
-        ("CLASSIFY", "CLASSIFY (분류 코드)"),
-    ]
+    #  변환방식 라벨/격자 구성/확정 규칙은 editor_model(헤드리스 테스트됨)에 있다.
 
     def _form_param_editor(self, rows, level, kind, scales, run_dir, related, st, aoi,
                            base_keys=None, base_name="", title_prefix="양식 만들기",
@@ -2808,42 +2800,13 @@ class EquipApp(tk.Tk):
         사용) + 변형별 계수(상단, 수정 시 일괄 적용) + 계수 적용 표시값. 엑셀 편집 버튼도.
         on_confirm(records, extracts, scales_out, win)·on_excel(win) 를 주면 그걸 사용
         (commonality 등 다른 저장 경로 재사용). 없으면 기본(양식 만들기) 동작."""
-        import re as _re
-        label_values = [lbl for _, lbl in self.TRANSFORM_LABELS]
-        method_to_label = {mth: lbl for mth, lbl in self.TRANSFORM_LABELS}
-        label_to_method = {lbl: mth for mth, lbl in self.TRANSFORM_LABELS}
-
-        def _method(t):
-            s = engine._s(t)
-            if s in label_to_method:
-                return label_to_method[s]
-            m = _re.match(r"[A-Za-z]+", s or "RAW")
-            return m.group(0).upper() if m else "RAW"
-
-        entries = []
-        for r in rows:
-            zone = engine._s(r.get("zone")); alg = engine._s(r.get("alg"))
-            param = engine._s(r.get("param")); variant = engine._s(r.get("mag"))
-            key = formbuilder._norm_key3(zone, alg, param)
-            if base_keys is not None:
-                use = key in base_keys                # 기존 레시피 기반: 일치=선택
-            elif default_use is not None:
-                use = default_use                     # 기존 양식 수정=전체 선택
-            else:
-                use = bool(r.get("use", True))        # 새로 만들기=파서 Y표시 항목 체크
-            raws = r.get("raws") or {}
-            raw = next((v for v in raws.values() if engine._s(v) != ""), "")
-            ext = dict(r.get("extract") or {})
-            mth = _method(ext.get("transform") or "RAW")
-            entries.append({
-                "zone": zone, "alg": alg, "variant": variant, "reco": param,
-                "raw": raw, "ext": ext, "use": bool(use), "name": param,
-                "label": method_to_label.get(mth, mth)})
-
-        variants = []
-        for e in entries:
-            if e["variant"] not in variants:
-                variants.append(e["variant"])
+        # GUI 비의존 로직은 editor_model(헤드리스 테스트됨)에 위임 — 파일 종류가 달라도
+        # 격자 구성·확정 규칙·표시값 계산이 동일하게 동작한다.
+        label_values = editor_model.LABEL_VALUES
+        _method = editor_model.method_of
+        entries = editor_model.build_entries(rows, base_keys=base_keys,
+                                             default_use=default_use)
+        variants = editor_model.variants_of(entries)
         coef_vars = {}
         for v in variants:
             c = scales.get(v, ini_parser.DEFAULT_SCALE)
@@ -2858,9 +2821,9 @@ class EquipApp(tk.Tk):
             except Exception:  # noqa: BLE001
                 return ini_parser.DEFAULT_SCALE
 
-        def disp_of(entry, label):
-            return engine._s(ini_parser.transform_value(
-                entry["raw"], _method(label), coef_of(entry["variant"])))
+        def disp_of(entry, label):                    # 어떤 원본값에도 예외 없이(파일 대비)
+            return editor_model.safe_display(
+                entry["raw"], _method(label), coef_of(entry["variant"]))
 
         win = tk.Toplevel(self)
         win.title(f"{title_prefix} — 파라미터 선택/편집 ({level})")
@@ -2902,60 +2865,13 @@ class EquipApp(tk.Tk):
         body = tk.Frame(win, bg=self.p["bg"])
         body.pack(fill="both", expand=True, padx=10, pady=8)
 
-        from collections import OrderedDict
-        tree = OrderedDict()
-        for e in entries:
-            tree.setdefault(e["variant"], OrderedDict()).setdefault(
-                e["zone"], OrderedDict()).setdefault(e["alg"], []).append(e)
         multi_variant = len(variants) > 1
-
         HDR = ["사용", "항목", "분류(변환방식)", "원본값", "표시값(계수적용)"]
-        data = []                        # 시트 행 데이터(2차원)
-        kinds = []                       # 각 시트행 종류: variant/zone/alg/param
-        row_entry = {}                   # 시트행 → entry(파라미터 행만)
-        descend_param = {}               # 헤더행 → [하위 파라미터 시트행]
-        descend_head = {}                # 헤더행 → [하위 헤더 시트행]
-        ancestors = {}                   # 시트행 → [상위 헤더 시트행]
-
-        def add_row(kind, use, label, trans="", raw="", disp="", anc=()):
-            i = len(data)
-            data.append([bool(use), label, trans, raw, disp])
-            kinds.append(kind)
-            ancestors[i] = list(anc)
-            if kind != "param":
-                descend_param[i] = []
-                descend_head[i] = []
-            return i
-
-        for variant, zones in tree.items():
-            vmem = [e for z in zones.values() for a in z.values() for e in a]
-            v_anc = []
-            v_row = None
-            if multi_variant:
-                v_row = add_row("variant", all(e["use"] for e in vmem),
-                                f"변형  {variant or '(기본)'}")
-                v_anc = [v_row]
-            for zone, algs in zones.items():
-                zmem = [e for a in algs.values() for e in a]
-                z_lbl = ("    " if multi_variant else "") + f"Zone · {zone or '(없음)'}"
-                z_row = add_row("zone", all(e["use"] for e in zmem), z_lbl, anc=v_anc)
-                z_anc = v_anc + [z_row]
-                if multi_variant:
-                    descend_head[v_row].append(z_row)
-                for alg, items in algs.items():
-                    a_ind = "        " if multi_variant else "    "
-                    a_lbl = a_ind + f"Alg · {alg or '(없음)'}  ({len(items)})"
-                    a_row = add_row("alg", all(e["use"] for e in items), a_lbl, anc=z_anc)
-                    a_anc = z_anc + [a_row]
-                    for h in z_anc:
-                        descend_head[h].append(a_row)
-                    for e in items:
-                        pr = add_row("param", e["use"], e["name"], e["label"],
-                                     engine._s(e["raw"]), disp_of(e, e["label"]),
-                                     anc=a_anc)
-                        row_entry[pr] = e
-                        for h in a_anc:
-                            descend_param[h].append(pr)
+        grid = editor_model.build_grid(entries, multi_variant, disp_of)
+        data = grid["data"]; kinds = grid["kinds"]
+        row_entry = grid["row_entry"]
+        descend_param = grid["descend_param"]; descend_head = grid["descend_head"]
+        ancestors = grid["ancestors"]
 
         sheet = Sheet(body, theme="light blue", headers=HDR, data=data,
                       show_row_index=False, show_x_scrollbar=True,
@@ -3090,23 +3006,18 @@ class EquipApp(tk.Tk):
             self._run_busy("초안(수정본) 엑셀 생성 중…", work, done)
 
         def confirm():
-            records, extracts, used_scales = [], [], {}
+            # 격자 셀에서 현재 상태를 읽어 selected 구성 → editor_model 이 저장 규칙 적용
+            selected = []
             for r in param_r:
-                if not bool(sheet.get_cell_data(r, 0)):
-                    continue
                 e = row_entry[r]
-                name = engine._s(sheet.get_cell_data(r, 1)).strip() or e["reco"]
-                if not name:
-                    continue
-                method = _method(sheet.get_cell_data(r, 2))   # 드롭다운 라벨 → 방식
-                v = e["variant"]
-                coef = coef_of(v)
-                used_scales[v] = coef
-                records.append({"PI": level, "Recipe": v, "Zone": e["zone"],
-                                "Alg": e["alg"], "Parameter": name, "비고": ""})
-                ext = dict(e["ext"])
-                ext["transform"] = ini_parser.label_transform(method, coef)
-                extracts.append(ext)
+                selected.append({
+                    "use": bool(sheet.get_cell_data(r, 0)),
+                    "name": sheet.get_cell_data(r, 1),
+                    "reco": e["reco"], "variant": e["variant"],
+                    "zone": e["zone"], "alg": e["alg"], "ext": e["ext"],
+                    "method": sheet.get_cell_data(r, 2),
+                    "coef": coef_of(e["variant"])})
+            records, extracts, used_scales = editor_model.build_records(selected, level)
             if not records:
                 messagebox.showinfo("확정", "선택된 파라미터가 없습니다.", parent=win)
                 return

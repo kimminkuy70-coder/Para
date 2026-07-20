@@ -116,6 +116,7 @@ python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신
 python3 tests/test_commonality.py  # 14 (Lot계획·폴더해석·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
+python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -153,6 +154,11 @@ python3 tests/test_downloader.py   # 8
   `read_scales`(변형별 계수 저장/판독).
 - `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(수정본, '사용'/
   '최종 Parameter')·`build_final_from_initial`(→확정 양식+`_EXTRACT_MAP`+계수).
+- `param_manager/editor_model.py` — **화면 편집기 GUI비의존 로직**(v1.1, tksheet 편집기가 호출):
+  `build_entries`(사용규칙: base_keys/default_use/파서플래그)·`build_grid`(평면 격자+변형/Zone/Alg
+  헤더행+계층 매핑)·`build_records`(선택→저장 records/extracts/계수, 기존 confirm 규칙)·
+  `safe_display`(**어떤 원본값에도 예외 없음** — NaN/inf/문자 대비)·`method_of`/`label_of`.
+  파일 종류가 달라도 깨지지 않게 `tests/test_editor_model.py` 로 검증.
 - `param_manager/collate.py` — **값 취합(멀티시트)**: `build_collation`(레시피별 시트, 참고자료
   전체 호기, 직전본 이어받기, 설정키 매칭·불일치), `write_collation`/`load_collation`/
   `load_as_repo`(값 확인 병합). **값은 양식의 변환방식(_EXTRACT_MAP transform)을 수집 raw 에
