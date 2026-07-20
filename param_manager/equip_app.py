@@ -2782,7 +2782,12 @@ class EquipApp(tk.Tk):
                           "(새 항목은 미선택). 유사한(겹치는 파라미터 많은) 순서로 정렬했습니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left", wraplength=520).pack(anchor="w", padx=14, pady=(0, 6))
-        sel = tk.StringVar(value="")           # "" = 새로 만들기
+        # tkinter Radiobutton 은 변수값이 tristatevalue(기본 "")와 같으면 그 라디오가
+        # '삼상태'로 칠해져 **선택 안 한 항목까지 채워져** 보인다. '새로 만들기'에 빈 값("")을
+        # 쓰면 변수도 ""가 되어 나머지 라디오가 전부 채워진 듯 나오는 버그가 생긴다
+        #  → '새로 만들기'에 센티넬 값을 주어 변수가 절대 ""가 되지 않게 한다(반환 시 ""로 환원).
+        _NEW = "\x00새로만들기"
+        sel = tk.StringVar(value=_NEW)         # 센티넬 = 새로 만들기
         body = tk.Frame(win, bg=self.p["bg"])
         body.pack(fill="both", expand=True, padx=14)
         canvas = tk.Canvas(body, bg=self.p["bg"], highlightthickness=0)
@@ -2797,8 +2802,8 @@ class EquipApp(tk.Tk):
         vbar.pack(side="right", fill="y")
         self._wheelify(canvas)
         tk.Radiobutton(inner, text="＋ 새로 만들기(추천 항목 자동 체크)", variable=sel,
-                       value="", bg=self.p["bg"], font=self.fonts["bold"], anchor="w").pack(
-                       anchor="w", pady=2)
+                       value=_NEW, bg=self.p["bg"], font=self.fonts["bold"],
+                       anchor="w").pack(anchor="w", pady=2)
         for recipe, match, total in ranked:
             tk.Radiobutton(
                 inner, text=f"{recipe}   (겹치는 파라미터 {match} / 기존 {total}개)",
@@ -2807,7 +2812,8 @@ class EquipApp(tk.Tk):
         res = {"val": None}
 
         def ok():
-            res["val"] = sel.get()
+            v = sel.get()
+            res["val"] = "" if v == _NEW else v   # 센티넬 → "" (새로 만들기)
             win.destroy()
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=14, pady=12)
