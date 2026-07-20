@@ -2636,7 +2636,7 @@ class EquipApp(tk.Tk):
 
         self._form_param_editor(rows, new_level, kind, scales, new_run, related, new_st,
                                 aoi, base_keys=None, base_name="", title_prefix="기존 양식 수정",
-                                on_confirm=on_confirm, on_excel=on_excel)
+                                on_confirm=on_confirm, on_excel=on_excel, default_use=True)
 
     def _form_new(self, from_equipment: bool):
         if not self.save_dir:
@@ -2735,7 +2735,7 @@ class EquipApp(tk.Tk):
             base_keys = formbuilder.form_params(bf) if bf else None
         self._form_param_editor(rows, level, kind, scales, run_dir, related, st, aoi,
                                 base_keys=base_keys, base_name=base,
-                                title_prefix=title_prefix)
+                                title_prefix=title_prefix, default_use=False)
 
     def _form_base_dialog(self, level, ranked, title_prefix="양식 만들기"):
         """기존 레시피 활용 / 새로 만들기 선택 알림창. 반환: 레시피명 / '' (새로) / None(취소).
@@ -2767,8 +2767,8 @@ class EquipApp(tk.Tk):
         canvas.pack(side="left", fill="both", expand=True)
         vbar.pack(side="right", fill="y")
         self._wheelify(canvas)
-        tk.Radiobutton(inner, text="＋ 새로 만들기(자동 추천 그대로)", variable=sel, value="",
-                       bg=self.p["bg"], font=self.fonts["bold"], anchor="w").pack(
+        tk.Radiobutton(inner, text="＋ 새로 만들기(전체 미선택 — 직접 선택)", variable=sel,
+                       value="", bg=self.p["bg"], font=self.fonts["bold"], anchor="w").pack(
                        anchor="w", pady=2)
         for recipe, match, total in ranked:
             tk.Radiobutton(
@@ -2794,7 +2794,7 @@ class EquipApp(tk.Tk):
 
     def _form_param_editor(self, rows, level, kind, scales, run_dir, related, st, aoi,
                            base_keys=None, base_name="", title_prefix="양식 만들기",
-                           on_confirm=None, on_excel=None):
+                           on_confirm=None, on_excel=None, default_use=None):
         """상위/하위(변형·Zone·Alg·Parameter) 계층 + 체크박스 + 행별 편집(이름/변환/
         사용) + 변형별 계수(상단, 수정 시 일괄 적용) + 계수 적용 표시값. 엑셀 편집 버튼도.
         on_confirm(records, extracts, scales_out, win)·on_excel(win) 를 주면 그걸 사용
@@ -2810,7 +2810,12 @@ class EquipApp(tk.Tk):
             zone = engine._s(r.get("zone")); alg = engine._s(r.get("alg"))
             param = engine._s(r.get("param")); variant = engine._s(r.get("mag"))
             key = formbuilder._norm_key3(zone, alg, param)
-            use = (key in base_keys) if base_keys is not None else bool(r.get("use", True))
+            if base_keys is not None:
+                use = key in base_keys                # 기존 레시피 기반: 일치=선택
+            elif default_use is not None:
+                use = default_use                     # 새로 만들기=미선택 / 기존양식수정=선택
+            else:
+                use = bool(r.get("use", True))        # 폴백(파서 추천)
             raws = r.get("raws") or {}
             raw = next((v for v in raws.values() if engine._s(v) != ""), "")
             ext = dict(r.get("extract") or {})
@@ -2850,7 +2855,8 @@ class EquipApp(tk.Tk):
         top.pack(fill="x", padx=10, pady=(10, 0))
         left = tk.Frame(top, bg=self.p["surface"])
         left.pack(side="left", fill="x", expand=True, padx=10, pady=8)
-        base_txt = (f"기반: {base_name}" if base_name else "새로 만들기(자동 추천)")
+        base_txt = (f"기반: {base_name}" if base_name else
+                    ("기존 양식 수정" if default_use else "새로 만들기(직접 선택)"))
         tk.Label(left, text=f"{level}  ·  {base_txt}", bg=self.p["surface"],
                  fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w")
         cbar = tk.Frame(left, bg=self.p["surface"])
@@ -2909,12 +2915,60 @@ class EquipApp(tk.Tk):
                 e["zone"], OrderedDict()).setdefault(e["alg"], []).append(e)
 
         multi_variant = len(variants) > 1
+        # ── 성능: Alg 그룹은 **접힌 상태로 시작**, 펼칠 때만 파라미터 위젯 생성(지연 렌더).
+        #    1600행을 한 번에 안 그려 로딩 렉을 없앤다(선택 상태는 BooleanVar 로 항상 유지).
+        alg_blocks = []          # [(items, holder_frame, built_flag, arrow_label)]
+
+        def build_params(holder, items, indent):
+            for e in items:
+                row = tk.Frame(holder, bg=self.p["surface"])
+                row.pack(fill="x", padx=(indent, 0), pady=1)
+                tk.Checkbutton(row, variable=e["use"], bg=self.p["surface"]).pack(side="left")
+                tk.Entry(row, textvariable=e["name"], width=34, relief="solid",
+                         bd=1).pack(side="left", padx=(2, 6))
+                cb = ttk.Combobox(row, textvariable=e["trans"], width=9, state="readonly",
+                                  values=self.TRANSFORM_KINDS)
+                cb.pack(side="left")
+                cb.bind("<<ComboboxSelected>>", lambda ev, en=e: recompute(en))
+                tk.Label(row, text="원본:", bg=self.p["surface"], fg=self.p["muted"],
+                         font=self.fonts["sub"]).pack(side="left", padx=(8, 2))
+                tk.Label(row, text=engine._s(e["raw"]), bg=self.p["surface"],
+                         fg=self.p["muted"], font=self.fonts["sub"], width=12,
+                         anchor="w").pack(side="left")
+                tk.Label(row, text="→ 표시:", bg=self.p["surface"], fg=self.p["muted"],
+                         font=self.fonts["sub"]).pack(side="left")
+                disp = tk.Label(row, text="", bg=self.p["surface"], fg=self.p["primary"],
+                                font=self.fonts["bold"], anchor="w")
+                disp.pack(side="left", padx=(2, 0))
+                e["disp"] = disp
+                recompute(e)
+
+        def toggle_alg(blk, force=None):
+            items, holder, state, arrow = blk
+            want = (not state["open"]) if force is None else force
+            if want == state["open"]:
+                return
+            state["open"] = want
+            if want:                              # 펼치기: 위젯 생성(지연)
+                build_params(holder, items, 54 if multi_variant else 36)
+                arrow.config(text="▼")
+            else:                                 # 접기: 위젯 파괴(메모리·렉 관리)
+                for w in holder.winfo_children():
+                    w.destroy()
+                for e in items:
+                    e["disp"] = None
+                arrow.config(text="▶")
+
+        def expand_all(v):
+            for blk in alg_blocks:
+                toggle_alg(blk, force=v)
+
         for variant, zones in tree.items():
             vmembers = [e for z in zones.values() for a in z.values() for e in a]
             if multi_variant:
                 vh = tk.Frame(inner, bg="#dbe4f0")
                 vh.pack(fill="x", pady=(8, 0))
-                vv = tk.BooleanVar(value=all(e["use"].get() for e in vmembers))
+                vv = tk.BooleanVar(value=all(x["use"].get() for x in vmembers))
                 tk.Checkbutton(vh, variable=vv, bg="#dbe4f0",
                                command=lambda m=vmembers, x=vv: set_group(m, x.get())).pack(
                                side="left")
@@ -2924,50 +2978,41 @@ class EquipApp(tk.Tk):
                 zmembers = [e for a in algs.values() for e in a]
                 zh = tk.Frame(inner, bg="#e2e8f0")
                 zh.pack(fill="x", pady=(6, 0), padx=(18 if multi_variant else 0, 0))
-                zv = tk.BooleanVar(value=all(e["use"].get() for e in zmembers))
+                zv = tk.BooleanVar(value=all(x["use"].get() for x in zmembers))
                 tk.Checkbutton(zh, variable=zv, bg="#e2e8f0",
                                command=lambda m=zmembers, x=zv: set_group(m, x.get())).pack(
                                side="left")
                 tk.Label(zh, text=f"Zone · {zone or '(없음)'}", bg="#e2e8f0",
                          fg=self.p["text"], font=self.fonts["bold"]).pack(side="left")
                 for alg, items in algs.items():
-                    ah = tk.Frame(inner, bg="#eef2f7")
+                    ah = tk.Frame(inner, bg="#eef2f7", cursor="hand2")
                     ah.pack(fill="x", padx=(36 if multi_variant else 18, 0))
-                    av = tk.BooleanVar(value=all(e["use"].get() for e in items))
+                    arrow = tk.Label(ah, text="▶", bg="#eef2f7", fg=self.p["muted"],
+                                     font=self.fonts["bold"])
+                    arrow.pack(side="left")
+                    av = tk.BooleanVar(value=all(x["use"].get() for x in items))
                     tk.Checkbutton(ah, variable=av, bg="#eef2f7",
                                    command=lambda m=items, x=av: set_group(m, x.get())).pack(
                                    side="left")
-                    tk.Label(ah, text=f"Alg · {alg or '(없음)'}", bg="#eef2f7",
-                             fg=self.p["muted"], font=self.fonts["bold"]).pack(side="left")
-                    for e in items:
-                        row = tk.Frame(inner, bg=self.p["surface"])
-                        row.pack(fill="x", padx=(54 if multi_variant else 36, 0), pady=1)
-                        tk.Checkbutton(row, variable=e["use"], bg=self.p["surface"]).pack(
-                            side="left")
-                        tk.Entry(row, textvariable=e["name"], width=34, relief="solid",
-                                 bd=1).pack(side="left", padx=(2, 6))
-                        cb = ttk.Combobox(row, textvariable=e["trans"], width=9,
-                                          state="readonly", values=self.TRANSFORM_KINDS)
-                        cb.pack(side="left")
-                        cb.bind("<<ComboboxSelected>>", lambda ev, en=e: recompute(en))
-                        tk.Label(row, text="원본:", bg=self.p["surface"],
-                                 fg=self.p["muted"], font=self.fonts["sub"]).pack(
-                                 side="left", padx=(8, 2))
-                        tk.Label(row, text=engine._s(e["raw"]), bg=self.p["surface"],
-                                 fg=self.p["muted"], font=self.fonts["sub"], width=12,
-                                 anchor="w").pack(side="left")
-                        tk.Label(row, text="→ 표시:", bg=self.p["surface"],
-                                 fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
-                        disp = tk.Label(row, text="", bg=self.p["surface"],
-                                        fg=self.p["primary"], font=self.fonts["bold"],
-                                        anchor="w")
-                        disp.pack(side="left", padx=(2, 0))
-                        e["disp"] = disp
-                        recompute(e)
+                    tk.Label(ah, text=f"Alg · {alg or '(없음)'}  ({len(items)})",
+                             bg="#eef2f7", fg=self.p["muted"],
+                             font=self.fonts["bold"]).pack(side="left")
+                    holder = tk.Frame(inner, bg=self.p["bg"])
+                    holder.pack(fill="x")         # 헤더 바로 아래 위치 고정(빈 상태)
+                    blk = (items, holder, {"open": False}, arrow)
+                    alg_blocks.append(blk)
+                    for w in (ah, arrow):
+                        w.bind("<Button-1>", lambda ev, b=blk: toggle_alg(b))
 
-        # 하단: 전체 선택/해제 + 확정
+        # 하단: 펼치기/접기 + 전체 선택/해제 + 확정
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=10, pady=(0, 10))
+        tk.Button(bt, text="모두 펼치기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=10, pady=6, cursor="hand2",
+                  command=lambda: expand_all(True)).pack(side="left")
+        tk.Button(bt, text="모두 접기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=10, pady=6, cursor="hand2",
+                  command=lambda: expand_all(False)).pack(side="left", padx=(6, 14))
         tk.Button(bt, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=10, pady=6, cursor="hand2",
                   command=lambda: [e["use"].set(True) for e in entries]).pack(side="left")
@@ -2975,7 +3020,7 @@ class EquipApp(tk.Tk):
                   fg=self.p["text"], padx=10, pady=6, cursor="hand2",
                   command=lambda: [e["use"].set(False) for e in entries]).pack(
                   side="left", padx=6)
-        tk.Label(bt, text="  (변형/Zone/Alg 헤더 체크박스로 하위 전체 선택·해제)",
+        tk.Label(bt, text="  (Alg 헤더 클릭=펼치기 · 헤더 체크박스=하위 전체 선택·해제)",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
         def to_excel():
@@ -3703,7 +3748,8 @@ class EquipApp(tk.Tk):
             self._form_param_editor(pivot, recipe, kind, scale_map, run_dir, run_dir,
                                     st, m, base_keys=base_keys, base_name=base,
                                     title_prefix="Commonality 양식",
-                                    on_confirm=cm_confirm, on_excel=cm_excel)
+                                    on_confirm=cm_confirm, on_excel=cm_excel,
+                                    default_use=False)
         self._run_busy("조사 양식 파싱 중…", work, done)
 
     def _cm_form_finalize_dialog(self, draft, recipe, opened):
