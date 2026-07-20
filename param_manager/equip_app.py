@@ -2735,7 +2735,7 @@ class EquipApp(tk.Tk):
             base_keys = formbuilder.form_params(bf) if bf else None
         self._form_param_editor(rows, level, kind, scales, run_dir, related, st, aoi,
                                 base_keys=base_keys, base_name=base,
-                                title_prefix=title_prefix, default_use=False)
+                                title_prefix=title_prefix)
 
     def _form_base_dialog(self, level, ranked, title_prefix="양식 만들기"):
         """기존 레시피 활용 / 새로 만들기 선택 알림창. 반환: 레시피명 / '' (새로) / None(취소).
@@ -2767,7 +2767,7 @@ class EquipApp(tk.Tk):
         canvas.pack(side="left", fill="both", expand=True)
         vbar.pack(side="right", fill="y")
         self._wheelify(canvas)
-        tk.Radiobutton(inner, text="＋ 새로 만들기(전체 미선택 — 직접 선택)", variable=sel,
+        tk.Radiobutton(inner, text="＋ 새로 만들기(추천 항목 자동 체크)", variable=sel,
                        value="", bg=self.p["bg"], font=self.fonts["bold"], anchor="w").pack(
                        anchor="w", pady=2)
         for recipe, match, total in ranked:
@@ -2791,6 +2791,15 @@ class EquipApp(tk.Tk):
 
     # ---- 프로그램 화면 파라미터 편집기(양식/commonality 공통) -----------
     TRANSFORM_KINDS = ["RAW", "LINEAR", "AREA", "BOOL", "REGION", "CLASSIFY"]
+    # 드롭다운 표기(영어 + 괄호 간단 설명). 저장/계산은 앞의 영어(방식)만 사용.
+    TRANSFORM_LABELS = [
+        ("RAW", "RAW (원본값 그대로)"),
+        ("LINEAR", "LINEAR (선형 · 값×계수)"),
+        ("AREA", "AREA (면적 · 값×계수²)"),
+        ("BOOL", "BOOL (1→체크 / 0→해제)"),
+        ("REGION", "REGION (영역 표시)"),
+        ("CLASSIFY", "CLASSIFY (분류 코드)"),
+    ]
 
     def _form_param_editor(self, rows, level, kind, scales, run_dir, related, st, aoi,
                            base_keys=None, base_name="", title_prefix="양식 만들기",
@@ -2800,10 +2809,19 @@ class EquipApp(tk.Tk):
         on_confirm(records, extracts, scales_out, win)·on_excel(win) 를 주면 그걸 사용
         (commonality 등 다른 저장 경로 재사용). 없으면 기본(양식 만들기) 동작."""
         import re as _re
+        label_values = [lbl for _, lbl in self.TRANSFORM_LABELS]
+        method_to_label = {mth: lbl for mth, lbl in self.TRANSFORM_LABELS}
+        label_to_method = {lbl: mth for mth, lbl in self.TRANSFORM_LABELS}
 
         def _method(t):
-            m = _re.match(r"[A-Za-z]+", engine._s(t) or "RAW")
+            s = engine._s(t)
+            if s in label_to_method:
+                return label_to_method[s]
+            m = _re.match(r"[A-Za-z]+", s or "RAW")
             return m.group(0).upper() if m else "RAW"
+
+        def cur_method(e):                            # 드롭다운 라벨 → 방식(영어)
+            return _method(e["trans"].get())
 
         entries = []
         for r in rows:
@@ -2813,17 +2831,18 @@ class EquipApp(tk.Tk):
             if base_keys is not None:
                 use = key in base_keys                # 기존 레시피 기반: 일치=선택
             elif default_use is not None:
-                use = default_use                     # 새로 만들기=미선택 / 기존양식수정=선택
+                use = default_use                     # 기존 양식 수정=전체 선택
             else:
-                use = bool(r.get("use", True))        # 폴백(파서 추천)
+                use = bool(r.get("use", True))        # 새로 만들기=파서 Y표시 항목 체크
             raws = r.get("raws") or {}
             raw = next((v for v in raws.values() if engine._s(v) != ""), "")
             ext = dict(r.get("extract") or {})
+            mth = _method(ext.get("transform") or "RAW")
             entries.append({
                 "zone": zone, "alg": alg, "variant": variant, "reco": param, "raw": raw,
                 "ext": ext, "use": tk.BooleanVar(value=use),
                 "name": tk.StringVar(value=param),
-                "trans": tk.StringVar(value=_method(ext.get("transform") or "RAW")),
+                "trans": tk.StringVar(value=method_to_label.get(mth, mth)),
                 "disp": None})
 
         variants = []
@@ -2856,7 +2875,7 @@ class EquipApp(tk.Tk):
         left = tk.Frame(top, bg=self.p["surface"])
         left.pack(side="left", fill="x", expand=True, padx=10, pady=8)
         base_txt = (f"기반: {base_name}" if base_name else
-                    ("기존 양식 수정" if default_use else "새로 만들기(직접 선택)"))
+                    ("기존 양식 수정" if default_use else "새로 만들기(추천 항목 체크)"))
         tk.Label(left, text=f"{level}  ·  {base_txt}", bg=self.p["surface"],
                  fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w")
         cbar = tk.Frame(left, bg=self.p["surface"])
@@ -2882,7 +2901,15 @@ class EquipApp(tk.Tk):
         body = tk.Frame(win, bg=self.p["bg"])
         body.pack(fill="both", expand=True, padx=10, pady=8)
         canvas = tk.Canvas(body, bg=self.p["bg"], highlightthickness=0)
-        vbar = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+
+        def _yscroll(*a):
+            # 스크롤바를 잡고 빠르게 올릴 때 임베드 위젯 글씨가 깨지는 것 완화(즉시 재도색)
+            canvas.yview(*a)
+            try:
+                canvas.update_idletasks()
+            except Exception:  # noqa: BLE001
+                pass
+        vbar = ttk.Scrollbar(body, orient="vertical", command=_yscroll)
         inner = tk.Frame(canvas, bg=self.p["bg"])
         inner.bind("<Configure>",
                    lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
@@ -2895,7 +2922,7 @@ class EquipApp(tk.Tk):
 
         def recompute(e):
             if e["disp"] is not None:
-                val = ini_parser.transform_value(e["raw"], e["trans"].get(),
+                val = ini_parser.transform_value(e["raw"], cur_method(e),
                                                  coef_of(e["variant"]))
                 e["disp"].config(text=engine._s(val))
 
@@ -2906,6 +2933,23 @@ class EquipApp(tk.Tk):
         def set_group(members, value):
             for e in members:
                 e["use"].set(value)
+
+        # 행 클릭=선택(하이라이트), Enter=선택/해제 토글
+        sel = {"entry": None, "row": None}
+
+        def select_row(en, row):
+            prev = sel["row"]
+            if prev is not None and prev.winfo_exists():
+                prev.config(highlightthickness=0)
+            sel["entry"], sel["row"] = en, row
+            row.config(highlightbackground=self.p["primary"], highlightthickness=2)
+            row.focus_set()
+
+        def toggle_selected(_=None):
+            en = sel["entry"]
+            if en is not None:
+                en["use"].set(not en["use"].get())
+            return "break"
 
         # 계층 트리: 변형 → Zone → Alg → [entry]
         from collections import OrderedDict
@@ -2926,22 +2970,37 @@ class EquipApp(tk.Tk):
                 tk.Checkbutton(row, variable=e["use"], bg=self.p["surface"]).pack(side="left")
                 tk.Entry(row, textvariable=e["name"], width=34, relief="solid",
                          bd=1).pack(side="left", padx=(2, 6))
-                cb = ttk.Combobox(row, textvariable=e["trans"], width=9, state="readonly",
-                                  values=self.TRANSFORM_KINDS)
+                cb = ttk.Combobox(row, textvariable=e["trans"], width=20, state="readonly",
+                                  values=label_values)
                 cb.pack(side="left")
                 cb.bind("<<ComboboxSelected>>", lambda ev, en=e: recompute(en))
-                tk.Label(row, text="원본:", bg=self.p["surface"], fg=self.p["muted"],
-                         font=self.fonts["sub"]).pack(side="left", padx=(8, 2))
-                tk.Label(row, text=engine._s(e["raw"]), bg=self.p["surface"],
-                         fg=self.p["muted"], font=self.fonts["sub"], width=12,
-                         anchor="w").pack(side="left")
-                tk.Label(row, text="→ 표시:", bg=self.p["surface"], fg=self.p["muted"],
-                         font=self.fonts["sub"]).pack(side="left")
+                lraw = tk.Label(row, text="원본:", bg=self.p["surface"], fg=self.p["muted"],
+                                font=self.fonts["sub"])
+                lraw.pack(side="left", padx=(8, 2))
+                lrawv = tk.Label(row, text=engine._s(e["raw"]), bg=self.p["surface"],
+                                 fg=self.p["muted"], font=self.fonts["sub"], width=12,
+                                 anchor="w")
+                lrawv.pack(side="left")
+                larr = tk.Label(row, text="→ 표시:", bg=self.p["surface"],
+                                fg=self.p["muted"], font=self.fonts["sub"])
+                larr.pack(side="left")
                 disp = tk.Label(row, text="", bg=self.p["surface"], fg=self.p["primary"],
                                 font=self.fonts["bold"], anchor="w")
                 disp.pack(side="left", padx=(2, 0))
                 e["disp"] = disp
                 recompute(e)
+                # 행 클릭=선택, Enter=선택/해제(이름 Entry·드롭다운 제외 영역)
+                for w in (row, lraw, lrawv, larr, disp):
+                    w.bind("<Button-1>", lambda ev, en=e, rw=row: select_row(en, rw))
+                    w.bind("<Return>", toggle_selected)
+                row.bind("<Return>", toggle_selected)
+
+        def _upd_scroll():
+            try:
+                canvas.update_idletasks()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            except Exception:  # noqa: BLE001
+                pass
 
         def toggle_alg(blk, force=None):
             items, holder, state, arrow = blk
@@ -2953,11 +3012,14 @@ class EquipApp(tk.Tk):
                 build_params(holder, items, 54 if multi_variant else 36)
                 arrow.config(text="▼")
             else:                                 # 접기: 위젯 파괴(메모리·렉 관리)
+                if sel["row"] is not None and not sel["row"].winfo_exists():
+                    sel["row"] = sel["entry"] = None
                 for w in holder.winfo_children():
                     w.destroy()
                 for e in items:
                     e["disp"] = None
                 arrow.config(text="▶")
+            _upd_scroll()                         # 접기 후 빈 공간(스크롤영역) 즉시 갱신
 
         def expand_all(v):
             for blk in alg_blocks:
@@ -3056,7 +3118,7 @@ class EquipApp(tk.Tk):
                 name = e["name"].get().strip() or e["reco"]
                 if not name:
                     continue
-                method = e["trans"].get().strip().upper() or "RAW"
+                method = cur_method(e)                # 드롭다운 라벨 → 방식(영어)
                 v = e["variant"]
                 coef = coef_of(v)
                 used_scales[v] = coef
@@ -3748,8 +3810,7 @@ class EquipApp(tk.Tk):
             self._form_param_editor(pivot, recipe, kind, scale_map, run_dir, run_dir,
                                     st, m, base_keys=base_keys, base_name=base,
                                     title_prefix="Commonality 양식",
-                                    on_confirm=cm_confirm, on_excel=cm_excel,
-                                    default_use=False)
+                                    on_confirm=cm_confirm, on_excel=cm_excel)
         self._run_busy("조사 양식 파싱 중…", work, done)
 
     def _cm_form_finalize_dialog(self, draft, recipe, opened):
