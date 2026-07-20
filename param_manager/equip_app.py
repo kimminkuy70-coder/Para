@@ -261,6 +261,38 @@ class EquipApp(tk.Tk):
             self.nav_idx += 1
             self._render()
 
+    def _wheelify(self, canvas):
+        """캔버스 위에 마우스가 있는 동안 휠로 세로 스크롤(모든 스크롤 화면 공통).
+        Windows(<MouseWheel>)·Linux(Button-4/5) 모두 대응. Enter 때만 전역 바인딩,
+        Leave 때 해제해 다른 창까지 스크롤되는 것 방지."""
+        def on_wheel(e):
+            num = getattr(e, "num", None)
+            if num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif num == 5:
+                canvas.yview_scroll(1, "units")
+            else:
+                d = int(-e.delta / 120) if e.delta else 0
+                canvas.yview_scroll(d or (-1 if (e.delta or 0) > 0 else 1), "units")
+            return "break"
+
+        def enter(_=None):
+            for s in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                try:
+                    canvas.bind_all(s, on_wheel)
+                except tk.TclError:
+                    pass
+
+        def leave(_=None):
+            for s in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                try:
+                    canvas.unbind_all(s)
+                except tk.TclError:
+                    pass
+        canvas.bind("<Enter>", enter)
+        canvas.bind("<Leave>", leave)
+        return canvas
+
     def _render(self):
         self._sync_nav_widgets()      # 뒤로/앞으로/처음 표시를 view 와 항상 일치
         # 이전 화면의 휠 바인딩 잔재 제거(다른 창까지 스크롤되는 문제 방지)
@@ -490,13 +522,7 @@ class EquipApp(tk.Tk):
         canvas.configure(yscrollcommand=vbar.set)
         canvas.pack(side="left", fill="both", expand=True)
         vbar.pack(side="right", fill="y")
-
-        def _wheel(e):
-            canvas.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1),
-                                "units")
-            return "break"
-        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _wheel))
-        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+        self._wheelify(canvas)
 
         tk.Label(inner, text="(레시피(레벨) 이름·카드를 우클릭하면 그 레시피를 취합에서 "
                             "삭제할 수 있습니다)", bg=self.p["bg"], fg=self.p["muted"],
@@ -1557,6 +1583,7 @@ class EquipApp(tk.Tk):
         canvas.create_window((0, 0), window=self._dl_inner, anchor="nw", tags="i")
         self._dl_inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        self._wheelify(canvas)
 
         bot = tk.Frame(win, bg=self.p["bg"])
         bot.pack(fill="x", padx=14, pady=(0, 12))
@@ -1698,13 +1725,7 @@ class EquipApp(tk.Tk):
         canvas.configure(yscrollcommand=vbar.set)
         canvas.pack(side="top", fill="both", expand=True, padx=14)
         vbar.pack(side="right", fill="y")
-
-        def _wheel(e):
-            canvas.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1),
-                                "units")
-            return "break"
-        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _wheel))
-        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+        self._wheelify(canvas)
 
         vars_: dict = {}                       # {level: [(BooleanVar, Path)]}
         for lvl in target_levels:
@@ -1939,13 +1960,7 @@ class EquipApp(tk.Tk):
             vsb.pack(side="right", fill="y")
             inner.bind("<Configure>",
                        lambda e: cv.configure(scrollregion=cv.bbox("all")))
-
-            def _wheel(e):
-                cv.yview_scroll(int(-e.delta / 120) or (-1 if e.delta > 0 else 1),
-                                "units")
-                return "break"
-            for w in (cv, inner):
-                w.bind("<MouseWheel>", _wheel)
+            self._wheelify(cv)
             for i, (aoi, ip) in enumerate(listing):
                 ck = tk.BooleanVar(value=False)
                 uid = tk.StringVar(value=default_uid)
@@ -2180,6 +2195,7 @@ class EquipApp(tk.Tk):
 
         win = tk.Toplevel(self)
         win.title("로컬에서 불러오기 — 호기 선택")
+        win.geometry("560x560")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
@@ -2205,8 +2221,19 @@ class EquipApp(tk.Tk):
                   fg=self.p["text"], padx=8, cursor="hand2",
                   command=change_root).pack(side="left")
 
-        listfrm = tk.Frame(win, bg=self.p["bg"])
-        listfrm.pack(fill="both", expand=True, padx=14)
+        lwrap = tk.Frame(win, bg=self.p["bg"])
+        lwrap.pack(fill="both", expand=True, padx=14)
+        lcanvas = tk.Canvas(lwrap, bg=self.p["bg"], highlightthickness=0)
+        lvbar = ttk.Scrollbar(lwrap, orient="vertical", command=lcanvas.yview)
+        listfrm = tk.Frame(lcanvas, bg=self.p["bg"])
+        listfrm.bind("<Configure>",
+                     lambda e: lcanvas.configure(scrollregion=lcanvas.bbox("all")))
+        lcanvas.create_window((0, 0), window=listfrm, anchor="nw", tags="i")
+        lcanvas.bind("<Configure>", lambda e: lcanvas.itemconfig("i", width=e.width))
+        lcanvas.configure(yscrollcommand=lvbar.set)
+        lcanvas.pack(side="left", fill="both", expand=True)
+        lvbar.pack(side="right", fill="y")
+        self._wheelify(lcanvas)
         vars_ = {}
 
         def refresh():
@@ -2818,6 +2845,7 @@ class EquipApp(tk.Tk):
         canvas.configure(yscrollcommand=vbar.set)
         canvas.pack(side="left", fill="both", expand=True)
         vbar.pack(side="right", fill="y")
+        self._wheelify(canvas)
 
         tk.Label(inner, text="Commonality 조사", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=8, pady=(14, 2))
@@ -3043,6 +3071,7 @@ class EquipApp(tk.Tk):
         canvas.configure(yscrollcommand=vbar.set)
         canvas.pack(side="left", fill="both", expand=True)
         vbar.pack(side="right", fill="y")
+        self._wheelify(canvas)
 
         self._cm_sel_vars = []       # [(BooleanVar, LotFolder)]
         for l in lots:
