@@ -2473,9 +2473,11 @@ class EquipApp(tk.Tk):
         wrap.pack(fill="both", expand=True, padx=24, pady=18)
         tk.Label(wrap, text="양식 만들기", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w")
-        tk.Label(wrap, text="레시피를 고르고 장비/로컬에서 새로 불러오면 초안(수정본) 엑셀이 "
-                          "실제 Excel로 열립니다. 편집·저장 후 '편집 완료'를 누르면 확정 양식이 "
-                          "'양식/{레시피}/{생성시간}/' 에 저장됩니다(원본·수정본·원본ini는 관련파일 폴더).",
+        tk.Label(wrap, text="레시피를 고르고 장비/로컬에서 새로 불러오면 ①기존 레시피와 유사도 "
+                          "안내(활용/새로 만들기) → ②프로그램 화면 편집기(Zone·Alg·Parameter 계층, "
+                          "체크박스·이름/변환/계수 편집, 계수 적용 표시값)로 파라미터를 고릅니다. "
+                          "우측 상단 ‘엑셀에서 편집하기’로 엑셀 편집도 가능. 확정 양식은 "
+                          "‘양식/{레시피}/{생성시간}/’ 에 저장됩니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left", wraplength=920).pack(anchor="w", pady=(2, 14))
 
@@ -2680,26 +2682,351 @@ class EquipApp(tk.Tk):
                                      scales=scale_map)
         self._run_busy("변형(레시피) 감지 중…", detect, after_detect)
 
-    def _form_build_and_edit(self, rows, machines, level, kind, scales, run_dir, related, st):
+    def _form_build_and_edit(self, rows, machines, level, kind, scales, run_dir, related,
+                             st, title_prefix="양식 만들기"):
+        """파싱된 새 레시피 → ① 기존 양식과 유사도 순위 안내(기존 활용/새로 만들기)
+        → ② 프로그램 화면 편집기(기본). 엑셀 편집은 편집기의 버튼으로."""
         aoi = next((m for m in machines if m), "로컬")
-        draft = workdirs.form_draft_path(related, level, aoi, st)
+        # 기존 양식들과 파라미터 유사도 순위
+        parsed_keys = formbuilder.pivot_param_keys(rows)
+        forms = {}
+        try:
+            for r in workdirs.list_recipes(self.save_dir):
+                if r == level:
+                    continue
+                f = workdirs.latest_form(self.save_dir, r)
+                if f:
+                    forms[r] = formbuilder.form_params(f)
+        except Exception:  # noqa: BLE001
+            forms = {}
+        ranked = formbuilder.rank_similar_forms(parsed_keys, forms)
+        base = self._form_base_dialog(level, ranked, title_prefix)
+        if base is None:                       # 취소
+            return
+        base_keys = None
+        if base:                               # 기존 레시피 활용 → 그 양식의 사용 항목 기준
+            bf = workdirs.latest_form(self.save_dir, base)
+            base_keys = formbuilder.form_params(bf) if bf else None
+        self._form_param_editor(rows, level, kind, scales, run_dir, related, st, aoi,
+                                base_keys=base_keys, base_name=base,
+                                title_prefix=title_prefix)
 
-        def work():
-            formbuilder.build_initial_workbook(rows, draft, level=level,
-                                               source=f"{level} / {aoi}")
-            import shutil
-            orig = workdirs.form_original_path(related, level, aoi, st)
-            shutil.copy2(draft, orig)          # 편집 전 원본 보존
-            return orig
+    def _form_base_dialog(self, level, ranked, title_prefix="양식 만들기"):
+        """기존 레시피 활용 / 새로 만들기 선택 알림창. 반환: 레시피명 / '' (새로) / None(취소).
+        ranked = [(레시피, 일치수, 기존항목수)] (유사도 높은 순)."""
+        win = tk.Toplevel(self)
+        win.title(f"{title_prefix} — 기반 레시피 선택")
+        win.geometry("560x520")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text=f"새 레시피 '{level}' 를 어떻게 만들까요?", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w", padx=14,
+                                                                  pady=(12, 2))
+        tk.Label(win, text="기존 레시피를 기반으로 하면 그 레시피가 쓰는 파라미터가 자동 선택됩니다"
+                          "(새 항목은 미선택). 유사한(겹치는 파라미터 많은) 순서로 정렬했습니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=520).pack(anchor="w", padx=14, pady=(0, 6))
+        sel = tk.StringVar(value="")           # "" = 새로 만들기
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="both", expand=True, padx=14)
+        canvas = tk.Canvas(body, bg=self.p["bg"], highlightthickness=0)
+        vbar = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=self.p["bg"])
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="i")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
+        self._wheelify(canvas)
+        tk.Radiobutton(inner, text="＋ 새로 만들기(자동 추천 그대로)", variable=sel, value="",
+                       bg=self.p["bg"], font=self.fonts["bold"], anchor="w").pack(
+                       anchor="w", pady=2)
+        for recipe, match, total in ranked:
+            tk.Radiobutton(
+                inner, text=f"{recipe}   (겹치는 파라미터 {match} / 기존 {total}개)",
+                variable=sel, value=recipe, bg=self.p["bg"], font=self.fonts["base"],
+                anchor="w").pack(anchor="w", pady=1)
+        res = {"val": None}
 
-        def done(ok, res):
-            if not ok:
-                messagebox.showerror("초안 생성 실패", str(res))
+        def ok():
+            res["val"] = sel.get()
+            win.destroy()
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=14, pady=12)
+        tk.Button(bt, text="다음", relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                  padx=18, pady=6, cursor="hand2", command=ok).pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=6)
+        win.wait_window()
+        return res["val"]
+
+    # ---- 프로그램 화면 파라미터 편집기(양식/commonality 공통) -----------
+    TRANSFORM_KINDS = ["RAW", "LINEAR", "AREA", "BOOL", "REGION", "CLASSIFY"]
+
+    def _form_param_editor(self, rows, level, kind, scales, run_dir, related, st, aoi,
+                           base_keys=None, base_name="", title_prefix="양식 만들기",
+                           on_confirm=None, on_excel=None):
+        """상위/하위(변형·Zone·Alg·Parameter) 계층 + 체크박스 + 행별 편집(이름/변환/
+        사용) + 변형별 계수(상단, 수정 시 일괄 적용) + 계수 적용 표시값. 엑셀 편집 버튼도.
+        on_confirm(records, extracts, scales_out, win)·on_excel(win) 를 주면 그걸 사용
+        (commonality 등 다른 저장 경로 재사용). 없으면 기본(양식 만들기) 동작."""
+        import re as _re
+
+        def _method(t):
+            m = _re.match(r"[A-Za-z]+", engine._s(t) or "RAW")
+            return m.group(0).upper() if m else "RAW"
+
+        entries = []
+        for r in rows:
+            zone = engine._s(r.get("zone")); alg = engine._s(r.get("alg"))
+            param = engine._s(r.get("param")); variant = engine._s(r.get("mag"))
+            key = formbuilder._norm_key3(zone, alg, param)
+            use = (key in base_keys) if base_keys is not None else bool(r.get("use", True))
+            raws = r.get("raws") or {}
+            raw = next((v for v in raws.values() if engine._s(v) != ""), "")
+            ext = dict(r.get("extract") or {})
+            entries.append({
+                "zone": zone, "alg": alg, "variant": variant, "reco": param, "raw": raw,
+                "ext": ext, "use": tk.BooleanVar(value=use),
+                "name": tk.StringVar(value=param),
+                "trans": tk.StringVar(value=_method(ext.get("transform") or "RAW")),
+                "disp": None})
+
+        variants = []
+        for e in entries:
+            if e["variant"] not in variants:
+                variants.append(e["variant"])
+        coef_vars = {}
+        for v in variants:
+            c = scales.get(v, ini_parser.DEFAULT_SCALE)
+            try:
+                coef_vars[v] = tk.StringVar(value=f"{float(c):.16g}")
+            except Exception:  # noqa: BLE001
+                coef_vars[v] = tk.StringVar(value=f"{ini_parser.DEFAULT_SCALE:.16g}")
+
+        def coef_of(variant):
+            try:
+                return float(coef_vars[variant].get())
+            except Exception:  # noqa: BLE001
+                return ini_parser.DEFAULT_SCALE
+
+        win = tk.Toplevel(self)
+        win.title(f"{title_prefix} — 파라미터 선택/편집 ({level})")
+        win.geometry("1120x760")
+        win.configure(bg=self.p["bg"])
+
+        # 상단: 제목 + 계수바 + 엑셀 편집 버튼
+        top = tk.Frame(win, bg=self.p["surface"], highlightbackground=self.p["border"],
+                       highlightthickness=1)
+        top.pack(fill="x", padx=10, pady=(10, 0))
+        left = tk.Frame(top, bg=self.p["surface"])
+        left.pack(side="left", fill="x", expand=True, padx=10, pady=8)
+        base_txt = (f"기반: {base_name}" if base_name else "새로 만들기(자동 추천)")
+        tk.Label(left, text=f"{level}  ·  {base_txt}", bg=self.p["surface"],
+                 fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w")
+        cbar = tk.Frame(left, bg=self.p["surface"])
+        cbar.pack(anchor="w", pady=(4, 0))
+        tk.Label(cbar, text="변형별 변환계수(수정 후 [적용]=표시값 일괄 갱신):",
+                 bg=self.p["surface"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+        for v in variants:
+            tk.Label(cbar, text=f"  {v or '(기본)'}=", bg=self.p["surface"],
+                     fg=self.p["primary"], font=self.fonts["bold"]).pack(side="left")
+            tk.Entry(cbar, textvariable=coef_vars[v], width=14, relief="solid",
+                     bd=1).pack(side="left", padx=(0, 4))
+        tk.Button(cbar, text="적용", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["primary"], padx=8, cursor="hand2",
+                  command=lambda: refresh_all()).pack(side="left", padx=(4, 0))
+        rbtn = tk.Frame(top, bg=self.p["surface"])
+        rbtn.pack(side="right", padx=10, pady=8)
+        tk.Button(rbtn, text="📄 엑셀 파일에서 편집하기", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=12, pady=6,
+                  cursor="hand2", command=lambda: to_excel()).pack()
+
+        # 본문: 스크롤 계층
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="both", expand=True, padx=10, pady=8)
+        canvas = tk.Canvas(body, bg=self.p["bg"], highlightthickness=0)
+        vbar = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=self.p["bg"])
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="i")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
+        self._wheelify(canvas)
+
+        def recompute(e):
+            if e["disp"] is not None:
+                val = ini_parser.transform_value(e["raw"], e["trans"].get(),
+                                                 coef_of(e["variant"]))
+                e["disp"].config(text=engine._s(val))
+
+        def refresh_all():
+            for e in entries:
+                recompute(e)
+
+        def set_group(members, value):
+            for e in members:
+                e["use"].set(value)
+
+        # 계층 트리: 변형 → Zone → Alg → [entry]
+        from collections import OrderedDict
+        tree = OrderedDict()
+        for e in entries:
+            tree.setdefault(e["variant"], OrderedDict()).setdefault(
+                e["zone"], OrderedDict()).setdefault(e["alg"], []).append(e)
+
+        multi_variant = len(variants) > 1
+        for variant, zones in tree.items():
+            vmembers = [e for z in zones.values() for a in z.values() for e in a]
+            if multi_variant:
+                vh = tk.Frame(inner, bg="#dbe4f0")
+                vh.pack(fill="x", pady=(8, 0))
+                vv = tk.BooleanVar(value=all(e["use"].get() for e in vmembers))
+                tk.Checkbutton(vh, variable=vv, bg="#dbe4f0",
+                               command=lambda m=vmembers, x=vv: set_group(m, x.get())).pack(
+                               side="left")
+                tk.Label(vh, text=f"변형  {variant or '(기본)'}", bg="#dbe4f0",
+                         fg=self.p["text"], font=self.fonts["bold"]).pack(side="left")
+            for zone, algs in zones.items():
+                zmembers = [e for a in algs.values() for e in a]
+                zh = tk.Frame(inner, bg="#e2e8f0")
+                zh.pack(fill="x", pady=(6, 0), padx=(18 if multi_variant else 0, 0))
+                zv = tk.BooleanVar(value=all(e["use"].get() for e in zmembers))
+                tk.Checkbutton(zh, variable=zv, bg="#e2e8f0",
+                               command=lambda m=zmembers, x=zv: set_group(m, x.get())).pack(
+                               side="left")
+                tk.Label(zh, text=f"Zone · {zone or '(없음)'}", bg="#e2e8f0",
+                         fg=self.p["text"], font=self.fonts["bold"]).pack(side="left")
+                for alg, items in algs.items():
+                    ah = tk.Frame(inner, bg="#eef2f7")
+                    ah.pack(fill="x", padx=(36 if multi_variant else 18, 0))
+                    av = tk.BooleanVar(value=all(e["use"].get() for e in items))
+                    tk.Checkbutton(ah, variable=av, bg="#eef2f7",
+                                   command=lambda m=items, x=av: set_group(m, x.get())).pack(
+                                   side="left")
+                    tk.Label(ah, text=f"Alg · {alg or '(없음)'}", bg="#eef2f7",
+                             fg=self.p["muted"], font=self.fonts["bold"]).pack(side="left")
+                    for e in items:
+                        row = tk.Frame(inner, bg=self.p["surface"])
+                        row.pack(fill="x", padx=(54 if multi_variant else 36, 0), pady=1)
+                        tk.Checkbutton(row, variable=e["use"], bg=self.p["surface"]).pack(
+                            side="left")
+                        tk.Entry(row, textvariable=e["name"], width=34, relief="solid",
+                                 bd=1).pack(side="left", padx=(2, 6))
+                        cb = ttk.Combobox(row, textvariable=e["trans"], width=9,
+                                          state="readonly", values=self.TRANSFORM_KINDS)
+                        cb.pack(side="left")
+                        cb.bind("<<ComboboxSelected>>", lambda ev, en=e: recompute(en))
+                        tk.Label(row, text="원본:", bg=self.p["surface"],
+                                 fg=self.p["muted"], font=self.fonts["sub"]).pack(
+                                 side="left", padx=(8, 2))
+                        tk.Label(row, text=engine._s(e["raw"]), bg=self.p["surface"],
+                                 fg=self.p["muted"], font=self.fonts["sub"], width=12,
+                                 anchor="w").pack(side="left")
+                        tk.Label(row, text="→ 표시:", bg=self.p["surface"],
+                                 fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+                        disp = tk.Label(row, text="", bg=self.p["surface"],
+                                        fg=self.p["primary"], font=self.fonts["bold"],
+                                        anchor="w")
+                        disp.pack(side="left", padx=(2, 0))
+                        e["disp"] = disp
+                        recompute(e)
+
+        # 하단: 전체 선택/해제 + 확정
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=10, pady=(0, 10))
+        tk.Button(bt, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=10, pady=6, cursor="hand2",
+                  command=lambda: [e["use"].set(True) for e in entries]).pack(side="left")
+        tk.Button(bt, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=10, pady=6, cursor="hand2",
+                  command=lambda: [e["use"].set(False) for e in entries]).pack(
+                  side="left", padx=6)
+        tk.Label(bt, text="  (변형/Zone/Alg 헤더 체크박스로 하위 전체 선택·해제)",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+
+        def to_excel():
+            if on_excel is not None:
+                win.destroy()
+                on_excel()
                 return
-            opened = self._open_in_excel(draft)
-            self._form_finalize_dialog(draft, res, level, kind, scales, run_dir,
-                                       aoi, st, opened)
-        self._run_busy("초안(수정본) 엑셀 생성 중…", work, done)
+            win.destroy()
+            draft = workdirs.form_draft_path(related, level, aoi, st)
+
+            def work():
+                formbuilder.build_initial_workbook(rows, draft, level=level,
+                                                   source=f"{level} / {aoi}")
+                import shutil
+                orig = workdirs.form_original_path(related, level, aoi, st)
+                shutil.copy2(draft, orig)
+                return orig
+
+            def done(ok, res):
+                if not ok:
+                    messagebox.showerror("초안 생성 실패", str(res))
+                    return
+                opened = self._open_in_excel(draft)
+                self._form_finalize_dialog(draft, res, level, kind, scales, run_dir,
+                                           aoi, st, opened)
+            self._run_busy("초안(수정본) 엑셀 생성 중…", work, done)
+
+        def confirm():
+            records, extracts, used_scales = [], [], {}
+            for e in entries:
+                if not e["use"].get():
+                    continue
+                name = e["name"].get().strip() or e["reco"]
+                if not name:
+                    continue
+                method = e["trans"].get().strip().upper() or "RAW"
+                v = e["variant"]
+                coef = coef_of(v)
+                used_scales[v] = coef
+                records.append({"PI": level, "Recipe": v, "Zone": e["zone"],
+                                "Alg": e["alg"], "Parameter": name, "비고": ""})
+                ext = dict(e["ext"])
+                ext["transform"] = ini_parser.label_transform(method, coef)
+                extracts.append(ext)
+            if not records:
+                messagebox.showinfo("확정", "선택된 파라미터가 없습니다.", parent=win)
+                return
+            if on_confirm is not None:               # commonality 등 다른 저장 경로
+                on_confirm(records, extracts, dict(used_scales), win)
+                return
+            sheet = "RDL_ALL" if kind == "RDL" else "PI_ALL"
+            final = workdirs.form_final_path(run_dir, level, aoi, st)
+            scales_out = dict(used_scales)
+
+            def work():
+                extract_io.write_snapshot(
+                    final, records, machines=[], sheet_name=sheet, extracts=extracts,
+                    stage="final", level=level, aoi=aoi, source=f"{level} 양식",
+                    user=self.user, scales=scales_out)
+                return final
+
+            def done(ok, res):
+                if not ok:
+                    messagebox.showerror("양식 확정 실패", str(res))
+                    return
+                win.destroy()
+                if messagebox.askyesno(
+                        "양식 확정 완료",
+                        f"확정 양식 생성: {os.path.basename(final)}\n"
+                        f"항목 {len(records)}개.\n위치: {run_dir}\n\n지금 열어 볼까요?"):
+                    self._open_collation_view(final)
+            self._run_busy("양식 확정 중…", work, done)
+        tk.Button(bt, text="✔ 편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=confirm).pack(side="right")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=14,
+                  pady=6, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
 
     def _form_finalize_dialog(self, draft, orig, level, kind, scales, run_dir, aoi, st,
                               opened, prev_form=None):
@@ -3269,28 +3596,89 @@ class EquipApp(tk.Tk):
         self._run_busy("변형·계수 감지 중…", detect, after)
 
     def _cm_build_form(self, lot_dirs, recipe, scale_map):
+        """Lot 파싱 → 기존 양식 유사도 안내 → 프로그램 편집기(양식 만들기와 동일 UX).
+        확정 시 commonality 양식 경로로 저장(엑셀 편집 버튼도 제공)."""
         m, st = self._cm["machine"], self._cm["st"]
         run_dir = self._cm["run_dir"]
-        draft = os.path.join(run_dir, f"양식초안_{recipe}_{m}_{st}.xlsx")
 
         def work():
             cb, cstate = self._coef_lookup_cb(fixed_machine=m)   # 조사 호기 1대 기준
             pivot, labels = cm.parse_lots(lot_dirs, level=recipe, scales=scale_map,
                                           coef_lookup=cb)
             self._coef_save_if_changed(cstate)
-            formbuilder.build_initial_workbook(pivot, draft, level=recipe,
-                                               source=f"commonality {recipe} / {m}")
             return pivot, labels
 
         def done(ok, res):
             if not ok:
-                messagebox.showerror("초안 생성 실패", str(res))
+                messagebox.showerror("파싱 실패", str(res))
                 return
             pivot, labels = res
             self._cm["pivot"], self._cm["labels"] = pivot, labels
-            opened = self._open_in_excel(draft)
-            self._cm_form_finalize_dialog(draft, recipe, opened)
-        self._run_busy("조사 양식 초안 생성 중…", work, done)
+            kind = "RDL" if recipe.upper().startswith("RDL") else "PI"
+            # 기존 양식(양식 만들기)들과 유사도 순위
+            parsed_keys = formbuilder.pivot_param_keys(pivot)
+            forms = {}
+            try:
+                for r in workdirs.list_recipes(self.save_dir):
+                    f = workdirs.latest_form(self.save_dir, r)
+                    if f:
+                        forms[r] = formbuilder.form_params(f)
+            except Exception:  # noqa: BLE001
+                forms = {}
+            ranked = formbuilder.rank_similar_forms(parsed_keys, forms)
+            base = self._form_base_dialog(recipe, ranked, "Commonality 양식")
+            if base is None:
+                return
+            base_keys = None
+            if base:
+                bf = workdirs.latest_form(self.save_dir, base)
+                base_keys = formbuilder.form_params(bf) if bf else None
+
+            def cm_confirm(records, extracts, scales_out, win):
+                form = workdirs.commonality_form_path(run_dir, recipe, m, st)
+                sheet = "RDL_ALL" if kind == "RDL" else "PI_ALL"
+
+                def w2():
+                    extract_io.write_snapshot(
+                        form, records, machines=[], sheet_name=sheet, extracts=extracts,
+                        stage="final", level=recipe, aoi=m,
+                        source=f"commonality {recipe}", user=self.user, scales=scales_out)
+                    return form
+
+                def d2(ok2, res2):
+                    if not ok2:
+                        messagebox.showerror("양식 확정 실패", str(res2))
+                        return
+                    win.destroy()
+                    self._cm["form_path"] = form
+                    self._render()
+                    messagebox.showinfo("양식 확정",
+                                        f"확정 양식 생성: {os.path.basename(form)}\n"
+                                        f"항목 {len(records)}개.")
+                self._run_busy("조사 양식 확정 중…", w2, d2)
+
+            def cm_excel():
+                draft = os.path.join(run_dir, f"양식초안_{recipe}_{m}_{st}.xlsx")
+
+                def w3():
+                    formbuilder.build_initial_workbook(
+                        pivot, draft, level=recipe,
+                        source=f"commonality {recipe} / {m}")
+                    return draft
+
+                def d3(ok3, res3):
+                    if not ok3:
+                        messagebox.showerror("초안 생성 실패", str(res3))
+                        return
+                    opened = self._open_in_excel(draft)
+                    self._cm_form_finalize_dialog(draft, recipe, opened)
+                self._run_busy("조사 양식 초안 생성 중…", w3, d3)
+
+            self._form_param_editor(pivot, recipe, kind, scale_map, run_dir, run_dir,
+                                    st, m, base_keys=base_keys, base_name=base,
+                                    title_prefix="Commonality 양식",
+                                    on_confirm=cm_confirm, on_excel=cm_excel)
+        self._run_busy("조사 양식 파싱 중…", work, done)
 
     def _cm_form_finalize_dialog(self, draft, recipe, opened):
         win = tk.Toplevel(self)

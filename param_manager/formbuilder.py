@@ -207,6 +207,33 @@ def form_params(xlsx: str) -> set[tuple]:
     return out
 
 
+def _norm_key3(zone, alg, param) -> tuple:
+    import re
+    def _n(s):
+        return re.sub(r"[^0-9a-z가-힣µ]", "", engine._s(s).lower())
+    return (_n(zone), _n(alg), _n(param))
+
+
+def pivot_param_keys(rows: list[dict]) -> set[tuple]:
+    """파싱 피벗 행들 → (Zone, Alg, Parameter) 정규화 키 집합(양식 비교용)."""
+    out = set()
+    for r in rows:
+        p = engine._s(r.get("param")).strip()
+        if p:
+            out.add(_norm_key3(r.get("zone"), r.get("alg"), p))
+    return out
+
+
+def rank_similar_forms(parsed_keys: set, forms: dict[str, set]) -> list[tuple]:
+    """새 레시피(parsed_keys)와 기존 양식들(forms={레시피:키집합})의 겹치는 파라미터
+    수로 정렬. 반환: [(레시피, 일치수, 기존항목수)] — 일치 많은 순(동률은 이름순)."""
+    out = []
+    for recipe, keys in forms.items():
+        out.append((recipe, len(parsed_keys & keys), len(keys)))
+    out.sort(key=lambda t: (-t[1], t[0]))
+    return out
+
+
 def _is_used(val) -> bool:
     s = engine._s(val).strip().upper()
     if s in _USED_TRUE:

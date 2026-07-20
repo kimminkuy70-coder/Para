@@ -188,6 +188,25 @@ def test_force_level_and_form_params():
     print("  formbuilder OK: force_level 강제 통일 + form_params 신규항목 검출")
 
 
+def test_similarity_ranking_and_keys():
+    """새 레시피 파라미터 키 집합 + 기존 양식들과 유사도 순위(겹침 많은 순)."""
+    rows = [{"zone": "Scan Area", "alg": "Surface", "param": "Contrast Delta - Bright"},
+            {"zone": "Scan Area", "alg": "Surface", "param": "Min Defect Width"},
+            {"zone": "LIGHT", "alg": "Scan2d", "param": "LightSrcRef_NominalGL"}]
+    pk = formbuilder.pivot_param_keys(rows)
+    assert len(pk) == 3
+    fa = {formbuilder._norm_key3("Scan Area", "Surface", "Contrast Delta - Bright"),
+          formbuilder._norm_key3("Scan Area", "Surface", "Min Defect Width"),
+          formbuilder._norm_key3("Q", "W", "E")}
+    fb2 = {formbuilder._norm_key3("LIGHT", "Scan2d", "LightSrcRef_NominalGL")}
+    ranked = formbuilder.rank_similar_forms(pk, {"A": fa, "B": fb2})
+    assert ranked[0] == ("A", 2, 3) and ranked[1] == ("B", 1, 1)
+    # 기반 선택 파생: 사용 = 키가 기반 양식에 있음
+    sel = [formbuilder._norm_key3(r["zone"], r["alg"], r["param"]) in fa for r in rows]
+    assert sel == [True, True, False]
+    print("  formbuilder OK: 유사도 순위 + 기반 선택 파생")
+
+
 def test_final_rejects_when_all_unused():
     with tempfile.TemporaryDirectory() as tmp:
         rows, _ = _pivot(tmp)
