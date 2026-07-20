@@ -2820,9 +2820,6 @@ class EquipApp(tk.Tk):
             m = _re.match(r"[A-Za-z]+", s or "RAW")
             return m.group(0).upper() if m else "RAW"
 
-        def cur_method(e):                            # 드롭다운 라벨 → 방식(영어)
-            return _method(e["trans"].get())
-
         entries = []
         for r in rows:
             zone = engine._s(r.get("zone")); alg = engine._s(r.get("alg"))
@@ -2839,11 +2836,9 @@ class EquipApp(tk.Tk):
             ext = dict(r.get("extract") or {})
             mth = _method(ext.get("transform") or "RAW")
             entries.append({
-                "zone": zone, "alg": alg, "variant": variant, "reco": param, "raw": raw,
-                "ext": ext, "use": tk.BooleanVar(value=use),
-                "name": tk.StringVar(value=param),
-                "trans": tk.StringVar(value=method_to_label.get(mth, mth)),
-                "disp": None})
+                "zone": zone, "alg": alg, "variant": variant, "reco": param,
+                "raw": raw, "ext": ext, "use": bool(use), "name": param,
+                "label": method_to_label.get(mth, mth)})
 
         variants = []
         for e in entries:
@@ -2863,9 +2858,13 @@ class EquipApp(tk.Tk):
             except Exception:  # noqa: BLE001
                 return ini_parser.DEFAULT_SCALE
 
+        def disp_of(entry, label):
+            return engine._s(ini_parser.transform_value(
+                entry["raw"], _method(label), coef_of(entry["variant"])))
+
         win = tk.Toplevel(self)
         win.title(f"{title_prefix} — 파라미터 선택/편집 ({level})")
-        win.geometry("1120x760")
+        win.geometry("1180x780")
         win.configure(bg=self.p["bg"])
 
         # 상단: 제목 + 계수바 + 엑셀 편집 버튼
@@ -2897,192 +2896,172 @@ class EquipApp(tk.Tk):
                   bg=self.p["surface"], fg=self.p["text"], padx=12, pady=6,
                   cursor="hand2", command=lambda: to_excel()).pack()
 
-        # 본문: 스크롤 계층
+        # 본문: 단일 tksheet(완전 가상화) — 셀을 캔버스에 직접 그려 **보이는 행만** 도색.
+        #   1600행이라도 로딩 렉이 없고, 스크롤바를 잡고 빠르게 올려도 글씨가 깨지지 않는다
+        #   (임베드 위젯이 없으므로 OS 재도색 지연 문제 자체가 사라짐).
         body = tk.Frame(win, bg=self.p["bg"])
         body.pack(fill="both", expand=True, padx=10, pady=8)
-        canvas = tk.Canvas(body, bg=self.p["bg"], highlightthickness=0)
 
-        def _yscroll(*a):
-            # 스크롤바를 잡고 빠르게 올릴 때 임베드 위젯 글씨가 깨지는 것 완화(즉시 재도색)
-            canvas.yview(*a)
-            try:
-                canvas.update_idletasks()
-            except Exception:  # noqa: BLE001
-                pass
-        vbar = ttk.Scrollbar(body, orient="vertical", command=_yscroll)
-        inner = tk.Frame(canvas, bg=self.p["bg"])
-        inner.bind("<Configure>",
-                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=inner, anchor="nw", tags="i")
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
-        canvas.configure(yscrollcommand=vbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        vbar.pack(side="right", fill="y")
-        self._wheelify(canvas)
-
-        def recompute(e):
-            if e["disp"] is not None:
-                val = ini_parser.transform_value(e["raw"], cur_method(e),
-                                                 coef_of(e["variant"]))
-                e["disp"].config(text=engine._s(val))
-
-        def refresh_all():
-            for e in entries:
-                recompute(e)
-
-        def set_group(members, value):
-            for e in members:
-                e["use"].set(value)
-
-        # 행 클릭=선택(하이라이트), Enter=선택/해제 토글
-        sel = {"entry": None, "row": None}
-
-        def select_row(en, row):
-            prev = sel["row"]
-            if prev is not None and prev.winfo_exists():
-                prev.config(highlightthickness=0)
-            sel["entry"], sel["row"] = en, row
-            row.config(highlightbackground=self.p["primary"], highlightthickness=2)
-            row.focus_set()
-
-        def toggle_selected(_=None):
-            en = sel["entry"]
-            if en is not None:
-                en["use"].set(not en["use"].get())
-            return "break"
-
-        # 계층 트리: 변형 → Zone → Alg → [entry]
         from collections import OrderedDict
         tree = OrderedDict()
         for e in entries:
             tree.setdefault(e["variant"], OrderedDict()).setdefault(
                 e["zone"], OrderedDict()).setdefault(e["alg"], []).append(e)
-
         multi_variant = len(variants) > 1
-        # ── 성능: Alg 그룹은 **접힌 상태로 시작**, 펼칠 때만 파라미터 위젯 생성(지연 렌더).
-        #    1600행을 한 번에 안 그려 로딩 렉을 없앤다(선택 상태는 BooleanVar 로 항상 유지).
-        alg_blocks = []          # [(items, holder_frame, built_flag, arrow_label)]
 
-        def build_params(holder, items, indent):
-            for e in items:
-                row = tk.Frame(holder, bg=self.p["surface"])
-                row.pack(fill="x", padx=(indent, 0), pady=1)
-                tk.Checkbutton(row, variable=e["use"], bg=self.p["surface"]).pack(side="left")
-                tk.Entry(row, textvariable=e["name"], width=34, relief="solid",
-                         bd=1).pack(side="left", padx=(2, 6))
-                cb = ttk.Combobox(row, textvariable=e["trans"], width=20, state="readonly",
-                                  values=label_values)
-                cb.pack(side="left")
-                cb.bind("<<ComboboxSelected>>", lambda ev, en=e: recompute(en))
-                lraw = tk.Label(row, text="원본:", bg=self.p["surface"], fg=self.p["muted"],
-                                font=self.fonts["sub"])
-                lraw.pack(side="left", padx=(8, 2))
-                lrawv = tk.Label(row, text=engine._s(e["raw"]), bg=self.p["surface"],
-                                 fg=self.p["muted"], font=self.fonts["sub"], width=12,
-                                 anchor="w")
-                lrawv.pack(side="left")
-                larr = tk.Label(row, text="→ 표시:", bg=self.p["surface"],
-                                fg=self.p["muted"], font=self.fonts["sub"])
-                larr.pack(side="left")
-                disp = tk.Label(row, text="", bg=self.p["surface"], fg=self.p["primary"],
-                                font=self.fonts["bold"], anchor="w")
-                disp.pack(side="left", padx=(2, 0))
-                e["disp"] = disp
-                recompute(e)
-                # 행 클릭=선택, Enter=선택/해제(이름 Entry·드롭다운 제외 영역)
-                for w in (row, lraw, lrawv, larr, disp):
-                    w.bind("<Button-1>", lambda ev, en=e, rw=row: select_row(en, rw))
-                    w.bind("<Return>", toggle_selected)
-                row.bind("<Return>", toggle_selected)
+        HDR = ["사용", "항목", "분류(변환방식)", "원본값", "표시값(계수적용)"]
+        data = []                        # 시트 행 데이터(2차원)
+        kinds = []                       # 각 시트행 종류: variant/zone/alg/param
+        row_entry = {}                   # 시트행 → entry(파라미터 행만)
+        descend_param = {}               # 헤더행 → [하위 파라미터 시트행]
+        descend_head = {}                # 헤더행 → [하위 헤더 시트행]
+        ancestors = {}                   # 시트행 → [상위 헤더 시트행]
 
-        def _upd_scroll():
-            try:
-                canvas.update_idletasks()
-                canvas.configure(scrollregion=canvas.bbox("all"))
-            except Exception:  # noqa: BLE001
-                pass
-
-        def toggle_alg(blk, force=None):
-            items, holder, state, arrow = blk
-            want = (not state["open"]) if force is None else force
-            if want == state["open"]:
-                return
-            state["open"] = want
-            if want:                              # 펼치기: 위젯 생성(지연)
-                build_params(holder, items, 54 if multi_variant else 36)
-                arrow.config(text="▼")
-            else:                                 # 접기: 위젯 파괴(메모리·렉 관리)
-                if sel["row"] is not None and not sel["row"].winfo_exists():
-                    sel["row"] = sel["entry"] = None
-                for w in holder.winfo_children():
-                    w.destroy()
-                for e in items:
-                    e["disp"] = None
-                arrow.config(text="▶")
-            _upd_scroll()                         # 접기 후 빈 공간(스크롤영역) 즉시 갱신
-
-        def expand_all(v):
-            for blk in alg_blocks:
-                toggle_alg(blk, force=v)
+        def add_row(kind, use, label, trans="", raw="", disp="", anc=()):
+            i = len(data)
+            data.append([bool(use), label, trans, raw, disp])
+            kinds.append(kind)
+            ancestors[i] = list(anc)
+            if kind != "param":
+                descend_param[i] = []
+                descend_head[i] = []
+            return i
 
         for variant, zones in tree.items():
-            vmembers = [e for z in zones.values() for a in z.values() for e in a]
+            vmem = [e for z in zones.values() for a in z.values() for e in a]
+            v_anc = []
+            v_row = None
             if multi_variant:
-                vh = tk.Frame(inner, bg="#dbe4f0")
-                vh.pack(fill="x", pady=(8, 0))
-                vv = tk.BooleanVar(value=all(x["use"].get() for x in vmembers))
-                tk.Checkbutton(vh, variable=vv, bg="#dbe4f0",
-                               command=lambda m=vmembers, x=vv: set_group(m, x.get())).pack(
-                               side="left")
-                tk.Label(vh, text=f"변형  {variant or '(기본)'}", bg="#dbe4f0",
-                         fg=self.p["text"], font=self.fonts["bold"]).pack(side="left")
+                v_row = add_row("variant", all(e["use"] for e in vmem),
+                                f"변형  {variant or '(기본)'}")
+                v_anc = [v_row]
             for zone, algs in zones.items():
-                zmembers = [e for a in algs.values() for e in a]
-                zh = tk.Frame(inner, bg="#e2e8f0")
-                zh.pack(fill="x", pady=(6, 0), padx=(18 if multi_variant else 0, 0))
-                zv = tk.BooleanVar(value=all(x["use"].get() for x in zmembers))
-                tk.Checkbutton(zh, variable=zv, bg="#e2e8f0",
-                               command=lambda m=zmembers, x=zv: set_group(m, x.get())).pack(
-                               side="left")
-                tk.Label(zh, text=f"Zone · {zone or '(없음)'}", bg="#e2e8f0",
-                         fg=self.p["text"], font=self.fonts["bold"]).pack(side="left")
+                zmem = [e for a in algs.values() for e in a]
+                z_lbl = ("    " if multi_variant else "") + f"Zone · {zone or '(없음)'}"
+                z_row = add_row("zone", all(e["use"] for e in zmem), z_lbl, anc=v_anc)
+                z_anc = v_anc + [z_row]
+                if multi_variant:
+                    descend_head[v_row].append(z_row)
                 for alg, items in algs.items():
-                    ah = tk.Frame(inner, bg="#eef2f7", cursor="hand2")
-                    ah.pack(fill="x", padx=(36 if multi_variant else 18, 0))
-                    arrow = tk.Label(ah, text="▶", bg="#eef2f7", fg=self.p["muted"],
-                                     font=self.fonts["bold"])
-                    arrow.pack(side="left")
-                    av = tk.BooleanVar(value=all(x["use"].get() for x in items))
-                    tk.Checkbutton(ah, variable=av, bg="#eef2f7",
-                                   command=lambda m=items, x=av: set_group(m, x.get())).pack(
-                                   side="left")
-                    tk.Label(ah, text=f"Alg · {alg or '(없음)'}  ({len(items)})",
-                             bg="#eef2f7", fg=self.p["muted"],
-                             font=self.fonts["bold"]).pack(side="left")
-                    holder = tk.Frame(inner, bg=self.p["bg"])
-                    holder.pack(fill="x")         # 헤더 바로 아래 위치 고정(빈 상태)
-                    blk = (items, holder, {"open": False}, arrow)
-                    alg_blocks.append(blk)
-                    for w in (ah, arrow):
-                        w.bind("<Button-1>", lambda ev, b=blk: toggle_alg(b))
+                    a_ind = "        " if multi_variant else "    "
+                    a_lbl = a_ind + f"Alg · {alg or '(없음)'}  ({len(items)})"
+                    a_row = add_row("alg", all(e["use"] for e in items), a_lbl, anc=z_anc)
+                    a_anc = z_anc + [a_row]
+                    for h in z_anc:
+                        descend_head[h].append(a_row)
+                    for e in items:
+                        pr = add_row("param", e["use"], e["name"], e["label"],
+                                     engine._s(e["raw"]), disp_of(e, e["label"]),
+                                     anc=a_anc)
+                        row_entry[pr] = e
+                        for h in a_anc:
+                            descend_param[h].append(pr)
 
-        # 하단: 펼치기/접기 + 전체 선택/해제 + 확정
+        sheet = Sheet(body, theme="light blue", headers=HDR, data=data,
+                      show_row_index=False, show_x_scrollbar=True,
+                      show_y_scrollbar=True,
+                      font=(self.p["family"], 10, "normal"),
+                      header_font=(self.p["family"], 10, "bold"))
+        sheet.enable_bindings("single_select", "drag_select", "row_select",
+                              "arrowkeys", "column_width_resize",
+                              "double_click_column_resize", "copy", "edit_cell")
+        sheet.pack(fill="both", expand=True)
+        try:
+            sheet.set_column_widths([56, 430, 250, 130, 150])
+        except Exception:  # noqa: BLE001
+            pass
+
+        header_rows = [i for i, k in enumerate(kinds) if k != "param"]
+        param_r = [i for i, k in enumerate(kinds) if k == "param"]
+
+        def sync_header(h):
+            kids = descend_param.get(h, [])
+            val = bool(kids) and all(bool(sheet.get_cell_data(k, 0)) for k in kids)
+            sheet.set_cell_data(h, 0, val, redraw=False)
+
+        def on_check(ed):                                # 체크박스 클릭 콜백
+            try:
+                r = ed["row"]; val = bool(ed["value"])
+            except Exception:  # noqa: BLE001
+                return
+            if kinds[r] != "param":                      # 헤더=하위 전체 동기화
+                for k in descend_param.get(r, []):
+                    sheet.set_cell_data(k, 0, val, redraw=False)
+                for h in descend_head.get(r, []):
+                    sheet.set_cell_data(h, 0, val, redraw=False)
+            for h in ancestors.get(r, []):               # 상위 헤더 상태 재계산
+                sync_header(h)
+            sheet.refresh()
+
+        def on_dd(ed):                                   # 변환방식 드롭다운 선택 콜백
+            try:
+                r = ed["row"]; label = ed["value"]
+            except Exception:  # noqa: BLE001
+                return
+            e = row_entry.get(r)
+            if e is not None:
+                sheet.set_cell_data(r, 4, disp_of(e, label), redraw=False)
+            sheet.refresh()
+
+        def refresh_all():                               # 계수 [적용]=표시값 일괄 갱신
+            for r in param_r:
+                e = row_entry[r]
+                label = engine._s(sheet.get_cell_data(r, 2))
+                sheet.set_cell_data(r, 4, disp_of(e, label), redraw=False)
+            sheet.refresh()
+
+        def set_all(val):
+            for i in range(len(data)):
+                sheet.set_cell_data(i, 0, bool(val), redraw=False)
+            sheet.refresh()
+
+        # 사용(체크박스) 열 전체 — 헤더행=그룹 토글, 파라미터행=개별 선택
+        try:
+            sheet.checkbox("A", check_function=on_check, redraw=False)
+        except Exception:  # noqa: BLE001
+            pass
+        # 분류(변환방식): 파라미터 행만 셀 단위 드롭다운(헤더 행엔 드롭다운 없음).
+        #   열 단위로 걸면 헤더 행에서도 드롭다운이 떠 셀 단위로 개별 적용한다.
+        for r in param_r:
+            try:
+                sheet.dropdown(f"C{r + 1}", values=label_values, edit_data=False,
+                               selection_function=on_dd, redraw=False)
+            except Exception:  # noqa: BLE001
+                pass
+        # 읽기전용: 원본값/표시값 열 전체 + 헤더행의 항목·분류 셀
+        try:
+            sheet.readonly("D"); sheet.readonly("E")
+            for hr in header_rows:
+                sheet.readonly(f"B{hr + 1}"); sheet.readonly(f"C{hr + 1}")
+        except Exception:  # noqa: BLE001
+            pass
+        # 계층 헤더 행 색칠(가독성)
+        for tag, color in (("variant", "#dbe4f0"), ("zone", "#e2e8f0"),
+                           ("alg", "#eef2f7")):
+            rws = [i for i, k in enumerate(kinds) if k == tag]
+            if rws:
+                try:
+                    sheet.highlight_rows(rows=rws, bg=color, fg=self.p["text"],
+                                         highlight_index=False, redraw=False)
+                except Exception:  # noqa: BLE001
+                    pass
+        try:
+            sheet.set_options(table_wrap="", header_wrap="w")
+        except Exception:  # noqa: BLE001
+            pass
+        sheet.refresh()
+
+        # 하단: 전체 선택/해제 + 확정/취소
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=10, pady=(0, 10))
-        tk.Button(bt, text="모두 펼치기", relief="flat", bd=0, bg=self.p["surface"],
-                  fg=self.p["text"], padx=10, pady=6, cursor="hand2",
-                  command=lambda: expand_all(True)).pack(side="left")
-        tk.Button(bt, text="모두 접기", relief="flat", bd=0, bg=self.p["surface"],
-                  fg=self.p["text"], padx=10, pady=6, cursor="hand2",
-                  command=lambda: expand_all(False)).pack(side="left", padx=(6, 14))
         tk.Button(bt, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=10, pady=6, cursor="hand2",
-                  command=lambda: [e["use"].set(True) for e in entries]).pack(side="left")
+                  command=lambda: set_all(True)).pack(side="left")
         tk.Button(bt, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=10, pady=6, cursor="hand2",
-                  command=lambda: [e["use"].set(False) for e in entries]).pack(
-                  side="left", padx=6)
-        tk.Label(bt, text="  (Alg 헤더 클릭=펼치기 · 헤더 체크박스=하위 전체 선택·해제)",
+                  command=lambda: set_all(False)).pack(side="left", padx=6)
+        tk.Label(bt, text=("  (체크박스 클릭=선택 · 상위행 체크=하위 전체 선택·해제 · "
+                           "항목/분류는 셀을 더블클릭해 편집)"),
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
         def to_excel():
@@ -3112,13 +3091,14 @@ class EquipApp(tk.Tk):
 
         def confirm():
             records, extracts, used_scales = [], [], {}
-            for e in entries:
-                if not e["use"].get():
+            for r in param_r:
+                if not bool(sheet.get_cell_data(r, 0)):
                     continue
-                name = e["name"].get().strip() or e["reco"]
+                e = row_entry[r]
+                name = engine._s(sheet.get_cell_data(r, 1)).strip() or e["reco"]
                 if not name:
                     continue
-                method = cur_method(e)                # 드롭다운 라벨 → 방식(영어)
+                method = _method(sheet.get_cell_data(r, 2))   # 드롭다운 라벨 → 방식
                 v = e["variant"]
                 coef = coef_of(v)
                 used_scales[v] = coef
@@ -3133,13 +3113,13 @@ class EquipApp(tk.Tk):
             if on_confirm is not None:               # commonality 등 다른 저장 경로
                 on_confirm(records, extracts, dict(used_scales), win)
                 return
-            sheet = "RDL_ALL" if kind == "RDL" else "PI_ALL"
+            sheet_name = "RDL_ALL" if kind == "RDL" else "PI_ALL"
             final = workdirs.form_final_path(run_dir, level, aoi, st)
             scales_out = dict(used_scales)
 
             def work():
                 extract_io.write_snapshot(
-                    final, records, machines=[], sheet_name=sheet, extracts=extracts,
+                    final, records, machines=[], sheet_name=sheet_name, extracts=extracts,
                     stage="final", level=level, aoi=aoi, source=f"{level} 양식",
                     user=self.user, scales=scales_out)
                 return final
