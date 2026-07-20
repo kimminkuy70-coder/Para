@@ -207,6 +207,31 @@ def test_similarity_ranking_and_keys():
     print("  formbuilder OK: 유사도 순위 + 기반 선택 파생")
 
 
+def test_form_to_pivot_roundtrip():
+    """확정 양식 → 편집기용 rows/scales 복원(기존 양식 수정하기 = 프로그램 편집기)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        final = os.path.join(tmp, "form.xlsx")
+        coef = 0.7707763913156815
+        recs = [{"PI": "PI3", "Recipe": "PI", "Zone": "Scan Area", "Alg": "Surface",
+                 "Parameter": "Min Defect Area (area, µ)", "비고": ""},
+                {"PI": "PI3", "Recipe": "PI", "Zone": "Scan Area", "Alg": "Surface",
+                 "Parameter": "Contrast Delta - Bright", "비고": ""}]
+        exts = [{"src_file": "z.ini", "section": "Surface", "key": "A", "raw": 2,
+                 "transform": ini_parser.label_transform("AREA", coef), "source_path": ""},
+                {"src_file": "z.ini", "section": "Surface", "key": "B", "raw": 255,
+                 "transform": "RAW", "source_path": ""}]
+        extract_io.write_snapshot(final, recs, machines=[], sheet_name="PI_ALL",
+                                  extracts=exts, stage="final", level="PI3", aoi="AOI-1",
+                                  scales={"PI": coef})
+        rows, scales = formbuilder.form_to_pivot(final)
+        assert len(rows) == 2 and scales.get("PI") == coef
+        r0 = next(r for r in rows if "Min Defect Area" in r["param"])
+        assert r0["mag"] == "PI" and r0["zone"] == "Scan Area" and r0["use"] is True
+        assert r0["extract"]["transform"].startswith("AREA")
+        assert engine._s(r0["raws"]["양식"]) == "2"
+    print("  formbuilder OK: form_to_pivot 확정양식→편집기 rows/scales 복원")
+
+
 def test_final_rejects_when_all_unused():
     with tempfile.TemporaryDirectory() as tmp:
         rows, _ = _pivot(tmp)

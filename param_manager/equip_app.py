@@ -2527,8 +2527,10 @@ class EquipApp(tk.Tk):
                   command=self._load_previous_form).pack(side="left", padx=8)
 
     def _edit_existing_form(self):
-        """기존 양식 수정하기 — 저장해 둔 양식(수정본 초안)을 다시 Excel로 열어 편집→확정.
-        원본 버전은 보존하고 **새 버전**으로 확정한다(이전 버전 보기는 읽기전용)."""
+        """기존 양식 수정하기 — 저장된 확정 양식을 **프로그램 편집기**로 불러와 편집→확정.
+        (엑셀 대신 양식 만들기와 동일한 화면. 우측 상단 '엑셀에서 편집하기'로 엑셀도 가능.)
+        원본 버전은 보존하고 새 버전으로 확정하며, 확정 후 기존 값 이어받기·신규 항목
+        업데이트 안내가 이어진다."""
         import glob as _glob
         import re as _re
         import shutil as _shutil
@@ -2552,65 +2554,89 @@ class EquipApp(tk.Tk):
         if not chosen:
             return
         final_path = dict(zip(labels, [p for _, p in versions]))[chosen[0]]
-        run_dir = os.path.dirname(final_path)
-        related = workdirs.related_dir(run_dir)
         m = _re.search(r"_(.+?)호기_참조_", os.path.basename(final_path))
         aoi = m.group(1) if m else "로컬"
 
-        # 레시피 이름 수정(선택) — 바꾸면 폴더/파일 제목과 엑셀 안 PI 값도 함께 변경
+        # 레시피 이름 수정(선택)
         from tkinter import simpledialog
         new_level = simpledialog.askstring(
             "레시피 이름",
-            f"레시피 이름을 확인/수정하세요.\n"
-            f"(바꾸면 저장 폴더·파일 제목과 엑셀 안의 PI(레시피) 값도 함께 바뀝니다)",
+            "레시피 이름을 확인/수정하세요.\n"
+            "(바꾸면 저장 폴더·파일 제목과 양식 안의 PI(레시피) 값도 함께 바뀝니다)",
             initialvalue=level, parent=self)
         if new_level is None:
             return
-        new_level = new_level.strip() or level
+        new_level = (new_level.strip() or level)
         renamed = (new_level != level)
         kind = "RDL" if new_level.upper().startswith("RDL") else "PI"
 
-        drafts = sorted(_glob.glob(os.path.join(related, "*수정본*.xlsx")))
-        new_st = workdirs.stamp()
-        if not drafts:
-            # 편집용 초안이 없는 옛 버전 — 확정본을 **새 버전으로 복사**해 원본을
-            # 보존한 채 Excel 로 열어 수정(이름 수정도 복사본에만 적용).
-            if not messagebox.askyesno(
-                    "편집용 초안 없음",
-                    "이 버전에는 편집용 초안(수정본)이 없습니다.\n"
-                    "확정 양식을 새 버전으로 복사해 Excel로 열어 수정할까요?\n"
-                    "(원본 버전은 그대로 보존됩니다.)"):
-                return
-            new_run = workdirs.form_run_dir(self.save_dir, new_level, new_st)
-            new_final = workdirs.form_final_path(new_run, new_level, aoi, new_st)
-            try:
-                _shutil.copy2(final_path, new_final)
-                if renamed:
-                    formbuilder.force_level(new_final, new_level)   # PI 열 전체 통일
-            except Exception as e:  # noqa: BLE001
-                messagebox.showerror("복사 실패", str(e))
-                return
-            self._open_in_excel(new_final)
-            self._set_status(f"새 버전으로 복사: {os.path.basename(new_final)} — "
-                             "Excel에서 저장하면 그대로 반영됩니다.")
-            return
-        # 원본 버전 보존 — 새 버전 폴더로 초안 복사(+이름 반영) 후 편집→확정
-        new_run = workdirs.form_run_dir(self.save_dir, new_level, new_st)
-        new_draft = workdirs.form_draft_path(workdirs.related_dir(new_run),
-                                             new_level, aoi, new_st)
+        # 확정 양식 → 편집기용 rows/scales 복원
         try:
-            _shutil.copy2(drafts[-1], new_draft)
-            if renamed:
-                formbuilder.force_level(new_draft, new_level)   # PI 열 전체 통일
+            rows, scales = formbuilder.form_to_pivot(final_path)
         except Exception as e:  # noqa: BLE001
-            messagebox.showerror("초안 복사 실패", str(e))
+            messagebox.showerror("양식 불러오기 실패", str(e))
             return
-        opened = self._open_in_excel(new_draft)
-        # 원본 확정본의 변형별 변환계수를 새 버전에도 이어받는다(없으면 None)
-        old_scales = extract_io.read_scales(final_path) or None
-        # prev_form=원본 확정본 → 편집 확정 후 기존 값 이어받기·신규 항목 업데이트 안내(req5)
-        self._form_finalize_dialog(new_draft, drafts[-1], new_level, kind, old_scales,
-                                   new_run, aoi, new_st, opened, prev_form=final_path)
+        if renamed:
+            for r in rows:                       # 편집기 PI = new_level 로 확정
+                r["recipe"] = new_level
+        new_st = workdirs.stamp()
+        new_run = workdirs.form_run_dir(self.save_dir, new_level, new_st)
+        related = workdirs.related_dir(new_run)
+
+        def on_confirm(records, extracts, scales_out, win):
+            new_final = workdirs.form_final_path(new_run, new_level, aoi, new_st)
+            sheet = "RDL_ALL" if kind == "RDL" else "PI_ALL"
+
+            def w():
+                extract_io.write_snapshot(
+                    new_final, records, machines=[], sheet_name=sheet, extracts=extracts,
+                    stage="final", level=new_level, aoi=aoi,
+                    source=f"{new_level} 양식", user=self.user, scales=scales_out)
+                return new_final
+
+            def d(ok, res):
+                if not ok:
+                    messagebox.showerror("양식 확정 실패", str(res))
+                    return
+                win.destroy()
+                # 이전 값 이어받기 + 신규 항목 업데이트 안내(원본 확정본 기준)
+                self._post_finalize_merge(new_final, final_path, new_level,
+                                          {"kept": len(records), "dropped": 0})
+            self._run_busy("양식 확정 중…", w, d)
+
+        def on_excel():
+            # 엑셀 편집 폴백 — 옛 초안(수정본) 복사 또는 확정본 복사 후 Excel 열기
+            drafts = sorted(_glob.glob(os.path.join(
+                workdirs.related_dir(os.path.dirname(final_path)), "*수정본*.xlsx")))
+            if drafts:
+                new_draft = workdirs.form_draft_path(related, new_level, aoi, new_st)
+                try:
+                    _shutil.copy2(drafts[-1], new_draft)
+                    if renamed:
+                        formbuilder.force_level(new_draft, new_level)
+                except Exception as e:  # noqa: BLE001
+                    messagebox.showerror("초안 복사 실패", str(e))
+                    return
+                opened = self._open_in_excel(new_draft)
+                self._form_finalize_dialog(new_draft, drafts[-1], new_level, kind,
+                                           scales or None, new_run, aoi, new_st, opened,
+                                           prev_form=final_path)
+            else:
+                new_final = workdirs.form_final_path(new_run, new_level, aoi, new_st)
+                try:
+                    _shutil.copy2(final_path, new_final)
+                    if renamed:
+                        formbuilder.force_level(new_final, new_level)
+                except Exception as e:  # noqa: BLE001
+                    messagebox.showerror("복사 실패", str(e))
+                    return
+                self._open_in_excel(new_final)
+                self._set_status(f"새 버전으로 복사: {os.path.basename(new_final)} — "
+                                 "Excel에서 저장하면 그대로 반영됩니다.")
+
+        self._form_param_editor(rows, new_level, kind, scales, new_run, related, new_st,
+                                aoi, base_keys=None, base_name="", title_prefix="기존 양식 수정",
+                                on_confirm=on_confirm, on_excel=on_excel)
 
     def _form_new(self, from_equipment: bool):
         if not self.save_dir:

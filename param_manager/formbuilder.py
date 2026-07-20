@@ -224,6 +224,42 @@ def pivot_param_keys(rows: list[dict]) -> set[tuple]:
     return out
 
 
+def form_to_pivot(xlsx: str) -> tuple[list[dict], dict]:
+    """확정 양식(PI_ALL/RDL_ALL + _EXTRACT_MAP + 계수) → 편집기용 (rows, scales).
+    rows = 파싱 피벗과 같은 형식(zone/alg/param/mag/raws/extract/use=True),
+    scales = {변형: 계수}(추출_요약 우선, 없으면 변환방식 라벨에서 역추출).
+    '기존 양식 수정하기'에서 엑셀 대신 프로그램 편집기로 불러올 때 사용.
+    """
+    from . import ini_parser
+    repo = engine.ParamRepository(xlsx)
+    repo.load()
+    emap = extract_io.read_extract_map(xlsx)
+    scales = dict(extract_io.read_scales(xlsx) or {})
+    rows, label_coefs = [], {}
+    for pr in repo.rows:
+        level = engine._s(pr.get("PI"))
+        variant = engine._s(pr.get("Recipe"))
+        zone = engine._s(pr.get("Zone"))
+        alg = engine._s(pr.get("Alg"))
+        param = engine._s(pr.get("Parameter"))
+        meta = emap.get(pr.row_id, {})
+        transform = engine._s(meta.get("transform")) or "RAW"
+        rows.append({
+            "layer": level, "recipe": level, "mag": variant, "zone": zone,
+            "alg": alg, "param": param, "values": {}, "unit": meta.get("unit", ""),
+            "raws": {"양식": meta.get("raw")}, "use": True,
+            "extract": {"src_file": meta.get("src_file", ""),
+                        "section": meta.get("section", ""),
+                        "key": meta.get("key", ""), "transform": transform,
+                        "source_path": meta.get("source_path", "")}})
+        c = ini_parser.scale_from_label(transform)
+        if c is not None:
+            label_coefs.setdefault(variant, c)
+    for v, c in label_coefs.items():
+        scales.setdefault(v, c)
+    return rows, scales
+
+
 def rank_similar_forms(parsed_keys: set, forms: dict[str, set]) -> list[tuple]:
     """새 레시피(parsed_keys)와 기존 양식들(forms={레시피:키집합})의 겹치는 파라미터
     수로 정렬. 반환: [(레시피, 일치수, 기존항목수)] — 일치 많은 순(동률은 이름순)."""
