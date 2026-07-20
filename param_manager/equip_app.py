@@ -2753,7 +2753,12 @@ class EquipApp(tk.Tk):
                           "(새 항목은 미선택). 유사한(겹치는 파라미터 많은) 순서로 정렬했습니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left", wraplength=520).pack(anchor="w", padx=14, pady=(0, 6))
-        sel = tk.StringVar(value="")           # "" = 새로 만들기
+        # tkinter Radiobutton 은 변수값이 tristatevalue(기본 "")와 같으면 그 라디오가
+        # '삼상태'로 칠해져 **선택 안 한 항목까지 채워져** 보인다. '새로 만들기'에 빈 값("")을
+        # 쓰면 변수도 ""가 되어 나머지 라디오가 전부 채워진 듯 나오는 버그가 생긴다
+        #  → '새로 만들기'에 센티넬 값을 주어 변수가 절대 ""가 되지 않게 한다(반환 시 ""로 환원).
+        _NEW = "\x00새로만들기"
+        sel = tk.StringVar(value=_NEW)         # 센티넬 = 새로 만들기
         body = tk.Frame(win, bg=self.p["bg"])
         body.pack(fill="both", expand=True, padx=14)
         canvas = tk.Canvas(body, bg=self.p["bg"], highlightthickness=0)
@@ -2768,8 +2773,8 @@ class EquipApp(tk.Tk):
         vbar.pack(side="right", fill="y")
         self._wheelify(canvas)
         tk.Radiobutton(inner, text="＋ 새로 만들기(추천 항목 자동 체크)", variable=sel,
-                       value="", bg=self.p["bg"], font=self.fonts["bold"], anchor="w").pack(
-                       anchor="w", pady=2)
+                       value=_NEW, bg=self.p["bg"], font=self.fonts["bold"],
+                       anchor="w").pack(anchor="w", pady=2)
         for recipe, match, total in ranked:
             tk.Radiobutton(
                 inner, text=f"{recipe}   (겹치는 파라미터 {match} / 기존 {total}개)",
@@ -2778,7 +2783,8 @@ class EquipApp(tk.Tk):
         res = {"val": None}
 
         def ok():
-            res["val"] = sel.get()
+            v = sel.get()
+            res["val"] = "" if v == _NEW else v   # 센티넬 → "" (새로 만들기)
             win.destroy()
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=14, pady=12)
@@ -2945,10 +2951,40 @@ class EquipApp(tk.Tk):
             row.config(highlightbackground=self.p["primary"], highlightthickness=2)
             row.focus_set()
 
+        def _see_row(row):
+            # 스크롤 밖이면 그 행이 보이도록 캔버스 이동(안 보일 때만 — 불필요한 점프 방지).
+            try:
+                canvas.update_idletasks()
+                yy = row.winfo_rooty() - inner.winfo_rooty()
+                rh = row.winfo_height()
+                top = canvas.canvasy(0)
+                if yy < top or (yy + rh) > top + canvas.winfo_height():
+                    bbox = canvas.bbox("all")
+                    total = (bbox[3] - bbox[1]) if bbox else 1
+                    canvas.yview_moveto(max(0.0, (yy - 30) / max(1, total)))
+            except Exception:  # noqa: BLE001
+                pass
+
+        def _focus_entry(en):
+            row = en.get("_row")
+            if row is not None and row.winfo_exists():
+                select_row(en, row)
+                _see_row(row)
+                return True
+            return False
+
         def toggle_selected(_=None):
             en = sel["entry"]
-            if en is not None:
-                en["use"].set(not en["use"].get())
+            if en is None:
+                return "break"
+            en["use"].set(not en["use"].get())      # 현재 체크박스 선택/해제
+            try:                                     # 다음(빌드된) 체크박스로 이동
+                idx = ordered_entries.index(en)
+            except ValueError:
+                return "break"
+            for nxt in ordered_entries[idx + 1:]:
+                if _focus_entry(nxt):
+                    break
             return "break"
 
         # 계층 트리: 변형 → Zone → Alg → [entry]
@@ -2957,6 +2993,9 @@ class EquipApp(tk.Tk):
         for e in entries:
             tree.setdefault(e["variant"], OrderedDict()).setdefault(
                 e["zone"], OrderedDict()).setdefault(e["alg"], []).append(e)
+        # 화면(트리) 순서의 파라미터 목록 — Enter 로 다음 체크박스 이동 기준.
+        ordered_entries = [e for zs in tree.values() for al in zs.values()
+                           for items in al.values() for e in items]
 
         multi_variant = len(variants) > 1
         # ── 성능: Alg 그룹은 **접힌 상태로 시작**, 펼칠 때만 파라미터 위젯 생성(지연 렌더).
@@ -2988,8 +3027,9 @@ class EquipApp(tk.Tk):
                                 font=self.fonts["bold"], anchor="w")
                 disp.pack(side="left", padx=(2, 0))
                 e["disp"] = disp
+                e["_row"] = row                   # Enter 이동용 행 참조(접으면 None)
                 recompute(e)
-                # 행 클릭=선택, Enter=선택/해제(이름 Entry·드롭다운 제외 영역)
+                # 행 클릭=선택, Enter=선택/해제 후 다음 체크박스로 이동
                 for w in (row, lraw, lrawv, larr, disp):
                     w.bind("<Button-1>", lambda ev, en=e, rw=row: select_row(en, rw))
                     w.bind("<Return>", toggle_selected)
@@ -3018,6 +3058,7 @@ class EquipApp(tk.Tk):
                     w.destroy()
                 for e in items:
                     e["disp"] = None
+                    e["_row"] = None              # 접힌 행은 이동 대상에서 제외
                 arrow.config(text="▶")
             _upd_scroll()                         # 접기 후 빈 공간(스크롤영역) 즉시 갱신
 
