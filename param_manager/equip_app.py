@@ -3016,6 +3016,34 @@ class EquipApp(tk.Tk):
             self._logerr("E216", _e)
         sheet.refresh()
 
+        # Enter = 현재 행 체크박스 선택/해제 + **다음 행으로 이동**(연속 체크 편의).
+        #   tksheet 는 <Key>→open_cell 로 Enter 시 토글만 하고 이동은 안 한다. <Return> 은
+        #   <Key> 보다 구체적이라 이 바인딩이 Enter 를 전담(중복 토글 없음). 이름/드롭다운
+        #   편집 중엔 포커스가 편집 위젯에 있어 이 핸들러가 안 불린다(안전).
+        def _enter_step(event=None):
+            try:
+                cur = sheet.get_currently_selected()
+                if not cur:
+                    return "break"
+                r, c = cur.row, cur.column
+                if c != 0:                        # 체크박스 열이 아니면 기본 동작 위임
+                    sheet.MT.open_cell(event)
+                    return "break"
+                newv = not bool(sheet.get_cell_data(r, 0))
+                sheet.set_cell_data(r, 0, newv, redraw=False)
+                on_check({"row": r, "value": newv})   # 헤더/하위 동기화 + 재도색
+                nr = r + 1
+                if nr <= len(data) - 1:
+                    sheet.select_cell(nr, 0)
+                    sheet.see(nr, 0)
+            except Exception as _e:  # noqa: BLE001
+                self._logerr("E217", _e)
+            return "break"
+        try:
+            sheet.MT.bind("<Return>", _enter_step)
+        except Exception as _e:  # noqa: BLE001
+            self._logerr("E218", _e)
+
         # 하단: 전체 선택/해제 + 확정/취소
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=10, pady=(0, 10))
