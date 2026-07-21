@@ -2936,9 +2936,13 @@ class EquipApp(tk.Tk):
             for e in entries:
                 recompute(e)
 
-        def set_group(members, value):
-            for e in members:
-                e["use"].set(value)
+        def set_subtree(value, use_vars, head_vars):
+            # 상위 체크박스 → 하위 파라미터(use) + 하위 헤더 체크박스까지 일괄 반영.
+            #   (헤더는 파라미터와 별개 BooleanVar 라, 하위 헤더도 같이 세팅해야 따라 변한다.)
+            for u in use_vars:
+                u.set(value)
+            for h in head_vars:
+                h.set(value)
 
         # 행 클릭=선택(하이라이트), Enter=선택/해제 토글
         sel = {"entry": None, "row": None}
@@ -3067,24 +3071,29 @@ class EquipApp(tk.Tk):
                 pass
 
         def toggle_alg(blk, force=None):
-            items, holder, state, arrow = blk
+            items, state, arrow, ah = blk
             want = (not state["open"]) if force is None else force
             if want == state["open"]:
                 return
             state["open"] = want
-            if want:                              # 펼치기: 위젯 생성(지연)
+            if want:                              # 펼치기: 홀더 생성(헤더 바로 아래) + 위젯
+                holder = tk.Frame(inner, bg=self.p["bg"])
+                holder.pack(fill="x", after=ah)   # 헤더 ah 바로 다음 위치
+                state["holder"] = holder
                 build_params(holder, items, 54 if multi_variant else 36)
                 arrow.config(text="▼")
-            else:                                 # 접기: 위젯 파괴(메모리·렉 관리)
+            else:                                 # 접기: 홀더 프레임을 통째로 파괴
+                h = state.get("holder")           #   → 잔여 빈 공간이 남지 않는다.
+                if h is not None and h.winfo_exists():
+                    h.destroy()
+                state["holder"] = None
                 if sel["row"] is not None and not sel["row"].winfo_exists():
                     sel["row"] = sel["entry"] = None
-                for w in holder.winfo_children():
-                    w.destroy()
                 for e in items:
                     e["disp"] = None
                     e["_row"] = None              # 접힌 행은 이동 대상에서 제외
                 arrow.config(text="▶")
-            _upd_scroll()                         # 접기 후 빈 공간(스크롤영역) 즉시 갱신
+            _upd_scroll()                         # 스크롤영역 즉시 갱신
 
         def expand_all(v):
             for blk in alg_blocks:
@@ -3092,41 +3101,47 @@ class EquipApp(tk.Tk):
 
         for variant, zones in tree.items():
             vmembers = [e for z in zones.values() for a in z.values() for e in a]
+            v_use = [e["use"] for e in vmembers]
+            v_heads = []                          # 이 변형 하위의 모든 Zone/Alg 헤더 체크박스
             if multi_variant:
                 vh = tk.Frame(inner, bg="#dbe4f0")
                 vh.pack(fill="x", pady=(8, 0))
-                vv = tk.BooleanVar(value=all(x["use"].get() for x in vmembers))
+                vv = tk.BooleanVar(value=all(u.get() for u in v_use))
                 tk.Checkbutton(vh, variable=vv, bg="#dbe4f0",
-                               command=lambda m=vmembers, x=vv: set_group(m, x.get())).pack(
-                               side="left")
-                tk.Label(vh, text=f"변형  {variant or '(기본)'}", bg="#dbe4f0",
+                               command=lambda uu=v_use, hh=v_heads, x=vv:
+                               set_subtree(x.get(), uu, hh)).pack(side="left")
+                tk.Label(vh, text=f"변형 : {variant or '(기본)'}", bg="#dbe4f0",
                          fg=self.p["text"], font=self.fonts["bold"]).pack(side="left")
             for zone, algs in zones.items():
                 zmembers = [e for a in algs.values() for e in a]
+                z_use = [e["use"] for e in zmembers]
+                z_heads = []                      # 이 Zone 하위의 Alg 헤더 체크박스
                 zh = tk.Frame(inner, bg="#e2e8f0")
                 zh.pack(fill="x", pady=(6, 0), padx=(18 if multi_variant else 0, 0))
-                zv = tk.BooleanVar(value=all(x["use"].get() for x in zmembers))
+                zv = tk.BooleanVar(value=all(u.get() for u in z_use))
                 tk.Checkbutton(zh, variable=zv, bg="#e2e8f0",
-                               command=lambda m=zmembers, x=zv: set_group(m, x.get())).pack(
-                               side="left")
-                tk.Label(zh, text=f"Zone · {zone or '(없음)'}", bg="#e2e8f0",
+                               command=lambda uu=z_use, hh=z_heads, x=zv:
+                               set_subtree(x.get(), uu, hh)).pack(side="left")
+                tk.Label(zh, text=f"Zone : {zone or '(없음)'}", bg="#e2e8f0",
                          fg=self.p["text"], font=self.fonts["bold"]).pack(side="left")
+                v_heads.append(zv)                # 변형 → 이 Zone 헤더도 따라 변경
                 for alg, items in algs.items():
                     ah = tk.Frame(inner, bg="#eef2f7", cursor="hand2")
                     ah.pack(fill="x", padx=(36 if multi_variant else 18, 0))
                     arrow = tk.Label(ah, text="▶", bg="#eef2f7", fg=self.p["muted"],
                                      font=self.fonts["bold"])
                     arrow.pack(side="left")
-                    av = tk.BooleanVar(value=all(x["use"].get() for x in items))
+                    a_use = [e["use"] for e in items]
+                    av = tk.BooleanVar(value=all(u.get() for u in a_use))
                     tk.Checkbutton(ah, variable=av, bg="#eef2f7",
-                                   command=lambda m=items, x=av: set_group(m, x.get())).pack(
-                                   side="left")
-                    tk.Label(ah, text=f"Alg · {alg or '(없음)'}  ({len(items)})",
+                                   command=lambda uu=a_use, x=av:
+                                   set_subtree(x.get(), uu, [])).pack(side="left")
+                    tk.Label(ah, text=f"Alg : {alg or '(없음)'}  ({len(items)})",
                              bg="#eef2f7", fg=self.p["muted"],
                              font=self.fonts["bold"]).pack(side="left")
-                    holder = tk.Frame(inner, bg=self.p["bg"])
-                    holder.pack(fill="x")         # 헤더 바로 아래 위치 고정(빈 상태)
-                    blk = (items, holder, {"open": False}, arrow)
+                    z_heads.append(av)            # Zone → 이 Alg 헤더도 따라 변경
+                    v_heads.append(av)            # 변형 → 이 Alg 헤더도 따라 변경
+                    blk = (items, {"open": False, "holder": None}, arrow, ah)
                     alg_blocks.append(blk)
                     for w in (ah, arrow):
                         w.bind("<Button-1>", lambda ev, b=blk: toggle_alg(b))
