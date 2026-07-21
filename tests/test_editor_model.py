@@ -136,7 +136,7 @@ def test_build_grid_multi_variant_and_header_use():
         assert grid["data"][vr][0] == expect
     # x5 변형(P1 True, P2 False) 헤더 = False, x20(P3 True) = True
     label_use = {grid["data"][vr][1]: grid["data"][vr][0] for vr in v_rows}
-    assert label_use["변형  x5"] is False and label_use["변형  x20"] is True
+    assert label_use["변형 : x5"] is False and label_use["변형 : x20"] is True
     # 변형 헤더 조상 없음, 파라미터 조상 3개(variant/zone/alg)
     for r in grid["param_rows"]:
         assert len(grid["ancestors"][r]) == 3

@@ -123,18 +123,18 @@ def build_grid(entries, multi_variant, disp_fn) -> dict:
         v_anc, v_row = [], None
         if multi_variant:
             v_row = add_row("variant", all(e["use"] for e in vmem),
-                            f"변형  {variant or '(기본)'}")
+                            f"변형 : {variant or '(기본)'}")
             v_anc = [v_row]
         for zone, algs in zones.items():
             zmem = [e for a in algs.values() for e in a]
-            z_lbl = ("    " if multi_variant else "") + f"Zone · {zone or '(없음)'}"
+            z_lbl = ("    " if multi_variant else "") + f"Zone : {zone or '(없음)'}"
             z_row = add_row("zone", all(e["use"] for e in zmem), z_lbl, anc=v_anc)
             z_anc = v_anc + [z_row]
             if multi_variant:
                 descend_head[v_row].append(z_row)
             for alg, items in algs.items():
                 a_ind = "        " if multi_variant else "    "
-                a_lbl = a_ind + f"Alg · {alg or '(없음)'}  ({len(items)})"
+                a_lbl = a_ind + f"Alg : {alg or '(없음)'}  ({len(items)})"
                 a_row = add_row("alg", all(e["use"] for e in items), a_lbl, anc=z_anc)
                 a_anc = z_anc + [a_row]
                 for h in z_anc:
