@@ -269,15 +269,76 @@ OPTIC_SCAN2D_KEEP = {
 }
 _SCAN2D_SEC_RE = re.compile(r"(?i)^scan2d\d*$")   # [Scan2d] 또는 [Scan2d#]
 
+# 신 SW 버전: 현재 스캔된 optic 을 ActiveScenarioOptics.ini 로 지정한다(사용자 확정 2026-07).
+#   ScenarioName=Scan2d 항목의 OpticsName/OpticId 가 '지금 쓰는 Scan2d optic' 을 가리킨다.
+#   이 파일이 있으면 그 값으로 OpticPreset.ini 의 해당 섹션을 골라 target 으로 삼고,
+#   없으면(구 SW) 기존 방식(TDI/광원키/마지막 Scan2d)을 그대로 쓴다.
+ACTIVE_SCENARIO_FILE = "ActiveScenarioOptics.ini"
+_ACTIVE_SCAN2D_SCENARIO = "scan2d"                 # ScenarioName 매칭(대소문자 무시)
+_OPTIC_ID_KEYS = ("OpticId", "OpticsId", "OpticID", "Id", "Guid", "OpticGUID", "OpticGuid")
+_OPTIC_NAME_KEYS = ("OpticsName", "OpticName", "Name")
 
-def _pick_optic_target(sections: dict) -> str | None:
+
+def read_active_scan2d(config_dir) -> tuple[str, str] | None:
+    """ActiveScenarioOptics.ini 에서 ScenarioName=Scan2d 항목의 (OpticsName, OpticId).
+    파일이 없거나(구 SW) 유효한 Scan2d 항목이 없으면 None. 여러 개면 마지막(최신) 유효 항목."""
+    for name in (ACTIVE_SCENARIO_FILE, ACTIVE_SCENARIO_FILE.lower()):
+        p = Path(config_dir) / name
+        if p.is_file():
+            try:
+                sections = parse_ini_sections(p)
+            except Exception:  # noqa: BLE001
+                return None
+            hit = None
+            for kv in sections.values():
+                if str(kv.get("ScenarioName", "")).strip().lower() == _ACTIVE_SCAN2D_SCENARIO:
+                    nm = str(kv.get("OpticsName", "") or "").strip()
+                    oid = str(kv.get("OpticId", "") or "").strip()
+                    if nm or oid:
+                        hit = (nm, oid)            # 마지막 유효 항목 우선(최신)
+            return hit
+    return None
+
+
+def _match_active_section(sections: dict, name: str, oid: str) -> str | None:
+    """OpticPreset 섹션 중 ActiveScenarioOptics 의 OpticsName/OpticId 에 맞는 섹션.
+    우선순위: 1) 섹션 이름 == OpticsName  2) 섹션 내 OpticId 키 == OpticId
+              3) 섹션 내 Name/OpticsName 키 == OpticsName."""
+    n = (name or "").strip().casefold()
+    i = (oid or "").strip().casefold()
+    if n:                                          # 1) 섹션명 == OpticsName
+        for s in sections:
+            if str(s).strip().casefold() == n:
+                return s
+    if i:                                          # 2) OpticId 키 매칭
+        for s, kv in sections.items():
+            for k in _OPTIC_ID_KEYS:
+                v = kv.get(k)
+                if v is not None and str(v).strip().casefold() == i:
+                    return s
+    if n:                                          # 3) Name/OpticsName 키 == OpticsName
+        for s, kv in sections.items():
+            for k in _OPTIC_NAME_KEYS:
+                v = kv.get(k)
+                if v is not None and str(v).strip().casefold() == n:
+                    return s
+    return None
+
+
+def _pick_optic_target(sections: dict, active: tuple[str, str] | None = None) -> str | None:
     """최신(target) 섹션을 고른다(사용자 확정 2026-07):
+    0순위 = **ActiveScenarioOptics.ini 의 Scan2d optic 매칭**(신 SW — active 주어질 때).
     1순위 = **CameraName=TDI 섹션 중 마지막**(광원 키 있으면 그 중 마지막).
     이름은 장비마다 다를 수 있어([Scan2d#]·[Engineer optic] 등) 이름이 아니라
     'TDI 카메라 + 광원 키를 가진 마지막 [섹션]' 으로 고른다. TDI 없으면 광원 키 마지막.
     """
     if not sections:
         return None
+    if active is not None:                         # 신 SW: 지정된 Scan2d optic 우선
+        m = _match_active_section(sections, active[0], active[1])
+        if m is not None:
+            return m                               # 매칭되면 그 섹션이 target(권위)
+        # 매칭 실패 → 아래 기존 방식으로 폴백(파일은 있으나 섹션 못 찾은 경우)
     names = list(sections)
 
     def _is_tdi(s):
@@ -315,7 +376,7 @@ def read_optic_mag(config_dir: Path) -> str:
                 sections = parse_ini_sections(p)
             except Exception:  # noqa: BLE001
                 return ""
-            target = _pick_optic_target(sections)
+            target = _pick_optic_target(sections, read_active_scan2d(config_dir))
             if target is not None:
                 mag = sections[target].get("Mag")
                 if mag not in (None, ""):
@@ -332,9 +393,11 @@ def read_optic_mag(config_dir: Path) -> str:
     return ""
 
 
-def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT") -> list[ExtractRow]:
-    """OpticPreset.ini 전용 — 최신 Scan2d 통일 + 합성 행(첫 KEEP 위) + 나머지 N."""
-    target = _pick_optic_target(sections)
+def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT",
+                 active: tuple[str, str] | None = None) -> list[ExtractRow]:
+    """OpticPreset.ini 전용 — 최신 Scan2d 통일 + 합성 행(첫 KEEP 위) + 나머지 N.
+    active = ActiveScenarioOptics.ini 의 (OpticsName, OpticId) — 있으면 그 optic 을 target."""
+    target = _pick_optic_target(sections, active)
     # 최신 이름: target 안 'Alg' 키 값 우선(원 요청: LIGHT의 Alg 값이 Scan2d#), 없으면 섹션명
     latest_name = ""
     if target is not None:
@@ -379,9 +442,12 @@ def _is_optic_file(file_path: Path) -> bool:
 def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE) -> list[ExtractRow]:
     """설정파일 1개 → ExtractRow 목록. scale = LINEAR/AREA 변환 계수(변형별)."""
     sections = parse_ini_sections(file_path)
-    # OpticPreset 은 **마지막 광원 섹션**(이름 무관) 통일 규칙 적용
-    if _is_optic_file(file_path) and _pick_optic_target(sections) is not None:
-        return _parse_optic(file_path, sections)
+    # OpticPreset: 신 SW 는 ActiveScenarioOptics.ini 로 Scan2d optic 지정, 구 SW 는
+    # 마지막 광원 섹션(이름 무관) 통일 규칙 적용.
+    if _is_optic_file(file_path):
+        active = read_active_scan2d(file_path.parent)
+        if _pick_optic_target(sections, active) is not None:
+            return _parse_optic(file_path, sections, active=active)
     top = infer_top_item(file_path, sections)
     zone = TOP_TO_ZONE.get(top, top)
     is_global = (top == "Global")            # GlobalRTP.ini

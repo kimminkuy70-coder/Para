@@ -251,6 +251,50 @@ def test_optic_target_tdi():
     print("  ini_parser OK: OpticPreset CameraName=TDI 마지막 섹션 선택")
 
 
+def test_active_scenario_optics():
+    """신 SW: ActiveScenarioOptics.ini 의 ScenarioName=Scan2d optic 으로 target 선택.
+    구 SW(파일 없음): 기존 방식 유지."""
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        # [Scan2d] 가 마지막 → 구 방식이면 이걸 고른다.
+        (d / "OpticPreset.ini").write_text(
+            "[General]\nName=preset\n"
+            "[Engineer optic2]\nCameraName=TDI\nMag=3.14\n"
+            "LightSrcRef_NominalGL=222\nLightSrcRef_ColorFilter=CSI5\n"
+            "LightSrcRef_NominalGL_On=1\nOpticId=e7d7cd83-7e46-4387-9f6e-c6b7c9a62a29\n"
+            "[Scan2d]\nCameraName=TDI\nMag=5\n"
+            "LightSrcRef_NominalGL=100\nLightSrcRef_ColorFilter=CSI3\n"
+            "LightSrcRef_NominalGL_On=1\n", encoding="utf-8")
+        secs = ini_parser.parse_ini_sections(d / "OpticPreset.ini")
+        # 파일 없음(구 SW) → 마지막 [Scan2d]
+        assert ini_parser.read_active_scan2d(d) is None
+        assert ini_parser._pick_optic_target(secs, None) == "Scan2d"
+        assert ini_parser.read_optic_mag(d) == "5"
+        # ActiveScenarioOptics 추가 → ScenarioName=Scan2d 는 'Engineer optic2'
+        (d / "ActiveScenarioOptics.ini").write_text(
+            "[a]\nScenarioName=ScenarioGrab_x\nOpticsName=x7.5\nOpticId=bc5369a7\n"
+            "[b]\nScenarioName=Scan2d\nOpticsName=Engineer optic2\n"
+            "OpticId=e7d7cd83-7e46-4387-9f6e-c6b7c9a62a29\n"
+            "[c]\nScenarioName=AutoFocus\nOpticsName=AutoFocus0\nOpticId=7e5cb882\n",
+            encoding="utf-8")
+        active = ini_parser.read_active_scan2d(d)
+        assert active == ("Engineer optic2", "e7d7cd83-7e46-4387-9f6e-c6b7c9a62a29")
+        assert ini_parser._pick_optic_target(secs, active) == "Engineer optic2"  # 이름 매칭
+        assert ini_parser.read_optic_mag(d) == "3.14"                            # 그 optic Mag
+        # 섹션명이 OpticsName 과 달라도 OpticId 로 매칭
+        (d / "ActiveScenarioOptics.ini").write_text(
+            "[b]\nScenarioName=Scan2d\nOpticsName=DiffName\n"
+            "OpticId=e7d7cd83-7e46-4387-9f6e-c6b7c9a62a29\n", encoding="utf-8")
+        act2 = ini_parser.read_active_scan2d(d)
+        assert ini_parser._pick_optic_target(secs, act2) == "Engineer optic2"    # id 매칭
+        # 매칭 실패(없는 optic) → 기존 방식 폴백
+        (d / "ActiveScenarioOptics.ini").write_text(
+            "[b]\nScenarioName=Scan2d\nOpticsName=없는옵틱\nOpticId=zzz\n", encoding="utf-8")
+        act3 = ini_parser.read_active_scan2d(d)
+        assert ini_parser._pick_optic_target(secs, act3) == "Scan2d"             # 폴백
+    print("  ini_parser OK: ActiveScenarioOptics.ini Scan2d optic 매칭(+구SW 폴백)")
+
+
 def test_level_folder_match():
     m = collector.level_folder_match
     assert m("R_TB500_LIVE_PI3 - Enhanced", "Enhanced PI3")
