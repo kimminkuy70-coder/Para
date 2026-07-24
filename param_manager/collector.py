@@ -30,7 +30,8 @@ from pathlib import Path
 
 COPY_DELAY_SEC = 0.10
 # RTP.txt 도 함께 복사한다 — 변환 계수 자동 추정(coef_detector)에 사용.
-FIXED_FILES = ["GlobalRTP.ini", "OpticPreset.ini", "RTP.txt"]
+# ActiveScenarioOptics.ini(신 SW 만 존재) — 현재 스캔된 Scan2d optic 지정. 있을 때만 복사.
+FIXED_FILES = ["GlobalRTP.ini", "OpticPreset.ini", "RTP.txt", "ActiveScenarioOptics.ini"]
 LOG_NAME = "_수집로그.txt"
 
 

@@ -127,9 +127,13 @@ python3 tests/test_downloader.py   # 8
 
 - `param_manager/ini_parser.py` — **새 1차 파서**: GlobalRTP/OpticPreset/Zones ini →
   Para 스키마(Zone/Alg/Parameter) 정규화, KNOWN_DISPLAY_MAP·계수 변환, 피벗.
-  **OpticPreset LIGHT/Scan2d 통일**(`_parse_optic`): 최신 Scan2d 섹션(맨 아래 `[Scan2d#]`)만
+  **OpticPreset LIGHT/Scan2d 통일**(`_parse_optic`): Scan2d(target) 섹션만
   alg=`Scan2d`로 통일, `OPTIC_SCAN2D_KEEP`(9개)만 사용=Y, `Scan2d 최신 항목 이름` 합성행 추가,
   나머지·오래된 Scan2d는 사용=N(검토용). `ExtractRow.use_default`→피벗 `use`→formbuilder.
+  **target(현재 스캔 optic) 선택(`_pick_optic_target`)**: 신 SW = 같은 폴더 `ActiveScenarioOptics.ini`
+  의 `ScenarioName=Scan2d` 항목 `OpticsName`/`OpticId` 로 OpticPreset 섹션 매칭(`read_active_scan2d`).
+  없으면(구 SW) 기존 방식 = CameraName=TDI·광원키 가진 **마지막** 섹션. `read_optic_mag` 도 동일 경로.
+  (`collector.FIXED_FILES` 에 ActiveScenarioOptics.ini 포함 — 있을 때만 복사.)
   **변환 판정(`resolve_transform`)**: 표시명에 **µ(마이크로) 있으면 변환**(area→AREA,else LINEAR),
   **없으면 RAW**(예: 'Min Defect Width'는 변환 안 함). BOOL/REGION/CLASSIFY는 유지.
   **GlobalRTP**(`GLOBALRTP_KEEP`): `Max Defects Per Wafer/Die`만 기본 사용=Y, 나머지 N.
