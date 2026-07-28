@@ -3770,12 +3770,19 @@ class EquipApp(tk.Tk):
         # 다중 레시피 자동 인식(RecipesInfo.ini) → 알림 후 레시피별 순차 진행
         recipes = cm.detect_recipes(lot_dirs)
         if recipes:
+            from tkinter import simpledialog
             names = ", ".join(r["name"] for r in recipes)
-            messagebox.showinfo(
-                "다중 레시피 감지",
-                f"이 스캔 폴더에는 레시피가 {len(recipes)}개 있습니다:\n  {names}\n\n"
-                "레시피별로 순차 진행합니다 — 각 레시피마다 편집기에서 항목을 고른 뒤,\n"
-                "레시피별 양식 엑셀과 값 조사 결과가 따로 만들어집니다.")
+            base = simpledialog.askstring(
+                "다중 레시피 감지 — 조사 제목",
+                f"이 스캔 폴더에는 레시피가 {len(recipes)}개 있습니다: {names}\n\n"
+                "레시피별로 순차 진행합니다(레시피마다 편집기 → 값 조사).\n"
+                "양식·결과 파일은 레시피별로 따로 만들어지며, 같은 조사의 분기임을\n"
+                f"알 수 있게 '조사제목_레시피명'(예: {self._cm.get('recipe') or 'PI3'}_{recipes[0]['name']})\n"
+                "형식으로 저장됩니다.\n\n이 조사의 제목을 입력하세요:",
+                initialvalue=self._cm.get("recipe") or "", parent=self)
+            if not base:
+                return
+            self._cm["cm_base"] = base.strip()
             self._cm["recipes"] = recipes
             self._cm["recipe_idx"] = 0
             self._cm["recipe_done"] = []
@@ -3808,10 +3815,13 @@ class EquipApp(tk.Tk):
                 "\n\n이제 '취합·비교 + 뷰어 열기'로 마무리하세요.")
             return
         rec = recipes[idx]
-        self._cm["recipe"] = rec["name"]
+        base = self._cm.get("cm_base", "")
+        # 파일명이 '조사제목_레시피명'(예 PI3_PI, PI3_PI_Bubble)이 되어 같은 조사의
+        # 레시피 분기임을 확실히 구분한다.
+        eff = f"{base}_{rec['name']}" if base else rec["name"]
+        self._cm["recipe"] = eff
         self._cm["recipe_prefix"] = rec["prefix"]
-        self._cm_run_form_detect(lot_dirs, rec["name"], recipe_prefix=rec["prefix"],
-                                 multi=True)
+        self._cm_run_form_detect(lot_dirs, eff, recipe_prefix=rec["prefix"], multi=True)
 
     def _advance_recipe(self, lot_dirs):
         self._cm.setdefault("recipe_done", []).append(self._cm.get("recipe"))
