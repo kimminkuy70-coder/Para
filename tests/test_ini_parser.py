@@ -295,6 +295,73 @@ def test_active_scenario_optics():
     print("  ini_parser OK: ActiveScenarioOptics.ini Scan2d optic 매칭(+구SW 폴백)")
 
 
+def test_multi_recipe_parsing():
+    """다중 레시피(RecipesInfo.ini): 무접두=Recipe-1, RecipeN- 접두=Recipe-N.
+    레시피별로 자기 OpticPreset/ActiveScenarioOptics/Zones 만 파싱(값 분리)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "RecipesInfo.ini").write_text(
+            "[Recipe-1]\nName=PI_Bubble\n[Recipe-2]\nName=PI\n[Recipes]\nCount=2\n",
+            encoding="utf-8")
+        (d / "GlobalRTP.ini").write_text(
+            "[GLOBAL_RTP]\nMaxFaultsPerWafer=3000\n", encoding="utf-8")  # 공유
+        # Recipe-1 (무접두)
+        (d / "OpticPreset.ini").write_text(
+            "[General]\nName=p\n[Scan2d1]\nId=aaa\nCameraName=TDI\nMag=7.5\n"
+            "LightSrcRef_NominalGL=111\nLightSrcRef_ColorFilter=CSI1\n"
+            "LightSrcRef_NominalGL_On=1\n", encoding="utf-8")
+        (d / "ActiveScenarioOptics.ini").write_text(
+            "[z]\nScenarioName=Scan2d\nOpticsName=Scan2d1\nOpticId=aaa\n", encoding="utf-8")
+        (d / "Zones").mkdir()
+        (d / "Zones" / "PI_Opening.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta=11\n", encoding="utf-8")
+        # Recipe-2 (Recipe2- 접두) — 섹션명은 Scan2dX 지만 active 는 OpticId 로 매칭
+        (d / "Recipe2-OpticPreset.ini").write_text(
+            "[General]\nName=p\n[Scan2d9]\nId=bbb\nCameraName=TDI\nMag=10\n"
+            "LightSrcRef_NominalGL=222\nLightSrcRef_ColorFilter=CSI2\n"
+            "LightSrcRef_NominalGL_On=1\n", encoding="utf-8")
+        (d / "Recipe2-ActiveScenarioOptics.ini").write_text(
+            "[z]\nScenarioName=Scan2d\nOpticsName=DiffName\nOpticId=bbb\n", encoding="utf-8")
+        (d / "Recipe2-Zones").mkdir()
+        (d / "Recipe2-Zones" / "PI_Opening.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta=99\n", encoding="utf-8")
+        (d / "Recipe2-Zones" / "PostProcess.ini").write_text(
+            "[General]\nZoneName=PostProcess\n[Volume]\nX=1\n", encoding="utf-8")
+
+        recs = ini_parser.read_recipes_info(d)
+        assert recs == [
+            {"index": 1, "name": "PI_Bubble", "prefix": ""},
+            {"index": 2, "name": "PI", "prefix": "Recipe2-"}], recs
+        # 레시피별 optic/mag/active 분리
+        assert ini_parser.read_optic_mag(d, "") == "7.5"
+        assert ini_parser.read_optic_mag(d, "Recipe2-") == "10"       # 접두 OpticPreset
+        assert ini_parser.read_active_scan2d(d, "Recipe2-") == ("DiffName", "bbb")
+        f1 = [f.name for f in ini_parser.config_ini_files(d, "")]
+        f2 = [f.name for f in ini_parser.config_ini_files(d, "Recipe2-")]
+        assert "OpticPreset.ini" in f1 and "Recipe2-OpticPreset.ini" in f2
+        assert "PostProcess.ini" in f2 and "PostProcess.ini" not in f1   # Zones 분리
+        assert "GlobalRTP.ini" in f1 and "GlobalRTP.ini" in f2           # 공유
+        # 전체 파싱: 같은 Zone/Alg/param(High_Delta)이라도 레시피별 값이 다르다
+        c1 = ini_parser.scan_tree(d, default_level="PI_Bubble",
+                                  default_equipment="LotA", recipe_prefix="")
+        c2 = ini_parser.scan_tree(d, default_level="PI", default_equipment="LotA",
+                                  recipe_prefix="Recipe2-")
+
+        def hd(cfgs):
+            for c in cfgs:
+                for r in c.rows:
+                    if r.key == "High_Delta":
+                        return str(r.raw)
+            return None
+        assert hd(c1) == "11" and hd(c2) == "99"       # 값 충돌 없이 분리
+        assert [c.mag_value for c in c1] == ["7.5"]
+        assert [c.mag_value for c in c2] == ["10"]
+        # 단일 레시피(파일 없음)면 None
+        (d / "RecipesInfo.ini").unlink()
+        assert ini_parser.read_recipes_info(d) is None
+    print("  ini_parser OK: 다중 레시피 RecipesInfo·접두 파일 분리 파싱")
+
+
 def test_level_folder_match():
     m = collector.level_folder_match
     assert m("R_TB500_LIVE_PI3 - Enhanced", "Enhanced PI3")

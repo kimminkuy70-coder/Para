@@ -27,6 +27,8 @@ from pathlib import Path, PureWindowsPath
 # 다운로드 대상(Wafer 폴더 바로 아래)
 TARGET_FOLDER_NAME = "Zones"
 TARGET_FILES = ["RTP.txt", "OpticPreset.ini"]
+# 보조 파일(있을 때만) — 현재 스캔 optic 지정 + 다중 레시피 정보
+AUX_FILES = ["ActiveScenarioOptics.ini", "GlobalRTP.ini", "RecipesInfo.ini"]
 
 # 자동 탐색 대상 Recipe.
 # 현재는 RDL 만 지원(x5/x20 변형). PI(PI2~4, PI/PI_bubble) 는 추후 지원 예정.
@@ -332,18 +334,35 @@ def copy_one_file(src: Path, dst: Path, overwrite: bool = False, verify: bool = 
 
 
 def collect_target_items(wafer_root: Path) -> tuple[Path, list[Path]]:
-    """Wafer 폴더에서 복사 대상만 수집(Zones 내부 전체 + RTP + Optic)."""
+    """Wafer 폴더에서 복사 대상만 수집.
+    Zones/ 내부 전체 + RTP/Optic + 보조(ActiveScenarioOptics/GlobalRTP/RecipesInfo) +
+    **다중 레시피** Recipe*-OpticPreset/ActiveScenarioOptics 및 Recipe*-Zones/ 내부 전체.
+    (전부 있을 때만. 상대구조는 복사 시 보존된다.)"""
     zones = wafer_root / TARGET_FOLDER_NAME
     files: list[Path] = []
-    if zones.is_dir():
-        for p in zones.rglob("*"):
-            if p.is_file():
-                files.append(p)
-    for name in TARGET_FILES:
+    # 기본 Zones + 다중 레시피 Recipe*-Zones 폴더 전부(하위 구조 보존)
+    zone_dirs = [zones] + sorted(p for p in wafer_root.glob("Recipe*-Zones")
+                                 if p.is_dir())
+    for zd in zone_dirs:
+        if zd.is_dir():
+            files += [p for p in zd.rglob("*") if p.is_file()]
+    # 고정 + 보조 파일(있을 때만)
+    for name in list(TARGET_FILES) + AUX_FILES:
         p = wafer_root / name
         if p.is_file():
             files.append(p)
-    return zones, files
+    # 다중 레시피 접두 설정파일(Recipe2-OpticPreset.ini 등)
+    for pat in ("Recipe*-OpticPreset.ini", "Recipe*-ActiveScenarioOptics.ini",
+                "Recipe*-GlobalRTP.ini"):
+        files += sorted(p for p in wafer_root.glob(pat) if p.is_file())
+    # 중복 제거(순서 유지)
+    seen: set = set()
+    uniq: list[Path] = []
+    for p in files:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return zones, uniq
 
 
 def dest_base_for(cand: WaferCandidate, download_root: Path) -> Path:
@@ -362,12 +381,10 @@ def copy_wafer(cand: WaferCandidate, download_root: Path,
     if not wafer_root.exists() or not wafer_root.is_dir():
         raise FileNotFoundError(f"설정 폴더가 없습니다: {wafer_root}")
     dst_base = dest_base_for(cand, download_root)
-    zones, files = collect_target_items(wafer_root)
+    _zones, files = collect_target_items(wafer_root)
     rows = []
     for src in files:
-        if zones.is_dir() and zones in src.parents:
-            dst = dst_base / src.relative_to(wafer_root)   # Zones 내부 구조 유지
-        else:
-            dst = dst_base / src.name
+        # 전부 wafer_root 하위 → 상대구조 보존(Zones/·Recipe*-Zones/ 유지, 최상위는 파일명)
+        dst = dst_base / src.relative_to(wafer_root)
         rows.append(copy_one_file(src, dst, overwrite, verify))
     return {"dest": str(dst_base), "files": rows, "count": len(rows)}

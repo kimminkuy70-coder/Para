@@ -194,6 +194,46 @@ def test_copy_lot_read_only():
     print("  commonality OK: 안전복사(원본 read-only) + 대상만 복사")
 
 
+def test_multi_recipe_copy_preserves_structure():
+    """다중 레시피 안전복사: RecipesInfo/ActiveScenarioOptics/Recipe*- 파일 + Recipe*-Zones/
+    구조 보존, 사본에서 레시피별 값 분리 파싱까지."""
+    with tempfile.TemporaryDirectory() as tmp:
+        w = _make_wafer(tmp, "AOI-6", "2D@DEVM_x", "6400", "HPG", "CX20")  # recipe-1 delta=25
+        (w / "RecipesInfo.ini").write_text(
+            "[Recipe-1]\nName=PI_Bubble\n[Recipe-2]\nName=PI\n[Recipes]\nCount=2\n",
+            encoding="utf-8")
+        (w / "ActiveScenarioOptics.ini").write_text(
+            "[z]\nScenarioName=Scan2d\nOpticsName=Scan2d1\nOpticId=aaa\n", encoding="utf-8")
+        (w / "Recipe2-OpticPreset.ini").write_text(
+            "[LIGHT]\n[Scan2d1]\nAlg=Scan2d\nLightSrc_Top=100\n", encoding="utf-8")
+        (w / "Recipe2-ActiveScenarioOptics.ini").write_text(
+            "[z]\nScenarioName=Scan2d\nOpticsName=Scan2d1\nOpticId=aaa\n", encoding="utf-8")
+        (w / "Recipe2-Zones").mkdir()
+        (w / "Recipe2-Zones" / "Z.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta=99\n", encoding="utf-8")
+        root = commonality.scanresult_root(tmp, "AOI-6")
+        lot = commonality.resolve_lot(root, "DEVM", "6400", "HPG", "AOI-6")
+        dest = os.path.join(tmp, "staging")
+        commonality.copy_lot(lot, dest, verify=True)
+        base = Path(dest) / "HPG"
+        for rel in ("RecipesInfo.ini", "Recipe2-OpticPreset.ini",
+                    "Recipe2-ActiveScenarioOptics.ini", "ActiveScenarioOptics.ini",
+                    "Recipe2-Zones/Z.ini", "Zones/Z.ini"):
+            assert (base / rel).is_file(), f"복사 누락: {rel}"
+        recs = commonality.detect_recipes([("HPG", base)])
+        assert [r["name"] for r in recs] == ["PI_Bubble", "PI"], recs
+        p1, _ = commonality.parse_lots([("HPG", base)], level="PI_Bubble", recipe_prefix="")
+        p2, _ = commonality.parse_lots([("HPG", base)], level="PI", recipe_prefix="Recipe2-")
+
+        def hd(pv):
+            for r in pv:
+                if r["extract"].get("key") == "High_Delta":
+                    return str(r["raws"].get("HPG"))
+            return None
+        assert hd(p1) == "25" and hd(p2) == "99"     # 레시피별 값 분리(사본)
+    print("  commonality OK: 다중 레시피 안전복사 구조 보존 + 사본 파싱 분리")
+
+
 def test_structure_diff():
     with tempfile.TemporaryDirectory() as tmp:
         w1 = _make_wafer(tmp, "AOI-6", "2D@DEVC_x", "1", "HPG", "CXA")
@@ -350,6 +390,45 @@ def test_zone_group_sort_adjacent():
     i_pad = ordered.index("PAD / Surface / C")
     assert abs(i_alpad - i_pad) == 1, ordered
     print("  commonality OK: Zone 그룹 정렬(AL PAD ↔ PAD 인접)")
+
+
+def test_multi_recipe_detect_and_parse():
+    """다중 레시피 감지 + 레시피별 parse_lots 값 분리."""
+    with tempfile.TemporaryDirectory() as tmp:
+        cdir = Path(tmp) / "wafer"
+        (cdir / "Zones").mkdir(parents=True)
+        (cdir / "Zones" / "Z.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta=11\n", encoding="utf-8")
+        (cdir / "OpticPreset.ini").write_text(
+            "[LIGHT]\n[Scan2d1]\nAlg=Scan2d\nLightSrc_Top=100\n", encoding="utf-8")
+        (cdir / "RecipesInfo.ini").write_text(
+            "[Recipe-1]\nName=PI_Bubble\n[Recipe-2]\nName=PI\n[Recipes]\nCount=2\n",
+            encoding="utf-8")
+        (cdir / "Recipe2-Zones").mkdir()
+        (cdir / "Recipe2-Zones" / "Z.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta=99\n", encoding="utf-8")
+        (cdir / "Recipe2-OpticPreset.ini").write_text(
+            "[LIGHT]\n[Scan2d1]\nAlg=Scan2d\nLightSrc_Top=100\n", encoding="utf-8")
+
+        lot_dirs = [("LotA", cdir)]
+        recs = commonality.detect_recipes(lot_dirs)
+        assert [r["name"] for r in recs] == ["PI_Bubble", "PI"], recs
+        assert [r["prefix"] for r in recs] == ["", "Recipe2-"]
+
+        def hd(pivot):
+            for row in pivot:
+                if row["extract"].get("key") == "High_Delta":
+                    return str(row["raws"].get("LotA"))
+            return None
+        p1, _ = commonality.parse_lots(lot_dirs, level="PI_Bubble",
+                                       recipe_prefix=recs[0]["prefix"])
+        p2, _ = commonality.parse_lots(lot_dirs, level="PI",
+                                       recipe_prefix=recs[1]["prefix"])
+        assert hd(p1) == "11" and hd(p2) == "99"       # 레시피별 값 분리(충돌 없음)
+        # 단일 레시피면 None
+        (cdir / "RecipesInfo.ini").unlink()
+        assert commonality.detect_recipes(lot_dirs) is None
+    print("  commonality OK: 다중 레시피 감지 + 레시피별 값 분리 파싱")
 
 
 if __name__ == "__main__":

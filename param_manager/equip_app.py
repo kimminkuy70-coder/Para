@@ -3636,9 +3636,10 @@ class EquipApp(tk.Tk):
         if not lot_dirs:
             return
         level = self._cm.get("recipe", "")
+        prefix = self._cm.get("recipe_prefix", "")   # 다중 레시피면 현재 레시피 기준
 
         def work():
-            return cm.structure_diff(lot_dirs, level=level)
+            return cm.structure_diff(lot_dirs, level=level, recipe_prefix=prefix)
 
         def done(ok, res):
             if not ok:
@@ -3657,6 +3658,23 @@ class EquipApp(tk.Tk):
         self._run_busy("Lot 구조 비교 중…", work, done)
 
     def _cm_make_form(self):
+        from pathlib import Path as _P
+        lot_dirs = [(lbl, _P(d)) for lbl, d in self._cm["lot_dirs"]]
+        # 다중 레시피 자동 인식(RecipesInfo.ini) → 알림 후 레시피별 순차 진행
+        recipes = cm.detect_recipes(lot_dirs)
+        if recipes:
+            names = ", ".join(r["name"] for r in recipes)
+            messagebox.showinfo(
+                "다중 레시피 감지",
+                f"이 스캔 폴더에는 레시피가 {len(recipes)}개 있습니다:\n  {names}\n\n"
+                "레시피별로 순차 진행합니다 — 각 레시피마다 편집기에서 항목을 고른 뒤,\n"
+                "레시피별 양식 엑셀과 값 조사 결과가 따로 만들어집니다.")
+            self._cm["recipes"] = recipes
+            self._cm["recipe_idx"] = 0
+            self._cm["recipe_done"] = []
+            self._cm_process_recipe(lot_dirs)
+            return
+        # 단일 레시피(기존 동작): 제목 입력 후 진행
         from tkinter import simpledialog
         recipe = self._cm.get("recipe") or ""
         recipe = simpledialog.askstring(
@@ -3666,14 +3684,40 @@ class EquipApp(tk.Tk):
             return
         recipe = recipe.strip()
         self._cm["recipe"] = recipe
-        from pathlib import Path as _P
-        lot_dirs = [(lbl, _P(d)) for lbl, d in self._cm["lot_dirs"]]
+        self._cm.pop("recipes", None)
+        self._cm_run_form_detect(lot_dirs, recipe, recipe_prefix="", multi=False)
 
-        # 변형·계수 감지(첫 Lot config 폴더 기준) → _ask_scales
+    def _cm_process_recipe(self, lot_dirs):
+        """다중 레시피 큐: 현재 레시피의 양식→값 조사 진행, 끝나면 다음 레시피로."""
+        recipes = self._cm["recipes"]
+        idx = self._cm["recipe_idx"]
+        if idx >= len(recipes):                       # 전부 완료
+            done = self._cm.get("recipe_done", [])
+            self._cm.pop("_after_form", None)
+            self._render()
+            messagebox.showinfo(
+                "다중 레시피 완료",
+                f"레시피 {len(done)}개의 양식·값 조사가 끝났습니다: " + ", ".join(done) +
+                "\n\n이제 '취합·비교 + 뷰어 열기'로 마무리하세요.")
+            return
+        rec = recipes[idx]
+        self._cm["recipe"] = rec["name"]
+        self._cm["recipe_prefix"] = rec["prefix"]
+        self._cm_run_form_detect(lot_dirs, rec["name"], recipe_prefix=rec["prefix"],
+                                 multi=True)
+
+    def _advance_recipe(self, lot_dirs):
+        self._cm.setdefault("recipe_done", []).append(self._cm.get("recipe"))
+        self._cm["recipe_idx"] = self._cm.get("recipe_idx", 0) + 1
+        self._cm_process_recipe(lot_dirs)
+
+    def _cm_run_form_detect(self, lot_dirs, recipe, recipe_prefix="", multi=False):
+        """변형·계수 감지(해당 레시피 파일 기준) → _ask_scales → 양식 빌드."""
         def detect():
             variants, dirs = [], {}
             for _lbl, d in lot_dirs:
-                for c in ini_parser.scan_tree(d, default_level=recipe):
+                for c in ini_parser.scan_tree(d, default_level=recipe,
+                                              recipe_prefix=recipe_prefix):
                     v = c.mag or "(기본)"
                     if v not in variants:
                         variants.append(v)
@@ -3698,19 +3742,29 @@ class EquipApp(tk.Tk):
                 return
             scale_map = {("" if k == "(기본)" else k): v for k, v in scales_ui.items()}
             self._cm["scales"] = scale_map
-            self._cm_build_form(lot_dirs, recipe, scale_map)
-        self._run_busy("변형·계수 감지 중…", detect, after)
+            self._cm_build_form(lot_dirs, recipe, scale_map,
+                                recipe_prefix=recipe_prefix, multi=multi)
+        self._run_busy(f"[{recipe}] 변형·계수 감지 중…" if multi else "변형·계수 감지 중…",
+                       detect, after)
 
-    def _cm_build_form(self, lot_dirs, recipe, scale_map):
+    def _cm_build_form(self, lot_dirs, recipe, scale_map, recipe_prefix="", multi=False):
         """Lot 파싱 → 기존 양식 유사도 안내 → 프로그램 편집기(양식 만들기와 동일 UX).
         확정 시 commonality 양식 경로로 저장(엑셀 편집 버튼도 제공)."""
         m, st = self._cm["machine"], self._cm["st"]
         run_dir = self._cm["run_dir"]
 
+        # 다중 레시피면 양식 확정/편집 완료 후 자동으로 값 조사 → 다음 레시피로 진행
+        if multi:
+            self._cm["_after_form"] = lambda: self._cm_collate(
+                then=lambda: self._advance_recipe(lot_dirs), announce=False)
+        else:
+            self._cm.pop("_after_form", None)
+        title = f"Commonality 양식 [{recipe}]" if multi else "Commonality 양식"
+
         def work():
             cb, cstate = self._coef_lookup_cb(fixed_machine=m)   # 조사 호기 1대 기준
             pivot, labels = cm.parse_lots(lot_dirs, level=recipe, scales=scale_map,
-                                          coef_lookup=cb)
+                                          coef_lookup=cb, recipe_prefix=recipe_prefix)
             self._coef_save_if_changed(cstate)
             return pivot, labels
 
@@ -3757,10 +3811,14 @@ class EquipApp(tk.Tk):
                         return
                     win.destroy()
                     self._cm["form_path"] = form
-                    self._render()
-                    messagebox.showinfo("양식 확정",
-                                        f"확정 양식 생성: {os.path.basename(form)}\n"
-                                        f"항목 {len(records)}개.")
+                    after = self._cm.pop("_after_form", None)
+                    if after:                          # 다중: 자동 값 조사 → 다음 레시피
+                        after()
+                    else:
+                        self._render()
+                        messagebox.showinfo("양식 확정",
+                                            f"확정 양식 생성: {os.path.basename(form)}\n"
+                                            f"항목 {len(records)}개.")
                 self._run_busy("조사 양식 확정 중…", w2, d2)
 
             def cm_excel():
@@ -3782,7 +3840,7 @@ class EquipApp(tk.Tk):
 
             self._form_param_editor(pivot, recipe, kind, scale_map, run_dir, run_dir,
                                     st, m, base_keys=base_keys, base_name=base,
-                                    title_prefix="Commonality 양식",
+                                    title_prefix=title,
                                     on_confirm=cm_confirm, on_excel=cm_excel)
         self._run_busy("조사 양식 파싱 중…", work, done)
 
@@ -3824,12 +3882,17 @@ class EquipApp(tk.Tk):
                 return
             win.destroy()
             self._cm["form_path"] = form
-            self._render()
-            messagebox.showinfo("양식 확정", f"확정 양식 생성: {os.path.basename(form)}\n"
-                                f"항목 {res['kept']}개(제외 {res['dropped']}개).")
+            after = self._cm.pop("_after_form", None)
+            if after:                              # 다중: 자동 값 조사 → 다음 레시피
+                after()
+            else:
+                self._render()
+                messagebox.showinfo("양식 확정",
+                                    f"확정 양식 생성: {os.path.basename(form)}\n"
+                                    f"항목 {res['kept']}개(제외 {res['dropped']}개).")
         self._run_busy("조사 양식 확정 중…", work, done)
 
-    def _cm_collate(self):
+    def _cm_collate(self, then=None, announce=True):
         recipe = self._cm["recipe"]
         form = self._cm["form_path"]
         m, st = self._cm["machine"], self._cm["st"]
@@ -3852,10 +3915,14 @@ class EquipApp(tk.Tk):
                 return
             self._cm["result_path"] = result
             self._render()
-            messagebox.showinfo("값 조사 완료",
-                                f"호기 결과 저장: {os.path.basename(result)}\n"
-                                f"매칭 {res.matched_rows}행, 채운 셀 {res.filled_cells}개.\n"
-                                + (f"불일치 {len(res.mismatches)}건." if res.mismatches else ""))
+            if announce:
+                messagebox.showinfo(
+                    "값 조사 완료",
+                    f"호기 결과 저장: {os.path.basename(result)}\n"
+                    f"매칭 {res.matched_rows}행, 채운 셀 {res.filled_cells}개.\n"
+                    + (f"불일치 {len(res.mismatches)}건." if res.mismatches else ""))
+            if then:                               # 다중: 다음 레시피로
+                then()
         self._run_busy("Lot별 값 조사 중…", work, done)
 
     def _cm_compare(self):
