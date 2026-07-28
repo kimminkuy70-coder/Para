@@ -3660,14 +3660,41 @@ class EquipApp(tk.Tk):
     def _cm_make_form(self):
         from pathlib import Path as _P
         lot_dirs = [(lbl, _P(d)) for lbl, d in self._cm["lot_dirs"]]
+        # ── 사전 확인: ActiveScenarioOptics.ini 유무 + 하위 레시피 개수 ──
+        pre = cm.form_preflight(lot_dirs)
+        rlist = pre["recipes"]
+        lines = []
+        if rlist:
+            lines.append(f"• 하위 레시피: {len(rlist)}개")
+            for r in rlist:
+                a = pre["active"].get(r["name"], {})
+                mark = ("있음" if a.get("file") else "없음")
+                if a.get("file") and not a.get("scan2d"):
+                    mark += "(Scan2d 항목 없음 → 구 방식)"
+                elif a.get("file"):
+                    mark += "(신 SW — Scan2d optic 지정)"
+                lines.append(f"    - {r['name']}  ·  ActiveScenarioOptics.ini: {mark}")
+        else:
+            a = pre["active"].get("", {})
+            lines.append("• 하위 레시피: 1개 (단일 — RecipesInfo.ini 없음/1개)")
+            if a.get("file"):
+                extra = ("Scan2d 항목 없음 → 구 방식" if not a.get("scan2d")
+                         else "신 SW — Scan2d optic 지정")
+                lines.append(f"• ActiveScenarioOptics.ini: 있음 ({extra})")
+            else:
+                lines.append("• ActiveScenarioOptics.ini: 없음 (구 SW 방식으로 target 추정)")
+        if not pre["config_dir"]:
+            lines.append("\n⚠ config 폴더(설정 .ini)를 찾지 못했습니다. 복사 결과를 확인하세요.")
+        messagebox.showinfo(
+            "양식 만들기 — 사전 확인",
+            "이번 조사 대상의 구성입니다.\n\n" + "\n".join(lines) +
+            "\n\n확인을 누르면 계속 진행합니다.")
         # 다중 레시피 자동 인식(RecipesInfo.ini) → 알림 후 레시피별 순차 진행
-        recipes = cm.detect_recipes(lot_dirs)
+        recipes = rlist or None
         if recipes:
             from tkinter import simpledialog
-            names = ", ".join(r["name"] for r in recipes)
             base = simpledialog.askstring(
-                "다중 레시피 감지 — 조사 제목",
-                f"이 스캔 폴더에는 레시피가 {len(recipes)}개 있습니다: {names}\n\n"
+                "다중 레시피 — 조사 제목",
                 "레시피별로 순차 진행합니다(레시피마다 편집기 → 값 조사).\n"
                 "양식·결과 파일은 레시피별로 따로 만들어지며, 같은 조사의 분기임을\n"
                 f"알 수 있게 '조사제목_레시피명'(예: {self._cm.get('recipe') or 'PI3'}_{recipes[0]['name']})\n"

@@ -66,6 +66,23 @@ MACHINES = (
 # 메타(상위) 항목 — A:F ('초기 추천값' 열은 2차 수정안으로 제거)
 META_FIELDS = ["PI", "Recipe", "Zone", "Alg", "Parameter", "비고"]
 
+# 표시용 헤더 명칭(내부 스키마 키는 그대로 유지). 결과 엑셀 1행을 사람이 보기 좋게:
+#   PI 열     = 상위 Recipe(레시피 레벨: PI3/RDL2 …)
+#   Recipe 열 = 하위 Recipe(변형: PI / PI-bubble / x5 / x20 …)
+META_DISPLAY = {"PI": "상위 Recipe", "Recipe": "하위 Recipe"}
+_META_DISPLAY_REV = {v: k for k, v in META_DISPLAY.items()}
+
+
+def display_header(field: str) -> str:
+    """내부 필드명 → 표시용 헤더(매핑 없으면 원래 이름)."""
+    return META_DISPLAY.get(field, field)
+
+
+def internal_header(header: str) -> str:
+    """표시용 헤더 → 내부 필드명(구 파일의 'PI'/'Recipe' 도 그대로 통과)."""
+    return _META_DISPLAY_REV.get(str(header).strip(), str(header).strip())
+
+
 # 구(舊) 파일 하위호환: 예전 파일에 남아 있는 '초기 추천값' 열을 호기 열로 오인하지
 # 않도록 자동 인식에서 제외한다(저장 시 자연스럽게 사라진다).
 LEGACY_META = {"초기 추천값"}
