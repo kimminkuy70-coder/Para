@@ -414,6 +414,36 @@ def detect_recipes(lot_dirs: list[tuple[str, Path]]) -> list[dict] | None:
     return None
 
 
+def form_preflight(lot_dirs: list[tuple[str, Path]]) -> dict:
+    """양식 만들기 전에 사용자에게 확인시켜 줄 정보(첫 config 폴더 기준).
+
+    반환: {"config_dir": str, "recipes": [{index,name,prefix}] or [],
+           "active": {레시피명 or "": {"file": bool, "scan2d": bool}}}.
+    - recipes: RecipesInfo.ini 로 감지한 하위 레시피 목록(2개+일 때만, 아니면 []).
+    - active:  ActiveScenarioOptics.ini(레시피별 접두 포함) 파일 존재/유효 Scan2d 여부.
+    """
+    recipes = detect_recipes(lot_dirs) or []
+    cfg = None
+    for _label, cdir in lot_dirs:
+        dirs = ini_parser.find_config_dirs(Path(cdir))
+        if dirs:
+            cfg = dirs[0]
+            break
+    active: dict = {}
+    if cfg is not None:
+        targets = ([(r["name"], r["prefix"]) for r in recipes] if recipes
+                   else [("", "")])
+        for name, prefix in targets:
+            fname = f"{prefix}{ini_parser.ACTIVE_SCENARIO_FILE}"
+            fpath = Path(cfg) / fname
+            exists = fpath.is_file() or (Path(cfg) / fname.lower()).is_file()
+            has_scan2d = (ini_parser.read_active_scan2d(cfg, prefix) is not None
+                          if exists else False)
+            active[name] = {"file": bool(exists), "scan2d": bool(has_scan2d)}
+    return {"config_dir": str(cfg) if cfg else "", "recipes": recipes,
+            "active": active}
+
+
 def _lot_configs(config_dir: Path, lot_label: str, level: str,
                  scales: dict | None, coef_lookup=None,
                  recipe_prefix: str = "") -> list[ini_parser.ParsedConfig]:
@@ -488,12 +518,14 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
                      res: collate.CollateRecipe, lot_labels: list[str],
                      fail_labels: list[str] | None = None) -> str:
     """호기 1대 결과: 시트=레시피, 헤더=META + S/M들. 호기명·fail 은 '_정보' 시트에."""
-    headers = list(engine.META_FIELDS) + list(lot_labels)
+    headers = list(engine.META_FIELDS) + list(lot_labels)   # 내부 키(데이터 접근용)
+    # 1행은 표시용 헤더(PI→상위 Recipe, Recipe→하위 Recipe). Lot 열은 그대로.
+    disp_headers = [engine.display_header(h) for h in headers]
     fail_labels = list(fail_labels or [])
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = collate._safe_sheet(recipe)
-    ws.append(headers)
+    ws.append(disp_headers)
     for rec in res.records:
         ws.append([rec.get(h) for h in headers])
     fill = PatternFill("solid", fgColor=_HDR_FILL)
@@ -537,7 +569,8 @@ def read_lot_result(path: str) -> dict:
     if data_ws is not None:
         if not recipe:
             recipe = data_ws.title
-        heads = [engine._s(c.value).strip() for c in data_ws[1]]
+        # 표시용 헤더(상위/하위 Recipe)를 내부 키(PI/Recipe)로 되돌린다.
+        heads = [engine.internal_header(engine._s(c.value).strip()) for c in data_ws[1]]
         meta = set(engine.META_FIELDS)
         lots = [h for h in heads if h and h not in meta]
         for row in data_ws.iter_rows(min_row=2, values_only=True):

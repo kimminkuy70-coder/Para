@@ -275,9 +275,18 @@ def test_collate_lots_and_result_roundtrip():
         # 결과 엑셀 왕복
         out = os.path.join(tmp, "조사_AOI-6.xlsx")
         commonality.write_lot_result(out, "PI3", "AOI-6", res, labels)
+        # 1행 표시 헤더는 상위/하위 Recipe (내부 키는 PI/Recipe 그대로)
+        import openpyxl
+        wb = openpyxl.load_workbook(out)
+        head = [c.value for c in wb[wb.sheetnames[0]][1]]
+        wb.close()
+        assert head[0] == "상위 Recipe" and head[1] == "하위 Recipe", head
+        assert "PI" not in head and "Recipe" not in head, head
         data = commonality.read_lot_result(out)
         assert data["machine"] == "AOI-6" and set(data["lots"]) == set(labels)
-    print("  commonality OK: Lot 취합(양식 기준) + 호기 결과 엑셀 왕복")
+        # read 는 내부 키로 되돌린다(다운스트림 비교가 PI/Recipe/Zone 로 접근)
+        assert all("PI" in r and "Recipe" in r for r in data["records"])
+    print("  commonality OK: Lot 취합 + 호기 결과 엑셀 왕복 + 표시헤더(상위/하위 Recipe)")
 
 
 def test_build_comparison_outliers():
