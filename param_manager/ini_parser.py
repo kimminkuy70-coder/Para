@@ -279,10 +279,41 @@ _OPTIC_ID_KEYS = ("OpticId", "OpticsId", "OpticID", "Id", "Guid", "OpticGUID", "
 _OPTIC_NAME_KEYS = ("OpticsName", "OpticName", "Name")
 
 
-def read_active_scan2d(config_dir) -> tuple[str, str] | None:
+RECIPES_INFO_FILE = "RecipesInfo.ini"       # 다중 레시피(2개+) 스캔 폴더에만 존재
+
+
+def read_recipes_info(config_dir) -> list[dict] | None:
+    """RecipesInfo.ini → [{index, name, prefix}] (index 순). 레시피가 2개 이상일 때만
+    반환(다중 레시피 = 양식 여러 개), 1개 이하/파일없음이면 None.
+    prefix: 인덱스1 = ''(무접두 파일), 인덱스 N(>=2) = 'RecipeN-'(예 Recipe2-OpticPreset.ini)."""
+    for name in (RECIPES_INFO_FILE, RECIPES_INFO_FILE.lower()):
+        p = Path(config_dir) / name
+        if p.is_file():
+            try:
+                sections = parse_ini_sections(p)
+            except Exception:  # noqa: BLE001
+                return None
+            recs = []
+            for sec, kv in sections.items():
+                m = re.match(r"(?i)^recipe-(\d+)$", str(sec).strip())
+                if not m:
+                    continue
+                idx = int(m.group(1))
+                nm = str(kv.get("Name", "") or "").strip() or f"Recipe{idx}"
+                recs.append({"index": idx, "name": nm,
+                             "prefix": "" if idx == 1 else f"Recipe{idx}-"})
+            recs.sort(key=lambda r: r["index"])
+            return recs if len(recs) >= 2 else None
+    return None
+
+
+def read_active_scan2d(config_dir, prefix: str = "") -> tuple[str, str] | None:
     """ActiveScenarioOptics.ini 에서 ScenarioName=Scan2d 항목의 (OpticsName, OpticId).
-    파일이 없거나(구 SW) 유효한 Scan2d 항목이 없으면 None. 여러 개면 마지막(최신) 유효 항목."""
-    for name in (ACTIVE_SCENARIO_FILE, ACTIVE_SCENARIO_FILE.lower()):
+    파일이 없거나(구 SW) 유효한 Scan2d 항목이 없으면 None. 여러 개면 마지막(최신) 유효 항목.
+    prefix 를 주면 `{prefix}ActiveScenarioOptics.ini`(다중 레시피 Recipe N) 를 읽는다."""
+    cands = ([f"{prefix}{ACTIVE_SCENARIO_FILE}"] if prefix
+             else [ACTIVE_SCENARIO_FILE, ACTIVE_SCENARIO_FILE.lower()])
+    for name in cands:
         p = Path(config_dir) / name
         if p.is_file():
             try:
@@ -366,17 +397,20 @@ def _pick_optic_target(sections: dict, active: tuple[str, str] | None = None) ->
     return names[-1]
 
 
-def read_optic_mag(config_dir: Path) -> str:
+def read_optic_mag(config_dir: Path, prefix: str = "") -> str:
     """OpticPreset.ini 의 **최신 Scan2d(target) 섹션 Mag 값**(예: '3.14') 반환.
-    변환계수 키(호기+MAG)용 — 없으면 ''. OpticPreset 은 레시피(PI/PI-bubble)마다 다르다."""
-    for name in ("OpticPreset.ini", "opticpreset.ini"):
+    변환계수 키(호기+MAG)용 — 없으면 ''. OpticPreset 은 레시피(PI/PI-bubble)마다 다르다.
+    prefix 를 주면 `{prefix}OpticPreset.ini`(다중 레시피 Recipe N) 를 읽는다."""
+    opt = f"{prefix}OpticPreset.ini"
+    cands = ([opt] if prefix else ("OpticPreset.ini", "opticpreset.ini"))
+    for name in cands:
         p = Path(config_dir) / name
         if p.is_file():
             try:
                 sections = parse_ini_sections(p)
             except Exception:  # noqa: BLE001
                 return ""
-            target = _pick_optic_target(sections, read_active_scan2d(config_dir))
+            target = _pick_optic_target(sections, read_active_scan2d(config_dir, prefix))
             if target is not None:
                 mag = sections[target].get("Mag")
                 if mag not in (None, ""):
@@ -387,9 +421,9 @@ def read_optic_mag(config_dir: Path) -> str:
                     return str(kv["Mag"]).strip()
             break
     # 하위 폴더(Zones 등이 아닌 실제 OpticPreset)도 탐색
-    hits = sorted(Path(config_dir).rglob("OpticPreset.ini"))
-    if hits and hits[0] != Path(config_dir) / "OpticPreset.ini":
-        return read_optic_mag(hits[0].parent)
+    hits = sorted(Path(config_dir).rglob(opt))
+    if hits and hits[0] != Path(config_dir) / opt:
+        return read_optic_mag(hits[0].parent, prefix)
     return ""
 
 
@@ -434,18 +468,20 @@ def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT",
     return out
 
 
-def _is_optic_file(file_path: Path) -> bool:
+def _is_optic_file(file_path: Path, prefix: str = "") -> bool:
     base = re.sub(r"_\d+$", "", file_path.stem.lower())
-    return base == "opticpreset"
+    return base == f"{prefix}opticpreset".lower()
 
 
-def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE) -> list[ExtractRow]:
-    """설정파일 1개 → ExtractRow 목록. scale = LINEAR/AREA 변환 계수(변형별)."""
+def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE,
+                   recipe_prefix: str = "") -> list[ExtractRow]:
+    """설정파일 1개 → ExtractRow 목록. scale = LINEAR/AREA 변환 계수(변형별).
+    recipe_prefix 를 주면 그 레시피의 OpticPreset/ActiveScenarioOptics 를 대상으로 판정."""
     sections = parse_ini_sections(file_path)
     # OpticPreset: 신 SW 는 ActiveScenarioOptics.ini 로 Scan2d optic 지정, 구 SW 는
     # 마지막 광원 섹션(이름 무관) 통일 규칙 적용.
-    if _is_optic_file(file_path):
-        active = read_active_scan2d(file_path.parent)
+    if _is_optic_file(file_path, recipe_prefix):
+        active = read_active_scan2d(file_path.parent, recipe_prefix)
         if _pick_optic_target(sections, active) is not None:
             return _parse_optic(file_path, sections, active=active)
     top = infer_top_item(file_path, sections)
@@ -475,11 +511,29 @@ def is_config_dir(d: Path) -> bool:
             or (d / "Zones").is_dir())
 
 
-def config_ini_files(d: Path) -> list[Path]:
+def config_ini_files(d: Path, prefix: str = "") -> list[Path]:
     """config 폴더의 파싱 대상 ini 목록.
     **폴더 바로 아래는 GlobalRTP.ini / OpticPreset.ini 만**(그 외 다른 .ini 는 제외 —
     양식에 쓸데없는 항목이 끼지 않게), **Zones/ 하위는 .ini 전부**.
-    복사 중복회피로 붙는 _N 접미사(GlobalRTP_2.ini 등)도 고정명으로 인식."""
+    복사 중복회피로 붙는 _N 접미사(GlobalRTP_2.ini 등)도 고정명으로 인식.
+    prefix 를 주면 그 레시피의 파일(`{prefix}OpticPreset.ini`, `{prefix}Zones/*.ini`,
+    GlobalRTP 는 접두본 우선·없으면 공유)만 반환한다(다중 레시피 Recipe N)."""
+    d = Path(d)
+    if prefix:                            # 다중 레시피: 해당 레시피 파일만
+        files: list[Path] = []
+        for gname in (f"{prefix}GlobalRTP.ini", "GlobalRTP.ini"):  # 접두본 우선, 없으면 공유
+            gp = d / gname
+            if gp.is_file():
+                files.append(gp)
+                break
+        op = d / f"{prefix}OpticPreset.ini"
+        if op.is_file():
+            files.append(op)
+        zdir = d / f"{prefix}Zones"
+        if zdir.is_dir():
+            files += sorted([p for p in zdir.glob("*.ini") if p.is_file()],
+                            key=lambda x: x.name.lower())
+        return files
     fixed = set(FIXED_FILE_TOP)          # {"globalrtp.ini", "opticpreset.ini"}
     files = []
     for p in sorted(d.glob("*.ini"), key=lambda x: x.name.lower()):
@@ -586,7 +640,8 @@ class ParsedConfig:
 
 def scan_tree(root: str | Path, default_level: str = "",
               default_equipment: str = "", scale: float = DEFAULT_SCALE,
-              scales: dict | None = None, coef_lookup=None) -> list[ParsedConfig]:
+              scales: dict | None = None, coef_lookup=None,
+              recipe_prefix: str = "") -> list[ParsedConfig]:
     """폴더트리 → config 폴더별 ParsedConfig (ini 소스 전용, RTP.txt 미사용).
 
     변환계수 결정 우선순위(장비 렌즈 특성 = 장비×MAG 마다 다름):
@@ -597,7 +652,7 @@ def scan_tree(root: str | Path, default_level: str = "",
     res: list[ParsedConfig] = []
     for cdir in find_config_dirs(Path(root)):
         meta = detect_meta(cdir, default_level, default_equipment)
-        mag_value = read_optic_mag(cdir)
+        mag_value = read_optic_mag(cdir, recipe_prefix)
         use_scale = None
         if coef_lookup is not None:
             try:
@@ -607,8 +662,8 @@ def scan_tree(root: str | Path, default_level: str = "",
         if use_scale is None:
             use_scale = scales.get(meta["mag"], scale)
         rows: list[ExtractRow] = []
-        for f in config_ini_files(cdir):
-            rows += parse_ini_file(f, use_scale)
+        for f in config_ini_files(cdir, recipe_prefix):
+            rows += parse_ini_file(f, use_scale, recipe_prefix=recipe_prefix)
         res.append(ParsedConfig(meta["equipment"], meta["layer"], meta["recipe"],
                                 meta["mag"], cdir, rows, mag_value=mag_value,
                                 scale_used=use_scale))

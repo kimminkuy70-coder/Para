@@ -390,13 +390,11 @@ def copy_lot(lot: LotFolder, dest_root: str, verify: bool = True) -> dict:
     if not lot.exists or lot.wafer_dir is None:
         raise RuntimeError(f"복사할 웨이퍼 폴더가 없습니다: {lot.label} ({lot.reason})")
     dst_base = Path(dest_root) / downloader.safe_name(lot.label)
-    zones, files = downloader.collect_target_items(lot.wafer_dir)
+    _zones, files = downloader.collect_target_items(lot.wafer_dir)
     rows = []
     for src in files:
-        if zones.is_dir() and zones in src.parents:
-            dst = dst_base / src.relative_to(lot.wafer_dir)
-        else:
-            dst = dst_base / src.name
+        # 전부 wafer_dir 하위 → 상대구조 보존(Zones/·Recipe*-Zones/ 유지)
+        dst = dst_base / src.relative_to(lot.wafer_dir)
         rows.append(downloader.copy_one_file(src, dst, overwrite=False, verify=verify))
     return {"label": lot.label, "dest": str(dst_base), "files": rows, "count": len(rows)}
 
@@ -404,16 +402,31 @@ def copy_lot(lot: LotFolder, dest_root: str, verify: bool = True) -> dict:
 # --------------------------------------------------------------------------
 # Lot 파싱 → 통합 피벗(값=Lot별) + 구조 diff
 # --------------------------------------------------------------------------
+def detect_recipes(lot_dirs: list[tuple[str, Path]]) -> list[dict] | None:
+    """Lot 들의 config 폴더에서 RecipesInfo.ini 를 찾아 다중 레시피 목록을 돌려준다.
+    [{index, name, prefix}] (2개 이상일 때만) / 단일·없음이면 None.
+    첫 번째로 발견되는 config 폴더 기준(모든 Lot 이 같은 레시피 구성이라고 가정)."""
+    for _label, cdir in lot_dirs:
+        for cfg_dir in ini_parser.find_config_dirs(Path(cdir)):
+            recs = ini_parser.read_recipes_info(cfg_dir)
+            if recs:
+                return recs
+    return None
+
+
 def _lot_configs(config_dir: Path, lot_label: str, level: str,
-                 scales: dict | None, coef_lookup=None) -> list[ini_parser.ParsedConfig]:
-    """Lot 1개의 config 폴더 → ParsedConfig 목록(equipment=lot_label 로 태깅)."""
+                 scales: dict | None, coef_lookup=None,
+                 recipe_prefix: str = "") -> list[ini_parser.ParsedConfig]:
+    """Lot 1개의 config 폴더 → ParsedConfig 목록(equipment=lot_label 로 태깅).
+    recipe_prefix 를 주면 그 레시피(RecipeN-) 파일만 파싱(다중 레시피)."""
     return ini_parser.scan_tree(config_dir, default_level=level,
                                 default_equipment=lot_label, scales=scales,
-                                coef_lookup=coef_lookup)
+                                coef_lookup=coef_lookup, recipe_prefix=recipe_prefix)
 
 
 def parse_lots(lot_dirs: list[tuple[str, Path]], level: str = "",
-               scales: dict | None = None, coef_lookup=None) -> tuple[list[dict], list[str]]:
+               scales: dict | None = None, coef_lookup=None,
+               recipe_prefix: str = "") -> tuple[list[dict], list[str]]:
     """[(lot_label, config_dir)] → (통합 피벗, lot_label 목록).
 
     build_pivot 이 값을 equipment(=lot_label) 별로 모아주므로, 그대로
@@ -424,13 +437,14 @@ def parse_lots(lot_dirs: list[tuple[str, Path]], level: str = "",
     for label, cdir in lot_dirs:
         if label not in labels:
             labels.append(label)
-        all_cfgs += _lot_configs(Path(cdir), label, level, scales, coef_lookup)
+        all_cfgs += _lot_configs(Path(cdir), label, level, scales, coef_lookup,
+                                 recipe_prefix)
     pivot_rows, _ = ini_parser.build_pivot(all_cfgs)
     return pivot_rows, labels
 
 
 def structure_diff(lot_dirs: list[tuple[str, Path]], level: str = "",
-                   scales: dict | None = None) -> dict:
+                   scales: dict | None = None, recipe_prefix: str = "") -> dict:
     """Lot 간 파라미터 **구조**(zone/alg/param 집합) 비교.
 
     반환: {"baseline_count": N, "lots": {label: {"missing":[...], "extra":[...]}},
@@ -439,7 +453,8 @@ def structure_diff(lot_dirs: list[tuple[str, Path]], level: str = "",
     per_lot: dict[str, set] = {}
     for label, cdir in lot_dirs:
         keys = per_lot.setdefault(label, set())
-        for cfg in _lot_configs(Path(cdir), label, level, scales):
+        for cfg in _lot_configs(Path(cdir), label, level, scales,
+                                recipe_prefix=recipe_prefix):
             for r in cfg.rows:
                 keys.add((r.zone, r.alg, r.param))
     union: set = set()
