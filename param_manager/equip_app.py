@@ -4728,7 +4728,7 @@ class EquipApp(tk.Tk):
         win.title("자동 감시 설정")
         win.configure(bg=self.p["bg"])
         win.transient(self)
-        win.geometry("680x720")           # 장비 선택 목록이 들어가 세로가 길다
+        win.geometry("700x820")           # 장비·레시피 선택 목록이 들어가 세로가 길다
         tk.Label(win, text="자동 감시", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win, text="정해진 주기마다 값을 수집·취합하고, 직전과 달라진 파라미터가 "
@@ -4770,69 +4770,26 @@ class EquipApp(tk.Tk):
                  bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left")
 
-        # ── 감시할 장비 선택 (가장 먼저 정해야 하는 것) ──
-        mbox = tk.LabelFrame(win, text=" ① 감시할 장비 선택 ", bg=self.p["bg"],
-                             fg=self.p["text"], font=self.fonts["bold"])
-        mbox.pack(fill="both", expand=True, padx=16, pady=(4, 6))
+        # ── 감시 대상 선택: ① 장비 ② 레시피 (둘 다 고른 것만 수집·비교) ──
         all_machines = self._all_machines()
-        # 저장된 선택이 없으면(최초) 전체 선택 — 이후에는 저장된 선택을 그대로 복원
-        chosen_m = set(s.machines) if s.machines else set(all_machines)
-        m_vars: list = []
-        if all_machines:
-            head = tk.Frame(mbox, bg=self.p["bg"])
-            head.pack(fill="x", padx=8, pady=(4, 0))
-            tk.Label(head, text="선택한 장비만 수집·비교합니다.", bg=self.p["bg"],
-                     fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
-            cnt_lbl = tk.Label(head, text="", bg=self.p["bg"], fg=self.p["primary"],
-                               font=self.fonts["bold"])
-            cnt_lbl.pack(side="right", padx=6)
-
-            def upd_cnt():
-                n = sum(1 for v, _ in m_vars if v.get())
-                cnt_lbl.config(text=f"{n} / {len(m_vars)}대 선택")
-
-            def set_all(val):
-                for v, _ in m_vars:
-                    v.set(val)
-                upd_cnt()
-            tk.Button(head, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
-                      fg=self.p["text"], font=self.fonts["sub"], cursor="hand2",
-                      command=lambda: set_all(False)).pack(side="right", padx=2)
-            tk.Button(head, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
-                      fg=self.p["text"], font=self.fonts["sub"], cursor="hand2",
-                      command=lambda: set_all(True)).pack(side="right", padx=2)
-
-            mcv = tk.Canvas(mbox, bg=self.p["bg"], highlightthickness=0, height=150)
-            mvsb = ttk.Scrollbar(mbox, orient="vertical", command=mcv.yview)
-            minner = tk.Frame(mcv, bg=self.p["bg"])
-            mcv.create_window((0, 0), window=minner, anchor="nw")
-            mcv.configure(yscrollcommand=mvsb.set)
-            mcv.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=6)
-            mvsb.pack(side="right", fill="y", pady=6)
-            minner.bind("<Configure>",
-                        lambda e: mcv.configure(scrollregion=mcv.bbox("all")))
-            self._wheelify(mcv)
-            for i, m in enumerate(all_machines):
-                ip = refdata.ip_for(self.ip_rows, m)
-                v = tk.BooleanVar(value=(m in chosen_m))
-                tk.Checkbutton(minner, text=m, variable=v, bg=self.p["bg"],
-                               fg=self.p["text"], selectcolor=self.p["surface"],
-                               font=self.fonts["bold"], width=12, anchor="w",
-                               command=upd_cnt).grid(row=i // 2, column=(i % 2) * 2,
-                                                     sticky="w", pady=1)
-                tk.Label(minner, text=ip or "(IP 없음)", bg=self.p["bg"],
-                         fg=(self.p["muted"] if ip else self.p["danger"]),
-                         font=self.fonts["sub"], width=18, anchor="w").grid(
-                    row=i // 2, column=(i % 2) * 2 + 1, sticky="w", padx=(0, 12))
-                m_vars.append((v, m))
-            upd_cnt()
-        else:
-            tk.Label(mbox, text="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 호기·IP를 "
-                               "먼저 등록하세요.", bg=self.p["bg"], fg=self.p["danger"],
-                     font=self.fonts["sub"]).pack(anchor="w", padx=10, pady=8)
-
-        def selected_machines() -> list:
-            return [m for v, m in m_vars if v.get()]
+        all_recipes = workdirs.list_recipes(self.save_dir)
+        selected_machines = self._pick_list(
+            win, " ① 감시할 장비 선택 ", all_machines,
+            # 저장된 선택이 없으면(최초) 전체 선택, 이후에는 저장분 복원
+            chosen=(s.machines if s.machines else all_machines),
+            unit="대", note="선택한 장비만 수집·비교합니다.",
+            sub_of=lambda m: refdata.ip_for(self.ip_rows, m) or "(IP 없음)",
+            sub_warn=lambda m: not refdata.ip_for(self.ip_rows, m),
+            empty_msg="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 호기·IP를 "
+                      "먼저 등록하세요.", height=140)
+        selected_recipes = self._pick_list(
+            win, " ② 감시할 레시피 선택 ", all_recipes,
+            chosen=(s.recipes if s.recipes else all_recipes),
+            unit="개", note="선택한 레시피의 양식만 취합·비교합니다.",
+            sub_of=lambda r: self._recipe_form_note(r),
+            sub_warn=lambda r: not workdirs.latest_form(self.save_dir, r),
+            empty_msg="양식이 없습니다. '양식 만들기'로 레시피 양식을 먼저 만드세요.",
+            height=110)
 
         def selected_targets() -> list:
             """선택된 장비의 (호기, IP) — IP 없는 호기는 제외."""
@@ -4844,7 +4801,7 @@ class EquipApp(tk.Tk):
             return out
 
         # ── 접속 방식 — 기본/권장은 net use 없이(기존 연결) ──
-        box = tk.LabelFrame(win, text=" ② 장비 접속 방식 ", bg=self.p["bg"],
+        box = tk.LabelFrame(win, text=" ③ 장비 접속 방식 ", bg=self.p["bg"],
                             fg=self.p["text"], font=self.fonts["bold"])
         box.pack(fill="x", padx=16, pady=(4, 8))
         conn = tk.StringVar(value=s.conn_mode)
@@ -4904,11 +4861,18 @@ class EquipApp(tk.Tk):
 
         def apply_():
             picked = selected_machines()
+            picked_r = selected_recipes()
             if on_var.get() and not picked:
                 messagebox.showwarning(
                     "장비 미선택",
                     "감시할 장비를 1대 이상 선택하세요.\n"
                     "선택한 장비만 수집·비교합니다.", parent=win)
+                return
+            if on_var.get() and not picked_r:
+                messagebox.showwarning(
+                    "레시피 미선택",
+                    "감시할 레시피를 1개 이상 선택하세요.\n"
+                    "선택한 레시피의 양식만 취합·비교합니다.", parent=win)
                 return
             no_ip = [m for m in picked if not refdata.ip_for(self.ip_rows, m)]
             if no_ip and not messagebox.askyesno(
@@ -4916,8 +4880,16 @@ class EquipApp(tk.Tk):
                     "다음 장비는 IP가 등록되어 있지 않아 감시에서 제외됩니다:\n\n"
                     f"  {', '.join(no_ip)}\n\n계속할까요?", parent=win):
                 return
+            no_form = [r for r in picked_r
+                       if not workdirs.latest_form(self.save_dir, r)]
+            if no_form and not messagebox.askyesno(
+                    "양식 없는 레시피",
+                    "다음 레시피는 양식이 없어 취합에서 건너뜁니다:\n\n"
+                    f"  {', '.join(no_form)}\n\n계속할까요?", parent=win):
+                return
             s.enabled = bool(on_var.get())
             s.machines = picked                       # ← 감시 대상 장비 저장
+            s.recipes = picked_r                      # ← 감시 대상 레시피 저장
             try:
                 s.interval_hours = float(iv.get())
             except ValueError:
@@ -4934,7 +4906,8 @@ class EquipApp(tk.Tk):
             watcher.save_settings(self.save_dir, s, state)
             watcher.append_log(self.save_dir,
                                f"설정 변경 — 사용={s.enabled} 장비={len(picked)}대 "
-                               f"주기={s.interval_hours}h 접속={s.conn_mode}")
+                               f"레시피={len(picked_r)}개 주기={s.interval_hours}h "
+                               f"접속={s.conn_mode}")
             self._sync_watch_btn()
             targets = selected_targets()              # 창 닫기 전에 확보
             win.destroy()
@@ -4953,10 +4926,90 @@ class EquipApp(tk.Tk):
                   fg="#ffffff", padx=18, pady=6, cursor="hand2",
                   command=apply_).pack(side="right")
 
+    def _recipe_form_note(self, recipe: str) -> str:
+        """레시피 옆에 보여줄 양식 상태(최신 양식 유무)."""
+        f = workdirs.latest_form(self.save_dir, recipe)
+        return os.path.basename(f) if f else "(양식 없음)"
+
+    def _pick_list(self, parent, title, items, chosen=None, unit="개", note="",
+                   sub_of=None, sub_warn=None, empty_msg="", height=140):
+        """체크박스 다중 선택 목록(스크롤 + 전체선택/해제 + 카운터).
+
+        감시 설정의 장비/레시피 선택이 같은 모양이라 한 곳으로 모았다.
+        반환: selected() — 선택된 항목 목록을 돌려주는 함수.
+        """
+        items = list(items or [])
+        chosen_set = set(chosen if chosen is not None else items)
+        box = tk.LabelFrame(parent, text=title, bg=self.p["bg"], fg=self.p["text"],
+                            font=self.fonts["bold"])
+        box.pack(fill="both", expand=True, padx=16, pady=(4, 6))
+        pairs: list = []
+        if not items:
+            tk.Label(box, text=empty_msg, bg=self.p["bg"], fg=self.p["danger"],
+                     font=self.fonts["sub"], justify="left").pack(anchor="w",
+                                                                 padx=10, pady=8)
+            return lambda: []
+
+        head = tk.Frame(box, bg=self.p["bg"])
+        head.pack(fill="x", padx=8, pady=(4, 0))
+        if note:
+            tk.Label(head, text=note, bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"]).pack(side="left")
+        cnt = tk.Label(head, text="", bg=self.p["bg"], fg=self.p["primary"],
+                       font=self.fonts["bold"])
+        cnt.pack(side="right", padx=6)
+
+        def upd():
+            n = sum(1 for v, _ in pairs if v.get())
+            cnt.config(text=f"{n} / {len(pairs)}{unit} 선택")
+
+        def set_all(val):
+            for v, _ in pairs:
+                v.set(val)
+            upd()
+        tk.Button(head, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], font=self.fonts["sub"], cursor="hand2",
+                  command=lambda: set_all(False)).pack(side="right", padx=2)
+        tk.Button(head, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], font=self.fonts["sub"], cursor="hand2",
+                  command=lambda: set_all(True)).pack(side="right", padx=2)
+
+        cv = tk.Canvas(box, bg=self.p["bg"], highlightthickness=0, height=height)
+        vsb = ttk.Scrollbar(box, orient="vertical", command=cv.yview)
+        inner = tk.Frame(cv, bg=self.p["bg"])
+        cv.create_window((0, 0), window=inner, anchor="nw")
+        cv.configure(yscrollcommand=vsb.set)
+        cv.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=6)
+        vsb.pack(side="right", fill="y", pady=6)
+        inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        self._wheelify(cv)
+        for i, it in enumerate(items):
+            v = tk.BooleanVar(value=(it in chosen_set))
+            tk.Checkbutton(inner, text=str(it), variable=v, bg=self.p["bg"],
+                           fg=self.p["text"], selectcolor=self.p["surface"],
+                           font=self.fonts["bold"], width=14, anchor="w",
+                           command=upd).grid(row=i // 2, column=(i % 2) * 2,
+                                             sticky="w", pady=1)
+            if sub_of is not None:
+                try:
+                    sub = sub_of(it)
+                    warn = bool(sub_warn(it)) if sub_warn else False
+                except Exception:  # noqa: BLE001
+                    sub, warn = "", False
+                tk.Label(inner, text=sub, bg=self.p["bg"],
+                         fg=(self.p["danger"] if warn else self.p["muted"]),
+                         font=self.fonts["sub"], width=22, anchor="w").grid(
+                    row=i // 2, column=(i % 2) * 2 + 1, sticky="w", padx=(0, 12))
+            pairs.append((v, it))
+        upd()
+        return lambda: [it for v, it in pairs if v.get()]
+
     def _watch_status_text(self, s, state) -> str:
-        tgt = (f"· 감시 대상: {len(s.machines)}대 ({', '.join(s.machines[:6])}"
+        tgt = (f"· 감시 장비: {len(s.machines)}대 ({', '.join(s.machines[:6])}"
                f"{' 외' if len(s.machines) > 6 else ''})"
-               if s.machines else "· 감시 대상: 아직 선택하지 않았습니다.")
+               if s.machines else "· 감시 장비: 아직 선택하지 않았습니다.")
+        tgt += ("\n· 감시 레시피: " + ", ".join(s.recipes)) if s.recipes \
+            else "\n· 감시 레시피: 아직 선택하지 않았습니다."
         if not state.last_run:
             return tgt + "\n· 아직 실행 이력이 없습니다."
         nxt = watcher.next_run_at(s, state)
@@ -5021,15 +5074,19 @@ class EquipApp(tk.Tk):
         변경이 있을 때만 알린다.
         """
         self._watch_busy = True
-        # 감시 대상 = 설정에서 고른 장비(비어 있으면 전체 — 구 설정 하위호환)
-        machines = [m for m in (s.machines or self._all_machines())
-                    if m in set(self._all_machines())]
-        recipes = s.recipes or workdirs.list_recipes(self.save_dir)
+        # 감시 대상 = 설정에서 고른 장비·레시피(비어 있으면 전체 — 구 설정 하위호환).
+        # 그 사이 삭제된 항목은 걸러낸다(선택 저장 후 목록이 바뀌었을 수 있음).
+        avail_m = set(self._all_machines())
+        avail_r = set(workdirs.list_recipes(self.save_dir))
+        machines = [m for m in (s.machines or self._all_machines()) if m in avail_m]
+        recipes = [r for r in (s.recipes or workdirs.list_recipes(self.save_dir))
+                   if r in avail_r]
         prev = workdirs.latest_collate(self.save_dir)
         watcher.append_log(self.save_dir,
                            f"회차 시작 — 장비 {len(machines)}대 "
                            f"({', '.join(machines) if machines else '없음'}) "
-                           f"· 레시피 {len(recipes)}개")
+                           f"· 레시피 {len(recipes)}개 "
+                           f"({', '.join(recipes) if recipes else '없음'})")
 
         def cl(ho, mag):
             return coefstore.lookup(self.coef_rows, ho, mag)

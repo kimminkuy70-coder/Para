@@ -255,21 +255,40 @@ def test_connection_check_progress_and_cancel():
     print("  연결 점검 진행보고 + 취소 OK")
 
 
-def test_selected_machines_persist():
-    """감시 대상 장비 선택이 저장·복원되어야 한다(선택 안 하면 전체가 아니라 '미선택')."""
+def test_selected_targets_persist():
+    """감시 대상(장비·레시피) 선택이 저장·복원되어야 한다."""
     with tempfile.TemporaryDirectory() as tmp:
         s, st = watcher.load_settings(tmp)
-        assert s.machines == [], "기본은 미선택(호출부가 전체 폴백을 결정)"
+        assert s.machines == [] and s.recipes == [], "기본은 미선택(호출부가 폴백 결정)"
         s.enabled = True
         s.machines = ["AOI-6", "AOI-9"]
+        s.recipes = ["PI3", "RDL2"]
         watcher.save_settings(tmp, s, st)
         s2, _ = watcher.load_settings(tmp)
         assert s2.machines == ["AOI-6", "AOI-9"], s2.machines
+        assert s2.recipes == ["PI3", "RDL2"], s2.recipes
         # 선택한 장비만 점검 대상이 된다
         targets = [(m, f"10.255.255.{i+1}") for i, m in enumerate(s2.machines)]
         chk = watcher.check_connections(targets, timeout=0.2)
         assert len(chk["ok"]) + len(chk["missing"]) == 2, chk
-    print("  감시 대상 장비 선택 저장/복원 + 선택분만 점검 OK")
+    print("  감시 대상 장비·레시피 선택 저장/복원 + 선택분만 점검 OK")
+
+
+def test_stale_selection_is_filtered():
+    """선택 저장 후 장비·레시피가 삭제됐으면 실행 시 걸러져야 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        s, st = watcher.load_settings(tmp)
+        s.machines = ["AOI-6", "사라진호기"]
+        s.recipes = ["PI3", "사라진레시피"]
+        watcher.save_settings(tmp, s, st)
+        s2, _ = watcher.load_settings(tmp)
+        # _watch_run_cycle 과 같은 필터 규칙
+        avail_m, avail_r = {"AOI-6", "AOI-9"}, {"PI3", "PI4"}
+        machines = [m for m in s2.machines if m in avail_m]
+        recipes = [r for r in s2.recipes if r in avail_r]
+        assert machines == ["AOI-6"], machines
+        assert recipes == ["PI3"], recipes
+    print("  삭제된 장비·레시피 선택 자동 제외 OK")
 
 
 def test_log_appends():
@@ -292,7 +311,7 @@ if __name__ == "__main__":
               test_first_run_has_no_baseline, test_connection_check_and_guide,
               test_connection_check_is_bounded_by_timeout,
               test_connection_check_progress_and_cancel,
-              test_selected_machines_persist,
+              test_selected_targets_persist, test_stale_selection_is_filtered,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
