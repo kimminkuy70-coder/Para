@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -330,21 +331,60 @@ def job_path_for(ip: str) -> str:
     return rf"\\{ip}\c$\Job"
 
 
-def check_connections(targets: list) -> dict:
-    """[(호기, IP)] → {"ok": [...], "missing": [...]}.
+SMB_PORT = 445
+PROBE_TIMEOUT_SEC = 1.5      # 호스트 1대당 TCP 응답 대기(짧게 — 화면이 멈추면 안 됨)
+
+
+def probe_host(ip: str, timeout: float = PROBE_TIMEOUT_SEC) -> bool:
+    """장비가 SMB 포트로 살아 있는지 **짧은 타임아웃**으로 확인.
+
+    `Path(r'\\\\IP\\c$\\Job').exists()` 는 타임아웃 지정이 불가능해서, 꺼져 있거나
+    막힌 장비 1대에 20~40초씩 잡아먹는다(호기 수만큼 곱해져 화면이 멈춘다).
+    그래서 먼저 TCP 로 1.5초만 두드려 보고, 죽어 있으면 즉시 미연결로 판정한다.
+    """
+    ip = str(ip or "").strip()
+    if not ip:
+        return False
+    try:
+        with socket.create_connection((ip, SMB_PORT), timeout=timeout):
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def check_connections(targets: list, timeout: float = PROBE_TIMEOUT_SEC,
+                      progress=None, should_stop=None) -> dict:
+    """[(호기, IP)] → {"ok": [...], "missing": [...], "stopped": bool}.
 
     net use 없이(기존 세션) 접근 가능한지만 확인한다 — **읽기 시도조차 하지 않고**
-    경로 존재만 본다. 무인 실행 도중 조용히 실패하는 것을 막기 위한 사전 점검.
+    도달 여부만 본다. 무인 실행 도중 조용히 실패하는 것을 막기 위한 사전 점검.
+
+    호출 규약(화면 멈춤 방지):
+      · **반드시 백그라운드 스레드에서 호출한다**(GUI 스레드 금지).
+      · progress(done, total, machine) 로 진행 상황을 알린다.
+      · should_stop() 이 True 면 즉시 중단한다(사용자 취소).
     """
+    targets = list(targets or [])
     ok, missing = [], []
-    for machine, ip in targets or []:
-        p = job_path_for(ip)
-        try:
-            reachable = Path(p).exists()
-        except Exception:  # noqa: BLE001
-            reachable = False
+    total = len(targets)
+    stopped = False
+    for i, (machine, ip) in enumerate(targets, start=1):
+        if should_stop is not None and should_stop():
+            stopped = True
+            break
+        if progress is not None:
+            try:
+                progress(i, total, machine)
+            except Exception:  # noqa: BLE001
+                pass
+        reachable = False
+        if probe_host(ip, timeout):          # 살아 있을 때만 실제 경로 확인
+            try:
+                reachable = Path(job_path_for(ip)).exists()
+            except Exception:  # noqa: BLE001
+                reachable = False
         (ok if reachable else missing).append((machine, ip))
-    return {"ok": ok, "missing": missing}
+    return {"ok": ok, "missing": missing, "stopped": stopped}
 
 
 def connection_guide(missing: list) -> str:

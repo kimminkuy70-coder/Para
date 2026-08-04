@@ -4798,23 +4798,34 @@ class EquipApp(tk.Tk):
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=12)
 
-        def check_conn():
+        def check_conn(parent=None):
+            """연결 점검 — 장비 응답이 없으면 1대당 수십 초씩 걸리므로 반드시
+            백그라운드에서 돌린다(GUI 스레드에서 하면 '응답 없음'이 된다)."""
+            parent = parent if parent is not None else win
             targets = [(m, refdata.ip_for(self.ip_rows, m))
                        for m in self._all_machines()]
             targets = [(m, ip) for m, ip in targets if ip]
             if not targets:
                 messagebox.showinfo("연결 점검", "장비 IP가 등록되어 있지 않습니다.",
-                                    parent=win)
+                                    parent=parent)
                 return
-            chk = watcher.check_connections(targets)
-            if chk["missing"]:
-                messagebox.showwarning("연결 점검",
-                                       watcher.connection_guide(chk["missing"]),
-                                       parent=win)
-            else:
-                messagebox.showinfo("연결 점검",
-                                    f"대상 장비 {len(chk['ok'])}대 모두 연결되어 "
-                                    "있습니다.", parent=win)
+
+            def work():
+                return watcher.check_connections(targets)
+
+            def done(ok, res):
+                if not ok:
+                    self._err("E158", "연결 점검 실패", res)
+                    return
+                if res["missing"]:
+                    messagebox.showwarning("연결 점검",
+                                           watcher.connection_guide(res["missing"]))
+                else:
+                    messagebox.showinfo("연결 점검",
+                                        f"대상 장비 {len(res['ok'])}대 모두 연결되어 "
+                                        "있습니다.")
+            self._run_busy(f"연결 점검 중… (장비 {len(targets)}대)", work, done,
+                           parent=parent)
 
         def apply_():
             s.enabled = bool(on_var.get())
@@ -4838,7 +4849,7 @@ class EquipApp(tk.Tk):
             self._sync_watch_btn()
             win.destroy()
             if s.enabled:
-                check_conn()
+                check_conn(parent=self)      # win 은 이미 닫혔으므로 부모는 본창
 
         tk.Button(bt, text="연결 점검", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=14, pady=6, cursor="hand2",

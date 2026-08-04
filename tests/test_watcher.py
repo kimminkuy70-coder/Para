@@ -215,13 +215,44 @@ def test_first_run_has_no_baseline():
 
 def test_connection_check_and_guide():
     """기본 모드는 net use 없이 — 연결 안 된 장비를 미리 알려준다."""
-    chk = watcher.check_connections([("AOI-6", "10.0.0.1")])
+    chk = watcher.check_connections([("AOI-6", "10.255.255.1")], timeout=0.3)
     assert len(chk["missing"]) == 1, chk        # 개발환경엔 장비가 없다
+    assert chk["stopped"] is False
     guide = watcher.connection_guide(chk["missing"])
     assert "AOI-6" in guide and "c$" in guide
     assert "비밀번호를 저장하지 않" in guide
     assert watcher.connection_guide([]) == ""
     print("  무인 모드 연결 사전 점검 + 안내문 OK")
+
+
+def test_connection_check_is_bounded_by_timeout():
+    """미응답 장비에서 무한정 붙들리면 화면이 멈춘다(응답없음 버그).
+    호스트당 타임아웃이 지켜지는지 확인."""
+    targets = [("AOI-6", "10.255.255.1"), ("AOI-9", "10.255.255.2"),
+               ("AOI-12", "10.255.255.3")]
+    t0 = time.time()
+    chk = watcher.check_connections(targets, timeout=0.3)
+    elapsed = time.time() - t0
+    assert len(chk["missing"]) == 3, chk
+    # 3대 × 0.3초 + 여유. 타임아웃이 안 먹으면 수십 초가 걸린다.
+    assert elapsed < 5, f"연결 점검이 너무 오래 걸림: {elapsed:.1f}초"
+    assert watcher.probe_host("", timeout=0.3) is False      # 빈 IP 방어
+    print(f"  연결 점검 타임아웃 준수 OK ({elapsed:.1f}초)")
+
+
+def test_connection_check_progress_and_cancel():
+    """진행 보고 + 사용자 취소(중단) 지원 — 긴 점검을 멈출 수 있어야 한다."""
+    targets = [("AOI-6", "10.255.255.1"), ("AOI-9", "10.255.255.2"),
+               ("AOI-12", "10.255.255.3")]
+    seen = []
+    chk = watcher.check_connections(
+        targets, timeout=0.2,
+        progress=lambda done, total, m: seen.append((done, total, m)),
+        should_stop=lambda: len(seen) >= 2)      # 2대 확인 후 취소
+    assert chk["stopped"] is True, chk
+    assert len(chk["ok"]) + len(chk["missing"]) < 3, chk
+    assert seen and seen[0][1] == 3, seen
+    print("  연결 점검 진행보고 + 취소 OK")
 
 
 def test_log_appends():
@@ -242,6 +273,8 @@ if __name__ == "__main__":
               test_unstable_file_detection, test_drop_unstable_filters_sources,
               test_compare_and_report_detects_change, test_no_change_makes_no_report,
               test_first_run_has_no_baseline, test_connection_check_and_guide,
+              test_connection_check_is_bounded_by_timeout,
+              test_connection_check_progress_and_cancel,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")

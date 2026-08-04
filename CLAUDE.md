@@ -128,7 +128,7 @@ python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부�
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
-python3 tests/test_watcher.py      # 13 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검)
+python3 tests/test_watcher.py      # 15 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -158,7 +158,7 @@ python3 tests/test_downloader.py   # 8
   않는다. 사용자가 탐색기로 대상 장비를 **미리 모두 연결**해 두어야 하며,
   `check_connections`/`connection_guide` 가 미연결 장비를 사전 안내. `CONN_NETUSE` 선택 가능
   (비밀번호는 메모리에만, 앱 종료 시 소멸).
-- 오류 코드: 잠금 E150~E154, 감시 E155~E157.
+- 오류 코드: 잠금 E150~E154, 감시 E155~E158.
 
 ## 핵심 파일
 
