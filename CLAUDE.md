@@ -157,7 +157,15 @@ python3 tests/test_downloader.py   # 8
   수동 실행할 때 확정된 `CollectPlan`(Job/Setup/Recipe 폴더)을 `감시설정.json` `plan` 에
   저장해 재사용한다(`watcher.plan_to_dict/plan_from_dict`). 계획이 없으면 회차를
   실패시키고 안내한다 — **추측해서 엉뚱한 폴더를 읽지 않는다**. 자동 매칭이 안 되는
-  장비는 건너뛰고 로그에 남긴다(`_watch_collect`).
+  장비는 건너뛰고 로그에 남긴다(`_watch_collect`). **레시피 폴더명이 장비마다 조금씩
+  달라도** `collector.match_recipes_by_names` 가 정확일치→느슨매칭(`norm_match`: 소문자
+  +영숫자/한글만, 양방향 포함)으로 찾아준다. 후보가 0개거나 2개 이상이면 매칭 실패로
+  건너뛴다. **주의**: `collect_equipment` 에 `target_levels`/`match_recipes` 를 넘겨야
+  recipe_map 재사용 경로를 탄다(안 넘기면 job_keyword 가 빈 계획에서 선택창을 요구해
+  전 장비가 건너뛰어진다).
+- **즉시 확인**: 설정창 '▶ 즉시 확인' — 주기를 기다리지 않고 1회 실행. 사람이 눌렀으므로
+  진행 모달을 띄우고 **변경이 없어도 결과를 알린다**. 주기 회차와 로직 공유
+  (`_watch_cycle_work`/`_watch_finish`).
 - **자동 감시**: 설정창에서 **① 감시할 장비 ② 감시할 레시피(둘 다 필수)** → ③ 접속 방식 →
   주기(기본 6h)·시간대 창. 선택은 `감시설정.json` 의 `machines`/`recipes` 에 저장되고
   **연결 점검·수집·취합 모두 선택분만** 대상으로 한다(미선택이면 켜지지 않음. 저장 뒤

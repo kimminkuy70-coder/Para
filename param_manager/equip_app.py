@@ -4929,9 +4929,32 @@ class EquipApp(tk.Tk):
                 # win 은 이미 닫혔으므로 부모는 본창, 대상은 방금 저장한 선택
                 check_conn(parent=self, saved_targets=targets)
 
+        def run_now():
+            """즉시 확인 — 주기를 기다리지 않고 지금 1회 수집·비교."""
+            picked, picked_r = selected_machines(), selected_recipes()
+            if not picked or not picked_r:
+                messagebox.showwarning(
+                    "즉시 확인",
+                    "감시할 장비와 레시피를 먼저 선택하세요.", parent=win)
+                return
+            if self._watch_busy:
+                messagebox.showinfo("즉시 확인",
+                                    "이미 감시 회차가 실행 중입니다.", parent=win)
+                return
+            # 화면에서 고른 값을 그대로 1회 실행에 반영(저장은 '저장' 버튼에서)
+            s.machines, s.recipes = picked, picked_r
+            s.conn_mode = conn.get()
+            if not self._watch_acquire():
+                return                      # 다른 PC 가 감시 중
+            win.destroy()
+            self._watch_run_once(s)
+
+        tk.Button(bt, text="▶ 즉시 확인", relief="flat", bd=0, bg=self.p["primary_dk"],
+                  fg="#ffffff", padx=14, pady=6, cursor="hand2",
+                  command=run_now).pack(side="left")
         tk.Button(bt, text="연결 점검", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=14, pady=6, cursor="hand2",
-                  command=check_conn).pack(side="left")
+                  command=check_conn).pack(side="left", padx=6)
         tk.Button(bt, text="보고서 폴더 열기", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=14, pady=6, cursor="hand2",
                   command=lambda: self._open_path(
@@ -5081,15 +5104,13 @@ class EquipApp(tk.Tk):
             self._logerr("E155", e)
         self.after(60_000, self._watch_tick)
 
-    def _watch_run_cycle(self, s, state):
-        """1회차: 로컬 수집본 기준으로 취합 → 직전과 비교 → 변경 시 알림·보고서.
+    def _watch_cycle_work(self, s):
+        """감시 1회차의 순수 작업(수집→취합→비교)을 만들어 돌려준다.
 
-        무인 실행이라 **모달을 띄우지 않는다**(사람이 없을 수 있음). 조용히 돌고
-        변경이 있을 때만 알린다.
+        주기 실행과 '즉시 확인'이 **같은 로직**을 쓰도록 한 곳에 모았다.
+        반환: 인자 없는 work() — 백그라운드 스레드에서 호출할 것(GUI 접근 없음).
         """
-        self._watch_busy = True
         # 감시 대상 = 설정에서 고른 장비·레시피(비어 있으면 전체 — 구 설정 하위호환).
-        # 그 사이 삭제된 항목은 걸러낸다(선택 저장 후 목록이 바뀌었을 수 있음).
         avail_m = set(self._all_machines())
         avail_r = set(workdirs.list_recipes(self.save_dir))
         machines = [m for m in (s.machines or self._all_machines()) if m in avail_m]
@@ -5122,7 +5143,7 @@ class EquipApp(tk.Tk):
                     "수집 계획이 없습니다. '파라미터 값 업데이트'를 한 번 수동으로 "
                     "실행해 Job/Setup/Recipe 폴더를 확정해 주세요(그 선택을 무인 "
                     "회차가 재사용합니다).")
-            pivot, skipped = self._watch_collect(machines, s, plan)
+            pivot, skipped = self._watch_collect(machines, s, plan, recipes)
             out = collate.build_collation(self.save_dir, recipes, pivot,
                                           all_machines, prev_collate_path=prev,
                                           coef_lookup=cl)
@@ -5136,17 +5157,30 @@ class EquipApp(tk.Tk):
             res.skipped = skipped
             return res
 
-        def done(ok, res):
-            self._watch_busy = False
-            if not ok:
-                watcher.record_run(self.save_dir, s, state, ok=False, note=str(res))
-                watcher.append_log(self.save_dir, f"회차 실패 — {res}")
-                self._logerr("E156", res)
-                self._sync_watch_btn()
-                return
-            watcher.record_run(self.save_dir, s, state, ok=True, note=res.summary())
-            self._load_latest_collate()
+        return work
+
+    def _watch_finish(self, ok, res, s, state):
+        """회차 종료 처리(성공/실패 공통) — 상태 기록·화면 갱신. 반환: 성공 여부."""
+        self._watch_busy = False
+        if not ok:
+            watcher.record_run(self.save_dir, s, state, ok=False, note=str(res))
+            watcher.append_log(self.save_dir, f"회차 실패 — {res}")
             self._sync_watch_btn()
+            return False
+        watcher.record_run(self.save_dir, s, state, ok=True, note=res.summary())
+        self._load_latest_collate()
+        self._sync_watch_btn()
+        return True
+
+    def _watch_run_cycle(self, s, state):
+        """주기 회차 — 무인이라 **모달을 띄우지 않고** 변경이 있을 때만 알린다."""
+        self._watch_busy = True
+        work = self._watch_cycle_work(s)
+
+        def done(ok, res):
+            if not self._watch_finish(ok, res, s, state):
+                self._logerr("E156", res)
+                return
             if res.has_change:
                 self._watch_notify(res)
             elif not s.notify_on_change_only:
@@ -5154,7 +5188,34 @@ class EquipApp(tk.Tk):
 
         self._run_bg(work, done)
 
-    def _watch_collect(self, machines, s, plan):
+    def _watch_run_once(self, s):
+        """'즉시 확인' — 주기를 기다리지 않고 지금 1회.
+
+        사람이 눌러서 실행하므로 주기 회차와 달리 **진행 모달을 띄우고, 변경이
+        없어도 결과를 알려준다**(눌렀는데 아무 반응이 없으면 안 되므로).
+        """
+        if self._watch_busy:
+            return
+        self._watch_busy = True
+        _, state = watcher.load_settings(self.save_dir)
+        work = self._watch_cycle_work(s)
+
+        def done(ok, res):
+            if not self._watch_finish(ok, res, s, state):
+                self._err("E156", "즉시 확인 실패", res)
+                return
+            skipped = getattr(res, "skipped", None) or []
+            extra = ("\n\n건너뛴 장비: " + ", ".join(skipped)) if skipped else ""
+            if res.has_change:
+                self._watch_notify(res)
+                return
+            messagebox.showinfo(
+                "즉시 확인 완료",
+                f"수집·비교를 마쳤습니다.\n\n결과: {res.summary()}" + extra)
+
+        self._run_busy("자동 감시 1회 실행 중… (수집→취합→비교)", work, done)
+
+    def _watch_collect(self, machines, s, plan, recipes):
         """무인 수집 — 선택한 장비에서 순차로 설정파일을 읽어 파싱 피벗을 만든다.
 
         · 사람이 없으므로 **선택창을 띄우지 않는다**. 저장된 plan 으로 자동 매칭되지
@@ -5171,6 +5232,11 @@ class EquipApp(tk.Tk):
         def no_chooser(*_a, **_kw):
             return None            # 애매하면 선택하지 않음 → UserCancelled 로 건너뜀
 
+        def no_match(_all_recipes, _levels):
+            # 저장된 recipe_map 으로 자동 매칭되지 않으면 **추측하지 않는다**.
+            # 빈 매핑 → UserCancelled → 그 장비는 건너뛰고 로그에 남긴다.
+            return {}
+
         for m in machines:
             ip = refdata.ip_for(self.ip_rows, m)
             if not ip:
@@ -5181,11 +5247,14 @@ class EquipApp(tk.Tk):
                     d = os.path.join(staging_root, _sanitize_name(aoi))
                     os.makedirs(d, exist_ok=True)
                     return d
+                # target_levels/match_recipes 를 줘야 **저장된 recipe_map 재사용
+                # 경로**를 탄다(수동 수집이 남긴 Job 폴더명으로 이 장비 폴더를 매칭).
+                # 이걸 빼면 job_keyword 가 빈 계획에서 선택창을 요구해 전부 건너뛴다.
                 _, _plan, srcs = collector.collect_equipment(
                     ip, staging_for, no_chooser, username="amkor", password=None,
                     use_net_use=use_netuse, plan=plan,
                     confirm=lambda planned: True,     # 무인 — 로컬 staging 복사 승인
-                    target_levels=None, match_recipes=None)
+                    target_levels=list(recipes), match_recipes=no_match)
                 for d, lvl in srcs:
                     sources.append((d, lvl, m))
             except collector.UserCancelled:
