@@ -37,6 +37,7 @@ from . import extract_io
 from . import formbuilder
 from . import history as history_mod
 from . import ini_parser
+from . import locking
 from . import refdata
 from . import refresh as refresh_mod
 from . import rtp_parser as rtp
@@ -119,11 +120,18 @@ class EquipApp(tk.Tk):
         self._cur_sheet = None               # 특이사항/참고자료 tksheet
         self._cur_kind = None
 
+        # 동시 접속 제어 — 내가 쥔 편집 잠금 {경로: 문서이름}, 문서별 열었을 때의 파일
+        # 상태(저장 직전 재검증용). 읽기 전용으로 연 문서는 _ro_docs 에 기록.
+        self._locks: dict[str, str] = {}
+        self._doc_stamps: dict[str, tuple] = {}
+        self._ro_docs: set = set()
+
         self._build_chrome()
         self._render()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(200, self._startup)   # 저장폴더 지정 → 참고자료/특이사항 로드 → 최신 취합
+        self.after(3000, self._presence_tick)   # 접속자 하트비트 + 잠금 갱신
 
     # ====================================================================
     #  상단 공통 크롬(뒤로/앞으로/브레드크럼/저장/파일)
@@ -155,6 +163,12 @@ class EquipApp(tk.Tk):
                                   bg="#334155", fg="#f8fafc", padx=12, pady=6,
                                   activebackground="#475569", command=self._file_menu)
         self.btn_file.pack(side="right", padx=(4, 12), pady=11)
+        # 현재 접속자 표시(클릭 시 상세 목록) — 동시 편집 상황을 항상 보이게
+        self._presence_lbl = tk.Label(bar, text="👤 나만 접속 중",
+                                      bg=self.p["header_bar"], fg="#cbd5e1",
+                                      font=self.fonts["sub"], cursor="hand2")
+        self._presence_lbl.pack(side="right", padx=8, pady=11)
+        self._presence_lbl.bind("<Button-1>", lambda e: self._show_sessions())
         self.btn_save = tk.Button(bar, text="💾 저장", relief="flat", bd=0,
                                   bg=self.p["primary"], fg="#ffffff", padx=14, pady=6,
                                   activebackground=self.p["primary_dk"], command=self.save)
@@ -305,6 +319,7 @@ class EquipApp(tk.Tk):
                 pass
         for w in self.body.winfo_children():
             w.destroy()
+        self._release_docs_except(self.view)   # 떠난 화면의 편집 잠금은 즉시 반납
         if self.view == "special":
             self._view_special()
             return
@@ -1106,7 +1121,10 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  특이사항 / 참고자료 뷰 (tksheet — 열너비조절/자동줄바꿈/색칠/행열삭제)
     # ====================================================================
-    def _make_table(self, headers, data, col_edit=False, force_edit=False):
+    def _make_table(self, headers, data, col_edit=False, force_edit=False,
+                    read_only=False):
+        """read_only=True 면 다른 사람이 편집 중인 문서 — 편집 바인딩을 아예 붙이지
+        않는다(force_edit 보다 우선). 보기·복사는 그대로 가능."""
         s = Sheet(self.body, theme="light blue",
                   show_x_scrollbar=True, show_y_scrollbar=True,
                   font=(self.p["family"], 10, "normal"),
@@ -1121,7 +1139,8 @@ class EquipApp(tk.Tk):
                  "arrowkeys", "copy", "rc_select", "column_width_resize",
                  "double_click_column_resize", "row_height_resize"]
         # 특이사항/참고자료/장비IP 는 독립 파일이라 값 확인 읽기전용과 무관하게 편집 가능
-        if force_edit or not self.read_only:
+        # (단 다른 사람이 편집 중이면 read_only=True 로 잠긴다)
+        if not read_only and (force_edit or not self.read_only):
             binds += ["paste", "cut", "delete", "edit_cell",
                       "rc_insert_row", "rc_delete_row"]
             if col_edit:
@@ -1231,13 +1250,20 @@ class EquipApp(tk.Tk):
             return
         from .engine import SPECIAL_BOOL_COL, SPECIAL_HEADERS
         self._toolbar("special")
+        # 동시 편집 방지 — 다른 사람이 수정 중이면 읽기 전용
+        doc = refdata.special_path(self.save_dir)
+        editable = self._acquire_doc(doc, "특이사항")
+        if not editable:
+            self._ro_banner(self.body, "특이사항", doc)
         btnbar = tk.Frame(self.body, bg=self.p["bg"])
         btnbar.pack(side="top", fill="x", padx=10)
-        tk.Button(btnbar, text="＋ 특이사항(행) 추가", relief="flat", bd=0,
-                  bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["bold"],
-                  cursor="hand2", command=self._special_add).pack(side="left", pady=4)
-        tk.Label(btnbar, text="  (특이사항.xlsx 에 자동 저장)", bg=self.p["bg"],
-                 fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+        if editable:
+            tk.Button(btnbar, text="＋ 특이사항(행) 추가", relief="flat", bd=0,
+                      bg=self.p["surface"], fg=self.p["primary"],
+                      font=self.fonts["bold"], cursor="hand2",
+                      command=self._special_add).pack(side="left", pady=4)
+            tk.Label(btnbar, text="  (특이사항.xlsx 에 자동 저장)", bg=self.p["bg"],
+                     fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
         bcol = SPECIAL_HEADERS.index(SPECIAL_BOOL_COL)
         data = []
         for rec in self.special_rows:
@@ -1252,7 +1278,8 @@ class EquipApp(tk.Tk):
                     v = engine._s(v)
                 row.append(v)
             data.append(row)
-        s = self._make_table(SPECIAL_HEADERS, data, col_edit=False, force_edit=True)
+        s = self._make_table(SPECIAL_HEADERS, data, col_edit=False, force_edit=True,
+                             read_only=not editable)
         s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
         for i, w in enumerate((95, 80, 130, 55, 70, 110, 150, 70, 340)):
             try:
@@ -1310,18 +1337,26 @@ class EquipApp(tk.Tk):
         if not self._need_save_dir():
             return
         self._toolbar("reference")
+        doc = refdata.ref_path(self.save_dir)
+        editable = self._acquire_doc(doc, "참고자료")
+        if not editable:
+            self._ro_banner(self.body, "참고자료", doc)
         btnbar = tk.Frame(self.body, bg=self.p["bg"])
         btnbar.pack(side="top", fill="x", padx=10)
-        tk.Button(btnbar, text="＋ 행 추가", relief="flat", bd=0, bg=self.p["surface"],
-                  fg=self.p["primary"], font=self.fonts["bold"], cursor="hand2",
-                  command=self._ref_add).pack(side="left", pady=4)
-        tk.Label(btnbar, text="  (자유 메모 · 참고자료.xlsx 에 자동 저장 · 우클릭=행/열 삽입·삭제)",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+        if editable:
+            tk.Button(btnbar, text="＋ 행 추가", relief="flat", bd=0,
+                      bg=self.p["surface"], fg=self.p["primary"],
+                      font=self.fonts["bold"], cursor="hand2",
+                      command=self._ref_add).pack(side="left", pady=4)
+            tk.Label(btnbar,
+                     text="  (자유 메모 · 참고자료.xlsx 에 자동 저장 · 우클릭=행/열 삽입·삭제)",
+                     bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"]).pack(side="left")
         grid = [list(r) for r in self.ref_grid] or [list(refdata.REF_DEFAULT_HEADERS)]
         ncol = max((len(r) for r in grid), default=3)
         grid = [row + [""] * (ncol - len(row)) for row in grid]
         s = self._make_table(None, [[engine._s(c) for c in row] for row in grid],
-                             col_edit=True, force_edit=True)
+                             col_edit=True, force_edit=True, read_only=not editable)
         s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
         for i, w in enumerate((160, 300, 200, 160)):
             if i < ncol:
@@ -1357,18 +1392,25 @@ class EquipApp(tk.Tk):
         """장비 IP 주소 = 저장폴더의 장비 IP 주소.xlsx (호기·IP, 호기 버튼의 기준)."""
         if not self._need_save_dir():
             return
+        doc = refdata.ip_path(self.save_dir)
+        editable = self._acquire_doc(doc, "장비 IP 주소")
+        if not editable:
+            self._ro_banner(self.body, "장비 IP 주소", doc)
         btnbar = tk.Frame(self.body, bg=self.p["bg"])
         btnbar.pack(side="top", fill="x", padx=10, pady=(8, 0))
-        tk.Button(btnbar, text="＋ 호기(행) 추가", relief="flat", bd=0, bg=self.p["surface"],
-                  fg=self.p["primary"], font=self.fonts["bold"], cursor="hand2",
-                  command=self._ip_add).pack(side="left", pady=4)
-        tk.Label(btnbar, text="  (호기·IP · 장비 IP 주소.xlsx 에 자동 저장 · 호기 버튼·값 "
-                              "업데이트의 기준)", bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(side="left")
+        if editable:
+            tk.Button(btnbar, text="＋ 호기(행) 추가", relief="flat", bd=0,
+                      bg=self.p["surface"], fg=self.p["primary"],
+                      font=self.fonts["bold"], cursor="hand2",
+                      command=self._ip_add).pack(side="left", pady=4)
+            tk.Label(btnbar, text="  (호기·IP · 장비 IP 주소.xlsx 에 자동 저장 · 호기 버튼·값 "
+                                  "업데이트의 기준)", bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"]).pack(side="left")
         headers = refdata.IP_HEADERS
         data = [[engine._s(r.get("호기")), engine._s(r.get("IP"))]
                 for r in self.ip_rows] or [["", ""]]
-        s = self._make_table(headers, data, col_edit=False, force_edit=True)
+        s = self._make_table(headers, data, col_edit=False, force_edit=True,
+                             read_only=not editable)
         s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
         for i, w in enumerate((160, 220)):
             try:
@@ -1546,6 +1588,8 @@ class EquipApp(tk.Tk):
         m = tk.Menu(self, tearoff=0)
         m.add_command(label="저장 폴더 변경…", command=self._change_save_dir)
         m.add_command(label="참고자료·특이사항 다시 읽기", command=self._refresh_view)
+        m.add_separator()
+        m.add_command(label="현재 접속자 보기…", command=self._show_sessions)
         m.add_separator()
         m.add_command(label="장비 폴더에서 파라미터 다운로드…", command=self._download_dialog)
         try:
@@ -2679,6 +2723,9 @@ class EquipApp(tk.Tk):
             return
         if kind == "기타":
             kind = "RDL" if level.upper().startswith("RDL") else "PI"
+        # 같은 레시피 양식을 두 사람이 동시에 만들면 서로 덮어쓴다(레시피별 잠금).
+        if not self._acquire_global(f"양식_{level}", f"{level} 양식 만들기"):
+            return
         st = workdirs.stamp()
         run_dir = workdirs.form_run_dir(self.save_dir, level, st)
         related = workdirs.related_dir(run_dir)
@@ -3174,6 +3221,7 @@ class EquipApp(tk.Tk):
                 self._err("E118", "양식 확정 실패", res, parent=win)
                 return
             win.destroy()
+            self._release_global(f"양식_{level}")      # 양식 확정 완료 — 잠금 반납
             # 기존 양식 수정 확정 → 이전 값 이어받기 + 신규 항목 값 업데이트 안내(req5)
             if prev_form:
                 self._post_finalize_merge(final, prev_form, level, res)
@@ -4121,8 +4169,12 @@ class EquipApp(tk.Tk):
             messagebox.showinfo("값 업데이트", "참고자료에 호기가 없습니다. 참고자료 탭에서 "
                                 "호기·IP를 등록하세요.")
             return
+        # 여러 PC 가 동시에 취합하면 장비에 중복 접속하고 취합 파일도 경합한다.
+        if not self._acquire_global(locking.GLOBAL_COLLATE, "파라미터 값 업데이트"):
+            return
         chosen = self._pick_levels(recipes)          # 레시피 선택 알림창
         if not chosen:
+            self._release_global(locking.GLOBAL_COLLATE)
             return
         self._start_value_update(chosen)
 
@@ -4152,6 +4204,11 @@ class EquipApp(tk.Tk):
                  justify="left").pack(anchor="w", padx=16)
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=16)
+
+        def cancel():                    # 창을 그냥 닫으면 전역 잠금을 반납해야 한다
+            self._release_global(locking.GLOBAL_COLLATE)
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", cancel)
 
         def from_equip():
             win.destroy()
@@ -4192,6 +4249,7 @@ class EquipApp(tk.Tk):
 
         def done(ok, res):
             if not ok:
+                self._release_global(locking.GLOBAL_COLLATE)
                 self._err("E128", "취합 실패", res)
                 return
             self._update_write_results(res, machines_all)
@@ -4221,11 +4279,13 @@ class EquipApp(tk.Tk):
                     continue
             made[recipe] = res
         if not made:
+            self._release_global(locking.GLOBAL_COLLATE)
             messagebox.showinfo("값 업데이트",
                                 "취합된 레시피가 없습니다.\n" + "\n".join(notes))
             return
         dest = workdirs.collate_path(self.save_dir, workdirs.stamp())
         collate.write_collation(dest, made, machines_all)
+        self._release_global(locking.GLOBAL_COLLATE)   # 취합 완료 — 잠금 반납
         self._load_latest_collate()
         self.view = "param"
         self._sync_tab_style()
@@ -4631,20 +4691,230 @@ class EquipApp(tk.Tk):
             messagebox.showwarning("취합 로드 실패", str(e))
             self.repo = None
 
-    def _save_refdata(self):
-        """현재 장비 IP/참고자료/특이사항을 저장 폴더의 파일에 기록(색상 포함)."""
+    # ====================================================================
+    #  동시 접속 제어 — 편집 잠금 / 접속자 세션
+    # ====================================================================
+    def _acquire_doc(self, path: str, doc_name: str) -> bool:
+        """문서 편집 잠금 시도. True=편집 가능, False=읽기 전용으로 열어야 함.
+
+        타인이 쥐고 있으면 안내창을 띄우고 읽기 전용, 만료된 잠금은 인수 여부를 묻는다.
+        """
+        if not path:
+            return True
+        try:
+            st = locking.acquire(path, self.user)
+            if st.status == "stale":                 # 비정상 종료로 남은 남의 잠금
+                if messagebox.askyesno("잠금 만료",
+                                       locking.holder_message(st, doc_name)):
+                    st = locking.acquire(path, self.user, takeover=True)
+            if st.editable:
+                self._locks[path] = doc_name
+                self._ro_docs.discard(path)
+                self._doc_stamps[path] = locking.file_stamp(path)
+                return True
+            messagebox.showinfo(f"{doc_name} — 읽기 전용",
+                                locking.holder_message(st, doc_name))
+            self._ro_docs.add(path)
+            return False
+        except Exception as e:  # noqa: BLE001
+            # 잠금 자체가 실패해도 작업은 계속(잠금은 보조장치) — 로그만 남긴다.
+            self._logerr("E150", e)
+            return True
+
+    def _acquire_global(self, name: str, work_name: str) -> bool:
+        """전역 작업 잠금(여러 PC 동시 실행 금지). True=진행 가능."""
+        if not self.save_dir:
+            return True
+        try:
+            st = locking.acquire_global(self.save_dir, name, self.user)
+            if st.status == "stale" and messagebox.askyesno(
+                    "이전 작업 잠금", locking.holder_message(st, work_name)):
+                st = locking.acquire_global(self.save_dir, name, self.user,
+                                            takeover=True)
+            if st.editable:
+                self._locks[locking.global_lock_path(self.save_dir, name)] = work_name
+                return True
+            info = st.info
+            who = f"{info.user}({info.host})" if info else "다른 사용자"
+            messagebox.showwarning(
+                f"{work_name} — 실행 불가",
+                f"현재 {who}님 PC에서 [{work_name}] 작업이 실행 중입니다.\n\n"
+                "동시에 실행하면 장비에 중복으로 접속하고 결과 파일이 서로 덮어써질 수 "
+                "있어 시작하지 않습니다.\n상대 작업이 끝난 뒤 다시 시도해 주세요.")
+            return False
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E153", e)
+            return True
+
+    def _release_global(self, name: str) -> None:
         if not self.save_dir:
             return
         try:
-            refdata.save_ip(refdata.ip_path(self.save_dir), self.ip_rows)
-            refdata.save_reference(refdata.ref_path(self.save_dir), self.ref_grid,
-                                   self.ref_colors)
-            refdata.save_special(refdata.special_path(self.save_dir), self.special_rows,
-                                 self.special_colors)
+            locking.release_global(self.save_dir, name, self.user)
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E154", e)
+        self._locks.pop(locking.global_lock_path(self.save_dir, name), None)
+
+    def _doc_for_view(self, view: str) -> str | None:
+        """화면 ↔ 편집 문서 대응(잠금 반납 대상 판단용)."""
+        if not self.save_dir:
+            return None
+        return {"special": refdata.special_path(self.save_dir),
+                "reference": refdata.ref_path(self.save_dir),
+                "ip": refdata.ip_path(self.save_dir)}.get(view)
+
+    def _release_docs_except(self, view: str) -> None:
+        """현재 화면의 문서를 뺀 나머지 편집 잠금 반납.
+
+        한 사람이 여러 문서를 계속 붙들고 있으면 다른 사람이 못 쓰므로, 화면을
+        떠나는 즉시 반납한다.
+        """
+        keep = self._doc_for_view(view)
+        for v in ("special", "reference", "ip"):
+            p = self._doc_for_view(v)
+            if p and p != keep and p in self._locks:
+                self._release_doc(p)
+            if p and p != keep:
+                self._ro_docs.discard(p)
+
+    def _release_doc(self, path: str) -> None:
+        if not path:
+            return
+        try:
+            locking.release(path, self.user)
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E151", e)
+        self._locks.pop(path, None)
+        self._doc_stamps.pop(path, None)
+        self._ro_docs.discard(path)
+
+    def _is_ro_doc(self, path: str) -> bool:
+        """이 문서를 읽기 전용으로 열었는가(= 남이 편집 중)."""
+        return path in self._ro_docs
+
+    def _ro_banner(self, parent, doc_name: str, path: str) -> None:
+        """읽기 전용 안내 배너 — 누가 수정 중인지 상단에 계속 보이게."""
+        st = locking.status(path, self.user)
+        info = st.info
+        who = f"{info.user}({info.host})" if info else "다른 사용자"
+        since = f" · {info.time}부터" if info and info.time else ""
+        bar = tk.Frame(parent, bg="#fff4e5")
+        bar.pack(side="top", fill="x", padx=10, pady=(6, 0))
+        tk.Label(bar, text=f"🔒 읽기 전용 — {who}님이 {doc_name}을(를) 수정 중입니다{since}. "
+                           "수정하려면 상대가 끝낸 뒤 화면을 다시 열어 주세요.",
+                 bg="#fff4e5", fg="#8a5a00", font=self.fonts["sub"],
+                 anchor="w", justify="left").pack(side="left", padx=10, pady=5)
+        tk.Button(bar, text="다시 시도", relief="flat", bd=0, bg="#fff4e5",
+                  fg=self.p["primary"], font=self.fonts["sub"], cursor="hand2",
+                  command=self._render).pack(side="right", padx=8)
+
+    def _presence_tick(self):
+        """접속자 하트비트 + 내 잠금 갱신 + 만료 세션 정리(주기 실행)."""
+        try:
+            if self.save_dir:
+                locking.touch_session(self.save_dir, self.user, screen=self.view)
+                for p in list(self._locks):
+                    locking.refresh(p, self.user)
+                locking.prune_sessions(self.save_dir)
+                self._update_presence_label()
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E152", e)
+        self.after(locking.SESSION_HEARTBEAT_SEC * 1000, self._presence_tick)
+
+    def _update_presence_label(self):
+        """상단 접속자 표시 갱신(위젯이 있을 때만)."""
+        lbl = getattr(self, "_presence_lbl", None)
+        if lbl is None:
+            return
+        try:
+            msg = locking.others_message(self.save_dir, self.user) if self.save_dir else ""
+            lbl.config(text=("👥 " + msg) if msg else "👤 나만 접속 중")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _show_sessions(self):
+        """현재 접속자 목록 창 — 누가 무엇을 잠그고 있는지."""
+        if not self._need_save_dir():
+            return
+        sessions = locking.list_sessions(self.save_dir)
+        win = tk.Toplevel(self)
+        win.title("현재 접속자")
+        win.configure(bg=self.p["bg"])
+        win.geometry("560x360")
+        tk.Label(win, text="현재 이 저장폴더를 사용 중인 사람", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w",
+                                                                 padx=14, pady=(12, 2))
+        tk.Label(win, text="(수정 문서는 1명만 편집할 수 있고, 나머지는 읽기 전용입니다)",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(anchor="w", padx=14)
+        cols = ("사용자", "PC", "화면", "접속 시작", "최근 확인")
+        tv = ttk.Treeview(win, columns=cols, show="headings", height=10)
+        for c, w in zip(cols, (110, 120, 100, 130, 130)):
+            tv.heading(c, text=c)
+            tv.column(c, width=w, anchor="center")
+        for s in sessions:
+            me = " (나)" if (s.user == self.user and s.pid == os.getpid()) else ""
+            tv.insert("", "end", values=(s.user + me, s.host, s.screen or "-",
+                                         s.started, s.last_seen))
+        tv.pack(fill="both", expand=True, padx=14, pady=10)
+        if not sessions:
+            tk.Label(win, text="접속자 정보가 없습니다.", bg=self.p["bg"],
+                     fg=self.p["muted"]).pack(pady=4)
+        tk.Button(win, text="닫기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=5, cursor="hand2",
+                  command=win.destroy).pack(pady=(0, 12))
+
+    def _save_one(self, path: str, saver) -> bool:
+        """문서 1개 저장 — 잠금·외부 변경 재검증 후 기록.
+
+        OneDrive 동기화 지연으로 잠금이 새더라도, 남이 먼저 저장한 내용을 말없이
+        덮어쓰지 않도록 여기서 마지막으로 막는다. 반환: 저장했으면 True.
+        """
+        if self._is_ro_doc(path):
+            return False                       # 읽기 전용으로 연 문서는 저장하지 않음
+        chk = locking.check_before_save(path, self.user, self._doc_stamps.get(path))
+        if not chk["ok"]:
+            name = os.path.basename(path)
+            if not messagebox.askyesno(
+                    "저장 충돌 확인",
+                    f"[{name}] 저장 전에 문제가 발견되었습니다.\n\n{chk['reason']}\n\n"
+                    "그대로 저장하면 다른 사람의 변경이 사라질 수 있습니다.\n"
+                    "저장을 진행할까요?"):
+                return False
+        saver()
+        self._doc_stamps[path] = locking.file_stamp(path)
+        return True
+
+    def _save_refdata(self):
+        """현재 장비 IP/참고자료/특이사항을 저장 폴더의 파일에 기록(색상 포함).
+
+        읽기 전용으로 연 문서(다른 사람이 편집 중)는 저장하지 않는다.
+        """
+        if not self.save_dir:
+            return
+        try:
+            self._save_one(refdata.ip_path(self.save_dir),
+                           lambda: refdata.save_ip(refdata.ip_path(self.save_dir),
+                                                   self.ip_rows))
+            self._save_one(refdata.ref_path(self.save_dir),
+                           lambda: refdata.save_reference(
+                               refdata.ref_path(self.save_dir), self.ref_grid,
+                               self.ref_colors))
+            self._save_one(refdata.special_path(self.save_dir),
+                           lambda: refdata.save_special(
+                               refdata.special_path(self.save_dir), self.special_rows,
+                               self.special_colors))
         except Exception as e:  # noqa: BLE001
             self._err("E144", "저장 실패", e)
 
     def _on_close(self):
+        # 내가 쥔 편집 잠금과 접속 세션을 정리하고 종료(다음 사람이 바로 편집 가능).
+        try:
+            locking.release_all(list(self._locks), self.user)
+            if self.save_dir:
+                locking.end_session(self.save_dir, self.user)
+        except Exception:  # noqa: BLE001
+            pass
         self.destroy()
 
 
