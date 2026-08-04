@@ -255,6 +255,23 @@ def test_connection_check_progress_and_cancel():
     print("  연결 점검 진행보고 + 취소 OK")
 
 
+def test_selected_machines_persist():
+    """감시 대상 장비 선택이 저장·복원되어야 한다(선택 안 하면 전체가 아니라 '미선택')."""
+    with tempfile.TemporaryDirectory() as tmp:
+        s, st = watcher.load_settings(tmp)
+        assert s.machines == [], "기본은 미선택(호출부가 전체 폴백을 결정)"
+        s.enabled = True
+        s.machines = ["AOI-6", "AOI-9"]
+        watcher.save_settings(tmp, s, st)
+        s2, _ = watcher.load_settings(tmp)
+        assert s2.machines == ["AOI-6", "AOI-9"], s2.machines
+        # 선택한 장비만 점검 대상이 된다
+        targets = [(m, f"10.255.255.{i+1}") for i, m in enumerate(s2.machines)]
+        chk = watcher.check_connections(targets, timeout=0.2)
+        assert len(chk["ok"]) + len(chk["missing"]) == 2, chk
+    print("  감시 대상 장비 선택 저장/복원 + 선택분만 점검 OK")
+
+
 def test_log_appends():
     with tempfile.TemporaryDirectory() as tmp:
         watcher.append_log(tmp, "회차 시작")
@@ -275,6 +292,7 @@ if __name__ == "__main__":
               test_first_run_has_no_baseline, test_connection_check_and_guide,
               test_connection_check_is_bounded_by_timeout,
               test_connection_check_progress_and_cancel,
+              test_selected_machines_persist,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")

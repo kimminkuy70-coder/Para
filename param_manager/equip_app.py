@@ -4728,6 +4728,7 @@ class EquipApp(tk.Tk):
         win.title("자동 감시 설정")
         win.configure(bg=self.p["bg"])
         win.transient(self)
+        win.geometry("680x720")           # 장비 선택 목록이 들어가 세로가 길다
         tk.Label(win, text="자동 감시", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win, text="정해진 주기마다 값을 수집·취합하고, 직전과 달라진 파라미터가 "
@@ -4769,8 +4770,81 @@ class EquipApp(tk.Tk):
                  bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left")
 
+        # ── 감시할 장비 선택 (가장 먼저 정해야 하는 것) ──
+        mbox = tk.LabelFrame(win, text=" ① 감시할 장비 선택 ", bg=self.p["bg"],
+                             fg=self.p["text"], font=self.fonts["bold"])
+        mbox.pack(fill="both", expand=True, padx=16, pady=(4, 6))
+        all_machines = self._all_machines()
+        # 저장된 선택이 없으면(최초) 전체 선택 — 이후에는 저장된 선택을 그대로 복원
+        chosen_m = set(s.machines) if s.machines else set(all_machines)
+        m_vars: list = []
+        if all_machines:
+            head = tk.Frame(mbox, bg=self.p["bg"])
+            head.pack(fill="x", padx=8, pady=(4, 0))
+            tk.Label(head, text="선택한 장비만 수집·비교합니다.", bg=self.p["bg"],
+                     fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+            cnt_lbl = tk.Label(head, text="", bg=self.p["bg"], fg=self.p["primary"],
+                               font=self.fonts["bold"])
+            cnt_lbl.pack(side="right", padx=6)
+
+            def upd_cnt():
+                n = sum(1 for v, _ in m_vars if v.get())
+                cnt_lbl.config(text=f"{n} / {len(m_vars)}대 선택")
+
+            def set_all(val):
+                for v, _ in m_vars:
+                    v.set(val)
+                upd_cnt()
+            tk.Button(head, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["text"], font=self.fonts["sub"], cursor="hand2",
+                      command=lambda: set_all(False)).pack(side="right", padx=2)
+            tk.Button(head, text="전체 선택", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["text"], font=self.fonts["sub"], cursor="hand2",
+                      command=lambda: set_all(True)).pack(side="right", padx=2)
+
+            mcv = tk.Canvas(mbox, bg=self.p["bg"], highlightthickness=0, height=150)
+            mvsb = ttk.Scrollbar(mbox, orient="vertical", command=mcv.yview)
+            minner = tk.Frame(mcv, bg=self.p["bg"])
+            mcv.create_window((0, 0), window=minner, anchor="nw")
+            mcv.configure(yscrollcommand=mvsb.set)
+            mcv.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=6)
+            mvsb.pack(side="right", fill="y", pady=6)
+            minner.bind("<Configure>",
+                        lambda e: mcv.configure(scrollregion=mcv.bbox("all")))
+            self._wheelify(mcv)
+            for i, m in enumerate(all_machines):
+                ip = refdata.ip_for(self.ip_rows, m)
+                v = tk.BooleanVar(value=(m in chosen_m))
+                tk.Checkbutton(minner, text=m, variable=v, bg=self.p["bg"],
+                               fg=self.p["text"], selectcolor=self.p["surface"],
+                               font=self.fonts["bold"], width=12, anchor="w",
+                               command=upd_cnt).grid(row=i // 2, column=(i % 2) * 2,
+                                                     sticky="w", pady=1)
+                tk.Label(minner, text=ip or "(IP 없음)", bg=self.p["bg"],
+                         fg=(self.p["muted"] if ip else self.p["danger"]),
+                         font=self.fonts["sub"], width=18, anchor="w").grid(
+                    row=i // 2, column=(i % 2) * 2 + 1, sticky="w", padx=(0, 12))
+                m_vars.append((v, m))
+            upd_cnt()
+        else:
+            tk.Label(mbox, text="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 호기·IP를 "
+                               "먼저 등록하세요.", bg=self.p["bg"], fg=self.p["danger"],
+                     font=self.fonts["sub"]).pack(anchor="w", padx=10, pady=8)
+
+        def selected_machines() -> list:
+            return [m for v, m in m_vars if v.get()]
+
+        def selected_targets() -> list:
+            """선택된 장비의 (호기, IP) — IP 없는 호기는 제외."""
+            out = []
+            for m in selected_machines():
+                ip = refdata.ip_for(self.ip_rows, m)
+                if ip:
+                    out.append((m, ip))
+            return out
+
         # ── 접속 방식 — 기본/권장은 net use 없이(기존 연결) ──
-        box = tk.LabelFrame(win, text=" 장비 접속 방식 ", bg=self.p["bg"],
+        box = tk.LabelFrame(win, text=" ② 장비 접속 방식 ", bg=self.p["bg"],
                             fg=self.p["text"], font=self.fonts["bold"])
         box.pack(fill="x", padx=16, pady=(4, 8))
         conn = tk.StringVar(value=s.conn_mode)
@@ -4798,16 +4872,17 @@ class EquipApp(tk.Tk):
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=12)
 
-        def check_conn(parent=None):
-            """연결 점검 — 장비 응답이 없으면 1대당 수십 초씩 걸리므로 반드시
-            백그라운드에서 돌린다(GUI 스레드에서 하면 '응답 없음'이 된다)."""
+        def check_conn(parent=None, saved_targets=None):
+            """연결 점검 — 선택한 장비만 대상. 장비 응답이 없으면 1대당 수십 초씩
+            걸리므로 반드시 백그라운드에서 돌린다(GUI 스레드면 '응답 없음')."""
             parent = parent if parent is not None else win
-            targets = [(m, refdata.ip_for(self.ip_rows, m))
-                       for m in self._all_machines()]
-            targets = [(m, ip) for m, ip in targets if ip]
+            targets = list(saved_targets) if saved_targets is not None \
+                else selected_targets()
             if not targets:
-                messagebox.showinfo("연결 점검", "장비 IP가 등록되어 있지 않습니다.",
-                                    parent=parent)
+                messagebox.showinfo(
+                    "연결 점검",
+                    "감시할 장비를 먼저 선택하세요.\n"
+                    "(선택한 장비 중 IP가 등록된 장비만 점검합니다.)", parent=parent)
                 return
 
             def work():
@@ -4828,7 +4903,21 @@ class EquipApp(tk.Tk):
                            parent=parent)
 
         def apply_():
+            picked = selected_machines()
+            if on_var.get() and not picked:
+                messagebox.showwarning(
+                    "장비 미선택",
+                    "감시할 장비를 1대 이상 선택하세요.\n"
+                    "선택한 장비만 수집·비교합니다.", parent=win)
+                return
+            no_ip = [m for m in picked if not refdata.ip_for(self.ip_rows, m)]
+            if no_ip and not messagebox.askyesno(
+                    "IP 없는 장비",
+                    "다음 장비는 IP가 등록되어 있지 않아 감시에서 제외됩니다:\n\n"
+                    f"  {', '.join(no_ip)}\n\n계속할까요?", parent=win):
+                return
             s.enabled = bool(on_var.get())
+            s.machines = picked                       # ← 감시 대상 장비 저장
             try:
                 s.interval_hours = float(iv.get())
             except ValueError:
@@ -4844,12 +4933,14 @@ class EquipApp(tk.Tk):
                 self._watch_release()
             watcher.save_settings(self.save_dir, s, state)
             watcher.append_log(self.save_dir,
-                               f"설정 변경 — 사용={s.enabled} 주기={s.interval_hours}h "
-                               f"접속={s.conn_mode}")
+                               f"설정 변경 — 사용={s.enabled} 장비={len(picked)}대 "
+                               f"주기={s.interval_hours}h 접속={s.conn_mode}")
             self._sync_watch_btn()
+            targets = selected_targets()              # 창 닫기 전에 확보
             win.destroy()
             if s.enabled:
-                check_conn(parent=self)      # win 은 이미 닫혔으므로 부모는 본창
+                # win 은 이미 닫혔으므로 부모는 본창, 대상은 방금 저장한 선택
+                check_conn(parent=self, saved_targets=targets)
 
         tk.Button(bt, text="연결 점검", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=14, pady=6, cursor="hand2",
@@ -4863,11 +4954,15 @@ class EquipApp(tk.Tk):
                   command=apply_).pack(side="right")
 
     def _watch_status_text(self, s, state) -> str:
+        tgt = (f"· 감시 대상: {len(s.machines)}대 ({', '.join(s.machines[:6])}"
+               f"{' 외' if len(s.machines) > 6 else ''})"
+               if s.machines else "· 감시 대상: 아직 선택하지 않았습니다.")
         if not state.last_run:
-            return "· 아직 실행 이력이 없습니다."
+            return tgt + "\n· 아직 실행 이력이 없습니다."
         nxt = watcher.next_run_at(s, state)
-        return (f"· 마지막 실행: {state.last_run} ({state.last_result or '-'})\n"
-                f"· 다음 예정: {nxt.strftime('%Y-%m-%d %H:%M')}"
+        return (tgt
+                + f"\n· 마지막 실행: {state.last_run} ({state.last_result or '-'})"
+                + f"\n· 다음 예정: {nxt.strftime('%Y-%m-%d %H:%M')}"
                 + (f"  · 연속 실패 {state.fail_count}회(재시도 지연 중)"
                    if state.fail_count else ""))
 
@@ -4926,10 +5021,15 @@ class EquipApp(tk.Tk):
         변경이 있을 때만 알린다.
         """
         self._watch_busy = True
-        machines = self._all_machines()
+        # 감시 대상 = 설정에서 고른 장비(비어 있으면 전체 — 구 설정 하위호환)
+        machines = [m for m in (s.machines or self._all_machines())
+                    if m in set(self._all_machines())]
         recipes = s.recipes or workdirs.list_recipes(self.save_dir)
         prev = workdirs.latest_collate(self.save_dir)
-        watcher.append_log(self.save_dir, f"회차 시작 — 레시피 {len(recipes)}개")
+        watcher.append_log(self.save_dir,
+                           f"회차 시작 — 장비 {len(machines)}대 "
+                           f"({', '.join(machines) if machines else '없음'}) "
+                           f"· 레시피 {len(recipes)}개")
 
         def cl(ho, mag):
             return coefstore.lookup(self.coef_rows, ho, mag)

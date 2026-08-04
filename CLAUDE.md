@@ -128,7 +128,7 @@ python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부�
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
-python3 tests/test_watcher.py      # 15 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소)
+python3 tests/test_watcher.py      # 16 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상장비선택)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -148,7 +148,9 @@ python3 tests/test_downloader.py   # 8
   감시 중복 실행은 장비에 배수 접속이므로 반드시 단일. 앱 재시작 시 조용히 재획득.
 - **접속자 목록**: 헤더 '👥 현재 접속: …'(클릭=상세), ⋯파일>현재 접속자 보기.
   60초 하트비트(`_presence_tick`)로 세션 갱신 + 내 잠금 갱신 + 만료 세션 정리.
-- **자동 감시**: 주기(기본 6h)·시간대 창·접속 방식 설정 → 조용히 수집·취합 →
+- **자동 감시**: 설정창에서 **① 감시할 장비 선택(필수)** → ② 접속 방식 → 주기(기본 6h)·
+  시간대 창. 선택은 `감시설정.json` `machines` 에 저장되고 **연결 점검·수집 모두 선택분만**
+  대상으로 한다(미선택이면 켜지지 않음). 이후 조용히 수집·취합 →
   `history.diff_files` 로 직전과 비교 → **변경 있을 때만** 알림 + `자동감시/변경보고서_{시간}.xlsx`.
   무인이라 모달 금지(`_run_bg`). 설정=`감시설정.json`, 로그=`자동감시/감시로그.txt`.
 - **장비 비방해(최우선)**: 원본 읽기전용(collector 3중 안전장치 유지) · 복사 전후
