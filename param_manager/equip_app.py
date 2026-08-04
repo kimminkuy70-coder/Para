@@ -2228,6 +2228,15 @@ class EquipApp(tk.Tk):
                 pw.set("")
             common_pw.set("")
             direct_pw.set("")
+            # 확정된 Job/Setup/Recipe 선택을 감시 설정에 보존 — 무인 회차가 선택창
+            # 없이 그대로 재사용한다(비밀번호는 저장하지 않음).
+            if plan is not None and self.save_dir:
+                try:
+                    ws_, wst_ = watcher.load_settings(self.save_dir)
+                    ws_.plan = watcher.plan_to_dict(plan)
+                    watcher.save_settings(self.save_dir, ws_, wst_)
+                except Exception as e:  # noqa: BLE001
+                    self._logerr("E161", e)
             if errors:
                 messagebox.showwarning("수집 결과",
                                        f"완료 {len(sources)}건, 실패 {len(errors)}건\n\n"
@@ -5093,21 +5102,39 @@ class EquipApp(tk.Tk):
                            f"· 레시피 {len(recipes)}개 "
                            f"({', '.join(recipes) if recipes else '없음'})")
 
+        # 취합 파일의 **열은 항상 전체 호기**여야 한다. 선택한 장비만 열로 쓰면
+        # 나머지 호기의 기존 값이 통째로 빠져 '삭제됨'으로 오탐된다.
+        # 선택은 '어느 장비에서 새로 읽을지'만 정하고, 나머지 호기 값은 직전
+        # 취합본에서 그대로 이어받는다.
+        all_machines = self._all_machines()
+        plan = watcher.plan_from_dict(s.plan)
+
         def cl(ho, mag):
             return coefstore.lookup(self.coef_rows, ho, mag)
 
         def work():
             if not recipes:
                 raise RuntimeError("양식이 없습니다('양식 만들기' 먼저)")
-            out = collate.build_collation(self.save_dir, recipes, [], machines,
-                                          prev_collate_path=prev, coef_lookup=cl)
+            if not machines:
+                raise RuntimeError("감시 대상 장비가 없습니다(설정에서 선택)")
+            if plan is None:
+                raise RuntimeError(
+                    "수집 계획이 없습니다. '파라미터 값 업데이트'를 한 번 수동으로 "
+                    "실행해 Job/Setup/Recipe 폴더를 확정해 주세요(그 선택을 무인 "
+                    "회차가 재사용합니다).")
+            pivot, skipped = self._watch_collect(machines, s, plan)
+            out = collate.build_collation(self.save_dir, recipes, pivot,
+                                          all_machines, prev_collate_path=prev,
+                                          coef_lookup=cl)
             made = {r: v for r, v in out.items() if not v.missing_form}
             if not made:
                 raise RuntimeError("취합된 레시피가 없습니다")
             st = workdirs.stamp()
             dest = workdirs.collate_path(self.save_dir, st)
-            collate.write_collation(dest, made, machines)
-            return watcher.compare_and_report(self.save_dir, prev, dest, st)
+            collate.write_collation(dest, made, all_machines)
+            res = watcher.compare_and_report(self.save_dir, prev, dest, st)
+            res.skipped = skipped
+            return res
 
         def done(ok, res):
             self._watch_busy = False
@@ -5126,6 +5153,62 @@ class EquipApp(tk.Tk):
                 self._set_status("자동 감시: 변경 없음")
 
         self._run_bg(work, done)
+
+    def _watch_collect(self, machines, s, plan):
+        """무인 수집 — 선택한 장비에서 순차로 설정파일을 읽어 파싱 피벗을 만든다.
+
+        · 사람이 없으므로 **선택창을 띄우지 않는다**. 저장된 plan 으로 자동 매칭되지
+          않는 장비는 조용히 건너뛰고 로그에 남긴다(추측해서 엉뚱한 폴더를 읽지 않음).
+        · 장비 1대씩 순차 접속(동시 접속 금지), 원본은 읽기 전용.
+        · 복사 전후 (mtime,size) 가 흔들린 파일은 그 회차에서 제외 — 장비가 쓰는
+          중이던 반쪽 파일로 '거짓 변경'을 만들지 않기 위해.
+        반환: (pivot_rows, 건너뛴 장비 목록)
+        """
+        staging_root = os.path.join(self.save_dir, "_감시임시", workdirs.stamp())
+        use_netuse = (s.conn_mode == watcher.CONN_NETUSE)
+        sources, skipped = [], []
+
+        def no_chooser(*_a, **_kw):
+            return None            # 애매하면 선택하지 않음 → UserCancelled 로 건너뜀
+
+        for m in machines:
+            ip = refdata.ip_for(self.ip_rows, m)
+            if not ip:
+                skipped.append(f"{m}(IP 없음)")
+                continue
+            try:
+                def staging_for(_kw, aoi=m):
+                    d = os.path.join(staging_root, _sanitize_name(aoi))
+                    os.makedirs(d, exist_ok=True)
+                    return d
+                _, _plan, srcs = collector.collect_equipment(
+                    ip, staging_for, no_chooser, username="amkor", password=None,
+                    use_net_use=use_netuse, plan=plan,
+                    confirm=lambda planned: True,     # 무인 — 로컬 staging 복사 승인
+                    target_levels=None, match_recipes=None)
+                for d, lvl in srcs:
+                    sources.append((d, lvl, m))
+            except collector.UserCancelled:
+                skipped.append(f"{m}(자동 매칭 실패)")
+            except Exception as e:  # noqa: BLE001
+                skipped.append(f"{m}({e})")
+
+        if skipped:
+            watcher.append_log(self.save_dir, "건너뜀 — " + ", ".join(skipped))
+        if not sources:
+            raise RuntimeError("수집된 장비가 없습니다: " + (", ".join(skipped) or "-"))
+
+        cb, cstate = self._coef_lookup_cb()
+        cfgs = []
+        for rootp, kw, aoi in sources:
+            cfgs += ini_parser.scan_tree(rootp, default_level=kw,
+                                         default_equipment=aoi, coef_lookup=cb)
+        valid = [c for c in cfgs if rtp.config_valid(c)]
+        rows, _ = ini_parser.build_pivot(valid)
+        self._coef_save_if_changed(cstate)
+        watcher.append_log(self.save_dir,
+                           f"수집 완료 — 장비 {len(sources)}건, 파라미터 {len(rows)}행")
+        return rows, skipped
 
     def _run_bg(self, work, on_done):
         """모달 없이 백그라운드 실행(무인 감시용). GUI 갱신은 on_done 에서만."""

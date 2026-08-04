@@ -62,13 +62,18 @@ class WatchSettings:
     recipes: list = field(default_factory=list)      # 빈 목록 = 전체
     machines: list = field(default_factory=list)     # 빈 목록 = 참고자료 전체
     notify_on_change_only: bool = True               # 변경 없으면 알리지 않음
+    # 무인 수집 계획(collector.CollectPlan 직렬화). 사람이 값 업데이트를 1회 수동
+    # 실행할 때 확정된 Job/Setup/Recipe 폴더 선택을 기록해 두었다가, 무인 회차에서
+    # 선택창 없이 그대로 재사용한다. 없으면 무인 수집을 할 수 없다.
+    plan: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {"enabled": self.enabled, "interval_hours": self.interval_hours,
                 "conn_mode": self.conn_mode, "window_start": self.window_start,
                 "window_end": self.window_end, "recipes": list(self.recipes),
                 "machines": list(self.machines),
-                "notify_on_change_only": self.notify_on_change_only}
+                "notify_on_change_only": self.notify_on_change_only,
+                "plan": dict(self.plan or {})}
 
     @staticmethod
     def from_dict(d: dict) -> "WatchSettings":
@@ -90,6 +95,7 @@ class WatchSettings:
         s.recipes = list(d.get("recipes") or [])
         s.machines = list(d.get("machines") or [])
         s.notify_on_change_only = bool(d.get("notify_on_change_only", True))
+        s.plan = dict(d.get("plan") or {})
         return s
 
 
@@ -153,6 +159,31 @@ def save_settings(save_dir: str, settings: WatchSettings,
     with open(p, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
     return p
+
+
+def plan_to_dict(plan) -> dict:
+    """collector.CollectPlan → 저장용 dict. None 이면 {}."""
+    if plan is None:
+        return {}
+    return {"job_keyword": getattr(plan, "job_keyword", "") or "",
+            "job_name": getattr(plan, "job_name", "") or "",
+            "setup_name": getattr(plan, "setup_name", "") or "",
+            "recipe_names": list(getattr(plan, "recipe_names", []) or []),
+            "recipe_map": dict(getattr(plan, "recipe_map", {}) or {})}
+
+
+def plan_from_dict(d: dict):
+    """저장된 dict → collector.CollectPlan. 내용이 없으면 None."""
+    d = d or {}
+    if not (d.get("job_keyword") or d.get("job_name") or d.get("recipe_map")
+            or d.get("recipe_names")):
+        return None
+    from .collector import CollectPlan
+    return CollectPlan(job_keyword=d.get("job_keyword", ""),
+                       job_name=d.get("job_name", ""),
+                       setup_name=d.get("setup_name", ""),
+                       recipe_names=list(d.get("recipe_names") or []),
+                       recipe_map=dict(d.get("recipe_map") or {}))
 
 
 def append_log(save_dir: str, line: str) -> None:

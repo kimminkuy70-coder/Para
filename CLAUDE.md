@@ -129,7 +129,7 @@ python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·�
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
-python3 tests/test_watcher.py      # 17 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택)
+python3 tests/test_watcher.py      # 19 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -149,6 +149,15 @@ python3 tests/test_downloader.py   # 8
   감시 중복 실행은 장비에 배수 접속이므로 반드시 단일. 앱 재시작 시 조용히 재획득.
 - **접속자 목록**: 헤더 '👥 현재 접속: …'(클릭=상세), ⋯파일>현재 접속자 보기.
   60초 하트비트(`_presence_tick`)로 세션 갱신 + 내 잠금 갱신 + 만료 세션 정리.
+- **취합 열은 항상 전체 호기(중요)**: 감시 대상으로 고른 장비는 '어디서 새로 읽을지'만
+  정한다. `build_collation`/`write_collation` 에 **선택분만 넘기면 나머지 호기의 기존
+  값이 빠져 변경보고서에 '삭제'로 오탐**된다(`collate_recipe` 의 직전값 이어받기가
+  `machines_all` 로 제한되기 때문). 반드시 `_all_machines()` 를 넘길 것.
+- **무인 수집 계획**: 무인 회차는 선택창을 띄울 수 없으므로 사람이 '값 업데이트'를 1회
+  수동 실행할 때 확정된 `CollectPlan`(Job/Setup/Recipe 폴더)을 `감시설정.json` `plan` 에
+  저장해 재사용한다(`watcher.plan_to_dict/plan_from_dict`). 계획이 없으면 회차를
+  실패시키고 안내한다 — **추측해서 엉뚱한 폴더를 읽지 않는다**. 자동 매칭이 안 되는
+  장비는 건너뛰고 로그에 남긴다(`_watch_collect`).
 - **자동 감시**: 설정창에서 **① 감시할 장비 ② 감시할 레시피(둘 다 필수)** → ③ 접속 방식 →
   주기(기본 6h)·시간대 창. 선택은 `감시설정.json` 의 `machines`/`recipes` 에 저장되고
   **연결 점검·수집·취합 모두 선택분만** 대상으로 한다(미선택이면 켜지지 않음. 저장 뒤

@@ -291,6 +291,77 @@ def test_stale_selection_is_filtered():
     print("  삭제된 장비·레시피 선택 자동 제외 OK")
 
 
+def test_unselected_machines_keep_values():
+    """감시 대상을 1대만 골라도 **나머지 호기의 기존 값이 남아 있어야** 한다.
+
+    (버그) 선택한 장비만 취합 열로 쓰면 나머지 호기 값이 통째로 빠져
+    변경보고서에 '삭제'로 잘못 찍혔다. 열은 항상 전체 호기여야 한다.
+    """
+    import shutil
+    from param_manager import collate, extract_io, workdirs
+    with tempfile.TemporaryDirectory() as tmp:
+        machines_all = ["AOI-17", "AOI-19", "AOI-25"]
+        # 양식 1개(파라미터 1행)
+        recipe = "PI3"
+        run_dir = workdirs.form_run_dir(tmp, recipe, "20260101_000000")
+        form = workdirs.form_final_path(run_dir, recipe, "AOI-19", "20260101_000000")
+        rec = {"PI": recipe, "Recipe": "PI", "Zone": "PAD", "Alg": "Contrast",
+               "Parameter": "Contrast Delta - Bright", "비고": ""}
+        extract_io.write_snapshot(form, [rec], machines=[], sheet_name="PI_ALL",
+                                  extracts=[{"src_file": "Zones/PAD.ini",
+                                             "section": "Contrast",
+                                             "key": "Delta", "transform": "RAW"}],
+                                  stage="final", level=recipe)
+        # 직전 취합본: 세 호기 모두 값이 있음
+        prev_res = collate.build_collation(tmp, [recipe], [], machines_all)
+        made = {r: v for r, v in prev_res.items() if not v.missing_form}
+        for r, v in made.items():
+            for row in v.records:
+                for m, val in zip(machines_all, ["17값", "19값", "25값"]):
+                    row[m] = val
+        prev_path = workdirs.collate_path(tmp, "20260101_010000")
+        collate.write_collation(prev_path, made, machines_all)
+
+        # 감시 회차: AOI-19 만 선택했지만 **열은 전체 호기**로 취합(고친 동작)
+        out = collate.build_collation(tmp, [recipe], [], machines_all,
+                                      prev_collate_path=prev_path)
+        made2 = {r: v for r, v in out.items() if not v.missing_form}
+        new_path = workdirs.collate_path(tmp, "20260101_020000")
+        collate.write_collation(new_path, made2, machines_all)
+
+        sheets, cols = collate.load_collation(new_path)
+        for m in machines_all:
+            assert m in cols, f"{m} 열이 사라짐: {cols}"
+        row = sheets[recipe][0]
+        assert row["AOI-17"] == "17값", row     # 선택 안 한 호기 값 유지
+        assert row["AOI-25"] == "25값", row
+
+        # 변경보고서에 '삭제'가 찍히면 안 된다
+        res = watcher.compare_and_report(tmp, prev_path, new_path)
+        assert res.removed == 0, f"선택 안 한 호기가 삭제로 잡힘: {res.summary()}"
+        assert not res.has_change, res.summary()
+        shutil.rmtree(os.path.join(tmp, "양식"), ignore_errors=True)
+    print("  선택 안 한 호기 값 유지 + 오탐 '삭제' 없음 OK")
+
+
+def test_plan_roundtrip():
+    """무인 수집 계획이 저장·복원되어야 무인 회차가 선택창 없이 돈다."""
+    from param_manager.collector import CollectPlan
+    with tempfile.TemporaryDirectory() as tmp:
+        assert watcher.plan_from_dict({}) is None, "계획 없으면 None"
+        plan = CollectPlan(job_keyword="PI", job_name="JobA", setup_name="Setup1",
+                           recipe_names=["PI3"], recipe_map={"PI3": ["PI3_FOLDER"]})
+        s, st = watcher.load_settings(tmp)
+        s.plan = watcher.plan_to_dict(plan)
+        watcher.save_settings(tmp, s, st)
+        s2, _ = watcher.load_settings(tmp)
+        back = watcher.plan_from_dict(s2.plan)
+        assert back is not None
+        assert back.job_keyword == "PI" and back.setup_name == "Setup1"
+        assert back.recipe_map == {"PI3": ["PI3_FOLDER"]}, back.recipe_map
+    print("  무인 수집 계획 저장/복원 OK")
+
+
 def test_log_appends():
     with tempfile.TemporaryDirectory() as tmp:
         watcher.append_log(tmp, "회차 시작")
@@ -312,6 +383,7 @@ if __name__ == "__main__":
               test_connection_check_is_bounded_by_timeout,
               test_connection_check_progress_and_cancel,
               test_selected_targets_persist, test_stale_selection_is_filtered,
+              test_unselected_machines_keep_values, test_plan_roundtrip,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
