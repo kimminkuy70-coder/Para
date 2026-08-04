@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from datetime import datetime
 import tkinter as tk
 from pathlib import Path
 from tkinter import colorchooser, filedialog, messagebox, ttk
@@ -41,6 +42,7 @@ from . import locking
 from . import refdata
 from . import refresh as refresh_mod
 from . import rtp_parser as rtp
+from . import watcher
 from . import workdirs
 from .engine import ParamRepository
 from .theme import apply_theme
@@ -122,6 +124,8 @@ class EquipApp(tk.Tk):
 
         # 동시 접속 제어 — 내가 쥔 편집 잠금 {경로: 문서이름}, 문서별 열었을 때의 파일
         # 상태(저장 직전 재검증용). 읽기 전용으로 연 문서는 _ro_docs 에 기록.
+        self._watch_owned = False        # 이 PC 가 감시 전역 잠금을 쥐었는가
+        self._watch_busy = False         # 감시 회차 실행 중(중복 실행 방지)
         self._locks: dict[str, str] = {}
         self._doc_stamps: dict[str, tuple] = {}
         self._ro_docs: set = set()
@@ -132,6 +136,7 @@ class EquipApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(200, self._startup)   # 저장폴더 지정 → 참고자료/특이사항 로드 → 최신 취합
         self.after(3000, self._presence_tick)   # 접속자 하트비트 + 잠금 갱신
+        self.after(10_000, self._watch_tick)    # 자동 감시 주기 확인
 
     # ====================================================================
     #  상단 공통 크롬(뒤로/앞으로/브레드크럼/저장/파일)
@@ -1541,6 +1546,12 @@ class EquipApp(tk.Tk):
         tk.Button(bar, text="📤 내보내기", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=12, pady=5, cursor="hand2",
                   command=self._export_dialog).pack(side="left", padx=4, pady=5)
+        self._watch_btn = tk.Button(bar, text="🔔 자동 감시", relief="flat", bd=0,
+                                    bg=self.p["surface"], fg=self.p["text"], padx=12,
+                                    pady=5, cursor="hand2",
+                                    command=self._watch_dialog)
+        self._watch_btn.pack(side="left", padx=4, pady=5)
+        self._sync_watch_btn()
         tk.Label(bar, text="  (최신 '파라미터 값 취합'을 자동 표시 · 값 읽기전용)",
                  bg=self.p["head_bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left", padx=6)
@@ -4692,6 +4703,289 @@ class EquipApp(tk.Tk):
             self.repo = None
 
     # ====================================================================
+    #  자동 감시 — 주기 수집·취합 → 변경 시 알림 + 보고서
+    # ====================================================================
+    def _sync_watch_btn(self):
+        """감시 버튼 표시를 현재 설정(on/off)과 일치시킨다."""
+        btn = getattr(self, "_watch_btn", None)
+        if btn is None or not self.save_dir:
+            return
+        try:
+            s, _ = watcher.load_settings(self.save_dir)
+            on = s.enabled and self._watch_owned
+            btn.config(text=("🔔 자동 감시 ON" if on else "🔔 자동 감시"),
+                       bg=(self.p["primary"] if on else self.p["surface"]),
+                       fg=("#ffffff" if on else self.p["text"]))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _watch_dialog(self):
+        """자동 감시 설정창 — 주기·시간대·접속 방식·대상 레시피."""
+        if not self._need_save_dir():
+            return
+        s, state = watcher.load_settings(self.save_dir)
+        win = tk.Toplevel(self)
+        win.title("자동 감시 설정")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        tk.Label(win, text="자동 감시", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win, text="정해진 주기마다 값을 수집·취합하고, 직전과 달라진 파라미터가 "
+                           "있으면\n알림과 변경 보고서를 남깁니다. 프로그램이 켜져 있는 "
+                           "동안만 동작합니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16)
+
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="x", padx=16, pady=10)
+        on_var = tk.BooleanVar(value=s.enabled)
+        tk.Checkbutton(body, text="자동 감시 사용", variable=on_var, bg=self.p["bg"],
+                       fg=self.p["text"], selectcolor=self.p["surface"],
+                       font=self.fonts["bold"]).grid(row=0, column=0, sticky="w",
+                                                     columnspan=3, pady=(0, 6))
+        tk.Label(body, text="주기(시간):", bg=self.p["bg"],
+                 fg=self.p["text"]).grid(row=1, column=0, sticky="w")
+        iv = tk.StringVar(value=str(int(s.interval_hours)))
+        ttk.Combobox(body, textvariable=iv, width=6, state="readonly",
+                     values=("1", "2", "3", "6", "12", "24")).grid(row=1, column=1,
+                                                                   sticky="w", padx=6)
+        tk.Label(body, text="(파라미터는 자주 바뀌지 않아 6시간을 권장)",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).grid(row=1, column=2, sticky="w")
+
+        tk.Label(body, text="실행 시간대:", bg=self.p["bg"],
+                 fg=self.p["text"]).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        wrow = tk.Frame(body, bg=self.p["bg"])
+        wrow.grid(row=2, column=1, columnspan=2, sticky="w", padx=6, pady=(8, 0))
+        ws_var = tk.StringVar(value=str(s.window_start))
+        we_var = tk.StringVar(value=str(s.window_end))
+        hours = tuple(str(i) for i in range(24))
+        ttk.Combobox(wrow, textvariable=ws_var, width=4, state="readonly",
+                     values=hours).pack(side="left")
+        tk.Label(wrow, text=" 시 ~ ", bg=self.p["bg"], fg=self.p["text"]).pack(side="left")
+        ttk.Combobox(wrow, textvariable=we_var, width=4, state="readonly",
+                     values=hours).pack(side="left")
+        tk.Label(wrow, text="  시 (같게 두면 제한 없음 · 가동 피크 회피용)",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+
+        # ── 접속 방식 — 기본/권장은 net use 없이(기존 연결) ──
+        box = tk.LabelFrame(win, text=" 장비 접속 방식 ", bg=self.p["bg"],
+                            fg=self.p["text"], font=self.fonts["bold"])
+        box.pack(fill="x", padx=16, pady=(4, 8))
+        conn = tk.StringVar(value=s.conn_mode)
+        tk.Radiobutton(box, text="기존 연결 사용 (net use 없이) — 권장",
+                       variable=conn, value=watcher.CONN_SESSION, bg=self.p["bg"],
+                       fg=self.p["text"], selectcolor=self.p["surface"],
+                       font=self.fonts["bold"]).pack(anchor="w", padx=10, pady=(6, 0))
+        tk.Label(box, text="비밀번호를 저장하지 않습니다. 무인 실행할 장비를 탐색기에서\n"
+                           "미리 모두 연결(\\\\장비IP\\c$ 로 로그인)해 두세요.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=32)
+        tk.Radiobutton(box, text="net use 로 접속 (비밀번호 필요)",
+                       variable=conn, value=watcher.CONN_NETUSE, bg=self.p["bg"],
+                       fg=self.p["text"],
+                       selectcolor=self.p["surface"]).pack(anchor="w", padx=10)
+        tk.Label(box, text="비밀번호는 프로그램이 켜져 있는 동안 메모리에만 유지되고\n"
+                           "디스크에 저장하지 않습니다(앱 종료 시 사라짐).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=32, pady=(0, 6))
+
+        info = tk.Label(win, text=self._watch_status_text(s, state), bg=self.p["bg"],
+                        fg=self.p["muted"], font=self.fonts["sub"], justify="left")
+        info.pack(anchor="w", padx=16)
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=12)
+
+        def check_conn():
+            targets = [(m, refdata.ip_for(self.ip_rows, m))
+                       for m in self._all_machines()]
+            targets = [(m, ip) for m, ip in targets if ip]
+            if not targets:
+                messagebox.showinfo("연결 점검", "장비 IP가 등록되어 있지 않습니다.",
+                                    parent=win)
+                return
+            chk = watcher.check_connections(targets)
+            if chk["missing"]:
+                messagebox.showwarning("연결 점검",
+                                       watcher.connection_guide(chk["missing"]),
+                                       parent=win)
+            else:
+                messagebox.showinfo("연결 점검",
+                                    f"대상 장비 {len(chk['ok'])}대 모두 연결되어 "
+                                    "있습니다.", parent=win)
+
+        def apply_():
+            s.enabled = bool(on_var.get())
+            try:
+                s.interval_hours = float(iv.get())
+            except ValueError:
+                s.interval_hours = watcher.DEFAULT_INTERVAL_HOURS
+            try:
+                s.window_start, s.window_end = int(ws_var.get()), int(we_var.get())
+            except ValueError:
+                s.window_start = s.window_end = 0
+            s.conn_mode = conn.get()
+            if s.enabled and not self._watch_acquire():
+                return                      # 다른 PC 가 감시 중 — 켜지 않는다
+            if not s.enabled:
+                self._watch_release()
+            watcher.save_settings(self.save_dir, s, state)
+            watcher.append_log(self.save_dir,
+                               f"설정 변경 — 사용={s.enabled} 주기={s.interval_hours}h "
+                               f"접속={s.conn_mode}")
+            self._sync_watch_btn()
+            win.destroy()
+            if s.enabled:
+                check_conn()
+
+        tk.Button(bt, text="연결 점검", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=check_conn).pack(side="left")
+        tk.Button(bt, text="보고서 폴더 열기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=lambda: self._open_path(
+                      watcher.watch_dir(self.save_dir))).pack(side="left", padx=6)
+        tk.Button(bt, text="저장", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=18, pady=6, cursor="hand2",
+                  command=apply_).pack(side="right")
+
+    def _watch_status_text(self, s, state) -> str:
+        if not state.last_run:
+            return "· 아직 실행 이력이 없습니다."
+        nxt = watcher.next_run_at(s, state)
+        return (f"· 마지막 실행: {state.last_run} ({state.last_result or '-'})\n"
+                f"· 다음 예정: {nxt.strftime('%Y-%m-%d %H:%M')}"
+                + (f"  · 연속 실패 {state.fail_count}회(재시도 지연 중)"
+                   if state.fail_count else ""))
+
+    def _watch_acquire(self, silent: bool = False) -> bool:
+        """감시 전역 잠금 — 여러 PC 가 동시에 감시하면 장비에 배수로 접속한다.
+
+        silent=True 는 앱 재시작 후 자동 재개용. 다른 PC 가 이미 감시 중이면
+        조용히 실패한다(매 tick 마다 경고창이 뜨면 안 되므로).
+        """
+        if self._watch_owned:
+            return True
+        if silent:
+            if not self.save_dir:
+                return False
+            try:
+                st = locking.acquire_global(self.save_dir, locking.GLOBAL_WATCHER,
+                                            self.user)
+            except Exception as e:  # noqa: BLE001
+                self._logerr("E153", e)
+                return False
+            if st.editable:
+                self._locks[locking.global_lock_path(
+                    self.save_dir, locking.GLOBAL_WATCHER)] = "자동 감시"
+                self._watch_owned = True
+            return self._watch_owned
+        ok = self._acquire_global(locking.GLOBAL_WATCHER, "자동 감시")
+        self._watch_owned = ok
+        return ok
+
+    def _watch_release(self):
+        if self._watch_owned:
+            self._release_global(locking.GLOBAL_WATCHER)
+            self._watch_owned = False
+
+    def _watch_tick(self):
+        """감시 주기 확인(가벼움). 실행 조건이면 1회차를 백그라운드로 돌린다."""
+        try:
+            if self.save_dir and not self._watch_busy:
+                s, state = watcher.load_settings(self.save_dir)
+                # 앱을 다시 켰을 때: 설정이 켜져 있으면 감시 잠금을 조용히 다시 잡는다
+                # (다른 PC 가 감시 중이면 조용히 실패 — 경고창으로 괴롭히지 않음).
+                if s.enabled and not self._watch_owned:
+                    if self._watch_acquire(silent=True):
+                        self._sync_watch_btn()
+                if s.enabled and self._watch_owned and \
+                        watcher.should_run(datetime.now(), s, state):
+                    self._watch_run_cycle(s, state)
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E155", e)
+        self.after(60_000, self._watch_tick)
+
+    def _watch_run_cycle(self, s, state):
+        """1회차: 로컬 수집본 기준으로 취합 → 직전과 비교 → 변경 시 알림·보고서.
+
+        무인 실행이라 **모달을 띄우지 않는다**(사람이 없을 수 있음). 조용히 돌고
+        변경이 있을 때만 알린다.
+        """
+        self._watch_busy = True
+        machines = self._all_machines()
+        recipes = s.recipes or workdirs.list_recipes(self.save_dir)
+        prev = workdirs.latest_collate(self.save_dir)
+        watcher.append_log(self.save_dir, f"회차 시작 — 레시피 {len(recipes)}개")
+
+        def cl(ho, mag):
+            return coefstore.lookup(self.coef_rows, ho, mag)
+
+        def work():
+            if not recipes:
+                raise RuntimeError("양식이 없습니다('양식 만들기' 먼저)")
+            out = collate.build_collation(self.save_dir, recipes, [], machines,
+                                          prev_collate_path=prev, coef_lookup=cl)
+            made = {r: v for r, v in out.items() if not v.missing_form}
+            if not made:
+                raise RuntimeError("취합된 레시피가 없습니다")
+            st = workdirs.stamp()
+            dest = workdirs.collate_path(self.save_dir, st)
+            collate.write_collation(dest, made, machines)
+            return watcher.compare_and_report(self.save_dir, prev, dest, st)
+
+        def done(ok, res):
+            self._watch_busy = False
+            if not ok:
+                watcher.record_run(self.save_dir, s, state, ok=False, note=str(res))
+                watcher.append_log(self.save_dir, f"회차 실패 — {res}")
+                self._logerr("E156", res)
+                self._sync_watch_btn()
+                return
+            watcher.record_run(self.save_dir, s, state, ok=True, note=res.summary())
+            self._load_latest_collate()
+            self._sync_watch_btn()
+            if res.has_change:
+                self._watch_notify(res)
+            elif not s.notify_on_change_only:
+                self._set_status("자동 감시: 변경 없음")
+
+        self._run_bg(work, done)
+
+    def _run_bg(self, work, on_done):
+        """모달 없이 백그라운드 실행(무인 감시용). GUI 갱신은 on_done 에서만."""
+        def runner():
+            try:
+                res = work()
+            except Exception as e:  # noqa: BLE001
+                self.after(0, lambda e=e: on_done(False, e))
+                return
+            self.after(0, lambda: on_done(True, res))
+        threading.Thread(target=runner, daemon=True).start()
+
+    def _watch_notify(self, res):
+        """변경 알림 — 간단히 요약만, 상세는 보고서 엑셀."""
+        self._set_status(f"자동 감시: {res.summary()}")
+        msg = (f"직전 취합과 비교해 달라진 값이 있습니다.\n\n  {res.summary()}\n\n"
+               "어느 레시피의 어느 파라미터가 바뀌었는지는 보고서에 있습니다.\n"
+               f"{os.path.basename(res.report)}\n\n지금 보고서를 열까요?")
+        if messagebox.askyesno("자동 감시 — 값 변경 감지", msg):
+            self._open_path(res.report)
+
+    def _open_path(self, path):
+        """탐색기/기본 프로그램으로 열기(플랫폼별)."""
+        try:
+            if os.name == "nt":
+                os.startfile(path)  # noqa: S606
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(path)])
+        except Exception as e:  # noqa: BLE001
+            self._err("E157", "열기 실패", e)
+
+    # ====================================================================
     #  동시 접속 제어 — 편집 잠금 / 접속자 세션
     # ====================================================================
     def _acquire_doc(self, path: str, doc_name: str) -> bool:
@@ -4910,6 +5204,7 @@ class EquipApp(tk.Tk):
     def _on_close(self):
         # 내가 쥔 편집 잠금과 접속 세션을 정리하고 종료(다음 사람이 바로 편집 가능).
         try:
+            self._watch_release()
             locking.release_all(list(self._locks), self.user)
             if self.save_dir:
                 locking.end_session(self.save_dir, self.user)

@@ -127,12 +127,38 @@ python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
+python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
+python3 tests/test_watcher.py      # 13 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
 ```
 ※ GUI(tkinter/tksheet)·Windows(net use)·Excel 은 개발환경 미지원 → GUI 는
 `python3 -m py_compile param_manager/*.py` 정적검증. 실기 확인은 Windows 필요.
+
+## v3.0 — 동시 접속 제어 + 자동 감시 (브랜치 `version_v3.0`, 2026-08 확정)
+
+**저장폴더는 OneDrive 사용으로 확정**(사용자 결정). 동기화 지연 때문에 잠금은
+상호배제를 **보장하지 못하므로**, 저장 직전 재검증이 최후 방어선이다.
+
+- **동시 접속**: 수정 문서(장비IP/특이사항/참고자료)는 1명만 편집, 나머지는 **읽기 전용**
+  (편집 바인딩 미부착 + 🔒 배너 '누가 언제부터'). 화면 이탈 시 즉시 잠금 반납.
+  `_make_table(read_only=)` 가 force_edit 보다 우선. 값 확인은 원래 읽기전용이라 잠금 없음.
+- **전역 작업 잠금**: 값 업데이트·양식 만들기(레시피별)·**자동 감시**.
+  감시 중복 실행은 장비에 배수 접속이므로 반드시 단일. 앱 재시작 시 조용히 재획득.
+- **접속자 목록**: 헤더 '👥 현재 접속: …'(클릭=상세), ⋯파일>현재 접속자 보기.
+  60초 하트비트(`_presence_tick`)로 세션 갱신 + 내 잠금 갱신 + 만료 세션 정리.
+- **자동 감시**: 주기(기본 6h)·시간대 창·접속 방식 설정 → 조용히 수집·취합 →
+  `history.diff_files` 로 직전과 비교 → **변경 있을 때만** 알림 + `자동감시/변경보고서_{시간}.xlsx`.
+  무인이라 모달 금지(`_run_bg`). 설정=`감시설정.json`, 로그=`자동감시/감시로그.txt`.
+- **장비 비방해(최우선)**: 원본 읽기전용(collector 3중 안전장치 유지) · 복사 전후
+  (mtime,size) 비교로 **쓰는 중이던 파일 제외**(거짓 변경 방지) · 연속 실패 시
+  backoff(1/2/4/8배)로 **재시도 몰아치기 금지** · 순차 접속 유지.
+- **무인 접속 기본 = `CONN_SESSION`(net use 없이, 권장)** — 비밀번호를 디스크에 저장하지
+  않는다. 사용자가 탐색기로 대상 장비를 **미리 모두 연결**해 두어야 하며,
+  `check_connections`/`connection_guide` 가 미연결 장비를 사전 안내. `CONN_NETUSE` 선택 가능
+  (비밀번호는 메모리에만, 앱 종료 시 소멸).
+- 오류 코드: 잠금 E150~E154, 감시 E155~E157.
 
 ## 핵심 파일
 
@@ -168,6 +194,17 @@ python3 tests/test_downloader.py   # 8
   `read_scales`(변형별 계수 저장/판독).
 - `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(수정본, '사용'/
   '최종 Parameter')·`build_final_from_initial`(→확정 양식+`_EXTRACT_MAP`+계수).
+- `param_manager/locking.py` — **동시 접속 제어**(v3.0): `acquire/refresh/release/status`
+  (free/mine/**self**/stale/other — self=같은 사람·같은 PC의 죽은 프로세스는 자동 회수),
+  `holder_message`(안내문), `check_before_save`(**저장 직전 재검증** — 외부 변경·잠금 탈취·
+  OneDrive 충돌본), `acquire_global/release_global`(작업 단위), 세션
+  `touch_session/list_sessions/prune_sessions/end_session/others_message`.
+  engine 의 `.editlock`·`LOCK_STALE_MINUTES`·`find_conflict_copies` 재사용.
+- `param_manager/watcher.py` — **자동 감시**(v3.0): `WatchSettings/WatchState`(감시설정.json),
+  `should_run/next_run_at`(주기·backoff, now 인자로 결정적)·`in_window`(시간대, 자정넘김),
+  `file_sig/unstable_files/drop_unstable`(**찢어진 읽기 제외**), `compare_and_report`
+  (diff_files→변경보고서, 무변경이면 보고서 없음), `record_run`, `check_connections/
+  connection_guide`(net use 없는 기본 모드 사전 점검), `append_log`.
 - `param_manager/errlog.py` — **오류 코드·로그**(v1.1): 발생 지점마다 고유 코드 `E###`
   부여. `log_path`/`write_log`(전체 traceback 를 `저장폴더/오류_로그.txt` 에 append)·
   `user_message`(코드 포함 안내). equip_app `_err`(팝업+로그)/`_logerr`(로그만·비치명)/
