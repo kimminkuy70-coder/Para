@@ -42,6 +42,7 @@ from . import locking
 from . import refdata
 from . import refresh as refresh_mod
 from . import rtp_parser as rtp
+from . import tray
 from . import watcher
 from . import workdirs
 from .engine import ParamRepository
@@ -124,6 +125,8 @@ class EquipApp(tk.Tk):
 
         # 동시 접속 제어 — 내가 쥔 편집 잠금 {경로: 문서이름}, 문서별 열었을 때의 파일
         # 상태(저장 직전 재검증용). 읽기 전용으로 연 문서는 _ro_docs 에 기록.
+        self._tray = None                # 트레이 아이콘(창 닫아도 감시 계속)
+        self._tray_hint_shown = False    # '백그라운드 계속' 안내는 1회만
         self._watch_owned = False        # 이 PC 가 감시 전역 잠금을 쥐었는가
         self._watch_busy = False         # 감시 회차 실행 중(중복 실행 방지)
         self._locks: dict[str, str] = {}
@@ -4732,8 +4735,10 @@ class EquipApp(tk.Tk):
         tk.Label(win, text="자동 감시", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win, text="정해진 주기마다 값을 수집·취합하고, 직전과 달라진 파라미터가 "
-                           "있으면\n알림과 변경 보고서를 남깁니다. 프로그램이 켜져 있는 "
-                           "동안만 동작합니다.",
+                           "있으면\n알림과 변경 보고서를 남깁니다.\n"
+                           "창을 닫아도(X) 감시는 백그라운드에서 계속되며, 작업표시줄 "
+                           "알림영역(숨겨진 아이콘)의\nPara 아이콘을 누르면 다시 열 수 "
+                           "있습니다. 완전히 끄려면 그 아이콘을 우클릭 → '자동 감시 종료'.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=16)
 
@@ -5133,9 +5138,27 @@ class EquipApp(tk.Tk):
             self.after(0, lambda: on_done(True, res))
         threading.Thread(target=runner, daemon=True).start()
 
+    def _is_hidden(self) -> bool:
+        """창이 트레이로 내려가 있는가(숨김/아이콘화)."""
+        try:
+            return self.state() == "withdrawn" or not self.winfo_viewable()
+        except Exception:  # noqa: BLE001
+            return False
+
     def _watch_notify(self, res):
-        """변경 알림 — 간단히 요약만, 상세는 보고서 엑셀."""
+        """변경 알림 — 간단히 요약만, 상세는 보고서 엑셀.
+
+        트레이로 내려가 있으면 **모달 대신 풍선 알림**을 쓴다(숨은 창을 부모로
+        모달을 띄우면 사용자가 볼 수 없는 창에 갇힌다).
+        """
         self._set_status(f"자동 감시: {res.summary()}")
+        if self._is_hidden() and self._tray is not None:
+            self._tray.notify("자동 감시 — 값 변경 감지",
+                              f"{res.summary()}\n"
+                              f"보고서: {os.path.basename(res.report)}\n"
+                              "창을 열려면 이 아이콘을 누르세요.")
+            self._tray.set_tooltip(f"Para — 변경 감지 ({res.summary()})")
+            return
         msg = (f"직전 취합과 비교해 달라진 값이 있습니다.\n\n  {res.summary()}\n\n"
                "어느 레시피의 어느 파라미터가 바뀌었는지는 보고서에 있습니다.\n"
                f"{os.path.basename(res.report)}\n\n지금 보고서를 열까요?")
@@ -5369,16 +5392,105 @@ class EquipApp(tk.Tk):
         except Exception as e:  # noqa: BLE001
             self._err("E144", "저장 실패", e)
 
-    def _on_close(self):
-        # 내가 쥔 편집 잠금과 접속 세션을 정리하고 종료(다음 사람이 바로 편집 가능).
+    # ====================================================================
+    #  트레이 상주 — 창을 닫아도 자동 감시는 계속 (Windows)
+    # ====================================================================
+    def _watch_is_on(self) -> bool:
+        """설정상 감시가 켜져 있고 이 PC 가 감시 주체인가."""
+        if not self.save_dir:
+            return False
+        try:
+            s, _ = watcher.load_settings(self.save_dir)
+            return bool(s.enabled) and self._watch_owned
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _tray_start(self) -> bool:
+        """트레이 아이콘 표시(이미 있으면 유지). 실패하면 False."""
+        if self._tray is not None:
+            return True
+        if not tray.available():
+            return False
+        try:
+            icon = tray.TrayIcon(
+                "Para — 자동 감시 실행 중",
+                on_open=self._restore_from_tray,
+                on_exit=self._exit_from_tray,
+                schedule=lambda fn: self.after(0, fn))
+            if icon.start():
+                self._tray = icon
+                return True
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E159", e)
+        return False
+
+    def _tray_stop(self):
+        if self._tray is not None:
+            try:
+                self._tray.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._tray = None
+
+    def _hide_to_tray(self):
+        """창만 숨기고 프로세스는 유지 — 감시 주기(after)가 계속 돈다."""
+        # 편집 잠금은 반납한다(창이 안 보이는데 남의 편집을 막고 있으면 안 됨).
+        # 감시 전역 잠금은 계속 쥔다 — 이 PC 가 감시 주체이기 때문.
+        try:
+            for p in list(self._locks):
+                if p != locking.global_lock_path(self.save_dir,
+                                                 locking.GLOBAL_WATCHER):
+                    self._release_doc(p)
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E151", e)
+        self.withdraw()
+        if not self._tray_hint_shown:
+            self._tray_hint_shown = True
+            try:
+                self._tray.notify(
+                    "자동 감시 계속",
+                    "창을 닫아도 자동 감시는 백그라운드에서 계속됩니다.\n"
+                    "트레이 아이콘을 누르면 다시 열 수 있습니다.")
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            watcher.append_log(self.save_dir, "창 닫힘 — 트레이 상주로 감시 계속")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _restore_from_tray(self):
+        """트레이 아이콘 클릭 → 창 다시 열기."""
+        try:
+            self.deiconify()
+            self.state("normal")
+            self.lift()
+            self.focus_force()
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E160", e)
+
+    def _exit_from_tray(self):
+        """트레이 메뉴 '자동 감시 종료' → 진짜 종료."""
+        self._shutdown()
+
+    def _shutdown(self):
+        """실제 종료 — 잠금·세션·트레이 정리."""
         try:
             self._watch_release()
             locking.release_all(list(self._locks), self.user)
             if self.save_dir:
                 locking.end_session(self.save_dir, self.user)
+                watcher.append_log(self.save_dir, "프로그램 종료 — 자동 감시 중지")
         except Exception:  # noqa: BLE001
             pass
+        self._tray_stop()
         self.destroy()
+
+    def _on_close(self):
+        """X 버튼 — 감시 중이면 트레이로 내리고, 아니면 종료."""
+        if tray.should_stay_resident(self._watch_is_on()) and self._tray_start():
+            self._hide_to_tray()
+            return
+        self._shutdown()
 
 
 

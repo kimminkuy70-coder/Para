@@ -127,6 +127,7 @@ python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
+python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
 python3 tests/test_watcher.py      # 17 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
@@ -154,6 +155,14 @@ python3 tests/test_downloader.py   # 8
   삭제된 항목은 실행 시 자동 제외). 선택 UI 는 공용 `_pick_list`. 이후 조용히 수집·취합 →
   `history.diff_files` 로 직전과 비교 → **변경 있을 때만** 알림 + `자동감시/변경보고서_{시간}.xlsx`.
   무인이라 모달 금지(`_run_bg`). 설정=`감시설정.json`, 로그=`자동감시/감시로그.txt`.
+- **트레이 상주(`tray.py`)**: 감시 ON 상태로 창을 닫으면(X) **종료하지 않고 창만 숨겨**
+  감시를 계속한다(tkinter `after` 가 계속 도는 구조라 가능). 알림영역 아이콘 좌클릭/
+  더블클릭=창 열기, 우클릭=메뉴(프로그램 열기 / 자동 감시 종료). 숨김 중 변경 감지는
+  모달 대신 **풍선 알림**(숨은 창의 모달은 볼 수 없으므로). 숨길 때 문서 편집 잠금은
+  반납하고 감시 전역 잠금만 유지. 감시 OFF 면 그냥 종료.
+  **추가 패키지 금지 제약 때문에 pystray 대신 stdlib `ctypes` + Win32 `Shell_NotifyIconW`**
+  를 직접 호출(별도 스레드에서 숨은 창+메시지 루프, 콜백은 `root.after` 로 GUI 스레드에
+  위임, WNDPROC 참조 유지 필수). 비Windows 는 `available()=False` 로 전부 no-op.
 - **장비 비방해(최우선)**: 원본 읽기전용(collector 3중 안전장치 유지) · 복사 전후
   (mtime,size) 비교로 **쓰는 중이던 파일 제외**(거짓 변경 방지) · 연속 실패 시
   backoff(1/2/4/8배)로 **재시도 몰아치기 금지** · 순차 접속 유지.
@@ -161,7 +170,7 @@ python3 tests/test_downloader.py   # 8
   않는다. 사용자가 탐색기로 대상 장비를 **미리 모두 연결**해 두어야 하며,
   `check_connections`/`connection_guide` 가 미연결 장비를 사전 안내. `CONN_NETUSE` 선택 가능
   (비밀번호는 메모리에만, 앱 종료 시 소멸).
-- 오류 코드: 잠금 E150~E154, 감시 E155~E158.
+- 오류 코드: 잠금 E150~E154, 감시 E155~E158, 트레이 E159~E160.
 
 ## 핵심 파일
 
