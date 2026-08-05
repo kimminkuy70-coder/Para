@@ -72,6 +72,13 @@ def save_config(cfg: dict) -> None:
 
 
 
+def icon_path() -> str | None:
+    """프로그램 아이콘(.ico) 경로. 없으면 None(아이콘 없이 동작)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data",
+                     "para_icon.ico")
+    return p if os.path.isfile(p) else None
+
+
 def _sanitize_name(s: str) -> str:
     import re
     return re.sub(r'[<>:"/\\|?*]+', "_", str(s)).strip().strip(".") or "item"
@@ -83,6 +90,7 @@ class EquipApp(tk.Tk):
         self.title("Camtek AOI 장비 파라미터 관리")
         self.geometry("1400x860")
         self.minsize(1080, 680)
+        self._set_window_icon()
         self.p = apply_theme(self)
         self.fonts = self.p["fonts"]
         self.user = engine.current_user()
@@ -5308,10 +5316,39 @@ class EquipApp(tk.Tk):
         def no_chooser(*_a, **_kw):
             return None            # 애매하면 선택하지 않음 → UserCancelled 로 건너뜀
 
-        def no_match(_all_recipes, _levels):
-            # 저장된 recipe_map 으로 자동 매칭되지 않으면 **추측하지 않는다**.
-            # 빈 매핑 → UserCancelled → 그 장비는 건너뛰고 로그에 남긴다.
-            return {}
+        diag: list = []          # 매칭 실패 사유(로그용)
+
+        def auto_match(job_dirs, levels):
+            """무인 Job 폴더 매칭 — 레벨별로 **되는 것만** 골라 준다.
+
+            collector 의 plan 재사용 분기는 레벨 하나라도 실패하면 전체를 포기하므로,
+            여기서 레벨 단위로 다시 시도한다:
+              1) 저장된 계획의 Job 폴더명(정확→느슨 매칭)
+              2) 없으면 레시피(레벨) 이름으로 Job 폴더 찾기 — 후보가 **정확히 1개**일 때만
+            둘 다 안 되면 그 레벨은 제외(추측하지 않음). 전부 실패면 빈 매핑 →
+            UserCancelled → 그 장비만 건너뛴다.
+            """
+            out, names_seen = {}, [d.name for d in job_dirs]
+            for lvl in levels:
+                names = (getattr(plan, "recipe_map", None) or {}).get(lvl) or []
+                sel = []
+                if names:
+                    sel, _missing = collector.match_recipes_by_names(job_dirs, names)
+                if not sel:
+                    cands = [d for d in job_dirs
+                             if collector.contains_keyword(d.name, lvl)]
+                    if len(cands) == 1:
+                        sel = cands
+                    elif cands:
+                        diag.append(f"{lvl}: 후보 {len(cands)}개로 애매"
+                                    f"({', '.join(c.name for c in cands[:4])})")
+                    else:
+                        diag.append(f"{lvl}: 해당 Job 폴더 없음")
+                if sel:
+                    out[lvl] = sel
+            if not out and names_seen:
+                diag.append("장비 Job 폴더: " + ", ".join(names_seen[:8]))
+            return out
 
         for m in machines:
             ip = refdata.ip_for(self.ip_rows, m)
@@ -5330,7 +5367,7 @@ class EquipApp(tk.Tk):
                     ip, staging_for, no_chooser, username="amkor", password=None,
                     use_net_use=use_netuse, plan=plan,
                     confirm=lambda planned: True,     # 무인 — 로컬 staging 복사 승인
-                    target_levels=list(recipes), match_recipes=no_match)
+                    target_levels=list(recipes), match_recipes=auto_match)
                 for d, lvl in srcs:
                     sources.append((d, lvl, m))
             except collector.UserCancelled:
@@ -5340,8 +5377,15 @@ class EquipApp(tk.Tk):
 
         if skipped:
             watcher.append_log(self.save_dir, "건너뜀 — " + ", ".join(skipped))
+        if diag:
+            watcher.append_log(self.save_dir, "매칭 진단 — " + " / ".join(diag[:8]))
         if not sources:
-            raise RuntimeError("수집된 장비가 없습니다: " + (", ".join(skipped) or "-"))
+            detail = ("\n· " + "\n· ".join(diag[:6])) if diag else ""
+            raise RuntimeError(
+                "수집된 장비가 없습니다: " + (", ".join(skipped) or "-") + detail
+                + "\n\n선택한 레시피의 Job 폴더를 장비에서 찾지 못했습니다.\n"
+                  "'파라미터 값 업데이트'를 **감시와 같은 레시피로** 한 번 수동 실행하면 "
+                  "그때 고른 Job 폴더가 기록되어 이후 무인 회차가 재사용합니다.")
 
         cb, cstate = self._coef_lookup_cb()
         cfgs = []
@@ -5479,6 +5523,19 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  동시 접속 제어 — 편집 잠금 / 접속자 세션
     # ====================================================================
+    def _set_window_icon(self):
+        """창·작업표시줄 아이콘 지정. 실패해도 앱은 그대로 동작한다."""
+        p = icon_path()
+        if not p:
+            return
+        try:
+            self.iconbitmap(default=p)      # Windows: 자식 창까지 함께 적용
+        except Exception:  # noqa: BLE001
+            try:
+                self.iconbitmap(p)
+            except Exception:  # noqa: BLE001
+                pass                        # 리눅스 등 .ico 미지원 — 무시
+
     def _acquire_doc(self, path: str, doc_name: str) -> bool:
         """문서 편집 잠금 시도. True=편집 가능, False=읽기 전용으로 열어야 함.
 
@@ -5717,7 +5774,8 @@ class EquipApp(tk.Tk):
                 on_open=self._restore_from_tray,
                 on_exit=self._exit_from_tray,
                 on_balloon=self._open_from_balloon,
-                schedule=lambda fn: self.after(0, fn))
+                schedule=lambda fn: self.after(0, fn),
+                icon_path=icon_path())
             if icon.start():
                 self._tray = icon
                 return True

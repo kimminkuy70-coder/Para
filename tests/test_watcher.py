@@ -394,6 +394,50 @@ def test_shared_state_carries_result_for_others():
     print("  공유 상태로 다른 사용자도 ON·결과 인지 OK")
 
 
+def test_job_matching_is_per_level_tolerant():
+    """레벨 하나가 안 맞아도 **되는 레벨은 수집**되어야 한다.
+
+    (버그) collector 의 plan 재사용은 레벨 하나라도 실패하면 전체를 포기해
+    '자동 매칭 실패'로 장비 전체가 건너뛰어졌다. equip_app._watch_collect 의
+    auto_match 가 레벨 단위로 다시 시도한다 — 여기서는 그 규칙만 검증.
+    """
+    from pathlib import Path
+
+    from param_manager import collector
+    with tempfile.TemporaryDirectory() as tmp:
+        jobs = []
+        for name in ("PI3_MAIN", "RDL2_PROD", "기타작업"):
+            d = Path(tmp) / name
+            d.mkdir()
+            jobs.append(d)
+        recipe_map = {"PI3": ["PI3_MAIN"]}          # RDL2 는 계획에 없음
+
+        def auto_match(job_dirs, levels):           # _watch_collect 와 같은 규칙
+            out = {}
+            for lvl in levels:
+                names = recipe_map.get(lvl) or []
+                sel = []
+                if names:
+                    sel, _ = collector.match_recipes_by_names(job_dirs, names)
+                if not sel:
+                    cands = [d for d in job_dirs
+                             if collector.contains_keyword(d.name, lvl)]
+                    if len(cands) == 1:
+                        sel = cands
+                if sel:
+                    out[lvl] = sel
+            return out
+
+        got = auto_match(jobs, ["PI3", "RDL2"])
+        assert "PI3" in got, got                    # 계획으로 매칭
+        assert "RDL2" in got, "레벨 이름 폴백으로 찾아야 함"
+        assert got["RDL2"][0].name == "RDL2_PROD"
+        # 없는 레벨은 조용히 제외(추측하지 않음)
+        got2 = auto_match(jobs, ["PI3", "PI9"])
+        assert set(got2) == {"PI3"}, got2
+    print("  Job 폴더 레벨별 매칭(계획→레벨명 폴백·애매하면 제외) OK")
+
+
 def test_log_appends():
     with tempfile.TemporaryDirectory() as tmp:
         watcher.append_log(tmp, "회차 시작")
@@ -418,6 +462,7 @@ if __name__ == "__main__":
               test_unselected_machines_keep_values, test_plan_roundtrip,
               test_report_listing_newest_first,
               test_shared_state_carries_result_for_others,
+              test_job_matching_is_per_level_tolerant,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")

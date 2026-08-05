@@ -129,7 +129,7 @@ python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·�
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
-python3 tests/test_watcher.py      # 21 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태)
+python3 tests/test_watcher.py      # 22 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -157,7 +157,10 @@ python3 tests/test_downloader.py   # 8
   수동 실행할 때 확정된 `CollectPlan`(Job/Setup/Recipe 폴더)을 `감시설정.json` `plan` 에
   저장해 재사용한다(`watcher.plan_to_dict/plan_from_dict`). 계획이 없으면 회차를
   실패시키고 안내한다 — **추측해서 엉뚱한 폴더를 읽지 않는다**. 자동 매칭이 안 되는
-  장비는 건너뛰고 로그에 남긴다(`_watch_collect`). **레시피 폴더명이 장비마다 조금씩
+  장비는 건너뛰고 로그에 남긴다(`_watch_collect`). **레벨별로 되는 것만 수집**한다 —
+  collector 의 plan 재사용 분기는 레벨 하나만 실패해도 전체를 포기하므로,
+  `_watch_collect.auto_match` 가 레벨 단위로 ①계획의 Job 폴더명 ②레시피 이름으로
+  Job 폴더 찾기(후보 1개일 때만) 순으로 재시도하고 실패 사유를 로그에 남긴다. **레시피 폴더명이 장비마다 조금씩
   달라도** `collector.match_recipes_by_names` 가 정확일치→느슨매칭(`norm_match`: 소문자
   +영숫자/한글만, 양방향 포함)으로 찾아준다. 후보가 0개거나 2개 이상이면 매칭 실패로
   건너뛴다. **주의**: `collect_equipment` 에 `target_levels`/`match_recipes` 를 넘겨야
@@ -194,6 +197,12 @@ python3 tests/test_downloader.py   # 8
   `check_connections`/`connection_guide` 가 미연결 장비를 사전 안내. `CONN_NETUSE` 선택 가능
   (비밀번호는 메모리에만, 앱 종료 시 소멸).
 - 오류 코드: 잠금 E150~E154, 감시 E155~E158, 트레이 E159~E160.
+
+- **프로그램 아이콘**: `param_manager/data/para_icon.ico`(16~256, 투명 배경).
+  생성기 `tools/make_icon.py` — **추가 패키지 금지**라 Pillow 없이 stdlib `zlib` 로
+  PNG/ICO 를 직접 만든다. 웨이퍼+AOI 카메라+파라미터 슬라이더, 파랑→청록.
+  ≤24px 는 글자를 빼고 실루엣만(뭉개짐 방지), ≥32px 는 'AOI' 표기.
+  적용 = `equip_app.icon_path()` → 창(`iconbitmap`)·트레이(`tray.TrayIcon(icon_path=)`).
 
 ## 핵심 파일
 
