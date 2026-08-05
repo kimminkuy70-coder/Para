@@ -4894,11 +4894,11 @@ class EquipApp(tk.Tk):
                           font=self.fonts["sub"], anchor="w", justify="left")
 
         def upd_plabel():
-            n = len(paths_state["v"])
-            if n:
-                items = ", ".join(f"{k}→{v}" for k, v in
-                                  list(paths_state["v"].items())[:2])
-                plabel.config(text=f"지정됨 {n}개  ({items}{' …' if n > 2 else ''})",
+            rp = paths_state["v"] or {}
+            n_m = len(rp)
+            n_p = sum(len(v) for v in rp.values())
+            if n_p:
+                plabel.config(text=f"지정됨 — {n_m}개 호기 / 경로 {n_p}건",
                               fg=self.p["primary"])
             else:
                 plabel.config(text="미지정 — 폴더 이름으로 자동 매칭합니다"
@@ -4910,7 +4910,13 @@ class EquipApp(tk.Tk):
                 messagebox.showinfo("감시 폴더 지정",
                                     "먼저 감시할 레시피를 선택하세요.", parent=win)
                 return
-            got = self._watch_paths_dialog(picked, paths_state["v"], parent=win)
+            picked_m = selected_machines() or all_machines
+            if not picked_m:
+                messagebox.showinfo("감시 폴더 지정",
+                                    "먼저 감시할 장비를 선택하세요.", parent=win)
+                return
+            got = self._watch_paths_dialog(picked_m, picked, paths_state["v"],
+                                           parent=win)
             if got is not None:
                 paths_state["v"] = got
                 upd_plabel()
@@ -5081,33 +5087,43 @@ class EquipApp(tk.Tk):
                   fg="#ffffff", padx=18, pady=6, cursor="hand2",
                   command=apply_).pack(side="right")
 
-    def _browse_equipment_recipe(self, recipe: str, parent=None) -> str | None:
+    def _browse_equipment_recipe(self, recipe: str, machine: str | None = None,
+                                 parent=None) -> str | None:
         r"""**장비를 직접 훑어** Recipe 폴더를 고르게 한다(양식 만들기와 같은 방식).
 
-        장비 선택 → Job 폴더 → Setup/Recipes → Recipe 폴더 순으로 **목록에서 선택**한다.
+        Job 폴더 → Setup/Recipes → Recipe 폴더 순으로 **목록에서 선택**한다.
         경로를 직접 입력할 필요가 없고, 실제로 존재하는 폴더만 보여주므로 오타가 없다.
-        반환: `\Job\` 기준 상대경로(모든 장비 공통) 또는 None(취소).
+        machine 을 주면 그 호기를 훑고, 없으면 호기부터 고른다.
+        반환: 그 호기의 `\Job\` 기준 상대경로 또는 None(취소).
         """
         from pathlib import Path as _P
         parent = parent or self
         self._chooser_parent = parent
 
-        # ① 어느 장비를 훑을지 — 연결된 장비 아무거나 1대면 된다
-        machines = [(m, refdata.ip_for(self.ip_rows, m)) for m in self._all_machines()]
-        machines = [(m, ip) for m, ip in machines if ip]
-        if not machines:
-            messagebox.showwarning("장비 없음",
-                                   "'장비 IP' 탭에 호기·IP를 먼저 등록하세요.",
-                                   parent=parent)
-            return None
-        labels = [f"{m}   ({ip})" for m, ip in machines]
-        pick = self._pick_list_chooser(
-            "machine", f"[{recipe}] 폴더를 확인할 장비 선택", labels, False,
-            note="연결된 장비 1대만 고르면 됩니다. 여기서 고른 폴더 구조가 "
-                 "모든 장비에 동일하게 적용됩니다.")
-        if not pick:
-            return None
-        m, ip = machines[labels.index(pick[0])]
+        # ① 어느 장비를 훑을지 — 호기가 지정돼 있으면 그 장비
+        if machine:
+            m = machine
+            ip = refdata.ip_for(self.ip_rows, m)
+            if not ip:
+                messagebox.showwarning("IP 없음",
+                                       f"{m} 의 IP가 '장비 IP' 탭에 없습니다.",
+                                       parent=parent)
+                return None
+        else:
+            cand = [(x, refdata.ip_for(self.ip_rows, x))
+                    for x in self._all_machines()]
+            cand = [(x, ip) for x, ip in cand if ip]
+            if not cand:
+                messagebox.showwarning("장비 없음",
+                                       "'장비 IP' 탭에 호기·IP를 먼저 등록하세요.",
+                                       parent=parent)
+                return None
+            labels = [f"{x}   ({ip})" for x, ip in cand]
+            pick = self._pick_list_chooser(
+                "machine", f"[{recipe}] 폴더를 확인할 장비 선택", labels, False)
+            if not pick:
+                return None
+            m, ip = cand[labels.index(pick[0])]
 
         job_root = _P(rf"\\{ip}\c$\Job")
         try:
@@ -5193,64 +5209,153 @@ class EquipApp(tk.Tk):
             self._err("E162", "장비 폴더 탐색 실패", e)
             return None
 
-    def _watch_paths_dialog(self, recipes, current: dict, parent=None) -> dict | None:
-        r"""**감시 폴더 지정** — 레시피마다 장비의 Recipe 폴더를 한 번 정해 둔다.
+    def _watch_paths_dialog(self, machines, recipes, current: dict,
+                            parent=None) -> dict | None:
+        r"""**감시 폴더 지정 — 호기별**. 반환 {호기: {레시피: 상대경로}} 또는 None.
 
-        연결된 장비 아무거나 하나에서 폴더를 고르면 `\Job\` 뒤 상대경로만 저장되어
-        **모든 장비에 그대로 적용**된다(장비마다 IP 만 다르므로). 지정해 두면 이름
-        유추 없이 그 경로만 읽으므로 '자동 매칭 실패'가 나지 않는다.
-        반환: {레시피: 상대경로} 또는 None(취소).
+        장비마다 Job 폴더 구조가 다르므로(양식 만들기와 동일) 호기 하나를 고르고
+        그 호기의 레시피별 폴더를 '장비에서 선택…'으로 정한다.
+        같은 구조를 쓰는 장비가 많으면 '다른 호기에 복사'로 한 번에 채울 수 있다.
         """
         parent = parent or self
+        data = {m: dict(current.get(m) or {}) for m in machines}
         win = tk.Toplevel(parent)
-        win.title("감시 폴더 지정")
+        win.title("감시 폴더 지정 (호기별)")
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         win.grab_set()
-        tk.Label(win, text="레시피별 감시 폴더", bg=self.p["bg"], fg=self.p["text"],
+        win.geometry("860x560")
+        tk.Label(win, text="호기별 감시 폴더", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win,
-                 text="'장비에서 선택…'을 누르면 장비 → Job → Setup → Recipe 순으로 "
-                      "실제 폴더 목록이 나옵니다.\n"
-                      "골라 주기만 하면 되고, 경로를 직접 입력할 필요는 없습니다.\n"
-                      "저장되는 건 'Job' 뒤 경로뿐이라 **한 대에서 고르면 모든 장비에 "
-                      "적용**됩니다.\n"
-                      "지정해 두면 폴더 이름을 유추하지 않아 매칭 실패가 없습니다.",
+                 text="장비마다 Job 폴더 구조가 달라 **호기별로** 지정합니다.\n"
+                      "왼쪽에서 호기를 고르고, 레시피마다 '장비에서 선택…'으로 "
+                      "실제 폴더를 고르세요.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=16, pady=(0, 8))
 
-        rows = {}
-        grid = tk.Frame(win, bg=self.p["bg"])
-        grid.pack(fill="both", expand=True, padx=16)
-        for i, r in enumerate(recipes):
-            tk.Label(grid, text=r, bg=self.p["bg"], fg=self.p["text"],
-                     font=self.fonts["bold"], width=12,
-                     anchor="w").grid(row=i, column=0, sticky="w", pady=3)
-            var = tk.StringVar(value=current.get(r, ""))
-            tk.Entry(grid, textvariable=var, width=48, relief="solid",
-                     bd=1).grid(row=i, column=1, sticky="we", padx=6)
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="both", expand=True, padx=16)
 
-            def browse(v=var, rr=r):
-                rel = self._browse_equipment_recipe(rr, parent=win)
-                if rel:
-                    v.set(rel)
-            tk.Button(grid, text="장비에서 선택…", relief="flat", bd=0,
-                      bg=self.p["primary"], fg="#ffffff", cursor="hand2",
-                      command=browse).grid(row=i, column=2, padx=2)
-            rows[r] = var
-        grid.columnconfigure(1, weight=1)
+        # ── 왼쪽: 호기 목록(지정 현황 표시) ──
+        left = tk.Frame(body, bg=self.p["bg"])
+        left.pack(side="left", fill="y")
+        tk.Label(left, text="호기", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w")
+        lb = tk.Listbox(left, font=self.fonts["base"], width=26, height=18,
+                        activestyle="none", exportselection=False)
+        lb.pack(side="left", fill="y")
+        lsb = ttk.Scrollbar(left, orient="vertical", command=lb.yview)
+        lb.configure(yscrollcommand=lsb.set)
+        lsb.pack(side="right", fill="y")
+
+        def status_of(m):
+            done = sum(1 for r in recipes if data.get(m, {}).get(r))
+            return "✔ 전부" if done == len(recipes) else \
+                (f"{done}/{len(recipes)}" if done else "미지정")
+
+        def refresh_list(keep=None):
+            sel = keep if keep is not None else (lb.curselection() or [0])[0]
+            lb.delete(0, "end")
+            for m in machines:
+                lb.insert("end", f"{m}   [{status_of(m)}]")
+            if machines:
+                lb.selection_clear(0, "end")
+                lb.selection_set(min(sel, len(machines) - 1))
+            update_right()
+
+        # ── 오른쪽: 선택한 호기의 레시피별 경로 ──
+        right = tk.Frame(body, bg=self.p["bg"])
+        right.pack(side="left", fill="both", expand=True, padx=(14, 0))
+        head = tk.Label(right, text="", bg=self.p["bg"], fg=self.p["text"],
+                        font=self.fonts["bold"], anchor="w")
+        head.pack(anchor="w")
+        rows_frame = tk.Frame(right, bg=self.p["bg"])
+        rows_frame.pack(fill="both", expand=True, pady=6)
+        vars_by_recipe = {}
+
+        def cur_machine():
+            sel = lb.curselection()
+            return machines[sel[0]] if sel else (machines[0] if machines else None)
+
+        def update_right():
+            m = cur_machine()
+            head.config(text=f"{m} 의 레시피별 감시 폴더" if m else "")
+            for w in rows_frame.winfo_children():
+                w.destroy()
+            vars_by_recipe.clear()
+            if not m:
+                return
+            for i, r in enumerate(recipes):
+                tk.Label(rows_frame, text=r, bg=self.p["bg"], fg=self.p["text"],
+                         font=self.fonts["bold"], width=12,
+                         anchor="w").grid(row=i, column=0, sticky="w", pady=3)
+                var = tk.StringVar(value=data.get(m, {}).get(r, ""))
+                tk.Entry(rows_frame, textvariable=var, width=44, relief="solid",
+                         bd=1).grid(row=i, column=1, sticky="we", padx=6)
+
+                def browse(rr=r, vv=var, mm=m):
+                    rel = self._browse_equipment_recipe(rr, machine=mm, parent=win)
+                    if rel:
+                        vv.set(rel)
+                        data.setdefault(mm, {})[rr] = rel
+                        refresh_list()
+                tk.Button(rows_frame, text="장비에서 선택…", relief="flat", bd=0,
+                          bg=self.p["primary"], fg="#ffffff", cursor="hand2",
+                          command=browse).grid(row=i, column=2, padx=2)
+                vars_by_recipe[r] = var
+            rows_frame.columnconfigure(1, weight=1)
+
+        def commit_current():
+            """오른쪽 입력칸 내용을 data 에 반영(직접 수정분 포함)."""
+            m = cur_machine()
+            if not m:
+                return
+            for r, v in vars_by_recipe.items():
+                val = v.get().strip().strip("\\/")
+                if val:
+                    data.setdefault(m, {})[r] = val
+                else:
+                    data.get(m, {}).pop(r, None)
+
+        def on_select(_e=None):
+            update_right()
+        lb.bind("<<ListboxSelect>>", lambda e: (commit_current(), on_select()))
+
+        def copy_to_others():
+            m = cur_machine()
+            commit_current()
+            if not m or not data.get(m):
+                messagebox.showinfo("복사", "먼저 이 호기의 폴더를 지정하세요.",
+                                    parent=win)
+                return
+            if not messagebox.askyesno(
+                    "다른 호기에 복사",
+                    f"{m} 의 경로를 다른 모든 호기에 복사할까요?\n"
+                    "폴더 구조가 같은 장비끼리만 쓰세요. 복사 후 호기별로 "
+                    "수정할 수 있습니다.", parent=win):
+                return
+            for other in machines:
+                if other != m:
+                    data[other] = dict(data[m])
+            refresh_list()
 
         out = {}
 
         def ok():
-            for r, v in rows.items():
-                val = v.get().strip().strip("\\/")
-                if val:
-                    out[r] = val
+            commit_current()
+            for m, d in data.items():
+                clean = {r: v for r, v in d.items() if v}
+                if clean:
+                    out[m] = clean
             win.destroy()
+
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=12)
-        tk.Label(bt, text="비워 두면 기존 방식(이름 자동 매칭)을 사용합니다.",
+        tk.Button(bt, text="이 호기 경로를 다른 호기에 복사", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=12, pady=6,
+                  cursor="hand2", command=copy_to_others).pack(side="left")
+        tk.Label(bt, text="  비워 두면 그 레시피는 기존 방식(이름 자동 매칭)",
                  bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left")
         tk.Button(bt, text="확인", relief="flat", bd=0, bg=self.p["primary"],
@@ -5259,8 +5364,10 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=14, pady=6, cursor="hand2",
                   command=win.destroy).pack(side="right", padx=6)
+
+        refresh_list(0)
         win.wait_window()
-        return out
+        return out or None
 
     def _recipe_form_note(self, recipe: str) -> str:
         """레시피 옆에 보여줄 양식 상태(최신 양식 유무)."""
@@ -5441,7 +5548,9 @@ class EquipApp(tk.Tk):
             if not machines:
                 raise RuntimeError("감시 대상 장비가 없습니다(설정에서 선택)")
             # 폴더를 지정한 레시피는 계획이 필요 없다. 지정 안 한 레시피만 계획 필요.
-            need_plan = [r for r in recipes if not (s.recipe_paths or {}).get(r)]
+            need_plan = [r for r in recipes
+                         if any(not watcher.path_for(s.recipe_paths, m, r)
+                                for m in machines)]
             if need_plan and plan is None:
                 raise RuntimeError(
                     "다음 레시피의 감시 폴더가 지정되지 않았습니다: "
@@ -5631,9 +5740,8 @@ class EquipApp(tk.Tk):
             return out
 
         # 지정된 폴더가 있는 레시피는 이름 유추 없이 그 경로만 읽는다(권장 경로).
-        fixed_paths = {r: s.recipe_paths.get(r) for r in recipes
-                       if (s.recipe_paths or {}).get(r)}
-        guess_recipes = [r for r in recipes if r not in fixed_paths]
+        # **지정은 호기별**이므로 장비 루프 안에서 조회한다.
+        any_fixed = False
 
         for m in machines:
             ip = refdata.ip_for(self.ip_rows, m)
@@ -5645,14 +5753,19 @@ class EquipApp(tk.Tk):
                     d = os.path.join(staging_root, _sanitize_name(aoi))
                     os.makedirs(d, exist_ok=True)
                     return d
-                # ① 폴더를 직접 지정한 레시피 — 지정 경로에서 바로 읽는다.
-                for lvl, rel in fixed_paths.items():
+                # ① 이 호기에 폴더를 지정한 레시피 — 지정 경로에서 바로 읽는다.
+                fixed = {r: watcher.path_for(s.recipe_paths, m, r) for r in recipes}
+                fixed = {r: v for r, v in fixed.items() if v}
+                if fixed:
+                    any_fixed = True
+                for lvl, rel in fixed.items():
                     got = self._collect_fixed_dir(ip, m, lvl, rel, staging_root,
                                                   use_netuse, diag)
                     if got:
                         sources.append((got, lvl, m))
+                guess_recipes = [r for r in recipes if r not in fixed]
                 if not guess_recipes:
-                    continue                  # 전부 지정돼 있으면 탐색 불필요
+                    continue                  # 이 호기는 전부 지정됨 — 탐색 불필요
                 # target_levels/match_recipes 를 줘야 **저장된 recipe_map 재사용
                 # 경로**를 탄다(수동 수집이 남긴 Job 폴더명으로 이 장비 폴더를 매칭).
                 # 이걸 빼면 job_keyword 가 빈 계획에서 선택창을 요구해 전부 건너뛴다.
@@ -5676,13 +5789,11 @@ class EquipApp(tk.Tk):
             detail = ("\n· " + "\n· ".join(diag[:6])) if diag else ""
             # 폴더를 지정해 둔 경우에는 '값 업데이트를 하라'고 안내하면 안 된다
             # (계획이 아니라 지정 경로가 문제이므로). 상황에 맞는 안내를 낸다.
-            if fixed_paths:
-                hint = ("\n\n지정한 감시 폴더를 장비에서 찾지 못했습니다:\n"
-                        + "\n".join(f"  · {r} → …\\Job\\{v}"
-                                    for r, v in fixed_paths.items())
-                        + "\n\n장비에 그 경로가 실제로 있는지, 연결(탐색기 로그인)이 "
-                          "되어 있는지 확인하세요.\n"
-                          "'📁 감시 폴더 지정…'에서 다시 고를 수 있습니다.")
+            if any_fixed:
+                hint = ("\n\n지정한 감시 폴더를 장비에서 찾지 못했습니다.\n"
+                        "장비에 그 경로가 실제로 있는지, 연결(탐색기 로그인)이 "
+                        "되어 있는지 확인하세요.\n"
+                        "'📁 감시 폴더 지정…'에서 호기별로 다시 고를 수 있습니다.")
             else:
                 hint = ("\n\n선택한 레시피의 Job 폴더를 장비에서 찾지 못했습니다.\n"
                         "감시 설정의 '📁 감시 폴더 지정…'에서 폴더를 직접 지정하면 "

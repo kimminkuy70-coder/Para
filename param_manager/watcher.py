@@ -66,10 +66,10 @@ class WatchSettings:
     # 실행할 때 확정된 Job/Setup/Recipe 폴더 선택을 기록해 두었다가, 무인 회차에서
     # 선택창 없이 그대로 재사용한다. 없으면 무인 수집을 할 수 없다.
     plan: dict = field(default_factory=dict)
-    # **감시 폴더 직접 지정(권장)** — {레시피: Job 기준 상대경로}.
-    # 예: {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3"} → 각 장비의
-    #     \\{IP}\c$\Job\PI3_MAIN\Setup1\Recipes\PI3 를 읽는다.
-    # 장비마다 IP 만 다르고 Job 아래 구조는 같으므로 한 번 지정하면 전 장비에 적용된다.
+    # **감시 폴더 직접 지정(권장)** — {호기: {레시피: Job 기준 상대경로}}.
+    # 예: {"AOI-17": {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3"},
+    #      "AOI-19": {"PI3": r"PI_JOB\Recipes\PI3_A"}}
+    # **장비마다 Job 폴더 구조가 다르므로 호기별로 따로 지정**한다(양식 만들기와 동일).
     # 지정돼 있으면 이름 유추(plan/느슨매칭) 없이 이 경로만 사용한다.
     recipe_paths: dict = field(default_factory=dict)
 
@@ -103,8 +103,7 @@ class WatchSettings:
         s.machines = list(d.get("machines") or [])
         s.notify_on_change_only = bool(d.get("notify_on_change_only", True))
         s.plan = dict(d.get("plan") or {})
-        s.recipe_paths = {str(k): str(v) for k, v in
-                          (d.get("recipe_paths") or {}).items() if v}
+        s.recipe_paths = normalize_recipe_paths(d.get("recipe_paths"))
         return s
 
 
@@ -186,6 +185,34 @@ def save_settings(save_dir: str, settings: WatchSettings,
     return p
 
 
+def normalize_recipe_paths(raw) -> dict:
+    """저장된 감시 폴더 지정을 {호기: {레시피: 상대경로}} 형태로 정규화한다.
+
+    구 버전은 {레시피: 경로}(전 장비 공통) 형태로 저장했으므로, 그 형태가 오면
+    특수 키 `*`(모든 호기 기본값) 아래로 옮겨 하위호환을 유지한다.
+    """
+    out: dict = {}
+    for k, v in (raw or {}).items():
+        if isinstance(v, dict):                      # 신형 {호기: {레시피: 경로}}
+            inner = {str(rk): str(rv) for rk, rv in v.items() if rv}
+            if inner:
+                out[str(k)] = inner
+        elif v:                                      # 구형 {레시피: 경로}
+            out.setdefault(ANY_MACHINE, {})[str(k)] = str(v)
+    return out
+
+
+def path_for(recipe_paths: dict, machine: str, recipe: str) -> str:
+    """(호기, 레시피) → 지정된 상대경로. 없으면 빈 문자열.
+    호기별 지정이 우선, 없으면 구 버전 공통 지정(`*`)을 본다."""
+    rp = recipe_paths or {}
+    v = (rp.get(machine) or {}).get(recipe)
+    if v:
+        return str(v)
+    return str((rp.get(ANY_MACHINE) or {}).get(recipe) or "")
+
+
+ANY_MACHINE = "*"          # 구 버전 하위호환: 모든 호기 공통 지정
 JOB_DIRNAME = "Job"
 
 

@@ -129,7 +129,7 @@ python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·�
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
-python3 tests/test_watcher.py      # 24 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
+python3 tests/test_watcher.py      # 25 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -154,9 +154,12 @@ python3 tests/test_downloader.py   # 8
   값이 빠져 변경보고서에 '삭제'로 오탐**된다(`collate_recipe` 의 직전값 이어받기가
   `machines_all` 로 제한되기 때문). 반드시 `_all_machines()` 를 넘길 것.
 - **감시 폴더 직접 지정(권장·2026-08)**: 설정창 '📁 감시 폴더 지정…' → '장비에서 선택…'
-  이 **양식 만들기와 같은 방식으로 장비를 훑어** 장비→Job→Setup→Recipe 목록을 차례로
+  이 **양식 만들기와 같은 방식으로 장비를 훑어** Job→Setup→Recipe 목록을 차례로
   보여준다(`_browse_equipment_recipe`, `_pick_list_chooser` 재사용 — 경로 직접 입력
-  없음, 실재하는 폴더만 표시, 설정파일 없는 폴더는 표시·확인). 고르면 `watcher.job_relative` 가 **`\Job\` 뒤 상대경로만**
+  없음, 실재하는 폴더만 표시, 설정파일 없는 폴더는 표시·확인).
+  **지정은 호기별**(`{호기: {레시피: 상대경로}}`) — 장비마다 Job 구조가 다르기 때문.
+  좌측 호기 목록 + 우측 레시피별 경로, '이 호기 경로를 다른 호기에 복사' 제공.
+  조회는 `watcher.path_for(rp, 호기, 레시피)`(구 버전 공통지정 `*` 폴백 유지). 고르면 `watcher.job_relative` 가 **`\Job\` 뒤 상대경로만**
   저장한다(`감시설정.json` `recipe_paths`). IP 가 빠지므로 `machine_recipe_dir(ip, rel)`
   로 **모든 장비에 그대로 적용**된다. 지정된 레시피는 이름 유추(plan/느슨매칭)를
   하지 않고 그 경로만 읽으므로 '자동 매칭 실패'가 없다(`_collect_fixed_dir`).

@@ -454,17 +454,41 @@ def test_job_relative_and_machine_path():
     print("  감시 폴더 지정: Job 상대경로 추출 + 장비별 경로 조립 OK")
 
 
-def test_recipe_paths_persist():
+def test_recipe_paths_are_per_machine():
+    """장비마다 Job 구조가 다르므로 **호기별로** 지정·조회되어야 한다."""
     with tempfile.TemporaryDirectory() as tmp:
         s, st = watcher.load_settings(tmp)
         assert s.recipe_paths == {}
-        s.recipe_paths = {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3", "RDL2": ""}
+        s.recipe_paths = {
+            "AOI-17": {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3", "RDL2": ""},
+            "AOI-19": {"PI3": r"PI_JOB\Recipes\PI3_A"},
+        }
         watcher.save_settings(tmp, s, st)
         s2, _ = watcher.load_settings(tmp)
         # 빈 값은 저장하지 않는다(미지정 = 자동 매칭 폴백)
-        assert s2.recipe_paths == {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3"}, \
-            s2.recipe_paths
-    print("  지정 폴더 저장/복원(빈 값 제외) OK")
+        assert s2.recipe_paths["AOI-17"] == {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3"}
+        # 같은 레시피라도 호기마다 다른 경로가 나와야 한다
+        assert watcher.path_for(s2.recipe_paths, "AOI-17", "PI3") == \
+            r"PI3_MAIN\Setup1\Recipes\PI3"
+        assert watcher.path_for(s2.recipe_paths, "AOI-19", "PI3") == \
+            r"PI_JOB\Recipes\PI3_A"
+        assert watcher.path_for(s2.recipe_paths, "AOI-17", "RDL2") == ""
+        assert watcher.path_for(s2.recipe_paths, "AOI-99", "PI3") == "", "미지정 호기"
+    print("  감시 폴더 호기별 지정/조회 OK")
+
+
+def test_recipe_paths_legacy_flat_migrates():
+    """구 버전의 전 장비 공통 지정({레시피: 경로})도 계속 동작해야 한다."""
+    norm = watcher.normalize_recipe_paths({"PI3": r"A\B\PI3"})
+    assert norm == {watcher.ANY_MACHINE: {"PI3": r"A\B\PI3"}}, norm
+    # 호기별 지정이 없으면 공통 지정으로 폴백
+    assert watcher.path_for(norm, "AOI-17", "PI3") == r"A\B\PI3"
+    # 호기별 지정이 있으면 그쪽이 우선
+    mixed = watcher.normalize_recipe_paths(
+        {"PI3": r"A\B\PI3", "AOI-17": {"PI3": r"X\Y"}})
+    assert watcher.path_for(mixed, "AOI-17", "PI3") == r"X\Y"
+    assert watcher.path_for(mixed, "AOI-19", "PI3") == r"A\B\PI3"
+    print("  구 버전 공통 지정 하위호환(호기별 우선) OK")
 
 
 def test_log_appends():
@@ -492,7 +516,8 @@ if __name__ == "__main__":
               test_report_listing_newest_first,
               test_shared_state_carries_result_for_others,
               test_job_matching_is_per_level_tolerant,
-              test_job_relative_and_machine_path, test_recipe_paths_persist,
+              test_job_relative_and_machine_path, test_recipe_paths_are_per_machine,
+              test_recipe_paths_legacy_flat_migrates,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
