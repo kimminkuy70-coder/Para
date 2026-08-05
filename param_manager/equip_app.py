@@ -5572,11 +5572,21 @@ class EquipApp(tk.Tk):
             watcher.append_log(self.save_dir, "매칭 진단 — " + " / ".join(diag[:8]))
         if not sources:
             detail = ("\n· " + "\n· ".join(diag[:6])) if diag else ""
+            # 폴더를 지정해 둔 경우에는 '값 업데이트를 하라'고 안내하면 안 된다
+            # (계획이 아니라 지정 경로가 문제이므로). 상황에 맞는 안내를 낸다.
+            if fixed_paths:
+                hint = ("\n\n지정한 감시 폴더를 장비에서 찾지 못했습니다:\n"
+                        + "\n".join(f"  · {r} → …\\Job\\{v}"
+                                    for r, v in fixed_paths.items())
+                        + "\n\n장비에 그 경로가 실제로 있는지, 연결(탐색기 로그인)이 "
+                          "되어 있는지 확인하세요.\n"
+                          "'📁 감시 폴더 지정…'에서 다시 고를 수 있습니다.")
+            else:
+                hint = ("\n\n선택한 레시피의 Job 폴더를 장비에서 찾지 못했습니다.\n"
+                        "감시 설정의 '📁 감시 폴더 지정…'에서 폴더를 직접 지정하면 "
+                        "이름을 유추하지 않아 확실합니다.")
             raise RuntimeError(
-                "수집된 장비가 없습니다: " + (", ".join(skipped) or "-") + detail
-                + "\n\n선택한 레시피의 Job 폴더를 장비에서 찾지 못했습니다.\n"
-                  "'파라미터 값 업데이트'를 **감시와 같은 레시피로** 한 번 수동 실행하면 "
-                  "그때 고른 Job 폴더가 기록되어 이후 무인 회차가 재사용합니다.")
+                "수집된 장비가 없습니다: " + (", ".join(skipped) or "-") + detail + hint)
 
         cb, cstate = self._coef_lookup_cb()
         cfgs = []
