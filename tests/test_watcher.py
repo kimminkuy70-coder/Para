@@ -491,6 +491,50 @@ def test_recipe_paths_legacy_flat_migrates():
     print("  구 버전 공통 지정 하위호환(호기별 우선) OK")
 
 
+def test_job_folder_resolves_subrecipes():
+    """**Job 폴더만 지정**하면 그 아래 Setup/Recipes/레시피를 자동으로 찾아야 한다.
+
+    (_collect_fixed_dir 의 대상 폴더 해석 규칙과 동일 — 어느 단계를 지정하든 동작)
+    """
+    from pathlib import Path
+
+    from param_manager import collector
+    with tempfile.TemporaryDirectory() as tmp:
+        job = Path(tmp) / "PI3_MAIN"
+        recipes_root = job / "Setup1" / "Recipes"
+        for rname in ("PI3", "PI3_BUBBLE"):
+            d = recipes_root / rname
+            (d / "Zones").mkdir(parents=True)
+            (d / "GlobalRTP.ini").write_text("[A]\nx=1\n", encoding="utf-8")
+        (recipes_root / "빈폴더").mkdir()            # 설정파일 없음 → 제외돼야 함
+
+        def is_recipe_dir(d):
+            return any((d / f).is_file() for f in collector.FIXED_FILES) or \
+                (d / "Zones").is_dir()
+
+        def resolve(src):                            # _collect_fixed_dir 과 같은 규칙
+            if is_recipe_dir(src):
+                return [src]
+            out = []
+            for _s, rr in collector.find_setup_candidates(src):
+                out += [d for d in collector.list_dirs(rr) if is_recipe_dir(d)]
+            if not out:
+                out = [d for d in collector.list_dirs(src) if is_recipe_dir(d)]
+            return out
+
+        # ① Job 폴더 지정 → 하위 레시피 2개 자동 발견(빈 폴더 제외)
+        got = sorted(d.name for d in resolve(job))
+        assert got == ["PI3", "PI3_BUBBLE"], got
+        # ② Recipes 폴더를 지정해도 동일
+        assert sorted(d.name for d in resolve(recipes_root)) == ["PI3", "PI3_BUBBLE"]
+        # ③ Recipe 폴더를 직접 지정하면 그것만
+        assert [d.name for d in resolve(recipes_root / "PI3")] == ["PI3"]
+        # 실제로 복사 대상 파일이 잡히는지
+        planned = collector.plan_files(resolve(job))
+        assert planned and any("GlobalRTP.ini" in p[2] for p in planned), planned
+    print("  Job 폴더 지정 → 하위 레시피 자동 탐색(어느 단계든 동작) OK")
+
+
 def test_log_appends():
     with tempfile.TemporaryDirectory() as tmp:
         watcher.append_log(tmp, "회차 시작")
@@ -518,6 +562,7 @@ if __name__ == "__main__":
               test_job_matching_is_per_level_tolerant,
               test_job_relative_and_machine_path, test_recipe_paths_are_per_machine,
               test_recipe_paths_legacy_flat_migrates,
+              test_job_folder_resolves_subrecipes,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")

@@ -4907,12 +4907,12 @@ class EquipApp(tk.Tk):
         def pick_paths():
             picked = selected_recipes() or all_recipes
             if not picked:
-                messagebox.showinfo("감시 폴더 지정",
+                messagebox.showinfo("감시 Job 폴더 지정",
                                     "먼저 감시할 레시피를 선택하세요.", parent=win)
                 return
             picked_m = selected_machines() or all_machines
             if not picked_m:
-                messagebox.showinfo("감시 폴더 지정",
+                messagebox.showinfo("감시 Job 폴더 지정",
                                     "먼저 감시할 장비를 선택하세요.", parent=win)
                 return
             got = self._watch_paths_dialog(picked_m, picked, paths_state["v"],
@@ -4920,7 +4920,7 @@ class EquipApp(tk.Tk):
             if got is not None:
                 paths_state["v"] = got
                 upd_plabel()
-        tk.Button(prow, text="📁 감시 폴더 지정…", relief="flat", bd=0,
+        tk.Button(prow, text="📁 감시 Job 폴더 지정…", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["primary"],
                   font=self.fonts["bold"], padx=12, pady=4, cursor="hand2",
                   command=pick_paths).pack(side="left")
@@ -5143,67 +5143,36 @@ class EquipApp(tk.Tk):
                 return None
             jn = [d.name for d in jobs]
             pick = self._pick_list_chooser("job", f"[{recipe}] Job 폴더 선택", jn, False,
-                                           note=f"{m} · {job_root}")
+                note=f"{m} · {job_root}\n"
+                     "Job 폴더만 고르면 그 아래 레시피는 자동으로 읽습니다.")
             if not pick:
                 return None
             job = jobs[jn.index(pick[0])]
 
-            # ③ Setup/Recipes — 후보가 1개면 자동
-            cands = collector.find_setup_candidates(job)
-            if not cands:
-                messagebox.showwarning(
-                    "Recipes 없음",
-                    f"'{job.name}' 아래에서 Recipes 폴더를 찾지 못했습니다.",
-                    parent=parent)
-                return None
-            if len(cands) == 1:
-                recipes_root = cands[0][1]
-            else:
-                sn = [s.name for s, _ in cands]
-                pick = self._pick_list_chooser(
-                    "setup", f"[{recipe}] Setup 선택", sn, False,
-                    note=f"{m} · {job.name}")
-                if not pick:
+            # ③ Job 폴더만 고르면 끝 — 하위 Setup/Recipes/레시피는 자동으로 찾는다.
+            found = collector.find_setup_candidates(job)
+            n_recipes = sum(len(collector.list_dirs(r)) for _s, r in found)
+            if not found or not n_recipes:
+                if not messagebox.askyesno(
+                        "Recipes 확인",
+                        f"'{job.name}' 아래에서 Recipes 폴더(또는 레시피)를 찾지 "
+                        "못했습니다.\n그래도 이 Job 폴더로 지정할까요?", parent=parent):
                     return None
-                recipes_root = cands[sn.index(pick[0])][1]
-
-            # ④ Recipe 폴더 선택 — 설정파일 보유 여부를 함께 표시
-            rdirs = collector.list_dirs(recipes_root)
-            if not rdirs:
-                messagebox.showwarning("Recipe 없음",
-                                       f"Recipes 폴더가 비어 있습니다.\n{recipes_root}",
-                                       parent=parent)
-                return None
-
-            def has_cfg(d):
-                return any((d / f).is_file() for f in collector.FIXED_FILES) or \
-                    (d / "Zones").is_dir()
-            rn = [d.name for d in rdirs]
-            rlabels = [f"{d.name}{'' if has_cfg(d) else '   (설정파일 없음)'}"
-                       for d in rdirs]
-            # 레시피 이름과 비슷한 항목을 미리 선택해 준다
-            pre = [i for i, d in enumerate(rdirs)
-                   if collector.contains_keyword(d.name, recipe)]
-            pick = self._pick_list_chooser(
-                "recipe", f"[{recipe}] Recipe 폴더 선택", rlabels, False,
-                preselect=pre[:1],
-                note=f"{m} · {recipes_root}\n"
-                     "이 폴더의 GlobalRTP/OpticPreset/Zones 를 감시합니다. "
-                     "여러 Recipe 를 함께 보려면 상위(Recipes) 폴더를 쓰세요.")
-            if not pick:
-                return None
-            chosen = rdirs[rlabels.index(pick[0])]
-            if not has_cfg(chosen) and not messagebox.askyesno(
-                    "설정파일 없음",
-                    f"'{chosen.name}' 에 GlobalRTP.ini/Zones 가 보이지 않습니다.\n"
-                    "그래도 이 폴더로 지정할까요?", parent=parent):
-                return None
-            rel = watcher.job_relative(str(chosen))
+            rel = watcher.job_relative(str(job))
             if not rel:
                 messagebox.showwarning("경로 확인",
-                                       f"Job 기준 상대경로를 만들지 못했습니다.\n{chosen}",
+                                       f"Job 기준 상대경로를 만들지 못했습니다.\n{job}",
                                        parent=parent)
                 return None
+            if n_recipes:
+                names = []
+                for _s, r in found:
+                    names += [d.name for d in collector.list_dirs(r)]
+                messagebox.showinfo(
+                    "Job 폴더 지정됨",
+                    f"[{m}] {job.name}\n\n이 Job 아래 레시피 {n_recipes}개를 자동으로 "
+                    "읽습니다:\n  " + ", ".join(names[:12])
+                    + (" …" if len(names) > 12 else ""), parent=parent)
             return rel
         except Exception as e:  # noqa: BLE001
             self._err("E162", "장비 폴더 탐색 실패", e)
@@ -5220,17 +5189,19 @@ class EquipApp(tk.Tk):
         parent = parent or self
         data = {m: dict(current.get(m) or {}) for m in machines}
         win = tk.Toplevel(parent)
-        win.title("감시 폴더 지정 (호기별)")
+        win.title("감시 Job 폴더 지정 (호기별)")
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         win.grab_set()
         win.geometry("860x560")
-        tk.Label(win, text="호기별 감시 폴더", bg=self.p["bg"], fg=self.p["text"],
+        tk.Label(win, text="호기별 감시 Job 폴더", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win,
                  text="장비마다 Job 폴더 구조가 달라 **호기별로** 지정합니다.\n"
-                      "왼쪽에서 호기를 고르고, 레시피마다 '장비에서 선택…'으로 "
-                      "실제 폴더를 고르세요.",
+                      "왼쪽에서 호기를 고르고 '장비에서 선택…'으로 **Job 폴더만** "
+                      "고르세요.\n"
+                      "그 아래 Setup/Recipes/레시피 폴더는 프로그램이 자동으로 "
+                      "찾아 전부 읽습니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=16, pady=(0, 8))
 
@@ -5280,7 +5251,7 @@ class EquipApp(tk.Tk):
 
         def update_right():
             m = cur_machine()
-            head.config(text=f"{m} 의 레시피별 감시 폴더" if m else "")
+            head.config(text=f"{m} 의 레시피별 감시 Job 폴더" if m else "")
             for w in rows_frame.winfo_children():
                 w.destroy()
             vars_by_recipe.clear()
@@ -5650,14 +5621,24 @@ class EquipApp(tk.Tk):
             if not src.is_dir():
                 diag.append(f"{machine}/{recipe}: 지정 폴더 없음({src})")
                 return None
-            # 지정 폴더가 Recipe 폴더인지(설정파일 보유) 판단, 아니면 하위를 대상으로
+            # 지정 폴더가 어느 단계든(Job / Setup / Recipes / Recipe) 알아서 내려간다.
+            #   Job 폴더를 지정하는 게 기본 — 그 아래 Setup/Recipes/레시피는 자동 스캔.
             def is_recipe_dir(d):
                 return any((d / f).is_file() for f in collector.FIXED_FILES) or \
                     (d / "Zones").is_dir()
-            targets = [src] if is_recipe_dir(src) else \
-                [d for d in collector.list_dirs(src) if is_recipe_dir(d)]
+
+            if is_recipe_dir(src):
+                targets = [src]                      # Recipe 폴더를 직접 지정한 경우
+            else:
+                targets = []
+                for _setup, recipes_root in collector.find_setup_candidates(src):
+                    targets += [d for d in collector.list_dirs(recipes_root)
+                                if is_recipe_dir(d)]
+                if not targets:                      # Recipes 폴더를 직접 지정한 경우
+                    targets = [d for d in collector.list_dirs(src) if is_recipe_dir(d)]
             if not targets:
-                diag.append(f"{machine}/{recipe}: 지정 폴더에 설정파일 없음({src})")
+                diag.append(f"{machine}/{recipe}: 지정 폴더 아래에 레시피(설정파일) "
+                            f"없음({src})")
                 return None
             planned = collector.plan_files(targets)
             if not planned:
