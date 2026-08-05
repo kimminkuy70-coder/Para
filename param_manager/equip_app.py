@@ -5081,6 +5081,118 @@ class EquipApp(tk.Tk):
                   fg="#ffffff", padx=18, pady=6, cursor="hand2",
                   command=apply_).pack(side="right")
 
+    def _browse_equipment_recipe(self, recipe: str, parent=None) -> str | None:
+        r"""**장비를 직접 훑어** Recipe 폴더를 고르게 한다(양식 만들기와 같은 방식).
+
+        장비 선택 → Job 폴더 → Setup/Recipes → Recipe 폴더 순으로 **목록에서 선택**한다.
+        경로를 직접 입력할 필요가 없고, 실제로 존재하는 폴더만 보여주므로 오타가 없다.
+        반환: `\Job\` 기준 상대경로(모든 장비 공통) 또는 None(취소).
+        """
+        from pathlib import Path as _P
+        parent = parent or self
+        self._chooser_parent = parent
+
+        # ① 어느 장비를 훑을지 — 연결된 장비 아무거나 1대면 된다
+        machines = [(m, refdata.ip_for(self.ip_rows, m)) for m in self._all_machines()]
+        machines = [(m, ip) for m, ip in machines if ip]
+        if not machines:
+            messagebox.showwarning("장비 없음",
+                                   "'장비 IP' 탭에 호기·IP를 먼저 등록하세요.",
+                                   parent=parent)
+            return None
+        labels = [f"{m}   ({ip})" for m, ip in machines]
+        pick = self._pick_list_chooser(
+            "machine", f"[{recipe}] 폴더를 확인할 장비 선택", labels, False,
+            note="연결된 장비 1대만 고르면 됩니다. 여기서 고른 폴더 구조가 "
+                 "모든 장비에 동일하게 적용됩니다.")
+        if not pick:
+            return None
+        m, ip = machines[labels.index(pick[0])]
+
+        job_root = _P(rf"\\{ip}\c$\Job")
+        try:
+            if not job_root.is_dir():
+                messagebox.showwarning(
+                    "접근 불가",
+                    f"{m}({ip})의 Job 폴더에 접근할 수 없습니다.\n{job_root}\n\n"
+                    r"탐색기에서 \\장비IP\c$ 로 먼저 연결(로그인)한 뒤 다시 시도하세요.",
+                    parent=parent)
+                return None
+
+            # ② Job 폴더 선택
+            jobs = collector.list_dirs(job_root)
+            if not jobs:
+                messagebox.showwarning("폴더 없음", f"Job 폴더가 비어 있습니다.\n{job_root}",
+                                       parent=parent)
+                return None
+            jn = [d.name for d in jobs]
+            pick = self._pick_list_chooser("job", f"[{recipe}] Job 폴더 선택", jn, False,
+                                           note=f"{m} · {job_root}")
+            if not pick:
+                return None
+            job = jobs[jn.index(pick[0])]
+
+            # ③ Setup/Recipes — 후보가 1개면 자동
+            cands = collector.find_setup_candidates(job)
+            if not cands:
+                messagebox.showwarning(
+                    "Recipes 없음",
+                    f"'{job.name}' 아래에서 Recipes 폴더를 찾지 못했습니다.",
+                    parent=parent)
+                return None
+            if len(cands) == 1:
+                recipes_root = cands[0][1]
+            else:
+                sn = [s.name for s, _ in cands]
+                pick = self._pick_list_chooser(
+                    "setup", f"[{recipe}] Setup 선택", sn, False,
+                    note=f"{m} · {job.name}")
+                if not pick:
+                    return None
+                recipes_root = cands[sn.index(pick[0])][1]
+
+            # ④ Recipe 폴더 선택 — 설정파일 보유 여부를 함께 표시
+            rdirs = collector.list_dirs(recipes_root)
+            if not rdirs:
+                messagebox.showwarning("Recipe 없음",
+                                       f"Recipes 폴더가 비어 있습니다.\n{recipes_root}",
+                                       parent=parent)
+                return None
+
+            def has_cfg(d):
+                return any((d / f).is_file() for f in collector.FIXED_FILES) or \
+                    (d / "Zones").is_dir()
+            rn = [d.name for d in rdirs]
+            rlabels = [f"{d.name}{'' if has_cfg(d) else '   (설정파일 없음)'}"
+                       for d in rdirs]
+            # 레시피 이름과 비슷한 항목을 미리 선택해 준다
+            pre = [i for i, d in enumerate(rdirs)
+                   if collector.contains_keyword(d.name, recipe)]
+            pick = self._pick_list_chooser(
+                "recipe", f"[{recipe}] Recipe 폴더 선택", rlabels, False,
+                preselect=pre[:1],
+                note=f"{m} · {recipes_root}\n"
+                     "이 폴더의 GlobalRTP/OpticPreset/Zones 를 감시합니다. "
+                     "여러 Recipe 를 함께 보려면 상위(Recipes) 폴더를 쓰세요.")
+            if not pick:
+                return None
+            chosen = rdirs[rlabels.index(pick[0])]
+            if not has_cfg(chosen) and not messagebox.askyesno(
+                    "설정파일 없음",
+                    f"'{chosen.name}' 에 GlobalRTP.ini/Zones 가 보이지 않습니다.\n"
+                    "그래도 이 폴더로 지정할까요?", parent=parent):
+                return None
+            rel = watcher.job_relative(str(chosen))
+            if not rel:
+                messagebox.showwarning("경로 확인",
+                                       f"Job 기준 상대경로를 만들지 못했습니다.\n{chosen}",
+                                       parent=parent)
+                return None
+            return rel
+        except Exception as e:  # noqa: BLE001
+            self._err("E162", "장비 폴더 탐색 실패", e)
+            return None
+
     def _watch_paths_dialog(self, recipes, current: dict, parent=None) -> dict | None:
         r"""**감시 폴더 지정** — 레시피마다 장비의 Recipe 폴더를 한 번 정해 둔다.
 
@@ -5098,9 +5210,10 @@ class EquipApp(tk.Tk):
         tk.Label(win, text="레시피별 감시 폴더", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win,
-                 text="연결된 장비 하나에서 Recipe 폴더를 고르면 됩니다.\n"
-                      "  예)  \\\\10.0.0.5\\c$\\Job\\PI3_MAIN\\Setup1\\Recipes\\PI3\n"
-                      "IP 앞부분은 빼고 'Job' 뒤 경로만 저장되므로 **모든 장비에 그대로 "
+                 text="'장비에서 선택…'을 누르면 장비 → Job → Setup → Recipe 순으로 "
+                      "실제 폴더 목록이 나옵니다.\n"
+                      "골라 주기만 하면 되고, 경로를 직접 입력할 필요는 없습니다.\n"
+                      "저장되는 건 'Job' 뒤 경로뿐이라 **한 대에서 고르면 모든 장비에 "
                       "적용**됩니다.\n"
                       "지정해 두면 폴더 이름을 유추하지 않아 매칭 실패가 없습니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
@@ -5118,22 +5231,11 @@ class EquipApp(tk.Tk):
                      bd=1).grid(row=i, column=1, sticky="we", padx=6)
 
             def browse(v=var, rr=r):
-                d = filedialog.askdirectory(
-                    title=f"[{rr}] 장비의 Recipe 폴더 선택 "
-                          r"(\\장비IP\c$\Job\... 아래)", parent=win)
-                if not d:
-                    return
-                rel = watcher.job_relative(d)
-                if not rel:
-                    messagebox.showwarning(
-                        "경로 확인",
-                        "선택한 폴더에서 'Job' 폴더를 찾지 못했습니다.\n"
-                        r"장비 공유폴더(\\장비IP\c$\Job\...) 아래에서 골라 주세요."
-                        f"\n\n선택: {d}", parent=win)
-                    return
-                v.set(rel)
-            tk.Button(grid, text="찾아보기…", relief="flat", bd=0,
-                      bg=self.p["surface"], fg=self.p["text"], cursor="hand2",
+                rel = self._browse_equipment_recipe(rr, parent=win)
+                if rel:
+                    v.set(rel)
+            tk.Button(grid, text="장비에서 선택…", relief="flat", bd=0,
+                      bg=self.p["primary"], fg="#ffffff", cursor="hand2",
                       command=browse).grid(row=i, column=2, padx=2)
             rows[r] = var
         grid.columnconfigure(1, weight=1)
