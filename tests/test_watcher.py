@@ -438,6 +438,35 @@ def test_job_matching_is_per_level_tolerant():
     print("  Job 폴더 레벨별 매칭(계획→레벨명 폴백·애매하면 제외) OK")
 
 
+def test_job_relative_and_machine_path():
+    """폴더를 한 번 지정하면 IP 만 바꿔 **모든 장비**에 적용돼야 한다."""
+    rel = watcher.job_relative(r"\\10.0.0.5\c$\Job\PI3_MAIN\Setup1\Recipes\PI3")
+    assert rel == r"PI3_MAIN\Setup1\Recipes\PI3", rel
+    # 슬래시 표기·소문자 job 도 인식
+    assert watcher.job_relative("//10.0.0.5/c$/job/A/B") == r"A\B"
+    # Job 이 없으면 지정 실패로 본다(엉뚱한 경로 저장 방지)
+    assert watcher.job_relative(r"D:\어딘가\PI3") == ""
+    assert watcher.job_relative("") == ""
+    # 같은 상대경로가 다른 장비에 그대로 적용된다
+    assert watcher.machine_recipe_dir("10.0.0.9", rel) == \
+        r"\\10.0.0.9\c$\Job\PI3_MAIN\Setup1\Recipes\PI3"
+    assert watcher.machine_recipe_dir("10.0.0.9", "") == r"\\10.0.0.9\c$\Job"
+    print("  감시 폴더 지정: Job 상대경로 추출 + 장비별 경로 조립 OK")
+
+
+def test_recipe_paths_persist():
+    with tempfile.TemporaryDirectory() as tmp:
+        s, st = watcher.load_settings(tmp)
+        assert s.recipe_paths == {}
+        s.recipe_paths = {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3", "RDL2": ""}
+        watcher.save_settings(tmp, s, st)
+        s2, _ = watcher.load_settings(tmp)
+        # 빈 값은 저장하지 않는다(미지정 = 자동 매칭 폴백)
+        assert s2.recipe_paths == {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3"}, \
+            s2.recipe_paths
+    print("  지정 폴더 저장/복원(빈 값 제외) OK")
+
+
 def test_log_appends():
     with tempfile.TemporaryDirectory() as tmp:
         watcher.append_log(tmp, "회차 시작")
@@ -463,6 +492,7 @@ if __name__ == "__main__":
               test_report_listing_newest_first,
               test_shared_state_carries_result_for_others,
               test_job_matching_is_per_level_tolerant,
+              test_job_relative_and_machine_path, test_recipe_paths_persist,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")

@@ -4886,6 +4886,41 @@ class EquipApp(tk.Tk):
             empty_msg="양식이 없습니다. '양식 만들기'로 레시피 양식을 먼저 만드세요.",
             height=110)
 
+        # 감시 폴더 직접 지정(권장) — 지정하면 폴더 이름을 유추하지 않는다.
+        paths_state = {"v": dict(s.recipe_paths or {})}
+        prow = tk.Frame(page, bg=self.p["bg"])
+        prow.pack(fill="x", padx=16, pady=(0, 6))
+        plabel = tk.Label(prow, text="", bg=self.p["bg"], fg=self.p["muted"],
+                          font=self.fonts["sub"], anchor="w", justify="left")
+
+        def upd_plabel():
+            n = len(paths_state["v"])
+            if n:
+                items = ", ".join(f"{k}→{v}" for k, v in
+                                  list(paths_state["v"].items())[:2])
+                plabel.config(text=f"지정됨 {n}개  ({items}{' …' if n > 2 else ''})",
+                              fg=self.p["primary"])
+            else:
+                plabel.config(text="미지정 — 폴더 이름으로 자동 매칭합니다"
+                                   "(실패 시 그 장비는 건너뜀).", fg=self.p["muted"])
+
+        def pick_paths():
+            picked = selected_recipes() or all_recipes
+            if not picked:
+                messagebox.showinfo("감시 폴더 지정",
+                                    "먼저 감시할 레시피를 선택하세요.", parent=win)
+                return
+            got = self._watch_paths_dialog(picked, paths_state["v"], parent=win)
+            if got is not None:
+                paths_state["v"] = got
+                upd_plabel()
+        tk.Button(prow, text="📁 감시 폴더 지정…", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["primary"],
+                  font=self.fonts["bold"], padx=12, pady=4, cursor="hand2",
+                  command=pick_paths).pack(side="left")
+        plabel.pack(side="left", padx=8)
+        upd_plabel()
+
         def selected_targets() -> list:
             """선택된 장비의 (호기, IP) — IP 없는 호기는 제외."""
             out = []
@@ -4985,6 +5020,7 @@ class EquipApp(tk.Tk):
             s.enabled = bool(on_var.get())
             s.machines = picked                       # ← 감시 대상 장비 저장
             s.recipes = picked_r                      # ← 감시 대상 레시피 저장
+            s.recipe_paths = dict(paths_state["v"])   # ← 지정 폴더 저장
             try:
                 s.interval_hours = float(iv.get())
             except ValueError:
@@ -5024,6 +5060,7 @@ class EquipApp(tk.Tk):
                 return
             # 화면에서 고른 값을 그대로 1회 실행에 반영(저장은 '저장' 버튼에서)
             s.machines, s.recipes = picked, picked_r
+            s.recipe_paths = dict(paths_state["v"])
             s.conn_mode = conn.get()
             if not self._watch_acquire():
                 return                      # 다른 PC 가 감시 중
@@ -5043,6 +5080,85 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="저장", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=18, pady=6, cursor="hand2",
                   command=apply_).pack(side="right")
+
+    def _watch_paths_dialog(self, recipes, current: dict, parent=None) -> dict | None:
+        r"""**감시 폴더 지정** — 레시피마다 장비의 Recipe 폴더를 한 번 정해 둔다.
+
+        연결된 장비 아무거나 하나에서 폴더를 고르면 `\Job\` 뒤 상대경로만 저장되어
+        **모든 장비에 그대로 적용**된다(장비마다 IP 만 다르므로). 지정해 두면 이름
+        유추 없이 그 경로만 읽으므로 '자동 매칭 실패'가 나지 않는다.
+        반환: {레시피: 상대경로} 또는 None(취소).
+        """
+        parent = parent or self
+        win = tk.Toplevel(parent)
+        win.title("감시 폴더 지정")
+        win.configure(bg=self.p["bg"])
+        win.transient(parent)
+        win.grab_set()
+        tk.Label(win, text="레시피별 감시 폴더", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win,
+                 text="연결된 장비 하나에서 Recipe 폴더를 고르면 됩니다.\n"
+                      "  예)  \\\\10.0.0.5\\c$\\Job\\PI3_MAIN\\Setup1\\Recipes\\PI3\n"
+                      "IP 앞부분은 빼고 'Job' 뒤 경로만 저장되므로 **모든 장비에 그대로 "
+                      "적용**됩니다.\n"
+                      "지정해 두면 폴더 이름을 유추하지 않아 매칭 실패가 없습니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(0, 8))
+
+        rows = {}
+        grid = tk.Frame(win, bg=self.p["bg"])
+        grid.pack(fill="both", expand=True, padx=16)
+        for i, r in enumerate(recipes):
+            tk.Label(grid, text=r, bg=self.p["bg"], fg=self.p["text"],
+                     font=self.fonts["bold"], width=12,
+                     anchor="w").grid(row=i, column=0, sticky="w", pady=3)
+            var = tk.StringVar(value=current.get(r, ""))
+            tk.Entry(grid, textvariable=var, width=48, relief="solid",
+                     bd=1).grid(row=i, column=1, sticky="we", padx=6)
+
+            def browse(v=var, rr=r):
+                d = filedialog.askdirectory(
+                    title=f"[{rr}] 장비의 Recipe 폴더 선택 "
+                          r"(\\장비IP\c$\Job\... 아래)", parent=win)
+                if not d:
+                    return
+                rel = watcher.job_relative(d)
+                if not rel:
+                    messagebox.showwarning(
+                        "경로 확인",
+                        "선택한 폴더에서 'Job' 폴더를 찾지 못했습니다.\n"
+                        r"장비 공유폴더(\\장비IP\c$\Job\...) 아래에서 골라 주세요."
+                        f"\n\n선택: {d}", parent=win)
+                    return
+                v.set(rel)
+            tk.Button(grid, text="찾아보기…", relief="flat", bd=0,
+                      bg=self.p["surface"], fg=self.p["text"], cursor="hand2",
+                      command=browse).grid(row=i, column=2, padx=2)
+            rows[r] = var
+        grid.columnconfigure(1, weight=1)
+
+        out = {}
+
+        def ok():
+            for r, v in rows.items():
+                val = v.get().strip().strip("\\/")
+                if val:
+                    out[r] = val
+            win.destroy()
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=12)
+        tk.Label(bt, text="비워 두면 기존 방식(이름 자동 매칭)을 사용합니다.",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+        tk.Button(bt, text="확인", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=18, pady=6, cursor="hand2",
+                  command=ok).pack(side="right")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=6)
+        win.wait_window()
+        return out
 
     def _recipe_form_note(self, recipe: str) -> str:
         """레시피 옆에 보여줄 양식 상태(최신 양식 유무)."""
@@ -5222,11 +5338,16 @@ class EquipApp(tk.Tk):
                 raise RuntimeError("양식이 없습니다('양식 만들기' 먼저)")
             if not machines:
                 raise RuntimeError("감시 대상 장비가 없습니다(설정에서 선택)")
-            if plan is None:
+            # 폴더를 지정한 레시피는 계획이 필요 없다. 지정 안 한 레시피만 계획 필요.
+            need_plan = [r for r in recipes if not (s.recipe_paths or {}).get(r)]
+            if need_plan and plan is None:
                 raise RuntimeError(
-                    "수집 계획이 없습니다. '파라미터 값 업데이트'를 한 번 수동으로 "
-                    "실행해 Job/Setup/Recipe 폴더를 확정해 주세요(그 선택을 무인 "
-                    "회차가 재사용합니다).")
+                    "다음 레시피의 감시 폴더가 지정되지 않았습니다: "
+                    + ", ".join(need_plan)
+                    + "\n\n감시 설정의 '📁 감시 폴더 지정…'에서 장비의 Recipe 폴더를 "
+                      "골라 주세요(한 번만 지정하면 모든 장비에 적용됩니다).\n"
+                      "또는 '파라미터 값 업데이트'를 한 번 수동 실행하면 그때 고른 "
+                      "폴더를 무인 회차가 재사용합니다.")
             pivot, skipped = self._watch_collect(machines, s, plan, recipes)
             out = collate.build_collation(self.save_dir, recipes, pivot,
                                           all_machines, prev_collate_path=prev,
@@ -5299,6 +5420,63 @@ class EquipApp(tk.Tk):
 
         self._run_busy("자동 감시 1회 실행 중… (수집→취합→비교)", work, done)
 
+    def _collect_fixed_dir(self, ip, machine, recipe, rel, staging_root,
+                           use_netuse, diag):
+        r"""**지정된 폴더**에서 설정파일을 읽어온다(이름 유추 없음).
+
+        `\\{IP}\c$\Job\{rel}` 을 그대로 읽는다. 지정 폴더가 Recipe 폴더면 그것을,
+        상위 폴더면 그 아래 Recipe 폴더들을 대상으로 한다.
+        원본은 읽기 전용(collector.copy_planned 의 안전장치를 그대로 사용).
+        반환: staging 폴더 경로(수집 실패면 None).
+        """
+        from pathlib import Path as _P
+        src = _P(watcher.machine_recipe_dir(ip, rel))
+        connected = False
+        try:
+            if use_netuse and collector.is_windows():
+                collector.connect_admin_share(ip, "amkor", "")
+                connected = True
+            if not src.is_dir():
+                diag.append(f"{machine}/{recipe}: 지정 폴더 없음({src})")
+                return None
+            # 지정 폴더가 Recipe 폴더인지(설정파일 보유) 판단, 아니면 하위를 대상으로
+            def is_recipe_dir(d):
+                return any((d / f).is_file() for f in collector.FIXED_FILES) or \
+                    (d / "Zones").is_dir()
+            targets = [src] if is_recipe_dir(src) else \
+                [d for d in collector.list_dirs(src) if is_recipe_dir(d)]
+            if not targets:
+                diag.append(f"{machine}/{recipe}: 지정 폴더에 설정파일 없음({src})")
+                return None
+            planned = collector.plan_files(targets)
+            if not planned:
+                diag.append(f"{machine}/{recipe}: 복사할 설정파일 없음")
+                return None
+            # 찢어진 읽기 방지 — 복사 전 서명을 기록해 두고 복사 뒤 비교
+            sigs = [(p, watcher.file_sig(p)) for p, _, _ in planned]
+            dest = os.path.join(staging_root, _sanitize_name(machine),
+                                _sanitize_name(recipe))
+            collector.copy_planned(planned, _P(dest),
+                                   header_lines=[f"IP={ip}", f"Machine={machine}",
+                                                 f"Recipe={recipe}", f"Src={src}"])
+            unstable = watcher.unstable_files(sigs)
+            if unstable:
+                # 장비가 쓰는 중이던 파일이 섞였다 — 이번 회차는 이 레시피를 버린다
+                diag.append(f"{machine}/{recipe}: 수집 중 변경된 파일 "
+                            f"{len(unstable)}개 → 이번 회차 제외")
+                watcher.append_log(self.save_dir,
+                                   f"불안정 파일 제외 {machine}/{recipe}: "
+                                   + ", ".join(os.path.basename(u)
+                                               for u in unstable[:5]))
+                return None
+            return dest
+        except Exception as e:  # noqa: BLE001
+            diag.append(f"{machine}/{recipe}: {e}")
+            return None
+        finally:
+            if connected:
+                collector.disconnect_admin_share(ip)
+
     def _watch_collect(self, machines, s, plan, recipes):
         """무인 수집 — 선택한 장비에서 순차로 설정파일을 읽어 파싱 피벗을 만든다.
 
@@ -5350,6 +5528,11 @@ class EquipApp(tk.Tk):
                 diag.append("장비 Job 폴더: " + ", ".join(names_seen[:8]))
             return out
 
+        # 지정된 폴더가 있는 레시피는 이름 유추 없이 그 경로만 읽는다(권장 경로).
+        fixed_paths = {r: s.recipe_paths.get(r) for r in recipes
+                       if (s.recipe_paths or {}).get(r)}
+        guess_recipes = [r for r in recipes if r not in fixed_paths]
+
         for m in machines:
             ip = refdata.ip_for(self.ip_rows, m)
             if not ip:
@@ -5360,6 +5543,14 @@ class EquipApp(tk.Tk):
                     d = os.path.join(staging_root, _sanitize_name(aoi))
                     os.makedirs(d, exist_ok=True)
                     return d
+                # ① 폴더를 직접 지정한 레시피 — 지정 경로에서 바로 읽는다.
+                for lvl, rel in fixed_paths.items():
+                    got = self._collect_fixed_dir(ip, m, lvl, rel, staging_root,
+                                                  use_netuse, diag)
+                    if got:
+                        sources.append((got, lvl, m))
+                if not guess_recipes:
+                    continue                  # 전부 지정돼 있으면 탐색 불필요
                 # target_levels/match_recipes 를 줘야 **저장된 recipe_map 재사용
                 # 경로**를 탄다(수동 수집이 남긴 Job 폴더명으로 이 장비 폴더를 매칭).
                 # 이걸 빼면 job_keyword 가 빈 계획에서 선택창을 요구해 전부 건너뛴다.
@@ -5367,7 +5558,7 @@ class EquipApp(tk.Tk):
                     ip, staging_for, no_chooser, username="amkor", password=None,
                     use_net_use=use_netuse, plan=plan,
                     confirm=lambda planned: True,     # 무인 — 로컬 staging 복사 승인
-                    target_levels=list(recipes), match_recipes=auto_match)
+                    target_levels=list(guess_recipes), match_recipes=auto_match)
                 for d, lvl in srcs:
                     sources.append((d, lvl, m))
             except collector.UserCancelled:

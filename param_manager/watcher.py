@@ -66,6 +66,12 @@ class WatchSettings:
     # 실행할 때 확정된 Job/Setup/Recipe 폴더 선택을 기록해 두었다가, 무인 회차에서
     # 선택창 없이 그대로 재사용한다. 없으면 무인 수집을 할 수 없다.
     plan: dict = field(default_factory=dict)
+    # **감시 폴더 직접 지정(권장)** — {레시피: Job 기준 상대경로}.
+    # 예: {"PI3": r"PI3_MAIN\Setup1\Recipes\PI3"} → 각 장비의
+    #     \\{IP}\c$\Job\PI3_MAIN\Setup1\Recipes\PI3 를 읽는다.
+    # 장비마다 IP 만 다르고 Job 아래 구조는 같으므로 한 번 지정하면 전 장비에 적용된다.
+    # 지정돼 있으면 이름 유추(plan/느슨매칭) 없이 이 경로만 사용한다.
+    recipe_paths: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {"enabled": self.enabled, "interval_hours": self.interval_hours,
@@ -73,7 +79,8 @@ class WatchSettings:
                 "window_end": self.window_end, "recipes": list(self.recipes),
                 "machines": list(self.machines),
                 "notify_on_change_only": self.notify_on_change_only,
-                "plan": dict(self.plan or {})}
+                "plan": dict(self.plan or {}),
+                "recipe_paths": dict(self.recipe_paths or {})}
 
     @staticmethod
     def from_dict(d: dict) -> "WatchSettings":
@@ -96,6 +103,8 @@ class WatchSettings:
         s.machines = list(d.get("machines") or [])
         s.notify_on_change_only = bool(d.get("notify_on_change_only", True))
         s.plan = dict(d.get("plan") or {})
+        s.recipe_paths = {str(k): str(v) for k, v in
+                          (d.get("recipe_paths") or {}).items() if v}
         return s
 
 
@@ -175,6 +184,31 @@ def save_settings(save_dir: str, settings: WatchSettings,
     with open(p, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)
     return p
+
+
+JOB_DIRNAME = "Job"
+
+
+def job_relative(path: str) -> str:
+    r"""장비 폴더 경로에서 **`\Job\` 뒤쪽 상대경로**만 뽑는다.
+
+    사용자는 연결된 장비 한 대를 탐색기로 골라 주면 되고(`\\10.0.0.5\c$\Job\
+    PI3_MAIN\Setup1\Recipes\PI3`), 저장되는 건 `PI3_MAIN\Setup1\Recipes\PI3` 다.
+    IP 부분이 빠지므로 **다른 장비에도 그대로 적용**된다.
+    `Job` 이 경로에 없으면 빈 문자열(지정 실패).
+    """
+    parts = [p for p in str(path or "").replace("/", "\\").split("\\") if p]
+    for i, seg in enumerate(parts):
+        if seg.lower() == JOB_DIRNAME.lower():
+            return "\\".join(parts[i + 1:])
+    return ""
+
+
+def machine_recipe_dir(ip: str, rel: str) -> str:
+    r"""(장비 IP, Job 상대경로) → `\\{IP}\c$\Job\{rel}`."""
+    rel = str(rel or "").strip("\\/")
+    base = rf"\\{ip}\c$\{JOB_DIRNAME}"
+    return f"{base}\\{rel}" if rel else base
 
 
 def plan_to_dict(plan) -> dict:
