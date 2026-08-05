@@ -30,6 +30,7 @@ from pathlib import Path
 
 APP_DIRNAME = "CamtekAOI"
 TEMP, LOGS, CACHE = "Temp", "Logs", "Cache"
+COMMONALITY = "Commonality"      # Commonality 조사 산출물(공유 대상 아님)
 
 # Temp 아래 회차 폴더를 이 시간이 지나면 청소 대상으로 본다(작업 중인 것 보호).
 TEMP_KEEP_HOURS = 6
@@ -49,17 +50,38 @@ def active_root() -> str:
     return _ACTIVE_ROOT or default_root()
 
 
-def default_root() -> str:
-    r"""기본 로컬 폴더. Windows 는 `%LOCALAPPDATA%\CamtekAOI`.
+def program_root() -> str:
+    """프로그램(exe 또는 소스)이 있는 폴더."""
+    import sys
+    if getattr(sys, "frozen", False):            # PyInstaller 등으로 묶은 exe
+        return os.path.dirname(os.path.abspath(sys.executable))
+    # 소스 실행: param_manager 의 상위(프로젝트 루트)
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    OneDrive 는 보통 사용자 폴더 아래를 동기화하지만 LOCALAPPDATA 는 동기화
-    대상이 아니므로 안전하다. 다른 OS 는 XDG 위치를 쓴다.
-    """
+
+def appdata_root() -> str:
+    r"""사용자 로컬 앱 폴더(`%LOCALAPPDATA%\CamtekAOI`) — 동기화되지 않는 안전한 위치."""
     base = os.environ.get("LOCALAPPDATA")
     if not base:
         base = os.environ.get("XDG_DATA_HOME") or \
             os.path.join(os.path.expanduser("~"), ".local", "share")
     return os.path.join(base, APP_DIRNAME)
+
+
+def default_root() -> str:
+    """기본 로컬 폴더 = **프로그램 옆에 폴더 하나**(사용자 지정 2026-08).
+
+    프로그램 폴더 아래 `CamtekAOI/` 하나에 임시·로그·Commonality 를 모두 넣어
+    관리하기 쉽게 한다.
+
+    **주의**: 프로그램 자체가 OneDrive 동기화 폴더 안에 있으면 이 위치도 동기화
+    대상이 되어 대량 동기화 사고가 그대로 재발한다. 그런 경우에는 안전한
+    `%LOCALAPPDATA%` 로 자동 대체한다(첫 실행 안내에서 바꿀 수 있다).
+    """
+    here = program_root()
+    if is_under_onedrive(here):
+        return appdata_root()
+    return os.path.join(here, APP_DIRNAME)
 
 
 def is_under_onedrive(path: str) -> bool:
@@ -86,7 +108,7 @@ def is_under_onedrive(path: str) -> bool:
 def ensure(root: str | None = None) -> str:
     """로컬 폴더(+하위 3개)를 만들고 경로를 돌려준다. 실패하면 예외."""
     root = str(root or default_root())
-    for sub in ("", TEMP, LOGS, CACHE):
+    for sub in ("", TEMP, LOGS, CACHE, COMMONALITY):
         os.makedirs(os.path.join(root, sub) if sub else root, exist_ok=True)
     return root
 
@@ -105,6 +127,14 @@ def logs_dir(root: str) -> str:
 
 def cache_dir(root: str) -> str:
     d = os.path.join(root, CACHE)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def commonality_dir(root: str) -> str:
+    """Commonality 조사 산출물 폴더 — 결과물이지만 **공유 대상이 아니라** 로컬에 둔다
+    (Lot 안전복사본 등 파일 수가 많아 OneDrive 에 두면 동기화가 폭주한다)."""
+    d = os.path.join(root, COMMONALITY)
     os.makedirs(d, exist_ok=True)
     return d
 

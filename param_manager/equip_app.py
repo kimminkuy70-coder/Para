@@ -3445,7 +3445,7 @@ class EquipApp(tk.Tk):
                           done=bool(cm.get("result_path")))
 
         # Step 6/7 — 호기 취합·비교 + 뷰어 (호기 무관, 항상 노출)
-        n_res = len(workdirs.list_commonality_results(self.save_dir))
+        n_res = len(workdirs.list_commonality_results(self._cm_root()))
         self._cm_step(inner, 6, "호기별 조사 결과 취합·비교 + 뷰어",
                       f"저장된 호기 결과 파일: {n_res}개. 파라미터 항목 비교 후 "
                       "과반수와 다른 값을 색칠하고, 변경/이상치 뷰어를 엽니다.", [
@@ -3688,7 +3688,9 @@ class EquipApp(tk.Tk):
             messagebox.showwarning("복사 대상 없음", "찾은 S/M 폴더가 없습니다.")
             return
         st = workdirs.stamp()
-        run_dir = workdirs.commonality_run_dir(self.save_dir, m, st)
+        # Commonality 산출물은 **로컬**에(Lot 안전복사본 등 파일이 많아
+        # OneDrive 에 두면 동기화가 폭주한다 — 2026-08 사고)
+        run_dir = workdirs.commonality_run_dir(self._cm_root(), m, st)
         staging = workdirs.commonality_staging(run_dir)
 
         def work():
@@ -4050,17 +4052,17 @@ class EquipApp(tk.Tk):
         self._run_busy("Lot별 값 조사 중…", work, done)
 
     def _cm_compare(self):
-        results = workdirs.list_commonality_results(self.save_dir)
+        results = workdirs.list_commonality_results(self._cm_root())
         if not results:
             messagebox.showinfo("취합·비교", "저장된 호기 결과가 없습니다. 먼저 값 조사를 하세요.")
             return
         picked = filedialog.askopenfilenames(
             title="취합·비교할 호기 결과 파일 선택(여러 개)",
-            initialdir=workdirs.commonality_root(self.save_dir),
+            initialdir=workdirs.commonality_root(self._cm_root()),
             filetypes=[("Excel", "*.xlsx")])
         files = list(picked) if picked else results
         st = workdirs.stamp()
-        out = workdirs.commonality_compare_path(self.save_dir, st)
+        out = workdirs.commonality_compare_path(self._cm_root(), st)
 
         def work():
             comp = cm.build_comparison(files)
@@ -4652,14 +4654,22 @@ class EquipApp(tk.Tk):
         """
         root = self._cfg.get("local_dir") or localdirs.default_root()
         if first:
-            msg = ("작업 중 만들어지는 임시파일과 로그를 저장할 **로컬 폴더**입니다.\n\n"
+            in_od = localdirs.is_under_onedrive(localdirs.program_root())
+            warn = ("\n⚠ 프로그램이 OneDrive 폴더 안에 있어, 프로그램 옆에 만들면\n"
+                    "   임시파일이 전원에게 동기화되어 보안 경고가 다시 발생합니다.\n"
+                    "   그래서 안전한 위치를 기본값으로 제안합니다.\n"
+                    if in_od else "")
+            msg = ("작업 중 만들어지는 파일을 모아 둘 **로컬 폴더**입니다.\n\n"
                    f"  {root}\n\n"
-                   "여기에는 장비에서 읽어온 원본 ini 복사본 같은 중간 파일만 들어가고,\n"
-                   "취합 엑셀·양식·보고서 등 공유할 결과물은 저장 폴더(OneDrive)에 "
-                   "저장됩니다.\n\n"
-                   "※ OneDrive 안에 두면 임시파일이 전원에게 동기화되어 보안 경고가 "
-                   "발생합니다.\n\n이 위치를 사용할까요?  [아니오] 를 누르면 직접 "
-                   "고를 수 있습니다.")
+                   "이 폴더 하나에 아래가 모두 들어갑니다:\n"
+                   "  · Temp        수집 임시본(작업 끝나면 자동 삭제)\n"
+                   "  · Logs        오류 로그\n"
+                   "  · Cache       캐시\n"
+                   "  · Commonality  Commonality 조사 결과\n\n"
+                   "취합 엑셀·양식·변경보고서 등 **공유할 결과물은 저장 폴더**"
+                   "(OneDrive)에 저장됩니다.\n"
+                   + warn +
+                   "\n이 위치를 사용할까요?  [아니오] 를 누르면 직접 고를 수 있습니다.")
             if not messagebox.askyesno("로컬 작업 폴더 설정", msg):
                 picked = filedialog.askdirectory(title="로컬 작업 폴더 선택 "
                                                        "(OneDrive 밖 권장)")
@@ -5461,6 +5471,14 @@ class EquipApp(tk.Tk):
         refresh_list(0)
         win.wait_window()
         return out or None
+
+    def _cm_root(self) -> str:
+        """Commonality 산출물 루트 — 로컬 작업 폴더 아래 `Commonality/`.
+        조사 결과는 개인 작업물이라 공유하지 않으며, Lot 안전복사본은 파일
+        수가 많아 OneDrive 에 두면 동기화 사고가 난다."""
+        return localdirs.commonality_dir(
+            localdirs.ensure(getattr(self, 'local_dir', None)
+                             or localdirs.active_root()))
 
     def _recipe_form_note(self, recipe: str) -> str:
         """레시피 옆에 보여줄 양식 상태(최신 양식 유무)."""

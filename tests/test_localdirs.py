@@ -36,20 +36,39 @@ def test_structure_created():
     """폴더 구조는 한 곳에서만 만든다 — Temp/Logs/Cache."""
     with tempfile.TemporaryDirectory() as tmp:
         root = L.ensure(os.path.join(tmp, "CamtekAOI"))
-        assert sorted(os.listdir(root)) == ["Cache", "Logs", "Temp"]
+        want = ["Cache", "Commonality", "Logs", "Temp"]
+        assert sorted(os.listdir(root)) == want, os.listdir(root)
         assert L.temp_dir(root).endswith(L.TEMP)
         assert L.logs_dir(root).endswith(L.LOGS)
+        assert L.commonality_dir(root).endswith(L.COMMONALITY)
         L.ensure(root)                       # 반복 호출해도 안전
-        assert sorted(os.listdir(root)) == ["Cache", "Logs", "Temp"]
-    print("  Temp/Logs/Cache 생성(멱등) OK")
+        assert sorted(os.listdir(root)) == want
+    print("  Temp/Logs/Cache/Commonality 생성(멱등) OK")
 
 
-def test_default_root_is_not_synced():
-    """기본 위치는 동기화 대상이 아닌 로컬 앱 폴더."""
+def test_default_root_is_beside_program():
+    """기본 위치 = **프로그램 옆 폴더 하나**(사용자 지정). 단 프로그램이 OneDrive
+    안이면 사고가 재발하므로 안전한 AppData 로 자동 대체한다."""
     root = L.default_root()
     assert root.endswith(L.APP_DIRNAME), root
-    assert not L.is_under_onedrive(root), root
-    print(f"  기본 위치 OK ({root})")
+    assert not L.is_under_onedrive(root), "기본값이 동기화 폴더면 안 됨"
+    if not L.is_under_onedrive(L.program_root()):
+        assert root == os.path.join(L.program_root(), L.APP_DIRNAME), root
+    else:
+        assert root == L.appdata_root(), "OneDrive 안이면 AppData 로 대체"
+    print(f"  기본 위치 = 프로그램 옆 ({root})")
+
+
+def test_program_in_onedrive_falls_back(monkey=None):
+    """프로그램이 OneDrive 안일 때 기본값이 AppData 로 바뀌는지(사고 재발 방지)."""
+    orig = L.program_root
+    try:
+        L.program_root = lambda: r"C:\Users\a\OneDrive\Camtek AOI parameter 취합"
+        assert L.default_root() == L.appdata_root()
+        assert not L.is_under_onedrive(L.default_root())
+    finally:
+        L.program_root = orig
+    print("  프로그램이 OneDrive 안이면 안전 위치로 대체 OK")
 
 
 def test_onedrive_detection():
@@ -131,7 +150,8 @@ def test_describe():
 
 
 if __name__ == "__main__":
-    for t in [test_structure_created, test_default_root_is_not_synced,
+    for t in [test_structure_created, test_default_root_is_beside_program,
+              test_program_in_onedrive_falls_back,
               test_onedrive_detection, test_temp_run_and_drop,
               test_drop_refuses_outside_temp, test_cleanup_keeps_recent,
               test_active_root_override, test_describe]:

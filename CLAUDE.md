@@ -127,7 +127,7 @@ python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
-python3 tests/test_localdirs.py    # 8  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
+python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
 python3 tests/test_watcher.py      # 26 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
@@ -225,9 +225,13 @@ python3 tests/test_downloader.py   # 8
 
 - **OneDrive(저장폴더) = 결과물만**: 취합/양식/변경보고서 엑셀, 장비IP·특이사항·
   참고자료·변환계수, 감시설정, 잠금·접속자(공유가 목적이라 예외).
-- **로컬(`localdirs.py`) = 중간 산물**: 수집 staging(원본 ini 복사본), 로그, 캐시.
-  기본 `%LOCALAPPDATA%\CamtekAOI`, 첫 실행 때 변경 가능(config `local_dir`).
-  구조는 `Temp/ Logs/ Cache/` 세 개로 고정. `localdirs.set_root` 로 다른 모듈 공유.
+- **로컬(`localdirs.py`) = 중간 산물 + Commonality**: 수집 staging(원본 ini 복사본),
+  로그, 캐시, **Commonality 조사 산출물**(Lot 안전복사본이 많아 공유 부적합).
+  기본 = **프로그램 옆 `CamtekAOI/` 폴더 하나**(사용자 지정 2026-08). 단 프로그램이
+  OneDrive 안이면 사고가 재발하므로 `%LOCALAPPDATA%` 로 자동 대체하고 첫 실행에
+  경고한다. 첫 실행 때 변경 가능(config `local_dir`).
+  구조는 `Temp/ Logs/ Cache/ Commonality/` 네 개로 고정. `set_root` 로 모듈 공유.
+  Commonality GUI 는 `equip_app._cm_root()` 로만 경로를 만든다(save_dir 금지).
 - **임시는 반드시 지운다**: `new_temp_run` → 작업 후 `drop()`, 시작 시 `cleanup_temp`
   (6시간 지난 잔재). `drop()` 은 **Temp 아래가 아니면 거부**(저장폴더 오삭제 방지).
 - **잦은 쓰기 금지**: 세션 하트비트 60초→**300초**, 만료 5→15분, `touch_session` 은
