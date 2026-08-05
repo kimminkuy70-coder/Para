@@ -129,7 +129,7 @@ python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·�
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
-python3 tests/test_watcher.py      # 19 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복)
+python3 tests/test_watcher.py      # 21 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -163,6 +163,12 @@ python3 tests/test_downloader.py   # 8
   건너뛴다. **주의**: `collect_equipment` 에 `target_levels`/`match_recipes` 를 넘겨야
   recipe_map 재사용 경로를 탄다(안 넘기면 job_keyword 가 빈 계획에서 선택창을 요구해
   전 장비가 건너뛰어진다).
+- **결과는 모두가 공유**: 감시 설정은 저장폴더에 있으므로 **누가 켰든 모든 사람의
+  버튼이 ON**(잠금 보유자 이름 표기). 수집은 잠금을 쥔 1대만 돌지만, 각 앱이
+  `_watch_poll_shared` 로 `state.last_run` 변화를 감지해 **모두 같은 알림**을 받는다
+  (본 회차는 로컬 config `watch_seen:` 에 기록 — 중복 알림 방지). 알림 내용은
+  '변경 있음/없음 + 요약'만, 클릭하면 `_watch_reports_window` 가 열려 보고서 확인.
+  트레이 풍선 클릭도 같은 창으로 연결(`NIN_BALLOONUSERCLICK`).
 - **즉시 확인**: 설정창 '▶ 즉시 확인' — 주기를 기다리지 않고 1회 실행. 사람이 눌렀으므로
   진행 모달을 띄우고 **변경이 없어도 결과를 알린다**. 주기 회차와 로직 공유
   (`_watch_cycle_work`/`_watch_finish`).

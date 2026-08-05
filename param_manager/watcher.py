@@ -140,6 +140,22 @@ def log_path(save_dir: str) -> str:
     return os.path.join(watch_dir(save_dir), LOG_NAME)
 
 
+def list_reports(save_dir: str) -> list[str]:
+    """변경보고서 파일 목록(최신 순). 없으면 빈 목록."""
+    d = os.path.join(save_dir, WATCH_DIRNAME)
+    if not os.path.isdir(d):
+        return []
+    out = [os.path.join(d, n) for n in os.listdir(d)
+           if n.startswith("변경보고서_") and n.lower().endswith(".xlsx")]
+    out.sort(key=lambda p: os.path.basename(p), reverse=True)
+    return out
+
+
+def latest_report(save_dir: str) -> str | None:
+    reports = list_reports(save_dir)
+    return reports[0] if reports else None
+
+
 def load_settings(save_dir: str) -> tuple[WatchSettings, WatchState]:
     """설정+상태 읽기. 파일이 없거나 깨져도 기본값으로 동작한다."""
     try:

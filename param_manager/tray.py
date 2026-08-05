@@ -36,6 +36,7 @@ WM_LBUTTONUP = 0x0202
 WM_RBUTTONUP = 0x0205
 WM_LBUTTONDBLCLK = 0x0203
 WM_TRAY = 0x0400 + 20          # WM_USER+20 — 우리 아이콘 콜백 메시지
+NIN_BALLOONUSERCLICK = 0x0405  # 풍선 알림 본문을 사용자가 클릭
 
 NIM_ADD, NIM_MODIFY, NIM_DELETE = 0, 1, 2
 NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_INFO = 0x01, 0x02, 0x04, 0x10
@@ -73,10 +74,11 @@ class TrayIcon:
     """
 
     def __init__(self, title: str, on_open=None, on_exit=None, schedule=None,
-                 icon_path: str | None = None):
+                 icon_path: str | None = None, on_balloon=None):
         self.title = title[:127]
         self._on_open = on_open
         self._on_exit = on_exit
+        self._on_balloon = on_balloon      # 풍선 알림 본문 클릭
         self._schedule = schedule or (lambda fn: fn())
         self._icon_path = icon_path
         self._hwnd = None
@@ -196,7 +198,10 @@ class TrayIcon:
         def wndproc(hwnd, msg, wparam, lparam):
             if msg == WM_TRAY:
                 low = lparam & 0xFFFF
-                if low in (WM_LBUTTONUP, WM_LBUTTONDBLCLK):
+                if low == NIN_BALLOONUSERCLICK:
+                    # 풍선 알림 본문 클릭 → 창 열고 해당 내용(보고서)까지 보여준다
+                    self._fire(self._on_balloon or self._on_open)
+                elif low in (WM_LBUTTONUP, WM_LBUTTONDBLCLK):
                     self._fire(self._on_open)
                 elif low == WM_RBUTTONUP:
                     self._menu(hwnd)

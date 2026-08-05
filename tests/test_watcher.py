@@ -362,6 +362,38 @@ def test_plan_roundtrip():
     print("  무인 수집 계획 저장/복원 OK")
 
 
+def test_report_listing_newest_first():
+    """모두가 같은 결과를 보려면 공유 폴더의 보고서를 최신순으로 찾을 수 있어야 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        assert watcher.list_reports(tmp) == []
+        assert watcher.latest_report(tmp) is None
+        d = watcher.watch_dir(tmp)
+        for name in ("변경보고서_20260101_010000.xlsx",
+                     "변경보고서_20260804_120000.xlsx",
+                     "감시로그.txt"):                      # 보고서 아닌 파일은 제외
+            with open(os.path.join(d, name), "w", encoding="utf-8") as fh:
+                fh.write("x")
+        reports = watcher.list_reports(tmp)
+        assert len(reports) == 2, reports
+        assert os.path.basename(reports[0]) == "변경보고서_20260804_120000.xlsx"
+        assert watcher.latest_report(tmp) == reports[0]
+    print("  변경 보고서 목록(최신순·비보고서 제외) OK")
+
+
+def test_shared_state_carries_result_for_others():
+    """감시를 안 돌린 사람도 공유 설정에서 회차 결과를 읽어 알림을 띄울 수 있어야 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        s = watcher.WatchSettings(enabled=True, machines=["AOI-19"], recipes=["PI3"])
+        st = watcher.WatchState()
+        st = watcher.record_run(tmp, s, st, ok=True, note="값변경 3건")
+        # 다른 PC 의 앱이 파일만 읽어도 '켜져 있음 + 마지막 결과'를 알 수 있다
+        s2, st2 = watcher.load_settings(tmp)
+        assert s2.enabled is True, "설정은 공유 — 모두에게 ON 으로 보여야 함"
+        assert st2.last_result == "값변경 3건"
+        assert st2.last_run == st.last_run and st2.last_run != ""
+    print("  공유 상태로 다른 사용자도 ON·결과 인지 OK")
+
+
 def test_log_appends():
     with tempfile.TemporaryDirectory() as tmp:
         watcher.append_log(tmp, "회차 시작")
@@ -384,6 +416,8 @@ if __name__ == "__main__":
               test_connection_check_progress_and_cancel,
               test_selected_targets_persist, test_stale_selection_is_filtered,
               test_unselected_machines_keep_values, test_plan_roundtrip,
+              test_report_listing_newest_first,
+              test_shared_state_carries_result_for_others,
               test_log_appends]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")

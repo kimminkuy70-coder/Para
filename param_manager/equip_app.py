@@ -127,6 +127,7 @@ class EquipApp(tk.Tk):
         # 상태(저장 직전 재검증용). 읽기 전용으로 연 문서는 _ro_docs 에 기록.
         self._tray = None                # 트레이 아이콘(창 닫아도 감시 계속)
         self._tray_hint_shown = False    # '백그라운드 계속' 안내는 1회만
+        self._pending_report = None      # 풍선 알림 클릭 시 열어줄 보고서
         self._watch_owned = False        # 이 PC 가 감시 전역 잠금을 쥐었는가
         self._watch_busy = False         # 감시 회차 실행 중(중복 실행 방지)
         self._locks: dict[str, str] = {}
@@ -4717,19 +4718,73 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  자동 감시 — 주기 수집·취합 → 변경 시 알림 + 보고서
     # ====================================================================
+    def _watch_runner(self):
+        """감시를 실제로 돌리고 있는 사람(전역 잠금 보유자). 없으면 None."""
+        if not self.save_dir:
+            return None
+        try:
+            st = locking.global_status(self.save_dir, locking.GLOBAL_WATCHER,
+                                       self.user)
+            return st.info if st.status in ("mine", "other", "self") else None
+        except Exception:  # noqa: BLE001
+            return None
+
     def _sync_watch_btn(self):
-        """감시 버튼 표시를 현재 설정(on/off)과 일치시킨다."""
+        """감시 버튼 표시 — 설정은 **공유**이므로 누가 켰든 모두에게 ON 으로 보인다.
+        (실제 수집은 잠금을 쥔 1대에서만 돌지만, 상태·알림은 다 같이 본다.)"""
         btn = getattr(self, "_watch_btn", None)
         if btn is None or not self.save_dir:
             return
         try:
             s, _ = watcher.load_settings(self.save_dir)
-            on = s.enabled and self._watch_owned
-            btn.config(text=("🔔 자동 감시 ON" if on else "🔔 자동 감시"),
+            on = bool(s.enabled)
+            label = "🔔 자동 감시 ON" if on else "🔔 자동 감시"
+            if on and not self._watch_owned:
+                info = self._watch_runner()
+                if info is not None:
+                    label = f"🔔 자동 감시 ON ({info.user})"
+            btn.config(text=label,
                        bg=(self.p["primary"] if on else self.p["surface"]),
                        fg=("#ffffff" if on else self.p["text"]))
         except Exception:  # noqa: BLE001
             pass
+
+    # ── 다른 사람이 돌린 회차도 모두에게 알린다 ─────────────────────────
+    def _watch_seen_key(self) -> str:
+        return "watch_seen:" + (self.save_dir or "")
+
+    def _watch_mark_seen(self, last_run: str):
+        """이 회차는 확인했다고 기록(사용자 PC 로컬 config — 중복 알림 방지)."""
+        try:
+            self._cfg[self._watch_seen_key()] = last_run
+            save_config(self._cfg)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _watch_poll_shared(self):
+        """공유 설정을 읽어 **다른 PC 가 돌린 회차**를 감지하고 알린다.
+
+        감시는 1대에서만 돌지만 결과는 모두가 봐야 하므로, 각자 앱이 마지막으로
+        본 회차 시각을 로컬에 기억해 두고 새 회차가 생기면 한 번만 알린다.
+        """
+        if not self.save_dir:
+            return
+        s, state = watcher.load_settings(self.save_dir)
+        if not state.last_run:
+            return
+        seen = self._cfg.get(self._watch_seen_key(), "")
+        if state.last_run == seen:
+            return                       # 이미 본 회차
+        self._watch_mark_seen(state.last_run)
+        if not seen:
+            return                       # 첫 실행(기준선) — 알리지 않음
+        note = state.last_result or ""
+        changed = bool(note) and note not in ("변경 없음", "실행 조건 아님(건너뜀)") \
+            and not note.startswith("실패")
+        self._sync_watch_btn()
+        if changed:
+            self._watch_alert(note, watcher.latest_report(self.save_dir),
+                              by_other=not self._watch_owned)
 
     def _watch_dialog(self):
         """자동 감시 설정창 — 주기·시간대·접속 방식·대상 레시피."""
@@ -4740,10 +4795,28 @@ class EquipApp(tk.Tk):
         win.title("자동 감시 설정")
         win.configure(bg=self.p["bg"])
         win.transient(self)
-        win.geometry("700x820")           # 장비·레시피 선택 목록이 들어가 세로가 길다
-        tk.Label(win, text="자동 감시", bg=self.p["bg"], fg=self.p["text"],
+        win.geometry("700x760")
+        # 내용이 길어 화면(특히 저해상도·노트북)에서 잘리므로 **전체를 스크롤**시킨다.
+        # 버튼줄(bt)은 스크롤 밖 하단에 고정해 항상 보이게 한다.
+        outer = tk.Frame(win, bg=self.p["bg"])
+        outer.pack(side="top", fill="both", expand=True)
+        wcv = tk.Canvas(outer, bg=self.p["bg"], highlightthickness=0)
+        wsb = ttk.Scrollbar(outer, orient="vertical", command=wcv.yview)
+        body_wrap = tk.Frame(wcv, bg=self.p["bg"])
+        wcv.create_window((0, 0), window=body_wrap, anchor="nw", tags="i")
+        wcv.configure(yscrollcommand=wsb.set)
+        wcv.pack(side="left", fill="both", expand=True)
+        wsb.pack(side="right", fill="y")
+        body_wrap.bind("<Configure>",
+                       lambda e: wcv.configure(scrollregion=wcv.bbox("all")))
+        # 가로 폭은 캔버스에 맞춰 늘린다(내부 위젯이 잘리지 않게)
+        wcv.bind("<Configure>", lambda e: wcv.itemconfigure("i", width=e.width))
+        self._wheelify(wcv)
+        page = body_wrap                 # 설정 내용은 전부 여기(스크롤 영역)에 붙인다
+
+        tk.Label(page, text="자동 감시", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
-        tk.Label(win, text="정해진 주기마다 값을 수집·취합하고, 직전과 달라진 파라미터가 "
+        tk.Label(page, text="정해진 주기마다 값을 수집·취합하고, 직전과 달라진 파라미터가 "
                            "있으면\n알림과 변경 보고서를 남깁니다.\n"
                            "창을 닫아도(X) 감시는 백그라운드에서 계속되며, 작업표시줄 "
                            "알림영역(숨겨진 아이콘)의\nPara 아이콘을 누르면 다시 열 수 "
@@ -4751,7 +4824,7 @@ class EquipApp(tk.Tk):
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=16)
 
-        body = tk.Frame(win, bg=self.p["bg"])
+        body = tk.Frame(page, bg=self.p["bg"])
         body.pack(fill="x", padx=16, pady=10)
         on_var = tk.BooleanVar(value=s.enabled)
         tk.Checkbutton(body, text="자동 감시 사용", variable=on_var, bg=self.p["bg"],
@@ -4788,7 +4861,7 @@ class EquipApp(tk.Tk):
         all_machines = self._all_machines()
         all_recipes = workdirs.list_recipes(self.save_dir)
         selected_machines = self._pick_list(
-            win, " ① 감시할 장비 선택 ", all_machines,
+            page, " ① 감시할 장비 선택 ", all_machines,
             # 저장된 선택이 없으면(최초) 전체 선택, 이후에는 저장분 복원
             chosen=(s.machines if s.machines else all_machines),
             unit="대", note="선택한 장비만 수집·비교합니다.",
@@ -4797,7 +4870,7 @@ class EquipApp(tk.Tk):
             empty_msg="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 호기·IP를 "
                       "먼저 등록하세요.", height=140)
         selected_recipes = self._pick_list(
-            win, " ② 감시할 레시피 선택 ", all_recipes,
+            page, " ② 감시할 레시피 선택 ", all_recipes,
             chosen=(s.recipes if s.recipes else all_recipes),
             unit="개", note="선택한 레시피의 양식만 취합·비교합니다.",
             sub_of=lambda r: self._recipe_form_note(r),
@@ -4815,7 +4888,7 @@ class EquipApp(tk.Tk):
             return out
 
         # ── 접속 방식 — 기본/권장은 net use 없이(기존 연결) ──
-        box = tk.LabelFrame(win, text=" ③ 장비 접속 방식 ", bg=self.p["bg"],
+        box = tk.LabelFrame(page, text=" ③ 장비 접속 방식 ", bg=self.p["bg"],
                             fg=self.p["text"], font=self.fonts["bold"])
         box.pack(fill="x", padx=16, pady=(4, 8))
         conn = tk.StringVar(value=s.conn_mode)
@@ -4836,12 +4909,12 @@ class EquipApp(tk.Tk):
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=32, pady=(0, 6))
 
-        info = tk.Label(win, text=self._watch_status_text(s, state), bg=self.p["bg"],
+        info = tk.Label(page, text=self._watch_status_text(s, state), bg=self.p["bg"],
                         fg=self.p["muted"], font=self.fonts["sub"], justify="left")
         info.pack(anchor="w", padx=16)
 
         bt = tk.Frame(win, bg=self.p["bg"])
-        bt.pack(fill="x", padx=16, pady=12)
+        bt.pack(side="bottom", fill="x", padx=16, pady=12)
 
         def check_conn(parent=None, saved_targets=None):
             """연결 점검 — 선택한 장비만 대상. 장비 응답이 없으면 1대당 수십 초씩
@@ -4955,10 +5028,10 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="연결 점검", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=14, pady=6, cursor="hand2",
                   command=check_conn).pack(side="left", padx=6)
-        tk.Button(bt, text="보고서 폴더 열기", relief="flat", bd=0, bg=self.p["surface"],
+        tk.Button(bt, text="변경 보고서…", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=14, pady=6, cursor="hand2",
-                  command=lambda: self._open_path(
-                      watcher.watch_dir(self.save_dir))).pack(side="left", padx=6)
+                  command=lambda: (win.destroy(),
+                                   self._watch_reports_window())).pack(side="left", padx=6)
         tk.Button(bt, text="저장", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=18, pady=6, cursor="hand2",
                   command=apply_).pack(side="right")
@@ -5100,6 +5173,9 @@ class EquipApp(tk.Tk):
                 if s.enabled and self._watch_owned and \
                         watcher.should_run(datetime.now(), s, state):
                     self._watch_run_cycle(s, state)
+                # 감시를 안 돌리는 PC 도 결과는 같이 본다(새 회차 감지 → 알림)
+                if not self._watch_busy:
+                    self._watch_poll_shared()
         except Exception as e:  # noqa: BLE001
             self._logerr("E155", e)
         self.after(60_000, self._watch_tick)
@@ -5298,24 +5374,96 @@ class EquipApp(tk.Tk):
             return False
 
     def _watch_notify(self, res):
-        """변경 알림 — 간단히 요약만, 상세는 보고서 엑셀.
+        """내가 돌린 회차의 변경 알림."""
+        self._watch_mark_seen(watcher.load_settings(self.save_dir)[1].last_run)
+        self._watch_alert(res.summary(), res.report, by_other=False)
 
-        트레이로 내려가 있으면 **모달 대신 풍선 알림**을 쓴다(숨은 창을 부모로
-        모달을 띄우면 사용자가 볼 수 없는 창에 갇힌다).
+    def _watch_alert(self, summary: str, report: str | None, by_other=False):
+        """변경 알림 — **내용은 간단히**(변경 있음/없음 + 요약), 상세는 보고서.
+
+        누르면 자동 감시 창이 열려 보고서를 확인할 수 있다.
+        트레이로 내려가 있으면 모달 대신 풍선 알림을 쓴다(숨은 창의 모달은 볼 수 없음).
         """
-        self._set_status(f"자동 감시: {res.summary()}")
+        who = "다른 PC의 자동 감시" if by_other else "자동 감시"
+        self._set_status(f"{who}: {summary}")
         if self._is_hidden() and self._tray is not None:
             self._tray.notify("자동 감시 — 값 변경 감지",
-                              f"{res.summary()}\n"
-                              f"보고서: {os.path.basename(res.report)}\n"
-                              "창을 열려면 이 아이콘을 누르세요.")
-            self._tray.set_tooltip(f"Para — 변경 감지 ({res.summary()})")
+                              f"{summary}\n눌러서 변경 내용을 확인하세요.")
+            self._tray.set_tooltip(f"Para — 변경 감지 ({summary})")
+            self._pending_report = report
             return
-        msg = (f"직전 취합과 비교해 달라진 값이 있습니다.\n\n  {res.summary()}\n\n"
-               "어느 레시피의 어느 파라미터가 바뀌었는지는 보고서에 있습니다.\n"
-               f"{os.path.basename(res.report)}\n\n지금 보고서를 열까요?")
-        if messagebox.askyesno("자동 감시 — 값 변경 감지", msg):
-            self._open_path(res.report)
+        if messagebox.askyesno(
+                "자동 감시 — 값 변경 감지",
+                f"{who} 결과 달라진 값이 있습니다.\n\n  {summary}\n\n"
+                "자동 감시 창에서 변경 보고서를 확인하시겠습니까?"):
+            self._watch_reports_window(select=report)
+
+    def _watch_reports_window(self, select: str | None = None):
+        """자동 감시 창 — 회차 상태 + 변경 보고서 목록(열기)."""
+        if not self._need_save_dir():
+            return
+        s, state = watcher.load_settings(self.save_dir)
+        reports = watcher.list_reports(self.save_dir)
+        win = tk.Toplevel(self)
+        win.title("자동 감시 — 변경 보고서")
+        win.configure(bg=self.p["bg"])
+        win.geometry("720x520")
+        tk.Label(win, text="자동 감시 변경 보고서", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win, text=self._watch_status_text(s, state), bg=self.p["bg"],
+                 fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(0, 8))
+        runner = self._watch_runner()
+        if runner is not None and not self._watch_owned:
+            tk.Label(win, text=f"※ 현재 {runner.user}({runner.host})님 PC에서 감시가 "
+                               "실행 중입니다. 결과는 모두가 함께 봅니다.",
+                     bg=self.p["bg"], fg=self.p["primary"],
+                     font=self.fonts["sub"]).pack(anchor="w", padx=16, pady=(0, 6))
+
+        frame = tk.Frame(win, bg=self.p["bg"])
+        frame.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        lb = tk.Listbox(frame, font=self.fonts["base"], activestyle="none")
+        sb = ttk.Scrollbar(frame, orient="vertical", command=lb.yview)
+        lb.configure(yscrollcommand=sb.set)
+        lb.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        for p_ in reports:
+            lb.insert("end", os.path.basename(p_))
+        if reports:
+            idx = 0
+            if select:
+                base = os.path.basename(select)
+                for i, p_ in enumerate(reports):
+                    if os.path.basename(p_) == base:
+                        idx = i
+                        break
+            lb.selection_set(idx)
+            lb.see(idx)
+        else:
+            tk.Label(win, text="아직 변경 보고서가 없습니다(변경이 없었거나 감시 전).",
+                     bg=self.p["bg"], fg=self.p["muted"]).pack(pady=4)
+
+        def open_sel():
+            sel = lb.curselection()
+            if sel:
+                self._open_path(reports[sel[0]])
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=(0, 12))
+        tk.Button(bt, text="📂 보고서 열기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=open_sel).pack(side="left")
+        tk.Button(bt, text="폴더 열기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=lambda: self._open_path(
+                      watcher.watch_dir(self.save_dir))).pack(side="left", padx=6)
+        tk.Button(bt, text="감시 설정…", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=lambda: (win.destroy(), self._watch_dialog())).pack(side="left")
+        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="right")
+        lb.bind("<Double-Button-1>", lambda e: open_sel())
 
     def _open_path(self, path):
         """탐색기/기본 프로그램으로 열기(플랫폼별)."""
@@ -5568,6 +5716,7 @@ class EquipApp(tk.Tk):
                 "Para — 자동 감시 실행 중",
                 on_open=self._restore_from_tray,
                 on_exit=self._exit_from_tray,
+                on_balloon=self._open_from_balloon,
                 schedule=lambda fn: self.after(0, fn))
             if icon.start():
                 self._tray = icon
@@ -5619,6 +5768,13 @@ class EquipApp(tk.Tk):
             self.focus_force()
         except Exception as e:  # noqa: BLE001
             self._logerr("E160", e)
+
+    def _open_from_balloon(self):
+        """풍선 알림 본문 클릭 → 창을 열고 **자동 감시 창(보고서)**까지 바로 표시."""
+        self._restore_from_tray()
+        report = self._pending_report or watcher.latest_report(self.save_dir)
+        self._pending_report = None
+        self.after(200, lambda: self._watch_reports_window(select=report))
 
     def _exit_from_tray(self):
         """트레이 메뉴 '자동 감시 종료' → 진짜 종료."""
