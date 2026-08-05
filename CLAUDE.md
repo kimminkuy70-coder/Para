@@ -127,6 +127,7 @@ python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
+python3 tests/test_localdirs.py    # 8  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
 python3 tests/test_watcher.py      # 26 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
@@ -217,6 +218,25 @@ python3 tests/test_downloader.py   # 8
   ≤24px 는 글자를 빼고 실루엣만(뭉개짐 방지), ≥32px 는 'AOI' 표기.
   적용 = `equip_app.icon_path()` → 창(`iconbitmap`)·트레이(`tray.TrayIcon(icon_path=)`).
 
+## OneDrive 동기화 폭주 대응 (2026-08 보안 경고 — 반드시 유지)
+
+저장폴더(OneDrive) **안에 임시파일을 만들면** 파일마다 전원 PC로 동기화돼
+'Unusual High-Volume Directory Access' 경고가 발생한다(실제 사고). 규칙:
+
+- **OneDrive(저장폴더) = 결과물만**: 취합/양식/변경보고서 엑셀, 장비IP·특이사항·
+  참고자료·변환계수, 감시설정, 잠금·접속자(공유가 목적이라 예외).
+- **로컬(`localdirs.py`) = 중간 산물**: 수집 staging(원본 ini 복사본), 로그, 캐시.
+  기본 `%LOCALAPPDATA%\CamtekAOI`, 첫 실행 때 변경 가능(config `local_dir`).
+  구조는 `Temp/ Logs/ Cache/` 세 개로 고정. `localdirs.set_root` 로 다른 모듈 공유.
+- **임시는 반드시 지운다**: `new_temp_run` → 작업 후 `drop()`, 시작 시 `cleanup_temp`
+  (6시간 지난 잔재). `drop()` 은 **Temp 아래가 아니면 거부**(저장폴더 오삭제 방지).
+- **잦은 쓰기 금지**: 세션 하트비트 60초→**300초**, 만료 5→15분, `touch_session` 은
+  화면이 그대로면 **쓰지 않음**. 잠금 `refresh` 도 만료 절반 전에는 재기록 안 함.
+- **로그는 저장폴더에 쓰지 않는다**: `errlog.log_path` 가 로컬 `Logs/` 로 간다
+  (사용자는 화면의 오류 코드로 문의). 실패해도 예외 없이 bool 반환.
+- 새 기능을 넣을 때 **저장폴더에 반복 쓰기를 추가하지 말 것** — 회차당 1개 결과
+  파일이면 정상, 파일 수십~수백 개나 초/분 단위 갱신이면 로컬로 보낼 것.
+
 ## 핵심 파일
 
 - `param_manager/ini_parser.py` — **새 1차 파서**: GlobalRTP/OpticPreset/Zones ini →
@@ -251,6 +271,9 @@ python3 tests/test_downloader.py   # 8
   `read_scales`(변형별 계수 저장/판독).
 - `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(수정본, '사용'/
   '최종 Parameter')·`build_final_from_initial`(→확정 양식+`_EXTRACT_MAP`+계수).
+- `param_manager/localdirs.py` — **로컬 작업 폴더**(OneDrive 밖): `default_root`
+  (`%LOCALAPPDATA%\CamtekAOI`)·`set_root/active_root`·`ensure`(Temp/Logs/Cache)·
+  `new_temp_run`/`drop`(Temp 밖 거부)/`cleanup_temp`·`is_under_onedrive`·`describe`.
 - `param_manager/locking.py` — **동시 접속 제어**(v3.0): `acquire/refresh/release/status`
   (free/mine/**self**/stale/other — self=같은 사람·같은 PC의 죽은 프로세스는 자동 회수),
   `holder_message`(안내문), `check_before_save`(**저장 직전 재검증** — 외부 변경·잠금 탈취·

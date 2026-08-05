@@ -36,9 +36,14 @@ from . import engine
 # 세션(접속자) 등록 폴더 — 저장폴더 안에 숨김성 폴더로 둔다.
 SESSIONS_DIRNAME = "_세션"
 
-# 세션 하트비트 주기와 만료. 갱신이 끊긴 세션은 만료로 보고 목록에서 제외한다.
-SESSION_HEARTBEAT_SEC = 60
-SESSION_STALE_MINUTES = 5
+# 세션 하트비트 주기와 만료.
+# 저장폴더가 OneDrive 면 **쓰기 1회 = 전원에게 동기화**이므로 주기를 짧게 잡으면
+# 사람 수 × 하루 1440회의 파일 변경이 발생해 '대량 디렉터리 접근' 경고로 이어진다
+# (2026-08 실제 사고). 그래서 5분 주기로 낮추고, 내용이 그대로면 아예 쓰지 않는다.
+SESSION_HEARTBEAT_SEC = 300
+SESSION_STALE_MINUTES = 15
+# 잠금 갱신도 만료의 절반이 지나야 다시 쓴다(불필요한 쓰기 제거).
+LOCK_REFRESH_RATIO = 0.5
 
 # 잠금 획득 직후 재확인까지의 대기(초). OneDrive 동시 획득 검출용.
 VERIFY_DELAY_SEC = 0.4
@@ -142,12 +147,24 @@ def acquire(path: str, user: str, takeover: bool = False) -> LockState:
     return LockState("mine", True, engine.read_lock(path), path)
 
 
-def refresh(path: str, user: str) -> bool:
-    """편집 중 잠금 갱신(만료 오판 방지). 내 잠금일 때만 갱신하고 성공 여부 반환."""
-    if _is_mine(engine.read_lock(path), user):
-        engine.write_lock(path, user)
-        return True
-    return False
+def refresh(path: str, user: str, force: bool = False) -> bool:
+    """편집 중 잠금 갱신(만료 오판 방지). 내 잠금일 때만 갱신.
+
+    **불필요한 쓰기를 하지 않는다** — 저장폴더가 OneDrive 면 쓰기 1회가 전원에게
+    동기화되므로, 만료의 절반이 지나기 전에는 그대로 둔다(force 로 무시 가능).
+    반환: 내 잠금이면 True(실제로 다시 썼는지와 무관).
+    """
+    info = engine.read_lock(path)
+    if not _is_mine(info, user):
+        return False
+    if not force:
+        dt = info.datetime
+        if dt is not None:
+            age = (datetime.now() - dt).total_seconds()
+            if age < engine.LOCK_STALE_MINUTES * 60 * LOCK_REFRESH_RATIO:
+                return True                    # 아직 여유 — 다시 쓰지 않음
+    engine.write_lock(path, user)
+    return True
 
 
 def release(path: str, user: str) -> None:
@@ -293,15 +310,34 @@ def session_path(save_dir: str, user: str) -> str:
                         _session_filename(user, socket.gethostname(), os.getpid()))
 
 
-def touch_session(save_dir: str, user: str, screen: str = "") -> str:
-    """내 세션 등록/갱신(하트비트). 주기적으로 호출. 실패해도 앱은 계속 동작."""
+def touch_session(save_dir: str, user: str, screen: str = "",
+                  min_interval_sec: float | None = None) -> str:
+    """내 세션 등록/갱신(하트비트). 주기적으로 호출. 실패해도 앱은 계속 동작.
+
+    **내용이 그대로면 쓰지 않는다** — OneDrive 저장폴더에서는 쓰기 1회가 전원에게
+    동기화되므로, 화면이 바뀌지 않았고 마지막 기록 후 min_interval_sec 이 지나지
+    않았으면 파일을 건드리지 않는다(대량 동기화 이벤트 방지).
+    """
     p = session_path(save_dir, user)
-    started = ""
+    if min_interval_sec is None:
+        min_interval_sec = SESSION_HEARTBEAT_SEC * 0.9
+    started, prev_screen, prev_seen = "", None, None
     try:
         with open(p, encoding="utf-8") as fh:
-            started = json.load(fh).get("started", "")
+            prev = json.load(fh)
+        started = prev.get("started", "")
+        prev_screen = prev.get("screen")
+        prev_seen = prev.get("last_seen")
     except Exception:  # noqa: BLE001
-        started = ""
+        pass
+    if prev_seen is not None and prev_screen == screen:
+        try:
+            age = (datetime.now()
+                   - datetime.strptime(prev_seen, "%Y-%m-%d %H:%M:%S")).total_seconds()
+            if 0 <= age < min_interval_sec:
+                return p                       # 변화 없음 — 쓰기 생략
+        except Exception:  # noqa: BLE001
+            pass
     payload = {"user": user, "host": socket.gethostname(), "pid": os.getpid(),
                "started": started or engine.now_str(),
                "last_seen": engine.now_str(), "screen": screen}

@@ -17,9 +17,19 @@ _SEP = "-" * 60
 
 
 def log_path(save_dir=None) -> str:
-    """오류 로그 파일 경로. 저장폴더가 있으면 그 안, 없으면 홈 폴더."""
-    base = save_dir if save_dir else os.path.expanduser("~")
-    return os.path.join(base, LOG_NAME)
+    """오류 로그 파일 경로.
+
+    로그는 **OneDrive(저장폴더)에 쓰지 않는다** — 잦은 append 가 전원에게 동기화돼
+    '대량 디렉터리 접근' 경고를 유발한다(2026-08 사고). 로컬 작업 폴더의 Logs 에
+    남기고, 사용자는 화면의 오류 코드로 문의하면 된다.
+    save_dir 인자는 하위호환을 위해 남겨두되 경로 결정에는 쓰지 않는다.
+    """
+    try:
+        from . import localdirs
+        return os.path.join(localdirs.logs_dir(localdirs.active_root()), LOG_NAME)
+    except Exception:  # noqa: BLE001
+        base = save_dir if save_dir else os.path.expanduser("~")
+        return os.path.join(base, LOG_NAME)
 
 
 def _tb_text(exc) -> str:

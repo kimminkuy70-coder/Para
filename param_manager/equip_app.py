@@ -38,6 +38,7 @@ from . import extract_io
 from . import formbuilder
 from . import history as history_mod
 from . import ini_parser
+from . import localdirs
 from . import locking
 from . import refdata
 from . import refresh as refresh_mod
@@ -105,6 +106,10 @@ class EquipApp(tk.Tk):
 
         # 3차 재설계: 저장 폴더 + 3개 독립 파일(장비 IP / 참고자료 / 특이사항)
         self.save_dir: str | None = self._cfg.get("save_dir")
+        # 임시/로그는 OneDrive 밖(로컬)에 — 동기화 폭주·보안경고 방지
+        self.local_dir: str = self._cfg.get("local_dir") or \
+            localdirs.default_root()
+        localdirs.set_root(self.local_dir)
         self.ip_rows: list[dict] = []        # 장비 IP 주소 [{호기, IP}] — 호기 기준
         self.ref_grid: list[list] = []       # 참고자료(자유형 메모 그리드)
         self.ref_colors: dict = {}           # 참고자료 셀 색상 {(r,c): '#hex'}
@@ -1611,6 +1616,8 @@ class EquipApp(tk.Tk):
         m = tk.Menu(self, tearoff=0)
         m.add_command(label="저장 폴더 변경…", command=self._change_save_dir)
         m.add_command(label="참고자료·특이사항 다시 읽기", command=self._refresh_view)
+        m.add_separator()
+        m.add_command(label="로컬 작업 폴더…", command=self._local_dir_dialog)
         m.add_separator()
         m.add_command(label="현재 접속자 보기…", command=self._show_sessions)
         m.add_separator()
@@ -4244,7 +4251,8 @@ class EquipApp(tk.Tk):
 
         def from_equip():
             win.destroy()
-            staging = os.path.join(self.save_dir, "_수집임시", workdirs.stamp())
+            # 임시 수집본은 로컬에만(OneDrive 동기화 폭주 방지)
+            staging = localdirs.new_temp_run(self.local_dir, "수집")
             self._collect_dialog(
                 staging,
                 lambda sources: self._parse_sources_busy(
@@ -4628,9 +4636,123 @@ class EquipApp(tk.Tk):
             if not self._choose_save_dir(first=True):
                 self._set_status("저장 폴더가 지정되지 않았습니다. ⋯파일에서 지정하세요.")
                 return
+        self._setup_local_dir(first=not self._cfg.get("local_dir"))
         self._load_refdata()
         self._load_latest_collate()
         self._render()
+
+    # ====================================================================
+    #  로컬 작업 폴더 — 임시파일·로그는 OneDrive 밖에 둔다
+    # ====================================================================
+    def _setup_local_dir(self, first=False) -> str:
+        """로컬 작업 폴더 확보. 첫 실행이면 위치를 확인·변경할 기회를 준다.
+
+        OneDrive 안에 임시파일을 만들면 동기화가 폭주해 보안 경고가 난다
+        (실제 사고). 그래서 임시/로그는 반드시 동기화되지 않는 로컬에 둔다.
+        """
+        root = self._cfg.get("local_dir") or localdirs.default_root()
+        if first:
+            msg = ("작업 중 만들어지는 임시파일과 로그를 저장할 **로컬 폴더**입니다.\n\n"
+                   f"  {root}\n\n"
+                   "여기에는 장비에서 읽어온 원본 ini 복사본 같은 중간 파일만 들어가고,\n"
+                   "취합 엑셀·양식·보고서 등 공유할 결과물은 저장 폴더(OneDrive)에 "
+                   "저장됩니다.\n\n"
+                   "※ OneDrive 안에 두면 임시파일이 전원에게 동기화되어 보안 경고가 "
+                   "발생합니다.\n\n이 위치를 사용할까요?  [아니오] 를 누르면 직접 "
+                   "고를 수 있습니다.")
+            if not messagebox.askyesno("로컬 작업 폴더 설정", msg):
+                picked = filedialog.askdirectory(title="로컬 작업 폴더 선택 "
+                                                       "(OneDrive 밖 권장)")
+                if picked:
+                    root = os.path.join(picked, localdirs.APP_DIRNAME) \
+                        if os.path.basename(picked) != localdirs.APP_DIRNAME else picked
+        return self._apply_local_dir(root, warn_onedrive=True)
+
+    def _apply_local_dir(self, root: str, warn_onedrive=False) -> str:
+        """로컬 폴더를 확정·생성하고 config 에 저장. 실패하면 기본 위치로 되돌린다."""
+        if warn_onedrive and localdirs.is_under_onedrive(root):
+            if not messagebox.askyesno(
+                    "OneDrive 안입니다",
+                    f"고른 위치가 OneDrive 동기화 폴더 안으로 보입니다.\n\n{root}\n\n"
+                    "여기에 임시파일을 만들면 전원에게 동기화되어 보안 경고가 다시 "
+                    "발생할 수 있습니다.\n그래도 이 위치를 쓸까요?"):
+                root = localdirs.default_root()
+        try:
+            root = localdirs.ensure(root)
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E163", e)
+            root = localdirs.ensure(localdirs.default_root())
+        self.local_dir = root
+        localdirs.set_root(root)   # errlog 등 다른 모듈도 같은 위치를 쓰게
+        self._cfg["local_dir"] = root
+        save_config(self._cfg)
+        try:
+            n = localdirs.cleanup_temp(root)        # 지난 회차 잔재 정리
+            if n:
+                self._write_log(f"임시 폴더 {n}개 정리: {root}")
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E164", e)
+        return root
+
+    def _local_dir_dialog(self):
+        """⋯파일 > 로컬 작업 폴더… — 위치 확인·변경·비우기."""
+        root = getattr(self, "local_dir", None) or self._apply_local_dir(
+            self._cfg.get("local_dir") or localdirs.default_root())
+        win = tk.Toplevel(self)
+        win.title("로컬 작업 폴더")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        tk.Label(win, text="로컬 작업 폴더", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win, text="임시파일·로그는 여기에, 공유할 결과물은 저장 폴더에 "
+                           "저장됩니다.\nOneDrive 안에 두면 동기화가 폭주해 보안 경고가 "
+                           "발생합니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16)
+        info = tk.Label(win, text="", bg=self.p["bg"], fg=self.p["text"],
+                        font=self.fonts["base"], justify="left", anchor="w")
+        info.pack(anchor="w", padx=16, pady=10)
+
+        def refresh():
+            warn = "  ⚠ OneDrive 안입니다" if localdirs.is_under_onedrive(
+                self.local_dir) else ""
+            info.config(text=f"위치: {self.local_dir}{warn}\n"
+                             f"{localdirs.describe(self.local_dir)}")
+        refresh()
+
+        def change():
+            picked = filedialog.askdirectory(title="로컬 작업 폴더 선택",
+                                             parent=win)
+            if picked:
+                self._apply_local_dir(
+                    os.path.join(picked, localdirs.APP_DIRNAME)
+                    if os.path.basename(picked) != localdirs.APP_DIRNAME else picked,
+                    warn_onedrive=True)
+                refresh()
+
+        def purge():
+            if messagebox.askyesno("임시 폴더 비우기",
+                                   "지금 작업 중이 아닌 임시 폴더를 모두 지웁니다.\n"
+                                   "계속할까요?", parent=win):
+                n = localdirs.cleanup_temp(self.local_dir, keep_hours=0)
+                refresh()
+                messagebox.showinfo("정리 완료", f"임시 폴더 {n}개를 지웠습니다.",
+                                    parent=win)
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=12)
+        tk.Button(bt, text="위치 변경…", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=change).pack(side="left")
+        tk.Button(bt, text="임시 폴더 비우기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=purge).pack(side="left", padx=6)
+        tk.Button(bt, text="폴더 열기", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=lambda: self._open_path(self.local_dir)).pack(side="left")
+        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="right")
 
     def _choose_save_dir(self, first=False) -> bool:
         if first:
@@ -5679,7 +5801,8 @@ class EquipApp(tk.Tk):
           중이던 반쪽 파일로 '거짓 변경'을 만들지 않기 위해.
         반환: (pivot_rows, 건너뛴 장비 목록)
         """
-        staging_root = os.path.join(self.save_dir, "_감시임시", workdirs.stamp())
+        # 임시 수집본은 로컬에만(OneDrive 동기화 폭주 방지) — 회차가 끝나면 지운다
+        staging_root = localdirs.new_temp_run(self.local_dir, "감시")
         use_netuse = (s.conn_mode == watcher.CONN_NETUSE)
         sources, skipped = [], []
 
@@ -5792,6 +5915,8 @@ class EquipApp(tk.Tk):
         self._coef_save_if_changed(cstate)
         watcher.append_log(self.save_dir,
                            f"수집 완료 — 장비 {len(sources)}건, 파라미터 {len(rows)}행")
+        # 파싱이 끝나면 임시 수집본은 더 필요 없다 — 즉시 삭제(누적 방지).
+        localdirs.drop(staging_root)
         return rows, skipped
 
     def _run_bg(self, work, on_done):

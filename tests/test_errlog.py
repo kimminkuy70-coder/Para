@@ -18,12 +18,20 @@ def ok(msg):
     print(f"[PASS] {msg}")
 
 
-def test_log_path():
-    with tempfile.TemporaryDirectory() as d:
-        assert errlog.log_path(d) == os.path.join(d, errlog.LOG_NAME)
-    # 저장폴더 없으면 홈
-    assert errlog.log_path(None).endswith(errlog.LOG_NAME)
-    ok("log_path: 저장폴더 안 / 홈 폴백")
+def test_log_path_is_local_not_onedrive():
+    """로그는 **저장폴더(OneDrive)에 쓰지 않는다** — 잦은 append 가 전원에게
+    동기화돼 '대량 디렉터리 접근' 경고를 유발했다(2026-08 사고)."""
+    from param_manager import localdirs
+    with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as local:
+        localdirs.set_root(local)
+        try:
+            got = errlog.log_path(d)
+            assert not got.startswith(d), f"저장폴더에 로그를 만들면 안 됨: {got}"
+            assert got == os.path.join(local, localdirs.LOGS, errlog.LOG_NAME), got
+            assert errlog.log_path(None) == got, "save_dir 과 무관하게 로컬"
+        finally:
+            localdirs.set_root(None)
+    ok("log_path: 로컬 Logs 폴더(OneDrive 아님)")
 
 
 def test_write_log_records_traceback():
@@ -44,9 +52,24 @@ def test_write_log_records_traceback():
 
 
 def test_write_log_survives_bad_dir():
-    # 존재할 수 없는 경로 → 예외 없이 False
+    """쓰기 불가여도 예외 없이 False — 앱이 멈추면 안 된다.
+    (로그는 이제 로컬 폴더에 쓰므로 **로컬 루트가 불가능한 경로**일 때를 본다.)"""
+    from param_manager import localdirs
     bad = os.path.join(os.sep, "존재하지않는루트_zzz", "x", "y")
-    assert errlog.write_log(bad, "E000", "무시", None) is False
+    localdirs.set_root(bad)
+    try:
+        # 어떤 경우에도 **예외를 던지지 않고** bool 을 돌려준다(앱이 멈추면 안 됨).
+        # 로컬 루트를 못 쓰면 홈 폴더로 물러난다 — 로그는 남되 앱은 계속 동작.
+        r = errlog.write_log(None, "E000", "무시", None)
+        assert isinstance(r, bool), r
+        # save_dir 가 이상해도 로컬이 정상이면 기록은 성공해야 한다
+        import tempfile as _t
+        with _t.TemporaryDirectory() as local:
+            localdirs.set_root(local)
+            assert errlog.write_log(bad, "E001", "저장폴더는 무관", None) is True
+            assert os.path.isfile(errlog.log_path(None))
+    finally:
+        localdirs.set_root(None)
     ok("write_log: 쓰기 불가여도 예외 없이 False(앱 안 멈춤)")
 
 
