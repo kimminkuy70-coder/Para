@@ -2446,6 +2446,42 @@ class EquipApp(tk.Tk):
             return None
         return cb, state
 
+    def _form_mags(self, rows, aoi) -> dict:
+        """편집기 피벗 rows → {변형: MAG}. 계수 저장 키가 (호기, MAG) 라서 필요하다.
+        rows 의 'mag' = 변형 라벨, 'mags' = {호기: OpticPreset Scan2d Mag}.
+        기존 양식을 다시 불러온 경우엔 mags 가 없어 빈 dict 가 된다(변형으로 폴백)."""
+        out: dict = {}
+        for r in rows or []:
+            v = engine._s(r.get("mag")).strip()
+            if v in out:
+                continue
+            mm = r.get("mags") or {}
+            val = engine._s(mm.get(aoi)).strip()
+            if not val:                    # 호기 태그가 다르면 값이 하나뿐일 때만 사용
+                vals = {engine._s(x).strip() for x in mm.values()
+                        if engine._s(x).strip()}
+                val = vals.pop() if len(vals) == 1 else ""
+            if val:
+                out[v] = val
+        return out
+
+    def _coef_from_form(self, aoi, scales, rows=None, level="", mags=None) -> int:
+        """양식에서 **확정한** 변형별 계수를 변환계수.xlsx 에 그대로 반영한다.
+        사람이 양식에서 고친 값이므로 자동추정값을 덮어쓴다. 반환: 반영된 행 수."""
+        if not (self.save_dir and engine._s(aoi).strip() and scales):
+            return 0
+        try:
+            mm = mags if mags is not None else self._form_mags(rows, aoi)
+            n = coefstore.apply_form_scales(
+                self.coef_rows, aoi, scales, mm,
+                note=(f"{level} 양식 확정" if level else "양식 확정"))
+            if n:
+                coefstore.save(coefstore.coef_path(self.save_dir), self.coef_rows)
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E145", e)        # 계수 반영 실패는 양식 확정을 막지 않는다
+            return 0
+        return n
+
     def _coef_save_if_changed(self, state):
         if state.get("changed") and self.save_dir:
             try:
@@ -2967,6 +3003,8 @@ class EquipApp(tk.Tk):
         except Exception as _e:  # noqa: BLE001
             self._err("E200", "편집기 열기 실패(파라미터 해석)", _e)
             return
+        # 변형별 MAG — 확정 시 변환계수.xlsx((호기,MAG) 키)에 반영할 때 쓴다
+        self._form_mag_map = self._form_mags(rows, aoi)
         coef_vars = {}
         for v in variants:
             c = scales.get(v, ini_parser.DEFAULT_SCALE)
@@ -3186,6 +3224,8 @@ class EquipApp(tk.Tk):
                 return
             win.destroy()
             draft = workdirs.form_draft_path(related, level, aoi, st)
+            # 엑셀로 넘어가기 전에 편집기에서 고친 계수를 그대로 들고 간다
+            cur_scales = {v: coef_of(v) for v in variants}
 
             def work():
                 formbuilder.build_initial_workbook(rows, draft, level=level,
@@ -3200,7 +3240,7 @@ class EquipApp(tk.Tk):
                     self._err("E203", "초안(수정본) 엑셀 생성 실패", res)
                     return
                 opened = self._open_in_excel(draft)
-                self._form_finalize_dialog(draft, res, level, kind, scales, run_dir,
+                self._form_finalize_dialog(draft, res, level, kind, cur_scales, run_dir,
                                            aoi, st, opened)
             self._run_busy("초안(수정본) 엑셀 생성 중…", work, done)
 
@@ -3225,6 +3265,8 @@ class EquipApp(tk.Tk):
             if not records:
                 messagebox.showinfo("확정", "선택된 파라미터가 없습니다.", parent=win)
                 return
+            # 편집기에서 고친 변형별 계수를 변환계수.xlsx 에도 반영(사람 확정 = 우선)
+            n_coef = self._coef_from_form(aoi, dict(used_scales), rows, level)
             if on_confirm is not None:               # commonality 등 다른 저장 경로
                 on_confirm(records, extracts, dict(used_scales), win)
                 return
@@ -3247,7 +3289,9 @@ class EquipApp(tk.Tk):
                 if messagebox.askyesno(
                         "양식 확정 완료",
                         f"확정 양식 생성: {os.path.basename(final)}\n"
-                        f"항목 {len(records)}개.\n위치: {run_dir}\n\n지금 열어 볼까요?"):
+                        f"항목 {len(records)}개.\n위치: {run_dir}\n"
+                        + (f"변환계수.xlsx 반영: {n_coef}건\n" if n_coef else "")
+                        + "\n지금 열어 볼까요?"):
                     self._open_collation_view(final)
             self._run_busy("양식 확정 중…", work, done)
         tk.Button(bt, text="✔ 편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
@@ -3296,6 +3340,9 @@ class EquipApp(tk.Tk):
                 self._err("E118", "양식 확정 실패", res, parent=win)
                 return
             win.destroy()
+            # 확정한 변형별 계수를 변환계수.xlsx 에도 반영
+            n_coef = self._coef_from_form(aoi, scales, level=level,
+                                          mags=getattr(self, "_form_mag_map", None))
             self._release_global(f"양식_{level}")      # 양식 확정 완료 — 잠금 반납
             # 기존 양식 수정 확정 → 이전 값 이어받기 + 신규 항목 값 업데이트 안내(req5)
             if prev_form:
@@ -3305,7 +3352,9 @@ class EquipApp(tk.Tk):
                     "양식 확정 완료",
                     f"확정 양식 생성: {os.path.basename(final)}\n"
                     f"항목 {res['kept']}개(제외 {res['dropped']}개).\n"
-                    f"위치: {run_dir}\n\n지금 화면으로 열어 볼까요?"):
+                    f"위치: {run_dir}\n"
+                    + (f"변환계수.xlsx 반영: {n_coef}건\n" if n_coef else "")
+                    + "\n지금 화면으로 열어 볼까요?"):
                 self._open_collation_view(final)
         self._run_busy("양식 확정 중…", work, done)
 
@@ -3611,7 +3660,8 @@ class EquipApp(tk.Tk):
         tk.Label(win, text="조사할 S/M 폴더를 선택하세요(변형 이름 포함). 기본은 전체 선택.",
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                  anchor="w", padx=14, pady=(12, 2))
-        tk.Label(win, text="노란색 = fail(계획 fail여부=Y) · ✗ = 폴더 없음(선택 불가)",
+        tk.Label(win, text="노란색 = fail(계획 fail여부=Y) · ✗ = 폴더 없음(선택 불가) · "
+                           "슬롯이 여러 개면 오른쪽에서 조사할 슬롯을 고르세요(기본=첫 번째)",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(
                  anchor="w", padx=14, pady=(0, 6))
         # 스크롤 영역
@@ -3640,12 +3690,32 @@ class EquipApp(tk.Tk):
                                 state=("normal" if l.exists else "disabled"))
             cb.pack(side="left")
             mark = "✓" if l.exists else "✗"
-            detail = (f"{l.wafer_dir.name}" if l.exists else l.reason)
-            txt = f"{mark}  {l.label}   ·   {l.device}/{l.lot}   →   {detail}"
-            lbl = tk.Label(row, text=txt, bg=(self.p["bg"] if not l.fail else "#FFF6C8"),
+            base_txt = f"{mark}  {l.label}   ·   {l.device}/{l.lot}   →   "
+            lbl = tk.Label(row, text=base_txt + (l.wafer_dir.name if l.exists
+                                                 else l.reason),
+                           bg=(self.p["bg"] if not l.fail else "#FFF6C8"),
                            fg=(self.p["text"] if l.exists else self.p["muted"]),
                            font=self.fonts["sub"], anchor="w")
             lbl.pack(side="left", fill="x", expand=True)
+            # 슬롯(웨이퍼) 선택 — 후보가 2개 이상일 때만. 고르면 그 폴더를 조사한다.
+            names = [p.name for p in (l.wafer_choices or [])]
+            if l.exists and len(names) > 1:
+                sv = tk.StringVar(value=l.wafer_dir.name)
+                combo = ttk.Combobox(row, textvariable=sv, values=names,
+                                     state="readonly", width=18)
+                combo.pack(side="right", padx=(6, 0))
+                tk.Label(row, text=f"슬롯 {len(names)}개:", bg=self.p["bg"],
+                         fg=self.p["muted"], font=self.fonts["sub"]).pack(side="right")
+
+                def on_pick(_e=None, lot=l, var=sv, lab=lbl, pre=base_txt):
+                    pick = next((p for p in lot.wafer_choices
+                                 if p.name == var.get()), None)
+                    if pick is None:
+                        return
+                    cm.set_wafer(lot, pick)
+                    lab.config(text=pre + pick.name,
+                               fg=(self.p["text"] if lot.exists else self.p["muted"]))
+                combo.bind("<<ComboboxSelected>>", on_pick)
 
         def set_all(v):
             for var, l in self._cm_sel_vars:

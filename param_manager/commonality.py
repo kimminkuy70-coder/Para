@@ -148,7 +148,8 @@ class LotFolder:
     sm: str
     machine: str
     label: str                        # 취합 열/식별용 = 실제 S/M 폴더명(변형 포함)
-    wafer_dir: Path | None = None     # 이름순 첫 웨이퍼 폴더(조사 대상)
+    wafer_dir: Path | None = None     # 조사 대상 웨이퍼(슬롯) 폴더 — 기본은 이름순 첫
+    wafer_choices: list = field(default_factory=list)   # 고를 수 있는 슬롯 폴더 전부
     exists: bool = False
     has_zones: bool = False
     has_rtp: bool = False
@@ -278,31 +279,52 @@ def _bfs_exact(parent: Path, name: str, max_depth: int = 3) -> list[Path]:
     return []
 
 
-def _first_wafer(sm_dir: Path) -> Path | None:
-    """S/M 폴더 아래 **이름순 첫** 웨이퍼 폴더."""
+def list_wafers(sm_dir: Path) -> list[Path]:
+    """S/M 폴더 아래 웨이퍼(슬롯) 폴더 **전부** — 이름순.
+
+    한 Lot 에 슬롯이 여러 개 있어도 파라미터를 보는 데는 1개면 되므로 기본은
+    이름순 첫 번째지만, **어느 슬롯을 볼지 사람이 고를 수 있어야 한다**
+    (슬롯마다 스캔이 다르게 남아 있을 수 있음).
+    """
     if not sm_dir.is_dir():
-        return None
+        return []
     try:
-        dirs = sorted((p for p in sm_dir.iterdir() if p.is_dir()),
+        return sorted((p for p in sm_dir.iterdir() if p.is_dir()),
                       key=lambda x: x.name.lower())
     except OSError:
-        return None
-    return dirs[0] if dirs else None
+        return []
+
+
+def _first_wafer(sm_dir: Path) -> Path | None:
+    """S/M 폴더 아래 **이름순 첫** 웨이퍼(슬롯) 폴더."""
+    wafers = list_wafers(sm_dir)
+    return wafers[0] if wafers else None
+
+
+def set_wafer(lot: LotFolder, wafer) -> LotFolder:
+    """조사할 웨이퍼(슬롯) 폴더를 바꾼다 — 대상 파일(Zones/RTP/Optic) 유무도 다시 판정.
+    선택창에서 다른 슬롯을 고르면 호출된다(같은 객체를 갱신)."""
+    w = Path(wafer)
+    lot.wafer_dir = w
+    lot.has_zones = (w / downloader.TARGET_FOLDER_NAME).is_dir()
+    lot.has_rtp = (w / "RTP.txt").is_file()
+    lot.has_optic = (w / "OpticPreset.ini").is_file()
+    lot.exists = w.is_dir()
+    lot.reason = "" if (lot.has_zones or lot.has_rtp or lot.has_optic) else \
+        "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
+    return lot
 
 
 def _make_lotfolder(device, lot, sm, machine, sm_dir: Path, wafer: Path,
-                    fail: bool) -> LotFolder:
-    """찾은 S/M 폴더 → LotFolder. 라벨 = 실제 S/M 폴더명(변형 포함)."""
+                    fail: bool, wafers: list | None = None) -> LotFolder:
+    """찾은 S/M 폴더 → LotFolder. 라벨 = 실제 S/M 폴더명(변형 포함).
+    wafers 를 주면 폴더를 다시 훑지 않는다(네트워크 폴더라 목록 조회가 비싸다)."""
     label = sm_dir.name if sm else (engine._s(lot).strip() or device or "lot")
-    z = (wafer / downloader.TARGET_FOLDER_NAME).is_dir()
-    r = (wafer / "RTP.txt").is_file()
-    o = (wafer / "OpticPreset.ini").is_file()
     lf = LotFolder(device=device, lot=lot, sm=sm_dir.name if sm else sm,
-                   machine=machine, label=label, wafer_dir=wafer, exists=True,
-                   has_zones=z, has_rtp=r, has_optic=o, fail=fail)
-    if not (z or r or o):
-        lf.reason = "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
-    return lf
+                   machine=machine, label=label, fail=fail,
+                   wafer_choices=list(wafers if wafers is not None
+                                      else list_wafers(sm_dir)))
+    return set_wafer(lf, wafer)
 
 
 def _as_roots(scan_roots) -> list[Path]:
@@ -342,15 +364,16 @@ def resolve_lot_variants(scan_roots, device: str, lot: str, sm: str,
                     if sm else [lot_dir]
                 for sm_dir in sm_dirs:
                     reached_sm = True
-                    wafer = _first_wafer(sm_dir)
-                    if wafer is None:
+                    wafers = list_wafers(sm_dir)      # 슬롯 선택 후보(기본 = 첫 번째)
+                    if not wafers:
                         continue
+                    wafer = wafers[0]
                     key = str(wafer.resolve()) if wafer else str(sm_dir)
                     if key in seen:
                         continue
                     seen.add(key)
                     out.append(_make_lotfolder(device, lot, sm, machine, sm_dir,
-                                               wafer, fail))
+                                               wafer, fail, wafers))
     if out:
         return sorted(out, key=lambda l: l.label.lower())
     if not dev_found:

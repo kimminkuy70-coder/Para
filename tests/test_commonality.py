@@ -440,6 +440,42 @@ def test_multi_recipe_detect_and_parse():
     print("  commonality OK: 다중 레시피 감지 + 레시피별 값 분리 파싱")
 
 
+def test_wafer_slot_choices_and_switch():
+    """슬롯(웨이퍼) 폴더가 여러 개면 **고를 수 있어야** 한다. 기본은 이름순 첫 번째.
+    다른 슬롯을 고르면 조사 대상과 대상 파일 판정이 그 폴더로 바뀐다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        for w, d in (("CX03", 33), ("CX01", 11), ("CX02", 22)):
+            _make_wafer(tmp, "AOI-6", "2D@R2-DEVA-1_0855360PD-0A", "6321", "HPG", w,
+                        delta=d)
+        # 대상 파일이 없는 슬롯도 후보에는 들어간다(고르면 안내가 뜨도록)
+        (Path(tmp) / "AOI-6" / "Scanresult" / "2D@R2-DEVA-1_0855360PD-0A" / "6321"
+         / "HPG" / "CX99").mkdir()
+        root = commonality.scanresult_root(tmp, "AOI-6")
+        lot = commonality.resolve_lot(root, "DEVA-1", "6321", "HPG", "AOI-6")
+
+        names = [p.name for p in lot.wafer_choices]
+        assert names == ["CX01", "CX02", "CX03", "CX99"], names
+        assert lot.wafer_dir.name == "CX01", "기본은 이름순 첫 슬롯"
+
+        pick = next(p for p in lot.wafer_choices if p.name == "CX03")
+        commonality.set_wafer(lot, pick)
+        assert lot.wafer_dir.name == "CX03"
+        assert lot.has_zones and lot.has_rtp and lot.has_optic
+        assert lot.reason == ""
+        # 고른 슬롯이 실제 조사 대상이 되는지(값이 그 슬롯 것인지) 확인
+        pivot, _labels = commonality.parse_lots([(lot.label, lot.wafer_dir)],
+                                                level="PI3")
+        vals = [str(r["raws"].get(lot.label)) for r in pivot
+                if r["extract"].get("key") == "High_Delta"]
+        assert vals == ["33"], vals
+
+        # 대상 파일이 없는 슬롯을 고르면 사유가 남는다
+        commonality.set_wafer(lot, next(p for p in lot.wafer_choices
+                                        if p.name == "CX99"))
+        assert not (lot.has_zones or lot.has_rtp or lot.has_optic)
+        assert "대상 파일" in lot.reason
+    print("  commonality OK: 슬롯 폴더 선택(기본 첫 번째·전환 시 재판정)")
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

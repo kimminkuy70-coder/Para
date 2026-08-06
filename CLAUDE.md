@@ -38,7 +38,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 ## Commonality 조사 (브랜치 `claude/commonality-survey`, 설계: `docs/commonality_조사_설계.md`)
 
 Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'Commonality 조사'.
-경로 `{루트}/{호기}/Scanresult/{2D@디바이스_레시피}/{공정번호}/{S/M}/{웨이퍼}/`(이름순 첫 웨이퍼).
+경로 `{루트}/{호기}/Scanresult/{2D@디바이스_레시피}/{공정번호}/{S/M}/{슬롯}/`.
+**조사할 슬롯(웨이퍼) 폴더는 S/M 선택창에서 고른다**(기본=이름순 첫 번째,
+`commonality.list_wafers`/`set_wafer`, LotFolder.wafer_choices — 고르면 대상 파일 재판정).
 호기 1대씩: ① 호기 선택(호기 폴더 config 저장, 그 아래 Scanresult 백업본 전부 자동 탐색) → ② Lot 계획 엑셀(디바이스명/공정번호/S·M/AOI호기)
 업로드→호기 필터→폴더 실재 확인 → ③ 안전 복사(downloader, 원본 read-only) → ④ 양식 만들기
 (제목 지정, 양식 만들기와 동일: OpticPreset 추림·계수·추천, **Lot 구조 diff 확인**) →
@@ -74,7 +76,9 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
   **장비 렌즈 특성 → 계수는 (호기 + MAG)마다 다름(2026-07 확정)**. 같은 호기·같은 MAG면
   레시피 달라도 동일. MAG = OpticPreset 최신 Scan2d 의 `Mag`(예 3.14, `ini_parser.read_optic_mag`).
   저장 = 저장폴더 `변환계수.xlsx`[호기,MAG,변형,계수,비고](`coefstore.py`, 사람 관리 + 수집 시
-  RTP.txt 자동추정 upsert). 적용 = `scan_tree(coef_lookup=)`가 (호기,MAG)로 조회(없으면 자동
+  RTP.txt 자동추정 upsert). **양식에서 계수를 고쳐 확정하면 그 값이 변환계수.xlsx 에도
+  반영**된다(`coefstore.apply_form_scales` — 사람 확정이므로 덮어씀. MAG 는 편집기 피벗의
+  `mags`, 기존 양식 재편집처럼 MAG 를 모르면 (호기,변형) 행을 갱신. GUI=`_coef_from_form`). 적용 = `scan_tree(coef_lookup=)`가 (호기,MAG)로 조회(없으면 자동
   추정→저장, 그래도 없으면 구 `scales`/기본). 값확인 화면 `AOI-xx : PI` 옆에 변형별 계수 표시.
   구 방식(변형별 `추출_요약`)은 폴백으로 유지. 정확값 `0.8456665875666588`/`0.7696441409644141`.
 - **IP↔호기**: 값 업데이트 수집 시 IP를 **호기(AOI-xx)에 매칭**(IP-파생 열 생성 금지).
@@ -118,16 +122,16 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 python3 tests/test_refdata.py      # 3  (참고자료/특이사항 독립 파일 I/O·호기·IP)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
 python3 tests/test_ini_parser.py   # 15 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
-python3 tests/test_formbuilder.py  # 3  (초안 생성·편집→확정 양식·계수 저장)
-python3 tests/test_collate.py      # 2  (레시피별 시트·전체 호기·직전 이어받기·불일치)
+python3 tests/test_formbuilder.py  # 7  (초안 생성·편집→확정 양식·계수 저장)
+python3 tests/test_collate.py      # 7  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_commonality.py  # 16 (Lot계획·폴더해석·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
-python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용)
+python3 tests/test_commonality.py  # 17 (Lot계획·폴더해석·슬롯선택·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
+python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
-python3 tests/test_updater.py      # 18 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지)
+python3 tests/test_updater.py      # 22 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
@@ -326,7 +330,7 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   load/save/create_blank, `machines()`/`ip_for()`/`add_machine()`.
 - `param_manager/coefstore.py` — **변환계수.xlsx (호기+MAG) 저장소**: `[호기,MAG,변형,계수,비고]`
   load/save/create_blank, `lookup(rows,호기,MAG)`(숫자 근사), `upsert`(사람값 우선),
-  `machine_coefs`(표시), `make_lookup`(scan_tree 콜백). MAG 는 OpticPreset Scan2d Mag.
+  `machine_coefs`(표시), `make_lookup`(scan_tree 콜백), `apply_form_scales`(양식 확정 계수 반영). MAG 는 OpticPreset Scan2d Mag.
 - `param_manager/workdirs.py` — **저장폴더 기준 경로**: `form_run_dir/form_final_path/
   form_original_path/form_draft_path/related_dir/list_form_versions/collate_path/
   latest_collate/list_collate_files`. (구 initial/final/백업 함수는 레거시.)
@@ -385,7 +389,8 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   `collect_target_items`/`TARGET_FOLDER_NAME`/`TARGET_FILES`).
 - `param_manager/commonality.py` — **Commonality 조사 헤드리스**: Lot 계획 엑셀
   (`create_plan_template`/`read_plan`/`filter_plan_for_machine`), 폴더 해석
-  (`scanresult_root`/`resolve_lot`/`resolve_plan`, 디바이스명+LOT+S/M, 이름순 첫 웨이퍼),
+  (`scanresult_root`/`resolve_lot`/`resolve_plan`, 디바이스명+LOT+S/M, `list_wafers`/
+  `set_wafer` 로 슬롯 선택·기본은 이름순 첫),
   안전복사(`copy_lot`), Lot 파싱→통합 피벗(`parse_lots`)·구조 diff(`structure_diff`),
   값 취합(`collate_lots`/`write_lot_result`/`read_lot_result`), 호기 비교
   (`build_comparison`/`write_comparison`, 과반수 이탈 색칠 `MISMATCH_FILL`).

@@ -146,8 +146,9 @@ def machine_coefs(rows: list[dict], machine: str) -> list[dict]:
 
 
 def upsert(rows: list[dict], machine: str, mag, coef, variant: str = "",
-           overwrite: bool = False) -> bool:
+           overwrite: bool = False, note: str = "자동추정") -> bool:
     """(호기, MAG) 행 추가/갱신. overwrite=False 면 이미 있으면 계수 유지(사람 우선).
+    note 는 비고에 남길 출처(추가 시, 그리고 덮어쓸 때만 갱신).
     반환: 실제로 추가/갱신했으면 True."""
     if coef is None or engine._s(coef).strip() == "":
         return False
@@ -158,11 +159,71 @@ def upsert(rows: list[dict], machine: str, mag, coef, variant: str = "",
                 r["계수"] = engine._s(coef)
                 if variant:
                     r["변형"] = variant
+                if note:
+                    r["비고"] = note
                 return True
             return False                  # 이미 있음(사람 값 우선)
     rows.append({"호기": engine._s(machine), "MAG": engine._s(mag),
-                 "변형": variant, "계수": engine._s(coef), "비고": "자동추정"})
+                 "변형": variant, "계수": engine._s(coef), "비고": note})
     return True
+
+
+def _same_coef(a, b) -> bool:
+    fa, fb = _coef_float(a), _coef_float(b)
+    if fa is None or fb is None:
+        return engine._s(a).strip() == engine._s(b).strip()
+    return abs(fa - fb) <= 1e-12
+
+
+def _update_by_variant(rows: list[dict], machine: str, variant: str, coef,
+                       note: str) -> int:
+    """MAG 를 모를 때 — (호기, 변형)이 같은 기존 행의 계수를 갱신. 반환: 바뀐 행 수."""
+    mk = _machine_norm(machine)
+    vk = engine._s(variant).strip().lower()
+    n = 0
+    for r in rows:
+        if _machine_norm(r.get("호기")) != mk:
+            continue
+        if engine._s(r.get("변형")).strip().lower() != vk:
+            continue
+        if _same_coef(r.get("계수"), coef):
+            continue
+        r["계수"] = engine._s(coef)
+        if note:
+            r["비고"] = note
+        n += 1
+    return n
+
+
+def apply_form_scales(rows: list[dict], machine: str, scales: dict,
+                      mags: dict | None = None, note: str = "양식 확정") -> int:
+    """**양식에서 사람이 확정한** 변형별 계수를 저장소에 반영한다.
+
+    양식 편집기에서 계수를 고쳐 확정하면 그 값이 정답이므로 **덮어쓴다**
+    (자동추정 upsert 와 달리 기존 값을 보존하지 않는다).
+
+    mags = {변형: MAG}. MAG 를 아는 변형은 (호기, MAG) 행을 갱신/추가하고,
+    모르는 변형(예: 기존 양식을 다시 불러와 고친 경우 — 원본 ini 가 없어 MAG 를
+    알 수 없다)은 (호기, 변형)이 같은 기존 행을 갱신한다.
+    반환: 실제로 값이 바뀐(또는 추가된) 행 수 — 0 이면 저장할 필요가 없다.
+    """
+    if not engine._s(machine).strip() or not scales:
+        return 0
+    mags = mags or {}
+    n = 0
+    for variant, coef in scales.items():
+        if _coef_float(coef) is None:
+            continue
+        v = engine._s(variant).strip()
+        mag = mags.get(v, mags.get(variant, ""))
+        if engine._s(mag).strip() == "":
+            n += _update_by_variant(rows, machine, v, coef, note)
+            continue
+        if _same_coef(lookup(rows, machine, mag), coef):
+            continue                      # 값이 그대로면 파일을 다시 쓰지 않는다
+        if upsert(rows, machine, mag, coef, v, overwrite=True, note=note):
+            n += 1
+    return n
 
 
 def make_lookup(rows: list[dict]):

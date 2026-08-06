@@ -74,6 +74,38 @@ def test_scan_tree_per_equipment_coef():
     print("  coefstore OK: scan_tree 장비별 계수 적용 + 미등록 호기 폴백")
 
 
+def test_apply_form_scales_overwrites_and_persists():
+    """양식에서 **사람이 확정한** 계수는 자동추정값을 덮어쓰고 파일에 반영된다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, coefstore.COEF_FILENAME)
+        rows = []
+        coefstore.upsert(rows, "AOI-19", "3.14", 0.5, "PI")      # 자동추정값
+        coefstore.upsert(rows, "AOI-19", "1.00", 0.9, "PI-bubble")
+
+        n = coefstore.apply_form_scales(
+            rows, "AOI-19", {"PI": 0.8456665875666588, "PI-bubble": 0.9},
+            {"PI": "3.14", "PI-bubble": "1.00"}, note="PI3 양식 확정")
+        assert n == 1, "값이 바뀐 1건만 반영(같은 값은 다시 쓰지 않음)"
+        assert coefstore.lookup(rows, "AOI-19", "3.14") == 0.8456665875666588
+        got = [r for r in rows if r["MAG"] == "3.14"][0]
+        assert got["비고"] == "PI3 양식 확정" and got["변형"] == "PI"
+
+        # 저장 → 다시 읽어도 유지
+        coefstore.save(path, rows)
+        assert coefstore.lookup(coefstore.load(path), "AOI-19", "3.14") \
+            == 0.8456665875666588
+
+        # MAG 를 모르면(기존 양식을 다시 불러와 고친 경우) 변형으로 찾아 갱신
+        n2 = coefstore.apply_form_scales(rows, "AOI-19", {"PI-bubble": 0.77}, {},
+                                         note="PI3 양식 확정")
+        assert n2 == 1
+        assert coefstore.lookup(rows, "AOI-19", "1.00") == 0.77
+        # 모르는 호기/변형이면 아무것도 만들지 않는다(엉뚱한 행 방지)
+        assert coefstore.apply_form_scales(rows, "AOI-19", {"없는변형": 0.1}, {}) == 0
+        assert coefstore.apply_form_scales(rows, "", {"PI": 0.1}, {"PI": "3.14"}) == 0
+        assert len(rows) == 2
+    print("  coefstore OK: 양식 확정 계수 반영(덮어쓰기·MAG 없으면 변형 매칭)")
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())
