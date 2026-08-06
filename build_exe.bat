@@ -1,21 +1,51 @@
 @echo off
+setlocal
 REM ============================================================
-REM  Build a single-file .exe (Windows only).
+REM  Build the .exe (Windows only).
 REM  All-ASCII so it works on Korean Windows (cp949) too.
 REM
+REM  Usage:
+REM    build_exe.bat            -> ONE-FILE build (default; for OneDrive publish)
+REM    build_exe.bat onedir     -> ONE-FOLDER build (fallback, see below)
+REM
 REM  Prerequisite (internet needed ONCE, on the build PC only):
-REM    1) Install Python from https://www.python.org  (NOT Anaconda)
+REM    1) Install Python 3.11+ from https://www.python.org  (NOT Anaconda)
 REM    2) If the corporate network blocks PyPI, use the approved mirror
 REM
-REM  Output: dist\PI_Param_Manager.exe
-REM    - Distribute that single .exe to each PC (or the OneDrive folder).
-REM    - The built .exe needs NO Python, NO packages, NO network.
-REM    - You may rename the .exe afterwards (Korean name is fine).
+REM  ---------------------------------------------------------------
+REM  Why --runtime-tmpdir is used (fixes "Failed to load Python DLL")
+REM  ---------------------------------------------------------------
+REM  A one-file exe unpacks itself into a temp folder (_MEIxxxxxx) and
+REM  loads python3xx.dll from there. On some PCs %TEMP% is
+REM    - cleaned by policy / disk cleanup while the app starts,
+REM    - redirected per session (C:\...\AppData\Local\Temp\1\...),
+REM    - or watched by antivirus, which quarantines the unpacked DLL.
+REM  Then the unpacked python3xx.dll disappears between unpack and load
+REM  and the app dies with:
+REM    Failed to load Python DLL '...\_MEIxxxxxx\python311.dll'
+REM    LoadLibrary: The specified module could not be found.
+REM  So we unpack into a stable per-user folder instead of %TEMP%.
+REM  (Needs PyInstaller 6.x - it expands %VARS% in --runtime-tmpdir.)
+REM
+REM  If a PC still fails, build with "onedir" and run it from that
+REM  folder: a one-folder build unpacks nothing at all, so this error
+REM  cannot happen. Do NOT publish a one-folder build to OneDrive as a
+REM  single .exe - it only runs together with its _internal folder.
 REM ============================================================
 cd /d "%~dp0"
 
+set "APPNAME=PI_Param_Manager"
+REM  %%VAR%% keeps the literal %VAR% - PyInstaller expands it at run time.
+set "RTTMPDIR=%%LOCALAPPDATA%%\CamtekAOI\runtime"
+set "MODE=--onefile --runtime-tmpdir %RTTMPDIR%"
+set "OUTDESC=dist\%APPNAME%.exe   (single file)"
+if /i "%~1"=="onedir" (
+    set "MODE=--onedir"
+    set "OUTDESC=dist\%APPNAME%\%APPNAME%.exe   (keep the whole folder together)"
+)
+
 echo [1/3] Installing build tools (openpyxl + tksheet + pyinstaller) ...
-python -m pip install openpyxl tksheet pyinstaller
+python -m pip install openpyxl tksheet "pyinstaller>=6.0"
 if errorlevel 1 (
     echo [ERROR] Package install failed. Check your PyPI mirror/proxy policy.
     pause
@@ -23,7 +53,14 @@ if errorlevel 1 (
 )
 
 echo [2/3] Building with PyInstaller ...
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name "PI_Param_Manager" --collect-submodules openpyxl --collect-submodules tksheet run.py
+REM  --add-data : data files are loaded relative to the package folder
+REM               (rtp_template.json, para_icon.ico) and are NOT bundled
+REM               automatically - without this they are missing at run time.
+python -m PyInstaller --noconfirm --clean %MODE% --windowed ^
+    --name "%APPNAME%" ^
+    --icon "param_manager\data\para_icon.ico" ^
+    --add-data "param_manager\data;param_manager\data" ^
+    --collect-submodules openpyxl --collect-submodules tksheet run.py
 if errorlevel 1 (
     echo [ERROR] Build failed.
     pause
@@ -31,6 +68,9 @@ if errorlevel 1 (
 )
 
 echo [3/3] Done.
-echo   Output: dist\PI_Param_Manager.exe
-echo   Put this single .exe on each PC or in the OneDrive folder.
+echo   Output: %OUTDESC%
+echo.
+echo   Publish it from the app:  ... file menu ^> New version publish
+echo   (the app copies it to the shared folder as
+echo    Camtek_AOI_Parameter_manage_v^<version^>.exe)
 pause

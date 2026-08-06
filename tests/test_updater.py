@@ -403,6 +403,29 @@ def test_old_inside_publish_still_readable_then_migrated():
     print("  구 위치 게시본 읽기 → 재게시 시 형제 폴더로 이동 OK")
 
 
+def test_detects_onedir_build():
+    """'한 폴더(onedir)' 빌드의 exe 는 혼자 실행되지 않으므로 게시 전에 걸러낸다."""
+    with tempfile.TemporaryDirectory() as d:
+        onefile = os.path.join(d, "onefile")
+        os.makedirs(onefile)
+        assert U.looks_like_onedir_build(
+            _fake_exe(os.path.join(onefile, "app.exe"))) is False, "onefile 빌드는 통과"
+
+        # PyInstaller 6 배치: exe 옆에 _internal 폴더
+        new = os.path.join(d, "new")
+        os.makedirs(os.path.join(new, "_internal"))
+        assert U.looks_like_onedir_build(_fake_exe(os.path.join(new, "app.exe"))) is True
+
+        # 구 배치: exe 옆에 python3xx.dll
+        old = os.path.join(d, "old")
+        os.makedirs(old)
+        _fake_exe(os.path.join(old, "python311.dll"), b"dll")
+        assert U.looks_like_onedir_build(_fake_exe(os.path.join(old, "app.exe"))) is True
+
+        assert U.looks_like_onedir_build(os.path.join(d, "없는", "x.exe")) is False
+    print("  onedir 빌드 감지(단일 배포 차단) OK")
+
+
 def test_program_dir_falls_back_when_no_parent():
     """부모 폴더를 쓸 수 없으면(루트 등) 예전처럼 저장폴더 안에 만든다."""
     root = os.path.abspath(os.sep)
@@ -434,7 +457,8 @@ if __name__ == "__main__":
               test_is_frozen_false_in_dev,
               test_program_dir_is_sibling_of_save_dir,
               test_old_inside_publish_still_readable_then_migrated,
-              test_program_dir_falls_back_when_no_parent]:
+              test_program_dir_falls_back_when_no_parent,
+              test_detects_onedir_build]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

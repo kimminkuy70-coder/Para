@@ -5002,6 +5002,17 @@ class EquipApp(tk.Tk):
                 messagebox.showwarning("확인", "버전 번호를 알아볼 수 없습니다.",
                                        parent=win)
                 return
+            # onedir 빌드의 exe 는 옆 폴더(_internal)가 있어야 실행된다 —
+            # 그대로 게시하면 받은 사람 전원이 실행조차 못 한다.
+            if updater.looks_like_onedir_build(exe_path):
+                messagebox.showwarning(
+                    "배포할 수 없는 빌드",
+                    "선택한 exe 는 '한 폴더(onedir)' 빌드로 보입니다.\n"
+                    "이 exe 는 옆의 _internal 폴더·DLL 이 함께 있어야만 실행되므로 "
+                    "단일 파일로 배포할 수 없습니다.\n\n"
+                    "build_exe.bat 을 옵션 없이 실행해 만든 "
+                    "dist\\PI_Param_Manager.exe 를 선택하세요.", parent=win)
+                return
             if cur and not updater.is_newer(version, cur.version) and \
                     not messagebox.askyesno(
                         "버전 확인",

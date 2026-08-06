@@ -287,7 +287,17 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
      걸려 무한 대기. **복사 재시도**를 종료 판정으로 쓴다(잠금 풀림 = 종료, 로케일 무관).
   · 교체가 끝내 실패하면 **기존 exe 를 다시 실행**한다(사용자가 빈손으로 남지 않게).
 - 수집(`_watch_busy`) 중에는 업데이트를 미룬다 — 앱을 종료시키므로 그 회차가 날아간다.
-- `param_manager/__version__`(현재 "3.0.0")을 게시 버전과 비교. 새 버전 게시 시
+- **빌드(`build_exe.bat`) — "Failed to load Python DLL" 대책(2026-08 실사고)**:
+  onefile exe 는 매 실행마다 `%TEMP%\_MEIxxxx` 에 python3xx.dll 을 풀어 로드하는데,
+  백신 격리·세션별 임시폴더(`\Temp\1\`)·임시폴더 정리로 그 DLL 이 사라지면 실행 자체가
+  실패한다. → **`--runtime-tmpdir %LOCALAPPDATA%\CamtekAOI\runtime`** 로 %TEMP% 를 피한다
+  (부트로더가 `ExpandEnvironmentStringsW` 로 확장 — PyInstaller 6.x 필요, 그래서 pip 설치를
+  `pyinstaller>=6.0` 으로 고정). 또 `--add-data "param_manager\data;param_manager\data"`
+  가 없어 `rtp_template.json`·`para_icon.ico` 가 exe 에 안 들어가던 문제도 함께 수정,
+  `--icon` 적용. 특정 PC 가 계속 실패하면 `build_exe.bat onedir`(폴더 배포, 추출 없음)로
+  진단. **onedir exe 를 게시하면 전원이 실행 불가**이므로 배포 창이
+  `updater.looks_like_onedir_build`(`_internal/`·python3xx.dll 형제 감지)로 막는다.
+- `param_manager/__version__`(현재 "3.0.1")을 게시 버전과 비교. 새 버전 게시 시
   developer 가 그 값을 올려 빌드하고 배포 창에서 같은 숫자를 입력.
 
 ## 핵심 파일

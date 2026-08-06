@@ -267,6 +267,23 @@ def is_newer(remote: str, local: str) -> bool:
     return r > l
 
 
+def looks_like_onedir_build(exe_path: str) -> bool:
+    """'한 폴더(onedir)' 빌드의 exe 인가 — **혼자서는 실행되지 않는다**.
+
+    build_exe.bat 은 문제 진단용으로 onedir 빌드도 만들 수 있는데, 그 exe 를
+    실수로 게시하면 받은 사람 전원이 실행조차 못 한다(옆에 있어야 할
+    `_internal/`·python3xx.dll 이 함께 오지 않으므로). 게시 전에 막는다.
+    """
+    try:
+        d = os.path.dirname(os.path.abspath(exe_path))
+        if os.path.isdir(os.path.join(d, "_internal")):      # PyInstaller 6 배치
+            return True
+        return any(n.lower().startswith("python") and n.lower().endswith(".dll")
+                   for n in os.listdir(d))                   # 구 배치(exe 옆 DLL)
+    except OSError:
+        return False
+
+
 # --------------------------------------------------------------------------
 # 해시/검증
 # --------------------------------------------------------------------------
