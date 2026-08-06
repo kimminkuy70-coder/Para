@@ -127,7 +127,7 @@ python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
-python3 tests/test_updater.py      # 10 (버전비교·게시/매니페스트왕복·누적없음·동기화중단검증·로컬다운로드·교체스크립트 필수단계)
+python3 tests/test_updater.py      # 17 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
@@ -249,9 +249,12 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 같은 유형). 이미 전원이 쓰는 **OneDrive 저장폴더를 배포 통로**로 쓴다.
 
 - **게시(개발자)**: ⋯파일 > `새 버전 배포…(개발자용)` — build_exe.bat 로 만든 exe 선택
-  + 버전·변경내용 입력 → `{저장폴더}/프로그램/버전정보.json` + 고정 파일명
-  `PI_Param_Manager.exe` 로 게시(`updater.publish`). **버전마다 파일이 쌓이지 않도록
-  항상 exe 1개만 덮어쓴다.**
+  + 버전·변경내용 입력 → `{저장폴더}/프로그램/버전정보.json` +
+  **`Camtek_AOI_Parameter_manage_v{버전}.exe`**(파일명에 버전 포함, 사용자 지정).
+  파일명이 매번 달라지므로 `publish` 가 게시 후 `prune_old_exes` 로 **구버전 exe 를
+  지운다**(누적 방지). 우리 게시물(`EXE_PREFIX`/구 고정명)만 지우고 남의 파일은 둔다.
+  업데이트하면 **로컬 exe 이름도 새 버전으로 바뀐다**(`local_target_path`) — 확인창에서
+  이름 변경을 미리 알리고, 교체 스크립트가 구파일을 지운다(바로가기는 다시 만들어야 함).
 - **확인(전원)**: 시작 0.5초 후 조용히 확인(`_check_update_prompt(manual=False)`),
   새 버전이면만 "새 버전 N 있습니다. 업데이트할까요?"(변경내용 포함). `⋯파일 >
   지금 업데이트 확인…` 은 '나중에' 기억을 무시하고 항상 확인 + 최신이어도 알려줌.
@@ -264,6 +267,16 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   지우므로 별도 프로세스(cmd)가 교체를 맡는다 — Windows 전용, 실기 검증 필요.
 - 버전 비교(`updater.is_newer`)는 길이 다른 버전("3.1" vs "3.1.0")도 0으로 채워
   비교, 숫자 크기 비교(문자열 사전식 비교 함정 회피: "3.10.0" > "3.9.0").
+- **교체 배치스크립트(`build_swap_script`) 3대 함정 — 반드시 유지**:
+  ① cmd.exe 는 .bat 을 UTF-8 이 아니라 **시스템 ANSI(한국어=cp949)** 로 읽는다.
+     UTF-8 로 쓰면 한글 경로가 깨져 엉뚱한 파일을 지운다. `_write_bat` 이 cp949 로
+     쓰고, **문구는 전부 ASCII**(한 글자라도 cp949 밖이면 UTF-8 로 물러나 사고).
+     실제로 주석의 em-dash(—) 때문에 깨졌었다 — `body.isascii()` 로 가드.
+  ② **`timeout` 금지** — detached 실행은 콘솔이 없어 즉시 실패한다. `ping` 으로 대기.
+  ③ **PID 문자열 매칭 금지** — `tasklist | find "1234"` 는 메모리 열("1,234 K")에도
+     걸려 무한 대기. **복사 재시도**를 종료 판정으로 쓴다(잠금 풀림 = 종료, 로케일 무관).
+  · 교체가 끝내 실패하면 **기존 exe 를 다시 실행**한다(사용자가 빈손으로 남지 않게).
+- 수집(`_watch_busy`) 중에는 업데이트를 미룬다 — 앱을 종료시키므로 그 회차가 날아간다.
 - `param_manager/__version__`(현재 "3.0.0")을 게시 버전과 비교. 새 버전 게시 시
   developer 가 그 값을 올려 빌드하고 배포 창에서 같은 숫자를 입력.
 

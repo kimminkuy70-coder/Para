@@ -13,8 +13,11 @@ GitHub 직접 폴링/다운로드 방식도 검토했으나 기각했다:
 폴더 구조 (저장폴더 = OneDrive, 공유)
 --------------------------------------
   {저장폴더}/프로그램/
-    ├─ 버전정보.json         버전·해시·크기·변경내용·게시자
-    └─ PI_Param_Manager.exe  항상 고정 파일명(버전마다 새로 만들지 않음 — 누적 방지)
+    ├─ 버전정보.json                          버전·해시·크기·변경내용·게시자
+    └─ Camtek_AOI_Parameter_manage_v3.1.0.exe  **파일명에 버전 포함**(사용자 지정)
+
+파일명에 버전이 들어가므로 게시할 때마다 새 파일이 생긴다. 그대로 두면 OneDrive 에
+구버전 exe 가 계속 쌓이므로, `publish()` 가 **게시 직후 이전 버전 exe 를 지운다**.
 
 실행 파일 교체 (로컬, 각 사용자 PC)
 ------------------------------------
@@ -25,6 +28,19 @@ GitHub 직접 폴링/다운로드 방식도 검토했으나 기각했다:
      백업(1개만, 누적 안 됨) → 새 exe 로 교체 → 재실행 → 자기 자신 삭제
   3) 그 스크립트를 detached 로 실행하고 앱은 스스로 종료
 사용자는 "업데이트할까요?" 확인 한 번만 하면 되고, 재시작은 자동이다.
+
+배치스크립트 작성 시 주의 (실제로 문제가 됐던 것들)
+---------------------------------------------------
+  · **한글 경로 + 인코딩**: cmd.exe 는 .bat 을 UTF-8 이 아니라 시스템 ANSI(한국어
+    Windows = cp949)로 읽는다. UTF-8 로 쓰면 한글 경로가 깨져 엉뚱한 파일을 만진다.
+    → `_write_bat()` 이 mbcs/cp949 로 쓰고, **우리가 만드는 이름은 전부 ASCII**로 둔다.
+  · **`timeout` 금지**: detached(콘솔 없음)로 실행하면 `timeout` 은 입력 핸들이 없어
+    "Input redirection is not supported" 로 즉시 실패한다. → `ping` 으로 대기한다.
+  · **PID 문자열 매칭 금지**: `tasklist | find "1234"` 는 메모리 사용량 열(예 "1,234 K")
+    에도 걸려 영원히 대기할 수 있다. → **복사 재시도**를 주 종료판정으로 쓴다
+    (파일 잠금이 풀렸다 = 프로세스가 끝났다). 로케일·PID 오탐과 무관하다.
+  · **실패 시 원상복구**: 교체가 끝내 실패하면 **기존 exe 를 다시 실행**해 준다.
+    그러지 않으면 사용자는 아무것도 실행되지 않은 채 남는다.
 """
 
 from __future__ import annotations
@@ -32,6 +48,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -39,8 +56,36 @@ from datetime import datetime
 
 PROGRAM_DIRNAME = "프로그램"
 MANIFEST_NAME = "버전정보.json"
-PUBLISHED_EXE_NAME = "PI_Param_Manager.exe"     # OneDrive 쪽 고정 파일명(누적 방지)
-BACKUP_EXE_NAME = "PI_Param_Manager_이전버전.exe"  # 로컬 롤백용, 항상 1개만
+
+# 게시 파일명 — 버전이 올라가면 파일명도 같이 바뀐다(사용자 지정 2026-08).
+EXE_STEM = "Camtek_AOI_Parameter_manage"
+EXE_PREFIX = f"{EXE_STEM}_v"                    # + 버전 + ".exe"
+# 구버전(고정 파일명) 매니페스트 호환용 — 예전 게시본을 계속 읽을 수 있게.
+LEGACY_EXE_NAME = "PI_Param_Manager.exe"
+
+# 로컬 롤백 백업 접미사. **ASCII 만** — 배치스크립트에 들어가므로(위 주의 참고).
+BACKUP_SUFFIX = "_prev"
+# 로컬 임시 폴더 접두사도 ASCII.
+TEMP_PREFIX = "update"
+
+
+def exe_filename(version: str) -> str:
+    """버전 → 게시 파일명. 파일명에 못 쓰는 문자는 제거한다.
+
+    사용자가 'v3.1.0' 처럼 v 를 붙여 입력해도 접두사와 겹쳐 '_vv3.1.0' 이 되지
+    않도록 앞의 v 를 떼어낸다.
+    예: '3.1.0' / 'v3.1.0' → 'Camtek_AOI_Parameter_manage_v3.1.0.exe'
+    """
+    safe = re.sub(r'[<>:"/\\|?*\s]+', "", str(version or "").strip())
+    safe = re.sub(r"^[vV]+", "", safe)
+    return f"{EXE_PREFIX}{safe}.exe"
+
+
+def is_published_exe(name: str) -> bool:
+    """`프로그램/` 폴더에서 우리가 게시한 exe 인가(구버전 고정 파일명 포함)."""
+    low = str(name or "").lower()
+    return low.endswith(".exe") and (
+        low.startswith(EXE_PREFIX.lower()) or low == LEGACY_EXE_NAME.lower())
 
 
 @dataclass
@@ -70,7 +115,8 @@ class ReleaseInfo:
         if not version or not sha256 or size <= 0:
             return None
         return ReleaseInfo(version=version,
-                           filename=str(d.get("filename") or PUBLISHED_EXE_NAME),
+                           # 파일명이 없는 구 매니페스트는 그 시절 고정 이름으로 해석
+                           filename=str(d.get("filename") or LEGACY_EXE_NAME),
                            sha256=sha256, size=size,
                            changelog=str(d.get("changelog") or ""),
                            published_at=str(d.get("published_at") or ""),
@@ -90,9 +136,17 @@ def manifest_path(save_dir: str) -> str:
     return os.path.join(program_dir(save_dir), MANIFEST_NAME)
 
 
-def published_exe_path(save_dir: str, release: ReleaseInfo | None = None) -> str:
-    name = release.filename if release else PUBLISHED_EXE_NAME
-    return os.path.join(program_dir(save_dir), name)
+def published_exe_path(save_dir: str, release: ReleaseInfo) -> str:
+    """게시된 exe 의 경로. 파일명이 버전마다 다르므로 release 가 반드시 필요하다."""
+    return os.path.join(program_dir(save_dir), release.filename)
+
+
+def list_published_exes(save_dir: str) -> list[str]:
+    """`프로그램/` 폴더에 있는 우리 exe 파일명 목록(정리 대상 확인용)."""
+    d = os.path.join(save_dir, PROGRAM_DIRNAME)
+    if not os.path.isdir(d):
+        return []
+    return sorted(n for n in os.listdir(d) if is_published_exe(n))
 
 
 # --------------------------------------------------------------------------
@@ -164,27 +218,51 @@ def read_manifest(save_dir: str) -> ReleaseInfo | None:
 
 def publish(save_dir: str, exe_path: str, version: str, changelog: str = "",
            user: str | None = None) -> ReleaseInfo:
-    """새 exe 를 저장폴더(OneDrive)에 게시 — 고정 파일명으로 덮어쓰고 매니페스트 갱신.
+    """새 exe 를 저장폴더(OneDrive)에 게시 — **파일명에 버전 포함** + 매니페스트 갱신.
 
-    버전별 파일이 쌓이지 않도록 항상 PUBLISHED_EXE_NAME 하나만 유지한다.
+    파일명이 버전마다 달라지므로 게시할 때마다 새 파일이 생긴다. 그대로 두면
+    OneDrive 에 구버전이 계속 쌓이므로 **게시 성공 후 이전 exe 들을 지운다**.
+    매니페스트는 exe 를 다 쓴 뒤 마지막에 기록한다(중간에 실패하면 이전 매니페스트가
+    그대로 남아, 사용자가 존재하지 않는 파일을 받으려다 실패하는 일이 없다).
     """
     if not os.path.isfile(exe_path):
         raise FileNotFoundError(f"exe 파일을 찾을 수 없습니다: {exe_path}")
-    v = parse_version(version)
-    if v == (0,):
+    if parse_version(version) == (0,):
         raise ValueError(f"버전 번호를 알아볼 수 없습니다: {version!r}")
-    dest = published_exe_path(save_dir)
+
+    version = str(version).strip()
+    filename = exe_filename(version)
+    dest = os.path.join(program_dir(save_dir), filename)
     tmp = dest + ".tmp"
     shutil.copy2(exe_path, tmp)
     os.replace(tmp, dest)                    # 같은 폴더 내 원자적 교체
-    release = ReleaseInfo(version=str(version).strip(), filename=PUBLISHED_EXE_NAME,
+
+    release = ReleaseInfo(version=version, filename=filename,
                           sha256=file_sha256(dest), size=os.path.getsize(dest),
                           changelog=changelog or "",
                           published_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                           published_by=user or "")
     with open(manifest_path(save_dir), "w", encoding="utf-8") as fh:
         json.dump(release.to_dict(), fh, ensure_ascii=False, indent=2)
+
+    # 새 매니페스트가 자리잡은 뒤 구버전 정리(누적 방지). 실패해도 게시는 유효하다.
+    prune_old_exes(save_dir, keep=filename)
     return release
+
+
+def prune_old_exes(save_dir: str, keep: str) -> list[str]:
+    """`프로그램/` 폴더에서 keep 을 뺀 우리 exe 들을 지운다. 반환: 지운 파일명."""
+    d = os.path.join(save_dir, PROGRAM_DIRNAME)
+    removed = []
+    for name in list_published_exes(save_dir):
+        if name.lower() == str(keep).lower():
+            continue
+        try:
+            os.remove(os.path.join(d, name))
+            removed.append(name)
+        except OSError:
+            continue                        # 누가 실행 중이면 다음 게시 때 정리됨
+    return removed
 
 
 # --------------------------------------------------------------------------
@@ -196,7 +274,8 @@ def download_to_local(save_dir: str, release: ReleaseInfo, local_root: str) -> s
     src = published_exe_path(save_dir, release)
     if not os.path.isfile(src):
         raise FileNotFoundError(f"게시된 exe 를 찾을 수 없습니다: {src}")
-    run_dir = localdirs.new_temp_run(local_root, "업데이트")
+    # 접두사는 ASCII — 이 경로가 배치스크립트에 그대로 들어간다(인코딩 주의 참고).
+    run_dir = localdirs.new_temp_run(local_root, TEMP_PREFIX)
     dest = os.path.join(run_dir, release.filename)
     shutil.copy2(src, dest)
     return dest
@@ -213,57 +292,109 @@ def current_exe_path() -> str:
     return os.path.abspath(sys.executable)
 
 
+def _write_bat(path: str, content: str) -> str:
+    """배치스크립트 기록 — cmd.exe 가 읽는 **시스템 ANSI(한국어=cp949)** 로 쓴다.
+
+    UTF-8 로 쓰면 경로에 한글이 있을 때(사용자 폴더·저장폴더 등) 깨져서 엉뚱한
+    파일을 건드린다. 개발환경(Linux)에는 'mbcs' 가 없으므로 cp949 → utf-8 순으로
+    물러난다. 되돌릴 수 없는 파일 조작을 하는 스크립트라 인코딩은 중요하다.
+    """
+    for enc in ("mbcs", "cp949", "utf-8"):
+        try:
+            with open(path, "w", encoding=enc, newline="\r\n") as fh:
+                fh.write(content)
+            return path
+        except (LookupError, UnicodeEncodeError):
+            continue
+    with open(path, "w", encoding="utf-8", errors="replace",
+              newline="\r\n") as fh:                       # 최후 수단
+        fh.write(content)
+    return path
+
+
+def local_target_path(current_exe: str, release: ReleaseInfo) -> str:
+    """업데이트 후 로컬 exe 경로 — **같은 폴더, 새 버전 파일명**.
+
+    파일명에 버전이 들어가므로 업데이트하면 이름도 바뀐다(사용자 지정). 즉
+    `..._v3.0.0.exe` → `..._v3.1.0.exe` 가 되고 구파일은 교체 스크립트가 지운다.
+    """
+    return os.path.join(os.path.dirname(os.path.abspath(current_exe)),
+                        release.filename)
+
+
 def build_swap_script(local_dir: str, pid: int, current_exe: str, new_exe: str,
-                      backup_path: str) -> str:
+                      backup_path: str, target_exe: str | None = None) -> str:
     r"""현재 프로세스 종료를 기다렸다가 exe 를 교체하고 재실행하는 .bat 생성.
 
     실행 중인 exe 는 자기 자신을 못 지우므로 별도 프로세스(cmd)가 필요하다.
-    Windows 전용 문법이라 이 환경(Linux)에서는 **실행 검증이 불가** — 내용만 만든다.
+
+    설계 포인트(모듈 상단 '주의' 참고):
+      · 종료 판정을 PID 문자열 매칭이 아니라 **복사 성공 여부**로 한다 — 파일 잠금이
+        풀렸다는 건 곧 프로세스가 끝났다는 뜻이고, 로케일/PID 오탐이 없다.
+      · 대기는 `timeout` 이 아니라 `ping` — detached 실행에는 콘솔이 없어 `timeout`
+        이 즉시 실패한다.
+      · 끝내 실패하면 **기존 exe 를 다시 실행**한다(사용자가 빈손으로 남지 않게).
+    Windows 전용 문법이라 이 환경(Linux)에서는 실행 검증이 불가 — 내용만 만든다.
     """
     from . import localdirs
     d = localdirs.temp_dir(local_dir)
     script = os.path.join(d, "para_update.bat")
-    content = f'''@echo off
-setlocal
-set "PID={pid}"
-set "OLD={current_exe}"
-set "NEW={new_exe}"
-set "BACKUP={backup_path}"
+    target = target_exe or current_exe
+    same = os.path.normcase(os.path.abspath(target)) == \
+        os.path.normcase(os.path.abspath(current_exe))
+    # 파일명이 바뀌는 경우에만 구 exe 삭제(같은 이름이면 이미 덮어썼다)
+    del_old = "" if same else 'if exist "%OLD%" del /q "%OLD%" >nul 2>&1\n'
+    # 주석은 **영문(ASCII)만** — 한글을 넣으면 cp949 에 없는 문자 하나(예: em-dash)
+    # 때문에 파일 전체가 UTF-8 로 물러나 경로의 한글이 깨진다. 설명은 이 docstring 에.
+    # (기존 build_exe.bat 도 같은 이유로 All-ASCII 를 지킨다.)
+    # 경로(사용자 폴더에 한글이 있을 수 있음)와 로직 문구를 분리해서, **문구만**
+    # ASCII 인지 검사한다. 경로는 cp949 로 기록되므로 한글이어도 안전하다.
+    header = (f'@echo off\r\n'
+              f'setlocal\r\n'
+              f'set "PID={pid}"\r\n'
+              f'set "OLD={current_exe}"\r\n'
+              f'set "NEW={new_exe}"\r\n'
+              f'set "BACKUP={backup_path}"\r\n'
+              f'set "TARGET={target}"\r\n')
+    body = f'''
+rem Give the app a moment to close. ping is used instead of timeout because
+rem timeout needs a console and this script runs detached.
+ping -n 3 127.0.0.1 >nul 2>&1
 
-:wait
-tasklist /FI "PID eq %PID%" 2>NUL | find "%PID%" >NUL
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >NUL
-    goto wait
-)
-timeout /t 1 /nobreak >NUL
+rem Keep exactly one rollback backup (never accumulates).
+if exist "%OLD%" copy /y "%OLD%" "%BACKUP%" >nul 2>&1
 
-if exist "%OLD%" (
-    copy /y "%OLD%" "%BACKUP%" >NUL
-)
-
+rem The copy itself is the exit check: while the app still runs the file stays
+rem locked and the copy fails, so we retry. No PID string matching (locale safe).
 set RETRY=0
 :copyloop
-copy /y "%NEW%" "%OLD%" >NUL
-if errorlevel 1 (
-    set /a RETRY+=1
-    if %RETRY% LSS 10 (
-        timeout /t 1 /nobreak >NUL
-        goto copyloop
-    )
+copy /y "%NEW%" "%TARGET%" >nul 2>&1
+if not errorlevel 1 goto copied
+set /a RETRY+=1
+if %RETRY% LSS 60 (
+    ping -n 2 127.0.0.1 >nul 2>&1
+    goto copyloop
 )
 
-start "" "%OLD%"
+rem Update failed: bring the old program back so the user is not left with nothing.
+if exist "%OLD%" start "" "%OLD%"
+goto done
 
+:copied
+{del_old}start "" "%TARGET%"
+
+:done
 (goto) 2>nul & del "%~f0"
 '''
-    with open(script, "w", encoding="utf-8") as fh:
-        fh.write(content)
-    return script
+    if not body.isascii():        # 로직 문구는 반드시 ASCII(cp949 폴백 사고 방지)
+        raise ValueError("배치스크립트 문구에 ASCII 가 아닌 문자가 있습니다"
+                         "(경로를 뺀 나머지는 영문만 사용).")
+    return _write_bat(script, header + body)
 
 
 def backup_path_for(local_dir: str, current_exe: str) -> str:
+    """로컬 롤백용 백업 경로. 배치스크립트에 들어가므로 **ASCII 이름**을 쓴다."""
     from . import localdirs
-    name = os.path.basename(current_exe) or BACKUP_EXE_NAME
+    name = os.path.basename(current_exe) or f"{EXE_STEM}.exe"
     stem, ext = os.path.splitext(name)
-    return os.path.join(localdirs.ensure(local_dir), f"{stem}_이전버전{ext}")
+    return os.path.join(localdirs.ensure(local_dir), f"{stem}{BACKUP_SUFFIX}{ext}")

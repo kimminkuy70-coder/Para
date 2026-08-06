@@ -4809,11 +4809,31 @@ class EquipApp(tk.Tk):
             return
         if not manual and self._cfg.get("update_skip_version") == release.version:
             return                             # 이 버전은 '나중에' 선택함 — 다시 안 물음
+        if getattr(self, "_watch_busy", False):
+            # 업데이트는 앱을 종료시키므로 수집 도중에 하면 그 회차가 통째로 날아간다.
+            # 다음 시작(또는 수동 확인) 때 다시 묻는다.
+            if manual:
+                messagebox.showinfo(
+                    "업데이트 확인",
+                    f"새 버전 {release.version} 이 있지만 지금 자동 감시 수집이 "
+                    "진행 중입니다.\n작업이 끝난 뒤 다시 시도해 주세요.")
+            return
         note = f"\n\n변경 내용:\n{release.changelog}" if release.changelog else ""
+        rename = ""
+        try:
+            cur_name = os.path.basename(updater.current_exe_path())
+            if cur_name and cur_name != release.filename:
+                # 파일명에 버전이 들어가므로 업데이트하면 이름이 바뀐다.
+                # 바탕화면 바로가기를 쓰고 있으면 다시 만들어야 하므로 미리 알린다.
+                rename = (f"\n\n실행 파일 이름이 바뀝니다:\n"
+                          f"  {cur_name}\n  → {release.filename}\n"
+                          "(바로가기를 쓰고 계시면 새로 만들어 주세요)")
+        except Exception:  # noqa: BLE001
+            rename = ""
         if not messagebox.askyesno(
                 "새 버전 업데이트",
                 f"새 버전 {release.version} 이 있습니다. (현재 {__version__})"
-                f"{note}\n\n지금 업데이트할까요?"):
+                f"{note}{rename}\n\n지금 업데이트할까요?"):
             self._cfg["update_skip_version"] = release.version
             save_config(self._cfg)
             return
@@ -4836,14 +4856,21 @@ class EquipApp(tk.Tk):
             local_exe = res
             current = updater.current_exe_path()
             backup = updater.backup_path_for(self.local_dir, current)
+            # 파일명에 버전이 들어가므로 업데이트하면 로컬 exe 이름도 바뀐다.
+            target = updater.local_target_path(current, release)
             try:
                 script = updater.build_swap_script(self.local_dir, os.getpid(),
-                                                   current, local_exe, backup)
+                                                   current, local_exe, backup,
+                                                   target_exe=target)
             except Exception as e:  # noqa: BLE001
                 self._err("E167", "업데이트 준비 실패", e)
                 return
-            self._set_status(f"업데이트 중… 잠시 후 {release.version} 으로 "
-                             "다시 시작됩니다")
+            if os.path.basename(target) != os.path.basename(current):
+                self._set_status(f"업데이트 중… {os.path.basename(target)} 으로 "
+                                 "다시 시작됩니다")
+            else:
+                self._set_status(f"업데이트 중… 잠시 후 {release.version} 으로 "
+                                 "다시 시작됩니다")
             try:
                 if os.name == "nt":
                     import subprocess
@@ -4852,7 +4879,7 @@ class EquipApp(tk.Tk):
                     subprocess.Popen(["cmd", "/c", script], close_fds=True,
                                      creationflags=DETACHED | NEWGROUP)
                 else:
-                    self._err("E168", "업데이트 미지원", "Windows 전용 기능입니다.")
+                    self._err("E170", "업데이트 미지원", "Windows 전용 기능입니다.")
                     return
             except Exception as e:  # noqa: BLE001
                 self._err("E168", "업데이트 실행 실패", e)
@@ -4907,8 +4934,20 @@ class EquipApp(tk.Tk):
         ver_var = tk.StringVar(value=__version__)
         tk.Entry(body, textvariable=ver_var, width=20, relief="solid",
                  bd=1).grid(row=1, column=1, sticky="w", padx=6)
-        tk.Label(body, text="(예: 3.1.0)", bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).grid(row=1, column=2, sticky="w")
+        # 버전이 파일명에 들어가므로 결과 파일명을 실시간으로 보여준다
+        name_lbl = tk.Label(body, text="", bg=self.p["bg"], fg=self.p["primary"],
+                            font=self.fonts["sub"], anchor="w")
+        name_lbl.grid(row=1, column=2, sticky="w")
+
+        def upd_name(*_a):
+            v = ver_var.get().strip()
+            name_lbl.config(
+                text=(f"→ {updater.exe_filename(v)}" if updater.parse_version(v) != (0,)
+                      else "(예: 3.1.0)"),
+                fg=(self.p["primary"] if updater.parse_version(v) != (0,)
+                    else self.p["muted"]))
+        ver_var.trace_add("write", upd_name)
+        upd_name()
 
         tk.Label(body, text="변경 내용:", bg=self.p["bg"],
                  fg=self.p["text"]).grid(row=2, column=0, sticky="nw", pady=3)

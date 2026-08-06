@@ -57,6 +57,19 @@ def test_is_newer_handles_uneven_length():
     print("  버전 비교(길이 다름·숫자 크기·동일버전) OK")
 
 
+def test_exe_filename_includes_version():
+    """파일명에 버전이 들어간다(사용자 지정). 'v' 중복·금지문자는 정리."""
+    assert U.exe_filename("3.1.0") == "Camtek_AOI_Parameter_manage_v3.1.0.exe"
+    assert U.exe_filename("1.0") == "Camtek_AOI_Parameter_manage_v1.0.exe"
+    # 사용자가 'v' 를 붙여 입력해도 '_vv' 가 되면 안 된다
+    assert U.exe_filename("v3.1.0") == "Camtek_AOI_Parameter_manage_v3.1.0.exe"
+    assert U.exe_filename("V2.5") == "Camtek_AOI_Parameter_manage_v2.5.exe"
+    # 파일명에 못 쓰는 문자 제거
+    assert "/" not in U.exe_filename("3/1")
+    assert " " not in U.exe_filename("3.1.0 beta")
+    print("  버전 포함 파일명 생성(v중복·금지문자 처리) OK")
+
+
 def test_publish_and_read_manifest_roundtrip():
     with tempfile.TemporaryDirectory() as save_dir, \
          tempfile.TemporaryDirectory() as build:
@@ -64,32 +77,67 @@ def test_publish_and_read_manifest_roundtrip():
         rel = U.publish(save_dir, exe, "3.1.0", changelog="감시 폴더 지정 추가",
                         user="홍길동")
         assert rel.version == "3.1.0"
+        assert rel.filename == "Camtek_AOI_Parameter_manage_v3.1.0.exe", rel.filename
         assert rel.size == os.path.getsize(exe)
         assert rel.sha256 == U.file_sha256(exe)
         got = U.read_manifest(save_dir)
         assert got is not None
         assert got.version == "3.1.0" and got.changelog == "감시 폴더 지정 추가"
         assert got.published_by == "홍길동"
+        assert got.filename == rel.filename
         # 게시된 exe 가 실제로 저장폴더에 있어야 한다
         assert os.path.isfile(U.published_exe_path(save_dir, got))
-    print("  게시(publish) → 매니페스트 왕복 OK")
+    print("  게시(publish) → 매니페스트 왕복(버전 파일명 포함) OK")
 
 
-def test_publish_overwrites_no_accumulation():
-    """버전마다 파일이 쌓이면 안 된다 — 항상 exe 1개만 존재."""
+def test_publish_prunes_old_versions():
+    """파일명에 버전이 들어가면 게시할 때마다 새 파일이 생긴다 —
+    구버전을 지우지 않으면 OneDrive 에 계속 쌓인다."""
     with tempfile.TemporaryDirectory() as save_dir, \
          tempfile.TemporaryDirectory() as build:
         exe1 = _fake_exe(os.path.join(build, "a.exe"), b"v1" * 500)
         exe2 = _fake_exe(os.path.join(build, "b.exe"), b"v2_bigger" * 500)
+        exe3 = _fake_exe(os.path.join(build, "c.exe"), b"v3_x" * 700)
         U.publish(save_dir, exe1, "3.1.0")
         U.publish(save_dir, exe2, "3.2.0")
-        prog = U.program_dir(save_dir)
-        exes = [f for f in os.listdir(prog) if f.lower().endswith(".exe")]
-        assert len(exes) == 1, f"exe 가 누적됨: {exes}"
+        U.publish(save_dir, exe3, "3.3.0")
+        exes = U.list_published_exes(save_dir)
+        assert exes == ["Camtek_AOI_Parameter_manage_v3.3.0.exe"], exes
         got = U.read_manifest(save_dir)
-        assert got.version == "3.2.0"
-        assert got.sha256 == U.file_sha256(exe2)
-    print("  재게시 시 exe 누적 없음(고정 파일명 덮어쓰기) OK")
+        assert got.version == "3.3.0"
+        assert got.sha256 == U.file_sha256(exe3)
+        assert os.path.isfile(U.published_exe_path(save_dir, got))
+    print("  재게시 시 구버전 exe 정리(누적 없음) OK")
+
+
+def test_prune_keeps_unrelated_files():
+    """`프로그램/` 폴더의 남의 파일까지 지우면 안 된다."""
+    with tempfile.TemporaryDirectory() as save_dir, \
+         tempfile.TemporaryDirectory() as build:
+        prog = U.program_dir(save_dir)
+        other = os.path.join(prog, "사용설명서.pdf")
+        with open(other, "w", encoding="utf-8") as fh:
+            fh.write("x")
+        stray = os.path.join(prog, "다른프로그램.exe")     # 우리 게시물이 아님
+        with open(stray, "w", encoding="utf-8") as fh:
+            fh.write("x")
+        U.publish(save_dir, _fake_exe(os.path.join(build, "a.exe")), "3.1.0")
+        assert os.path.isfile(other), "관련 없는 파일을 지우면 안 됨"
+        assert os.path.isfile(stray), "우리 게시물이 아닌 exe 를 지우면 안 됨"
+    print("  정리 대상은 우리 게시 exe 만 OK")
+
+
+def test_legacy_manifest_without_filename():
+    """구 버전(고정 파일명 시절) 매니페스트도 계속 읽혀야 한다."""
+    import json
+    with tempfile.TemporaryDirectory() as save_dir:
+        os.makedirs(U.program_dir(save_dir), exist_ok=True)
+        with open(U.manifest_path(save_dir), "w", encoding="utf-8") as fh:
+            json.dump({"version": "3.0.0", "sha256": "ab" * 32, "size": 123}, fh)
+        got = U.read_manifest(save_dir)
+        assert got is not None
+        assert got.filename == U.LEGACY_EXE_NAME, got.filename
+    print("  구 매니페스트(파일명 없음) 하위호환 OK")
 
 
 def test_read_manifest_missing_or_corrupt_is_none():
@@ -163,22 +211,105 @@ def test_publish_rejects_bad_inputs():
     print("  게시 입력 검증(없는 파일/잘못된 버전) OK")
 
 
+def _script_body(path):
+    """생성된 .bat 은 cmd.exe 가 읽는 시스템 ANSI(한국어=cp949)로 기록된다."""
+    raw = open(path, "rb").read()
+    return raw.decode("cp949")
+
+
+def _commands(body):
+    """주석(rem)을 뺀 실제 명령 줄만."""
+    return [l.strip() for l in body.splitlines()
+            if l.strip() and not l.strip().lower().startswith("rem")]
+
+
 def test_swap_script_contains_required_steps():
     """실제 실행은 Windows 필요 — 생성된 스크립트에 필수 단계가 있는지만 확인."""
     with tempfile.TemporaryDirectory() as local:
-        script = U.build_swap_script(local, pid=12345,
-                                     current_exe=r"C:\Apps\Para\PI_Param_Manager.exe",
-                                     new_exe=r"C:\Users\a\AppData\Local\CamtekAOI\Temp\x\PI_Param_Manager.exe",
-                                     backup_path=r"C:\Users\a\AppData\Local\CamtekAOI\PI_Param_Manager_이전버전.exe")
+        script = U.build_swap_script(
+            local, pid=12345,
+            current_exe=r"C:\Apps\Para\Camtek_AOI_Parameter_manage_v3.0.0.exe",
+            new_exe=r"C:\Users\a\AppData\Local\CamtekAOI\Temp\update_x\Camtek_AOI_Parameter_manage_v3.1.0.exe",
+            backup_path=r"C:\Users\a\AppData\Local\CamtekAOI\Camtek_AOI_Parameter_manage_v3.0.0_prev.exe",
+            target_exe=r"C:\Apps\Para\Camtek_AOI_Parameter_manage_v3.1.0.exe")
         assert os.path.isfile(script)
-        body = open(script, encoding="utf-8").read()
-        assert "12345" in body, "PID 대기 로직에 PID 가 들어가야 함"
-        assert "tasklist" in body.lower(), "프로세스 종료 대기 로직 필요"
-        assert "PI_Param_Manager_이전버전.exe" in body, "백업 경로 필요"
-        assert body.count("copy") >= 2, "백업 복사 + 교체 복사 둘 다 있어야 함"
-        assert "start" in body.lower(), "재실행 명령 필요"
-        assert "del" in body.lower(), "자기 삭제(정리) 필요"
-    print("  교체 스크립트 필수 단계(대기·백업·교체·재실행·자기삭제) 포함 OK")
+        body = _script_body(script)
+        cmds = "\n".join(_commands(body))
+        assert "_prev.exe" in cmds, "롤백 백업 경로 필요"
+        assert cmds.count("copy") >= 2, "백업 복사 + 교체 복사 둘 다 있어야 함"
+        assert "start" in cmds.lower(), "재실행 명령 필요"
+        assert "del" in cmds.lower(), "자기 삭제(정리) 필요"
+        assert "v3.1.0" in cmds, "새 버전 파일명으로 교체해야 함"
+    print("  교체 스크립트 필수 단계(백업·교체·재실행·자기삭제) 포함 OK")
+
+
+def test_swap_script_avoids_console_and_locale_traps():
+    """detached 실행·한글 Windows 에서 실제로 깨졌던 함정 3가지를 막았는지.
+
+      · `timeout` 은 콘솔이 없으면 즉시 실패한다 → `ping` 을 써야 한다.
+      · `tasklist | find "<PID>"` 는 메모리 열 숫자와 우연히 일치해 영원히 대기할
+        수 있다 → 복사 재시도로 종료를 판정해야 한다.
+      · 교체가 끝내 실패하면 기존 exe 를 되살려야 한다(사용자가 빈손이 되지 않게).
+    """
+    import re
+    with tempfile.TemporaryDirectory() as local:
+        script = U.build_swap_script(
+            local, pid=12345, current_exe=r"C:\A\a_v3.0.0.exe",
+            new_exe=os.path.join(local, "n.exe"),
+            backup_path=os.path.join(local, "b_prev.exe"),
+            target_exe=r"C:\A\a_v3.1.0.exe")
+        cmds = _commands(_script_body(script))
+        assert not [c for c in cmds if re.match(r"^timeout\b", c, re.I)], \
+            "timeout 은 detached 에서 실패한다"
+        assert any(re.match(r"^ping\b", c, re.I) for c in cmds), "ping 대기 필요"
+        assert not [c for c in cmds if "tasklist" in c.lower()], \
+            "PID 문자열 매칭은 오탐 위험"
+        joined = "\n".join(cmds)
+        assert "goto copyloop" in joined, "복사 재시도(=종료 판정) 필요"
+        assert 'if exist "%OLD%" start "" "%OLD%"' in joined, \
+            "실패 시 기존 exe 복구 필요"
+    print("  detached/로케일 함정 회피(ping·복사재시도·실패복구) OK")
+
+
+def test_swap_script_is_cp949_and_keeps_korean_paths():
+    """cmd.exe 는 .bat 을 UTF-8 이 아니라 시스템 ANSI 로 읽는다. UTF-8 로 쓰면
+    한글 경로가 깨져 엉뚱한 파일을 건드린다(되돌릴 수 없는 파일 조작이라 치명적)."""
+    with tempfile.TemporaryDirectory() as local:
+        cur = r"C:\Users\홍길동\바탕 화면\Camtek_AOI_Parameter_manage_v3.0.0.exe"
+        script = U.build_swap_script(
+            local, pid=1, current_exe=cur,
+            new_exe=os.path.join(local, "n.exe"),
+            backup_path=os.path.join(local, "b_prev.exe"),
+            target_exe=r"C:\Users\홍길동\바탕 화면\Camtek_AOI_Parameter_manage_v3.1.0.exe")
+        raw = open(script, "rb").read()
+        body = raw.decode("cp949")            # cp949 로 읽혀야 정상
+        assert "홍길동" in body and "바탕 화면" in body, "한글 경로가 보존돼야 함"
+        # 우리가 넣는 문구는 전부 ASCII — 한 글자라도 cp949 밖이면 파일 전체가
+        # UTF-8 로 물러나 위 보장이 깨진다(실제로 em-dash 때문에 깨졌었다).
+        for line in _commands(body):
+            if not line.startswith("set "):   # set 줄에는 사용자 경로가 들어감
+                assert line.isascii(), f"명령 줄에 비ASCII: {line!r}"
+    print("  bat 인코딩 cp949 + 한글 경로 보존 + 문구 ASCII OK")
+
+
+def test_local_target_uses_new_version_name():
+    """업데이트하면 로컬 exe 이름도 새 버전으로 바뀐다(같은 폴더)."""
+    rel = U.ReleaseInfo("3.1.0", U.exe_filename("3.1.0"), "ab" * 32, 10)
+    cur = os.path.join("folder", "Camtek_AOI_Parameter_manage_v3.0.0.exe")
+    target = U.local_target_path(cur, rel)
+    assert os.path.dirname(target) == os.path.dirname(os.path.abspath(cur))
+    assert os.path.basename(target) == "Camtek_AOI_Parameter_manage_v3.1.0.exe"
+    print("  업데이트 후 로컬 파일명도 새 버전 OK")
+
+
+def test_backup_name_is_ascii():
+    """백업 경로는 배치스크립트에 들어가므로 ASCII 여야 안전하다."""
+    with tempfile.TemporaryDirectory() as local:
+        p = U.backup_path_for(local, os.path.join("x",
+                                                  "Camtek_AOI_Parameter_manage_v3.0.0.exe"))
+        assert os.path.basename(p).isascii(), p
+        assert os.path.basename(p).endswith("_prev.exe"), p
+    print("  롤백 백업 파일명 ASCII OK")
 
 
 def test_is_frozen_false_in_dev():
@@ -188,13 +319,20 @@ def test_is_frozen_false_in_dev():
 
 if __name__ == "__main__":
     for t in [test_parse_version_variants, test_is_newer_handles_uneven_length,
+              test_exe_filename_includes_version,
               test_publish_and_read_manifest_roundtrip,
-              test_publish_overwrites_no_accumulation,
+              test_publish_prunes_old_versions,
+              test_prune_keeps_unrelated_files,
+              test_legacy_manifest_without_filename,
               test_read_manifest_missing_or_corrupt_is_none,
               test_verify_download_detects_incomplete_sync,
               test_download_to_local_goes_to_local_not_onedrive,
               test_publish_rejects_bad_inputs,
               test_swap_script_contains_required_steps,
+              test_swap_script_avoids_console_and_locale_traps,
+              test_swap_script_is_cp949_and_keeps_korean_paths,
+              test_local_target_uses_new_version_name,
+              test_backup_name_is_ascii,
               test_is_frozen_false_in_dev]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
