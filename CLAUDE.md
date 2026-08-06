@@ -127,7 +127,7 @@ python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
-python3 tests/test_updater.py      # 17 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949)
+python3 tests/test_updater.py      # 18 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
@@ -251,8 +251,12 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 - **게시(개발자)**: ⋯파일 > `새 버전 배포…(개발자용)` — build_exe.bat 로 만든 exe 선택
   + 버전·변경내용 입력 → `{저장폴더}/프로그램/버전정보.json` +
   **`Camtek_AOI_Parameter_manage_v{버전}.exe`**(파일명에 버전 포함, 사용자 지정).
-  파일명이 매번 달라지므로 `publish` 가 게시 후 `prune_old_exes` 로 **구버전 exe 를
-  지운다**(누적 방지). 우리 게시물(`EXE_PREFIX`/구 고정명)만 지우고 남의 파일은 둔다.
+  파일명이 매번 달라지므로 `publish` 가 게시 후 `prune_old_exes` 로 정리하되
+  **최신 2개(신버전 + 직전 구버전)는 남긴다**(`KEEP_VERSIONS`) — 새 버전이 잘못되면
+  `프로그램/` 폴더의 구버전 exe 를 그대로 실행해 되돌릴 수 있어야 하기 때문.
+  '어느 것이 직전 버전인가'는 파일 시각이 아니라 **버전 번호**로 판단한다
+  (`version_of_filename` — OneDrive 동기화로 파일 시각은 뒤바뀔 수 있음).
+  우리 게시물(`EXE_PREFIX`/구 고정명)만 지우고 남의 파일은 둔다.
   업데이트하면 **로컬 exe 이름도 새 버전으로 바뀐다**(`local_target_path`) — 확인창에서
   이름 변경을 미리 알리고, 교체 스크립트가 구파일을 지운다(바로가기는 다시 만들어야 함).
 - **확인(전원)**: 시작 0.5초 후 조용히 확인(`_check_update_prompt(manual=False)`),

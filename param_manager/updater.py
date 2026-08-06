@@ -14,10 +14,13 @@ GitHub 직접 폴링/다운로드 방식도 검토했으나 기각했다:
 --------------------------------------
   {저장폴더}/프로그램/
     ├─ 버전정보.json                          버전·해시·크기·변경내용·게시자
-    └─ Camtek_AOI_Parameter_manage_v3.1.0.exe  **파일명에 버전 포함**(사용자 지정)
+    ├─ Camtek_AOI_Parameter_manage_v3.1.0.exe  최신(매니페스트가 가리키는 것)
+    └─ Camtek_AOI_Parameter_manage_v3.0.0.exe  **직전 버전 — 롤백용으로 남긴다**
 
-파일명에 버전이 들어가므로 게시할 때마다 새 파일이 생긴다. 그대로 두면 OneDrive 에
-구버전 exe 가 계속 쌓이므로, `publish()` 가 **게시 직후 이전 버전 exe 를 지운다**.
+파일명에 버전이 들어가므로 게시할 때마다 새 파일이 생긴다. 무한정 쌓이면 안 되지만
+새 버전에 문제가 생겼을 때 되돌릴 수 있어야 하므로, `publish()` 가 **최신 2개
+(신버전 + 직전 구버전)만 남기고** 그보다 오래된 것을 지운다(`KEEP_VERSIONS`).
+되돌릴 때는 `프로그램/` 폴더의 구버전 exe 를 그대로 실행하면 된다.
 
 실행 파일 교체 (로컬, 각 사용자 PC)
 ------------------------------------
@@ -67,6 +70,10 @@ LEGACY_EXE_NAME = "PI_Param_Manager.exe"
 BACKUP_SUFFIX = "_prev"
 # 로컬 임시 폴더 접두사도 ASCII.
 TEMP_PREFIX = "update"
+
+# 저장폴더에 남겨 둘 게시본 개수 — **신버전 + 직전 구버전 1개**(사용자 지정 2026-08).
+# 새 버전에 문제가 생기면 직전 버전으로 되돌려야 하므로 1개는 반드시 남긴다.
+KEEP_VERSIONS = 2
 
 
 def exe_filename(version: str) -> str:
@@ -220,8 +227,9 @@ def publish(save_dir: str, exe_path: str, version: str, changelog: str = "",
            user: str | None = None) -> ReleaseInfo:
     """새 exe 를 저장폴더(OneDrive)에 게시 — **파일명에 버전 포함** + 매니페스트 갱신.
 
-    파일명이 버전마다 달라지므로 게시할 때마다 새 파일이 생긴다. 그대로 두면
-    OneDrive 에 구버전이 계속 쌓이므로 **게시 성공 후 이전 exe 들을 지운다**.
+    파일명이 버전마다 달라지므로 게시할 때마다 새 파일이 생긴다. 무한정 쌓이면
+    안 되지만 **직전 버전 1개는 남긴다** — 새 버전에 문제가 생기면 되돌려야 하기
+    때문이다(항상 신버전 + 직전 구버전 = 2개 유지, `KEEP_VERSIONS`).
     매니페스트는 exe 를 다 쓴 뒤 마지막에 기록한다(중간에 실패하면 이전 매니페스트가
     그대로 남아, 사용자가 존재하지 않는 파일을 받으려다 실패하는 일이 없다).
     """
@@ -250,12 +258,42 @@ def publish(save_dir: str, exe_path: str, version: str, changelog: str = "",
     return release
 
 
-def prune_old_exes(save_dir: str, keep: str) -> list[str]:
-    """`프로그램/` 폴더에서 keep 을 뺀 우리 exe 들을 지운다. 반환: 지운 파일명."""
+def version_of_filename(name: str) -> tuple[int, ...]:
+    """게시 파일명에서 버전 튜플을 뽑는다. 구 고정 파일명은 가장 낮은 (0,).
+
+    정리할 때 '어느 것이 더 최신인가'를 파일 시각이 아니라 **버전 번호**로 판단한다
+    (OneDrive 동기화로 파일 시각은 뒤바뀔 수 있어 신뢰할 수 없다).
+    """
+    base = os.path.basename(str(name or ""))
+    stem = os.path.splitext(base)[0]
+    if stem.lower().startswith(EXE_PREFIX.lower()):
+        return parse_version(stem[len(EXE_PREFIX):])
+    return (0,)
+
+
+def _version_key(name: str) -> tuple:
+    """버전 내림차순 정렬용 키(길이 다른 버전도 안전하게 비교)."""
+    v = version_of_filename(name)
+    return v + (0,) * (8 - len(v)) if len(v) < 8 else v[:8]
+
+
+def prune_old_exes(save_dir: str, keep: str,
+                   keep_count: int = KEEP_VERSIONS) -> list[str]:
+    """구버전 exe 정리 — **최신 keep_count 개만 남긴다**(기본 2 = 신버전 + 직전).
+
+    keep(방금 게시한 파일)은 버전 번호와 무관하게 **항상** 남긴다. 나머지는 버전이
+    높은 순으로 남기고 그 아래를 지운다. 반환: 지운 파일명 목록.
+    """
     d = os.path.join(save_dir, PROGRAM_DIRNAME)
+    keep_lower = str(keep).lower()
+    others = [n for n in list_published_exes(save_dir) if n.lower() != keep_lower]
+    others.sort(key=_version_key, reverse=True)     # 최신 버전이 앞으로
+    survivors = others[: max(0, int(keep_count) - 1)]
+    survive_lower = {n.lower() for n in survivors}
+
     removed = []
-    for name in list_published_exes(save_dir):
-        if name.lower() == str(keep).lower():
+    for name in others:
+        if name.lower() in survive_lower:
             continue
         try:
             os.remove(os.path.join(d, name))

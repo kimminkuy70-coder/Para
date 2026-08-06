@@ -90,24 +90,45 @@ def test_publish_and_read_manifest_roundtrip():
     print("  게시(publish) → 매니페스트 왕복(버전 파일명 포함) OK")
 
 
-def test_publish_prunes_old_versions():
-    """파일명에 버전이 들어가면 게시할 때마다 새 파일이 생긴다 —
-    구버전을 지우지 않으면 OneDrive 에 계속 쌓인다."""
+def test_publish_keeps_two_versions_for_rollback():
+    """항상 **신버전 + 직전 구버전 2개**를 남긴다 — 새 버전이 잘못되면 되돌려야 한다.
+    그보다 오래된 것은 지워 무한정 쌓이지 않게 한다."""
     with tempfile.TemporaryDirectory() as save_dir, \
          tempfile.TemporaryDirectory() as build:
-        exe1 = _fake_exe(os.path.join(build, "a.exe"), b"v1" * 500)
-        exe2 = _fake_exe(os.path.join(build, "b.exe"), b"v2_bigger" * 500)
-        exe3 = _fake_exe(os.path.join(build, "c.exe"), b"v3_x" * 700)
-        U.publish(save_dir, exe1, "3.1.0")
-        U.publish(save_dir, exe2, "3.2.0")
-        U.publish(save_dir, exe3, "3.3.0")
+        for i, v in enumerate(["3.1.0", "3.2.0", "3.3.0", "3.4.0"]):
+            exe = _fake_exe(os.path.join(build, f"a{i}.exe"), b"v" * (500 + i))
+            U.publish(save_dir, exe, v)
         exes = U.list_published_exes(save_dir)
-        assert exes == ["Camtek_AOI_Parameter_manage_v3.3.0.exe"], exes
+        assert len(exes) == U.KEEP_VERSIONS == 2, exes
+        assert sorted(exes) == ["Camtek_AOI_Parameter_manage_v3.3.0.exe",
+                                "Camtek_AOI_Parameter_manage_v3.4.0.exe"], exes
         got = U.read_manifest(save_dir)
-        assert got.version == "3.3.0"
-        assert got.sha256 == U.file_sha256(exe3)
+        assert got.version == "3.4.0"
         assert os.path.isfile(U.published_exe_path(save_dir, got))
-    print("  재게시 시 구버전 exe 정리(누적 없음) OK")
+        # 롤백 후보(직전 버전)가 실제로 남아 있어야 한다
+        rollback = [n for n in exes if n != got.filename]
+        assert rollback == ["Camtek_AOI_Parameter_manage_v3.3.0.exe"], rollback
+        assert os.path.isfile(os.path.join(U.program_dir(save_dir), rollback[0]))
+    print("  게시 후 2개 유지(신버전 + 롤백용 직전 버전) OK")
+
+
+def test_prune_ranks_by_version_not_filetime():
+    """어느 것이 '직전 버전'인지는 **버전 번호**로 판단해야 한다.
+    OneDrive 동기화로 파일 시각은 뒤바뀔 수 있어 신뢰할 수 없고, 문자열 비교면
+    3.10.0 < 3.2.0 으로 잘못 판단한다."""
+    with tempfile.TemporaryDirectory() as save_dir, \
+         tempfile.TemporaryDirectory() as build:
+        # 일부러 뒤죽박죽 순서로 게시
+        for i, v in enumerate(["3.2.0", "3.10.0", "3.9.0"]):
+            U.publish(save_dir, _fake_exe(os.path.join(build, f"a{i}.exe"),
+                                          b"v" * (300 + i)), v)
+        # 마지막 게시는 3.9.0 → 그것 + 남은 것 중 최신 버전(3.10.0)이 남아야 한다
+        exes = sorted(U.list_published_exes(save_dir))
+        assert exes == ["Camtek_AOI_Parameter_manage_v3.10.0.exe",
+                        "Camtek_AOI_Parameter_manage_v3.9.0.exe"], exes
+        assert U.version_of_filename("Camtek_AOI_Parameter_manage_v3.10.0.exe") \
+            > U.version_of_filename("Camtek_AOI_Parameter_manage_v3.2.0.exe")
+    print("  정리 우선순위 = 버전 번호(3.10 > 3.2) OK")
 
 
 def test_prune_keeps_unrelated_files():
@@ -321,7 +342,8 @@ if __name__ == "__main__":
     for t in [test_parse_version_variants, test_is_newer_handles_uneven_length,
               test_exe_filename_includes_version,
               test_publish_and_read_manifest_roundtrip,
-              test_publish_prunes_old_versions,
+              test_publish_keeps_two_versions_for_rollback,
+              test_prune_ranks_by_version_not_filetime,
               test_prune_keeps_unrelated_files,
               test_legacy_manifest_without_filename,
               test_read_manifest_missing_or_corrupt_is_none,
