@@ -4910,6 +4910,10 @@ class EquipApp(tk.Tk):
                                f"{'  · ' + cur.published_by if cur.published_by else ''}",
                      bg=self.p["bg"], fg=self.p["muted"],
                      font=self.fonts["sub"]).pack(anchor="w", padx=16)
+        # 게시 폴더는 저장폴더 '옆'(형제)에 만들어진다 — 어디에 올라가는지 명시
+        tk.Label(win, text=f"게시 폴더: {updater.resolve_program_dir(self.save_dir)}",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=520).pack(anchor="w", padx=16)
 
         body = tk.Frame(win, bg=self.p["bg"])
         body.pack(fill="x", padx=16, pady=10)

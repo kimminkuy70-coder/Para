@@ -12,10 +12,17 @@ GitHub 직접 폴링/다운로드 방식도 검토했으나 기각했다:
 
 폴더 구조 (저장폴더 = OneDrive, 공유)
 --------------------------------------
-  {저장폴더}/프로그램/
-    ├─ 버전정보.json                          버전·해시·크기·변경내용·게시자
-    ├─ Camtek_AOI_Parameter_manage_v3.1.0.exe  최신(매니페스트가 가리키는 것)
-    └─ Camtek_AOI_Parameter_manage_v3.0.0.exe  **직전 버전 — 롤백용으로 남긴다**
+  {저장폴더의 부모}/
+    ├─ {저장폴더}/            예: docs — 참고자료·양식·취합 등 데이터
+    └─ 프로그램/              **저장폴더 안이 아니라 옆**(형제 폴더)
+        ├─ 버전정보.json                          버전·해시·크기·변경내용·게시자
+        ├─ Camtek_AOI_Parameter_manage_v3.1.0.exe  최신(매니페스트가 가리키는 것)
+        └─ Camtek_AOI_Parameter_manage_v3.0.0.exe  **직전 버전 — 롤백용으로 남긴다**
+
+배포 폴더를 저장폴더 '옆'에 두는 이유: 저장폴더를 `…\docs` 같은 문서용 하위
+폴더로 지정해 쓰는 경우가 있어, 안쪽에 만들면 배포 exe 가 문서 폴더에 묻힌다
+(2026-08 사용자 지정). 부모 폴더를 못 쓰거나 이미 저장폴더 안에 게시본이 있으면
+예전처럼 저장폴더 안을 쓴다 — `resolve_program_dir` 참고.
 
 파일명에 버전이 들어가므로 게시할 때마다 새 파일이 생긴다. 무한정 쌓이면 안 되지만
 새 버전에 문제가 생겼을 때 되돌릴 수 있어야 하므로, `publish()` 가 **최신 2개
@@ -133,24 +140,106 @@ class ReleaseInfo:
 # --------------------------------------------------------------------------
 # 경로
 # --------------------------------------------------------------------------
+def _has_published_content(d: str) -> bool:
+    """이미 게시본(매니페스트나 우리 exe)이 들어 있는 폴더인가."""
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return False
+    return MANIFEST_NAME in names or any(is_published_exe(n) for n in names)
+
+
+def legacy_program_dir(save_dir: str) -> str:
+    """구 위치 — 저장폴더 **안**. 예전에 게시한 것을 계속 읽기 위해서만 쓴다."""
+    return os.path.join(os.path.abspath(str(save_dir or ".")), PROGRAM_DIRNAME)
+
+
+def resolve_program_dir(save_dir: str) -> str:
+    """게시 폴더(정식 위치) 경로 — **만들지는 않는다**(읽기에서 빈 폴더 방지).
+
+    배포용 exe 는 저장폴더 '안'이 아니라 **'옆'(형제 폴더)** 에 둔다. 저장폴더를
+    `…\\docs` 처럼 문서용 하위 폴더로 지정해 쓰기 때문에, 안쪽에 만들면 배포
+    폴더가 문서 폴더에 묻힌다(2026-08 사용자 지정 — "프로그램 폴더가 docs 안에
+    있는데 docs 와 같은 위치에 있도록").
+
+    형제 폴더를 쓸 수 없을 때(저장폴더가 드라이브 루트 / 부모 폴더가 실재하지
+    않음)만 예전처럼 저장폴더 안을 쓴다.
+    """
+    base = os.path.abspath(str(save_dir or "."))
+    parent = os.path.dirname(base)
+    if not parent or parent == base or not os.path.isdir(parent):
+        return os.path.join(base, PROGRAM_DIRNAME)
+    return os.path.join(parent, PROGRAM_DIRNAME)
+
+
+def active_program_dir(save_dir: str) -> str:
+    """**읽을** 게시 폴더 — 정식 위치(형제) 우선, 없으면 구 위치(저장폴더 안).
+
+    새 위치로 바꾸기 전에 게시된 버전이 갑자기 안 보이면 안 되므로, 아직
+    다시 게시하지 않은 동안에는 구 위치의 게시본을 그대로 읽는다.
+    """
+    canon = resolve_program_dir(save_dir)
+    legacy = legacy_program_dir(save_dir)
+    if canon != legacy and not _has_published_content(canon) \
+            and _has_published_content(legacy):
+        return legacy
+    return canon
+
+
 def program_dir(save_dir: str) -> str:
-    d = os.path.join(save_dir, PROGRAM_DIRNAME)
-    os.makedirs(d, exist_ok=True)
+    """게시 폴더(없으면 생성). 만들 수 없으면 저장폴더 안으로 물러난다 —
+    부모 폴더에 쓰기 권한이 없어 게시 자체가 실패하는 일은 없어야 한다."""
+    d = resolve_program_dir(save_dir)
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        d = legacy_program_dir(save_dir)
+        os.makedirs(d, exist_ok=True)
     return d
 
 
+def migrate_legacy_program_dir(save_dir: str) -> list[str]:
+    """구 위치(저장폴더 안)의 게시물을 정식 위치(형제)로 옮긴다. 반환: 옮긴 파일명.
+
+    게시할 때 한 번 부르면 배포물이 두 곳에 나뉘어 남지 않는다. 실패해도 게시
+    자체는 계속돼야 하므로 예외를 밖으로 내보내지 않는다(옮기지 못한 건 그대로 둠).
+    """
+    legacy = legacy_program_dir(save_dir)
+    dest = resolve_program_dir(save_dir)
+    if legacy == dest or not _has_published_content(legacy):
+        return []
+    moved: list[str] = []
+    try:
+        os.makedirs(dest, exist_ok=True)
+        names = [n for n in os.listdir(legacy)
+                 if n == MANIFEST_NAME or is_published_exe(n)]
+    except OSError:
+        return []
+    for name in names:
+        try:
+            shutil.move(os.path.join(legacy, name), os.path.join(dest, name))
+            moved.append(name)
+        except (OSError, shutil.Error):
+            continue                       # 남의 파일이 잠겨 있어도 게시는 계속
+    try:
+        os.rmdir(legacy)                   # 비었을 때만 지워진다(남의 파일 보존)
+    except OSError:
+        pass
+    return moved
+
+
 def manifest_path(save_dir: str) -> str:
-    return os.path.join(program_dir(save_dir), MANIFEST_NAME)
+    return os.path.join(active_program_dir(save_dir), MANIFEST_NAME)
 
 
 def published_exe_path(save_dir: str, release: ReleaseInfo) -> str:
     """게시된 exe 의 경로. 파일명이 버전마다 다르므로 release 가 반드시 필요하다."""
-    return os.path.join(program_dir(save_dir), release.filename)
+    return os.path.join(active_program_dir(save_dir), release.filename)
 
 
 def list_published_exes(save_dir: str) -> list[str]:
     """`프로그램/` 폴더에 있는 우리 exe 파일명 목록(정리 대상 확인용)."""
-    d = os.path.join(save_dir, PROGRAM_DIRNAME)
+    d = active_program_dir(save_dir)
     if not os.path.isdir(d):
         return []
     return sorted(n for n in os.listdir(d) if is_published_exe(n))
@@ -240,6 +329,8 @@ def publish(save_dir: str, exe_path: str, version: str, changelog: str = "",
 
     version = str(version).strip()
     filename = exe_filename(version)
+    # 구 위치(저장폴더 안)에 남아 있던 게시물은 정식 위치로 옮겨 한 곳에 모은다
+    migrate_legacy_program_dir(save_dir)
     dest = os.path.join(program_dir(save_dir), filename)
     tmp = dest + ".tmp"
     shutil.copy2(exe_path, tmp)
@@ -284,7 +375,7 @@ def prune_old_exes(save_dir: str, keep: str,
     keep(방금 게시한 파일)은 버전 번호와 무관하게 **항상** 남긴다. 나머지는 버전이
     높은 순으로 남기고 그 아래를 지운다. 반환: 지운 파일명 목록.
     """
-    d = os.path.join(save_dir, PROGRAM_DIRNAME)
+    d = active_program_dir(save_dir)
     keep_lower = str(keep).lower()
     others = [n for n in list_published_exes(save_dir) if n.lower() != keep_lower]
     others.sort(key=_version_key, reverse=True)     # 최신 버전이 앞으로

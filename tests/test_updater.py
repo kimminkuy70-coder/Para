@@ -4,6 +4,7 @@ Windows 전용 .bat 실제 실행은 이 환경(Linux)에서 검증 불가 — �
 확인한다. 실기 실행 검증은 Windows 필요.
 """
 
+import contextlib
 import os
 import sys
 import tempfile
@@ -34,6 +35,19 @@ def _fake_exe(path, content=b"FAKE_EXE_BYTES_" * 100):
     with open(path, "wb") as fh:
         fh.write(content)
     return path
+
+
+@contextlib.contextmanager
+def _save_tree(name="docs"):
+    """저장폴더를 **하위 폴더로** 만든다 — 실제 배치(`…\\docs`)와 같게.
+
+    게시 폴더(`프로그램/`)는 저장폴더 옆(형제)에 생기므로, 저장폴더가 임시폴더
+    최상단이면 게시본이 임시폴더 **밖**으로 나가 테스트끼리 섞인다.
+    """
+    with tempfile.TemporaryDirectory() as root:
+        d = os.path.join(root, name)
+        os.makedirs(d)
+        yield d
 
 
 # --------------------------------------------------------------------------
@@ -71,7 +85,7 @@ def test_exe_filename_includes_version():
 
 
 def test_publish_and_read_manifest_roundtrip():
-    with tempfile.TemporaryDirectory() as save_dir, \
+    with _save_tree() as save_dir, \
          tempfile.TemporaryDirectory() as build:
         exe = _fake_exe(os.path.join(build, "app.exe"))
         rel = U.publish(save_dir, exe, "3.1.0", changelog="감시 폴더 지정 추가",
@@ -93,7 +107,7 @@ def test_publish_and_read_manifest_roundtrip():
 def test_publish_keeps_two_versions_for_rollback():
     """항상 **신버전 + 직전 구버전 2개**를 남긴다 — 새 버전이 잘못되면 되돌려야 한다.
     그보다 오래된 것은 지워 무한정 쌓이지 않게 한다."""
-    with tempfile.TemporaryDirectory() as save_dir, \
+    with _save_tree() as save_dir, \
          tempfile.TemporaryDirectory() as build:
         for i, v in enumerate(["3.1.0", "3.2.0", "3.3.0", "3.4.0"]):
             exe = _fake_exe(os.path.join(build, f"a{i}.exe"), b"v" * (500 + i))
@@ -116,7 +130,7 @@ def test_prune_ranks_by_version_not_filetime():
     """어느 것이 '직전 버전'인지는 **버전 번호**로 판단해야 한다.
     OneDrive 동기화로 파일 시각은 뒤바뀔 수 있어 신뢰할 수 없고, 문자열 비교면
     3.10.0 < 3.2.0 으로 잘못 판단한다."""
-    with tempfile.TemporaryDirectory() as save_dir, \
+    with _save_tree() as save_dir, \
          tempfile.TemporaryDirectory() as build:
         # 일부러 뒤죽박죽 순서로 게시
         for i, v in enumerate(["3.2.0", "3.10.0", "3.9.0"]):
@@ -133,7 +147,7 @@ def test_prune_ranks_by_version_not_filetime():
 
 def test_prune_keeps_unrelated_files():
     """`프로그램/` 폴더의 남의 파일까지 지우면 안 된다."""
-    with tempfile.TemporaryDirectory() as save_dir, \
+    with _save_tree() as save_dir, \
          tempfile.TemporaryDirectory() as build:
         prog = U.program_dir(save_dir)
         other = os.path.join(prog, "사용설명서.pdf")
@@ -151,7 +165,7 @@ def test_prune_keeps_unrelated_files():
 def test_legacy_manifest_without_filename():
     """구 버전(고정 파일명 시절) 매니페스트도 계속 읽혀야 한다."""
     import json
-    with tempfile.TemporaryDirectory() as save_dir:
+    with _save_tree() as save_dir:
         os.makedirs(U.program_dir(save_dir), exist_ok=True)
         with open(U.manifest_path(save_dir), "w", encoding="utf-8") as fh:
             json.dump({"version": "3.0.0", "sha256": "ab" * 32, "size": 123}, fh)
@@ -162,7 +176,7 @@ def test_legacy_manifest_without_filename():
 
 
 def test_read_manifest_missing_or_corrupt_is_none():
-    with tempfile.TemporaryDirectory() as save_dir:
+    with _save_tree() as save_dir:
         assert U.read_manifest(save_dir) is None          # 아예 없음
         os.makedirs(U.program_dir(save_dir), exist_ok=True)
         with open(U.manifest_path(save_dir), "w", encoding="utf-8") as fh:
@@ -176,7 +190,7 @@ def test_read_manifest_missing_or_corrupt_is_none():
 
 def test_verify_download_detects_incomplete_sync():
     """OneDrive 동기화가 덜 끝난(잘린) 파일을 그대로 쓰면 안 된다."""
-    with tempfile.TemporaryDirectory() as save_dir, \
+    with _save_tree() as save_dir, \
          tempfile.TemporaryDirectory() as build, \
          tempfile.TemporaryDirectory() as local:
         exe = _fake_exe(os.path.join(build, "app.exe"))
@@ -202,7 +216,7 @@ def test_verify_download_detects_incomplete_sync():
 
 
 def test_download_to_local_goes_to_local_not_onedrive():
-    with tempfile.TemporaryDirectory() as save_dir, \
+    with _save_tree() as save_dir, \
          tempfile.TemporaryDirectory() as build, \
          tempfile.TemporaryDirectory() as local:
         exe = _fake_exe(os.path.join(build, "app.exe"))
@@ -216,7 +230,7 @@ def test_download_to_local_goes_to_local_not_onedrive():
 
 
 def test_publish_rejects_bad_inputs():
-    with tempfile.TemporaryDirectory() as save_dir:
+    with _save_tree() as save_dir:
         try:
             U.publish(save_dir, "/없는/경로/x.exe", "3.1.0")
             assert False, "없는 파일인데 예외가 안 남"
@@ -338,6 +352,68 @@ def test_is_frozen_false_in_dev():
     print("  소스 실행 시 is_frozen()=False OK")
 
 
+def test_program_dir_is_sibling_of_save_dir():
+    """게시 폴더는 저장폴더 **옆**(형제). 저장폴더를 `…\\docs` 로 지정해도
+    배포 exe 가 문서 폴더 안에 묻히면 안 된다(2026-08 사용자 지정)."""
+    with tempfile.TemporaryDirectory() as root, \
+         tempfile.TemporaryDirectory() as build:
+        save_dir = os.path.join(root, "docs")
+        os.makedirs(save_dir)
+        assert U.resolve_program_dir(save_dir) == \
+            os.path.join(root, U.PROGRAM_DIRNAME)
+        rel = U.publish(save_dir, _fake_exe(os.path.join(build, "a.exe")), "3.1.0")
+        # 실제 게시물도 docs 안이 아니라 docs 옆에 있어야 한다
+        assert os.path.isfile(os.path.join(root, U.PROGRAM_DIRNAME, rel.filename))
+        assert not os.path.exists(os.path.join(save_dir, U.PROGRAM_DIRNAME)), \
+            "저장폴더(docs) 안에는 만들지 않는다"
+        assert U.read_manifest(save_dir).version == "3.1.0"
+        assert U.list_published_exes(save_dir) == [rel.filename]
+    print("  게시 폴더 = 저장폴더의 형제(docs 옆) OK")
+
+
+def test_old_inside_publish_still_readable_then_migrated():
+    """구 위치(저장폴더 안)에 게시된 버전은 **계속 읽히고**, 다시 게시하면
+    정식 위치(형제)로 옮겨져 배포물이 두 곳에 나뉘지 않아야 한다."""
+    import json
+    with tempfile.TemporaryDirectory() as root, \
+         tempfile.TemporaryDirectory() as build:
+        save_dir = os.path.join(root, "docs")
+        inside = os.path.join(save_dir, U.PROGRAM_DIRNAME)
+        os.makedirs(inside)
+        old_exe = os.path.join(inside, U.exe_filename("3.0.0"))
+        _fake_exe(old_exe, b"old" * 50)
+        with open(os.path.join(inside, U.MANIFEST_NAME), "w", encoding="utf-8") as fh:
+            json.dump({"version": "3.0.0", "filename": os.path.basename(old_exe),
+                       "sha256": U.file_sha256(old_exe),
+                       "size": os.path.getsize(old_exe)}, fh)
+        # ① 아직 새 위치에 게시본이 없으므로 구 위치를 읽는다
+        assert U.active_program_dir(save_dir) == inside
+        got = U.read_manifest(save_dir)
+        assert got.version == "3.0.0" and os.path.isfile(
+            U.published_exe_path(save_dir, got))
+
+        # ② 새로 게시하면 구버전까지 형제 폴더로 옮겨진다
+        U.publish(save_dir, _fake_exe(os.path.join(build, "a.exe")), "3.1.0")
+        canon = os.path.join(root, U.PROGRAM_DIRNAME)
+        assert U.active_program_dir(save_dir) == canon
+        assert sorted(U.list_published_exes(save_dir)) == [
+            U.exe_filename("3.0.0"), U.exe_filename("3.1.0")], \
+            "롤백용 구버전도 새 폴더로 따라와야 한다"
+        assert not os.path.exists(inside), "구 폴더는 비워져 사라진다"
+    print("  구 위치 게시본 읽기 → 재게시 시 형제 폴더로 이동 OK")
+
+
+def test_program_dir_falls_back_when_no_parent():
+    """부모 폴더를 쓸 수 없으면(루트 등) 예전처럼 저장폴더 안에 만든다."""
+    root = os.path.abspath(os.sep)
+    assert U.resolve_program_dir(root) == os.path.join(root, U.PROGRAM_DIRNAME)
+    with tempfile.TemporaryDirectory() as tmp:
+        missing = os.path.join(tmp, "없는폴더", "저장")
+        assert U.resolve_program_dir(missing) == \
+            os.path.join(missing, U.PROGRAM_DIRNAME)
+    print("  부모 폴더 없음 → 저장폴더 안으로 폴백 OK")
+
+
 if __name__ == "__main__":
     for t in [test_parse_version_variants, test_is_newer_handles_uneven_length,
               test_exe_filename_includes_version,
@@ -355,7 +431,10 @@ if __name__ == "__main__":
               test_swap_script_is_cp949_and_keeps_korean_paths,
               test_local_target_uses_new_version_name,
               test_backup_name_is_ascii,
-              test_is_frozen_false_in_dev]:
+              test_is_frozen_false_in_dev,
+              test_program_dir_is_sibling_of_save_dir,
+              test_old_inside_publish_still_readable_then_migrated,
+              test_program_dir_falls_back_when_no_parent]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)
