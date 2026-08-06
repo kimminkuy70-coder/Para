@@ -75,9 +75,40 @@ def test_menu_command_ids_are_distinct():
     print("  트레이 메뉴 명령 ID 분리 OK")
 
 
+def test_single_instance_is_noop_off_windows():
+    """중복 실행 방지 — 비Windows 에서는 항상 획득 성공(앱을 막지 않는다)."""
+    from param_manager import singleinst
+    g = singleinst.SingleInstance("Local\\CamtekAOI_test")
+    assert g.acquire() is True
+    g.release()
+    g.release()                                   # 중복 해제도 안전
+    assert singleinst.activate_existing("없는 창") is False
+    assert singleinst.available() == (os.name == "nt")
+    print("  중복 실행 방지: 비Windows 안전 no-op OK")
+
+
+def test_main_guards_second_instance():
+    """트레이 상주 중에 아이콘을 다시 눌러도 창이 2개 열리면 안 된다 —
+    main() 이 단일 인스턴스를 확인하고 기존 창을 살리는 구조여야 한다."""
+    import re
+    src = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "param_manager", "equip_app.py"),
+        encoding="utf-8").read()
+    m = re.search(r"\ndef main\(\):.*", src, re.S)
+    assert m, "main() 을 찾지 못함"
+    body = m.group(0)
+    assert "singleinst.SingleInstance" in body, "중복 실행 검사가 없음"
+    assert "activate_existing" in body, "기존 창을 살리지 않음"
+    assert body.index("acquire") < body.index("EquipApp()"), \
+        "창을 만들기 전에 검사해야 함"
+    print("  main(): 두 번째 인스턴스 차단 + 기존 창 복원 OK")
+
+
 if __name__ == "__main__":
     for t in [test_stay_resident_rule, test_available_matches_platform,
-              test_icon_is_safe_noop_off_windows, test_menu_command_ids_are_distinct]:
+              test_icon_is_safe_noop_off_windows, test_menu_command_ids_are_distinct,
+              test_single_instance_is_noop_off_windows,
+              test_main_guards_second_instance]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

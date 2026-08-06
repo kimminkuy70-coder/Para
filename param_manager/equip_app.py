@@ -42,6 +42,7 @@ from . import ini_parser
 from . import localdirs
 from . import locking
 from . import refdata
+from . import singleinst
 from . import refresh as refresh_mod
 from . import rtp_parser as rtp
 from . import tray
@@ -76,6 +77,9 @@ def save_config(cfg: dict) -> None:
 
 
 
+# 창 제목 — 중복 실행 시 기존 창을 찾는 데 쓰므로 실행 중에 바꾸지 않는다.
+APP_TITLE = "Camtek AOI 장비 파라미터 관리"
+
 # 무인 수집에서 장비(관리공유 c$) 사이에 두는 간격(초).
 # 여러 장비를 몇 초 안에 연달아 접속하면 보안 모니터링이 '측면 이동 스캔'으로
 # 탐지한다. 6시간 주기 작업이라 장비당 몇 초 늘어나는 것은 문제가 되지 않는다.
@@ -97,7 +101,7 @@ def _sanitize_name(s: str) -> str:
 class EquipApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Camtek AOI 장비 파라미터 관리")
+        self.title(APP_TITLE)
         self.geometry("1400x860")
         self.minsize(1080, 680)
         self._set_window_icon()
@@ -4929,6 +4933,23 @@ class EquipApp(tk.Tk):
             return
         if not manual and self._cfg.get("update_skip_version") == release.version:
             return                             # 이 버전은 '나중에' 선택함 — 다시 안 물음
+        if self._cfg.get("update_applied_version") == release.version:
+            # 이 버전으로 이미 업데이트를 적용했는데 실행 중인 버전이 그대로다.
+            # (교체가 실패했거나, 게시된 exe 안의 버전 번호가 올라가지 않은 경우)
+            # 시작할 때마다 물으면 무한 반복이므로 자동 알림은 멈춘다.
+            msg = (f"이미 {release.version} 로 업데이트를 시도했지만 실행 중인 "
+                   f"버전은 {__version__} 입니다.\n"
+                   "구 버전 실행파일을 실행하고 있거나(바로가기 확인), 게시된 "
+                   "파일의 버전이 올라가지 않았을 수 있습니다.")
+            if not manual:
+                self._set_status(
+                    f"업데이트가 적용되지 않았습니다 — 게시 {release.version} / "
+                    f"실행 {__version__} (⋯파일 > 지금 업데이트 확인)", warn=True)
+                return
+            # 수동 확인이면 상황을 알려 주고 **다시 시도할 기회는 준다**
+            if not messagebox.askyesno("업데이트 확인",
+                                       msg + "\n\n다시 시도할까요?"):
+                return
         if getattr(self, "_watch_busy", False):
             # 업데이트는 앱을 종료시키므로 수집 도중에 하면 그 회차가 통째로 날아간다.
             # 다음 시작(또는 수동 확인) 때 다시 묻는다.
@@ -5027,6 +5048,11 @@ class EquipApp(tk.Tk):
             except Exception as e:  # noqa: BLE001
                 self._err("E168", "업데이트 실행 실패", e)
                 return
+            # 적용 시도를 기록 — 재시작 후에도 버전이 그대로면(교체 실패/버전 미갱신)
+            # 시작할 때마다 다시 묻지 않기 위해서다.
+            self._cfg["update_applied_version"] = release.version
+            self._cfg.pop("update_skip_version", None)
+            save_config(self._cfg)
             self.after(300, self._shutdown)   # 교체 스크립트가 내 종료를 기다림
 
         self._run_busy(f"업데이트 확인 중… ({release.version})", work, done)
@@ -6851,7 +6877,26 @@ class EquipApp(tk.Tk):
 
 
 def main():
+    # 중복 실행 방지 — 자동 감시로 트레이에 숨어 있는 인스턴스가 있으면 그 창을
+    # 다시 띄우고 이 프로세스는 조용히 끝낸다(창이 2개 열리는 증상 방지).
+    # 업데이트 직후에는 구 프로세스가 사라지는 데 잠깐 걸리므로 그동안 기다린다.
+    guard = singleinst.SingleInstance()
+    if not guard.acquire(wait_sec=singleinst.WAIT_FOR_PREVIOUS_SEC):
+        if not singleinst.activate_existing(APP_TITLE):
+            try:
+                from tkinter import messagebox as _mb
+                import tkinter as _tk
+                _r = _tk.Tk()
+                _r.withdraw()
+                _mb.showinfo("이미 실행 중",
+                             "프로그램이 이미 실행 중입니다.\n"
+                             "숨겨진 아이콘 표시(트레이)에서 아이콘을 눌러 여세요.")
+                _r.destroy()
+            except Exception:  # noqa: BLE001
+                pass
+        return
     app = EquipApp()
+    app._singleton = guard          # 프로세스가 살아 있는 동안 핸들 유지
     app.mainloop()
 
 

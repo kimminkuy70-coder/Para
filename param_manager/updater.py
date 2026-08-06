@@ -47,8 +47,13 @@ GitHub 직접 폴링/다운로드 방식도 검토했으나 기각했다:
   · **`timeout` 금지**: detached(콘솔 없음)로 실행하면 `timeout` 은 입력 핸들이 없어
     "Input redirection is not supported" 로 즉시 실패한다. → `ping` 으로 대기한다.
   · **PID 문자열 매칭 금지**: `tasklist | find "1234"` 는 메모리 사용량 열(예 "1,234 K")
-    에도 걸려 영원히 대기할 수 있다. → **복사 재시도**를 주 종료판정으로 쓴다
-    (파일 잠금이 풀렸다 = 프로세스가 끝났다). 로케일·PID 오탐과 무관하다.
+    에도 걸려 영원히 대기할 수 있다. → **파일 잠금**으로 종료를 판정한다.
+  · **종료 판정은 반드시 '구 exe 삭제'로**(2026-08 실사고): 파일명에 버전이 들어가
+    새 이름은 아무도 잠그고 있지 않으므로 `copy → 새이름` 은 앱이 켜져 있어도 즉시
+    성공한다. 그걸 종료 판정으로 쓰면 **앱이 살아 있는 채로 새 프로그램이 떠서
+    2개가 동시에 실행**되고, 실행 중이라 지워지지 않은 구 exe 가 남아 다음 실행 때
+    또 업데이트 알림이 뜬다. 실행 중인 exe 는 삭제가 불가능하므로
+    `del /q "%OLD%"` 성공 = 종료 완료다.
   · **실패 시 원상복구**: 교체가 끝내 실패하면 **기존 exe 를 다시 실행**해 준다.
     그러지 않으면 사용자는 아무것도 실행되지 않은 채 남는다.
 """
@@ -486,10 +491,6 @@ def build_swap_script(local_dir: str, pid: int, current_exe: str, new_exe: str,
     d = localdirs.temp_dir(local_dir)
     script = os.path.join(d, "para_update.bat")
     target = target_exe or current_exe
-    same = os.path.normcase(os.path.abspath(target)) == \
-        os.path.normcase(os.path.abspath(current_exe))
-    # 파일명이 바뀌는 경우에만 구 exe 삭제(같은 이름이면 이미 덮어썼다)
-    del_old = "" if same else 'if exist "%OLD%" del /q "%OLD%" >nul 2>&1\n'
     # 주석은 **영문(ASCII)만** — 한글을 넣으면 cp949 에 없는 문자 하나(예: em-dash)
     # 때문에 파일 전체가 UTF-8 로 물러나 경로의 한글이 깨진다. 설명은 이 docstring 에.
     # (기존 build_exe.bat 도 같은 이유로 All-ASCII 를 지킨다.)
@@ -502,7 +503,7 @@ def build_swap_script(local_dir: str, pid: int, current_exe: str, new_exe: str,
               f'set "NEW={new_exe}"\r\n'
               f'set "BACKUP={backup_path}"\r\n'
               f'set "TARGET={target}"\r\n')
-    body = f'''
+    body = '''
 rem Give the app a moment to close. ping is used instead of timeout because
 rem timeout needs a console and this script runs detached.
 ping -n 3 127.0.0.1 >nul 2>&1
@@ -510,24 +511,37 @@ ping -n 3 127.0.0.1 >nul 2>&1
 rem Keep exactly one rollback backup (never accumulates).
 if exist "%OLD%" copy /y "%OLD%" "%BACKUP%" >nul 2>&1
 
-rem The copy itself is the exit check: while the app still runs the file stays
-rem locked and the copy fails, so we retry. No PID string matching (locale safe).
+rem Wait until the old program has REALLY exited. Windows cannot delete a
+rem running exe, so a successful delete is the exit check (locale safe, no PID
+rem string matching). We must test the OLD file: the new file name contains the
+rem version, so copying to the new name would succeed even while the app runs -
+rem that used to start a second copy and leave the old exe behind.
 set RETRY=0
-:copyloop
-copy /y "%NEW%" "%TARGET%" >nul 2>&1
-if not errorlevel 1 goto copied
+:waitloop
+if not exist "%OLD%" goto gone
+del /q "%OLD%" >nul 2>&1
+if not exist "%OLD%" goto gone
 set /a RETRY+=1
 if %RETRY% LSS 60 (
     ping -n 2 127.0.0.1 >nul 2>&1
-    goto copyloop
+    goto waitloop
 )
 
-rem Update failed: bring the old program back so the user is not left with nothing.
-if exist "%OLD%" start "" "%OLD%"
+rem Still running after about two minutes: leave everything as it was.
+start "" "%OLD%"
 goto done
 
-:copied
-{del_old}start "" "%TARGET%"
+:gone
+copy /y "%NEW%" "%TARGET%" >nul 2>&1
+if errorlevel 1 goto failed
+start "" "%TARGET%"
+goto done
+
+:failed
+rem The old exe is already gone, so put it back from the backup - the user must
+rem never be left without a working program.
+if exist "%BACKUP%" copy /y "%BACKUP%" "%OLD%" >nul 2>&1
+if exist "%OLD%" start "" "%OLD%"
 
 :done
 (goto) 2>nul & del "%~f0"

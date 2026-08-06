@@ -300,7 +300,7 @@ def test_swap_script_avoids_console_and_locale_traps():
         assert not [c for c in cmds if "tasklist" in c.lower()], \
             "PID 문자열 매칭은 오탐 위험"
         joined = "\n".join(cmds)
-        assert "goto copyloop" in joined, "복사 재시도(=종료 판정) 필요"
+        assert "goto waitloop" in joined, "종료 대기 재시도 필요"
         assert 'if exist "%OLD%" start "" "%OLD%"' in joined, \
             "실패 시 기존 exe 복구 필요"
     print("  detached/로케일 함정 회피(ping·복사재시도·실패복구) OK")
@@ -325,6 +325,36 @@ def test_swap_script_is_cp949_and_keeps_korean_paths():
             if not line.startswith("set "):   # set 줄에는 사용자 경로가 들어감
                 assert line.isascii(), f"명령 줄에 비ASCII: {line!r}"
     print("  bat 인코딩 cp949 + 한글 경로 보존 + 문구 ASCII OK")
+
+
+def test_swap_waits_on_old_exe_not_new_name():
+    """**이름이 바뀌는 업데이트에서 종료 대기가 실제로 동작해야 한다.**
+
+    새 파일명은 아무도 잠그고 있지 않아 `copy → 새이름` 은 앱이 켜져 있어도
+    즉시 성공한다. 그걸 종료 판정으로 쓰면 앱이 살아 있는 채로 새 프로그램이
+    떠서 **2개가 동시에 실행**되고, 실행 중인 구 exe 는 지워지지 않아 다음
+    실행 때 또 업데이트 알림이 뜬다(실제 발생한 버그).
+    → 대기는 반드시 **구 exe 삭제 성공** 여부로 판정한다(실행 중이면 못 지움).
+    """
+    with tempfile.TemporaryDirectory() as local:
+        script = U.build_swap_script(
+            local, pid=1, current_exe=r"C:\A\a_v3.0.0.exe",
+            new_exe=os.path.join(local, "n.exe"),
+            backup_path=os.path.join(local, "b_prev.exe"),
+            target_exe=r"C:\A\a_v3.1.0.exe")
+        body = _script_body(script)
+        cmds = _commands(body)
+        wait = body[body.index(":waitloop"):body.index(":gone")]
+        assert 'del /q "%OLD%"' in wait, "구 exe 삭제로 종료를 판정해야 함"
+        assert '"%TARGET%"' not in wait, \
+            "새 이름 복사는 앱이 켜져 있어도 성공한다 — 종료 판정에 쓰면 안 됨"
+        # 새 exe 복사·실행은 구 exe 가 사라진 뒤에만
+        gone = body[body.index(":gone"):]
+        assert 'copy /y "%NEW%" "%TARGET%"' in gone
+        assert gone.index('copy /y "%NEW%" "%TARGET%"') < gone.index('start "" "%TARGET%"')
+        assert "\n".join(cmds).count('start "" "%TARGET%"') == 1, \
+            "새 프로그램은 한 번만 실행"
+    print("  종료 대기 = 구 exe 삭제(이름 바뀌어도 유효) OK")
 
 
 def test_local_target_uses_new_version_name():
@@ -452,6 +482,7 @@ if __name__ == "__main__":
               test_swap_script_contains_required_steps,
               test_swap_script_avoids_console_and_locale_traps,
               test_swap_script_is_cp949_and_keeps_korean_paths,
+              test_swap_waits_on_old_exe_not_new_name,
               test_local_target_uses_new_version_name,
               test_backup_name_is_ascii,
               test_is_frozen_false_in_dev,
