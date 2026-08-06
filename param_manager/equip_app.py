@@ -44,6 +44,8 @@ from . import refdata
 from . import refresh as refresh_mod
 from . import rtp_parser as rtp
 from . import tray
+from . import __version__
+from . import updater
 from . import watcher
 from . import workdirs
 from .engine import ParamRepository
@@ -1620,6 +1622,10 @@ class EquipApp(tk.Tk):
         m.add_command(label="로컬 작업 폴더…", command=self._local_dir_dialog)
         m.add_separator()
         m.add_command(label="현재 접속자 보기…", command=self._show_sessions)
+        m.add_separator()
+        m.add_command(label="지금 업데이트 확인…",
+                      command=lambda: self._check_update_prompt(manual=True))
+        m.add_command(label="새 버전 배포…(개발자용)", command=self._publish_update_dialog)
         m.add_separator()
         m.add_command(label="장비 폴더에서 파라미터 다운로드…", command=self._download_dialog)
         try:
@@ -4642,6 +4648,7 @@ class EquipApp(tk.Tk):
         self._load_refdata()
         self._load_latest_collate()
         self._render()
+        self.after(500, lambda: self._check_update_prompt(manual=False))
 
     # ====================================================================
     #  로컬 작업 폴더 — 임시파일·로그는 OneDrive 밖에 둔다
@@ -4763,6 +4770,196 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   command=win.destroy).pack(side="right")
+
+    # ====================================================================
+    #  자동 업데이트 — OneDrive 저장폴더만 사용(인터넷 미사용, 2026-08 확정 A안)
+    # ====================================================================
+    def _check_update_prompt(self, manual: bool):
+        """저장폴더의 버전정보.json 을 확인해 새 버전이면 물어본다.
+
+        manual=True(메뉴에서 직접 확인)면 '나중에' 기억을 무시하고 항상 확인하며,
+        최신이어도 그 결과를 알려준다. manual=False(시작 시 자동)는 조용히 확인하고
+        새 버전일 때만 말을 건다.
+        """
+        if not updater.is_frozen():
+            if manual:
+                messagebox.showinfo(
+                    "업데이트 확인",
+                    "소스로 실행 중입니다. 자동 업데이트는 배포된 실행파일(exe)"
+                    "에서만 동작합니다.\nGitHub 에서 최신 코드를 받아 오세요.")
+            return
+        if not self.save_dir:
+            if manual:
+                messagebox.showinfo("업데이트 확인", "먼저 저장 폴더를 지정하세요.")
+            return
+        try:
+            release = updater.read_manifest(self.save_dir)
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E165", e)
+            release = None
+        if release is None:
+            if manual:
+                messagebox.showinfo("업데이트 확인",
+                                    "게시된 버전 정보를 찾을 수 없습니다.")
+            return
+        if not updater.is_newer(release.version, __version__):
+            if manual:
+                messagebox.showinfo("업데이트 확인",
+                                    f"이미 최신 버전입니다. (현재 {__version__})")
+            return
+        if not manual and self._cfg.get("update_skip_version") == release.version:
+            return                             # 이 버전은 '나중에' 선택함 — 다시 안 물음
+        note = f"\n\n변경 내용:\n{release.changelog}" if release.changelog else ""
+        if not messagebox.askyesno(
+                "새 버전 업데이트",
+                f"새 버전 {release.version} 이 있습니다. (현재 {__version__})"
+                f"{note}\n\n지금 업데이트할까요?"):
+            self._cfg["update_skip_version"] = release.version
+            save_config(self._cfg)
+            return
+        self._run_update(release)
+
+    def _run_update(self, release: updater.ReleaseInfo):
+        """새 exe 를 로컬로 받아 검증 후, 종료→교체→재실행을 예약하고 앱을 닫는다."""
+        def work():
+            local_exe = updater.download_to_local(self.save_dir, release,
+                                                   self.local_dir)
+            ok, reason = updater.verify_download(local_exe, release)
+            if not ok:
+                raise RuntimeError(reason)
+            return local_exe
+
+        def done(ok, res):
+            if not ok:
+                self._err("E166", "업데이트 실패", res)
+                return
+            local_exe = res
+            current = updater.current_exe_path()
+            backup = updater.backup_path_for(self.local_dir, current)
+            try:
+                script = updater.build_swap_script(self.local_dir, os.getpid(),
+                                                   current, local_exe, backup)
+            except Exception as e:  # noqa: BLE001
+                self._err("E167", "업데이트 준비 실패", e)
+                return
+            self._set_status(f"업데이트 중… 잠시 후 {release.version} 으로 "
+                             "다시 시작됩니다")
+            try:
+                if os.name == "nt":
+                    import subprocess
+                    DETACHED = getattr(subprocess, "DETACHED_PROCESS", 0)
+                    NEWGROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                    subprocess.Popen(["cmd", "/c", script], close_fds=True,
+                                     creationflags=DETACHED | NEWGROUP)
+                else:
+                    self._err("E168", "업데이트 미지원", "Windows 전용 기능입니다.")
+                    return
+            except Exception as e:  # noqa: BLE001
+                self._err("E168", "업데이트 실행 실패", e)
+                return
+            self.after(300, self._shutdown)   # 교체 스크립트가 내 종료를 기다림
+
+        self._run_busy(f"업데이트 확인 중… ({release.version})", work, done)
+
+    def _publish_update_dialog(self):
+        """(개발자용) 새로 빌드한 exe 를 저장폴더에 게시 — 버전·변경내용 입력."""
+        if not self._need_save_dir():
+            return
+        win = tk.Toplevel(self)
+        win.title("새 버전 배포")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        tk.Label(win, text="새 버전 배포", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win, text="build_exe.bat 으로 새로 만든 exe 를 저장 폴더에 게시합니다.\n"
+                           "게시하면 다른 사용자 프로그램이 다음 시작 시 자동으로 "
+                           "안내받습니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(0, 8))
+
+        cur = updater.read_manifest(self.save_dir)
+        if cur:
+            tk.Label(win, text=f"현재 게시된 버전: {cur.version}"
+                               f"{'  · ' + cur.published_by if cur.published_by else ''}",
+                     bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"]).pack(anchor="w", padx=16)
+
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="x", padx=16, pady=10)
+        tk.Label(body, text="exe 파일:", bg=self.p["bg"],
+                 fg=self.p["text"]).grid(row=0, column=0, sticky="w", pady=3)
+        exe_var = tk.StringVar()
+        tk.Entry(body, textvariable=exe_var, width=42, relief="solid",
+                 bd=1).grid(row=0, column=1, sticky="we", padx=6)
+
+        def browse():
+            p = filedialog.askopenfilename(
+                title="게시할 exe 선택(dist\\PI_Param_Manager.exe)",
+                filetypes=[("실행 파일", "*.exe"), ("모든 파일", "*.*")], parent=win)
+            if p:
+                exe_var.set(p)
+        tk.Button(body, text="찾아보기…", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], cursor="hand2",
+                  command=browse).grid(row=0, column=2, padx=2)
+
+        tk.Label(body, text="버전 번호:", bg=self.p["bg"],
+                 fg=self.p["text"]).grid(row=1, column=0, sticky="w", pady=3)
+        ver_var = tk.StringVar(value=__version__)
+        tk.Entry(body, textvariable=ver_var, width=20, relief="solid",
+                 bd=1).grid(row=1, column=1, sticky="w", padx=6)
+        tk.Label(body, text="(예: 3.1.0)", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).grid(row=1, column=2, sticky="w")
+
+        tk.Label(body, text="변경 내용:", bg=self.p["bg"],
+                 fg=self.p["text"]).grid(row=2, column=0, sticky="nw", pady=3)
+        note = tk.Text(body, width=42, height=4, relief="solid", bd=1,
+                       font=self.fonts["base"])
+        note.grid(row=2, column=1, columnspan=2, sticky="we", padx=6)
+        body.columnconfigure(1, weight=1)
+
+        def do_publish():
+            exe_path = exe_var.get().strip()
+            version = ver_var.get().strip()
+            changelog = note.get("1.0", "end").strip()
+            if not exe_path or not os.path.isfile(exe_path):
+                messagebox.showwarning("확인", "exe 파일을 선택하세요.", parent=win)
+                return
+            if updater.parse_version(version) == (0,):
+                messagebox.showwarning("확인", "버전 번호를 알아볼 수 없습니다.",
+                                       parent=win)
+                return
+            if cur and not updater.is_newer(version, cur.version) and \
+                    not messagebox.askyesno(
+                        "버전 확인",
+                        f"입력한 버전({version})이 현재 게시된 버전({cur.version})"
+                        "보다 높지 않습니다.\n그래도 게시할까요?", parent=win):
+                return
+
+            def work():
+                return updater.publish(self.save_dir, exe_path, version, changelog,
+                                       user=self.user)
+
+            def done(ok, res):
+                if not ok:
+                    self._err("E169", "게시 실패", res, parent=win)
+                    return
+                win.destroy()
+                messagebox.showinfo(
+                    "게시 완료",
+                    f"버전 {res.version} 을(를) 게시했습니다.\n"
+                    f"크기: {res.size / (1024*1024):.1f} MB\n\n"
+                    "OneDrive 동기화가 끝나면 다른 사용자들이 다음 프로그램 시작 시 "
+                    "자동으로 안내받습니다.")
+            self._run_busy("게시 중…", work, done, parent=win)
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=12)
+        tk.Button(bt, text="게시", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=18, pady=6, cursor="hand2",
+                  command=do_publish).pack(side="right")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=6)
 
     def _choose_save_dir(self, first=False) -> bool:
         if first:

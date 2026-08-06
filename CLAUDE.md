@@ -127,6 +127,7 @@ python3 tests/test_coefstore.py    # 3  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
+python3 tests/test_updater.py      # 10 (버전비교·게시/매니페스트왕복·누적없음·동기화중단검증·로컬다운로드·교체스크립트 필수단계)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
@@ -241,6 +242,31 @@ python3 tests/test_downloader.py   # 8
 - 새 기능을 넣을 때 **저장폴더에 반복 쓰기를 추가하지 말 것** — 회차당 1개 결과
   파일이면 정상, 파일 수십~수백 개나 초/분 단위 갱신이면 로컬로 보낼 것.
 
+## 자동 업데이트 (2026-08 확정 A안 — OneDrive만, 인터넷 미사용)
+
+GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지 위반 + exe 를 인터넷에서
+받으면 MOTW 로 Defender/SmartScreen 경고가 오히려 늘어남 — OneDrive 배포 사고와
+같은 유형). 이미 전원이 쓰는 **OneDrive 저장폴더를 배포 통로**로 쓴다.
+
+- **게시(개발자)**: ⋯파일 > `새 버전 배포…(개발자용)` — build_exe.bat 로 만든 exe 선택
+  + 버전·변경내용 입력 → `{저장폴더}/프로그램/버전정보.json` + 고정 파일명
+  `PI_Param_Manager.exe` 로 게시(`updater.publish`). **버전마다 파일이 쌓이지 않도록
+  항상 exe 1개만 덮어쓴다.**
+- **확인(전원)**: 시작 0.5초 후 조용히 확인(`_check_update_prompt(manual=False)`),
+  새 버전이면만 "새 버전 N 있습니다. 업데이트할까요?"(변경내용 포함). `⋯파일 >
+  지금 업데이트 확인…` 은 '나중에' 기억을 무시하고 항상 확인 + 최신이어도 알려줌.
+  소스 실행(`updater.is_frozen()==False`) 이면 자동 업데이트 자체를 건너뛴다.
+- **적용**: 게시된 exe 를 **로컬 Temp** 로 복사(OneDrive 에 쓰지 않음) →
+  `verify_download`(크기+SHA-256, **동기화 덜 끝난 파일 거부**) → 통과하면 교체용
+  `.bat` 생성(`build_swap_script`: 현재 PID 종료 대기 → 기존 exe 를 로컬에 백업
+  1개만 → 새 exe 로 교체 → 재실행 → 자기 삭제) → detached 로 실행하고 앱 종료.
+  **사용자는 확인 한 번만, 재시작은 전부 자동.** 실행 중인 exe 는 자기 자신을 못
+  지우므로 별도 프로세스(cmd)가 교체를 맡는다 — Windows 전용, 실기 검증 필요.
+- 버전 비교(`updater.is_newer`)는 길이 다른 버전("3.1" vs "3.1.0")도 0으로 채워
+  비교, 숫자 크기 비교(문자열 사전식 비교 함정 회피: "3.10.0" > "3.9.0").
+- `param_manager/__version__`(현재 "3.0.0")을 게시 버전과 비교. 새 버전 게시 시
+  developer 가 그 값을 올려 빌드하고 배포 창에서 같은 숫자를 입력.
+
 ## 핵심 파일
 
 - `param_manager/ini_parser.py` — **새 1차 파서**: GlobalRTP/OpticPreset/Zones ini →
@@ -275,6 +301,7 @@ python3 tests/test_downloader.py   # 8
   `read_scales`(변형별 계수 저장/판독).
 - `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(수정본, '사용'/
   '최종 Parameter')·`build_final_from_initial`(→확정 양식+`_EXTRACT_MAP`+계수).
+- `param_manager/updater.py` — **자동 업데이트**(v3.0, A안): 위 섹션 참고.
 - `param_manager/localdirs.py` — **로컬 작업 폴더**(OneDrive 밖): `default_root`
   (`%LOCALAPPDATA%\CamtekAOI`)·`set_root/active_root`·`ensure`(Temp/Logs/Cache)·
   `new_temp_run`/`drop`(Temp 밖 거부)/`cleanup_temp`·`is_under_onedrive`·`describe`.
