@@ -363,6 +363,8 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   `_load_previous_form`, `_ask_scales`(변형별 계수), `_map_ips_to_machines`(IP↔호기),
   `_update_values_dialog`/`_update_collate_flow`/`_update_write_results`, `_history_dialog`/
   `_show_diff_window`, `_run_busy`(로딩), `_file_menu`(저장폴더/다시읽기/다운로드).
+  하단 상태바 = `_set_status(msg, warn=)` — 문구가 있을 때만 **✕(닫기) 버튼**이 붙고
+  (`clear_status`), warn=True 면 빨강. 경고문이 화면에 계속 남지 않게 한다.
 - `param_manager/engine.py` — `create_from_records`(PI_ALL/RDL_ALL 기록), `ParamRow`/`ParamRepository`,
   `LEGACY_META`(구파일 초기추천값 무시). 잠금/병합/이력은 새 경로에서 미사용.
 - `param_manager/rtp_parser.py` — 레거시 RTP.txt 파서(새 경로 미사용) + `config_valid`/

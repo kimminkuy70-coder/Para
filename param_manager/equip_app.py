@@ -225,10 +225,23 @@ class EquipApp(tk.Tk):
                    w.config(bg=self.p["head_bg"]) if k != self.view else None)
             self._tab_btns[key] = b
 
-        # 상태바
-        self.status = tk.Label(self, text="", anchor="w", bg=self.p["head_bg"],
-                               fg=self.p["muted"], font=self.fonts["sub"], padx=10)
-        self.status.pack(side="bottom", fill="x")
+        # 상태바 — 안내/경고문이 계속 남아 거슬리지 않게 ✕ 로 닫을 수 있다.
+        # (닫아도 내용은 로그에 남으므로 원인 추적에는 지장 없음)
+        self.statusbar = tk.Frame(self, bg=self.p["head_bg"])
+        self.statusbar.pack(side="bottom", fill="x")
+        self.status = tk.Label(self.statusbar, text="", anchor="w",
+                               bg=self.p["head_bg"], fg=self.p["muted"],
+                               font=self.fonts["sub"], padx=10, justify="left")
+        self.status.pack(side="left", fill="x", expand=True)
+        self.btn_status_x = tk.Button(
+            self.statusbar, text="✕", relief="flat", bd=0, padx=8, pady=0,
+            bg=self.p["head_bg"], fg=self.p["muted"], activebackground=self.p["border"],
+            font=self.fonts["sub"], cursor="hand2", command=self.clear_status)
+        self.btn_status_x.bind("<Enter>",
+                               lambda e: self.btn_status_x.config(fg=self.p["danger"]))
+        self.btn_status_x.bind("<Leave>",
+                               lambda e: self.btn_status_x.config(fg=self.p["muted"]))
+        self._status_x_shown = False        # 메시지가 있을 때만 ✕ 를 보인다
 
         # 본문 컨테이너
         self.body = tk.Frame(self, bg=self.p["bg"])
@@ -270,9 +283,25 @@ class EquipApp(tk.Tk):
             else:
                 self.btn_save.pack_forget()
 
-    def _set_status(self, msg: str):
-        self.status.config(text=msg)
+    def _set_status(self, msg: str, warn: bool = False):
+        """하단 상태바 문구. warn=True 면 경고색(빨강)으로 눈에 띄게.
+        문구가 있으면 ✕(닫기) 버튼이 함께 나타난다."""
+        text = str(msg or "")
+        self.status.config(text=text,
+                           fg=(self.p["danger"] if warn and text.strip()
+                               else self.p["muted"]))
+        want = bool(text.strip())
+        if want != getattr(self, "_status_x_shown", None):
+            self._status_x_shown = want
+            if want:
+                self.btn_status_x.pack(side="right")
+            else:
+                self.btn_status_x.pack_forget()
         self.update_idletasks()
+
+    def clear_status(self):
+        """상태바 문구 닫기(✕). 내용은 이미 로그에 있으므로 지워도 안전하다."""
+        self._set_status("")
 
     # ====================================================================
     #  내비게이션
@@ -1224,7 +1253,7 @@ class EquipApp(tk.Tk):
         s = self._cur_sheet
         cells = self._table_cells(s)
         if not cells:
-            self._set_status("색을 칠할 셀을 먼저 선택하세요.")
+            self._set_status("색을 칠할 셀을 먼저 선택하세요.", warn=True)
             return
         if color is None:
             _, color = colorchooser.askcolor(
@@ -1598,10 +1627,11 @@ class EquipApp(tk.Tk):
         self._sync_tab_style()
         self.navigate(screen="s0")
         if not self.save_dir:
-            self._set_status("저장 폴더가 지정되지 않았습니다.")
+            self._set_status("저장 폴더가 지정되지 않았습니다.", warn=True)
         elif not latest:
             self._set_status("표시할 '파라미터 값 취합' 파일이 아직 없습니다. "
-                             "'파라미터 값 업데이트'로 먼저 취합을 만드세요.")
+                             "'파라미터 값 업데이트'로 먼저 취합을 만드세요.",
+                             warn=True)
         else:
             n = len(self.repo.rows) if self.repo else 0
             self._set_status(f"최신 취합 재로드: {os.path.basename(latest)} · "
@@ -4642,7 +4672,8 @@ class EquipApp(tk.Tk):
                 self._choose_save_dir(first=False)   # 취소하면 기존 폴더 유지
         else:
             if not self._choose_save_dir(first=True):
-                self._set_status("저장 폴더가 지정되지 않았습니다. ⋯파일에서 지정하세요.")
+                self._set_status("저장 폴더가 지정되지 않았습니다. ⋯파일에서 지정하세요.",
+                                 warn=True)
                 return
         self._setup_local_dir(first=not self._cfg.get("local_dir"))
         self._load_refdata()
