@@ -95,27 +95,36 @@ def stamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def form_root(save_dir: str) -> str:
+# create=False 로 부르면 **폴더를 만들지 않고 경로만** 돌려준다.
+#   저장폴더는 OneDrive 라 폴더 하나를 만들 때마다 전원에게 동기화된다.
+#   양식 만들기를 열었다가 취소하면 빈 `{레시피}/{시간}/관련파일/` 만 남아
+#   쓸데없는 동기화가 쌓이므로, 경로 계산은 create=False, 실제 파일을 쓸 때만 생성한다.
+def form_root(save_dir: str, create: bool = True) -> str:
     d = os.path.join(save_dir, FORM_DIR)
-    os.makedirs(d, exist_ok=True)
+    if create:
+        os.makedirs(d, exist_ok=True)
     return d
 
 
-def form_recipe_dir(save_dir: str, recipe: str) -> str:
-    d = os.path.join(form_root(save_dir), _sanitize(recipe))
-    os.makedirs(d, exist_ok=True)
+def form_recipe_dir(save_dir: str, recipe: str, create: bool = True) -> str:
+    d = os.path.join(form_root(save_dir, create), _sanitize(recipe))
+    if create:
+        os.makedirs(d, exist_ok=True)
     return d
 
 
-def form_run_dir(save_dir: str, recipe: str, st: str | None = None) -> str:
-    d = os.path.join(form_recipe_dir(save_dir, recipe), st or stamp())
-    os.makedirs(d, exist_ok=True)
+def form_run_dir(save_dir: str, recipe: str, st: str | None = None,
+                 create: bool = True) -> str:
+    d = os.path.join(form_recipe_dir(save_dir, recipe, create), st or stamp())
+    if create:
+        os.makedirs(d, exist_ok=True)
     return d
 
 
-def related_dir(run_dir: str) -> str:
+def related_dir(run_dir: str, create: bool = True) -> str:
     d = os.path.join(run_dir, RELATED_DIR)
-    os.makedirs(d, exist_ok=True)
+    if create:
+        os.makedirs(d, exist_ok=True)
     return d
 
 

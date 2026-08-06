@@ -2764,8 +2764,8 @@ class EquipApp(tk.Tk):
             for r in rows:                       # 편집기 PI = new_level 로 확정
                 r["recipe"] = new_level
         new_st = workdirs.stamp()
-        new_run = workdirs.form_run_dir(self.save_dir, new_level, new_st)
-        related = workdirs.related_dir(new_run)
+        new_run = workdirs.form_run_dir(self.save_dir, new_level, new_st, create=False)
+        related = workdirs.related_dir(new_run, create=False)
 
         def on_confirm(records, extracts, scales_out, win):
             new_final = workdirs.form_final_path(new_run, new_level, aoi, new_st)
@@ -2791,9 +2791,12 @@ class EquipApp(tk.Tk):
         def on_excel():
             # 엑셀 편집 폴백 — 옛 초안(수정본) 복사 또는 확정본 복사 후 Excel 열기
             drafts = sorted(_glob.glob(os.path.join(
-                workdirs.related_dir(os.path.dirname(final_path)), "*수정본*.xlsx")))
+                workdirs.related_dir(os.path.dirname(final_path), create=False),
+                "*수정본*.xlsx")))
             if drafts:
-                new_draft = workdirs.form_draft_path(related, new_level, aoi, new_st)
+                # 여기서 처음으로 실제 파일을 쓰므로 이때 폴더를 만든다
+                new_draft = workdirs.form_draft_path(
+                    workdirs.related_dir(new_run), new_level, aoi, new_st)
                 try:
                     _shutil.copy2(drafts[-1], new_draft)
                     if renamed:
@@ -2838,11 +2841,16 @@ class EquipApp(tk.Tk):
         if not self._acquire_global(f"양식_{level}", f"{level} 양식 만들기"):
             return
         st = workdirs.stamp()
-        run_dir = workdirs.form_run_dir(self.save_dir, level, st)
-        related = workdirs.related_dir(run_dir)
+        # 경로만 계산(create=False) — 취소하면 저장폴더에 빈 폴더가 남지 않는다
+        run_dir = workdirs.form_run_dir(self.save_dir, level, st, create=False)
+        related = workdirs.related_dir(run_dir, create=False)
         if from_equipment:
+            # 장비에서 긁어온 원본 ini(Zones/*.ini 만 수십~수백 개)는 **로컬에만** 둔다.
+            # 저장폴더(OneDrive)에 바로 복사하면 파일마다 전원에게 동기화돼
+            # 'Unusual High-Volume Directory Access' 보안 경고가 난다(실제 사고).
+            staging = localdirs.new_temp_run(self.local_dir, "양식수집")
             self._collect_dialog(
-                related,
+                staging,
                 lambda sources: self._scales_then_build(sources, level, kind,
                                                         run_dir, related, st),
                 level_hint=level, levels=[level])
@@ -6030,9 +6038,24 @@ class EquipApp(tk.Tk):
             if not made:
                 raise RuntimeError("취합된 레시피가 없습니다")
             st = workdirs.stamp()
-            dest = workdirs.collate_path(self.save_dir, st)
-            collate.write_collation(dest, made, all_machines)
-            res = watcher.compare_and_report(self.save_dir, prev, dest, st)
+            # 무인 회차는 하루 몇 번씩 돈다. 변경이 없는데도 매번 취합 엑셀을
+            # 저장폴더에 만들면 똑같은 파일이 쌓여 OneDrive 동기화만 늘어난다.
+            # → **로컬에 먼저 쓰고 비교**, 변경이 있을 때(또는 첫 취합)만 옮긴다.
+            import shutil
+            tmp_dir = localdirs.new_temp_run(self.local_dir, "취합")
+            try:
+                name = os.path.basename(workdirs.collate_path(self.save_dir, st))
+                tmp = os.path.join(tmp_dir, name)
+                collate.write_collation(tmp, made, all_machines)
+                res = watcher.compare_and_report(self.save_dir, prev, tmp, st)
+                if res.has_change or not prev:
+                    dest = workdirs.collate_path(self.save_dir, st)
+                    shutil.copy2(tmp, dest)
+                    res.collate_file = dest
+                else:
+                    res.collate_file = prev      # 내용이 같으므로 직전본을 그대로 쓴다
+            finally:
+                localdirs.drop(tmp_dir)
             res.skipped = skipped
             return res
 

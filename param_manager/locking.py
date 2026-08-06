@@ -132,7 +132,9 @@ def acquire(path: str, user: str, takeover: bool = False) -> LockState:
     """
     st = status(path, user)
     if st.status == "mine":
-        engine.write_lock(path, user)          # 갱신(시간 연장)
+        # 이미 내 잠금 — 화면을 다시 그릴 때마다 다시 쓰지 않는다(refresh 가
+        # 만료 절반 전이면 쓰기를 생략). OneDrive 쓰기 1회 = 전원 동기화.
+        refresh(path, user)
         return LockState("mine", True, engine.read_lock(path), path)
     if st.status == "other":
         return st                              # 타인 보유 — 읽기 전용
