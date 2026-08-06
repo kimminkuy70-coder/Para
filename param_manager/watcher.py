@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -441,6 +442,10 @@ def job_path_for(ip: str) -> str:
 
 SMB_PORT = 445
 PROBE_TIMEOUT_SEC = 1.5      # 호스트 1대당 TCP 응답 대기(짧게 — 화면이 멈추면 안 됨)
+# 호스트 사이 간격 — **포트 스캔으로 오인되지 않게** 한다.
+# 445 포트를 수십 대에 연속으로 두드리면 네트워크 보안장비/EDR 이 '수평 포트
+# 스캔'으로 탐지한다(사람이 탐색기로 하나씩 여는 것과 같은 속도로 늦춘다).
+PROBE_GAP_SEC = 0.4
 
 
 def probe_host(ip: str, timeout: float = PROBE_TIMEOUT_SEC) -> bool:
@@ -485,6 +490,8 @@ def check_connections(targets: list, timeout: float = PROBE_TIMEOUT_SEC,
                 progress(i, total, machine)
             except Exception:  # noqa: BLE001
                 pass
+        if i > 1 and PROBE_GAP_SEC > 0:
+            time.sleep(PROBE_GAP_SEC)        # 스캔처럼 몰아치지 않는다
         reachable = False
         if probe_host(ip, timeout):          # 살아 있을 때만 실제 경로 확인
             try:

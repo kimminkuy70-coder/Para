@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from datetime import datetime
 import tkinter as tk
 from pathlib import Path
@@ -73,6 +74,12 @@ def save_config(cfg: dict) -> None:
     except Exception:
         pass
 
+
+
+# 무인 수집에서 장비(관리공유 c$) 사이에 두는 간격(초).
+# 여러 장비를 몇 초 안에 연달아 접속하면 보안 모니터링이 '측면 이동 스캔'으로
+# 탐지한다. 6시간 주기 작업이라 장비당 몇 초 늘어나는 것은 문제가 되지 않는다.
+HOST_GAP_SEC = 2.0
 
 
 def icon_path() -> str | None:
@@ -145,6 +152,10 @@ class EquipApp(tk.Tk):
         self._pending_report = None      # 풍선 알림 클릭 시 열어줄 보고서
         self._watch_owned = False        # 이 PC 가 감시 전역 잠금을 쥐었는가
         self._watch_busy = False         # 감시 회차 실행 중(중복 실행 방지)
+        # net use 무인 접속 정보 — **메모리에만**(디스크 저장 금지, 앱 종료 시 소멸).
+        # 없으면 net use 를 아예 시도하지 않는다: 빈 비밀번호로 접속을 시도하면
+        # 장비마다 로그온 실패(4625)가 쌓여 계정 잠금·보안 경보로 이어진다.
+        self._watch_cred: tuple[str, str] | None = None
         self._locks: dict[str, str] = {}
         self._doc_stamps: dict[str, tuple] = {}
         self._ro_docs: set = set()
@@ -4939,14 +4950,37 @@ class EquipApp(tk.Tk):
                           "(바로가기를 쓰고 계시면 새로 만들어 주세요)")
         except Exception:  # noqa: BLE001
             rename = ""
-        if not messagebox.askyesno(
-                "새 버전 업데이트",
-                f"새 버전 {release.version} 이 있습니다. (현재 {__version__})"
-                f"{note}{rename}\n\n지금 업데이트할까요?"):
+        ans = messagebox.askyesnocancel(
+            "새 버전 업데이트",
+            f"새 버전 {release.version} 이 있습니다. (현재 {__version__})"
+            f"{note}{rename}\n\n[예] 지금 자동으로 교체하고 다시 시작합니다.\n"
+            "[아니오] 게시 폴더만 열어 드립니다(직접 복사해서 설치).\n"
+            "[취소] 나중에.")
+        if ans is None:                        # 나중에 — 이 버전은 다시 묻지 않음
             self._cfg["update_skip_version"] = release.version
             save_config(self._cfg)
             return
+        if not ans:
+            # 자동 교체(실행 중 exe 를 배치스크립트로 바꿔치기)는 백신 행위기반
+            # 탐지에 걸릴 수 있다. 회사 정책상 그게 곤란하면 직접 복사할 수 있게
+            # 게시 폴더만 열어 준다(프로그램은 아무것도 바꾸지 않는다).
+            self._open_program_dir(release)
+            return
         self._run_update(release)
+
+    def _open_program_dir(self, release: updater.ReleaseInfo):
+        """게시 폴더를 탐색기로 열고 직접 설치 방법을 안내한다(자동 교체 없음)."""
+        folder = updater.active_program_dir(self.save_dir)
+        try:
+            self._open_in_excel(folder)        # os.startfile/xdg-open 공용 열기
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E170", e)
+        messagebox.showinfo(
+            "직접 설치",
+            f"게시 폴더를 열었습니다:\n{folder}\n\n"
+            f"{release.filename} 을(를) 지금 프로그램이 있는 폴더로 복사한 뒤,\n"
+            "이 프로그램을 닫고 새 파일을 실행하세요.\n"
+            "(이전 버전 파일은 문제가 생겼을 때를 대비해 지우지 말고 두세요)")
 
     def _run_update(self, release: updater.ReleaseInfo):
         """새 exe 를 로컬로 받아 검증 후, 종료→교체→재실행을 예약하고 앱을 닫는다."""
@@ -5448,7 +5482,31 @@ class EquipApp(tk.Tk):
         tk.Label(box, text="비밀번호는 프로그램이 켜져 있는 동안 메모리에만 유지되고\n"
                            "디스크에 저장하지 않습니다(앱 종료 시 사라짐).",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=32, pady=(0, 6))
+                 justify="left").pack(anchor="w", padx=32, pady=(0, 2))
+        # 접속 정보 입력(메모리 전용). 비워 두면 net use 를 **시도조차 하지 않는다**
+        # — 빈 비밀번호 접속은 장비마다 로그온 실패를 남겨 계정 잠금·보안 경보를 부른다.
+        cred = tk.Frame(box, bg=self.p["bg"])
+        cred.pack(anchor="w", padx=32, pady=(0, 6))
+        cur_cred = getattr(self, "_watch_cred", None)
+        uid_var = tk.StringVar(value=(cur_cred[0] if cur_cred else "amkor"))
+        pw_var = tk.StringVar(value=(cur_cred[1] if cur_cred else ""))
+        tk.Label(cred, text="접속 ID:", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+        tk.Entry(cred, textvariable=uid_var, width=12, relief="solid",
+                 bd=1).pack(side="left", padx=(4, 10))
+        tk.Label(cred, text="비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(side="left")
+        tk.Entry(cred, textvariable=pw_var, width=16, show="•", relief="solid",
+                 bd=1).pack(side="left", padx=4)
+        tk.Label(cred, text="(비우면 기존 연결로만 시도)", bg=self.p["bg"],
+                 fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+
+        def _keep_cred():
+            """설정 저장 시 호출 — 접속 정보를 메모리에만 보관/삭제."""
+            if conn.get() == watcher.CONN_NETUSE and pw_var.get():
+                self._watch_cred = (uid_var.get().strip() or "amkor", pw_var.get())
+            else:
+                self._watch_cred = None
 
         info = tk.Label(page, text=self._watch_status_text(s, state), bg=self.p["bg"],
                         fg=self.p["muted"], font=self.fonts["sub"], justify="left")
@@ -5528,6 +5586,7 @@ class EquipApp(tk.Tk):
             except ValueError:
                 s.window_start = s.window_end = 0
             s.conn_mode = conn.get()
+            _keep_cred()                 # 접속 정보는 메모리에만(저장 안 함)
             if s.enabled and not self._watch_acquire():
                 return                      # 다른 PC 가 감시 중 — 켜지 않는다
             if not s.enabled:
@@ -5560,6 +5619,7 @@ class EquipApp(tk.Tk):
             s.machines, s.recipes = picked, picked_r
             s.recipe_paths = dict(paths_state["v"])
             s.conn_mode = conn.get()
+            _keep_cred()
             if not self._watch_acquire():
                 return                      # 다른 PC 가 감시 중
             win.destroy()
@@ -6118,7 +6178,7 @@ class EquipApp(tk.Tk):
         self._run_busy("자동 감시 1회 실행 중… (수집→취합→비교)", work, done)
 
     def _collect_fixed_dir(self, ip, machine, recipe, rel, staging_root,
-                           use_netuse, diag):
+                           use_netuse, diag, cred=None):
         r"""**지정된 폴더**에서 설정파일을 읽어온다(이름 유추 없음).
 
         `\\{IP}\c$\Job\{rel}` 을 그대로 읽는다. 지정 폴더가 Recipe 폴더면 그것을,
@@ -6130,8 +6190,10 @@ class EquipApp(tk.Tk):
         src = _P(watcher.machine_recipe_dir(ip, rel))
         connected = False
         try:
-            if use_netuse and collector.is_windows():
-                collector.connect_admin_share(ip, "amkor", "")
+            if use_netuse and cred and collector.is_windows():
+                # 접속 정보가 있을 때만 net use. **빈 비밀번호로 시도 금지** —
+                # 장비마다 로그온 실패가 쌓여 계정 잠금·보안 경보가 난다.
+                collector.connect_admin_share(ip, cred[0], cred[1])
                 connected = True
             if not src.is_dir():
                 diag.append(f"{machine}/{recipe}: 지정 폴더 없음({src})")
@@ -6196,7 +6258,15 @@ class EquipApp(tk.Tk):
         """
         # 임시 수집본은 로컬에만(OneDrive 동기화 폭주 방지) — 회차가 끝나면 지운다
         staging_root = localdirs.new_temp_run(self.local_dir, "감시")
-        use_netuse = (s.conn_mode == watcher.CONN_NETUSE)
+        cred = getattr(self, "_watch_cred", None)
+        use_netuse = (s.conn_mode == watcher.CONN_NETUSE and bool(cred))
+        if s.conn_mode == watcher.CONN_NETUSE and not cred:
+            # 앱을 다시 켰거나 비밀번호를 입력하지 않은 상태. 빈 비밀번호로
+            # 접속을 시도하면 장비마다 로그온 실패가 남으므로 기존 연결로만 시도한다.
+            watcher.append_log(
+                self.save_dir,
+                "net use 접속 정보가 없어 기존 연결로만 시도합니다"
+                "(빈 비밀번호 접속은 하지 않음 — 감시 설정에서 ID/비밀번호 입력)")
         sources, skipped = [], []
 
         def no_chooser(*_a, **_kw):
@@ -6240,11 +6310,16 @@ class EquipApp(tk.Tk):
         # **지정은 호기별**이므로 장비 루프 안에서 조회한다.
         any_fixed = False
 
-        for m in machines:
+        for idx, m in enumerate(machines):
             ip = refdata.ip_for(self.ip_rows, m)
             if not ip:
                 skipped.append(f"{m}(IP 없음)")
                 continue
+            if idx:
+                # 장비 사이 간격 — 수십 대의 관리공유(c$)를 몇 초 안에 연속으로
+                # 훑으면 EDR/SIEM 이 '측면 이동(lateral movement) 스캔'으로 본다.
+                # 6시간 주기 작업이므로 장비당 몇 초는 아무 영향이 없다.
+                time.sleep(HOST_GAP_SEC)
             try:
                 def staging_for(_kw, aoi=m):
                     d = os.path.join(staging_root, _sanitize_name(aoi))
@@ -6257,7 +6332,7 @@ class EquipApp(tk.Tk):
                     any_fixed = True
                 for lvl, rel in fixed.items():
                     got = self._collect_fixed_dir(ip, m, lvl, rel, staging_root,
-                                                  use_netuse, diag)
+                                                  use_netuse, diag, cred)
                     if got:
                         sources.append((got, lvl, m))
                 guess_recipes = [r for r in recipes if r not in fixed]
@@ -6267,8 +6342,10 @@ class EquipApp(tk.Tk):
                 # 경로**를 탄다(수동 수집이 남긴 Job 폴더명으로 이 장비 폴더를 매칭).
                 # 이걸 빼면 job_keyword 가 빈 계획에서 선택창을 요구해 전부 건너뛴다.
                 _, _plan, srcs = collector.collect_equipment(
-                    ip, staging_for, no_chooser, username="amkor", password=None,
-                    use_net_use=use_netuse, plan=plan,
+                    ip, staging_for, no_chooser,
+                    username=(cred[0] if cred else "amkor"),
+                    password=(cred[1] if cred else None),
+                    use_net_use=bool(use_netuse and cred), plan=plan,
                     confirm=lambda planned: True,     # 무인 — 로컬 staging 복사 승인
                     target_levels=list(guess_recipes), match_recipes=auto_match)
                 for d, lvl in srcs:

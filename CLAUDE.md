@@ -107,6 +107,26 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
   적용. 매칭 실패 행은 건드리지 않음. 빈 값은 덮어쓰지 않음.
 - **OpticPreset 잡키 필터**: GUID/per-scan float/빈값/`OPTIC_NOISE_KEYS` 자동 제외(레거시 경로).
 
+## 사내 보안 모니터링 오탐 방지 (2026-08 전수 검토 — `tests/test_network_manners.py`)
+
+장비 접속은 `\\IP\c$`(관리공유)라 EDR/SIEM 이 원래 지켜본다. 기능은 그대로 두되
+**패턴이 공격처럼 보이지 않게** 한다. IT 설명 자료 = `docs/IT보안_검토자료.md`.
+
+- **빈 비밀번호로 net use 시도 금지(중대)**: 무인 회차가
+  `connect_admin_share(ip, "amkor", "")` 를 장비마다 호출하고 있었다 —
+  동작하지도 않으면서 로그온 실패(4625)를 장비 수 × 레시피 수 × 하루 4회 쌓아
+  **무차별 대입 탐지 + 공용 계정 잠금**을 부르는 코드였다. → 접속 정보는
+  `equip_app._watch_cred`(메모리 전용, 감시 설정창에서 입력)에만 두고,
+  **없으면 net use 를 아예 켜지 않고** 기존 세션으로만 시도 + 로그 안내.
+- **포트 스캔처럼 보이지 않기**: 연결 점검의 TCP 445 확인은 호스트 사이
+  `watcher.PROBE_GAP_SEC`(0.4s) 간격.
+- **측면 이동처럼 보이지 않기**: 무인 수집은 장비 사이 `equip_app.HOST_GAP_SEC`
+  (2s) 간격 + 순차 접속 유지(6시간 주기라 영향 없음).
+- **비밀번호는 디스크에 쓰지 않는다**: `감시설정.json`·config 어디에도 저장 금지.
+- **자동 업데이트에 '직접 설치' 선택지**: 실행 중 exe 를 배치스크립트로 바꿔치기하는
+  것은 백신 행위기반 탐지 대상이라, 확인창에서 [아니오]=게시 폴더만 열어 주는
+  경로(`_open_program_dir`)를 제공한다.
+
 ## 보안/환경 제약 (반드시 준수)
 
 - **Anaconda/conda 금지** — 회사 과금 + 경고받음. venv/시스템 파이썬만.
@@ -134,6 +154,7 @@ python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용�
 python3 tests/test_updater.py      # 22 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_onedrive_writes.py # 5 (저장폴더 쓰기 최소화: 폴더 지연생성·잠금 재기록 없음·수집 staging 로컬·무변경 시 취합 미생성)
+python3 tests/test_network_manners.py # 6 (빈 비밀번호 net use 금지·메모리 전용 자격증명·포트/장비 간 간격·직접 설치 경로)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
 python3 tests/test_watcher.py      # 26 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
