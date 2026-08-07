@@ -616,7 +616,9 @@ def structure_diff(lot_dirs: list[tuple[str, Path]], level: str = "",
 # --------------------------------------------------------------------------
 # Step 5: 양식 기준 Lot별 값 → 호기 결과 엑셀
 # --------------------------------------------------------------------------
-SCAN_ROW_LABEL = "Scan일자"      # 조사 결과 엑셀 1행(각 S/M 열의 스캔 시각)
+# 조사 결과 엑셀에서 **파라미터 목록의 맨 첫 행**으로 넣는 Scan 일자 행.
+# (헤더 아래 첫 줄 = 각 S/M 열이 언제 스캔된 자료인지)
+SCAN_ROW_LABEL = "Scan일자"
 
 
 def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
@@ -645,10 +647,12 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = collate._safe_sheet(recipe)
-    # **1행 = Scan 일자**(각 S/M 열이 언제 스캔된 자료인지). 헤더는 2행.
-    ws.append([SCAN_ROW_LABEL] + [""] * (len(engine.META_FIELDS) - 1)
-              + [engine._s(scan_times.get(l)) for l in lot_labels])
-    ws.append(disp_headers)
+    ws.append(disp_headers)                        # 1행 = 헤더(종전과 동일)
+    # 헤더 바로 아래 **파라미터 첫 행 = Scan 일자**. 각 S/M 열 밑에 그 폴더가
+    # 언제 스캔됐는지가 들어가 값과 같은 자리에서 바로 대조된다.
+    scan_row = {"Parameter": SCAN_ROW_LABEL}
+    scan_row.update({l: engine._s(scan_times.get(l)) for l in lot_labels})
+    ws.append([scan_row.get(h, "") for h in headers])
     for rec in res.records:
         ws.append([rec.get(h) for h in headers])
     fill = PatternFill("solid", fgColor=_HDR_FILL)
@@ -656,15 +660,14 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     yellow = PatternFill("solid", fgColor=FAIL_FILL)
     scan_fill = PatternFill("solid", fgColor="E8EEF7")
     for j, h in enumerate(headers, start=1):
-        c1 = ws.cell(row=1, column=j)              # Scan일자 행
-        c1.fill = scan_fill
-        c1.font = Font(bold=True, color="1F4E78")
-        c1.alignment = Alignment(horizontal="center", vertical="center")
-        c = ws.cell(row=2, column=j)               # 헤더 행
+        c = ws.cell(row=1, column=j)               # 헤더 행
         c.fill = (yellow if h in fail_labels else fill)
         c.font = (Font(bold=True) if h in fail_labels else white)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    ws.freeze_panes = "A3"
+        c2 = ws.cell(row=2, column=j)              # Scan일자 행(눈에 띄게)
+        c2.fill = scan_fill
+        c2.font = Font(bold=True, color="1F4E78")
+    ws.freeze_panes = "A3"                         # 헤더 + Scan일자 줄 고정
     meta = wb.create_sheet("_정보")
     meta.append(["호기", machine])
     meta.append(["레시피", recipe])
@@ -700,25 +703,19 @@ def read_lot_result(path: str) -> dict:
     if data_ws is not None:
         if not recipe:
             recipe = data_ws.title
-        # 1행이 Scan일자 행이면 헤더는 2행(구 파일은 1행이 헤더 — 둘 다 지원).
-        hrow = 1
-        first = engine._s(data_ws.cell(row=1, column=1).value).strip()
-        if first == SCAN_ROW_LABEL:
-            hrow = 2
-            for c in data_ws[1]:
-                v = engine._s(c.value).strip()
-                if v and v != SCAN_ROW_LABEL:
-                    scan_times[engine._s(
-                        data_ws.cell(row=hrow, column=c.column).value).strip()] = v
         # 표시용 헤더(상위/하위 Recipe)를 내부 키(PI/Recipe)로 되돌린다.
-        heads = [engine.internal_header(engine._s(c.value).strip())
-                 for c in data_ws[hrow]]
+        heads = [engine.internal_header(engine._s(c.value).strip()) for c in data_ws[1]]
         meta = set(engine.META_FIELDS)
         lots = [h for h in heads if h and h not in meta]
-        for row in data_ws.iter_rows(min_row=hrow + 1, values_only=True):
+        for row in data_ws.iter_rows(min_row=2, values_only=True):
             if row is None or all(v in (None, "") for v in row):
                 continue
-            records.append({heads[i]: row[i] for i in range(len(heads)) if i < len(row)})
+            rec = {heads[i]: row[i] for i in range(len(heads)) if i < len(row)}
+            # 첫 행의 Scan일자는 파라미터가 아니라 메타 — 따로 빼서 돌려준다
+            if engine._s(rec.get("Parameter")).strip() == SCAN_ROW_LABEL:
+                scan_times = {l: engine._s(rec.get(l)).strip() for l in lots}
+                continue
+            records.append(rec)
     wb.close()
     return {"machine": machine, "recipe": recipe, "lots": lots,
             "records": records, "fails": fails, "scan_times": scan_times}

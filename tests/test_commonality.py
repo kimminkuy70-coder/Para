@@ -280,18 +280,21 @@ def test_collate_lots_and_result_roundtrip():
         import openpyxl
         wb = openpyxl.load_workbook(out)
         ws = wb[wb.sheetnames[0]]
-        scan = [c.value for c in ws[1]]
-        head = [c.value for c in ws[2]]
+        head = [c.value for c in ws[1]]
+        scan = [c.value for c in ws[2]]
         wb.close()
-        # **1행 = Scan일자**(각 S/M 열이 언제 스캔된 자료인지)
-        assert scan[0] == commonality.SCAN_ROW_LABEL, scan
-        assert scan[-2:] == ["2026-08-01 09:10", "2026-08-05 21:30"], scan
-        # 2행 표시 헤더는 상위/하위 Recipe (내부 키는 PI/Recipe 그대로)
+        # 1행 표시 헤더는 상위/하위 Recipe (내부 키는 PI/Recipe 그대로)
         assert head[0] == "상위 Recipe" and head[1] == "하위 Recipe", head
         assert "PI" not in head and "Recipe" not in head, head
+        # **파라미터 첫 행 = Scan일자**, 값은 각 S/M 열 아래
+        assert scan[head.index("Parameter")] == commonality.SCAN_ROW_LABEL, scan
+        assert scan[-2:] == ["2026-08-01 09:10", "2026-08-05 21:30"], scan
         data = commonality.read_lot_result(out)
         assert data["machine"] == "AOI-6" and set(data["lots"]) == set(labels)
         assert data["scan_times"]["6502_HPG"] == "2026-08-05 21:30"
+        # Scan일자 행은 파라미터 목록에 섞이지 않는다
+        assert all(engine._s(r.get("Parameter")) != commonality.SCAN_ROW_LABEL
+                   for r in data["records"])
         # read 는 내부 키로 되돌린다(다운스트림 비교가 PI/Recipe/Zone 로 접근)
         assert all("PI" in r and "Recipe" in r for r in data["records"])
     print("  commonality OK: Lot 취합 + 호기 결과 엑셀 왕복 + 표시헤더(상위/하위 Recipe)")
@@ -599,6 +602,8 @@ def test_scan_time_flows_into_comparison():
         comp = commonality.build_comparison([out])
         assert comp["columns"][:3] == ["S/M", "호기", commonality.SCAN_ROW_LABEL]
         assert comp["rows"][0][commonality.SCAN_ROW_LABEL] == "2026-08-06 13:45"
+        # 파라미터 열에 Scan일자가 중복으로 끼어들면 안 된다
+        assert commonality.SCAN_ROW_LABEL not in comp["columns"][3:]
         dest = os.path.join(tmp, "비교.xlsx")
         commonality.write_comparison(dest, comp)
         import openpyxl

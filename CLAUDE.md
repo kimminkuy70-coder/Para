@@ -49,9 +49,10 @@ Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'C
 (`_tokens`, 'SUA RERURN PG8E10' 같은 오타·군더더기 흡수). 그래도 못 찾으면 **그 공정
 폴더 아래 폴더 전부**를 `matched=False` 후보로 올려 사람이 고른다(기본 미선택, 라벨 `?`).
 선택창에 **S/M 폴더 수정시각**(`folder_mtime` → `LotFolder.scan_time`)을 표시해 언제
-스캔된 자료인지 보고 고르게 한다. 이 값이 **Scan 일자**로 조사 결과 엑셀 **1행**
-(`SCAN_ROW_LABEL`, 헤더는 2행)과 비교표 3번째 열에 들어간다(`read_lot_result` 는
-구 파일=1행 헤더도 계속 읽음).
+스캔된 자료인지 보고 고르게 한다. 이 값이 **Scan 일자**로 조사 결과 엑셀의
+**파라미터 첫 행**(헤더 1행 바로 아래 2행, Parameter=`SCAN_ROW_LABEL`, 각 S/M 열
+밑에 시각)과 비교표 3번째 열에 들어간다. `read_lot_result` 는 그 행을 파라미터가
+아니라 `scan_times` 로 빼서 돌려준다(비교표 파라미터 열에 중복되지 않게).
 호기 1대씩: ① 호기 선택(호기 폴더 config 저장, 그 아래 Scanresult 백업본 전부 자동 탐색) → ② Lot 계획 엑셀(디바이스명/공정번호/S·M/AOI호기)
 업로드→호기 필터→폴더 실재 확인 → ③ 안전 복사(downloader, 원본 read-only) → ④ 양식 만들기
 (제목 지정, 양식 만들기와 동일: OpticPreset 추림·계수·추천, **Lot 구조 diff 확인**) →
