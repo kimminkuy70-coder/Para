@@ -3761,8 +3761,8 @@ class EquipApp(tk.Tk):
                  anchor="w", padx=14, pady=(12, 2))
         tk.Label(win, text="노란색 = fail(계획 fail여부=Y) · ✗ = 폴더 없음(선택 불가) · "
                            "슬롯이 여러 개면 오른쪽에서 조사할 슬롯을 고르세요(기본=첫 번째)\n"
-                           "회색 '?' = 계획의 S/M 이름과 다르지만 같은 공정 폴더에 있는 "
-                           "후보입니다. 수정 날짜(스캔 시각)를 보고 직접 고르세요.",
+                           "'수정' = S/M 폴더 수정 시각(= Scan 일자) — 언제 스캔된 "
+                           "자료인지 보고 고르세요.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=14, pady=(0, 6))
         # 스크롤 영역
@@ -3783,8 +3783,7 @@ class EquipApp(tk.Tk):
         self._cm_sel_vars = []       # [(BooleanVar, LotFolder)]
         slot_pickers: list = []      # [(LotFolder, 표시갱신함수)] — 일괄 지정용
         for l in lots:
-            # 기본 선택 = 계획과 매칭된 폴더만. 이름이 다른 후보는 사람이 확인 후 체크.
-            var = tk.BooleanVar(value=bool(l.exists and l.matched))
+            var = tk.BooleanVar(value=bool(l.exists))   # 기본 전체 선택(존재하는 것)
             self._cm_sel_vars.append((var, l))
             row = tk.Frame(inner, bg=self.p["bg"])
             row.pack(fill="x", pady=1)
@@ -3792,7 +3791,7 @@ class EquipApp(tk.Tk):
                                 activebackground=self.p["bg"], selectcolor=self.p["surface"],
                                 state=("normal" if l.exists else "disabled"))
             cb.pack(side="left")
-            mark = ("✓" if l.matched else "?") if l.exists else "✗"
+            mark = "✓" if l.exists else "✗"
             when = f"   ·   수정 {l.scan_time}" if l.scan_time else ""
             base_txt = f"{mark}  {l.label}   ·   {l.device}/{l.lot}{when}   →   "
             # 슬롯(웨이퍼) 선택 — 여러 개 고를 수 있다(고른 수만큼 따로 조사).
@@ -3810,8 +3809,7 @@ class EquipApp(tk.Tk):
             lbl = tk.Label(row, text=base_txt + (self._cm_slot_text(l) if l.exists
                                                  else l.reason),
                            bg=(self.p["bg"] if not l.fail else "#FFF6C8"),
-                           fg=(self.p["text"] if (l.exists and l.matched)
-                               else self.p["muted"]),
+                           fg=(self.p["text"] if l.exists else self.p["muted"]),
                            font=self.fonts["sub"], anchor="w")
             lbl.pack(side="left", fill="x", expand=True)
             if btn is not None:
@@ -3830,7 +3828,7 @@ class EquipApp(tk.Tk):
         def set_all(v):
             for var, l in self._cm_sel_vars:
                 if l.exists:
-                    var.set(v)          # 이름이 다른 후보도 포함(사람이 전체 선택)
+                    var.set(v)
 
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=14, pady=12)

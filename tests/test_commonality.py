@@ -554,8 +554,9 @@ def test_multi_slot_expands_into_separate_targets():
 
 def test_loose_sm_match_and_scan_time():
     """실제 S/M 폴더명은 계획과 많이 다르다(VUL_TUNNED, SUA RERURN PG8E10 …).
-    ① 정확 일치가 아니어도 찾고 ② 그래도 못 찾으면 **같은 공정 폴더의 폴더 전부**를
-    후보로 올려 사람이 고르게 한다 ③ 각 후보의 S/M 폴더 수정시각(Scan 일자)을 준다.
+    매칭은 **3단계까지만** — ①정확 일치 ②포함(양방향) ③토큰 겹침.
+    그래도 못 찾으면 '폴더 없음'으로 두고 관계없는 폴더를 후보로 올리지 않는다.
+    찾은 폴더에는 S/M 폴더 수정시각(Scan 일자)이 붙는다.
     """
     with tempfile.TemporaryDirectory() as tmp:
         dev, lotno = "2D@R2-DEVA-1_0855360PD-0A", "6321"
@@ -567,26 +568,18 @@ def test_loose_sm_match_and_scan_time():
         # ① 포함 매칭: 'VUL' → 'VUL_TUNNED'
         got = commonality.resolve_lot_variants(root, "DEVA-1", lotno, "VUL", "AOI-6")
         assert [l.label for l in got] == ["VUL_TUNNED"], [l.label for l in got]
-        assert got[0].matched is True
         assert got[0].scan_time, "S/M 폴더 수정시각(Scan 일자)이 있어야 함"
 
         # 토큰 겹침: 'PG8G17 RETURN' → 'PG8G17 NFN RETURN 2D+3D 100'
         got = commonality.resolve_lot_variants(root, "DEVA-1", lotno,
                                                "PG8G17 RETURN", "AOI-6")
         assert [l.label for l in got] == ["PG8G17 NFN RETURN 2D+3D 100"]
-        assert got[0].matched is True
 
-        # ② 전혀 못 찾는 이름 → 그 공정 폴더의 폴더 **전부**가 후보(matched=False)
+        # 3단계로도 못 찾으면 '폴더 없음' — 관계없는 폴더를 끌어오지 않는다
         got = commonality.resolve_lot_variants(root, "DEVA-1", lotno, "ZZZZ", "AOI-6")
-        assert len(got) == 4, [l.label for l in got]
-        assert all(l.exists and not l.matched for l in got)
-        assert all(l.scan_time for l in got), "후보마다 수정시각이 있어야 고를 수 있다"
-        assert all("직접 확인" in l.reason for l in got)
-
-        # 매칭된 것이 위로 오도록 정렬(사람이 먼저 보게)
-        mixed = commonality.resolve_lot_variants(root, "DEVA-1", lotno, "SUK", "AOI-6")
-        assert mixed[0].matched is True
-    print("  commonality OK: 느슨한 S/M 매칭 + 미매칭 후보 제시 + Scan 일자")
+        assert len(got) == 1 and not got[0].exists, [l.label for l in got]
+        assert "S/M 폴더 없음" in got[0].reason, got[0].reason
+    print("  commonality OK: S/M 매칭 3단계(정확·포함·토큰) + Scan 일자")
 
 
 def test_scan_time_flows_into_comparison():

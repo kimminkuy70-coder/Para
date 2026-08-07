@@ -45,10 +45,10 @@ Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'C
 **슬롯마다 별도 조사 대상**으로 펼치고 라벨에 `·{슬롯}` 을 붙인다(1개면 라벨 유지 =
 이전 결과와 열 이름 연속). 관련 = `list_wafers`/`set_wafer`/LotFolder
 `wafer_choices`·`wafer_picks`.
-**S/M 폴더 매칭은 느슨하게(2026-08)**: 정확일치 → 포함(양방향) → **토큰 겹침**
-(`_tokens`, 'SUA RERURN PG8E10' 같은 오타·군더더기 흡수). 그래도 못 찾으면 **그 공정
-폴더 아래 폴더 전부**를 `matched=False` 후보로 올려 사람이 고른다(기본 미선택, 라벨 `?`).
-선택창에 **S/M 폴더 수정시각**(`folder_mtime` → `LotFolder.scan_time`)을 표시해 언제
+**S/M 폴더 매칭은 3단계까지만(2026-08 확정)**: ①정확일치 → ②포함(양방향) →
+③**토큰 겹침**(`_tokens`, 'SUA RERURN PG8E10'·'PG8G17 NFN RETURN 2D+3D 100' 같은
+오타·군더더기 흡수). **그래도 못 찾으면 '폴더 없음'** — 관계없는 폴더를 후보로
+올리지 않는다(4단계 폴백 금지). 선택창에 **S/M 폴더 수정시각**(`folder_mtime` → `LotFolder.scan_time`)을 표시해 언제
 스캔된 자료인지 보고 고르게 한다. 이 값이 **Scan 일자**로 조사 결과 엑셀의
 **파라미터 첫 행**(헤더 1행 바로 아래 2행, Parameter=`SCAN_ROW_LABEL`, 각 S/M 열
 밑에 시각)과 비교표 3번째 열에 들어간다. `read_lot_result` 는 그 행을 파라미터가

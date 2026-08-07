@@ -157,7 +157,6 @@ class LotFolder:
     wafer_dir: Path | None = None     # 조사 대상 웨이퍼(슬롯) 폴더 — 기본은 이름순 첫
     wafer_choices: list = field(default_factory=list)   # 고를 수 있는 슬롯 폴더 전부
     wafer_picks: list = field(default_factory=list)     # 사람이 고른 슬롯(여러 개 가능)
-    matched: bool = True              # 계획의 S/M 이름과 매칭됐는가(False=직접 고를 후보)
     scan_time: str = ""               # S/M 폴더 수정시각 = Scan 일자(언제 스캔됐는지)
     exists: bool = False
     has_zones: bool = False
@@ -267,17 +266,6 @@ def _find_children(parent: Path, name: str, *, contains: bool = True) -> list[Pa
     return hit
 
 
-def _child_dirs(parent: Path) -> list[Path]:
-    """parent 바로 아래 폴더 전부(이름순) — 매칭 실패 시 '직접 고를 후보'."""
-    if not parent.is_dir():
-        return []
-    try:
-        return sorted((p for p in parent.iterdir() if p.is_dir()),
-                      key=lambda x: x.name.lower())
-    except OSError:
-        return []
-
-
 def _find_child(parent: Path, name: str, *, contains: bool = True) -> Path | None:
     """후보 중 첫 번째(하위호환)."""
     hits = _find_children(parent, name, contains=contains)
@@ -349,10 +337,8 @@ def set_wafer(lot: LotFolder, wafer) -> LotFolder:
     lot.has_rtp = (w / "RTP.txt").is_file()
     lot.has_optic = (w / "OpticPreset.ini").is_file()
     lot.exists = w.is_dir()
-    if not (lot.has_zones or lot.has_rtp or lot.has_optic):
-        lot.reason = "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
-    elif lot.matched:
-        lot.reason = ""
+    lot.reason = "" if (lot.has_zones or lot.has_rtp or lot.has_optic) else \
+        "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
     return lot
 
 
@@ -388,19 +374,15 @@ def expand_all(lots: list[LotFolder]) -> list[LotFolder]:
 
 
 def _make_lotfolder(device, lot, sm, machine, sm_dir: Path, wafer: Path,
-                    fail: bool, wafers: list | None = None,
-                    matched: bool = True) -> LotFolder:
+                    fail: bool, wafers: list | None = None) -> LotFolder:
     """찾은 S/M 폴더 → LotFolder. 라벨 = 실제 S/M 폴더명(변형 포함).
-    wafers 를 주면 폴더를 다시 훑지 않는다(네트워크 폴더라 목록 조회가 비싸다).
-    matched=False = 계획 이름과 안 맞지만 **사람이 직접 고를 수 있게** 올린 후보."""
+    wafers 를 주면 폴더를 다시 훑지 않는다(네트워크 폴더라 목록 조회가 비싸다)."""
     label = sm_dir.name if sm else (engine._s(lot).strip() or device or "lot")
     lf = LotFolder(device=device, lot=lot, sm=sm_dir.name if sm else sm,
-                   machine=machine, label=label, fail=fail, matched=matched,
+                   machine=machine, label=label, fail=fail,
                    scan_time=folder_mtime(sm_dir),      # S/M 폴더 수정시각 = Scan 일자
                    wafer_choices=list(wafers if wafers is not None
                                       else list_wafers(sm_dir)))
-    if not matched:
-        lf.reason = "계획의 S/M 이름과 다름 — 직접 확인 후 선택"
     return set_wafer(lf, wafer)
 
 
@@ -436,18 +418,10 @@ def resolve_lot_variants(scan_roots, device: str, lot: str, sm: str,
                 or _bfs_exact(dev_dir, lot, max_depth=3)
             for lot_dir in lot_dirs:
                 reached_lot = True
-                # S/M: 정확 일치 → 포함(변형) → 토큰 겹침 → BFS 순으로 찾는다.
-                matched_names = True
-                if sm:
-                    sm_dirs = _find_children(lot_dir, sm) or _bfs_exact(lot_dir, sm, 2)
-                    if not sm_dirs:
-                        # 실제 폴더명은 'PG8G17 NFN RETURN 2D+3D 100' 처럼 계획과
-                        # 많이 다를 수 있다. 못 찾았다고 버리지 말고 **그 공정 폴더
-                        # 아래 폴더 전부**를 후보로 올려 사람이 고르게 한다.
-                        sm_dirs = _child_dirs(lot_dir)
-                        matched_names = False
-                else:
-                    sm_dirs = [lot_dir]
+                # S/M: ①정확 일치 → ②포함(양방향) → ③토큰 겹침(+BFS) 3단계.
+                # 못 찾으면 그대로 '폴더 없음' — 관계없는 폴더를 후보로 올리지 않는다.
+                sm_dirs = (_find_children(lot_dir, sm) or _bfs_exact(lot_dir, sm, 2)) \
+                    if sm else [lot_dir]
                 for sm_dir in sm_dirs:
                     reached_sm = True
                     wafers = list_wafers(sm_dir)      # 슬롯 선택 후보(기본 = 첫 번째)
@@ -459,10 +433,9 @@ def resolve_lot_variants(scan_roots, device: str, lot: str, sm: str,
                         continue
                     seen.add(key)
                     out.append(_make_lotfolder(device, lot, sm, machine, sm_dir,
-                                               wafer, fail, wafers, matched_names))
+                                               wafer, fail, wafers))
     if out:
-        # 계획과 매칭된 폴더를 위로, 직접 골라야 하는 후보를 아래로
-        return sorted(out, key=lambda l: (not l.matched, l.label.lower()))
+        return sorted(out, key=lambda l: l.label.lower())
     if not dev_found:
         fallback.reason = f"디바이스 폴더 없음: {device}"
     elif not reached_lot:
