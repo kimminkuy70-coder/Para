@@ -255,6 +255,41 @@ def test_real_parser_rows_through_editor():
         ok("실제 파서 rows → 편집기 격자·확정 왕복(파서 Y 항목만 저장)")
 
 
+def test_excel_close_returns_to_program():
+    """엑셀에서 편집하다가 **엑셀 창을 닫으면 프로그램 창으로 돌아와야** 한다.
+    (GUI 는 이 환경에서 못 띄우므로 감시 로직이 붙어 있는지 소스로 고정한다.)"""
+    import os as _os
+    import re as _re
+    src_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                             "param_manager", "equip_app.py")
+    with open(src_path, encoding="utf-8") as fh:
+        src = fh.read()
+    # 파일 잠금(엑셀이 열어 둠) 판정 + 닫힘 감시 + 창 복귀 헬퍼
+    for name in ("def _file_in_use", "def _watch_excel_close", "def _return_from_excel"):
+        assert name in src, f"{name} 이(가) 없음"
+    # 양식 만들기 / commonality 두 확정 대화상자 모두에 감시가 붙어야 한다
+    for fn in ("_form_finalize_dialog", "_cm_form_finalize_dialog"):
+        m = _re.search(r"def %s.*?(?=\n    def )" % fn, src, _re.S)
+        assert m, f"{fn} 을(를) 찾지 못함"
+        body = m.group(0)
+        assert "_watch_excel_close(draft, win, back)" in body, \
+            f"{fn}: 엑셀 닫힘 감시가 없음"
+        assert "_return_from_excel(" in body, f"{fn}: 창 복귀 처리가 없음"
+    ok("엑셀 닫으면 프로그램 창 복귀(양식 만들기 + commonality)")
+
+
+def test_optic_default_has_no_coefficient():
+    """OpticPreset 항목의 **기본 변환방식은 RAW**(계수 미적용) — 사용자 확정.
+    필요하면 편집기 '변환' 열에서 사람이 바꾼다."""
+    from param_manager import ini_parser as ip
+    for key in ("Id", "ZWafer", "FocusPosAboveChuck", "CreationMeasureDistance1",
+                "CreationMeasureIntensity2", "LightSrcDif_NominalGL"):
+        assert ip.resolve_transform(key, "RAW") == "RAW", key
+        assert ip.transform_value("100", "RAW", 0.5) == "100"
+    # µ 표기가 있는 이름만 변환된다(Zones 의 µm 파라미터)
+    assert ip.resolve_transform("Min Defect Width (µm)", "RAW") == "LINEAR"
+    ok("OpticPreset 기본 = 계수 미적용(RAW), µ 이름만 변환")
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

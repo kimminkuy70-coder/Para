@@ -2053,6 +2053,66 @@ class EquipApp(tk.Tk):
         win.wait_window()
         return result["val"]
 
+    def _file_in_use(self, path) -> bool:
+        """다른 프로그램(엑셀)이 이 파일을 열어 두었는가.
+
+        엑셀은 통합문서를 열어 두는 동안 **쓰기 공유를 막으므로**, 쓰기 모드로
+        열어 보면 알 수 있다(Windows). 잠금 개념이 없는 OS(개발환경 Linux)에서는
+        항상 False 라 아래 감시가 조용히 비활성화된다.
+        """
+        try:
+            with open(path, "r+b"):
+                return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False                 # 파일이 없거나 접근 불가 — 감시 대상 아님
+
+    def _watch_excel_close(self, path, win, on_closed, timeout_sec=3600):
+        """엑셀이 그 파일을 **닫으면** on_closed() 를 부른다(창을 다시 앞으로).
+
+        한 번이라도 '열림'을 본 뒤 '닫힘'이 되어야 호출한다 — 엑셀이 아직 뜨지
+        않은 초기 상태를 닫힌 것으로 오인하지 않기 위해서다. 창이 닫히거나
+        시간이 지나면 조용히 멈춘다(폴링은 0.7초, 파일 하나만 확인해 가볍다).
+        """
+        state = {"seen": False, "t0": time.time()}
+
+        def tick():
+            try:
+                if not win.winfo_exists():
+                    return
+            except Exception:  # noqa: BLE001
+                return
+            if self._file_in_use(path):
+                state["seen"] = True
+            elif state["seen"]:
+                try:
+                    on_closed()
+                except Exception as e:  # noqa: BLE001
+                    self._logerr("E171", e)
+                return
+            if time.time() - state["t0"] < timeout_sec:
+                win.after(700, tick)
+        win.after(700, tick)
+
+    def _return_from_excel(self, win, label=None, note=""):
+        """엑셀을 닫았을 때 프로그램 창을 다시 앞으로 가져온다."""
+        try:
+            self.deiconify()
+            self.lift()
+            win.deiconify()
+            win.lift()
+            win.focus_force()
+            win.attributes("-topmost", True)
+            win.after(400, lambda: win.attributes("-topmost", False))
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E172", e)
+        if label is not None:
+            try:
+                label.config(text=note, fg=self.p["ok"])
+            except Exception:  # noqa: BLE001
+                pass
+
     def _open_in_excel(self, path) -> bool:
         """저장된 initial/양식 파일을 실제 Excel(또는 OS 기본 앱)로 연다."""
         import shutil
@@ -3338,13 +3398,23 @@ class EquipApp(tk.Tk):
                   "이 환경에서 Excel을 자동으로 열지 못했습니다. 위 파일을 직접 여세요.\n")
                + "Excel에서 '사용'·'최종 Parameter'를 편집·저장한 뒤 '편집 완료'를 누르세요.\n"
                f"(편집 전 원본 보존: {os.path.basename(orig)})")
+
+        def back():
+            self._return_from_excel(
+                win, hint, "✔ 엑셀을 닫았습니다 — [편집 완료 → 양식 확정] 을 누르세요.")
         tk.Label(win, text=msg, bg=self.p["bg"], fg=self.p["text"], font=self.fonts["sub"],
-                 justify="left", wraplength=560).pack(padx=16, pady=(14, 10))
+                 justify="left", wraplength=560).pack(padx=16, pady=(14, 6))
+        # 엑셀을 닫으면 이 창이 자동으로 다시 앞으로 나온다(아래 감시)
+        hint = tk.Label(win, text="엑셀에서 편집·저장한 뒤 창을 닫으면 여기로 돌아옵니다.",
+                        bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                        justify="left", wraplength=560)
+        hint.pack(padx=16, pady=(0, 10), anchor="w")
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=(0, 14))
         tk.Button(bt, text="다시 열기", relief="flat", bd=0, bg=self.p["surface"],
                   padx=12, pady=6, cursor="hand2",
-                  command=lambda: self._open_in_excel(draft)).pack(side="left")
+                  command=lambda: (self._open_in_excel(draft),
+                                   self._watch_excel_close(draft, win, back))).pack(side="left")
         tk.Button(bt, text="편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
                   fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   command=lambda: self._form_finalize(draft, level, kind, scales,
@@ -3352,6 +3422,8 @@ class EquipApp(tk.Tk):
                                                       prev_form=prev_form)).pack(side="right")
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=12,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
+        if opened:
+            self._watch_excel_close(draft, win, back)
 
     def _form_finalize(self, draft, level, kind, scales, run_dir, aoi, st, win,
                        prev_form=None):
@@ -4198,19 +4270,30 @@ class EquipApp(tk.Tk):
                + ("실제 Excel로 열었습니다. " if opened else
                   "Excel을 자동으로 열지 못했습니다. 위 파일을 직접 여세요.\n")
                + "'사용'·'최종 Parameter'를 편집·저장한 뒤 '편집 완료'를 누르세요.")
+
+        def back():
+            self._return_from_excel(
+                win, hint, "✔ 엑셀을 닫았습니다 — [편집 완료 → 양식 확정] 을 누르세요.")
         tk.Label(win, text=msg, bg=self.p["bg"], fg=self.p["text"], font=self.fonts["sub"],
-                 justify="left", wraplength=560).pack(padx=16, pady=(14, 10))
+                 justify="left", wraplength=560).pack(padx=16, pady=(14, 6))
+        hint = tk.Label(win, text="엑셀에서 편집·저장한 뒤 창을 닫으면 여기로 돌아옵니다.",
+                        bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                        justify="left", wraplength=560)
+        hint.pack(padx=16, pady=(0, 10), anchor="w")
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=(0, 14))
         tk.Button(bt, text="다시 열기", relief="flat", bd=0, bg=self.p["surface"],
                   padx=12, pady=6, cursor="hand2",
-                  command=lambda: self._open_in_excel(draft)).pack(side="left")
+                  command=lambda: (self._open_in_excel(draft),
+                                   self._watch_excel_close(draft, win, back))).pack(side="left")
         tk.Button(bt, text="편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
                   fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   command=lambda: self._cm_form_finalize(draft, recipe, win)).pack(
                   side="right")
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=12,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
+        if opened:
+            self._watch_excel_close(draft, win, back)
 
     def _cm_form_finalize(self, draft, recipe, win):
         m, st = self._cm["machine"], self._cm["st"]

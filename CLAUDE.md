@@ -115,11 +115,17 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
   대신 기본 `사용=N`(광원 KEEP 9개 + 합성행만 Y). `rtp_parser._is_optic_noise` 는
   레거시 경로에만 남는다. 양식 만들기·commonality·값 업데이트 **모두 같은 파서**라
   한 번에 적용된다.
-- **OpticPreset 행 변환방식**: RAW 하드코딩을 폐지하고 다른 파일과 같은
-  `resolve_transform` 규칙을 쓴다. 표시명 매핑이 없어 기본은 RAW 지만, 편집기
-  '변환' 열에서 LINEAR/AREA 로 바꾸면 `_EXTRACT_MAP` 에 저장돼 **값 업데이트·
-  commonality 결과·비교표 전부 계수 적용값**으로 채워진다(`collate.collate_recipe`).
-  commonality 결과 `_정보` 시트에 적용 계수를 기록한다.
+- **OpticPreset 행 변환방식 = 기본 계수 미적용(RAW, 사용자 확정)**: 표시명에 µ 가
+  있을 때만 변환하는 공통 규칙(`resolve_transform`)을 그대로 쓰므로 OpticPreset 키는
+  전부 RAW 다. 필요하면 **사람이** 편집기 '변환' 열에서 LINEAR/AREA 로 바꾸고, 그
+  방식이 `_EXTRACT_MAP` 에 저장돼 **값 업데이트·commonality 결과·비교표 전부
+  계수 적용값**으로 채워진다(`collate.collate_recipe`). commonality 결과 `_정보`
+  시트에 적용 계수를 기록한다.
+- **엑셀 편집 후 창 복귀 (2026-08)**: 양식 만들기·commonality 모두 '엑셀에서
+  편집하기' → 엑셀을 닫으면 프로그램 확정 창이 자동으로 앞으로 나온다.
+  `_file_in_use`(쓰기 열기로 잠금 판정) + `_watch_excel_close`(0.7초 폴링,
+  '열림을 본 뒤 닫힘'일 때만) + `_return_from_excel`(창 복귀·안내 갱신).
+  잠금 개념이 없는 OS 에서는 조용히 비활성(종전 동작 유지).
 
 ## 사내 보안 모니터링 오탐 방지 (2026-08 전수 검토 — `tests/test_network_manners.py`)
 
@@ -163,7 +169,7 @@ python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신
 python3 tests/test_commonality.py  # 19 (Lot계획·폴더해석·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
-python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
+python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_updater.py      # 22 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
