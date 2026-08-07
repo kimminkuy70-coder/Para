@@ -476,6 +476,30 @@ def test_wafer_slot_choices_and_switch():
         assert "대상 파일" in lot.reason
     print("  commonality OK: 슬롯 폴더 선택(기본 첫 번째·전환 시 재판정)")
 
+def test_slot_chooser_is_actually_visible():
+    """슬롯 선택 콤보박스가 **화면에 보이는 순서**로 배치돼야 한다.
+
+    tkinter pack 은 배치 순서대로 공간을 떼어 간다. expand=True 인 라벨을 먼저
+    pack 하면 남은 폭을 전부 차지해, 그 뒤에 side='right' 로 놓은 콤보박스가
+    밀려나 보이지 않는다 — 선택 UI 를 넣었는데도 '선택이 안 된다'던 실제 증상.
+    (GUI 는 이 환경에서 띄울 수 없어 소스 배치 순서로 고정한다.)
+    """
+    import re
+    src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "param_manager", "equip_app.py")
+    with open(src_path, encoding="utf-8") as fh:
+        src = fh.read()
+    m = re.search(r"def _cm_confirm_lots.*?(?=\n    def )", src, re.S)
+    assert m, "_cm_confirm_lots 를 찾지 못함"
+    body = m.group(0)
+    combo_pack = body.index('combo.pack(side="right"')
+    label_pack = body.index('lbl.pack(side="left", fill="x", expand=True)')
+    assert combo_pack < label_pack, \
+        "확장 라벨보다 콤보박스를 먼저 pack 해야 화면에 보인다"
+    # 고른 슬롯이 실제 조사 대상에 반영되는 경로도 함께 고정
+    assert "cm.set_wafer(lot, pick)" in body, "선택이 LotFolder 에 반영되지 않음"
+    print("  commonality OK: 슬롯 선택 UI 배치 순서(보이는지) + 선택 반영")
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())
