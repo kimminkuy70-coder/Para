@@ -5255,7 +5255,10 @@ class EquipApp(tk.Tk):
         except Exception as e:  # noqa: BLE001
             self._err("E143", "특이사항 로드 실패", e)
             self.special_rows, self.special_colors = [], {}
-        self._set_status(f"저장 폴더: {self.save_dir}  (호기 {len(self._all_machines())}대)")
+        # 버전을 상태바에 노출 — 업데이트가 실제로 적용됐는지 사용자가 바로
+        # 확인할 수 있고, 문의 시에도 버전을 물어보기 쉽다.
+        self._set_status(f"v{__version__}  ·  저장 폴더: {self.save_dir}  "
+                         f"(호기 {len(self._all_machines())}대)")
 
     def _load_latest_collate(self):
         """최신 '파라미터 값 취합' 파일을 값 확인용으로 로드(없으면 빈 화면)."""
