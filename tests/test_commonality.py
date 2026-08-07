@@ -492,13 +492,54 @@ def test_slot_chooser_is_actually_visible():
     m = re.search(r"def _cm_confirm_lots.*?(?=\n    def )", src, re.S)
     assert m, "_cm_confirm_lots 를 찾지 못함"
     body = m.group(0)
-    combo_pack = body.index('combo.pack(side="right"')
+    btn_pack = body.index('btn.pack(side="right"')
     label_pack = body.index('lbl.pack(side="left", fill="x", expand=True)')
-    assert combo_pack < label_pack, \
-        "확장 라벨보다 콤보박스를 먼저 pack 해야 화면에 보인다"
-    # 고른 슬롯이 실제 조사 대상에 반영되는 경로도 함께 고정
-    assert "cm.set_wafer(lot, pick)" in body, "선택이 LotFolder 에 반영되지 않음"
-    print("  commonality OK: 슬롯 선택 UI 배치 순서(보이는지) + 선택 반영")
+    assert btn_pack < label_pack, \
+        "확장 라벨보다 슬롯 버튼을 먼저 pack 해야 화면에 보인다"
+    # 고른 슬롯이 실제 조사 대상으로 펼쳐지는 경로도 함께 고정
+    assert "cm.expand_all(selected)" in src, "슬롯 다중 선택이 조사 대상에 반영되지 않음"
+    print("  commonality OK: 슬롯 선택 UI 배치 순서(보이는지) + 다중 선택 반영")
+
+def test_multi_slot_expands_into_separate_targets():
+    """슬롯을 여러 개 고르면 **슬롯마다 따로 조사**해야 한다(값이 다를 수 있음).
+    취합 열이 겹치지 않게 라벨 뒤에 슬롯명이 붙는다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        for w, d in (("CX01", 11), ("CX02", 22), ("CX03", 33)):
+            _make_wafer(tmp, "AOI-6", "2D@R2-DEVA-1_0855360PD-0A", "6321", "HPG", w,
+                        delta=d)
+        root = commonality.scanresult_root(tmp, "AOI-6")
+        lot = commonality.resolve_lot(root, "DEVA-1", "6321", "HPG", "AOI-6")
+
+        # 고르지 않으면 지금까지와 동일 — 대상 1개, 라벨 그대로
+        assert [l.label for l in commonality.expand_wafers(lot)] == [lot.label]
+
+        # 1개만 고르면 라벨을 바꾸지 않는다(이전 결과와 열 이름이 이어짐)
+        lot.wafer_picks = [p for p in lot.wafer_choices if p.name == "CX02"]
+        one = commonality.expand_wafers(lot)
+        assert len(one) == 1 and one[0].label == lot.label
+        assert one[0].wafer_dir.name == "CX02"
+
+        # 2개 이상이면 슬롯마다 별도 대상 + 라벨에 슬롯명
+        lot.wafer_picks = [p for p in lot.wafer_choices if p.name in ("CX01", "CX03")]
+        many = commonality.expand_wafers(lot)
+        assert [l.wafer_dir.name for l in many] == ["CX01", "CX03"]
+        assert [l.label for l in many] == [f"{lot.label}·CX01", f"{lot.label}·CX03"]
+        assert len({l.label for l in many}) == 2, "취합 열 이름이 겹치면 안 됨"
+        # 원본 lot 은 그대로(복제본이어야 한다)
+        assert lot.label == "HPG"
+
+        # 실제로 슬롯별 값이 따로 조사되는지
+        pivot, labels = commonality.parse_lots(
+            [(l.label, l.wafer_dir) for l in many], level="PI3")
+        vals = {lab: None for lab in labels}
+        for r in pivot:
+            if r["extract"].get("key") == "High_Delta":
+                vals = {lab: str(r["raws"].get(lab)) for lab in labels}
+        assert vals == {f"{lot.label}·CX01": "11", f"{lot.label}·CX03": "33"}, vals
+
+        # expand_all 은 목록 전체를 펼친다
+        assert len(commonality.expand_all([lot, lot])) == 4
+    print("  commonality OK: 슬롯 다중 선택 → 슬롯별 조사 대상 분리")
 
 if __name__ == "__main__":
     fails = 0

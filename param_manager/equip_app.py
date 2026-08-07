@@ -3703,7 +3703,7 @@ class EquipApp(tk.Tk):
         self._wheelify(canvas)
 
         self._cm_sel_vars = []       # [(BooleanVar, LotFolder)]
-        slot_pickers: list = []      # [(LotFolder, StringVar, 적용함수)] — 일괄 지정용
+        slot_pickers: list = []      # [(LotFolder, 표시갱신함수)] — 일괄 지정용
         for l in lots:
             var = tk.BooleanVar(value=bool(l.exists))   # 기본 전체 선택(존재하는 것)
             self._cm_sel_vars.append((var, l))
@@ -3715,37 +3715,36 @@ class EquipApp(tk.Tk):
             cb.pack(side="left")
             mark = "✓" if l.exists else "✗"
             base_txt = f"{mark}  {l.label}   ·   {l.device}/{l.lot}   →   "
-            # 슬롯(웨이퍼) 선택 — 후보가 2개 이상일 때만.
+            # 슬롯(웨이퍼) 선택 — 여러 개 고를 수 있다(고른 수만큼 따로 조사).
             # **오른쪽 위젯을 라벨보다 먼저 pack 해야 한다**: expand=True 로 늘어나는
-            # 라벨을 먼저 배치하면 남은 폭을 전부 차지해 콤보박스가 화면 밖으로
-            # 밀려 보이지 않는다(선택 UI 가 안 보이던 실제 증상).
-            names = [p.name for p in (l.wafer_choices or [])]
-            combo = sv = None
-            if l.exists and len(names) > 1:
-                sv = tk.StringVar(value=l.wafer_dir.name)
-                combo = ttk.Combobox(row, textvariable=sv, values=names,
-                                     state="readonly", width=16)
-                combo.pack(side="right", padx=(4, 2))
-                tk.Label(row, text=f"슬롯 {len(names)}개:", bg=self.p["bg"],
-                         fg=self.p["primary"], font=self.fonts["sub"]).pack(
-                         side="right")
-            lbl = tk.Label(row, text=base_txt + (l.wafer_dir.name if l.exists
+            # 라벨을 먼저 배치하면 남은 폭을 전부 차지해 버튼이 화면 밖으로 밀려
+            # 보이지 않는다(선택 UI 가 안 보이던 실제 증상).
+            btn = None
+            if l.exists and len(l.wafer_choices) > 1:
+                if not l.wafer_picks:
+                    l.wafer_picks = [l.wafer_dir]     # 기본 = 지금 대상(이름순 첫)
+                btn = tk.Button(row, relief="flat", bd=0, bg=self.p["surface"],
+                                fg=self.p["primary"], font=self.fonts["sub"],
+                                padx=8, pady=1, cursor="hand2")
+                btn.pack(side="right", padx=(4, 2))
+            lbl = tk.Label(row, text=base_txt + (self._cm_slot_text(l) if l.exists
                                                  else l.reason),
                            bg=(self.p["bg"] if not l.fail else "#FFF6C8"),
                            fg=(self.p["text"] if l.exists else self.p["muted"]),
                            font=self.fonts["sub"], anchor="w")
             lbl.pack(side="left", fill="x", expand=True)
-            if combo is not None:
-                def on_pick(_e=None, lot=l, var=sv, lab=lbl, pre=base_txt):
-                    pick = next((p for p in lot.wafer_choices
-                                 if p.name == var.get()), None)
-                    if pick is None:
-                        return
-                    cm.set_wafer(lot, pick)          # 조사 대상 폴더를 바꾼다
-                    lab.config(text=pre + pick.name,
-                               fg=(self.p["text"] if lot.exists else self.p["muted"]))
-                combo.bind("<<ComboboxSelected>>", on_pick)
-                slot_pickers.append((l, sv, on_pick))
+            if btn is not None:
+                def redraw(lot=l, b=btn, lab=lbl, pre=base_txt):
+                    b.config(text=f"슬롯 {len(lot.wafer_picks)}/"
+                                  f"{len(lot.wafer_choices)} ▾")
+                    lab.config(text=pre + self._cm_slot_text(lot))
+
+                def choose(lot=l, refresh=redraw):
+                    if self._cm_pick_slots(win, lot):
+                        refresh()
+                redraw()
+                btn.config(command=choose)
+                slot_pickers.append((l, redraw))
 
         def set_all(v):
             for var, l in self._cm_sel_vars:
@@ -3764,24 +3763,88 @@ class EquipApp(tk.Tk):
                   padx=10, pady=4, cursor="hand2",
                   command=lambda: (win.destroy(), self._cm_add_lot())).pack(side="left", padx=4)
 
-        def set_slot_all(last: bool):
-            """슬롯이 여러 개인 Lot 전부를 첫/마지막 슬롯으로 한 번에 맞춘다.
+        def set_slot_all(mode: str):
+            """슬롯이 여러 개인 Lot 전부를 한 번에 맞춘다(첫 슬롯만 / 전체 슬롯).
             창을 다시 그리지 않는다(체크 상태가 초기화되면 안 되므로)."""
-            for lot, var, apply_pick in slot_pickers:
-                var.set(lot.wafer_choices[-1 if last else 0].name)
-                apply_pick()                 # set_wafer + 표시 갱신
+            for lot, redraw in slot_pickers:
+                picks = (list(lot.wafer_choices) if mode == "all"
+                         else [lot.wafer_choices[0]])
+                lot.wafer_picks = picks
+                cm.set_wafer(lot, picks[0])
+                redraw()
         if slot_pickers:
-            tk.Button(bt, text="슬롯 일괄: 첫번째", relief="flat", bd=0,
+            tk.Label(bt, text="슬롯 일괄:", bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"]).pack(side="left", padx=(12, 2))
+            tk.Button(bt, text="첫 슬롯만", relief="flat", bd=0,
                       bg=self.p["surface"], padx=10, pady=4, cursor="hand2",
-                      command=lambda: set_slot_all(False)).pack(side="left", padx=(12, 2))
-            tk.Button(bt, text="마지막", relief="flat", bd=0, bg=self.p["surface"],
+                      command=lambda: set_slot_all("first")).pack(side="left", padx=2)
+            tk.Button(bt, text="전체 슬롯", relief="flat", bd=0, bg=self.p["surface"],
                       padx=10, pady=4, cursor="hand2",
-                      command=lambda: set_slot_all(True)).pack(side="left", padx=2)
+                      command=lambda: set_slot_all("all")).pack(side="left", padx=2)
         tk.Button(bt, text="선택한 폴더로 진행(복사)", relief="flat", bd=0,
                   bg=self.p["primary"], fg="#ffffff", padx=14, pady=5, cursor="hand2",
                   command=lambda: self._cm_confirm_proceed(win)).pack(side="right")
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=12,
                   pady=5, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
+
+    def _cm_slot_text(self, lot) -> str:
+        """행에 보여줄 슬롯 표기 — 1개면 이름, 여러 개면 '3개(CX01, CX02 …)'."""
+        picks = list(lot.wafer_picks or ([lot.wafer_dir] if lot.wafer_dir else []))
+        names = [p.name for p in picks if p is not None]
+        if not names:
+            return "(슬롯 없음)"
+        if len(names) == 1:
+            return names[0]
+        head = ", ".join(names[:3])
+        return f"{len(names)}개 ({head}{' …' if len(names) > 3 else ''})"
+
+    def _cm_pick_slots(self, parent, lot) -> bool:
+        """슬롯(웨이퍼) **다중 선택** 창. 고르면 lot.wafer_picks 갱신. 반환: 변경 여부.
+
+        한 Lot 에서 슬롯을 여러 개 고르면 슬롯마다 따로 조사한다(값이 다를 수 있음).
+        """
+        names = [p.name for p in lot.wafer_choices]
+        chosen = [p.name for p in (lot.wafer_picks or [])]
+        win = tk.Toplevel(parent)
+        win.title(f"슬롯 선택 — {lot.label}")
+        win.configure(bg=self.p["bg"])
+        win.transient(parent)
+        win.grab_set()
+        win.geometry("560x420")
+        tk.Label(win, text=f"{lot.device} / {lot.lot} / {lot.label}",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                 anchor="w", padx=16, pady=(12, 0))
+        tk.Label(win, text="조사할 슬롯(웨이퍼) 폴더를 고르세요. 여러 개 고르면 "
+                           "슬롯마다 따로 조사하고,\n결과 열 이름 뒤에 슬롯명이 붙습니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(2, 6))
+        # 버튼 줄을 목록보다 먼저 바닥에 고정한다 — 목록(expand)을 먼저 배치하면
+        # 남은 공간을 다 가져가 버튼이 창 밖으로 밀릴 수 있다.
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(side="bottom", fill="x", padx=16, pady=12)
+        selected = self._pick_list(win, " 슬롯 ", names, chosen=chosen, unit="개",
+                                   note="기본 = 이름순 첫 슬롯", height=240)
+        out = {"ok": False}
+
+        def apply():
+            picked = selected()
+            if not picked:
+                messagebox.showwarning("슬롯 선택",
+                                       "슬롯을 하나 이상 고르세요.", parent=win)
+                return
+            lot.wafer_picks = [p for p in lot.wafer_choices if p.name in set(picked)]
+            cm.set_wafer(lot, lot.wafer_picks[0])   # 대표(첫) 슬롯으로 상태 갱신
+            out["ok"] = True
+            win.destroy()
+
+        tk.Button(bt, text="확인", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=5, cursor="hand2",
+                  command=apply).pack(side="right")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=14, pady=5, cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=6)
+        win.wait_window()
+        return out["ok"]
 
     def _cm_confirm_proceed(self, win):
         selected = [l for var, l in getattr(self, "_cm_sel_vars", [])
@@ -3790,6 +3853,8 @@ class EquipApp(tk.Tk):
             messagebox.showwarning("선택 없음", "복사할 S/M 폴더를 하나 이상 선택하세요.",
                                    parent=win)
             return
+        # 슬롯을 여러 개 고른 Lot 은 슬롯마다 별도 조사 대상으로 펼친다
+        selected = cm.expand_all(selected)
         self._cm["selected"] = selected
         win.destroy()
         self._cm_copy()

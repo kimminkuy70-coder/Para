@@ -39,8 +39,12 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 
 Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'Commonality 조사'.
 경로 `{루트}/{호기}/Scanresult/{2D@디바이스_레시피}/{공정번호}/{S/M}/{슬롯}/`.
-**조사할 슬롯(웨이퍼) 폴더는 S/M 선택창에서 고른다**(기본=이름순 첫 번째,
-`commonality.list_wafers`/`set_wafer`, LotFolder.wafer_choices — 고르면 대상 파일 재판정).
+**조사할 슬롯(웨이퍼) 폴더는 S/M 선택창에서 고른다 — 다중 선택**(기본=이름순 첫 번째).
+행 오른쪽 `슬롯 n/N ▾` 버튼 → `_cm_pick_slots`(체크박스 다중) · 하단 '슬롯 일괄:
+첫 슬롯만/전체 슬롯'. 여러 개 고르면 `commonality.expand_wafers`/`expand_all` 이
+**슬롯마다 별도 조사 대상**으로 펼치고 라벨에 `·{슬롯}` 을 붙인다(1개면 라벨 유지 =
+이전 결과와 열 이름 연속). 관련 = `list_wafers`/`set_wafer`/LotFolder
+`wafer_choices`·`wafer_picks`.
 호기 1대씩: ① 호기 선택(호기 폴더 config 저장, 그 아래 Scanresult 백업본 전부 자동 탐색) → ② Lot 계획 엑셀(디바이스명/공정번호/S·M/AOI호기)
 업로드→호기 필터→폴더 실재 확인 → ③ 안전 복사(downloader, 원본 read-only) → ④ 양식 만들기
 (제목 지정, 양식 만들기와 동일: OpticPreset 추림·계수·추천, **Lot 구조 diff 확인**) →
@@ -146,7 +150,7 @@ python3 tests/test_formbuilder.py  # 7  (초안 생성·편집→확정 양식·
 python3 tests/test_collate.py      # 7  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_commonality.py  # 18 (Lot계획·폴더해석·슬롯선택·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
+python3 tests/test_commonality.py  # 19 (Lot계획·폴더해석·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 10 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)

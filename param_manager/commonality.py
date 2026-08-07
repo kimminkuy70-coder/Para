@@ -11,7 +11,8 @@ Scanresult 아래 여러 **Lot**(웨이퍼 로트)의 파라미터 값을 조사
       ├─ Zones/*        (하위 ini 전체)
       ├─ RTP.txt        (표시값 — 변환계수 추정)
       └─ OpticPreset.ini
-  웨이퍼 폴더는 **이름순 1번째** 1개만 조사한다.
+  조사할 웨이퍼(슬롯) 폴더는 **사람이 고른다**(기본 = 이름순 1번째).
+  여러 개 고르면 `expand_wafers` 가 슬롯마다 별도 조사 대상으로 펼친다.
 
 흐름(GUI 가 호출):
   1) 호기 선택 → scanresult_root()
@@ -27,7 +28,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import openpyxl
@@ -150,6 +151,7 @@ class LotFolder:
     label: str                        # 취합 열/식별용 = 실제 S/M 폴더명(변형 포함)
     wafer_dir: Path | None = None     # 조사 대상 웨이퍼(슬롯) 폴더 — 기본은 이름순 첫
     wafer_choices: list = field(default_factory=list)   # 고를 수 있는 슬롯 폴더 전부
+    wafer_picks: list = field(default_factory=list)     # 사람이 고른 슬롯(여러 개 가능)
     exists: bool = False
     has_zones: bool = False
     has_rtp: bool = False
@@ -313,6 +315,37 @@ def set_wafer(lot: LotFolder, wafer) -> LotFolder:
     lot.reason = "" if (lot.has_zones or lot.has_rtp or lot.has_optic) else \
         "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
     return lot
+
+
+def expand_wafers(lot: LotFolder) -> list[LotFolder]:
+    """고른 슬롯마다 조사 대상 LotFolder 를 만든다(**슬롯 다중 선택**).
+
+    한 Lot 에서 슬롯을 여러 개 고르면 슬롯마다 값이 다를 수 있으므로 각각을
+    별도 조사 대상으로 펼친다. 취합 열(라벨)이 겹치면 안 되므로 2개 이상일 때만
+    라벨 뒤에 슬롯명을 붙인다(1개면 기존과 똑같은 라벨 = 이전 결과와 비교 가능).
+    고른 것이 없으면 지금 대상(wafer_dir) 하나만 돌려준다.
+    """
+    picks = [Path(p) for p in (lot.wafer_picks or [])]
+    if not picks:
+        return [lot]
+    if len(picks) == 1 and picks[0] == lot.wafer_dir:
+        return [lot]
+    out: list[LotFolder] = []
+    for w in picks:
+        clone = replace(lot, wafer_choices=list(lot.wafer_choices), wafer_picks=[w])
+        set_wafer(clone, w)
+        if len(picks) > 1:
+            clone.label = f"{lot.label}·{w.name}"
+        out.append(clone)
+    return out
+
+
+def expand_all(lots: list[LotFolder]) -> list[LotFolder]:
+    """선택된 Lot 목록을 슬롯 선택까지 펼친다(조사 직전에 한 번 호출)."""
+    out: list[LotFolder] = []
+    for l in lots or []:
+        out.extend(expand_wafers(l))
+    return out
 
 
 def _make_lotfolder(device, lot, sm, machine, sm_dir: Path, wafer: Path,
