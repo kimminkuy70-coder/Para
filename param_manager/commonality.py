@@ -133,6 +133,11 @@ def _norm(s) -> str:
     return re.sub(r"[^0-9a-z가-힣]", "", str(s or "").lower())
 
 
+def _tokens(s) -> list[str]:
+    """'SUA RETURN PG8E10' → ['sua','return','pg8e10'] (매칭용 단어 분해)."""
+    return [_norm(t) for t in re.split(r"[^0-9A-Za-z가-힣]+", str(s or "")) if _norm(t)]
+
+
 def _aoi_norm(s) -> str:
     """호기 식별용 정규화 — 숫자의 앞 0 무시(AOI-9 == AOI-09 == AOI_9)."""
     s = str(s or "")
@@ -152,6 +157,8 @@ class LotFolder:
     wafer_dir: Path | None = None     # 조사 대상 웨이퍼(슬롯) 폴더 — 기본은 이름순 첫
     wafer_choices: list = field(default_factory=list)   # 고를 수 있는 슬롯 폴더 전부
     wafer_picks: list = field(default_factory=list)     # 사람이 고른 슬롯(여러 개 가능)
+    matched: bool = True              # 계획의 S/M 이름과 매칭됐는가(False=직접 고를 후보)
+    scan_time: str = ""               # S/M 폴더 수정시각 = Scan 일자(언제 스캔됐는지)
     exists: bool = False
     has_zones: bool = False
     has_rtp: bool = False
@@ -246,9 +253,29 @@ def _find_children(parent: Path, name: str, *, contains: bool = True) -> list[Pa
     exact = [p for p in dirs if _norm(p.name) == nk]
     if exact:
         return exact
-    if contains:
-        return [p for p in dirs if nk in _norm(p.name)]
-    return []
+    if not contains:
+        return []
+    part = [p for p in dirs if nk in _norm(p.name) or _norm(p.name) in nk]
+    if part:
+        return part
+    # 실제 폴더는 'SUA RERURN PG8E10' 처럼 오타·군더더기가 붙는다. 정확·포함
+    # 매칭이 실패하면 **토큰(단어) 겹침**으로 한 번 더 찾는다.
+    toks = [t for t in _tokens(name) if len(t) >= 2]
+    if not toks:
+        return []
+    hit = [p for p in dirs if any(t in _norm(p.name) for t in toks)]
+    return hit
+
+
+def _child_dirs(parent: Path) -> list[Path]:
+    """parent 바로 아래 폴더 전부(이름순) — 매칭 실패 시 '직접 고를 후보'."""
+    if not parent.is_dir():
+        return []
+    try:
+        return sorted((p for p in parent.iterdir() if p.is_dir()),
+                      key=lambda x: x.name.lower())
+    except OSError:
+        return []
 
 
 def _find_child(parent: Path, name: str, *, contains: bool = True) -> Path | None:
@@ -279,6 +306,16 @@ def _bfs_exact(parent: Path, name: str, max_depth: int = 3) -> list[Path]:
             return sorted(found, key=lambda x: x.name.lower())
         level = nxt
     return []
+
+
+def folder_mtime(path) -> str:
+    """폴더 수정시각 'YYYY-MM-DD HH:MM'. 못 읽으면 빈 문자열.
+    S/M 폴더의 수정시각을 **Scan 일자**(언제 스캔된 자료인지)로 쓴다."""
+    try:
+        from datetime import datetime as _dt
+        return _dt.fromtimestamp(Path(path).stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    except (OSError, ValueError, OverflowError):
+        return ""
 
 
 def list_wafers(sm_dir: Path) -> list[Path]:
@@ -312,8 +349,10 @@ def set_wafer(lot: LotFolder, wafer) -> LotFolder:
     lot.has_rtp = (w / "RTP.txt").is_file()
     lot.has_optic = (w / "OpticPreset.ini").is_file()
     lot.exists = w.is_dir()
-    lot.reason = "" if (lot.has_zones or lot.has_rtp or lot.has_optic) else \
-        "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
+    if not (lot.has_zones or lot.has_rtp or lot.has_optic):
+        lot.reason = "웨이퍼 폴더에 대상 파일(Zones/RTP/Optic) 없음"
+    elif lot.matched:
+        lot.reason = ""
     return lot
 
 
@@ -349,14 +388,19 @@ def expand_all(lots: list[LotFolder]) -> list[LotFolder]:
 
 
 def _make_lotfolder(device, lot, sm, machine, sm_dir: Path, wafer: Path,
-                    fail: bool, wafers: list | None = None) -> LotFolder:
+                    fail: bool, wafers: list | None = None,
+                    matched: bool = True) -> LotFolder:
     """찾은 S/M 폴더 → LotFolder. 라벨 = 실제 S/M 폴더명(변형 포함).
-    wafers 를 주면 폴더를 다시 훑지 않는다(네트워크 폴더라 목록 조회가 비싸다)."""
+    wafers 를 주면 폴더를 다시 훑지 않는다(네트워크 폴더라 목록 조회가 비싸다).
+    matched=False = 계획 이름과 안 맞지만 **사람이 직접 고를 수 있게** 올린 후보."""
     label = sm_dir.name if sm else (engine._s(lot).strip() or device or "lot")
     lf = LotFolder(device=device, lot=lot, sm=sm_dir.name if sm else sm,
-                   machine=machine, label=label, fail=fail,
+                   machine=machine, label=label, fail=fail, matched=matched,
+                   scan_time=folder_mtime(sm_dir),      # S/M 폴더 수정시각 = Scan 일자
                    wafer_choices=list(wafers if wafers is not None
                                       else list_wafers(sm_dir)))
+    if not matched:
+        lf.reason = "계획의 S/M 이름과 다름 — 직접 확인 후 선택"
     return set_wafer(lf, wafer)
 
 
@@ -392,9 +436,18 @@ def resolve_lot_variants(scan_roots, device: str, lot: str, sm: str,
                 or _bfs_exact(dev_dir, lot, max_depth=3)
             for lot_dir in lot_dirs:
                 reached_lot = True
-                # S/M: 정확 일치 우선, 없으면 포함(변형) 전부, 그래도 없으면 BFS.
-                sm_dirs = (_find_children(lot_dir, sm) or _bfs_exact(lot_dir, sm, 2)) \
-                    if sm else [lot_dir]
+                # S/M: 정확 일치 → 포함(변형) → 토큰 겹침 → BFS 순으로 찾는다.
+                matched_names = True
+                if sm:
+                    sm_dirs = _find_children(lot_dir, sm) or _bfs_exact(lot_dir, sm, 2)
+                    if not sm_dirs:
+                        # 실제 폴더명은 'PG8G17 NFN RETURN 2D+3D 100' 처럼 계획과
+                        # 많이 다를 수 있다. 못 찾았다고 버리지 말고 **그 공정 폴더
+                        # 아래 폴더 전부**를 후보로 올려 사람이 고르게 한다.
+                        sm_dirs = _child_dirs(lot_dir)
+                        matched_names = False
+                else:
+                    sm_dirs = [lot_dir]
                 for sm_dir in sm_dirs:
                     reached_sm = True
                     wafers = list_wafers(sm_dir)      # 슬롯 선택 후보(기본 = 첫 번째)
@@ -406,9 +459,10 @@ def resolve_lot_variants(scan_roots, device: str, lot: str, sm: str,
                         continue
                     seen.add(key)
                     out.append(_make_lotfolder(device, lot, sm, machine, sm_dir,
-                                               wafer, fail, wafers))
+                                               wafer, fail, wafers, matched_names))
     if out:
-        return sorted(out, key=lambda l: l.label.lower())
+        # 계획과 매칭된 폴더를 위로, 직접 골라야 하는 후보를 아래로
+        return sorted(out, key=lambda l: (not l.matched, l.label.lower()))
     if not dev_found:
         fallback.reason = f"디바이스 폴더 없음: {device}"
     elif not reached_lot:
@@ -562,6 +616,9 @@ def structure_diff(lot_dirs: list[tuple[str, Path]], level: str = "",
 # --------------------------------------------------------------------------
 # Step 5: 양식 기준 Lot별 값 → 호기 결과 엑셀
 # --------------------------------------------------------------------------
+SCAN_ROW_LABEL = "Scan일자"      # 조사 결과 엑셀 1행(각 S/M 열의 스캔 시각)
+
+
 def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
                  lot_labels: list[str], coef_lookup=None) -> collate.CollateRecipe:
     """확정 양식 + 통합 피벗 → Lot 열 채운 CollateRecipe(collate 재사용).
@@ -573,7 +630,8 @@ def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
 def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
                      res: collate.CollateRecipe, lot_labels: list[str],
                      fail_labels: list[str] | None = None,
-                     coef_note: list[str] | None = None) -> str:
+                     coef_note: list[str] | None = None,
+                     scan_times: dict | None = None) -> str:
     """호기 1대 결과: 시트=레시피, 헤더=META + S/M들. 호기명·fail 은 '_정보' 시트에.
 
     값은 **양식의 변환방식대로 계수를 적용한 값**(collate.collate_recipe)이다.
@@ -583,21 +641,30 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     # 1행은 표시용 헤더(PI→상위 Recipe, Recipe→하위 Recipe). Lot 열은 그대로.
     disp_headers = [engine.display_header(h) for h in headers]
     fail_labels = list(fail_labels or [])
+    scan_times = dict(scan_times or {})
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = collate._safe_sheet(recipe)
+    # **1행 = Scan 일자**(각 S/M 열이 언제 스캔된 자료인지). 헤더는 2행.
+    ws.append([SCAN_ROW_LABEL] + [""] * (len(engine.META_FIELDS) - 1)
+              + [engine._s(scan_times.get(l)) for l in lot_labels])
     ws.append(disp_headers)
     for rec in res.records:
         ws.append([rec.get(h) for h in headers])
     fill = PatternFill("solid", fgColor=_HDR_FILL)
     white = Font(color="FFFFFF", bold=True)
     yellow = PatternFill("solid", fgColor=FAIL_FILL)
+    scan_fill = PatternFill("solid", fgColor="E8EEF7")
     for j, h in enumerate(headers, start=1):
-        c = ws.cell(row=1, column=j)
+        c1 = ws.cell(row=1, column=j)              # Scan일자 행
+        c1.fill = scan_fill
+        c1.font = Font(bold=True, color="1F4E78")
+        c1.alignment = Alignment(horizontal="center", vertical="center")
+        c = ws.cell(row=2, column=j)               # 헤더 행
         c.fill = (yellow if h in fail_labels else fill)
         c.font = (Font(bold=True) if h in fail_labels else white)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = "A3"
     meta = wb.create_sheet("_정보")
     meta.append(["호기", machine])
     meta.append(["레시피", recipe])
@@ -629,20 +696,32 @@ def read_lot_result(path: str) -> dict:
                 fails.add(engine._s(row[1]))
     data_ws = next((ws for ws in wb.worksheets if ws.title != "_정보"), None)
     records, lots = [], []
+    scan_times: dict = {}
     if data_ws is not None:
         if not recipe:
             recipe = data_ws.title
+        # 1행이 Scan일자 행이면 헤더는 2행(구 파일은 1행이 헤더 — 둘 다 지원).
+        hrow = 1
+        first = engine._s(data_ws.cell(row=1, column=1).value).strip()
+        if first == SCAN_ROW_LABEL:
+            hrow = 2
+            for c in data_ws[1]:
+                v = engine._s(c.value).strip()
+                if v and v != SCAN_ROW_LABEL:
+                    scan_times[engine._s(
+                        data_ws.cell(row=hrow, column=c.column).value).strip()] = v
         # 표시용 헤더(상위/하위 Recipe)를 내부 키(PI/Recipe)로 되돌린다.
-        heads = [engine.internal_header(engine._s(c.value).strip()) for c in data_ws[1]]
+        heads = [engine.internal_header(engine._s(c.value).strip())
+                 for c in data_ws[hrow]]
         meta = set(engine.META_FIELDS)
         lots = [h for h in heads if h and h not in meta]
-        for row in data_ws.iter_rows(min_row=2, values_only=True):
+        for row in data_ws.iter_rows(min_row=hrow + 1, values_only=True):
             if row is None or all(v in (None, "") for v in row):
                 continue
             records.append({heads[i]: row[i] for i in range(len(heads)) if i < len(row)})
     wb.close()
     return {"machine": machine, "recipe": recipe, "lots": lots,
-            "records": records, "fails": fails}
+            "records": records, "fails": fails, "scan_times": scan_times}
 
 
 # --------------------------------------------------------------------------
@@ -692,10 +771,12 @@ def build_comparison(result_files: list[str]) -> dict:
                 param_seen.add(pl)
                 params.append(pl)
             by_param_value[pl] = {lot: rec.get(lot) for lot in data["lots"]}
+        scan_times = data.get("scan_times") or {}
         for lot in data["lots"]:
             if lot in fails:
                 fail_rows.add(len(rows))
-            row = {"S/M": lot, "호기": machine}
+            row = {"S/M": lot, "호기": machine,
+                   SCAN_ROW_LABEL: scan_times.get(lot, "")}
             for pl in by_param_value:
                 row[pl] = by_param_value[pl].get(lot)
             rows.append(row)
@@ -718,16 +799,18 @@ def build_comparison(result_files: list[str]) -> dict:
             v = engine._s(r.get(pl))
             if v != "" and v != common:
                 outliers.add((i, pl))
-    return {"columns": ["S/M", "호기"] + params, "rows": rows,
+    return {"columns": ["S/M", "호기", SCAN_ROW_LABEL] + params, "rows": rows,
             "outliers": outliers, "fail_rows": fail_rows, "changed_params": changed}
 
 
 def write_comparison(dest_xlsx: str, comparison: dict,
                      changed_only: bool = False) -> str:
     """비교 표 → 엑셀(과반수 이탈 셀 색칠). changed_only=True 면 변경 파라미터만."""
+    # 앞 3개(S/M · 호기 · Scan일자)는 식별 열, 그 뒤가 파라미터 열
+    head_n = 3
     params = (comparison["changed_params"] if changed_only
-              else comparison["columns"][2:])
-    columns = list(comparison["columns"][:2]) + list(params)   # ['S/M','호기',...]
+              else comparison["columns"][head_n:])
+    columns = list(comparison["columns"][:head_n]) + list(params)
     rows = comparison["rows"]
     outliers = comparison["outliers"]
     fail_rows = comparison.get("fail_rows") or set()
@@ -749,13 +832,14 @@ def write_comparison(dest_xlsx: str, comparison: dict,
         excel_row = i + 2
         # fail=Y S/M 은 식별칸(S/M·호기)을 노란색으로
         if i in fail_rows:
-            ws.cell(row=excel_row, column=1).fill = fail_fill
-            ws.cell(row=excel_row, column=2).fill = fail_fill
-        for j, col in enumerate(columns[2:], start=3):
+            for c in range(1, head_n + 1):
+                ws.cell(row=excel_row, column=c).fill = fail_fill
+        for j, col in enumerate(columns[head_n:], start=head_n + 1):
             if (i, col) in outliers:
                 ws.cell(row=excel_row, column=j).fill = mismatch
-    ws.freeze_panes = "C2"
+    ws.freeze_panes = "D2"
     ws.column_dimensions["A"].width = 16
     ws.column_dimensions["B"].width = 10
+    ws.column_dimensions["C"].width = 17
     wb.save(dest_xlsx)
     return dest_xlsx

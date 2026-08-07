@@ -3760,9 +3760,11 @@ class EquipApp(tk.Tk):
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                  anchor="w", padx=14, pady=(12, 2))
         tk.Label(win, text="노란색 = fail(계획 fail여부=Y) · ✗ = 폴더 없음(선택 불가) · "
-                           "슬롯이 여러 개면 오른쪽에서 조사할 슬롯을 고르세요(기본=첫 번째)",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(
-                 anchor="w", padx=14, pady=(0, 6))
+                           "슬롯이 여러 개면 오른쪽에서 조사할 슬롯을 고르세요(기본=첫 번째)\n"
+                           "회색 '?' = 계획의 S/M 이름과 다르지만 같은 공정 폴더에 있는 "
+                           "후보입니다. 수정 날짜(스캔 시각)를 보고 직접 고르세요.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=14, pady=(0, 6))
         # 스크롤 영역
         outer = tk.Frame(win, bg=self.p["bg"])
         outer.pack(fill="both", expand=True, padx=14)
@@ -3781,7 +3783,8 @@ class EquipApp(tk.Tk):
         self._cm_sel_vars = []       # [(BooleanVar, LotFolder)]
         slot_pickers: list = []      # [(LotFolder, 표시갱신함수)] — 일괄 지정용
         for l in lots:
-            var = tk.BooleanVar(value=bool(l.exists))   # 기본 전체 선택(존재하는 것)
+            # 기본 선택 = 계획과 매칭된 폴더만. 이름이 다른 후보는 사람이 확인 후 체크.
+            var = tk.BooleanVar(value=bool(l.exists and l.matched))
             self._cm_sel_vars.append((var, l))
             row = tk.Frame(inner, bg=self.p["bg"])
             row.pack(fill="x", pady=1)
@@ -3789,8 +3792,9 @@ class EquipApp(tk.Tk):
                                 activebackground=self.p["bg"], selectcolor=self.p["surface"],
                                 state=("normal" if l.exists else "disabled"))
             cb.pack(side="left")
-            mark = "✓" if l.exists else "✗"
-            base_txt = f"{mark}  {l.label}   ·   {l.device}/{l.lot}   →   "
+            mark = ("✓" if l.matched else "?") if l.exists else "✗"
+            when = f"   ·   수정 {l.scan_time}" if l.scan_time else ""
+            base_txt = f"{mark}  {l.label}   ·   {l.device}/{l.lot}{when}   →   "
             # 슬롯(웨이퍼) 선택 — 여러 개 고를 수 있다(고른 수만큼 따로 조사).
             # **오른쪽 위젯을 라벨보다 먼저 pack 해야 한다**: expand=True 로 늘어나는
             # 라벨을 먼저 배치하면 남은 폭을 전부 차지해 버튼이 화면 밖으로 밀려
@@ -3806,7 +3810,8 @@ class EquipApp(tk.Tk):
             lbl = tk.Label(row, text=base_txt + (self._cm_slot_text(l) if l.exists
                                                  else l.reason),
                            bg=(self.p["bg"] if not l.fail else "#FFF6C8"),
-                           fg=(self.p["text"] if l.exists else self.p["muted"]),
+                           fg=(self.p["text"] if (l.exists and l.matched)
+                               else self.p["muted"]),
                            font=self.fonts["sub"], anchor="w")
             lbl.pack(side="left", fill="x", expand=True)
             if btn is not None:
@@ -3825,7 +3830,7 @@ class EquipApp(tk.Tk):
         def set_all(v):
             for var, l in self._cm_sel_vars:
                 if l.exists:
-                    var.set(v)
+                    var.set(v)          # 이름이 다른 후보도 포함(사람이 전체 선택)
 
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=14, pady=12)
@@ -4335,11 +4340,13 @@ class EquipApp(tk.Tk):
         def work():
             res = cm.collate_lots(recipe, form, pivot, labels, coef_lookup=cl)
             # 어떤 변환계수가 적용된 값인지 결과에 남긴다(사후 확인용)
+            scan_times = {l.label: l.scan_time
+                          for l in (self._cm.get("selected") or [])}
             coefs = [f"{r.get('변형') or '(기본)'}: {r.get('계수')}"
                      f"{' / MAG ' + str(r.get('MAG')) if r.get('MAG') else ''}"
                      for r in coefstore.machine_coefs(self.coef_rows, m)]
             cm.write_lot_result(result, recipe, m, res, labels, fail_labels,
-                                coef_note=coefs)
+                                coef_note=coefs, scan_times=scan_times)
             return res
 
         def done(ok, res):
@@ -4403,9 +4410,10 @@ class EquipApp(tk.Tk):
             for w in holder.winfo_children():
                 w.destroy()
             changed_only = only_var.get()
+            head_n = 3          # S/M · 호기 · Scan일자 는 식별 열
             params = (comparison["changed_params"] if changed_only
-                      else comparison["columns"][2:])
-            columns = list(comparison["columns"][:2]) + list(params)  # ['S/M','호기',…]
+                      else comparison["columns"][head_n:])
+            columns = list(comparison["columns"][:head_n]) + list(params)
             rows = comparison["rows"]
             data = [[engine._s(r.get(c)) for c in columns] for r in rows]
             s = Sheet(holder, theme="light blue", headers=columns, data=data,
@@ -4420,13 +4428,14 @@ class EquipApp(tk.Tk):
             # 파라미터 열은 좁은 고정폭 → 헤더가 여러 줄로 줄바꿈되어 다 보인다.
             for i, c in enumerate(columns):
                 try:
-                    s.column_width(column=i, width=(70 if i < 2 else 96))
+                    s.column_width(column=i,
+                                   width=(120 if i == 2 else 70 if i < 2 else 96))
                 except Exception:  # noqa: BLE001
                     pass
             # fail=Y S/M 행: 식별칸(S/M·호기) 노란색
             for ri in comparison.get("fail_rows") or set():
                 if ri < len(rows):
-                    for cix in (0, 1):
+                    for cix in range(head_n):
                         try:
                             s.highlight_cells(row=ri, column=cix,
                                               bg=f"#{cm.FAIL_FILL}", fg="#5A4A00")

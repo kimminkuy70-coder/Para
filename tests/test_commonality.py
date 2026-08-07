@@ -274,16 +274,24 @@ def test_collate_lots_and_result_roundtrip():
         assert engine._s(row["6502_HPG"]) == "99"
         # 결과 엑셀 왕복
         out = os.path.join(tmp, "조사_AOI-6.xlsx")
-        commonality.write_lot_result(out, "PI3", "AOI-6", res, labels)
-        # 1행 표시 헤더는 상위/하위 Recipe (내부 키는 PI/Recipe 그대로)
+        commonality.write_lot_result(out, "PI3", "AOI-6", res, labels,
+                                     scan_times={"6501_HPG": "2026-08-01 09:10",
+                                                 "6502_HPG": "2026-08-05 21:30"})
         import openpyxl
         wb = openpyxl.load_workbook(out)
-        head = [c.value for c in wb[wb.sheetnames[0]][1]]
+        ws = wb[wb.sheetnames[0]]
+        scan = [c.value for c in ws[1]]
+        head = [c.value for c in ws[2]]
         wb.close()
+        # **1행 = Scan일자**(각 S/M 열이 언제 스캔된 자료인지)
+        assert scan[0] == commonality.SCAN_ROW_LABEL, scan
+        assert scan[-2:] == ["2026-08-01 09:10", "2026-08-05 21:30"], scan
+        # 2행 표시 헤더는 상위/하위 Recipe (내부 키는 PI/Recipe 그대로)
         assert head[0] == "상위 Recipe" and head[1] == "하위 Recipe", head
         assert "PI" not in head and "Recipe" not in head, head
         data = commonality.read_lot_result(out)
         assert data["machine"] == "AOI-6" and set(data["lots"]) == set(labels)
+        assert data["scan_times"]["6502_HPG"] == "2026-08-05 21:30"
         # read 는 내부 키로 되돌린다(다운스트림 비교가 PI/Recipe/Zone 로 접근)
         assert all("PI" in r and "Recipe" in r for r in data["records"])
     print("  commonality OK: Lot 취합 + 호기 결과 엑셀 왕복 + 표시헤더(상위/하위 Recipe)")
@@ -540,6 +548,67 @@ def test_multi_slot_expands_into_separate_targets():
         # expand_all 은 목록 전체를 펼친다
         assert len(commonality.expand_all([lot, lot])) == 4
     print("  commonality OK: 슬롯 다중 선택 → 슬롯별 조사 대상 분리")
+
+def test_loose_sm_match_and_scan_time():
+    """실제 S/M 폴더명은 계획과 많이 다르다(VUL_TUNNED, SUA RERURN PG8E10 …).
+    ① 정확 일치가 아니어도 찾고 ② 그래도 못 찾으면 **같은 공정 폴더의 폴더 전부**를
+    후보로 올려 사람이 고르게 한다 ③ 각 후보의 S/M 폴더 수정시각(Scan 일자)을 준다.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        dev, lotno = "2D@R2-DEVA-1_0855360PD-0A", "6321"
+        for sm in ("VUL_TUNNED", "SUK-3D RE", "SUA RERURN PG8E10",
+                   "PG8G17 NFN RETURN 2D+3D 100"):
+            _make_wafer(tmp, "AOI-6", dev, lotno, sm, "CX01")
+        root = commonality.scanresult_root(tmp, "AOI-6")
+
+        # ① 포함 매칭: 'VUL' → 'VUL_TUNNED'
+        got = commonality.resolve_lot_variants(root, "DEVA-1", lotno, "VUL", "AOI-6")
+        assert [l.label for l in got] == ["VUL_TUNNED"], [l.label for l in got]
+        assert got[0].matched is True
+        assert got[0].scan_time, "S/M 폴더 수정시각(Scan 일자)이 있어야 함"
+
+        # 토큰 겹침: 'PG8G17 RETURN' → 'PG8G17 NFN RETURN 2D+3D 100'
+        got = commonality.resolve_lot_variants(root, "DEVA-1", lotno,
+                                               "PG8G17 RETURN", "AOI-6")
+        assert [l.label for l in got] == ["PG8G17 NFN RETURN 2D+3D 100"]
+        assert got[0].matched is True
+
+        # ② 전혀 못 찾는 이름 → 그 공정 폴더의 폴더 **전부**가 후보(matched=False)
+        got = commonality.resolve_lot_variants(root, "DEVA-1", lotno, "ZZZZ", "AOI-6")
+        assert len(got) == 4, [l.label for l in got]
+        assert all(l.exists and not l.matched for l in got)
+        assert all(l.scan_time for l in got), "후보마다 수정시각이 있어야 고를 수 있다"
+        assert all("직접 확인" in l.reason for l in got)
+
+        # 매칭된 것이 위로 오도록 정렬(사람이 먼저 보게)
+        mixed = commonality.resolve_lot_variants(root, "DEVA-1", lotno, "SUK", "AOI-6")
+        assert mixed[0].matched is True
+    print("  commonality OK: 느슨한 S/M 매칭 + 미매칭 후보 제시 + Scan 일자")
+
+
+def test_scan_time_flows_into_comparison():
+    """Scan 일자는 조사 결과 1행에 적히고, 비교표에도 열로 따라와야 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        w = _make_wafer(tmp, "AOI-6", "2D@DEVE_x", "6601", "HPG", "CX1", delta=10)
+        pivot, labels = commonality.parse_lots([("HPG", w)], level="PI3")
+        form = _build_form(tmp, pivot)
+        res = commonality.collate_lots("PI3", form, pivot, labels)
+        out = os.path.join(tmp, "조사_AOI-6.xlsx")
+        commonality.write_lot_result(out, "PI3", "AOI-6", res, labels,
+                                     scan_times={"HPG": "2026-08-06 13:45"})
+        comp = commonality.build_comparison([out])
+        assert comp["columns"][:3] == ["S/M", "호기", commonality.SCAN_ROW_LABEL]
+        assert comp["rows"][0][commonality.SCAN_ROW_LABEL] == "2026-08-06 13:45"
+        dest = os.path.join(tmp, "비교.xlsx")
+        commonality.write_comparison(dest, comp)
+        import openpyxl
+        wb = openpyxl.load_workbook(dest)
+        ws = wb["취합비교"]
+        assert [c.value for c in ws[1]][:3] == ["S/M", "호기",
+                                                commonality.SCAN_ROW_LABEL]
+        assert ws.cell(row=2, column=3).value == "2026-08-06 13:45"
+        wb.close()
+    print("  commonality OK: Scan 일자 → 결과 1행 + 비교표 열")
 
 if __name__ == "__main__":
     fails = 0
