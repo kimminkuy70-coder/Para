@@ -572,8 +572,13 @@ def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
 
 def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
                      res: collate.CollateRecipe, lot_labels: list[str],
-                     fail_labels: list[str] | None = None) -> str:
-    """호기 1대 결과: 시트=레시피, 헤더=META + S/M들. 호기명·fail 은 '_정보' 시트에."""
+                     fail_labels: list[str] | None = None,
+                     coef_note: list[str] | None = None) -> str:
+    """호기 1대 결과: 시트=레시피, 헤더=META + S/M들. 호기명·fail 은 '_정보' 시트에.
+
+    값은 **양식의 변환방식대로 계수를 적용한 값**(collate.collate_recipe)이다.
+    coef_note 를 주면 어떤 계수를 썼는지 '_정보' 시트에 함께 남긴다.
+    """
     headers = list(engine.META_FIELDS) + list(lot_labels)   # 내부 키(데이터 접근용)
     # 1행은 표시용 헤더(PI→상위 Recipe, Recipe→하위 Recipe). Lot 열은 그대로.
     disp_headers = [engine.display_header(h) for h in headers]
@@ -597,6 +602,8 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     meta.append(["호기", machine])
     meta.append(["레시피", recipe])
     meta.append(["Lot수", len(lot_labels)])
+    for line in (coef_note or []):
+        meta.append(["변환계수", line])
     for label in lot_labels:
         meta.append(["Lot", label])
     for label in fail_labels:

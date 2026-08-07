@@ -428,7 +428,8 @@ def read_optic_mag(config_dir: Path, prefix: str = "") -> str:
 
 
 def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT",
-                 active: tuple[str, str] | None = None) -> list[ExtractRow]:
+                 active: tuple[str, str] | None = None,
+                 scale: float = DEFAULT_SCALE) -> list[ExtractRow]:
     """OpticPreset.ini 전용 — 최신 Scan2d 통일 + 합성 행(첫 KEEP 위) + 나머지 N.
     active = ActiveScenarioOptics.ini 의 (OpticsName, OpticId) — 있으면 그 optic 을 target."""
     target = _pick_optic_target(sections, active)
@@ -452,17 +453,25 @@ def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT",
         for key, raw in kv.items():
             if is_target and key == "Alg":
                 continue                          # Alg 키는 합성행 값으로만 사용
-            if rtp_parser._is_optic_noise(key, str(raw)):
-                continue
+            # 잡키(Id/ZWafer/FocusPosAboveChuck/CreationMeasure*/GUID)도 **버리지
+            # 않는다**(사용자 확정 2026-08) — 양식에서 체크박스로 고를 수 있으므로
+            # 파서가 미리 지우면 필요할 때 쓸 수가 없다. 대신 사용=N 으로만 둔다.
             keep = is_target and key in OPTIC_SCAN2D_KEEP
             if keep and not synth_done:            # 첫 KEEP 바로 위에 합성행
                 out.append(_synth())
                 synth_done = True
             alg = OPTIC_ALG if is_target else section
+            # 변환 판정은 다른 파일과 동일한 규칙(표시명에 µ 있으면 변환).
+            # OpticPreset 키는 표시명 매핑이 없어 대개 RAW 지만, 사람이 양식
+            # 편집기의 '변환' 열에서 LINEAR/AREA 로 바꾸면 그 방식이
+            # `_EXTRACT_MAP` 에 저장돼 **값 업데이트·commonality 결과 모두**
+            # 계수가 적용된 값으로 채워진다(collate.collate_recipe).
+            trans = resolve_transform(key, "RAW")
             out.append(ExtractRow(
-                zone=zone, alg=alg, param=key, value=raw, unit="",
+                zone=zone, alg=alg, param=key,
+                value=transform_value(raw, trans, scale), unit="",
                 src_file=file_path.name, section=section, key=key, raw=raw,
-                transform="RAW", source_path=str(file_path), use_default=keep))
+                transform=trans, source_path=str(file_path), use_default=keep))
         if is_target and not synth_done and latest_name:   # KEEP 없으면 섹션 끝에
             out.append(_synth())
     return out
@@ -483,7 +492,7 @@ def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE,
     if _is_optic_file(file_path, recipe_prefix):
         active = read_active_scan2d(file_path.parent, recipe_prefix)
         if _pick_optic_target(sections, active) is not None:
-            return _parse_optic(file_path, sections, active=active)
+            return _parse_optic(file_path, sections, active=active, scale=scale)
     top = infer_top_item(file_path, sections)
     zone = TOP_TO_ZONE.get(top, top)
     is_global = (top == "Global")            # GlobalRTP.ini

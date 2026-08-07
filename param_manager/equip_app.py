@@ -2472,10 +2472,14 @@ class EquipApp(tk.Tk):
                 continue
             mm = r.get("mags") or {}
             val = engine._s(mm.get(aoi)).strip()
-            if not val:                    # 호기 태그가 다르면 값이 하나뿐일 때만 사용
-                vals = {engine._s(x).strip() for x in mm.values()
-                        if engine._s(x).strip()}
-                val = vals.pop() if len(vals) == 1 else ""
+            if not val:
+                # commonality 는 피벗 키가 호기가 아니라 Lot 라벨이라 호기로는 못 찾는다.
+                # 값이 하나뿐이면 그것, 여러 개면 **가장 많은 MAG**를 쓴다.
+                vals = [engine._s(x).strip() for x in mm.values()
+                        if engine._s(x).strip()]
+                if vals:
+                    from collections import Counter as _C
+                    val = _C(vals).most_common(1)[0][0]
             if val:
                 out[v] = val
         return out
@@ -4247,7 +4251,12 @@ class EquipApp(tk.Tk):
 
         def work():
             res = cm.collate_lots(recipe, form, pivot, labels, coef_lookup=cl)
-            cm.write_lot_result(result, recipe, m, res, labels, fail_labels)
+            # 어떤 변환계수가 적용된 값인지 결과에 남긴다(사후 확인용)
+            coefs = [f"{r.get('변형') or '(기본)'}: {r.get('계수')}"
+                     f"{' / MAG ' + str(r.get('MAG')) if r.get('MAG') else ''}"
+                     for r in coefstore.machine_coefs(self.coef_rows, m)]
+            cm.write_lot_result(result, recipe, m, res, labels, fail_labels,
+                                coef_note=coefs)
             return res
 
         def done(ok, res):

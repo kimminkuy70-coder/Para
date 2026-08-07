@@ -109,7 +109,17 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
   '파라미터 불러오기(통합)' 마법사로 즉시 대체됨(병행 없음).
 - **값 갱신 안전장치 (확정)**: 적용 전 변경 셀 미리보기 → 공용 파일 자동 백업 →
   적용. 매칭 실패 행은 건드리지 않음. 빈 값은 덮어쓰지 않음.
-- **OpticPreset 잡키 필터**: GUID/per-scan float/빈값/`OPTIC_NOISE_KEYS` 자동 제외(레거시 경로).
+- **OpticPreset 잡키도 남긴다 (2026-08 확정, 종전 필터 폐지)**: `Id`/`ZWafer`/
+  `FocusPosAboveChuck`/`CreationMeasureDistance1,2`/`CreationMeasureIntensity1,2`/
+  GUID 값도 **파서가 지우지 않는다** — 양식에서 체크박스로 고를 수 있어야 하므로.
+  대신 기본 `사용=N`(광원 KEEP 9개 + 합성행만 Y). `rtp_parser._is_optic_noise` 는
+  레거시 경로에만 남는다. 양식 만들기·commonality·값 업데이트 **모두 같은 파서**라
+  한 번에 적용된다.
+- **OpticPreset 행 변환방식**: RAW 하드코딩을 폐지하고 다른 파일과 같은
+  `resolve_transform` 규칙을 쓴다. 표시명 매핑이 없어 기본은 RAW 지만, 편집기
+  '변환' 열에서 LINEAR/AREA 로 바꾸면 `_EXTRACT_MAP` 에 저장돼 **값 업데이트·
+  commonality 결과·비교표 전부 계수 적용값**으로 채워진다(`collate.collate_recipe`).
+  commonality 결과 `_정보` 시트에 적용 계수를 기록한다.
 
 ## 사내 보안 모니터링 오탐 방지 (2026-08 전수 검토 — `tests/test_network_manners.py`)
 
@@ -145,7 +155,7 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 ```
 python3 tests/test_refdata.py      # 3  (참고자료/특이사항 독립 파일 I/O·호기·IP)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
-python3 tests/test_ini_parser.py   # 15 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
+python3 tests/test_ini_parser.py   # 16 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
 python3 tests/test_formbuilder.py  # 7  (초안 생성·편집→확정 양식·계수 저장)
 python3 tests/test_collate.py      # 7  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)

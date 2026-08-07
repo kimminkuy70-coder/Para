@@ -519,6 +519,37 @@ def test_micron_transform_and_globalrtp_keep():
     print("  transform OK: µ 있으면 변환(Length/Area)·없으면 RAW(Width) + GlobalRTP 2개만 Y")
 
 
+def test_optic_keeps_all_keys_for_manual_pick():
+    """OpticPreset 잡키(Id/ZWafer/FocusPos/CreationMeasure*/GUID)도 **버리지 않는다**
+    (사용자 확정 2026-08) — 양식에서 체크박스로 고를 수 있어야 하므로.
+    대신 기본 '사용'은 N 이고, 광원 KEEP 항목만 Y 다."""
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "OpticPreset.ini"
+        p.write_text(
+            "[Scan2d1]\n"
+            "CameraName = TDI\n"
+            "Alg = Scan2d1\n"
+            "Id = 3f2504e0-4f89-11d3-9a0c-0305e82c3301\n"
+            "ZWafer = 1234\n"
+            "FocusPosAboveChuck = 55.5\n"
+            "CreationMeasureDistance1 = 10\n"
+            "CreationMeasureIntensity2 = 20\n"
+            "LightSrcDif_NominalGL = 120\n",
+            encoding="utf-8")
+        rows = ini_parser.parse_ini_file(p)
+        got = {r.key: r for r in rows}
+        for k in ("Id", "ZWafer", "FocusPosAboveChuck",
+                  "CreationMeasureDistance1", "CreationMeasureIntensity2"):
+            assert k in got, f"{k} 가 사라졌다(이제는 남겨야 함)"
+            assert got[k].use_default is False, f"{k} 는 기본 사용=N 이어야 함"
+        assert got["LightSrcDif_NominalGL"].use_default is True, "광원 KEEP 은 Y"
+        # 합성행도 그대로
+        assert any(r.param == ini_parser.SCAN2D_LATEST_PARAM for r in rows)
+    print("  OpticPreset 잡키 유지(사용=N) + 광원 KEEP 만 Y OK")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0
