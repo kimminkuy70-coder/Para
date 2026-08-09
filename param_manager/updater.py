@@ -272,6 +272,55 @@ def is_newer(remote: str, local: str) -> bool:
     return r > l
 
 
+def exe_file_version(exe_path: str) -> str | None:
+    """exe 파일 속성의 **파일 버전**(Windows VERSIONINFO). 없으면 None.
+
+    게시 파일명·매니페스트 버전은 배포 창에 **타이핑한 값**이지만, 실행 중인
+    프로그램이 보고하는 버전은 exe 안의 `__version__` 이다. 둘이 어긋나면
+    업데이트해도 계속 "새 버전이 있습니다"가 뜬다(2026-08 실사고).
+    build_exe.bat 이 `--version-file` 로 같은 값을 파일 속성에도 박아 두므로,
+    여기서 읽어 **게시 전에 대조**한다. 구 빌드(버전 리소스 없음)는 None.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        ver = ctypes.WinDLL("version", use_last_error=True)
+        ver.GetFileVersionInfoSizeW.argtypes = [wintypes.LPCWSTR,
+                                                ctypes.POINTER(wintypes.DWORD)]
+        ver.GetFileVersionInfoSizeW.restype = wintypes.DWORD
+        size = ver.GetFileVersionInfoSizeW(str(exe_path), None)
+        if not size:
+            return None
+        buf = ctypes.create_string_buffer(size)
+        ver.GetFileVersionInfoW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD,
+                                            wintypes.DWORD, ctypes.c_void_p]
+        if not ver.GetFileVersionInfoW(str(exe_path), 0, size, buf):
+            return None
+        ptr = ctypes.c_void_p()
+        ln = wintypes.UINT()
+        ver.VerQueryValueW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR,
+                                       ctypes.POINTER(ctypes.c_void_p),
+                                       ctypes.POINTER(wintypes.UINT)]
+        if not ver.VerQueryValueW(buf, "\\", ctypes.byref(ptr), ctypes.byref(ln)):
+            return None
+        # VS_FIXEDFILEINFO: [0]=signature [1]=strucVersion [2]=fileVersionMS
+        # [3]=fileVersionLS. MS/LS 각각 상위/하위 16비트가 버전 한 자리씩.
+        fixed = ctypes.cast(ptr, ctypes.POINTER(ctypes.c_uint32 * 4)).contents
+        ms, ls = fixed[2], fixed[3]
+        return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def same_version(a: str, b: str) -> bool:
+    """버전 두 개가 같은가 — 자릿수가 달라도('4.0.2' vs '4.0.2.0') 같게 본다."""
+    va, vb = parse_version(a), parse_version(b)
+    n = max(len(va), len(vb))
+    return va + (0,) * (n - len(va)) == vb + (0,) * (n - len(vb))
+
+
 def looks_like_onedir_build(exe_path: str) -> bool:
     """'한 폴더(onedir)' 빌드의 exe 인가 — **혼자서는 실행되지 않는다**.
 

@@ -5,8 +5,16 @@ REM  Build the .exe (Windows only).
 REM  All-ASCII so it works on Korean Windows (cp949) too.
 REM
 REM  Usage:
-REM    build_exe.bat            -> ONE-FILE build (default; for OneDrive publish)
-REM    build_exe.bat onedir     -> ONE-FOLDER build (fallback, see below)
+REM    build_exe.bat 4.0.2          -> stamp version 4.0.2, then ONE-FILE build
+REM    build_exe.bat 4.0.2 onedir   -> same, but ONE-FOLDER build (fallback)
+REM    build_exe.bat                -> build with the version already in the source
+REM
+REM  ALWAYS pass the version you are going to publish. The version the running
+REM  program reports comes from param_manager\__init__.py (__version__), NOT from
+REM  the file name. If you publish 4.0.2 but build with 3.0.1 inside, every user
+REM  keeps being told "a new version is available" forever (this happened).
+REM  Passing the version here stamps it into the source AND into the exe file
+REM  properties, and the publish dialog checks that they match.
 REM
 REM  Prerequisite (internet needed ONCE, on the build PC only):
 REM    1) Install Python 3.11+ from https://www.python.org  (NOT Anaconda)
@@ -35,11 +43,29 @@ REM ============================================================
 cd /d "%~dp0"
 
 set "APPNAME=PI_Param_Manager"
+set "VERARG=%~1"
+set "MODEARG=%~1"
+if /i not "%~1"=="onedir" set "MODEARG=%~2"
+if /i "%VERARG%"=="onedir" set "VERARG="
+
+if not "%VERARG%"=="" (
+    echo [0/3] Stamping version %VERARG% ...
+    python tools\set_version.py %VERARG%
+    if errorlevel 1 (
+        echo [ERROR] Version stamping failed.
+        pause
+        exit /b 1
+    )
+)
+for /f "delims=" %%V in ('python tools\set_version.py --show') do set "APPVER=%%V"
+echo     Building version %APPVER%
+set "VERFILE="
+if exist "build\version_info.txt" set "VERFILE=--version-file build\version_info.txt"
 REM  %%VAR%% keeps the literal %VAR% - PyInstaller expands it at run time.
 set "RTTMPDIR=%%LOCALAPPDATA%%\CamtekAOI\runtime"
 set "MODE=--onefile --runtime-tmpdir %RTTMPDIR%"
 set "OUTDESC=dist\%APPNAME%.exe   (single file)"
-if /i "%~1"=="onedir" (
+if /i "%MODEARG%"=="onedir" (
     set "MODE=--onedir"
     set "OUTDESC=dist\%APPNAME%\%APPNAME%.exe   (keep the whole folder together)"
 )
@@ -59,6 +85,7 @@ REM               automatically - without this they are missing at run time.
 python -m PyInstaller --noconfirm --clean %MODE% --windowed ^
     --name "%APPNAME%" ^
     --icon "param_manager\data\para_icon.ico" ^
+    %VERFILE% ^
     --add-data "param_manager\data;param_manager\data" ^
     --collect-submodules openpyxl --collect-submodules tksheet run.py
 if errorlevel 1 (
@@ -68,6 +95,7 @@ if errorlevel 1 (
 )
 
 echo [3/3] Done.
+echo   Version: %APPVER%   (publish this exact number)
 echo   Output: %OUTDESC%
 echo.
 echo   Publish it from the app:  ... file menu ^> New version publish

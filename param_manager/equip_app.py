@@ -5254,7 +5254,9 @@ class EquipApp(tk.Tk):
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win, text="build_exe.bat 으로 새로 만든 exe 를 저장 폴더에 게시합니다.\n"
                            "게시하면 다른 사용자 프로그램이 다음 시작 시 자동으로 "
-                           "안내받습니다.",
+                           "안내받습니다.\n"
+                           "※ 버전은 반드시 `build_exe.bat <버전>` 으로 빌드할 때 쓴 "
+                           "번호와 같아야 합니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=16, pady=(0, 8))
 
@@ -5325,6 +5327,18 @@ class EquipApp(tk.Tk):
                 messagebox.showwarning("확인", "버전 번호를 알아볼 수 없습니다.",
                                        parent=win)
                 return
+            # exe 안의 버전과 입력 버전이 다르면 업데이트해도 계속 "새 버전 있음"이
+            # 뜬다(빌드 전에 __version__ 을 안 올린 경우 — 실제로 발생).
+            fv = updater.exe_file_version(exe_path)
+            if fv and not updater.same_version(fv, version):
+                if not messagebox.askyesno(
+                        "버전 불일치",
+                        f"선택한 exe 안의 버전은 {fv} 인데 입력한 버전은 "
+                        f"{version} 입니다.\n\n이대로 게시하면 사용자가 업데이트해도 "
+                        "계속 '새 버전이 있습니다'가 뜹니다.\n\n"
+                        f"build_exe.bat {version} 로 다시 빌드하세요.\n\n"
+                        "그래도 게시할까요?", parent=win):
+                    return
             # onedir 빌드의 exe 는 옆 폴더(_internal)가 있어야 실행된다 —
             # 그대로 게시하면 받은 사람 전원이 실행조차 못 한다.
             if updater.looks_like_onedir_build(exe_path):

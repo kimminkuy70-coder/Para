@@ -456,6 +456,24 @@ def test_detects_onedir_build():
     print("  onedir 빌드 감지(단일 배포 차단) OK")
 
 
+def test_same_version_ignores_padding():
+    """exe 파일 버전은 4자리('4.0.2.0'), 입력 버전은 3자리('4.0.2') — 같게 봐야 한다."""
+    assert U.same_version("4.0.2", "4.0.2.0") is True
+    assert U.same_version("4.0.2.0", "4.0.2") is True
+    assert U.same_version("3.0.1", "4.0.2") is False
+    assert U.same_version("4.0", "4.0.0.0") is True
+    assert U.same_version("4.1", "4.0.1") is False
+    print("  버전 동일 판정(자릿수 무관) OK")
+
+
+def test_exe_file_version_safe_off_windows():
+    """비Windows/버전 리소스 없는 파일이면 None — 게시를 막지 않는다."""
+    with tempfile.TemporaryDirectory() as d:
+        assert U.exe_file_version(_fake_exe(os.path.join(d, "a.exe"))) is None
+        assert U.exe_file_version(os.path.join(d, "없음.exe")) is None
+    print("  exe 파일 버전 읽기: 없으면 None(안전) OK")
+
+
 def test_program_dir_falls_back_when_no_parent():
     """부모 폴더를 쓸 수 없으면(루트 등) 예전처럼 저장폴더 안에 만든다."""
     root = os.path.abspath(os.sep)
@@ -489,7 +507,9 @@ if __name__ == "__main__":
               test_program_dir_is_sibling_of_save_dir,
               test_old_inside_publish_still_readable_then_migrated,
               test_program_dir_falls_back_when_no_parent,
-              test_detects_onedir_build]:
+              test_detects_onedir_build,
+              test_same_version_ignores_padding,
+              test_exe_file_version_safe_off_windows]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)
