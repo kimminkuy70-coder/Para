@@ -179,7 +179,7 @@ python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
-python3 tests/test_updater.py      # 22 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지)
+python3 tests/test_updater.py      # 25 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지·버전동일판정)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_onedrive_writes.py # 5 (저장폴더 쓰기 최소화: 폴더 지연생성·잠금 재기록 없음·수집 staging 로컬·무변경 시 취합 미생성)
 python3 tests/test_network_manners.py # 6 (빈 비밀번호 net use 금지·메모리 전용 자격증명·포트/장비 간 간격·직접 설치 경로)
@@ -390,8 +390,16 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   `--icon` 적용. 특정 PC 가 계속 실패하면 `build_exe.bat onedir`(폴더 배포, 추출 없음)로
   진단. **onedir exe 를 게시하면 전원이 실행 불가**이므로 배포 창이
   `updater.looks_like_onedir_build`(`_internal/`·python3xx.dll 형제 감지)로 막는다.
-- `param_manager/__version__`(현재 "3.0.1")을 게시 버전과 비교. 새 버전 게시 시
-  developer 가 그 값을 올려 빌드하고 배포 창에서 같은 숫자를 입력.
+- **버전은 반드시 `build_exe.bat <버전>` 으로 찍는다(2026-08 실사고)**: 게시 파일명·
+  매니페스트 버전은 **배포 창에 타이핑한 값**이지만, 실행 중인 프로그램이 보고하는
+  버전은 exe 안의 `param_manager.__version__` 이다. 빌드 전에 그 값을 안 올리면
+  파일 이름만 새 버전(`..._v4.0.2.exe`)이고 내용은 옛 버전이라 **업데이트해도 계속
+  '새 버전 있음'** 이 뜬다(실제 발생 — 파일 교체는 정상이었고 버전만 안 올라갔다).
+  → `tools/set_version.py` 가 `__init__.py` 의 `__version__` 과 PyInstaller
+  `--version-file`(exe 파일 속성)에 **같은 값**을 찍고, 배포 창이
+  `updater.exe_file_version`(ctypes VERSIONINFO)로 읽어 입력값과 다르면 경고한다
+  (`same_version` 은 '4.0.2' vs '4.0.2.0' 을 같게 봄. 구 빌드는 None → 통과).
+  현재 `__version__` = "4.0.2".
 
 ## 핵심 파일
 
