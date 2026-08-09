@@ -58,9 +58,21 @@ if not "%VERARG%"=="" (
     )
 )
 for /f "delims=" %%V in ('python tools\set_version.py --show') do set "APPVER=%%V"
+if "%APPVER%"=="" (
+    echo [ERROR] Could not read the version. Is Python on PATH?
+    pause
+    exit /b 1
+)
 echo     Building version %APPVER%
+REM  The version resource lives in tools\ on purpose: PyInstaller --clean wipes
+REM  everything inside the work path (build\), so a file there would vanish
+REM  before it is read and the whole build would fail.
 set "VERFILE="
-if exist "build\version_info.txt" set "VERFILE=--version-file build\version_info.txt"
+if exist "tools\version_info.txt" set "VERFILE=--version-file tools\version_info.txt"
+
+REM  Remove the previous output first. If a build fails halfway, a stale or
+REM  half-written exe must not be left behind for someone to publish by mistake.
+if exist "dist\%APPNAME%.exe" del /q "dist\%APPNAME%.exe"
 REM  %%VAR%% keeps the literal %VAR% - PyInstaller expands it at run time.
 set "RTTMPDIR=%%LOCALAPPDATA%%\CamtekAOI\runtime"
 set "MODE=--onefile --runtime-tmpdir %RTTMPDIR%"
@@ -90,6 +102,14 @@ python -m PyInstaller --noconfirm --clean %MODE% --windowed ^
     --collect-submodules openpyxl --collect-submodules tksheet run.py
 if errorlevel 1 (
     echo [ERROR] Build failed.
+    pause
+    exit /b 1
+)
+
+set "OUTFILE=dist\%APPNAME%.exe"
+if /i "%MODEARG%"=="onedir" set "OUTFILE=dist\%APPNAME%\%APPNAME%.exe"
+if not exist "%OUTFILE%" (
+    echo [ERROR] Build reported success but %OUTFILE% is missing.
     pause
     exit /b 1
 )

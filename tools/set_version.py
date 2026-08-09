@@ -10,8 +10,9 @@
 
 그래서 `build_exe.bat 4.0.2` 처럼 버전을 넘기면 이 스크립트가
   1) `param_manager/__init__.py` 의 `__version__` 을 그 값으로 바꾸고
-  2) PyInstaller `--version-file` 용 `build/version_info.txt` 를 만들어
+  2) PyInstaller `--version-file` 용 `tools/version_info.txt` 를 만들어
      **exe 파일 속성(파일 버전)에도 같은 값**이 박히게 한다.
+     (`build/` 에 두면 `--clean` 이 지워 버려 빌드가 실패한다 — 아래 주석 참고)
 그 결과 배포 창이 exe 의 파일 버전을 읽어 입력값과 대조할 수 있다.
 
 사용:
@@ -27,7 +28,10 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INIT_PY = os.path.join(ROOT, "param_manager", "__init__.py")
-VERSION_INFO = os.path.join(ROOT, "build", "version_info.txt")
+# **`build/` 안에 두면 안 된다** — PyInstaller `--clean` 이 빌드 시작 시
+# workpath(=build/) 안을 **전부 지우므로** `--version-file` 이 사라져 빌드가
+# 실패한다(2026-08 실사고). 지워지지 않는 tools/ 아래에 만든다.
+VERSION_INFO = os.path.join(ROOT, "tools", "version_info.txt")
 
 APP_NAME = "Camtek AOI Parameter Manager"
 EXE_STEM = "Camtek_AOI_Parameter_manage"

@@ -456,6 +456,28 @@ def test_detects_onedir_build():
     print("  onedir 빌드 감지(단일 배포 차단) OK")
 
 
+def test_version_file_survives_pyinstaller_clean():
+    """`--version-file` 을 `build/` 에 두면 안 된다 — PyInstaller `--clean` 이
+    workpath(build/) 안을 **전부 지운 뒤** 빌드를 시작하므로 파일이 사라져
+    빌드가 통째로 실패한다(2026-08 실사고: 그 결과 반쪽짜리 exe 가 남아
+    "Failed to load Python DLL" 이 났다)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "tools"))
+    import importlib
+    sv = importlib.import_module("set_version")
+    rel = os.path.relpath(sv.VERSION_INFO, root).replace("\\", "/")
+    assert not rel.startswith("build/"), \
+        f"--version-file 이 --clean 에 지워지는 위치에 있음: {rel}"
+    with open(os.path.join(root, "build_exe.bat"), encoding="utf-8") as fh:
+        bat = fh.read()
+    assert "--version-file build" not in bat, "bat 이 build\\ 안을 가리킴"
+    assert "--version-file tools" in bat
+    # 빌드가 실패했을 때 낡은/반쪽 exe 가 남아 배포되지 않도록
+    assert "del /q \"dist\\%APPNAME%.exe\"" in bat, "이전 산출물 삭제가 없음"
+    assert "is missing" in bat, "빌드 후 산출물 존재 확인이 없음"
+    print("  --version-file 위치(--clean 안전) + 빌드 실패 시 산출물 방지 OK")
+
+
 def test_same_version_ignores_padding():
     """exe 파일 버전은 4자리('4.0.2.0'), 입력 버전은 3자리('4.0.2') — 같게 봐야 한다."""
     assert U.same_version("4.0.2", "4.0.2.0") is True
@@ -508,6 +530,7 @@ if __name__ == "__main__":
               test_old_inside_publish_still_readable_then_migrated,
               test_program_dir_falls_back_when_no_parent,
               test_detects_onedir_build,
+              test_version_file_survives_pyinstaller_clean,
               test_same_version_ignores_padding,
               test_exe_file_version_safe_off_windows]:
         run(t)
