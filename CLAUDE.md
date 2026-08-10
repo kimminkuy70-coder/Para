@@ -26,8 +26,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   수정본 생성 → **실제 Excel** 편집 → **[편집 완료]** → 확정. 원본(편집 전) 별도 보존.
   "이전 버전 불러오기" = 생성시간 폴더 선택.
 - **값 업데이트**: 레시피 선택 알림 → **IP↔호기 매칭창**(IP로 새 열 만들지 않음) →
+  **하위 레시피(변형) 이름 매칭창**(양식에 없는 이름이 있을 때만) →
   `collate.build_collation`(설정키 매칭, **직전 취합본 이어받기**, 불일치 검출) →
   `파라미터 값 취합_{시간}.xlsx`.
+  · 하위 레시피 이름은 장비마다 다를 수 있고(`2D+3D_CAMTEK` vs `2D+3D CAMTEK`)
+    변형은 행 키의 일부라 다르면 값이 안 채워진다. **취합 전에**
+    `collate.unmatched_variants`(비교는 `norm_key` — 대소문자·구분자 차이는 무시)로
+    찾아 `_variant_match_dialog` 로 양식의 이름에 붙이고(또는 '제외'),
+    `collate.apply_variant_map` 이 피벗의 `mag` 를 바꾼다. GUI=`_match_variants`.
 - **이력 확인**: 취합 폴더 파일 2개 선택 → `history.diff_files`(멀티시트) → **다른 부분만**
   새 창(Treeview) + 변경내역 엑셀(비고 메모).
 - 오래 걸리는 작업은 `_run_busy` 로딩 모달 + 백그라운드 스레드.
@@ -179,7 +185,7 @@ python3 tests/test_refdata.py      # 3  (참고자료/특이사항 독립 파일
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
 python3 tests/test_ini_parser.py   # 17 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
 python3 tests/test_formbuilder.py  # 7  (초안 생성·편집→확정 양식·계수 저장)
-python3 tests/test_collate.py      # 7  (레시피별 시트·전체 호기·직전 이어받기·불일치)
+python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_commonality.py  # 22 (Lot계획·폴더해석(느슨매칭·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)

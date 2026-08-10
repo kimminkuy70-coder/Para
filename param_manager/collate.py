@@ -148,6 +148,66 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
     return res
 
 
+# --------------------------------------------------------------------------
+# 하위 레시피(변형) 이름 매칭
+#   장비마다 하위 레시피 폴더 이름이 다를 수 있다(2D+3D_CAMTEK / 2D+3D CAMTEK …).
+#   변형은 행 키의 일부라 이름이 다르면 값이 다른 행으로 가서 채워지지 않는다.
+#   그래서 값 업데이트 전에 **양식에 있는 이름과 매칭**할 수 있게 한다.
+# --------------------------------------------------------------------------
+def form_variants(form_path: str) -> list[str]:
+    """확정 양식의 하위 레시피(Recipe 열) 목록 — 등장 순서."""
+    repo = engine.ParamRepository(form_path)
+    repo.load()
+    out: list[str] = []
+    for pr in repo.rows:
+        v = engine._s(pr.get("Recipe")).strip()
+        if v not in out:
+            out.append(v)
+    return out
+
+
+def parsed_variants(pivot_rows: list[dict]) -> list[str]:
+    """이번에 수집·파싱한 하위 레시피(변형) 목록 — 등장 순서."""
+    out: list[str] = []
+    for r in pivot_rows or []:
+        v = engine._s(r.get("mag")).strip()
+        if v not in out:
+            out.append(v)
+    return out
+
+
+def unmatched_variants(pivot_rows: list[dict], form_path: str) -> list[str]:
+    """양식에 없는(=이대로 두면 값이 안 채워지는) 수집 변형 목록.
+
+    비교는 `norm_key` 정규화(대소문자·구분자 무시)라 `2D+3D_CAMTEK` 과
+    `2d+3d camtek` 은 같은 것으로 본다. 정말 이름이 다른 것만 돌려준다.
+    """
+    known = {norm_key(v) for v in form_variants(form_path)}
+    return [v for v in parsed_variants(pivot_rows) if norm_key(v) not in known]
+
+
+def apply_variant_map(pivot_rows: list[dict], mapping: dict) -> list[dict]:
+    """수집 변형 → 양식 변형으로 이름을 바꿔 준다(사람이 매칭한 결과).
+
+    mapping 값이 빈 문자열이면 **그 변형은 이번 취합에서 제외**한다
+    (양식에 대응이 없는 레시피를 억지로 끼워 넣지 않기 위해).
+    원본 리스트는 건드리지 않고 새 리스트를 돌려준다.
+    """
+    if not mapping:
+        return list(pivot_rows or [])
+    out: list[dict] = []
+    for r in pivot_rows or []:
+        v = engine._s(r.get("mag")).strip()
+        if v in mapping:
+            to = engine._s(mapping[v]).strip()
+            if not to:
+                continue                       # 무시(제외)
+            r = dict(r)
+            r["mag"] = to
+        out.append(r)
+    return out
+
+
 def build_collation(save_dir: str, recipes: list[str], pivot_rows: list[dict],
                     machines_all: list[str],
                     prev_collate_path: str | None = None,

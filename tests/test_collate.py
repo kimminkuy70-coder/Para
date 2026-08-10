@@ -261,6 +261,82 @@ def test_load_form_no_duplicate_rows():
     print("  collate OK: 양식 부가시트 제외 — 값확인 로드 시 중복 없음")
 
 
+def _pivot_variant(root, equip, variant, wafer="3000"):
+    """하위 레시피(변형) 폴더 이름을 지정해 피벗을 만든다."""
+    rec = Path(root) / "R_TB500_PI3" / variant
+    rec.mkdir(parents=True, exist_ok=True)
+    (rec / "GlobalRTP.ini").write_text(GLOBAL.format(v=wafer), encoding="utf-8")
+    (rec / "Zones").mkdir(exist_ok=True)
+    (rec / "Zones" / "Z.ini").write_text(ZONE, encoding="utf-8")
+    cfgs = ini_parser.scan_tree(Path(root) / "R_TB500_PI3", default_level="PI3",
+                                default_equipment=equip)
+    return ini_parser.build_pivot(cfgs)[0]
+
+
+def test_unmatched_variant_detection_and_remap():
+    """장비마다 **하위 레시피 폴더 이름이 다르면** 값이 채워지지 않는다.
+    값 업데이트 전에 그런 변형을 찾아내고, 사람이 매칭한 대로 이름을 바꿔
+    양식 행에 값이 들어가야 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        save_dir = os.path.join(tmp, "저장")
+        os.makedirs(save_dir)
+        # 양식은 '2D+3D_CAMTEK' 이름으로 만들어 둔다
+        rows = _pivot_variant(os.path.join(tmp, "form"), "AOI-24", "2D+3D_CAMTEK")
+        init = os.path.join(tmp, "init.xlsx")
+        formbuilder.build_initial_workbook(rows, init, level="PI3")
+        st = workdirs.stamp()
+        run = workdirs.form_run_dir(save_dir, "PI3", st)
+        form = workdirs.form_final_path(run, "PI3", "AOI-24", st)
+        formbuilder.build_final_from_initial(init, form, level="PI3")
+        assert "2D+3D_CAMTEK" in collate.form_variants(form), \
+            collate.form_variants(form)
+
+        # 다른 호기는 폴더 이름이 조금 다르다
+        other = _pivot_variant(os.path.join(tmp, "b"), "AOI-25",
+                               "2D+3D CAMTEK BUMP", wafer="7777")
+        miss = collate.unmatched_variants(other, form)
+        assert miss == ["2D+3D CAMTEK BUMP"], miss
+
+        # 매칭 없이 취합하면 그 호기 값이 안 채워진다
+        res = collate.collate_recipe("PI3", form, other, ["AOI-24", "AOI-25"])
+        assert res.filled_cells == 0, res.filled_cells
+
+        # 사람이 매칭해 주면 값이 들어간다
+        mapped = collate.apply_variant_map(other, {"2D+3D CAMTEK BUMP":
+                                                   "2D+3D_CAMTEK"})
+        assert collate.unmatched_variants(mapped, form) == []
+        res2 = collate.collate_recipe("PI3", form, mapped, ["AOI-24", "AOI-25"])
+        assert res2.filled_cells > 0
+        got = next(r for r in res2.records
+                   if engine._s(r["Parameter"]).startswith("Max Defects Per Wafer"))
+        assert engine._s(got["AOI-25"]) == "7777", got
+
+        # '제외'(빈 값)로 매칭하면 그 변형 행이 아예 빠진다
+        dropped = collate.apply_variant_map(other, {"2D+3D CAMTEK BUMP": ""})
+        assert dropped == []
+        # 대소문자·구분자만 다른 이름은 애초에 불일치로 보지 않는다
+        same = collate.apply_variant_map(other, {})
+        assert collate.unmatched_variants(
+            [dict(r, mag="2d+3d camtek") for r in same], form) == []
+    print("  collate OK: 하위 레시피 이름 불일치 검출 + 매칭 재적용")
+
+def test_update_flow_asks_before_collating():
+    """값 업데이트는 **취합 전에** 이름 매칭을 물어봐야 한다(취합 후면 늦다).
+    (GUI 는 이 환경에서 못 띄우므로 호출 순서를 소스로 고정한다.)"""
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "param_manager", "equip_app.py"),
+              encoding="utf-8") as fh:
+        src = fh.read()
+    m = re.search(r"def _update_collate_flow.*?(?=\n    def )", src, re.S)
+    assert m, "_update_collate_flow 를 찾지 못함"
+    body = m.group(0)
+    assert "_match_variants(chosen, pivot_rows)" in body, "매칭 단계가 없음"
+    assert body.index("_match_variants") < body.index("build_collation"), \
+        "취합보다 먼저 매칭을 물어야 한다"
+    assert "_variant_match_dialog" in src and "apply_variant_map" in src
+    print("  collate OK: 값 업데이트가 취합 전에 이름 매칭을 묻는다")
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())
