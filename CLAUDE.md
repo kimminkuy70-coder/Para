@@ -179,7 +179,7 @@ python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·loo
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
-python3 tests/test_updater.py      # 25 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지·버전동일판정)
+python3 tests/test_updater.py      # 28 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지·버전동일판정)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_onedrive_writes.py # 5 (저장폴더 쓰기 최소화: 폴더 지연생성·잠금 재기록 없음·수집 staging 로컬·무변경 시 취합 미생성)
 python3 tests/test_network_manners.py # 6 (빈 비밀번호 net use 금지·메모리 전용 자격증명·포트/장비 간 간격·직접 설치 경로)
@@ -395,11 +395,18 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   버전은 exe 안의 `param_manager.__version__` 이다. 빌드 전에 그 값을 안 올리면
   파일 이름만 새 버전(`..._v4.0.2.exe`)이고 내용은 옛 버전이라 **업데이트해도 계속
   '새 버전 있음'** 이 뜬다(실제 발생 — 파일 교체는 정상이었고 버전만 안 올라갔다).
-  → `tools/set_version.py` 가 `__init__.py` 의 `__version__` 과 PyInstaller
-  `--version-file`(exe 파일 속성)에 **같은 값**을 찍고, 배포 창이
-  `updater.exe_file_version`(ctypes VERSIONINFO)로 읽어 입력값과 다르면 경고한다
-  (`same_version` 은 '4.0.2' vs '4.0.2.0' 을 같게 봄. 구 빌드는 None → 통과).
-  현재 `__version__` = "4.0.2".
+  → **버전을 타이핑하는 곳은 `build_exe.bat` 한 곳뿐**(인자를 안 주면 물어본다).
+  `tools/set_version.py` 가 `__init__.py` 의 `__version__` 과 PyInstaller
+  `--version-file`(exe 파일 속성)에 **같은 값**을 찍는다. **배포 창은 버전을 묻지
+  않고** 고른 exe 에서 `updater.exe_file_version`(ctypes VERSIONINFO)로 읽어
+  표시하며(`display_version` 이 '4.0.3.0'→'4.0.3'), 사람은 **파일 경로와 변경 내용만**
+  입력한다. 버전 리소스가 없는 구 빌드일 때만 직접 입력(확인창).
+  `--version-file` 은 **`build/` 에 두면 안 된다** — `--clean` 이 workpath 를 통째로
+  비워 빌드가 실패한다(→ dist 에 반쪽 exe 가 남아 'Failed to load Python DLL').
+  그래서 `tools/version_info.txt` 에 만들고, bat 은 빌드 전 dist 의 이전 exe 를 지우고
+  빌드 후 산출물 존재를 확인한다.
+  ⋯파일 > **프로그램 정보…**(`_about_dialog`)에서 실행 중인 exe 경로·게시 폴더의
+  exe 목록과 각 파일 버전을 볼 수 있다(어느 파일이 도는지 확인용).
 
 ## 핵심 파일
 

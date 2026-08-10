@@ -1668,6 +1668,7 @@ class EquipApp(tk.Tk):
         m.add_separator()
         m.add_command(label="현재 접속자 보기…", command=self._show_sessions)
         m.add_separator()
+        m.add_command(label="프로그램 정보…", command=self._about_dialog)
         m.add_command(label="지금 업데이트 확인…",
                       command=lambda: self._check_update_prompt(manual=True))
         m.add_command(label="새 버전 배포…(개발자용)", command=self._publish_update_dialog)
@@ -5113,8 +5114,10 @@ class EquipApp(tk.Tk):
             return
         if not updater.is_newer(release.version, __version__):
             if manual:
-                messagebox.showinfo("업데이트 확인",
-                                    f"이미 최신 버전입니다. (현재 {__version__})")
+                messagebox.showinfo(
+                    "업데이트 확인",
+                    f"이미 최신 버전입니다. (현재 {__version__})\n\n"
+                    f"실행 중인 파일:\n{updater.current_exe_path()}")
             return
         if not manual and self._cfg.get("update_skip_version") == release.version:
             return                             # 이 버전은 '나중에' 선택함 — 다시 안 물음
@@ -5173,6 +5176,63 @@ class EquipApp(tk.Tk):
             self._open_program_dir(release)
             return
         self._run_update(release)
+
+    def _about_dialog(self):
+        """프로그램 정보 — **어느 파일이 실행 중인지** 한눈에 보기 위한 진단 창.
+
+        업데이트 후 '옛 파일을 실행하고 있는 것 같다' 는 상황을 스스로 확인할 수
+        있어야 해서 넣었다. 게시 폴더의 exe 목록과 각 파일의 버전도 같이 보여
+        어느 것이 최신인지 바로 알 수 있다.
+        """
+        lines = [f"버전: {__version__}",
+                 f"실행 파일: {updater.current_exe_path()}",
+                 f"실행 방식: {'exe(배포본)' if updater.is_frozen() else '소스(개발)'}",
+                 f"로컬 작업 폴더: {getattr(self, 'local_dir', '') or '-'}",
+                 f"저장 폴더: {self.save_dir or '-'}"]
+        if self.save_dir:
+            pdir = updater.active_program_dir(self.save_dir)
+            lines.append(f"게시 폴더: {pdir}")
+            rel = updater.read_manifest(self.save_dir)
+            lines.append(f"게시된 최신 버전: {rel.version if rel else '-'}")
+            names = updater.list_published_exes(self.save_dir)
+            if names:
+                lines.append("게시 폴더의 실행 파일:")
+                for n in names:
+                    fv = updater.display_version(
+                        updater.exe_file_version(os.path.join(pdir, n)))
+                    mark = "  ← 최신" if rel and n == rel.filename else ""
+                    lines.append(f"   · {n}{'  [' + fv + ']' if fv else ''}{mark}")
+        win = tk.Toplevel(self)
+        win.title("프로그램 정보")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        tk.Label(win, text="프로그램 정보", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win, text="문제가 생기면 이 내용을 그대로 알려 주세요.",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(anchor="w", padx=16, pady=(0, 8))
+        txt = tk.Text(win, width=78, height=min(18, len(lines) + 2), relief="solid",
+                      bd=1, font=self.fonts["sub"], wrap="none")
+        txt.insert("1.0", "\n".join(lines))
+        txt.config(state="disabled")
+        txt.pack(fill="both", expand=True, padx=16)
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=12)
+
+        def copy_all():
+            self.clipboard_clear()
+            self.clipboard_append("\n".join(lines))
+            self._set_status("프로그램 정보를 복사했습니다.")
+        tk.Button(bt, text="복사", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=14, pady=5, cursor="hand2", command=copy_all).pack(side="left")
+        tk.Button(bt, text="실행 파일 위치 열기", relief="flat", bd=0,
+                  bg=self.p["surface"], padx=14, pady=5, cursor="hand2",
+                  command=lambda: self._open_in_excel(
+                      os.path.dirname(updater.current_exe_path()))).pack(side="left",
+                                                                        padx=6)
+        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=5, cursor="hand2",
+                  command=win.destroy).pack(side="right")
 
     def _open_program_dir(self, release: updater.ReleaseInfo):
         """게시 폴더를 탐색기로 열고 직접 설치 방법을 안내한다(자동 교체 없음)."""
@@ -5255,8 +5315,8 @@ class EquipApp(tk.Tk):
         tk.Label(win, text="build_exe.bat 으로 새로 만든 exe 를 저장 폴더에 게시합니다.\n"
                            "게시하면 다른 사용자 프로그램이 다음 시작 시 자동으로 "
                            "안내받습니다.\n"
-                           "※ 버전은 반드시 `build_exe.bat <버전>` 으로 빌드할 때 쓴 "
-                           "번호와 같아야 합니다.",
+                           "※ 버전은 exe 안에서 읽어옵니다 — 여기서 따로 입력하지 "
+                           "않습니다(빌드할 때 정한 번호 그대로).",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=16, pady=(0, 8))
 
@@ -5289,25 +5349,49 @@ class EquipApp(tk.Tk):
                   fg=self.p["text"], cursor="hand2",
                   command=browse).grid(row=0, column=2, padx=2)
 
-        tk.Label(body, text="버전 번호:", bg=self.p["bg"],
+        # 버전은 **exe 파일 속성에서 읽는다**(build_exe.bat 이 찍어 둔 값).
+        # 사람이 따로 입력하면 exe 내용과 어긋나 "업데이트해도 계속 새 버전 있음"
+        # 사고가 난다(2026-08). 버전 리소스가 없는 구 빌드일 때만 직접 입력한다.
+        tk.Label(body, text="버전:", bg=self.p["bg"],
                  fg=self.p["text"]).grid(row=1, column=0, sticky="w", pady=3)
-        ver_var = tk.StringVar(value=__version__)
-        tk.Entry(body, textvariable=ver_var, width=20, relief="solid",
-                 bd=1).grid(row=1, column=1, sticky="w", padx=6)
-        # 버전이 파일명에 들어가므로 결과 파일명을 실시간으로 보여준다
+        ver_var = tk.StringVar(value="")
+        ver_lbl = tk.Label(body, text="(exe 를 선택하세요)", bg=self.p["bg"],
+                           fg=self.p["muted"], font=self.fonts["bold"], anchor="w")
+        ver_lbl.grid(row=1, column=1, sticky="w", padx=6)
+        ver_entry = tk.Entry(body, textvariable=ver_var, width=14, relief="solid", bd=1)
         name_lbl = tk.Label(body, text="", bg=self.p["bg"], fg=self.p["primary"],
                             font=self.fonts["sub"], anchor="w")
         name_lbl.grid(row=1, column=2, sticky="w")
+        manual_ver = {"on": False}          # 구 빌드일 때만 직접 입력
 
         def upd_name(*_a):
             v = ver_var.get().strip()
-            name_lbl.config(
-                text=(f"→ {updater.exe_filename(v)}" if updater.parse_version(v) != (0,)
-                      else "(예: 3.1.0)"),
-                fg=(self.p["primary"] if updater.parse_version(v) != (0,)
-                    else self.p["muted"]))
+            ok = updater.parse_version(v) != (0,)
+            name_lbl.config(text=(f"→ {updater.exe_filename(v)}" if ok else ""),
+                            fg=(self.p["primary"] if ok else self.p["muted"]))
+
+        def on_exe(*_a):
+            """exe 를 고르면 그 파일의 버전을 읽어 표시(입력 불필요)."""
+            path = exe_var.get().strip()
+            fv = updater.display_version(updater.exe_file_version(path)) \
+                if os.path.isfile(path) else ""
+            if fv:
+                manual_ver["on"] = False
+                ver_var.set(fv)
+                ver_entry.grid_forget()
+                ver_lbl.config(text=f"{fv}  (exe 에서 읽음)", fg=self.p["ok"])
+            else:
+                manual_ver["on"] = True
+                ver_var.set(ver_var.get() or __version__)
+                ver_lbl.config(
+                    text=("버전 정보 없음 — 직접 입력" if os.path.isfile(path)
+                          else "(exe 를 선택하세요)"),
+                    fg=self.p["danger"] if os.path.isfile(path) else self.p["muted"])
+                ver_entry.grid(row=1, column=1, sticky="e", padx=6)
+            upd_name()
+        exe_var.trace_add("write", on_exe)
         ver_var.trace_add("write", upd_name)
-        upd_name()
+        on_exe()
 
         tk.Label(body, text="변경 내용:", bg=self.p["bg"],
                  fg=self.p["text"]).grid(row=2, column=0, sticky="nw", pady=3)
@@ -5324,20 +5408,22 @@ class EquipApp(tk.Tk):
                 messagebox.showwarning("확인", "exe 파일을 선택하세요.", parent=win)
                 return
             if updater.parse_version(version) == (0,):
-                messagebox.showwarning("확인", "버전 번호를 알아볼 수 없습니다.",
-                                       parent=win)
+                messagebox.showwarning(
+                    "확인",
+                    "버전을 알 수 없습니다.\n"
+                    "build_exe.bat 으로 만든 exe 를 고르면 버전이 자동으로 "
+                    "읽힙니다.", parent=win)
                 return
-            # exe 안의 버전과 입력 버전이 다르면 업데이트해도 계속 "새 버전 있음"이
-            # 뜬다(빌드 전에 __version__ 을 안 올린 경우 — 실제로 발생).
-            fv = updater.exe_file_version(exe_path)
-            if fv and not updater.same_version(fv, version):
+            if manual_ver["on"]:
+                # 버전 리소스가 없는 구 빌드 — 직접 입력한 값이 exe 내용과 다를 수
+                # 있으므로(그러면 업데이트해도 계속 '새 버전 있음') 한 번 확인한다.
                 if not messagebox.askyesno(
-                        "버전 불일치",
-                        f"선택한 exe 안의 버전은 {fv} 인데 입력한 버전은 "
-                        f"{version} 입니다.\n\n이대로 게시하면 사용자가 업데이트해도 "
-                        "계속 '새 버전이 있습니다'가 뜹니다.\n\n"
-                        f"build_exe.bat {version} 로 다시 빌드하세요.\n\n"
-                        "그래도 게시할까요?", parent=win):
+                        "버전 확인",
+                        f"이 exe 에는 버전 정보가 없어 입력값({version})으로 "
+                        "게시합니다.\n\n빌드할 때 정한 번호와 다르면 사용자가 "
+                        "업데이트해도 계속 '새 버전이 있습니다'가 뜹니다.\n"
+                        "가능하면 build_exe.bat 으로 다시 빌드하세요.\n\n"
+                        "계속할까요?", parent=win):
                     return
             # onedir 빌드의 exe 는 옆 폴더(_internal)가 있어야 실행된다 —
             # 그대로 게시하면 받은 사람 전원이 실행조차 못 한다.
@@ -5353,8 +5439,9 @@ class EquipApp(tk.Tk):
             if cur and not updater.is_newer(version, cur.version) and \
                     not messagebox.askyesno(
                         "버전 확인",
-                        f"입력한 버전({version})이 현재 게시된 버전({cur.version})"
-                        "보다 높지 않습니다.\n그래도 게시할까요?", parent=win):
+                        f"이 exe 의 버전({version})이 현재 게시된 버전"
+                        f"({cur.version})보다 높지 않습니다.\n그래도 게시할까요?",
+                        parent=win):
                 return
 
             def work():

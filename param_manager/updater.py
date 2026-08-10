@@ -314,6 +314,15 @@ def exe_file_version(exe_path: str) -> str | None:
         return None
 
 
+def display_version(version: str) -> str:
+    """파일 속성의 4자리 버전('4.0.3.0') → 게시용 표기('4.0.3').
+    뒤에 붙은 0 만 떼고 최소 2자리는 남긴다."""
+    nums = [int(n) for n in re.findall(r"\d+", str(version or ""))]
+    while len(nums) > 2 and nums[-1] == 0:
+        nums.pop()
+    return ".".join(str(n) for n in nums) if nums else ""
+
+
 def same_version(a: str, b: str) -> bool:
     """버전 두 개가 같은가 — 자릿수가 달라도('4.0.2' vs '4.0.2.0') 같게 본다."""
     va, vb = parse_version(a), parse_version(b)

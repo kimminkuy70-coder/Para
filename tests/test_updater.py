@@ -478,6 +478,38 @@ def test_version_file_survives_pyinstaller_clean():
     print("  --version-file 위치(--clean 안전) + 빌드 실패 시 산출물 방지 OK")
 
 
+def test_display_version_trims_padding():
+    """exe 파일 속성은 4자리('4.0.3.0') — 게시 표기는 '4.0.3' 으로 다듬는다."""
+    assert U.display_version("4.0.3.0") == "4.0.3"
+    assert U.display_version("4.0.3") == "4.0.3"
+    assert U.display_version("4.0.0.0") == "4.0"
+    assert U.display_version("1.2.3.4") == "1.2.3.4"
+    assert U.display_version("") == ""
+    assert U.same_version(U.display_version("4.0.3.0"), "4.0.3")
+    print("  파일 버전 표기 다듬기(뒤 0 제거) OK")
+
+
+def test_publish_dialog_reads_version_from_exe():
+    """배포 창은 버전을 **입력받지 않고 exe 에서 읽는다**(사용자 지정 2026-08).
+    사람이 따로 타이핑하면 exe 내용과 어긋나 업데이트가 무한 반복된다."""
+    import re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "param_manager", "equip_app.py"),
+              encoding="utf-8") as fh:
+        src = fh.read()
+    m = re.search(r"def _publish_update_dialog.*?(?=\n    def )", src, re.S)
+    assert m, "_publish_update_dialog 를 찾지 못함"
+    body = m.group(0)
+    assert "updater.exe_file_version(path)" in body, "exe 에서 버전을 읽지 않음"
+    assert "exe 에서 읽음" in body, "읽은 버전을 표시하지 않음"
+    # 빌드 스크립트가 버전을 물어보는지(사람이 정하고, 한 곳에서만 타이핑)
+    with open(os.path.join(root, "build_exe.bat"), encoding="utf-8") as fh:
+        bat = fh.read()
+    assert "set /p" in bat and "Version to build" in bat, \
+        "build_exe.bat 이 버전을 물어보지 않음"
+    print("  버전 입력은 build_exe.bat 한 곳 · 배포 창은 exe 에서 읽음 OK")
+
+
 def test_same_version_ignores_padding():
     """exe 파일 버전은 4자리('4.0.2.0'), 입력 버전은 3자리('4.0.2') — 같게 봐야 한다."""
     assert U.same_version("4.0.2", "4.0.2.0") is True
@@ -531,6 +563,8 @@ if __name__ == "__main__":
               test_program_dir_falls_back_when_no_parent,
               test_detects_onedir_build,
               test_version_file_survives_pyinstaller_clean,
+              test_display_version_trims_padding,
+              test_publish_dialog_reads_version_from_exe,
               test_same_version_ignores_padding,
               test_exe_file_version_safe_off_windows]:
         run(t)

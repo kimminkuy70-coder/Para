@@ -5,16 +5,15 @@ REM  Build the .exe (Windows only).
 REM  All-ASCII so it works on Korean Windows (cp949) too.
 REM
 REM  Usage:
-REM    build_exe.bat 4.0.2          -> stamp version 4.0.2, then ONE-FILE build
-REM    build_exe.bat 4.0.2 onedir   -> same, but ONE-FOLDER build (fallback)
-REM    build_exe.bat                -> build with the version already in the source
+REM    build_exe.bat                -> ASKS which version to build (recommended)
+REM    build_exe.bat 4.0.3          -> build 4.0.3 without asking
+REM    build_exe.bat 4.0.3 onedir   -> same, but ONE-FOLDER build (fallback)
+REM    build_exe.bat onedir         -> ask for version, ONE-FOLDER build
 REM
-REM  ALWAYS pass the version you are going to publish. The version the running
-REM  program reports comes from param_manager\__init__.py (__version__), NOT from
-REM  the file name. If you publish 4.0.2 but build with 3.0.1 inside, every user
-REM  keeps being told "a new version is available" forever (this happened).
-REM  Passing the version here stamps it into the source AND into the exe file
-REM  properties, and the publish dialog checks that they match.
+REM  The version you enter here is the ONLY place a version is typed. It is
+REM  stamped into param_manager\__init__.py (what the running program reports)
+REM  AND into the exe file properties, and the publish dialog reads it back from
+REM  the exe - so the published file name always matches what is inside.
 REM
 REM  Prerequisite (internet needed ONCE, on the build PC only):
 REM    1) Install Python 3.11+ from https://www.python.org  (NOT Anaconda)
@@ -48,21 +47,27 @@ set "MODEARG=%~1"
 if /i not "%~1"=="onedir" set "MODEARG=%~2"
 if /i "%VERARG%"=="onedir" set "VERARG="
 
-if not "%VERARG%"=="" (
-    echo [0/3] Stamping version %VERARG% ...
-    python tools\set_version.py %VERARG%
-    if errorlevel 1 (
-        echo [ERROR] Version stamping failed.
-        pause
-        exit /b 1
-    )
-)
-for /f "delims=" %%V in ('python tools\set_version.py --show') do set "APPVER=%%V"
-if "%APPVER%"=="" (
-    echo [ERROR] Could not read the version. Is Python on PATH?
+for /f "delims=" %%V in ('python tools\set_version.py --show') do set "CURVER=%%V"
+if "%CURVER%"=="" (
+    echo [ERROR] Could not read the current version. Is Python on PATH?
     pause
     exit /b 1
 )
+if "%VERARG%"=="" (
+    echo.
+    echo   Current version: %CURVER%
+    set /p "VERARG=  Version to build (Enter = keep %CURVER%): "
+)
+if "%VERARG%"=="" set "VERARG=%CURVER%"
+
+echo [0/3] Stamping version %VERARG% ...
+python tools\set_version.py %VERARG%
+if errorlevel 1 (
+    echo [ERROR] Version stamping failed. Use numbers like 4.0.3
+    pause
+    exit /b 1
+)
+for /f "delims=" %%V in ('python tools\set_version.py --show') do set "APPVER=%%V"
 echo     Building version %APPVER%
 REM  The version resource lives in tools\ on purpose: PyInstaller --clean wipes
 REM  everything inside the work path (build\), so a file there would vanish
@@ -119,6 +124,6 @@ echo   Version: %APPVER%   (publish this exact number)
 echo   Output: %OUTDESC%
 echo.
 echo   Publish it from the app:  ... file menu ^> New version publish
-echo   (the app copies it to the shared folder as
-echo    Camtek_AOI_Parameter_manage_v^<version^>.exe)
+echo   (pick this file - the app reads the version out of it, so you only
+echo    type the change notes)
 pause
