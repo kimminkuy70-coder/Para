@@ -532,9 +532,12 @@ def _lot_configs(config_dir: Path, lot_label: str, level: str,
                  recipe_prefix: str = "") -> list[ini_parser.ParsedConfig]:
     """Lot 1개의 config 폴더 → ParsedConfig 목록(equipment=lot_label 로 태깅).
     recipe_prefix 를 주면 그 레시피(RecipeN-) 파일만 파싱(다중 레시피)."""
+    # folder_variant=False: 여기서 config 폴더는 Lot 의 **슬롯 폴더**(CX01 …)다.
+    # 폴더명을 변형 라벨로 쓰면 Lot 마다 변형이 달라져 값이 한 줄로 모이지 않는다.
     return ini_parser.scan_tree(config_dir, default_level=level,
                                 default_equipment=lot_label, scales=scales,
-                                coef_lookup=coef_lookup, recipe_prefix=recipe_prefix)
+                                coef_lookup=coef_lookup, recipe_prefix=recipe_prefix,
+                                folder_variant=False)
 
 
 def parse_lots(lot_dirs: list[tuple[str, Path]], level: str = "",

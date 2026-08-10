@@ -102,8 +102,16 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 - **파싱 소스 (2026-07 변경 확정)**: `GlobalRTP.ini` + `OpticPreset.ini` + `Zones/*.ini`
   기준(extractor 방식). **RTP.txt 는 사용하지 않는다.**
   `rtp_parser.py`의 RTP.txt 파싱은 레거시로 남아 있으나 새 불러오기 경로에서는 미사용.
-- **변형 인식**: 폴더명 기준 — `BUBBLE` 포함=PI-bubble, `PI`/`PI3` 형=PI,
-  `x5`/`x20`(또는 OpticPreset Scan2d Mag)=RDL 배율. 미인식 폴더는 불러오지 않고 안내.
+- **변형 인식 (2026-08 완화)**: 익숙한 이름은 그대로 — `BUBBLE` 포함=PI-bubble,
+  `PI`/`PI3` 형=PI, `x5`/`x20`(또는 OpticPreset Scan2d Mag)=RDL 배율.
+  **그 외에는 폴더 이름을 변형 라벨로 쓴다**(`_folder_label`). 장비 레시피 폴더가
+  `2D+3D_CAMTEK`·`2D+3D_CAMTEK_BUMP`·`DUMMY` 처럼 규칙과 무관해서, 이름이 안 맞는다고
+  버리면 구조가 멀쩡한 폴더를 통째로 못 읽었다("인식된 설정(config) 폴더가 없습니다").
+  유효성 판정도 이름이 아니라 **내용**으로 — `ini_parser.config_valid`(파싱된 행이
+  있으면 유효)를 쓰고, 구 `rtp_parser.config_valid`(이름 규칙)는 레거시로만 남긴다.
+  **단 commonality 는 `scan_tree(folder_variant=False)`** — 거기서 config 폴더는 Lot 의
+  슬롯 폴더(CX01…)라 폴더명을 변형으로 쓰면 Lot 마다 변형이 달라져 값이 한 줄로
+  모이지 않는다.
 - **네트워크 수집 GUI 포함 (확정)**: `\\IP\c$\Job` 접속을 프로그램에서 수행.
   비밀번호는 메모리에만(실행 후 즉시 소거), 장비 1대씩 접속→즉시 net use 해제,
   `\Job` 하위만 접근, 복사 간 0.1s 지연, 원본은 읽기/복사만.
@@ -169,12 +177,12 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 ```
 python3 tests/test_refdata.py      # 3  (참고자료/특이사항 독립 파일 I/O·호기·IP)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
-python3 tests/test_ini_parser.py   # 16 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
+python3 tests/test_ini_parser.py   # 17 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
 python3 tests/test_formbuilder.py  # 7  (초안 생성·편집→확정 양식·계수 저장)
 python3 tests/test_collate.py      # 7  (레시피별 시트·전체 호기·직전 이어받기·불일치)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_commonality.py  # 21 (Lot계획·폴더해석(느슨매칭·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
+python3 tests/test_commonality.py  # 22 (Lot계획·폴더해석(느슨매칭·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)

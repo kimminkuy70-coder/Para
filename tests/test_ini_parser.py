@@ -550,6 +550,53 @@ def test_optic_keeps_all_keys_for_manual_pick():
     print("  OpticPreset 잡키 유지(사용=N) + 광원 KEEP 만 Y OK")
 
 
+def test_unknown_recipe_folder_names_are_loaded():
+    """레시피 폴더 이름이 규칙에 안 맞아도(2D+3D_CAMTEK 등) 구조가 맞으면 읽는다.
+
+    구 규칙은 변형 이름이 PI/PI-bubble/x5/x20 이어야 통과시켜서, 이름만 다른
+    정상 폴더가 전부 걸러지고 "인식된 설정(config) 폴더가 없습니다" 가 났다
+    (2026-08 실사고). 이제 **폴더 이름을 변형 라벨로 그대로 쓰고**, 유효성은
+    실제로 파싱된 항목이 있는지로 판단한다.
+    """
+    import tempfile
+    from pathlib import Path
+    zone = "[General]\nZoneName = PI Opening\n[Surface]\nHigh_Delta = 25\n"
+    optic = "[Scan2d1]\nCameraName = TDI\nAlg = Scan2d1\n" \
+            "LightSrcDif_NominalGL = 120\nMag = 3.14\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "AOI-11" / "2D@R2-15966PA0-BW2_0859654PD-0B"
+        names = ["2D+3D_CAMTEK", "2D+3D_CAMTEK_BUMP", "DUMMY"]
+        for r in names:
+            d = base / r
+            (d / "Zones").mkdir(parents=True)
+            (d / "Zones" / "B.ini").write_text(zone, encoding="utf-8")
+            (d / "GlobalRTP.ini").write_text(
+                "[General]\nMax Defects Per Wafer = 5000\n", encoding="utf-8")
+            (d / "OpticPreset.ini").write_text(optic, encoding="utf-8")
+            (d / "RTP.txt").write_text("x", encoding="utf-8")
+        (base / "_수집로그.txt").write_text("log", encoding="utf-8")
+
+        cfgs = ini_parser.scan_tree(base, default_level="PI3",
+                                    default_equipment="AOI-11")
+        assert len(cfgs) == 3, [c.config_dir.name for c in cfgs]
+        assert all(ini_parser.config_valid(c) for c in cfgs), \
+            "구조가 맞는데 걸러졌다"
+        # 변형 라벨 = 폴더 이름(레시피를 구분하는 정보이므로)
+        assert sorted(c.mag for c in cfgs) == sorted(names), \
+            [c.mag for c in cfgs]
+        rows, machines = ini_parser.build_pivot(cfgs)
+        assert rows and machines == ["AOI-11"]
+
+    # 익숙한 이름은 종전 라벨을 그대로 유지(회귀 방지)
+    from pathlib import Path as _P
+    assert ini_parser.detect_variant(_P("PI3"), "PI") == "PI"
+    assert ini_parser.detect_variant(_P("PI_BUBBLE"), "PI") == "PI-bubble"
+    assert ini_parser.detect_variant(_P("x20"), "RDL") == "x20"
+    # 빈 config(파싱 결과 없음)는 여전히 무효
+    assert ini_parser.config_valid(type("X", (), {"rows": []})()) is False
+    print("  이름 규칙과 다른 레시피 폴더도 로드(변형=폴더명) OK")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     passed = 0

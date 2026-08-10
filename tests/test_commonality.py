@@ -608,6 +608,23 @@ def test_scan_time_flows_into_comparison():
         wb.close()
     print("  commonality OK: Scan 일자 → 결과 1행 + 비교표 열")
 
+def test_lot_slot_folder_name_is_not_used_as_variant():
+    """commonality 의 config 폴더는 Lot 의 **슬롯 폴더**(CX01 …)다.
+    폴더명을 변형 라벨로 쓰면 Lot 마다 변형이 달라져 값이 한 줄로 모이지 않는다
+    (양식 만들기는 반대로 폴더명을 라벨로 써야 레시피가 구분된다)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        w1 = _make_wafer(tmp, "AOI-6", "2D@DEVF_x", "6701", "HPG", "CX1", delta=11)
+        w2 = _make_wafer(tmp, "AOI-6", "2D@DEVF_x", "6702", "HPG", "CX9", delta=22)
+        pivot, labels = commonality.parse_lots([("L1", w1), ("L2", w2)], level="PI3")
+        # 슬롯 이름이 달라도 같은 파라미터가 **한 행**에 두 Lot 값으로 모여야 한다
+        hits = [r for r in pivot if r["extract"].get("key") == "High_Delta"]
+        assert len(hits) == 1, [r["mag"] for r in hits]
+        assert hits[0]["mag"] == "", f"슬롯명이 변형으로 샜다: {hits[0]['mag']!r}"
+        assert engine._s(hits[0]["raws"].get("L1")) == "11"
+        assert engine._s(hits[0]["raws"].get("L2")) == "22"
+        assert set(labels) == {"L1", "L2"}
+    print("  commonality OK: 슬롯 폴더명이 변형 라벨로 새지 않음")
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

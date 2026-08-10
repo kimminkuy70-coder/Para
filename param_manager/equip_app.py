@@ -2580,7 +2580,7 @@ class EquipApp(tk.Tk):
                 cfgs += ini_parser.scan_tree(rootp, default_level=default_level or kw,
                                              default_equipment=aoi, scales=scales,
                                              coef_lookup=cb)
-            valid = [c for c in cfgs if rtp.config_valid(c)]
+            valid = [c for c in cfgs if ini_parser.config_valid(c)]
             rows, machines = ini_parser.build_pivot(valid)
             self._coef_save_if_changed(state)
             return rows, machines
@@ -2948,7 +2948,7 @@ class EquipApp(tk.Tk):
             for rootp, kw, aoi in sources:
                 for c in ini_parser.scan_tree(rootp, default_level=level or kw,
                                               default_equipment=aoi):
-                    if not rtp.config_valid(c):
+                    if not ini_parser.config_valid(c):
                         continue
                     v = c.mag or "(기본)"
                     if v not in variants:
@@ -6695,7 +6695,7 @@ class EquipApp(tk.Tk):
         for rootp, kw, aoi in sources:
             cfgs += ini_parser.scan_tree(rootp, default_level=kw,
                                          default_equipment=aoi, coef_lookup=cb)
-        valid = [c for c in cfgs if rtp.config_valid(c)]
+        valid = [c for c in cfgs if ini_parser.config_valid(c)]
         rows, _ = ini_parser.build_pivot(valid)
         self._coef_save_if_changed(cstate)
         watcher.append_log(self.save_dir,

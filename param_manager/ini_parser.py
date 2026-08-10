@@ -558,6 +558,17 @@ def config_ini_files(d: Path, prefix: str = "") -> list[Path]:
     return files
 
 
+def config_valid(cfg) -> bool:
+    """이 config 폴더를 불러올 수 있는가 — **실제로 파싱된 항목이 있으면 유효**.
+
+    구 규칙(`rtp_parser.config_valid`)은 변형 이름이 PI/PI-bubble/x5/x20 중
+    하나여야 통과시켰다. 그래서 `2D+3D_CAMTEK` 처럼 이름만 다른 정상 폴더가
+    전부 걸러져 "인식된 설정(config) 폴더가 없습니다" 가 났다(2026-08).
+    이름 규칙 대신 **내용**으로 판단한다(변형 라벨은 폴더명을 그대로 쓴다).
+    """
+    return bool(getattr(cfg, "rows", None))
+
+
 def find_config_dirs(root: Path, max_depth: int = 6) -> list[Path]:
     out: list[Path] = []
 
@@ -594,10 +605,17 @@ def detect_level(text: str) -> tuple[str, str]:
     return "", ""
 
 
-def detect_variant(config_dir: Path, layer: str) -> str:
-    """변형 판정 — 폴더명 우선, RDL 은 OpticPreset Scan2d Mag 폴백.
-    라벨은 기존 양식과 통일: PI / PI-bubble / x5 / x20."""
-    name = config_dir.name
+def detect_variant(config_dir: Path, layer: str, folder_fallback: bool = True) -> str:
+    """변형(Recipe 열) 라벨 판정.
+
+    익숙한 이름은 기존 양식과 통일한다: PI / PI-bubble / x5 / x20.
+    **그 외에는 폴더 이름을 그대로 라벨로 쓴다**(2026-08 변경). 장비마다 레시피
+    폴더 이름이 `2D+3D_CAMTEK`·`2D+3D_CAMTEK_BUMP`·`DUMMY` 처럼 제각각이라,
+    이름이 규칙에 안 맞는다고 버리면 구조가 멀쩡한 폴더도 통째로 못 읽는다
+    (실제로 "인식된 설정(config) 폴더가 없습니다" 가 났다).
+    폴더 이름 자체가 레시피를 구분하는 정보이므로 라벨로 쓰는 편이 맞다.
+    """
+    name = str(config_dir.name).strip()
     nm = re.sub(r"[^a-z0-9]", "", name.lower())
     if "bubble" in nm:
         return "PI-bubble"
@@ -607,15 +625,24 @@ def detect_variant(config_dir: Path, layer: str) -> str:
         # PI / PI3 처럼 레벨 폴더 자체가 기본(비-bubble) 레시피인 경우
         if re.fullmatch(r"pi\d*", nm):
             return "PI"
-        return ""
-    mag = rtp_parser.detect_mag_from_optic(config_dir)
-    return mag or ""
+        return _folder_label(name) if folder_fallback else ""
+    mag = rtp_parser.detect_mag_from_optic(config_dir)     # RDL 은 배율 우선
+    return mag or (_folder_label(name) if folder_fallback else "")
+
+
+def _folder_label(name: str) -> str:
+    """폴더 이름을 변형 라벨로 — 공백만 정리(내용은 그대로 보여 준다)."""
+    return re.sub(r"\s+", " ", str(name or "").strip())
 
 
 def detect_meta(config_dir: Path, default_level: str = "",
-                default_equipment: str = "") -> dict:
+                default_equipment: str = "", folder_variant: bool = True) -> dict:
     """폴더 경로에서 equipment/layer/레벨/변형 추정. default_* 는 수집 단계에서
-    이미 알고 있는 값(IP→AOI, Job 키워드)을 우선 적용하기 위한 것."""
+    이미 알고 있는 값(IP→AOI, Job 키워드)을 우선 적용하기 위한 것.
+
+    folder_variant=False 면 **변형을 폴더명으로 대체하지 않는다**. commonality 는
+    config 폴더가 Lot 의 슬롯 폴더(CX01 …)라서 폴더명을 변형으로 쓰면 Lot 마다
+    변형이 달라져 값이 한 줄로 모이지 않는다."""
     joined = "/".join([config_dir.name] + [a.name for a in config_dir.parents])
     equip = default_equipment
     if not equip:
@@ -628,7 +655,7 @@ def detect_meta(config_dir: Path, default_level: str = "",
         recipe = default_level.upper()
     else:
         layer, recipe = detect_level(joined)
-    variant = detect_variant(config_dir, layer)
+    variant = detect_variant(config_dir, layer, folder_fallback=folder_variant)
     if layer == "RDL" and not variant:
         variant = ""
     return {"equipment": equip, "layer": layer, "recipe": recipe, "mag": variant}
@@ -650,7 +677,8 @@ class ParsedConfig:
 def scan_tree(root: str | Path, default_level: str = "",
               default_equipment: str = "", scale: float = DEFAULT_SCALE,
               scales: dict | None = None, coef_lookup=None,
-              recipe_prefix: str = "") -> list[ParsedConfig]:
+              recipe_prefix: str = "",
+              folder_variant: bool = True) -> list[ParsedConfig]:
     """폴더트리 → config 폴더별 ParsedConfig (ini 소스 전용, RTP.txt 미사용).
 
     변환계수 결정 우선순위(장비 렌즈 특성 = 장비×MAG 마다 다름):
@@ -660,7 +688,8 @@ def scan_tree(root: str | Path, default_level: str = "",
     scales = scales or {}
     res: list[ParsedConfig] = []
     for cdir in find_config_dirs(Path(root)):
-        meta = detect_meta(cdir, default_level, default_equipment)
+        meta = detect_meta(cdir, default_level, default_equipment,
+                           folder_variant=folder_variant)
         mag_value = read_optic_mag(cdir, recipe_prefix)
         use_scale = None
         if coef_lookup is not None:
