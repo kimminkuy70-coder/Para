@@ -303,6 +303,20 @@ def _optic_candidates(sections: dict) -> dict:
     return {s: kv for s, kv in (sections or {}).items() if not optic_excluded(s, kv)}
 
 
+OPTIC_OTHER_SUFFIX = " (미선택)"          # target 이 아닌 optic 의 Alg 표기
+
+
+def _other_optic_alg(section: str) -> str:
+    """target 이 아닌 optic 섹션의 Alg 표기 = 섹션 이름 그대로.
+
+    단 이름이 하필 `Scan2d`(=`OPTIC_ALG`) 면 **target 행과 Alg 가 같아져 피벗에서
+    한 줄로 합쳐진다**(값이 서로 덮어써짐). 그때만 꼬리표를 붙여 갈라 놓는다.
+    """
+    if str(section).strip().lower() == OPTIC_ALG.lower():
+        return f"{section}{OPTIC_OTHER_SUFFIX}"
+    return section
+
+
 RECIPES_INFO_FILE = "RecipesInfo.ini"       # 다중 레시피(2개+) 스캔 폴더에만 존재
 
 
@@ -474,8 +488,11 @@ def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT",
 
     out: list[ExtractRow] = []
     for section, kv in sections.items():
-        if _SCAN2D_SEC_RE.match(section) and section != target:
-            continue                              # target 아닌 Scan2d 섹션 제외
+        # target 이 아닌 optic 섹션도 **목록에는 남긴다**(사용=N, 사용자 확정 2026-08).
+        #   종전에는 이름이 [Scan2d]/[Scan2d3] 형인 것만 통째로 버렸는데, 옵틱 이름이
+        #   자유로운 장비에서는 [Align optic] 같은 건 남고 [Scan2d1] 만 사라져
+        #   **같은 '비선택 옵틱'인데 이름 규칙에 따라 보였다 안 보였다** 했다.
+        #   이제 전부 보이고, 기본 체크(사용=Y)만 target 에 준다.
         is_target = (section == target)
         synth_done = False
         for key, raw in kv.items():
@@ -488,7 +505,7 @@ def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT",
             if keep and not synth_done:            # 첫 KEEP 바로 위에 합성행
                 out.append(_synth())
                 synth_done = True
-            alg = OPTIC_ALG if is_target else section
+            alg = OPTIC_ALG if is_target else _other_optic_alg(section)
             # 변환 판정은 다른 파일과 동일한 규칙(표시명에 µ 있으면 변환).
             # OpticPreset 키는 표시명 매핑이 없어 대개 RAW 지만, 사람이 양식
             # 편집기의 '변환' 열에서 LINEAR/AREA 로 바꾸면 그 방식이

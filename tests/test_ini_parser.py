@@ -472,8 +472,10 @@ def test_optic_latest_scan2d():
         p.write_text(OPTIC_MULTI, encoding="utf-8")
         rows = ini_parser.parse_ini_file(p)
         by = {(r.section, r.key): r for r in rows}
-        # [Scan2d1](잡음 인스턴스)은 제외
-        assert not any(r.section == "Scan2d1" for r in rows)
+        # [Scan2d1](target 아닌 optic)도 **목록에는 남는다** — 단 전부 사용=N
+        # (2026-08 변경: 종전에는 이름이 Scan2dN 인 것만 통째로 버렸다)
+        other = [r for r in rows if r.section == "Scan2d1"]
+        assert other and all(r.use_default is False for r in other)
         # KEEP 9개는 alg=Scan2d, 사용=Y (버그: 예전엔 N 이었음)
         for k in ini_parser.OPTIC_SCAN2D_KEEP:
             assert by[("Scan2d", k)].use_default is True, k
@@ -660,6 +662,54 @@ def test_all_optics_excluded_is_safe():
         rows = ini_parser.parse_ini_file(d / "OpticPreset.ini")
         assert rows
     print("  ini_parser OK: 전부 제외돼도 안전(target 없음·Mag 없음)")
+
+
+def test_non_target_optics_stay_visible():
+    """target 이 아닌 optic 도 **전부 목록에 남는다**(사용=N) — 이름 규칙 무관.
+
+    종전에는 이름이 `Scan2dN` 형인 섹션만 통째로 버려서, 옵틱 이름이 자유로운
+    장비에서는 `[Align optic]` 은 보이고 `[Scan2d1]` 만 사라지는 비일관이 있었다.
+    이제 보이는 것과 기본 체크(사용=Y)를 분리한다.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "OpticPreset.ini").write_text(
+            "[Scan2d1]\nCameraName=TDI\nMag=2.0\nLightSrcRef_NominalGL=100\n"
+            "[Align optic]\nCameraName=TDI\nMag=1.0\nLightSrcRef_NominalGL=10\n"
+            "[Engineer optic2]\nCameraName=TDI\nAlg=Scan2d9\nMag=3.14\n"
+            "LightSrcRef_NominalGL=222\nLightSrcRef_ColorFilter=CSI5\n"
+            "LightSrcRef_NominalGL_On=1\n"
+            "[Scan2d]\nCameraName=TDI\nMag=5.0\nLightSrcRef_NominalGL=500\n",
+            encoding="utf-8")
+        (d / "ActiveScenarioOptics.ini").write_text(
+            "[b]\nScenarioName=Scan2d\nOpticsName=Engineer optic2\n", encoding="utf-8")
+        rows = ini_parser.parse_ini_file(d / "OpticPreset.ini")
+        secs = {r.section for r in rows}
+        assert {"Scan2d1", "Align optic", "Engineer optic2", "Scan2d"} <= secs, secs
+
+        # 사용=Y 는 target(Engineer optic2) 에만
+        yes = {(r.section, r.param) for r in rows if r.use_default}
+        assert all(sec == "Engineer optic2" for sec, _ in yes), yes
+        assert ("Engineer optic2", ini_parser.SCAN2D_LATEST_PARAM) in yes
+
+        # target 은 alg 가 'Scan2d' 로 통일, 나머지는 섹션 이름 그대로
+        alg = {r.section: r.alg for r in rows}
+        assert alg["Engineer optic2"] == ini_parser.OPTIC_ALG
+        assert alg["Scan2d1"] == "Scan2d1" and alg["Align optic"] == "Align optic"
+        # 하필 이름이 'Scan2d' 인 비선택 섹션은 target 과 Alg 가 겹쳐 한 줄로
+        # 합쳐지므로(값 덮어씀) 꼬리표로 갈라 놓는다
+        assert alg["Scan2d"] == "Scan2d" + ini_parser.OPTIC_OTHER_SUFFIX
+        assert alg["Scan2d"] != ini_parser.OPTIC_ALG
+
+        # 피벗에서도 두 줄이 살아 있어야 한다(합쳐지면 값이 하나만 남는다)
+        cfgs = ini_parser.scan_tree(d, default_equipment="AOI-13")
+        pivot, _m = ini_parser.build_pivot(cfgs)
+        gl = [r for r in pivot if r["param"] == "LightSrcRef_NominalGL"]
+        assert len(gl) == 4, [(r["alg"], r["raws"]) for r in gl]
+        raws = {r["alg"]: engine._s(list(r["raws"].values())[0]) for r in gl}
+        assert raws[ini_parser.OPTIC_ALG] == "222", raws          # target 값
+        assert raws["Scan2d" + ini_parser.OPTIC_OTHER_SUFFIX] == "500", raws
+    print("  ini_parser OK: 비선택 optic 도 목록 유지(사용=N)·Alg 충돌 회피")
 
 
 if __name__ == "__main__":

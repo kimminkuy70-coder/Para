@@ -222,7 +222,7 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 ```
 python3 tests/test_refdata.py      # 4  (참고자료/특이사항 독립 파일 I/O·호기·IP·호기별 접속ID 공유)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
-python3 tests/test_ini_parser.py   # 19 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/복사금지optic제외/다중레시피)
+python3 tests/test_ini_parser.py   # 20 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/복사금지optic제외/비선택optic표시/다중레시피)
 python3 tests/test_formbuilder.py  # 10 (초안 생성·편집→확정 양식·계수 저장·초안→전체후보 복원·설정키 매칭)
 python3 tests/test_form_candidates.py # 5 (원본 탐색/버전별 안내·다른회차 빌려오기·확정 시 원본 항상 저장)
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
@@ -499,9 +499,13 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 
 - `param_manager/ini_parser.py` — **새 1차 파서**: GlobalRTP/OpticPreset/Zones ini →
   Para 스키마(Zone/Alg/Parameter) 정규화, KNOWN_DISPLAY_MAP·계수 변환, 피벗.
-  **OpticPreset LIGHT/Scan2d 통일**(`_parse_optic`): Scan2d(target) 섹션만
-  alg=`Scan2d`로 통일, `OPTIC_SCAN2D_KEEP`(9개)만 사용=Y, `Scan2d 최신 항목 이름` 합성행 추가,
-  나머지·오래된 Scan2d는 사용=N(검토용). `ExtractRow.use_default`→피벗 `use`→formbuilder.
+  **OpticPreset LIGHT/Scan2d 통일**(`_parse_optic`): target 섹션만 alg=`Scan2d` 로
+  통일, `OPTIC_SCAN2D_KEEP`(9개)만 사용=Y, `Scan2d 최신 항목 이름` 합성행 추가.
+  **target 이 아닌 optic 도 목록에는 전부 남긴다(사용=N, 2026-08 확정)** — 종전에는
+  이름이 `Scan2dN` 형인 섹션만 통째로 버려서 `[Align optic]` 은 보이고 `[Scan2d1]` 만
+  사라지는 비일관이 있었다. '보이는 것'과 '기본 체크'를 분리한다. 비선택 섹션 이름이
+  하필 `Scan2d` 면 target 과 Alg 가 겹쳐 피벗에서 한 줄로 합쳐지므로
+  `_other_optic_alg` 가 `OPTIC_OTHER_SUFFIX`(' (미선택)')를 붙여 갈라 놓는다. `ExtractRow.use_default`→피벗 `use`→formbuilder.
   **target(현재 스캔 optic) 선택(`_pick_optic_target`)**: **①'복사 금지' optic 을 먼저 제외**
   (2026-08 — 이름 **끝**이 `_@NEVER COPY THIS!!!!!` 면 후보에서 뺀다. `optic_excluded`,
   느낌표 수·대소문자·뒤 공백 무시, 섹션명뿐 아니라 `Alg`/`OpticsName`/`Name` 키도 본다.
