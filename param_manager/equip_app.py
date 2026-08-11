@@ -651,6 +651,20 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  레시피 삭제 — 양식 폴더(로컬 보관) + 최신 취합 시트 + 감시 설정
     # ====================================================================
+    def _recipe_restore_text(self, level, vault) -> str:
+        """되돌리는 법 안내문 — 삭제 확인창과 완료창에서 **같은 문구**를 쓴다.
+
+        지운 게 아니라 옮긴 것이므로, 사람이 탐색기에서 폴더를 되돌려 놓으면
+        그대로 복구된다. 그 방법을 삭제 전·후 모두에서 알려 준다.
+        """
+        dest = os.path.join(self.save_dir or "{저장폴더}", workdirs.FORM_DIR)
+        return (f"양식 폴더는 지우지 않고 아래로 **옮깁니다**.\n"
+                f"  {vault}\n"
+                f"잘못 지웠으면 탐색기에서 그 안의 '{level}_{{시각}}' 폴더를\n"
+                f"  {dest}\n"
+                f"아래로 옮기고, 폴더 이름을 '{level}' 로 바꾼 뒤 프로그램에서 "
+                f"⋯파일 > 다시 읽기 를 누르면 그대로 돌아옵니다.")
+
     def _delete_recipe_dialog(self, level: str | None = None):
         r"""레시피 삭제. **어디까지 지우는지 사용자 확정(2026-08)**:
 
@@ -721,9 +735,11 @@ class EquipApp(tk.Tk):
                  font=self.fonts["sub"], justify="left").pack(anchor="w", padx=26,
                                                               pady=(0, 8))
         vault = localdirs.deleted_dir(self.local_dir)
-        tk.Label(win, text=f"되돌리기: 양식 폴더는 지우지 않고 로컬로 옮깁니다.\n{vault}",
+        tk.Label(win, text="되돌리는 법", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w", padx=16)
+        tk.Label(win, text=self._recipe_restore_text(level, vault),
                  bg=self.p["bg"], fg=self.p["primary"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=16, pady=(0, 10))
+                 justify="left").pack(anchor="w", padx=26, pady=(0, 10))
 
         crow = tk.Frame(win, bg=self.p["bg"])
         crow.pack(fill="x", padx=16, pady=(0, 4))
@@ -809,18 +825,60 @@ class EquipApp(tk.Tk):
             self._render()
             w = res.get("watch") or {}
             msg = [f"'{level}' 레시피를 삭제했습니다."]
-            if res["moved"]:
-                msg.append(f"\n양식 폴더는 되돌릴 수 있게 로컬로 옮겼습니다:\n{res['moved']}")
             if res["sheets"]:
-                msg.append(f"\n최신 취합본에서 시트 {res['sheets']}개를 제거했습니다.")
+                msg.append(f"\n· 최신 취합본에서 시트 {res['sheets']}개 제거")
             if w.get("machines"):
-                msg.append("\n자동 감시 대상에서 제외: " + ", ".join(w["machines"]))
+                msg.append("\n· 자동 감시 대상에서 제외: " + ", ".join(w["machines"]))
             if w.get("empty"):
                 msg.append("\n※ 감시 대상이 하나도 남지 않았습니다 — 감시 설정에서 "
                            "장비·레시피를 다시 지정하세요.")
-            messagebox.showinfo("레시피 삭제", "".join(msg))
+            self._recipe_deleted_window(level, res["moved"], "".join(msg))
             self._set_status(f"'{level}' 레시피 삭제됨 — 되돌리기: {res['moved'] or '-'}")
         self._run_busy(f"'{level}' 레시피 삭제 중…", work, done)
+
+    def _recipe_deleted_window(self, level, moved, summary):
+        """삭제 완료 안내 — **되돌리는 법을 여기서도 알려 준다**.
+
+        지운 게 아니라 옮긴 것이라, 이 창을 닫고 나면 어디에 있는지 알 길이
+        없으면 되돌릴 수 없다. 보관 폴더를 바로 열어 볼 수 있게 버튼도 둔다.
+        """
+        if not moved:                       # 옮길 폴더가 없었으면 요약만
+            messagebox.showinfo("레시피 삭제", summary)
+            return
+        win = tk.Toplevel(self)
+        win.title("레시피 삭제 완료")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text=f"'{level}' 레시피를 삭제했습니다", bg=self.p["bg"],
+                 fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(14, 4))
+        tk.Label(win, text=summary, bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"], justify="left").pack(anchor="w", padx=16,
+                                                              pady=(0, 10))
+        tk.Label(win, text="되돌리는 법", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w", padx=16)
+        dest = os.path.join(self.save_dir or "{저장폴더}", workdirs.FORM_DIR)
+        tk.Label(win,
+                 text=(f"① 아래 보관 폴더를 엽니다(버튼).\n"
+                       f"    {moved}\n"
+                       f"② 그 폴더를 통째로 여기로 옮깁니다.\n"
+                       f"    {dest}\n"
+                       f"③ 폴더 이름을 '{level}' 로 바꿉니다"
+                       f"(뒤의 _시각 부분을 지웁니다).\n"
+                       f"④ 프로그램에서 ⋯파일 > 다시 읽기 를 누르면 그대로 돌아옵니다.\n"
+                       f"※ 취합본의 값은 다음 '파라미터 값 업데이트' 때 다시 채워집니다."),
+                 bg=self.p["bg"], fg=self.p["primary"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=26, pady=(0, 12))
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=(0, 14))
+        tk.Button(bt, text="📂 보관 폴더 열기", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["primary"], padx=14, pady=6,
+                  cursor="hand2",
+                  command=lambda: self._open_in_excel(moved)).pack(side="left")
+        tk.Button(bt, text="확인", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=18, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="right")
 
     # ---- 선택 화면 공통 위젯 ------------------------------------------
     def _big_button(self, parent, text, desc, cmd):

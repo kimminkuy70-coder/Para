@@ -68,6 +68,11 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   · 안전장치: 전역 잠금 `양식_{레시피}` · 미리보기(`recipe_delete_preview` —
     버전/파일/용량) · **레시피 이름 직접 입력**해야 버튼 활성 · 엑셀이 그 폴더
     파일을 열고 있으면 거부(파일이 양쪽에 걸쳐 남는 것 방지).
+  · **되돌리는 법을 삭제 전·후 둘 다에서 안내**한다 — 지운 게 아니라 옮긴 것이라
+    어디에 있는지 모르면 되돌릴 수 없다. 문구는 `_recipe_restore_text` 한 곳에서
+    만들어 확인창과 완료창(`_recipe_deleted_window`, '📂 보관 폴더 열기' 버튼)이
+    같은 내용을 쓴다. 절차 = 보관 폴더를 `{저장폴더}/양식/` 으로 옮기고 이름에서
+    `_{시각}` 을 지운 뒤 ⋯파일 > 다시 읽기.
 - **이력 확인**: 취합 폴더 파일 2개 선택 → `history.diff_files`(멀티시트) → **다른 부분만**
   새 창(Treeview) + 변경내역 엑셀(비고 메모).
 - 오래 걸리는 작업은 `_run_busy` 로딩 모달 + 백그라운드 스레드.
@@ -230,7 +235,7 @@ python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·�
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_updater.py      # 28 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지·버전동일판정)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
-python3 tests/test_recipe_delete.py # 7 (레시피 삭제 범위 고정: 미리보기·로컬보관 이동/되돌리기·저장폴더 백업 거부·최신취합만·감시설정 정리)
+python3 tests/test_recipe_delete.py # 8 (레시피 삭제 범위 고정: 미리보기·로컬보관 이동/되돌리기·저장폴더 백업 거부·최신취합만·감시설정 정리·되돌리기 안내)
 python3 tests/test_onedrive_writes.py # 5 (저장폴더 쓰기 최소화: 폴더 지연생성·잠금 재기록 없음·수집 staging 로컬·무변경 시 취합 미생성)
 python3 tests/test_network_manners.py # 7 (빈 비밀번호 net use 금지(무인·수동 둘 다)·장비별 자격증명·포트/장비 간 간격·직접 설치 경로)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
