@@ -3050,13 +3050,14 @@ class EquipApp(tk.Tk):
         #  목록에 보여 다시 넣을 수 있다**. 없으면 확정본만(= 빼기만 가능).
         cand = ver.get("candidate") or workdirs.form_candidate_path(
             os.path.dirname(final_path))
-        if not cand:
-            cand = self._ask_candidate_fallback(level, final_path)
-            if cand == "CANCEL":
-                return
-            if cand == "RECOLLECT":
-                self._recollect_for_edit(level, new_level, kind, final_path, aoi)
-                return
+        choice = self._ask_edit_source(level, cand)
+        if choice == "CANCEL":
+            return
+        if choice in ("EQUIP", "LOCAL"):
+            self._recollect_for_edit(level, new_level, kind, final_path, aoi,
+                                     source=choice)
+            return
+        cand = choice or ""                  # 후보 파일 경로 또는 ''(확정본만)
         try:
             if cand:
                 rows, _used, _names = formbuilder.initial_to_pivot(cand)
@@ -3165,61 +3166,74 @@ class EquipApp(tk.Tk):
             then()
         self._run_busy("원본(전체 후보 목록) 저장 중…", work, done)
 
-    def _ask_candidate_fallback(self, level, final_path):
-        """고른 버전에 후보 목록(원본)이 없을 때 어떻게 할지 묻는다.
+    def _ask_edit_source(self, level, cand):
+        """기존 양식을 **무엇을 기준으로** 열지 고른다.
 
-        반환: 후보 파일 경로 / "" (확정본만으로 진행) / "RECOLLECT" / "CANCEL".
+        반환: 후보 파일 경로 / "EQUIP" / "LOCAL" / ""(확정본만) / "CANCEL".
+
+        · 원본(전체 후보 목록)이 있으면 그게 기본이고 한 번만 누르면 된다.
+        · 원본이 있어도 **장비/로컬에서 다시 읽기**를 고를 수 있게 항상 노출한다
+          (2026-08) — 파서 규칙이 바뀌면 저장된 스냅샷에는 그게 반영되지 않으므로,
+          새 규칙으로 다시 읽어 합쳐야 항목 구성까지 최신이 된다.
+        · 원본이 없으면 다른 회차 원본 빌려오기를 추가로 제시한다.
         """
-        other = workdirs.any_candidate_for(self.save_dir, level)
+        other = None if cand else workdirs.any_candidate_for(self.save_dir, level)
         win = tk.Toplevel(self)
-        win.title("원본(전체 후보 목록)이 없습니다")
+        win.title("기존 양식 수정 — 무엇을 기준으로 열까요?")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
-        tk.Label(win, text="이 버전에는 '원본' 파일이 없습니다", bg=self.p["bg"],
+        tk.Label(win, text=f"'{level}' 양식을 무엇을 기준으로 열까요?", bg=self.p["bg"],
                  fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", padx=16,
                                                                    pady=(14, 2))
-        tk.Label(win,
-                 text="확정 양식에는 체크해서 살린 항목만 들어 있어, 그대로 열면 "
-                      "**빼기만** 됩니다.\n예전에 체크 해제한 파라미터를 다시 넣으려면 "
-                      "그 회차의 전체 후보 목록(관련파일/…_원본_….xlsx)이 필요합니다.\n"
-                      "(화면 편집기에서 바로 확정한 회차에는 이 파일이 없습니다 — "
-                      "지금부터 만드는 양식에는 항상 저장됩니다.)",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left", wraplength=560).pack(anchor="w", padx=16, pady=(0, 10))
+        if cand:
+            note = ("이 회차에는 **원본**(그때 읽은 전체 파라미터 목록)이 있습니다.\n"
+                    "그걸로 열면 예전에 체크 해제한 항목도 목록에 보여 다시 넣을 수 "
+                    "있습니다.")
+        else:
+            note = ("이 회차에는 **원본이 없습니다**(화면 편집기에서 바로 확정한 회차).\n"
+                    "확정 양식에는 체크해서 살린 항목만 있어 그대로 열면 **빼기만** "
+                    "됩니다.\n지금부터 만드는 양식에는 원본이 항상 저장됩니다.")
+        tk.Label(win, text=note, bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"], justify="left",
+                 wraplength=580).pack(anchor="w", padx=16, pady=(0, 10))
         res = {"val": "CANCEL"}
 
         def choose(v):
             res["val"] = v
             win.destroy()
+
         body = tk.Frame(win, bg=self.p["bg"])
         body.pack(fill="x", padx=16)
-        if other:
-            tk.Button(body,
-                      text=f"① 같은 레시피의 다른 버전 원본 쓰기\n     "
-                           f"({os.path.basename(other)})",
-                      relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+
+        def opt(text, value, primary=False):
+            tk.Button(body, text=text, relief="flat", bd=0,
+                      bg=(self.p["primary"] if primary else self.p["surface"]),
+                      fg=("#ffffff" if primary else self.p["text"]),
                       padx=14, pady=8, cursor="hand2", justify="left", anchor="w",
-                      command=lambda: choose(other)).pack(fill="x", pady=3)
-        tk.Button(body, text="② 장비/로컬에서 다시 읽어 합치기\n     "
-                            "(지금 양식의 선택은 그대로 유지, 새 항목만 추가)",
-                  relief="flat", bd=0,
-                  bg=(self.p["surface"] if other else self.p["primary"]),
-                  fg=(self.p["text"] if other else "#ffffff"),
-                  padx=14, pady=8, cursor="hand2", justify="left", anchor="w",
-                  command=lambda: choose("RECOLLECT")).pack(fill="x", pady=3)
-        tk.Button(body, text="③ 확정본만으로 열기 (빼기만 가능)", relief="flat", bd=0,
-                  bg=self.p["surface"], fg=self.p["text"], padx=14, pady=8,
-                  cursor="hand2", justify="left", anchor="w",
-                  command=lambda: choose("")).pack(fill="x", pady=3)
+                      command=lambda: choose(value)).pack(fill="x", pady=3)
+
+        if cand:
+            opt(f"저장된 원본으로 열기  (빠름 · 권장)\n     "
+                f"{os.path.basename(cand)}", cand, primary=True)
+        elif other:
+            opt(f"같은 레시피의 다른 회차 원본 쓰기\n     "
+                f"{os.path.basename(other)}", other, primary=True)
+        opt("🖥 장비에서 다시 읽어 합치기\n     "
+            "지금 양식의 선택은 그대로 유지되고 새 항목만 추가됩니다.\n"
+            "     파서 규칙이 바뀐 뒤 항목 구성까지 최신으로 맞출 때 쓰세요.",
+            "EQUIP", primary=not (cand or other))
+        opt("📁 로컬(호기 선택)에서 다시 읽어 합치기", "LOCAL")
+        opt("확정본만으로 열기  (항목을 빼기만 가능)", "")
         tk.Button(win, text="취소", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=16, pady=6, cursor="hand2",
                   command=win.destroy).pack(anchor="e", padx=16, pady=12)
         win.wait_window()
         return res["val"]
 
-    def _recollect_for_edit(self, level, new_level, kind, final_path, aoi):
-        """원본이 없을 때 — 장비/로컬에서 다시 읽어 기존 양식과 합쳐 편집한다.
+    def _recollect_for_edit(self, level, new_level, kind, final_path, aoi,
+                            source="EQUIP"):
+        """장비/로컬에서 **다시 읽어** 기존 양식과 합쳐 편집한다.
 
         새로 파싱한 전체 목록이 후보가 되고, **지금 양식이 쓰는 항목은 자동으로
         체크**된 채로 열린다(설정키 매칭). 양식을 처음부터 다시 만드는 것과 달리
@@ -3261,41 +3275,19 @@ class EquipApp(tk.Tk):
                                     title_prefix="기존 양식 수정(다시 읽기)",
                                     on_confirm=on_confirm, default_use=None)
 
-        def from_equip():
-            pickwin.destroy()
+        if source == "LOCAL":
+            self._local_pick_sources(
+                lambda sources: self._parse_sources_busy(sources, after,
+                                                         default_level=level),
+                level_hint=level)
+        else:
+            # 장비 수집본(원본 ini)은 **로컬에만** 둔다(OneDrive 동기화 폭주 방지)
             staging = localdirs.new_temp_run(self.local_dir, "양식수집")
             self._collect_dialog(
                 staging,
                 lambda sources: self._parse_sources_busy(sources, after,
                                                          default_level=level),
                 level_hint=level, levels=[level])
-
-        def from_local():
-            pickwin.destroy()
-            self._local_pick_sources(
-                lambda sources: self._parse_sources_busy(sources, after,
-                                                         default_level=level),
-                level_hint=level)
-
-        pickwin = tk.Toplevel(self)
-        pickwin.title("다시 읽어 합치기")
-        pickwin.configure(bg=self.p["bg"])
-        pickwin.transient(self)
-        tk.Label(pickwin, text=f"'{level}' 를 어디에서 다시 읽을까요?", bg=self.p["bg"],
-                 fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w", padx=16,
-                                                                  pady=(14, 2))
-        tk.Label(pickwin, text="읽은 전체 파라미터가 후보가 되고, 지금 양식이 쓰는 항목은 "
-                              "자동으로 체크된 채로 열립니다.",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=16, pady=(0, 8))
-        bt = tk.Frame(pickwin, bg=self.p["bg"])
-        bt.pack(fill="x", padx=16, pady=(0, 14))
-        tk.Button(bt, text="🖥 장비 폴더에서", relief="flat", bd=0, bg=self.p["primary"],
-                  fg="#ffffff", padx=16, pady=8, cursor="hand2",
-                  command=from_equip).pack(side="left")
-        tk.Button(bt, text="📁 로컬(호기 선택)에서", relief="flat", bd=0,
-                  bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8,
-                  cursor="hand2", command=from_local).pack(side="left", padx=8)
 
     def _form_new(self, from_equipment: bool):
         if not self.save_dir:

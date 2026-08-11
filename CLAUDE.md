@@ -35,10 +35,20 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   변형+설정파일+Section+설정Parameter, `collate._ext_key` 와 같은 원칙) — 이름으로
   맞추면 사람이 바꾼 이름이 '새 항목'으로 튄다. 확정본에만 있는 행은 덧붙여 보존.
   · **후보 유무를 미리 안내**: `workdirs.form_version_status` 로 레시피/버전 목록에
-    `✔ 항목 추가 가능` / `⚠ 원본 없음` 을 붙인다. 없으면 `_ask_candidate_fallback`
-    이 ①다른 버전 원본 빌려오기(`any_candidate_for`) ②장비/로컬에서 다시 읽어
-    합치기(`_recollect_for_edit` — 기존 선택 유지, 새 항목만 추가) ③확정본만으로
-    열기 를 고르게 한다.
+    `✔ 항목 추가 가능` / `⚠ 원본 없음` 을 붙인다.
+  · **무엇을 기준으로 열지 항상 고른다**(`_ask_edit_source`) — ①저장된 원본(있을
+    때·기본) 또는 다른 회차 원본 빌려오기(`any_candidate_for`) ②🖥 장비에서 다시
+    읽어 합치기 ③📁 로컬에서 다시 읽어 합치기 ④확정본만으로 열기.
+    **②③은 원본이 있어도 항상 노출**한다(2026-08) — 저장된 원본은 그때의
+    스냅샷이라 **파서 규칙이 바뀌어도 반영되지 않는다**. 항목 구성까지 최신으로
+    맞추려면 다시 읽어야 한다. `_recollect_for_edit(source=)` 가 고른 소스로
+    수집→`merge_form_into_candidates`(기존 선택 유지, 새 항목만 추가).
+    수집 staging 은 **반드시 로컬**(`localdirs.new_temp_run`).
+  · **값은 스냅샷과 무관하게 최신 파서로 갱신된다**: `collate` 의 1차 키
+    (`_ext_key`)에는 OpticPreset 섹션명이 들어가 target 이 바뀌면 깨지지만,
+    target 의 `alg` 가 항상 `Scan2d` 로 통일돼 있어 2차 이름 키(`_name_key`)가
+    붙는다. 그래서 **양식은 그대로여도 값 업데이트는 올바른 optic 값으로 채워진다**
+    (양식의 항목 구성만 다시 읽기가 필요).
   · **원본은 항상 남긴다**: 종전에는 '엑셀에서 편집하기'를 거친 회차에만 초안이
     생겨 화면 편집기로 바로 확정한 회차는 되살릴 수 없었다. 이제
     `_form_param_editor.confirm()` 이 확정과 함께 원본을 쓴다
@@ -224,7 +234,7 @@ python3 tests/test_refdata.py      # 4  (참고자료/특이사항 독립 파일
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
 python3 tests/test_ini_parser.py   # 20 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/복사금지optic제외/비선택optic표시/다중레시피)
 python3 tests/test_formbuilder.py  # 10 (초안 생성·편집→확정 양식·계수 저장·초안→전체후보 복원·설정키 매칭)
-python3 tests/test_form_candidates.py # 5 (원본 탐색/버전별 안내·다른회차 빌려오기·확정 시 원본 항상 저장)
+python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다른회차 빌려오기·확정 시 원본 항상 저장·다시읽기 항상 선택)
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
