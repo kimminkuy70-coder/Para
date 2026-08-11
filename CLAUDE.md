@@ -10,7 +10,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 
 - **첫 실행에 저장 폴더 1곳 지정**(config `save_dir`). 이후 모든 산출물이 그 안에.
 - **초기 3개 독립 파일**(저장폴더 안, 없으면 생성/선택 → `refdata.py`):
-  `장비 IP 주소.xlsx`[호기,IP] · `참고자료.xlsx`(자유 메모 그리드) · `특이사항.xlsx`.
+  `장비 IP 주소.xlsx`[호기,IP,접속ID] · `참고자료.xlsx`(자유 메모 그리드) · `특이사항.xlsx`.
 - **호기 목록 = 장비 IP 주소 파일 기준**(고정 34호기 폐기). 호기 추가 = 이름+IP → 그 파일 기록.
   참고자료는 순수 메모, 특이사항/참고자료는 **셀 색상 저장** 지원. 탭에 '장비 IP' 추가.
 - 폴더: `{저장폴더}/양식/{레시피}/{생성시간}/{레시피}_{호기}호기_참조_{시간}.xlsx`(확정),
@@ -181,7 +181,7 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 ## 테스트 (venv 없으면 시스템 python3 + openpyxl 로도 동작)
 
 ```
-python3 tests/test_refdata.py      # 3  (참고자료/특이사항 독립 파일 I/O·호기·IP)
+python3 tests/test_refdata.py      # 4  (참고자료/특이사항 독립 파일 I/O·호기·IP·호기별 접속ID 공유)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
 python3 tests/test_ini_parser.py   # 17 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
 python3 tests/test_formbuilder.py  # 7  (초안 생성·편집→확정 양식·계수 저장)
@@ -196,10 +196,10 @@ python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용�
 python3 tests/test_updater.py      # 28 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지·버전동일판정)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_onedrive_writes.py # 5 (저장폴더 쓰기 최소화: 폴더 지연생성·잠금 재기록 없음·수집 staging 로컬·무변경 시 취합 미생성)
-python3 tests/test_network_manners.py # 6 (빈 비밀번호 net use 금지·메모리 전용 자격증명·포트/장비 간 간격·직접 설치 경로)
+python3 tests/test_network_manners.py # 7 (빈 비밀번호 net use 금지(무인·수동 둘 다)·장비별 자격증명·포트/장비 간 간격·직접 설치 경로)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
-python3 tests/test_watcher.py      # 26 (주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
+python3 tests/test_watcher.py      # 29 (주기 프리셋·시작=끝 첫실행·호기별 감시 레시피·주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -258,12 +258,27 @@ python3 tests/test_downloader.py   # 8
 - **즉시 확인**: 설정창 '▶ 즉시 확인' — 주기를 기다리지 않고 1회 실행. 사람이 눌렀으므로
   진행 모달을 띄우고 **변경이 없어도 결과를 알린다**. 주기 회차와 로직 공유
   (`_watch_cycle_work`/`_watch_finish`).
-- **자동 감시**: 설정창에서 **① 감시할 장비 ② 감시할 레시피(둘 다 필수)** → ③ 접속 방식 →
-  주기(기본 6h)·시간대 창. 선택은 `감시설정.json` 의 `machines`/`recipes` 에 저장되고
-  **연결 점검·수집·취합 모두 선택분만** 대상으로 한다(미선택이면 켜지지 않음. 저장 뒤
-  삭제된 항목은 실행 시 자동 제외). 선택 UI 는 공용 `_pick_list`. 이후 조용히 수집·취합 →
-  `history.diff_files` 로 직전과 비교 → **변경 있을 때만** 알림 + `자동감시/변경보고서_{시간}.xlsx`.
-  무인이라 모달 금지(`_run_bg`). 설정=`감시설정.json`, 로그=`자동감시/감시로그.txt`.
+- **자동 감시 설정창 UX (2026-08 재설계 — 사용자 지정)**: `_watch_dialog` 는 위에서부터
+  **① 큰 ON/OFF 토글**(`paint_toggle` — 켜짐=초록 '● 켜짐', 꺼짐=회색) → **② 주기
+  프리셋**(`watcher.INTERVAL_CHOICES` = 30분/1/2/4/6/8/12/24시간, 라벨↔값은
+  `interval_label`/`interval_from_label`)·**실행 시간대** → **③ 장비별 표** →
+  **④ 접속 방식**. 창 전체가 스크롤(Canvas)이고 버튼줄은 하단 고정.
+  · **시간대 시작=끝(예 9시~9시) = '매일 그 시각에 시작'**(`watcher.first_run_at`) —
+    0~0 만 '제한 없음'. 첫 회차는 다음 9시, 이후 주기 반복. 콤보 밑 `upd_wnote` 가
+    지금 설정이 무슨 뜻인지 한 줄로 설명한다.
+  · **감시 대상 = 호기별 레시피**(`watcher.machine_recipes` → `{호기: [레시피]}`).
+    장비마다 감시할 레시피가 다르므로 전역 목록으로 묶지 않는다. 표의 각 행에서
+    '레시피…'(`_pick_dialog`)로 고르고 '📁 폴더…'(`_watch_paths_dialog`)로 Job 폴더를
+    지정하며, **폴더 지정은 필수**다(`collect_settings(require=True)` 가 미지정
+    (호기/레시피)를 모두 나열하고 막는다 — 지정 없이 돌면 이름을 유추하다 엉뚱한
+    폴더를 읽는다). 행 오른쪽에 `폴더 n/N ✓` 현황 표시(`refresh_row`).
+    구 전역 목록 `machines`/`recipes` 는 `watcher.sync_selection` 이 지정에 맞춰
+    자동으로 채워 하위호환을 유지한다.
+  · 표 행은 **오른쪽 위젯을 먼저 pack** — expand=True 라벨을 먼저 붙이면 뒤 위젯이
+    안 보인다(슬롯 선택창에서 겪은 것과 같은 함정).
+  이후 조용히 수집·취합 → `history.diff_files` 로 직전과 비교 → **변경 있을 때만**
+  알림 + `자동감시/변경보고서_{시간}.xlsx`. 무인이라 모달 금지(`_run_bg`).
+  설정=`감시설정.json`, 로그=`자동감시/감시로그.txt`.
 - **트레이 상주(`tray.py`)**: 감시 ON 상태로 창을 닫으면(X) **종료하지 않고 창만 숨겨**
   감시를 계속한다(tkinter `after` 가 계속 도는 구조라 가능). 알림영역 아이콘 좌클릭/
   더블클릭=창 열기, 우클릭=메뉴(프로그램 열기 / 자동 감시 종료). 숨김 중 변경 감지는
@@ -279,6 +294,22 @@ python3 tests/test_downloader.py   # 8
   않는다. 사용자가 탐색기로 대상 장비를 **미리 모두 연결**해 두어야 하며,
   `check_connections`/`connection_guide` 가 미연결 장비를 사전 안내. `CONN_NETUSE` 선택 가능
   (비밀번호는 메모리에만, 앱 종료 시 소멸).
+- **접속 계정은 장비마다 다르다(2026-08 확정)**: net use 를 고르면 설정창이
+  **감시 대상 장비마다** ID·비밀번호 칸을 만든다(`build_creds`/`_keep_cred`).
+  · **ID = 공유 파일** `장비 IP 주소.xlsx` 의 '접속ID' 열(`refdata.IP_HEADERS`,
+    비면 `DEFAULT_LOGIN_ID`='amkor'). `login_id_for`/`set_login_id` + `save_ip` 로
+    저장해 **다른 사람도 같은 값**을 쓴다(구 2열 파일도 그대로 읽힘).
+  · **비밀번호 = 메모리 전용** `self._watch_cred = {호기: (ID, PW)}` — dict 다.
+    한 벌로 묶으면 계정이 다른 장비마다 로그온 실패가 쌓인다.
+    `_watch_collect` 는 장비마다 `all_creds.get(m)` 을 보고, **그 장비의 비밀번호가
+    없으면 net use 를 켜지 않고** 기존 연결로만 시도한다(빈 비밀번호 접속 금지).
+- **양식 만들기 장비 수집(`_collect_dialog`) — 2026-08 정리**: 호기별 접속 ID 를
+  **고칠 수 있고 고치면 공유 엑셀에 저장**된다(`refdata.set_login_id`+`save_ip`).
+  **공통 ID/비밀번호와 IP 직접입력은 삭제**(사용자 지정) — 장비마다 계정이 달라
+  한 벌로 묶으면 실패가 쌓이고, 호기가 정해진 목록에서만 고르면 IP↔호기 매칭이
+  필요 없다(`_map_ips_to_machines` 는 남겨두되 평소 미사용).
+  net use 인데 비밀번호가 빈 장비가 있으면 **묻지 않고 막는다**(종전에는
+  '빈 비밀번호로 시도할까요?'를 물어봤다).
 - 오류 코드: 잠금 E150~E154, 감시 E155~E158, 트레이 E159~E160.
 
 - **프로그램 아이콘**: `param_manager/data/para_icon.ico`(16~256, 투명 배경).
@@ -445,6 +476,7 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 - `param_manager/coef_detector.py` — **변환 계수 자동 추정**: RTP.txt(표시값)↔Zone ini(원본값)
   known 쌍 비교(LINEAR=disp/raw, AREA=√). 1.0 근처(직접단위) 제외, 군집·신뢰도. `detect_from_dir`.
 - `param_manager/refdata.py` — **참고자료/특이사항 독립 파일 I/O**: `REF_HEADERS=[호기,IP,비고]`,
+  `IP_HEADERS=[호기,IP,접속ID]`·`login_id_for`/`set_login_id`(장비 접속 계정 공유),
   load/save/create_blank, `machines()`/`ip_for()`/`add_machine()`.
 - `param_manager/coefstore.py` — **변환계수.xlsx (호기+MAG) 저장소**: `[호기,MAG,변형,계수,비고]`
   load/save/create_blank, `lookup(rows,호기,MAG)`(숫자 근사), `upsert`(사람값 우선),

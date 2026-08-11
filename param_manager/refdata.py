@@ -23,7 +23,10 @@ SPECIAL_FILENAME = "특이사항.xlsx"
 IP_SHEET = "장비 IP 주소"
 REF_SHEET = "참고자료"
 SPECIAL_SHEET = "특이사항"
-IP_HEADERS = ["호기", "IP"]
+# 접속ID 는 장비마다 다를 수 있고 **여러 사람이 같이 써야 하므로** 공유 파일에 둔다.
+# (비밀번호는 절대 저장하지 않는다 — 메모리에만.)
+IP_HEADERS = ["호기", "IP", "접속ID"]
+DEFAULT_LOGIN_ID = "amkor"          # 비어 있을 때만 쓰는 기본값
 REF_DEFAULT_HEADERS = ["구분", "내용", "비고"]     # 자유형이라 사람이 바꿔도 됨
 SPECIAL_HEADERS = list(engine.SPECIAL_HEADERS)
 SPECIAL_BOOL_COL = engine.SPECIAL_BOOL_COL
@@ -94,8 +97,8 @@ def create_blank_ip(path: str) -> str:
     ws.title = IP_SHEET
     ws.append(IP_HEADERS)
     _style_header(ws)
-    ws.column_dimensions["A"].width = 14
-    ws.column_dimensions["B"].width = 18
+    for col, w in zip("ABC", (14, 18, 16)):
+        ws.column_dimensions[col].width = w
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     wb.save(path)
     return path
@@ -117,7 +120,9 @@ def load_ip(path: str) -> list[dict]:
               else (engine._s(row[1]).strip() if len(row) > 1 else ""))
         if not ho:
             continue
-        out.append({"호기": ho, "IP": ip})
+        uid = (engine._s(row[hidx["접속ID"]]).strip()
+               if "접속ID" in hidx and hidx["접속ID"] < len(row) else "")
+        out.append({"호기": ho, "IP": ip, "접속ID": uid})
     wb.close()
     return out
 
@@ -128,10 +133,10 @@ def save_ip(path: str, rows: list[dict]) -> str:
     ws.title = IP_SHEET
     ws.append(IP_HEADERS)
     for r in rows:
-        ws.append([engine._s(r.get("호기")), engine._s(r.get("IP"))])
+        ws.append([engine._s(r.get(h)) for h in IP_HEADERS])
     _style_header(ws)
-    ws.column_dimensions["A"].width = 14
-    ws.column_dimensions["B"].width = 18
+    for col, w in zip("ABC", (14, 18, 16)):
+        ws.column_dimensions[col].width = w
     wb.save(path)
     return path
 
@@ -150,6 +155,32 @@ def ip_for(ip_rows: list[dict], machine: str) -> str:
         if engine._s(r.get("호기")).strip() == engine._s(machine).strip():
             return engine._s(r.get("IP")).strip()
     return ""
+
+
+def login_id_for(ip_rows: list[dict], machine: str) -> str:
+    """호기의 장비 접속 ID(공유 파일). 비어 있으면 기본값."""
+    for r in ip_rows:
+        if engine._s(r.get("호기")).strip() == engine._s(machine).strip():
+            uid = engine._s(r.get("접속ID")).strip()
+            if uid:
+                return uid
+    return DEFAULT_LOGIN_ID
+
+
+def set_login_id(ip_rows: list[dict], machine: str, login_id: str) -> bool:
+    """호기의 접속 ID 기록(공유 파일에 저장하기 위한 갱신). 반환: 바뀌었는가."""
+    machine = engine._s(machine).strip()
+    login_id = engine._s(login_id).strip()
+    for r in ip_rows:
+        if engine._s(r.get("호기")).strip() == machine:
+            if engine._s(r.get("접속ID")).strip() == login_id:
+                return False
+            r["접속ID"] = login_id
+            return True
+    if machine:
+        ip_rows.append({"호기": machine, "IP": "", "접속ID": login_id})
+        return True
+    return False
 
 
 def add_machine(ip_rows: list[dict], machine: str, ip: str = "") -> bool:

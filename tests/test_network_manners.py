@@ -59,15 +59,44 @@ def test_never_connects_with_empty_password():
 
 
 def test_netuse_requires_credential_in_memory():
-    """접속 정보가 메모리에 없으면 net use 모드여도 시도하지 않는다."""
+    """접속 정보가 메모리에 없으면 net use 모드여도 시도하지 않는다.
+
+    접속 정보는 **장비마다** 다르므로(`{호기: (ID, PW)}`), 한 장비의 비밀번호가
+    없다고 다른 장비까지 막지도 않고, 없는 장비에 빈 비밀번호로 붙지도 않는다.
+    """
     src = _src("equip_app.py")
     m = re.search(r"def _watch_collect.*?(?=\n    def )", src, re.S)
     assert m, "_watch_collect 를 찾지 못함"
     body = m.group(0)
-    assert re.search(r"use_netuse\s*=\s*\(s\.conn_mode == watcher\.CONN_NETUSE"
-                     r"\s*and\s*bool\(cred\)\)", body), \
-        "접속 정보 없이도 net use 를 켜고 있음"
-    print("  net use 는 메모리 접속 정보가 있을 때만 OK")
+    assert re.search(r"cred\s*=\s*all_creds\.get\(m\)", body), \
+        "장비별 접속 정보를 쓰지 않음(한 벌로 묶으면 계정이 다른 장비에서 실패)"
+    assert re.search(r"use_netuse\s*=\s*bool\(netuse_mode\s+and\s+cred\)", body), \
+        "그 장비의 접속 정보 없이도 net use 를 켜고 있음"
+    print("  net use 는 그 장비의 메모리 접속 정보가 있을 때만 OK")
+
+
+def test_manual_collect_refuses_empty_password():
+    """수동 수집(양식 만들기)도 빈 비밀번호로는 접속을 **시도하지 않는다**.
+
+    예전에는 '빈 비밀번호로 시도할까요?'를 물어보고 예이면 붙었다 — 그 회차마다
+    장비 수만큼 로그온 실패가 쌓인다. 이제는 물어보지 않고 막는다.
+    """
+    src = _src("equip_app.py")
+    m = re.search(r"def _collect_dialog.*?(?=\n    def )", src, re.S)
+    assert m, "_collect_dialog 를 찾지 못함"
+    body = m.group(0)
+    assert "nopw" in body, "비밀번호 없는 장비 검사가 없음"
+    assert "빈 비밀번호로 접속을 시도할까요" not in body, \
+        "빈 비밀번호 접속을 여전히 물어보고 있음"
+    assert "showwarning" in body, "비밀번호 없는 장비를 막지 않음"
+    # 공통 ID/비밀번호·IP 직접입력은 삭제(장비마다 계정이 다르므로)
+    for gone in ("common_pw", "common_uid", "direct_pw", "split_ips"):
+        assert gone not in body, f"삭제된 기능이 남아 있음: {gone}"
+    # 접속 ID 는 공유 파일에서 읽고, 고치면 공유 파일에 저장
+    assert "refdata.login_id_for" in body, "호기별 접속 ID 를 읽지 않음"
+    assert "refdata.set_login_id" in body and "refdata.save_ip" in body, \
+        "고친 접속 ID 를 공유 파일에 저장하지 않음"
+    print("  수동 수집: 빈 비밀번호 차단 + 호기별 ID 공유 저장 OK")
 
 
 def test_credentials_never_written_to_disk():
@@ -116,6 +145,7 @@ def test_manual_install_path_exists():
 if __name__ == "__main__":
     for t in [test_never_connects_with_empty_password,
               test_netuse_requires_credential_in_memory,
+              test_manual_collect_refuses_empty_password,
               test_credentials_never_written_to_disk,
               test_probe_has_gap_between_hosts,
               test_unattended_collect_has_gap_between_machines,

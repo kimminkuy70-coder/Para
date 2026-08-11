@@ -45,6 +45,28 @@ CONN_SESSION = "session"       # 기본·권장: net use 없이 기존 연결 �
 CONN_NETUSE = "netuse"         # net use 로 직접 접속(비밀번호 필요, 메모리에만)
 
 DEFAULT_INTERVAL_HOURS = 6
+# 주기 선택지(사용자 지정 2026-08) — 자유 입력 대신 프리셋으로 고른다.
+INTERVAL_CHOICES = [(0.5, "30분"), (1, "1시간"), (2, "2시간"), (4, "4시간"),
+                    (6, "6시간"), (8, "8시간"), (12, "12시간"), (24, "24시간")]
+
+
+def interval_label(hours) -> str:
+    """주기(시간) → 표시 라벨. 프리셋에 없으면 숫자로."""
+    try:
+        h = float(hours)
+    except (TypeError, ValueError):
+        h = DEFAULT_INTERVAL_HOURS
+    for v, lab in INTERVAL_CHOICES:
+        if abs(v - h) < 1e-9:
+            return lab
+    return f"{h:g}시간"
+
+
+def interval_from_label(label: str) -> float:
+    for v, lab in INTERVAL_CHOICES:
+        if lab == label:
+            return float(v)
+    return float(DEFAULT_INTERVAL_HOURS)
 # 연속 실패 시 다음 시도까지 미루는 시간(주기의 배수). 몰아치기 방지.
 BACKOFF_STEPS = [1, 2, 4, 8]
 
@@ -203,6 +225,51 @@ def normalize_recipe_paths(raw) -> dict:
     return out
 
 
+def machine_recipes(settings: "WatchSettings") -> dict:
+    """감시 대상 = **호기별 레시피** — `{호기: [레시피…]}`.
+
+    감시 폴더 지정(`recipe_paths`)이 곧 대상이다(사용자 지정 2026-08): 장비마다
+    감시할 레시피를 따로 고르고 그 Job 폴더를 반드시 지정하게 했으므로, 지정된
+    (호기, 레시피) 쌍이 그대로 대상이 된다. 구 설정(전역 `machines`/`recipes`)만
+    있는 경우에는 그 조합을 대상으로 본다(하위호환).
+    """
+    rp = normalize_recipe_paths(getattr(settings, "recipe_paths", None))
+    out: dict = {}
+    for m, inner in rp.items():
+        if m == "*":
+            continue
+        names = [r for r, v in (inner or {}).items() if v]
+        if names:
+            out[m] = names
+    if out:
+        return out
+    ms = list(getattr(settings, "machines", None) or [])
+    rs = list(getattr(settings, "recipes", None) or [])
+    return {m: list(rs) for m in ms} if ms and rs else {}
+
+
+def watch_targets(settings: "WatchSettings") -> list:
+    """[(호기, 레시피)] 평면 목록 — 로그·안내용."""
+    out = []
+    for m, names in machine_recipes(settings).items():
+        for r in names:
+            out.append((m, r))
+    return out
+
+
+def sync_selection(settings: "WatchSettings") -> None:
+    """`recipe_paths` 기준으로 `machines`/`recipes` 를 다시 채운다(하위호환 유지).
+    구 버전 프로그램·기존 코드가 이 두 목록을 계속 참조하므로 어긋나면 안 된다."""
+    mr = machine_recipes(settings)
+    settings.machines = list(mr)
+    seen: list = []
+    for names in mr.values():
+        for r in names:
+            if r not in seen:
+                seen.append(r)
+    settings.recipes = seen
+
+
 def path_for(recipe_paths: dict, machine: str, recipe: str) -> str:
     """(호기, 레시피) → 지정된 상대경로. 없으면 빈 문자열.
     호기별 지정이 우선, 없으면 구 버전 공통 지정(`*`)을 본다."""
@@ -293,16 +360,33 @@ def _parse_dt(text: str) -> datetime | None:
         return None
 
 
+def first_run_at(now: datetime, settings: WatchSettings) -> datetime:
+    """아직 한 번도 안 돌았을 때의 **첫 실행 시각**.
+
+    시간대를 `9시 ~ 9시` 처럼 시작=끝으로 지정하면 '제한 없음'이 아니라
+    **매일 그 시각에 시작**하겠다는 뜻으로 본다(사용자 지정 2026-08).
+    → 다음 9시(오늘 9시가 아직 안 지났으면 오늘, 지났으면 내일)에 첫 회차.
+    시간대를 안 쓰면(0~0) 즉시, 진짜 창(9~18)이면 지금부터(창 밖이면
+    `should_run` 의 `in_window` 가 알아서 창이 열릴 때까지 미룬다).
+    """
+    s, e = settings.window_start % 24, settings.window_end % 24
+    if s != e or s == 0:
+        return now
+    start = now.replace(hour=s, minute=0, second=0, microsecond=0)
+    return start if now <= start else start + timedelta(days=1)
+
+
 def next_run_at(settings: WatchSettings, state: WatchState,
                 now: datetime | None = None) -> datetime:
-    """다음 실행 예정 시각. 마지막 실행이 없으면 '지금'(즉시 1회).
+    """다음 실행 예정 시각. 마지막 실행이 없으면 첫 실행 시각(시간대 정렬).
 
     연속 실패가 쌓이면 backoff 로 더 미룬다(장비에 몰아치지 않기 위해).
     now 를 받는 이유: 기준 시각을 호출자가 정해야 판단이 결정적이 된다.
     """
+    now = now or datetime.now()
     last = _parse_dt(state.last_run)
     if last is None:
-        return now or datetime.now()
+        return first_run_at(now, settings)
     mult = BACKOFF_STEPS[min(state.fail_count, len(BACKOFF_STEPS) - 1)] \
         if state.fail_count else 1
     return last + timedelta(hours=settings.interval_hours * mult)

@@ -156,10 +156,13 @@ class EquipApp(tk.Tk):
         self._pending_report = None      # 풍선 알림 클릭 시 열어줄 보고서
         self._watch_owned = False        # 이 PC 가 감시 전역 잠금을 쥐었는가
         self._watch_busy = False         # 감시 회차 실행 중(중복 실행 방지)
-        # net use 무인 접속 정보 — **메모리에만**(디스크 저장 금지, 앱 종료 시 소멸).
-        # 없으면 net use 를 아예 시도하지 않는다: 빈 비밀번호로 접속을 시도하면
-        # 장비마다 로그온 실패(4625)가 쌓여 계정 잠금·보안 경보로 이어진다.
-        self._watch_cred: tuple[str, str] | None = None
+        # net use 무인 접속 정보 — **호기별** `{호기: (ID, 비밀번호)}`.
+        # 장비마다 계정이 다르므로 한 벌로 묶지 않는다(사용자 지정 2026-08).
+        # **메모리에만**(디스크 저장 금지, 앱 종료 시 소멸). 비밀번호가 없는 장비는
+        # net use 를 아예 시도하지 않는다: 빈 비밀번호로 접속을 시도하면 장비마다
+        # 로그온 실패(4625)가 쌓여 계정 잠금·보안 경보로 이어진다.
+        # (ID 는 공유가 필요해 `장비 IP 주소.xlsx` 의 '접속ID' 열에 저장한다.)
+        self._watch_cred: dict[str, tuple[str, str]] = {}
         self._locks: dict[str, str] = {}
         self._doc_stamps: dict[str, tuple] = {}
         self._ro_docs: set = set()
@@ -1933,7 +1936,11 @@ class EquipApp(tk.Tk):
 
     def _map_ips_to_machines(self, ips, parent=None):
         """각 IP를 어느 호기(AOI-xx)에 넣을지 지정하는 매칭창.
-        반환: {ip: 호기} 또는 None(취소). 참고자료 IP표로 자동 추정 프리필."""
+        반환: {ip: 호기} 또는 None(취소). 참고자료 IP표로 자동 추정 프리필.
+
+        수집 다이얼로그의 'IP 직접입력'이 삭제된 뒤(2026-08)로는 호기가 항상
+        먼저 정해지므로 평소에는 쓰이지 않는다. 호기를 모르는 IP 를 다루게 될
+        때를 위해 남겨 둔다."""
         parent = parent or self
         win = tk.Toplevel(parent)
         win.title("IP ↔ 호기 매칭")
@@ -2134,8 +2141,14 @@ class EquipApp(tk.Tk):
     #  장비 수집 / 파싱 (양식 만들기·값 업데이트 공용)
     # ====================================================================
     def _collect_dialog(self, staging_root, on_sources, level_hint="", levels=None):
-        """장비 수집 모달 — ① 장비 IP 목록에서 선택(1순위, 호기별 비밀번호) +
-        ② IP 직접 입력(2순위). staging_root/{호기}/ 로 읽기전용 복사.
+        """장비 수집 모달 — **장비 IP 목록에서 선택**(호기별 접속 ID·비밀번호).
+
+        staging_root/{호기}/ 로 읽기전용 복사.
+        · 접속 ID 는 장비마다 다르므로 호기별로 고칠 수 있고, 고친 값은 공유 파일
+          `장비 IP 주소.xlsx` 의 '접속ID' 열에 저장돼 **다른 사람도 같이 쓴다**.
+        · 비밀번호는 이번 실행 메모리에만(디스크 저장 금지).
+        · 공통 ID/비밀번호·IP 직접입력은 삭제됨(사용자 지정 2026-08) — 장비마다
+          계정이 달라 한 벌로 묶으면 로그온 실패가 쌓인다.
         levels: 취합 대상 레시피 목록 — Job/Recipe 폴더 선택창에 매칭 표시.
         완료 시 on_sources(sources) 호출. sources=[(폴더, job_keyword, 호기)]."""
         levels = [lv for lv in (levels or ([level_hint] if level_hint else [])) if lv]
@@ -2155,9 +2168,8 @@ class EquipApp(tk.Tk):
         tk.Label(win, text=sub, bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"], justify="left").pack(anchor="w", padx=14)
 
-        default_uid = self._cfg.get("collect_user", "amkor")
-        # ── ① 장비 IP 목록에서 선택(1순위) — 호기별 접속 ID·비밀번호 입력
-        box1 = tk.LabelFrame(win, text=" ① 장비 목록에서 선택 (호기별 접속 ID·비밀번호) ",
+        # ── 장비 IP 목록에서 선택 — 호기별 접속 ID·비밀번호 입력
+        box1 = tk.LabelFrame(win, text=" 장비 선택 (호기별 접속 ID·비밀번호) ",
                              bg=self.p["bg"], fg=self.p["text"],
                              font=self.fonts["bold"], padx=8, pady=6)
         box1.pack(fill="both", expand=True, padx=14, pady=(8, 4))
@@ -2178,7 +2190,8 @@ class EquipApp(tk.Tk):
             self._wheelify(cv)
             for i, (aoi, ip) in enumerate(listing):
                 ck = tk.BooleanVar(value=False)
-                uid = tk.StringVar(value=default_uid)
+                # 접속 ID 기본값 = 공유 파일에 적힌 그 호기의 ID(없으면 amkor)
+                uid = tk.StringVar(value=refdata.login_id_for(self.ip_rows, aoi))
                 pw = tk.StringVar()
                 tk.Checkbutton(inner, text=f"{aoi}", variable=ck, bg=self.p["bg"],
                                font=self.fonts["bold"], width=10, anchor="w").grid(
@@ -2204,52 +2217,11 @@ class EquipApp(tk.Tk):
                               "호기·IP를 등록하면 여기서 바로 선택할 수 있습니다.",
                      bg=self.p["bg"], fg=self.p["danger"],
                      font=self.fonts["sub"]).pack(anchor="w", padx=4, pady=4)
-        conv = tk.Frame(win, bg=self.p["bg"])
-        conv.pack(fill="x", padx=14)
-        common_uid = tk.StringVar(value=default_uid)
-        common_pw = tk.StringVar()
-        tk.Label(conv, text="공통 ID:", bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["sub"]).pack(side="left")
-        tk.Entry(conv, textvariable=common_uid, width=12, relief="solid",
-                 bd=1).pack(side="left", padx=(4, 8))
-        tk.Label(conv, text="공통 비밀번호:", bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["sub"]).pack(side="left")
-        tk.Entry(conv, textvariable=common_pw, width=16, show="*", relief="solid",
-                 bd=1).pack(side="left", padx=(4, 4))
-
-        def apply_common():
-            for ck, _aoi, _ip, uid, pw in rows_ui:
-                if ck.get():
-                    if common_uid.get().strip():
-                        uid.set(common_uid.get().strip())
-                    if not pw.get():
-                        pw.set(common_pw.get())
-        tk.Button(conv, text="선택 장비에 적용", relief="flat", bd=0,
-                  bg=self.p["surface"], fg=self.p["text"], padx=10, cursor="hand2",
-                  command=apply_common).pack(side="left")
-        tk.Label(conv, text="  (ID·비밀번호가 같은 장비는 이걸로 한 번에)",
-                 bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(side="left")
-
-        # ── ② IP 직접 입력(2순위) — 목록에 없는 장비
-        box2 = tk.LabelFrame(win, text=" ② IP 직접 입력 (목록에 없는 장비, 쉼표/줄바꿈) ",
-                             bg=self.p["bg"], fg=self.p["muted"],
-                             font=self.fonts["sub"], padx=8, pady=4)
-        box2.pack(fill="x", padx=14, pady=(6, 4))
-        ips_txt = tk.Text(box2, height=2, font=self.fonts["base"], relief="solid", bd=1)
-        ips_txt.pack(fill="x", pady=(2, 4))
-        drow = tk.Frame(box2, bg=self.p["bg"])
-        drow.pack(fill="x")
-        direct_uid = tk.StringVar(value=default_uid)
-        direct_pw = tk.StringVar()
-        tk.Label(drow, text="직접 입력 IP — 접속 ID:", bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(side="left")
-        tk.Entry(drow, textvariable=direct_uid, width=12, relief="solid",
-                 bd=1).pack(side="left", padx=(4, 8))
-        tk.Label(drow, text="비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(side="left")
-        tk.Entry(drow, textvariable=direct_pw, width=16, show="*", relief="solid",
-                 bd=1).pack(side="left", padx=(4, 0))
+        tk.Label(win, text="접속 ID 는 여기서 고치면 공유 파일(장비 IP 주소.xlsx)에 "
+                           "저장돼 다른 사람도 같은 값을 씁니다.\n"
+                           "비밀번호는 저장하지 않습니다(이번 실행 메모리에만).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=14, pady=(4, 0))
 
         # ── 공통 설정(net use)
         row = tk.Frame(win, bg=self.p["bg"])
@@ -2280,44 +2252,41 @@ class EquipApp(tk.Tk):
             return self._pick_list_chooser(kind, title, items, multi)
 
         def run():
-            # 1순위: 목록에서 체크한 장비(호기 확정, 호기별 접속 ID·비밀번호)
-            targets = []                     # [(ip, aoi, uid, pw)]
+            # 목록에서 체크한 장비(호기 확정, 호기별 접속 ID·비밀번호)
+            targets, id_changed = [], False       # [(ip, aoi, uid, pw)]
             for ck, aoi, ip, uid, pw in rows_ui:
-                if ck.get():
-                    u = uid.get().strip() or common_uid.get().strip() or "amkor"
-                    targets.append((ip, aoi, u, pw.get() or common_pw.get()))
-            # 2순위: 직접 입력 IP(호기는 IP↔호기 매칭창에서)
-            direct_ips = collector.split_ips(ips_txt.get("1.0", "end"))
-            direct_ips = [ip for ip in direct_ips
-                          if ip not in {t[0] for t in targets}]
-            if not targets and not direct_ips:
-                status.config(text="장비를 선택하거나 IP를 입력하세요.")
+                if not ck.get():
+                    continue
+                u = uid.get().strip() or refdata.DEFAULT_LOGIN_ID
+                if refdata.set_login_id(self.ip_rows, aoi, u):
+                    id_changed = True
+                targets.append((ip, aoi, u, pw.get()))
+            if not targets:
+                status.config(text="수집할 장비를 체크하세요.")
                 return
             if net_var.get() and not collector.is_windows():
                 status.config(text="net use 는 Windows 전용입니다. 체크를 끄고 이미 "
                                    "연결된 경로로 시도하세요.")
                 return
-            if direct_ips:
-                ip_map = self._map_ips_to_machines(direct_ips, parent=win)
-                if ip_map is None:
-                    return
-                du = direct_uid.get().strip() or common_uid.get().strip() or "amkor"
-                for ip in direct_ips:
-                    aoi = ip_map.get(ip) or self._ip_to_aoi(ip) or ip.replace(".", "_")
-                    targets.append((ip, aoi, du, direct_pw.get() or common_pw.get()))
-            # net use 모드인데 비밀번호가 빈 장비 확인
+            # net use 모드인데 비밀번호가 빈 장비는 **접속을 시도하지 않는다** —
+            # 빈 비밀번호 로그온 실패가 쌓이면 계정 잠금·보안 경보로 이어진다.
             if net_var.get():
                 nopw = [f"{aoi}({ip})" for ip, aoi, _u, pw in targets if not pw]
-                if nopw and not messagebox.askyesno(
+                if nopw:
+                    messagebox.showwarning(
                         "비밀번호 없음",
-                        "다음 장비는 비밀번호가 비어 있습니다:\n"
+                        "다음 장비는 비밀번호가 비어 있습니다:\n  "
                         + ", ".join(nopw)
-                        + "\n\n빈 비밀번호로 접속을 시도할까요?", parent=win):
+                        + "\n\n비밀번호를 입력하거나, net use 체크를 끄고 탐색기로 "
+                          "미리 연결한 세션으로 수집하세요.\n"
+                          "(빈 비밀번호로는 접속을 시도하지 않습니다.)", parent=win)
                     return
-            # 마지막으로 쓴 접속 ID 를 기본값으로 저장(공통/첫 장비 기준)
-            self._cfg["collect_user"] = (common_uid.get().strip()
-                                         or targets[0][2] or "amkor")
-            save_config(self._cfg)
+            # 고친 접속 ID 는 공유 파일에 저장 — 다른 사람과 같은 값을 쓰기 위해
+            if id_changed and self.save_dir:
+                try:
+                    refdata.save_ip(refdata.ip_path(self.save_dir), self.ip_rows)
+                except Exception as e:  # noqa: BLE001
+                    self._logerr("E147", e)
             sources, errors = [], []
             plan = None
             for i, (ip, aoi, uid, pw) in enumerate(targets, 1):
@@ -2341,7 +2310,7 @@ class EquipApp(tk.Tk):
                 try:
                     _, plan, srcs = collector.collect_equipment(
                         ip, staging_for, chooser,
-                        username=uid or "amkor",
+                        username=uid or refdata.DEFAULT_LOGIN_ID,
                         password=pw, use_net_use=net_var.get(),
                         plan=plan, confirm=confirm,
                         target_levels=(levels or None), match_recipes=match_cb)
@@ -2354,8 +2323,6 @@ class EquipApp(tk.Tk):
             # 비밀번호는 메모리에만 — 사용 후 즉시 소거
             for _ck, _aoi, _ip, _uid, pw in rows_ui:
                 pw.set("")
-            common_pw.set("")
-            direct_pw.set("")
             # 확정된 Job/Setup/Recipe 선택을 감시 설정에 보존 — 무인 회차가 선택창
             # 없이 그대로 재사용한다(비밀번호는 저장하지 않음).
             if plan is not None and self.save_dir:
@@ -5739,7 +5706,14 @@ class EquipApp(tk.Tk):
                               by_other=not self._watch_owned)
 
     def _watch_dialog(self):
-        """자동 감시 설정창 — 주기·시간대·접속 방식·대상 레시피."""
+        """자동 감시 설정창 — ON/OFF · 주기 · **장비별 레시피/Job 폴더** · 접속.
+
+        구성(2026-08 재설계):
+          ① 큰 ON/OFF 토글 — 지금 켜져 있는지 한눈에
+          ② 주기(프리셋) · 실행 시간대(시작=끝이면 매일 그 시각에 시작)
+          ③ **장비별 표** — 체크한 장비마다 감시할 레시피를 고르고 Job 폴더를 지정
+          ④ 접속 방식 — net use 면 **장비마다** ID/비밀번호(ID 는 공유 파일에 저장)
+        """
         if not self._need_save_dir():
             return
         s, state = watcher.load_settings(self.save_dir)
@@ -5747,9 +5721,8 @@ class EquipApp(tk.Tk):
         win.title("자동 감시 설정")
         win.configure(bg=self.p["bg"])
         win.transient(self)
-        win.geometry("700x760")
-        # 내용이 길어 화면(특히 저해상도·노트북)에서 잘리므로 **전체를 스크롤**시킨다.
-        # 버튼줄(bt)은 스크롤 밖 하단에 고정해 항상 보이게 한다.
+        win.geometry("820x800")
+        # 내용이 길어 화면에서 잘리므로 **전체를 스크롤**시키고 버튼줄은 하단 고정.
         outer = tk.Frame(win, bg=self.p["bg"])
         outer.pack(side="top", fill="both", expand=True)
         wcv = tk.Canvas(outer, bg=self.p["bg"], highlightthickness=0)
@@ -5761,189 +5734,298 @@ class EquipApp(tk.Tk):
         wsb.pack(side="right", fill="y")
         body_wrap.bind("<Configure>",
                        lambda e: wcv.configure(scrollregion=wcv.bbox("all")))
-        # 가로 폭은 캔버스에 맞춰 늘린다(내부 위젯이 잘리지 않게)
         wcv.bind("<Configure>", lambda e: wcv.itemconfigure("i", width=e.width))
         self._wheelify(wcv)
-        page = body_wrap                 # 설정 내용은 전부 여기(스크롤 영역)에 붙인다
+        page = body_wrap
 
-        tk.Label(page, text="자동 감시", bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
-        tk.Label(page, text="정해진 주기마다 값을 수집·취합하고, 직전과 달라진 파라미터가 "
-                           "있으면\n알림과 변경 보고서를 남깁니다.\n"
-                           "창을 닫아도(X) 감시는 백그라운드에서 계속되며, 작업표시줄 "
-                           "알림영역(숨겨진 아이콘)의\nPara 아이콘을 누르면 다시 열 수 "
-                           "있습니다. 완전히 끄려면 그 아이콘을 우클릭 → '자동 감시 종료'.",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=16)
-
-        body = tk.Frame(page, bg=self.p["bg"])
-        body.pack(fill="x", padx=16, pady=10)
+        # ── ① ON/OFF (크게) ────────────────────────────────────────────
         on_var = tk.BooleanVar(value=s.enabled)
-        tk.Checkbutton(body, text="자동 감시 사용", variable=on_var, bg=self.p["bg"],
-                       fg=self.p["text"], selectcolor=self.p["surface"],
-                       font=self.fonts["bold"]).grid(row=0, column=0, sticky="w",
-                                                     columnspan=3, pady=(0, 6))
-        tk.Label(body, text="주기(시간):", bg=self.p["bg"],
-                 fg=self.p["text"]).grid(row=1, column=0, sticky="w")
-        iv = tk.StringVar(value=str(int(s.interval_hours)))
-        ttk.Combobox(body, textvariable=iv, width=6, state="readonly",
-                     values=("1", "2", "3", "6", "12", "24")).grid(row=1, column=1,
-                                                                   sticky="w", padx=6)
-        tk.Label(body, text="(파라미터는 자주 바뀌지 않아 6시간을 권장)",
-                 bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).grid(row=1, column=2, sticky="w")
+        head = tk.Frame(page, bg=self.p["bg"])
+        head.pack(fill="x", padx=16, pady=(14, 4))
+        tk.Label(head, text="자동 감시", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(side="left")
+        toggle = tk.Button(head, relief="flat", bd=0, padx=22, pady=8,
+                           cursor="hand2", font=self.fonts["bold"])
+        toggle.pack(side="right")
+        state_lbl = tk.Label(head, text="", bg=self.p["bg"], font=self.fonts["sub"])
+        state_lbl.pack(side="right", padx=10)
 
-        tk.Label(body, text="실행 시간대:", bg=self.p["bg"],
-                 fg=self.p["text"]).grid(row=2, column=0, sticky="w", pady=(8, 0))
-        wrow = tk.Frame(body, bg=self.p["bg"])
-        wrow.grid(row=2, column=1, columnspan=2, sticky="w", padx=6, pady=(8, 0))
+        def paint_toggle():
+            on = on_var.get()
+            toggle.config(text=("● 켜짐 — 클릭하면 끔" if on else "○ 꺼짐 — 클릭하면 켬"),
+                          bg=(self.p["ok"] if on else self.p["surface"]),
+                          fg=("#ffffff" if on else self.p["muted"]))
+            state_lbl.config(text=("주기마다 자동으로 수집·비교합니다"
+                                   if on else "지금은 자동 수집을 하지 않습니다"),
+                             fg=(self.p["ok"] if on else self.p["muted"]))
+        toggle.config(command=lambda: (on_var.set(not on_var.get()), paint_toggle()))
+        paint_toggle()
+        tk.Label(page, text="정해진 주기마다 값을 수집·취합하고, 직전과 달라진 파라미터가 "
+                           "있으면 알림과 변경 보고서를 남깁니다.\n"
+                           "창을 닫아도(X) 감시는 계속되며, 알림영역의 Para 아이콘으로 "
+                           "다시 열 수 있습니다(우클릭 → 자동 감시 종료).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(0, 6))
+
+        # ── ② 주기 · 시간대 ────────────────────────────────────────────
+        box1 = tk.LabelFrame(page, text=" ① 실행 주기 ", bg=self.p["bg"],
+                             fg=self.p["text"], font=self.fonts["bold"])
+        box1.pack(fill="x", padx=16, pady=(4, 8))
+        row1 = tk.Frame(box1, bg=self.p["bg"])
+        row1.pack(fill="x", padx=10, pady=8)
+        tk.Label(row1, text="주기:", bg=self.p["bg"],
+                 fg=self.p["text"]).pack(side="left")
+        iv = tk.StringVar(value=watcher.interval_label(s.interval_hours))
+        ttk.Combobox(row1, textvariable=iv, width=8, state="readonly",
+                     values=[lab for _v, lab in watcher.INTERVAL_CHOICES]).pack(
+                     side="left", padx=(6, 18))
+        tk.Label(row1, text="실행 시간대:", bg=self.p["bg"],
+                 fg=self.p["text"]).pack(side="left")
         ws_var = tk.StringVar(value=str(s.window_start))
         we_var = tk.StringVar(value=str(s.window_end))
         hours = tuple(str(i) for i in range(24))
-        ttk.Combobox(wrow, textvariable=ws_var, width=4, state="readonly",
-                     values=hours).pack(side="left")
-        tk.Label(wrow, text=" 시 ~ ", bg=self.p["bg"], fg=self.p["text"]).pack(side="left")
-        ttk.Combobox(wrow, textvariable=we_var, width=4, state="readonly",
-                     values=hours).pack(side="left")
-        tk.Label(wrow, text="  시 (같게 두면 제한 없음 · 가동 피크 회피용)",
-                 bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(side="left")
+        ttk.Combobox(row1, textvariable=ws_var, width=4, state="readonly",
+                     values=hours).pack(side="left", padx=(6, 2))
+        tk.Label(row1, text="시 ~", bg=self.p["bg"], fg=self.p["text"]).pack(side="left")
+        ttk.Combobox(row1, textvariable=we_var, width=4, state="readonly",
+                     values=hours).pack(side="left", padx=2)
+        tk.Label(row1, text="시", bg=self.p["bg"], fg=self.p["text"]).pack(side="left")
+        wnote = tk.Label(box1, text="", bg=self.p["bg"], fg=self.p["muted"],
+                         font=self.fonts["sub"], justify="left", anchor="w")
+        wnote.pack(anchor="w", padx=12, pady=(0, 8))
 
-        # ── 감시 대상 선택: ① 장비 ② 레시피 (둘 다 고른 것만 수집·비교) ──
+        def upd_wnote(*_a):
+            try:
+                a, b = int(ws_var.get()), int(we_var.get())
+            except ValueError:
+                a = b = 0
+            if a == b == 0:
+                wnote.config(text="시간대 제한 없음 — 저장 즉시 첫 회차가 돕니다.")
+            elif a == b:
+                wnote.config(text=f"매일 {a}시에 시작합니다(첫 회차 = 다음 {a}시). "
+                                  "이후에는 주기마다 반복.")
+            else:
+                wnote.config(text=f"{a}시 ~ {b}시 사이에만 실행합니다"
+                                  + (" (자정을 넘는 창)" if b < a else "")
+                                  + " · 가동 피크 회피용.")
+        ws_var.trace_add("write", upd_wnote)
+        we_var.trace_add("write", upd_wnote)
+        upd_wnote()
+
+        # ── ③ 장비별 레시피 + Job 폴더 ─────────────────────────────────
         all_machines = self._all_machines()
         all_recipes = workdirs.list_recipes(self.save_dir)
-        selected_machines = self._pick_list(
-            page, " ① 감시할 장비 선택 ", all_machines,
-            # 저장된 선택이 없으면(최초) 전체 선택, 이후에는 저장분 복원
-            chosen=(s.machines if s.machines else all_machines),
-            unit="대", note="선택한 장비만 수집·비교합니다.",
-            sub_of=lambda m: refdata.ip_for(self.ip_rows, m) or "(IP 없음)",
-            sub_warn=lambda m: not refdata.ip_for(self.ip_rows, m),
-            empty_msg="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 호기·IP를 "
-                      "먼저 등록하세요.", height=140)
-        selected_recipes = self._pick_list(
-            page, " ② 감시할 레시피 선택 ", all_recipes,
-            chosen=(s.recipes if s.recipes else all_recipes),
-            unit="개", note="선택한 레시피의 양식만 취합·비교합니다.",
-            sub_of=lambda r: self._recipe_form_note(r),
-            sub_warn=lambda r: not workdirs.latest_form(self.save_dir, r),
-            empty_msg="양식이 없습니다. '양식 만들기'로 레시피 양식을 먼저 만드세요.",
-            height=110)
+        paths_state = {"v": watcher.normalize_recipe_paths(s.recipe_paths)}
+        sel_state = {}          # {호기: BooleanVar}
+        rec_state = {}          # {호기: [레시피…]}
+        for m in all_machines:
+            assigned = list((paths_state["v"].get(m) or {}).keys())
+            if not assigned and m in (s.machines or []):
+                assigned = list(s.recipes or [])          # 구 설정 이관
+            rec_state[m] = assigned
+            sel_state[m] = tk.BooleanVar(value=bool(assigned))
 
-        # 감시 폴더 직접 지정(권장) — 지정하면 폴더 이름을 유추하지 않는다.
-        paths_state = {"v": dict(s.recipe_paths or {})}
-        prow = tk.Frame(page, bg=self.p["bg"])
-        prow.pack(fill="x", padx=16, pady=(0, 6))
-        plabel = tk.Label(prow, text="", bg=self.p["bg"], fg=self.p["muted"],
-                          font=self.fonts["sub"], anchor="w", justify="left")
+        box2 = tk.LabelFrame(page, text=" ② 감시할 장비와 레시피 ", bg=self.p["bg"],
+                             fg=self.p["text"], font=self.fonts["bold"])
+        box2.pack(fill="both", expand=True, padx=16, pady=(4, 8))
+        tk.Label(box2, text="장비를 체크하고, 그 장비에서 감시할 레시피와 Job 폴더를 "
+                            "지정하세요.\n**폴더 지정은 필수**입니다 — 지정하지 않으면 "
+                            "이름을 유추하다 엉뚱한 폴더를 읽을 수 있습니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=10, pady=(6, 4))
+        tbl = tk.Frame(box2, bg=self.p["bg"])
+        tbl.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+        row_widgets = {}
 
-        def upd_plabel():
-            rp = paths_state["v"] or {}
-            n_m = len(rp)
-            n_p = sum(len(v) for v in rp.values())
-            if n_p:
-                plabel.config(text=f"지정됨 — {n_m}개 호기 / 경로 {n_p}건",
-                              fg=self.p["primary"])
+        def path_count(m):
+            got = paths_state["v"].get(m) or {}
+            names = rec_state.get(m) or []
+            return sum(1 for r in names if got.get(r)), len(names)
+
+        def refresh_row(m):
+            rl, pl = row_widgets[m]
+            names = rec_state.get(m) or []
+            rl.config(text=(", ".join(names) if names else "레시피 미선택"),
+                      fg=(self.p["text"] if names else self.p["danger"]))
+            ok_n, tot = path_count(m)
+            if not tot:
+                pl.config(text="—", fg=self.p["muted"])
+            elif ok_n == tot:
+                pl.config(text=f"폴더 {ok_n}/{tot} ✓", fg=self.p["ok"])
             else:
-                plabel.config(text="미지정 — 폴더 이름으로 자동 매칭합니다"
-                                   "(실패 시 그 장비는 건너뜀).", fg=self.p["muted"])
+                pl.config(text=f"폴더 {ok_n}/{tot} — 지정 필요", fg=self.p["danger"])
 
-        def pick_paths():
-            picked = selected_recipes() or all_recipes
-            if not picked:
-                messagebox.showinfo("감시 Job 폴더 지정",
-                                    "먼저 감시할 레시피를 선택하세요.", parent=win)
+        def pick_recipes(m):
+            got = self._pick_dialog(win, f"{m} — 감시할 레시피", all_recipes,
+                                    rec_state.get(m) or [],
+                                    note="이 장비에서 감시할 레시피를 고르세요.")
+            if got is None:
                 return
-            picked_m = selected_machines() or all_machines
-            if not picked_m:
-                messagebox.showinfo("감시 Job 폴더 지정",
-                                    "먼저 감시할 장비를 선택하세요.", parent=win)
+            rec_state[m] = got
+            inner = dict(paths_state["v"].get(m) or {})
+            paths_state["v"][m] = {r: v for r, v in inner.items() if r in got}
+            sel_state[m].set(bool(got))
+            refresh_row(m)
+
+        def pick_paths(m):
+            names = rec_state.get(m) or []
+            if not names:
+                messagebox.showinfo("감시 Job 폴더", "먼저 이 장비의 레시피를 고르세요.",
+                                    parent=win)
                 return
-            got = self._watch_paths_dialog(picked_m, picked, paths_state["v"],
-                                           parent=win)
+            got = self._watch_paths_dialog([m], names, paths_state["v"], parent=win)
             if got is not None:
-                paths_state["v"] = got
-                upd_plabel()
-        tk.Button(prow, text="📁 감시 Job 폴더 지정…", relief="flat", bd=0,
-                  bg=self.p["surface"], fg=self.p["primary"],
-                  font=self.fonts["bold"], padx=12, pady=4, cursor="hand2",
-                  command=pick_paths).pack(side="left")
-        plabel.pack(side="left", padx=8)
-        upd_plabel()
+                # 이 호기의 지정만 갈아끼운다(다른 호기 지정을 지우지 않게 병합)
+                merged = dict(paths_state["v"])
+                merged.update(got)
+                paths_state["v"] = watcher.normalize_recipe_paths(merged)
+                refresh_row(m)
 
-        def selected_targets() -> list:
-            """선택된 장비의 (호기, IP) — IP 없는 호기는 제외."""
+        for i, m in enumerate(all_machines):
+            r = tk.Frame(tbl, bg=(self.p["bg"] if i % 2 == 0 else self.p["stripe"]))
+            r.pack(fill="x")
+            tk.Checkbutton(r, variable=sel_state[m], bg=r["bg"], activebackground=r["bg"],
+                           selectcolor=self.p["surface"]).pack(side="left")
+            ip = refdata.ip_for(self.ip_rows, m)
+            tk.Label(r, text=f"{m}", bg=r["bg"], fg=self.p["text"],
+                     font=self.fonts["bold"], width=9, anchor="w").pack(side="left")
+            tk.Label(r, text=(ip or "IP 없음"), bg=r["bg"],
+                     fg=(self.p["muted"] if ip else self.p["danger"]),
+                     font=self.fonts["sub"], width=14, anchor="w").pack(side="left")
+            tk.Button(r, text="레시피…", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["primary"], font=self.fonts["sub"], padx=8,
+                      cursor="hand2",
+                      command=lambda mm=m: pick_recipes(mm)).pack(side="left", padx=4)
+            # 오른쪽 위젯을 **먼저** 배치한다 — tkinter pack 은 배치 순서대로 공간을
+            # 떼어 가므로 expand=True 라벨을 먼저 붙이면 뒤 위젯이 안 보인다.
+            tk.Button(r, text="📁 폴더…", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["primary"], font=self.fonts["sub"], padx=8,
+                      cursor="hand2",
+                      command=lambda mm=m: pick_paths(mm)).pack(side="right")
+            pl = tk.Label(r, text="", bg=r["bg"], font=self.fonts["sub"], anchor="e")
+            pl.pack(side="right", padx=6)
+            rl = tk.Label(r, text="", bg=r["bg"], font=self.fonts["sub"], anchor="w")
+            rl.pack(side="left", fill="x", expand=True)
+            row_widgets[m] = (rl, pl)
+            refresh_row(m)
+        if not all_machines:
+            tk.Label(tbl, text="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 먼저 "
+                              "호기·IP를 등록하세요.", bg=self.p["bg"],
+                     fg=self.p["danger"], font=self.fonts["sub"]).pack(anchor="w")
+
+        def checked_machines():
+            return [m for m in all_machines if sel_state[m].get()]
+
+        def selected_targets():
             out = []
-            for m in selected_machines():
+            for m in checked_machines():
                 ip = refdata.ip_for(self.ip_rows, m)
                 if ip:
                     out.append((m, ip))
             return out
 
-        # ── 접속 방식 — 기본/권장은 net use 없이(기존 연결) ──
-        box = tk.LabelFrame(page, text=" ③ 장비 접속 방식 ", bg=self.p["bg"],
-                            fg=self.p["text"], font=self.fonts["bold"])
-        box.pack(fill="x", padx=16, pady=(4, 8))
+        # ── ④ 접속 방식 (net use 는 장비별 ID/PW) ──────────────────────
+        box3 = tk.LabelFrame(page, text=" ③ 장비 접속 방식 ", bg=self.p["bg"],
+                             fg=self.p["text"], font=self.fonts["bold"])
+        box3.pack(fill="x", padx=16, pady=(4, 8))
         conn = tk.StringVar(value=s.conn_mode)
-        tk.Radiobutton(box, text="기존 연결 사용 (net use 없이) — 권장",
+        tk.Radiobutton(box3, text="기존 연결 사용 (net use 없이) — 권장",
                        variable=conn, value=watcher.CONN_SESSION, bg=self.p["bg"],
                        fg=self.p["text"], selectcolor=self.p["surface"],
                        font=self.fonts["bold"]).pack(anchor="w", padx=10, pady=(6, 0))
-        tk.Label(box, text="비밀번호를 저장하지 않습니다. 무인 실행할 장비를 탐색기에서\n"
-                           "미리 모두 연결(\\\\장비IP\\c$ 로 로그인)해 두세요.",
+        tk.Label(box3, text="비밀번호를 저장하지 않습니다. 무인 실행할 장비를 탐색기에서\n"
+                            "미리 모두 연결(\\\\장비IP\\c$ 로 로그인)해 두세요.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=32)
-        tk.Radiobutton(box, text="net use 로 접속 (비밀번호 필요)",
+        tk.Radiobutton(box3, text="net use 로 접속 (장비마다 ID·비밀번호)",
                        variable=conn, value=watcher.CONN_NETUSE, bg=self.p["bg"],
                        fg=self.p["text"],
                        selectcolor=self.p["surface"]).pack(anchor="w", padx=10)
-        tk.Label(box, text="비밀번호는 프로그램이 켜져 있는 동안 메모리에만 유지되고\n"
-                           "디스크에 저장하지 않습니다(앱 종료 시 사라짐).",
+        tk.Label(box3, text="접속 ID 는 공유 파일(장비 IP 주소.xlsx)에 저장되고, "
+                            "비밀번호는 프로그램이 켜져 있는 동안 메모리에만 있습니다.\n"
+                            "비밀번호를 비우면 그 장비는 net use 없이 기존 연결로만 "
+                            "시도합니다(빈 비밀번호로 접속하지 않음).",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=32, pady=(0, 2))
-        # 접속 정보 입력(메모리 전용). 비워 두면 net use 를 **시도조차 하지 않는다**
-        # — 빈 비밀번호 접속은 장비마다 로그온 실패를 남겨 계정 잠금·보안 경보를 부른다.
-        cred = tk.Frame(box, bg=self.p["bg"])
-        cred.pack(anchor="w", padx=32, pady=(0, 6))
-        cur_cred = getattr(self, "_watch_cred", None)
-        uid_var = tk.StringVar(value=(cur_cred[0] if cur_cred else "amkor"))
-        pw_var = tk.StringVar(value=(cur_cred[1] if cur_cred else ""))
-        tk.Label(cred, text="접속 ID:", bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(side="left")
-        tk.Entry(cred, textvariable=uid_var, width=12, relief="solid",
-                 bd=1).pack(side="left", padx=(4, 10))
-        tk.Label(cred, text="비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(side="left")
-        tk.Entry(cred, textvariable=pw_var, width=16, show="•", relief="solid",
-                 bd=1).pack(side="left", padx=4)
-        tk.Label(cred, text="(비우면 기존 연결로만 시도)", bg=self.p["bg"],
-                 fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
+        credf = tk.Frame(box3, bg=self.p["bg"])
+        credf.pack(fill="x", padx=32, pady=(2, 8))
+        cur_creds = dict(getattr(self, "_watch_cred", None) or {})
+        cred_vars = {}
+
+        def build_creds():
+            for w in credf.winfo_children():
+                w.destroy()
+            cred_vars.clear()
+            if conn.get() != watcher.CONN_NETUSE:
+                tk.Label(credf, text="(net use 를 고르면 장비별 ID·비밀번호를 입력합니다)",
+                         bg=self.p["bg"], fg=self.p["muted"],
+                         font=self.fonts["sub"]).pack(anchor="w")
+                return
+            targets = checked_machines()
+            if not targets:
+                tk.Label(credf, text="감시할 장비를 먼저 체크하세요.", bg=self.p["bg"],
+                         fg=self.p["danger"], font=self.fonts["sub"]).pack(anchor="w")
+                return
+            for m in targets:
+                row = tk.Frame(credf, bg=self.p["bg"])
+                row.pack(fill="x", pady=1)
+                tk.Label(row, text=m, bg=self.p["bg"], fg=self.p["text"],
+                         font=self.fonts["sub"], width=9,
+                         anchor="w").pack(side="left")
+                uid = tk.StringVar(value=(cur_creds.get(m, ("", ""))[0]
+                                          or refdata.login_id_for(self.ip_rows, m)))
+                pw = tk.StringVar(value=cur_creds.get(m, ("", ""))[1])
+                tk.Label(row, text="ID", bg=self.p["bg"], fg=self.p["muted"],
+                         font=self.fonts["sub"]).pack(side="left")
+                tk.Entry(row, textvariable=uid, width=12, relief="solid",
+                         bd=1).pack(side="left", padx=(4, 10))
+                tk.Label(row, text="PW", bg=self.p["bg"], fg=self.p["muted"],
+                         font=self.fonts["sub"]).pack(side="left")
+                tk.Entry(row, textvariable=pw, width=16, show="•", relief="solid",
+                         bd=1).pack(side="left", padx=4)
+                cred_vars[m] = (uid, pw)
+        conn.trace_add("write", lambda *_a: build_creds())
+        tk.Button(box3, text="↻ 체크한 장비로 목록 새로고침", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["sub"],
+                  padx=10, cursor="hand2",
+                  command=lambda: build_creds()).pack(anchor="w", padx=32, pady=(0, 8))
+        build_creds()
 
         def _keep_cred():
-            """설정 저장 시 호출 — 접속 정보를 메모리에만 보관/삭제."""
-            if conn.get() == watcher.CONN_NETUSE and pw_var.get():
-                self._watch_cred = (uid_var.get().strip() or "amkor", pw_var.get())
-            else:
-                self._watch_cred = None
+            """접속 정보 반영 — **ID 는 공유 엑셀에, 비밀번호는 메모리에만**."""
+            if conn.get() != watcher.CONN_NETUSE:
+                self._watch_cred = {}
+                return
+            creds, changed = {}, False
+            for m, (uid, pw) in cred_vars.items():
+                u = uid.get().strip()
+                if u and refdata.set_login_id(self.ip_rows, m, u):
+                    changed = True
+                if pw.get():
+                    creds[m] = (u or refdata.DEFAULT_LOGIN_ID, pw.get())
+            self._watch_cred = creds
+            if changed:                      # 접속 ID 는 다른 사람과 공유해야 한다
+                try:
+                    refdata.save_ip(refdata.ip_path(self.save_dir), self.ip_rows)
+                except Exception as e:  # noqa: BLE001
+                    self._logerr("E147", e)
 
         info = tk.Label(page, text=self._watch_status_text(s, state), bg=self.p["bg"],
                         fg=self.p["muted"], font=self.fonts["sub"], justify="left")
-        info.pack(anchor="w", padx=16)
+        info.pack(anchor="w", padx=16, pady=(0, 10))
 
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(side="bottom", fill="x", padx=16, pady=12)
 
         def check_conn(parent=None, saved_targets=None):
-            """연결 점검 — 선택한 장비만 대상. 장비 응답이 없으면 1대당 수십 초씩
-            걸리므로 반드시 백그라운드에서 돌린다(GUI 스레드면 '응답 없음')."""
+            """연결 점검 — 체크한 장비만. 장비가 응답 없으면 1대당 수십 초씩 걸리므로
+            반드시 백그라운드에서 돌린다(GUI 스레드면 '응답 없음')."""
             parent = parent if parent is not None else win
             targets = list(saved_targets) if saved_targets is not None \
                 else selected_targets()
             if not targets:
-                messagebox.showinfo(
-                    "연결 점검",
-                    "감시할 장비를 먼저 선택하세요.\n"
-                    "(선택한 장비 중 IP가 등록된 장비만 점검합니다.)", parent=parent)
+                messagebox.showinfo("연결 점검",
+                                    "감시할 장비를 먼저 체크하세요.", parent=parent)
                 return
 
             def work():
@@ -5963,81 +6045,78 @@ class EquipApp(tk.Tk):
             self._run_busy(f"연결 점검 중… (장비 {len(targets)}대)", work, done,
                            parent=parent)
 
-        def apply_():
-            picked = selected_machines()
-            picked_r = selected_recipes()
-            if on_var.get() and not picked:
-                messagebox.showwarning(
-                    "장비 미선택",
-                    "감시할 장비를 1대 이상 선택하세요.\n"
-                    "선택한 장비만 수집·비교합니다.", parent=win)
-                return
-            if on_var.get() and not picked_r:
+        def collect_settings(require: bool) -> bool:
+            """화면 값을 s 에 반영. require=True 면 감시에 필요한 조건을 검사."""
+            picked = checked_machines()
+            if require and not picked:
+                messagebox.showwarning("장비 미선택",
+                                       "감시할 장비를 1대 이상 체크하세요.", parent=win)
+                return False
+            no_rec = [m for m in picked if not rec_state.get(m)]
+            if require and no_rec:
                 messagebox.showwarning(
                     "레시피 미선택",
-                    "감시할 레시피를 1개 이상 선택하세요.\n"
-                    "선택한 레시피의 양식만 취합·비교합니다.", parent=win)
-                return
+                    "다음 장비에 감시할 레시피가 없습니다:\n\n  "
+                    + ", ".join(no_rec) + "\n\n'레시피…' 에서 골라 주세요.", parent=win)
+                return False
+            missing = [f"{m}/{r}" for m in picked for r in (rec_state.get(m) or [])
+                       if not (paths_state["v"].get(m) or {}).get(r)]
+            if require and missing:
+                messagebox.showwarning(
+                    "감시 Job 폴더 미지정",
+                    "다음은 Job 폴더가 지정되지 않았습니다:\n\n  "
+                    + ", ".join(missing[:12])
+                    + ("  …" if len(missing) > 12 else "")
+                    + "\n\n'📁 폴더…' 에서 장비를 훑어 지정하세요. 폴더를 지정해야 "
+                      "이름을 유추하지 않고 정확히 그 폴더만 읽습니다.", parent=win)
+                return False
             no_ip = [m for m in picked if not refdata.ip_for(self.ip_rows, m)]
-            if no_ip and not messagebox.askyesno(
+            if require and no_ip and not messagebox.askyesno(
                     "IP 없는 장비",
-                    "다음 장비는 IP가 등록되어 있지 않아 감시에서 제외됩니다:\n\n"
-                    f"  {', '.join(no_ip)}\n\n계속할까요?", parent=win):
-                return
-            no_form = [r for r in picked_r
-                       if not workdirs.latest_form(self.save_dir, r)]
-            if no_form and not messagebox.askyesno(
-                    "양식 없는 레시피",
-                    "다음 레시피는 양식이 없어 취합에서 건너뜁니다:\n\n"
-                    f"  {', '.join(no_form)}\n\n계속할까요?", parent=win):
-                return
-            s.enabled = bool(on_var.get())
-            s.machines = picked                       # ← 감시 대상 장비 저장
-            s.recipes = picked_r                      # ← 감시 대상 레시피 저장
-            s.recipe_paths = dict(paths_state["v"])   # ← 지정 폴더 저장
-            try:
-                s.interval_hours = float(iv.get())
-            except ValueError:
-                s.interval_hours = watcher.DEFAULT_INTERVAL_HOURS
+                    "다음 장비는 IP가 없어 감시에서 제외됩니다:\n\n  "
+                    + ", ".join(no_ip) + "\n\n계속할까요?", parent=win):
+                return False
+            # 체크한 장비의 지정만 저장(체크 해제한 장비는 대상에서 빠진다)
+            s.recipe_paths = {m: dict(paths_state["v"].get(m) or {})
+                              for m in picked if paths_state["v"].get(m)}
+            watcher.sync_selection(s)          # machines/recipes 를 지정과 일치시킴
+            s.interval_hours = watcher.interval_from_label(iv.get())
             try:
                 s.window_start, s.window_end = int(ws_var.get()), int(we_var.get())
             except ValueError:
                 s.window_start = s.window_end = 0
             s.conn_mode = conn.get()
-            _keep_cred()                 # 접속 정보는 메모리에만(저장 안 함)
+            _keep_cred()
+            return True
+
+        def apply_():
+            if not collect_settings(require=bool(on_var.get())):
+                return
+            s.enabled = bool(on_var.get())
             if s.enabled and not self._watch_acquire():
                 return                      # 다른 PC 가 감시 중 — 켜지 않는다
             if not s.enabled:
                 self._watch_release()
             watcher.save_settings(self.save_dir, s, state)
-            watcher.append_log(self.save_dir,
-                               f"설정 변경 — 사용={s.enabled} 장비={len(picked)}대 "
-                               f"레시피={len(picked_r)}개 주기={s.interval_hours}h "
-                               f"접속={s.conn_mode}")
+            watcher.append_log(
+                self.save_dir,
+                f"설정 변경 — 사용={s.enabled} 대상={len(watcher.watch_targets(s))}건 "
+                f"({len(s.machines)}대) 주기={watcher.interval_label(s.interval_hours)} "
+                f"접속={s.conn_mode}")
             self._sync_watch_btn()
-            targets = selected_targets()              # 창 닫기 전에 확보
+            targets = selected_targets()
             win.destroy()
             if s.enabled:
-                # win 은 이미 닫혔으므로 부모는 본창, 대상은 방금 저장한 선택
                 check_conn(parent=self, saved_targets=targets)
 
         def run_now():
             """즉시 확인 — 주기를 기다리지 않고 지금 1회 수집·비교."""
-            picked, picked_r = selected_machines(), selected_recipes()
-            if not picked or not picked_r:
-                messagebox.showwarning(
-                    "즉시 확인",
-                    "감시할 장비와 레시피를 먼저 선택하세요.", parent=win)
-                return
             if self._watch_busy:
                 messagebox.showinfo("즉시 확인",
                                     "이미 감시 회차가 실행 중입니다.", parent=win)
                 return
-            # 화면에서 고른 값을 그대로 1회 실행에 반영(저장은 '저장' 버튼에서)
-            s.machines, s.recipes = picked, picked_r
-            s.recipe_paths = dict(paths_state["v"])
-            s.conn_mode = conn.get()
-            _keep_cred()
+            if not collect_settings(require=True):
+                return
             if not self._watch_acquire():
                 return                      # 다른 PC 가 감시 중
             win.destroy()
@@ -6056,6 +6135,36 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="저장", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=18, pady=6, cursor="hand2",
                   command=apply_).pack(side="right")
+
+    def _pick_dialog(self, parent, title, items, chosen=None, note="") -> list | None:
+        """체크박스 다중 선택 **창**(모달). 반환: 고른 목록 또는 None(취소).
+        `_pick_list` 는 화면에 붙이는 위젯이라, 버튼으로 여는 경우에 쓰려고 감쌌다."""
+        win = tk.Toplevel(parent)
+        win.title(title)
+        win.configure(bg=self.p["bg"])
+        win.transient(parent)
+        win.grab_set()
+        win.geometry("520x420")
+        tk.Label(win, text=title, bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w", padx=16, pady=(12, 2))
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(side="bottom", fill="x", padx=16, pady=12)
+        selected = self._pick_list(win, " 목록 ", items, chosen=chosen, note=note,
+                                   empty_msg="선택할 항목이 없습니다.", height=250)
+        out = {"v": None}
+
+        def ok():
+            out["v"] = selected()
+            win.destroy()
+        tk.Button(bt, text="확인", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=5, cursor="hand2",
+                  command=ok).pack(side="right")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=14, pady=5, cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=6)
+        win.wait_window()
+        return out["v"]
+
 
     def _browse_equipment_recipe(self, recipe: str, machine: str | None = None,
                                  parent=None) -> str | None:
@@ -6397,11 +6506,19 @@ class EquipApp(tk.Tk):
         return lambda: [it for v, it in pairs if v.get()]
 
     def _watch_status_text(self, s, state) -> str:
-        tgt = (f"· 감시 장비: {len(s.machines)}대 ({', '.join(s.machines[:6])}"
-               f"{' 외' if len(s.machines) > 6 else ''})"
-               if s.machines else "· 감시 장비: 아직 선택하지 않았습니다.")
-        tgt += ("\n· 감시 레시피: " + ", ".join(s.recipes)) if s.recipes \
-            else "\n· 감시 레시피: 아직 선택하지 않았습니다."
+        mr = watcher.machine_recipes(s)
+        if mr:
+            head = [f"{m}({', '.join(v)})" for m, v in list(mr.items())[:5]]
+            tgt = (f"· 감시 대상: {len(mr)}대 / "
+                   f"{len(watcher.watch_targets(s))}건 — " + "; ".join(head)
+                   + (" 외" if len(mr) > 5 else ""))
+        else:
+            tgt = "· 감시 대상: 아직 지정하지 않았습니다(장비·레시피·Job 폴더)."
+        tgt += f"\n· 주기: {watcher.interval_label(s.interval_hours)}"
+        if s.window_start == s.window_end and s.window_start:
+            tgt += f" · 매일 {s.window_start}시 시작"
+        elif s.window_start != s.window_end:
+            tgt += f" · {s.window_start}시~{s.window_end}시에만"
         if not state.last_run:
             return tgt + "\n· 아직 실행 이력이 없습니다."
         nxt = watcher.next_run_at(s, state)
@@ -6468,18 +6585,28 @@ class EquipApp(tk.Tk):
         주기 실행과 '즉시 확인'이 **같은 로직**을 쓰도록 한 곳에 모았다.
         반환: 인자 없는 work() — 백그라운드 스레드에서 호출할 것(GUI 접근 없음).
         """
-        # 감시 대상 = 설정에서 고른 장비·레시피(비어 있으면 전체 — 구 설정 하위호환).
+        # 감시 대상 = **호기별 레시피**(설정에서 장비를 고르고 그 장비의 레시피와
+        # Job 폴더를 지정한다). 지금 존재하는 호기·양식만 남긴다.
         avail_m = set(self._all_machines())
         avail_r = set(workdirs.list_recipes(self.save_dir))
-        machines = [m for m in (s.machines or self._all_machines()) if m in avail_m]
-        recipes = [r for r in (s.recipes or workdirs.list_recipes(self.save_dir))
-                   if r in avail_r]
+        mr = {}
+        for m, names in watcher.machine_recipes(s).items():
+            if m not in avail_m:
+                continue
+            keep = [r for r in names if r in avail_r]
+            if keep:
+                mr[m] = keep
+        machines = list(mr)
+        recipes = []                       # 취합 대상 = 대상 레시피 합집합
+        for names in mr.values():
+            for r in names:
+                if r not in recipes:
+                    recipes.append(r)
         prev = workdirs.latest_collate(self.save_dir)
-        watcher.append_log(self.save_dir,
-                           f"회차 시작 — 장비 {len(machines)}대 "
-                           f"({', '.join(machines) if machines else '없음'}) "
-                           f"· 레시피 {len(recipes)}개 "
-                           f"({', '.join(recipes) if recipes else '없음'})")
+        watcher.append_log(
+            self.save_dir,
+            f"회차 시작 — 장비 {len(machines)}대 · 레시피 {len(recipes)}개 · "
+            + ("; ".join(f"{m}({', '.join(v)})" for m, v in mr.items()) or "대상 없음"))
 
         # 취합 파일의 **열은 항상 전체 호기**여야 한다. 선택한 장비만 열로 쓰면
         # 나머지 호기의 기존 값이 통째로 빠져 '삭제됨'으로 오탐된다.
@@ -6496,19 +6623,18 @@ class EquipApp(tk.Tk):
                 raise RuntimeError("양식이 없습니다('양식 만들기' 먼저)")
             if not machines:
                 raise RuntimeError("감시 대상 장비가 없습니다(설정에서 선택)")
-            # 폴더를 지정한 레시피는 계획이 필요 없다. 지정 안 한 레시피만 계획 필요.
-            need_plan = [r for r in recipes
-                         if any(not watcher.path_for(s.recipe_paths, m, r)
-                                for m in machines)]
+            # 폴더를 지정한 (호기, 레시피) 는 계획이 필요 없다. 지정 안 한 것만.
+            need_plan = [f"{m}/{r}" for m, names in mr.items() for r in names
+                         if not watcher.path_for(s.recipe_paths, m, r)]
             if need_plan and plan is None:
                 raise RuntimeError(
-                    "다음 레시피의 감시 폴더가 지정되지 않았습니다: "
-                    + ", ".join(need_plan)
-                    + "\n\n감시 설정의 '📁 감시 폴더 지정…'에서 장비의 Recipe 폴더를 "
-                      "골라 주세요(한 번만 지정하면 모든 장비에 적용됩니다).\n"
+                    "다음 감시 대상의 폴더가 지정되지 않았습니다: "
+                    + ", ".join(need_plan[:8])
+                    + "\n\n감시 설정에서 장비별로 '폴더 지정…'을 눌러 그 장비의 Job "
+                      "폴더를 골라 주세요.\n"
                       "또는 '파라미터 값 업데이트'를 한 번 수동 실행하면 그때 고른 "
                       "폴더를 무인 회차가 재사용합니다.")
-            pivot, skipped = self._watch_collect(machines, s, plan, recipes)
+            pivot, skipped = self._watch_collect(mr, s, plan)
             out = collate.build_collation(self.save_dir, recipes, pivot,
                                           all_machines, prev_collate_path=prev,
                                           coef_lookup=cl)
@@ -6664,27 +6790,34 @@ class EquipApp(tk.Tk):
             if connected:
                 collector.disconnect_admin_share(ip)
 
-    def _watch_collect(self, machines, s, plan, recipes):
-        """무인 수집 — 선택한 장비에서 순차로 설정파일을 읽어 파싱 피벗을 만든다.
+    def _watch_collect(self, mr, s, plan):
+        """무인 수집 — **호기별로 지정된 레시피만** 순차로 읽어 파싱 피벗을 만든다.
 
+        · `mr` = `{호기: [레시피…]}` — 장비마다 감시 레시피가 다르다(사용자 지정).
         · 사람이 없으므로 **선택창을 띄우지 않는다**. 저장된 plan 으로 자동 매칭되지
           않는 장비는 조용히 건너뛰고 로그에 남긴다(추측해서 엉뚱한 폴더를 읽지 않음).
         · 장비 1대씩 순차 접속(동시 접속 금지), 원본은 읽기 전용.
+        · net use 접속 정보도 **장비마다** 다르다(`self._watch_cred[호기]`).
+          그 장비의 비밀번호가 없으면 net use 없이 기존 연결로만 시도한다.
         · 복사 전후 (mtime,size) 가 흔들린 파일은 그 회차에서 제외 — 장비가 쓰는
           중이던 반쪽 파일로 '거짓 변경'을 만들지 않기 위해.
         반환: (pivot_rows, 건너뛴 장비 목록)
         """
+        machines = list(mr)
         # 임시 수집본은 로컬에만(OneDrive 동기화 폭주 방지) — 회차가 끝나면 지운다
         staging_root = localdirs.new_temp_run(self.local_dir, "감시")
-        cred = getattr(self, "_watch_cred", None)
-        use_netuse = (s.conn_mode == watcher.CONN_NETUSE and bool(cred))
-        if s.conn_mode == watcher.CONN_NETUSE and not cred:
-            # 앱을 다시 켰거나 비밀번호를 입력하지 않은 상태. 빈 비밀번호로
-            # 접속을 시도하면 장비마다 로그온 실패가 남으므로 기존 연결로만 시도한다.
-            watcher.append_log(
-                self.save_dir,
-                "net use 접속 정보가 없어 기존 연결로만 시도합니다"
-                "(빈 비밀번호 접속은 하지 않음 — 감시 설정에서 ID/비밀번호 입력)")
+        all_creds = dict(getattr(self, "_watch_cred", None) or {})
+        netuse_mode = (s.conn_mode == watcher.CONN_NETUSE)
+        if netuse_mode:
+            # 앱을 다시 켰거나 비밀번호를 입력하지 않은 장비. 빈 비밀번호로 접속을
+            # 시도하면 장비마다 로그온 실패가 남으므로 기존 연결로만 시도한다.
+            nopw = [m for m in machines if not all_creds.get(m)]
+            if nopw:
+                watcher.append_log(
+                    self.save_dir,
+                    "net use 접속 정보가 없어 기존 연결로만 시도합니다"
+                    "(빈 비밀번호 접속은 하지 않음 — 감시 설정에서 ID/비밀번호 입력): "
+                    + ", ".join(nopw))
         sources, skipped = [], []
 
         def no_chooser(*_a, **_kw):
@@ -6729,6 +6862,12 @@ class EquipApp(tk.Tk):
         any_fixed = False
 
         for idx, m in enumerate(machines):
+            recipes = list(mr.get(m) or [])
+            if not recipes:
+                continue
+            # 이 장비의 접속 정보(없으면 net use 없이 기존 연결로만).
+            cred = all_creds.get(m)
+            use_netuse = bool(netuse_mode and cred)
             ip = refdata.ip_for(self.ip_rows, m)
             if not ip:
                 skipped.append(f"{m}(IP 없음)")
@@ -6761,9 +6900,10 @@ class EquipApp(tk.Tk):
                 # 이걸 빼면 job_keyword 가 빈 계획에서 선택창을 요구해 전부 건너뛴다.
                 _, _plan, srcs = collector.collect_equipment(
                     ip, staging_for, no_chooser,
-                    username=(cred[0] if cred else "amkor"),
+                    username=(cred[0] if cred
+                              else refdata.login_id_for(self.ip_rows, m)),
                     password=(cred[1] if cred else None),
-                    use_net_use=bool(use_netuse and cred), plan=plan,
+                    use_net_use=use_netuse, plan=plan,
                     confirm=lambda planned: True,     # 무인 — 로컬 staging 복사 승인
                     target_levels=list(guess_recipes), match_recipes=auto_match)
                 for d, lvl in srcs:

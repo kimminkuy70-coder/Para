@@ -491,6 +491,66 @@ def test_recipe_paths_legacy_flat_migrates():
     print("  구 버전 공통 지정 하위호환(호기별 우선) OK")
 
 
+def test_interval_presets_roundtrip():
+    """주기는 프리셋(30분~24시간)에서 고른다 — 라벨↔시간 왕복이 맞아야 한다."""
+    labels = [lab for _v, lab in watcher.INTERVAL_CHOICES]
+    assert labels == ["30분", "1시간", "2시간", "4시간", "6시간", "8시간",
+                      "12시간", "24시간"], labels
+    for v, lab in watcher.INTERVAL_CHOICES:
+        assert watcher.interval_label(v) == lab
+        assert watcher.interval_from_label(lab) == float(v)
+    assert watcher.interval_from_label("없는값") == float(watcher.DEFAULT_INTERVAL_HOURS)
+    assert watcher.interval_label(3) == "3시간", "프리셋 밖이면 숫자로"
+    assert watcher.interval_label(None) == watcher.interval_label(
+        watcher.DEFAULT_INTERVAL_HOURS)
+    print("  주기 프리셋 라벨 왕복 OK")
+
+
+def test_first_run_at_same_start_end():
+    """'9시 ~ 9시' = 매일 9시에 시작 — 첫 회차가 다음 9시여야 한다."""
+    s = watcher.WatchSettings(window_start=9, window_end=9)
+    at = watcher.first_run_at(datetime(2026, 8, 11, 8, 30), s)
+    assert (at.day, at.hour, at.minute) == (11, 9, 0), at      # 오늘 9시
+    at = watcher.first_run_at(datetime(2026, 8, 11, 9, 30), s)
+    assert (at.day, at.hour) == (12, 9), at                    # 이미 지났으면 내일
+    at = watcher.first_run_at(datetime(2026, 8, 11, 14, 30), s)
+    assert (at.day, at.hour) == (12, 9), at
+    # 시간대 제한이 없으면(0~0) 지금 바로
+    free = watcher.WatchSettings()
+    now = datetime(2026, 8, 11, 14, 30)
+    assert watcher.first_run_at(now, free) == now
+    # 진짜 창(9~18)이면 지금부터 — 창 밖이면 in_window 가 알아서 미룬다
+    win = watcher.WatchSettings(window_start=9, window_end=18)
+    early = datetime(2026, 8, 11, 7, 0)
+    assert watcher.first_run_at(early, win) == early
+    assert not watcher.in_window(early, win)
+    assert watcher.in_window(datetime(2026, 8, 11, 9, 0), win)
+    print("  시작=끝 시간대의 첫 실행 시각 OK")
+
+
+def test_machine_recipes_are_per_machine():
+    """감시 대상 = 호기별 레시피. 장비마다 다른 레시피를 감시할 수 있어야 한다."""
+    s = watcher.WatchSettings()
+    s.recipe_paths = watcher.normalize_recipe_paths({
+        "AOI-11": {"PI3": r"A\Recipes\PI3"},
+        "AOI-12": {"PI3": r"B\Recipes\PI3", "RDL1": r"B\Recipes\RDL1"},
+        "AOI-13": {"PI3": ""},                   # 미지정 = 대상 아님
+    })
+    mr = watcher.machine_recipes(s)
+    assert mr == {"AOI-11": ["PI3"], "AOI-12": ["PI3", "RDL1"]}, mr
+    assert sorted(watcher.watch_targets(s)) == [
+        ("AOI-11", "PI3"), ("AOI-12", "PI3"), ("AOI-12", "RDL1")]
+    # 구 목록(machines/recipes)도 지정과 일치하게 맞춰 준다(하위호환 참조용)
+    watcher.sync_selection(s)
+    assert s.machines == ["AOI-11", "AOI-12"], s.machines
+    assert s.recipes == ["PI3", "RDL1"], s.recipes
+    # 구 설정(지정 없이 전역 목록만)도 조합으로 읽힌다
+    old = watcher.WatchSettings(machines=["AOI-6"], recipes=["PI2", "PI3"])
+    assert watcher.machine_recipes(old) == {"AOI-6": ["PI2", "PI3"]}
+    assert watcher.machine_recipes(watcher.WatchSettings()) == {}
+    print("  호기별 감시 레시피 OK")
+
+
 def test_job_folder_resolves_subrecipes():
     """**Job 폴더만 지정**하면 그 아래 Setup/Recipes/레시피를 자동으로 찾아야 한다.
 
@@ -562,6 +622,8 @@ if __name__ == "__main__":
               test_job_matching_is_per_level_tolerant,
               test_job_relative_and_machine_path, test_recipe_paths_are_per_machine,
               test_recipe_paths_legacy_flat_migrates,
+              test_interval_presets_roundtrip, test_first_run_at_same_start_end,
+              test_machine_recipes_are_per_machine,
               test_job_folder_resolves_subrecipes,
               test_log_appends]:
         run(t)
