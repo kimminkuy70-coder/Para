@@ -140,6 +140,58 @@ def form_draft_path(related: str, recipe: str, aoi: str, st: str) -> str:
     return os.path.join(related, f"{_sanitize(recipe)}_수정본_{_sanitize(aoi)}호기_참조_{st}.xlsx")
 
 
+def form_candidate_path(run_dir: str) -> str | None:
+    r"""그 회차의 **전체 후보 목록 엑셀**(초안) 경로. 없으면 None.
+
+    확정 양식에는 체크해서 살린 항목만 들어 있어, 빼 놓은 파라미터를 나중에
+    다시 넣으려면 이 초안이 있어야 한다('기존 양식 수정하기').
+      · `_원본_` 우선 — 사람이 손대기 전의 전체 목록.
+      · 없으면 `_수정본_` — 엑셀에서 행을 지웠을 수 있어 2순위.
+    """
+    rel = os.path.join(run_dir, RELATED_DIR)
+    if not os.path.isdir(rel):
+        return None
+    try:
+        names = sorted(n for n in os.listdir(rel) if n.lower().endswith(".xlsx")
+                       and not n.startswith("~$"))
+    except OSError:
+        return None
+    for tag in ("_원본_", "_수정본_"):
+        hit = [n for n in names if tag in n]
+        if hit:
+            return os.path.join(rel, hit[-1])
+    return None
+
+
+def form_version_status(save_dir: str, recipe: str) -> list[dict]:
+    """레시피의 버전마다 '후보 목록(원본)이 남아 있는가'를 조사한다 — 최신순.
+
+    반환: [{stamp, final, run_dir, candidate(경로 or None), has_candidate,
+            kind('원본'/'수정본'/'')}]
+    '기존 양식 수정하기'에서 어느 버전이 **항목을 다시 추가할 수 있는지**
+    사람에게 미리 보여 주기 위한 것.
+    """
+    out = []
+    for st, final in list_form_versions(save_dir, recipe):
+        run = os.path.dirname(final)
+        cand = form_candidate_path(run)
+        kind = ""
+        if cand:
+            kind = "원본" if "_원본_" in os.path.basename(cand) else "수정본"
+        out.append({"stamp": st, "final": final, "run_dir": run,
+                    "candidate": cand, "has_candidate": bool(cand), "kind": kind})
+    return out
+
+
+def any_candidate_for(save_dir: str, recipe: str) -> str | None:
+    """같은 레시피의 **아무 버전에서나** 후보 목록을 찾는다(최신 우선).
+    고른 버전에 초안이 없을 때 다른 회차 것을 빌려 쓰기 위한 폴백."""
+    for v in form_version_status(save_dir, recipe):
+        if v["candidate"]:
+            return v["candidate"]
+    return None
+
+
 def list_recipes(save_dir: str) -> list[str]:
     """양식 폴더 아래 레시피 폴더 이름 목록(정렬)."""
     root = os.path.join(save_dir, FORM_DIR)

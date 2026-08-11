@@ -260,6 +260,152 @@ def form_to_pivot(xlsx: str) -> tuple[list[dict], dict]:
     return rows, scales
 
 
+def ext_key(variant, src_file, section, key) -> tuple:
+    """설정키 = (변형, 설정파일, Section, 설정 Parameter) 정규화.
+
+    후보 초안과 확정 양식을 이어붙일 때 **이름이 아니라 이 키로 맞춘다**
+    (collate 가 값을 채울 때 쓰는 원칙과 같다). 사람이 양식에서 '최종
+    Parameter' 이름을 바꿔 놨으면 이름으로는 매칭이 깨져 멀쩡한 항목이
+    '새 항목'으로 튀어나온다.
+    """
+    import re
+
+    def _n(s):
+        return re.sub(r"[^0-9a-z가-힣µ]", "", engine._s(s).lower())
+    return (_n(variant), _n(src_file), _n(section), _n(key))
+
+
+def initial_to_pivot(xlsx: str) -> tuple[list[dict], set, set]:
+    """편집용 초안(`관련파일/…_원본_….xlsx`) → (전체 후보 rows, 사용키, 이름키).
+
+    확정 양식과 달리 초안에는 **체크하지 않은 파라미터까지 전부** 들어 있다.
+    '기존 양식 수정하기'에서 빠져 있던 항목을 다시 넣을 수 있게 하는 소스다.
+    반환 rows 는 파싱 피벗과 같은 형식이라 편집기에 그대로 넘길 수 있다.
+      · 사용키 = 초안에서 사용=Y 였던 행의 `ext_key`
+      · 이름키 = 모든 행의 `_norm_key3`(설정키가 비었을 때의 폴백 매칭용)
+    """
+    recs = read_initial_rows(xlsx)
+    rows, used, names = [], set(), set()
+    for r in recs:
+        param = engine._s(r.get("최종 Parameter")).strip() or \
+            engine._s(r.get("추천 Parameter")).strip()
+        if not param:
+            continue
+        level = engine._s(r.get("PI")).strip()
+        variant = engine._s(r.get("Recipe")).strip()
+        zone = engine._s(r.get("Zone")).strip()
+        alg = engine._s(r.get("Alg")).strip()
+        ext = {"src_file": engine._s(r.get("설정파일")),
+               "section": engine._s(r.get("설정 Section")),
+               "key": engine._s(r.get("설정 Parameter")),
+               "transform": engine._s(r.get("변환방식")) or "RAW",
+               "source_path": ""}
+        rows.append({
+            "layer": level, "recipe": level, "mag": variant, "zone": zone,
+            "alg": alg, "param": param, "values": {}, "unit": "",
+            "raws": {"양식": r.get("Raw Value")},
+            "use": _is_used(r.get("사용")), "extract": ext})
+        names.add(_norm_key3(zone, alg, param))
+        if _is_used(r.get("사용")):
+            used.add(ext_key(variant, ext["src_file"], ext["section"], ext["key"]))
+    return rows, used, names
+
+
+def form_ext_keys(xlsx: str) -> set:
+    """확정 양식의 설정키 집합 — `_EXTRACT_MAP` + Recipe(변형) 기준.
+
+    '지금 이 양식이 실제로 쓰고 있는 항목'을 초안 후보에 표시하기 위한 것.
+    """
+    out = set()
+    try:
+        repo = engine.ParamRepository(xlsx)
+        repo.load()
+        emap = extract_io.read_extract_map(xlsx)
+    except Exception:  # noqa: BLE001
+        return out
+    for pr in repo.rows:
+        meta = emap.get(pr.row_id, {})
+        out.add(ext_key(pr.get("Recipe"), meta.get("src_file", ""),
+                        meta.get("section", ""), meta.get("key", "")))
+    return out
+
+
+def form_overlay(xlsx: str) -> dict:
+    """확정 양식의 **사람이 고친 내용**을 설정키로 뽑는다.
+
+    {설정키: {"param": 최종이름, "transform": 변환방식, "비고": …}}
+    초안 후보 위에 덮어써서 이름·변환방식·비고를 잃지 않게 한다.
+    """
+    out = {}
+    try:
+        repo = engine.ParamRepository(xlsx)
+        repo.load()
+        emap = extract_io.read_extract_map(xlsx)
+    except Exception:  # noqa: BLE001
+        return out
+    for pr in repo.rows:
+        meta = emap.get(pr.row_id, {})
+        k = ext_key(pr.get("Recipe"), meta.get("src_file", ""),
+                    meta.get("section", ""), meta.get("key", ""))
+        out[k] = {"param": engine._s(pr.get("Parameter")),
+                  "zone": engine._s(pr.get("Zone")),
+                  "alg": engine._s(pr.get("Alg")),
+                  "level": engine._s(pr.get("PI")),
+                  "variant": engine._s(pr.get("Recipe")),
+                  "transform": engine._s(meta.get("transform")) or "RAW",
+                  "raw": meta.get("raw"),
+                  "src_file": engine._s(meta.get("src_file")),
+                  "section": engine._s(meta.get("section")),
+                  "key": engine._s(meta.get("key")),
+                  "비고": engine._s(pr.get("비고")),
+                  "unit": engine._s(meta.get("unit"))}
+    return out
+
+
+def merge_form_into_candidates(rows: list[dict], final_xlsx: str) -> tuple[list[dict], int]:
+    """후보 rows(초안 전체) + 확정 양식 → 편집기에 넘길 rows.
+
+    · 확정 양식에 있는 항목은 `use=True` 로 켜고, 사람이 고친 이름·변환방식·
+      비고를 덮어쓴다(설정키 매칭, 없으면 Zone/Alg/Parameter 이름 폴백).
+    · 확정 양식에만 있고 초안에 없는 항목(중간에 손으로 추가한 행 등)은
+      **잃어버리면 안 되므로** 뒤에 덧붙인다.
+    반환: (rows, 확정 양식과 매칭된 개수)
+    """
+    overlay = form_overlay(final_xlsx)
+    by_name = {}
+    for k, v in overlay.items():
+        by_name.setdefault(_norm_key3(v["zone"], v["alg"], v["param"]), k)
+    matched = set()
+    for r in rows:
+        ext = r.get("extract") or {}
+        k = ext_key(r.get("mag"), ext.get("src_file"), ext.get("section"),
+                    ext.get("key"))
+        if k not in overlay:
+            k = by_name.get(_norm_key3(r.get("zone"), r.get("alg"), r.get("param")))
+        if k is None or k not in overlay:
+            r["use"] = False              # 양식에 없던 항목 = 후보로만 보여 준다
+            continue
+        v = overlay[k]
+        r["use"] = True
+        r["param"] = v["param"] or r.get("param")
+        r["unit"] = v["unit"] or r.get("unit", "")
+        ext["transform"] = v["transform"] or ext.get("transform") or "RAW"
+        r["extract"] = ext
+        matched.add(k)
+    for k, v in overlay.items():          # 초안에 없는 확정 항목은 살려서 덧붙인다
+        if k in matched:
+            continue
+        rows.append({
+            "layer": v["level"], "recipe": v["level"], "mag": v["variant"],
+            "zone": v["zone"], "alg": v["alg"], "param": v["param"],
+            "values": {}, "unit": v["unit"], "raws": {"양식": v["raw"]},
+            "use": True,
+            "extract": {"src_file": v["src_file"], "section": v["section"],
+                        "key": v["key"], "transform": v["transform"],
+                        "source_path": ""}})
+    return rows, len(matched)
+
+
 def rank_similar_forms(parsed_keys: set, forms: dict[str, set]) -> list[tuple]:
     """새 레시피(parsed_keys)와 기존 양식들(forms={레시피:키집합})의 겹치는 파라미터
     수로 정렬. 반환: [(레시피, 일치수, 기존항목수)] — 일치 많은 순(동률은 이름순)."""

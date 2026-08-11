@@ -251,6 +251,99 @@ def test_final_rejects_when_all_unused():
     print("  formbuilder OK: 사용 행 없으면 ValueError")
 
 
+def test_initial_to_pivot_restores_all_candidates():
+    """초안('원본')에는 **체크 안 한 항목까지 전부** 있어야 하고, 다시 피벗으로
+    복원돼야 한다 — '기존 양식 수정하기'에서 뺀 항목을 되살리는 근거다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        rows, _ = _pivot(tmp)
+        assert len(rows) >= 3, "테스트 데이터가 너무 적다"
+        init = os.path.join(tmp, "원본.xlsx")
+        formbuilder.build_initial_workbook(rows, init, level="PI3", source="AOI-13")
+        # 절반은 사용=N 으로 (사람이 뺀 상황)
+        wb = openpyxl.load_workbook(init)
+        ws = wb[formbuilder.INIT_SHEET]
+        ui = formbuilder.INIT_HEADERS.index("사용") + 1
+        n_off = 0
+        for r in range(2, ws.max_row + 1):
+            if r % 2 == 0:
+                ws.cell(r, ui).value = "N"
+                n_off += 1
+        wb.save(init); wb.close()
+
+        back, used, names = formbuilder.initial_to_pivot(init)
+        assert len(back) == len(rows), "후보가 줄었다(사용=N 이 사라지면 안 됨)"
+        assert sum(1 for r in back if not r["use"]) == n_off
+        assert len(used) == len(rows) - n_off
+        assert names and all(len(k) == 3 for k in names)
+        # 설정키(재추출 메타)가 살아 있어야 값 매칭이 된다
+        assert any(r["extract"].get("key") for r in back)
+    print("  formbuilder OK: 초안 → 전체 후보 복원(사용=N 포함)")
+
+
+def test_edit_existing_form_can_re_add_dropped_params():
+    """확정 양식 + 초안 원본 → 편집기 rows: 지금 쓰는 항목은 켜지고,
+    예전에 뺀 항목도 **목록에 남아 다시 넣을 수 있어야** 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        rows, _ = _pivot(tmp)
+        init = os.path.join(tmp, "원본.xlsx")
+        formbuilder.build_initial_workbook(rows, init, level="PI3", source="AOI-13")
+        # 첫 행은 빼고, 둘째 행은 이름을 바꿔서 확정(사람이 실제로 하는 편집)
+        wb = openpyxl.load_workbook(init)
+        ws = wb[formbuilder.INIT_SHEET]
+        ui = formbuilder.INIT_HEADERS.index("사용") + 1
+        fi = formbuilder.INIT_HEADERS.index("최종 Parameter") + 1
+        ws.cell(2, ui).value = "N"
+        ws.cell(3, fi).value = "사람이 바꾼 이름"
+        wb.save(init); wb.close()
+        final = os.path.join(tmp, "확정.xlsx")
+        res = formbuilder.build_final_from_initial(init, final, level="PI3",
+                                                   aoi="AOI-13")
+        assert res["dropped"] == 1
+
+        # 확정본만으로 열면(종전 동작) 뺀 항목이 아예 없다 → 다시 넣을 수 없다
+        only_final, _sc = formbuilder.form_to_pivot(final)
+        assert len(only_final) == len(rows) - 1
+
+        # 초안 원본으로 열면 전체가 보이고, 쓰는 항목만 체크돼 있다
+        cand, _u, _n = formbuilder.initial_to_pivot(init)
+        merged, matched = formbuilder.merge_form_into_candidates(cand, final)
+        assert len(merged) == len(rows), "후보가 줄면 안 됨"
+        assert matched == len(rows) - 1
+        assert sum(1 for r in merged if r["use"]) == len(rows) - 1
+        assert sum(1 for r in merged if not r["use"]) == 1, "뺀 항목 1개가 후보로 남아야"
+        # 이름을 바꾼 행은 **설정키로 매칭**돼 새 항목으로 튀지 않고, 바뀐 이름 유지
+        params = [r["param"] for r in merged if r["use"]]
+        assert "사람이 바꾼 이름" in params, params
+    print("  formbuilder OK: 기존 양식 수정 — 뺀 항목 복원 + 바뀐 이름 설정키 매칭")
+
+
+def test_merge_keeps_rows_only_in_form():
+    """초안에 없고 확정본에만 있는 행(엑셀에서 손으로 추가한 행 등)도 살아남아야."""
+    with tempfile.TemporaryDirectory() as tmp:
+        rows, _ = _pivot(tmp)
+        init = os.path.join(tmp, "원본.xlsx")
+        formbuilder.build_initial_workbook(rows, init, level="PI3")
+        final = os.path.join(tmp, "확정.xlsx")
+        formbuilder.build_final_from_initial(init, final, level="PI3")
+        # 확정본에 초안에 없는 행을 하나 추가
+        wb = openpyxl.load_workbook(final)
+        ws = wb["PI_ALL"]
+        heads = [engine._s(c.value) for c in ws[1]]
+        newr = [""] * len(heads)
+        newr[heads.index("PI")] = "PI3"
+        newr[heads.index("Zone")] = "손으로 추가"
+        newr[heads.index("Alg")] = "Manual"
+        newr[heads.index("Parameter")] = "직접 넣은 항목"
+        ws.append(newr)
+        wb.save(final); wb.close()
+
+        cand, _u, _n = formbuilder.initial_to_pivot(init)
+        merged, _m = formbuilder.merge_form_into_candidates(cand, final)
+        assert any(r["param"] == "직접 넣은 항목" and r["use"] for r in merged), \
+            "확정본에만 있던 행이 사라졌다"
+    print("  formbuilder OK: 확정본에만 있는 행도 보존")
+
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

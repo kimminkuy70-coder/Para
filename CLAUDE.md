@@ -25,6 +25,25 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   양식 `추출_요약`에 저장(값 업데이트가 재적용) → `formbuilder`
   수정본 생성 → **실제 Excel** 편집 → **[편집 완료]** → 확정. 원본(편집 전) 별도 보존.
   "이전 버전 불러오기" = 생성시간 폴더 선택.
+- **기존 양식 수정하기 = 초안('원본') 기준(2026-08 확정)**: 확정 양식에는 **체크한
+  항목만** 들어 있어 그것만 읽으면 파라미터를 **빼는 것만** 됐다. 그래서 회차 폴더의
+  `관련파일/…_원본_….xlsx`(전체 후보 목록)를 찾아 그것으로 편집기를 연다
+  (`workdirs.form_candidate_path` — `_원본_` 우선, 없으면 `_수정본_`).
+  `formbuilder.initial_to_pivot`(사용=N 포함 전체 복원) +
+  `merge_form_into_candidates`(확정본을 덮어써 사용 항목 체크·사람이 고친 이름/
+  변환방식 유지). **매칭은 이름이 아니라 설정키**(`formbuilder.ext_key` =
+  변형+설정파일+Section+설정Parameter, `collate._ext_key` 와 같은 원칙) — 이름으로
+  맞추면 사람이 바꾼 이름이 '새 항목'으로 튄다. 확정본에만 있는 행은 덧붙여 보존.
+  · **후보 유무를 미리 안내**: `workdirs.form_version_status` 로 레시피/버전 목록에
+    `✔ 항목 추가 가능` / `⚠ 원본 없음` 을 붙인다. 없으면 `_ask_candidate_fallback`
+    이 ①다른 버전 원본 빌려오기(`any_candidate_for`) ②장비/로컬에서 다시 읽어
+    합치기(`_recollect_for_edit` — 기존 선택 유지, 새 항목만 추가) ③확정본만으로
+    열기 를 고르게 한다.
+  · **원본은 항상 남긴다**: 종전에는 '엑셀에서 편집하기'를 거친 회차에만 초안이
+    생겨 화면 편집기로 바로 확정한 회차는 되살릴 수 없었다. 이제
+    `_form_param_editor.confirm()` 이 확정과 함께 원본을 쓴다
+    (`_save_candidate_snapshot` / 기본 경로는 `work()` 안에서). 저장 실패는
+    확정을 막지 않는다(E116/E119 로그만).
 - **값 업데이트**: 레시피 선택 알림 → **IP↔호기 매칭창**(IP로 새 열 만들지 않음) →
   **하위 레시피(변형) 이름 매칭창**(양식에 없는 이름이 있을 때만) →
   `collate.build_collation`(설정키 매칭, **직전 취합본 이어받기**, 불일치 검출) →
@@ -184,7 +203,8 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 python3 tests/test_refdata.py      # 4  (참고자료/특이사항 독립 파일 I/O·호기·IP·호기별 접속ID 공유)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
 python3 tests/test_ini_parser.py   # 17 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
-python3 tests/test_formbuilder.py  # 7  (초안 생성·편집→확정 양식·계수 저장)
+python3 tests/test_formbuilder.py  # 10 (초안 생성·편집→확정 양식·계수 저장·초안→전체후보 복원·설정키 매칭)
+python3 tests/test_form_candidates.py # 5 (원본 탐색/버전별 안내·다른회차 빌려오기·확정 시 원본 항상 저장)
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
@@ -483,11 +503,14 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   `machine_coefs`(표시), `make_lookup`(scan_tree 콜백), `apply_form_scales`(양식 확정 계수 반영). MAG 는 OpticPreset Scan2d Mag.
 - `param_manager/workdirs.py` — **저장폴더 기준 경로**: `form_run_dir/form_final_path/
   form_original_path/form_draft_path/related_dir/list_form_versions/collate_path/
-  latest_collate/list_collate_files`. (구 initial/final/백업 함수는 레거시.)
+  latest_collate/list_collate_files` + `form_candidate_path`/`form_version_status`/
+  `any_candidate_for`(기존 양식 수정용 '원본' 탐색·안내). (구 initial/final/백업 함수는 레거시.)
 - `param_manager/extract_io.py` — 스냅샷(공용 양식 + `_EXTRACT_MAP`) + `write_snapshot(scales=)`/
   `read_scales`(변형별 계수 저장/판독).
 - `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(수정본, '사용'/
   '최종 Parameter')·`build_final_from_initial`(→확정 양식+`_EXTRACT_MAP`+계수).
+  **기존 양식 수정용**: `initial_to_pivot`(초안→전체 후보, 사용=N 포함)·`ext_key`/
+  `form_ext_keys`/`form_overlay`/`merge_form_into_candidates`(확정본을 후보 위에 덮기).
 - `param_manager/updater.py` — **자동 업데이트**(v3.0, A안): 위 섹션 참고.
 - `param_manager/localdirs.py` — **로컬 작업 폴더**(OneDrive 밖): `default_root`
   (`%LOCALAPPDATA%\CamtekAOI`)·`set_root/active_root`·`ensure`(Temp/Logs/Cache)·

@@ -2772,19 +2772,49 @@ class EquipApp(tk.Tk):
         if not recipes:
             messagebox.showinfo("기존 양식", "저장된 양식이 없습니다. 먼저 양식을 만드세요.")
             return
-        pick = self._pick_list_chooser("recipe", "수정할 레시피 선택", recipes, False)
+        # ── 레시피마다 '후보 목록(원본)이 남아 있는 버전이 몇 개인지' 미리 조사.
+        #    원본이 있어야 예전에 뺀 파라미터를 **다시 넣을 수** 있다.
+        status = {}
+        for r in recipes:
+            try:
+                status[r] = workdirs.form_version_status(self.save_dir, r)
+            except Exception:  # noqa: BLE001
+                status[r] = []
+        rlabels = []
+        for r in recipes:
+            vs = status.get(r) or []
+            n = sum(1 for v in vs if v["has_candidate"])
+            if not vs:
+                rlabels.append(f"{r}   (확정 양식 없음)")
+            elif n:
+                rlabels.append(f"{r}   ✔ 항목 추가 가능 ({n}/{len(vs)} 버전에 원본 있음)")
+            else:
+                rlabels.append(f"{r}   ⚠ 원본 없음 — 그대로 열면 빼기만 가능")
+        pick = self._pick_list_chooser(
+            "recipe", "수정할 레시피 선택", recipes, False, labels=rlabels,
+            note="✔ = 그 레시피에 '원본(전체 후보 목록)' 파일이 남아 있어, 예전에 "
+                 "체크 해제한 파라미터도 다시 넣을 수 있습니다.\n"
+                 "⚠ = 확정본만 남아 있어 빼기만 됩니다(다음 화면에서 다른 버전 "
+                 "빌려오기 / 장비에서 다시 읽기를 고를 수 있습니다).")
         if not pick:
             return
         level = pick[0]
-        versions = workdirs.list_form_versions(self.save_dir, level)
+        versions = status.get(level) or workdirs.form_version_status(self.save_dir, level)
         if not versions:
             messagebox.showinfo("기존 양식", f"'{level}' 에 저장된 확정 양식이 없습니다.")
             return
-        labels = [f"{st}   ({os.path.basename(p)})" for st, p in versions]
-        chosen = self._pick_list_chooser("ver", "수정할 버전 선택(최신순)", labels, False)
+        labels = [(f"{v['stamp']}   ({os.path.basename(v['final'])})   "
+                   + (f"✔ {v['kind']} 있음 — 항목 추가 가능"
+                      if v["has_candidate"] else "⚠ 원본 없음"))
+                  for v in versions]
+        chosen = self._pick_list_chooser(
+            "ver", "수정할 버전 선택(최신순)", labels, False,
+            note="'원본'은 회차 폴더의 관련파일/…_원본_….xlsx — 그 회차에서 파싱된 "
+                 "전체 파라미터 목록입니다.")
         if not chosen:
             return
-        final_path = dict(zip(labels, [p for _, p in versions]))[chosen[0]]
+        ver = versions[labels.index(chosen[0])]
+        final_path = ver["final"]
         m = _re.search(r"_(.+?)호기_참조_", os.path.basename(final_path))
         aoi = m.group(1) if m else "로컬"
 
@@ -2801,9 +2831,31 @@ class EquipApp(tk.Tk):
         renamed = (new_level != level)
         kind = "RDL" if new_level.upper().startswith("RDL") else "PI"
 
-        # 확정 양식 → 편집기용 rows/scales 복원
+        # ── 편집기용 rows 복원 ────────────────────────────────────────
+        #  후보 목록(초안 '원본')이 있으면 그걸 기준으로 연다 → **예전에 뺀 항목도
+        #  목록에 보여 다시 넣을 수 있다**. 없으면 확정본만(= 빼기만 가능).
+        cand = ver.get("candidate") or workdirs.form_candidate_path(
+            os.path.dirname(final_path))
+        if not cand:
+            cand = self._ask_candidate_fallback(level, final_path)
+            if cand == "CANCEL":
+                return
+            if cand == "RECOLLECT":
+                self._recollect_for_edit(level, new_level, kind, final_path, aoi)
+                return
         try:
-            rows, scales = formbuilder.form_to_pivot(final_path)
+            if cand:
+                rows, _used, _names = formbuilder.initial_to_pivot(cand)
+                rows, matched = formbuilder.merge_form_into_candidates(rows, final_path)
+                scales = dict(extract_io.read_scales(final_path) or {})
+                if not scales:                   # 계수는 확정본 우선, 없으면 초안 라벨
+                    _r2, scales = formbuilder.form_to_pivot(final_path)
+                extra = sum(1 for r in rows if not r.get("use"))
+                self._set_status(
+                    f"기존 양식 수정: 사용 중 {matched}개 + 다시 넣을 수 있는 항목 "
+                    f"{extra}개 (원본: {os.path.basename(cand)})")
+            else:
+                rows, scales = formbuilder.form_to_pivot(final_path)
         except Exception as e:  # noqa: BLE001
             self._err("E111", "양식 불러오기 실패", e)
             return
@@ -2868,9 +2920,168 @@ class EquipApp(tk.Tk):
                 self._set_status(f"새 버전으로 복사: {os.path.basename(new_final)} — "
                                  "Excel에서 저장하면 그대로 반영됩니다.")
 
+        # 후보 목록으로 열었으면 각 행의 use(양식에 있음/없음)를 그대로 써야 한다.
+        # default_use=True 를 주면 전부 체크돼 '무엇이 빠져 있었는지'가 사라진다.
         self._form_param_editor(rows, new_level, kind, scales, new_run, related, new_st,
                                 aoi, base_keys=None, base_name="", title_prefix="기존 양식 수정",
-                                on_confirm=on_confirm, on_excel=on_excel, default_use=True)
+                                on_confirm=on_confirm, on_excel=on_excel,
+                                default_use=(None if cand else True))
+
+    def _save_candidate_snapshot(self, rows, related, level, aoi, st, then):
+        """확정 전에 **전체 후보 목록('원본')** 엑셀을 남기고 then() 을 부른다.
+
+        확정 양식에는 체크한 항목만 들어가므로, 이 파일이 없으면 나중에
+        '기존 양식 수정하기'에서 빼 놓은 파라미터를 되살릴 수 없다.
+        `related` 는 파일을 둘 폴더(양식=회차의 관련파일/, commonality=회차 폴더).
+        저장 실패는 확정을 막지 않는다(로그만 남기고 진행).
+        """
+        def work():
+            if not related:
+                return ""
+            os.makedirs(related, exist_ok=True)
+            orig = workdirs.form_original_path(related, level, aoi, st)
+            if not os.path.exists(orig):
+                formbuilder.build_initial_workbook(rows, orig, level=level,
+                                                   source=f"{level} / {aoi}")
+            return orig
+
+        def done(ok, res):
+            if not ok:
+                self._logerr("E119", res)
+            then()
+        self._run_busy("원본(전체 후보 목록) 저장 중…", work, done)
+
+    def _ask_candidate_fallback(self, level, final_path):
+        """고른 버전에 후보 목록(원본)이 없을 때 어떻게 할지 묻는다.
+
+        반환: 후보 파일 경로 / "" (확정본만으로 진행) / "RECOLLECT" / "CANCEL".
+        """
+        other = workdirs.any_candidate_for(self.save_dir, level)
+        win = tk.Toplevel(self)
+        win.title("원본(전체 후보 목록)이 없습니다")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="이 버전에는 '원본' 파일이 없습니다", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", padx=16,
+                                                                   pady=(14, 2))
+        tk.Label(win,
+                 text="확정 양식에는 체크해서 살린 항목만 들어 있어, 그대로 열면 "
+                      "**빼기만** 됩니다.\n예전에 체크 해제한 파라미터를 다시 넣으려면 "
+                      "그 회차의 전체 후보 목록(관련파일/…_원본_….xlsx)이 필요합니다.\n"
+                      "(화면 편집기에서 바로 확정한 회차에는 이 파일이 없습니다 — "
+                      "지금부터 만드는 양식에는 항상 저장됩니다.)",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=560).pack(anchor="w", padx=16, pady=(0, 10))
+        res = {"val": "CANCEL"}
+
+        def choose(v):
+            res["val"] = v
+            win.destroy()
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="x", padx=16)
+        if other:
+            tk.Button(body,
+                      text=f"① 같은 레시피의 다른 버전 원본 쓰기\n     "
+                           f"({os.path.basename(other)})",
+                      relief="flat", bd=0, bg=self.p["primary"], fg="#ffffff",
+                      padx=14, pady=8, cursor="hand2", justify="left", anchor="w",
+                      command=lambda: choose(other)).pack(fill="x", pady=3)
+        tk.Button(body, text="② 장비/로컬에서 다시 읽어 합치기\n     "
+                            "(지금 양식의 선택은 그대로 유지, 새 항목만 추가)",
+                  relief="flat", bd=0,
+                  bg=(self.p["surface"] if other else self.p["primary"]),
+                  fg=(self.p["text"] if other else "#ffffff"),
+                  padx=14, pady=8, cursor="hand2", justify="left", anchor="w",
+                  command=lambda: choose("RECOLLECT")).pack(fill="x", pady=3)
+        tk.Button(body, text="③ 확정본만으로 열기 (빼기만 가능)", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=14, pady=8,
+                  cursor="hand2", justify="left", anchor="w",
+                  command=lambda: choose("")).pack(fill="x", pady=3)
+        tk.Button(win, text="취소", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=16, pady=6, cursor="hand2",
+                  command=win.destroy).pack(anchor="e", padx=16, pady=12)
+        win.wait_window()
+        return res["val"]
+
+    def _recollect_for_edit(self, level, new_level, kind, final_path, aoi):
+        """원본이 없을 때 — 장비/로컬에서 다시 읽어 기존 양식과 합쳐 편집한다.
+
+        새로 파싱한 전체 목록이 후보가 되고, **지금 양식이 쓰는 항목은 자동으로
+        체크**된 채로 열린다(설정키 매칭). 양식을 처음부터 다시 만드는 것과 달리
+        선택이 보존된다.
+        """
+        st = workdirs.stamp()
+        run_dir = workdirs.form_run_dir(self.save_dir, new_level, st, create=False)
+        related = workdirs.related_dir(run_dir, create=False)
+
+        def after(rows, machines):
+            rows, matched = formbuilder.merge_form_into_candidates(rows, final_path)
+            extra = sum(1 for r in rows if not r.get("use"))
+            scales = dict(extract_io.read_scales(final_path) or {})
+            m_aoi = next((m for m in machines if m), aoi)
+            self._set_status(f"다시 읽기 완료: 기존 항목 {matched}개 유지 · 추가 가능 "
+                             f"항목 {extra}개")
+
+            def on_confirm(records, extracts, scales_out, win):
+                new_final = workdirs.form_final_path(run_dir, new_level, m_aoi, st)
+                sheet = "RDL_ALL" if kind == "RDL" else "PI_ALL"
+
+                def w():
+                    extract_io.write_snapshot(
+                        new_final, records, machines=[], sheet_name=sheet,
+                        extracts=extracts, stage="final", level=new_level, aoi=m_aoi,
+                        source=f"{new_level} 양식", user=self.user, scales=scales_out)
+                    return new_final
+
+                def d(ok, res):
+                    if not ok:
+                        self._err("E112", "양식 확정 실패(다시 읽어 합치기)", res)
+                        return
+                    win.destroy()
+                    self._post_finalize_merge(new_final, final_path, new_level,
+                                              {"kept": len(records), "dropped": 0})
+                self._run_busy("양식 확정 중…", w, d)
+            self._form_param_editor(rows, new_level, kind, scales, run_dir, related, st,
+                                    m_aoi, base_keys=None, base_name="",
+                                    title_prefix="기존 양식 수정(다시 읽기)",
+                                    on_confirm=on_confirm, default_use=None)
+
+        def from_equip():
+            pickwin.destroy()
+            staging = localdirs.new_temp_run(self.local_dir, "양식수집")
+            self._collect_dialog(
+                staging,
+                lambda sources: self._parse_sources_busy(sources, after,
+                                                         default_level=level),
+                level_hint=level, levels=[level])
+
+        def from_local():
+            pickwin.destroy()
+            self._local_pick_sources(
+                lambda sources: self._parse_sources_busy(sources, after,
+                                                         default_level=level),
+                level_hint=level)
+
+        pickwin = tk.Toplevel(self)
+        pickwin.title("다시 읽어 합치기")
+        pickwin.configure(bg=self.p["bg"])
+        pickwin.transient(self)
+        tk.Label(pickwin, text=f"'{level}' 를 어디에서 다시 읽을까요?", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w", padx=16,
+                                                                  pady=(14, 2))
+        tk.Label(pickwin, text="읽은 전체 파라미터가 후보가 되고, 지금 양식이 쓰는 항목은 "
+                              "자동으로 체크된 채로 열립니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(0, 8))
+        bt = tk.Frame(pickwin, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=(0, 14))
+        tk.Button(bt, text="🖥 장비 폴더에서", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=8, cursor="hand2",
+                  command=from_equip).pack(side="left")
+        tk.Button(bt, text="📁 로컬(호기 선택)에서", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8,
+                  cursor="hand2", command=from_local).pack(side="left", padx=8)
 
     def _form_new(self, from_equipment: bool):
         if not self.save_dir:
@@ -3323,13 +3534,27 @@ class EquipApp(tk.Tk):
             # 편집기에서 고친 변형별 계수를 변환계수.xlsx 에도 반영(사람 확정 = 우선)
             n_coef = self._coef_from_form(aoi, dict(used_scales), rows, level)
             if on_confirm is not None:               # commonality 등 다른 저장 경로
-                on_confirm(records, extracts, dict(used_scales), win)
+                # 확정 전에 **전체 후보 목록('원본')** 을 남긴다 — 다음에 '기존 양식
+                # 수정하기'로 열 때 빼 놓은 항목을 다시 넣을 수 있어야 하므로.
+                self._save_candidate_snapshot(
+                    rows, related, level, aoi, st,
+                    lambda: on_confirm(records, extracts, dict(used_scales), win))
                 return
             sheet_name = "RDL_ALL" if kind == "RDL" else "PI_ALL"
             final = workdirs.form_final_path(run_dir, level, aoi, st)
             scales_out = dict(used_scales)
 
             def work():
+                # 전체 후보 목록('원본')을 함께 남긴다 — 확정 양식에는 체크한 항목만
+                # 들어가므로, 이 파일이 없으면 나중에 뺀 항목을 되살릴 수 없다.
+                try:
+                    orig = workdirs.form_original_path(
+                        workdirs.related_dir(run_dir), level, aoi, st)
+                    if not os.path.exists(orig):
+                        formbuilder.build_initial_workbook(
+                            rows, orig, level=level, source=f"{level} / {aoi}")
+                except Exception as _e:  # noqa: BLE001
+                    self._logerr("E116", _e)      # 원본 보존 실패는 확정을 막지 않는다
                 extract_io.write_snapshot(
                     final, records, machines=[], sheet_name=sheet_name, extracts=extracts,
                     stage="final", level=level, aoi=aoi, source=f"{level} 양식",
