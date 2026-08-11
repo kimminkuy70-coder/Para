@@ -222,7 +222,7 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 ```
 python3 tests/test_refdata.py      # 4  (참고자료/특이사항 독립 파일 I/O·호기·IP·호기별 접속ID 공유)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
-python3 tests/test_ini_parser.py   # 17 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/다중레시피)
+python3 tests/test_ini_parser.py   # 19 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/복사금지optic제외/다중레시피)
 python3 tests/test_formbuilder.py  # 10 (초안 생성·편집→확정 양식·계수 저장·초안→전체후보 복원·설정키 매칭)
 python3 tests/test_form_candidates.py # 5 (원본 탐색/버전별 안내·다른회차 빌려오기·확정 시 원본 항상 저장)
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
@@ -502,9 +502,15 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   **OpticPreset LIGHT/Scan2d 통일**(`_parse_optic`): Scan2d(target) 섹션만
   alg=`Scan2d`로 통일, `OPTIC_SCAN2D_KEEP`(9개)만 사용=Y, `Scan2d 최신 항목 이름` 합성행 추가,
   나머지·오래된 Scan2d는 사용=N(검토용). `ExtractRow.use_default`→피벗 `use`→formbuilder.
-  **target(현재 스캔 optic) 선택(`_pick_optic_target`)**: 신 SW = 같은 폴더 `ActiveScenarioOptics.ini`
+  **target(현재 스캔 optic) 선택(`_pick_optic_target`)**: **①'복사 금지' optic 을 먼저 제외**
+  (2026-08 — 이름 **끝**이 `_@NEVER COPY THIS!!!!!` 면 후보에서 뺀다. `optic_excluded`,
+  느낌표 수·대소문자·뒤 공백 무시, 섹션명뿐 아니라 `Alg`/`OpticsName`/`Name` 키도 본다.
+  OpticPreset 에는 리뷰·얼라인·clean reference 옵틱이 순서와 무관하게 섞여 있어, 안 빼면
+  '마지막 광원 섹션' 규칙에 리뷰 옵틱이 걸려 **엉뚱한 값이 clean reference 값인 척**
+  취합된다). ② 그 뒤는 종전 그대로 — 신 SW = 같은 폴더 `ActiveScenarioOptics.ini`
   의 `ScenarioName=Scan2d` 항목 `OpticsName`/`OpticId` 로 OpticPreset 섹션 매칭(`read_active_scan2d`).
-  없으면(구 SW) 기존 방식 = CameraName=TDI·광원키 가진 **마지막** 섹션. `read_optic_mag` 도 동일 경로.
+  없으면(구 SW) 기존 방식 = CameraName=TDI·광원키 가진 **마지막** 섹션. `read_optic_mag` 도 동일 경로
+  (제외본의 Mag 를 계수 키로 쓰지 않는다). 전부 제외되면 target 없음(예외 없이 진행).
   (`collector.FIXED_FILES` 에 ActiveScenarioOptics.ini 포함 — 있을 때만 복사.)
   **변환 판정(`resolve_transform`)**: 표시명에 **µ(마이크로) 있으면 변환**(area→AREA,else LINEAR),
   **없으면 RAW**(예: 'Min Defect Width'는 변환 안 함). BOOL/REGION/CLASSIFY는 유지.

@@ -278,6 +278,30 @@ _ACTIVE_SCAN2D_SCENARIO = "scan2d"                 # ScenarioName 매칭(대소�
 _OPTIC_ID_KEYS = ("OpticId", "OpticsId", "OpticID", "Id", "Guid", "OpticGUID", "OpticGuid")
 _OPTIC_NAME_KEYS = ("OpticsName", "OpticName", "Name")
 
+# 옵틱 이름 끝에 '복사 금지' 표시가 붙은 것은 **target 후보에서 뺀다**(2026-08 확정).
+#   OpticPreset.ini 에는 리뷰·얼라인·clean reference 등 여러 역할의 optic 이 섞여
+#   있고 순서가 역할과 무관하다. 장비 쪽에서 이 표시를 붙여 둔 optic 은 쓰면 안 되는
+#   것이므로 '마지막 광원 섹션' 규칙에 걸려 잘못 뽑히지 않게 먼저 걸러낸다.
+#   느낌표 개수·대소문자·앞뒤 공백은 무시한다(사람이 손으로 붙이는 표시라 흔들린다).
+OPTIC_EXCLUDE_SUFFIX = "_@NEVER COPY THIS!!!!!"
+_OPTIC_EXCLUDE_RE = re.compile(r"(?i)_@\s*NEVER\s+COPY\s+THIS\s*!*\s*$")
+
+
+def optic_excluded(section: str, kv: dict | None = None) -> bool:
+    """이 optic 섹션이 '복사 금지' 표시된 것인가(= target 후보에서 제외).
+    표시는 섹션 이름에 붙는 게 보통이지만, 이름 키(OpticsName/Name/Alg)에만
+    붙어 있는 경우도 있어 함께 본다."""
+    names = [section]
+    if kv:
+        names += [kv.get(k) for k in _OPTIC_NAME_KEYS] + [kv.get("Alg")]
+    return any(_OPTIC_EXCLUDE_RE.search(str(n).strip())
+               for n in names if n not in (None, ""))
+
+
+def _optic_candidates(sections: dict) -> dict:
+    """'복사 금지' 표시를 뺀 optic 섹션들(순서 유지). 전부 빠지면 빈 dict."""
+    return {s: kv for s, kv in (sections or {}).items() if not optic_excluded(s, kv)}
+
 
 RECIPES_INFO_FILE = "RecipesInfo.ini"       # 다중 레시피(2개+) 스캔 폴더에만 존재
 
@@ -362,7 +386,11 @@ def _pick_optic_target(sections: dict, active: tuple[str, str] | None = None) ->
     1순위 = **CameraName=TDI 섹션 중 마지막**(광원 키 있으면 그 중 마지막).
     이름은 장비마다 다를 수 있어([Scan2d#]·[Engineer optic] 등) 이름이 아니라
     'TDI 카메라 + 광원 키를 가진 마지막 [섹션]' 으로 고른다. TDI 없으면 광원 키 마지막.
+
+    **먼저 '복사 금지'(`_@NEVER COPY THIS!!!!!`) 표시된 optic 을 후보에서 뺀다**
+    (2026-08 추가). 그 뒤 규칙은 종전과 완전히 같다.
     """
+    sections = _optic_candidates(sections)
     if not sections:
         return None
     if active is not None:                         # 신 SW: 지정된 Scan2d optic 우선
@@ -415,8 +443,8 @@ def read_optic_mag(config_dir: Path, prefix: str = "") -> str:
                 mag = sections[target].get("Mag")
                 if mag not in (None, ""):
                     return str(mag).strip()
-            # target 못 잡아도 아무 Scan2d 의 Mag
-            for s, kv in sections.items():
+            # target 못 잡아도 아무 Scan2d 의 Mag('복사 금지' 표시는 여기서도 제외)
+            for s, kv in _optic_candidates(sections).items():
                 if _SCAN2D_SEC_RE.match(s) and kv.get("Mag") not in (None, ""):
                     return str(kv["Mag"]).strip()
             break
