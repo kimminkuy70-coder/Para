@@ -641,34 +641,186 @@ class EquipApp(tk.Tk):
 
     def _recipe_delete_menu(self, event, level):
         m = tk.Menu(self, tearoff=0)
-        m.add_command(label=f"🗑  '{level}' 레시피 삭제 (취합 시트 제거)",
-                      command=lambda: self._delete_recipe(level))
+        m.add_command(label=f"🗑  '{level}' 레시피 삭제…",
+                      command=lambda: self._delete_recipe_dialog(level))
         try:
             m.tk_popup(event.x_root, event.y_root)
         finally:
             m.grab_release()
 
-    def _delete_recipe(self, level):
-        latest = workdirs.latest_collate(self.save_dir) if self.save_dir else None
-        if not latest:
-            messagebox.showinfo("레시피 삭제", "취합 파일이 없습니다.")
+    # ====================================================================
+    #  레시피 삭제 — 양식 폴더(로컬 보관) + 최신 취합 시트 + 감시 설정
+    # ====================================================================
+    def _delete_recipe_dialog(self, level: str | None = None):
+        r"""레시피 삭제. **어디까지 지우는지 사용자 확정(2026-08)**:
+
+          지움  ·`양식/{레시피}/` 전체(모든 버전 + 관련파일) → 로컬
+                 `CamtekAOI/삭제보관/` 으로 **옮겨서** 되돌릴 수 있게 한다.
+                ·**최신** 취합본의 그 레시피 시트(값 확인 화면에서 사라지게)
+                ·`감시설정.json` 의 그 레시피(호기별 Job 폴더 지정·목록·plan)
+          안 지움 ·과거 취합본(이력 확인의 비교 대상 — 과거를 고치지 않는다)
+                ·`변환계수.xlsx`(레시피 키가 없다. 호기+MAG 기준이라 공용)
+                ·변경보고서·이력 엑셀 등 과거 기록
+
+        백업은 **반드시 로컬**이다. 저장폴더 안에 두면 지운 파일이 그대로 다시
+        동기화돼 지운 의미가 없고 OneDrive 동기화만 늘어난다(2026-08 사고 교훈).
+        """
+        if not self.save_dir:
+            messagebox.showinfo("레시피 삭제", "먼저 저장 폴더를 지정하세요(⋯파일).")
             return
-        if not messagebox.askyesno(
-                "레시피 삭제",
-                f"'{level}' 레시피를 취합 파일에서 삭제할까요?\n"
-                f"({os.path.basename(latest)} 의 해당 시트를 제거합니다 — 되돌릴 수 없음)"):
+        recipes = workdirs.list_recipes(self.save_dir)
+        if not recipes:
+            messagebox.showinfo("레시피 삭제", "저장된 양식이 없습니다.")
             return
+        if level not in recipes:
+            pick = self._pick_list_chooser(
+                "recipe", "삭제할 레시피 선택", recipes, False,
+                note="양식 폴더 전체가 지워집니다(되돌릴 수 있게 로컬로 옮겨 보관).")
+            if not pick:
+                return
+            level = pick[0]
+
+        prev = workdirs.recipe_delete_preview(self.save_dir, level)
+        latest = workdirs.latest_collate(self.save_dir)
         try:
-            n = collate.delete_recipe(latest, level)
-        except Exception as e:  # noqa: BLE001
-            self._err("E101", "레시피 삭제 실패", e)
+            ws_, wst_ = watcher.load_settings(self.save_dir)
+            watched = [m for m, names in watcher.machine_recipes(ws_).items()
+                       if any(rtp.norm_key(r) == rtp.norm_key(level)
+                              for r in names)]
+        except Exception:  # noqa: BLE001
+            ws_ = wst_ = None
+            watched = []
+
+        win = tk.Toplevel(self)
+        win.title("레시피 삭제")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text=f"'{level}' 레시피를 삭제합니다", bg=self.p["bg"],
+                 fg=self.p["danger"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(14, 6))
+        mb = prev["bytes"] / (1024 * 1024)
+        gone = [f"· 양식 폴더 전체 — 버전 {prev['versions']}개 · 파일 "
+                f"{prev['files']}개 · {mb:.1f} MB\n    {prev['dir']}"]
+        if latest:
+            gone.append(f"· 최신 취합본의 '{level}' 시트 "
+                        f"({os.path.basename(latest)})")
+        if watched:
+            gone.append("· 자동 감시 대상에서 제외 — " + ", ".join(watched))
+        keep = ["· 과거 취합본(이력 확인의 비교 대상이라 그대로 둡니다)",
+                "· 변환계수.xlsx(호기+MAG 기준이라 다른 레시피도 함께 씁니다)",
+                "· 변경보고서 등 과거 기록"]
+        tk.Label(win, text="지웁니다", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w", padx=16)
+        tk.Label(win, text="\n".join(gone), bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"], justify="left").pack(anchor="w", padx=26,
+                                                              pady=(0, 8))
+        tk.Label(win, text="그대로 둡니다", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w", padx=16)
+        tk.Label(win, text="\n".join(keep), bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"], justify="left").pack(anchor="w", padx=26,
+                                                              pady=(0, 8))
+        vault = localdirs.deleted_dir(self.local_dir)
+        tk.Label(win, text=f"되돌리기: 양식 폴더는 지우지 않고 로컬로 옮깁니다.\n{vault}",
+                 bg=self.p["bg"], fg=self.p["primary"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(0, 10))
+
+        crow = tk.Frame(win, bg=self.p["bg"])
+        crow.pack(fill="x", padx=16, pady=(0, 4))
+        tk.Label(crow, text=f"확인을 위해 '{level}' 을 그대로 입력하세요:",
+                 bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(anchor="w")
+        typed = tk.StringVar()
+        ent = tk.Entry(crow, textvariable=typed, width=28, relief="solid", bd=1,
+                       font=self.fonts["base"])
+        ent.pack(anchor="w", pady=4)
+        ent.focus_set()
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=(4, 14))
+        btn_del = tk.Button(bt, text="🗑 삭제", relief="flat", bd=0,
+                            bg=self.p["surface"], fg=self.p["muted"], padx=18, pady=6,
+                            state="disabled")
+        btn_del.pack(side="left")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=16, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="left", padx=8)
+
+        def on_type(*_a):
+            ok = typed.get().strip() == level
+            btn_del.config(state=("normal" if ok else "disabled"),
+                           bg=(self.p["danger"] if ok else self.p["surface"]),
+                           fg=("#ffffff" if ok else self.p["muted"]),
+                           cursor=("hand2" if ok else ""))
+        typed.trace_add("write", on_type)
+
+        def do_delete():
+            win.destroy()
+            self._delete_recipe_run(level, latest, ws_, wst_)
+        btn_del.config(command=do_delete)
+
+    def _delete_recipe_run(self, level, latest, ws_, wst_):
+        """실제 삭제 — 잠금 확인 → 폴더 이동(로컬 보관) → 취합 시트 → 감시 설정."""
+        # 다른 사람이 그 레시피 양식을 만드는 중이면 건드리지 않는다.
+        if not self._acquire_global(f"양식_{level}", f"{level} 레시피 삭제"):
             return
-        if not n:
-            messagebox.showinfo("레시피 삭제", f"'{level}' 에 해당하는 시트를 찾지 못했습니다.")
-            return
-        self._load_latest_collate()          # 파일 반영본 다시 로드
-        self._render()                        # 레시피 선택 화면 갱신(카드 제거)
-        self._set_status(f"'{level}' 레시피 삭제됨 — 취합 시트 {n}개 제거")
+        vault = localdirs.new_deleted_slot(self.local_dir, level)
+
+        def work():
+            # 엑셀이 그 폴더의 파일을 열어 두면 이동이 중간에 실패해 파일이 양쪽에
+            # 걸쳐 남는다 → 옮기기 전에 확인하고 사람에게 닫으라고 알린다.
+            src = os.path.join(self.save_dir, workdirs.FORM_DIR,
+                               workdirs._sanitize(level))
+            busy = []
+            for dirpath, _dn, files in os.walk(src):
+                for f in files:
+                    if f.startswith("~$"):        # 엑셀 임시 잠금 파일
+                        busy.append(f)
+                    elif f.lower().endswith(".xlsx") and \
+                            self._file_in_use(os.path.join(dirpath, f)):
+                        busy.append(f)
+            if busy:
+                raise RuntimeError(
+                    "다음 파일이 열려 있어 삭제할 수 없습니다(엑셀을 닫고 다시 시도):\n· "
+                    + "\n· ".join(sorted(set(busy))[:6]))
+            moved = workdirs.move_recipe_dir(self.save_dir, level, vault)
+            sheets = 0
+            if latest and os.path.isfile(latest):
+                try:
+                    sheets = collate.delete_recipe(latest, level)
+                except Exception as e:  # noqa: BLE001
+                    self._logerr("E117", e)     # 시트 제거 실패는 폴더 삭제를 되돌리지 않음
+            watch = None
+            if ws_ is not None:
+                try:
+                    watch = watcher.drop_recipe(ws_, level)
+                    watcher.save_settings(self.save_dir, ws_, wst_)
+                    watcher.append_log(self.save_dir, f"레시피 삭제 — {level}")
+                except Exception as e:  # noqa: BLE001
+                    self._logerr("E148", e)     # 감시 설정 정리 실패(삭제 자체는 성공)
+            return {"moved": moved, "sheets": sheets, "watch": watch}
+
+        def done(ok, res):
+            self._release_global(f"양식_{level}")
+            if not ok:
+                self._err("E149", "레시피 삭제 실패", res)
+                return
+            self._load_latest_collate()
+            self._render()
+            w = res.get("watch") or {}
+            msg = [f"'{level}' 레시피를 삭제했습니다."]
+            if res["moved"]:
+                msg.append(f"\n양식 폴더는 되돌릴 수 있게 로컬로 옮겼습니다:\n{res['moved']}")
+            if res["sheets"]:
+                msg.append(f"\n최신 취합본에서 시트 {res['sheets']}개를 제거했습니다.")
+            if w.get("machines"):
+                msg.append("\n자동 감시 대상에서 제외: " + ", ".join(w["machines"]))
+            if w.get("empty"):
+                msg.append("\n※ 감시 대상이 하나도 남지 않았습니다 — 감시 설정에서 "
+                           "장비·레시피를 다시 지정하세요.")
+            messagebox.showinfo("레시피 삭제", "".join(msg))
+            self._set_status(f"'{level}' 레시피 삭제됨 — 되돌리기: {res['moved'] or '-'}")
+        self._run_busy(f"'{level}' 레시피 삭제 중…", work, done)
 
     # ---- 선택 화면 공통 위젯 ------------------------------------------
     def _big_button(self, parent, text, desc, cmd):
@@ -2756,6 +2908,10 @@ class EquipApp(tk.Tk):
         tk.Button(box2, text="🗂  이전 버전 보기(읽기전용)", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
                   command=self._load_previous_form).pack(side="left", padx=8)
+        tk.Button(box2, text="🗑  레시피 삭제", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["danger"], padx=16, pady=8,
+                  cursor="hand2",
+                  command=self._delete_recipe_dialog).pack(side="right")
 
     def _edit_existing_form(self):
         """기존 양식 수정하기 — 저장된 확정 양식을 **프로그램 편집기**로 불러와 편집→확정.

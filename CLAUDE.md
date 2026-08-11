@@ -53,6 +53,21 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     `collate.unmatched_variants`(비교는 `norm_key` — 대소문자·구분자 차이는 무시)로
     찾아 `_variant_match_dialog` 로 양식의 이름에 붙이고(또는 '제외'),
     `collate.apply_variant_map` 이 피벗의 `mag` 를 바꾼다. GUI=`_match_variants`.
+- **레시피 삭제(2026-08 확정 — 범위 고정)**: 양식 만들기 탭 `🗑 레시피 삭제`
+  (값 확인 카드 우클릭도 같은 창). `_delete_recipe_dialog`/`_delete_recipe_run`.
+  · **지움** ①`양식/{레시피}/` 전체 — 지우지 않고 **로컬 `CamtekAOI/삭제보관/
+    {레시피}_{시각}/` 으로 이동**(`workdirs.move_recipe_dir` +
+    `localdirs.new_deleted_slot`, 되돌리기 가능) ②**최신** 취합본의 그 시트
+    (`collate.delete_recipe`) ③`감시설정.json` 의 그 레시피(`watcher.drop_recipe`
+    — 호기별 폴더 지정·목록·plan.recipe_map. 안 지우면 무인 회차가 없는 폴더를
+    계속 찾아 실패 로그만 쌓인다).
+  · **안 지움** 과거 취합본(이력 확인의 비교 대상) · `변환계수.xlsx`(레시피 키가
+    없다 — 호기+MAG 기준이라 공용) · 변경보고서 등 과거 기록.
+  · **보관은 반드시 로컬**: 저장폴더 안에 백업을 만들면 지운 파일이 그대로 다시
+    동기화된다(`move_recipe_dir` 이 저장폴더 안 경로면 ValueError).
+  · 안전장치: 전역 잠금 `양식_{레시피}` · 미리보기(`recipe_delete_preview` —
+    버전/파일/용량) · **레시피 이름 직접 입력**해야 버튼 활성 · 엑셀이 그 폴더
+    파일을 열고 있으면 거부(파일이 양쪽에 걸쳐 남는 것 방지).
 - **이력 확인**: 취합 폴더 파일 2개 선택 → `history.diff_files`(멀티시트) → **다른 부분만**
   새 창(Treeview) + 변경내역 엑셀(비고 메모).
 - 오래 걸리는 작업은 `_run_busy` 로딩 모달 + 백그라운드 스레드.
@@ -215,6 +230,7 @@ python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·�
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_updater.py      # 28 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지·버전동일판정)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
+python3 tests/test_recipe_delete.py # 7 (레시피 삭제 범위 고정: 미리보기·로컬보관 이동/되돌리기·저장폴더 백업 거부·최신취합만·감시설정 정리)
 python3 tests/test_onedrive_writes.py # 5 (저장폴더 쓰기 최소화: 폴더 지연생성·잠금 재기록 없음·수집 staging 로컬·무변경 시 취합 미생성)
 python3 tests/test_network_manners.py # 7 (빈 비밀번호 net use 금지(무인·수동 둘 다)·장비별 자격증명·포트/장비 간 간격·직접 설치 경로)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
@@ -347,10 +363,11 @@ python3 tests/test_downloader.py   # 8
   참고자료·변환계수, 감시설정, 잠금·접속자(공유가 목적이라 예외).
 - **로컬(`localdirs.py`) = 중간 산물 + Commonality**: 수집 staging(원본 ini 복사본),
   로그, 캐시, **Commonality 조사 산출물**(Lot 안전복사본이 많아 공유 부적합).
+  **삭제한 레시피 양식 보관**(`삭제보관/` — 되돌리기용, 저장폴더에 백업 금지).
   기본 = **프로그램 옆 `CamtekAOI/` 폴더 하나**(사용자 지정 2026-08). 단 프로그램이
   OneDrive 안이면 사고가 재발하므로 `%LOCALAPPDATA%` 로 자동 대체하고 첫 실행에
   경고한다. 첫 실행 때 변경 가능(config `local_dir`).
-  구조는 `Temp/ Logs/ Cache/ Commonality/` 네 개로 고정. `set_root` 로 모듈 공유.
+  구조는 `Temp/ Logs/ Cache/ Commonality/ 삭제보관/` 으로 고정. `set_root` 로 모듈 공유.
   Commonality GUI 는 `equip_app._cm_root()` 로만 경로를 만든다(save_dir 금지).
 - **임시는 반드시 지운다**: `new_temp_run` → 작업 후 `drop()`, 시작 시 `cleanup_temp`
   (6시간 지난 잔재). `drop()` 은 **Temp 아래가 아니면 거부**(저장폴더 오삭제 방지).
@@ -504,7 +521,9 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 - `param_manager/workdirs.py` — **저장폴더 기준 경로**: `form_run_dir/form_final_path/
   form_original_path/form_draft_path/related_dir/list_form_versions/collate_path/
   latest_collate/list_collate_files` + `form_candidate_path`/`form_version_status`/
-  `any_candidate_for`(기존 양식 수정용 '원본' 탐색·안내). (구 initial/final/백업 함수는 레거시.)
+  `any_candidate_for`(기존 양식 수정용 '원본' 탐색·안내) +
+  `recipe_delete_preview`/`move_recipe_dir`(레시피 삭제 — 저장폴더 안 보관 거부).
+  (구 initial/final/백업 함수는 레거시.)
 - `param_manager/extract_io.py` — 스냅샷(공용 양식 + `_EXTRACT_MAP`) + `write_snapshot(scales=)`/
   `read_scales`(변형별 계수 저장/판독).
 - `param_manager/formbuilder.py` — **양식 만들기**: `build_initial_workbook`(수정본, '사용'/
@@ -514,7 +533,8 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 - `param_manager/updater.py` — **자동 업데이트**(v3.0, A안): 위 섹션 참고.
 - `param_manager/localdirs.py` — **로컬 작업 폴더**(OneDrive 밖): `default_root`
   (`%LOCALAPPDATA%\CamtekAOI`)·`set_root/active_root`·`ensure`(Temp/Logs/Cache)·
-  `new_temp_run`/`drop`(Temp 밖 거부)/`cleanup_temp`·`is_under_onedrive`·`describe`.
+  `new_temp_run`/`drop`(Temp 밖 거부)/`cleanup_temp`·`is_under_onedrive`·`describe`·
+  `deleted_dir`/`new_deleted_slot`(삭제한 레시피 양식 보관 — 되돌리기용).
 - `param_manager/locking.py` — **동시 접속 제어**(v3.0): `acquire/refresh/release/status`
   (free/mine/**self**/stale/other — self=같은 사람·같은 PC의 죽은 프로세스는 자동 회수),
   `holder_message`(안내문), `check_before_save`(**저장 직전 재검증** — 외부 변경·잠금 탈취·
@@ -537,7 +557,7 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   헤더행+계층 매핑)·`build_records`(선택→저장 records/extracts/계수, 기존 confirm 규칙)·
   `safe_display`(**어떤 원본값에도 예외 없음** — NaN/inf/문자 대비)·`method_of`/`label_of`.
   파일 종류가 달라도 깨지지 않게 `tests/test_editor_model.py` 로 검증.
-- `param_manager/collate.py` — **값 취합(멀티시트)**: `build_collation`(레시피별 시트, 참고자료
+- `param_manager/collate.py` — **값 취합(멀티시트)**: `delete_recipe`(시트 제거) + `build_collation`(레시피별 시트, 참고자료
   전체 호기, 직전본 이어받기, 설정키 매칭·불일치), `write_collation`/`load_collation`/
   `load_as_repo`(값 확인 병합). **값은 양식의 변환방식(_EXTRACT_MAP transform)을 수집 raw 에
   재적용**(사람이 양식에서 고친 변환방식·계수 반영). 계수 우선순위: `coef_lookup(호기,MAG)`

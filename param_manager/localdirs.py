@@ -31,6 +31,7 @@ from pathlib import Path
 APP_DIRNAME = "CamtekAOI"
 TEMP, LOGS, CACHE = "Temp", "Logs", "Cache"
 COMMONALITY = "Commonality"      # Commonality 조사 산출물(공유 대상 아님)
+DELETED = "삭제보관"              # 삭제한 레시피 양식 폴더의 되돌리기용 보관소
 
 # Temp 아래 회차 폴더를 이 시간이 지나면 청소 대상으로 본다(작업 중인 것 보호).
 TEMP_KEEP_HOURS = 6
@@ -137,6 +138,30 @@ def commonality_dir(root: str) -> str:
     d = os.path.join(root, COMMONALITY)
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def deleted_dir(root: str) -> str:
+    """삭제한 레시피 양식 폴더를 옮겨 두는 곳 — **로컬**(되돌리기용).
+
+    저장폴더(OneDrive)에 백업을 만들면 지운 파일이 그대로 다시 동기화돼
+    '지웠는데 용량은 그대로 + 동기화 폭주'가 된다. 그래서 반드시 로컬이다.
+    """
+    d = os.path.join(root, DELETED)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def new_deleted_slot(root: str, name: str) -> str:
+    """되돌리기용 보관 폴더 `{삭제보관}/{이름}_{시각}` 경로(아직 만들지 않음).
+    호출측이 여기로 옮긴다(이미 있으면 뒤에 번호를 붙여 덮어쓰지 않는다)."""
+    from . import workdirs
+    base = os.path.join(deleted_dir(root),
+                        f"{workdirs._sanitize(name)}_{workdirs.stamp()}")
+    dest, n = base, 1
+    while os.path.exists(dest):
+        dest = f"{base}({n})"
+        n += 1
+    return dest
 
 
 def new_temp_run(root: str, prefix: str) -> str:

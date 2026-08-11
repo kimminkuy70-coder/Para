@@ -192,6 +192,52 @@ def any_candidate_for(save_dir: str, recipe: str) -> str | None:
     return None
 
 
+def recipe_delete_preview(save_dir: str, recipe: str) -> dict:
+    """레시피 삭제 전 '무엇이 지워지는가' 요약.
+
+    반환: {recipe, dir, exists, versions, files, bytes}
+    사람이 되돌릴 수 없는 삭제를 하기 전에 규모를 정확히 보여 주기 위한 것.
+    """
+    d = os.path.join(save_dir, FORM_DIR, _sanitize(recipe))
+    out = {"recipe": recipe, "dir": d, "exists": os.path.isdir(d),
+           "versions": 0, "files": 0, "bytes": 0}
+    if not out["exists"]:
+        return out
+    try:
+        out["versions"] = sum(1 for n in os.listdir(d)
+                              if os.path.isdir(os.path.join(d, n)))
+    except OSError:
+        pass
+    for dirpath, _dn, files in os.walk(d):
+        for f in files:
+            out["files"] += 1
+            try:
+                out["bytes"] += os.path.getsize(os.path.join(dirpath, f))
+            except OSError:
+                pass
+    return out
+
+
+def move_recipe_dir(save_dir: str, recipe: str, dest: str) -> str | None:
+    """`양식/{레시피}/` 를 **dest 로 통째로 옮긴다**(되돌리기용 보관).
+
+    dest 는 반드시 저장폴더 **밖**(로컬)이어야 한다 — 저장폴더 안에 백업을 만들면
+    지운 파일이 그대로 다시 동기화돼 지운 의미가 없고 동기화만 늘어난다.
+    반환: 옮긴 경로. 레시피 폴더가 없으면 None.
+    """
+    import shutil
+    src = os.path.join(save_dir, FORM_DIR, _sanitize(recipe))
+    if not os.path.isdir(src):
+        return None
+    save_n = os.path.normcase(os.path.abspath(save_dir))
+    dest_n = os.path.normcase(os.path.abspath(dest))
+    if dest_n == save_n or dest_n.startswith(save_n + os.sep):
+        raise ValueError("보관 위치가 저장폴더 안입니다(로컬 폴더여야 합니다)")
+    os.makedirs(os.path.dirname(os.path.abspath(dest)) or ".", exist_ok=True)
+    shutil.move(src, dest)
+    return dest
+
+
 def list_recipes(save_dir: str) -> list[str]:
     """양식 폴더 아래 레시피 폴더 이름 목록(정렬)."""
     root = os.path.join(save_dir, FORM_DIR)

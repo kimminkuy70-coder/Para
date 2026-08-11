@@ -270,6 +270,43 @@ def sync_selection(settings: "WatchSettings") -> None:
     settings.recipes = seen
 
 
+def drop_recipe(settings: "WatchSettings", recipe: str) -> dict:
+    """감시 설정에서 레시피 하나를 **완전히 뺀다**(레시피 삭제 뒷정리).
+
+    남겨 두면 무인 회차가 없어진 레시피의 Job 폴더를 계속 찾다 실패 로그만
+    쌓는다. 지우는 곳: 호기별 폴더 지정(`recipe_paths`) · 구 전역 목록
+    (`recipes`) · 무인 수집 계획의 `recipe_map`/`recipe_names`.
+    반환: {"machines": [영향받은 호기], "empty": 감시 대상이 0건이 되었는가}
+    """
+    from .rtp_parser import norm_key      # 이름 비교는 공용 정규화(한글 보존)
+    key = norm_key(recipe)
+    rp = normalize_recipe_paths(getattr(settings, "recipe_paths", None))
+    touched = []
+    for m, inner in list(rp.items()):
+        hit = [r for r in (inner or {}) if norm_key(r) == key]
+        if not hit:
+            continue
+        for r in hit:
+            inner.pop(r, None)
+        if m != ANY_MACHINE:
+            touched.append(m)
+        if not inner:
+            rp.pop(m, None)
+    settings.recipe_paths = rp
+    plan = dict(getattr(settings, "plan", None) or {})
+    if plan:
+        rmap = {k: v for k, v in (plan.get("recipe_map") or {}).items()
+                if norm_key(k) != key}
+        plan["recipe_map"] = rmap
+        plan["recipe_names"] = [n for n in (plan.get("recipe_names") or [])
+                                if norm_key(n) != key]
+        settings.plan = plan
+    settings.recipes = [r for r in (getattr(settings, "recipes", None) or [])
+                        if norm_key(r) != key]
+    sync_selection(settings)
+    return {"machines": sorted(set(touched)), "empty": not watch_targets(settings)}
+
+
 def path_for(recipe_paths: dict, machine: str, recipe: str) -> str:
     """(호기, 레시피) → 지정된 상대경로. 없으면 빈 문자열.
     호기별 지정이 우선, 없으면 구 버전 공통 지정(`*`)을 본다."""
