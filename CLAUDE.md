@@ -186,8 +186,12 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   · `_cmw_forms_dialog` → `_cmw_make_form` → `_cmw_build_form`: 대상마다
     **대표 S/M 을 최신순 목록에서 고르고**(`sm_candidates`) 그 슬롯으로
     `_form_param_editor` 를 열어 확정 → `set_form` 으로 대상에 묶는다.
+  · **회차 로직은 헤드리스**(`cmwatcher.run_cycle` — 스캔→계획추가→조사→저장).
+    `_cmw_cycle_work` 는 로컬 루트·변환계수만 넘기는 얇은 래퍼다. 오케스트레이션을
+    GUI 밖에 둬야 tkinter 없이 테스트가 잡는다(`should_run` 인자 실수처럼 회차
+    전체가 죽는 버그를 예전엔 못 잡았다).
   · `_cmw_tick`(1분마다, 시작 40초 뒤 등록 — 장비 감시 10초와 **엇갈리게**) →
-    `watcher.should_run` → `_cmw_cycle_work`(스캔→계획추가→조사) → `_cmw_report`.
+    `watcher.should_run(now, s, st)` → `run_cycle` → `_cmw_report`.
     무인이라 `_run_bg`(모달 금지), 트레이 숨김 중이면 풍선 알림.
   · 오류 코드 E180~E189.
 
@@ -316,7 +320,7 @@ python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다�
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_cmwatcher.py    # 14 (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결)
+python3 tests/test_cmwatcher.py    # 18 (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_commonality.py  # 25 (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+MAG) I/O·lookup 읽기전용·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)

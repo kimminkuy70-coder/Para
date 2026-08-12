@@ -45,6 +45,7 @@ from pathlib import Path
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from . import coefstore
 from . import commonality as cm
 from . import engine, localdirs
 
@@ -608,6 +609,85 @@ def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str
         low_labels=low)
     return {"done": list(plabels), "low": low, "skipped": skipped,
             "flagged": flagged, "merged": merged}
+
+
+def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
+              local_root: str, coef_rows: list | None = None) -> dict:
+    """감시 **1회차 전체**를 GUI 없이 돈다 — 스캔 → 계획 추가 → 자동 조사.
+
+    GUI(`equip_app._cmw_cycle_work`)는 이 함수를 부르기만 한다. 오케스트레이션을
+    여기 두어야 tkinter 없이 테스트할 수 있다(안 그러면 `should_run` 인자 실수처럼
+    회차 로직 버그를 테스트가 못 잡는다).
+
+    · settings/state 를 **제자리에서 갱신**하고 회차 끝에 저장까지 한다.
+    · 계수는 `coef_rows`(변환계수.xlsx 내용)로 조회만 한다 — 이 파일을 고치지 않는다.
+    반환: {"found": [항목], "surveyed": [라벨], "notes": [사람이 볼 메모]}
+    """
+    coef_rows = coef_rows or []
+    plan_rows = read_watch_plan(settings.watch_plan)      # 없으면 예외(호출측이 잡음)
+    roots_cfg = dict(settings.roots or {})
+    found, surveyed, notes = [], [], []
+
+    for m in (settings.machines or []):
+        root = roots_cfg.get(m) or ""
+        if not root:
+            notes.append(f"{m}: 호기 폴더 미지정 — 건너뜀")
+            continue
+        targets = targets_for_machine(plan_rows, m)
+        if not targets:
+            continue
+        roots = cm.scanresult_roots(root, m)
+        res = scan_new(roots, targets, seen_set(state, m),
+                       (state.mtimes.get(m) or {}),
+                       settle_minutes=settings.settle_minutes)
+        items = apply_scan(state, m, res)     # 첫 회차는 기준선만(빈 목록)
+        if not items:
+            continue
+        for it in items:
+            it["machine"] = m
+        found += items
+        # ① 조사 계획에 행 추가(무엇이 언제 들어왔는지 기록)
+        if settings.cm_plan:
+            try:
+                append_cm_plan(settings.cm_plan, items, machine=m)
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"{m}: 계획 추가 실패 — {e}")
+        # ② 대상별 양식으로 자동 조사
+        by_target: dict = {}
+        for it in items:
+            by_target.setdefault((it["device"], it["lot"]), []).append(it)
+        for (dev, lotno), group in by_target.items():
+            info = form_for(settings, m, dev, lotno)
+            form = info.get("form") or ""
+            if not (form and os.path.isfile(form)):
+                notes.append(f"{m} {dev}/{lotno}: 양식 없음 — 조사 건너뜀")
+                continue
+            recipe = info.get("recipe") or lotno
+
+            def cl(_first, mag, *_rest, _m=m):     # scan_tree(4)·collate(2) 겸용
+                return coefstore.lookup(coef_rows, _m, mag)
+            try:
+                out = survey_items(
+                    group, machine=m, form_path=form, recipe=recipe,
+                    dest_xlsx=result_path(local_root, m, recipe),
+                    copy_dir=copy_root(local_root, m),
+                    coef_lookup=cl, min_match=settings.min_match)
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"{m} {dev}/{lotno}: 조사 실패 — {e}")
+                continue
+            surveyed += out.get("done") or []
+            for label, why in (out.get("flagged") or []):
+                notes.append(f"{m} {label}: {why}")
+            for label, why in (out.get("skipped") or []):
+                notes.append(f"{m} {label}: {why}")
+
+    state.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    state.last_result = (f"새 S/M {len(found)}건 · 조사 {len(surveyed)}건"
+                         if found else "새 S/M 없음")
+    save_settings(local_root, settings, state)
+    append_log(local_root, state.last_result
+               + (" | " + " / ".join(notes[:6]) if notes else ""))
+    return {"found": found, "surveyed": surveyed, "notes": notes}
 
 
 def summary(items: list[dict]) -> str:

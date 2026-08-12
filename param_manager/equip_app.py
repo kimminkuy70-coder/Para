@@ -4088,80 +4088,17 @@ class EquipApp(tk.Tk):
     # ---- 감시 설정창 -------------------------------------------------
     # ---- 회차 실행 ----------------------------------------------------
     def _cmw_cycle_work(self, s, st):
-        """감시 1회차의 순수 작업 — 스캔 → 계획 추가 → 자동 조사.
-        GUI 를 건드리지 않는다(백그라운드 스레드에서 호출)."""
+        """감시 1회차 작업을 만들어 돌려준다 — **로직은 헤드리스**(`cmwatcher.run_cycle`).
+
+        회차 오케스트레이션(스캔→계획추가→조사)을 GUI 밖에 두어야 tkinter 없이
+        테스트할 수 있다. 여기서는 self 에서 로컬 루트·변환계수만 넘긴다.
+        work() 는 백그라운드 스레드에서 호출되며 GUI 를 건드리지 않는다.
+        """
         local = self._cmw_local()
-        try:
-            plan_rows = cmwatcher.read_watch_plan(s.watch_plan)
-        except Exception as e:  # noqa: BLE001
-            raise RuntimeError(f"감시 대상 계획을 읽지 못했습니다: {e}") from e
-        roots_cfg = dict(s.roots or {})
-        found, surveyed, notes = [], [], []
+        coef_rows = list(self.coef_rows or [])
 
         def work():
-            for m in (s.machines or []):
-                root = roots_cfg.get(m) or ""
-                if not root:
-                    notes.append(f"{m}: 호기 폴더 미지정 — 건너뜀")
-                    continue
-                targets = cmwatcher.targets_for_machine(plan_rows, m)
-                if not targets:
-                    continue
-                roots = cm.scanresult_roots(root, m)
-                res = cmwatcher.scan_new(
-                    roots, targets, cmwatcher.seen_set(st, m),
-                    (st.mtimes.get(m) or {}), settle_minutes=s.settle_minutes)
-                items = cmwatcher.apply_scan(st, m, res)
-                if not items:
-                    continue
-                for it in items:
-                    it["machine"] = m
-                found += items
-                # ① 조사 계획에 행 추가(무엇이 언제 들어왔는지 기록)
-                if s.cm_plan:
-                    try:
-                        cmwatcher.append_cm_plan(s.cm_plan, items, machine=m)
-                    except Exception as e:  # noqa: BLE001
-                        notes.append(f"{m}: 계획 추가 실패 — {e}")
-                # ② 대상별 양식으로 자동 조사
-                by_target = {}
-                for it in items:
-                    by_target.setdefault((it["device"], it["lot"]), []).append(it)
-                for (dev, lotno), group in by_target.items():
-                    info = cmwatcher.form_for(s, m, dev, lotno)
-                    form = info.get("form") or ""
-                    if not (form and os.path.isfile(form)):
-                        notes.append(f"{m} {dev}/{lotno}: 양식 없음 — 조사 건너뜀")
-                        continue
-                    recipe = info.get("recipe") or lotno
-
-                    # coef_lookup 은 두 곳에서 **인자 개수가 다르게** 불린다:
-                    #   scan_tree: (equipment, mag, config_dir, variant)  — 4개
-                    #   collate:   (호기, mag)                            — 2개
-                    # 둘 다 견디게 *_rest 로 흡수한다(commonality 는 호기 고정).
-                    def cl(_first, mag, *_rest, _m=m):
-                        return coefstore.lookup(self.coef_rows, _m, mag)
-                    try:
-                        out = cmwatcher.survey_items(
-                            group, machine=m, form_path=form, recipe=recipe,
-                            dest_xlsx=cmwatcher.result_path(local, m, recipe),
-                            copy_dir=cmwatcher.copy_root(local, m),
-                            coef_lookup=cl, min_match=s.min_match)
-                    except Exception as e:  # noqa: BLE001
-                        notes.append(f"{m} {dev}/{lotno}: 조사 실패 — {e}")
-                        continue
-                    surveyed += out.get("done") or []
-                    for label, why in (out.get("flagged") or []):
-                        notes.append(f"{m} {label}: {why}")
-                    for label, why in (out.get("skipped") or []):
-                        notes.append(f"{m} {label}: {why}")
-            st.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            st.last_result = (f"새 S/M {len(found)}건 · 조사 {len(surveyed)}건"
-                              if found else "새 S/M 없음")
-            cmwatcher.save_settings(local, s, st)
-            cmwatcher.append_log(local, st.last_result
-                                 + (" | " + " / ".join(notes[:6]) if notes else ""))
-            return {"found": found, "surveyed": surveyed, "notes": notes}
+            return cmwatcher.run_cycle(s, st, local_root=local, coef_rows=coef_rows)
         return work
 
     def _cmw_run_once(self):

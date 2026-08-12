@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import openpyxl  # noqa: E402
 
 from param_manager import cmwatcher as cw  # noqa: E402
-from param_manager import commonality as cm  # noqa: E402
+from param_manager import commonality as cm
+from param_manager import engine  # noqa: E402
 
 PASS = FAIL = 0
 
@@ -477,14 +478,13 @@ def test_gui_is_wired():
     # tick 마다 TypeError 로 감시가 영원히 안 돈다(실제로 그랬다).
     assert "watcher.should_run(datetime.now(), s, st)" in app, \
         "should_run 을 올바른 시그니처(now, s, st)로 부르지 않음"
-    # ③ 회차가 스캔→계획추가→조사를 모두 부르는가
+    # ③ 회차 로직은 **헤드리스**(cmwatcher.run_cycle)에 있어야 테스트가 잡는다.
+    #    GUI 는 로컬 루트·변환계수만 넘기는 얇은 래퍼여야 한다.
     m = re.search(r"def _cmw_cycle_work.*?(?=\n    def )", app, re.S)
     assert m, "_cmw_cycle_work 를 찾지 못함"
     body = m.group(0)
-    for call in ("cmwatcher.scan_new(", "cmwatcher.apply_scan(",
-                 "cmwatcher.append_cm_plan(", "cmwatcher.survey_items("):
-        assert call in body, call
-    assert "cmwatcher.form_for(" in body, "대상별 양식을 조회하지 않음"
+    assert "cmwatcher.run_cycle(" in body, "회차 로직을 헤드리스로 부르지 않음"
+    assert "local_root=" in body and "coef_rows=" in body, "필요한 인자를 넘기지 않음"
     # 무인 회차는 모달을 띄우면 안 된다
     assert "_run_bg(" in app, "무인 회차가 백그라운드로 돌지 않음"
     # ④ 대표 S/M 은 최신순 후보에서 사람이 고른다
@@ -498,6 +498,150 @@ def test_gui_is_wired():
     print("  GUI 연결(카드·설정창·주기틱·회차·대표S/M) OK")
 
 
+def _write_watch_plan(path, rows):
+    """감시 대상 계획 엑셀 하나 — rows=[(device, lot, machine)]."""
+    cw.create_watch_plan_template(path, [
+        {"디바이스명": d, "공정번호": l, "AOI호기": m} for d, l, m in rows])
+
+
+def test_run_cycle_first_is_baseline_then_detects_and_surveys():
+    """헤드리스 회차 전체 — 첫 회차 무알림, 둘째 회차에 신규 감지+자동 조사.
+
+    GUI(_cmw_cycle_work)가 부르는 바로 그 로직이다. tkinter 없이 끝까지 돈다.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "scan"
+        local = str(Path(tmp) / "CamtekAOI")
+        rep = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD", 25)
+        form = _mk_form(tmp, rep)
+
+        plan = os.path.join(tmp, cw.WATCH_PLAN_FILENAME)
+        _write_watch_plan(plan, [("DEV1-0001", "6412", "AOI-9")])
+        cm_plan = os.path.join(tmp, cm.PLAN_FILENAME)
+
+        s, st = cw.load_settings(local)
+        s.machines = ["AOI-9"]
+        s.watch_plan, s.cm_plan = plan, cm_plan
+        s.roots = {"AOI-9": str(base)}
+        s.settle_minutes = 0                 # 테스트에선 안정화 대기 없음
+        cw.set_form(s, "AOI-9", "DEV1-0001", "6412", form, "PI3", sm="ASD")
+
+        # ── 1회차: 기존 ASD 뿐 → 기준선만, 알림 없음
+        r1 = cw.run_cycle(s, st, local_root=local, coef_rows=[])
+        assert r1["found"] == [], r1
+        assert st.baseline is True
+        assert not os.path.exists(cw.result_path(local, "AOI-9", "PI3")), \
+            "기준선 회차인데 조사 결과를 만들었다"
+
+        # ── 새 S/M 이 생김
+        _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD X20", 30)
+
+        # ── 2회차: 신규 감지 → 계획 추가 + 자동 조사
+        r2 = cw.run_cycle(s, st, local_root=local, coef_rows=[])
+        assert [i["sm"] for i in r2["found"]] == ["ASD X20"], r2["found"]
+        assert r2["surveyed"] == ["ASD X20"], r2
+        # 조사 계획 엑셀에 생성일자와 함께 추가됐다
+        added = cm.read_plan(cm_plan)
+        assert any(rr.get("S/M") == "ASD X20" for rr in added), added
+        # 결과 파일에 열이 누적됐다
+        d = cm.read_lot_result(cw.result_path(local, "AOI-9", "PI3"))
+        assert d["lots"] == ["ASD X20"], d["lots"]
+        assert d["slots"].get("ASD X20"), "조사슬롯 기록 없음"
+        # 상태가 저장됐다(다시 읽어도 기준선·마지막 결과 유지)
+        s2, st2 = cw.load_settings(local)
+        assert st2.baseline is True and "조사 1건" in st2.last_result
+    print("  run_cycle 전체(기준선→감지→계획추가→조사→저장) OK")
+
+
+def test_run_cycle_missing_form_adds_plan_but_skips_survey():
+    """양식이 없는 대상은 계획 추가·알림만, 조사는 건너뛴다(사유 남김)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "scan"
+        local = str(Path(tmp) / "CamtekAOI")
+        _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD", 25)
+        plan = os.path.join(tmp, cw.WATCH_PLAN_FILENAME)
+        _write_watch_plan(plan, [("DEV1-0001", "6412", "AOI-9")])
+        cm_plan = os.path.join(tmp, cm.PLAN_FILENAME)
+
+        s, st = cw.load_settings(local)
+        s.machines = ["AOI-9"]
+        s.watch_plan, s.cm_plan, s.roots = plan, cm_plan, {"AOI-9": str(base)}
+        s.settle_minutes = 0
+        # 양식 지정 안 함
+
+        cw.run_cycle(s, st, local_root=local)        # 기준선
+        _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD X20", 30)
+        r = cw.run_cycle(s, st, local_root=local)
+        assert [i["sm"] for i in r["found"]] == ["ASD X20"]
+        assert r["surveyed"] == [], "양식 없는데 조사함"
+        assert any("양식 없음" in n for n in r["notes"]), r["notes"]
+        # 계획에는 들어갔다(무엇이 언제 생겼는지 기록은 남겨야)
+        assert any(rr.get("S/M") == "ASD X20" for rr in cm.read_plan(cm_plan))
+        assert not os.path.exists(cw.result_path(local, "AOI-9", "PI3"))
+    print("  run_cycle 양식 없으면 계획만·조사 건너뜀 OK")
+
+
+def test_run_cycle_skips_machine_without_root():
+    """호기 폴더가 지정 안 된 호기는 건너뛰고 사유를 남긴다(예외 없이)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        local = str(Path(tmp) / "CamtekAOI")
+        plan = os.path.join(tmp, cw.WATCH_PLAN_FILENAME)
+        _write_watch_plan(plan, [("DEV1-0001", "6412", "AOI-9")])
+        s, st = cw.load_settings(local)
+        s.machines = ["AOI-9"]
+        s.watch_plan = plan
+        s.roots = {}                          # 루트 미지정
+        r = cw.run_cycle(s, st, local_root=local)
+        assert r["found"] == []
+        assert any("호기 폴더 미지정" in n for n in r["notes"]), r["notes"]
+        assert st.last_run, "실패해도 회차 시각은 기록"
+    print("  run_cycle 호기 폴더 미지정 안전 처리 OK")
+
+
+def test_run_cycle_uses_coefficient_from_rows():
+    """계수는 넘겨준 coef_rows(변환계수.xlsx)로만 적용된다 — 파일을 고치지 않는다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "scan"
+        local = str(Path(tmp) / "CamtekAOI")
+        rep = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD", 25)
+        # 대표 S/M 에 LINEAR 변환 대상(µ) 파라미터
+        (rep / "CX01" / "Zones" / "Z1.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nBrightLength=100\n",
+            encoding="utf-8")
+        form = _mk_form(tmp, rep)
+        plan = os.path.join(tmp, cw.WATCH_PLAN_FILENAME)
+        _write_watch_plan(plan, [("DEV1-0001", "6412", "AOI-9")])
+
+        s, st = cw.load_settings(local)
+        s.machines = ["AOI-9"]
+        s.watch_plan = plan
+        s.cm_plan = os.path.join(tmp, cm.PLAN_FILENAME)
+        s.roots = {"AOI-9": str(base)}
+        s.settle_minutes = 0
+        cw.set_form(s, "AOI-9", "DEV1-0001", "6412", form, "PI3", sm="ASD")
+        cw.run_cycle(s, st, local_root=local, coef_rows=[])   # 기준선
+
+        new = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD X20", 30)
+        (new / "CX01" / "Zones" / "Z1.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nBrightLength=100\n",
+            encoding="utf-8")
+        # coef 키는 (호기, MAG) — fixture OpticPreset 의 Mag(5)와 맞춰야 적용된다
+        coef_rows = [{"호기": "AOI-9", "MAG": "5", "변형": "PI",
+                      "계수": "0.5", "비고": "사람"}]
+        before = [dict(r) for r in coef_rows]
+        cw.run_cycle(s, st, local_root=local, coef_rows=coef_rows)
+
+        d = cm.read_lot_result(cw.result_path(local, "AOI-9", "PI3"))
+        length = next((r for r in d["records"]
+                       if "Length" in engine._s(r.get("Parameter"))), None)
+        assert length is not None, d["records"]
+        # BrightLength=100 raw × 계수 0.5 = 50 (기본계수면 84.6 근처)
+        assert abs(float(length["ASD X20"]) - 50.0) < 0.01, length
+        # coef_rows(변환계수.xlsx)는 읽기만 — 새 행이 붙거나 값이 바뀌면 안 된다
+        assert coef_rows == before, "회차가 변환계수를 고쳤다"
+    print("  run_cycle 계수는 coef_rows 로만 적용, 파일 무변경 OK")
+
+
 if __name__ == "__main__":
     for t in [test_watch_plan_template_and_targets, test_first_cycle_is_baseline_only,
               test_backup_scanresult_is_not_new, test_unsettled_folder_is_deferred,
@@ -508,7 +652,11 @@ if __name__ == "__main__":
               test_survey_records_slot_and_created,
               test_survey_accumulates_into_one_file,
               test_survey_skips_when_form_does_not_match,
-              test_gui_is_wired]:
+              test_gui_is_wired,
+              test_run_cycle_first_is_baseline_then_detects_and_surveys,
+              test_run_cycle_missing_form_adds_plan_but_skips_survey,
+              test_run_cycle_skips_machine_without_root,
+              test_run_cycle_uses_coefficient_from_rows]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)
