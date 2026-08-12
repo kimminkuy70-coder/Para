@@ -32,6 +32,13 @@ COPY_DELAY_SEC = 0.10
 # RTP.txt 도 함께 복사한다 — 변환 계수 자동 추정(coef_detector)에 사용.
 # ActiveScenarioOptics.ini(신 SW 만 존재) — 현재 스캔된 Scan2d optic 지정. 있을 때만 복사.
 FIXED_FILES = ["GlobalRTP.ini", "OpticPreset.ini", "RTP.txt", "ActiveScenarioOptics.ini"]
+
+# 장비 **공용** 분류 설정(Classification Editor). 레시피 폴더가 아니라 장비 1대에
+# 하나뿐이라 `\\{IP}\c$\Bis\data\dds\ManReClassify.ini` 에서 따로 가져온다.
+# 레시피마다 staging 에 같이 복사해 파서가 다른 설정파일과 같은 방식으로 읽게 한다
+# (원본은 언제나 읽기만 — copy_planned 의 안전장치를 그대로 탄다).
+MANRE_REL = ("Bis", "data", "dds", "ManReClassify.ini")
+MANRE_NAME = "ManReClassify.ini"
 LOG_NAME = "_수집로그.txt"
 
 
@@ -168,11 +175,20 @@ class CollectPlan:
 # --------------------------------------------------------------------------
 # 복사 대상 계획 + 읽기전용 복사
 # --------------------------------------------------------------------------
-def plan_files(recipe_dirs: list[Path]) -> list[tuple[Path, str, str]]:
+def manre_path(ip: str) -> Path:
+    r"""장비의 Classification Editor 설정 경로 — `\\{IP}\c$\Bis\data\dds\...`."""
+    return Path(rf"\\{ip}\c$").joinpath(*MANRE_REL)
+
+
+def plan_files(recipe_dirs: list[Path], manre: Path | None = None
+               ) -> list[tuple[Path, str, str]]:
     """선택된 Recipe 폴더들 → [(원본경로, 레시피명, 저장파일명)].
-    고정명 2종 + Zones/*.ini 만 — extractor 와 동일."""
+    고정명 + Zones/*.ini. manre 를 주면 **레시피마다** ManReClassify.ini 도 함께
+    복사 대상에 넣는다(장비 공용 파일이라 레시피 폴더에는 없다)."""
     planned = []
     for recipe_dir in recipe_dirs:
+        if manre is not None and Path(manre).is_file():
+            planned.append((Path(manre), recipe_dir.name, MANRE_NAME))
         for fixed in FIXED_FILES:
             p = recipe_dir / fixed
             if p.is_file():
@@ -272,6 +288,13 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
         job_root = job_root_override or Path(rf"\\{ip}\c$\Job")
         if not job_root.exists():
             raise RuntimeError(f"Job 폴더가 없거나 접근할 수 없습니다: {job_root}")
+        # Classification Editor 설정은 Job 밖(c$\Bis\data\dds)의 **장비 공용 파일**.
+        # 없으면 조용히 건너뛴다(구 장비/권한 없음 — 나머지 수집을 막지 않는다).
+        # 테스트/로컬 트리에서는 job_root 형제 경로에서 찾는다.
+        manre = (manre_path(ip) if job_root_override is None
+                 else Path(job_root_override).parent.joinpath(*MANRE_REL))
+        if not manre.is_file():
+            manre = None
 
         # 1) Job 폴더 목록
         job_dirs = list_dirs(job_root)
@@ -314,7 +337,7 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
                             raise UserCancelled("Setup 선택이 취소되었습니다.")
                         recipes_root = next(r for s, r in cands if s == picked[0])
                     recipe_dirs += list_dirs(recipes_root)
-                pl = plan_files(recipe_dirs)
+                pl = plan_files(recipe_dirs, manre=manre)
                 if not pl:
                     continue
                 per_level.append((lvl, base / _sanitize(lvl), pl,
@@ -387,7 +410,7 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
             if not selected:
                 raise UserCancelled("Recipe 선택이 취소되었습니다.")
 
-        planned = plan_files(selected)
+        planned = plan_files(selected, manre=manre)
         if not planned:
             raise RuntimeError("복사할 설정 파일(GlobalRTP/OpticPreset/Zones)이 없습니다.")
         if confirm is not None and not confirm(planned):

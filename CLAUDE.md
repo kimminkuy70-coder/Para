@@ -162,6 +162,10 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   섹션별 전체선택/전체해제.
 - **파싱 소스 (2026-07 변경 확정)**: `GlobalRTP.ini` + `OpticPreset.ini` + `Zones/*.ini`
   기준(extractor 방식). **RTP.txt 는 사용하지 않는다.**
+  · **`ManReClassify.ini` 추가(2026-08)** — Classification Editor 설정.
+    장비 `\\{IP}\c$\Bis\data\dds\` 에 있는 **장비 공용 파일**(레시피 폴더 아님).
+    `collector.manre_path(ip)` 로 가져와 레시피마다 staging 에 함께 복사한다
+    (`plan_files(manre=)`, 없으면 조용히 건너뜀 — 나머지 수집을 막지 않는다).
   `rtp_parser.py`의 RTP.txt 파싱은 레거시로 남아 있으나 새 불러오기 경로에서는 미사용.
 - **변형 인식 (2026-08 완화)**: 익숙한 이름은 그대로 — `BUBBLE` 포함=PI-bubble,
   `PI`/`PI3` 형=PI, `x5`/`x20`(또는 OpticPreset Scan2d Mag)=RDL 배율.
@@ -257,6 +261,7 @@ python3 tests/test_network_manners.py # 7 (빈 비밀번호 net use 금지(무�
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
 python3 tests/test_watcher.py      # 29 (주기 프리셋·시작=끝 첫실행·호기별 감시 레시피·주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
+python3 tests/test_manreclassify.py # 9 (ManReClassify: index11 MaxCount·빈필드보존·0유효·Internal Bin/고객순서·줄중간';'·양식연결·dds수집/원본무변경)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
@@ -538,6 +543,19 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   변환방식 라벨은 실제 계수 반영(`label_transform`).
   **config 폴더 파싱 대상(`config_ini_files`)**: 폴더 바로 아래는 **GlobalRTP.ini/
   OpticPreset.ini 만**(그 외 .ini 제외 — 쓸데없는 항목 방지, _N 접미사 인식) + **Zones/*.ini 전부**.
+- `param_manager/manreclassify.py` — **ManReClassify.ini 전용 파서**(Classification
+  Editor). `[General]` 각 행 = `Code=Desc,Status,Priority,Color,KeyCode,KeyModifier,
+  Intern,Display,GrabImage,Verify,Extended,MaxCount,CustomerBin0,…`.
+  · **Max Count = 쉼표 분리 0-based index 11**, Internal Bin = index 12(고객 Bin 0번),
+    고객 Bin 순서 = `[Customers]` 순서(`read_customers` — 정렬 금지, 순서가 의미).
+  · **빈 필드 보존**(연속 쉼표를 합치거나 당기면 열이 통째로 밀린다) ·
+    **MaxCount 0 은 유효**(빈 문자열만 결측) · 주석은 **줄 맨 앞 `;`** 만.
+  · **공용 `parse_ini_sections` 를 쓰면 안 된다** — `strip_comment` 가 줄 중간 `;` 를
+    자르고 `\_` 치환·형변환까지 해서 Desc/열이 깨진다. 그래서 전용 리더(`_read_sections`).
+  · 양식에 넣는 건 **Max Count 뿐**(사용자 확정) — `ini_parser._parse_manre` 가
+    Zone=`Classification`/Alg=`Max Count`/Parameter=`{코드} {분류명}`/설정키=코드로
+    ExtractRow 를 만든다. 코드가 수십 개라 **기본 사용=N**, 변환은 **RAW**(개수라
+    픽셀→µ 계수 적용 금지). 나머지 필드의 뜻은 `manreclassify.py` 상단에 적혀 있다.
 - `param_manager/collector.py` — 장비 네트워크 읽기전용 수집(net use, plan 자동 재사용).
   `FIXED_FILES`에 **RTP.txt 포함**(계수 자동 추정용). RTP.txt는 recipe 폴더에 위치.
   **Zones/ 하위구조 보존 복사**(staging 에 `Zones/*.ini` 그대로 — 파서 규칙과 일치).

@@ -27,16 +27,26 @@ DEFAULT_SCALE = 0.8456665875666588
 KNOWN_SCALES = [0.8456665875666588, 0.7696441409644141]
 SCALE = DEFAULT_SCALE   # 하위호환 별칭(과거 코드/테스트에서 참조)
 
+# ManReClassify.ini(Classification Editor) — 양식에서 고르는 값은 **Max Count 뿐**
+# (사용자 확정 2026-08). 나머지 필드(Status/Priority/Color/단축키/Display/GrabImage/
+# Verify/Extended/고객 Bin)는 manreclassify.py 에 뜻을 적어 두었고 양식에는 넣지 않는다.
+# 코드가 수십 개라 기본은 전부 **사용=N** — 사람이 볼 것만 체크한다.
+MANRE_ZONE = "Classification"
+MANRE_ALG = "Max Count"
+
 # 파일명이 고정인 설정파일 → 상위항목
 FIXED_FILE_TOP = {
     "globalrtp.ini": "Global",
     "opticpreset.ini": "OpticPreset",
+    # 장비 공용 분류 설정(c$\Bis\data\dds) — 수집기가 레시피 폴더로 복사해 온다.
+    "manreclassify.ini": "ManReClassify",
 }
 
 # 상위항목 → 공용 파일 Zone 라벨 (기존 양식과 통일: 광학/광원은 LIGHT Zone)
 TOP_TO_ZONE = {
     "Global": "GlobalRTP",
     "OpticPreset": "LIGHT",
+    "ManReClassify": MANRE_ZONE,
 }
 
 # GlobalRTP Zone: 양식 초안에서 기본 사용=Y 로 둘 파라미터(표시명). 나머지는 N(검토용).
@@ -522,6 +532,41 @@ def _parse_optic(file_path: Path, sections: dict, zone: str = "LIGHT",
     return out
 
 
+def _parse_manre(file_path: Path) -> list[ExtractRow]:
+    """ManReClassify.ini → **Max Count 행만** ExtractRow 로.
+
+    양식에서 고르는 건 '어떤 분류의 Max Count 를 볼지' 뿐이다(사용자 확정).
+    나머지 필드(Status/Priority/Color/단축키/Display/GrabImage/Verify/Extended/
+    고객 Bin)는 `manreclassify.py` 에 뜻을 적어 두었지만 양식에는 넣지 않는다.
+
+    · 코드가 수십 개라 기본은 전부 **사용=N** — 사람이 볼 것만 체크한다.
+    · Max Count **0 도 유효**하므로 값이 있으면 다 넣는다(빈 문자열만 뺀다).
+    · 변환은 RAW — 개수라서 픽셀→µ 계수를 적용하면 안 된다.
+    """
+    from . import manreclassify as manre
+    out: list[ExtractRow] = []
+    try:
+        rows = manre.read_rows(file_path)
+    except OSError:
+        return out
+    for r in rows:
+        if not r.has_max_count:
+            continue
+        out.append(ExtractRow(
+            zone=MANRE_ZONE, alg=MANRE_ALG, param=r.label,
+            value=parse_raw_value(r.max_count), unit="",
+            src_file=file_path.name, section=manre.SECTION_GENERAL, key=r.code,
+            raw=parse_raw_value(r.max_count), transform="RAW",
+            source_path=str(file_path), use_default=False))
+    return out
+
+
+def is_manre_file(file_path: Path) -> bool:
+    """복사 중복회피 접미사(ManReClassify_2.ini)도 같은 파일로 인식."""
+    from . import manreclassify as manre
+    return manre.is_manre_file(file_path)
+
+
 def _is_optic_file(file_path: Path, prefix: str = "") -> bool:
     base = re.sub(r"_\d+$", "", file_path.stem.lower())
     return base == f"{prefix}opticpreset".lower()
@@ -531,6 +576,10 @@ def parse_ini_file(file_path: Path, scale: float = DEFAULT_SCALE,
                    recipe_prefix: str = "") -> list[ExtractRow]:
     """설정파일 1개 → ExtractRow 목록. scale = LINEAR/AREA 변환 계수(변형별).
     recipe_prefix 를 주면 그 레시피의 OpticPreset/ActiveScenarioOptics 를 대상으로 판정."""
+    # ManReClassify.ini 는 값이 **쉼표로 나뉜 위치 기반**이라 공용 ini 파서를 쓰면
+    # 안 된다(줄 중간 ';' 절단·형변환으로 열이 밀린다). 전용 파서로 보낸다.
+    if is_manre_file(file_path):
+        return _parse_manre(file_path)
     sections = parse_ini_sections(file_path)
     # OpticPreset: 신 SW 는 ActiveScenarioOptics.ini 로 Scan2d optic 지정, 구 SW 는
     # 마지막 광원 섹션(이름 무관) 통일 규칙 적용.
