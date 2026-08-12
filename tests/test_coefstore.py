@@ -106,6 +106,63 @@ def test_apply_form_scales_overwrites_and_persists():
         assert len(rows) == 2
     print("  coefstore OK: 양식 확정 계수 반영(덮어쓰기·MAG 없으면 변형 매칭)")
 
+def test_value_update_never_writes_coefstore():
+    """**값을 읽는 작업은 `변환계수.xlsx` 를 고치지 않는다**(사용자 확정 2026-08).
+
+    실제 사고: 조회 콜백이 (호기,MAG) 를 못 찾으면 RTP.txt 로 계수를 자동 추정해
+    파일에 써 넣었다. 장비에서 target optic 이 바뀌면 MAG 이 달라지므로, 사람이
+    넣은 값 대신 추정값이 새 행으로 들어가 **값 업데이트를 돌릴 때마다 계수가
+    바뀌었다**. 소스 수준에서 다시 들어오지 못하게 막는다.
+    """
+    import re
+    src_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "param_manager")
+    with open(os.path.join(src_dir, "equip_app.py"), encoding="utf-8") as fh:
+        app = fh.read()
+
+    m = re.search(r"def _coef_lookup_cb.*?(?=\n    def )", app, re.S)
+    assert m, "_coef_lookup_cb 를 찾지 못함"
+    body = m.group(0)
+    assert "coefstore.lookup(" in body, "저장소 조회를 하지 않음"
+    # 조회 콜백은 **읽기만** 한다
+    assert "upsert" not in body, "조회 경로에서 변환계수를 쓰고 있음"
+    assert "coef_detector" not in body, "조회 경로에서 계수를 자동 추정하고 있음"
+    assert "coefstore.save" not in body, "조회 경로에서 파일을 저장하고 있음"
+
+    # 파일을 쓰는 곳은 **사람이 양식에서 확정할 때 하나뿐**
+    writers = [mm.group(0) for mm in
+               re.finditer(r"    def _[a-z_]+\(self.*?(?=\n    def )", app, re.S)
+               if "coefstore.save(" in mm.group(0)]
+    names = [re.match(r"    def (\w+)", w).group(1) for w in writers]
+    assert names == ["_coef_from_form"], names
+    assert "apply_form_scales" in writers[0], "사람 확정 경로가 아님"
+
+    # 파싱 경로(값 업데이트)는 저장을 부르지 않는다
+    pm = re.search(r"def _parse_sources_busy.*?(?=\n    def )", app, re.S)
+    assert pm and "coefstore.save" not in pm.group(0), "값 업데이트가 파일을 저장함"
+
+    # 못 찾은 건 조용히 넘기지 말고 알린다
+    rm = re.search(r"def _coef_report_missing.*?(?=\n    def )", app, re.S)
+    assert rm and "_set_status" in rm.group(0), "계수 없음을 알리지 않음"
+    assert "self.after(0" in rm.group(0), "백그라운드에서 tkinter 를 직접 만짐"
+    print("  coefstore OK: 값 읽기는 변환계수.xlsx 를 고치지 않음(사람 확정만 씀)")
+
+
+def test_lookup_only_reads():
+    """조회는 파일 내용을 바꾸지 않는다 — 없으면 None(추정 금지)."""
+    rows = [{"호기": "AOI-13", "MAG": "3.14", "변형": "PI",
+             "계수": "0.8456665875666588", "비고": "사람 확정"}]
+    before = [dict(r) for r in rows]
+    cb = coefstore.make_lookup(rows)
+    assert cb("AOI-13", "3.14") == 0.8456665875666588
+    # MAG 이 다르거나 없으면 **None** — 새 행을 만들지 않는다
+    assert cb("AOI-13", "3.20") is None
+    assert cb("AOI-13", "") is None
+    assert cb("AOI-99", "3.14") is None
+    assert rows == before, "조회가 저장소를 바꿨다"
+    print("  coefstore OK: lookup 은 읽기 전용(없으면 None)")
+
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

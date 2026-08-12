@@ -208,11 +208,19 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
 - **변환 계수(scale)**: 단일 하드코딩 금지. `ini_parser.transform_value(raw, transform, scale)`.
   **장비 렌즈 특성 → 계수는 (호기 + MAG)마다 다름(2026-07 확정)**. 같은 호기·같은 MAG면
   레시피 달라도 동일. MAG = OpticPreset 최신 Scan2d 의 `Mag`(예 3.14, `ini_parser.read_optic_mag`).
-  저장 = 저장폴더 `변환계수.xlsx`[호기,MAG,변형,계수,비고](`coefstore.py`, 사람 관리 + 수집 시
-  RTP.txt 자동추정 upsert). **양식에서 계수를 고쳐 확정하면 그 값이 변환계수.xlsx 에도
-  반영**된다(`coefstore.apply_form_scales` — 사람 확정이므로 덮어씀. MAG 는 편집기 피벗의
-  `mags`, 기존 양식 재편집처럼 MAG 를 모르면 (호기,변형) 행을 갱신. GUI=`_coef_from_form`). 적용 = `scan_tree(coef_lookup=)`가 (호기,MAG)로 조회(없으면 자동
-  추정→저장, 그래도 없으면 구 `scales`/기본). 값확인 화면 `AOI-xx : PI` 옆에 변형별 계수 표시.
+  저장 = 저장폴더 `변환계수.xlsx`[호기,MAG,변형,계수,비고](`coefstore.py`) — **오직 사람이
+  관리한다**.
+  · **값을 읽는 작업은 이 파일을 절대 고치지 않는다(2026-08 확정, 재발 금지)**.
+    종전에는 `_coef_lookup_cb` 가 (호기,MAG) 조회에 실패하면 RTP.txt 로 계수를
+    **자동 추정해 파일에 써 넣었다**. target optic 이 바뀌면 MAG 이 달라지므로
+    사람이 넣은 값 대신 추정 행이 붙어 **값 업데이트를 돌릴 때마다 계수가 바뀌었다**
+    (실제 사고). 이제 조회는 읽기 전용이고, 못 찾으면 `None` → `scales`/기본으로
+    폴백하며 **못 찾은 (호기,MAG)를 상태바로 알린다**(`_coef_report_missing`).
+  · 파일을 쓰는 곳은 **`_coef_from_form` 하나뿐** — 사람이 양식에서 계수를 확정할
+    때만(`coefstore.apply_form_scales`, 사람 확정이므로 덮어씀. MAG 는 편집기 피벗의
+    `mags`, 기존 양식 재편집처럼 MAG 를 모르면 (호기,변형) 행을 갱신).
+  · `coef_detector` 는 **양식 만들기 계수 입력창의 추천값**으로만 쓴다(사람이 확정).
+  적용 = `scan_tree(coef_lookup=)`가 (호기,MAG)로 **조회만**(없으면 구 `scales`/기본). 값확인 화면 `AOI-xx : PI` 옆에 변형별 계수 표시.
   구 방식(변형별 `추출_요약`)은 폴백으로 유지. 정확값 `0.8456665875666588`/`0.7696441409644141`.
 - **IP↔호기**: 값 업데이트 수집 시 IP를 **호기(AOI-xx)에 매칭**(IP-파생 열 생성 금지).
 - **변형 라벨 표기**: 버블은 하이픈 `PI-bubble`로 통일(언더스코어 `PI_bubble` 아님).
@@ -310,7 +318,7 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 14 (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결)
 python3 tests/test_commonality.py  # 25 (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
-python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
+python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+MAG) I/O·lookup 읽기전용·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)

@@ -2677,30 +2677,30 @@ class EquipApp(tk.Tk):
                   pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=6)
 
     def _coef_lookup_cb(self, fixed_machine=None):
-        """scan_tree 용 변환계수 콜백 — (호기,MAG) 저장소 우선, 없으면 RTP.txt 로 자동
-        추정해 upsert(사람값 우선). fixed_machine 을 주면(commonality: 조사 호기 1대)
-        파싱 태그(equipment=S/M)를 무시하고 그 호기로 조회·저장. 반환: (콜백, 변경 dict)."""
-        state = {"changed": 0}
+        """scan_tree 용 변환계수 콜백 — **`변환계수.xlsx` 만 본다**(사용자 확정 2026-08).
+
+        종전에는 (호기,MAG) 조회가 실패하면 RTP.txt 로 계수를 **자동 추정해서 파일에
+        써 넣었다**. 그래서 장비에서 MAG 이 조금만 달라져도(= target optic 이 바뀌면
+        달라진다) 사람이 넣은 값 대신 추정값이 새 행으로 들어가, **값 업데이트를 돌릴
+        때마다 계수가 바뀌는** 일이 생겼다. 값을 읽는 작업이 설정 파일을 고치면 안 된다.
+
+        이제 조회만 하고, 없으면 None 을 돌려준다(scan_tree 가 `scales`/기본값으로
+        폴백). 저장소를 고치는 건 **사람이 양식에서 계수를 확정할 때뿐**이다
+        (`coefstore.apply_form_scales`).
+        미조회 건은 `state["missing"]` 에 모아 두어 화면에서 알릴 수 있다.
+        fixed_machine 을 주면(commonality: 조사 호기 1대) 파싱 태그를 무시하고 그 호기로 본다.
+        """
+        state = {"changed": 0, "missing": []}
 
         def cb(equipment, mag_value, config_dir=None, variant=""):
             if fixed_machine:
                 equipment = fixed_machine
             c = coefstore.lookup(self.coef_rows, equipment, mag_value)
-            if c is not None:
-                return c
-            if config_dir is not None and engine._s(equipment).strip():
-                try:
-                    coef = coef_detector.detect_from_dir(config_dir).get("Coefficient")
-                except Exception:  # noqa: BLE001
-                    coef = None
-                if coef:
-                    if coefstore.upsert(self.coef_rows, equipment, mag_value, coef, variant):
-                        state["changed"] += 1
-                    try:
-                        return float(coef)
-                    except (TypeError, ValueError):
-                        return None
-            return None
+            if c is None:
+                key = (engine._s(equipment).strip(), engine._s(mag_value).strip())
+                if key[0] and key not in state["missing"]:
+                    state["missing"].append(key)
+            return c
         return cb, state
 
     def _form_mags(self, rows, aoi) -> dict:
@@ -2743,16 +2743,26 @@ class EquipApp(tk.Tk):
             return 0
         return n
 
-    def _coef_save_if_changed(self, state):
-        if state.get("changed") and self.save_dir:
-            try:
-                coefstore.save(coefstore.coef_path(self.save_dir), self.coef_rows)
-            except Exception:  # noqa: BLE001
-                pass
+    def _coef_report_missing(self, state):
+        """**값을 읽는 작업은 `변환계수.xlsx` 를 쓰지 않는다**(사용자 확정 2026-08).
+
+        파일을 고치는 건 사람이 양식에서 계수를 확정할 때뿐이다(`_coef_from_form`).
+        여기서는 계수를 못 찾은 (호기, MAG) 만 상태바로 알린다 — 조용히 추정값을
+        만들어 쓰면 왜 값이 달라졌는지 알 수 없다.
+        """
+        miss = state.get("missing") or []
+        if not miss:
+            return
+        head = ", ".join(f"{m}(MAG {g or '-'})" for m, g in miss[:4])
+        more = f" 외 {len(miss) - 4}건" if len(miss) > 4 else ""
+        msg = (f"변환계수 없음: {head}{more} — 기본 계수로 계산했습니다. "
+               "변환계수.xlsx 에 값을 넣어 주세요.")
+        # 파싱은 백그라운드 스레드에서 돈다 — tkinter 위젯은 GUI 스레드에서만 만진다.
+        self.after(0, lambda: self._set_status(msg, warn=True))
 
     def _parse_sources_busy(self, sources, on_ready, default_level="", scales=None):
-        """수집/로컬 폴더 → 파싱 피벗을 백그라운드로 계산. 변환계수는 (호기,MAG) 저장소
-        기준(없으면 RTP.txt 자동추정·저장). scales 는 폴백."""
+        """수집/로컬 폴더 → 파싱 피벗을 백그라운드로 계산.
+        변환계수는 **`변환계수.xlsx` 만** 본다(자동추정·자동저장 없음). scales 는 폴백."""
         def work():
             cb, state = self._coef_lookup_cb()
             cfgs = []
@@ -2763,7 +2773,7 @@ class EquipApp(tk.Tk):
                                              coef_lookup=cb)
             valid = [c for c in cfgs if ini_parser.config_valid(c)]
             rows, machines = ini_parser.build_pivot(valid)
-            self._coef_save_if_changed(state)
+            self._coef_report_missing(state)
             return rows, machines
 
         def done(ok, res):
@@ -4591,7 +4601,7 @@ class EquipApp(tk.Tk):
             cb, cstate = self._coef_lookup_cb(fixed_machine=machine)
             pivot, labels = cm.parse_lots([(cand["sm"], Path(slot_dir))],
                                           level=recipe, coef_lookup=cb)
-            self._coef_save_if_changed(cstate)
+            self._coef_report_missing(cstate)
             return pivot, labels
 
         def done(ok, res):
@@ -5234,7 +5244,7 @@ class EquipApp(tk.Tk):
             cb, cstate = self._coef_lookup_cb(fixed_machine=m)   # 조사 호기 1대 기준
             pivot, labels = cm.parse_lots(lot_dirs, level=recipe, scales=scale_map,
                                           coef_lookup=cb, recipe_prefix=recipe_prefix)
-            self._coef_save_if_changed(cstate)
+            self._coef_report_missing(cstate)
             return pivot, labels
 
         def done(ok, res):
@@ -8021,7 +8031,7 @@ class EquipApp(tk.Tk):
                                          default_equipment=aoi, coef_lookup=cb)
         valid = [c for c in cfgs if ini_parser.config_valid(c)]
         rows, _ = ini_parser.build_pivot(valid)
-        self._coef_save_if_changed(cstate)
+        self._coef_report_missing(cstate)
         watcher.append_log(self.save_dir,
                            f"수집 완료 — 장비 {len(sources)}건, 파라미터 {len(rows)}행")
         # 파싱이 끝나면 임시 수집본은 더 필요 없다 — 즉시 삭제(누적 방지).
