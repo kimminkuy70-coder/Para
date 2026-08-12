@@ -473,7 +473,10 @@ def test_gui_is_wired():
     assert "def _cmw_tick(" in app and "self.after(40_000, self._cmw_tick)" in app, \
         "주기 확인 타이머가 시작되지 않음"
     assert "self.after(60_000, self._cmw_tick)" in app, "틱이 스스로 다시 예약되지 않음"
-    assert "watcher.should_run(s, st)" in app, "주기 판단을 하지 않음"
+    # should_run(now, settings, state) — now 가 첫 인자다. 인자를 빼먹으면
+    # tick 마다 TypeError 로 감시가 영원히 안 돈다(실제로 그랬다).
+    assert "watcher.should_run(datetime.now(), s, st)" in app, \
+        "should_run 을 올바른 시그니처(now, s, st)로 부르지 않음"
     # ③ 회차가 스캔→계획추가→조사를 모두 부르는가
     m = re.search(r"def _cmw_cycle_work.*?(?=\n    def )", app, re.S)
     assert m, "_cmw_cycle_work 를 찾지 못함"

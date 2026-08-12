@@ -4135,7 +4135,11 @@ class EquipApp(tk.Tk):
                         continue
                     recipe = info.get("recipe") or lotno
 
-                    def cl(_lot, mag, _m=m):
+                    # coef_lookup 은 두 곳에서 **인자 개수가 다르게** 불린다:
+                    #   scan_tree: (equipment, mag, config_dir, variant)  — 4개
+                    #   collate:   (호기, mag)                            — 2개
+                    # 둘 다 견디게 *_rest 로 흡수한다(commonality 는 호기 고정).
+                    def cl(_first, mag, *_rest, _m=m):
                         return coefstore.lookup(self.coef_rows, _m, mag)
                     try:
                         out = cmwatcher.survey_items(
@@ -4191,7 +4195,7 @@ class EquipApp(tk.Tk):
             if (s.enabled and s.machines and s.watch_plan
                     and os.path.isfile(s.watch_plan)
                     and not getattr(self, "_cmw_busy", False)
-                    and watcher.should_run(s, st)):
+                    and watcher.should_run(datetime.now(), s, st)):
                 self._cmw_busy = True
 
                 def done(ok, res):
