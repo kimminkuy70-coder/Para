@@ -248,6 +248,13 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
     장비 `\\{IP}\c$\Bis\data\dds\` 에 있는 **장비 공용 파일**(레시피 폴더 아님).
     `collector.manre_path(ip)` 로 가져와 레시피마다 staging 에 함께 복사한다
     (`plan_files(manre=)`, 없으면 조용히 건너뜀 — 나머지 수집을 막지 않는다).
+  · **commonality 는 Max Count 를 조사하지 않는다(2026-08 확정, 재발 금지)**:
+    ManReClassify 는 장비 C드라이브 공용 파일이라 **Scanresult 슬롯에는 없다**.
+    그런데 `config_ini_files` 의 고정 파일 집합에 `manreclassify.ini` 가 들어 있어,
+    슬롯에 어쩌다 끼어 있으면(장비가 저장했거나 잘못 복사됐거나) commonality 파싱이
+    Max Count 행을 만들어 조사에 섞였다. → `config_ini_files(include_manre=False)` /
+    `scan_tree(include_manre=False)` 로 **commonality 경로에서만 제외**한다
+    (`commonality._lot_configs`·`form_preflight`). 양식 만들기(장비 수집)는 그대로 포함.
   `rtp_parser.py`의 RTP.txt 파싱은 레거시로 남아 있으나 새 불러오기 경로에서는 미사용.
 - **변형 인식 (2026-08 완화)**: 익숙한 이름은 그대로 — `BUBBLE` 포함=PI-bubble,
   `PI`/`PI3` 형=PI, `x5`/`x20`(또는 OpticPreset Scan2d Mag)=RDL 배율.
@@ -344,7 +351,7 @@ python3 tests/test_network_manners.py # 7 (빈 비밀번호 net use 금지(무�
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
 python3 tests/test_watcher.py      # 29 (주기 프리셋·시작=끝 첫실행·호기별 감시 레시피·주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
-python3 tests/test_manreclassify.py # 9 (ManReClassify: index11 MaxCount·빈필드보존·0유효·Internal Bin/고객순서·줄중간';'·양식연결·dds수집/원본무변경)
+python3 tests/test_manreclassify.py # 10 (ManReClassify: index11 MaxCount·빈필드보존·0유효·Internal Bin/고객순서·줄중간';'·양식연결·commonality제외·dds수집/원본무변경)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8

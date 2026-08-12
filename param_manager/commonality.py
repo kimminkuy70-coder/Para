@@ -546,7 +546,8 @@ def form_preflight(lot_dirs: list[tuple[str, Path]]) -> dict:
                           if exists else False)
             active[name] = {"file": bool(exists), "scan2d": bool(has_scan2d)}
             # 이 접두로 **실제 파싱될** 파일 목록 — 파서와 같은 함수를 쓴다.
-            got = ini_parser.config_ini_files(Path(cfg), prefix)
+            # commonality 라 ManReClassify(Max Count)는 대상에서 제외(값 조사와 동일 기준).
+            got = ini_parser.config_ini_files(Path(cfg), prefix, include_manre=False)
             zones = sum(1 for p in got
                         if p.parent.name.lower().endswith("zones"))
             optic = any("opticpreset" in p.name.lower() for p in got)
@@ -566,10 +567,12 @@ def _lot_configs(config_dir: Path, lot_label: str, level: str,
     recipe_prefix 를 주면 그 레시피(RecipeN-) 파일만 파싱(다중 레시피)."""
     # folder_variant=False: 여기서 config 폴더는 Lot 의 **슬롯 폴더**(CX01 …)다.
     # 폴더명을 변형 라벨로 쓰면 Lot 마다 변형이 달라져 값이 한 줄로 모이지 않는다.
+    # include_manre=False: ManReClassify.ini(Max Count)는 장비 C드라이브 공용 파일이라
+    # Scanresult 슬롯에는 없어야 한다 — 있어도 commonality 조사 대상이 아니다.
     return ini_parser.scan_tree(config_dir, default_level=level,
                                 default_equipment=lot_label, scales=scales,
                                 coef_lookup=coef_lookup, recipe_prefix=recipe_prefix,
-                                folder_variant=False)
+                                folder_variant=False, include_manre=False)
 
 
 def parse_lots(lot_dirs: list[tuple[str, Path]], level: str = "",

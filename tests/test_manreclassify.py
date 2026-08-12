@@ -183,6 +183,40 @@ def test_flows_into_form_pivot():
     print("  양식 피벗 연결(Max Count 만·사용=N·RAW) OK")
 
 
+def test_commonality_excludes_max_count():
+    """commonality 는 ManReClassify(Max Count)를 파싱하지 않는다.
+
+    ManReClassify.ini 는 장비 C드라이브 공용 파일(`c$\\Bis\\data\\dds`)이지
+    Scanresult 데이터가 아니다. 슬롯 폴더에 어쩌다 끼어 있어도 commonality 조사
+    대상이 아니어야 한다(사용자 확정). 양식 만들기(장비 수집)는 그대로 포함한다."""
+    from param_manager import commonality as cm  # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as tmp:
+        slot = Path(tmp) / "ASD" / "CX01"        # Lot 슬롯 폴더
+        (slot / "Zones").mkdir(parents=True)
+        (slot / "GlobalRTP.ini").write_text("[GLOBAL_RTP]\nMaxFaultsPerWafer=3000\n",
+                                            encoding="utf-8")
+        (slot / "Zones" / "Z1.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta=25\n",
+            encoding="utf-8")
+        # 슬롯에 ManReClassify 가 끼어 있어도(장비가 저장했든 잘못 복사됐든)
+        (slot / manre.FILENAME).write_text(SAMPLE, encoding="utf-8")
+
+        # commonality 파싱 대상 목록에서 제외돼야 한다
+        got = {p.name for p in ini_parser.config_ini_files(slot, include_manre=False)}
+        assert manre.FILENAME not in got, got
+        assert "GlobalRTP.ini" in got, "나머지는 그대로 읽혀야 한다"
+
+        # commonality parse_lots → 피벗에 Classification/Max Count 행이 없어야 한다
+        pivot, _labels = cm.parse_lots([("ASD", slot)], level="PI3")
+        cls = [r for r in pivot if r["zone"] == ini_parser.MANRE_ZONE]
+        assert cls == [], [r["param"] for r in cls]
+
+        # 대조: 양식 만들기(기본 include_manre=True)는 그대로 포함한다
+        got2 = {p.name for p in ini_parser.config_ini_files(slot)}
+        assert manre.FILENAME in got2, got2
+    print("  commonality 는 Max Count 제외 / 양식 만들기는 포함 OK")
+
+
 def test_collector_copies_from_dds_read_only():
     """장비 공용 파일을 `c$\\Bis\\data\\dds` 에서 가져오고 **원본은 건드리지 않는다**."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -243,7 +277,8 @@ if __name__ == "__main__":
     for t in [test_max_count_is_field_11, test_empty_fields_are_preserved,
               test_zero_is_valid_not_missing, test_internal_bin_and_customer_order,
               test_comment_only_at_line_start, test_short_row_and_duplicate_code,
-              test_flows_into_form_pivot, test_collector_copies_from_dds_read_only,
+              test_flows_into_form_pivot, test_commonality_excludes_max_count,
+              test_collector_copies_from_dds_read_only,
               test_missing_file_is_not_fatal]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")

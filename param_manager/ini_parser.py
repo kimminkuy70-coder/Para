@@ -614,13 +614,16 @@ def is_config_dir(d: Path) -> bool:
             or (d / "Zones").is_dir())
 
 
-def config_ini_files(d: Path, prefix: str = "") -> list[Path]:
+def config_ini_files(d: Path, prefix: str = "",
+                     include_manre: bool = True) -> list[Path]:
     """config 폴더의 파싱 대상 ini 목록.
-    **폴더 바로 아래는 GlobalRTP.ini / OpticPreset.ini 만**(그 외 다른 .ini 는 제외 —
-    양식에 쓸데없는 항목이 끼지 않게), **Zones/ 하위는 .ini 전부**.
+    **폴더 바로 아래는 GlobalRTP.ini / OpticPreset.ini (+ManReClassify.ini) 만**
+    (그 외 다른 .ini 는 제외 — 양식에 쓸데없는 항목이 끼지 않게), **Zones/ 하위는 .ini 전부**.
     복사 중복회피로 붙는 _N 접미사(GlobalRTP_2.ini 등)도 고정명으로 인식.
     prefix 를 주면 그 레시피의 파일(`{prefix}OpticPreset.ini`, `{prefix}Zones/*.ini`,
-    GlobalRTP 는 접두본 우선·없으면 공유)만 반환한다(다중 레시피 Recipe N)."""
+    GlobalRTP 는 접두본 우선·없으면 공유)만 반환한다(다중 레시피 Recipe N).
+    include_manre=False 면 ManReClassify.ini 를 제외한다(commonality 전용 — Scanresult
+    에는 없어야 하는 장비 공용 파일이라, 있어도 조사에 넣지 않는다)."""
     d = Path(d)
     if prefix:                            # 다중 레시피: 해당 레시피 파일만
         files: list[Path] = []
@@ -637,7 +640,9 @@ def config_ini_files(d: Path, prefix: str = "") -> list[Path]:
             files += sorted([p for p in zdir.glob("*.ini") if p.is_file()],
                             key=lambda x: x.name.lower())
         return files
-    fixed = set(FIXED_FILE_TOP)          # {"globalrtp.ini", "opticpreset.ini"}
+    fixed = set(FIXED_FILE_TOP)          # {globalrtp.ini, opticpreset.ini, manreclassify.ini}
+    if not include_manre:                # commonality: ManReClassify 는 대상 아님
+        fixed.discard("manreclassify.ini")
     files = []
     for p in sorted(d.glob("*.ini"), key=lambda x: x.name.lower()):
         if not p.is_file():
@@ -772,14 +777,18 @@ def scan_tree(root: str | Path, default_level: str = "",
               default_equipment: str = "", scale: float = DEFAULT_SCALE,
               scales: dict | None = None, coef_lookup=None,
               recipe_prefix: str = "",
-              folder_variant: bool = True) -> list[ParsedConfig]:
+              folder_variant: bool = True,
+              include_manre: bool = True) -> list[ParsedConfig]:
     """폴더트리 → config 폴더별 ParsedConfig (ini 소스 전용, RTP.txt 미사용).
 
     변환계수 결정 우선순위(장비 렌즈 특성 = 호기×변형 마다 다름):
       1) coef_lookup(equipment, variant) 가 값을 주면 그걸 사용,
       2) 없으면 scales[변형라벨](구 방식), 3) 그래도 없으면 scale(기본).
     coef_lookup 은 '변환계수.xlsx'(호기+변형) 를 읽는 콜백(GUI/호출측이 주입).
-    MAG(mag_value)는 참고·표시용으로만 계속 뽑는다(매칭에는 쓰지 않는다)."""
+    MAG(mag_value)는 참고·표시용으로만 계속 뽑는다(매칭에는 쓰지 않는다).
+    include_manre=False 면 ManReClassify.ini(Max Count)를 파싱 대상에서 뺀다 —
+    commonality 는 Scanresult(슬롯 폴더)만 읽고 ManReClassify 는 장비 C드라이브
+    공용 파일이라 여기 있으면 안 되므로(있어도 조사 대상이 아니다)."""
     scales = scales or {}
     res: list[ParsedConfig] = []
     for cdir in find_config_dirs(Path(root)):
@@ -795,7 +804,7 @@ def scan_tree(root: str | Path, default_level: str = "",
         if use_scale is None:
             use_scale = scales.get(meta["mag"], scale)
         rows: list[ExtractRow] = []
-        for f in config_ini_files(cdir, recipe_prefix):
+        for f in config_ini_files(cdir, recipe_prefix, include_manre=include_manre):
             rows += parse_ini_file(f, use_scale, recipe_prefix=recipe_prefix)
         res.append(ParsedConfig(meta["equipment"], meta["layer"], meta["recipe"],
                                 meta["mag"], cdir, rows, mag_value=mag_value,
