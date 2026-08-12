@@ -320,7 +320,13 @@ def copy_one_file(src: Path, dst: Path, overwrite: bool = False, verify: bool = 
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists() and not overwrite:
         dst = get_non_conflict_path(dst)
+    # 안전장치(원본 보호): 목적지·임시파일이 원본과 같은 경로면 거부한다.
+    # dst==src 에서 overwrite=True 면 dst.unlink() 이 **원본을 지운다** — collector 와
+    # 같은 불변식으로 원천 차단(장비 원본은 절대 수정/삭제하지 않는다).
+    src_r = Path(src).resolve()
     tmp = dst.with_name(dst.name + ".part")
+    if src_r in (Path(dst).resolve(), Path(tmp).resolve()):
+        raise RuntimeError(f"안전장치: 원본과 동일 경로에 쓰기 금지(원본 보호): {src}")
     if tmp.exists():
         tmp.unlink()
     shutil.copy2(src, tmp)        # 원본은 읽기만, 목적지에만 씀

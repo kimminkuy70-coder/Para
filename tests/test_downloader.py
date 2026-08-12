@@ -109,6 +109,37 @@ def test_source_unchanged():
         print("  원본 무변경 OK")
 
 
+def test_copy_never_damages_source_even_if_dest_equals_source():
+    """목적지가 원본과 같아도 원본은 절대 지워지거나 바뀌지 않는다.
+
+    · overwrite=True + dst==src : 종전엔 dst.unlink() 로 **원본을 삭제**했다 → 거부한다.
+    · overwrite=False + dst==src: 이미 있으므로 `_1` 사본을 만들고 원본은 그대로 둔다
+      (collector 와 같은 불변식). 어느 경우든 원본 내용·mtime 은 불변."""
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "Zones" / "Z.ini"
+        src.parent.mkdir(parents=True)
+        src.write_text("ORIGINAL", encoding="utf-8")
+        before = (src.read_bytes(), src.stat().st_mtime_ns)
+
+        # overwrite=True 는 원본 삭제 위험 → 반드시 거부
+        try:
+            dl.copy_one_file(src, src, overwrite=True)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("overwrite=True 에서 원본==목적지를 거부하지 않음")
+
+        # overwrite=False 는 사본(_1)을 만들고 원본은 보존(예외 없이)
+        res = dl.copy_one_file(src, src, overwrite=False)
+        assert Path(res["dst"]).resolve() != src.resolve(), res
+        assert Path(res["dst"]).is_file(), "사본이 생기지 않음"
+
+        # 어느 경우든 원본은 내용·mtime 그대로여야 한다
+        assert src.is_file() and src.read_bytes() == before[0], "원본 내용 변경됨"
+        assert src.stat().st_mtime_ns == before[1], "원본 mtime 변경됨"
+    print("  원본==목적지라도 원본 무손상(overwrite=True 거부·False 사본) OK")
+
+
 def test_manual_real_path():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
