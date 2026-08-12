@@ -466,10 +466,14 @@ def test_gui_is_wired():
     with open(os.path.join(src_dir, "equip_app.py"), encoding="utf-8") as fh:
         app = fh.read()
     assert "from . import cmwatcher" in app, "cmwatcher 를 import 하지 않음"
-    # ① 탭 카드 + 설정창
-    for name in ("_cm_watch_card", "_cmw_dialog", "_cmw_forms_dialog",
+    # ① 탭 최상단 감시 배너 + 설정창
+    for name in ("_cm_watch_banner", "_cmw_dialog", "_cmw_forms_dialog",
                  "_cmw_make_form", "_cmw_build_form"):
         assert f"def {name}(" in app, name
+    # 감시 배너는 조사 단계(Step 1)보다 **먼저**(최상단) 그려져야 한다 —
+    # 탭에 들어오면 바로 보이게(종전엔 맨 아래 7번이라 초기 화면에서 안 보였다).
+    assert app.index("self._cm_watch_banner(inner)") < app.index("조사할 장비(호기) 선택"), \
+        "감시 배너가 조사 단계보다 위에 있지 않음(초기 화면에서 안 보임)"
     # ② 주기 실행이 실제로 걸려 있어야 한다(안 걸면 영원히 안 돈다)
     assert "def _cmw_tick(" in app and "self.after(40_000, self._cmw_tick)" in app, \
         "주기 확인 타이머가 시작되지 않음"

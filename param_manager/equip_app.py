@@ -3978,6 +3978,13 @@ class EquipApp(tk.Tk):
                      font=self.fonts["sub"]).pack(anchor="w", padx=8)
             return
 
+        # ── 자동 감시(여러 호기 무인) — 조사와 별개 기능이라 **항상 최상단**에 노출.
+        #    아래 수동 조사 단계는 호기를 골라야 나오지만, 감시는 진입 즉시 보인다.
+        self._cm_watch_banner(inner)
+        tk.Label(inner, text="────────  아래: 호기 1대씩 수동 조사  ────────",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(anchor="w", padx=8, pady=(8, 2))
+
         cm = self._cm
         machine = cm.get("machine")
 
@@ -4050,9 +4057,6 @@ class EquipApp(tk.Tk):
                           ("취합·비교 + 뷰어 열기", self._cm_compare, True),
                       ])
 
-        # 자동 감시 카드 (호기 무관, 항상 노출)
-        self._cm_watch_card(inner)
-
         # 새 호기 진행
         tk.Button(inner, text="＋ 다른 호기로 새로 시작", relief="flat", bd=0,
                   bg=self.p["head_bg"], fg=self.p["text"], padx=12, pady=5,
@@ -4065,26 +4069,45 @@ class EquipApp(tk.Tk):
         return localdirs.ensure(getattr(self, "local_dir", None)
                                 or localdirs.active_root())
 
-    def _cm_watch_card(self, parent):
-        """Commonality 탭의 감시 카드 — 상태 요약 + 설정/즉시 확인."""
+    def _cm_watch_banner(self, parent):
+        """Commonality 탭 **최상단** 자동 감시 배너 — 조사(호기 1대씩)와 별개 기능이라
+        탭에 들어오면 바로 보이도록 위로 뺀다. 여러 호기를 한 번에 무인 감시한다."""
         try:
             s, st = cmwatcher.load_settings(self._cmw_local())
         except Exception as e:  # noqa: BLE001
             self._logerr("E180", e)
             return
+        on = bool(s.enabled)
+        accent = self.p["ok"] if on else self.p["primary"]
+        card = tk.Frame(parent, bg=self.p["surface"], bd=0, highlightthickness=2,
+                        highlightbackground=accent)
+        card.pack(fill="x", padx=4, pady=(2, 6))
+        head = tk.Frame(card, bg=self.p["surface"])
+        head.pack(fill="x", padx=12, pady=(10, 2))
+        tk.Label(head, text="🔔 자동 감시 (여러 호기 무인)", bg=self.p["surface"],
+                 fg=self.p["text"], font=self.fonts["bold"]).pack(side="left")
+        tk.Label(head, text=("● 켜짐" if on else "○ 꺼짐"), bg=self.p["surface"],
+                 fg=(self.p["ok"] if on else self.p["muted"]),
+                 font=self.fonts["bold"]).pack(side="left", padx=8)
         desc = ("새로 생긴 S/M 폴더를 주기마다 찾아 조사 계획에 넣고, 지정한 양식으로 "
-                "값까지 조사합니다.\n"
-                f"· 상태: {'● 켜짐' if s.enabled else '○ 꺼짐'}"
-                f"   · 감시 호기: {len(s.machines or [])}대"
+                "값까지 자동 조사합니다. **여러 호기를 한 번에** 감시합니다(설정에서 호기 선택).\n"
+                f"· 감시 호기: {len(s.machines or [])}대"
                 f"   · 주기: {watcher.interval_label(s.interval_hours)}")
         if st.last_run:
             desc += f"\n· 마지막 확인: {st.last_run} ({st.last_result or '-'})"
         if not s.watch_plan:
             desc += f"\n· ⚠ 감시 대상 계획({cmwatcher.WATCH_PLAN_FILENAME})이 아직 없습니다."
-        self._cm_step(parent, 7, "🔔 자동 감시 (새 S/M 폴더)", desc, [
-            ("감시 설정…", self._cmw_dialog, True),
-            ("▶ 즉시 확인", lambda: self._cmw_run_once(), False),
-        ], done=bool(s.enabled))
+        tk.Label(card, text=desc, bg=self.p["surface"], fg=self.p["muted"],
+                 font=self.fonts["sub"], justify="left", wraplength=760).pack(
+                 anchor="w", padx=12, pady=(0, 6))
+        bar = tk.Frame(card, bg=self.p["surface"])
+        bar.pack(fill="x", padx=12, pady=(0, 10))
+        tk.Button(bar, text="🔔 감시 설정…", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=12, pady=5, cursor="hand2",
+                  command=self._cmw_dialog).pack(side="left", padx=(0, 6))
+        tk.Button(bar, text="▶ 즉시 확인", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], padx=12, pady=5, cursor="hand2",
+                  command=lambda: self._cmw_run_once()).pack(side="left", padx=(0, 6))
 
     # ---- 감시 설정창 -------------------------------------------------
     # ---- 회차 실행 ----------------------------------------------------
