@@ -165,6 +165,12 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
     `missing_forms`). 감시를 켤 때 **대표 S/M 을 사람이 고르고** 그것으로 양식을
     만든다 — 후보는 `sm_candidates` 가 **생성일자 최신순**으로 준다(백업본 중복 제거).
     commonality 양식과 양식 만들기 양식은 **따로 관리**한다(형식은 같지만 섞지 않음).
+  · **자동 감시 산출물은 전부 로컬 `자동감시/` 폴더**(`commonality_root(로컬)/{호기}/
+    자동감시/` — `양식/`·`복사본/`·`대표SM복사/{시각}/`·`감시조사_*.xlsx`). 대표 S/M 도
+    **로컬로 안전복사한 뒤 그 복사본을 읽는다**(`_cmw_build_form` 이 `cm.copy_lot` 으로
+    복사 → `detect_recipes`/`parse_lots` 는 복사본 경로로. 원본(장비/백업)을 반복
+    접근하지 않고 관련 파일을 로컬에서 관리 — 수동 조사가 Lot 을 먼저 복사해 읽는 것과
+    같은 원칙. 원본은 read-only).
   · **다중 레시피(RecipesInfo.ini)면 레시피마다 양식·조사가 따로다(2026-08 확정)**:
     `survey_key` 하나에 양식을 **목록**으로 묶는다(`set_forms`/`forms_for`, 각 항목
     `{form, recipe, prefix, sm}`. 구 단일 dict 는 1개 목록으로 정규화 — 하위호환).

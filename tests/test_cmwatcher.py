@@ -499,6 +499,11 @@ def test_gui_is_wired():
     b = re.search(r"def _cmw_build_form.*?(?=\n    def _cmw_pick_file)", app, re.S)
     assert b and "cm.detect_recipes(" in b.group(0), "감시 양식이 다중 레시피를 감지하지 않음"
     assert "cmwatcher.set_forms(" in app, "레시피별 양식 목록을 묶지 않음(set_forms)"
+    # ④'' 대표 S/M 은 **로컬로 안전복사한 뒤** 그 복사본을 읽는다(원본 반복접근 금지)
+    assert "cm.copy_lot(" in b.group(0) and "cm.set_wafer(" in b.group(0), \
+        "대표 S/M 을 로컬로 복사해 읽지 않음"
+    assert "자동감시" in b.group(0) and "commonality_root(local" in b.group(0), \
+        "대표 S/M 복사본이 로컬 자동감시 폴더가 아님"
     # ⑤ 산출물은 로컬(commonality 규칙)
     assert "_cmw_local(" in app and "save_dir" not in re.findall(
         r"def _cmw_local.*?(?=\n    def )", app, re.S)[0], \

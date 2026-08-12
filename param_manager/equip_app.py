@@ -4555,21 +4555,38 @@ class EquipApp(tk.Tk):
 
     def _cmw_build_form(self, s, machine, device, lot, cand, slot_dir, recipe_title,
                         parent, then):
-        """대표 슬롯 → **다중 레시피(RecipesInfo.ini) 감지** → 레시피별 순차 편집·저장.
+        """대표 슬롯 → **로컬 안전복사** → 다중 레시피 감지 → 레시피별 순차 편집·저장.
 
-        수동 조사(`_cm_make_form`)와 같은 원칙: 레시피가 2개+면 레시피마다 양식을
-        따로 만들어(접두 RecipeN- 로 그 레시피 파일만 파싱) `set_forms` 로 묶는다.
-        예전엔 접두 없이 양식 하나만 만들어 2번째 레시피가 조사에서 통째로 빠졌다."""
+        · 대표 S/M 슬롯을 **로컬 자동감시 폴더로 안전복사**(원본 read-only)한 뒤 그
+          복사본을 읽는다 — 원본(장비/백업 경로)을 반복 접근하지 않고, 관련 파일을
+          로컬에서 관리한다(수동 조사가 Lot 을 먼저 복사해 읽는 것과 같은 원칙).
+        · 수동 조사(`_cm_make_form`)와 같은 원칙: 레시피가 2개+면 레시피마다 양식을
+          따로 만들어(접두 RecipeN- 로 그 레시피 파일만 파싱) `set_forms` 로 묶는다.
+          예전엔 접두 없이 양식 하나만 만들어 2번째 레시피가 조사에서 통째로 빠졌다."""
         local = self._cmw_local()
         st = workdirs.stamp()
-        run_dir = os.path.join(workdirs.commonality_root(local),
-                               dl.safe_name(machine), "자동감시", "양식")
+        watch_dir = os.path.join(workdirs.commonality_root(local),
+                                 dl.safe_name(machine), "자동감시")
+        run_dir = os.path.join(watch_dir, "양식")
+        # 대표 S/M 복사본은 회차 스탬프별 폴더로(재생성 시 이전 복사본과 안 섞이게).
+        copy_dir = os.path.join(watch_dir, "대표SM복사", st)
         os.makedirs(run_dir, exist_ok=True)
 
-        def after_detect(ok, recs):
+        def copy_then_detect():
+            # 원본은 read-only 로 복사만(collector/downloader 안전장치 그대로).
+            lot_obj = cm.LotFolder(device=device, lot=lot, sm=cand["sm"],
+                                   machine=machine, label=cand["sm"])
+            cm.set_wafer(lot_obj, Path(slot_dir))
+            got = cm.copy_lot(lot_obj, copy_dir)     # → copy_dir/{safe_name(S/M)}/
+            local_slot = Path(got["dest"])
+            recs = cm.detect_recipes([(cand["sm"], local_slot)])
+            return local_slot, recs
+
+        def after(ok, res):
             if not ok:
-                self._err("E185", "대표 S/M 레시피 감지 실패", recs, parent=parent)
+                self._err("E190", "대표 S/M 로컬 복사/레시피 감지 실패", res, parent=parent)
                 return
+            local_slot, recs = res
             queue = ([{"recipe": f"{recipe_title}_{r['name']}", "prefix": r["prefix"]}
                       for r in recs] if recs
                      else [{"recipe": recipe_title, "prefix": ""}])
@@ -4580,17 +4597,18 @@ class EquipApp(tk.Tk):
                     + ", ".join(r["name"] for r in recs)
                     + "\n\n레시피마다 양식을 하나씩 만듭니다(순차). 값 조사도 레시피별로 "
                       "따로 이뤄집니다.", parent=parent)
+            # slot_dir 은 이제 **로컬 복사본** 경로다(이후 파싱도 로컬에서).
             self._cmw_fq = {
                 "queue": queue, "idx": 0, "entries": [], "s": s, "machine": machine,
-                "device": device, "lot": lot, "cand": cand, "slot_dir": slot_dir,
+                "device": device, "lot": lot, "cand": cand,
+                "slot_dir": str(local_slot),
                 "run_dir": run_dir, "st": st, "local": local, "parent": parent,
                 "then": then}
             self._cmw_build_next_recipe()
 
         self._run_busy(
-            "대표 S/M 레시피 감지 중…",
-            lambda: cm.detect_recipes([(cand["sm"], Path(slot_dir))]),
-            after_detect, parent=parent)
+            "대표 S/M 로컬 복사·레시피 감지 중…", copy_then_detect, after,
+            parent=parent)
 
     def _cmw_build_next_recipe(self):
         """다중 레시피 큐 — 현재 레시피 양식 편집·확정 후 다음으로. 끝나면 묶어 저장."""
