@@ -674,6 +674,63 @@ def test_preflight_flags_missing_recipe_files():
     print("  commonality OK: 접두 불일치(GlobalRTP만) 사전 감지")
 
 
+def test_exact_match_does_not_hide_variants():
+    """`ASD` 를 찾을 때 **`ASD` 만** 나오면 안 된다 — 변형 폴더를 다 올려야 한다.
+
+    실제 증상: 정확일치가 하나라도 있으면 거기서 끝내서 `ASD X20`·`ASD REWORK`
+    같은 변형이 통째로 숨었다. 어느 것을 조사할지는 사람이 고르는 것이므로
+    후보를 전부 보여 줘야 한다.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        lot = Path(tmp) / "6412"
+        for n in ["ASD", "ASD X20", "ASD REWORK", "ASD-RW_0517S", "BQC"]:
+            (lot / n).mkdir(parents=True)
+        got = [p.name for p in commonality._find_children(lot, "ASD")]
+        assert got[0] == "ASD", got                 # 정확일치가 맨 앞(기본 선택)
+        assert set(got) == {"ASD", "ASD X20", "ASD REWORK", "ASD-RW_0517S"}, got
+        assert "BQC" not in got, got
+        # 대소문자·구분자 무시
+        assert [p.name for p in commonality._find_children(lot, "asd")] == got
+
+        # 공정번호처럼 숫자는 **정확일치만**(6412 가 64120/16412 에 걸리면 안 됨)
+        dev = Path(tmp) / "dev"
+        for n in ["6412", "64120", "16412"]:
+            (dev / n).mkdir(parents=True)
+        nums = [p.name for p in commonality._find_children(dev, "6412", contains=False)]
+        assert nums == ["6412"], nums
+
+        # 정확·포함이 하나도 없을 때만 토큰 겹침(느슨) 단계로 간다
+        loose = Path(tmp) / "loose"
+        for n in ["SUA RERURN PG8E10", "ZZZ"]:
+            (loose / n).mkdir(parents=True)
+        tok = [p.name for p in commonality._find_children(loose, "SUA RETURN")]
+        assert tok == ["SUA RERURN PG8E10"], tok
+    print("  commonality OK: 정확일치가 변형 후보를 가리지 않음")
+
+
+def test_sm_variants_all_become_lot_candidates():
+    """찾은 S/M 변형이 **각각 조사 대상 후보**가 되어 선택창에 오른다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        for sm in ["ASD", "ASD X20", "ASD REWORK"]:
+            w = (base / "AOI-9" / "Scanresult" / "2D@R3-DEV1-0001" / "6412"
+                 / sm / "CX01")
+            (w / "Zones").mkdir(parents=True)
+            (w / "Zones" / "Z1.ini").write_text(
+                "[General]\nZoneName=Z\n[Surface]\nHigh_Delta=25\n", encoding="utf-8")
+            (w / "OpticPreset.ini").write_text(
+                "[Scan2d]\nCameraName=TDI\nMag=5\nLightSrcRef_NominalGL=1\n",
+                encoding="utf-8")
+        roots = commonality.scanresult_roots(str(base), "AOI-9")
+        lots = commonality.resolve_lot_variants(roots, "DEV1-0001", "6412", "ASD",
+                                                machine="AOI-9")
+        labels = [l.label for l in lots if l.exists]
+        assert set(labels) == {"ASD", "ASD X20", "ASD REWORK"}, labels
+        assert labels[0] == "ASD", labels           # 정확일치가 첫 후보
+        assert all(l.has_zones and l.has_optic for l in lots if l.exists)
+    print("  commonality OK: S/M 변형이 모두 조사 후보로 오름")
+
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

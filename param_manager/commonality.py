@@ -242,9 +242,19 @@ def scanresult_root(root_base: str, machine: str) -> Path:
 
 
 def _find_children(parent: Path, name: str, *, contains: bool = True) -> list[Path]:
-    """parent 아래에서 name 과 일치(정규화)하는 폴더 **후보 전부**(이름순).
-    정확 일치가 있으면 그 집합, 없으면 포함 매칭 집합. 같은 디바이스가 여러
-    레시피 폴더(2D@..._0A/_0C 등)로 나뉘어 있을 수 있어 후보를 모두 돌려준다."""
+    """parent 아래에서 name 과 맞는 폴더 **후보 전부**(정확일치 먼저, 그 뒤 이름순).
+
+    **정확일치가 있어도 포함 매칭 후보를 함께 돌려준다(2026-08 수정).** 종전에는
+    정확일치가 하나라도 있으면 거기서 끝냈는데, 그러면 `ASD` 를 찾을 때 `ASD` 만
+    나오고 `ASD X20`·`ASD REWORK`·`ASD-RW_0517S` 같은 **변형이 통째로 숨었다**.
+    어느 것을 조사할지는 사람이 골라야 하므로 후보를 다 올린다.
+
+    · `contains=False`(공정번호처럼 숫자라 포함매칭이 위험할 때)는 **정확일치만**.
+      6412 가 64120/16412 에 걸리면 안 되기 때문.
+    · 정확·포함이 하나도 없을 때만 **토큰(단어) 겹침**으로 한 번 더 찾는다
+      ('SUA RERURN PG8E10' 처럼 오타·군더더기가 붙은 폴더 흡수). 이 단계는 느슨해서
+      정상 후보가 있을 때는 쓰지 않는다.
+    """
     if not parent.is_dir():
         return []
     try:
@@ -256,20 +266,18 @@ def _find_children(parent: Path, name: str, *, contains: bool = True) -> list[Pa
     if not nk:
         return []
     exact = [p for p in dirs if _norm(p.name) == nk]
-    if exact:
-        return exact
     if not contains:
-        return []
-    part = [p for p in dirs if nk in _norm(p.name) or _norm(p.name) in nk]
-    if part:
-        return part
+        return exact
+    part = [p for p in dirs
+            if p not in exact and (nk in _norm(p.name) or _norm(p.name) in nk)]
+    if exact or part:
+        return exact + part          # 정확일치를 앞에 두어 기본 선택이 되게 한다
     # 실제 폴더는 'SUA RERURN PG8E10' 처럼 오타·군더더기가 붙는다. 정확·포함
-    # 매칭이 실패하면 **토큰(단어) 겹침**으로 한 번 더 찾는다.
+    # 매칭이 **둘 다** 실패했을 때만 토큰 겹침으로 한 번 더 찾는다.
     toks = [t for t in _tokens(name) if len(t) >= 2]
     if not toks:
         return []
-    hit = [p for p in dirs if any(t in _norm(p.name) for t in toks)]
-    return hit
+    return [p for p in dirs if any(t in _norm(p.name) for t in toks)]
 
 
 def _find_child(parent: Path, name: str, *, contains: bool = True) -> Path | None:

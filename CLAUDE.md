@@ -103,7 +103,12 @@ Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'C
 **S/M 폴더 매칭은 3단계까지만(2026-08 확정)**: ①정확일치 → ②포함(양방향) →
 ③**토큰 겹침**(`_tokens`, 'SUA RERURN PG8E10'·'PG8G17 NFN RETURN 2D+3D 100' 같은
 오타·군더더기 흡수). **그래도 못 찾으면 '폴더 없음'** — 관계없는 폴더를 후보로
-올리지 않는다(4단계 폴백 금지). 선택창에 **S/M 폴더 수정시각**(`folder_mtime` → `LotFolder.scan_time`)을 표시해 언제
+올리지 않는다(4단계 폴백 금지).
+**①과 ②는 합쳐서 돌려준다(2026-08 수정)** — 종전에는 정확일치가 하나라도 있으면
+거기서 끝내서 `ASD` 를 찾으면 `ASD` 만 나오고 `ASD X20`·`ASD REWORK` 같은 **변형이
+통째로 숨었다**. 어느 것을 조사할지는 사람이 고르므로 후보를 다 올린다(정확일치가
+맨 앞 = 기본 선택). ③은 ①②가 **둘 다** 빈 경우에만(느슨해서 노이즈가 된다).
+공정번호는 `contains=False` 라 여전히 정확일치만(6412 ≠ 64120). 선택창에 **S/M 폴더 수정시각**(`folder_mtime` → `LotFolder.scan_time`)을 표시해 언제
 스캔된 자료인지 보고 고르게 한다. 이 값이 **Scan 일자**로 조사 결과 엑셀의
 **파라미터 첫 행**(헤더 1행 바로 아래 2행, Parameter=`SCAN_ROW_LABEL`, 각 S/M 열
 밑에 시각)과 비교표 3번째 열에 들어간다. `read_lot_result` 는 그 행을 파라미터가
@@ -274,7 +279,7 @@ python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 8  (새 S/M 감지: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정)
-python3 tests/test_commonality.py  # 23 (Lot계획·폴더해석(느슨매칭·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
+python3 tests/test_commonality.py  # 25 (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
