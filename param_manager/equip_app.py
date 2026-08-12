@@ -4553,19 +4553,79 @@ class EquipApp(tk.Tk):
                                  parent, then)
         self._run_busy("S/M 후보 조회 중…", work, done, parent=parent)
 
-    def _cmw_build_form(self, s, machine, device, lot, cand, slot_dir, recipe,
+    def _cmw_build_form(self, s, machine, device, lot, cand, slot_dir, recipe_title,
                         parent, then):
-        """대표 슬롯 파싱 → 편집기 → 확정 양식 저장 + 감시 설정에 묶기."""
+        """대표 슬롯 → **다중 레시피(RecipesInfo.ini) 감지** → 레시피별 순차 편집·저장.
+
+        수동 조사(`_cm_make_form`)와 같은 원칙: 레시피가 2개+면 레시피마다 양식을
+        따로 만들어(접두 RecipeN- 로 그 레시피 파일만 파싱) `set_forms` 로 묶는다.
+        예전엔 접두 없이 양식 하나만 만들어 2번째 레시피가 조사에서 통째로 빠졌다."""
         local = self._cmw_local()
         st = workdirs.stamp()
         run_dir = os.path.join(workdirs.commonality_root(local),
                                dl.safe_name(machine), "자동감시", "양식")
         os.makedirs(run_dir, exist_ok=True)
 
+        def after_detect(ok, recs):
+            if not ok:
+                self._err("E185", "대표 S/M 레시피 감지 실패", recs, parent=parent)
+                return
+            queue = ([{"recipe": f"{recipe_title}_{r['name']}", "prefix": r["prefix"]}
+                      for r in recs] if recs
+                     else [{"recipe": recipe_title, "prefix": ""}])
+            if recs:
+                messagebox.showinfo(
+                    "다중 레시피 감지",
+                    f"이 대표 S/M 에서 레시피 {len(recs)}개를 찾았습니다: "
+                    + ", ".join(r["name"] for r in recs)
+                    + "\n\n레시피마다 양식을 하나씩 만듭니다(순차). 값 조사도 레시피별로 "
+                      "따로 이뤄집니다.", parent=parent)
+            self._cmw_fq = {
+                "queue": queue, "idx": 0, "entries": [], "s": s, "machine": machine,
+                "device": device, "lot": lot, "cand": cand, "slot_dir": slot_dir,
+                "run_dir": run_dir, "st": st, "local": local, "parent": parent,
+                "then": then}
+            self._cmw_build_next_recipe()
+
+        self._run_busy(
+            "대표 S/M 레시피 감지 중…",
+            lambda: cm.detect_recipes([(cand["sm"], Path(slot_dir))]),
+            after_detect, parent=parent)
+
+    def _cmw_build_next_recipe(self):
+        """다중 레시피 큐 — 현재 레시피 양식 편집·확정 후 다음으로. 끝나면 묶어 저장."""
+        q = self._cmw_fq
+        parent = q["parent"]
+        if q["idx"] >= len(q["queue"]):                # 전부 완료 → 대상에 묶기
+            entries = q["entries"]
+            if not entries:
+                messagebox.showwarning("양식 없음",
+                                       "확정된 양식이 없습니다.", parent=parent)
+                self._cmw_fq = None
+                return
+            cmwatcher.set_forms(q["s"], q["machine"], q["device"], q["lot"], entries)
+            cmwatcher.save_settings(q["local"], q["s"],
+                                    cmwatcher.load_settings(q["local"])[1])
+            q["then"]()
+            names = ", ".join(e["recipe"] for e in entries)
+            messagebox.showinfo(
+                "감시 양식 확정",
+                f"{q['device']} / {q['lot']} 감시 양식 {len(entries)}개를 만들었습니다"
+                f"(레시피별).\n· {names}\n· 대표 S/M: {q['cand']['sm']}", parent=parent)
+            self._cmw_fq = None
+            return
+
+        cur = q["queue"][q["idx"]]
+        recipe, prefix = cur["recipe"], cur["prefix"]
+        machine, cand = q["machine"], q["cand"]
+        run_dir, st = q["run_dir"], q["st"]
+        multi = len(q["queue"]) > 1
+
         def work():
             cb, cstate = self._coef_lookup_cb(fixed_machine=machine)
-            pivot, labels = cm.parse_lots([(cand["sm"], Path(slot_dir))],
-                                          level=recipe, coef_lookup=cb)
+            pivot, labels = cm.parse_lots([(cand["sm"], Path(q["slot_dir"]))],
+                                          level=recipe, coef_lookup=cb,
+                                          recipe_prefix=prefix)
             self._coef_report_missing(cstate)
             return pivot, labels
 
@@ -4574,15 +4634,20 @@ class EquipApp(tk.Tk):
                 self._err("E185", "대표 S/M 파싱 실패", res, parent=parent)
                 return
             pivot, _labels = res
-            if not pivot:
-                messagebox.showwarning("읽을 항목 없음",
-                                       "그 슬롯에서 파라미터를 읽지 못했습니다.",
-                                       parent=parent)
+            if not pivot:                              # 이 레시피는 읽을 게 없다 → 건너뜀
+                messagebox.showwarning(
+                    "읽을 항목 없음",
+                    f"레시피 '{recipe}' 에서 파라미터를 읽지 못해 건너뜁니다."
+                    + ("\n(다중 레시피인데 그 레시피의 RecipeN-OpticPreset.ini / "
+                       "RecipeN-Zones\\ 가 없을 수 있습니다.)" if multi else ""),
+                    parent=parent)
+                q["idx"] += 1
+                self._cmw_build_next_recipe()
                 return
             kind = "RDL" if recipe.upper().startswith("RDL") else "PI"
             form = os.path.join(
                 run_dir, f"감시양식_{dl.safe_name(recipe)}_{dl.safe_name(machine)}_"
-                         f"{dl.safe_name(device)}_{dl.safe_name(lot)}.xlsx")
+                         f"{dl.safe_name(q['device'])}_{dl.safe_name(q['lot'])}.xlsx")
 
             def on_confirm(records, extracts, scales_out, win2):
                 def w():
@@ -4599,21 +4664,18 @@ class EquipApp(tk.Tk):
                         self._err("E186", "감시 양식 확정 실패", res2, parent=parent)
                         return
                     win2.destroy()
-                    cmwatcher.set_form(s, machine, device, lot, form, recipe,
-                                       sm=cand["sm"])
-                    cmwatcher.save_settings(local, s,
-                                            cmwatcher.load_settings(local)[1])
-                    then()
-                    messagebox.showinfo(
-                        "감시 양식 확정",
-                        f"{device} / {lot} 감시 양식을 만들었습니다.\n"
-                        f"항목 {len(records)}개 · 대표 S/M: {cand['sm']}\n{form}",
-                        parent=parent)
+                    q["entries"].append({"form": form, "recipe": recipe,
+                                         "prefix": prefix, "sm": cand["sm"]})
+                    q["idx"] += 1
+                    self._cmw_build_next_recipe()
                 self._run_busy("감시 양식 확정 중…", w, d, parent=parent)
+
+            title = f"감시 양식 [{q['device']}/{q['lot']}]"
+            if multi:
+                title += f" · {recipe} ({q['idx'] + 1}/{len(q['queue'])})"
             self._form_param_editor(pivot, recipe, kind, {}, run_dir, run_dir, st,
                                     machine, base_keys=None, base_name="",
-                                    title_prefix=f"감시 양식 [{device}/{lot}]",
-                                    on_confirm=on_confirm)
+                                    title_prefix=title, on_confirm=on_confirm)
         self._run_busy("대표 S/M 파싱 중…", work, done, parent=parent)
 
     def _cmw_pick_file(self, var, parent):

@@ -495,6 +495,10 @@ def test_gui_is_wired():
     f = re.search(r"def _cmw_make_form.*?(?=\n    def )", app, re.S)
     assert f and "cmwatcher.sm_candidates(" in f.group(0), "대표 S/M 후보 조회 없음"
     assert "_pick_list_chooser(" in f.group(0), "사람이 고르는 단계가 없음"
+    # ④' 다중 레시피면 레시피별로 양식을 만든다(detect_recipes → set_forms)
+    b = re.search(r"def _cmw_build_form.*?(?=\n    def _cmw_pick_file)", app, re.S)
+    assert b and "cm.detect_recipes(" in b.group(0), "감시 양식이 다중 레시피를 감지하지 않음"
+    assert "cmwatcher.set_forms(" in app, "레시피별 양식 목록을 묶지 않음(set_forms)"
     # ⑤ 산출물은 로컬(commonality 규칙)
     assert "_cmw_local(" in app and "save_dir" not in re.findall(
         r"def _cmw_local.*?(?=\n    def )", app, re.S)[0], \
@@ -646,6 +650,109 @@ def test_run_cycle_uses_coefficient_from_rows():
     print("  run_cycle 계수는 coef_rows 로만 적용, 파일 무변경 OK")
 
 
+def test_forms_multi_and_legacy_compat():
+    """감시 대상에 **레시피별 양식 여러 개**를 묶을 수 있다(다중 레시피).
+    구 형식(단일 dict)도 1개짜리 목록으로 정규화해 읽는다(하위호환)."""
+    s = cw.CmWatchSettings()
+    cw.set_forms(s, "AOI-9", "DEV", "6412", [
+        {"form": "/f1.xlsx", "recipe": "PI3_PI", "prefix": "", "sm": "ASD"},
+        {"form": "/f2.xlsx", "recipe": "PI3_PI_Bubble", "prefix": "Recipe2-", "sm": "ASD"}])
+    fs = cw.forms_for(s, "AOI-9", "DEV", "6412")
+    assert [f["recipe"] for f in fs] == ["PI3_PI", "PI3_PI_Bubble"], fs
+    assert [f["prefix"] for f in fs] == ["", "Recipe2-"], fs
+    # 대표(첫) 양식 호환 — form_for 는 여전히 dict 하나
+    assert cw.form_for(s, "AOI-9", "DEV", "6412")["recipe"] == "PI3_PI"
+    # 구 형식(단일 dict, prefix 없음)도 목록 1개로
+    s2 = cw.CmWatchSettings()
+    s2.forms = {cw.survey_key("AOI-9", "DEV", "6412"):
+                {"form": "/old.xlsx", "recipe": "PI3", "sm": "ASD"}}
+    fs2 = cw.forms_for(s2, "AOI-9", "DEV", "6412")
+    assert len(fs2) == 1 and fs2[0]["recipe"] == "PI3" and fs2[0]["prefix"] == "", fs2
+    # set_form(단일)도 목록에 저장된다
+    cw.set_form(s2, "AOI-9", "DEV", "7000", "/one.xlsx", "PI4")
+    assert len(cw.forms_for(s2, "AOI-9", "DEV", "7000")) == 1
+    print("  레시피별 양식 목록 + 구 단일형식 호환 OK")
+
+
+def _add_recipe2(slot_dir: Path, delta2):
+    """기존 슬롯(CX01)에 **두 번째 레시피**(RecipesInfo + Recipe2- 파일)를 얹는다."""
+    (slot_dir / "RecipesInfo.ini").write_text(
+        "[Recipe-1]\nName=PI\n[Recipe-2]\nName=PI_Bubble\n[Recipes]\nCount=2\n",
+        encoding="utf-8")
+    (slot_dir / "Recipe2-Zones").mkdir(exist_ok=True)
+    (slot_dir / "Recipe2-Zones" / "Z1.ini").write_text(
+        f"[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta={delta2}\n",
+        encoding="utf-8")
+    (slot_dir / "Recipe2-OpticPreset.ini").write_text(
+        "[Scan2d]\nCameraName=TDI\nMag=5\nLightSrcRef_NominalGL=1\n", encoding="utf-8")
+
+
+def _mk_form_prefixed(tmp, slot_dir, level, prefix, name):
+    """대표 슬롯을 그 레시피 접두로 파싱해 확정 양식 하나."""
+    from param_manager import formbuilder
+    pivot, _ = cm.parse_lots([("REP", Path(slot_dir))], level=level,
+                             recipe_prefix=prefix)
+    init = os.path.join(tmp, f"init_{name}")
+    form = os.path.join(tmp, name)
+    formbuilder.build_initial_workbook(pivot, init, level=level)
+    formbuilder.build_final_from_initial(init, form, level=level, aoi="AOI-9")
+    return form
+
+
+def test_run_cycle_surveys_all_recipes():
+    """다중 레시피면 회차가 **레시피마다 양식을 물려 둘 다 조사**한다.
+
+    예전엔 대상당 양식이 하나뿐이라 2번째 레시피(RecipeN- 접두 파일)가 조사에서
+    통째로 빠졌다. 이제 레시피별 양식·결과가 각각 나온다.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "scan"
+        local = str(Path(tmp) / "CamtekAOI")
+        rep = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD", 25)
+        _add_recipe2(rep / "CX01", 77)
+        form1 = _mk_form_prefixed(tmp, rep / "CX01", "PI3_PI", "", "f_r1.xlsx")
+        form2 = _mk_form_prefixed(tmp, rep / "CX01", "PI3_PI_Bubble", "Recipe2-",
+                                  "f_r2.xlsx")
+
+        plan = os.path.join(tmp, cw.WATCH_PLAN_FILENAME)
+        _write_watch_plan(plan, [("DEV1-0001", "6412", "AOI-9")])
+        s, st = cw.load_settings(local)
+        s.machines = ["AOI-9"]
+        s.watch_plan = plan
+        s.cm_plan = os.path.join(tmp, cm.PLAN_FILENAME)
+        s.roots = {"AOI-9": str(base)}
+        s.settle_minutes = 0
+        cw.set_forms(s, "AOI-9", "DEV1-0001", "6412", [
+            {"form": form1, "recipe": "PI3_PI", "prefix": "", "sm": "ASD"},
+            {"form": form2, "recipe": "PI3_PI_Bubble", "prefix": "Recipe2-",
+             "sm": "ASD"}])
+
+        cw.run_cycle(s, st, local_root=local, coef_rows=[])          # 기준선
+
+        new = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD X20", 30)
+        _add_recipe2(new / "CX01", 88)
+        r2 = cw.run_cycle(s, st, local_root=local, coef_rows=[])
+
+        # 두 레시피 결과 파일이 **각각** 생겼다
+        p1 = cw.result_path(local, "AOI-9", "PI3_PI")
+        p2 = cw.result_path(local, "AOI-9", "PI3_PI_Bubble")
+        assert os.path.exists(p1) and os.path.exists(p2), (p1, p2)
+        d1, d2 = cm.read_lot_result(p1), cm.read_lot_result(p2)
+        assert d1["lots"] == ["ASD X20"] and d2["lots"] == ["ASD X20"], (d1, d2)
+        # 같은 S/M 이 두 레시피 모두에서 조사됐다
+        assert r2["surveyed"].count("ASD X20") == 2, r2["surveyed"]
+
+        # 레시피별로 **다른 값**(접두 라우팅 확인): Recipe-1=base(30), Recipe-2=Recipe2-(88)
+        def hd(d):
+            for r in d["records"]:
+                if "Delta" in engine._s(r.get("Parameter")):
+                    return engine._s(r.get("ASD X20"))
+            return None
+        v1, v2 = hd(d1), hd(d2)
+        assert v1 and v2 and v1 != v2, (v1, v2)
+    print("  다중 레시피 회차: 레시피마다 양식 물려 둘 다 조사(값 분리) OK")
+
+
 if __name__ == "__main__":
     for t in [test_watch_plan_template_and_targets, test_first_cycle_is_baseline_only,
               test_backup_scanresult_is_not_new, test_unsettled_folder_is_deferred,
@@ -660,7 +767,9 @@ if __name__ == "__main__":
               test_run_cycle_first_is_baseline_then_detects_and_surveys,
               test_run_cycle_missing_form_adds_plan_but_skips_survey,
               test_run_cycle_skips_machine_without_root,
-              test_run_cycle_uses_coefficient_from_rows]:
+              test_run_cycle_uses_coefficient_from_rows,
+              test_forms_multi_and_legacy_compat,
+              test_run_cycle_surveys_all_recipes]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

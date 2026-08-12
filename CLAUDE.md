@@ -161,10 +161,18 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   주기/시간대/backoff 는 `watcher` 것을 재사용(복제 금지).
 - **자동 조사까지 한다(2026-08 확정)**: 감지 → 계획 추가 → **안전복사 → 저장된
   양식으로 값 조사 → 결과 누적**(`cmwatcher.survey_items`).
-  · **양식은 감시 대상마다**(`survey_key` = 호기+디바이스+공정. `set_form`/`form_for`/
+  · **양식은 감시 대상마다**(`survey_key` = 호기+디바이스+공정. `set_forms`/`forms_for`/
     `missing_forms`). 감시를 켤 때 **대표 S/M 을 사람이 고르고** 그것으로 양식을
     만든다 — 후보는 `sm_candidates` 가 **생성일자 최신순**으로 준다(백업본 중복 제거).
     commonality 양식과 양식 만들기 양식은 **따로 관리**한다(형식은 같지만 섞지 않음).
+  · **다중 레시피(RecipesInfo.ini)면 레시피마다 양식·조사가 따로다(2026-08 확정)**:
+    `survey_key` 하나에 양식을 **목록**으로 묶는다(`set_forms`/`forms_for`, 각 항목
+    `{form, recipe, prefix, sm}`. 구 단일 dict 는 1개 목록으로 정규화 — 하위호환).
+    `_cmw_build_form` 이 `cm.detect_recipes` 로 감지→레시피별 순차 편집(접두 `RecipeN-`
+    으로 그 레시피 파일만 파싱, 수동 조사 `_cm_process_recipe` 와 같은 원칙). 회차
+    (`run_cycle`)는 `forms_for` 의 **모든 양식**을 돌며 `survey_items(recipe_prefix=)`
+    로 각각 조사→레시피별 결과 파일. 예전엔 대상당 양식이 하나뿐이라 **2번째 레시피가
+    조사에서 통째로 빠졌다**(접두 없이 base 파일만 읽어 Recipe-1 만 반영).
   · **결과는 (호기,레시피)마다 파일 하나에 누적**(`commonality.merge_lot_result`,
     `cmwatcher.result_path`). 회차마다 새 파일을 만들면 파일이 불어나고
     `build_comparison` 이 중복을 안 걸러 **같은 S/M 이 여러 행**으로 나온다.
@@ -337,7 +345,7 @@ python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다�
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_cmwatcher.py    # 18 (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
+python3 tests/test_cmwatcher.py    # 20 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_commonality.py  # 25 (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)

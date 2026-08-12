@@ -464,26 +464,55 @@ def survey_key(machine: str, device: str, lot: str) -> str:
     return "|".join((cm._aoi_norm(machine), cm._norm(device), cm._norm(lot)))
 
 
+def _norm_form_entry(e) -> dict:
+    """양식 항목 정규화 — {form, recipe, prefix, sm}. prefix=다중 레시피 접두(RecipeN-)."""
+    e = e if isinstance(e, dict) else {}
+    return {"form": str(e.get("form") or ""), "recipe": str(e.get("recipe") or ""),
+            "prefix": str(e.get("prefix") or ""), "sm": str(e.get("sm") or "")}
+
+
+def forms_for(settings: CmWatchSettings, machine: str, device: str,
+              lot: str) -> list[dict]:
+    """이 감시 대상에 지정된 양식들(**레시피별**). 각 {form, recipe, prefix, sm}.
+
+    다중 레시피(RecipesInfo.ini)면 레시피마다 양식이 하나씩이라 목록이다. 구 형식
+    (단일 dict 하나)도 1개짜리 목록으로 정규화해 돌려준다(하위호환)."""
+    raw = (settings.forms or {}).get(survey_key(machine, device, lot))
+    if not raw:
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    return [_norm_form_entry(e) for e in items if isinstance(e, dict)]
+
+
 def form_for(settings: CmWatchSettings, machine: str, device: str, lot: str) -> dict:
-    """이 감시 대상에 지정된 양식 정보. 없으면 빈 dict(=조사하지 않음)."""
-    return dict((settings.forms or {}).get(survey_key(machine, device, lot)) or {})
+    """이 감시 대상의 **대표(첫) 양식** 정보. 없으면 빈 dict. (구 단일 양식 호환용)"""
+    fs = forms_for(settings, machine, device, lot)
+    return dict(fs[0]) if fs else {}
+
+
+def set_forms(settings: CmWatchSettings, machine: str, device: str, lot: str,
+              entries: list[dict]) -> None:
+    """감시 대상에 **레시피별 양식 목록**을 묶는다(다중 레시피 지원)."""
+    settings.forms = dict(settings.forms or {})
+    settings.forms[survey_key(machine, device, lot)] = [
+        _norm_form_entry(e) for e in (entries or [])]
 
 
 def set_form(settings: CmWatchSettings, machine: str, device: str, lot: str,
-             form_path: str, recipe: str, sm: str = "") -> None:
-    """감시 대상에 양식을 묶는다(감시 켤 때 대표 S/M 으로 만든 확정 양식)."""
-    settings.forms = dict(settings.forms or {})
-    settings.forms[survey_key(machine, device, lot)] = {
-        "form": str(form_path or ""), "recipe": str(recipe or ""), "sm": str(sm or "")}
+             form_path: str, recipe: str, sm: str = "", prefix: str = "") -> None:
+    """감시 대상에 양식 1개를 묶는다(단일 레시피). 내부적으로 목록에 저장한다."""
+    set_forms(settings, machine, device, lot,
+              [{"form": form_path, "recipe": recipe, "prefix": prefix, "sm": sm}])
 
 
 def missing_forms(settings: CmWatchSettings, machine: str,
                   targets: list[tuple]) -> list[tuple]:
-    """양식이 아직 없는 (디바이스, 공정) — 설정창에서 빨갛게 표시할 것."""
+    """양식이 아직 없는 (디바이스, 공정) — 설정창에서 빨갛게 표시할 것.
+    **쓸 수 있는 양식(파일 존재)이 하나도 없으면** 미지정으로 본다."""
     out = []
     for device, lot in targets:
-        info = form_for(settings, machine, device, lot)
-        if not (info.get("form") and os.path.isfile(info["form"])):
+        forms = forms_for(settings, machine, device, lot)
+        if not any(f.get("form") and os.path.isfile(f["form"]) for f in forms):
             out.append((device, lot))
     return out
 
@@ -552,7 +581,7 @@ def lot_for_item(item: dict, machine: str):
 
 def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str,
                  dest_xlsx: str, copy_dir: str, coef_lookup=None,
-                 min_match: float = 0.5) -> dict:
+                 min_match: float = 0.5, recipe_prefix: str = "") -> dict:
     """새 S/M 들을 **안전복사 → 저장된 양식으로 값 조사 → 결과 파일에 누적**.
 
     · 슬롯은 이름순 첫 하나만 읽고, **어느 슬롯을 읽었는지 결과에 남긴다**
@@ -588,7 +617,8 @@ def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str
         return {"done": [], "low": [], "skipped": skipped, "flagged": [],
                 "merged": None}
 
-    pivot, plabels = cm.parse_lots(lot_dirs, level=recipe, coef_lookup=coef_lookup)
+    pivot, plabels = cm.parse_lots(lot_dirs, level=recipe, coef_lookup=coef_lookup,
+                                   recipe_prefix=recipe_prefix)
     res = cm.collate_lots(recipe, form_path, pivot, plabels, coef_lookup=coef_lookup)
     # 양식과 얼마나 맞았는지 — 적게 맞은 S/M 도 **열은 남기고 색으로 표시**한다
     # (사용자 확정 2026-08). 빼 버리면 그런 S/M 이 있었다는 사실 자체가 사라져
@@ -657,29 +687,34 @@ def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
         for it in items:
             by_target.setdefault((it["device"], it["lot"]), []).append(it)
         for (dev, lotno), group in by_target.items():
-            info = form_for(settings, m, dev, lotno)
-            form = info.get("form") or ""
-            if not (form and os.path.isfile(form)):
+            # **레시피별 양식 전부** 조사한다 — 다중 레시피(RecipesInfo.ini)면 양식이
+            # 여러 개다. 하나만 보면 2번째 레시피가 통째로 조사에서 빠진다.
+            forms = [f for f in forms_for(settings, m, dev, lotno)
+                     if f.get("form") and os.path.isfile(f["form"])]
+            if not forms:
                 notes.append(f"{m} {dev}/{lotno}: 양식 없음 — 조사 건너뜀")
                 continue
-            recipe = info.get("recipe") or lotno
 
             def cl(_first, variant="", *_rest, _m=m):   # scan_tree·collate 겸용(호기 고정)
                 return coefstore.lookup(coef_rows, _m, variant)
-            try:
-                out = survey_items(
-                    group, machine=m, form_path=form, recipe=recipe,
-                    dest_xlsx=result_path(local_root, m, recipe),
-                    copy_dir=copy_root(local_root, m),
-                    coef_lookup=cl, min_match=settings.min_match)
-            except Exception as e:  # noqa: BLE001
-                notes.append(f"{m} {dev}/{lotno}: 조사 실패 — {e}")
-                continue
-            surveyed += out.get("done") or []
-            for label, why in (out.get("flagged") or []):
-                notes.append(f"{m} {label}: {why}")
-            for label, why in (out.get("skipped") or []):
-                notes.append(f"{m} {label}: {why}")
+            for fi in forms:
+                recipe = fi.get("recipe") or lotno
+                prefix = fi.get("prefix") or ""
+                try:
+                    out = survey_items(
+                        group, machine=m, form_path=fi["form"], recipe=recipe,
+                        dest_xlsx=result_path(local_root, m, recipe),
+                        copy_dir=copy_root(local_root, m),
+                        coef_lookup=cl, min_match=settings.min_match,
+                        recipe_prefix=prefix)
+                except Exception as e:  # noqa: BLE001
+                    notes.append(f"{m} {dev}/{lotno} [{recipe}]: 조사 실패 — {e}")
+                    continue
+                surveyed += out.get("done") or []
+                for label, why in (out.get("flagged") or []):
+                    notes.append(f"{m} {label} [{recipe}]: {why}")
+                for label, why in (out.get("skipped") or []):
+                    notes.append(f"{m} {label} [{recipe}]: {why}")
 
     state.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     state.last_result = (f"새 S/M {len(found)}건 · 조사 {len(surveyed)}건"
