@@ -121,7 +121,13 @@ ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르�
 이 `commonality.detect_recipes` 로 자동 감지→알림창→**레시피별 순차**(편집기→값 조사) 진행,
 레시피마다 양식 엑셀·조사 결과 따로. 파서는 `recipe_prefix` 로 해당 레시피 파일만 파싱
 (`ini_parser.read_recipes_info`/`scan_tree(recipe_prefix=)`/`config_ini_files(prefix)`/
-`read_optic_mag(_,prefix)`/`read_active_scan2d(_,prefix)`). 안전복사는 Recipe*-Zones/
+`read_optic_mag(_,prefix)`/`read_active_scan2d(_,prefix)`).
+**접두 불일치 = '양식에 GlobalRTP 만' 증상(2026-08)**: `config_ini_files(prefix)` 는
+GlobalRTP 만 공유본으로 폴백하고 OpticPreset/Zones 는 폴백이 없다. 그래서
+RecipesInfo.ini 가 레시피를 2개로 선언했는데 폴더에 `RecipeN-OpticPreset.ini`/
+`RecipeN-Zones/` 가 없으면 그 레시피는 GlobalRTP 만 읽혀 양식이 텅 빈다.
+`form_preflight` 가 레시피마다 실제 파싱될 파일을 세어(`files[…]={global,optic,
+zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`). 안전복사는 Recipe*-Zones/
 및 접두 설정파일·RecipesInfo·ActiveScenarioOptics 까지 **상대구조 보존 복사**
 (`downloader.collect_target_items`).
 
@@ -238,7 +244,7 @@ python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다�
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_commonality.py  # 22 (Lot계획·폴더해석(느슨매칭·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
+python3 tests/test_commonality.py  # 23 (Lot계획·폴더해석(느슨매칭·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)

@@ -4445,6 +4445,7 @@ class EquipApp(tk.Tk):
         # ── 사전 확인: ActiveScenarioOptics.ini 유무 + 하위 레시피 개수 ──
         pre = cm.form_preflight(lot_dirs)
         rlist = pre["recipes"]
+        finfo = pre.get("files") or {}
         lines = []
         if rlist:
             lines.append(f"• 하위 레시피: {len(rlist)}개")
@@ -4456,6 +4457,11 @@ class EquipApp(tk.Tk):
                 elif a.get("file"):
                     mark += "(신 SW — Scan2d optic 지정)"
                 lines.append(f"    - {r['name']}  ·  ActiveScenarioOptics.ini: {mark}")
+                f = finfo.get(r["name"], {})
+                lines.append(
+                    f"        읽을 파일: GlobalRTP {'O' if f.get('global') else 'X'} · "
+                    f"OpticPreset {'O' if f.get('optic') else 'X'} · "
+                    f"Zones {f.get('zones', 0)}개")
         else:
             a = pre["active"].get("", {})
             lines.append("• 하위 레시피: 1개 (단일 — RecipesInfo.ini 없음/1개)")
@@ -4465,8 +4471,27 @@ class EquipApp(tk.Tk):
                 lines.append(f"• ActiveScenarioOptics.ini: 있음 ({extra})")
             else:
                 lines.append("• ActiveScenarioOptics.ini: 없음 (구 SW 방식으로 target 추정)")
+            f = finfo.get("", {})
+            lines.append(f"• 읽을 파일: GlobalRTP {'O' if f.get('global') else 'X'} · "
+                         f"OpticPreset {'O' if f.get('optic') else 'X'} · "
+                         f"Zones {f.get('zones', 0)}개")
         if not pre["config_dir"]:
             lines.append("\n⚠ config 폴더(설정 .ini)를 찾지 못했습니다. 복사 결과를 확인하세요.")
+        # GlobalRTP 만 읽히는 레시피가 있으면 **양식에 그 항목만 들어간다**.
+        # 원인은 대개 접두 불일치(RecipesInfo.ini 는 Recipe N 이라는데 폴더에는
+        # RecipeN-OpticPreset.ini / RecipeN-Zones/ 가 없음). 미리 알린다.
+        thin = [n for n, f in finfo.items() if f.get("thin")]
+        if thin and not messagebox.askyesno(
+                "읽을 설정 파일이 부족합니다",
+                "다음은 **GlobalRTP 밖에 읽을 파일이 없습니다** — 이대로 진행하면 "
+                "양식에 GlobalRTP 항목만 들어갑니다.\n\n  · "
+                + "\n  · ".join(n or "(단일 레시피)" for n in thin)
+                + f"\n\n확인할 폴더:\n{pre['config_dir']}\n\n"
+                  "· 다중 레시피면 그 레시피의 접두 파일"
+                  "(RecipeN-OpticPreset.ini, RecipeN-Zones\\) 이 있는지,\n"
+                  "· 단일 레시피면 OpticPreset.ini 와 Zones\\ 가 복사됐는지 "
+                  "확인하세요.\n\n그래도 계속 진행할까요?", parent=self):
+            return
         messagebox.showinfo(
             "양식 만들기 — 사전 확인",
             "이번 조사 대상의 구성입니다.\n\n" + "\n".join(lines) +

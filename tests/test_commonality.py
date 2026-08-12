@@ -625,6 +625,55 @@ def test_lot_slot_folder_name_is_not_used_as_variant():
         assert set(labels) == {"L1", "L2"}
     print("  commonality OK: 슬롯 폴더명이 변형 라벨로 새지 않음")
 
+def test_preflight_flags_missing_recipe_files():
+    """접두 불일치로 **GlobalRTP 만 읽히는** 상태를 양식 만들기 전에 잡아낸다.
+
+    실제 증상: 원본 복사는 멀쩡한데 양식 엑셀에 GlobalRTP 항목만 들어갔다.
+    RecipesInfo.ini 가 레시피 2개를 선언하면 Recipe-2 는 `Recipe2-` 접두 파일로
+    파싱하는데, GlobalRTP 만 공유본으로 폴백되고 OpticPreset/Zones 는 폴백이
+    없어 통째로 빠지기 때문이다.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp) / "Lot1" / "CX01"
+        (d / "Zones").mkdir(parents=True)
+        (d / "GlobalRTP.ini").write_text("[GLOBAL_RTP]\nMaxFaultsPerWafer=3000\n",
+                                         encoding="utf-8")
+        (d / "OpticPreset.ini").write_text(
+            "[Scan2d]\nCameraName=TDI\nMag=5\nLightSrcRef_NominalGL=1\n",
+            encoding="utf-8")
+        (d / "Zones" / "Z1.ini").write_text(
+            "[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta=25\n",
+            encoding="utf-8")
+        (d / "RecipesInfo.ini").write_text(
+            "[Recipe-1]\nName=PI\n[Recipe-2]\nName=PI_Bubble\n", encoding="utf-8")
+
+        pre = commonality.form_preflight([("Lot1", d.parent)])
+        assert [r["name"] for r in pre["recipes"]] == ["PI", "PI_Bubble"]
+        f1, f2 = pre["files"]["PI"], pre["files"]["PI_Bubble"]
+        assert f1["optic"] and f1["zones"] == 1 and not f1["thin"]
+        # Recipe2- 접두 파일이 없다 → GlobalRTP 만 남는다(경고 대상)
+        assert f2["global"] is True and f2["optic"] is False and f2["zones"] == 0
+        assert f2["thin"] is True, f2
+
+        # 접두 파일을 채우면 경고가 사라진다
+        (d / "Recipe2-Zones").mkdir()
+        (d / "Recipe2-Zones" / "Z1.ini").write_text(
+            "[General]\nZoneName=Bub\n[Surface]\nHigh_Delta=30\n", encoding="utf-8")
+        (d / "Recipe2-OpticPreset.ini").write_text(
+            "[Scan2d]\nCameraName=TDI\nMag=7\nLightSrcRef_NominalGL=2\n",
+            encoding="utf-8")
+        pre2 = commonality.form_preflight([("Lot1", d.parent)])
+        g2 = pre2["files"]["PI_Bubble"]
+        assert g2["optic"] and g2["zones"] == 1 and not g2["thin"], g2
+
+        # 단일 레시피(RecipesInfo 없음)도 파일 현황을 준다
+        (d / "RecipesInfo.ini").unlink()
+        pre3 = commonality.form_preflight([("Lot1", d.parent)])
+        assert pre3["recipes"] == []
+        assert pre3["files"][""]["optic"] and not pre3["files"][""]["thin"]
+    print("  commonality OK: 접두 불일치(GlobalRTP만) 사전 감지")
+
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

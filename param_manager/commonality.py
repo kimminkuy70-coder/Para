@@ -500,10 +500,13 @@ def detect_recipes(lot_dirs: list[tuple[str, Path]]) -> list[dict] | None:
 def form_preflight(lot_dirs: list[tuple[str, Path]]) -> dict:
     """양식 만들기 전에 사용자에게 확인시켜 줄 정보(첫 config 폴더 기준).
 
-    반환: {"config_dir": str, "recipes": [{index,name,prefix}] or [],
-           "active": {레시피명 or "": {"file": bool, "scan2d": bool}}}.
+    반환: {"config_dir": str, "recipes": [...], "active": {...}, "files": {...}}
     - recipes: RecipesInfo.ini 로 감지한 하위 레시피 목록(2개+일 때만, 아니면 []).
     - active:  ActiveScenarioOptics.ini(레시피별 접두 포함) 파일 존재/유효 Scan2d 여부.
+    - files:   `{레시피명: {global, optic, zones, count, thin}}` — **그 레시피 접두로
+      실제로 파싱될 파일이 무엇인지**. 다중 레시피인데 `RecipeN-OpticPreset.ini` /
+      `RecipeN-Zones/` 가 없으면 GlobalRTP 만 남아(공유본 폴백) **양식에 GlobalRTP
+      항목만 들어간다**. 그 상태를 미리 잡아내려고 `thin` 으로 표시한다.
     """
     recipes = detect_recipes(lot_dirs) or []
     cfg = None
@@ -513,6 +516,7 @@ def form_preflight(lot_dirs: list[tuple[str, Path]]) -> dict:
             cfg = dirs[0]
             break
     active: dict = {}
+    files: dict = {}
     if cfg is not None:
         targets = ([(r["name"], r["prefix"]) for r in recipes] if recipes
                    else [("", "")])
@@ -523,8 +527,18 @@ def form_preflight(lot_dirs: list[tuple[str, Path]]) -> dict:
             has_scan2d = (ini_parser.read_active_scan2d(cfg, prefix) is not None
                           if exists else False)
             active[name] = {"file": bool(exists), "scan2d": bool(has_scan2d)}
+            # 이 접두로 **실제 파싱될** 파일 목록 — 파서와 같은 함수를 쓴다.
+            got = ini_parser.config_ini_files(Path(cfg), prefix)
+            zones = sum(1 for p in got
+                        if p.parent.name.lower().endswith("zones"))
+            optic = any("opticpreset" in p.name.lower() for p in got)
+            files[name] = {
+                "global": any("globalrtp" in p.name.lower() for p in got),
+                "optic": optic, "zones": zones, "count": len(got),
+                # GlobalRTP 만 남은 상태 = 양식에 그 항목만 들어간다(접두 불일치 의심)
+                "thin": bool(not optic and not zones)}
     return {"config_dir": str(cfg) if cfg else "", "recipes": recipes,
-            "active": active}
+            "active": active, "files": files}
 
 
 def _lot_configs(config_dir: Path, lot_label: str, level: str,
