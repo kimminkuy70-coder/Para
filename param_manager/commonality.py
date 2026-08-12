@@ -39,7 +39,11 @@ from . import collate, downloader, engine, ini_parser
 # --------------------------------------------------------------------------
 # Lot 계획 엑셀 (디바이스명 / 공정번호 / S/M / AOI호기)
 # --------------------------------------------------------------------------
-PLAN_HEADERS = ["디바이스명", "공정번호", "S/M", "AOI호기", "fail여부"]
+# 조사할 Lot 목록(사람이 채우는 파일). '감시 대상 계획'(cmwatcher.WATCH_PLAN_*) 과
+# 헷갈리지 않게 파일 이름을 구분한다 — 이건 **무엇을 조사할지**, 저건 **무엇을 감시할지**.
+PLAN_FILENAME = "Commonality_Lot계획.xlsx"
+# '생성일자' = 자동 감시가 새 S/M 을 찾아 넣을 때 그 폴더가 언제 생겼는지(사람 입력 아님).
+PLAN_HEADERS = ["디바이스명", "공정번호", "S/M", "AOI호기", "fail여부", "생성일자"]
 # 구 템플릿(LOT번호) 하위호환 — 읽을 때 공정번호로 통일.
 _HEADER_ALIASES = {"LOT번호": "공정번호", "LOT": "공정번호", "공정 번호": "공정번호",
                    "공정 Number": "공정번호", "Fail": "fail여부", "FAIL": "fail여부",
@@ -71,7 +75,7 @@ def create_plan_template(path: str, rows: list[dict] | None = None) -> str:
         c.fill = fill
         c.font = white
         c.alignment = Alignment(horizontal="center", vertical="center")
-    for col, w in zip("ABCDE", (28, 18, 12, 12, 10)):
+    for col, w in zip("ABCDEF", (28, 18, 12, 12, 10, 18)):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
     info = wb.create_sheet("사용법")
@@ -84,6 +88,8 @@ def create_plan_template(path: str, rows: list[dict] | None = None) -> str:
          "(CFG X20, CFG #14 REWORK 등)도 자동으로 찾아 후보로 올립니다."],
         ["4) AOI호기: 이 공정이 검사된 호기(예: AOI-6). 선택한 호기 행만 조사합니다."],
         ["5) fail여부: 이 S/M 이 fail 이면 Y(비교표·뷰어에서 노란색으로 표시). 아니면 비움/N."],
+        ["6) 생성일자: 비워 두세요. 자동 감시가 새 S/M 을 찾아 넣을 때 그 폴더가"],
+        ["   언제 생겼는지 자동으로 채웁니다."],
     ]:
         info.append(line)
     info.column_dimensions["A"].width = 70

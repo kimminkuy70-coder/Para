@@ -131,6 +131,31 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
 및 접두 설정파일·RecipesInfo·ActiveScenarioOptics 까지 **상대구조 보존 복사**
 (`downloader.collect_target_items`).
 
+## Commonality 자동 감시 (2026-08 — 헤드리스 완료, **GUI 연결 남음**)
+
+새로 생긴 **S/M 폴더**를 찾아 조사 계획에 넣는다. 헤드리스=`cmwatcher.py`(테스트됨).
+
+- **감시 범위 = '감시 대상 Lot 계획'의 (디바이스, 공정번호)**(사용자 확정). 트리 전체를
+  훑으면 호기당 폴더 수천 개를 매 회차 stat 해야 한다. 계획 조합만 보면 회차당 접근이
+  **계획 행 수**로 끝난다. 경로 해석은 commonality 의 `_find_children`/`_bfs_exact` 재사용.
+- **파일 이름을 구분한다**: `감시대상_Lot계획.xlsx`(무엇을 감시할지 — S/M 칸 없음, 그
+  공정 아래 전부가 대상) vs `Commonality_Lot계획.xlsx`(무엇을 조사할지).
+- **기억 키 = (디바이스, 공정, S/M) 정규화**(`sm_key`) — 경로로 기억하면 백업본
+  (`Scanresult_260402` …)이 하나 생길 때마다 그 안 S/M 수백 개가 전부 '신규'로 잡힌다.
+- **첫 회차는 기준선만**(`apply_scan` 이 `baseline` 을 보고 빈 목록 반환 — GUI 에 맡기면
+  틀리기 쉬워 모듈에서 처리).
+- **안정화 대기**: 폴더 수정시각이 `settle_minutes`(기본 10분) 이내거나 슬롯에 설정파일이
+  없으면 미룬다(스캔이 끝나기 전에 폴더가 먼저 생긴다).
+- **공정 폴더 mtime 이 그대로면 건너뛴다** — 디렉터리 mtime 은 자식 추가/삭제 시 바뀐다.
+- 찾으면 알림 + **조사 계획에 행 추가**(`append_cm_plan`) — **생성일자**(`folder_created`,
+  Windows=`st_ctime`)를 함께 적고, 사람이 관리하는 파일이라 **쓰기 전 백업 1부**.
+  `생성일자` 열이 없는 구 파일에는 열을 만들어 채운다.
+- 설정·상태는 **로컬** `CamtekAOI/Cache/commonality_감시.json`(Scanresult 루트 자체가
+  로컬 설정이고 commonality 산출물도 로컬이라 그쪽에 맞춤). 장비 감시(`감시설정.json`)와
+  **파일·잠금 분리** — 하는 일이 달라 한쪽 실패가 다른 쪽을 막으면 안 된다.
+  주기/시간대/backoff 는 `watcher` 것을 재사용(복제 금지).
+- **남은 일**: GUI(Commonality 탭 감시 카드·설정창·회차 실행·알림) 연결.
+
 ## 이미 확정된 결정 (재질문 금지)
 
 아래는 사용자와 이미 합의가 끝난 사항이다. 같은 내용을 AskUserQuestion으로 **다시 묻지 말 것**.
@@ -248,6 +273,7 @@ python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다�
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
+python3 tests/test_cmwatcher.py    # 8  (새 S/M 감지: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정)
 python3 tests/test_commonality.py  # 23 (Lot계획·폴더해석(느슨매칭·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
