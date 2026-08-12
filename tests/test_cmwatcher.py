@@ -12,6 +12,7 @@
 """
 
 import os
+import re
 import sys
 import tempfile
 import time
@@ -432,9 +433,15 @@ def test_survey_skips_when_form_does_not_match():
               "path": str(odd.parent), "created": ""}],
             machine="AOI-9", form_path=form, recipe="PI3",
             dest_xlsx=dest, copy_dir=os.path.join(tmp, "복사본"))
-        assert res["done"] == [], res
-        assert res["skipped"] and "매칭" in res["skipped"][0][1], res["skipped"]
-        assert not os.path.exists(dest), "안 맞는 데이터로 결과를 만들면 안 된다"
+        # **열은 남긴다** — 빼 버리면 그런 S/M 이 있었다는 사실이 사라진다
+        assert res["done"] == ["ODD"], res
+        assert res["low"] == ["ODD"], res
+        assert res["flagged"] and "매칭" in res["flagged"][0][1], res["flagged"]
+        d0 = cm.read_lot_result(dest)
+        assert "ODD" in d0["lots"], d0["lots"]
+        assert "ODD" in d0["lows"], d0["lows"]      # 색 표시 대상으로 기록
+        comp0 = cm.build_comparison([dest])
+        assert comp0["low_rows"] == {0}, comp0["low_rows"]
 
         # 슬롯이 아예 없는 S/M 도 조용히 건너뛴다
         empty = base / "AOI-9" / "Scanresult" / "2D@R3-DEV1-0001" / "6412" / "EMPTY"
@@ -445,7 +452,47 @@ def test_survey_skips_when_form_does_not_match():
             machine="AOI-9", form_path=form, recipe="PI3",
             dest_xlsx=dest, copy_dir=os.path.join(tmp, "복사본"))
         assert res2["done"] == [] and res2["skipped"], res2
-    print("  양식 불일치·빈 폴더는 결과에서 제외 OK")
+    print("  양식 불일치는 열 유지+색 표시, 빈 폴더는 제외 OK")
+
+
+def test_gui_is_wired():
+    """헤드리스 모듈이 **실제로 화면에 연결**돼 있어야 한다(소스 규칙).
+
+    엔진만 있고 부르는 곳이 없으면 프로그램에서는 아무 일도 일어나지 않는다.
+    """
+    src_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "param_manager")
+    with open(os.path.join(src_dir, "equip_app.py"), encoding="utf-8") as fh:
+        app = fh.read()
+    assert "from . import cmwatcher" in app, "cmwatcher 를 import 하지 않음"
+    # ① 탭 카드 + 설정창
+    for name in ("_cm_watch_card", "_cmw_dialog", "_cmw_forms_dialog",
+                 "_cmw_make_form", "_cmw_build_form"):
+        assert f"def {name}(" in app, name
+    # ② 주기 실행이 실제로 걸려 있어야 한다(안 걸면 영원히 안 돈다)
+    assert "def _cmw_tick(" in app and "self.after(40_000, self._cmw_tick)" in app, \
+        "주기 확인 타이머가 시작되지 않음"
+    assert "self.after(60_000, self._cmw_tick)" in app, "틱이 스스로 다시 예약되지 않음"
+    assert "watcher.should_run(s, st)" in app, "주기 판단을 하지 않음"
+    # ③ 회차가 스캔→계획추가→조사를 모두 부르는가
+    m = re.search(r"def _cmw_cycle_work.*?(?=\n    def )", app, re.S)
+    assert m, "_cmw_cycle_work 를 찾지 못함"
+    body = m.group(0)
+    for call in ("cmwatcher.scan_new(", "cmwatcher.apply_scan(",
+                 "cmwatcher.append_cm_plan(", "cmwatcher.survey_items("):
+        assert call in body, call
+    assert "cmwatcher.form_for(" in body, "대상별 양식을 조회하지 않음"
+    # 무인 회차는 모달을 띄우면 안 된다
+    assert "_run_bg(" in app, "무인 회차가 백그라운드로 돌지 않음"
+    # ④ 대표 S/M 은 최신순 후보에서 사람이 고른다
+    f = re.search(r"def _cmw_make_form.*?(?=\n    def )", app, re.S)
+    assert f and "cmwatcher.sm_candidates(" in f.group(0), "대표 S/M 후보 조회 없음"
+    assert "_pick_list_chooser(" in f.group(0), "사람이 고르는 단계가 없음"
+    # ⑤ 산출물은 로컬(commonality 규칙)
+    assert "_cmw_local(" in app and "save_dir" not in re.findall(
+        r"def _cmw_local.*?(?=\n    def )", app, re.S)[0], \
+        "감시 설정을 저장폴더에 두고 있음"
+    print("  GUI 연결(카드·설정창·주기틱·회차·대표S/M) OK")
 
 
 if __name__ == "__main__":
@@ -457,7 +504,8 @@ if __name__ == "__main__":
               test_form_binding_is_per_target,
               test_survey_records_slot_and_created,
               test_survey_accumulates_into_one_file,
-              test_survey_skips_when_form_does_not_match]:
+              test_survey_skips_when_form_does_not_match,
+              test_gui_is_wired]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

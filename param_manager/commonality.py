@@ -54,6 +54,10 @@ _YES = {"y", "yes", "1", "true", "o", "예", "fail", "ng", "불량"}
 MISMATCH_FILL = "FFF2CC"
 # fail=Y 인 S/M 을 표시하는 노란색(엑셀·뷰어 공통).
 FAIL_FILL = "FFF176"
+# 양식과 매칭이 적은 S/M(자동 감시가 조사했지만 양식이 잘 안 맞음) — 연한 빨강.
+# **열은 남기되** 색으로 구분한다(사용자 확정 2026-08): 지워 버리면 그런 S/M 이
+# 있었다는 사실 자체가 사라져, 왜 비었는지 나중에 알 수 없다.
+LOWMATCH_FILL = "F4CCCC"
 _HDR_FILL = "1F4E78"
 
 
@@ -646,7 +650,8 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
                      coef_note: list[str] | None = None,
                      scan_times: dict | None = None,
                      created: dict | None = None,
-                     slots: dict | None = None) -> str:
+                     slots: dict | None = None,
+                     low_labels: list[str] | None = None) -> str:
     """호기 1대 결과: 시트=레시피, 헤더=META + S/M들. 호기명·fail 은 '_정보' 시트에.
 
     값은 **양식의 변환방식대로 계수를 적용한 값**(collate.collate_recipe)이다.
@@ -659,6 +664,7 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     scan_times = dict(scan_times or {})
     created = dict(created or {})
     slots = dict(slots or {})
+    low_labels = list(low_labels or [])
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = collate._safe_sheet(recipe)
@@ -682,11 +688,14 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     fill = PatternFill("solid", fgColor=_HDR_FILL)
     white = Font(color="FFFFFF", bold=True)
     yellow = PatternFill("solid", fgColor=FAIL_FILL)
+    lowred = PatternFill("solid", fgColor=LOWMATCH_FILL)
     scan_fill = PatternFill("solid", fgColor="E8EEF7")
     for j, h in enumerate(headers, start=1):
         c = ws.cell(row=1, column=j)               # 헤더 행
-        c.fill = (yellow if h in fail_labels else fill)
-        c.font = (Font(bold=True) if h in fail_labels else white)
+        # fail(노랑)이 우선, 그다음 양식 매칭 미달(연한 빨강)
+        c.fill = (yellow if h in fail_labels
+                  else lowred if h in low_labels else fill)
+        c.font = (Font(bold=True) if h in fail_labels or h in low_labels else white)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         for r in range(2, 2 + info_rows):          # 정보 행(눈에 띄게)
             c2 = ws.cell(row=r, column=j)
@@ -703,6 +712,8 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
         meta.append(["Lot", label])
     for label in fail_labels:
         meta.append(["Fail", label])
+    for label in low_labels:
+        meta.append(["LowMatch", label])           # 양식 매칭이 적었던 S/M
     wb.save(dest_xlsx)
     return dest_xlsx
 
@@ -712,6 +723,7 @@ def read_lot_result(path: str) -> dict:
     wb = openpyxl.load_workbook(path, data_only=True)
     machine = recipe = ""
     fails: set = set()
+    lows: set = set()
     if "_정보" in wb.sheetnames:
         for row in wb["_정보"].iter_rows(values_only=True):
             if not row:
@@ -722,6 +734,8 @@ def read_lot_result(path: str) -> dict:
                 recipe = engine._s(row[1])
             elif row[0] == "Fail":
                 fails.add(engine._s(row[1]))
+            elif row[0] == "LowMatch":
+                lows.add(engine._s(row[1]))
     data_ws = next((ws for ws in wb.worksheets if ws.title != "_정보"), None)
     records, lots = [], []
     info: dict = {}
@@ -745,7 +759,7 @@ def read_lot_result(path: str) -> dict:
             records.append(rec)
     wb.close()
     return {"machine": machine, "recipe": recipe, "lots": lots,
-            "records": records, "fails": fails,
+            "records": records, "fails": fails, "lows": lows,
             "scan_times": info.get(SCAN_ROW_LABEL, {}),
             "created": info.get(CREATED_ROW_LABEL, {}),
             "slots": info.get(SLOT_ROW_LABEL, {})}
@@ -776,7 +790,8 @@ def merge_lot_result(dest_xlsx: str, recipe: str, machine: str,
                      coef_note: list[str] | None = None,
                      scan_times: dict | None = None,
                      created: dict | None = None,
-                     slots: dict | None = None) -> dict:
+                     slots: dict | None = None,
+                     low_labels: list[str] | None = None) -> dict:
     """**하나의 결과 파일에 S/M 열을 누적**한다(자동 감시용, 사용자 확정 2026-08).
 
     회차마다 새 결과 파일을 만들면 파일이 수십 개로 불어나고, `build_comparison`
@@ -789,7 +804,7 @@ def merge_lot_result(dest_xlsx: str, recipe: str, machine: str,
     반환: {"path", "added": 새 S/M 수, "updated": 갱신 수, "lots": 전체 S/M 수}
     """
     scan_times, created, slots = dict(scan_times or {}), dict(created or {}), dict(slots or {})
-    old = {"lots": [], "records": [], "fails": set(),
+    old = {"lots": [], "records": [], "fails": set(), "lows": set(),
            "scan_times": {}, "created": {}, "slots": {}}
     if Path(dest_xlsx).is_file():
         try:
@@ -834,6 +849,10 @@ def merge_lot_result(dest_xlsx: str, recipe: str, machine: str,
     info_old[CREATED_ROW_LABEL].update(created)
     info_old[SLOT_ROW_LABEL].update(slots)
     fails = set(old.get("fails") or set()) | set(fail_labels or [])
+    # 매칭 미달 표시 — 이번에 제대로 매칭된 S/M 은 표시를 **해제**한다
+    # (양식을 고치고 다시 조사하면 정상으로 돌아와야 하므로).
+    lows = set(old.get("lows") or set()) | set(low_labels or [])
+    lows -= {l for l in lot_labels if l not in set(low_labels or [])}
 
     class _Res:                                    # write_lot_result 가 쓰는 모양
         pass
@@ -843,8 +862,10 @@ def merge_lot_result(dest_xlsx: str, recipe: str, machine: str,
                      holder, lots, sorted(fails), coef_note=coef_note,
                      scan_times=info_old[SCAN_ROW_LABEL],
                      created=info_old[CREATED_ROW_LABEL],
-                     slots=info_old[SLOT_ROW_LABEL])
-    return {"path": dest_xlsx, "added": added, "updated": updated, "lots": len(lots)}
+                     slots=info_old[SLOT_ROW_LABEL],
+                     low_labels=sorted(lows))
+    return {"path": dest_xlsx, "added": added, "updated": updated,
+            "lots": len(lots), "lows": sorted(lows)}
 
 
 def build_comparison(result_files: list[str]) -> dict:
@@ -863,10 +884,12 @@ def build_comparison(result_files: list[str]) -> dict:
     param_seen: set = set()
     rows: list[dict] = []
     fail_rows: set = set()
+    low_rows: set = set()
     for path in result_files:
         data = read_lot_result(path)
         machine = data["machine"] or Path(path).stem
         fails = data.get("fails") or set()
+        lows = data.get("lows") or set()
         # 파라미터 열 및 S/M별 값 맵
         by_param_value: dict[str, dict[str, object]] = {}
         for rec in data["records"]:
@@ -879,6 +902,8 @@ def build_comparison(result_files: list[str]) -> dict:
         for lot in data["lots"]:
             if lot in fails:
                 fail_rows.add(len(rows))
+            if lot in lows:
+                low_rows.add(len(rows))
             row = {"S/M": lot, "호기": machine,
                    SCAN_ROW_LABEL: scan_times.get(lot, "")}
             for pl in by_param_value:
@@ -904,6 +929,7 @@ def build_comparison(result_files: list[str]) -> dict:
             if v != "" and v != common:
                 outliers.add((i, pl))
     return {"columns": ["S/M", "호기", SCAN_ROW_LABEL] + params, "rows": rows,
+            "low_rows": low_rows,
             "outliers": outliers, "fail_rows": fail_rows, "changed_params": changed}
 
 
@@ -931,13 +957,20 @@ def write_comparison(dest_xlsx: str, comparison: dict,
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     mismatch = PatternFill("solid", fgColor=MISMATCH_FILL)
     fail_fill = PatternFill("solid", fgColor=FAIL_FILL)
+    low_fill = PatternFill("solid", fgColor=LOWMATCH_FILL)
+    low_rows = comparison.get("low_rows") or set()
     for i, r in enumerate(rows):
         ws.append([r.get(col) for col in columns])
         excel_row = i + 2
-        # fail=Y S/M 은 식별칸(S/M·호기)을 노란색으로
+        # fail=Y S/M 은 식별칸(S/M·호기)을 노란색으로.
+        # 양식 매칭이 적었던 S/M 은 연한 빨강 — 값이 비어 보여도 '조사는 했는데
+        # 양식이 안 맞았다'는 뜻이라 다른 이유와 구분돼야 한다.
         if i in fail_rows:
             for c in range(1, head_n + 1):
                 ws.cell(row=excel_row, column=c).fill = fail_fill
+        elif i in low_rows:
+            for c in range(1, head_n + 1):
+                ws.cell(row=excel_row, column=c).fill = low_fill
         for j, col in enumerate(columns[head_n:], start=head_n + 1):
             if (i, col) in outliers:
                 ws.cell(row=excel_row, column=j).fill = mismatch

@@ -175,9 +175,21 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   · 결과 엑셀 정보 행 = **Scan일자 → 생성일자 → 조사슬롯**(헤더 바로 밑, 그 아래가
     파라미터). `read_lot_result` 가 셋 다 빼서 돌려주므로 비교표 파라미터 열에
     섞이지 않는다. 수동 조사에는 생성일자·조사슬롯이 없어 행도 안 생긴다(구 파일 호환).
-  · **양식 매칭이 `min_match`(기본 0.5) 미만이면 결과에서 제외**하고 사유를 남긴다.
-    양식이 안 맞는데 조용히 반쪽 데이터를 쌓는 게 제일 나쁘다.
-- **남은 일**: GUI(Commonality 탭 감시 카드·설정창·대표 S/M 선택·회차 실행·알림) 연결.
+  · **양식 매칭이 `min_match`(기본 0.5) 미만이면 열은 남기고 색으로 표시**한다
+    (`LOWMATCH_FILL` 연한 빨강 — 사용자 확정 2026-08). 빼 버리면 그런 S/M 이
+    있었다는 사실 자체가 사라져 왜 비었는지 알 수 없다. 표시는 결과 엑셀 헤더와
+    비교표 식별칸(`build_comparison` 의 `low_rows`)에 함께 들어가고, `_정보` 시트의
+    `LowMatch` 행으로 회차를 넘어 유지된다. 다시 조사해 제대로 맞으면 자동 해제.
+- **GUI(2026-08 연결 완료)**: Commonality 탭 7번 카드 `🔔 자동 감시`.
+  · `_cmw_dialog` — ON/OFF · 주기(watcher 프리셋 재사용) · 시간대 · 안정화 대기 ·
+    **계획 파일 2개**(감시 대상/조사) · 호기 체크 + 호기별 `📋 양식 지정…`.
+  · `_cmw_forms_dialog` → `_cmw_make_form` → `_cmw_build_form`: 대상마다
+    **대표 S/M 을 최신순 목록에서 고르고**(`sm_candidates`) 그 슬롯으로
+    `_form_param_editor` 를 열어 확정 → `set_form` 으로 대상에 묶는다.
+  · `_cmw_tick`(1분마다, 시작 40초 뒤 등록 — 장비 감시 10초와 **엇갈리게**) →
+    `watcher.should_run` → `_cmw_cycle_work`(스캔→계획추가→조사) → `_cmw_report`.
+    무인이라 `_run_bg`(모달 금지), 트레이 숨김 중이면 풍선 알림.
+  · 오류 코드 E180~E189.
 
 ## 이미 확정된 결정 (재질문 금지)
 
@@ -296,7 +308,7 @@ python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다�
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_cmwatcher.py    # 13 (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치제외)
+python3 tests/test_cmwatcher.py    # 14 (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결)
 python3 tests/test_commonality.py  # 25 (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)

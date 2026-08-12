@@ -556,11 +556,13 @@ def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str
 
     · 슬롯은 이름순 첫 하나만 읽고, **어느 슬롯을 읽었는지 결과에 남긴다**
       (`조사슬롯` 행 — 나중에 되짚을 수 있어야 한다).
-    · 양식과 매칭된 파라미터 비율이 `min_match` 미만이면 **결과에 넣지 않는다**.
-      양식이 안 맞는데 조용히 반쪽 데이터를 쌓는 게 제일 나쁘다.
-    반환: {"done": [라벨], "skipped": [(라벨, 사유)], "merged": {…} or None}
+    · 양식과 매칭된 파라미터 비율이 `min_match` 미만이면 **열은 남기되 연한 빨강
+      으로 표시**한다(`low_labels`). 빼 버리면 그런 S/M 이 있었다는 사실이 사라져
+      "왜 이건 조사가 안 됐지?" 를 알 수 없다.
+    반환: {"done": [라벨], "low": [매칭 적은 라벨], "skipped": [(라벨, 못 읽은 사유)],
+           "flagged": [(라벨, 매칭 사유)], "merged": {…} or None}
     """
-    done, skipped = [], []
+    skipped, flagged = [], []      # skipped=아예 못 읽음 / flagged=조사했지만 매칭 적음
     lot_dirs, labels = [], []
     scan_times, created, slots = {}, {}, {}
     for it in items:
@@ -582,29 +584,30 @@ def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str
         created[lot.label] = it.get("created", "")
         slots[lot.label] = slot_name
     if not lot_dirs:
-        return {"done": [], "skipped": skipped, "merged": None}
+        return {"done": [], "low": [], "skipped": skipped, "flagged": [],
+                "merged": None}
 
     pivot, plabels = cm.parse_lots(lot_dirs, level=recipe, coef_lookup=coef_lookup)
     res = cm.collate_lots(recipe, form_path, pivot, plabels, coef_lookup=coef_lookup)
-    # 양식과 얼마나 맞았는지 — 너무 적으면 그 S/M 은 넣지 않는다
+    # 양식과 얼마나 맞았는지 — 적게 맞은 S/M 도 **열은 남기고 색으로 표시**한다
+    # (사용자 확정 2026-08). 빼 버리면 그런 S/M 이 있었다는 사실 자체가 사라져
+    # 나중에 "왜 이건 조사가 안 됐지?" 를 알 수 없다.
     total = len(res.records) or 1
-    keep = []
+    low = []
     for label in plabels:
         filled = sum(1 for r in res.records if engine._s(r.get(label)).strip() != "")
         if filled / total < max(0.0, min(1.0, min_match)):
-            skipped.append((label, f"양식과 매칭 {filled}/{total} — 결과에서 제외"))
-            continue
-        keep.append(label)
-    if not keep:
-        return {"done": [], "skipped": skipped, "merged": None}
+            low.append(label)
+            flagged.append((label, f"양식과 매칭 {filled}/{total} — 표시만"))
 
     merged = cm.merge_lot_result(
-        dest_xlsx, recipe, machine, res, keep,
-        scan_times={k: scan_times.get(k, "") for k in keep},
-        created={k: created.get(k, "") for k in keep},
-        slots={k: slots.get(k, "") for k in keep})
-    done = keep
-    return {"done": done, "skipped": skipped, "merged": merged}
+        dest_xlsx, recipe, machine, res, plabels,
+        scan_times={k: scan_times.get(k, "") for k in plabels},
+        created={k: created.get(k, "") for k in plabels},
+        slots={k: slots.get(k, "") for k in plabels},
+        low_labels=low)
+    return {"done": list(plabels), "low": low, "skipped": skipped,
+            "flagged": flagged, "merged": merged}
 
 
 def summary(items: list[dict]) -> str:

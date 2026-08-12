@@ -27,6 +27,7 @@ from tksheet import Sheet
 
 from . import coef_detector
 from . import coefstore
+from . import cmwatcher
 from . import collate
 from . import collector
 from . import commonality as cm
@@ -173,7 +174,10 @@ class EquipApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(200, self._startup)   # 저장폴더 지정 → 참고자료/특이사항 로드 → 최신 취합
         self.after(3000, self._presence_tick)   # 접속자 하트비트 + 잠금 갱신
-        self.after(10_000, self._watch_tick)    # 자동 감시 주기 확인
+        self.after(10_000, self._watch_tick)    # 장비 자동 감시 주기 확인
+        # Commonality 감시는 파일서버를 훑으므로 장비 감시와 **엇갈리게** 시작해
+        # 두 회차가 같은 순간에 겹치지 않게 한다.
+        self.after(40_000, self._cmw_tick)      # Commonality 감시 주기 확인
 
     # ====================================================================
     #  상단 공통 크롬(뒤로/앞으로/브레드크럼/저장/파일)
@@ -4035,10 +4039,631 @@ class EquipApp(tk.Tk):
                           ("취합·비교 + 뷰어 열기", self._cm_compare, True),
                       ])
 
+        # 자동 감시 카드 (호기 무관, 항상 노출)
+        self._cm_watch_card(inner)
+
         # 새 호기 진행
         tk.Button(inner, text="＋ 다른 호기로 새로 시작", relief="flat", bd=0,
                   bg=self.p["head_bg"], fg=self.p["text"], padx=12, pady=5,
                   cursor="hand2", command=self._cm_new).pack(anchor="w", padx=8, pady=10)
+
+    # ====================================================================
+    #  Commonality 자동 감시 — 새 S/M 감지 → 계획 추가 → 자동 조사
+    # ====================================================================
+    def _cmw_local(self) -> str:
+        return localdirs.ensure(getattr(self, "local_dir", None)
+                                or localdirs.active_root())
+
+    def _cm_watch_card(self, parent):
+        """Commonality 탭의 감시 카드 — 상태 요약 + 설정/즉시 확인."""
+        try:
+            s, st = cmwatcher.load_settings(self._cmw_local())
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E180", e)
+            return
+        desc = ("새로 생긴 S/M 폴더를 주기마다 찾아 조사 계획에 넣고, 지정한 양식으로 "
+                "값까지 조사합니다.\n"
+                f"· 상태: {'● 켜짐' if s.enabled else '○ 꺼짐'}"
+                f"   · 감시 호기: {len(s.machines or [])}대"
+                f"   · 주기: {watcher.interval_label(s.interval_hours)}")
+        if st.last_run:
+            desc += f"\n· 마지막 확인: {st.last_run} ({st.last_result or '-'})"
+        if not s.watch_plan:
+            desc += f"\n· ⚠ 감시 대상 계획({cmwatcher.WATCH_PLAN_FILENAME})이 아직 없습니다."
+        self._cm_step(parent, 7, "🔔 자동 감시 (새 S/M 폴더)", desc, [
+            ("감시 설정…", self._cmw_dialog, True),
+            ("▶ 즉시 확인", lambda: self._cmw_run_once(), False),
+        ], done=bool(s.enabled))
+
+    # ---- 감시 설정창 -------------------------------------------------
+    # ---- 회차 실행 ----------------------------------------------------
+    def _cmw_cycle_work(self, s, st):
+        """감시 1회차의 순수 작업 — 스캔 → 계획 추가 → 자동 조사.
+        GUI 를 건드리지 않는다(백그라운드 스레드에서 호출)."""
+        local = self._cmw_local()
+        try:
+            plan_rows = cmwatcher.read_watch_plan(s.watch_plan)
+        except Exception as e:  # noqa: BLE001
+            raise RuntimeError(f"감시 대상 계획을 읽지 못했습니다: {e}") from e
+        roots_cfg = dict(s.roots or {})
+        found, surveyed, notes = [], [], []
+
+        def work():
+            for m in (s.machines or []):
+                root = roots_cfg.get(m) or ""
+                if not root:
+                    notes.append(f"{m}: 호기 폴더 미지정 — 건너뜀")
+                    continue
+                targets = cmwatcher.targets_for_machine(plan_rows, m)
+                if not targets:
+                    continue
+                roots = cm.scanresult_roots(root, m)
+                res = cmwatcher.scan_new(
+                    roots, targets, cmwatcher.seen_set(st, m),
+                    (st.mtimes.get(m) or {}), settle_minutes=s.settle_minutes)
+                items = cmwatcher.apply_scan(st, m, res)
+                if not items:
+                    continue
+                for it in items:
+                    it["machine"] = m
+                found += items
+                # ① 조사 계획에 행 추가(무엇이 언제 들어왔는지 기록)
+                if s.cm_plan:
+                    try:
+                        cmwatcher.append_cm_plan(s.cm_plan, items, machine=m)
+                    except Exception as e:  # noqa: BLE001
+                        notes.append(f"{m}: 계획 추가 실패 — {e}")
+                # ② 대상별 양식으로 자동 조사
+                by_target = {}
+                for it in items:
+                    by_target.setdefault((it["device"], it["lot"]), []).append(it)
+                for (dev, lotno), group in by_target.items():
+                    info = cmwatcher.form_for(s, m, dev, lotno)
+                    form = info.get("form") or ""
+                    if not (form and os.path.isfile(form)):
+                        notes.append(f"{m} {dev}/{lotno}: 양식 없음 — 조사 건너뜀")
+                        continue
+                    recipe = info.get("recipe") or lotno
+
+                    def cl(_lot, mag, _m=m):
+                        return coefstore.lookup(self.coef_rows, _m, mag)
+                    try:
+                        out = cmwatcher.survey_items(
+                            group, machine=m, form_path=form, recipe=recipe,
+                            dest_xlsx=cmwatcher.result_path(local, m, recipe),
+                            copy_dir=cmwatcher.copy_root(local, m),
+                            coef_lookup=cl, min_match=s.min_match)
+                    except Exception as e:  # noqa: BLE001
+                        notes.append(f"{m} {dev}/{lotno}: 조사 실패 — {e}")
+                        continue
+                    surveyed += out.get("done") or []
+                    for label, why in (out.get("flagged") or []):
+                        notes.append(f"{m} {label}: {why}")
+                    for label, why in (out.get("skipped") or []):
+                        notes.append(f"{m} {label}: {why}")
+            st.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.last_result = (f"새 S/M {len(found)}건 · 조사 {len(surveyed)}건"
+                              if found else "새 S/M 없음")
+            cmwatcher.save_settings(local, s, st)
+            cmwatcher.append_log(local, st.last_result
+                                 + (" | " + " / ".join(notes[:6]) if notes else ""))
+            return {"found": found, "surveyed": surveyed, "notes": notes}
+        return work
+
+    def _cmw_run_once(self):
+        """'즉시 확인' — 주기를 기다리지 않고 지금 1회(사람이 눌렀으므로 결과 알림)."""
+        local = self._cmw_local()
+        s, st = cmwatcher.load_settings(local)
+        if not (s.machines and s.watch_plan and os.path.isfile(s.watch_plan)):
+            messagebox.showinfo("자동 감시",
+                                "먼저 '감시 설정…'에서 호기와 감시 대상 계획을 "
+                                "지정하세요.")
+            return
+        if getattr(self, "_cmw_busy", False):
+            messagebox.showinfo("자동 감시", "이미 확인 중입니다.")
+            return
+        self._cmw_busy = True
+
+        def done(ok, res):
+            self._cmw_busy = False
+            if not ok:
+                self._err("E187", "Commonality 감시 실패", res)
+                return
+            self._render()
+            self._cmw_report(res, manual=True)
+        self._run_busy("새 S/M 확인 중…", self._cmw_cycle_work(s, st), done)
+
+    def _cmw_tick(self):
+        """1분마다 — 주기가 됐으면 조용히 1회차(무인이라 모달 금지)."""
+        try:
+            local = self._cmw_local()
+            s, st = cmwatcher.load_settings(local)
+            if (s.enabled and s.machines and s.watch_plan
+                    and os.path.isfile(s.watch_plan)
+                    and not getattr(self, "_cmw_busy", False)
+                    and watcher.should_run(s, st)):
+                self._cmw_busy = True
+
+                def done(ok, res):
+                    self._cmw_busy = False
+                    if not ok:
+                        self._logerr("E188", res)
+                        return
+                    if res.get("found"):
+                        self._cmw_report(res, manual=False)
+                self._run_bg(self._cmw_cycle_work(s, st), done)
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E189", e)
+        self.after(60_000, self._cmw_tick)
+
+    def _cmw_report(self, res, manual: bool):
+        """회차 결과 알림 — 무엇이 새로 생겼고 무엇까지 조사됐는지."""
+        found = res.get("found") or []
+        surveyed = res.get("surveyed") or []
+        notes = res.get("notes") or []
+        if not found:
+            if manual:
+                messagebox.showinfo("Commonality 자동 감시", "새로 생긴 S/M 이 없습니다.")
+            return
+        lines = [f"새 S/M {len(found)}건 · 자동 조사 {len(surveyed)}건", ""]
+        for it in found[:12]:
+            mark = "✔" if it["sm"] in surveyed else "·"
+            lines.append(f"  {mark} {it.get('machine','')} {it['device']} / "
+                         f"{it['lot']} / {it['sm']}   (생성 {it.get('created') or '-'})")
+        if len(found) > 12:
+            lines.append(f"  … 외 {len(found) - 12}건")
+        if notes:
+            lines += ["", "확인 필요:"] + [f"  · {n}" for n in notes[:8]]
+        text = "\n".join(lines)
+        self._set_status(f"Commonality 감시: 새 S/M {len(found)}건 · "
+                         f"조사 {len(surveyed)}건")
+        if self._is_hidden() and self._tray is not None:
+            # 숨은 창의 모달은 볼 수 없다 — 풍선 알림으로(장비 감시와 같은 방식)
+            self._tray.notify("Commonality — 새 S/M 발견",
+                              f"{len(found)}건 발견 · 조사 {len(surveyed)}건")
+            return
+        messagebox.showinfo("Commonality 자동 감시", text)
+
+    def _cmw_dialog(self):
+        """자동 감시 설정 — ON/OFF · 주기 · 감시 대상 계획 · 호기별 양식 지정."""
+        local = self._cmw_local()
+        s, st = cmwatcher.load_settings(local)
+        win = tk.Toplevel(self)
+        win.title("Commonality 자동 감시 설정")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.geometry("860x760")
+        outer = tk.Frame(win, bg=self.p["bg"])
+        outer.pack(side="top", fill="both", expand=True)
+        cv = tk.Canvas(outer, bg=self.p["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=cv.yview)
+        page = tk.Frame(cv, bg=self.p["bg"])
+        cv.create_window((0, 0), window=page, anchor="nw", tags="i")
+        cv.configure(yscrollcommand=sb.set)
+        cv.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        page.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.bind("<Configure>", lambda e: cv.itemconfigure("i", width=e.width))
+        self._wheelify(cv)
+
+        # ① ON/OFF
+        on = tk.BooleanVar(value=s.enabled)
+        head = tk.Frame(page, bg=self.p["bg"])
+        head.pack(fill="x", padx=16, pady=(14, 4))
+        tk.Label(head, text="Commonality 자동 감시", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(side="left")
+        tog = tk.Button(head, relief="flat", bd=0, padx=22, pady=8, cursor="hand2",
+                        font=self.fonts["bold"])
+        tog.pack(side="right")
+
+        def paint():
+            v = on.get()
+            tog.config(text=("● 켜짐 — 클릭하면 끔" if v else "○ 꺼짐 — 클릭하면 켬"),
+                       bg=(self.p["ok"] if v else self.p["surface"]),
+                       fg=("#ffffff" if v else self.p["muted"]))
+        tog.config(command=lambda: (on.set(not on.get()), paint()))
+        paint()
+        tk.Label(page, text="새로 생긴 S/M 폴더를 찾아 조사 계획에 넣고, 지정한 양식으로 "
+                           "값까지 조사해 결과 파일에 누적합니다.\n"
+                           "원본은 읽기·복사만 하며 산출물은 모두 내 PC에 저장됩니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(0, 8))
+
+        # ② 주기 · 시간대
+        b1 = tk.LabelFrame(page, text=" ① 실행 주기 ", bg=self.p["bg"],
+                           fg=self.p["text"], font=self.fonts["bold"])
+        b1.pack(fill="x", padx=16, pady=4)
+        r1 = tk.Frame(b1, bg=self.p["bg"])
+        r1.pack(fill="x", padx=10, pady=8)
+        iv = tk.StringVar(value=watcher.interval_label(s.interval_hours))
+        tk.Label(r1, text="주기:", bg=self.p["bg"], fg=self.p["text"]).pack(side="left")
+        ttk.Combobox(r1, textvariable=iv, width=8, state="readonly",
+                     values=[l for _v, l in watcher.INTERVAL_CHOICES]).pack(
+                     side="left", padx=(6, 18))
+        ws_v = tk.StringVar(value=str(s.window_start))
+        we_v = tk.StringVar(value=str(s.window_end))
+        hours = tuple(str(i) for i in range(24))
+        tk.Label(r1, text="실행 시간대:", bg=self.p["bg"],
+                 fg=self.p["text"]).pack(side="left")
+        ttk.Combobox(r1, textvariable=ws_v, width=4, state="readonly",
+                     values=hours).pack(side="left", padx=(6, 2))
+        tk.Label(r1, text="시 ~", bg=self.p["bg"], fg=self.p["text"]).pack(side="left")
+        ttk.Combobox(r1, textvariable=we_v, width=4, state="readonly",
+                     values=hours).pack(side="left", padx=2)
+        tk.Label(r1, text="시", bg=self.p["bg"], fg=self.p["text"]).pack(side="left")
+        st_v = tk.StringVar(value=str(int(s.settle_minutes)))
+        tk.Label(r1, text="   안정화 대기:", bg=self.p["bg"],
+                 fg=self.p["text"]).pack(side="left")
+        tk.Entry(r1, textvariable=st_v, width=4, relief="solid",
+                 bd=1).pack(side="left", padx=4)
+        tk.Label(r1, text="분", bg=self.p["bg"], fg=self.p["text"]).pack(side="left")
+        tk.Label(b1, text="폴더가 생긴 뒤 이 시간이 지나야 '신규'로 봅니다 — 스캔이 "
+                          "끝나기 전에 폴더가 먼저 생기기 때문입니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=12, pady=(0, 8))
+
+        # ③ 계획 파일 2개
+        b2 = tk.LabelFrame(page, text=" ② 계획 파일 (이름이 다른 두 파일) ",
+                           bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"])
+        b2.pack(fill="x", padx=16, pady=4)
+        wp = tk.StringVar(value=s.watch_plan)
+        cp = tk.StringVar(value=s.cm_plan)
+
+        def file_row(parent, label, var, note, template=None):
+            row = tk.Frame(parent, bg=self.p["bg"])
+            row.pack(fill="x", padx=10, pady=(6, 0))
+            tk.Label(row, text=label, bg=self.p["bg"], fg=self.p["text"],
+                     font=self.fonts["bold"], width=22, anchor="w").pack(side="left")
+            if template:
+                tk.Button(row, text="템플릿 만들기", relief="flat", bd=0,
+                          bg=self.p["surface"], fg=self.p["primary"],
+                          font=self.fonts["sub"], padx=8, cursor="hand2",
+                          command=template).pack(side="right", padx=4)
+            tk.Button(row, text="찾기…", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["primary"], font=self.fonts["sub"], padx=8,
+                      cursor="hand2",
+                      command=lambda v=var: self._cmw_pick_file(v, win)).pack(side="right")
+            tk.Label(parent, textvariable=var, bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"], anchor="w",
+                     wraplength=700, justify="left").pack(anchor="w", padx=32)
+            tk.Label(parent, text=note, bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"], justify="left").pack(anchor="w", padx=32,
+                                                                  pady=(0, 4))
+
+        file_row(b2, "감시 대상 계획", wp,
+                 f"무엇을 **감시**할지 — 디바이스/공정/호기 (S/M 칸 없음). "
+                 f"파일명 예: {cmwatcher.WATCH_PLAN_FILENAME}",
+                 template=lambda: self._cmw_make_watch_template(wp, win))
+        file_row(b2, "조사 계획", cp,
+                 f"무엇을 **조사**할지 — 새 S/M 을 생성일자와 함께 여기에 추가합니다. "
+                 f"파일명 예: {cm.PLAN_FILENAME}")
+
+        # ④ 호기 + 대상별 양식
+        b3 = tk.LabelFrame(page, text=" ③ 감시할 호기와 양식 ", bg=self.p["bg"],
+                           fg=self.p["text"], font=self.fonts["bold"])
+        b3.pack(fill="both", expand=True, padx=16, pady=4)
+        tk.Label(b3, text="호기를 체크하고, 감시 대상마다 **양식**을 지정하세요. "
+                          "양식이 없는 대상은 계획 추가·알림만 하고 조사는 건너뜁니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=10, pady=(6, 4))
+        tbl = tk.Frame(b3, bg=self.p["bg"])
+        tbl.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+        machines = self._all_machines()
+        sel = {m: tk.BooleanVar(value=(m in (s.machines or []))) for m in machines}
+        state_box = {"s": s}
+        row_lbl = {}
+
+        def refresh_forms():
+            plan_rows = []
+            if wp.get() and os.path.isfile(wp.get()):
+                try:
+                    plan_rows = cmwatcher.read_watch_plan(wp.get())
+                except Exception as e:  # noqa: BLE001
+                    self._logerr("E181", e)
+            for m in machines:
+                tg = cmwatcher.targets_for_machine(plan_rows, m)
+                miss = cmwatcher.missing_forms(state_box["s"], m, tg)
+                lbl = row_lbl.get(m)
+                if lbl is None:
+                    continue
+                if not tg:
+                    lbl.config(text="감시 대상 없음", fg=self.p["muted"])
+                elif miss:
+                    lbl.config(text=f"양식 {len(tg) - len(miss)}/{len(tg)} — 지정 필요",
+                               fg=self.p["danger"])
+                else:
+                    lbl.config(text=f"양식 {len(tg)}/{len(tg)} ✓", fg=self.p["ok"])
+
+        for i, m in enumerate(machines):
+            r = tk.Frame(tbl, bg=(self.p["bg"] if i % 2 == 0 else self.p["stripe"]))
+            r.pack(fill="x")
+            tk.Checkbutton(r, variable=sel[m], bg=r["bg"], activebackground=r["bg"],
+                           selectcolor=self.p["surface"]).pack(side="left")
+            tk.Label(r, text=m, bg=r["bg"], fg=self.p["text"], font=self.fonts["bold"],
+                     width=10, anchor="w").pack(side="left")
+            tk.Button(r, text="📋 양식 지정…", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["primary"], font=self.fonts["sub"], padx=8,
+                      cursor="hand2",
+                      command=lambda mm=m: (self._cmw_forms_dialog(
+                          state_box["s"], mm, wp.get(), win), refresh_forms())
+                      ).pack(side="right", padx=4)
+            lb = tk.Label(r, text="", bg=r["bg"], font=self.fonts["sub"], anchor="e")
+            lb.pack(side="right", padx=6)
+            row_lbl[m] = lb
+        if not machines:
+            tk.Label(tbl, text="'장비 IP' 탭에서 호기를 먼저 등록하세요.",
+                     bg=self.p["bg"], fg=self.p["danger"],
+                     font=self.fonts["sub"]).pack(anchor="w")
+        refresh_forms()
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(side="bottom", fill="x", padx=16, pady=12)
+
+        def collect(require: bool) -> bool:
+            picked = [m for m in machines if sel[m].get()]
+            if require and not picked:
+                messagebox.showwarning("호기 미선택", "감시할 호기를 1대 이상 체크하세요.",
+                                       parent=win)
+                return False
+            if require and not (wp.get() and os.path.isfile(wp.get())):
+                messagebox.showwarning("감시 대상 계획 없음",
+                                       "감시 대상 계획 엑셀을 지정하세요.", parent=win)
+                return False
+            s.machines = picked
+            s.watch_plan, s.cm_plan = wp.get(), cp.get()
+            s.interval_hours = watcher.interval_from_label(iv.get())
+            try:
+                s.window_start, s.window_end = int(ws_v.get()), int(we_v.get())
+            except ValueError:
+                s.window_start = s.window_end = 0
+            try:
+                s.settle_minutes = max(0.0, float(st_v.get()))
+            except ValueError:
+                s.settle_minutes = cmwatcher.DEFAULT_SETTLE_MINUTES
+            s.roots = dict(self._cm_roots())      # 호기별 Scanresult 루트(로컬 설정)
+            return True
+
+        def save():
+            if not collect(require=bool(on.get())):
+                return
+            s.enabled = bool(on.get())
+            cmwatcher.save_settings(local, s, st)
+            cmwatcher.append_log(local, f"설정 변경 — 사용={s.enabled} "
+                                        f"호기={len(s.machines)}대 "
+                                        f"주기={watcher.interval_label(s.interval_hours)}")
+            win.destroy()
+            self._render()
+
+        def run_now():
+            if not collect(require=True):
+                return
+            cmwatcher.save_settings(local, s, st)
+            win.destroy()
+            self._cmw_run_once()
+
+        tk.Button(bt, text="▶ 즉시 확인", relief="flat", bd=0, bg=self.p["primary_dk"],
+                  fg="#ffffff", padx=14, pady=6, cursor="hand2",
+                  command=run_now).pack(side="left")
+        tk.Button(bt, text="감시 로그…", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=lambda: self._open_in_excel(
+                      cmwatcher.log_path(local))).pack(side="left", padx=6)
+        tk.Button(bt, text="저장", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=18, pady=6, cursor="hand2",
+                  command=save).pack(side="right")
+        tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
+                  fg=self.p["text"], padx=16, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=6)
+
+    # ---- 대상별 양식 지정(대표 S/M 선택 → 양식 만들기) --------------
+    def _cmw_forms_dialog(self, s, machine, watch_plan, parent):
+        """이 호기의 감시 대상마다 양식을 지정한다.
+
+        양식은 **대표 S/M 하나를 사람이 골라** 그것으로 만든다(사용자 확정).
+        후보는 `sm_candidates` 가 **생성일자 최신순**으로 준다.
+        """
+        if not (watch_plan and os.path.isfile(watch_plan)):
+            messagebox.showinfo("감시 대상 계획", "감시 대상 계획 엑셀을 먼저 지정하세요.",
+                                parent=parent)
+            return
+        try:
+            targets = cmwatcher.targets_for_machine(
+                cmwatcher.read_watch_plan(watch_plan), machine)
+        except Exception as e:  # noqa: BLE001
+            self._err("E183", "감시 대상 계획 읽기 실패", e, parent=parent)
+            return
+        if not targets:
+            messagebox.showinfo("감시 대상", f"'{machine}' 에 해당하는 계획 행이 없습니다.",
+                                parent=parent)
+            return
+        root = self._cm_roots().get(machine, "")
+        if not root:
+            messagebox.showwarning("호기 폴더 미지정",
+                                   f"'{machine}' 의 호기 폴더를 Commonality 1단계에서 "
+                                   "먼저 지정하세요.", parent=parent)
+            return
+
+        win = tk.Toplevel(parent)
+        win.title(f"{machine} — 감시 대상별 양식")
+        win.configure(bg=self.p["bg"])
+        win.transient(parent)
+        win.grab_set()
+        win.geometry("820x520")
+        tk.Label(win, text=f"{machine} 감시 대상별 양식", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", padx=16,
+                                                                   pady=(14, 2))
+        tk.Label(win, text="대상마다 대표 S/M 을 하나 골라 그것으로 양식을 만듭니다"
+                           "(후보는 생성일자 최신순).\n"
+                           "양식이 없는 대상은 새 S/M 을 찾아 계획에 넣기만 하고 "
+                           "값 조사는 건너뜁니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=16, pady=(0, 8))
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="both", expand=True, padx=16)
+        labels = {}
+
+        def refresh(dev, lot):
+            info = cmwatcher.form_for(s, machine, dev, lot)
+            lb = labels.get((dev, lot))
+            if lb is None:
+                return
+            if info.get("form") and os.path.isfile(info["form"]):
+                lb.config(text=f"✔ {info.get('recipe') or ''} "
+                               f"(대표 {info.get('sm') or '-'})", fg=self.p["ok"])
+            else:
+                lb.config(text="양식 없음 — 조사 건너뜀", fg=self.p["danger"])
+
+        for i, (dev, lot) in enumerate(targets):
+            r = tk.Frame(body, bg=(self.p["bg"] if i % 2 == 0 else self.p["stripe"]))
+            r.pack(fill="x", pady=1)
+            tk.Button(r, text="양식 만들기…", relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["primary"], font=self.fonts["sub"], padx=8,
+                      cursor="hand2",
+                      command=lambda d=dev, l=lot: self._cmw_make_form(
+                          s, machine, d, l, root, win, lambda: refresh(d, l))
+                      ).pack(side="right", padx=4)
+            lb = tk.Label(r, text="", bg=r["bg"], font=self.fonts["sub"], anchor="e")
+            lb.pack(side="right", padx=6)
+            tk.Label(r, text=f"{dev} / {lot}", bg=r["bg"], fg=self.p["text"],
+                     font=self.fonts["sub"], anchor="w").pack(side="left", fill="x",
+                                                              expand=True, padx=6)
+            labels[(dev, lot)] = lb
+            refresh(dev, lot)
+        tk.Button(win, text="닫기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=18, pady=6, cursor="hand2",
+                  command=win.destroy).pack(anchor="e", padx=16, pady=12)
+        win.wait_window()
+
+    def _cmw_make_form(self, s, machine, device, lot, root, parent, then):
+        """대표 S/M 선택 → 그 슬롯으로 양식 편집기 → 확정 양식을 대상에 묶는다."""
+        roots = cm.scanresult_roots(root, machine)
+
+        def work():
+            return cmwatcher.sm_candidates(roots, device, lot)
+
+        def done(ok, cands):
+            if not ok:
+                self._err("E184", "S/M 후보 조회 실패", cands, parent=parent)
+                return
+            if not cands:
+                messagebox.showinfo("S/M 없음",
+                                    f"{device} / {lot} 아래에서 S/M 폴더를 찾지 못했습니다.",
+                                    parent=parent)
+                return
+            labels = [f"{c['sm']}    생성 {c['created'] or '-'}    "
+                      f"슬롯 {c['slots']}개" for c in cands]
+            self._chooser_parent = parent
+            pick = self._pick_list_chooser(
+                "sm", f"대표 S/M 선택 — {device} / {lot}", labels, False,
+                note="이 S/M 으로 양식을 만듭니다. **생성일자 최신순**으로 정렬했습니다.")
+            if not pick:
+                return
+            c = cands[labels.index(pick[0])]
+            sm_dir = Path(c["path"])
+            slots = cmwatcher.usable_slots(sm_dir)
+            if not slots:
+                messagebox.showwarning("설정 파일 없음",
+                                       f"'{c['sm']}' 아래 슬롯에 읽을 설정 파일이 "
+                                       "없습니다.", parent=parent)
+                return
+            from tkinter import simpledialog
+            recipe = simpledialog.askstring(
+                "양식 제목", "이 감시 대상의 조사 제목(레시피명)을 입력하세요:",
+                initialvalue=cmwatcher.form_for(s, machine, device, lot).get("recipe")
+                or lot, parent=parent)
+            if not recipe:
+                return
+            recipe = recipe.strip()
+            self._cmw_build_form(s, machine, device, lot, c, slots[0], recipe,
+                                 parent, then)
+        self._run_busy("S/M 후보 조회 중…", work, done, parent=parent)
+
+    def _cmw_build_form(self, s, machine, device, lot, cand, slot_dir, recipe,
+                        parent, then):
+        """대표 슬롯 파싱 → 편집기 → 확정 양식 저장 + 감시 설정에 묶기."""
+        local = self._cmw_local()
+        st = workdirs.stamp()
+        run_dir = os.path.join(workdirs.commonality_root(local),
+                               dl.safe_name(machine), "자동감시", "양식")
+        os.makedirs(run_dir, exist_ok=True)
+
+        def work():
+            cb, cstate = self._coef_lookup_cb(fixed_machine=machine)
+            pivot, labels = cm.parse_lots([(cand["sm"], Path(slot_dir))],
+                                          level=recipe, coef_lookup=cb)
+            self._coef_save_if_changed(cstate)
+            return pivot, labels
+
+        def done(ok, res):
+            if not ok:
+                self._err("E185", "대표 S/M 파싱 실패", res, parent=parent)
+                return
+            pivot, _labels = res
+            if not pivot:
+                messagebox.showwarning("읽을 항목 없음",
+                                       "그 슬롯에서 파라미터를 읽지 못했습니다.",
+                                       parent=parent)
+                return
+            kind = "RDL" if recipe.upper().startswith("RDL") else "PI"
+            form = os.path.join(
+                run_dir, f"감시양식_{dl.safe_name(recipe)}_{dl.safe_name(machine)}_"
+                         f"{dl.safe_name(device)}_{dl.safe_name(lot)}.xlsx")
+
+            def on_confirm(records, extracts, scales_out, win2):
+                def w():
+                    extract_io.write_snapshot(
+                        form, records, machines=[], sheet_name=(
+                            "RDL_ALL" if kind == "RDL" else "PI_ALL"),
+                        extracts=extracts, stage="final", level=recipe, aoi=machine,
+                        source=f"commonality 감시 {recipe}", user=self.user,
+                        scales=scales_out)
+                    return form
+
+                def d(ok2, res2):
+                    if not ok2:
+                        self._err("E186", "감시 양식 확정 실패", res2, parent=parent)
+                        return
+                    win2.destroy()
+                    cmwatcher.set_form(s, machine, device, lot, form, recipe,
+                                       sm=cand["sm"])
+                    cmwatcher.save_settings(local, s,
+                                            cmwatcher.load_settings(local)[1])
+                    then()
+                    messagebox.showinfo(
+                        "감시 양식 확정",
+                        f"{device} / {lot} 감시 양식을 만들었습니다.\n"
+                        f"항목 {len(records)}개 · 대표 S/M: {cand['sm']}\n{form}",
+                        parent=parent)
+                self._run_busy("감시 양식 확정 중…", w, d, parent=parent)
+            self._form_param_editor(pivot, recipe, kind, {}, run_dir, run_dir, st,
+                                    machine, base_keys=None, base_name="",
+                                    title_prefix=f"감시 양식 [{device}/{lot}]",
+                                    on_confirm=on_confirm)
+        self._run_busy("대표 S/M 파싱 중…", work, done, parent=parent)
+
+    def _cmw_pick_file(self, var, parent):
+        p = filedialog.askopenfilename(title="계획 엑셀 선택",
+                                       filetypes=[("Excel", "*.xlsx")], parent=parent)
+        if p:
+            var.set(p)
+
+    def _cmw_make_watch_template(self, var, parent):
+        p = filedialog.asksaveasfilename(
+            title="감시 대상 계획 템플릿 저장", defaultextension=".xlsx",
+            initialfile=cmwatcher.WATCH_PLAN_FILENAME,
+            filetypes=[("Excel", "*.xlsx")], parent=parent)
+        if not p:
+            return
+        try:
+            cmwatcher.create_watch_plan_template(p)
+        except Exception as e:  # noqa: BLE001
+            self._err("E182", "템플릿 생성 실패", e, parent=parent)
+            return
+        var.set(p)
+        if messagebox.askyesno("템플릿 생성",
+                               f"만들었습니다:\n{p}\n\n지금 Excel로 열까요?",
+                               parent=parent):
+            self._open_in_excel(p)
 
     def _cm_new(self):
         self._cm = {}
