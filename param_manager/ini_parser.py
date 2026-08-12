@@ -775,20 +775,21 @@ def scan_tree(root: str | Path, default_level: str = "",
               folder_variant: bool = True) -> list[ParsedConfig]:
     """폴더트리 → config 폴더별 ParsedConfig (ini 소스 전용, RTP.txt 미사용).
 
-    변환계수 결정 우선순위(장비 렌즈 특성 = 장비×MAG 마다 다름):
-      1) coef_lookup(equipment, mag_value, config_dir) 가 값을 주면 그걸 사용,
+    변환계수 결정 우선순위(장비 렌즈 특성 = 호기×변형 마다 다름):
+      1) coef_lookup(equipment, variant) 가 값을 주면 그걸 사용,
       2) 없으면 scales[변형라벨](구 방식), 3) 그래도 없으면 scale(기본).
-    coef_lookup 은 '변환계수.xlsx'(호기+MAG) 를 읽는 콜백(GUI/호출측이 주입)."""
+    coef_lookup 은 '변환계수.xlsx'(호기+변형) 를 읽는 콜백(GUI/호출측이 주입).
+    MAG(mag_value)는 참고·표시용으로만 계속 뽑는다(매칭에는 쓰지 않는다)."""
     scales = scales or {}
     res: list[ParsedConfig] = []
     for cdir in find_config_dirs(Path(root)):
         meta = detect_meta(cdir, default_level, default_equipment,
                            folder_variant=folder_variant)
-        mag_value = read_optic_mag(cdir, recipe_prefix)
+        mag_value = read_optic_mag(cdir, recipe_prefix)   # 표시·참고용(계수 키 아님)
         use_scale = None
         if coef_lookup is not None:
             try:
-                use_scale = coef_lookup(meta["equipment"], mag_value, cdir, meta["mag"])
+                use_scale = coef_lookup(meta["equipment"], meta["mag"])
             except Exception:  # noqa: BLE001
                 use_scale = None
         if use_scale is None:

@@ -639,7 +639,7 @@ INFO_ROW_LABELS = (SCAN_ROW_LABEL, CREATED_ROW_LABEL, SLOT_ROW_LABEL)
 def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
                  lot_labels: list[str], coef_lookup=None) -> collate.CollateRecipe:
     """확정 양식 + 통합 피벗 → Lot 열 채운 CollateRecipe(collate 재사용).
-    값은 양식 변환방식 재적용. coef_lookup(lot라벨, MAG)→계수(commonality 는 호기 고정)."""
+    값은 양식 변환방식 재적용. coef_lookup(호기, 변형)→계수(commonality 는 호기 고정)."""
     return collate.collate_recipe(recipe, form_path, pivot_rows, lot_labels,
                                   coef_lookup=coef_lookup)
 

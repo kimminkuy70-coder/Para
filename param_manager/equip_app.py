@@ -443,7 +443,7 @@ class EquipApp(tk.Tk):
         return refdata.machines(self.ip_rows)
 
     def _coef_label_for(self, machine: str) -> str:
-        """선택 호기의 변환계수(변형별 모두) 표시 문자열. 장비 렌즈 특성 = 호기+MAG."""
+        """선택 호기의 변환계수(변형별 모두) 표시 문자열. 장비 렌즈 특성 = 호기+변형."""
         rows = coefstore.machine_coefs(self.coef_rows, machine)
         if not rows:
             return "  · 변환계수 미등록(변환계수.xlsx)"
@@ -2679,10 +2679,10 @@ class EquipApp(tk.Tk):
     def _coef_lookup_cb(self, fixed_machine=None):
         """scan_tree 용 변환계수 콜백 — **`변환계수.xlsx` 만 본다**(사용자 확정 2026-08).
 
-        종전에는 (호기,MAG) 조회가 실패하면 RTP.txt 로 계수를 **자동 추정해서 파일에
-        써 넣었다**. 그래서 장비에서 MAG 이 조금만 달라져도(= target optic 이 바뀌면
-        달라진다) 사람이 넣은 값 대신 추정값이 새 행으로 들어가, **값 업데이트를 돌릴
-        때마다 계수가 바뀌는** 일이 생겼다. 값을 읽는 작업이 설정 파일을 고치면 안 된다.
+        키 = (호기, 변형). 종전에는 (호기,MAG) 조회가 실패하면 RTP.txt 로 계수를
+        **자동 추정해 파일에 써 넣었고**, 게다가 MAG 은 target optic 이 바뀌면 흔들려
+        **값 업데이트를 돌릴 때마다 계수가 바뀌는** 일이 생겼다. 그래서 (1) 키를 흔들리는
+        MAG 대신 변형으로 바꾸고, (2) 값을 읽는 작업은 설정 파일을 고치지 않는다.
 
         이제 조회만 하고, 없으면 None 을 돌려준다(scan_tree 가 `scales`/기본값으로
         폴백). 저장소를 고치는 건 **사람이 양식에서 계수를 확정할 때뿐**이다
@@ -2692,21 +2692,22 @@ class EquipApp(tk.Tk):
         """
         state = {"changed": 0, "missing": []}
 
-        def cb(equipment, mag_value, config_dir=None, variant=""):
+        def cb(equipment, variant=""):
             if fixed_machine:
                 equipment = fixed_machine
-            c = coefstore.lookup(self.coef_rows, equipment, mag_value)
+            c = coefstore.lookup(self.coef_rows, equipment, variant)
             if c is None:
-                key = (engine._s(equipment).strip(), engine._s(mag_value).strip())
+                key = (engine._s(equipment).strip(), engine._s(variant).strip())
                 if key[0] and key not in state["missing"]:
                     state["missing"].append(key)
             return c
         return cb, state
 
     def _form_mags(self, rows, aoi) -> dict:
-        """편집기 피벗 rows → {변형: MAG}. 계수 저장 키가 (호기, MAG) 라서 필요하다.
+        """편집기 피벗 rows → {변형: MAG}. 계수 저장 키는 (호기, 변형)이고 MAG 은
+        참고열로만 함께 기록한다(어떤 렌즈였는지 사람이 알아보게).
         rows 의 'mag' = 변형 라벨, 'mags' = {호기: OpticPreset Scan2d Mag}.
-        기존 양식을 다시 불러온 경우엔 mags 가 없어 빈 dict 가 된다(변형으로 폴백)."""
+        기존 양식을 다시 불러온 경우엔 mags 가 없어 빈 dict 가 된다(MAG 참고열 생략)."""
         out: dict = {}
         for r in rows or []:
             v = engine._s(r.get("mag")).strip()
@@ -2747,13 +2748,13 @@ class EquipApp(tk.Tk):
         """**값을 읽는 작업은 `변환계수.xlsx` 를 쓰지 않는다**(사용자 확정 2026-08).
 
         파일을 고치는 건 사람이 양식에서 계수를 확정할 때뿐이다(`_coef_from_form`).
-        여기서는 계수를 못 찾은 (호기, MAG) 만 상태바로 알린다 — 조용히 추정값을
+        여기서는 계수를 못 찾은 (호기, 변형) 만 상태바로 알린다 — 조용히 추정값을
         만들어 쓰면 왜 값이 달라졌는지 알 수 없다.
         """
         miss = state.get("missing") or []
         if not miss:
             return
-        head = ", ".join(f"{m}(MAG {g or '-'})" for m, g in miss[:4])
+        head = ", ".join(f"{m}(변형 {g or '-'})" for m, g in miss[:4])
         more = f" 외 {len(miss) - 4}건" if len(miss) > 4 else ""
         msg = (f"변환계수 없음: {head}{more} — 기본 계수로 계산했습니다. "
                "변환계수.xlsx 에 값을 넣어 주세요.")
@@ -3886,7 +3887,7 @@ class EquipApp(tk.Tk):
 
         def work():
             # 빈 파싱(pivot 없음) + 직전 취합 이어받기 → 기존값 채움, 신규는 빈칸
-            cl = (lambda ho, mag: coefstore.lookup(self.coef_rows, ho, mag))
+            cl = (lambda ho, var: coefstore.lookup(self.coef_rows, ho, var))
             out = collate.build_collation(self.save_dir, [level], [], machines,
                                           prev_collate_path=prev_collate, coef_lookup=cl)
             made = {r: v for r, v in out.items() if not v.missing_form}
@@ -5332,8 +5333,8 @@ class EquipApp(tk.Tk):
 
         fail_labels = self._cm.get("fail_labels") or []
 
-        def cl(_lot, mag):
-            return coefstore.lookup(self.coef_rows, m, mag)   # commonality 는 호기 고정
+        def cl(_lot, var):
+            return coefstore.lookup(self.coef_rows, m, var)   # commonality 는 호기 고정
 
         def work():
             res = cm.collate_lots(recipe, form, pivot, labels, coef_lookup=cl)
@@ -5698,8 +5699,8 @@ class EquipApp(tk.Tk):
             self._set_status("값 업데이트를 취소했습니다.")
             return
 
-        def cl(ho, mag):
-            return coefstore.lookup(self.coef_rows, ho, mag)   # 호기별 계수
+        def cl(ho, var):
+            return coefstore.lookup(self.coef_rows, ho, var)   # 호기별·변형별 계수
 
         def work():
             return collate.build_collation(self.save_dir, chosen, pivot_rows,
@@ -7647,8 +7648,8 @@ class EquipApp(tk.Tk):
         all_machines = self._all_machines()
         plan = watcher.plan_from_dict(s.plan)
 
-        def cl(ho, mag):
-            return coefstore.lookup(self.coef_rows, ho, mag)
+        def cl(ho, var):
+            return coefstore.lookup(self.coef_rows, ho, var)
 
         def work():
             if not recipes:

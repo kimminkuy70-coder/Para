@@ -664,8 +664,8 @@ def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
                 continue
             recipe = info.get("recipe") or lotno
 
-            def cl(_first, mag, *_rest, _m=m):     # scan_tree(4)·collate(2) 겸용
-                return coefstore.lookup(coef_rows, _m, mag)
+            def cl(_first, variant="", *_rest, _m=m):   # scan_tree·collate 겸용(호기 고정)
+                return coefstore.lookup(coef_rows, _m, variant)
             try:
                 out = survey_items(
                     group, machine=m, form_path=form, recipe=recipe,

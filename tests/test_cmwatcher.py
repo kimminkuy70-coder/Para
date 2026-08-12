@@ -625,8 +625,8 @@ def test_run_cycle_uses_coefficient_from_rows():
         (new / "CX01" / "Zones" / "Z1.ini").write_text(
             "[General]\nZoneName=PI Opening\n[Surface]\nBrightLength=100\n",
             encoding="utf-8")
-        # coef 키는 (호기, MAG) — fixture OpticPreset 의 Mag(5)와 맞춰야 적용된다
-        coef_rows = [{"호기": "AOI-9", "MAG": "5", "변형": "PI",
+        # coef 키는 (호기, 변형). 변형 없는 행 = 그 호기의 공통 계수(어떤 변형에도 적용)
+        coef_rows = [{"호기": "AOI-9", "MAG": "5", "변형": "",
                       "계수": "0.5", "비고": "사람"}]
         before = [dict(r) for r in coef_rows]
         cw.run_cycle(s, st, local_root=local, coef_rows=coef_rows)

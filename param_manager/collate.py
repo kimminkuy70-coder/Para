@@ -78,7 +78,7 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
 
     값은 **양식의 변환방식**(_EXTRACT_MAP transform)을 수집 raw 에 재적용해 채운다
     (사람이 양식에서 고친 변환방식·계수가 그대로 반영됨). 계수 우선순위:
-      1) coef_lookup(호기, MAG)  — 장비별 변환계수.xlsx,
+      1) coef_lookup(호기, 변형)  — 호기별·변형별 변환계수.xlsx,
       2) 변환방식 라벨에 박힌 계수(AREA_0.77..^2),
       3) 기본(DEFAULT_SCALE).
     """
@@ -124,7 +124,6 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
             label_coef = ini_parser.scale_from_label(stored_t)
             raws = match.get("raws") or {}
             values = match.get("values") or {}
-            mags = match.get("mags") or {}
             for m in machines_all:
                 raw = raws.get(m)
                 if engine._s(raw) == "":
@@ -133,7 +132,7 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
                     coef = None
                     if coef_lookup is not None:
                         try:
-                            coef = coef_lookup(m, mags.get(m))
+                            coef = coef_lookup(m, variant)   # (호기, 변형)
                         except Exception:  # noqa: BLE001
                             coef = None
                     if coef is None:
@@ -213,7 +212,7 @@ def build_collation(save_dir: str, recipes: list[str], pivot_rows: list[dict],
                     prev_collate_path: str | None = None,
                     coef_lookup=None) -> dict[str, CollateRecipe]:
     """레시피별 취합 결과. 양식은 각 레시피의 최신 확정본에서 가져온다.
-    coef_lookup(호기, MAG)→계수: 값 재적용 시 장비별 변환계수 적용(없으면 라벨/기본)."""
+    coef_lookup(호기, 변형)→계수: 값 재적용 시 호기별·변형별 변환계수 적용(없으면 라벨/기본)."""
     prev = load_prev_values(prev_collate_path) if prev_collate_path else {}
     out: dict[str, CollateRecipe] = {}
     for recipe in recipes:

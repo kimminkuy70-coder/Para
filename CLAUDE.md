@@ -72,7 +72,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     — 호기별 폴더 지정·목록·plan.recipe_map. 안 지우면 무인 회차가 없는 폴더를
     계속 찾아 실패 로그만 쌓인다).
   · **안 지움** 과거 취합본(이력 확인의 비교 대상) · `변환계수.xlsx`(레시피 키가
-    없다 — 호기+MAG 기준이라 공용) · 변경보고서 등 과거 기록.
+    없다 — 호기+변형 기준이라 여러 레시피가 공용) · 변경보고서 등 과거 기록.
   · **보관은 반드시 로컬**: 저장폴더 안에 백업을 만들면 지운 파일이 그대로 다시
     동기화된다(`move_recipe_dir` 이 저장폴더 안 경로면 ValueError).
   · 안전장치: 전역 잠금 `양식_{레시피}` · 미리보기(`recipe_delete_preview` —
@@ -210,21 +210,27 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   - `PI` 컬럼 = 레시피 레벨(PI2/PI3/PI4, RDL1~RDL4, **기타 커스텀 레벨 허용**)
   - `Recipe` 컬럼 = 변형(variant): PI계열은 `PI` / `PI-bubble`, RDL계열은 `x5` / `x20`
 - **변환 계수(scale)**: 단일 하드코딩 금지. `ini_parser.transform_value(raw, transform, scale)`.
-  **장비 렌즈 특성 → 계수는 (호기 + MAG)마다 다름(2026-07 확정)**. 같은 호기·같은 MAG면
-  레시피 달라도 동일. MAG = OpticPreset 최신 Scan2d 의 `Mag`(예 3.14, `ini_parser.read_optic_mag`).
+  **장비 렌즈 특성 → 계수는 호기별·변형별로 관리한다(2026-08 확정, 키 = (호기, 변형))**.
+  변형(PI/PI-bubble/x5/x20)이 곧 배율이라 같은 호기·같은 변형이면 레시피가 달라도 동일.
+  · **키를 MAG 에서 변형으로 바꾼 이유(재발 금지)**: 종전 키는 (호기 + MAG)였는데(구
+    2026-07 안), MAG(OpticPreset 최신 Scan2d 의 `Mag`)은 **target optic 이 바뀌면
+    흔들려** 값 업데이트마다 계수가 달라졌다(실제 사고). 이제 매칭은 흔들리지 않는
+    변형으로 하고, **MAG 열은 어떤 렌즈였는지 사람이 알아보는 참고열로만** 남긴다
+    (`ini_parser.read_optic_mag` 로 계속 뽑아 기록하되 매칭엔 안 씀).
   저장 = 저장폴더 `변환계수.xlsx`[호기,MAG,변형,계수,비고](`coefstore.py`) — **오직 사람이
-  관리한다**.
+  관리한다**. 변형이 빈 행은 그 호기의 **공통 폴백**(변형 매칭이 안 될 때만).
   · **값을 읽는 작업은 이 파일을 절대 고치지 않는다(2026-08 확정, 재발 금지)**.
-    종전에는 `_coef_lookup_cb` 가 (호기,MAG) 조회에 실패하면 RTP.txt 로 계수를
-    **자동 추정해 파일에 써 넣었다**. target optic 이 바뀌면 MAG 이 달라지므로
-    사람이 넣은 값 대신 추정 행이 붙어 **값 업데이트를 돌릴 때마다 계수가 바뀌었다**
-    (실제 사고). 이제 조회는 읽기 전용이고, 못 찾으면 `None` → `scales`/기본으로
-    폴백하며 **못 찾은 (호기,MAG)를 상태바로 알린다**(`_coef_report_missing`).
+    종전에는 `_coef_lookup_cb` 가 조회 실패 시 RTP.txt 로 계수를 **자동 추정해 파일에
+    써 넣었다**. 이제 조회는 읽기 전용이고, 못 찾으면 `None` → `scales`/기본으로
+    폴백하며 **못 찾은 (호기,변형)을 상태바로 알린다**(`_coef_report_missing`).
   · 파일을 쓰는 곳은 **`_coef_from_form` 하나뿐** — 사람이 양식에서 계수를 확정할
-    때만(`coefstore.apply_form_scales`, 사람 확정이므로 덮어씀. MAG 는 편집기 피벗의
-    `mags`, 기존 양식 재편집처럼 MAG 를 모르면 (호기,변형) 행을 갱신).
+    때만(`coefstore.apply_form_scales`, 사람 확정이므로 (호기,변형) 행을 덮어씀. MAG 는
+    편집기 피벗의 `mags` 에서 알면 참고열로 함께 기록. **새 변형 행은 MAG 를 알 때만
+    만든다** — 오타 변형 방지).
   · `coef_detector` 는 **양식 만들기 계수 입력창의 추천값**으로만 쓴다(사람이 확정).
-  적용 = `scan_tree(coef_lookup=)`가 (호기,MAG)로 **조회만**(없으면 구 `scales`/기본). 값확인 화면 `AOI-xx : PI` 옆에 변형별 계수 표시.
+  적용 = `scan_tree`·`collate` 의 `coef_lookup(호기, 변형)` 이 **조회만**(없으면 구
+  `scales`/기본). 콜백 계약은 전부 **2-인자 `(호기, 변형)`** 로 통일. 값확인 화면
+  `AOI-xx : PI` 옆에 변형별 계수 표시.
   구 방식(변형별 `추출_요약`)은 폴백으로 유지. 정확값 `0.8456665875666588`/`0.7696441409644141`.
 - **IP↔호기**: 값 업데이트 수집 시 IP를 **호기(AOI-xx)에 매칭**(IP-파생 열 생성 금지).
 - **변형 라벨 표기**: 버블은 하이픈 `PI-bubble`로 통일(언더스코어 `PI_bubble` 아님).
@@ -322,7 +328,7 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 18 (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_commonality.py  # 25 (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
-python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+MAG) I/O·lookup 읽기전용·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
+python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
@@ -637,9 +643,10 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 - `param_manager/refdata.py` — **참고자료/특이사항 독립 파일 I/O**: `REF_HEADERS=[호기,IP,비고]`,
   `IP_HEADERS=[호기,IP,접속ID]`·`login_id_for`/`set_login_id`(장비 접속 계정 공유),
   load/save/create_blank, `machines()`/`ip_for()`/`add_machine()`.
-- `param_manager/coefstore.py` — **변환계수.xlsx (호기+MAG) 저장소**: `[호기,MAG,변형,계수,비고]`
-  load/save/create_blank, `lookup(rows,호기,MAG)`(숫자 근사), `upsert`(사람값 우선),
-  `machine_coefs`(표시), `make_lookup`(scan_tree 콜백), `apply_form_scales`(양식 확정 계수 반영). MAG 는 OpticPreset Scan2d Mag.
+- `param_manager/coefstore.py` — **변환계수.xlsx (호기+변형) 저장소**: `[호기,MAG,변형,계수,비고]`
+  load/save/create_blank, `lookup(rows,호기,변형)`(대소문자·구분자 무시·변형 빈 행=공통 폴백),
+  `upsert`(사람값 우선), `machine_coefs`(표시), `make_lookup`(scan_tree/collate 공용 콜백
+  `(호기,변형)`), `apply_form_scales`(양식 확정 계수 반영). MAG 열은 참고용(매칭 안 함).
 - `param_manager/workdirs.py` — **저장폴더 기준 경로**: `form_run_dir/form_final_path/
   form_original_path/form_draft_path/related_dir/list_form_versions/collate_path/
   latest_collate/list_collate_files` + `form_candidate_path`/`form_version_status`/
@@ -682,7 +689,7 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 - `param_manager/collate.py` — **값 취합(멀티시트)**: `delete_recipe`(시트 제거) + `build_collation`(레시피별 시트, 참고자료
   전체 호기, 직전본 이어받기, 설정키 매칭·불일치), `write_collation`/`load_collation`/
   `load_as_repo`(값 확인 병합). **값은 양식의 변환방식(_EXTRACT_MAP transform)을 수집 raw 에
-  재적용**(사람이 양식에서 고친 변환방식·계수 반영). 계수 우선순위: `coef_lookup(호기,MAG)`
+  재적용**(사람이 양식에서 고친 변환방식·계수 반영). 계수 우선순위: `coef_lookup(호기,변형)`
   → 라벨 계수(`ini_parser.scale_from_label`) → 기본. commonality 도 같은 경로 재사용.
 - `param_manager/history.py` — **이력 확인**: `diff_files`(멀티시트 값변경/추가/삭제)·
   `write_diff_excel`(변경내역+비고 메모).
