@@ -159,7 +159,25 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   로컬 설정이고 commonality 산출물도 로컬이라 그쪽에 맞춤). 장비 감시(`감시설정.json`)와
   **파일·잠금 분리** — 하는 일이 달라 한쪽 실패가 다른 쪽을 막으면 안 된다.
   주기/시간대/backoff 는 `watcher` 것을 재사용(복제 금지).
-- **남은 일**: GUI(Commonality 탭 감시 카드·설정창·회차 실행·알림) 연결.
+- **자동 조사까지 한다(2026-08 확정)**: 감지 → 계획 추가 → **안전복사 → 저장된
+  양식으로 값 조사 → 결과 누적**(`cmwatcher.survey_items`).
+  · **양식은 감시 대상마다**(`survey_key` = 호기+디바이스+공정. `set_form`/`form_for`/
+    `missing_forms`). 감시를 켤 때 **대표 S/M 을 사람이 고르고** 그것으로 양식을
+    만든다 — 후보는 `sm_candidates` 가 **생성일자 최신순**으로 준다(백업본 중복 제거).
+    commonality 양식과 양식 만들기 양식은 **따로 관리**한다(형식은 같지만 섞지 않음).
+  · **결과는 (호기,레시피)마다 파일 하나에 누적**(`commonality.merge_lot_result`,
+    `cmwatcher.result_path`). 회차마다 새 파일을 만들면 파일이 불어나고
+    `build_comparison` 이 중복을 안 걸러 **같은 S/M 이 여러 행**으로 나온다.
+    이미 있는 S/M 은 값 갱신, 파라미터 행은 기존과 합집합.
+  · **슬롯은 이름순 첫 하나**(무인이라 못 고름) — 단 **내용이 있는 슬롯 중** 첫째다
+    (`usable_slots`/`slot_has_config`). 빈 슬롯이 이름순 앞에 있으면 그걸 읽고 0건이
+    된다. 어느 슬롯을 읽었는지 결과에 남긴다.
+  · 결과 엑셀 정보 행 = **Scan일자 → 생성일자 → 조사슬롯**(헤더 바로 밑, 그 아래가
+    파라미터). `read_lot_result` 가 셋 다 빼서 돌려주므로 비교표 파라미터 열에
+    섞이지 않는다. 수동 조사에는 생성일자·조사슬롯이 없어 행도 안 생긴다(구 파일 호환).
+  · **양식 매칭이 `min_match`(기본 0.5) 미만이면 결과에서 제외**하고 사유를 남긴다.
+    양식이 안 맞는데 조용히 반쪽 데이터를 쌓는 게 제일 나쁘다.
+- **남은 일**: GUI(Commonality 탭 감시 카드·설정창·대표 S/M 선택·회차 실행·알림) 연결.
 
 ## 이미 확정된 결정 (재질문 금지)
 
@@ -278,7 +296,7 @@ python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다�
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_cmwatcher.py    # 8  (새 S/M 감지: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정)
+python3 tests/test_cmwatcher.py    # 13 (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치제외)
 python3 tests/test_commonality.py  # 25 (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 4  (변환계수.xlsx (호기+MAG) I/O·lookup·OpticPreset MAG·장비별 계수 적용·양식 확정 계수 반영)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)

@@ -276,11 +276,188 @@ def test_settings_roundtrip_is_local():
     print("  설정/상태 로컬 저장 왕복 + 손상 파일 방어 OK")
 
 
+def _mk_scan_sm(base, machine, device, lot, sm, delta):
+    """가짜 Scanresult S/M 폴더 하나(슬롯 CX01 안에 설정 파일)."""
+    w = (Path(base) / machine / "Scanresult" / f"2D@R3-{device}" / lot / sm / "CX01")
+    (w / "Zones").mkdir(parents=True)
+    (w / "Zones" / "Z1.ini").write_text(
+        f"[General]\nZoneName=PI Opening\n[Surface]\nHigh_Delta={delta}\n",
+        encoding="utf-8")
+    (w / "OpticPreset.ini").write_text(
+        "[Scan2d]\nCameraName=TDI\nMag=5\nLightSrcRef_NominalGL=1\n", encoding="utf-8")
+    (w / "GlobalRTP.ini").write_text("[GLOBAL_RTP]\nMaxFaultsPerWafer=3000\n",
+                                     encoding="utf-8")
+    return w.parent
+
+
+def _mk_form(tmp, rep_dir, name="감시양식.xlsx"):
+    """대표 S/M 으로 확정 양식 하나(감시 켤 때 사람이 만드는 그것)."""
+    from param_manager import formbuilder
+    pivot, _labels = cm.parse_lots([("REP", Path(rep_dir) / "CX01")], level="PI3")
+    init = os.path.join(tmp, "init.xlsx")
+    form = os.path.join(tmp, name)
+    formbuilder.build_initial_workbook(pivot, init, level="PI3")
+    formbuilder.build_final_from_initial(init, form, level="PI3", aoi="AOI-9")
+    return form
+
+
+def test_sm_candidates_sorted_by_created_desc():
+    """대표 S/M 은 사람이 고른다 — 후보는 **생성일자 최신순**이어야 한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        for sm in ("ASD", "ASD X20", "BQC"):
+            _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", sm, 25)
+        roots = cm.scanresult_roots(str(base), "AOI-9")
+        cands = cw.sm_candidates(roots, "DEV1-0001", "6412")
+        assert {c["sm"] for c in cands} == {"ASD", "ASD X20", "BQC"}, cands
+        created = [c["created"] for c in cands]
+        assert created == sorted(created, reverse=True), created   # 최신순
+        assert all(c["slots"] == 1 for c in cands)
+        # 백업본에 같은 S/M 이 또 있어도 후보는 한 번만
+        bak = base / "AOI-9" / "Scanresult_260402" / "2D@R3-DEV1-0001" / "6412" / "ASD"
+        bak.mkdir(parents=True)
+        roots2 = cm.scanresult_roots(str(base), "AOI-9")
+        again = cw.sm_candidates(roots2, "DEV1-0001", "6412")
+        assert sum(1 for c in again if c["sm"] == "ASD") == 1, again
+    print("  대표 S/M 후보 최신순 정렬 + 백업본 중복 제거 OK")
+
+
+def test_form_binding_is_per_target():
+    """양식은 **감시 대상(호기·디바이스·공정)마다** 따로 묶인다."""
+    s, _st = cw.CmWatchSettings(), None
+    assert cw.form_for(s, "AOI-9", "D1", "6412") == {}
+    cw.set_form(s, "AOI-9", "D1", "6412", "/x/form1.xlsx", "PI3", sm="ASD")
+    cw.set_form(s, "AOI-9", "D2", "6412", "/x/form2.xlsx", "PI4")
+    a = cw.form_for(s, "AOI-9", "D1", "6412")
+    assert a["form"] == "/x/form1.xlsx" and a["recipe"] == "PI3" and a["sm"] == "ASD"
+    assert cw.form_for(s, "AOI-9", "D2", "6412")["form"] == "/x/form2.xlsx"
+    # 호기가 다르면 다른 대상
+    assert cw.form_for(s, "AOI-8", "D1", "6412") == {}
+    # 0패딩·구분자 차이는 같은 대상으로 본다
+    assert cw.form_for(s, "AOI-09", "d1", "6412")["form"] == "/x/form1.xlsx"
+    # 파일이 실제로 없으면 '미지정'으로 잡아 준다
+    miss = cw.missing_forms(s, "AOI-9", [("D1", "6412"), ("D9", "9999")])
+    assert ("D1", "6412") in miss and ("D9", "9999") in miss, miss
+    print("  대상별 양식 지정/조회 OK")
+
+
+def test_survey_records_slot_and_created():
+    """자동 조사: 이름순 **첫 슬롯**만 읽고, 어느 슬롯을 읽었는지 남긴다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "scan"
+        rep = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD", 25)
+        new = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD X20", 30)
+        # 이름순으로는 앞이지만 **비어 있는** 슬롯 — 이걸 읽으면 0건이 된다.
+        # 내용이 있는 슬롯 중 이름순 첫(CX01)을 골라야 한다.
+        (new / "AX99" / "Zones").mkdir(parents=True)
+        form = _mk_form(tmp, rep)
+
+        dest = os.path.join(tmp, "감시조사.xlsx")
+        items = [{"key": cw.sm_key("DEV1-0001", "6412", "ASD X20"),
+                  "device": "DEV1-0001", "lot": "6412", "sm": "ASD X20",
+                  "path": str(new), "created": "2026-08-05 13:10"}]
+        res = cw.survey_items(
+            items, machine="AOI-9", form_path=form, recipe="PI3",
+            dest_xlsx=dest, copy_dir=os.path.join(tmp, "복사본"))
+        assert res["done"] == ["ASD X20"], res
+        assert not res["skipped"], res["skipped"]
+
+        d = cm.read_lot_result(dest)
+        assert d["lots"] == ["ASD X20"], d["lots"]
+        assert d["created"]["ASD X20"] == "2026-08-05 13:10"
+        assert d["slots"]["ASD X20"] == "CX01", d["slots"]   # 빈 AX99 는 건너뜀
+        assert cw.usable_slots(new) and cw.usable_slots(new)[0].name == "CX01"
+        assert not cw.slot_has_config(new / "AX99"), "빈 슬롯을 쓸 수 있다고 보면 안 됨"
+        assert d["scan_times"].get("ASD X20"), "Scan일자도 남아야"
+        assert d["records"], "파라미터 행이 있어야"
+        # 원본은 건드리지 않는다
+        assert (new / "CX01" / "Zones" / "Z1.ini").is_file()
+    print("  자동 조사: 첫 슬롯 조사 + 생성일자/조사슬롯 기록 OK")
+
+
+def test_survey_accumulates_into_one_file():
+    """회차마다 새 파일을 만들지 않고 **한 파일에 S/M 열을 누적**한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "scan"
+        rep = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD", 25)
+        a = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD X20", 30)
+        b = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD REWORK", 35)
+        form = _mk_form(tmp, rep)
+        dest = os.path.join(tmp, "감시조사.xlsx")
+        copy_dir = os.path.join(tmp, "복사본")
+
+        def it(sm, path, created):
+            return [{"key": cw.sm_key("DEV1-0001", "6412", sm),
+                     "device": "DEV1-0001", "lot": "6412", "sm": sm,
+                     "path": str(path), "created": created}]
+
+        r1 = cw.survey_items(it("ASD X20", a, "2026-08-05 13:10"),
+                                    machine="AOI-9", form_path=form, recipe="PI3",
+                                    dest_xlsx=dest, copy_dir=copy_dir)
+        r2 = cw.survey_items(it("ASD REWORK", b, "2026-08-07 08:00"),
+                                    machine="AOI-9", form_path=form, recipe="PI3",
+                                    dest_xlsx=dest, copy_dir=copy_dir)
+        assert r1["merged"]["added"] == 1 and r2["merged"]["added"] == 1
+        assert r2["merged"]["lots"] == 2, r2["merged"]
+
+        d = cm.read_lot_result(dest)
+        assert d["lots"] == ["ASD X20", "ASD REWORK"], d["lots"]
+        assert set(d["created"]) == {"ASD X20", "ASD REWORK"}
+        # 결과 파일은 **하나뿐**이어야 한다
+        made = [f for f in os.listdir(tmp) if f.startswith("감시조사")]
+        assert made == ["감시조사.xlsx"], made
+        # 비교표에 같은 S/M 이 중복되지 않는다
+        comp = cm.build_comparison([dest])
+        pairs = [(r["S/M"], r["호기"]) for r in comp["rows"]]
+        assert len(pairs) == len(set(pairs)) == 2, pairs
+    print("  결과 한 파일 누적 + 비교표 중복 없음 OK")
+
+
+def test_survey_skips_when_form_does_not_match():
+    """양식과 매칭이 너무 적으면 결과에 넣지 않고 사유를 남긴다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "scan"
+        rep = _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD", 25)
+        form = _mk_form(tmp, rep)
+        # 설정 파일이 전혀 다른 S/M (양식 항목이 하나도 안 맞음)
+        odd = (base / "AOI-9" / "Scanresult" / "2D@R3-DEV1-0001" / "6412"
+               / "ODD" / "CX01")
+        (odd / "Zones").mkdir(parents=True)
+        (odd / "Zones" / "Other.ini").write_text(
+            "[General]\nZoneName=완전다른Zone\n[Genesis]\nBrightSeedTh=9\n",
+            encoding="utf-8")
+        dest = os.path.join(tmp, "감시조사.xlsx")
+        res = cw.survey_items(
+            [{"key": "k", "device": "DEV1-0001", "lot": "6412", "sm": "ODD",
+              "path": str(odd.parent), "created": ""}],
+            machine="AOI-9", form_path=form, recipe="PI3",
+            dest_xlsx=dest, copy_dir=os.path.join(tmp, "복사본"))
+        assert res["done"] == [], res
+        assert res["skipped"] and "매칭" in res["skipped"][0][1], res["skipped"]
+        assert not os.path.exists(dest), "안 맞는 데이터로 결과를 만들면 안 된다"
+
+        # 슬롯이 아예 없는 S/M 도 조용히 건너뛴다
+        empty = base / "AOI-9" / "Scanresult" / "2D@R3-DEV1-0001" / "6412" / "EMPTY"
+        empty.mkdir(parents=True)
+        res2 = cw.survey_items(
+            [{"key": "k2", "device": "DEV1-0001", "lot": "6412", "sm": "EMPTY",
+              "path": str(empty), "created": ""}],
+            machine="AOI-9", form_path=form, recipe="PI3",
+            dest_xlsx=dest, copy_dir=os.path.join(tmp, "복사본"))
+        assert res2["done"] == [] and res2["skipped"], res2
+    print("  양식 불일치·빈 폴더는 결과에서 제외 OK")
+
+
 if __name__ == "__main__":
     for t in [test_watch_plan_template_and_targets, test_first_cycle_is_baseline_only,
               test_backup_scanresult_is_not_new, test_unsettled_folder_is_deferred,
               test_unchanged_lot_dir_is_skipped, test_append_to_cm_plan_with_created_date,
-              test_append_adds_column_to_old_plan, test_settings_roundtrip_is_local]:
+              test_append_adds_column_to_old_plan, test_settings_roundtrip_is_local,
+              test_sm_candidates_sorted_by_created_desc,
+              test_form_binding_is_per_target,
+              test_survey_records_slot_and_created,
+              test_survey_accumulates_into_one_file,
+              test_survey_skips_when_form_does_not_match]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

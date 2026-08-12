@@ -159,6 +159,13 @@ class CmWatchSettings:
     watch_plan: str = ""                  # 감시 대상 계획 엑셀 경로
     cm_plan: str = ""                     # 조사 계획 엑셀 경로(새 S/M 을 여기에 추가)
     roots: dict = field(default_factory=dict)         # {호기: Scanresult 루트}
+    # 감시 대상마다 쓸 양식 — {survey_key: {"form","recipe","sm"}}.
+    #   form   = 확정 양식 경로(감시 켤 때 대표 S/M 으로 만든 것)
+    #   recipe = 조사 제목(결과 파일 이름·시트명)
+    #   sm     = 그 양식을 만든 대표 S/M(어느 것으로 만들었는지 기록)
+    # 없으면 그 대상은 조사하지 않고 계획 추가·알림까지만 한다.
+    forms: dict = field(default_factory=dict)
+    min_match: float = 0.5                # 양식 매칭이 이 비율 미만이면 결과 제외
 
 
 @dataclass
@@ -198,6 +205,7 @@ def load_settings(local_root: str) -> tuple[CmWatchSettings, CmWatchState]:
             setattr(st, k, v)
     s.machines = list(s.machines or [])
     s.roots = dict(s.roots or {})
+    s.forms = dict(s.forms or {})
     st.seen = {m: list(v or []) for m, v in (st.seen or {}).items()}
     st.mtimes = {m: dict(v or {}) for m, v in (st.mtimes or {}).items()}
     st.pending = {m: list(v or []) for m, v in (st.pending or {}).items()}
@@ -351,12 +359,27 @@ def seen_set(state: CmWatchState, machine: str) -> set:
     return set(state.seen.get(machine) or [])
 
 
+def slot_has_config(wafer_dir: Path) -> bool:
+    """이 슬롯에 **실제로 읽을 설정이 있는가**.
+
+    폴더만 있고 안이 빈 슬롯이 흔하다(스캔이 아직 안 끝났거나 실패한 것).
+    `Zones/` 가 있어도 안에 .ini 가 없으면 읽을 게 없으므로 내용을 본다.
+    """
+    w = Path(wafer_dir)
+    if any((w / n).is_file() for n in ("OpticPreset.ini", "GlobalRTP.ini")):
+        return True
+    z = w / "Zones"
+    return z.is_dir() and any(p.is_file() for p in z.glob("*.ini"))
+
+
+def usable_slots(sm_dir: Path) -> list:
+    """읽을 설정이 있는 슬롯만(이름순). 무인 조사는 이 중 **첫 번째**를 쓴다."""
+    return [w for w in cm.list_wafers(sm_dir) if slot_has_config(w)]
+
+
 def _has_config(sm_dir: Path) -> bool:
-    """S/M 아래 슬롯에 조사할 설정 파일이 실제로 있는가(아직 쓰는 중이면 없다)."""
-    for w in cm.list_wafers(sm_dir):
-        if (w / "Zones").is_dir() or (w / "OpticPreset.ini").is_file():
-            return True
-    return False
+    """S/M 아래에 조사할 설정 파일이 하나라도 있는가(아직 쓰는 중이면 없다)."""
+    return bool(usable_slots(sm_dir))
 
 
 # --------------------------------------------------------------------------
@@ -426,6 +449,162 @@ def append_cm_plan(plan_path: str, items: list[dict], machine: str = "") -> dict
     wb.save(plan_path)
     wb.close()
     return {"added": added, "backup": backup, "skipped": skipped}
+
+
+# --------------------------------------------------------------------------
+# 감시용 양식 · 자동 조사
+# --------------------------------------------------------------------------
+def survey_key(machine: str, device: str, lot: str) -> str:
+    """양식/결과를 묶는 키 — (호기, 디바이스, 공정번호) 정규화.
+
+    **감시 대상마다 양식을 따로 지정한다**(사용자 확정 2026-08). 디바이스가 다르면
+    파라미터 구성이 달라, 양식 하나를 전부에 물리면 엉뚱한 항목으로 조사하게 된다.
+    """
+    return "|".join((cm._aoi_norm(machine), cm._norm(device), cm._norm(lot)))
+
+
+def form_for(settings: CmWatchSettings, machine: str, device: str, lot: str) -> dict:
+    """이 감시 대상에 지정된 양식 정보. 없으면 빈 dict(=조사하지 않음)."""
+    return dict((settings.forms or {}).get(survey_key(machine, device, lot)) or {})
+
+
+def set_form(settings: CmWatchSettings, machine: str, device: str, lot: str,
+             form_path: str, recipe: str, sm: str = "") -> None:
+    """감시 대상에 양식을 묶는다(감시 켤 때 대표 S/M 으로 만든 확정 양식)."""
+    settings.forms = dict(settings.forms or {})
+    settings.forms[survey_key(machine, device, lot)] = {
+        "form": str(form_path or ""), "recipe": str(recipe or ""), "sm": str(sm or "")}
+
+
+def missing_forms(settings: CmWatchSettings, machine: str,
+                  targets: list[tuple]) -> list[tuple]:
+    """양식이 아직 없는 (디바이스, 공정) — 설정창에서 빨갛게 표시할 것."""
+    out = []
+    for device, lot in targets:
+        info = form_for(settings, machine, device, lot)
+        if not (info.get("form") and os.path.isfile(info["form"])):
+            out.append((device, lot))
+    return out
+
+
+def sm_candidates(scan_roots, device: str, lot: str) -> list[dict]:
+    """(디바이스, 공정) 아래 S/M 후보 — **생성일자 최신순**(사용자 확정).
+
+    감시를 켤 때 '대표 S/M'(양식을 만들 기준)을 사람이 고르는데, 최근에 스캔된
+    것부터 보여 줘야 고르기 쉽다. 반환: [{sm, path, created, scan, slots}]
+    """
+    out: list[dict] = []
+    seen: set = set()
+    for lot_dir in lot_dirs_for(scan_roots, device, lot):
+        try:
+            subs = [p for p in lot_dir.iterdir() if p.is_dir()]
+        except OSError:
+            continue
+        for sm_dir in subs:
+            k = sm_key(device, lot, sm_dir.name)
+            if k in seen:
+                continue                       # 백업본의 같은 S/M 은 한 번만
+            seen.add(k)
+            out.append({"sm": sm_dir.name, "path": str(sm_dir),
+                        "created": folder_created(sm_dir),
+                        "scan": cm.folder_mtime(sm_dir),
+                        "slots": len(cm.list_wafers(sm_dir))})
+    # 생성일자 문자열은 'YYYY-MM-DD HH:MM' 이라 사전식 정렬 = 시간순
+    out.sort(key=lambda d: (d["created"] or d["scan"] or "", d["sm"]), reverse=True)
+    return out
+
+
+def result_path(local_root: str, machine: str, recipe: str) -> str:
+    """(호기, 레시피)마다 **결과 파일 하나** — 회차마다 S/M 열이 누적된다."""
+    from . import workdirs
+    d = os.path.join(workdirs.commonality_root(local_root), cm.downloader.safe_name(machine),
+                     "자동감시")
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, f"감시조사_{cm.downloader.safe_name(machine)}_"
+                           f"{cm.downloader.safe_name(recipe)}.xlsx")
+
+
+def copy_root(local_root: str, machine: str) -> str:
+    """무인 회차가 안전복사본을 두는 곳(로컬). 원본은 언제나 읽기 전용."""
+    from . import workdirs
+    d = os.path.join(workdirs.commonality_root(local_root),
+                     cm.downloader.safe_name(machine), "자동감시", "복사본")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def lot_for_item(item: dict, machine: str):
+    """감지 항목 → 조사용 LotFolder. 슬롯은 **이름순 첫 하나**(무인이라 못 고름).
+    반환: (LotFolder, 슬롯이름) / 슬롯이 없으면 (None, '')."""
+    sm_dir = Path(item["path"])
+    # **읽을 게 있는** 슬롯 중 이름순 첫 번째. 빈 슬롯이 이름순으로 앞에 있으면
+    # 그걸 읽고 0건이 되므로(실제로 겪음), 내용이 있는 것만 후보로 본다.
+    wafers = usable_slots(sm_dir)
+    if not wafers:
+        return None, ""
+    lot = cm.LotFolder(device=item["device"], lot=item["lot"], sm=item["sm"],
+                       machine=machine, label=item["sm"],
+                       scan_time=cm.folder_mtime(sm_dir))
+    cm.set_wafer(lot, wafers[0])
+    return lot, wafers[0].name
+
+
+def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str,
+                 dest_xlsx: str, copy_dir: str, coef_lookup=None,
+                 min_match: float = 0.5) -> dict:
+    """새 S/M 들을 **안전복사 → 저장된 양식으로 값 조사 → 결과 파일에 누적**.
+
+    · 슬롯은 이름순 첫 하나만 읽고, **어느 슬롯을 읽었는지 결과에 남긴다**
+      (`조사슬롯` 행 — 나중에 되짚을 수 있어야 한다).
+    · 양식과 매칭된 파라미터 비율이 `min_match` 미만이면 **결과에 넣지 않는다**.
+      양식이 안 맞는데 조용히 반쪽 데이터를 쌓는 게 제일 나쁘다.
+    반환: {"done": [라벨], "skipped": [(라벨, 사유)], "merged": {…} or None}
+    """
+    done, skipped = [], []
+    lot_dirs, labels = [], []
+    scan_times, created, slots = {}, {}, {}
+    for it in items:
+        lot, slot_name = lot_for_item(it, machine)
+        if lot is None or not lot.exists:
+            skipped.append((it["sm"], "슬롯(웨이퍼) 폴더 없음"))
+            continue
+        if not (lot.has_zones or lot.has_optic):
+            skipped.append((it["sm"], "설정 파일 없음"))
+            continue
+        try:
+            got = cm.copy_lot(lot, copy_dir)
+        except Exception as e:  # noqa: BLE001
+            skipped.append((it["sm"], f"복사 실패: {e}"))
+            continue
+        lot_dirs.append((lot.label, Path(got["dest"])))
+        labels.append(lot.label)
+        scan_times[lot.label] = lot.scan_time
+        created[lot.label] = it.get("created", "")
+        slots[lot.label] = slot_name
+    if not lot_dirs:
+        return {"done": [], "skipped": skipped, "merged": None}
+
+    pivot, plabels = cm.parse_lots(lot_dirs, level=recipe, coef_lookup=coef_lookup)
+    res = cm.collate_lots(recipe, form_path, pivot, plabels, coef_lookup=coef_lookup)
+    # 양식과 얼마나 맞았는지 — 너무 적으면 그 S/M 은 넣지 않는다
+    total = len(res.records) or 1
+    keep = []
+    for label in plabels:
+        filled = sum(1 for r in res.records if engine._s(r.get(label)).strip() != "")
+        if filled / total < max(0.0, min(1.0, min_match)):
+            skipped.append((label, f"양식과 매칭 {filled}/{total} — 결과에서 제외"))
+            continue
+        keep.append(label)
+    if not keep:
+        return {"done": [], "skipped": skipped, "merged": None}
+
+    merged = cm.merge_lot_result(
+        dest_xlsx, recipe, machine, res, keep,
+        scan_times={k: scan_times.get(k, "") for k in keep},
+        created={k: created.get(k, "") for k in keep},
+        slots={k: slots.get(k, "") for k in keep})
+    done = keep
+    return {"done": done, "skipped": skipped, "merged": merged}
 
 
 def summary(items: list[dict]) -> str:

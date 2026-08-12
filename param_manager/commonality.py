@@ -623,6 +623,13 @@ def structure_diff(lot_dirs: list[tuple[str, Path]], level: str = "",
 # 조사 결과 엑셀에서 **파라미터 목록의 맨 첫 행**으로 넣는 Scan 일자 행.
 # (헤더 아래 첫 줄 = 각 S/M 열이 언제 스캔된 자료인지)
 SCAN_ROW_LABEL = "Scan일자"
+# 자동 감시가 채우는 정보 행 — Scan일자 바로 밑에 순서대로 들어간다(사용자 지정).
+#   생성일자 = 그 S/M 폴더가 언제 생겼는지
+#   조사슬롯 = 무인 회차가 **어느 슬롯을 읽었는지**(이름순 첫 슬롯 하나만 읽으므로
+#              나중에 "그때 뭘 본 거지?" 를 되짚을 수 있어야 한다)
+CREATED_ROW_LABEL = "생성일자"
+SLOT_ROW_LABEL = "조사슬롯"
+INFO_ROW_LABELS = (SCAN_ROW_LABEL, CREATED_ROW_LABEL, SLOT_ROW_LABEL)
 
 
 def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
@@ -637,7 +644,9 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
                      res: collate.CollateRecipe, lot_labels: list[str],
                      fail_labels: list[str] | None = None,
                      coef_note: list[str] | None = None,
-                     scan_times: dict | None = None) -> str:
+                     scan_times: dict | None = None,
+                     created: dict | None = None,
+                     slots: dict | None = None) -> str:
     """호기 1대 결과: 시트=레시피, 헤더=META + S/M들. 호기명·fail 은 '_정보' 시트에.
 
     값은 **양식의 변환방식대로 계수를 적용한 값**(collate.collate_recipe)이다.
@@ -648,15 +657,26 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     disp_headers = [engine.display_header(h) for h in headers]
     fail_labels = list(fail_labels or [])
     scan_times = dict(scan_times or {})
+    created = dict(created or {})
+    slots = dict(slots or {})
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = collate._safe_sheet(recipe)
     ws.append(disp_headers)                        # 1행 = 헤더(종전과 동일)
     # 헤더 바로 아래 **파라미터 첫 행 = Scan 일자**. 각 S/M 열 밑에 그 폴더가
     # 언제 스캔됐는지가 들어가 값과 같은 자리에서 바로 대조된다.
-    scan_row = {"Parameter": SCAN_ROW_LABEL}
-    scan_row.update({l: engine._s(scan_times.get(l)) for l in lot_labels})
-    ws.append([scan_row.get(h, "") for h in headers])
+    # 정보 행(Scan일자 → 생성일자 → 조사슬롯). 값이 하나도 없는 행은 만들지 않는다
+    # (수동 조사에는 생성일자·조사슬롯이 없으므로 파일이 종전과 같게 유지된다).
+    info_rows = 0
+    for label, src in ((SCAN_ROW_LABEL, scan_times), (CREATED_ROW_LABEL, created),
+                       (SLOT_ROW_LABEL, slots)):
+        if label != SCAN_ROW_LABEL and not any(
+                engine._s(src.get(l)).strip() for l in lot_labels):
+            continue
+        row = {"Parameter": label}
+        row.update({l: engine._s(src.get(l)) for l in lot_labels})
+        ws.append([row.get(h, "") for h in headers])
+        info_rows += 1
     for rec in res.records:
         ws.append([rec.get(h) for h in headers])
     fill = PatternFill("solid", fgColor=_HDR_FILL)
@@ -668,10 +688,11 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
         c.fill = (yellow if h in fail_labels else fill)
         c.font = (Font(bold=True) if h in fail_labels else white)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        c2 = ws.cell(row=2, column=j)              # Scan일자 행(눈에 띄게)
-        c2.fill = scan_fill
-        c2.font = Font(bold=True, color="1F4E78")
-    ws.freeze_panes = "A3"                         # 헤더 + Scan일자 줄 고정
+        for r in range(2, 2 + info_rows):          # 정보 행(눈에 띄게)
+            c2 = ws.cell(row=r, column=j)
+            c2.fill = scan_fill
+            c2.font = Font(bold=True, color="1F4E78")
+    ws.freeze_panes = f"A{2 + info_rows}"          # 헤더 + 정보 줄 고정
     meta = wb.create_sheet("_정보")
     meta.append(["호기", machine])
     meta.append(["레시피", recipe])
@@ -703,7 +724,7 @@ def read_lot_result(path: str) -> dict:
                 fails.add(engine._s(row[1]))
     data_ws = next((ws for ws in wb.worksheets if ws.title != "_정보"), None)
     records, lots = [], []
-    scan_times: dict = {}
+    info: dict = {}
     if data_ws is not None:
         if not recipe:
             recipe = data_ws.title
@@ -715,14 +736,19 @@ def read_lot_result(path: str) -> dict:
             if row is None or all(v in (None, "") for v in row):
                 continue
             rec = {heads[i]: row[i] for i in range(len(heads)) if i < len(row)}
-            # 첫 행의 Scan일자는 파라미터가 아니라 메타 — 따로 빼서 돌려준다
-            if engine._s(rec.get("Parameter")).strip() == SCAN_ROW_LABEL:
-                scan_times = {l: engine._s(rec.get(l)).strip() for l in lots}
+            # 위쪽 정보 행(Scan일자/생성일자/조사슬롯)은 파라미터가 아니라 메타 —
+            # 따로 빼서 돌려준다(비교표 파라미터 열에 섞이면 안 된다).
+            pname = engine._s(rec.get("Parameter")).strip()
+            if pname in INFO_ROW_LABELS:
+                info[pname] = {l: engine._s(rec.get(l)).strip() for l in lots}
                 continue
             records.append(rec)
     wb.close()
     return {"machine": machine, "recipe": recipe, "lots": lots,
-            "records": records, "fails": fails, "scan_times": scan_times}
+            "records": records, "fails": fails,
+            "scan_times": info.get(SCAN_ROW_LABEL, {}),
+            "created": info.get(CREATED_ROW_LABEL, {}),
+            "slots": info.get(SLOT_ROW_LABEL, {})}
 
 
 # --------------------------------------------------------------------------
@@ -742,6 +768,83 @@ def _zone_sort_key(param_label: str) -> tuple:
     words = re.findall(r"[0-9A-Za-z]+", zone)
     tail = words[-1].lower() if words else zone.lower()
     return (tail, zone.lower(), param_label.lower())
+
+
+def merge_lot_result(dest_xlsx: str, recipe: str, machine: str,
+                     res: collate.CollateRecipe, lot_labels: list[str],
+                     fail_labels: list[str] | None = None,
+                     coef_note: list[str] | None = None,
+                     scan_times: dict | None = None,
+                     created: dict | None = None,
+                     slots: dict | None = None) -> dict:
+    """**하나의 결과 파일에 S/M 열을 누적**한다(자동 감시용, 사용자 확정 2026-08).
+
+    회차마다 새 결과 파일을 만들면 파일이 수십 개로 불어나고, `build_comparison`
+    이 중복을 걸러 주지 않아 **같은 S/M 이 여러 행으로 중복**된다. 그래서 감시는
+    (호기, 레시피)마다 결과 파일 하나를 두고 새 S/M 을 열로 붙인다.
+
+    · 이미 있는 S/M 이면 **값을 갱신**한다(다시 조사한 경우).
+    · 파일이 없으면 `write_lot_result` 와 같은 모양으로 새로 만든다.
+    · 파라미터 행은 **기존 것과 합집합**(양식이 조금 달라도 열이 어긋나지 않게).
+    반환: {"path", "added": 새 S/M 수, "updated": 갱신 수, "lots": 전체 S/M 수}
+    """
+    scan_times, created, slots = dict(scan_times or {}), dict(created or {}), dict(slots or {})
+    old = {"lots": [], "records": [], "fails": set(),
+           "scan_times": {}, "created": {}, "slots": {}}
+    if Path(dest_xlsx).is_file():
+        try:
+            old = read_lot_result(dest_xlsx)
+        except Exception:  # noqa: BLE001
+            pass                                   # 깨진 파일이면 새로 만든다
+    # ── S/M 열 = 기존 + 새것(순서 유지, 중복 제거)
+    lots = list(old.get("lots") or [])
+    added = updated = 0
+    for l in lot_labels:
+        if l in lots:
+            updated += 1
+        else:
+            lots.append(l)
+            added += 1
+    # ── 파라미터 행 = 기존 ∪ 새것. 행 키는 META_FIELDS(값 열 제외).
+    meta = list(engine.META_FIELDS)
+
+    def rkey(rec):
+        return tuple(engine._s(rec.get(h)).strip() for h in meta if h != "비고")
+
+    merged: dict = {}
+    order: list = []
+    for rec in (old.get("records") or []):
+        k = rkey(rec)
+        if k not in merged:
+            order.append(k)
+        merged[k] = dict(rec)
+    for rec in res.records:
+        k = rkey(rec)
+        if k not in merged:
+            order.append(k)
+            merged[k] = {h: rec.get(h) for h in meta}
+        for l in lot_labels:                       # 이번에 조사한 열만 덮어쓴다
+            merged[k][l] = rec.get(l)
+    records = [merged[k] for k in order]
+
+    info_old = {SCAN_ROW_LABEL: dict(old.get("scan_times") or {}),
+                CREATED_ROW_LABEL: dict(old.get("created") or {}),
+                SLOT_ROW_LABEL: dict(old.get("slots") or {})}
+    info_old[SCAN_ROW_LABEL].update(scan_times)
+    info_old[CREATED_ROW_LABEL].update(created)
+    info_old[SLOT_ROW_LABEL].update(slots)
+    fails = set(old.get("fails") or set()) | set(fail_labels or [])
+
+    class _Res:                                    # write_lot_result 가 쓰는 모양
+        pass
+    holder = _Res()
+    holder.records = records
+    write_lot_result(dest_xlsx, recipe or old.get("recipe") or "", machine,
+                     holder, lots, sorted(fails), coef_note=coef_note,
+                     scan_times=info_old[SCAN_ROW_LABEL],
+                     created=info_old[CREATED_ROW_LABEL],
+                     slots=info_old[SLOT_ROW_LABEL])
+    return {"path": dest_xlsx, "added": added, "updated": updated, "lots": len(lots)}
 
 
 def build_comparison(result_files: list[str]) -> dict:
