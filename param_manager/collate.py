@@ -185,6 +185,45 @@ def unmatched_variants(pivot_rows: list[dict], form_path: str) -> list[str]:
     return [v for v in parsed_variants(pivot_rows) if norm_key(v) not in known]
 
 
+def auto_variant_map(form_vars: list[str], parsed_vars: list[str]) -> dict:
+    """수집 변형 → 양식 변형 **자동 매핑**(norm_key 일치 = 대소문자·구분자만 무시).
+
+    이름이 정규화로 같은데 문자열만 다르면(예: `2d+3d camtek` → `2D+3D_CAMTEK`)
+    수집 이름을 양식 이름으로 바꿔 준다. 정확히 같은 이름은 넣지 않는다(불필요).
+    양식에 대응이 없는 수집 변형은 매핑에 없다(그대로 둠 = 안 채워짐).
+    무인 회차(자동 감시)가 창 없이 안전하게 쓰는 범위다."""
+    fmap: dict = {}
+    for f in form_vars or []:
+        fmap.setdefault(norm_key(f), engine._s(f).strip())
+    out: dict = {}
+    for p in parsed_vars or []:
+        f = fmap.get(norm_key(p))
+        if f is not None and f != engine._s(p).strip():
+            out[engine._s(p).strip()] = f
+    return out
+
+
+def variant_match_table(form_vars: list[str], parsed_vars: list[str]) -> dict:
+    """하위 레시피 이름 **매칭 확인창**용 표.
+
+    왼쪽=양식 변형, 오른쪽 기본선택=자동매칭(norm_key)된 수집(복사) 변형.
+    반환: {
+      "rows": [(양식변형, 자동선택 수집변형 or "")],
+      "parsed": [수집 변형 전체],                # 오른쪽 콤보 후보
+      "unmatched_parsed": [어느 양식에도 안 붙는 수집 변형],   # 하단 안내(무시됨)
+    }
+    """
+    pfirst: dict = {}
+    for p in parsed_vars or []:
+        pfirst.setdefault(norm_key(p), engine._s(p).strip())
+    rows = [(engine._s(f).strip(), pfirst.get(norm_key(f), "")) for f in (form_vars or [])]
+    fnorms = {norm_key(f) for f in (form_vars or [])}
+    unmatched = [engine._s(p).strip() for p in (parsed_vars or [])
+                 if norm_key(p) not in fnorms]
+    return {"rows": rows, "parsed": [engine._s(p).strip() for p in (parsed_vars or [])],
+            "unmatched_parsed": unmatched}
+
+
 def apply_variant_map(pivot_rows: list[dict], mapping: dict) -> list[dict]:
     """수집 변형 → 양식 변형으로 이름을 바꿔 준다(사람이 매칭한 결과).
 

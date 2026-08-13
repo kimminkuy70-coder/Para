@@ -320,6 +320,27 @@ def test_unmatched_variant_detection_and_remap():
             [dict(r, mag="2d+3d camtek") for r in same], form) == []
     print("  collate OK: 하위 레시피 이름 불일치 검출 + 매칭 재적용")
 
+def test_variant_match_table_and_auto_map():
+    """하위 레시피 이름 매칭: 자동매칭(norm_key)·확인창 표·이름 교체."""
+    form_vars = ["2D+3D_CAMTEK", "DUMMY"]
+    parsed = ["2d+3d camtek", "DUMMY", "SPECIAL X20"]   # 대소문자·구분자·양식에 없는 것
+    # 자동 매핑: 정규화로 같은데 문자열만 다른 것만(같은 이름은 제외)
+    amap = collate.auto_variant_map(form_vars, parsed)
+    assert amap == {"2d+3d camtek": "2D+3D_CAMTEK"}, amap   # DUMMY 는 이미 같음
+    # 확인창용 표: 왼쪽=양식, 오른쪽 기본선택=자동매칭된 수집 이름
+    tbl = collate.variant_match_table(form_vars, parsed)
+    assert tbl["rows"] == [("2D+3D_CAMTEK", "2d+3d camtek"), ("DUMMY", "DUMMY")], tbl["rows"]
+    assert tbl["unmatched_parsed"] == ["SPECIAL X20"], tbl   # 양식에 없는 수집 변형
+    assert tbl["parsed"] == parsed
+    # 매핑 적용 → 피벗의 mag(변형)가 양식 이름으로 바뀐다
+    rows = [{"mag": "2d+3d camtek", "x": 1}, {"mag": "DUMMY", "x": 2},
+            {"mag": "SPECIAL X20", "x": 3}]
+    out = collate.apply_variant_map(rows, amap)
+    assert [r["mag"] for r in out] == ["2D+3D_CAMTEK", "DUMMY", "SPECIAL X20"], out
+    assert rows[0]["mag"] == "2d+3d camtek", "원본 리스트는 안 바뀐다"
+    print("  collate OK: 하위 레시피 자동매칭·확인창 표·이름 교체")
+
+
 def test_update_flow_asks_before_collating():
     """값 업데이트는 **취합 전에** 이름 매칭을 물어봐야 한다(취합 후면 늦다).
     (GUI 는 이 환경에서 못 띄우므로 호출 순서를 소스로 고정한다.)"""
@@ -331,11 +352,19 @@ def test_update_flow_asks_before_collating():
     m = re.search(r"def _update_collate_flow.*?(?=\n    def )", src, re.S)
     assert m, "_update_collate_flow 를 찾지 못함"
     body = m.group(0)
-    assert "_match_variants(chosen, pivot_rows)" in body, "매칭 단계가 없음"
+    assert "_match_variants(forms, pivot_rows)" in body, "매칭 단계가 없음"
     assert body.index("_match_variants") < body.index("build_collation"), \
         "취합보다 먼저 매칭을 물어야 한다"
-    assert "_variant_match_dialog" in src and "apply_variant_map" in src
-    print("  collate OK: 값 업데이트가 취합 전에 이름 매칭을 묻는다")
+    # 확인창(항상 표시)과 매칭 적용
+    assert "_confirm_variant_match" in src and "apply_variant_map" in src
+    assert "variant_match_table" in src, "확인창용 매칭표를 쓰지 않음"
+    # commonality 조사(_cm_collate)도 취합(collate_lots) 전에 매칭을 확인해야 한다
+    cm = re.search(r"def _cm_collate.*?(?=\n    def )", src, re.S)
+    assert cm and "_confirm_variant_match" in cm.group(0), \
+        "commonality 조사에 하위 레시피 매칭 확인이 없음"
+    assert cm.group(0).index("_confirm_variant_match") < cm.group(0).index("collate_lots"), \
+        "commonality 도 취합보다 먼저 매칭을 물어야 한다"
+    print("  collate OK: 값 업데이트·commonality 가 취합 전에 이름 매칭을 확인한다")
 
 if __name__ == "__main__":
     fails = 0

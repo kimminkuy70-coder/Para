@@ -55,14 +55,20 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     (`_save_candidate_snapshot` / 기본 경로는 `work()` 안에서). 저장 실패는
     확정을 막지 않는다(E116/E119 로그만).
 - **값 업데이트**: 레시피 선택 알림 → **IP↔호기 매칭창**(IP로 새 열 만들지 않음) →
-  **하위 레시피(변형) 이름 매칭창**(양식에 없는 이름이 있을 때만) →
+  **하위 레시피(변형) 이름 매칭 확인창** →
   `collate.build_collation`(설정키 매칭, **직전 취합본 이어받기**, 불일치 검출) →
   `파라미터 값 취합_{시간}.xlsx`.
-  · 하위 레시피 이름은 장비마다 다를 수 있고(`2D+3D_CAMTEK` vs `2D+3D CAMTEK`)
-    변형은 행 키의 일부라 다르면 값이 안 채워진다. **취합 전에**
-    `collate.unmatched_variants`(비교는 `norm_key` — 대소문자·구분자 차이는 무시)로
-    찾아 `_variant_match_dialog` 로 양식의 이름에 붙이고(또는 '제외'),
-    `collate.apply_variant_map` 이 피벗의 `mag` 를 바꾼다. GUI=`_match_variants`.
+  · **하위 레시피 이름 매칭은 항상 한 번 확인한다(2026-08 확정)**: 상위 레시피는 같아도
+    하위(변형) 이름이 다르면(`2D+3D_CAMTEK` vs `2D+3D CAMTEK`) 변형이 행 키의 일부라
+    값이 안 채워진다. **취합 전에** `collate.variant_match_table`(양식 변형 ↔ 수집 변형,
+    자동매칭은 `norm_key` = 대소문자·구분자만 무시)로 표를 만들어
+    `_confirm_variant_match` 확인창(**왼쪽=양식 이름, 오른쪽=복사해온 이름 콤보, 자동매칭
+    미리 선택**)을 띄운다. 사람이 확인/수정 → `collate.apply_variant_map` 이 피벗의
+    `mag`(변형)를 양식 이름으로 바꾼다. GUI=`_match_variants(forms, pivot)`(변형이
+    빈칸뿐이면 창 생략). **commonality 조사(`_cm_collate`)도 `collate_lots` 전에 같은
+    확인**을 한다(양식이 다른 Lot 에 재사용될 때 하위 이름 어긋남 방지). **무인
+    자동 감시(`cmwatcher.survey_items`)는 창을 못 띄우므로 `collate.auto_variant_map`
+    (norm_key 안전 범위)만 자동 적용**한다.
 - **레시피 삭제(2026-08 확정 — 범위 고정)**: 양식 만들기 탭 `🗑 레시피 삭제`
   (값 확인 카드 우클릭도 같은 창). `_delete_recipe_dialog`/`_delete_recipe_run`.
   · **지움** ①`양식/{레시피}/` 전체 — 지우지 않고 **로컬 `CamtekAOI/삭제보관/
@@ -376,7 +382,7 @@ python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 
 python3 tests/test_ini_parser.py   # 20 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/복사금지optic제외/비선택optic표시/다중레시피)
 python3 tests/test_formbuilder.py  # 10 (초안 생성·편집→확정 양식·계수 저장·초안→전체후보 복원·설정키 매칭)
 python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다른회차 빌려오기·확정 시 원본 항상 저장·다시읽기 항상 선택)
-python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
+python3 tests/test_collate.py      # 10 (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭(자동매칭·확인창·commonality 연결))
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)

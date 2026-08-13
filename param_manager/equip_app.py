@@ -5518,6 +5518,20 @@ class EquipApp(tk.Tk):
         form = self._cm["form_path"]
         m, st = self._cm["machine"], self._cm["st"]
         pivot, labels = self._cm.get("pivot"), self._cm.get("labels")
+        # 하위 레시피 이름 매칭 확인(양식 ↔ 복사해온 레시피) — 항상 한 번 확인한다.
+        # 상위(레시피)는 같아도 하위 이름이 다르면 값이 안 채워지므로.
+        try:
+            tbl = collate.variant_match_table(collate.form_variants(form),
+                                              collate.parsed_variants(pivot))
+            if self._variant_confirm_needed(tbl):
+                mp = self._confirm_variant_match({recipe: tbl})
+                if mp is None:
+                    self._set_status("값 조사를 취소했습니다.")
+                    return
+                pivot = collate.apply_variant_map(pivot, mp)
+                self._cm["pivot"] = pivot       # 이후 단계도 매칭된 피벗을 쓰게
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E135", e)             # 매칭 확인 실패는 조사를 막지 않는다
         result = workdirs.commonality_result_path(self._cm["run_dir"], recipe, m, st)
 
         fail_labels = self._cm.get("fail_labels") or []
@@ -5783,33 +5797,50 @@ class EquipApp(tk.Tk):
                   fg=self.p["text"], padx=16, pady=8, cursor="hand2",
                   command=from_local).pack(side="left", padx=8)
 
-    def _variant_match_dialog(self, unmatched: dict) -> dict | None:
-        """하위 레시피 이름이 양식과 다를 때 **사람이 매칭**하는 창.
+    @staticmethod
+    def _variant_confirm_needed(tbl: dict) -> bool:
+        """확인이 의미 있는가 — 양식/수집 변형에 **빈칸이 아닌 이름**이 하나라도 있으면."""
+        def real(v):
+            return engine._s(v).strip() != ""
+        return (any(real(f) for f, _ in tbl.get("rows", []))
+                or any(real(p) for p in tbl.get("parsed", [])))
 
-        장비마다 하위 레시피 폴더 이름이 조금씩 다르면(2D+3D_CAMTEK /
-        2D+3D CAMTEK …) 변형이 행 키의 일부라 값이 채워지지 않는다. 그래서
-        수집된 이름을 양식에 있는 이름에 붙여 주는 단계를 둔다.
+    def _confirm_variant_match(self, tables: dict) -> dict | None:
+        """하위 레시피 이름 매칭 **확인창**(항상 표시 — 자동매칭 미리 선택).
 
-        unmatched = {레시피: (양식 변형 목록, 매칭 안 된 수집 변형 목록)}
-        반환: {수집 변형: 양식 변형 또는 ''(제외)} · None = 취소
+        상위 레시피는 같아도 하위 레시피(변형) 이름이 다르면(2D+3D_CAMTEK /
+        2D+3D CAMTEK …) 값이 채워지지 않는다. 그래서 조사 전에 **양식의 이름 ↔
+        복사해온(수집한) 이름**을 한 번 확인·매칭한다.
+          · 왼쪽 = 양식의 하위 레시피 이름
+          · 오른쪽 = 복사해온 레시피에서 읽어들인 이름(콤보, 자동매칭 미리 선택)
+
+        tables = {레시피: collate.variant_match_table(...)}
+        반환: {수집 변형: 양식 변형} · None = 취소
         """
         win = tk.Toplevel(self)
-        win.title("하위 레시피 이름 매칭")
+        win.title("하위 레시피 이름 매칭 확인")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
-        win.geometry("720x520")
-        tk.Label(win, text="하위 레시피 이름이 양식과 다릅니다",
+        win.geometry("760x560")
+        tk.Label(win, text="하위 레시피 이름 매칭 확인",
                  bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
-        tk.Label(win, text="장비에서 읽은 하위 레시피 이름이 양식에 없습니다. "
-                           "그대로 두면 값이 채워지지 않습니다.\n"
-                           "양식의 어떤 하위 레시피에 해당하는지 골라 주세요. "
-                           "(‘— 이번 취합에서 제외 —’ 를 고르면 무시합니다)",
+        tk.Label(win, text="상위 레시피는 같아도 하위 레시피 이름이 다르면 값이 "
+                           "채워지지 않습니다.\n왼쪽(양식의 하위 레시피)에 대응하는 "
+                           "오른쪽(복사해온 레시피 이름)을 골라 주세요. "
+                           "이름이 같으면 자동으로 선택돼 있습니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left").pack(anchor="w", padx=16, pady=(0, 8))
+        # 열 제목
+        head = tk.Frame(win, bg=self.p["bg"])
+        head.pack(fill="x", padx=16)
+        tk.Label(head, text="양식의 하위 레시피", bg=self.p["bg"], fg=self.p["primary"],
+                 font=self.fonts["bold"], anchor="w").pack(side="left", fill="x", expand=True)
+        tk.Label(head, text="복사해온 레시피 이름", bg=self.p["bg"], fg=self.p["primary"],
+                 font=self.fonts["bold"], width=30, anchor="e").pack(side="right")
         outer = tk.Frame(win, bg=self.p["bg"])
-        outer.pack(fill="both", expand=True, padx=16)
+        outer.pack(fill="both", expand=True, padx=16, pady=(4, 0))
         canvas = tk.Canvas(outer, bg=self.p["bg"], highlightthickness=0)
         vbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
         inner = tk.Frame(canvas, bg=self.p["bg"])
@@ -5822,36 +5853,46 @@ class EquipApp(tk.Tk):
         vbar.pack(side="right", fill="y")
         self._wheelify(canvas)
 
-        SKIP = "— 이번 취합에서 제외 —"
-        pickers: list = []
-        for recipe, (form_vs, miss) in unmatched.items():
-            tk.Label(inner, text=f"[{recipe}]  양식의 하위 레시피: "
-                                 + (", ".join(v or "(빈칸)" for v in form_vs) or "없음"),
-                     bg=self.p["bg"], fg=self.p["primary"],
+        NONE = "— 없음(이 항목은 안 채움) —"
+        pickers: list = []                     # (form_v, StringVar)
+        for recipe, tbl in tables.items():
+            tk.Label(inner, text=f"[{recipe}]", bg=self.p["bg"], fg=self.p["text"],
                      font=self.fonts["bold"]).pack(anchor="w", pady=(10, 2))
-            for v in miss:
+            for form_v, auto in tbl["rows"]:
                 row = tk.Frame(inner, bg=self.p["bg"])
                 row.pack(fill="x", pady=2)
-                sv = tk.StringVar(value=SKIP)
-                ttk.Combobox(row, textvariable=sv, state="readonly", width=26,
-                             values=[SKIP] + list(form_vs)).pack(side="right", padx=4)
-                tk.Label(row, text="→", bg=self.p["bg"], fg=self.p["muted"]).pack(
-                    side="right")
-                tk.Label(row, text=f"장비: {v or '(빈칸)'}", bg=self.p["bg"],
+                sv = tk.StringVar(value=(auto if auto else NONE))
+                ttk.Combobox(row, textvariable=sv, state="readonly", width=28,
+                             values=[NONE] + list(tbl["parsed"])).pack(side="right", padx=4)
+                tk.Label(row, text="→", bg=self.p["bg"], fg=self.p["muted"]).pack(side="right")
+                tk.Label(row, text=f"{form_v or '(빈칸)'}", bg=self.p["bg"],
                          fg=self.p["text"], font=self.fonts["sub"],
                          anchor="w").pack(side="left", fill="x", expand=True)
-                pickers.append((v, sv))
+                pickers.append((form_v, sv))
+            leftover = tbl.get("unmatched_parsed") or []
+            if leftover:
+                tk.Label(inner, text="   · 양식에 없는 복사본 레시피(선택 안 하면 무시): "
+                                     + ", ".join(leftover),
+                         bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                         anchor="w", wraplength=680, justify="left").pack(
+                         anchor="w", pady=(0, 2))
 
         out = {"map": None}
 
         def ok():
-            out["map"] = {v: ("" if sv.get() == SKIP else sv.get())
-                          for v, sv in pickers}
+            mp: dict = {}
+            for form_v, sv in pickers:
+                chosen = sv.get()
+                if chosen == NONE or not chosen:
+                    continue
+                if engine._s(chosen).strip() != engine._s(form_v).strip():
+                    mp[chosen] = form_v        # 수집 이름 → 양식 이름(이름 교체)
+            out["map"] = mp
             win.destroy()
 
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=12)
-        tk.Button(bt, text="이대로 진행", relief="flat", bd=0, bg=self.p["primary"],
+        tk.Button(bt, text="확인하고 진행", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   command=ok).pack(side="right")
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"],
@@ -5860,23 +5901,25 @@ class EquipApp(tk.Tk):
         win.wait_window()
         return out["map"]
 
-    def _match_variants(self, chosen, pivot_rows):
-        """양식에 없는 하위 레시피가 있으면 매칭창을 띄우고 이름을 바꿔 돌려준다.
+    def _match_variants(self, forms_by_recipe, pivot_rows):
+        """**항상** 하위 레시피 이름 매칭을 한 번 확인한다(자동매칭 미리 선택).
+        forms_by_recipe = {레시피: 양식경로}. 변형이 [빈칸]뿐이면 창을 건너뛴다.
         반환: (pivot_rows, 계속할지) — 사용자가 취소하면 (rows, False)."""
-        unmatched = {}
-        for recipe in chosen:
-            form = workdirs.latest_form(self.save_dir, recipe)
+        tables: dict = {}
+        for recipe, form in (forms_by_recipe or {}).items():
             if not form:
                 continue                       # 양식 없음은 취합 단계에서 안내
             try:
-                miss = collate.unmatched_variants(pivot_rows, form)
-                if miss:
-                    unmatched[recipe] = (collate.form_variants(form), miss)
+                tbl = collate.variant_match_table(collate.form_variants(form),
+                                                  collate.parsed_variants(pivot_rows))
             except Exception as e:  # noqa: BLE001
                 self._logerr("E146", e)        # 매칭 확인 실패는 취합을 막지 않는다
-        if not unmatched:
-            return pivot_rows, True
-        mapping = self._variant_match_dialog(unmatched)
+                continue
+            if self._variant_confirm_needed(tbl):
+                tables[recipe] = tbl
+        if not tables:
+            return pivot_rows, True            # 확인할 변형이 없음(단일 무명 변형 등)
+        mapping = self._confirm_variant_match(tables)
         if mapping is None:
             return pivot_rows, False           # 취소
         return collate.apply_variant_map(pivot_rows, mapping), True
@@ -5884,7 +5927,8 @@ class EquipApp(tk.Tk):
     def _update_collate_flow(self, chosen, pivot_rows):
         machines_all = self._all_machines()
         prev = workdirs.latest_collate(self.save_dir)
-        pivot_rows, go = self._match_variants(chosen, pivot_rows)
+        forms = {r: workdirs.latest_form(self.save_dir, r) for r in chosen}
+        pivot_rows, go = self._match_variants(forms, pivot_rows)
         if not go:
             self._release_global(locking.GLOBAL_COLLATE)
             self._set_status("값 업데이트를 취소했습니다.")

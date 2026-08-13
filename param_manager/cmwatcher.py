@@ -46,6 +46,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from . import coefstore
+from . import collate
 from . import commonality as cm
 from . import engine, localdirs
 
@@ -629,6 +630,15 @@ def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str
 
     pivot, plabels = cm.parse_lots(lot_dirs, level=recipe, coef_lookup=coef_lookup,
                                    recipe_prefix=recipe_prefix)
+    # 하위 레시피 이름 자동 매칭(norm_key 안전 범위 — 대소문자·구분자만) — 무인이라
+    # 창을 못 띄우므로 이름이 정규화로 같은 것만 양식 이름으로 바꿔 값이 채워지게 한다.
+    try:
+        amap = collate.auto_variant_map(collate.form_variants(form_path),
+                                        collate.parsed_variants(pivot))
+        if amap:
+            pivot = collate.apply_variant_map(pivot, amap)
+    except Exception:  # noqa: BLE001
+        pass
     res = cm.collate_lots(recipe, form_path, pivot, plabels, coef_lookup=coef_lookup)
     # 양식과 얼마나 맞았는지 — 적게 맞은 S/M 도 **열은 남기고 색으로 표시**한다
     # (사용자 확정 2026-08). 빼 버리면 그런 S/M 이 있었다는 사실 자체가 사라져
