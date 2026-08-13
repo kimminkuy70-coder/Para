@@ -341,6 +341,47 @@ def test_variant_match_table_and_auto_map():
     print("  collate OK: 하위 레시피 자동매칭·확인창 표·이름 교체")
 
 
+def test_variant_orig_annotated_in_result():
+    """매칭된 하위 레시피는 결과 Recipe 칸에 `양식이름 (원래이름)` 로 병기 —
+    표시만 바뀌고 값 매칭·키에는 영향이 없다."""
+    # 헬퍼 단위
+    assert collate.invert_variant_map({"2d+3d camtek": "2D+3D_CAMTEK"}) == \
+        {"2D+3D_CAMTEK": "2d+3d camtek"}
+    assert collate.variant_display("2D+3D_CAMTEK", "2d+3d camtek") == \
+        "2D+3D_CAMTEK (2d+3d camtek)"
+    assert collate.variant_display("PI", "PI") == "PI"          # 같으면 병기 안 함
+    assert collate.strip_variant_orig("2D+3D_CAMTEK (2d+3d camtek)") == "2D+3D_CAMTEK"
+    assert collate.strip_variant_orig("PI2") == "PI2"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        save_dir = os.path.join(tmp, "저장")
+        os.makedirs(save_dir)
+        rows = _pivot_variant(os.path.join(tmp, "form"), "AOI-24", "2D+3D_CAMTEK")
+        init = os.path.join(tmp, "init.xlsx")
+        formbuilder.build_initial_workbook(rows, init, level="PI3")
+        st = workdirs.stamp()
+        run = workdirs.form_run_dir(save_dir, "PI3", st)
+        form = workdirs.form_final_path(run, "PI3", "AOI-24", st)
+        formbuilder.build_final_from_initial(init, form, level="PI3")
+
+        # 수집본은 이름이 다르다 → 매칭 후 원래이름 병기
+        other = _pivot_variant(os.path.join(tmp, "b"), "AOI-25",
+                               "2D+3D CAMTEK", wafer="7777")
+        mp = {"2D+3D CAMTEK": "2D+3D_CAMTEK"}
+        mapped = collate.apply_variant_map(other, mp)
+        res = collate.collate_recipe("PI3", form, mapped, ["AOI-24", "AOI-25"],
+                                     variant_orig=collate.invert_variant_map(mp))
+        got = next(r for r in res.records
+                   if engine._s(r["Parameter"]).startswith("Max Defects Per Wafer"))
+        # Recipe 칸에 원래(수집) 이름이 괄호로 병기
+        assert engine._s(got["Recipe"]) == "2D+3D_CAMTEK (2D+3D CAMTEK)", got["Recipe"]
+        # 병기가 매칭을 깨지 않는다(값 정상)
+        assert engine._s(got["AOI-25"]) == "7777", got
+        # 키는 양식 이름만
+        assert collate.strip_variant_orig(got["Recipe"]) == "2D+3D_CAMTEK"
+    print("  collate OK: 매칭된 하위 레시피 결과에 원래이름 괄호 병기(키는 양식 이름)")
+
+
 def test_update_flow_asks_before_collating():
     """값 업데이트는 **취합 전에** 이름 매칭을 물어봐야 한다(취합 후면 늦다).
     (GUI 는 이 환경에서 못 띄우므로 호출 순서를 소스로 고정한다.)"""

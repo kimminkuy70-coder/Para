@@ -5520,6 +5520,7 @@ class EquipApp(tk.Tk):
         pivot, labels = self._cm.get("pivot"), self._cm.get("labels")
         # 하위 레시피 이름 매칭 확인(양식 ↔ 복사해온 레시피) — 항상 한 번 확인한다.
         # 상위(레시피)는 같아도 하위 이름이 다르면 값이 안 채워지므로.
+        variant_orig: dict = {}
         try:
             tbl = collate.variant_match_table(collate.form_variants(form),
                                               collate.parsed_variants(pivot))
@@ -5530,6 +5531,7 @@ class EquipApp(tk.Tk):
                     return
                 pivot = collate.apply_variant_map(pivot, mp)
                 self._cm["pivot"] = pivot       # 이후 단계도 매칭된 피벗을 쓰게
+                variant_orig = collate.invert_variant_map(mp)   # 결과에 원래 이름 병기
         except Exception as e:  # noqa: BLE001
             self._logerr("E135", e)             # 매칭 확인 실패는 조사를 막지 않는다
         result = workdirs.commonality_result_path(self._cm["run_dir"], recipe, m, st)
@@ -5540,7 +5542,8 @@ class EquipApp(tk.Tk):
             return coefstore.lookup(self.coef_rows, m, var)   # commonality 는 호기 고정
 
         def work():
-            res = cm.collate_lots(recipe, form, pivot, labels, coef_lookup=cl)
+            res = cm.collate_lots(recipe, form, pivot, labels, coef_lookup=cl,
+                                  variant_orig=variant_orig)
             # 어떤 변환계수가 적용된 값인지 결과에 남긴다(사후 확인용)
             sel = self._cm.get("selected") or []
             scan_times = {l.label: l.scan_time for l in sel}
@@ -5904,7 +5907,7 @@ class EquipApp(tk.Tk):
     def _match_variants(self, forms_by_recipe, pivot_rows):
         """**항상** 하위 레시피 이름 매칭을 한 번 확인한다(자동매칭 미리 선택).
         forms_by_recipe = {레시피: 양식경로}. 변형이 [빈칸]뿐이면 창을 건너뛴다.
-        반환: (pivot_rows, 계속할지) — 사용자가 취소하면 (rows, False)."""
+        반환: (pivot_rows, 계속할지, {수집이름: 양식이름}) — 취소하면 (rows, False, {})."""
         tables: dict = {}
         for recipe, form in (forms_by_recipe or {}).items():
             if not form:
@@ -5918,21 +5921,22 @@ class EquipApp(tk.Tk):
             if self._variant_confirm_needed(tbl):
                 tables[recipe] = tbl
         if not tables:
-            return pivot_rows, True            # 확인할 변형이 없음(단일 무명 변형 등)
+            return pivot_rows, True, {}         # 확인할 변형이 없음(단일 무명 변형 등)
         mapping = self._confirm_variant_match(tables)
         if mapping is None:
-            return pivot_rows, False           # 취소
-        return collate.apply_variant_map(pivot_rows, mapping), True
+            return pivot_rows, False, {}        # 취소
+        return collate.apply_variant_map(pivot_rows, mapping), True, mapping
 
     def _update_collate_flow(self, chosen, pivot_rows):
         machines_all = self._all_machines()
         prev = workdirs.latest_collate(self.save_dir)
         forms = {r: workdirs.latest_form(self.save_dir, r) for r in chosen}
-        pivot_rows, go = self._match_variants(forms, pivot_rows)
+        pivot_rows, go, vmap = self._match_variants(forms, pivot_rows)
         if not go:
             self._release_global(locking.GLOBAL_COLLATE)
             self._set_status("값 업데이트를 취소했습니다.")
             return
+        variant_orig = collate.invert_variant_map(vmap)   # 결과에 원래 이름 괄호 병기
 
         def cl(ho, var):
             return coefstore.lookup(self.coef_rows, ho, var)   # 호기별·변형별 계수
@@ -5940,7 +5944,7 @@ class EquipApp(tk.Tk):
         def work():
             return collate.build_collation(self.save_dir, chosen, pivot_rows,
                                            machines_all, prev_collate_path=prev,
-                                           coef_lookup=cl)
+                                           coef_lookup=cl, variant_orig=variant_orig)
 
         def done(ok, res):
             if not ok:

@@ -73,7 +73,7 @@ def _build_parsed_index(pivot_rows: list[dict]) -> tuple[dict, dict]:
 def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
                    machines_all: list[str],
                    prev_values: dict | None = None,
-                   coef_lookup=None) -> CollateRecipe:
+                   coef_lookup=None, variant_orig: dict | None = None) -> CollateRecipe:
     """양식(레시피 1개) + 파싱 + 전체 호기 + 직전값 → CollateRecipe.
 
     값은 **양식의 변환방식**(_EXTRACT_MAP transform)을 수집 raw 에 재적용해 채운다
@@ -81,12 +81,15 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
       1) coef_lookup(호기, 변형)  — 호기별·변형별 변환계수.xlsx,
       2) 변환방식 라벨에 박힌 계수(AREA_0.77..^2),
       3) 기본(DEFAULT_SCALE).
+    variant_orig = {양식 하위레시피: 원래(수집) 이름} — 있으면 결과 Recipe 칸에
+    `양식이름 (원래이름)` 으로 병기한다(매칭 키에는 영향 없음).
     """
     repo = engine.ParamRepository(form_path)
     repo.load()
     emap = extract_io.read_extract_map(form_path)
     by_ext, by_name = _build_parsed_index(pivot_rows)
     prev_values = prev_values or {}
+    variant_orig = variant_orig or {}
     res = CollateRecipe(recipe=recipe, machines=list(machines_all))
 
     for pr in repo.rows:
@@ -95,6 +98,10 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
         zone = engine._s(pr.get("Zone"))
         rkey = _name_key(level, variant, zone, pr.get("Alg"), pr.get("Parameter"))
         rec = {f: pr.get(f) for f in engine.META_FIELDS}
+        # 하위 레시피 이름이 수집본과 달라 매칭한 경우, 결과에 **원래(수집) 이름을
+        # 괄호로 병기**한다(표시용 — rec["Recipe"] 만 바꾸고 매칭 키(variant)는 그대로).
+        if variant in variant_orig:
+            rec["Recipe"] = variant_display(variant, variant_orig[variant])
         # 1) 직전 취합본 값 이어받기(누적)
         for m, v in prev_values.get(rkey, {}).items():
             if m in machines_all and engine._s(v) != "":
@@ -224,6 +231,33 @@ def variant_match_table(form_vars: list[str], parsed_vars: list[str]) -> dict:
             "unmatched_parsed": unmatched}
 
 
+_VAR_ORIG_RE = re.compile(r"\s*\([^()]*\)\s*$")
+
+
+def invert_variant_map(mapping: dict) -> dict:
+    """{수집이름: 양식이름} → {양식이름: '수집이름'}(결과의 괄호 원래이름 표기용).
+    여러 수집 이름이 한 양식 이름에 붙으면 콤마로 잇는다. 이름이 같으면 제외."""
+    out: dict = {}
+    for copied, form in (mapping or {}).items():
+        f, c = engine._s(form).strip(), engine._s(copied).strip()
+        if not f or not c or f == c:
+            continue
+        out[f] = f"{out[f]}, {c}" if f in out else c
+    return out
+
+
+def variant_display(form_name, orig) -> str:
+    """결과에 표기할 하위 레시피 이름 — 원래(수집) 이름이 다르면 `양식이름 (원래이름)`."""
+    f, o = engine._s(form_name).strip(), engine._s(orig).strip()
+    return f"{f} ({o})" if o and o != f else f
+
+
+def strip_variant_orig(name) -> str:
+    """표기용 `양식이름 (원래이름)` 에서 **키용 양식 이름만** 남긴다(뒤 괄호 제거).
+    변형 라벨(PI/x20/2D+3D_CAMTEK …)은 원래 괄호로 끝나지 않으므로 안전하다."""
+    return _VAR_ORIG_RE.sub("", engine._s(name)).strip()
+
+
 def apply_variant_map(pivot_rows: list[dict], mapping: dict) -> list[dict]:
     """수집 변형 → 양식 변형으로 이름을 바꿔 준다(사람이 매칭한 결과).
 
@@ -249,9 +283,11 @@ def apply_variant_map(pivot_rows: list[dict], mapping: dict) -> list[dict]:
 def build_collation(save_dir: str, recipes: list[str], pivot_rows: list[dict],
                     machines_all: list[str],
                     prev_collate_path: str | None = None,
-                    coef_lookup=None) -> dict[str, CollateRecipe]:
+                    coef_lookup=None, variant_orig: dict | None = None
+                    ) -> dict[str, CollateRecipe]:
     """레시피별 취합 결과. 양식은 각 레시피의 최신 확정본에서 가져온다.
-    coef_lookup(호기, 변형)→계수: 값 재적용 시 호기별·변형별 변환계수 적용(없으면 라벨/기본)."""
+    coef_lookup(호기, 변형)→계수: 값 재적용 시 호기별·변형별 변환계수 적용(없으면 라벨/기본).
+    variant_orig = {양식 하위레시피: 원래 이름} — 결과 Recipe 칸 괄호 병기용."""
     prev = load_prev_values(prev_collate_path) if prev_collate_path else {}
     out: dict[str, CollateRecipe] = {}
     for recipe in recipes:
@@ -261,7 +297,8 @@ def build_collation(save_dir: str, recipes: list[str], pivot_rows: list[dict],
                                         missing_form=True)
             continue
         out[recipe] = collate_recipe(recipe, form, pivot_rows, machines_all,
-                                     prev.get(recipe, {}), coef_lookup=coef_lookup)
+                                     prev.get(recipe, {}), coef_lookup=coef_lookup,
+                                     variant_orig=variant_orig)
     # 누적: 직전 취합본에 있던 **다른 레시피 시트**는 그대로 유지(이번에 안 고른 레시피가
     # 사라지지 않게). 이번에 고른 레시피는 위에서 새로 취합한 결과가 우선.
     if prev_collate_path:
@@ -386,8 +423,10 @@ def load_prev_values(path: str | None) -> dict[str, dict]:
     for recipe, rows in sheets.items():
         rmap = {}
         for rd in rows:
-            k = _name_key(rd.get("PI"), rd.get("Recipe"), rd.get("Zone"),
-                          rd.get("Alg"), rd.get("Parameter"))
+            # Recipe 칸에 `(원래이름)` 이 병기돼 있어도 **키는 양식 이름만**으로(이어받기
+            # 매칭이 collate_recipe 의 clean 변형 키와 맞아야 한다).
+            k = _name_key(rd.get("PI"), strip_variant_orig(rd.get("Recipe")),
+                          rd.get("Zone"), rd.get("Alg"), rd.get("Parameter"))
             rmap[k] = {m: rd.get(m) for m in machines if engine._s(rd.get(m)) != ""}
         out[recipe] = rmap
     return out

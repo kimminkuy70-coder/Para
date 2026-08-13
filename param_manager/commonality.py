@@ -682,11 +682,13 @@ INFO_ROW_LABELS = (SCAN_ROW_LABEL, CREATED_ROW_LABEL, MACHINE_ROW_LABEL, SLOT_RO
 
 
 def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
-                 lot_labels: list[str], coef_lookup=None) -> collate.CollateRecipe:
+                 lot_labels: list[str], coef_lookup=None,
+                 variant_orig: dict | None = None) -> collate.CollateRecipe:
     """확정 양식 + 통합 피벗 → Lot 열 채운 CollateRecipe(collate 재사용).
-    값은 양식 변환방식 재적용. coef_lookup(호기, 변형)→계수(commonality 는 호기 고정)."""
+    값은 양식 변환방식 재적용. coef_lookup(호기, 변형)→계수(commonality 는 호기 고정).
+    variant_orig = {양식 하위레시피: 원래 이름} — 결과 Recipe 칸 괄호 병기용."""
     return collate.collate_recipe(recipe, form_path, pivot_rows, lot_labels,
-                                  coef_lookup=coef_lookup)
+                                  coef_lookup=coef_lookup, variant_orig=variant_orig)
 
 
 def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
@@ -876,7 +878,10 @@ def merge_lot_result(dest_xlsx: str, recipe: str, machine: str,
     meta = list(engine.META_FIELDS)
 
     def rkey(rec):
-        return tuple(engine._s(rec.get(h)).strip() for h in meta if h != "비고")
+        # Recipe 칸에 `(원래이름)` 병기가 있어도 **키는 양식 이름만**으로 누적 매칭.
+        return tuple(collate.strip_variant_orig(rec.get(h)) if h == "Recipe"
+                     else engine._s(rec.get(h)).strip()
+                     for h in meta if h != "비고")
 
     merged: dict = {}
     order: list = []

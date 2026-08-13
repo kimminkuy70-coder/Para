@@ -69,6 +69,15 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     확인**을 한다(양식이 다른 Lot 에 재사용될 때 하위 이름 어긋남 방지). **무인
     자동 감시(`cmwatcher.survey_items`)는 창을 못 띄우므로 `collate.auto_variant_map`
     (norm_key 안전 범위)만 자동 적용**한다.
+  · **매칭한 하위 레시피는 결과에 원래(수집) 이름을 괄호로 병기한다(2026-08 확정)**:
+    양식 이름으로 통일하면 복사본의 원래 이름이 사라지므로, 결과 `하위 Recipe` 칸을
+    `양식이름 (원래이름)` 으로 쓴다(`collate.variant_display`, `invert_variant_map`
+    으로 `{수집→양식}`을 `{양식→원래}`로 뒤집어 `collate_recipe(variant_orig=)`·
+    `build_collation`·`collate_lots` 에 전달). **표시만 바뀌고 매칭·키에는 영향 없음** —
+    `collate_recipe` 는 clean 변형(`pr.Recipe`)으로 매칭하고 `rec["Recipe"]` 만 병기.
+    이어받기·누적 키는 `collate.strip_variant_orig`(뒤 괄호 제거)로 clean 이름만 쓴다
+    (`load_prev_values`·`merge_lot_result` 의 rkey). 값 업데이트·commonality·무인 감시
+    모두 병기된다(무인은 auto_variant_map 기준).
 - **레시피 삭제(2026-08 확정 — 범위 고정)**: 양식 만들기 탭 `🗑 레시피 삭제`
   (값 확인 카드 우클릭도 같은 창). `_delete_recipe_dialog`/`_delete_recipe_run`.
   · **지움** ①`양식/{레시피}/` 전체 — 지우지 않고 **로컬 `CamtekAOI/삭제보관/
@@ -382,7 +391,7 @@ python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 
 python3 tests/test_ini_parser.py   # 20 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/복사금지optic제외/비선택optic표시/다중레시피)
 python3 tests/test_formbuilder.py  # 10 (초안 생성·편집→확정 양식·계수 저장·초안→전체후보 복원·설정키 매칭)
 python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다른회차 빌려오기·확정 시 원본 항상 저장·다시읽기 항상 선택)
-python3 tests/test_collate.py      # 10 (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭(자동매칭·확인창·commonality 연결))
+python3 tests/test_collate.py      # 11 (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭(자동매칭·확인창·commonality 연결·원래이름 괄호병기))
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)

@@ -632,14 +632,17 @@ def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str
                                    recipe_prefix=recipe_prefix)
     # 하위 레시피 이름 자동 매칭(norm_key 안전 범위 — 대소문자·구분자만) — 무인이라
     # 창을 못 띄우므로 이름이 정규화로 같은 것만 양식 이름으로 바꿔 값이 채워지게 한다.
+    variant_orig: dict = {}
     try:
         amap = collate.auto_variant_map(collate.form_variants(form_path),
                                         collate.parsed_variants(pivot))
         if amap:
             pivot = collate.apply_variant_map(pivot, amap)
+            variant_orig = collate.invert_variant_map(amap)   # 결과에 원래 이름 병기
     except Exception:  # noqa: BLE001
         pass
-    res = cm.collate_lots(recipe, form_path, pivot, plabels, coef_lookup=coef_lookup)
+    res = cm.collate_lots(recipe, form_path, pivot, plabels, coef_lookup=coef_lookup,
+                          variant_orig=variant_orig)
     # 양식과 얼마나 맞았는지 — 적게 맞은 S/M 도 **열은 남기고 색으로 표시**한다
     # (사용자 확정 2026-08). 빼 버리면 그런 S/M 이 있었다는 사실 자체가 사라져
     # 나중에 "왜 이건 조사가 안 됐지?" 를 알 수 없다.
