@@ -8525,7 +8525,7 @@ class EquipApp(tk.Tk):
     #  트레이 상주 — 창을 닫아도 자동 감시는 계속 (Windows)
     # ====================================================================
     def _watch_is_on(self) -> bool:
-        """설정상 감시가 켜져 있고 이 PC 가 감시 주체인가."""
+        """설정상 **장비** 감시가 켜져 있고 이 PC 가 감시 주체인가."""
         if not self.save_dir:
             return False
         try:
@@ -8533,6 +8533,21 @@ class EquipApp(tk.Tk):
             return bool(s.enabled) and self._watch_owned
         except Exception:  # noqa: BLE001
             return False
+
+    def _cmw_is_on(self) -> bool:
+        """**Commonality** 자동 감시가 켜져 있는가(로컬 설정). 장비 감시와 독립이며
+        전역 잠금이 없어 이 인스턴스가 곧 주체다 — 켜져 있으면 창을 닫아도 상주해야
+        틱(`_cmw_tick`)이 계속 돈다."""
+        try:
+            s, _ = cmwatcher.load_settings(self._cmw_local())
+            return bool(s.enabled)
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _any_watch_on(self) -> bool:
+        """둘 중 **하나라도** 감시가 켜져 있으면 백그라운드 상주 대상이다.
+        (장비 감시와 commonality 감시는 별개 기능 — 둘 다 트레이 상주로 유지된다.)"""
+        return self._watch_is_on() or self._cmw_is_on()
 
     def _tray_start(self) -> bool:
         """트레이 아이콘 표시(이미 있으면 유지). 실패하면 False."""
@@ -8624,8 +8639,9 @@ class EquipApp(tk.Tk):
         self.destroy()
 
     def _on_close(self):
-        """X 버튼 — 감시 중이면 트레이로 내리고, 아니면 종료."""
-        if tray.should_stay_resident(self._watch_is_on()) and self._tray_start():
+        """X 버튼 — **장비/commonality 감시 중 하나라도 켜져 있으면** 트레이로 내리고,
+        아니면 종료. 둘 다 백그라운드 상주로 유지되어야 한다(사용자 확정)."""
+        if tray.should_stay_resident(self._any_watch_on()) and self._tray_start():
             self._hide_to_tray()
             return
         self._shutdown()

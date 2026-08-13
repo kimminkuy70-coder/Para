@@ -219,7 +219,14 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   · `_cmw_tick`(1분마다, 시작 40초 뒤 등록 — 장비 감시 10초와 **엇갈리게**) →
     `watcher.should_run(now, s, st)` → `run_cycle` → `_cmw_report`.
     무인이라 `_run_bg`(모달 금지), 트레이 숨김 중이면 풍선 알림.
-  · 오류 코드 E180~E189.
+  · **트레이 상주는 두 감시를 함께 본다(2026-08 재발 방지)**: 창을 닫을 때
+    `_on_close` 가 `_any_watch_on()`(= `_watch_is_on()`(장비) **or** `_cmw_is_on()`
+    (commonality, 로컬설정 `s.enabled`))으로 판단한다. 종전엔 장비 감시만 봐서
+    **commonality 감시만 켠 채 창을 닫으면 프로그램이 종료돼 감시가 멈췄다**.
+    commonality 감시는 전역 잠금이 없어 이 인스턴스가 곧 주체 — 켜져 있으면
+    상주해야 `_cmw_tick`(after 루프)이 계속 돈다. 장비·commonality 백그라운드
+    감시는 **둘 다** 트레이 상주로 유지된다.
+  · 오류 코드 E180~E190.
 
 ## 이미 확정된 결정 (재질문 금지)
 

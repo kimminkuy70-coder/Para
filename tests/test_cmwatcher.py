@@ -508,7 +508,17 @@ def test_gui_is_wired():
     assert "_cmw_local(" in app and "save_dir" not in re.findall(
         r"def _cmw_local.*?(?=\n    def )", app, re.S)[0], \
         "감시 설정을 저장폴더에 두고 있음"
-    print("  GUI 연결(카드·설정창·주기틱·회차·대표S/M) OK")
+    # ⑥ 창을 닫아도 **두 감시 중 하나라도** 켜져 있으면 트레이 상주(백그라운드 계속).
+    #    종전엔 _on_close 가 장비 감시(_watch_is_on)만 봐서, commonality 감시만 켠 채
+    #    창을 닫으면 프로그램이 종료돼 감시가 멈췄다.
+    assert "def _cmw_is_on(" in app, "commonality 감시 on 판정(_cmw_is_on)이 없음"
+    oc = re.search(r"def _on_close.*?(?=\n    def |\n\n\ndef )", app, re.S)
+    assert oc and "_any_watch_on(" in oc.group(0), \
+        "_on_close 가 두 감시를 함께 보지 않음(_any_watch_on)"
+    anyw = re.search(r"def _any_watch_on.*?(?=\n    def )", app, re.S)
+    assert anyw and "_cmw_is_on(" in anyw.group(0) and "_watch_is_on(" in anyw.group(0), \
+        "_any_watch_on 이 장비·commonality 감시를 OR 하지 않음"
+    print("  GUI 연결(카드·설정창·주기틱·회차·대표S/M·양쪽 감시 상주) OK")
 
 
 def _write_watch_plan(path, rows):
