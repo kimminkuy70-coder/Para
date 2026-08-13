@@ -391,6 +391,25 @@ def expand_all(lots: list[LotFolder]) -> list[LotFolder]:
     return out
 
 
+UNKNOWN_DEVICE = "(미상)"
+
+
+def group_lot_dirs_by_device(lot_dirs: list[tuple], devmap: dict) -> list[tuple]:
+    """[(label, dir)] + {label: device} → [(device, [(label, dir)])] (등장 순서 보존).
+
+    디바이스마다 레시피/파라미터가 다르므로 **양식·조사를 디바이스별로 나눈다**.
+    device 를 모르는 라벨은 `UNKNOWN_DEVICE` 로 묶는다(빠지지 않게)."""
+    order: list[str] = []
+    groups: dict[str, list] = {}
+    for lbl, d in lot_dirs or []:
+        dev = engine._s(devmap.get(lbl)).strip() or UNKNOWN_DEVICE
+        if dev not in groups:
+            groups[dev] = []
+            order.append(dev)
+        groups[dev].append((lbl, d))
+    return [(dev, groups[dev]) for dev in order]
+
+
 def _make_lotfolder(device, lot, sm, machine, sm_dir: Path, wafer: Path,
                     fail: bool, wafers: list | None = None) -> LotFolder:
     """찾은 S/M 폴더 → LotFolder. 라벨 = 실제 S/M 폴더명(변형 포함).

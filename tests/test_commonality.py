@@ -731,6 +731,25 @@ def test_sm_variants_all_become_lot_candidates():
     print("  commonality OK: S/M 변형이 모두 조사 후보로 오름")
 
 
+def test_group_lot_dirs_by_device():
+    """디바이스마다 레시피가 달라 **양식을 디바이스별로** 나눠야 한다 — 그룹핑 헬퍼."""
+    lot_dirs = [("ASD", "/c/ASD"), ("ASD X20", "/c/ASDX20"),
+                ("BQC", "/c/BQC"), ("ZZZ", "/c/ZZZ")]
+    devmap = {"ASD": "DEV_A", "ASD X20": "DEV_A", "BQC": "DEV_B"}   # ZZZ 는 미상
+    groups = commonality.group_lot_dirs_by_device(lot_dirs, devmap)
+    # 등장 순서 보존: DEV_A → DEV_B → (미상)
+    assert [d for d, _ in groups] == ["DEV_A", "DEV_B", commonality.UNKNOWN_DEVICE], groups
+    g = dict(groups)
+    assert [l for l, _ in g["DEV_A"]] == ["ASD", "ASD X20"], g["DEV_A"]
+    assert [l for l, _ in g["DEV_B"]] == ["BQC"]
+    assert [l for l, _ in g[commonality.UNKNOWN_DEVICE]] == ["ZZZ"]
+    # 단일 디바이스면 그룹 1개(기존 흐름을 타도록)
+    one = commonality.group_lot_dirs_by_device(
+        [("A", "/a"), ("B", "/b")], {"A": "DEV", "B": "DEV"})
+    assert len(one) == 1 and one[0][0] == "DEV" and len(one[0][1]) == 2
+    print("  commonality OK: lot_dirs 디바이스별 그룹핑(순서 보존·미상 처리)")
+
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

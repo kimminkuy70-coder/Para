@@ -120,9 +120,17 @@ Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'C
 이탈 색칠, fail여부=Y S/M 노란색) + ⑦ tksheet 뷰어(변경열만 필터·이탈 요약). S/M 변형(CFG X20 등)
 다중 후보는 선택 모드(기본 전체). 헤드리스=`commonality.py`(테스트됨),
 경로=`workdirs.commonality_*`, GUI=`equip_app._view_commonality`/`_cm_*`.
+**디바이스별 분리(2026-08 확정)**: 한 계획에 디바이스가 여러 개면 **디바이스마다
+레시피/파라미터가 달라 양식도 따로** 만들어야 한다. `_cm_make_form` 이 진입 시
+`commonality.group_lot_dirs_by_device`(lot_dirs+`lot_devices`, 등장 순서 보존·미상 처리)
+로 그룹핑해 **디바이스별 자동 순차** 진행(`_cm_process_device`→`_cm_start_recipes_for_device`).
+디바이스마다 진행 알림(가독성) 후 그 디바이스의 lot_dirs 만으로 레시피 큐를 돌린다
+(디바이스→레시피 2단 중첩). 양식·결과 이름 = `조사제목_디바이스[_레시피]`. 단일
+디바이스면 기존 `_cm_make_form_single` 흐름 그대로. 디바이스/레시피 큐 완료는
+`_cm_process_recipe` 가 `dev_queue` 유무로 분기(다음 디바이스 or 최종 알림).
 **다중 레시피(2개+) 자동 처리(2026-07 확정)**: 스캔 폴더에 `RecipesInfo.ini`(각 [Recipe-N]
 Name=PI/PI_Bubble…) + 무접두=Recipe-1, `RecipeN-` 접두(Recipe N: OpticPreset/
-ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르므로 분리**. `_cm_make_form`
+ActiveScenarioOptics/Zones) 파일이 있으면 **레시피별로 값이 다르므로 분리**. `_cm_make_form_single`
 이 `commonality.detect_recipes` 로 자동 감지→알림창→**레시피별 순차**(편집기→값 조사) 진행,
 레시피마다 양식 엑셀·조사 결과 따로. 파서는 `recipe_prefix` 로 해당 레시피 파일만 파싱
 (`ini_parser.read_recipes_info`/`scan_tree(recipe_prefix=)`/`config_ini_files(prefix)`/
@@ -352,7 +360,7 @@ python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 20 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
-python3 tests/test_commonality.py  # 25 (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
+python3 tests/test_commonality.py  # 26 (디바이스별 그룹핑 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)

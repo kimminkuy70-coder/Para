@@ -5081,7 +5081,8 @@ class EquipApp(tk.Tk):
                 return
             run_dir, st, lot_dirs, fail_labels = res
             self._cm.update(run_dir=run_dir, st=st, staging=staging,
-                            lot_dirs=lot_dirs, fail_labels=fail_labels)
+                            lot_dirs=lot_dirs, fail_labels=fail_labels,
+                            lot_devices={l.label: l.device for l in lots})
             self._cm.pop("form_path", None)
             self._cm.pop("result_path", None)
             self._render()
@@ -5120,6 +5121,84 @@ class EquipApp(tk.Tk):
         self._run_busy("Lot 구조 비교 중…", work, done)
 
     def _cm_make_form(self):
+        """양식 만들기 진입점. **디바이스가 여러 개면 디바이스별로 나눠 순차 진행**
+        (디바이스마다 레시피/파라미터가 달라 양식을 따로 만들어야 한다). 각 디바이스는
+        내부에서 다시 레시피별로 나뉜다(디바이스→레시피 2단 중첩)."""
+        groups = cm.group_lot_dirs_by_device(
+            self._cm.get("lot_dirs") or [], self._cm.get("lot_devices") or {})
+        if len(groups) > 1:
+            from tkinter import simpledialog
+            devs = ", ".join(d for d, _ in groups)
+            base = simpledialog.askstring(
+                "디바이스별 조사 — 조사 제목",
+                f"이 계획에는 디바이스가 {len(groups)}개 있습니다:\n  · {devs}\n\n"
+                "디바이스마다 레시피/파라미터가 다르므로 **디바이스별로** 양식을 따로 "
+                "만들어 순차 조사합니다.\n양식·결과 파일 이름에 디바이스가 들어갑니다"
+                "(예: '조사제목_디바이스[_레시피]').\n\n이 조사의 제목을 입력하세요:",
+                initialvalue=self._cm.get("recipe") or "", parent=self)
+            if not base:
+                return
+            self._cm["dev_queue"] = [d for d, _ in groups]
+            self._cm["dev_groups"] = {d: pairs for d, pairs in groups}
+            self._cm["dev_idx"] = 0
+            self._cm["dev_done"] = []
+            self._cm["dev_base"] = base.strip()
+            self._cm_process_device()
+            return
+        # 단일 디바이스: 기존 흐름 그대로
+        self._cm.pop("dev_queue", None)
+        self._cm_make_form_single()
+
+    def _cm_process_device(self):
+        """디바이스 큐: 현재 디바이스의 (양식→값 조사)를 마치면 다음 디바이스로."""
+        q = self._cm["dev_queue"]
+        idx = self._cm["dev_idx"]
+        if idx >= len(q):                              # 전체 디바이스 완료
+            done = self._cm.get("dev_done", [])
+            for k in ("dev_queue", "dev_groups", "_after_form"):
+                self._cm.pop(k, None)
+            self._render()
+            messagebox.showinfo(
+                "디바이스별 조사 완료",
+                f"디바이스 {len(done)}개의 양식·값 조사가 끝났습니다:\n  · "
+                + "\n  · ".join(done)
+                + "\n\n이제 '취합·비교 + 뷰어 열기'로 마무리하세요.")
+            return
+        dev = q[idx]
+        pairs = (self._cm.get("dev_groups") or {}).get(dev, [])
+        # 이 디바이스만 조사하도록 lot_dirs 를 좁힌다.
+        self._cm["lot_dirs"] = list(pairs)
+        messagebox.showinfo(
+            "디바이스별 조사",
+            f"[디바이스 {idx + 1} / {len(q)}]   {dev}\n"
+            "──────────────────────────────\n"
+            f"이 디바이스의 S/M 폴더 {len(pairs)}개를 조사합니다.\n"
+            "레시피를 감지해 양식을 만들고, 값 조사까지 이어서 진행합니다.")
+        from pathlib import Path as _P
+        lot_dirs = [(lbl, _P(d)) for lbl, d in pairs]
+        self._cm_start_recipes_for_device(lot_dirs, dev)
+
+    def _cm_start_recipes_for_device(self, lot_dirs, dev):
+        """한 디바이스 안에서 레시피를 감지해 레시피 큐를 돌린다(디바이스 자동 루프용).
+        단일 레시피여도 자동 값 조사를 이어가야 다음 디바이스로 넘어가므로 큐로 처리한다."""
+        base = self._cm.get("dev_base", "")
+        dev_base = f"{base}_{dev}" if base else dev
+
+        def work():
+            return cm.detect_recipes(lot_dirs)
+
+        def done(ok, recs):
+            if not ok:
+                self._err("E124", "레시피 감지 실패", recs)
+                return
+            self._cm["recipes"] = recs or [{"name": "", "prefix": ""}]
+            self._cm["recipe_idx"] = 0
+            self._cm["recipe_done"] = []
+            self._cm["cm_base"] = dev_base
+            self._cm_process_recipe(lot_dirs)
+        self._run_busy(f"[{dev}] 레시피 감지 중…", work, done)
+
+    def _cm_make_form_single(self):
         from pathlib import Path as _P
         lot_dirs = [(lbl, _P(d)) for lbl, d in self._cm["lot_dirs"]]
         # ── 사전 확인: ActiveScenarioOptics.ini 유무 + 하위 레시피 개수 ──
@@ -5209,12 +5288,20 @@ class EquipApp(tk.Tk):
         self._cm_run_form_detect(lot_dirs, recipe, recipe_prefix="", multi=False)
 
     def _cm_process_recipe(self, lot_dirs):
-        """다중 레시피 큐: 현재 레시피의 양식→값 조사 진행, 끝나면 다음 레시피로."""
+        """다중 레시피 큐: 현재 레시피의 양식→값 조사 진행, 끝나면 다음 레시피로.
+        디바이스 루프 중이면(`dev_queue`) 이 디바이스의 레시피를 다 마친 뒤 **다음
+        디바이스로** 넘어간다(디바이스→레시피 2단 중첩)."""
         recipes = self._cm["recipes"]
         idx = self._cm["recipe_idx"]
-        if idx >= len(recipes):                       # 전부 완료
+        if idx >= len(recipes):                       # 이 (디바이스의) 레시피 전부 완료
             done = self._cm.get("recipe_done", [])
             self._cm.pop("_after_form", None)
+            if self._cm.get("dev_queue"):             # 디바이스 루프 → 다음 디바이스
+                cur = self._cm["dev_queue"][self._cm["dev_idx"]]
+                self._cm.setdefault("dev_done", []).append(cur)
+                self._cm["dev_idx"] += 1
+                self._cm_process_device()
+                return
             self._render()
             messagebox.showinfo(
                 "다중 레시피 완료",
@@ -5223,9 +5310,10 @@ class EquipApp(tk.Tk):
             return
         rec = recipes[idx]
         base = self._cm.get("cm_base", "")
-        # 파일명이 '조사제목_레시피명'(예 PI3_PI, PI3_PI_Bubble)이 되어 같은 조사의
-        # 레시피 분기임을 확실히 구분한다.
-        eff = f"{base}_{rec['name']}" if base else rec["name"]
+        name = engine._s(rec.get("name")).strip()
+        # 파일명이 '조사제목[_레시피명]'(예 PI3_PI, PI3_PI_Bubble)이 되어 같은 조사의
+        # 레시피/디바이스 분기임을 확실히 구분한다. 레시피명이 비면(단일) base 만 쓴다.
+        eff = f"{base}_{name}" if (base and name) else (base or name)
         self._cm["recipe"] = eff
         self._cm["recipe_prefix"] = rec["prefix"]
         self._cm_run_form_detect(lot_dirs, eff, recipe_prefix=rec["prefix"], multi=True)
