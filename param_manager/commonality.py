@@ -168,6 +168,7 @@ class LotFolder:
     wafer_choices: list = field(default_factory=list)   # 고를 수 있는 슬롯 폴더 전부
     wafer_picks: list = field(default_factory=list)     # 사람이 고른 슬롯(여러 개 가능)
     scan_time: str = ""               # S/M 폴더 수정시각 = Scan 일자(언제 스캔됐는지)
+    created: str = ""                 # S/M 폴더 생성일시(최근순 정렬·표시용)
     exists: bool = False
     has_zones: bool = False
     has_rtp: bool = False
@@ -324,6 +325,25 @@ def folder_mtime(path) -> str:
         return ""
 
 
+def folder_created(path) -> str:
+    """폴더 **생성일시** 'YYYY-MM-DD HH:MM'. 못 읽으면 빈 문자열.
+    Windows=`st_ctime`, macOS=`st_birthtime`, 리눅스는 `st_mtime` 폴백.
+    (자동 감시 cmwatcher 도 이 함수를 공용으로 쓴다 — 정의를 한 곳에 둔다.)"""
+    import os as _os
+    from datetime import datetime as _dt
+    try:
+        stt = Path(path).stat()
+    except OSError:
+        return ""
+    ts = getattr(stt, "st_birthtime", None)
+    if ts is None:
+        ts = stt.st_ctime if _os.name == "nt" else stt.st_mtime
+    try:
+        return _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+    except (OSError, OverflowError, ValueError):
+        return ""
+
+
 def list_wafers(sm_dir: Path) -> list[Path]:
     """S/M 폴더 아래 웨이퍼(슬롯) 폴더 **전부** — 이름순.
 
@@ -418,6 +438,7 @@ def _make_lotfolder(device, lot, sm, machine, sm_dir: Path, wafer: Path,
     lf = LotFolder(device=device, lot=lot, sm=sm_dir.name if sm else sm,
                    machine=machine, label=label, fail=fail,
                    scan_time=folder_mtime(sm_dir),      # S/M 폴더 수정시각 = Scan 일자
+                   created=folder_created(sm_dir),      # S/M 폴더 생성일시(정렬·표시용)
                    wafer_choices=list(wafers if wafers is not None
                                       else list_wafers(sm_dir)))
     return set_wafer(lf, wafer)
@@ -654,8 +675,10 @@ SCAN_ROW_LABEL = "Scan일자"
 #   조사슬롯 = 무인 회차가 **어느 슬롯을 읽었는지**(이름순 첫 슬롯 하나만 읽으므로
 #              나중에 "그때 뭘 본 거지?" 를 되짚을 수 있어야 한다)
 CREATED_ROW_LABEL = "생성일자"
+MACHINE_ROW_LABEL = "호기"          # scan 된 호기(어느 AOI 가 스캔했는지) — 사용자 지정
 SLOT_ROW_LABEL = "조사슬롯"
-INFO_ROW_LABELS = (SCAN_ROW_LABEL, CREATED_ROW_LABEL, SLOT_ROW_LABEL)
+# 정보 행 순서(사용자 지정 2026-08): **생성일자 → 호기** 를 파라미터 앞 1·2행에 둔다.
+INFO_ROW_LABELS = (SCAN_ROW_LABEL, CREATED_ROW_LABEL, MACHINE_ROW_LABEL, SLOT_ROW_LABEL)
 
 
 def collate_lots(recipe: str, form_path: str, pivot_rows: list[dict],
@@ -679,25 +702,31 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     값은 **양식의 변환방식대로 계수를 적용한 값**(collate.collate_recipe)이다.
     coef_note 를 주면 어떤 계수를 썼는지 '_정보' 시트에 함께 남긴다.
     """
-    headers = list(engine.META_FIELDS) + list(lot_labels)   # 내부 키(데이터 접근용)
-    # 1행은 표시용 헤더(PI→상위 Recipe, Recipe→하위 Recipe). Lot 열은 그대로.
-    disp_headers = [engine.display_header(h) for h in headers]
     fail_labels = list(fail_labels or [])
     scan_times = dict(scan_times or {})
     created = dict(created or {})
     slots = dict(slots or {})
     low_labels = list(low_labels or [])
+    lot_labels = list(lot_labels)
+    # S/M 을 **최근 생성일자 순**으로 정렬(사용자 지정 2026-08). 생성일자가 하나도
+    # 없으면(수동 조사) 원래 순서를 유지한다. 같은 날짜면 이름순으로 안정 정렬.
+    if any(engine._s(created.get(l)).strip() for l in lot_labels):
+        lot_labels = sorted(lot_labels, key=lambda l: engine._s(l))
+        lot_labels.sort(key=lambda l: engine._s(created.get(l)).strip(), reverse=True)
+    # scan 된 호기 정보 행 = 이 결과의 호기(각 S/M 열 밑에 동일 값)
+    machine_row = {l: machine for l in lot_labels} if engine._s(machine).strip() else {}
+    headers = list(engine.META_FIELDS) + list(lot_labels)   # 내부 키(데이터 접근용)
+    # 1행은 표시용 헤더(PI→상위 Recipe, Recipe→하위 Recipe). Lot 열은 그대로.
+    disp_headers = [engine.display_header(h) for h in headers]
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = collate._safe_sheet(recipe)
     ws.append(disp_headers)                        # 1행 = 헤더(종전과 동일)
-    # 헤더 바로 아래 **파라미터 첫 행 = Scan 일자**. 각 S/M 열 밑에 그 폴더가
-    # 언제 스캔됐는지가 들어가 값과 같은 자리에서 바로 대조된다.
-    # 정보 행(Scan일자 → 생성일자 → 조사슬롯). 값이 하나도 없는 행은 만들지 않는다
-    # (수동 조사에는 생성일자·조사슬롯이 없으므로 파일이 종전과 같게 유지된다).
+    # 헤더 바로 아래 정보 행(사용자 지정): **생성일자 → 호기(scan된 호기)** 를 먼저,
+    # 그 뒤 Scan일자 → 조사슬롯. 값이 하나도 없는 행은 만들지 않는다(단 Scan일자는 유지).
     info_rows = 0
-    for label, src in ((SCAN_ROW_LABEL, scan_times), (CREATED_ROW_LABEL, created),
-                       (SLOT_ROW_LABEL, slots)):
+    for label, src in ((CREATED_ROW_LABEL, created), (MACHINE_ROW_LABEL, machine_row),
+                       (SCAN_ROW_LABEL, scan_times), (SLOT_ROW_LABEL, slots)):
         if label != SCAN_ROW_LABEL and not any(
                 engine._s(src.get(l)).strip() for l in lot_labels):
             continue
@@ -784,6 +813,7 @@ def read_lot_result(path: str) -> dict:
             "records": records, "fails": fails, "lows": lows,
             "scan_times": info.get(SCAN_ROW_LABEL, {}),
             "created": info.get(CREATED_ROW_LABEL, {}),
+            "machines": info.get(MACHINE_ROW_LABEL, {}),
             "slots": info.get(SLOT_ROW_LABEL, {})}
 
 

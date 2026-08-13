@@ -403,8 +403,11 @@ def test_survey_accumulates_into_one_file():
         assert r2["merged"]["lots"] == 2, r2["merged"]
 
         d = cm.read_lot_result(dest)
-        assert d["lots"] == ["ASD X20", "ASD REWORK"], d["lots"]
+        # **최근 생성일자 순 정렬**(사용자 지정): REWORK(08-07)이 X20(08-05)보다 앞
+        assert d["lots"] == ["ASD REWORK", "ASD X20"], d["lots"]
         assert set(d["created"]) == {"ASD X20", "ASD REWORK"}
+        # scan 된 호기 정보 행도 들어간다(각 S/M 열 밑에 호기)
+        assert d["machines"].get("ASD REWORK") == "AOI-9", d["machines"]
         # 결과 파일은 **하나뿐**이어야 한다
         made = [f for f in os.listdir(tmp) if f.startswith("감시조사")]
         assert made == ["감시조사.xlsx"], made
@@ -502,8 +505,8 @@ def test_gui_is_wired():
     # ④'' 대표 S/M 은 **로컬로 안전복사한 뒤** 그 복사본을 읽는다(원본 반복접근 금지)
     assert "cm.copy_lot(" in b.group(0) and "cm.set_wafer(" in b.group(0), \
         "대표 S/M 을 로컬로 복사해 읽지 않음"
-    assert "자동감시" in b.group(0) and "commonality_root(local" in b.group(0), \
-        "대표 S/M 복사본이 로컬 자동감시 폴더가 아님"
+    assert "cmwatcher.watch_dir(" in b.group(0), \
+        "대표 S/M 복사본이 로컬 자동감시(watch_dir) 폴더가 아님"
     # ⑤ 산출물은 로컬(commonality 규칙)
     assert "_cmw_local(" in app and "save_dir" not in re.findall(
         r"def _cmw_local.*?(?=\n    def )", app, re.S)[0], \
@@ -775,6 +778,41 @@ def test_run_cycle_surveys_all_recipes():
     print("  다중 레시피 회차: 레시피마다 양식 물려 둘 다 조사(값 분리) OK")
 
 
+def test_watch_folder_structure_and_always_plan():
+    """폴더 구조 = **자동감시/{호기}/{분류}**, 그리고 **양식 없이도 Lot 계획**을 남긴다
+    (수동 조사에 그대로 업로드하려는 용도 — 사용자 지정 2026-08)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp) / "scan"
+        local = str(Path(tmp) / "CamtekAOI")
+        # 최상위 = 자동감시, 그 아래 호기, 그 아래 분류 폴더
+        assert os.path.basename(cw.watch_root(local)) == "자동감시", cw.watch_root(local)
+        assert os.path.join("자동감시", "AOI-9", "결과") in cw.result_path(local, "AOI-9", "PI3")
+        assert os.path.join("자동감시", "AOI-9", "복사본") in cw.copy_root(local, "AOI-9")
+        pp = cw.plan_path(local, "AOI-9")
+        assert os.path.join("자동감시", "AOI-9", "계획") in pp and pp.endswith(".xlsx"), pp
+
+        # 양식을 지정하지 않고 감시 → 조사(결과)는 안 하지만 **Lot 계획**은 만든다
+        _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD", 25)
+        plan = os.path.join(tmp, cw.WATCH_PLAN_FILENAME)
+        _write_watch_plan(plan, [("DEV1-0001", "6412", "AOI-9")])
+        s, st = cw.load_settings(local)
+        s.machines = ["AOI-9"]
+        s.watch_plan = plan
+        s.roots = {"AOI-9": str(base)}
+        s.settle_minutes = 0
+        cw.run_cycle(s, st, local_root=local, coef_rows=[])          # 기준선
+        _mk_scan_sm(base, "AOI-9", "DEV1-0001", "6412", "ASD X20", 30)
+        r2 = cw.run_cycle(s, st, local_root=local, coef_rows=[])     # 양식 없음
+        assert [i["sm"] for i in r2["found"]] == ["ASD X20"], r2["found"]
+        assert r2["surveyed"] == [], "양식이 없으면 조사(결과)는 안 한다"
+        # 그래도 Lot 계획 엑셀이 생겼고 **수동 조사 형식(read_plan)** 으로 읽힌다
+        assert os.path.isfile(pp), "양식 없이도 Lot 계획이 생겨야 한다"
+        rows = cm.read_plan(pp)
+        assert any(rr.get("S/M") == "ASD X20" for rr in rows), rows
+        assert any(rr.get("디바이스명") == "DEV1-0001" for rr in rows)
+    print("  자동감시 폴더구조(자동감시/호기/분류) + 양식없이도 Lot계획 OK")
+
+
 if __name__ == "__main__":
     for t in [test_watch_plan_template_and_targets, test_first_cycle_is_baseline_only,
               test_backup_scanresult_is_not_new, test_unsettled_folder_is_deferred,
@@ -791,7 +829,8 @@ if __name__ == "__main__":
               test_run_cycle_skips_machine_without_root,
               test_run_cycle_uses_coefficient_from_rows,
               test_forms_multi_and_legacy_compat,
-              test_run_cycle_surveys_all_recipes]:
+              test_run_cycle_surveys_all_recipes,
+              test_watch_folder_structure_and_always_plan]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

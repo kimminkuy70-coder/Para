@@ -247,22 +247,9 @@ def sm_key(device: str, lot: str, sm: str) -> str:
 
 
 def folder_created(path) -> str:
-    """폴더 **생성일시** 'YYYY-MM-DD HH:MM'. 못 읽으면 빈 문자열.
-
-    Windows 는 `st_ctime` 이 생성 시각이다. macOS 등은 `st_birthtime`.
-    생성 시각 개념이 없는 OS(리눅스)에서는 `st_mtime` 으로 물러난다.
-    """
-    try:
-        stt = Path(path).stat()
-    except OSError:
-        return ""
-    ts = getattr(stt, "st_birthtime", None)
-    if ts is None:
-        ts = stt.st_ctime if os.name == "nt" else stt.st_mtime
-    try:
-        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
-    except (OSError, OverflowError, ValueError):
-        return ""
+    """폴더 **생성일시** 'YYYY-MM-DD HH:MM'. 정의는 commonality 에 두고 공유한다
+    (수동 조사·자동 감시가 같은 규칙을 쓰도록). 하위호환용 얇은 래퍼."""
+    return cm.folder_created(path)
 
 
 def _dir_mtime(path) -> float:
@@ -544,23 +531,46 @@ def sm_candidates(scan_roots, device: str, lot: str) -> list[dict]:
     return out
 
 
-def result_path(local_root: str, machine: str, recipe: str) -> str:
-    """(호기, 레시피)마다 **결과 파일 하나** — 회차마다 S/M 열이 누적된다."""
+WATCH_DIR_NAME = "자동감시"
+
+
+def watch_root(local_root: str) -> str:
+    """commonality 자동 감시 **최상위** 로컬 폴더. 그 아래에 **호기별** 폴더가 온다
+    (사용자 지정 2026-08: 최상위=자동감시 → 호기 → 파일 분류)."""
     from . import workdirs
-    d = os.path.join(workdirs.commonality_root(local_root), cm.downloader.safe_name(machine),
-                     "자동감시")
+    d = os.path.join(workdirs.commonality_root(local_root), WATCH_DIR_NAME)
     os.makedirs(d, exist_ok=True)
+    return d
+
+
+def watch_dir(local_root: str, machine: str, *sub: str) -> str:
+    """호기별 자동 감시 폴더(그 안에 양식/복사본/대표SM복사/결과/계획 으로 **분류**).
+    sub 를 주면 그 하위 폴더까지 만들어 돌려준다."""
+    d = os.path.join(watch_root(local_root), cm.downloader.safe_name(machine), *sub)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def result_path(local_root: str, machine: str, recipe: str) -> str:
+    """(호기, 레시피)마다 **결과 파일 하나**(호기 폴더의 `결과/`) — 회차마다 S/M 누적."""
+    d = watch_dir(local_root, machine, "결과")
     return os.path.join(d, f"감시조사_{cm.downloader.safe_name(machine)}_"
                            f"{cm.downloader.safe_name(recipe)}.xlsx")
 
 
 def copy_root(local_root: str, machine: str) -> str:
-    """무인 회차가 안전복사본을 두는 곳(로컬). 원본은 언제나 읽기 전용."""
-    from . import workdirs
-    d = os.path.join(workdirs.commonality_root(local_root),
-                     cm.downloader.safe_name(machine), "자동감시", "복사본")
-    os.makedirs(d, exist_ok=True)
-    return d
+    """무인 회차가 안전복사본을 두는 곳(호기 폴더의 `복사본/`). 원본은 읽기 전용."""
+    return watch_dir(local_root, machine, "복사본")
+
+
+def plan_path(local_root: str, machine: str) -> str:
+    """자동 감시가 찾은 S/M 을 적는 **Lot 계획 엑셀**(호기 폴더의 `계획/`).
+    수동 조사(Commonality 조사 탭)에서 **그대로 업로드**해 쓸 수 있게, 조사 계획과
+    같은 형식(`commonality.PLAN_FILENAME`)으로 만든다 — 양식 지정 여부와 무관하게 남긴다."""
+    base = cm.PLAN_FILENAME[:-5] if cm.PLAN_FILENAME.lower().endswith(".xlsx") \
+        else cm.PLAN_FILENAME
+    return os.path.join(watch_dir(local_root, machine, "계획"),
+                        f"{base}_{cm.downloader.safe_name(machine)}.xlsx")
 
 
 def lot_for_item(item: dict, machine: str):
@@ -676,7 +686,13 @@ def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
         for it in items:
             it["machine"] = m
         found += items
-        # ① 조사 계획에 행 추가(무엇이 언제 들어왔는지 기록)
+        # ① 찾은 S/M 을 **Lot 계획 엑셀**로 남긴다(호기 폴더의 계획/). 수동 조사에서
+        #    그대로 업로드해 쓸 수 있게 — **양식 지정 여부와 무관**하게 항상 만든다.
+        try:
+            append_cm_plan(plan_path(local_root, m), items, machine=m)
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"{m}: 로컬 Lot 계획 기록 실패 — {e}")
+        # 사용자가 따로 지정한 조사 계획에도 함께 넣는다(있을 때만)
         if settings.cm_plan:
             try:
                 append_cm_plan(settings.cm_plan, items, machine=m)

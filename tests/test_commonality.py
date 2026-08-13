@@ -281,19 +281,25 @@ def test_collate_lots_and_result_roundtrip():
         wb = openpyxl.load_workbook(out)
         ws = wb[wb.sheetnames[0]]
         head = [c.value for c in ws[1]]
-        scan = [c.value for c in ws[2]]
+        row2 = [c.value for c in ws[2]]        # 정보행 1 (생성일자 없으니 호기가 먼저)
+        row3 = [c.value for c in ws[3]]        # 정보행 2 = Scan일자
         wb.close()
+        pi = head.index("Parameter")
         # 1행 표시 헤더는 상위/하위 Recipe (내부 키는 PI/Recipe 그대로)
         assert head[0] == "상위 Recipe" and head[1] == "하위 Recipe", head
         assert "PI" not in head and "Recipe" not in head, head
-        # **파라미터 첫 행 = Scan일자**, 값은 각 S/M 열 아래
-        assert scan[head.index("Parameter")] == commonality.SCAN_ROW_LABEL, scan
-        assert scan[-2:] == ["2026-08-01 09:10", "2026-08-05 21:30"], scan
+        # **정보 행 순서(사용자 지정)**: 생성일자·호기 먼저. 여긴 생성일자가 없으니
+        # 호기(scan된 호기) = row2, Scan일자 = row3.
+        assert row2[pi] == commonality.MACHINE_ROW_LABEL, row2
+        assert row2[-2:] == ["AOI-6", "AOI-6"], row2
+        assert row3[pi] == commonality.SCAN_ROW_LABEL, row3
+        assert row3[-2:] == ["2026-08-01 09:10", "2026-08-05 21:30"], row3
         data = commonality.read_lot_result(out)
         assert data["machine"] == "AOI-6" and set(data["lots"]) == set(labels)
         assert data["scan_times"]["6502_HPG"] == "2026-08-05 21:30"
-        # Scan일자 행은 파라미터 목록에 섞이지 않는다
-        assert all(engine._s(r.get("Parameter")) != commonality.SCAN_ROW_LABEL
+        assert data["machines"]["6501_HPG"] == "AOI-6"     # scan된 호기 행 왕복
+        # 정보 행(Scan일자·호기)은 파라미터 목록에 섞이지 않는다
+        assert all(engine._s(r.get("Parameter")) not in commonality.INFO_ROW_LABELS
                    for r in data["records"])
         # read 는 내부 키로 되돌린다(다운스트림 비교가 PI/Recipe/Zone 로 접근)
         assert all("PI" in r and "Recipe" in r for r in data["records"])
@@ -748,6 +754,30 @@ def test_group_lot_dirs_by_device():
         [("A", "/a"), ("B", "/b")], {"A": "DEV", "B": "DEV"})
     assert len(one) == 1 and one[0][0] == "DEV" and len(one[0][1]) == 2
     print("  commonality OK: lot_dirs 디바이스별 그룹핑(순서 보존·미상 처리)")
+
+
+def test_folder_created_carries_into_result():
+    """S/M 폴더 생성일시를 잡아 LotFolder.created 로 담고, 결과 엑셀 정보행
+    (생성일자·호기)에 들어간다(수동 조사도 최근 생성일자 순 정렬 — 사용자 지정)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        _make_wafer(base, "AOI-6", "2D@DEVK_x", "6777", "ZED", "CX1", delta=25)
+        roots = commonality.scanresult_roots(str(base), "AOI-6")
+        lots = commonality.resolve_lot_variants(roots, "DEVK", "6777", "ZED", "AOI-6")
+        lf = next((l for l in lots if l.exists), None)
+        assert lf is not None and lf.label == "ZED", lots
+        assert lf.created != "", "S/M 폴더 생성일시를 LotFolder.created 에 못 담았다"
+
+        pivot, labels = commonality.parse_lots([("ZED", lf.wafer_dir)], level="PI3")
+        form = _build_form(tmp, pivot)
+        res = commonality.collate_lots("PI3", form, pivot, labels)
+        out = os.path.join(tmp, "r.xlsx")
+        commonality.write_lot_result(out, "PI3", "AOI-6", res, labels,
+                                     created={"ZED": lf.created})
+        d = commonality.read_lot_result(out)
+        assert d["created"].get("ZED") == lf.created            # 생성일자 정보행 왕복
+        assert d["machines"].get("ZED") == "AOI-6"              # scan된 호기 정보행 왕복
+    print("  commonality OK: S/M 생성일시 → LotFolder.created → 결과 생성일자/호기 행")
 
 
 if __name__ == "__main__":

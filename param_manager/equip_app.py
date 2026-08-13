@@ -4565,12 +4565,10 @@ class EquipApp(tk.Tk):
           예전엔 접두 없이 양식 하나만 만들어 2번째 레시피가 조사에서 통째로 빠졌다."""
         local = self._cmw_local()
         st = workdirs.stamp()
-        watch_dir = os.path.join(workdirs.commonality_root(local),
-                                 dl.safe_name(machine), "자동감시")
-        run_dir = os.path.join(watch_dir, "양식")
+        # 폴더 구조(사용자 지정 2026-08): 자동감시 → 호기 → 양식/복사본/대표SM복사/결과/계획
+        run_dir = cmwatcher.watch_dir(local, machine, "양식")
         # 대표 S/M 복사본은 회차 스탬프별 폴더로(재생성 시 이전 복사본과 안 섞이게).
-        copy_dir = os.path.join(watch_dir, "대표SM복사", st)
-        os.makedirs(run_dir, exist_ok=True)
+        copy_dir = cmwatcher.watch_dir(local, machine, "대표SM복사", st)
 
         def copy_then_detect():
             # 원본은 read-only 로 복사만(collector/downloader 안전장치 그대로).
@@ -5530,13 +5528,15 @@ class EquipApp(tk.Tk):
         def work():
             res = cm.collate_lots(recipe, form, pivot, labels, coef_lookup=cl)
             # 어떤 변환계수가 적용된 값인지 결과에 남긴다(사후 확인용)
-            scan_times = {l.label: l.scan_time
-                          for l in (self._cm.get("selected") or [])}
+            sel = self._cm.get("selected") or []
+            scan_times = {l.label: l.scan_time for l in sel}
+            # 생성일자(정렬·표시)도 함께 — write_lot_result 가 최근 생성일자 순으로 정렬한다
+            created = {l.label: l.created for l in sel if engine._s(l.created).strip()}
             coefs = [f"{r.get('변형') or '(기본)'}: {r.get('계수')}"
                      f"{' / MAG ' + str(r.get('MAG')) if r.get('MAG') else ''}"
                      for r in coefstore.machine_coefs(self.coef_rows, m)]
             cm.write_lot_result(result, recipe, m, res, labels, fail_labels,
-                                coef_note=coefs, scan_times=scan_times)
+                                coef_note=coefs, scan_times=scan_times, created=created)
             return res
 
         def done(ok, res):

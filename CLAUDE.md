@@ -194,9 +194,22 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   · **슬롯은 이름순 첫 하나**(무인이라 못 고름) — 단 **내용이 있는 슬롯 중** 첫째다
     (`usable_slots`/`slot_has_config`). 빈 슬롯이 이름순 앞에 있으면 그걸 읽고 0건이
     된다. 어느 슬롯을 읽었는지 결과에 남긴다.
-  · 결과 엑셀 정보 행 = **Scan일자 → 생성일자 → 조사슬롯**(헤더 바로 밑, 그 아래가
-    파라미터). `read_lot_result` 가 셋 다 빼서 돌려주므로 비교표 파라미터 열에
-    섞이지 않는다. 수동 조사에는 생성일자·조사슬롯이 없어 행도 안 생긴다(구 파일 호환).
+  · **폴더 구조(사용자 지정 2026-08)**: 최상위 `자동감시/` → **호기** → 분류
+    (`양식/`·`복사본/`·`대표SM복사/{시각}/`·`결과/`·`계획/`). `cmwatcher.watch_root`/
+    `watch_dir(local, 호기, *sub)` 한 곳에서 만든다(result_path·copy_root·plan_path·
+    `_cmw_build_form` 모두 경유).
+  · **양식 지정 여부와 무관하게 Lot 계획 엑셀을 남긴다(사용자 지정 2026-08)**: 회차가
+    찾은 S/M 을 `계획/Commonality_Lot계획_{호기}.xlsx`(`cmwatcher.plan_path`,
+    `commonality.PLAN_FILENAME` 형식)에 `append_cm_plan` 으로 적는다 — **수동 조사
+    (Commonality 조사 탭)에서 그대로 업로드**해 쓰라는 것. 양식이 있으면 그와 별개로
+    값 조사(결과 파일)도 한다. 사용자가 따로 지정한 `settings.cm_plan` 에도 함께.
+  · 결과 엑셀 정보 행 = **생성일자 → 호기(scan된 호기) → Scan일자 → 조사슬롯**
+    (헤더 바로 밑, 그 아래가 파라미터. 사용자 지정 2026-08 — 생성일자·호기가 1·2행).
+    **S/M 열은 최근 생성일자 순 정렬**(생성일자가 없으면 원래 순서 유지). 호기 행 =
+    이 결과의 호기(각 S/M 열 밑 동일값). `read_lot_result` 가 넷 다 빼서 돌려주므로
+    (INFO_ROW_LABELS) 비교표 파라미터 열에 안 섞인다. **수동 조사도** S/M 폴더
+    생성일시를 잡아(`commonality.folder_created` → `LotFolder.created`, `_make_lotfolder`
+    에서 채움) 같은 정렬·표시가 된다. cmwatcher 는 `cm.folder_created` 를 공유한다.
   · **양식 매칭이 `min_match`(기본 0.5) 미만이면 열은 남기고 색으로 표시**한다
     (`LOWMATCH_FILL` 연한 빨강 — 사용자 확정 2026-08). 빼 버리면 그런 S/M 이
     있었다는 사실 자체가 사라져 왜 비었는지 알 수 없다. 표시는 결과 엑셀 헤더와
@@ -366,8 +379,8 @@ python3 tests/test_form_candidates.py # 6 (원본 탐색/버전별 안내·다�
 python3 tests/test_collate.py      # 9  (레시피별 시트·전체 호기·직전 이어받기·불일치·하위레시피 이름매칭)
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
-python3 tests/test_cmwatcher.py    # 20 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
-python3 tests/test_commonality.py  # 26 (디바이스별 그룹핑 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
+python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
+python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
