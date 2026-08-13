@@ -518,7 +518,14 @@ def test_gui_is_wired():
     anyw = re.search(r"def _any_watch_on.*?(?=\n    def )", app, re.S)
     assert anyw and "_cmw_is_on(" in anyw.group(0) and "_watch_is_on(" in anyw.group(0), \
         "_any_watch_on 이 장비·commonality 감시를 OR 하지 않음"
-    print("  GUI 연결(카드·설정창·주기틱·회차·대표S/M·양쪽 감시 상주) OK")
+    # ⑦ 트레이 툴팁이 **어떤 감시가 도는지** 보여준다(마우스를 올리면 뜬다).
+    assert "def _watch_tooltip(" in app, "트레이 툴팁 헬퍼(_watch_tooltip)가 없음"
+    tt = re.search(r"def _watch_tooltip.*?(?=\n    def )", app, re.S)
+    assert tt and "Commonality" in tt.group(0) and "장비" in tt.group(0), \
+        "툴팁이 장비/commonality 두 감시를 구분해 보여주지 않음"
+    ts = re.search(r"def _tray_start.*?(?=\n    def )", app, re.S)
+    assert ts and "_watch_tooltip(" in ts.group(0), "트레이 시작이 감시상태 툴팁을 안 씀"
+    print("  GUI 연결(카드·설정창·주기틱·회차·대표S/M·양쪽 감시 상주·툴팁) OK")
 
 
 def _write_watch_plan(path, rows):

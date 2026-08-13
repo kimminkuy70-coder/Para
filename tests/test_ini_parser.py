@@ -620,29 +620,34 @@ def test_never_copy_optics_excluded():
             "LightSrcRef_NominalGL=999\nLightSrcRef_ColorFilter=CSI9\n"
             "LightSrcRef_NominalGL_On=1\n", encoding="utf-8")
         secs = ini_parser.parse_ini_sections(d / "OpticPreset.ini")
-        # 제외 표시가 없었다면 마지막(Review)이 뽑힌다 → 제외 규칙이 실제로 동작해야
+        # ActiveScenarioOptics 가 없으면(구 SW) 제외 규칙이 동작해 Review 를 건너뛴다
         assert ini_parser._pick_optic_target(secs, None) == "CleanRef optic"
         assert ini_parser.read_optic_mag(d) == "3.14", "MAG(계수 키)도 제외본을 보면 안 됨"
 
-        # ActiveScenarioOptics 가 제외 optic 을 가리켜도 후보가 아니다
+        # **ActiveScenarioOptics 매칭은 복사금지 제외보다 우선**(2026-08 순서 교체).
+        # 장비가 명시한 optic 이면 표시가 붙어 있어도 그게 target 이다.
         (d / "ActiveScenarioOptics.ini").write_text(
             "[b]\nScenarioName=Scan2d\n"
             "OpticsName=Review optic_@NEVER COPY THIS!!!!!\n", encoding="utf-8")
         act = ini_parser.read_active_scan2d(d)
-        assert ini_parser._pick_optic_target(secs, act) == "CleanRef optic"
+        assert ini_parser._pick_optic_target(secs, act) \
+            == "Review optic_@NEVER COPY THIS!!!!!", "Active 매칭이 제외보다 우선해야"
+        # Active 가 못 맞추면(엉뚱한 이름) 다시 폴백 → 제외 규칙 적용
+        assert ini_parser._pick_optic_target(secs, ("없는 optic", "")) == "CleanRef optic"
 
-        # 표시 흔들림 허용: 느낌표 개수·대소문자·뒤 공백
-        for name in ("R_@NEVER COPY THIS!!!!!", "R_@never copy this!!!",
-                     "R_@NEVER COPY THIS", "R_@NEVER COPY THIS!!!!!   "):
+        # 표시 흔들림 허용: NO/NEVER 둘 다, 느낌표 개수·대소문자·뒤 공백
+        for name in ("R_@NO COPY THIS!!!!!", "R_@no copy this!!!", "R_@NO COPY THIS",
+                     "R_@NEVER COPY THIS!!!!!", "R_@never copy this!!!",
+                     "R_@NEVER COPY THIS", "R_@NO COPY THIS!!!!!   "):
             assert ini_parser.optic_excluded(name, {}), name
         # 이름 키(Alg/OpticsName)에만 붙어 있어도 제외
-        assert ini_parser.optic_excluded("X", {"Alg": "S9_@NEVER COPY THIS!!!!!"})
+        assert ini_parser.optic_excluded("X", {"Alg": "S9_@NO COPY THIS!!!!!"})
         assert ini_parser.optic_excluded("X", {"OpticsName": "R_@NEVER COPY THIS!!!!!"})
         # **끝**에 있을 때만 — 앞이나 중간에 있으면 정상 optic 이다
-        assert not ini_parser.optic_excluded("NEVER COPY THIS optic", {})
-        assert not ini_parser.optic_excluded("R_@NEVER COPY THIS!!!!!_v2", {})
+        assert not ini_parser.optic_excluded("NO COPY THIS optic", {})
+        assert not ini_parser.optic_excluded("R_@NO COPY THIS!!!!!_v2", {})
         assert not ini_parser.optic_excluded("CleanRef optic", {})
-    print("  ini_parser OK: '복사 금지' optic 은 target 후보에서 제외")
+    print("  ini_parser OK: '복사 금지'(NO/NEVER) 제외 + Active 매칭 우선")
 
 
 def test_all_optics_excluded_is_safe():
@@ -650,7 +655,7 @@ def test_all_optics_excluded_is_safe():
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp)
         (d / "OpticPreset.ini").write_text(
-            "[A_@NEVER COPY THIS!!!!!]\nCameraName=TDI\nMag=1\n"
+            "[A_@NO COPY THIS!!!!!]\nCameraName=TDI\nMag=1\n"
             "LightSrcRef_NominalGL=1\n"
             "[B_@NEVER COPY THIS!!!!!]\nCameraName=TDI\nMag=2\n"
             "LightSrcRef_NominalGL=2\n", encoding="utf-8")

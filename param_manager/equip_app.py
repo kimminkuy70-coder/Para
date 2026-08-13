@@ -8549,6 +8549,27 @@ class EquipApp(tk.Tk):
         (장비 감시와 commonality 감시는 별개 기능 — 둘 다 트레이 상주로 유지된다.)"""
         return self._watch_is_on() or self._cmw_is_on()
 
+    def _watch_tooltip(self) -> str:
+        """트레이 아이콘 툴팁 — **어떤 자동 감시가 도는지**(마우스를 올리면 뜬다).
+        두 감시가 별개라 각각 켜짐/꺼짐을 보여 준다."""
+        eq = self._watch_is_on()
+        cmw = self._cmw_is_on()
+        on = [n for n, v in (("장비", eq), ("Commonality", cmw)) if v]
+        if not on:
+            return "Para — 자동 감시 대기(꺼짐)"
+        # 예: "Para 자동 감시 실행 중 — 장비 ✓ · Commonality ✓"
+        parts = " · ".join(f"{n} {'✓' if v else '✗'}"
+                           for n, v in (("장비", eq), ("Commonality", cmw)))
+        return f"Para 자동 감시 실행 중 — {parts}"
+
+    def _refresh_tray_tooltip(self) -> None:
+        """트레이가 떠 있으면 툴팁을 현재 감시 상태로 갱신한다(설정 바뀔 때·상주 시)."""
+        if self._tray is not None:
+            try:
+                self._tray.set_tooltip(self._watch_tooltip())
+            except Exception:  # noqa: BLE001
+                pass
+
     def _tray_start(self) -> bool:
         """트레이 아이콘 표시(이미 있으면 유지). 실패하면 False."""
         if self._tray is not None:
@@ -8557,7 +8578,7 @@ class EquipApp(tk.Tk):
             return False
         try:
             icon = tray.TrayIcon(
-                "Para — 자동 감시 실행 중",
+                self._watch_tooltip(),          # 툴팁에 어떤 감시가 도는지 표시
                 on_open=self._restore_from_tray,
                 on_exit=self._exit_from_tray,
                 on_balloon=self._open_from_balloon,
@@ -8590,13 +8611,18 @@ class EquipApp(tk.Tk):
         except Exception as e:  # noqa: BLE001
             self._logerr("E151", e)
         self.withdraw()
+        self._refresh_tray_tooltip()            # 숨기는 순간의 감시 상태를 툴팁에 반영
         if not self._tray_hint_shown:
             self._tray_hint_shown = True
             try:
+                on = [n for n, v in (("장비", self._watch_is_on()),
+                                     ("Commonality", self._cmw_is_on())) if v]
+                which = " · ".join(on) if on else "자동 감시"
                 self._tray.notify(
                     "자동 감시 계속",
-                    "창을 닫아도 자동 감시는 백그라운드에서 계속됩니다.\n"
-                    "트레이 아이콘을 누르면 다시 열 수 있습니다.")
+                    f"창을 닫아도 백그라운드에서 계속됩니다 — {which}.\n"
+                    "트레이 아이콘에 마우스를 올리면 어떤 감시가 도는지 보입니다.\n"
+                    "아이콘을 누르면 다시 열 수 있습니다.")
             except Exception:  # noqa: BLE001
                 pass
         try:

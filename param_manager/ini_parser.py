@@ -291,10 +291,12 @@ _OPTIC_NAME_KEYS = ("OpticsName", "OpticName", "Name")
 # 옵틱 이름 끝에 '복사 금지' 표시가 붙은 것은 **target 후보에서 뺀다**(2026-08 확정).
 #   OpticPreset.ini 에는 리뷰·얼라인·clean reference 등 여러 역할의 optic 이 섞여
 #   있고 순서가 역할과 무관하다. 장비 쪽에서 이 표시를 붙여 둔 optic 은 쓰면 안 되는
-#   것이므로 '마지막 광원 섹션' 규칙에 걸려 잘못 뽑히지 않게 먼저 걸러낸다.
-#   느낌표 개수·대소문자·앞뒤 공백은 무시한다(사람이 손으로 붙이는 표시라 흔들린다).
-OPTIC_EXCLUDE_SUFFIX = "_@NEVER COPY THIS!!!!!"
-_OPTIC_EXCLUDE_RE = re.compile(r"(?i)_@\s*NEVER\s+COPY\s+THIS\s*!*\s*$")
+#   것이므로 '마지막 광원 섹션' 규칙에 걸려 잘못 뽑히지 않게 걸러낸다.
+#   · 문구는 장비 펌웨어에서 `_@NO COPY THIS!!!!!` 로 바뀌었다 — **NO/NEVER 둘 다** 인식.
+#   · 느낌표 개수·대소문자·앞뒤 공백은 무시한다(사람이 손으로 붙이는 표시라 흔들린다).
+OPTIC_EXCLUDE_SUFFIXES = ("_@NO COPY THIS!!!!!", "_@NEVER COPY THIS!!!!!")
+OPTIC_EXCLUDE_SUFFIX = OPTIC_EXCLUDE_SUFFIXES[0]   # 대표(최신) 표기 — 하위호환용 별칭
+_OPTIC_EXCLUDE_RE = re.compile(r"(?i)_@\s*N(?:O|EVER)\s+COPY\s+THIS\s*!*\s*$")
 
 
 def optic_excluded(section: str, kv: dict | None = None) -> bool:
@@ -405,23 +407,25 @@ def _match_active_section(sections: dict, name: str, oid: str) -> str | None:
 
 
 def _pick_optic_target(sections: dict, active: tuple[str, str] | None = None) -> str | None:
-    """최신(target) 섹션을 고른다(사용자 확정 2026-07):
-    0순위 = **ActiveScenarioOptics.ini 의 Scan2d optic 매칭**(신 SW — active 주어질 때).
-    1순위 = **CameraName=TDI 섹션 중 마지막**(광원 키 있으면 그 중 마지막).
+    """최신(target) 섹션을 고른다:
+    **1순위(무조건) = ActiveScenarioOptics.ini 의 Scan2d optic 매칭**(신 SW).
+    2순위 = CameraName=TDI 섹션 중 마지막(광원 키 있으면 그 중 마지막).
     이름은 장비마다 다를 수 있어([Scan2d#]·[Engineer optic] 등) 이름이 아니라
     'TDI 카메라 + 광원 키를 가진 마지막 [섹션]' 으로 고른다. TDI 없으면 광원 키 마지막.
 
-    **먼저 '복사 금지'(`_@NEVER COPY THIS!!!!!`) 표시된 optic 을 후보에서 뺀다**
-    (2026-08 추가). 그 뒤 규칙은 종전과 완전히 같다.
+    **ActiveScenarioOptics 매칭이 '복사 금지' 제외보다 우선한다**(2026-08 순서 교체).
+    장비가 "지금 이 optic 을 쓴다"고 명시한 것이므로 표시(`_@NO/NEVER COPY THIS`)가
+    붙어 있어도 그게 target 이다. 매칭이 안 될 때만 복사금지 optic 을 빼고 폴백 규칙을
+    적용한다.
     """
-    sections = _optic_candidates(sections)
-    if not sections:
-        return None
-    if active is not None:                         # 신 SW: 지정된 Scan2d optic 우선
-        m = _match_active_section(sections, active[0], active[1])
+    if active is not None:                         # ① 무조건 1순위: 지정된 Scan2d optic
+        m = _match_active_section(sections or {}, active[0], active[1])
         if m is not None:
             return m                               # 매칭되면 그 섹션이 target(권위)
         # 매칭 실패 → 아래 기존 방식으로 폴백(파일은 있으나 섹션 못 찾은 경우)
+    sections = _optic_candidates(sections)         # ② 그 뒤에야 '복사 금지' 제외
+    if not sections:
+        return None
     names = list(sections)
 
     def _is_tdi(s):

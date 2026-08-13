@@ -464,7 +464,11 @@ python3 tests/test_downloader.py   # 8
   감시를 계속한다(tkinter `after` 가 계속 도는 구조라 가능). 알림영역 아이콘 좌클릭/
   더블클릭=창 열기, 우클릭=메뉴(프로그램 열기 / 자동 감시 종료). 숨김 중 변경 감지는
   모달 대신 **풍선 알림**(숨은 창의 모달은 볼 수 없으므로). 숨길 때 문서 편집 잠금은
-  반납하고 감시 전역 잠금만 유지. 감시 OFF 면 그냥 종료.
+  반납하고 감시 전역 잠금만 유지. 감시 OFF(둘 다)면 그냥 종료.
+  · **툴팁에 어떤 감시가 도는지 표시(2026-08)**: 트레이 아이콘에 마우스를 올리면
+    `Para 자동 감시 실행 중 — 장비 ✓ · Commonality ✗` 처럼 **두 감시 각각의 켜짐**을
+    보여 준다(`_watch_tooltip`/`_refresh_tray_tooltip`, `set_tooltip`→NIM_MODIFY).
+    시작·숨김 시 갱신. 장비/commonality 는 별개라 상주 판단도 `_any_watch_on`(OR).
   **추가 패키지 금지 제약 때문에 pystray 대신 stdlib `ctypes` + Win32 `Shell_NotifyIconW`**
   를 직접 호출(별도 스레드에서 숨은 창+메시지 루프, 콜백은 `root.after` 로 GUI 스레드에
   위임, WNDPROC 참조 유지 필수). 비Windows 는 `available()=False` 로 전부 no-op.
@@ -646,14 +650,17 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   사라지는 비일관이 있었다. '보이는 것'과 '기본 체크'를 분리한다. 비선택 섹션 이름이
   하필 `Scan2d` 면 target 과 Alg 가 겹쳐 피벗에서 한 줄로 합쳐지므로
   `_other_optic_alg` 가 `OPTIC_OTHER_SUFFIX`(' (미선택)')를 붙여 갈라 놓는다. `ExtractRow.use_default`→피벗 `use`→formbuilder.
-  **target(현재 스캔 optic) 선택(`_pick_optic_target`)**: **①'복사 금지' optic 을 먼저 제외**
-  (2026-08 — 이름 **끝**이 `_@NEVER COPY THIS!!!!!` 면 후보에서 뺀다. `optic_excluded`,
-  느낌표 수·대소문자·뒤 공백 무시, 섹션명뿐 아니라 `Alg`/`OpticsName`/`Name` 키도 본다.
-  OpticPreset 에는 리뷰·얼라인·clean reference 옵틱이 순서와 무관하게 섞여 있어, 안 빼면
-  '마지막 광원 섹션' 규칙에 리뷰 옵틱이 걸려 **엉뚱한 값이 clean reference 값인 척**
-  취합된다). ② 그 뒤는 종전 그대로 — 신 SW = 같은 폴더 `ActiveScenarioOptics.ini`
-  의 `ScenarioName=Scan2d` 항목 `OpticsName`/`OpticId` 로 OpticPreset 섹션 매칭(`read_active_scan2d`).
-  없으면(구 SW) 기존 방식 = CameraName=TDI·광원키 가진 **마지막** 섹션. `read_optic_mag` 도 동일 경로
+  **target(현재 스캔 optic) 선택(`_pick_optic_target`, 2026-08 순서 교체)**: **①무조건
+  1순위 = `ActiveScenarioOptics.ini` 매칭**(신 SW — `ScenarioName=Scan2d` 항목의
+  `OpticsName`/`OpticId` 로 OpticPreset 섹션 매칭, `read_active_scan2d`). 장비가 "지금
+  이 optic 을 쓴다"고 명시한 것이라 **'복사 금지' 표시보다 우선**한다(표시가 붙어
+  있어도 그게 target). ② Active 가 없거나 매칭 실패하면 그때 **'복사 금지' optic 을
+  제외**하고 폴백: 이름 **끝**이 `_@NO COPY THIS!!!!!`(또는 구 문구 `_@NEVER COPY
+  THIS!!!!!`) 면 후보에서 뺀다(`optic_excluded`, **NO/NEVER 둘 다**, 느낌표 수·대소문자·
+  뒤 공백 무시, 섹션명뿐 아니라 `Alg`/`OpticsName`/`Name` 키도 본다). OpticPreset 에는
+  리뷰·얼라인·clean reference 옵틱이 순서와 무관하게 섞여 있어, 안 빼면 '마지막 광원
+  섹션' 규칙에 리뷰 옵틱이 걸려 **엉뚱한 값이 clean reference 값인 척** 취합된다.
+  폴백 = CameraName=TDI·광원키 가진 **마지막** 섹션. `read_optic_mag` 도 동일 경로
   (제외본의 Mag 를 계수 키로 쓰지 않는다). 전부 제외되면 target 없음(예외 없이 진행).
   (`collector.FIXED_FILES` 에 ActiveScenarioOptics.ini 포함 — 있을 때만 복사.)
   **변환 판정(`resolve_transform`)**: 표시명에 **µ(마이크로) 있으면 변환**(area→AREA,else LINEAR),
