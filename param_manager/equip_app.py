@@ -110,8 +110,10 @@ class EquipApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1400x860")
-        self.minsize(1080, 680)
+        # 화면 크기에 맞춰 시작 크기·최소 크기를 잡는다(작은 노트북에서 잘림 방지).
+        _w, _h, _x, _y = self._fit_geo(1400, 860)
+        self.geometry(f"{_w}x{_h}+{_x}+{_y}")
+        self.minsize(min(1080, _w), min(680, _h))
         self._set_window_icon()
         self.p = apply_theme(self)
         self.fonts = self.p["fonts"]
@@ -996,6 +998,28 @@ class EquipApp(tk.Tk):
             w.bind("<Enter>", lambda e: paint(self.p["primary_lt"], self.p["primary"]))
             w.bind("<Leave>", lambda e: paint(self.p["surface"], self.p["border"]))
         return card
+
+    def _fit_geo(self, w, h):
+        """화면보다 큰 창을 화면에 맞게 줄이고 가운데 위치를 계산한다.
+        작은 노트북 화면(예: 1366×768)에서 창·버튼·글자가 잘리는 것을 막는다."""
+        try:
+            sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        except Exception:  # noqa: BLE001
+            sw, sh = 1920, 1080
+        w = min(int(w), int(sw * 0.96))
+        h = min(int(h), int(sh * 0.92))
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 3)
+        return w, h, x, y
+
+    def _geo(self, win, w, h):
+        """Toplevel 크기를 화면에 맞게 클램프+중앙정렬로 설정."""
+        w, h, x, y = self._fit_geo(w, h)
+        try:
+            win.geometry(f"{w}x{h}+{x}+{y}")
+            win.minsize(min(w, 480), min(h, 340))
+        except Exception:  # noqa: BLE001
+            pass
 
     def _step_header(self, parent, step, title, desc=""):
         """다단계 흐름의 '단계 N/M · 제목' 헤더. step=(n, m) 또는 None.
@@ -2022,7 +2046,7 @@ class EquipApp(tk.Tk):
     def _download_dialog(self):
         win = tk.Toplevel(self)
         win.title("장비 폴더에서 파라미터 다운로드")
-        win.geometry("960x640")
+        self._geo(win, 960, 640)
         win.configure(bg=self.p["bg"])
         self._dl_win = win
 
@@ -2183,7 +2207,7 @@ class EquipApp(tk.Tk):
         parent = parent or self
         win = tk.Toplevel(parent)
         win.title("레시피 ↔ Job 폴더 매칭" + (f" — {aoi}" if aoi else ""))
-        win.geometry("760x580")
+        self._geo(win, 760, 580)
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         try:
@@ -2480,7 +2504,7 @@ class EquipApp(tk.Tk):
         levels = [lv for lv in (levels or ([level_hint] if level_hint else [])) if lv]
         win = tk.Toplevel(self)
         win.title("장비에서 수집(읽기전용)")
-        win.geometry("720x640")
+        self._geo(win, 720, 640)
         win.configure(bg=self.p["bg"])
         win.transient(self)
         self._chooser_parent = win
@@ -2724,7 +2748,7 @@ class EquipApp(tk.Tk):
 
         win = tk.Toplevel(self)
         win.title("로컬에서 불러오기 — 호기 선택")
-        win.geometry("560x560")
+        self._geo(win, 560, 560)
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
@@ -3606,7 +3630,7 @@ class EquipApp(tk.Tk):
         ranked = [(레시피, 일치수, 기존항목수)] (유사도 높은 순)."""
         win = tk.Toplevel(self)
         win.title(f"{title_prefix} — 기반 레시피 선택")
-        win.geometry("560x520")
+        self._geo(win, 560, 520)
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
@@ -3703,7 +3727,7 @@ class EquipApp(tk.Tk):
 
         win = tk.Toplevel(self)
         win.title(f"{title_prefix} — 파라미터 선택/편집 ({level})")
-        win.geometry("1180x780")
+        self._geo(win, 1180, 780)
         win.configure(bg=self.p["bg"])
 
         # 상단: 제목 + 계수바 + 엑셀 편집 버튼
@@ -4398,7 +4422,7 @@ class EquipApp(tk.Tk):
         win.title("Commonality 자동 감시 설정")
         win.configure(bg=self.p["bg"])
         win.transient(self)
-        win.geometry("860x760")
+        self._geo(win, 860, 760)
         outer = tk.Frame(win, bg=self.p["bg"])
         outer.pack(side="top", fill="both", expand=True)
         cv = tk.Canvas(outer, bg=self.p["bg"], highlightthickness=0)
@@ -4661,7 +4685,7 @@ class EquipApp(tk.Tk):
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         win.grab_set()
-        win.geometry("820x520")
+        self._geo(win, 820, 520)
         tk.Label(win, text=f"{machine} 감시 대상별 양식", bg=self.p["bg"],
                  fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", padx=16,
                                                                    pady=(14, 2))
@@ -5030,7 +5054,7 @@ class EquipApp(tk.Tk):
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
-        win.geometry("720x520")
+        self._geo(win, 720, 520)
         tk.Label(win, text="조사할 S/M 폴더를 선택하세요(변형 이름 포함). 기본은 전체 선택.",
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                  anchor="w", padx=14, pady=(12, 2))
@@ -5164,7 +5188,7 @@ class EquipApp(tk.Tk):
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         win.grab_set()
-        win.geometry("560x420")
+        self._geo(win, 560, 420)
         tk.Label(win, text=f"{lot.device} / {lot.lot} / {lot.label}",
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                  anchor="w", padx=16, pady=(12, 0))
@@ -5804,7 +5828,7 @@ class EquipApp(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Commonality 뷰어 — 변경/이상치")
         win.configure(bg=self.p["bg"])
-        win.geometry("1000x620")
+        self._geo(win, 1000, 620)
         bar = tk.Frame(win, bg=self.p["head_bg"])
         bar.pack(fill="x")
         only_var = tk.BooleanVar(value=True)
@@ -6021,7 +6045,7 @@ class EquipApp(tk.Tk):
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
-        win.geometry("760x560")
+        self._geo(win, 760, 560)
         if step:
             self._step_header(win, step, "하위 레시피 이름 매칭 확인")
         else:
@@ -6217,7 +6241,7 @@ class EquipApp(tk.Tk):
 
         win = tk.Toplevel(self)
         win.title("Recipe 날짜별 비교")
-        win.geometry("900x560")
+        self._geo(win, 900, 560)
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
@@ -6333,7 +6357,7 @@ class EquipApp(tk.Tk):
             return
         win = tk.Toplevel(self)
         win.title("Recipe 날짜별 비교 결과")
-        win.geometry("1040x660")
+        self._geo(win, 1040, 660)
         win.configure(bg=self.p["bg"])
         nb = ttk.Notebook(win)
         nb.pack(fill="both", expand=True, padx=10, pady=10)
@@ -6432,7 +6456,7 @@ class EquipApp(tk.Tk):
         수정한 값은 **내보내는 파일에만** 적용되고 원본 취합/양식은 건드리지 않는다."""
         win = tk.Toplevel(self)
         win.title("내보내기 — 항목 선택 및 값 수정")
-        win.geometry("1120x680")
+        self._geo(win, 1120, 680)
         win.configure(bg=self.p["bg"])
         tk.Label(win, text="내보낼 항목을 고르고(포함 열 클릭), 값은 더블클릭해 수정하세요. "
                           "수정한 값은 내보내는 파일에만 적용됩니다.",
@@ -7309,7 +7333,7 @@ class EquipApp(tk.Tk):
         win.title("자동 감시 설정")
         win.configure(bg=self.p["bg"])
         win.transient(self)
-        win.geometry("820x800")
+        self._geo(win, 820, 800)
         # 내용이 길어 화면에서 잘리므로 **전체를 스크롤**시키고 버튼줄은 하단 고정.
         outer = tk.Frame(win, bg=self.p["bg"])
         outer.pack(side="top", fill="both", expand=True)
@@ -7732,7 +7756,7 @@ class EquipApp(tk.Tk):
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         win.grab_set()
-        win.geometry("520x420")
+        self._geo(win, 520, 420)
         tk.Label(win, text=title, bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["bold"]).pack(anchor="w", padx=16, pady=(12, 2))
         bt = tk.Frame(win, bg=self.p["bg"])
@@ -7860,7 +7884,7 @@ class EquipApp(tk.Tk):
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         win.grab_set()
-        win.geometry("860x560")
+        self._geo(win, 860, 560)
         tk.Label(win, text="호기별 감시 Job 폴더", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win,
@@ -8587,7 +8611,7 @@ class EquipApp(tk.Tk):
         win = tk.Toplevel(self)
         win.title("자동 감시 — 변경 보고서")
         win.configure(bg=self.p["bg"])
-        win.geometry("720x520")
+        self._geo(win, 720, 520)
         tk.Label(win, text="자동 감시 변경 보고서", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win, text=self._watch_status_text(s, state), bg=self.p["bg"],
@@ -8818,7 +8842,7 @@ class EquipApp(tk.Tk):
         win = tk.Toplevel(self)
         win.title("현재 접속자")
         win.configure(bg=self.p["bg"])
-        win.geometry("560x360")
+        self._geo(win, 560, 360)
         tk.Label(win, text="현재 이 저장폴더를 사용 중인 사람", bg=self.p["bg"],
                  fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w",
                                                                  padx=14, pady=(12, 2))
