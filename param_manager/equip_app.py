@@ -6200,51 +6200,163 @@ class EquipApp(tk.Tk):
             "값 확인 화면에 최신 취합이 표시됩니다.")
 
     # ====================================================================
-    #  파라미터 이력 확인 — 취합 파일 2개 선택 → 다른 부분만 새 창
+    #  Recipe 날짜별 비교 — 왼쪽 목록에서 오른쪽으로 드래그(또는 버튼)해 순서대로
+    #  2개 이상 담고, 인접한 쌍끼리(1↔2, 2↔3 …) 순차 비교한다.
     # ====================================================================
     def _history_dialog(self):
         if not self.save_dir:
-            messagebox.showinfo("이력", "먼저 저장 폴더를 지정하세요.")
+            messagebox.showinfo("Recipe 날짜별 비교", "먼저 저장 폴더를 지정하세요.")
             return
         files = workdirs.list_collate_files(self.save_dir)
         if len(files) < 2:
-            messagebox.showinfo("이력", "비교하려면 '파라미터 값 취합' 파일이 2개 이상 필요합니다.")
+            messagebox.showinfo("Recipe 날짜별 비교",
+                                "비교하려면 '파라미터 값 취합' 파일이 2개 이상 필요합니다.")
             return
         labels = [os.path.basename(f) for f in files]
-        a = self._pick_list_chooser("hist", "이전(비교 기준) 취합 파일 선택", labels, False)
-        if not a:
-            return
-        b = self._pick_list_chooser("hist", "최신(달라진) 취합 파일 선택", labels, False)
-        if not b:
-            return
-        old_p = files[labels.index(a[0])]
-        new_p = files[labels.index(b[0])]
+        by_label = dict(zip(labels, files))
 
-        def work():
-            return history_mod.diff_files(old_p, new_p)
+        win = tk.Toplevel(self)
+        win.title("Recipe 날짜별 비교")
+        win.geometry("900x560")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        tk.Label(win, text="Recipe 날짜별 비교", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win, text="왼쪽 목록에서 비교할 취합본을 오른쪽으로 **드래그**(또는 "
+                          "'▶ 추가')해 **오래된 → 최신 순서**로 2개 이상 담으세요. "
+                          "인접한 쌍끼리(1↔2, 2↔3 …) 순서대로 비교합니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=850).pack(anchor="w", padx=16, pady=(0, 8))
 
-        def done(ok, res):
-            if not ok:
-                self._err("E129", "이력 비교 실패", res)
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="both", expand=True, padx=16, pady=4)
+        # 왼쪽: 사용 가능한 취합본
+        lf = tk.LabelFrame(body, text=" 취합본 목록(전체) ", bg=self.p["bg"],
+                           fg=self.p["text"], font=self.fonts["bold"])
+        lf.pack(side="left", fill="both", expand=True)
+        left = tk.Listbox(lf, selectmode="browse", activestyle="none",
+                          font=self.fonts["sub"])
+        for lb in labels:
+            left.insert("end", lb)
+        left.pack(fill="both", expand=True, padx=6, pady=6)
+
+        # 가운데: 추가/제거 버튼
+        mid = tk.Frame(body, bg=self.p["bg"])
+        mid.pack(side="left", fill="y", padx=8)
+
+        # 오른쪽: 비교 순서(선택분)
+        rf = tk.LabelFrame(body, text=" 비교 순서(오래된 → 최신) ", bg=self.p["bg"],
+                           fg=self.p["text"], font=self.fonts["bold"])
+        rf.pack(side="left", fill="both", expand=True)
+        right = tk.Listbox(rf, selectmode="browse", activestyle="none",
+                           font=self.fonts["sub"])
+        right.pack(fill="both", expand=True, padx=6, pady=6)
+
+        def add_sel():
+            for i in left.curselection():
+                lb = left.get(i)
+                if lb not in right.get(0, "end"):
+                    right.insert("end", lb)
+
+        def del_sel():
+            for i in reversed(right.curselection()):
+                right.delete(i)
+
+        def move(delta):
+            sel = right.curselection()
+            if not sel:
                 return
-            diff = res
-            if not diff.changes and not diff.added_rows and not diff.removed_rows:
-                messagebox.showinfo("이력", "두 파일 사이에 바뀐 값이 없습니다.")
+            i = sel[0]
+            j = i + delta
+            if 0 <= j < right.size():
+                v = right.get(i)
+                right.delete(i)
+                right.insert(j, v)
+                right.selection_set(j)
+
+        # 드래그: 왼쪽에서 눌러 오른쪽 목록 위에서 놓으면 추가된다.
+        def left_release(e):
+            w = self.winfo_containing(e.x_root, e.y_root)
+            t = w
+            for _ in range(4):                      # 자식 위젯이어도 오른쪽으로 인정
+                if t is right:
+                    add_sel()
+                    return
+                t = getattr(t, "master", None)
+        left.bind("<ButtonRelease-1>", left_release)
+
+        for txt, cmd in (("▶ 추가", add_sel), ("◀ 제거", del_sel),
+                         ("▲ 위로", lambda: move(-1)), ("▼ 아래로", lambda: move(1))):
+            tk.Button(mid, text=txt, relief="flat", bd=0, bg=self.p["surface"],
+                      fg=self.p["text"], padx=10, pady=6, cursor="hand2",
+                      command=cmd).pack(pady=4)
+
+        bt = tk.Frame(win, bg=self.p["bg"])
+        bt.pack(fill="x", padx=16, pady=(4, 12))
+
+        def run():
+            seq = list(right.get(0, "end"))
+            if len(seq) < 2:
+                messagebox.showwarning("비교", "비교하려면 오른쪽에 2개 이상 담으세요.",
+                                       parent=win)
                 return
-            self._show_diff_window(diff, os.path.basename(old_p), os.path.basename(new_p))
-        self._run_busy("이력 비교 중…", work, done)
+            paths = [by_label[lb] for lb in seq]
+            win.destroy()
+
+            def work():
+                out = []
+                for i in range(len(paths) - 1):
+                    d = history_mod.diff_files(paths[i], paths[i + 1])
+                    out.append((seq[i], seq[i + 1], d))
+                return out
+
+            def done(ok, res):
+                if not ok:
+                    self._err("E129", "비교 실패", res)
+                    return
+                self._show_multi_diff(res)
+            self._run_busy("Recipe 날짜별 비교 중…", work, done)
+
+        tk.Button(bt, text="비교 실행", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  command=run).pack(side="left")
+        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=16,
+                  pady=6, cursor="hand2", command=win.destroy).pack(side="right")
+
+    def _show_multi_diff(self, results):
+        """순차 비교 결과들을 탭(쌍마다)으로 표시. results=[(old_label, new_label, diff)]."""
+        empty = all(not d.changes and not d.added_rows and not d.removed_rows
+                    for _, _, d in results)
+        if empty:
+            messagebox.showinfo("Recipe 날짜별 비교", "선택한 취합본들 사이에 바뀐 값이 없습니다.")
+            return
+        win = tk.Toplevel(self)
+        win.title("Recipe 날짜별 비교 결과")
+        win.geometry("1040x660")
+        win.configure(bg=self.p["bg"])
+        nb = ttk.Notebook(win)
+        nb.pack(fill="both", expand=True, padx=10, pady=10)
+        for old_label, new_label, diff in results:
+            tab = tk.Frame(nb, bg=self.p["bg"])
+            n = len(diff.changes) + len(diff.added_rows) + len(diff.removed_rows)
+            nb.add(tab, text=f"{old_label} → {new_label}  ({n})")
+            self._build_diff_view(tab, diff, old_label, new_label, win)
 
     def _show_diff_window(self, diff, old_label, new_label):
-        win = tk.Toplevel(self)
-        win.title(f"변경내역: {old_label} → {new_label}")
-        win.geometry("1000x620")
-        win.configure(bg=self.p["bg"])
-        tk.Label(win, text=f"달라진 부분만 표시 — 값 변경 {len(diff.changes)}건 · 행 추가 "
+        """단일 비교(하위호환) — 다중 뷰 1개로 표시."""
+        self._show_multi_diff([(old_label, new_label, diff)])
+
+    def _build_diff_view(self, parent, diff, old_label, new_label, win):
+        """diff 하나를 parent 프레임에 그린다(변경 표 + 엑셀 저장 버튼)."""
+        tk.Label(parent, text=f"달라진 부분만 표시 — 값 변경 {len(diff.changes)}건 · 행 추가 "
                           f"{len(diff.added_rows)} · 삭제 {len(diff.removed_rows)}",
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                  anchor="w", padx=12, pady=(10, 4))
+        tvwrap = tk.Frame(parent, bg=self.p["bg"])
+        tvwrap.pack(fill="both", expand=True)
         cols = ("레시피", "PI", "Zone", "Alg", "Parameter", "호기", "이전 값", "새 값", "구분")
-        tv = ttk.Treeview(win, columns=cols, show="headings", height=22)
+        tv = ttk.Treeview(tvwrap, columns=cols, show="headings", height=20)
         widths = (90, 60, 130, 120, 200, 80, 110, 110, 70)
         for c, w in zip(cols, widths):
             tv.heading(c, text=c)
@@ -6252,11 +6364,11 @@ class EquipApp(tk.Tk):
         for c in diff.changes:
             tv.insert("", "end", values=(c.sheet, c.pi, c.zone, c.alg, c.param,
                                          c.machine, c.old or "(빈)", c.new or "(빈)", c.kind))
-        vs = ttk.Scrollbar(win, orient="vertical", command=tv.yview)
+        vs = ttk.Scrollbar(tvwrap, orient="vertical", command=tv.yview)
         tv.configure(yscrollcommand=vs.set)
         tv.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=6)
         vs.pack(side="left", fill="y", pady=6)
-        bt = tk.Frame(win, bg=self.p["bg"])
+        bt = tk.Frame(parent, bg=self.p["bg"])
         bt.pack(side="bottom", fill="x", padx=12, pady=(0, 10))
 
         def save_excel():
@@ -6275,11 +6387,9 @@ class EquipApp(tk.Tk):
                   bg=self.p["primary"], fg="#ffffff", padx=14, pady=6, cursor="hand2",
                   command=save_excel).pack(side="left")
         if diff.added_rows or diff.removed_rows:
-            tk.Label(bt, text=f"  (행 추가/삭제는 엑셀 '행 추가·삭제' 시트에서 확인)",
+            tk.Label(bt, text="  (행 추가/삭제는 엑셀 '행 추가·삭제' 시트에서 확인)",
                      bg=self.p["bg"], fg=self.p["muted"],
                      font=self.fonts["sub"]).pack(side="left", padx=8)
-        tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=14,
-                  pady=6, cursor="hand2", command=win.destroy).pack(side="right")
 
     # ====================================================================
     #  내보내기 — 레시피·호기·항목 선택(값 수정 가능) → Excel 저장
