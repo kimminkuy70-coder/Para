@@ -973,6 +973,23 @@ class EquipApp(tk.Tk):
             w.bind("<Leave>", lambda e: paint(self.p["surface"], self.p["border"]))
         return card
 
+    def _step_header(self, parent, step, title, desc=""):
+        """다단계 흐름의 '단계 N/M · 제목' 헤더. step=(n, m) 또는 None.
+        None 이면 제목만(단계 배지 없음). 어느 창에서든 같은 모양으로 쓴다."""
+        bar = tk.Frame(parent, bg=self.p["bg"])
+        bar.pack(fill="x", padx=16, pady=(12, 2))
+        if step:
+            n, m = step
+            tk.Label(bar, text=f"단계 {n}/{m}", bg=self.p["primary"], fg="#ffffff",
+                     font=self.fonts["sub"], padx=8, pady=1).pack(side="left")
+        tk.Label(bar, text=title, bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(side="left", padx=(10 if step else 0, 0))
+        if desc:
+            tk.Label(parent, text=desc, bg=self.p["bg"], fg=self.p["muted"],
+                     font=self.fonts["sub"], justify="left",
+                     wraplength=640).pack(anchor="w", padx=16, pady=(0, 6))
+        return bar
+
     # ====================================================================
     #  S4 — 파라미터 값 확인(tksheet, 읽기 전용) : Zone 탭 + 검색 + 단일 그리드
     # ====================================================================
@@ -2424,7 +2441,8 @@ class EquipApp(tk.Tk):
     # ====================================================================
     #  장비 수집 / 파싱 (양식 만들기·값 업데이트 공용)
     # ====================================================================
-    def _collect_dialog(self, staging_root, on_sources, level_hint="", levels=None):
+    def _collect_dialog(self, staging_root, on_sources, level_hint="", levels=None,
+                        step=None):
         """장비 수집 모달 — **장비 IP 목록에서 선택**(호기별 접속 ID·비밀번호).
 
         staging_root/{호기}/ 로 읽기전용 복사.
@@ -2442,9 +2460,12 @@ class EquipApp(tk.Tk):
         win.configure(bg=self.p["bg"])
         win.transient(self)
         self._chooser_parent = win
-        tk.Label(win, text="장비 네트워크(\\\\IP\\c$\\Job)에서 설정 파일 수집",
-                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
-                 anchor="w", padx=14, pady=(12, 2))
+        if step:
+            self._step_header(win, step, "장비 네트워크에서 설정 파일 수집")
+        else:
+            tk.Label(win, text="장비 네트워크(\\\\IP\\c$\\Job)에서 설정 파일 수집",
+                     bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                     anchor="w", padx=14, pady=(12, 2))
         sub = "원본은 읽기·복사만. 장비 1대씩 접속 후 즉시 해제, 비밀번호는 " \
               "이번 실행 메모리에만 보관."
         if levels:
@@ -3000,15 +3021,18 @@ class EquipApp(tk.Tk):
                   fg="#ffffff", padx=16, pady=4, cursor="hand2",
                   command=win.destroy).pack(pady=(0, 12))
 
-    def _pick_levels(self, levels, title="취합할 레시피를 선택하세요"):
+    def _pick_levels(self, levels, title="취합할 레시피를 선택하세요", step=None):
         """레시피 다중 선택 알림창 — 레시피별 최신 양식 정보 표시. 반환: 목록/None."""
         win = tk.Toplevel(self)
         win.title("레시피 선택")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
-        tk.Label(win, text=title, bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["bold"]).pack(anchor="w", padx=14, pady=(12, 2))
+        if step:
+            self._step_header(win, step, title)
+        else:
+            tk.Label(win, text=title, bg=self.p["bg"], fg=self.p["text"],
+                     font=self.fonts["bold"]).pack(anchor="w", padx=14, pady=(12, 2))
         tk.Label(win, text="선택한 레시피마다 장비 Job 폴더에서 해당 Recipe 폴더를 "
                           "고르게 됩니다(자동 매칭 표시).",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
@@ -5886,7 +5910,7 @@ class EquipApp(tk.Tk):
         # 여러 PC 가 동시에 취합하면 장비에 중복 접속하고 취합 파일도 경합한다.
         if not self._acquire_global(locking.GLOBAL_COLLATE, "파라미터 값 업데이트"):
             return
-        chosen = self._pick_levels(recipes)          # 레시피 선택 알림창
+        chosen = self._pick_levels(recipes, step=(1, 5))   # 1/5 레시피 선택 알림창
         if not chosen:
             self._release_global(locking.GLOBAL_COLLATE)
             return
@@ -5906,16 +5930,14 @@ class EquipApp(tk.Tk):
         dlevel = chosen[0] if len(chosen) == 1 else ""
 
         win = tk.Toplevel(self)
-        win.title("파라미터 값 업데이트")
+        win.title("Recipe 업데이트")
         win.configure(bg=self.p["bg"])
         win.transient(self)
-        tk.Label(win, text="파라미터 값 업데이트", bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
-        tk.Label(win, text=f"대상 레시피: {', '.join(chosen)}\n"
-                          "여러 장비에서 값을 읽어 레시피별 시트로 취합합니다(참고자료의 모든 "
-                          "호기 열, 이번에 수집 안 한 호기는 직전 취합본 값 유지).",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=16)
+        self._step_header(
+            win, (2, 5), "Recipe 업데이트 — 수집 방식 선택",
+            f"대상 레시피: {', '.join(chosen)}\n"
+            "여러 장비에서 값을 읽어 레시피별 시트로 취합합니다(참고자료의 모든 "
+            "호기 열, 이번에 수집 안 한 호기는 직전 취합본 값 유지).")
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=16, pady=16)
 
@@ -5933,7 +5955,7 @@ class EquipApp(tk.Tk):
                 lambda sources: self._parse_sources_busy(
                     sources, lambda rows, machines: self._update_collate_flow(chosen, rows),
                     default_level=dlevel, scales=scales),
-                level_hint=dlevel, levels=chosen)
+                level_hint=dlevel, levels=chosen, step=(3, 5))
 
         def from_local():
             win.destroy()
@@ -5958,7 +5980,7 @@ class EquipApp(tk.Tk):
         return (any(real(f) for f, _ in tbl.get("rows", []))
                 or any(real(p) for p in tbl.get("parsed", [])))
 
-    def _confirm_variant_match(self, tables: dict) -> dict | None:
+    def _confirm_variant_match(self, tables: dict, step=None) -> dict | None:
         """하위 레시피 이름 매칭 **확인창**(항상 표시 — 자동매칭 미리 선택).
 
         상위 레시피는 같아도 하위 레시피(변형) 이름이 다르면(2D+3D_CAMTEK /
@@ -5976,9 +5998,12 @@ class EquipApp(tk.Tk):
         win.transient(self)
         win.grab_set()
         win.geometry("760x560")
-        tk.Label(win, text="하위 레시피 이름 매칭 확인",
-                 bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
+        if step:
+            self._step_header(win, step, "하위 레시피 이름 매칭 확인")
+        else:
+            tk.Label(win, text="하위 레시피 이름 매칭 확인",
+                     bg=self.p["bg"], fg=self.p["text"],
+                     font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(12, 2))
         tk.Label(win, text="상위 레시피는 같아도 하위 레시피 이름이 다르면 값이 "
                            "채워지지 않습니다.\n왼쪽(양식의 하위 레시피)에 대응하는 "
                            "오른쪽(복사해온 레시피 이름)을 골라 주세요. "
@@ -6072,7 +6097,7 @@ class EquipApp(tk.Tk):
                 tables[recipe] = tbl
         if not tables:
             return pivot_rows, True, {}         # 확인할 변형이 없음(단일 무명 변형 등)
-        mapping = self._confirm_variant_match(tables)
+        mapping = self._confirm_variant_match(tables, step=(4, 5))
         if mapping is None:
             return pivot_rows, False, {}        # 취소
         return collate.apply_variant_map(pivot_rows, mapping), True, mapping
@@ -6146,7 +6171,7 @@ class EquipApp(tk.Tk):
                 f"· (유지) {', '.join(carried)}: 직전 취합본 값 그대로"
         extra = ("\n\n" + "\n".join(notes)) if notes else ""
         messagebox.showinfo(
-            "값 업데이트 완료",
+            "Recipe 업데이트 완료 (단계 5/5)",
             f"취합 파일 생성: {os.path.basename(dest)}\n\n{summary}{extra}\n\n"
             "값 확인 화면에 최신 취합이 표시됩니다.")
 
@@ -6481,7 +6506,7 @@ class EquipApp(tk.Tk):
                    "(OneDrive)에 저장됩니다.\n"
                    + warn +
                    "\n이 위치를 사용할까요?  [아니오] 를 누르면 직접 고를 수 있습니다.")
-            if not messagebox.askyesno("로컬 작업 폴더 설정", msg):
+            if not messagebox.askyesno("로컬 작업 폴더 설정 · 단계 2/2", msg):
                 picked = filedialog.askdirectory(title="로컬 작업 폴더 선택 "
                                                        "(OneDrive 밖 권장)")
                 if picked:
@@ -6967,7 +6992,7 @@ class EquipApp(tk.Tk):
     def _choose_save_dir(self, first=False) -> bool:
         if first:
             messagebox.showinfo(
-                "저장 폴더 지정 (Recipe 관리 파일)",
+                "저장 폴더 지정 · 단계 1/2 (Recipe 관리 파일)",
                 "Recipe 관리 파일을 저장할 OneDrive 공유 폴더를 지정하세요.\n\n"
                 "▶ 지정 방법:\n"
                 "   Amkor Technology 폴더로 들어가\n"
