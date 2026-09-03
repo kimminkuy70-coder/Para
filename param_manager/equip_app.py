@@ -469,11 +469,29 @@ class EquipApp(tk.Tk):
     def _screen_machines(self):
         wrap = tk.Frame(self.body, bg=self.p["bg"])
         wrap.pack(fill="both", expand=True, padx=24, pady=18)
-        tk.Label(wrap, text="호기 선택", bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["title"]).pack(anchor="w", pady=(0, 4))
-        tk.Label(wrap, text="관리할 장비(호기)를 선택하세요.", bg=self.p["bg"],
+        titlerow = tk.Frame(wrap, bg=self.p["bg"])
+        titlerow.pack(fill="x")
+        tk.Label(titlerow, text="호기 선택", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(side="left", anchor="w", pady=(0, 4))
+        # KLA 장비 숨기기 — 장비종류=KLA 호기(K1~K6 등)를 이 화면에서만 감춘다.
+        if not hasattr(self, "_hide_kla"):
+            self._hide_kla = tk.BooleanVar(
+                value=bool(self._cfg.get("hide_kla", True)))
+
+        def _toggle_kla():
+            self._cfg["hide_kla"] = bool(self._hide_kla.get())
+            save_config(self._cfg)
+            self._render()
+        tk.Checkbutton(titlerow, text="KLA 장비 숨기기", variable=self._hide_kla,
+                       bg=self.p["bg"], fg=self.p["text"], font=self.fonts["sub"],
+                       activebackground=self.p["bg"], selectcolor=self.p["surface"],
+                       cursor="hand2", command=_toggle_kla).pack(side="right", anchor="e")
+        tk.Label(wrap, text="관리할 장비(호기)를 선택하세요. (장비종류는 '장비 IP' 탭에서 "
+                          "지정 — Camtek/KLA)", bg=self.p["bg"],
                  fg=self.p["muted"], font=self.fonts["sub"]).pack(anchor="w", pady=(0, 14))
 
+        hide = ["KLA"] if self._hide_kla.get() else None
+        visible = refdata.machines(self.ip_rows, hide_types=hide)
         if not self._all_machines():
             tk.Label(wrap, text="참고자료에 등록된 호기가 없습니다. ‘＋ 호기 추가’로 호기와 "
                               "IP를 등록하세요(참고자료.xlsx에 저장됩니다).",
@@ -483,15 +501,21 @@ class EquipApp(tk.Tk):
         grid.pack(fill="both", expand=True)
         cols = 8
         custom = set(self._all_machines())   # 참고자료 기반 호기(우클릭 삭제 가능)
-        # 표시 목록 = 참고자료 호기 + 최신 취합에 값이 있는 호기(참고자료에 없어도 보이게)
-        machines = list(self._all_machines())
+        # 표시 목록 = (KLA 필터 적용된) 참고자료 호기 + 최신 취합 호기(KLA 제외 적용)
+        machines = list(visible)
         if self.repo:
             for m in self.repo.aoi_units:
-                if m not in machines:
-                    machines.append(m)
+                if m in machines:
+                    continue
+                if hide and refdata.device_type_for(
+                        self.ip_rows, m).strip().upper() in {"KLA"}:
+                    continue
+                machines.append(m)
         for i, m in enumerate(machines):
             r, c = divmod(i, cols)
-            b = tk.Button(grid, text=m, width=10, height=3, relief="flat", bd=0,
+            dtype = refdata.device_type_for(self.ip_rows, m)
+            btxt = f"{m}\n· {dtype}" if dtype else m
+            b = tk.Button(grid, text=btxt, width=10, height=3, relief="flat", bd=0,
                           bg=self.p["surface"], fg=self.p["text"],
                           activebackground=self.p["primary_lt"],
                           font=self.fonts["bold"], cursor="hand2",
@@ -539,13 +563,23 @@ class EquipApp(tk.Tk):
         ip_var = tk.StringVar()
         tk.Entry(frm, textvariable=ip_var, width=20, relief="solid", bd=1).grid(
             row=1, column=1, padx=6, pady=3)
+        tk.Label(frm, text="장비종류:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).grid(row=2, column=0, sticky="w", pady=3)
+        dtype_var = tk.StringVar(value=refdata.DEVICE_CAMTEK)
+        ttk.Combobox(frm, textvariable=dtype_var, width=18, state="readonly",
+                     values=["", *refdata.DEVICE_TYPES]).grid(
+            row=2, column=1, padx=6, pady=3, sticky="w")
+        tk.Label(frm, text="(KLA 는 '호기 선택' 화면에서 숨길 수 있습니다)",
+                 bg=self.p["bg"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).grid(row=3, column=1, sticky="w")
 
         def ok():
             name = name_var.get().strip()
             if not name:
                 messagebox.showwarning("입력", "호기 이름을 입력하세요.", parent=win)
                 return
-            added = refdata.add_machine(self.ip_rows, name, ip_var.get().strip())
+            added = refdata.add_machine(self.ip_rows, name, ip_var.get().strip(),
+                                        dtype=dtype_var.get().strip())
             self._save_refdata()
             win.destroy()
             self._render()
@@ -1720,16 +1754,18 @@ class EquipApp(tk.Tk):
                       bg=self.p["surface"], fg=self.p["primary"],
                       font=self.fonts["bold"], cursor="hand2",
                       command=self._ip_add).pack(side="left", pady=4)
-            tk.Label(btnbar, text="  (호기·IP · 장비 IP 주소.xlsx 에 자동 저장 · 호기 버튼·값 "
-                                  "업데이트의 기준)", bg=self.p["bg"], fg=self.p["muted"],
+            tk.Label(btnbar, text="  (호기·IP·장비종류(Camtek/KLA)·접속ID · 장비 IP "
+                                  "주소.xlsx 에 자동 저장 · 호기 버튼·값 업데이트의 기준)",
+                     bg=self.p["bg"], fg=self.p["muted"],
                      font=self.fonts["sub"]).pack(side="left")
         headers = refdata.IP_HEADERS
-        data = [[engine._s(r.get("호기")), engine._s(r.get("IP"))]
-                for r in self.ip_rows] or [["", ""]]
+        data = [[engine._s(r.get("호기")), engine._s(r.get("IP")),
+                 engine._s(r.get("장비종류")), engine._s(r.get("접속ID"))]
+                for r in self.ip_rows] or [["", "", "", ""]]
         s = self._make_table(headers, data, col_edit=False, force_edit=True,
                              read_only=not editable)
         s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
-        for i, w in enumerate((160, 220)):
+        for i, w in enumerate((140, 200, 120, 140)):
             try:
                 s.column_width(column=i, width=w)
             except Exception:
@@ -1749,13 +1785,15 @@ class EquipApp(tk.Tk):
             if not ho:
                 continue
             rows.append({"호기": ho,
-                         "IP": engine._s(row[1]).strip() if len(row) > 1 else ""})
+                         "IP": engine._s(row[1]).strip() if len(row) > 1 else "",
+                         "장비종류": engine._s(row[2]).strip() if len(row) > 2 else "",
+                         "접속ID": engine._s(row[3]).strip() if len(row) > 3 else ""})
         self.ip_rows = rows
         self._save_refdata()
         self._set_status("장비 IP 저장됨(호기 목록 갱신)")
 
     def _ip_add(self):
-        self.ip_rows.append({"호기": "", "IP": ""})
+        self.ip_rows.append({"호기": "", "IP": "", "장비종류": "", "접속ID": ""})
         self._render()
 
     # ====================================================================

@@ -25,7 +25,12 @@ REF_SHEET = "참고자료"
 SPECIAL_SHEET = "특이사항"
 # 접속ID 는 장비마다 다를 수 있고 **여러 사람이 같이 써야 하므로** 공유 파일에 둔다.
 # (비밀번호는 절대 저장하지 않는다 — 메모리에만.)
-IP_HEADERS = ["호기", "IP", "접속ID"]
+# 장비종류 = 'Camtek' / 'KLA'(빈칸=미지정). KLA 호기(K1~K6 등)는 호기 선택에서
+# 숨길 수 있게 한다(설정). 구 파일(열 없음)은 로드 시 빈 값, 저장 시 열이 생긴다.
+IP_HEADERS = ["호기", "IP", "장비종류", "접속ID"]
+DEVICE_CAMTEK = "Camtek"
+DEVICE_KLA = "KLA"
+DEVICE_TYPES = [DEVICE_CAMTEK, DEVICE_KLA]
 DEFAULT_LOGIN_ID = "amkor"          # 비어 있을 때만 쓰는 기본값
 REF_DEFAULT_HEADERS = ["구분", "내용", "비고"]     # 자유형이라 사람이 바꿔도 됨
 SPECIAL_HEADERS = list(engine.SPECIAL_HEADERS)
@@ -97,7 +102,7 @@ def create_blank_ip(path: str) -> str:
     ws.title = IP_SHEET
     ws.append(IP_HEADERS)
     _style_header(ws)
-    for col, w in zip("ABC", (14, 18, 16)):
+    for col, w in zip("ABCD", (14, 18, 12, 16)):
         ws.column_dimensions[col].width = w
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     wb.save(path)
@@ -122,7 +127,9 @@ def load_ip(path: str) -> list[dict]:
             continue
         uid = (engine._s(row[hidx["접속ID"]]).strip()
                if "접속ID" in hidx and hidx["접속ID"] < len(row) else "")
-        out.append({"호기": ho, "IP": ip, "접속ID": uid})
+        dtype = (engine._s(row[hidx["장비종류"]]).strip()
+                 if "장비종류" in hidx and hidx["장비종류"] < len(row) else "")
+        out.append({"호기": ho, "IP": ip, "장비종류": dtype, "접속ID": uid})
     wb.close()
     return out
 
@@ -135,19 +142,46 @@ def save_ip(path: str, rows: list[dict]) -> str:
     for r in rows:
         ws.append([engine._s(r.get(h)) for h in IP_HEADERS])
     _style_header(ws)
-    for col, w in zip("ABC", (14, 18, 16)):
+    for col, w in zip("ABCD", (14, 18, 12, 16)):
         ws.column_dimensions[col].width = w
     wb.save(path)
     return path
 
 
-def machines(ip_rows: list[dict]) -> list[str]:
+def machines(ip_rows: list[dict], hide_types: list[str] | None = None) -> list[str]:
+    """호기 목록. hide_types 에 든 장비종류(예: ['KLA'])는 제외한다."""
+    hide = {engine._s(t).strip().upper() for t in (hide_types or [])}
     out = []
     for r in ip_rows:
         m = engine._s(r.get("호기")).strip()
-        if m and m not in out:
-            out.append(m)
+        if not m or m in out:
+            continue
+        if hide and engine._s(r.get("장비종류")).strip().upper() in hide:
+            continue
+        out.append(m)
     return out
+
+
+def device_type_for(ip_rows: list[dict], machine: str) -> str:
+    """호기의 장비종류('Camtek'/'KLA'/''). 미지정이면 빈 문자열."""
+    mm = engine._s(machine).strip()
+    for r in ip_rows:
+        if engine._s(r.get("호기")).strip() == mm:
+            return engine._s(r.get("장비종류")).strip()
+    return ""
+
+
+def set_device_type(ip_rows: list[dict], machine: str, dtype: str) -> bool:
+    """호기의 장비종류를 기록(공유 파일 저장용). 반환: 바뀌었는가."""
+    mm = engine._s(machine).strip()
+    dtype = engine._s(dtype).strip()
+    for r in ip_rows:
+        if engine._s(r.get("호기")).strip() == mm:
+            if engine._s(r.get("장비종류")).strip() == dtype:
+                return False
+            r["장비종류"] = dtype
+            return True
+    return False
 
 
 def ip_for(ip_rows: list[dict], machine: str) -> str:
@@ -183,14 +217,18 @@ def set_login_id(ip_rows: list[dict], machine: str, login_id: str) -> bool:
     return False
 
 
-def add_machine(ip_rows: list[dict], machine: str, ip: str = "") -> bool:
+def add_machine(ip_rows: list[dict], machine: str, ip: str = "",
+                dtype: str = "") -> bool:
     machine = engine._s(machine).strip()
     for r in ip_rows:
         if engine._s(r.get("호기")).strip() == machine:
             if ip:
                 r["IP"] = ip
+            if dtype:
+                r["장비종류"] = engine._s(dtype).strip()
             return False
-    ip_rows.append({"호기": machine, "IP": engine._s(ip).strip()})
+    ip_rows.append({"호기": machine, "IP": engine._s(ip).strip(),
+                    "장비종류": engine._s(dtype).strip()})
     return True
 
 
