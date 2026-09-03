@@ -94,6 +94,13 @@ def icon_path() -> str | None:
     return p if os.path.isfile(p) else None
 
 
+def data_path(name: str) -> str | None:
+    """param_manager/data/{name} 절대경로. 없으면 None.
+    (PyInstaller 는 --add-data 로 data 폴더를 함께 넣으므로 exe 에서도 동작.)"""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", name)
+    return p if os.path.isfile(p) else None
+
+
 def _sanitize_name(s: str) -> str:
     import re
     return re.sub(r'[<>:"/\\|?*]+', "_", str(s)).strip().strip(".") or "item"
@@ -2836,10 +2843,16 @@ class EquipApp(tk.Tk):
         tk.Label(win, text="변형(레시피)별 변환 계수를 확인하세요.", bg=self.p["bg"],
                  fg=self.p["text"], font=self.fonts["bold"]).pack(anchor="w", padx=14,
                                                                   pady=(12, 2))
-        tk.Label(win, text="RTP.txt(표시값)와 ini(원본값)를 비교해 계수를 자동 추정했습니다. "
+        hint = tk.Frame(win, bg=self.p["bg"])
+        hint.pack(fill="x", padx=14)
+        tk.Label(hint, text="RTP.txt(표시값)와 ini(원본값)를 비교해 계수를 자동 추정했습니다. "
                           "추천값을 확인하고 필요하면 수정하세요(목록에서 고르거나 직접 입력).",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left", wraplength=560).pack(anchor="w", padx=14)
+                 justify="left", wraplength=520).pack(side="left", anchor="w")
+        tk.Button(hint, text="❓ RTP 계수란?", relief="flat", bd=0,
+                  bg=self.p["primary_lt"], fg=self.p["primary"], font=self.fonts["sub"],
+                  padx=10, pady=2, cursor="hand2",
+                  command=lambda: self._rtp_coef_help(win)).pack(side="right", padx=(8, 0))
         opts = [f"{s:.16g}" for s in ini_parser.KNOWN_SCALES]
         grid = tk.Frame(win, bg=self.p["bg"])
         grid.pack(fill="both", expand=True, padx=14, pady=8)
@@ -2868,6 +2881,12 @@ class EquipApp(tk.Tk):
                 fg = self.p["danger"]
             tk.Label(grid, text=note, bg=self.p["bg"], fg=fg,
                      font=self.fonts["sub"]).grid(row=i, column=2, sticky="w", padx=6)
+            # 오른쪽 [?] — 클릭하면 RTP 화면에서 계수를 어디서 보는지 그림으로 안내.
+            tk.Button(grid, text="?", relief="flat", bd=0, width=2,
+                      bg=self.p["primary"], fg="#ffffff", font=self.fonts["bold"],
+                      cursor="hand2",
+                      command=lambda: self._rtp_coef_help(win)).grid(
+                      row=i, column=3, sticky="w", padx=6)
         res = {"val": None}
 
         def ok():
@@ -2891,6 +2910,57 @@ class EquipApp(tk.Tk):
                   cursor="hand2", command=win.destroy).pack(side="left", padx=6)
         win.wait_window()
         return res["val"]
+
+    def _rtp_coef_help(self, parent=None):
+        """RTP 변환 계수 설명창 — 장비 RTP 화면 스크린샷에서 계수가 표시되는 위치를
+        화살표로 가리켜 준다. 예) 좌측 상단 'RTP {0.77} Microns' 의 0.77 을 계수로 입력."""
+        img_file = data_path("rtp_coef_help.png")
+        win = tk.Toplevel(parent or self)
+        win.title("RTP 변환 계수 — 어디서 보나요?")
+        win.configure(bg=self.p["bg"])
+        win.transient(parent or self)
+        win.grab_set()
+        tk.Label(win, text="RTP 변환 계수는 장비 RTP 화면 좌측 상단에 표시됩니다.",
+                 bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
+                 anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win, text="아래 화살표가 가리키는 'RTP {0.77} Microns' 처럼 중괄호 { } "
+                          "안의 값(예: 0.77)을 그대로 계수로 입력하세요.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=620).pack(anchor="w", padx=14, pady=(0, 8))
+        if not img_file:
+            tk.Label(win, text="(설명 이미지를 찾지 못했습니다: data/rtp_coef_help.png)",
+                     bg=self.p["bg"], fg=self.p["danger"],
+                     font=self.fonts["sub"]).pack(padx=14, pady=10)
+        else:
+            try:
+                img = tk.PhotoImage(file=img_file)
+                # 원본 1225x1051 → 절반으로 축소(화면에 맞게).
+                img = img.subsample(2, 2)
+                iw, ih = img.width(), img.height()
+                cv = tk.Canvas(win, width=iw, height=ih, bg=self.p["surface"],
+                               highlightthickness=1,
+                               highlightbackground=self.p["border"])
+                cv.pack(padx=14, pady=(0, 10))
+                cv.create_image(0, 0, anchor="nw", image=img)
+                cv._img_ref = img            # GC 방지(참조 유지)
+                # 좌측 상단 제목('RTP {0.77} Microns')을 가리키는 화살표 + 라벨.
+                tx, ty = 92, 12              # 제목 대략 위치(축소 좌표계)
+                ax, ay = 250, 92             # 화살표 시작점
+                cv.create_line(ax, ay, tx, ty, fill=self.p["danger"], width=3,
+                               arrow="last", arrowshape=(14, 16, 6))
+                cv.create_rectangle(tx - 4, ty - 3, tx + 150, ty + 20,
+                                    outline=self.p["danger"], width=2)
+                cv.create_text(ax + 8, ay + 4, anchor="nw",
+                               text="◀ 이 값(예: 0.77)을 계수로 입력",
+                               fill=self.p["danger"], font=self.fonts["bold"])
+            except Exception as e:  # noqa: BLE001
+                self._logerr("E145", e)
+                tk.Label(win, text=f"(이미지를 표시할 수 없습니다: {e})",
+                         bg=self.p["bg"], fg=self.p["danger"],
+                         font=self.fonts["sub"]).pack(padx=14, pady=10)
+        tk.Button(win, text="닫기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=4, cursor="hand2",
+                  command=win.destroy).pack(pady=(0, 12))
 
     def _pick_levels(self, levels, title="취합할 레시피를 선택하세요"):
         """레시피 다중 선택 알림창 — 레시피별 최신 양식 정보 표시. 반환: 목록/None."""
