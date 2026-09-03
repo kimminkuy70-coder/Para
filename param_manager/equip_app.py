@@ -577,7 +577,7 @@ class EquipApp(tk.Tk):
     def _screen_recipe_pick(self, st):
         wrap = tk.Frame(self.body, bg=self.p["bg"])
         wrap.pack(fill="both", expand=True, padx=28, pady=(22, 8))
-        tk.Label(wrap, text=f"{st['machine']} — 레시피 선택", bg=self.p["bg"],
+        tk.Label(wrap, text=f"{st['machine']} — Recipe 선택", bg=self.p["bg"],
                  fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w", pady=(0, 2))
         tk.Label(wrap, text="확인할 레시피를 선택하세요(레시피(레벨)별로 한 줄씩 묶었습니다).",
                  bg=self.p["bg"], fg=self.p["muted"],
@@ -616,17 +616,20 @@ class EquipApp(tk.Tk):
         vbar.pack(side="right", fill="y")
         self._wheelify(canvas)
 
-        tk.Label(inner, text="(레시피(레벨) 이름·카드를 우클릭하면 그 레시피를 취합에서 "
-                            "삭제할 수 있습니다)", bg=self.p["bg"], fg=self.p["muted"],
+        tk.Label(inner, text="(레시피(레벨) 이름·카드를 우클릭하면 삭제할 수 있습니다. "
+                            "삭제는 특정 호기가 아니라 모든 호기 공통으로 적용됩니다.)",
+                 bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(anchor="w", pady=(0, 4))
-        for lvl in levels:
+        for idx, lvl in enumerate(levels, start=1):
             variants = sorted(v for (l, v) in combos if l == lvl)
             kind = "RDL" if lvl.upper().startswith("RDL") else "PI"
             block = tk.Frame(inner, bg=self.p["bg"])
-            block.pack(fill="x", anchor="w", pady=(6, 2))
-            hdr = tk.Label(block, text=lvl, bg=self.p["bg"], fg=self.p["text"],
-                           font=self.fonts["bold"], cursor="hand2")
-            hdr.pack(anchor="w", pady=(4, 2))
+            block.pack(fill="x", anchor="w", pady=(10, 2))
+            # 상위 레시피(레벨) 헤더 — 번호 + 큰 글씨 + 강조색으로 가독성 개선.
+            hdr = tk.Label(block, text=f"{idx}.  {lvl}", bg=self.p["bg"],
+                           fg=self.p["primary"], font=self.fonts["title"],
+                           cursor="hand2")
+            hdr.pack(anchor="w", pady=(4, 4))
             hdr.bind("<Button-3>", lambda e, l_=lvl: self._recipe_delete_menu(e, l_))
             rowf = tk.Frame(block, bg=self.p["bg"])
             rowf.pack(anchor="w", fill="x")
@@ -716,7 +719,11 @@ class EquipApp(tk.Tk):
         win.grab_set()
         tk.Label(win, text=f"'{level}' 레시피를 삭제합니다", bg=self.p["bg"],
                  fg=self.p["danger"],
-                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(14, 6))
+                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(14, 2))
+        tk.Label(win, text="⚠ 이 삭제는 특정 호기만이 아니라 모든 호기 공통으로 적용됩니다 "
+                          "(양식 폴더·최신 취합 시트 전체).",
+                 bg=self.p["bg"], fg=self.p["danger"], font=self.fonts["bold"],
+                 wraplength=520, justify="left").pack(anchor="w", padx=16, pady=(0, 6))
         mb = prev["bytes"] / (1024 * 1024)
         gone = [f"· 양식 폴더 전체 — 버전 {prev['versions']}개 · 파일 "
                 f"{prev['files']}개 · {mb:.1f} MB\n    {prev['dir']}"]
@@ -885,14 +892,32 @@ class EquipApp(tk.Tk):
                   command=win.destroy).pack(side="right")
 
     # ---- 선택 화면 공통 위젯 ------------------------------------------
+    def _card_name_font(self, text):
+        """카드 이름 글자 길이에 맞춘 폰트 — 박스 크기(250×96)를 유지하면서
+        긴 이름이 잘리지 않게 길수록 한 단계씩 줄인다(줄바꿈과 함께 사용)."""
+        if not hasattr(self, "_card_fonts"):
+            from tkinter import font as _tkfont
+            fam = self.p.get("family", "TkDefaultFont")
+            self._card_fonts = {
+                "lg": _tkfont.Font(family=fam, size=15, weight="bold"),
+                "md": _tkfont.Font(family=fam, size=12, weight="bold"),
+                "sm": _tkfont.Font(family=fam, size=10, weight="bold"),
+            }
+        n = len(text or "")
+        return self._card_fonts["lg"] if n <= 10 else (
+            self._card_fonts["md"] if n <= 20 else self._card_fonts["sm"])
+
     def _big_button(self, parent, text, desc, cmd):
         card = tk.Frame(parent, bg=self.p["surface"], width=250, height=96,
                         highlightbackground=self.p["border"], highlightthickness=1,
                         cursor="hand2")
         card.pack(side="left", padx=(0, 10), pady=8)
         card.pack_propagate(False)
+        # 긴 Recipe 이름도 잘리지 않게: 카드 폭에 맞춰 줄바꿈(2~3줄) + 길이별 폰트 축소.
         tk.Label(card, text=text, bg=self.p["surface"], fg=self.p["primary"],
-                 font=self.fonts["title"]).pack(anchor="w", padx=16, pady=(16, 2))
+                 font=self._card_name_font(text), wraplength=218,
+                 justify="left", anchor="w").pack(anchor="w", fill="x",
+                                                  padx=16, pady=(12, 2))
         tk.Label(card, text=desc, bg=self.p["surface"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(anchor="w", padx=16)
         kids = card.winfo_children()
