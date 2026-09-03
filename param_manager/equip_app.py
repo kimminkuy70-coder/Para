@@ -141,8 +141,10 @@ class EquipApp(tk.Tk):
         self._cm: dict = {}                  # {machine, root, plan, lots, staging, ...}
         self.coef_rows: list[dict] = []      # 변환계수.xlsx [호기,MAG,변형,계수,비고]
 
-        # 상단 탭(파라미터 값 확인 / 양식 만들기 / 특이사항 / 참고자료)
+        # 상단 탭(Recipe 관리 / Commonality / 특이사항 / 참고자료 / 장비 IP)
         self.view = "param"
+        # Recipe 관리 내부 2차 탭: manage(값 확인) / form(Recipe 양식 만들기)
+        self.sub_view = "manage"
         # '파라미터 값 확인'은 항상 읽기 전용(최신 취합 스냅샷 표시). 값 채우기는
         # '파라미터 값 업데이트', 양식 수정은 '양식 만들기 → 기존 양식 수정하기'.
 
@@ -240,7 +242,8 @@ class EquipApp(tk.Tk):
         self.tabbar.pack(side="top", fill="x")
         self.tabbar.pack_propagate(False)
         self._tab_btns = {}
-        for key, label in (("param", "파라미터 값 확인"), ("form", "양식 만들기"),
+        # '양식 만들기'는 최상단 탭에서 빼고 'Recipe 관리' 안의 2차 탭으로 넣는다(항목3).
+        for key, label in (("param", "Recipe 관리"),
                            ("commonality", "Commonality 조사"),
                            ("special", "특이사항"), ("reference", "참고자료"),
                            ("ip", "장비 IP")):
@@ -285,14 +288,33 @@ class EquipApp(tk.Tk):
 
     def _set_view(self, key):
         self.view = key
+        if key == "param":
+            self.sub_view = "manage"   # 최상단 탭을 누르면 값 확인으로 초기화
         self._sync_tab_style()
         self._render()      # 내비 위젯 표시/숨김은 _render 가 일괄 처리
 
+    def _recipe_subtabs(self):
+        """Recipe 관리 탭 내부의 2차 탭바(값 확인 / Recipe 양식 만들기)."""
+        bar = tk.Frame(self.body, bg=self.p["head_bg"])
+        bar.pack(side="top", fill="x")
+        for key, label in (("manage", "Recipe 관리"), ("form", "Recipe 양식 만들기")):
+            on = (getattr(self, "sub_view", "manage") == key)
+            b = tk.Button(bar, text=label, relief="flat", bd=0,
+                          font=self.fonts["bold"], padx=18, pady=6, cursor="hand2",
+                          bg=(self.p["primary_lt"] if on else self.p["head_bg"]),
+                          fg=(self.p["primary"] if on else self.p["muted"]),
+                          command=lambda k=key: self._set_subview(k))
+            b.pack(side="left", padx=(10 if key == "manage" else 2, 2), pady=4)
+
+    def _set_subview(self, key):
+        self.sub_view = key
+        self._render()
+
     def _sync_nav_widgets(self):
-        """뒤로/앞으로/처음/크럼 은 '파라미터 값 확인' 탭에서만, 저장 버튼은 편집
+        """뒤로/앞으로/처음/크럼 은 'Recipe 관리 › 값 확인'에서만, 저장 버튼은 편집
         가능한 탭(특이사항/참고자료/장비 IP)에서만 보이게. 어떤 경로로 view 가
         바뀌든(_set_view/직접대입+navigate) _render 가 호출하므로 항상 일치."""
-        want = (self.view == "param")
+        want = (self.view == "param" and getattr(self, "sub_view", "manage") == "manage")
         if getattr(self, "_nav_shown", None) != want:
             self._nav_shown = want
             if want:
@@ -411,11 +433,13 @@ class EquipApp(tk.Tk):
         if self.view == "ip":
             self._view_ip()
             return
-        if self.view == "form":
-            self._view_form()
-            return
         if self.view == "commonality":
             self._view_commonality()
+            return
+        # Recipe 관리 = 2차 탭(값 확인 / Recipe 양식 만들기)
+        self._recipe_subtabs()
+        if getattr(self, "sub_view", "manage") == "form":
+            self._view_form()
             return
         st = self._state()
         self.btn_back.config(state=("normal" if self.nav_idx > 0 else "disabled"))
@@ -1901,10 +1925,10 @@ class EquipApp(tk.Tk):
     def _param_actionbar(self):
         bar = tk.Frame(self.body, bg=self.p["head_bg"])
         bar.pack(side="top", fill="x")
-        tk.Button(bar, text="🔄 파라미터 값 업데이트", relief="flat", bd=0,
+        tk.Button(bar, text="🔄 Recipe 업데이트", relief="flat", bd=0,
                   bg=self.p["primary"], fg="#ffffff", padx=12, pady=5, cursor="hand2",
                   command=self._update_values_dialog).pack(side="left", padx=(10, 4), pady=5)
-        tk.Button(bar, text="🕑 파라미터 이력 확인", relief="flat", bd=0,
+        tk.Button(bar, text="🕑 Recipe 날짜별 비교", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=12, pady=5, cursor="hand2",
                   command=self._history_dialog).pack(side="left", padx=4, pady=5)
         tk.Button(bar, text="↻ 최신 취합 새로고침", relief="flat", bd=0,
