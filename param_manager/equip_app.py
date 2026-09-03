@@ -2589,9 +2589,18 @@ class EquipApp(tk.Tk):
             return
         root = self._cfg.get("local_root", "")
         if not root or not os.path.isdir(root):
-            messagebox.showinfo("로컬 상위 폴더 지정",
-                                "장비에서 받아둔 파일들이 들어 있는 **상위 폴더**를 지정하세요.\n"
-                                "(그 아래 호기 이름 폴더에서 자동으로 찾습니다.)")
+            messagebox.showinfo(
+                "로컬 상위 폴더 지정",
+                "장비에서 받아둔 파일들이 들어 있는 **상위 폴더**를 지정하세요.\n"
+                "(그 아래 호기 이름 폴더에서 자동으로 찾습니다.)\n\n"
+                "▶ 폴더 구조 예시 (이 중 상위 폴더 = AOI-9 또는 Job 을 지정):\n"
+                "   AOI-9\\\n"
+                "    └ Job\\\n"
+                "       └ Setup\\ (또는 Recipes\\)\n"
+                "          └ {레시피}\\\n"
+                "             ├ GlobalRTP.ini\n"
+                "             ├ OpticPreset.ini\n"
+                "             └ Zones\\*.ini")
             root = filedialog.askdirectory(title="로컬 상위 폴더 선택")
             if not root:
                 return
@@ -2927,7 +2936,7 @@ class EquipApp(tk.Tk):
             self._form_level = tk.StringVar(value="PI3")
         wrap = tk.Frame(self.body, bg=self.p["bg"])
         wrap.pack(fill="both", expand=True, padx=24, pady=18)
-        tk.Label(wrap, text="양식 만들기", bg=self.p["bg"], fg=self.p["text"],
+        tk.Label(wrap, text="Recipe 양식 만들기", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w")
         tk.Label(wrap, text="레시피를 고르고 장비/로컬에서 새로 불러오면 ①기존 레시피와 유사도 "
                           "안내(활용/새로 만들기) → ②프로그램 화면 편집기(Zone·Alg·Parameter 계층, "
@@ -2969,10 +2978,10 @@ class EquipApp(tk.Tk):
         box2 = tk.LabelFrame(wrap, text=" ② 불러오기 방식 ", bg=self.p["bg"], fg=self.p["text"],
                              font=self.fonts["bold"], padx=12, pady=10)
         box2.pack(fill="x", pady=(14, 0))
-        tk.Button(box2, text="🖥  장비 폴더에서 신규 불러오기", relief="flat", bd=0,
+        tk.Button(box2, text="🖥  장비 Job 폴더에서 신규 불러오기", relief="flat", bd=0,
                   bg=self.p["primary"], fg="#ffffff", padx=16, pady=8, cursor="hand2",
                   command=lambda: self._form_new(from_equipment=True)).pack(side="left")
-        tk.Button(box2, text="📁  로컬(호기 선택)에서 신규 불러오기", relief="flat", bd=0,
+        tk.Button(box2, text="📁  로컬에서 신규 불러오기", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
                   command=lambda: self._form_new(from_equipment=False)).pack(side="left", padx=8)
         tk.Button(box2, text="✏  기존 양식 수정하기", relief="flat", bd=0,
@@ -4012,8 +4021,9 @@ class EquipApp(tk.Tk):
         # Step 2 — Lot 계획 엑셀
         n_plan = len(cm.get("plan_rows") or [])
         self._cm_step(inner, 2, "Lot 계획 엑셀 (디바이스명/공정번호/S·M/AOI호기)",
-                      f"업로드된 계획: {n_plan}행(이 호기 {mlabel} 기준 필터)"
-                      if n_plan else "템플릿을 만들어 채운 뒤 업로드하세요.", [
+                      (f"업로드된 계획: {n_plan}행(이 호기 {mlabel} 기준 필터)"
+                       if n_plan else "템플릿을 만들어 채운 뒤 업로드하세요.")
+                      + "\n※ 작성 방법은 템플릿 파일의 '사용법' sheet 를 참고하세요.", [
                           ("템플릿 만들기", self._cm_make_template, False),
                           ("계획 업로드", self._cm_upload_plan, True),
                       ], done=bool(cm.get("lots")))
@@ -4278,7 +4288,7 @@ class EquipApp(tk.Tk):
                  justify="left").pack(anchor="w", padx=12, pady=(0, 8))
 
         # ③ 계획 파일 2개
-        b2 = tk.LabelFrame(page, text=" ② 계획 파일 (이름이 다른 두 파일) ",
+        b2 = tk.LabelFrame(page, text=" ② 감시 대상 계획 파일 ",
                            bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"])
         b2.pack(fill="x", padx=16, pady=4)
         wp = tk.StringVar(value=s.watch_plan)
@@ -4309,9 +4319,16 @@ class EquipApp(tk.Tk):
                  f"무엇을 **감시**할지 — 디바이스/공정/호기 (S/M 칸 없음). "
                  f"파일명 예: {cmwatcher.WATCH_PLAN_FILENAME}",
                  template=lambda: self._cmw_make_watch_template(wp, win))
-        file_row(b2, "조사 계획", cp,
-                 f"무엇을 **조사**할지 — 새 S/M 을 생성일자와 함께 여기에 추가합니다. "
-                 f"파일명 예: {cm.PLAN_FILENAME}")
+        # '조사 계획' 은 감시가 자동으로 로컬에 저장하므로 수동 지정칸을 없애고
+        # 저장 경로와 활용법만 안내한다(양식 미지정 대상 → 수동 조사에 업로드).
+        tk.Label(b2, text=(
+            "· Commonality Lot 계획은 감시가 **자동으로** 아래 경로에 저장합니다:\n"
+            f"    로컬 ▸ 자동감시\\{{호기}}\\계획\\{cm.PLAN_FILENAME}\n"
+            "  (새로 찾은 S/M 을 생성일자와 함께 이 파일에 추가)\n"
+            "· **양식이 지정되지 않은 대상**은 이 계획 파일을 'Commonality 조사' 탭의\n"
+            "  '계획 업로드'로 올려서 수동으로 조사를 진행하세요."),
+            bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+            justify="left").pack(anchor="w", padx=32, pady=(6, 6))
 
         # ④ 호기 + 대상별 양식
         b3 = tk.LabelFrame(page, text=" ③ 감시할 호기와 양식 ", bg=self.p["bg"],
@@ -6318,7 +6335,9 @@ class EquipApp(tk.Tk):
                     "   임시파일이 전원에게 동기화되어 보안 경고가 다시 발생합니다.\n"
                     "   그래서 안전한 위치를 기본값으로 제안합니다.\n"
                     if in_od else "")
-            msg = ("작업 중 만들어지는 파일을 모아 둘 **로컬 폴더**입니다.\n\n"
+            msg = ("Commonality 결과 파일 및 프로그램 데이터를 저장할 "
+                   "**로컬 폴더**입니다.\n"
+                   "(OneDrive 가 아니라 내 PC 에만 두어 동기화 폭주를 막습니다.)\n\n"
                    f"  {root}\n\n"
                    "이 폴더 하나에 아래가 모두 들어갑니다:\n"
                    "  · Temp        수집 임시본(작업 끝나면 자동 삭제)\n"
@@ -6815,11 +6834,16 @@ class EquipApp(tk.Tk):
     def _choose_save_dir(self, first=False) -> bool:
         if first:
             messagebox.showinfo(
-                "저장 폴더 지정",
-                "프로그램이 사용할 저장 폴더를 지정하세요.\n"
-                "이 폴더 안에 참고자료.xlsx·특이사항.xlsx 와 '양식'·'파라미터 값 취합' "
-                "폴더가 만들어집니다.")
-        d = filedialog.askdirectory(title="저장 폴더 선택")
+                "저장 폴더 지정 (Recipe 관리 파일)",
+                "Recipe 관리 파일을 저장할 OneDrive 공유 폴더를 지정하세요.\n\n"
+                "▶ 지정 방법:\n"
+                "   Amkor Technology 폴더로 들어가\n"
+                "   \"Camtek AOI Parameter 취합\" 폴더를 선택하세요.\n\n"
+                "이 폴더 안에 장비 IP 주소·참고자료·특이사항·변환계수(.xlsx) 와\n"
+                "'양식'·'파라미터 값 취합' 폴더가 만들어져 팀원과 공유됩니다.")
+        d = filedialog.askdirectory(
+            title="Recipe 관리 저장 폴더 선택 "
+                  "(Amkor Technology ▸ Camtek AOI Parameter 취합)")
         if not d:
             return False
         self.save_dir = d
