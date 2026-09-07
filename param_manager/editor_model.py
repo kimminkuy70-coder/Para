@@ -92,7 +92,10 @@ def build_grid(entries, multi_variant, disp_fn) -> dict:
     """entries → 평면 격자(2차원 data) + 계층 매핑.
 
     반환 dict:
-      data      : [[use(bool), 항목, 분류라벨, 원본값, 표시값], ...]
+      data      : [[use(bool), 원본 항목, 장비 화면 항목 이름, 분류라벨, 원본값, 표시값], ...]
+        · 원본 항목(col1) = ini 원본 이름(reco, 읽기전용 참조)
+        · 장비 화면 항목 이름(col2) = 화면 표시용 이름(name, 편집 대상)
+        헤더행(변형/Zone/Alg)은 col1 에 계층 라벨, 나머지는 빈칸.
       kinds     : 각 행 종류 'variant'/'zone'/'alg'/'param'
       row_entry : 시트행 → entry(파라미터 행만)
       descend_param/descend_head : 헤더행 → 하위 파라미터/헤더 시트행
@@ -108,9 +111,10 @@ def build_grid(entries, multi_variant, disp_fn) -> dict:
     data, kinds = [], []
     row_entry, descend_param, descend_head, ancestors = {}, {}, {}, {}
 
-    def add_row(kind, use, label, trans="", raw="", disp="", anc=()):
+    def add_row(kind, use, col1, col2="", trans="", raw="", disp="", anc=()):
+        # col1 = 원본 항목(파라미터) 또는 계층 라벨(헤더), col2 = 장비 화면 항목 이름
         i = len(data)
-        data.append([bool(use), label, trans, raw, disp])
+        data.append([bool(use), col1, col2, trans, raw, disp])
         kinds.append(kind)
         ancestors[i] = list(anc)
         if kind != "param":
@@ -140,7 +144,8 @@ def build_grid(entries, multi_variant, disp_fn) -> dict:
                 for h in z_anc:
                     descend_head[h].append(a_row)
                 for e in items:
-                    pr = add_row("param", e["use"], e["name"], e["label"],
+                    # 원본 항목 = e["reco"](ini 원본), 표시 이름 = e["name"](편집)
+                    pr = add_row("param", e["use"], e["reco"], e["name"], e["label"],
                                  engine._s(e["raw"]), disp_fn(e, e["label"]),
                                  anc=a_anc)
                     row_entry[pr] = e

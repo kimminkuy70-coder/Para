@@ -45,10 +45,11 @@ def _confirm_from_grid(grid, coef_map, name_edits=None, method_edits=None,
         e = grid["row_entry"][r]
         selected.append({
             "use": check_edits.get(r, data[r][0]),
-            "name": name_edits.get(r, data[r][1]),
+            # 새 열 구성: [use, 원본항목(col1), 장비화면이름(col2), 변환(col3), 원본값, 표시값]
+            "name": name_edits.get(r, data[r][2]),
             "reco": e["reco"], "variant": e["variant"],
             "zone": e["zone"], "alg": e["alg"], "ext": e["ext"],
-            "method": method_edits.get(r, data[r][2]),
+            "method": method_edits.get(r, data[r][3]),
             "coef": coef_map.get(e["variant"], ini_parser.DEFAULT_SCALE)})
     return selected
 

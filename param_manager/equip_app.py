@@ -3740,6 +3740,11 @@ class EquipApp(tk.Tk):
                     ("기존 양식 수정" if default_use else "새로 만들기(추천 항목 체크)"))
         tk.Label(left, text=f"{level}  ·  {base_txt}", bg=self.p["surface"],
                  fg=self.p["text"], font=self.fonts["title"]).pack(anchor="w")
+        tk.Label(left, text="‘원본 항목(ini)’은 장비 파일의 원래 이름(참조·수정 불가)입니다. "
+                          "‘장비 화면 항목 이름’ 열만 고치면 프로그램 화면에 그 이름으로 "
+                          "표시됩니다(원본은 그대로 남아 매칭에 사용).",
+                 bg=self.p["surface"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=760).pack(anchor="w", pady=(2, 0))
         cbar = tk.Frame(left, bg=self.p["surface"])
         cbar.pack(anchor="w", pady=(4, 0))
         tk.Label(cbar, text="변형별 변환계수(수정 후 [적용]=표시값 일괄 갱신):",
@@ -3766,7 +3771,8 @@ class EquipApp(tk.Tk):
         body.pack(fill="both", expand=True, padx=10, pady=8)
 
         multi_variant = len(variants) > 1
-        HDR = ["사용", "항목", "분류(변환방식)", "원본값", "표시값(계수적용)"]
+        HDR = ["사용", "원본 항목(ini)", "장비 화면 항목 이름", "분류(변환방식)",
+               "원본값", "표시값(계수적용)"]
         try:                                          # 격자 구성(파일 의존)
             grid = editor_model.build_grid(entries, multi_variant, disp_of)
         except Exception as _e:  # noqa: BLE001
@@ -3793,7 +3799,7 @@ class EquipApp(tk.Tk):
             win.destroy()
             return
         try:
-            sheet.set_column_widths([56, 430, 250, 130, 150])
+            sheet.set_column_widths([56, 300, 300, 130, 120, 150])
         except Exception as _e:  # noqa: BLE001
             self._logerr("E211", _e)
 
@@ -3826,14 +3832,14 @@ class EquipApp(tk.Tk):
                 return
             e = row_entry.get(r)
             if e is not None:
-                sheet.set_cell_data(r, 4, disp_of(e, label), redraw=False)
+                sheet.set_cell_data(r, 5, disp_of(e, label), redraw=False)
             sheet.refresh()
 
         def refresh_all():                               # 계수 [적용]=표시값 일괄 갱신
             for r in param_r:
                 e = row_entry[r]
-                label = engine._s(sheet.get_cell_data(r, 2))
-                sheet.set_cell_data(r, 4, disp_of(e, label), redraw=False)
+                label = engine._s(sheet.get_cell_data(r, 3))
+                sheet.set_cell_data(r, 5, disp_of(e, label), redraw=False)
             sheet.refresh()
 
         def set_all(val):
@@ -3850,15 +3856,16 @@ class EquipApp(tk.Tk):
         #   열 단위로 걸면 헤더 행에서도 드롭다운이 떠 셀 단위로 개별 적용한다.
         for r in param_r:
             try:
-                sheet.dropdown(f"C{r + 1}", values=label_values, edit_data=False,
+                sheet.dropdown(f"D{r + 1}", values=label_values, edit_data=False,
                                selection_function=on_dd, redraw=False)
             except Exception as _e:  # noqa: BLE001
                 self._logerr("E213", _e)
-        # 읽기전용: 원본값/표시값 열 전체 + 헤더행의 항목·분류 셀
+        # 읽기전용: 원본 항목(B)·원본값(E)·표시값(F) 열 전체 + 헤더행의 이름/분류 셀.
+        #   → '원본 항목'은 ini 원본 그대로(참조), 편집은 '장비 화면 항목 이름'(C)만.
         try:
-            sheet.readonly("D"); sheet.readonly("E")
+            sheet.readonly("B"); sheet.readonly("E"); sheet.readonly("F")
             for hr in header_rows:
-                sheet.readonly(f"B{hr + 1}"); sheet.readonly(f"C{hr + 1}")
+                sheet.readonly(f"C{hr + 1}"); sheet.readonly(f"D{hr + 1}")
         except Exception as _e:  # noqa: BLE001
             self._logerr("E214", _e)
         # 계층 헤더 행 색칠(가독성)
@@ -3953,10 +3960,12 @@ class EquipApp(tk.Tk):
                     e = row_entry[r]
                     selected.append({
                         "use": bool(sheet.get_cell_data(r, 0)),
-                        "name": sheet.get_cell_data(r, 1),
+                        # 장비 화면 항목 이름(C, col2)이 표시 이름 = 저장 Parameter.
+                        # 비우면 build_records 가 원본(reco)으로 폴백한다.
+                        "name": sheet.get_cell_data(r, 2),
                         "reco": e["reco"], "variant": e["variant"],
                         "zone": e["zone"], "alg": e["alg"], "ext": e["ext"],
-                        "method": sheet.get_cell_data(r, 2),
+                        "method": sheet.get_cell_data(r, 3),
                         "coef": coef_of(e["variant"])})
                 records, extracts, used_scales = editor_model.build_records(
                     selected, level)
