@@ -66,6 +66,48 @@ def test_new_form_autofill_but_edit_keeps():
     ok("새로 파싱=자동 채움(base 유무 무관) / 기존 양식 그대로 열기=이름 유지")
 
 
+def test_use_checkbox_memory():
+    """확정한 체크박스 상태(사용 Y/N)를 기억해 새 양식에서 파서 기본값을 덮어쓴다."""
+    rows = []
+    selected = [
+        {"alg": "Genesis", "ext": {"key": "BrightSeedTh"},
+         "name": "밝기 민감도", "reco": "Bright Sensitivity", "use": True},
+        {"alg": "Surface", "ext": {"key": "Elongation"},
+         "name": "Elongation", "reco": "Elongation", "use": False},
+    ]
+    assert ns.apply_selected(rows, selected) == 2
+    assert rows[0]["사용"] == "Y" and rows[1]["사용"] == "N"
+    # 파일 왕복 후에도 사용 상태 보존
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, ns.NAME_FILENAME)
+    ns.save(p, rows)
+    back = ns.load(p)
+    assert ns.use_of(back, "Genesis", "BrightSeedTh") is True
+    assert ns.use_of(back, "Surface", "Elongation") is False
+    assert ns.use_of(back, "Surface", "NeverSeen") is None
+    # 새 양식: 파서 기본값과 반대라도 기억한 체크 상태가 우선
+    pivot = [_pivot("Genesis", "BrightSeedTh", "Bright Sensitivity", use=False),
+             _pivot("Surface", "Elongation", "Elongation", use=True)]
+    ents = em.build_entries(pivot, base_keys=None,
+                            name_lookup=ns.make_lookup(back),
+                            use_lookup=ns.make_use_lookup(back))
+    assert ents[0]["use"] is True and ents[0]["name"] == "밝기 민감도"
+    assert ents[1]["use"] is False
+    ok("체크박스 상태 기억·파일 왕복·새 양식 자동 적용(파서 기본값 덮어씀)")
+
+
+def test_use_overrides_base_keys():
+    """기존 레시피 활용(base_keys)로 체크될 항목도 기억한 사용=N 이면 해제된다."""
+    rows = [{"Alg": "Surface", "원본항목": "Elongation", "장비화면이름": "Elongation",
+             "사용": "N", "비고": ""}]
+    pivot = [_pivot("Surface", "Elongation", "Elongation")]
+    ents = em.build_entries(
+        pivot, base_keys={("surface", "surface", "elongation")},
+        name_lookup=ns.make_lookup(rows), use_lookup=ns.make_use_lookup(rows))
+    assert ents[0]["use"] is False       # base_keys 로는 체크지만 기억이 우선
+    ok("기억한 사용 상태가 base_keys 보다 우선")
+
+
 def test_upsert_last_write_wins():
     rows = []
     ns.upsert(rows, "Surface", "EdgeUncert_Bright", "밝기 불확실")

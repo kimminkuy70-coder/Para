@@ -54,15 +54,17 @@ def safe_display(raw, method, coef) -> str:
         return engine._s(raw)
 
 
-def build_entries(rows, base_keys=None, default_use=None, name_lookup=None) -> list[dict]:
-    """파싱 rows → 편집기 entries. 사용 여부 규칙:
-      base_keys 지정=기존 양식의 사용 키와 일치하면 선택 / default_use 지정=일괄 값 /
-      둘 다 없으면 파서 use 플래그(새로 만들기=추천 Y 항목 체크).
+def build_entries(rows, base_keys=None, default_use=None,
+                  name_lookup=None, use_lookup=None) -> list[dict]:
+    """파싱 rows → 편집기 entries. 사용 여부 규칙(우선순위 높은 것부터):
+      use_lookup 지정 & 값 있음=지난번 저장한 체크박스 상태 / base_keys 지정=기존 양식의
+      사용 키와 일치 / default_use 지정=일괄 값 / 둘 다 없으면 파서 use 플래그.
 
     name_lookup(alg, orig) → 저장된 장비 화면 이름|None. **넘어오면 항상** 적용해 지난번
     저장한 이름을 미리 채운다(파서 표시명 param 대신). 기존 양식을 그대로 여는 경로
     (이름이 이미 사람 값)는 호출측에서 name_lookup 을 아예 안 넘겨(None) 원 이름을 지킨다.
-    없으면 파서 표시명(param, KNOWN_DISPLAY_MAP 기본값 포함)을 그대로 쓴다."""
+    use_lookup(alg, orig) → 저장된 체크박스 상태(True/False/None). 같은 (alg,원본항목)을
+    지난번에 체크/해제한 그대로 새 양식에 미리 맞춘다(name_lookup 과 함께만 넘긴다)."""
     entries = []
     for r in rows:
         zone = engine._s(r.get("zone")); alg = engine._s(r.get("alg"))
@@ -81,6 +83,11 @@ def build_entries(rows, base_keys=None, default_use=None, name_lookup=None) -> l
         # orig = 실제 ini 항목 이름(설정 Parameter, 원본 키). param 은 표시명(매핑 적용).
         #   KNOWN_DISPLAY_MAP 으로 이름이 바뀐 항목은 orig(=key) ≠ name(=표시명).
         orig = engine._s(ext.get("key")).strip() or param
+        # '지난번 저장한 체크박스 상태' 가 있으면 그것을 우선(같은 항목 매번 다시 체크 방지).
+        if use_lookup is not None:
+            remembered_use = use_lookup(alg, orig)
+            if remembered_use is not None:
+                use = bool(remembered_use)
         # '지난번 저장한 장비 화면 이름' 자동 채움(name_lookup 이 넘어왔을 때만).
         #   기존 양식을 그대로 여는 경로는 호출측이 name_lookup 을 안 넘겨 원 이름을 지킨다.
         name = param

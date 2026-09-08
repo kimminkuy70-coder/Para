@@ -2930,9 +2930,10 @@ class EquipApp(tk.Tk):
             return 0
         return n
 
-    def _names_from_form(self, records, extracts) -> int:
-        """양식 확정 시 사람이 정한 '장비 화면 항목 이름'을 장비화면이름.xlsx 에 기억한다.
-        (같은 alg·같은 원본 파라미터가 새 양식에 나오면 자동으로 이 이름을 불러온다.)
+    def _names_from_form(self, selected) -> int:
+        """양식 확정 시 사람이 정한 '장비 화면 항목 이름'과 '체크박스 상태'를
+        장비화면이름.xlsx 에 기억한다(같은 alg·같은 원본 파라미터가 새 양식에 나오면
+        자동으로 이름·체크를 맞춘다). selected = 편집기 전체 항목(체크/미체크 모두).
         저장 실패는 양식 확정을 막지 않는다."""
         if not self.save_dir:
             return 0
@@ -2940,12 +2941,12 @@ class EquipApp(tk.Tk):
             rows = getattr(self, "name_rows", None)
             if rows is None:
                 rows = self.name_rows = namestore.load(namestore.name_path(self.save_dir))
-            n = namestore.apply_records(rows, records, extracts)
+            n = namestore.apply_selected(rows, selected)
             if n:
                 namestore.save(namestore.name_path(self.save_dir), rows)
             return n
         except Exception as e:  # noqa: BLE001
-            self._logerr("E146", e)        # 이름 기억 실패는 확정을 막지 않는다
+            self._logerr("E146", e)        # 이름/체크 기억 실패는 확정을 막지 않는다
             return 0
 
     def _coef_report_missing(self, state):
@@ -3759,7 +3760,7 @@ class EquipApp(tk.Tk):
             # 장비 화면 이름 자동 채움: 새로 파싱해 만드는 양식(autoname=True)일 때만.
             #   기존 양식을 그대로 여는(이름이 이미 사람 값) 경로는 autoname=False.
             #   파일을 매번 새로 읽어 엑셀에서 직접 고친 이름도 곧바로 반영되게 한다.
-            name_cb = None
+            name_cb = use_cb = None
             if autoname:
                 if self.save_dir:
                     try:
@@ -3768,9 +3769,10 @@ class EquipApp(tk.Tk):
                     except Exception as _e:  # noqa: BLE001
                         self._logerr("E147", _e)
                 name_cb = namestore.make_lookup(getattr(self, "name_rows", []))
+                use_cb = namestore.make_use_lookup(getattr(self, "name_rows", []))
             entries = editor_model.build_entries(rows, base_keys=base_keys,
                                                  default_use=default_use,
-                                                 name_lookup=name_cb)
+                                                 name_lookup=name_cb, use_lookup=use_cb)
             variants = editor_model.variants_of(entries)
         except Exception as _e:  # noqa: BLE001
             self._err("E200", "편집기 열기 실패(파라미터 해석)", _e)
@@ -4048,8 +4050,9 @@ class EquipApp(tk.Tk):
                 return
             # 편집기에서 고친 변형별 계수를 변환계수.xlsx 에도 반영(사람 확정 = 우선)
             n_coef = self._coef_from_form(aoi, dict(used_scales), rows, level)
-            # 사람이 정한 '장비 화면 항목 이름'을 기억(다음 새 양식에서 자동 채움).
-            self._names_from_form(records, extracts)
+            # 사람이 정한 '장비 화면 항목 이름'과 '체크박스 상태'를 기억
+            # (다음 새 양식에서 같은 항목의 이름·체크를 자동으로 맞춘다).
+            self._names_from_form(selected)
             if on_confirm is not None:               # commonality 등 다른 저장 경로
                 # 확정 전에 **전체 후보 목록('원본')** 을 남긴다 — 다음에 '기존 양식
                 # 수정하기'로 열 때 빼 놓은 항목을 다시 넣을 수 있어야 하므로.
