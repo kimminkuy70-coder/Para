@@ -42,6 +42,7 @@ from . import history as history_mod
 from . import ini_parser
 from . import localdirs
 from . import locking
+from . import namestore
 from . import refdata
 from . import singleinst
 from . import refresh as refresh_mod
@@ -142,6 +143,7 @@ class EquipApp(tk.Tk):
         # Commonality 조사 진행 상태(호기 1대씩) — 세션 메모리
         self._cm: dict = {}                  # {machine, root, plan, lots, staging, ...}
         self.coef_rows: list[dict] = []      # 변환계수.xlsx [호기,MAG,변형,계수,비고]
+        self.name_rows: list[dict] = []      # 장비화면이름.xlsx [Alg,원본항목,장비화면이름,비고]
 
         # 상단 탭(Recipe 관리 / Commonality / 특이사항 / 참고자료 / 장비 IP)
         self.view = "param"
@@ -2892,6 +2894,24 @@ class EquipApp(tk.Tk):
             return 0
         return n
 
+    def _names_from_form(self, records, extracts) -> int:
+        """양식 확정 시 사람이 정한 '장비 화면 항목 이름'을 장비화면이름.xlsx 에 기억한다.
+        (같은 alg·같은 원본 파라미터가 새 양식에 나오면 자동으로 이 이름을 불러온다.)
+        저장 실패는 양식 확정을 막지 않는다."""
+        if not self.save_dir:
+            return 0
+        try:
+            rows = getattr(self, "name_rows", None)
+            if rows is None:
+                rows = self.name_rows = namestore.load(namestore.name_path(self.save_dir))
+            n = namestore.apply_records(rows, records, extracts)
+            if n:
+                namestore.save(namestore.name_path(self.save_dir), rows)
+            return n
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E146", e)        # 이름 기억 실패는 확정을 막지 않는다
+            return 0
+
     def _coef_report_missing(self, state):
         """**값을 읽는 작업은 `변환계수.xlsx` 를 쓰지 않는다**(사용자 확정 2026-08).
 
@@ -3698,8 +3718,11 @@ class EquipApp(tk.Tk):
         label_values = editor_model.LABEL_VALUES
         _method = editor_model.method_of
         try:                                          # 파라미터 해석(파일 의존)
+            # 새 양식이면 (alg,원본항목) 으로 지난번 저장한 장비 화면 이름을 미리 채운다.
+            name_cb = namestore.make_lookup(getattr(self, "name_rows", []))
             entries = editor_model.build_entries(rows, base_keys=base_keys,
-                                                 default_use=default_use)
+                                                 default_use=default_use,
+                                                 name_lookup=name_cb)
             variants = editor_model.variants_of(entries)
         except Exception as _e:  # noqa: BLE001
             self._err("E200", "편집기 열기 실패(파라미터 해석)", _e)
@@ -3977,6 +4000,8 @@ class EquipApp(tk.Tk):
                 return
             # 편집기에서 고친 변형별 계수를 변환계수.xlsx 에도 반영(사람 확정 = 우선)
             n_coef = self._coef_from_form(aoi, dict(used_scales), rows, level)
+            # 사람이 정한 '장비 화면 항목 이름'을 기억(다음 새 양식에서 자동 채움).
+            self._names_from_form(records, extracts)
             if on_confirm is not None:               # commonality 등 다른 저장 경로
                 # 확정 전에 **전체 후보 목록('원본')** 을 남긴다 — 다음에 '기존 양식
                 # 수정하기'로 열 때 빼 놓은 항목을 다시 넣을 수 있어야 하므로.
@@ -7217,6 +7242,11 @@ class EquipApp(tk.Tk):
         except Exception as e:  # noqa: BLE001
             self._err("E140", "변환계수 로드 실패", e)
             self.coef_rows = []
+        try:                                  # 장비 화면 이름 기억(없으면 빈 목록)
+            self.name_rows = namestore.load(namestore.name_path(self.save_dir))
+        except Exception as e:  # noqa: BLE001
+            self._logerr("E147", e)
+            self.name_rows = []
         try:
             self.ip_rows = refdata.load_ip(ipp)
         except Exception as e:  # noqa: BLE001

@@ -54,10 +54,14 @@ def safe_display(raw, method, coef) -> str:
         return engine._s(raw)
 
 
-def build_entries(rows, base_keys=None, default_use=None) -> list[dict]:
+def build_entries(rows, base_keys=None, default_use=None, name_lookup=None) -> list[dict]:
     """파싱 rows → 편집기 entries. 사용 여부 규칙:
       base_keys 지정=기존 양식의 사용 키와 일치하면 선택 / default_use 지정=일괄 값 /
-      둘 다 없으면 파서 use 플래그(새로 만들기=추천 Y 항목 체크)."""
+      둘 다 없으면 파서 use 플래그(새로 만들기=추천 Y 항목 체크).
+
+    name_lookup(alg, orig) → 저장된 장비 화면 이름|None. **새 양식(base_keys=None)일 때만**
+    적용해 지난번 저장한 이름을 미리 채운다(기존 양식 수정은 그 양식의 이름을 유지).
+    없으면 파서 표시명(param, KNOWN_DISPLAY_MAP 기본값 포함)을 그대로 쓴다."""
     entries = []
     for r in rows:
         zone = engine._s(r.get("zone")); alg = engine._s(r.get("alg"))
@@ -76,9 +80,15 @@ def build_entries(rows, base_keys=None, default_use=None) -> list[dict]:
         # orig = 실제 ini 항목 이름(설정 Parameter, 원본 키). param 은 표시명(매핑 적용).
         #   KNOWN_DISPLAY_MAP 으로 이름이 바뀐 항목은 orig(=key) ≠ name(=표시명).
         orig = engine._s(ext.get("key")).strip() or param
+        # 새 양식일 때만 '지난번 저장한 장비 화면 이름' 자동 채움(없으면 표시명 유지).
+        name = param
+        if name_lookup is not None and base_keys is None:
+            remembered = name_lookup(alg, orig)
+            if engine._s(remembered).strip():
+                name = engine._s(remembered).strip()
         entries.append({
             "zone": zone, "alg": alg, "variant": variant, "reco": param,
-            "orig": orig, "raw": raw, "ext": ext, "use": bool(use), "name": param,
+            "orig": orig, "raw": raw, "ext": ext, "use": bool(use), "name": name,
             "label": label_of(mth)})
     return entries
 

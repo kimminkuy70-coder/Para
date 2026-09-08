@@ -397,6 +397,7 @@ python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
+python3 tests/test_namestore.py    # 3  (장비화면이름.xlsx: 확정 시 기억(바뀐 것만)·새 양식 자동채움·기존 양식 수정은 이름 유지·정규화 lookup)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
@@ -573,7 +574,7 @@ python3 tests/test_downloader.py   # 8
 
 ### 저장폴더에 남는 것(전수) — 이 목록 밖의 것을 늘리지 말 것
 
-`장비 IP 주소/참고자료/특이사항/변환계수.xlsx`(4) · `감시설정.json` ·
+`장비 IP 주소/참고자료/특이사항/변환계수/장비화면이름.xlsx`(5) · `감시설정.json` ·
 `양식/{레시피}/{시간}/`(확정 1 + 관련파일 원본·수정본 2 = 회차당 3) ·
 `파라미터 값 취합/`(수동 실행 1개, 무인은 변경 시에만 1개) ·
 `자동감시/`(변경보고서 = 변경 시에만, `감시로그.txt` 1개에 append) ·
@@ -722,6 +723,12 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   load/save/create_blank, `lookup(rows,호기,변형)`(대소문자·구분자 무시·변형 빈 행=공통 폴백),
   `upsert`(사람값 우선), `machine_coefs`(표시), `make_lookup`(scan_tree/collate 공용 콜백
   `(호기,변형)`), `apply_form_scales`(양식 확정 계수 반영). MAG 열은 참고용(매칭 안 함).
+- `param_manager/namestore.py` — **장비화면이름.xlsx (Alg+원본항목→장비 화면 이름) 저장소**
+  (coefstore 와 같은 원칙: 공유 파일·사람 확정 때만 쓰기·조회 읽기전용). `apply_records`
+  (양식 확정 시 표시 이름을 기억, 이름을 실제로 바꾼 것만) · `make_lookup`(editor_model
+  `build_entries(name_lookup=)` 콜백) · `lookup`(정규화·한글 보존, Alg 안 맞아도 원본항목만
+  맞으면 폴백). **자동 채움은 새 양식(base_keys=None)일 때만** — 기존 양식 수정은 그 양식의
+  이름을 유지한다. KNOWN_DISPLAY_MAP 기본 표시명도 이 메커니즘으로 기억/자동채움된다.
 - `param_manager/workdirs.py` — **저장폴더 기준 경로**: `form_run_dir/form_final_path/
   form_original_path/form_draft_path/related_dir/list_form_versions/collate_path/
   latest_collate/list_collate_files` + `form_candidate_path`/`form_version_status`/
