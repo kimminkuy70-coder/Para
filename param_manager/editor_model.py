@@ -73,9 +73,12 @@ def build_entries(rows, base_keys=None, default_use=None) -> list[dict]:
         raw = next((v for v in raws.values() if engine._s(v) != ""), "")
         ext = dict(r.get("extract") or {})
         mth = method_of(ext.get("transform") or "RAW")
+        # orig = 실제 ini 항목 이름(설정 Parameter, 원본 키). param 은 표시명(매핑 적용).
+        #   KNOWN_DISPLAY_MAP 으로 이름이 바뀐 항목은 orig(=key) ≠ name(=표시명).
+        orig = engine._s(ext.get("key")).strip() or param
         entries.append({
             "zone": zone, "alg": alg, "variant": variant, "reco": param,
-            "raw": raw, "ext": ext, "use": bool(use), "name": param,
+            "orig": orig, "raw": raw, "ext": ext, "use": bool(use), "name": param,
             "label": label_of(mth)})
     return entries
 
@@ -93,8 +96,9 @@ def build_grid(entries, multi_variant, disp_fn) -> dict:
 
     반환 dict:
       data      : [[use(bool), 원본 항목, 장비 화면 항목 이름, 분류라벨, 원본값, 표시값], ...]
-        · 원본 항목(col1) = ini 원본 이름(reco, 읽기전용 참조)
-        · 장비 화면 항목 이름(col2) = 화면 표시용 이름(name, 편집 대상)
+        · 원본 항목(col1) = 실제 ini 항목 이름(orig=설정 Parameter 원본 키, 읽기전용)
+        · 장비 화면 항목 이름(col2) = 화면 표시용 이름(name=표시명, 편집 대상)
+          KNOWN_DISPLAY_MAP 으로 이름이 바뀐 항목은 두 열이 서로 다르다.
         헤더행(변형/Zone/Alg)은 col1 에 계층 라벨, 나머지는 빈칸.
       kinds     : 각 행 종류 'variant'/'zone'/'alg'/'param'
       row_entry : 시트행 → entry(파라미터 행만)
@@ -144,8 +148,9 @@ def build_grid(entries, multi_variant, disp_fn) -> dict:
                 for h in z_anc:
                     descend_head[h].append(a_row)
                 for e in items:
-                    # 원본 항목 = e["reco"](ini 원본), 표시 이름 = e["name"](편집)
-                    pr = add_row("param", e["use"], e["reco"], e["name"], e["label"],
+                    # 원본 항목 = 실제 ini 키(e["orig"]), 표시 이름 = e["name"](편집)
+                    pr = add_row("param", e["use"], e.get("orig", e["reco"]),
+                                 e["name"], e["label"],
                                  engine._s(e["raw"]), disp_fn(e, e["label"]),
                                  anc=a_anc)
                     row_entry[pr] = e

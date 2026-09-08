@@ -291,6 +291,35 @@ def test_optic_default_has_no_coefficient():
     assert ip.resolve_transform("Min Defect Width (µm)", "RAW") == "LINEAR"
     ok("OpticPreset 기본 = 계수 미적용(RAW), µ 이름만 변환")
 
+def test_orig_shows_raw_ini_name_display_shows_mapped():
+    """이름이 매핑된 항목: '원본 항목' 열 = 실제 ini 키, '장비 화면 항목 이름' = 표시명.
+    (KNOWN_DISPLAY_MAP 으로 BrightSeedTh→'Bright Sensitivity' 처럼 바뀐 항목 대비)"""
+    rows = [
+        {"zone": "Genesis", "alg": "Genesis", "mag": "PI",
+         "param": "Bright Sensitivity", "raws": {"AOI-1": "99"}, "use": True,
+         "extract": {"src_file": "GlobalRTP.ini", "section": "Genesis",
+                     "key": "BrightSeedTh", "transform": "RAW"}},
+        {"zone": "Surface", "alg": "Surface", "mag": "PI",
+         "param": "Bright Uncertainty", "raws": {"AOI-1": "0"}, "use": True,
+         "extract": {"src_file": "GlobalRTP.ini", "section": "Surface",
+                     "key": "EdgeUncert_Bright", "transform": "RAW"}},
+    ]
+    ents = em.build_entries(rows)
+    assert ents[0]["orig"] == "BrightSeedTh" and ents[0]["name"] == "Bright Sensitivity"
+    assert ents[1]["orig"] == "EdgeUncert_Bright"
+    grid = em.build_grid(ents, False, lambda e, l: "")
+    for r in grid["param_rows"]:
+        row = grid["data"][r]
+        e = grid["row_entry"][r]
+        assert row[1] == e["orig"]        # col1 = 원본 항목(실제 ini 키)
+        assert row[2] == e["name"]        # col2 = 장비 화면 항목 이름(표시명)
+        assert row[1] != row[2]           # 매핑된 항목은 서로 다르다
+    # 매칭은 여전히 설정키(ext) 기준 — 표시 이름을 바꿔도 원본 키 보존
+    recs, exts, _ = em.build_records(_confirm_from_grid(grid, {"PI": 0.8}), "PI3")
+    assert exts[0]["key"] == "BrightSeedTh"
+    ok("원본 항목=실제 ini 키 / 장비 화면 이름=표시명(매핑 반영) 분리")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
