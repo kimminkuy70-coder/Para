@@ -236,7 +236,7 @@ def test_collector_copies_from_dds_read_only():
         staging = Path(tmp) / "staging"
         planned, _plan, _srcs = collector.collect_equipment(
             "10.0.0.5", staging, lambda k, t, items, m: list(items),
-            use_net_use=False, job_root_override=root / "Job",
+            job_root_override=root / "Job",
             confirm=lambda p: True)
         dests = {d for _s, _r, d in planned}
         assert manre.FILENAME in dests, dests
@@ -265,7 +265,7 @@ def test_missing_file_is_not_fatal():
         staging = Path(tmp) / "staging"
         planned, _p, _s = collector.collect_equipment(
             "10.0.0.5", staging, lambda k, t, items, m: list(items),
-            use_net_use=False, job_root_override=root / "Job",
+            job_root_override=root / "Job",
             confirm=lambda p: True)
         dests = {d for _s2, _r, d in planned}
         assert manre.FILENAME not in dests

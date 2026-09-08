@@ -27,42 +27,38 @@ def test_ip_roundtrip_and_machines():
     print("  refdata OK: 장비 IP 왕복 + 호기목록 + IP매칭 + 추가/갱신")
 
 
-def test_login_id_is_shared_per_machine():
-    """장비 접속 ID 는 호기마다 다르고, **공유 파일에 저장**돼야 한다.
-
-    (모두가 amkor 로 고정돼 있으면 계정이 다른 장비에서 로그온 실패가 쌓인다.)
-    """
+def test_device_type_and_legacy_login_id_ignored():
+    """장비종류는 공유 파일에 저장·조회되고, 구 파일의 '접속ID' 열은 **무시**된다
+    (2026-09, net use 접속 삭제 — 프로그램이 계정 정보를 읽지 않는다)."""
     with tempfile.TemporaryDirectory() as d:
         p = refdata.ip_path(d)
-        rows = [{"호기": "AOI-24", "IP": "10.0.0.24"},
-                {"호기": "AOI-25", "IP": "10.0.0.25", "접속ID": "camtek"}]
-        # 안 적혀 있으면 기본값, 적혀 있으면 그 값
-        assert refdata.login_id_for(rows, "AOI-24") == refdata.DEFAULT_LOGIN_ID
-        assert refdata.login_id_for(rows, "AOI-25") == "camtek"
-        assert refdata.login_id_for(rows, "AOI-99") == refdata.DEFAULT_LOGIN_ID
-        # 사람이 고치면 True(바뀜) — 같은 값이면 저장할 필요가 없으므로 False
-        assert refdata.set_login_id(rows, "AOI-24", "svc_aoi") is True
-        assert refdata.set_login_id(rows, "AOI-24", "svc_aoi") is False
-        # 저장 → 다시 읽어도 유지(다른 사람도 같은 값을 본다)
+        rows = [{"호기": "AOI-24", "IP": "10.0.0.24", "장비종류": "Camtek"},
+                {"호기": "K1", "IP": "10.0.0.31", "장비종류": "KLA"}]
+        assert refdata.device_type_for(rows, "AOI-24") == "Camtek"
+        assert refdata.device_type_for(rows, "K1") == "KLA"
+        # KLA 숨김
+        assert refdata.machines(rows, hide_types=["KLA"]) == ["AOI-24"]
+        # 저장 → 다시 읽어도 장비종류 유지, 접속ID 는 파일에 쓰지 않는다
         refdata.save_ip(p, rows)
         back = refdata.load_ip(p)
-        assert refdata.login_id_for(back, "AOI-24") == "svc_aoi"
-        assert refdata.login_id_for(back, "AOI-25") == "camtek"
+        assert refdata.device_type_for(back, "AOI-24") == "Camtek"
         assert refdata.ip_for(back, "AOI-24") == "10.0.0.24", "IP 가 밀리면 안 됨"
-        # 접속ID 열이 없는 구 파일도 그대로 읽혀야 한다(하위호환)
+        assert "접속ID" not in back[0], "접속ID 를 다시 읽어들이면 안 됨"
+        assert not hasattr(refdata, "login_id_for"), "login_id_for 가 남아 있음"
+        # '접속ID' 열이 들어 있는 구 파일도 그대로 읽히되 그 값은 무시된다
         old = refdata.ip_path(os.path.join(d, "old"))
         os.makedirs(os.path.dirname(old), exist_ok=True)
         import openpyxl
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = refdata.IP_SHEET
-        ws.append(["호기", "IP"])
-        ws.append(["AOI-30", "10.0.0.30"])
+        ws.append(["호기", "IP", "접속ID"])
+        ws.append(["AOI-30", "10.0.0.30", "camtek"])
         wb.save(old)
         rows_old = refdata.load_ip(old)
         assert rows_old[0]["IP"] == "10.0.0.30"
-        assert refdata.login_id_for(rows_old, "AOI-30") == refdata.DEFAULT_LOGIN_ID
-    print("  refdata OK: 호기별 접속ID 공유 저장 + 구 파일 하위호환")
+        assert "접속ID" not in rows_old[0], "구 파일의 접속ID 를 읽어들이면 안 됨"
+    print("  refdata OK: 장비종류 공유 + 접속ID(구 파일) 무시")
 
 
 def test_reference_freeform_with_colors():

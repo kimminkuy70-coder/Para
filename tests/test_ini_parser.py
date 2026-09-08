@@ -200,7 +200,7 @@ def test_collector_plan_and_copy():
 
         staging = Path(tmp) / "staging"
         planned, plan, sources = collector.collect_equipment(
-            "10.0.0.1", staging, chooser, use_net_use=False,
+            "10.0.0.1", staging, chooser,
             job_root_override=job_root)
         # 단일 모드 반환: sources = [(폴더, job키워드)]
         assert sources == [(str(staging), "PI3")]
@@ -219,7 +219,7 @@ def test_collector_plan_and_copy():
             return Path(tmp) / "staging2" / kw
 
         planned2, _, sources2 = collector.collect_equipment(
-            "10.0.0.2", staging2, chooser, use_net_use=False,
+            "10.0.0.2", staging2, chooser,
             plan=plan, job_root_override=job_root)
         assert not picks and len(planned2) == 3
         assert got_kw == ["PI3"] and Path(sources2[0][0]).name == "PI3"
@@ -399,7 +399,7 @@ def test_collector_per_level_matching():
 
         staging = Path(tmp) / "staging"
         planned, plan, sources = collector.collect_equipment(
-            "10.0.0.9", staging, chooser, use_net_use=False,
+            "10.0.0.9", staging, chooser,
             job_root_override=job_root,
             target_levels=["Enhanced PI3", "Enhanced PI4"],
             match_recipes=match_recipes)

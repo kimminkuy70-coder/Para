@@ -7,10 +7,11 @@ r"""장비 네트워크(\\IP\c$\Job) 수집기 — recipe_param_extractor_networ
 접속 로그 관련 (IT 감사 대응):
   \\IP\c$ 는 관리공유라 회사 SIEM 에 접속이 기록될 수 있다. 탐색기 수동 접속과
   동일한 SMB 접속이지만, 자동화 빈도가 눈에 띄지 않도록:
-    - 장비 1대씩 순차 접속, 작업 후 즉시 net use /delete
+    - 장비 1대씩 순차 접근
     - \Job 하위만 접근(전역 재귀 탐색 금지)
     - 파일 복사 간 COPY_DELAY_SEC 지연
-    - use_net_use=False 모드: 탐색기에서 이미 연결한 세션을 그대로 사용(수동과 동일)
+    - 접속은 탐색기(Win+R)로 미리 연결한 세션만 사용(net use 접속 삭제, 2026-09 —
+      프로그램이 자격증명으로 관리공유에 로그온하지 않는다)
 
 GUI 와의 결합을 피하기 위해 선택(chooser) 은 콜백으로 주입한다:
     chooser(kind, title, items, multi) -> 선택 항목(리스트) 또는 None(취소)
@@ -21,7 +22,6 @@ from __future__ import annotations
 
 import re
 import shutil
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -51,24 +51,10 @@ class UserCancelled(RuntimeError):
 
 
 # --------------------------------------------------------------------------
-# net use 연결 (Windows 전용, 비밀번호는 메모리에만)
+# net use 연결 기능은 삭제됨(2026-09) — 탐색기(Win+R)로 미리 연결한 세션만 사용한다.
+#   비밀번호를 다루지 않으므로 관리공유 로그온·자격증명 취급이 없어, 보안 소프트웨어가
+#   측면 이동/트로이로 오탐하던 트리거가 사라진다.
 # --------------------------------------------------------------------------
-def connect_admin_share(ip: str, username: str, password: str) -> str:
-    share = rf"\\{ip}\c$"
-    cmd = ["net", "use", share, "*", f"/user:{username}", "/persistent:no"]
-    result = subprocess.run(cmd, input=password + "\n", text=True,
-                            capture_output=True, shell=False)
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"net use 연결 실패: {ip}\n{result.stdout}\n{result.stderr}")
-    return share
-
-
-def disconnect_admin_share(ip: str) -> None:
-    share = rf"\\{ip}\c$"
-    subprocess.run(["net", "use", share, "/delete", "/y"],
-                   text=True, capture_output=True, shell=False)
-
 
 def split_ips(text: str) -> list[str]:
     return [x.strip() for x in re.split(r"[,;\s]+", str(text or "").strip()) if x.strip()]
@@ -255,8 +241,6 @@ def copy_planned(planned: list[tuple[Path, str, str]], staging_root: Path,
 # 장비 1대 수집 (chooser 콜백 주입 — GUI/테스트에서 선택 방식 결정)
 # --------------------------------------------------------------------------
 def collect_equipment(ip: str, staging_root: Path, chooser,
-                      username: str = "amkor", password: str | None = None,
-                      use_net_use: bool = True,
                       plan: CollectPlan | None = None,
                       job_root_override: Path | None = None,
                       confirm=None,
@@ -278,16 +262,14 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
     반환: (복사된 계획 목록, 다음 장비용 CollectPlan, sources) —
       sources = [(staging_폴더, 레벨_또는_job키워드)] (호기별 소스, 파싱 default_level 로 사용).
     """
-    connected = False
-    if use_net_use:
-        if not is_windows():
-            raise RuntimeError("net use 접속은 Windows 에서만 지원됩니다.")
-        connect_admin_share(ip, username, password or "")
-        connected = True
-    try:
+    # net use 접속 기능은 삭제됨(2026-09). **탐색기(Win+R)로 미리 연결한 세션만** 쓴다.
+    # 비밀번호를 다루지 않으므로 관리공유 로그온 행위가 없어 보안 오탐 트리거도 사라진다.
+    if True:
         job_root = job_root_override or Path(rf"\\{ip}\c$\Job")
         if not job_root.exists():
-            raise RuntimeError(f"Job 폴더가 없거나 접근할 수 없습니다: {job_root}")
+            raise RuntimeError(
+                f"Job 폴더가 없거나 접근할 수 없습니다: {job_root}\n"
+                "먼저 탐색기(Win+R)로 \\\\" + str(ip) + "\\c$ 에 한 번 연결하세요.")
         # Classification Editor 설정은 Job 밖(c$\Bis\data\dds)의 **장비 공용 파일**.
         # 없으면 조용히 건너뛴다(구 장비/권한 없음 — 나머지 수집을 막지 않는다).
         # 테스트/로컬 트리에서는 job_root 형제 경로에서 찾는다.
@@ -421,6 +403,3 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
             job_name=job_folder.name, setup_name=setup_folder.name,
             recipe_names=[p.name for p in selected])
         return planned, new_plan, [(str(base), job_keyword)]
-    finally:
-        if connected:
-            disconnect_admin_share(ip)

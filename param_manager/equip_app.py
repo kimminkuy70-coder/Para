@@ -170,13 +170,8 @@ class EquipApp(tk.Tk):
         self._pending_report = None      # 풍선 알림 클릭 시 열어줄 보고서
         self._watch_owned = False        # 이 PC 가 감시 전역 잠금을 쥐었는가
         self._watch_busy = False         # 감시 회차 실행 중(중복 실행 방지)
-        # net use 무인 접속 정보 — **호기별** `{호기: (ID, 비밀번호)}`.
-        # 장비마다 계정이 다르므로 한 벌로 묶지 않는다(사용자 지정 2026-08).
-        # **메모리에만**(디스크 저장 금지, 앱 종료 시 소멸). 비밀번호가 없는 장비는
-        # net use 를 아예 시도하지 않는다: 빈 비밀번호로 접속을 시도하면 장비마다
-        # 로그온 실패(4625)가 쌓여 계정 잠금·보안 경보로 이어진다.
-        # (ID 는 공유가 필요해 `장비 IP 주소.xlsx` 의 '접속ID' 열에 저장한다.)
-        self._watch_cred: dict[str, tuple[str, str]] = {}
+        # net use 접속 기능은 삭제됨(2026-09). 장비 접속은 오직 탐색기(Win+R)로 미리
+        # 연결한 세션만 쓰므로, 프로그램은 ID·비밀번호를 다루지 않는다.
         self._locks: dict[str, str] = {}
         self._doc_stamps: dict[str, tuple] = {}
         self._ro_docs: set = set()
@@ -1821,18 +1816,18 @@ class EquipApp(tk.Tk):
                       bg=self.p["surface"], fg=self.p["primary"],
                       font=self.fonts["bold"], cursor="hand2",
                       command=self._ip_add).pack(side="left", pady=4)
-            tk.Label(btnbar, text="  (호기·IP·장비종류(Camtek/KLA)·접속ID · 장비 IP "
+            tk.Label(btnbar, text="  (호기·IP·장비종류(Camtek/KLA) · 장비 IP "
                                   "주소.xlsx 에 자동 저장 · 호기 버튼·값 업데이트의 기준)",
                      bg=self.p["bg"], fg=self.p["muted"],
                      font=self.fonts["sub"]).pack(side="left")
         headers = refdata.IP_HEADERS
         data = [[engine._s(r.get("호기")), engine._s(r.get("IP")),
-                 engine._s(r.get("장비종류")), engine._s(r.get("접속ID"))]
-                for r in self.ip_rows] or [["", "", "", ""]]
+                 engine._s(r.get("장비종류"))]
+                for r in self.ip_rows] or [["", "", ""]]
         s = self._make_table(headers, data, col_edit=False, force_edit=True,
                              read_only=not editable)
         s.pack(side="top", fill="both", expand=True, padx=10, pady=8)
-        for i, w in enumerate((140, 200, 120, 140)):
+        for i, w in enumerate((160, 220, 140)):
             try:
                 s.column_width(column=i, width=w)
             except Exception:
@@ -1853,14 +1848,13 @@ class EquipApp(tk.Tk):
                 continue
             rows.append({"호기": ho,
                          "IP": engine._s(row[1]).strip() if len(row) > 1 else "",
-                         "장비종류": engine._s(row[2]).strip() if len(row) > 2 else "",
-                         "접속ID": engine._s(row[3]).strip() if len(row) > 3 else ""})
+                         "장비종류": engine._s(row[2]).strip() if len(row) > 2 else ""})
         self.ip_rows = rows
         self._save_refdata()
         self._set_status("장비 IP 저장됨(호기 목록 갱신)")
 
     def _ip_add(self):
-        self.ip_rows.append({"호기": "", "IP": "", "장비종류": "", "접속ID": ""})
+        self.ip_rows.append({"호기": "", "IP": "", "장비종류": ""})
         self._render()
 
     # ====================================================================
@@ -2529,14 +2523,10 @@ class EquipApp(tk.Tk):
     # ====================================================================
     def _collect_dialog(self, staging_root, on_sources, level_hint="", levels=None,
                         step=None):
-        """장비 수집 모달 — **장비 IP 목록에서 선택**(호기별 접속 ID·비밀번호).
+        """장비 수집 모달 — **장비 IP 목록에서 호기를 체크**해 수집한다.
 
-        staging_root/{호기}/ 로 읽기전용 복사.
-        · 접속 ID 는 장비마다 다르므로 호기별로 고칠 수 있고, 고친 값은 공유 파일
-          `장비 IP 주소.xlsx` 의 '접속ID' 열에 저장돼 **다른 사람도 같이 쓴다**.
-        · 비밀번호는 이번 실행 메모리에만(디스크 저장 금지).
-        · 공통 ID/비밀번호·IP 직접입력은 삭제됨(사용자 지정 2026-08) — 장비마다
-          계정이 달라 한 벌로 묶으면 로그온 실패가 쌓인다.
+        장비 접속은 **탐색기(Win+R)로 미리 연결한 세션만** 사용한다(net use 접속 기능
+        삭제 · 비밀번호 입력 없음). staging_root/{호기}/ 로 읽기전용 복사.
         levels: 취합 대상 레시피 목록 — Job/Recipe 폴더 선택창에 매칭 표시.
         완료 시 on_sources(sources) 호출. sources=[(폴더, job_keyword, 호기)]."""
         levels = [lv for lv in (levels or ([level_hint] if level_hint else [])) if lv]
@@ -2552,24 +2542,24 @@ class EquipApp(tk.Tk):
             tk.Label(win, text="장비 네트워크(\\\\IP\\c$\\Job)에서 설정 파일 수집",
                      bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                      anchor="w", padx=14, pady=(12, 2))
-        sub = "원본은 읽기·복사만. 장비 1대씩 접속 후 즉시 해제, 비밀번호는 " \
-              "이번 실행 메모리에만 보관."
+        sub = ("원본은 읽기·복사만 합니다. 접속은 탐색기(Win+R)로 미리 연결한 "
+               "세션을 사용합니다(비밀번호 입력 없음).")
         if levels:
             sub += f"\n취합 대상 레시피: {', '.join(levels)}"
         tk.Label(win, text=sub, bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"], justify="left").pack(anchor="w", padx=14)
 
-        # ── 장비 IP 목록에서 선택 — 호기별 접속 ID·비밀번호 입력
-        box1 = tk.LabelFrame(win, text=" 장비 선택 (호기별 접속 ID·비밀번호) ",
+        # ── 장비 IP 목록에서 호기 체크(접속 ID·비밀번호 없음)
+        box1 = tk.LabelFrame(win, text=" 장비(호기) 선택 ",
                              bg=self.p["bg"], fg=self.p["text"],
                              font=self.fonts["bold"], padx=8, pady=6)
         box1.pack(fill="both", expand=True, padx=14, pady=(8, 4))
         listing = [(engine._s(r.get("호기")).strip(), engine._s(r.get("IP")).strip())
                    for r in self.ip_rows
                    if engine._s(r.get("호기")).strip() and engine._s(r.get("IP")).strip()]
-        rows_ui = []                     # [(check_var, 호기, ip, id_var, pw_var)]
+        rows_ui = []                     # [(check_var, 호기, ip)]
         if listing:
-            cv = tk.Canvas(box1, bg=self.p["bg"], highlightthickness=0, height=200)
+            cv = tk.Canvas(box1, bg=self.p["bg"], highlightthickness=0, height=220)
             vsb = ttk.Scrollbar(box1, orient="vertical", command=cv.yview)
             inner = tk.Frame(cv, bg=self.p["bg"])
             cv.create_window((0, 0), window=inner, anchor="nw")
@@ -2581,46 +2571,26 @@ class EquipApp(tk.Tk):
             self._wheelify(cv)
             for i, (aoi, ip) in enumerate(listing):
                 ck = tk.BooleanVar(value=False)
-                # 접속 ID 기본값 = 공유 파일에 적힌 그 호기의 ID(없으면 amkor)
-                uid = tk.StringVar(value=refdata.login_id_for(self.ip_rows, aoi))
-                pw = tk.StringVar()
                 tk.Checkbutton(inner, text=f"{aoi}", variable=ck, bg=self.p["bg"],
-                               font=self.fonts["bold"], width=10, anchor="w").grid(
+                               font=self.fonts["bold"], width=12, anchor="w").grid(
                     row=i, column=0, sticky="w", pady=1)
                 tk.Label(inner, text=ip, bg=self.p["bg"], fg=self.p["muted"],
-                         font=self.fonts["base"], width=16, anchor="w").grid(
+                         font=self.fonts["base"], width=20, anchor="w").grid(
                     row=i, column=1, sticky="w")
-                tk.Label(inner, text="ID:", bg=self.p["bg"], fg=self.p["muted"],
-                         font=self.fonts["sub"]).grid(row=i, column=2, sticky="e")
-                ue = tk.Entry(inner, textvariable=uid, width=12, relief="solid", bd=1)
-                ue.grid(row=i, column=3, sticky="w", padx=(4, 6), pady=1)
-                tk.Label(inner, text="비밀번호:", bg=self.p["bg"], fg=self.p["muted"],
-                         font=self.fonts["sub"]).grid(row=i, column=4, sticky="e")
-                pe = tk.Entry(inner, textvariable=pw, width=16, show="*",
-                              relief="solid", bd=1)
-                pe.grid(row=i, column=5, sticky="w", padx=(4, 2), pady=1)
-                # ID/비번 칸 클릭 시 그 장비 자동 선택
-                for e_ in (ue, pe):
-                    e_.bind("<FocusIn>", lambda e, c=ck: c.set(True))
-                rows_ui.append((ck, aoi, ip, uid, pw))
+                rows_ui.append((ck, aoi, ip))
         else:
             tk.Label(box1, text="장비 IP 목록이 비어 있습니다. '장비 IP' 탭에서 "
                               "호기·IP를 등록하면 여기서 바로 선택할 수 있습니다.",
                      bg=self.p["bg"], fg=self.p["danger"],
                      font=self.fonts["sub"]).pack(anchor="w", padx=4, pady=4)
-        tk.Label(win, text="접속 ID 는 여기서 고치면 공유 파일(장비 IP 주소.xlsx)에 "
-                           "저장돼 다른 사람도 같은 값을 씁니다.\n"
-                           "비밀번호는 저장하지 않습니다(이번 실행 메모리에만).",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=14, pady=(4, 0))
 
-        # ── 공통 설정(net use)
+        # ── 접속 안내(net use 삭제) + 도움말
         row = tk.Frame(win, bg=self.p["bg"])
         row.pack(fill="x", padx=14, pady=(6, 0))
-        net_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(row, text="net use 접속(자동 해제) — 끄면 탐색기로 미리 연결한 "
-                                "세션 사용(비밀번호 불필요)", variable=net_var,
-                       bg=self.p["bg"], font=self.fonts["sub"]).pack(side="left")
+        tk.Label(row, text="※ 체크한 장비는 반드시 먼저 탐색기(Win+R)로 \\\\장비IP\\c$ 에 "
+                          "한 번 연결돼 있어야 합니다(비밀번호 입력 없음).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=520).pack(side="left")
         tk.Button(row, text="❓ 접속이 안 될 때 / 접속 방법", relief="flat", bd=0,
                   bg=self.p["primary_lt"], fg=self.p["primary"], font=self.fonts["sub"],
                   padx=10, pady=2, cursor="hand2",
@@ -2647,44 +2617,14 @@ class EquipApp(tk.Tk):
             return self._pick_list_chooser(kind, title, items, multi)
 
         def run():
-            # 목록에서 체크한 장비(호기 확정, 호기별 접속 ID·비밀번호)
-            targets, id_changed = [], False       # [(ip, aoi, uid, pw)]
-            for ck, aoi, ip, uid, pw in rows_ui:
-                if not ck.get():
-                    continue
-                u = uid.get().strip() or refdata.DEFAULT_LOGIN_ID
-                if refdata.set_login_id(self.ip_rows, aoi, u):
-                    id_changed = True
-                targets.append((ip, aoi, u, pw.get()))
+            # 목록에서 체크한 장비(호기·IP만 — 접속 정보는 다루지 않는다)
+            targets = [(ip, aoi) for ck, aoi, ip in rows_ui if ck.get()]
             if not targets:
                 status.config(text="수집할 장비를 체크하세요.")
                 return
-            if net_var.get() and not collector.is_windows():
-                status.config(text="net use 는 Windows 전용입니다. 체크를 끄고 이미 "
-                                   "연결된 경로로 시도하세요.")
-                return
-            # net use 모드인데 비밀번호가 빈 장비는 **접속을 시도하지 않는다** —
-            # 빈 비밀번호 로그온 실패가 쌓이면 계정 잠금·보안 경보로 이어진다.
-            if net_var.get():
-                nopw = [f"{aoi}({ip})" for ip, aoi, _u, pw in targets if not pw]
-                if nopw:
-                    messagebox.showwarning(
-                        "비밀번호 없음",
-                        "다음 장비는 비밀번호가 비어 있습니다:\n  "
-                        + ", ".join(nopw)
-                        + "\n\n비밀번호를 입력하거나, net use 체크를 끄고 탐색기로 "
-                          "미리 연결한 세션으로 수집하세요.\n"
-                          "(빈 비밀번호로는 접속을 시도하지 않습니다.)", parent=win)
-                    return
-            # 고친 접속 ID 는 공유 파일에 저장 — 다른 사람과 같은 값을 쓰기 위해
-            if id_changed and self.save_dir:
-                try:
-                    refdata.save_ip(refdata.ip_path(self.save_dir), self.ip_rows)
-                except Exception as e:  # noqa: BLE001
-                    self._logerr("E147", e)
             sources, errors = [], []
             plan = None
-            for i, (ip, aoi, uid, pw) in enumerate(targets, 1):
+            for i, (ip, aoi) in enumerate(targets, 1):
                 status.config(text=f"[{i}/{len(targets)}] {ip} ({aoi}) 수집 중…")
                 win.update_idletasks()
 
@@ -2705,8 +2645,6 @@ class EquipApp(tk.Tk):
                 try:
                     _, plan, srcs = collector.collect_equipment(
                         ip, staging_for, chooser,
-                        username=uid or refdata.DEFAULT_LOGIN_ID,
-                        password=pw, use_net_use=net_var.get(),
                         plan=plan, confirm=confirm,
                         target_levels=(levels or None), match_recipes=match_cb)
                     for d, lvl in srcs:                 # 레벨별(또는 단일) 소스
@@ -2715,11 +2653,8 @@ class EquipApp(tk.Tk):
                     errors.append(f"{aoi}({ip}): 취소")
                 except Exception as e:  # noqa: BLE001
                     errors.append(f"{aoi}({ip}): {e}")
-            # 비밀번호는 메모리에만 — 사용 후 즉시 소거
-            for _ck, _aoi, _ip, _uid, pw in rows_ui:
-                pw.set("")
             # 확정된 Job/Setup/Recipe 선택을 감시 설정에 보존 — 무인 회차가 선택창
-            # 없이 그대로 재사용한다(비밀번호는 저장하지 않음).
+            # 없이 그대로 재사용한다.
             if plan is not None and self.save_dir:
                 try:
                     ws_, wst_ = watcher.load_settings(self.save_dir)
@@ -3133,9 +3068,8 @@ class EquipApp(tk.Tk):
                   command=win.destroy).pack(pady=(0, 12))
 
     def _ip_connect_help(self, parent=None):
-        """장비 IP(\\IP\\c$\\Job) 접속 방법 + 오류 조치 안내창(변환계수 설명서와 같은
-        방식). 특히 'net use 접속' 체크를 끄고 쓰려면 먼저 탐색기(Win+R)로 그 IP 에
-        한 번 로그인해 두어야 한다는 점을 설명한다."""
+        """장비 IP(\\IP\\c$\\Job) 접속 방법 + 오류 조치 안내창. net use 접속 기능은
+        삭제됐으므로 **탐색기(Win+R)로 미리 한 번 로그인**해 두는 방법만 설명한다."""
         win = tk.Toplevel(parent or self)
         win.title("장비 IP 접속 — 방법과 오류 조치")
         win.configure(bg=self.p["bg"])
@@ -3154,40 +3088,33 @@ class EquipApp(tk.Tk):
                       fg=self.p["text"], padx=10, pady=8)
         txt.pack(fill="both", expand=True, padx=16, pady=(0, 8))
         guide = (
-            "■ 두 가지 접속 방식\n"
-            "  1) 'net use 접속' 체크 ON (기본)\n"
-            "     - 프로그램이 입력한 ID·비밀번호로 그 장비에 직접 접속합니다.\n"
-            "     - 비밀번호가 정확해야 하며, 저장하지 않습니다(이번 실행 메모리에만).\n"
-            "     - 접속이 끝나면 즉시 연결을 해제합니다.\n\n"
-            "  2) 'net use 접속' 체크 OFF (탐색기로 미리 연결한 세션 사용)\n"
-            "     - 비밀번호 입력이 필요 없습니다. 대신 아래를 먼저 해 두어야 합니다:\n\n"
-            "     ★ 체크를 끄기 전에 반드시 한 번은 탐색기로 그 장비에 로그인하세요 ★\n"
-            "       ① 키보드 Windows 키 + R 을 누릅니다.\n"
-            "       ② 실행창에 그 장비 주소를 입력합니다:  \\\\장비IP\\c$\n"
-            "          (예:  \\\\192.168.0.11\\c$ )\n"
-            "       ③ [확인] → 처음이면 ID·비밀번호를 물어봅니다. 접속 ID(예: amkor)와\n"
-            "          비밀번호를 넣고 '내 자격 증명 기억' 을 체크해 로그인합니다.\n"
-            "       ④ 탐색기에 그 장비의 c$ 폴더가 열리면 성공입니다.\n"
-            "       ⑤ 그 뒤에는 이 프로그램에서 'net use 접속' 체크를 꺼도\n"
-            "          그 연결을 그대로 사용해 수집할 수 있습니다.\n"
-            "     - 한 번도 연결한 적이 없는 장비는 체크를 끄면 '접속 실패' 가 납니다.\n\n"
+            "■ 접속 방법 — 무조건 한 번은 탐색기(Win+R)로 로그인해야 합니다\n"
+            "  이 프로그램은 비밀번호를 입력받지 않습니다. 대신 여러분이 Windows\n"
+            "  탐색기로 그 장비에 **한 번 로그인**해 두면, 그 연결을 그대로 사용해\n"
+            "  파일을 읽습니다(보안상 프로그램이 계정으로 직접 접속하지 않습니다).\n\n"
+            "  ★ 수집할 장비마다 아래를 한 번씩 해 두세요 ★\n"
+            "    ① 키보드 Windows 키 + R 을 누릅니다(실행창).\n"
+            "    ② 그 장비 주소를 입력합니다:   \\\\장비IP\\c$\n"
+            "       (예:  \\\\192.168.0.11\\c$ )\n"
+            "    ③ [확인] → 처음이면 ID·비밀번호를 물어봅니다. 장비 접속 ID와\n"
+            "       비밀번호를 넣고 '내 자격 증명 기억' 을 체크해 로그인합니다.\n"
+            "    ④ 탐색기에 그 장비의 c$ 폴더가 열리면 성공입니다.\n"
+            "    ⑤ 그 뒤 이 프로그램에서 그 호기를 체크해 수집하면 됩니다.\n"
+            "  한 번도 연결한 적이 없는 장비는 '접속 실패/폴더 없음' 이 납니다.\n\n"
             "■ 자주 나는 오류와 조치\n"
-            "  · '액세스가 거부되었습니다'\n"
-            "      → ID·비밀번호를 다시 확인하세요. 여러 번 틀리면 계정이 잠길 수\n"
-            "        있으니, 잠겼다면 잠시 기다리거나 관리자에게 문의하세요.\n"
-            "  · '여러 사용자 이름으로 ... 여러 번 연결할 수 없습니다'(오류 1219)\n"
-            "      → 이미 다른 계정으로 그 장비에 연결돼 있어 충돌한 것입니다.\n"
-            "        명령 프롬프트에서  net use \\\\장비IP\\c$ /delete  로 기존 연결을\n"
-            "        끊은 뒤 다시 시도하거나, 'net use 접속' 체크를 끄고 위 방법으로\n"
-            "        탐색기 연결을 사용하세요.\n"
-            "  · '네트워크 경로를 찾을 수 없습니다'\n"
+            "  · 'Job 폴더가 없거나 접근할 수 없습니다' / '네트워크 경로를 찾을 수 없음'\n"
+            "      → 위 ①~④ 로 그 장비에 먼저 로그인했는지 확인하세요.\n"
             "      → IP 가 맞는지, 장비가 켜져 네트워크에 있는지, 방화벽/사내망(445\n"
             "        포트)이 막혀 있지 않은지 확인하세요.\n"
-            "  · 'net use 접속' 을 켰는데 비밀번호 칸이 비어 있으면\n"
-            "      → 접속을 시도하지 않습니다(빈 비밀번호로 붙으면 로그온 실패가 쌓여\n"
-            "        계정이 잠기기 때문). 비밀번호를 넣거나 체크를 끄고 쓰세요.\n\n"
+            "  · '액세스가 거부되었습니다'\n"
+            "      → 탐색기 로그인 때 넣은 ID·비밀번호가 맞는지 확인하세요. 여러 번\n"
+            "        틀리면 계정이 잠길 수 있으니, 잠겼다면 관리자에게 문의하세요.\n"
+            "  · '여러 사용자 이름으로 ... 여러 번 연결할 수 없습니다'(오류 1219)\n"
+            "      → 이미 다른 계정으로 그 장비에 연결돼 충돌한 것입니다. 명령\n"
+            "        프롬프트에서  net use \\\\장비IP\\c$ /delete  로 기존 연결을\n"
+            "        끊은 뒤 다시 ①~④ 로 로그인하세요.\n\n"
             "■ 그래도 안 되면\n"
-            "  - '장비 IP' 탭에서 그 호기의 IP·접속 ID 가 맞는지 확인하세요.\n"
+            "  - '장비 IP' 탭에서 그 호기의 IP 가 맞는지 확인하세요.\n"
             "  - 화면 아래 상태줄/오류 코드를 그대로 담당자에게 알려 주세요."
         )
         txt.insert("1.0", guide)
@@ -7696,91 +7623,20 @@ class EquipApp(tk.Tk):
                     out.append((m, ip))
             return out
 
-        # ── ④ 접속 방식 (net use 는 장비별 ID/PW) ──────────────────────
-        box3 = tk.LabelFrame(page, text=" ③ 장비 접속 방식 ", bg=self.p["bg"],
+        # ── ③ 장비 접속 (net use 삭제 — 탐색기 세션만) ─────────────────
+        box3 = tk.LabelFrame(page, text=" ③ 장비 접속 (탐색기 세션 사용) ", bg=self.p["bg"],
                              fg=self.p["text"], font=self.fonts["bold"])
         box3.pack(fill="x", padx=16, pady=(4, 8))
-        conn = tk.StringVar(value=s.conn_mode)
-        tk.Radiobutton(box3, text="기존 연결 사용 (net use 없이) — 권장",
-                       variable=conn, value=watcher.CONN_SESSION, bg=self.p["bg"],
-                       fg=self.p["text"], selectcolor=self.p["surface"],
-                       font=self.fonts["bold"]).pack(anchor="w", padx=10, pady=(6, 0))
-        tk.Label(box3, text="비밀번호를 저장하지 않습니다. 무인 실행할 장비를 탐색기에서\n"
-                            "미리 모두 연결(\\\\장비IP\\c$ 로 로그인)해 두세요.",
+        tk.Label(box3, text="무인 감시는 비밀번호를 다루지 않습니다. 감시할 장비를 탐색기에서\n"
+                            "미리 모두 연결(Win+R → \\\\장비IP\\c$ 로 로그인)해 두세요.\n"
+                            "한 번도 연결하지 않은 장비는 그 회차에서 건너뜁니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=32)
-        tk.Radiobutton(box3, text="net use 로 접속 (장비마다 ID·비밀번호)",
-                       variable=conn, value=watcher.CONN_NETUSE, bg=self.p["bg"],
-                       fg=self.p["text"],
-                       selectcolor=self.p["surface"]).pack(anchor="w", padx=10)
-        tk.Label(box3, text="접속 ID 는 공유 파일(장비 IP 주소.xlsx)에 저장되고, "
-                            "비밀번호는 프로그램이 켜져 있는 동안 메모리에만 있습니다.\n"
-                            "비밀번호를 비우면 그 장비는 net use 없이 기존 연결로만 "
-                            "시도합니다(빈 비밀번호로 접속하지 않음).",
-                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
-                 justify="left").pack(anchor="w", padx=32, pady=(0, 2))
-        credf = tk.Frame(box3, bg=self.p["bg"])
-        credf.pack(fill="x", padx=32, pady=(2, 8))
-        cur_creds = dict(getattr(self, "_watch_cred", None) or {})
-        cred_vars = {}
-
-        def build_creds():
-            for w in credf.winfo_children():
-                w.destroy()
-            cred_vars.clear()
-            if conn.get() != watcher.CONN_NETUSE:
-                tk.Label(credf, text="(net use 를 고르면 장비별 ID·비밀번호를 입력합니다)",
-                         bg=self.p["bg"], fg=self.p["muted"],
-                         font=self.fonts["sub"]).pack(anchor="w")
-                return
-            targets = checked_machines()
-            if not targets:
-                tk.Label(credf, text="감시할 장비를 먼저 체크하세요.", bg=self.p["bg"],
-                         fg=self.p["danger"], font=self.fonts["sub"]).pack(anchor="w")
-                return
-            for m in targets:
-                row = tk.Frame(credf, bg=self.p["bg"])
-                row.pack(fill="x", pady=1)
-                tk.Label(row, text=m, bg=self.p["bg"], fg=self.p["text"],
-                         font=self.fonts["sub"], width=9,
-                         anchor="w").pack(side="left")
-                uid = tk.StringVar(value=(cur_creds.get(m, ("", ""))[0]
-                                          or refdata.login_id_for(self.ip_rows, m)))
-                pw = tk.StringVar(value=cur_creds.get(m, ("", ""))[1])
-                tk.Label(row, text="ID", bg=self.p["bg"], fg=self.p["muted"],
-                         font=self.fonts["sub"]).pack(side="left")
-                tk.Entry(row, textvariable=uid, width=12, relief="solid",
-                         bd=1).pack(side="left", padx=(4, 10))
-                tk.Label(row, text="PW", bg=self.p["bg"], fg=self.p["muted"],
-                         font=self.fonts["sub"]).pack(side="left")
-                tk.Entry(row, textvariable=pw, width=16, show="•", relief="solid",
-                         bd=1).pack(side="left", padx=4)
-                cred_vars[m] = (uid, pw)
-        conn.trace_add("write", lambda *_a: build_creds())
-        tk.Button(box3, text="↻ 체크한 장비로 목록 새로고침", relief="flat", bd=0,
-                  bg=self.p["surface"], fg=self.p["primary"], font=self.fonts["sub"],
-                  padx=10, cursor="hand2",
-                  command=lambda: build_creds()).pack(anchor="w", padx=32, pady=(0, 8))
-        build_creds()
-
-        def _keep_cred():
-            """접속 정보 반영 — **ID 는 공유 엑셀에, 비밀번호는 메모리에만**."""
-            if conn.get() != watcher.CONN_NETUSE:
-                self._watch_cred = {}
-                return
-            creds, changed = {}, False
-            for m, (uid, pw) in cred_vars.items():
-                u = uid.get().strip()
-                if u and refdata.set_login_id(self.ip_rows, m, u):
-                    changed = True
-                if pw.get():
-                    creds[m] = (u or refdata.DEFAULT_LOGIN_ID, pw.get())
-            self._watch_cred = creds
-            if changed:                      # 접속 ID 는 다른 사람과 공유해야 한다
-                try:
-                    refdata.save_ip(refdata.ip_path(self.save_dir), self.ip_rows)
-                except Exception as e:  # noqa: BLE001
-                    self._logerr("E147", e)
+                 justify="left").pack(anchor="w", padx=12, pady=6)
+        tk.Button(box3, text="❓ 접속이 안 될 때 / 접속 방법", relief="flat", bd=0,
+                  bg=self.p["primary_lt"], fg=self.p["primary"], font=self.fonts["sub"],
+                  padx=10, pady=2, cursor="hand2",
+                  command=lambda: self._ip_connect_help(win)).pack(anchor="w",
+                                                                   padx=12, pady=(0, 6))
 
         info = tk.Label(page, text=self._watch_status_text(s, state), bg=self.p["bg"],
                         fg=self.p["muted"], font=self.fonts["sub"], justify="left")
@@ -7857,8 +7713,7 @@ class EquipApp(tk.Tk):
                 s.window_start, s.window_end = int(ws_var.get()), int(we_var.get())
             except ValueError:
                 s.window_start = s.window_end = 0
-            s.conn_mode = conn.get()
-            _keep_cred()
+            s.conn_mode = watcher.CONN_SESSION   # net use 삭제 — 항상 세션 사용
             return True
 
         def apply_():
@@ -8493,24 +8348,17 @@ class EquipApp(tk.Tk):
 
         self._run_busy("자동 감시 1회 실행 중… (수집→취합→비교)", work, done)
 
-    def _collect_fixed_dir(self, ip, machine, recipe, rel, staging_root,
-                           use_netuse, diag, cred=None):
+    def _collect_fixed_dir(self, ip, machine, recipe, rel, staging_root, diag):
         r"""**지정된 폴더**에서 설정파일을 읽어온다(이름 유추 없음).
 
-        `\\{IP}\c$\Job\{rel}` 을 그대로 읽는다. 지정 폴더가 Recipe 폴더면 그것을,
-        상위 폴더면 그 아래 Recipe 폴더들을 대상으로 한다.
+        `\\{IP}\c$\Job\{rel}` 을 그대로 읽는다(탐색기로 미리 연결한 세션 사용).
+        지정 폴더가 Recipe 폴더면 그것을, 상위 폴더면 그 아래 Recipe 폴더들을 대상으로.
         원본은 읽기 전용(collector.copy_planned 의 안전장치를 그대로 사용).
         반환: staging 폴더 경로(수집 실패면 None).
         """
         from pathlib import Path as _P
         src = _P(watcher.machine_recipe_dir(ip, rel))
-        connected = False
         try:
-            if use_netuse and cred and collector.is_windows():
-                # 접속 정보가 있을 때만 net use. **빈 비밀번호로 시도 금지** —
-                # 장비마다 로그온 실패가 쌓여 계정 잠금·보안 경보가 난다.
-                collector.connect_admin_share(ip, cred[0], cred[1])
-                connected = True
             if not src.is_dir():
                 diag.append(f"{machine}/{recipe}: 지정 폴더 없음({src})")
                 return None
@@ -8558,9 +8406,6 @@ class EquipApp(tk.Tk):
         except Exception as e:  # noqa: BLE001
             diag.append(f"{machine}/{recipe}: {e}")
             return None
-        finally:
-            if connected:
-                collector.disconnect_admin_share(ip)
 
     def _watch_collect(self, mr, s, plan):
         """무인 수집 — **호기별로 지정된 레시피만** 순차로 읽어 파싱 피벗을 만든다.
@@ -8569,8 +8414,8 @@ class EquipApp(tk.Tk):
         · 사람이 없으므로 **선택창을 띄우지 않는다**. 저장된 plan 으로 자동 매칭되지
           않는 장비는 조용히 건너뛰고 로그에 남긴다(추측해서 엉뚱한 폴더를 읽지 않음).
         · 장비 1대씩 순차 접속(동시 접속 금지), 원본은 읽기 전용.
-        · net use 접속 정보도 **장비마다** 다르다(`self._watch_cred[호기]`).
-          그 장비의 비밀번호가 없으면 net use 없이 기존 연결로만 시도한다.
+        · 접속은 **탐색기(Win+R)로 미리 연결한 세션만** 사용한다(net use 삭제 —
+          비밀번호를 다루지 않는다). 연결 안 된 장비는 조용히 건너뛴다.
         · 복사 전후 (mtime,size) 가 흔들린 파일은 그 회차에서 제외 — 장비가 쓰는
           중이던 반쪽 파일로 '거짓 변경'을 만들지 않기 위해.
         반환: (pivot_rows, 건너뛴 장비 목록)
@@ -8578,18 +8423,6 @@ class EquipApp(tk.Tk):
         machines = list(mr)
         # 임시 수집본은 로컬에만(OneDrive 동기화 폭주 방지) — 회차가 끝나면 지운다
         staging_root = localdirs.new_temp_run(self.local_dir, "감시")
-        all_creds = dict(getattr(self, "_watch_cred", None) or {})
-        netuse_mode = (s.conn_mode == watcher.CONN_NETUSE)
-        if netuse_mode:
-            # 앱을 다시 켰거나 비밀번호를 입력하지 않은 장비. 빈 비밀번호로 접속을
-            # 시도하면 장비마다 로그온 실패가 남으므로 기존 연결로만 시도한다.
-            nopw = [m for m in machines if not all_creds.get(m)]
-            if nopw:
-                watcher.append_log(
-                    self.save_dir,
-                    "net use 접속 정보가 없어 기존 연결로만 시도합니다"
-                    "(빈 비밀번호 접속은 하지 않음 — 감시 설정에서 ID/비밀번호 입력): "
-                    + ", ".join(nopw))
         sources, skipped = [], []
 
         def no_chooser(*_a, **_kw):
@@ -8637,9 +8470,6 @@ class EquipApp(tk.Tk):
             recipes = list(mr.get(m) or [])
             if not recipes:
                 continue
-            # 이 장비의 접속 정보(없으면 net use 없이 기존 연결로만).
-            cred = all_creds.get(m)
-            use_netuse = bool(netuse_mode and cred)
             ip = refdata.ip_for(self.ip_rows, m)
             if not ip:
                 skipped.append(f"{m}(IP 없음)")
@@ -8660,8 +8490,7 @@ class EquipApp(tk.Tk):
                 if fixed:
                     any_fixed = True
                 for lvl, rel in fixed.items():
-                    got = self._collect_fixed_dir(ip, m, lvl, rel, staging_root,
-                                                  use_netuse, diag, cred)
+                    got = self._collect_fixed_dir(ip, m, lvl, rel, staging_root, diag)
                     if got:
                         sources.append((got, lvl, m))
                 guess_recipes = [r for r in recipes if r not in fixed]
@@ -8671,11 +8500,7 @@ class EquipApp(tk.Tk):
                 # 경로**를 탄다(수동 수집이 남긴 Job 폴더명으로 이 장비 폴더를 매칭).
                 # 이걸 빼면 job_keyword 가 빈 계획에서 선택창을 요구해 전부 건너뛴다.
                 _, _plan, srcs = collector.collect_equipment(
-                    ip, staging_for, no_chooser,
-                    username=(cred[0] if cred
-                              else refdata.login_id_for(self.ip_rows, m)),
-                    password=(cred[1] if cred else None),
-                    use_net_use=use_netuse, plan=plan,
+                    ip, staging_for, no_chooser, plan=plan,
                     confirm=lambda planned: True,     # 무인 — 로컬 staging 복사 승인
                     target_levels=list(guess_recipes), match_recipes=auto_match)
                 for d, lvl in srcs:

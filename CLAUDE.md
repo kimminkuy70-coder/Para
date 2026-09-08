@@ -354,17 +354,21 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   '열림을 본 뒤 닫힘'일 때만) + `_return_from_excel`(창 복귀·안내 갱신).
   잠금 개념이 없는 OS 에서는 조용히 비활성(종전 동작 유지).
 
-## 사내 보안 모니터링 오탐 방지 (2026-08 전수 검토 — `tests/test_network_manners.py`)
+## 사내 보안 모니터링 오탐 방지 (`tests/test_network_manners.py`)
 
-장비 접속은 `\\IP\c$`(관리공유)라 EDR/SIEM 이 원래 지켜본다. 기능은 그대로 두되
-**패턴이 공격처럼 보이지 않게** 한다. IT 설명 자료 = `docs/IT보안_검토자료.md`.
+장비 접속은 `\\IP\c$`(관리공유)라 EDR/SIEM 이 원래 지켜본다. IT 설명 자료 =
+`docs/IT보안_검토자료.md`.
 
-- **빈 비밀번호로 net use 시도 금지(중대)**: 무인 회차가
-  `connect_admin_share(ip, "amkor", "")` 를 장비마다 호출하고 있었다 —
-  동작하지도 않으면서 로그온 실패(4625)를 장비 수 × 레시피 수 × 하루 4회 쌓아
-  **무차별 대입 탐지 + 공용 계정 잠금**을 부르는 코드였다. → 접속 정보는
-  `equip_app._watch_cred`(메모리 전용, 감시 설정창에서 입력)에만 두고,
-  **없으면 net use 를 아예 켜지 않고** 기존 세션으로만 시도 + 로그 안내.
+- **net use 접속 기능 전면 삭제(2026-09 확정 — 재도입 금지)**: 미서명 exe 가
+  `net.exe` 로 관리공유에 로그온해 파일을 복사하는 동작이 Windows Defender 에
+  측면 이동/트로이로 오탐돼 **실행파일이 삭제된 실사고**가 있었다. → `collector`의
+  `connect_admin_share`/`disconnect_admin_share` 삭제, `collect_equipment` 는
+  세션 전용(username/password/use_net_use 인자 제거), 수집창·감시설정창의
+  **ID/비밀번호·net use 체크 UI 제거**, `_watch_cred`·`refdata.login_id_for/
+  set_login_id`·`DEFAULT_LOGIN_ID`·IP_HEADERS 의 '접속ID' 삭제. 접속은 오직
+  **사용자가 탐색기(Win+R → `\\IP\c$`)로 미리 연결한 세션**만 쓴다(사람이 파일
+  여는 것과 동일). 프로그램은 자격증명을 전혀 다루지 않아 4625 로그온 실패도 없다.
+  `test_network_manners.py` 가 net use 부재를 소스 수준으로 고정한다.
 - **포트 스캔처럼 보이지 않기**: 연결 점검의 TCP 445 확인은 호스트 사이
   `watcher.PROBE_GAP_SEC`(0.4s) 간격.
 - **측면 이동처럼 보이지 않기**: 무인 수집은 장비 사이 `equip_app.HOST_GAP_SEC`
@@ -386,7 +390,7 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
 ## 테스트 (venv 없으면 시스템 python3 + openpyxl 로도 동작)
 
 ```
-python3 tests/test_refdata.py      # 4  (참고자료/특이사항 독립 파일 I/O·호기·IP·호기별 접속ID 공유)
+python3 tests/test_refdata.py      # 4  (참고자료/특이사항 독립 파일 I/O·호기·IP·장비종류·접속ID 무시)
 python3 tests/test_coef_detector.py # 2 (RTP.txt↔ini 계수 역추정·near-1 제외)
 python3 tests/test_ini_parser.py   # 20 (ini 파서/수집/경로/백업/계수/config폴더/ActiveScenarioOptics/복사금지optic제외/비선택optic표시/다중레시피)
 python3 tests/test_formbuilder.py  # 10 (초안 생성·편집→확정 양식·계수 저장·초안→전체후보 복원·설정키 매칭)
@@ -405,7 +409,7 @@ python3 tests/test_updater.py      # 28 (버전비교·버전파일명·구버�
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_recipe_delete.py # 8 (레시피 삭제 범위 고정: 미리보기·로컬보관 이동/되돌리기·저장폴더 백업 거부·최신취합만·감시설정 정리·되돌리기 안내)
 python3 tests/test_onedrive_writes.py # 5 (저장폴더 쓰기 최소화: 폴더 지연생성·잠금 재기록 없음·수집 staging 로컬·무변경 시 취합 미생성)
-python3 tests/test_network_manners.py # 7 (빈 비밀번호 net use 금지(무인·수동 둘 다)·장비별 자격증명·포트/장비 간 간격·직접 설치 경로)
+python3 tests/test_network_manners.py # 8 (net use 접속 기능 부재(함수/호출/UI/무인)·비밀번호 미취급·포트/장비 간 간격·직접 설치 경로)
 python3 tests/test_tray.py         # 4  (트레이 상주 판단·비Windows 안전 no-op·메뉴 ID)
 python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/만료인수/자기잠금회수·저장전재검증·전역잠금·접속자세션)
 python3 tests/test_watcher.py      # 29 (주기 프리셋·시작=끝 첫실행·호기별 감시 레시피·주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
@@ -717,8 +721,9 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
 - `param_manager/coef_detector.py` — **변환 계수 자동 추정**: RTP.txt(표시값)↔Zone ini(원본값)
   known 쌍 비교(LINEAR=disp/raw, AREA=√). 1.0 근처(직접단위) 제외, 군집·신뢰도. `detect_from_dir`.
 - `param_manager/refdata.py` — **참고자료/특이사항 독립 파일 I/O**: `REF_HEADERS=[호기,IP,비고]`,
-  `IP_HEADERS=[호기,IP,접속ID]`·`login_id_for`/`set_login_id`(장비 접속 계정 공유),
-  load/save/create_blank, `machines()`/`ip_for()`/`add_machine()`.
+  `IP_HEADERS=[호기,IP,장비종류]`(접속ID 열은 2026-09 삭제 — net use 접속 삭제로 계정
+  정보를 안 읽는다. 구 파일의 '접속ID' 열은 무시), `device_type_for`/`set_device_type`,
+  `machines(hide_types=)`(KLA 숨김), load/save/create_blank, `ip_for()`/`add_machine()`.
 - `param_manager/coefstore.py` — **변환계수.xlsx (호기+변형) 저장소**: `[호기,MAG,변형,계수,비고]`
   load/save/create_blank, `lookup(rows,호기,변형)`(대소문자·구분자 무시·변형 빈 행=공통 폴백),
   `upsert`(사람값 우선), `machine_coefs`(표시), `make_lookup`(scan_tree/collate 공용 콜백

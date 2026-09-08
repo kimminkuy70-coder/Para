@@ -1,14 +1,14 @@
 """사내 보안 모니터링(EDR/SIEM/네트워크 장비)에 오탐되지 않기 위한 규칙.
 
-장비 접속은 `\\IP\\c$`(관리공유)라 원래 감시 대상이다. 기능은 그대로 두되
-**패턴이 공격처럼 보이지 않게** 하는 규칙을 고정한다.
+장비 접속은 `\\IP\\c$`(관리공유)라 원래 감시 대상이다. **net use 접속 기능은
+2026-09 에 전면 삭제**되었다 — 프로그램이 자격증명으로 관리공유에 로그온하는
+동작 자체가 없어야 트로이/측면이동 오탐이 재발하지 않는다.
 
-  ① 빈 비밀번호로 net use 를 시도하지 않는다
-     — 장비마다 로그온 실패(4625)가 쌓이면 무차별 대입/패스워드 스프레이로
-       탐지되고, 공용 계정이 잠기면 실제 운영이 멈춘다.
-  ② 445 포트를 여러 대에 몰아서 두드리지 않는다(수평 포트 스캔 오탐).
-  ③ 무인 수집에서 장비 사이에 간격을 둔다(측면 이동 스캔 오탐).
-  ④ 비밀번호는 디스크에 저장하지 않는다.
+  ① net use 접속 기능(connect_admin_share 등)이 코드에 없어야 한다.
+  ② 접속 UI 에 ID·비밀번호 입력칸이 없어야 한다(탐색기 세션만 사용).
+  ③ 445 포트를 여러 대에 몰아서 두드리지 않는다(수평 포트 스캔 오탐).
+  ④ 무인 수집에서 장비 사이에 간격을 둔다(측면 이동 스캔 오탐).
+  ⑤ 비밀번호는 어디에도 저장/취급하지 않는다.
 """
 
 import os
@@ -45,72 +45,57 @@ def _src(name: str) -> str:
 
 
 # --------------------------------------------------------------------------
-def test_never_connects_with_empty_password():
-    """`connect_admin_share(ip, id, "")` 처럼 **빈 비밀번호 고정 호출**이 없어야 한다."""
-    src = _src("equip_app.py")
-    calls = re.findall(r"connect_admin_share\(([^)]*)\)", src)
-    assert calls, "connect_admin_share 호출을 찾지 못함(테스트가 낡음)"
-    for args in calls:
-        assert not re.search(r',\s*""\s*\)?$', args.strip()), \
-            f"빈 비밀번호로 net use 시도: connect_admin_share({args})"
-        assert '"amkor"' not in args or "cred" in args, \
-            f"하드코딩 계정으로 접속 시도: connect_admin_share({args})"
-    print(f"  빈 비밀번호/하드코딩 접속 없음 OK (호출 {len(calls)}곳)")
+def test_no_net_use_functions_in_collector():
+    """collector 에 net use 접속 함수·명령이 남아 있지 않아야 한다."""
+    src = _src("collector.py")
+    assert "def connect_admin_share" not in src, "connect_admin_share 가 남아 있음"
+    assert "def disconnect_admin_share" not in src, "disconnect_admin_share 가 남아 있음"
+    assert '"net", "use"' not in src and '"net","use"' not in src, \
+        "net use subprocess 호출이 남아 있음"
+    print("  collector: net use 접속 함수/명령 없음 OK")
 
 
-def test_netuse_requires_credential_in_memory():
-    """접속 정보가 메모리에 없으면 net use 모드여도 시도하지 않는다.
-
-    접속 정보는 **장비마다** 다르므로(`{호기: (ID, PW)}`), 한 장비의 비밀번호가
-    없다고 다른 장비까지 막지도 않고, 없는 장비에 빈 비밀번호로 붙지도 않는다.
-    """
-    src = _src("equip_app.py")
-    m = re.search(r"def _watch_collect.*?(?=\n    def )", src, re.S)
-    assert m, "_watch_collect 를 찾지 못함"
-    body = m.group(0)
-    assert re.search(r"cred\s*=\s*all_creds\.get\(m\)", body), \
-        "장비별 접속 정보를 쓰지 않음(한 벌로 묶으면 계정이 다른 장비에서 실패)"
-    assert re.search(r"use_netuse\s*=\s*bool\(netuse_mode\s+and\s+cred\)", body), \
-        "그 장비의 접속 정보 없이도 net use 를 켜고 있음"
-    print("  net use 는 그 장비의 메모리 접속 정보가 있을 때만 OK")
+def test_no_netuse_calls_anywhere():
+    """전체 소스에서 net use 접속을 호출하는 코드가 없어야 한다."""
+    for name in ("equip_app.py", "collector.py", "watcher.py", "cmwatcher.py"):
+        src = _src(name)
+        assert "connect_admin_share(" not in src, f"{name}: connect_admin_share 호출 남음"
+        assert "use_net_use=" not in src, f"{name}: use_net_use 인자 사용 남음"
+    print("  connect_admin_share/use_net_use 호출 없음 OK")
 
 
-def test_manual_collect_refuses_empty_password():
-    """수동 수집(양식 만들기)도 빈 비밀번호로는 접속을 **시도하지 않는다**.
-
-    예전에는 '빈 비밀번호로 시도할까요?'를 물어보고 예이면 붙었다 — 그 회차마다
-    장비 수만큼 로그온 실패가 쌓인다. 이제는 물어보지 않고 막는다.
-    """
+def test_collect_dialog_has_no_password_ui():
+    """수동 수집창(양식 만들기)에 ID·비밀번호 입력칸과 net use 체크가 없어야 한다."""
     src = _src("equip_app.py")
     m = re.search(r"def _collect_dialog.*?(?=\n    def )", src, re.S)
     assert m, "_collect_dialog 를 찾지 못함"
     body = m.group(0)
-    assert "nopw" in body, "비밀번호 없는 장비 검사가 없음"
-    assert "빈 비밀번호로 접속을 시도할까요" not in body, \
-        "빈 비밀번호 접속을 여전히 물어보고 있음"
-    assert "showwarning" in body, "비밀번호 없는 장비를 막지 않음"
-    # 공통 ID/비밀번호·IP 직접입력은 삭제(장비마다 계정이 다르므로)
-    for gone in ("common_pw", "common_uid", "direct_pw", "split_ips"):
-        assert gone not in body, f"삭제된 기능이 남아 있음: {gone}"
-    # 접속 ID 는 공유 파일에서 읽고, 고치면 공유 파일에 저장
-    assert "refdata.login_id_for" in body, "호기별 접속 ID 를 읽지 않음"
-    assert "refdata.set_login_id" in body and "refdata.save_ip" in body, \
-        "고친 접속 ID 를 공유 파일에 저장하지 않음"
-    print("  수동 수집: 빈 비밀번호 차단 + 호기별 ID 공유 저장 OK")
+    assert 'show="*"' not in body and 'show="•"' not in body, "비밀번호 입력칸이 남아 있음"
+    assert "net_var" not in body, "net use 체크박스가 남아 있음"
+    assert "login_id_for" not in body and "set_login_id" not in body, \
+        "접속 ID 처리가 남아 있음"
+    print("  수동 수집창: 비밀번호/net use/접속ID UI 없음 OK")
 
 
-def test_credentials_never_written_to_disk():
-    """비밀번호가 설정 파일·감시설정에 저장되지 않아야 한다."""
+def test_watch_collect_uses_session_only():
+    """무인 수집이 net use 없이 탐색기 세션만 쓰는지(자격증명 미취급)."""
+    src = _src("equip_app.py")
+    m = re.search(r"def _watch_collect.*?(?=\n    def )", src, re.S)
+    assert m, "_watch_collect 를 찾지 못함"
+    body = m.group(0)
+    for gone in ("all_creds", "netuse_mode", "use_netuse", "_watch_cred"):
+        assert gone not in body, f"무인 수집에 net use 흔적 남음: {gone}"
+    print("  무인 수집: 세션 전용(net use 흔적 없음) OK")
+
+
+def test_no_credentials_on_disk():
+    """비밀번호를 config·감시설정 등 어디에도 저장/취급하지 않는다."""
     app = _src("equip_app.py")
-    # 저장 payload 를 만드는 곳에 비밀번호 키가 없어야 한다
-    for name in ("watcher.py",):
-        assert "password" not in _src(name).lower(), \
-            f"{name} 에 비밀번호 저장 흔적"
-    assert "_watch_cred" in app, "메모리 전용 접속 정보 보관이 없음"
+    assert "password" not in _src("watcher.py").lower(), "watcher 에 비밀번호 흔적"
+    assert "_watch_cred" not in app, "메모리 접속 정보(_watch_cred) 가 아직 남아 있음"
     assert not re.search(r'_cfg\[[^\]]*(pw|pass|비밀번호)', app, re.I), \
         "config 에 비밀번호를 저장하고 있음"
-    assert not re.search(r'save_config\([^)]*(pw|password)', app, re.I)
-    print("  비밀번호 디스크 저장 없음 OK")
+    print("  비밀번호 저장/취급 없음 OK")
 
 
 def test_probe_has_gap_between_hosts():
@@ -125,7 +110,6 @@ def test_probe_has_gap_between_hosts():
 
 def test_unattended_collect_has_gap_between_machines():
     """무인 수집도 장비 사이에 간격을 둔다(측면 이동 스캔 오탐 방지)."""
-    # equip_app 은 tkinter 의존이라 개발환경에서 import 할 수 없다 → 소스로 확인
     src = _src("equip_app.py")
     gap = re.search(r"^HOST_GAP_SEC\s*=\s*([\d.]+)", src, re.M)
     assert gap and float(gap.group(1)) > 0, "HOST_GAP_SEC 상수가 없거나 0"
@@ -143,10 +127,11 @@ def test_manual_install_path_exists():
 
 
 if __name__ == "__main__":
-    for t in [test_never_connects_with_empty_password,
-              test_netuse_requires_credential_in_memory,
-              test_manual_collect_refuses_empty_password,
-              test_credentials_never_written_to_disk,
+    for t in [test_no_net_use_functions_in_collector,
+              test_no_netuse_calls_anywhere,
+              test_collect_dialog_has_no_password_ui,
+              test_watch_collect_uses_session_only,
+              test_no_credentials_on_disk,
               test_probe_has_gap_between_hosts,
               test_unattended_collect_has_gap_between_machines,
               test_manual_install_path_exists]:
