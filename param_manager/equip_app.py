@@ -2018,6 +2018,11 @@ class EquipApp(tk.Tk):
         m.add_command(label="저장 폴더 변경…", command=self._change_save_dir)
         m.add_command(label="참고자료·특이사항 다시 읽기", command=self._refresh_view)
         m.add_separator()
+        m.add_command(label="변환계수 파일 열기(엑셀)…",
+                      command=lambda: self._open_shared_store("coef"))
+        m.add_command(label="장비 화면 이름 파일 열기(엑셀)…",
+                      command=lambda: self._open_shared_store("name"))
+        m.add_separator()
         m.add_command(label="로컬 작업 폴더…", command=self._local_dir_dialog)
         m.add_separator()
         m.add_command(label="현재 접속자 보기…", command=self._show_sessions)
@@ -2471,6 +2476,37 @@ class EquipApp(tk.Tk):
                 label.config(text=note, fg=self.p["ok"])
             except Exception:  # noqa: BLE001
                 pass
+
+    def _open_shared_store(self, which: str):
+        """공유 관리 파일(변환계수 / 장비 화면 이름)을 엑셀로 직접 연다.
+        없으면 빈 파일을 만들어 연다. 수정은 엑셀에서 하고, 저장 후 ⋯파일 >
+        '참고자료·특이사항 다시 읽기' 로 프로그램에 반영된다."""
+        if not self.save_dir:
+            messagebox.showinfo("파일 열기", "먼저 저장 폴더를 지정하세요(⋯파일).")
+            return
+        if which == "coef":
+            path, label = coefstore.coef_path(self.save_dir), "변환계수"
+            creator = coefstore.create_blank
+        else:
+            path, label = namestore.name_path(self.save_dir), "장비 화면 이름"
+            creator = namestore.create_blank
+        if not os.path.isfile(path):
+            if not messagebox.askyesno(
+                    f"{label} 파일 열기",
+                    f"{os.path.basename(path)} 가 아직 없습니다.\n"
+                    "빈 파일을 새로 만들어 열까요?"):
+                return
+            try:
+                creator(path)
+            except Exception as e:  # noqa: BLE001
+                self._err("E148", f"{label} 파일 생성 실패", e)
+                return
+        if not self._open_in_excel(path):
+            messagebox.showinfo(f"{label} 파일",
+                                f"엑셀을 열 수 없습니다. 파일 위치:\n{path}")
+            return
+        self._set_status(f"{label} 파일을 엑셀로 열었습니다. 수정·저장 후 "
+                         "⋯파일 > '참고자료·특이사항 다시 읽기' 로 반영하세요.")
 
     def _open_in_excel(self, path) -> bool:
         """저장된 initial/양식 파일을 실제 Excel(또는 OS 기본 앱)로 연다."""
