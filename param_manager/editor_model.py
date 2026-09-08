@@ -59,8 +59,9 @@ def build_entries(rows, base_keys=None, default_use=None, name_lookup=None) -> l
       base_keys 지정=기존 양식의 사용 키와 일치하면 선택 / default_use 지정=일괄 값 /
       둘 다 없으면 파서 use 플래그(새로 만들기=추천 Y 항목 체크).
 
-    name_lookup(alg, orig) → 저장된 장비 화면 이름|None. **새 양식(base_keys=None)일 때만**
-    적용해 지난번 저장한 이름을 미리 채운다(기존 양식 수정은 그 양식의 이름을 유지).
+    name_lookup(alg, orig) → 저장된 장비 화면 이름|None. **넘어오면 항상** 적용해 지난번
+    저장한 이름을 미리 채운다(파서 표시명 param 대신). 기존 양식을 그대로 여는 경로
+    (이름이 이미 사람 값)는 호출측에서 name_lookup 을 아예 안 넘겨(None) 원 이름을 지킨다.
     없으면 파서 표시명(param, KNOWN_DISPLAY_MAP 기본값 포함)을 그대로 쓴다."""
     entries = []
     for r in rows:
@@ -80,9 +81,10 @@ def build_entries(rows, base_keys=None, default_use=None, name_lookup=None) -> l
         # orig = 실제 ini 항목 이름(설정 Parameter, 원본 키). param 은 표시명(매핑 적용).
         #   KNOWN_DISPLAY_MAP 으로 이름이 바뀐 항목은 orig(=key) ≠ name(=표시명).
         orig = engine._s(ext.get("key")).strip() or param
-        # 새 양식일 때만 '지난번 저장한 장비 화면 이름' 자동 채움(없으면 표시명 유지).
+        # '지난번 저장한 장비 화면 이름' 자동 채움(name_lookup 이 넘어왔을 때만).
+        #   기존 양식을 그대로 여는 경로는 호출측이 name_lookup 을 안 넘겨 원 이름을 지킨다.
         name = param
-        if name_lookup is not None and base_keys is None:
+        if name_lookup is not None:
             remembered = name_lookup(alg, orig)
             if engine._s(remembered).strip():
                 name = engine._s(remembered).strip()

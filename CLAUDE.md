@@ -727,8 +727,13 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   (coefstore 와 같은 원칙: 공유 파일·사람 확정 때만 쓰기·조회 읽기전용). `apply_records`
   (양식 확정 시 표시 이름을 기억, 이름을 실제로 바꾼 것만) · `make_lookup`(editor_model
   `build_entries(name_lookup=)` 콜백) · `lookup`(정규화·한글 보존, Alg 안 맞아도 원본항목만
-  맞으면 폴백). **자동 채움은 새 양식(base_keys=None)일 때만** — 기존 양식 수정은 그 양식의
-  이름을 유지한다. KNOWN_DISPLAY_MAP 기본 표시명도 이 메커니즘으로 기억/자동채움된다.
+  맞으면 폴백). **자동 채움은 새로 파싱해 만드는 양식에서 동작**한다(`_form_param_editor`
+  `autoname=True` 가 name_lookup 을 넘김 — 편집기 열 때마다 파일을 새로 읽어 엑셀 직접
+  수정도 즉시 반영). **기존 양식을 그대로 여는 경로(이름이 이미 사람 값)만 `autoname=False`**
+  로 원 이름을 지킨다. base_keys(기존 레시피 활용) 유무와는 무관하다 — 그 경우도 이름은
+  파서 기본값이라 자동 채움해야 하는데, 예전엔 `base_keys is None` 게이트로 막혀 항상
+  KNOWN_DISPLAY_MAP 기본명만 나오는 버그가 있었다. KNOWN_DISPLAY_MAP 기본 표시명도 이
+  메커니즘으로 기억/자동채움된다.
 - `param_manager/workdirs.py` — **저장폴더 기준 경로**: `form_run_dir/form_final_path/
   form_original_path/form_draft_path/related_dir/list_form_versions/collate_path/
   latest_collate/list_collate_files` + `form_candidate_path`/`form_version_status`/

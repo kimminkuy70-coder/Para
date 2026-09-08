@@ -3425,7 +3425,7 @@ class EquipApp(tk.Tk):
         self._form_param_editor(rows, new_level, kind, scales, new_run, related, new_st,
                                 aoi, base_keys=None, base_name="", title_prefix="기존 양식 수정",
                                 on_confirm=on_confirm, on_excel=on_excel,
-                                default_use=(None if cand else True))
+                                default_use=(None if cand else True), autoname=False)
 
     def _save_candidate_snapshot(self, rows, related, level, aoi, st, then):
         """확정 전에 **전체 후보 목록('원본')** 엑셀을 남기고 then() 을 부른다.
@@ -3558,7 +3558,8 @@ class EquipApp(tk.Tk):
             self._form_param_editor(rows, new_level, kind, scales, run_dir, related, st,
                                     m_aoi, base_keys=None, base_name="",
                                     title_prefix="기존 양식 수정(다시 읽기)",
-                                    on_confirm=on_confirm, default_use=None)
+                                    on_confirm=on_confirm, default_use=None,
+                                    autoname=False)
 
         if source == "LOCAL":
             self._local_pick_sources(
@@ -3744,7 +3745,8 @@ class EquipApp(tk.Tk):
 
     def _form_param_editor(self, rows, level, kind, scales, run_dir, related, st, aoi,
                            base_keys=None, base_name="", title_prefix="양식 만들기",
-                           on_confirm=None, on_excel=None, default_use=None):
+                           on_confirm=None, on_excel=None, default_use=None,
+                           autoname=True):
         """상위/하위(변형·Zone·Alg·Parameter) 계층 + 체크박스 + 행별 편집(이름/변환/
         사용) + 변형별 계수(상단, 수정 시 일괄 적용) + 계수 적용 표시값. 엑셀 편집 버튼도.
         on_confirm(records, extracts, scales_out, win)·on_excel(win) 를 주면 그걸 사용
@@ -3754,8 +3756,18 @@ class EquipApp(tk.Tk):
         label_values = editor_model.LABEL_VALUES
         _method = editor_model.method_of
         try:                                          # 파라미터 해석(파일 의존)
-            # 새 양식이면 (alg,원본항목) 으로 지난번 저장한 장비 화면 이름을 미리 채운다.
-            name_cb = namestore.make_lookup(getattr(self, "name_rows", []))
+            # 장비 화면 이름 자동 채움: 새로 파싱해 만드는 양식(autoname=True)일 때만.
+            #   기존 양식을 그대로 여는(이름이 이미 사람 값) 경로는 autoname=False.
+            #   파일을 매번 새로 읽어 엑셀에서 직접 고친 이름도 곧바로 반영되게 한다.
+            name_cb = None
+            if autoname:
+                if self.save_dir:
+                    try:
+                        self.name_rows = namestore.load(
+                            namestore.name_path(self.save_dir))
+                    except Exception as _e:  # noqa: BLE001
+                        self._logerr("E147", _e)
+                name_cb = namestore.make_lookup(getattr(self, "name_rows", []))
             entries = editor_model.build_entries(rows, base_keys=base_keys,
                                                  default_use=default_use,
                                                  name_lookup=name_cb)

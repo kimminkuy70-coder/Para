@@ -52,15 +52,18 @@ def test_new_form_autofill_but_edit_keeps():
              "장비화면이름": "밝기 민감도", "비고": ""}]
     cb = ns.make_lookup(rows)
     pivot = [_pivot("Genesis", "BrightSeedTh", "Bright Sensitivity")]
-    # 새 양식(base_keys=None) → 기억한 이름으로 자동 채움
+    # 새로 파싱해 만드는 양식(name_lookup 넘김·base_keys 유무 무관) → 기억한 이름으로 자동 채움
     ents_new = em.build_entries(pivot, base_keys=None, name_lookup=cb)
     assert ents_new[0]["name"] == "밝기 민감도"
     assert ents_new[0]["orig"] == "BrightSeedTh"     # 원본은 실제 ini 키 유지
-    # 기존 양식 수정(base_keys 지정) → 자동 채움 안 함(양식 이름 유지)
-    ents_edit = em.build_entries(
+    # 기존 레시피 활용(base_keys 지정)이어도 새로 파싱한 양식이면 자동 채움된다
+    ents_based = em.build_entries(
         pivot, base_keys={("genesis", "genesis", "brightsensitivity")}, name_lookup=cb)
+    assert ents_based[0]["name"] == "밝기 민감도"
+    # 기존 양식을 그대로 여는 경로(호출측이 name_lookup 안 넘김) → 원 이름 유지
+    ents_edit = em.build_entries(pivot, base_keys=None, name_lookup=None)
     assert ents_edit[0]["name"] == "Bright Sensitivity"
-    ok("새 양식=자동 채움 / 기존 양식 수정=이름 유지")
+    ok("새로 파싱=자동 채움(base 유무 무관) / 기존 양식 그대로 열기=이름 유지")
 
 
 def test_upsert_last_write_wins():
