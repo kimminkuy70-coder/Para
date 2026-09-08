@@ -2621,6 +2621,10 @@ class EquipApp(tk.Tk):
         tk.Checkbutton(row, text="net use 접속(자동 해제) — 끄면 탐색기로 미리 연결한 "
                                 "세션 사용(비밀번호 불필요)", variable=net_var,
                        bg=self.p["bg"], font=self.fonts["sub"]).pack(side="left")
+        tk.Button(row, text="❓ 접속이 안 될 때 / 접속 방법", relief="flat", bd=0,
+                  bg=self.p["primary_lt"], fg=self.p["primary"], font=self.fonts["sub"],
+                  padx=10, pady=2, cursor="hand2",
+                  command=lambda: self._ip_connect_help(win)).pack(side="right")
         status = tk.Label(win, text="", bg=self.p["bg"], fg=self.p["muted"],
                           font=self.fonts["sub"])
         status.pack(fill="x", padx=14, pady=6)
@@ -3107,21 +3111,87 @@ class EquipApp(tk.Tk):
                 cv.pack(padx=14, pady=(0, 10))
                 cv.create_image(0, 0, anchor="nw", image=img)
                 cv._img_ref = img            # GC 방지(참조 유지)
-                # 좌측 상단 제목('RTP {0.77} Microns')을 가리키는 화살표 + 라벨.
-                tx, ty = 92, 12              # 제목 대략 위치(축소 좌표계)
-                ax, ay = 250, 92             # 화살표 시작점
-                cv.create_line(ax, ay, tx, ty, fill=self.p["danger"], width=3,
+                # 좌측 상단 제목의 '{0.77}' 값을 감싸는 박스 + 아래에서 가리키는 화살표.
+                #   이미지 좌표(원본 1225px 를 절반 축소) 기준. '{0.77}' 는 맨 왼쪽 상단.
+                bx0, by0, bx1, by1 = 22, 2, 92, 22     # {0.77} 값 주위 박스
+                cv.create_rectangle(bx0, by0, bx1, by1,
+                                    outline=self.p["danger"], width=3)
+                ax, ay = 150, 110            # 화살표 시작(빈 공간)
+                cv.create_line(ax, ay, (bx0 + bx1) // 2, by1 + 1,
+                               fill=self.p["danger"], width=3,
                                arrow="last", arrowshape=(14, 16, 6))
-                cv.create_rectangle(tx - 4, ty - 3, tx + 150, ty + 20,
-                                    outline=self.p["danger"], width=2)
-                cv.create_text(ax + 8, ay + 4, anchor="nw",
-                               text="◀ 이 값(예: 0.77)을 계수로 입력",
+                cv.create_text(ax + 6, ay - 4, anchor="nw",
+                               text="이 값(예: 0.77)을 계수로 입력",
                                fill=self.p["danger"], font=self.fonts["bold"])
             except Exception as e:  # noqa: BLE001
                 self._logerr("E145", e)
                 tk.Label(win, text=f"(이미지를 표시할 수 없습니다: {e})",
                          bg=self.p["bg"], fg=self.p["danger"],
                          font=self.fonts["sub"]).pack(padx=14, pady=10)
+        tk.Button(win, text="닫기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=16, pady=4, cursor="hand2",
+                  command=win.destroy).pack(pady=(0, 12))
+
+    def _ip_connect_help(self, parent=None):
+        """장비 IP(\\IP\\c$\\Job) 접속 방법 + 오류 조치 안내창(변환계수 설명서와 같은
+        방식). 특히 'net use 접속' 체크를 끄고 쓰려면 먼저 탐색기(Win+R)로 그 IP 에
+        한 번 로그인해 두어야 한다는 점을 설명한다."""
+        win = tk.Toplevel(parent or self)
+        win.title("장비 IP 접속 — 방법과 오류 조치")
+        win.configure(bg=self.p["bg"])
+        win.transient(parent or self)
+        win.grab_set()
+        self._geo(win, 720, 620)
+        tk.Label(win, text="장비 IP 접속 방법 · 오류 조치", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["title"]).pack(
+                 anchor="w", padx=16, pady=(12, 2))
+        tk.Label(win, text="장비의 레시피 파일은 \\\\장비IP\\c$\\Job 아래에 있습니다"
+                          "(관리 공유, 읽기·복사만).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=680).pack(anchor="w", padx=16, pady=(0, 6))
+        txt = tk.Text(win, wrap="word", relief="solid", bd=1,
+                      font=self.fonts["base"], bg=self.p["surface"],
+                      fg=self.p["text"], padx=10, pady=8)
+        txt.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        guide = (
+            "■ 두 가지 접속 방식\n"
+            "  1) 'net use 접속' 체크 ON (기본)\n"
+            "     - 프로그램이 입력한 ID·비밀번호로 그 장비에 직접 접속합니다.\n"
+            "     - 비밀번호가 정확해야 하며, 저장하지 않습니다(이번 실행 메모리에만).\n"
+            "     - 접속이 끝나면 즉시 연결을 해제합니다.\n\n"
+            "  2) 'net use 접속' 체크 OFF (탐색기로 미리 연결한 세션 사용)\n"
+            "     - 비밀번호 입력이 필요 없습니다. 대신 아래를 먼저 해 두어야 합니다:\n\n"
+            "     ★ 체크를 끄기 전에 반드시 한 번은 탐색기로 그 장비에 로그인하세요 ★\n"
+            "       ① 키보드 Windows 키 + R 을 누릅니다.\n"
+            "       ② 실행창에 그 장비 주소를 입력합니다:  \\\\장비IP\\c$\n"
+            "          (예:  \\\\192.168.0.11\\c$ )\n"
+            "       ③ [확인] → 처음이면 ID·비밀번호를 물어봅니다. 접속 ID(예: amkor)와\n"
+            "          비밀번호를 넣고 '내 자격 증명 기억' 을 체크해 로그인합니다.\n"
+            "       ④ 탐색기에 그 장비의 c$ 폴더가 열리면 성공입니다.\n"
+            "       ⑤ 그 뒤에는 이 프로그램에서 'net use 접속' 체크를 꺼도\n"
+            "          그 연결을 그대로 사용해 수집할 수 있습니다.\n"
+            "     - 한 번도 연결한 적이 없는 장비는 체크를 끄면 '접속 실패' 가 납니다.\n\n"
+            "■ 자주 나는 오류와 조치\n"
+            "  · '액세스가 거부되었습니다'\n"
+            "      → ID·비밀번호를 다시 확인하세요. 여러 번 틀리면 계정이 잠길 수\n"
+            "        있으니, 잠겼다면 잠시 기다리거나 관리자에게 문의하세요.\n"
+            "  · '여러 사용자 이름으로 ... 여러 번 연결할 수 없습니다'(오류 1219)\n"
+            "      → 이미 다른 계정으로 그 장비에 연결돼 있어 충돌한 것입니다.\n"
+            "        명령 프롬프트에서  net use \\\\장비IP\\c$ /delete  로 기존 연결을\n"
+            "        끊은 뒤 다시 시도하거나, 'net use 접속' 체크를 끄고 위 방법으로\n"
+            "        탐색기 연결을 사용하세요.\n"
+            "  · '네트워크 경로를 찾을 수 없습니다'\n"
+            "      → IP 가 맞는지, 장비가 켜져 네트워크에 있는지, 방화벽/사내망(445\n"
+            "        포트)이 막혀 있지 않은지 확인하세요.\n"
+            "  · 'net use 접속' 을 켰는데 비밀번호 칸이 비어 있으면\n"
+            "      → 접속을 시도하지 않습니다(빈 비밀번호로 붙으면 로그온 실패가 쌓여\n"
+            "        계정이 잠기기 때문). 비밀번호를 넣거나 체크를 끄고 쓰세요.\n\n"
+            "■ 그래도 안 되면\n"
+            "  - '장비 IP' 탭에서 그 호기의 IP·접속 ID 가 맞는지 확인하세요.\n"
+            "  - 화면 아래 상태줄/오류 코드를 그대로 담당자에게 알려 주세요."
+        )
+        txt.insert("1.0", guide)
+        txt.config(state="disabled")
         tk.Button(win, text="닫기", relief="flat", bd=0, bg=self.p["primary"],
                   fg="#ffffff", padx=16, pady=4, cursor="hand2",
                   command=win.destroy).pack(pady=(0, 12))
