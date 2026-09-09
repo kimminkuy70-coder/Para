@@ -4475,31 +4475,40 @@ class EquipApp(tk.Tk):
                 return
 
         def work():
+            # 취합 텍스트 = 호기별 1개, 결과 엑셀 = 모든 호기 합친 통합 1개.
             out_dir = wph.new_investigation_dir(self.local_dir)
             made = []
+            all_rows = []          # 통합 엑셀용(각 행에 호기 태그)
             for m, folder, prefix in targets:
                 recipe = prefix or "(전체)"
                 rows, errors = wph.collect_rows(folder, prefix)
-                txt_name, xlsx_name = wph.target_filenames(m, recipe)
-                wph.write_combined_text(os.path.join(out_dir, txt_name),
-                                        folder, prefix, m, recipe)
-                title = f"{m} · {recipe} WPH 분석"
-                wph.write_wph_excel(os.path.join(out_dir, xlsx_name), rows,
-                                    valid_wafers=valid, title=title)
+                for rw in rows:
+                    rw["machine"] = m
+                all_rows.extend(rows)
+                # 호기별 취합 텍스트
+                wph.write_combined_text(
+                    os.path.join(out_dir, wph.text_filename(m, recipe)),
+                    folder, prefix, m, recipe)
                 made.append((m, recipe, len(rows), len(errors)))
-            return out_dir, made
+            # 통합 WPH 엑셀 1개(호기 열로 구분, 통계·WPH 전체 합산)
+            machines = [m for m, _f, _p in targets]
+            xlsx_path = os.path.join(out_dir, wph.combined_excel_filename(machines))
+            title = "WPH 통합 분석 (" + ", ".join(machines) + ")"
+            wph.write_wph_excel(xlsx_path, all_rows, valid_wafers=valid, title=title)
+            return out_dir, made, xlsx_path, len(all_rows)
 
         def done(ok, res):
             if not ok:
                 self._err("E191", "WPH 조사 실패", res)
                 return
-            out_dir, made = res
+            out_dir, made, xlsx_path, total = res
             lines = [f"✓ 조사 완료 — 저장 폴더: {out_dir}", ""]
             for m, recipe, n, nerr in made:
                 extra = f"  (오류 {nerr}건)" if nerr else ""
                 lines.append(f"· {m} / {recipe}: 리포트 {n}개{extra}")
             lines.append("")
-            lines.append("각 대상마다 취합 텍스트(.txt)와 WPH 분석 엑셀(.xlsx)이 "
+            lines.append(f"취합 텍스트는 호기별로, WPH 분석 엑셀은 모든 호기를 합친 "
+                         f"통합 파일 1개({os.path.basename(xlsx_path)}, 전체 {total}건)로 "
                          "만들어졌습니다.")
             self._wph_result_lbl.config(text="\n".join(lines), fg=self.p["text"])
             self._set_status("WPH 조사 완료 — 결과 폴더를 엽니다.")

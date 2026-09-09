@@ -273,19 +273,23 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   (이름만 보므로 빠름·원본 무접근, 접두 매칭은 대소문자·주변공백 무시 `startswith`).
   1개 이상인 호기만 대상. ②**유효 Lot 매수**(기본 25, config `wph_valid_wafers`,
   recipe별 full-lot 매수 달라 변경 가능) 확인 → **[조사 시작]**.
-- **조사 = (호기, recipe)마다** 로컬 `WPH조사/조사_{시각}/` 폴더 하나에
-  `{호기}_{recipe}_{시각}_취합.txt`(참조 .py 형식, 헤더에 호기·recipe) +
-  `{호기}_{recipe}_{시각}_WPH.xlsx`(참조와 동일한 6시트 수식 엑셀). `collect_rows`(원본
-  read-only)→`write_combined_text`→`write_wph_excel`.
+- **조사 = 한 회차에 로컬 `WPH조사/조사_{시각}/` 폴더 하나**(제목이 시각 기준). 그 안에
+  **취합 텍스트는 호기별 1개**(`{호기}_{recipe}_취합.txt`, `text_filename`, 참조 .py 형식·
+  헤더에 호기·recipe) + **WPH 결과 엑셀은 모든 선택 호기를 합친 통합 1개**
+  (`WPH_{호기들}_통합.xlsx`, `combined_excel_filename`). `collect_rows`(원본 read-only,
+  각 행에 `machine` 태그)→호기별 `write_combined_text`→전체 행 합쳐 `write_wph_excel` 1회.
+  · **통합 기준(사용자 확정 2026-09)**: 텍스트는 호기별, 결과 엑셀은 통합. 호기 구분은
+    엑셀 **호기 열(U)** 로 하고 통계·WPH 는 전체 합산(pooled). 호기별로 따로 보려면
+    엑셀에서 호기 열로 필터·피벗.
 - **엑셀 = 참조 양식과 동일**(입력만 넣으면 수식 자동계산). `01_Raw_Data` A:E 만 입력
   (Report#/Source File/Wafers Scanned/**Avg Scan sec**/**Batch sec**), F:S·`02_{n}매_통계`·
   `03_이상치`·`04_그래프데이터`·`05_대시보드` 는 전부 일반 셀 수식(표·동적배열·최신함수
   회피 — 호환성). **핵심: Actual WPH = Wafers×3600÷Batch sec**, `Valid {n}` =
   `IF(AND(C=n,D>0,E>0),"Y","")`. 유효매수 `n` 은 시트명·Valid·헤더·N/O 판정 참조에 반영.
-- **추가: `batch report 생성일자`(Batch End) 열을 맨 끝 U 에**(사용자 확정 — F:S 수식
-  참조에 영향 없게 T 뒤). Batch End(`30-Aug-26 09:41:31 PM`)를 `parse_batch_datetime`
-  (로케일 독립·AM/PM·자정/정오)로 파싱해 날짜셀, 실패 시 원문. 시간 `00:01:44`→초는
-  `hms_to_seconds`.
+- **추가 2열을 맨 끝(T 뒤)에**(F:S 수식 참조에 영향 없게): **U=호기**(통합 엑셀에서 행이
+  어느 호기인지), **V=`batch report 생성일자`(Batch End)**. Batch End
+  (`30-Aug-26 09:41:31 PM`)를 `parse_batch_datetime`(로케일 독립·AM/PM·자정/정오)로
+  파싱해 날짜셀, 실패 시 원문. 시간 `00:01:44`→초는 `hms_to_seconds`.
 - 오류 코드 E191(조사)·E192(검색).
 
 ## 이미 확정된 결정 (재질문 금지)
@@ -431,7 +435,7 @@ python3 tests/test_collate.py      # 11 (레시피별 시트·전체 호기·직
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
-python3 tests/test_wph.py          # 6  (WPH: 시간→초·Batch End→생성일자·recipe 접두검색/카운트·원본 read-only 수집·취합텍스트·6시트 수식엑셀/생성일자U열/유효매수 변경)
+python3 tests/test_wph.py          # 7  (WPH: 시간→초·Batch End→생성일자·recipe 접두검색/카운트·원본 read-only 수집·취합텍스트(호기별)·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_namestore.py    # 5  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)

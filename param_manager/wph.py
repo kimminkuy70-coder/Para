@@ -460,7 +460,7 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
                "Actual WPH", "Theoretical WPH", f"Valid {n}", "Scan Band",
                "Batch Judgment", "Non-scan Judgment", f"{n}매 Avg Scan Time",
                f"{n}매 Batch Time", f"{n}매 Non-scan Time", f"{n}매 Actual WPH",
-               "이상치 순번", "Batch End (생성일자)"]
+               "이상치 순번", "호기", "Batch End (생성일자)"]
     for c, h in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=c, value=h)
         cell.fill = head_fill
@@ -468,7 +468,7 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
         cell.alignment = Alignment(horizontal="center")
     widths = {"A": 10, "B": 80, "C": 15, "D": 14, "E": 12, "F": 15, "G": 15,
               "H": 16, "I": 16, "J": 12, "K": 16, "L": 10, "M": 14, "N": 18,
-              "O": 18, "P": 20, "Q": 20, "R": 20, "S": 20, "T": 13, "U": 22}
+              "O": 18, "P": 20, "Q": 20, "R": 20, "S": 20, "T": 13, "U": 12, "V": 22}
     for col, w in widths.items():
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
@@ -510,8 +510,9 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
             ws.cell(row=r, column=col).number_format = time_fmt
         for col in (10, 11, 19):
             ws.cell(row=r, column=col).number_format = wph_fmt
-        ws.cell(row=r, column=21).fill = in_fill     # U: 생성일자(입력)
-        ws.cell(row=r, column=21).font = in_font
+        for col in (21, 22):                         # U:호기, V:생성일자(입력)
+            ws.cell(row=r, column=col).fill = in_fill
+            ws.cell(row=r, column=col).font = in_font
 
     # 실제 데이터 채우기
     for i, row in enumerate(rows):
@@ -524,13 +525,14 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
             ws.cell(row=r, column=4, value=row["avg_scan_sec"])
         if row.get("batch_sec") is not None:
             ws.cell(row=r, column=5, value=row["batch_sec"])
+        ws.cell(row=r, column=21, value=row.get("machine", "") or "")   # U: 호기
         end = row.get("batch_end")
-        ucell = ws.cell(row=r, column=21)
+        vcell = ws.cell(row=r, column=22)                               # V: 생성일자
         if isinstance(end, datetime):
-            ucell.value = end
-            ucell.number_format = "yyyy-mm-dd hh:mm:ss"
+            vcell.value = end
+            vcell.number_format = "yyyy-mm-dd hh:mm:ss"
         else:
-            ucell.value = row.get("batch_end_raw", "") or ""
+            vcell.value = row.get("batch_end_raw", "") or ""
 
     # ---- 02_통계 ----------------------------------------------------------
     w2 = wb.create_sheet(stats_sheet)
@@ -689,8 +691,28 @@ def new_investigation_dir(local_root: str) -> str:
     return d
 
 
+def text_filename(machine: str, recipe: str) -> str:
+    """호기별 취합 텍스트 파일명 — 호기·recipe 를 박는다(조사 폴더가 시각 기준)."""
+    return f"{sanitize(machine)}_{sanitize(recipe)}_취합.txt"
+
+
+def combined_excel_filename(machines) -> str:
+    """통합 WPH 결과 엑셀 파일명 — 여러 호기를 하나로 합친다.
+
+    호기가 적으면 이름을 나열하고, 많으면 개수로 줄인다(파일명 길이 제한).
+    """
+    ms = [sanitize(m) for m in machines if str(m).strip()]
+    if not ms:
+        tag = "통합"
+    elif len(ms) <= 4:
+        tag = "_".join(ms)
+    else:
+        tag = f"{ms[0]}외{len(ms) - 1}"
+    return f"WPH_{tag}_통합.xlsx"
+
+
 def target_filenames(machine: str, recipe: str) -> tuple[str, str]:
-    """(취합텍스트 파일명, 결과엑셀 파일명) — 호기·recipe 를 박는다."""
+    """(취합텍스트 파일명, 결과엑셀 파일명) — 하위호환용(호기별 단일 엑셀)."""
     from . import workdirs
     stem = f"{sanitize(machine)}_{sanitize(recipe)}_{workdirs.stamp()}"
     return f"{stem}_취합.txt", f"{stem}_WPH.xlsx"

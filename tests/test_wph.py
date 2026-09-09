@@ -128,10 +128,11 @@ def test_excel_structure_and_valid_wafers():
     with tempfile.TemporaryDirectory() as d:
         rows = [
             {"source_file": "r1.htm", "wafers": 25, "avg_scan_sec": 104,
-             "batch_sec": 3203, "batch_end": wph.parse_batch_datetime(
-                 "30-Aug-26 09:41:31 PM")},
+             "batch_sec": 3203, "machine": "AOI-21",
+             "batch_end": wph.parse_batch_datetime("30-Aug-26 09:41:31 PM")},
             {"source_file": "r2.htm", "wafers": 3, "avg_scan_sec": 94,
-             "batch_sec": 496, "batch_end": None, "batch_end_raw": "raw-date"},
+             "batch_sec": 496, "machine": "AOI-22",
+             "batch_end": None, "batch_end_raw": "raw-date"},
         ]
         out = os.path.join(d, "wph.xlsx")
         wph.write_wph_excel(out, rows, valid_wafers=25, title="T")
@@ -139,7 +140,10 @@ def test_excel_structure_and_valid_wafers():
         assert wb.sheetnames == ["00_사용안내", "01_Raw_Data", "02_25매_통계",
                                  "03_이상치", "04_그래프데이터", "05_대시보드"]
         ws = wb["01_Raw_Data"]
-        assert ws["A1"].value == "Report" and ws["U1"].value == "Batch End (생성일자)"
+        assert ws["A1"].value == "Report"
+        # 통합 엑셀: 호기(U) + 생성일자(V) 열
+        assert ws["U1"].value == "호기" and ws["V1"].value == "Batch End (생성일자)"
+        assert ws["U2"].value == "AOI-21" and ws["U3"].value == "AOI-22"
         # 입력값
         assert ws["C2"].value == 25 and ws["D2"].value == 104 and ws["E2"].value == 3203
         # 핵심 수식(WPH·Valid) — 참조와 동일
@@ -147,8 +151,8 @@ def test_excel_structure_and_valid_wafers():
         assert ws["L2"].value == '=IF(AND(C2=25,D2>0,E2>0),"Y","")'
         # 생성일자: datetime → 날짜셀, 없으면 raw 문자열
         from datetime import datetime as _dt
-        assert isinstance(ws["U2"].value, _dt)
-        assert ws["U3"].value == "raw-date"
+        assert isinstance(ws["V2"].value, _dt)
+        assert ws["V3"].value == "raw-date"
         # 통계 시트가 Raw_Data N/O 수식이 참조하는 이름과 일치
         assert "'02_25매_통계'!" in ws["N2"].value
         # 수식 용량(참조와 동일 2001행까지)
@@ -164,6 +168,31 @@ def test_excel_structure_and_valid_wafers():
         assert ws2["L1"].value == "Valid 13"
         assert "'02_13매_통계'!" in ws2["N2"].value
     print("  wph OK: 엑셀 6시트·입력/수식·생성일자(U)·유효매수 변경 반영")
+
+
+def test_combined_multi_machine():
+    """여러 호기 → 취합 텍스트는 호기별, 결과 엑셀은 통합 1개(호기 열로 구분)."""
+    import openpyxl
+    with tempfile.TemporaryDirectory() as d:
+        rows = []
+        for m, n in (("AOI-21", 3), ("AOI-22", 2)):
+            for i in range(n):
+                rows.append({"source_file": f"{m}_{i}.htm", "wafers": 25,
+                             "avg_scan_sec": 100, "batch_sec": 3000, "machine": m,
+                             "batch_end": None, "batch_end_raw": ""})
+        out = os.path.join(d, wph.combined_excel_filename(["AOI-21", "AOI-22"]))
+        wph.write_wph_excel(out, rows, valid_wafers=25, title="통합")
+        ws = openpyxl.load_workbook(out)["01_Raw_Data"]
+        # 두 호기 행이 한 엑셀에 모두 들어가고 Report 번호는 연속
+        machines = [ws.cell(row=r, column=21).value for r in range(2, 7)]
+        assert machines == ["AOI-21", "AOI-21", "AOI-21", "AOI-22", "AOI-22"]
+        assert ws["A2"].value == 1 and ws["A6"].value == 5
+    # 파일명 헬퍼
+    assert wph.text_filename("AOI-21", "2D@R").endswith("_취합.txt")
+    assert "AOI-21" in wph.text_filename("AOI-21", "2D@R")
+    assert wph.combined_excel_filename(["AOI-21", "AOI-22"]) == "WPH_AOI-21_AOI-22_통합.xlsx"
+    assert wph.combined_excel_filename(["A", "B", "C", "D", "E"]) == "WPH_A외4_통합.xlsx"
+    print("  wph OK: 통합 엑셀(호기 열·연속 Report) + 파일명 헬퍼(텍스트 호기별·통합)")
 
 
 if __name__ == "__main__":
