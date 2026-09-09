@@ -443,6 +443,7 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
         ("분석 조건", f"Wafers Scanned={n}, Avg Scan sec>0, Batch sec>0 인 행만 유효 {n}매 Lot."),
         ("WPH", "Actual WPH = Wafers Scanned × 3,600 ÷ Batch sec (전체 Batch Time 기준)."),
         ("생성일자", "U열은 batch report 의 Batch End(배치 종료시각)입니다."),
+        ("호기별 요약", "06_호기별_WPH 시트에서 호기(U열)마다 유효 Lot·WPH를 따로 봅니다."),
         ("색상", "녹색=원본 입력, 파란색=수식 계산, 주황/연빨강=검토·이상 항목."),
         ("호환성", "Excel 표·동적배열·최신 통계함수를 피하고 STDEV/QUARTILE/INDEX 등만 사용."),
     ]
@@ -669,6 +670,53 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
         w5[coord].number_format = wph_fmt
     for col in "ABCDEFGH":
         w5.column_dimensions[col].width = 16
+
+    # ---- 06_호기별_WPH ----------------------------------------------------
+    #  통합 엑셀이라 호기별 WPH 요약을 한 시트에 따로 둔다(호기 열 U 기준 수식).
+    machines_seen = []
+    for row in rows:
+        mm = str(row.get("machine", "") or "").strip()
+        if mm and mm not in machines_seen:
+            machines_seen.append(mm)
+    w6 = wb.create_sheet("06_호기별_WPH")
+    w6["A1"] = "호기별 WPH 요약"
+    w6["A1"].font = Font(bold=True, size=12)
+    w6["A2"] = (f"유효 {n}매 Lot(호기 열 U 기준)만 집계합니다. "
+                "통계·WPH는 각 호기별 합산입니다.")
+    w6["A2"].font = Font(color="808080")
+    m6_hdr = ["호기", f"유효 {n}매 Lot", "총 Wafer", "누적 WPH", "평균 WPH",
+              "평균 Avg Scan", "평균 Batch Time"]
+    for c, h in enumerate(m6_hdr, start=1):
+        cell = w6.cell(row=3, column=c, value=h)
+        cell.fill = head_fill
+        cell.font = head_font
+        cell.alignment = Alignment(horizontal="center")
+    uU = f"{rd}!$U${lo}:$U${hi}"          # 호기 열
+    uL = f"{rd}!$L${lo}:$L${hi}"          # Valid
+    uC = f"{rd}!$C${lo}:$C${hi}"          # Wafers
+    uE = f"{rd}!$E${lo}:$E${hi}"          # Batch sec
+    for i, mm in enumerate(machines_seen):
+        r = 4 + i
+        a = f"$A{r}"
+        w6.cell(row=r, column=1, value=mm)
+        w6.cell(row=r, column=2, value=f'=COUNTIFS({uU},{a},{uL},"Y")')
+        w6.cell(row=r, column=3, value=f'=SUMIFS({uC},{uU},{a},{uL},"Y")')
+        w6.cell(row=r, column=4,
+                value=(f'=IFERROR(SUMIFS({uC},{uU},{a},{uL},"Y")/'
+                       f'(SUMIFS({uE},{uU},{a},{uL},"Y")/3600),0)'))
+        w6.cell(row=r, column=5,
+                value=f'=IFERROR(AVERAGEIFS({rd}!$S${lo}:$S${hi},{uU},{a},{uL},"Y"),0)')
+        w6.cell(row=r, column=6,
+                value=f'=IFERROR(AVERAGEIFS({rd}!$P${lo}:$P${hi},{uU},{a},{uL},"Y"),0)')
+        w6.cell(row=r, column=7,
+                value=f'=IFERROR(AVERAGEIFS({rd}!$Q${lo}:$Q${hi},{uU},{a},{uL},"Y"),0)')
+        w6.cell(row=r, column=4).number_format = wph_fmt
+        w6.cell(row=r, column=5).number_format = wph_fmt
+        w6.cell(row=r, column=6).number_format = time_fmt
+        w6.cell(row=r, column=7).number_format = time_fmt
+    w6.column_dimensions["A"].width = 14
+    for col in "BCDEFG":
+        w6.column_dimensions[col].width = 16
 
     wb.save(str(path))
     return str(path)

@@ -279,8 +279,10 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   (`WPH_{호기들}_통합.xlsx`, `combined_excel_filename`). `collect_rows`(원본 read-only,
   각 행에 `machine` 태그)→호기별 `write_combined_text`→전체 행 합쳐 `write_wph_excel` 1회.
   · **통합 기준(사용자 확정 2026-09)**: 텍스트는 호기별, 결과 엑셀은 통합. 호기 구분은
-    엑셀 **호기 열(U)** 로 하고 통계·WPH 는 전체 합산(pooled). 호기별로 따로 보려면
-    엑셀에서 호기 열로 필터·피벗.
+    엑셀 **호기 열(U)** 로 하고 전체 통계·WPH 는 합산(pooled). **호기별 WPH 요약은
+    `06_호기별_WPH` 시트**에 따로 둔다(사용자 요청 2026-09) — 호기마다 한 행,
+    COUNTIFS/SUMIFS/AVERAGEIFS 로 유효 Lot·총 Wafer·누적/평균 WPH·평균 Avg Scan/
+    Batch Time 을 호기 열(U) 기준으로 집계(수식 — 원본 입력만 바뀌면 자동 갱신).
 - **엑셀 = 참조 양식과 동일**(입력만 넣으면 수식 자동계산). `01_Raw_Data` A:E 만 입력
   (Report#/Source File/Wafers Scanned/**Avg Scan sec**/**Batch sec**), F:S·`02_{n}매_통계`·
   `03_이상치`·`04_그래프데이터`·`05_대시보드` 는 전부 일반 셀 수식(표·동적배열·최신함수

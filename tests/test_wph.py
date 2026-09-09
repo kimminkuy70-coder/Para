@@ -138,7 +138,8 @@ def test_excel_structure_and_valid_wafers():
         wph.write_wph_excel(out, rows, valid_wafers=25, title="T")
         wb = openpyxl.load_workbook(out)
         assert wb.sheetnames == ["00_사용안내", "01_Raw_Data", "02_25매_통계",
-                                 "03_이상치", "04_그래프데이터", "05_대시보드"]
+                                 "03_이상치", "04_그래프데이터", "05_대시보드",
+                                 "06_호기별_WPH"]
         ws = wb["01_Raw_Data"]
         assert ws["A1"].value == "Report"
         # 통합 엑셀: 호기(U) + 생성일자(V) 열
@@ -187,6 +188,12 @@ def test_combined_multi_machine():
         machines = [ws.cell(row=r, column=21).value for r in range(2, 7)]
         assert machines == ["AOI-21", "AOI-21", "AOI-21", "AOI-22", "AOI-22"]
         assert ws["A2"].value == 1 and ws["A6"].value == 5
+        # 06_호기별_WPH — 호기마다 한 행, 요약 수식(호기 열 U 기준)
+        w6 = openpyxl.load_workbook(out)["06_호기별_WPH"]
+        assert w6["A4"].value == "AOI-21" and w6["A5"].value == "AOI-22"
+        assert 'COUNTIFS' in w6["B4"].value and '$U$' in w6["B4"].value
+        assert '$A4' in w6["B4"].value and '"Y"' in w6["B4"].value
+        assert 'AVERAGEIFS' in w6["E4"].value      # 평균 WPH
     # 파일명 헬퍼
     assert wph.text_filename("AOI-21", "2D@R").endswith("_취합.txt")
     assert "AOI-21" in wph.text_filename("AOI-21", "2D@R")
