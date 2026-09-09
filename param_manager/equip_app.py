@@ -4356,7 +4356,7 @@ class EquipApp(tk.Tk):
             tk.Label(line2, text="recipe 접두:", bg=self.p["surface"],
                      fg=self.p["text"], font=self.fonts["sub"]).pack(
                      side="left", padx=(24, 4))
-            tk.Entry(line2, textvariable=var_pref, font=self.fonts["body"],
+            tk.Entry(line2, textvariable=var_pref, font=self.fonts["base"],
                      width=30).pack(side="left", padx=4)
             tk.Button(line2, text="🔍 검색", relief="flat", bd=0,
                       bg=self.p["primary"], fg="#ffffff", padx=12, pady=3,
@@ -4383,7 +4383,7 @@ class EquipApp(tk.Tk):
         self._wph_valid = tk.StringVar(
             value=str(self._cfg.get("wph_valid_wafers", wph.DEFAULT_VALID_WAFERS)))
         tk.Entry(ctrl, textvariable=self._wph_valid, width=6,
-                 font=self.fonts["body"]).pack(side="left", padx=(4, 16))
+                 font=self.fonts["base"]).pack(side="left", padx=(4, 16))
         tk.Button(ctrl, text="▶ 조사 시작", relief="flat", bd=0,
                   bg=self.p["ok"], fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   font=self.fonts["bold"],
