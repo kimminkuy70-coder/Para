@@ -4289,9 +4289,15 @@ class EquipApp(tk.Tk):
 
         machines = self._all_machines()
         if not machines:
-            tk.Label(inner, text="먼저 '장비 IP' 탭에서 호기를 등록하세요.",
-                     bg=self.p["bg"], fg=self.p["danger"],
-                     font=self.fonts["sub"]).pack(anchor="w", padx=8)
+            if not self.save_dir:
+                msg = ("먼저 저장 폴더를 지정하세요('Recipe 관리' 탭의 ⋯파일 > "
+                       "저장 폴더 변경). 호기 목록은 저장 폴더의 '장비 IP 주소' "
+                       "파일에서 읽어옵니다.")
+            else:
+                msg = "먼저 '장비 IP' 탭에서 호기를 등록하세요(호기 이름 + IP)."
+            tk.Label(inner, text="⚠ " + msg, bg=self.p["bg"], fg=self.p["danger"],
+                     font=self.fonts["sub"], justify="left",
+                     wraplength=720).pack(anchor="w", padx=8, pady=4)
             return
 
         # 세션 위젯 참조(검색/폴더지정은 전체 재그리기 없이 라벨만 갱신)
@@ -4307,46 +4313,60 @@ class EquipApp(tk.Tk):
             "recipe 이름 앞부분까지만 입력하고 [검색]을 누르면 해당하는 리포트 "
             "개수가 표시됩니다. 1개 이상인 호기만 조사 대상이 됩니다.")
 
+        tk.Label(inner, text="✅ 조사할 호기를 체크하세요 (여러 개 선택 가능)",
+                 bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(anchor="w", padx=10, pady=(4, 2))
+
         card = tk.Frame(inner, bg=self.p["surface"], highlightthickness=1,
                         highlightbackground=self.p["head_bg"])
         card.pack(fill="x", padx=8, pady=4)
-        for m in machines:
-            row = tk.Frame(card, bg=self.p["surface"])
-            row.pack(fill="x", padx=10, pady=5)
+        for idx, m in enumerate(machines):
+            # 호기 1대 = 2줄 블록(한 줄에 몰면 좁은 화면에서 체크박스가 가려진다).
+            block = tk.Frame(card, bg=self.p["surface"])
+            block.pack(fill="x", padx=8, pady=(8 if idx == 0 else 4, 4))
+            if idx:
+                tk.Frame(card, bg=self.p["head_bg"], height=1).pack(
+                    fill="x", padx=8)
             var_inc = tk.BooleanVar(value=bool(paths.get(m)))
             var_pref = tk.StringVar(value=prefixes.get(m, ""))
-            # 오른쪽 위젯을 먼저 pack(슬롯 선택창 함정 회피) — 폴더/검색/개수
-            lbl_count = tk.Label(row, text="", bg=self.p["surface"],
-                                 fg=self.p["muted"], font=self.fonts["sub"], width=12,
-                                 anchor="e")
-            lbl_count.pack(side="right", padx=(6, 0))
-            tk.Button(row, text="🔍 검색", relief="flat", bd=0,
-                      bg=self.p["primary"], fg="#ffffff", padx=10, pady=3,
-                      cursor="hand2",
-                      command=lambda mm=m: self._wph_search(mm)).pack(
-                      side="right", padx=4)
-            ent = tk.Entry(row, textvariable=var_pref, font=self.fonts["body"],
-                           width=26)
-            ent.pack(side="right", padx=4)
-            tk.Label(row, text="recipe 접두:", bg=self.p["surface"],
-                     fg=self.p["text"], font=self.fonts["sub"]).pack(
-                     side="right", padx=(8, 2))
-            tk.Button(row, text="📁 폴더 지정…", relief="flat", bd=0,
+
+            # 1줄 — 체크박스(호기 이름 포함) + 폴더 지정 + 폴더 경로
+            line1 = tk.Frame(block, bg=self.p["surface"])
+            line1.pack(fill="x")
+            tk.Checkbutton(line1, text=f"  {m}", variable=var_inc,
+                           bg=self.p["surface"], fg=self.p["text"],
+                           activebackground=self.p["surface"],
+                           selectcolor=self.p["surface"],
+                           font=self.fonts["bold"]).pack(side="left")
+            tk.Button(line1, text="📁 폴더 지정…", relief="flat", bd=0,
                       bg=self.p["head_bg"], fg=self.p["text"], padx=10, pady=3,
                       cursor="hand2",
                       command=lambda mm=m: self._wph_pick_folder(mm)).pack(
-                      side="right", padx=4)
-            # 왼쪽 = 체크 + 호기 + 폴더 경로(expand)
-            tk.Checkbutton(row, variable=var_inc, bg=self.p["surface"],
-                           activebackground=self.p["surface"]).pack(side="left")
-            tk.Label(row, text=m, bg=self.p["surface"], fg=self.p["text"],
-                     font=self.fonts["bold"], width=10, anchor="w").pack(side="left")
-            lbl_folder = tk.Label(row, text=(paths.get(m) or "(폴더 미지정)"),
+                      side="left", padx=8)
+            lbl_folder = tk.Label(line1, text=(paths.get(m) or "(폴더 미지정)"),
                                    bg=self.p["surface"],
                                    fg=(self.p["muted"] if paths.get(m)
                                        else self.p["danger"]),
                                    font=self.fonts["sub"], anchor="w")
             lbl_folder.pack(side="left", fill="x", expand=True, padx=6)
+
+            # 2줄 — recipe 접두 + 검색 + 개수
+            line2 = tk.Frame(block, bg=self.p["surface"])
+            line2.pack(fill="x", pady=(4, 0))
+            tk.Label(line2, text="recipe 접두:", bg=self.p["surface"],
+                     fg=self.p["text"], font=self.fonts["sub"]).pack(
+                     side="left", padx=(24, 4))
+            tk.Entry(line2, textvariable=var_pref, font=self.fonts["body"],
+                     width=30).pack(side="left", padx=4)
+            tk.Button(line2, text="🔍 검색", relief="flat", bd=0,
+                      bg=self.p["primary"], fg="#ffffff", padx=12, pady=3,
+                      cursor="hand2",
+                      command=lambda mm=m: self._wph_search(mm)).pack(
+                      side="left", padx=6)
+            lbl_count = tk.Label(line2, text="", bg=self.p["surface"],
+                                 fg=self.p["muted"], font=self.fonts["sub"],
+                                 anchor="w")
+            lbl_count.pack(side="left", padx=(6, 0))
             self._wph_rows[m] = {"inc": var_inc, "pref": var_pref,
                                  "lbl_folder": lbl_folder, "lbl_count": lbl_count,
                                  "count": 0}
