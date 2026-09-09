@@ -52,6 +52,7 @@ from . import __version__
 from . import updater
 from . import watcher
 from . import workdirs
+from . import wph
 from .engine import ParamRepository
 from .theme import apply_theme
 
@@ -244,6 +245,7 @@ class EquipApp(tk.Tk):
         # '양식 만들기'는 최상단 탭에서 빼고 'Recipe 관리' 안의 2차 탭으로 넣는다(항목3).
         for key, label in (("param", "Recipe 관리"),
                            ("commonality", "Commonality 조사"),
+                           ("wph", "WPH 조사"),
                            ("special", "특이사항"), ("reference", "참고자료"),
                            ("ip", "장비 IP")):
             b = tk.Button(self.tabbar, text=label, relief="flat", bd=0,
@@ -434,6 +436,9 @@ class EquipApp(tk.Tk):
             return
         if self.view == "commonality":
             self._view_commonality()
+            return
+        if self.view == "wph":
+            self._view_wph()
             return
         # Recipe 관리 = 2차 탭(값 확인 / Recipe 양식 만들기)
         self._recipe_subtabs()
@@ -4245,6 +4250,265 @@ class EquipApp(tk.Tk):
                           padx=12, pady=5, cursor="hand2", command=cb).pack(
                           side="left", padx=(0, 6))
         return card
+
+    # ====================================================================
+    #  WPH 조사 — batch report 취합 → WPH 분석 엑셀
+    # ====================================================================
+    def _wph_paths(self) -> dict:
+        """호기별 Report 폴더 지정 {호기: 경로}(config 저장)."""
+        return dict(self._cfg.get("wph_report_paths") or {})
+
+    def _wph_prefixes(self) -> dict:
+        """호기별 recipe 접두 기억 {호기: 접두}."""
+        return dict(self._cfg.get("wph_prefixes") or {})
+
+    def _view_wph(self):
+        wrap = tk.Frame(self.body, bg=self.p["bg"])
+        wrap.pack(fill="both", expand=True)
+        canvas = tk.Canvas(wrap, bg=self.p["bg"], highlightthickness=0)
+        vbar = ttk.Scrollbar(wrap, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=self.p["bg"])
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="i")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("i", width=e.width))
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
+        self._wheelify(canvas)
+
+        tk.Label(inner, text="WPH 조사", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=8, pady=(14, 2))
+        tk.Label(inner,
+                 text="장비 Report 폴더에 쌓인 batch report 를 recipe 기준으로 취합해 "
+                      "WPH(시간당 웨이퍼 수)를 분석합니다.\n"
+                      "원본 리포트는 읽기만 하며(수정·삭제 안 함), 취합 텍스트와 결과 "
+                      "엑셀은 로컬 폴더에만 저장됩니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left").pack(anchor="w", padx=8, pady=(0, 8))
+
+        machines = self._all_machines()
+        if not machines:
+            tk.Label(inner, text="먼저 '장비 IP' 탭에서 호기를 등록하세요.",
+                     bg=self.p["bg"], fg=self.p["danger"],
+                     font=self.fonts["sub"]).pack(anchor="w", padx=8)
+            return
+
+        # 세션 위젯 참조(검색/폴더지정은 전체 재그리기 없이 라벨만 갱신)
+        self._wph_rows = {}
+        paths = self._wph_paths()
+        prefixes = self._wph_prefixes()
+
+        # ── 단계 1/2 — 호기별 Report 폴더 + recipe 접두 검색 ──────────────
+        self._step_header(
+            inner, (1, 2), "호기 · Report 폴더 · recipe 검색",
+            "조사할 호기를 체크하고, 그 호기의 Report 폴더를 한 번 지정하세요"
+            "(예: P:\\AOI-21\\Reports — 탐색기에서 미리 연결해 두어야 합니다).\n"
+            "recipe 이름 앞부분까지만 입력하고 [검색]을 누르면 해당하는 리포트 "
+            "개수가 표시됩니다. 1개 이상인 호기만 조사 대상이 됩니다.")
+
+        card = tk.Frame(inner, bg=self.p["surface"], highlightthickness=1,
+                        highlightbackground=self.p["head_bg"])
+        card.pack(fill="x", padx=8, pady=4)
+        for m in machines:
+            row = tk.Frame(card, bg=self.p["surface"])
+            row.pack(fill="x", padx=10, pady=5)
+            var_inc = tk.BooleanVar(value=bool(paths.get(m)))
+            var_pref = tk.StringVar(value=prefixes.get(m, ""))
+            # 오른쪽 위젯을 먼저 pack(슬롯 선택창 함정 회피) — 폴더/검색/개수
+            lbl_count = tk.Label(row, text="", bg=self.p["surface"],
+                                 fg=self.p["muted"], font=self.fonts["sub"], width=12,
+                                 anchor="e")
+            lbl_count.pack(side="right", padx=(6, 0))
+            tk.Button(row, text="🔍 검색", relief="flat", bd=0,
+                      bg=self.p["primary"], fg="#ffffff", padx=10, pady=3,
+                      cursor="hand2",
+                      command=lambda mm=m: self._wph_search(mm)).pack(
+                      side="right", padx=4)
+            ent = tk.Entry(row, textvariable=var_pref, font=self.fonts["body"],
+                           width=26)
+            ent.pack(side="right", padx=4)
+            tk.Label(row, text="recipe 접두:", bg=self.p["surface"],
+                     fg=self.p["text"], font=self.fonts["sub"]).pack(
+                     side="right", padx=(8, 2))
+            tk.Button(row, text="📁 폴더 지정…", relief="flat", bd=0,
+                      bg=self.p["head_bg"], fg=self.p["text"], padx=10, pady=3,
+                      cursor="hand2",
+                      command=lambda mm=m: self._wph_pick_folder(mm)).pack(
+                      side="right", padx=4)
+            # 왼쪽 = 체크 + 호기 + 폴더 경로(expand)
+            tk.Checkbutton(row, variable=var_inc, bg=self.p["surface"],
+                           activebackground=self.p["surface"]).pack(side="left")
+            tk.Label(row, text=m, bg=self.p["surface"], fg=self.p["text"],
+                     font=self.fonts["bold"], width=10, anchor="w").pack(side="left")
+            lbl_folder = tk.Label(row, text=(paths.get(m) or "(폴더 미지정)"),
+                                   bg=self.p["surface"],
+                                   fg=(self.p["muted"] if paths.get(m)
+                                       else self.p["danger"]),
+                                   font=self.fonts["sub"], anchor="w")
+            lbl_folder.pack(side="left", fill="x", expand=True, padx=6)
+            self._wph_rows[m] = {"inc": var_inc, "pref": var_pref,
+                                 "lbl_folder": lbl_folder, "lbl_count": lbl_count,
+                                 "count": 0}
+
+        # ── 단계 2/2 — 유효 매수 + 조사 시작 ──────────────────────────────
+        self._step_header(
+            inner, (2, 2), "유효 Lot 매수 확인 후 조사 시작",
+            "유효 full-lot 매수(기본 25)에 정확히 해당하는 Lot만 통계·WPH 집계에 "
+            "쓰입니다. recipe·제품에 따라 다르면 값을 바꾸세요.")
+        ctrl = tk.Frame(inner, bg=self.p["bg"])
+        ctrl.pack(fill="x", padx=8, pady=(0, 6))
+        tk.Label(ctrl, text="유효 Lot 매수:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        self._wph_valid = tk.StringVar(
+            value=str(self._cfg.get("wph_valid_wafers", wph.DEFAULT_VALID_WAFERS)))
+        tk.Entry(ctrl, textvariable=self._wph_valid, width=6,
+                 font=self.fonts["body"]).pack(side="left", padx=(4, 16))
+        tk.Button(ctrl, text="▶ 조사 시작", relief="flat", bd=0,
+                  bg=self.p["ok"], fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  font=self.fonts["bold"],
+                  command=self._wph_run).pack(side="left")
+
+        self._wph_result_lbl = tk.Label(inner, text="", bg=self.p["bg"],
+                                        fg=self.p["muted"], font=self.fonts["sub"],
+                                        justify="left", wraplength=760)
+        self._wph_result_lbl.pack(anchor="w", padx=8, pady=(2, 12))
+
+    def _wph_pick_folder(self, machine):
+        """호기의 Report 폴더를 지정한다(config 저장, 재그리기 없이 라벨만 갱신)."""
+        d = filedialog.askdirectory(
+            title=f"{machine} 의 Report 폴더 선택 "
+                  "(batch report 가 바로 들어 있는 폴더)")
+        if not d:
+            return
+        paths = self._wph_paths()
+        paths[machine] = d
+        self._cfg["wph_report_paths"] = paths
+        save_config(self._cfg)
+        row = getattr(self, "_wph_rows", {}).get(machine)
+        if row:
+            row["lbl_folder"].config(text=d, fg=self.p["muted"])
+            row["inc"].set(True)
+            row["lbl_count"].config(text="")
+            row["count"] = 0
+        self._set_status(f"{machine} Report 폴더를 지정했습니다.")
+
+    def _wph_search(self, machine):
+        """recipe 접두로 리포트 개수를 센다(원본 무접근 — 이름만)."""
+        row = getattr(self, "_wph_rows", {}).get(machine)
+        if not row:
+            return
+        folder = self._wph_paths().get(machine)
+        if not folder:
+            row["lbl_count"].config(text="폴더 미지정", fg=self.p["danger"])
+            return
+        prefix = row["pref"].get().strip()
+        # 접두 기억
+        prefs = self._wph_prefixes()
+        prefs[machine] = prefix
+        self._cfg["wph_prefixes"] = prefs
+        save_config(self._cfg)
+        row["lbl_count"].config(text="검색 중…", fg=self.p["muted"])
+        self.update_idletasks()
+
+        def work():
+            if not os.path.isdir(folder):
+                raise FileNotFoundError(folder)
+            return wph.count_reports(folder, prefix)
+
+        def done(ok, res):
+            if not ok:
+                row["count"] = 0
+                row["lbl_count"].config(text="접근 불가", fg=self.p["danger"])
+                if isinstance(res, FileNotFoundError):
+                    self._set_status(
+                        f"{machine}: Report 폴더에 접근할 수 없습니다. 탐색기에서 "
+                        "먼저 연결하세요.", warn=True)
+                else:
+                    self._logerr("E192", res)
+                return
+            row["count"] = int(res)
+            row["lbl_count"].config(
+                text=f"{res}개 발견", fg=(self.p["ok"] if res else self.p["danger"]))
+            row["inc"].set(bool(res))
+
+        self._run_busy(f"{machine} 리포트 검색", work, done)
+
+    def _wph_run(self):
+        """체크된 호기(개수>0)를 모두 조사 — 취합 텍스트 + WPH 엑셀(로컬)."""
+        try:
+            valid = int(self._wph_valid.get().strip())
+            if valid <= 0:
+                raise ValueError
+        except (ValueError, AttributeError):
+            messagebox.showwarning("매수 확인", "유효 Lot 매수는 1 이상의 정수여야 합니다.",
+                                   parent=self)
+            return
+        self._cfg["wph_valid_wafers"] = valid
+        save_config(self._cfg)
+
+        paths = self._wph_paths()
+        targets = []   # (호기, 폴더, 접두)
+        for m, row in getattr(self, "_wph_rows", {}).items():
+            if not row["inc"].get():
+                continue
+            folder = paths.get(m)
+            if not folder:
+                continue
+            targets.append((m, folder, row["pref"].get().strip()))
+        if not targets:
+            messagebox.showinfo(
+                "대상 없음",
+                "조사할 호기가 없습니다. 호기를 체크하고 Report 폴더를 지정한 뒤 "
+                "[검색]으로 리포트를 확인하세요.", parent=self)
+            return
+        # 검색을 안 한 대상은 먼저 검색하도록 안내(엉뚱한 전체 취합 방지)
+        unknown = [m for m, _f, _p in targets
+                   if self._wph_rows[m]["count"] == 0]
+        if unknown:
+            if not messagebox.askyesno(
+                    "검색 확인",
+                    "다음 호기는 [검색]으로 리포트 개수를 확인하지 않았습니다:\n  "
+                    + ", ".join(unknown)
+                    + "\n\n그대로 조사를 진행하면 접두에 맞는 리포트가 없을 수 있습니다. "
+                    "계속할까요?", parent=self):
+                return
+
+        def work():
+            out_dir = wph.new_investigation_dir(self.local_dir)
+            made = []
+            for m, folder, prefix in targets:
+                recipe = prefix or "(전체)"
+                rows, errors = wph.collect_rows(folder, prefix)
+                txt_name, xlsx_name = wph.target_filenames(m, recipe)
+                wph.write_combined_text(os.path.join(out_dir, txt_name),
+                                        folder, prefix, m, recipe)
+                title = f"{m} · {recipe} WPH 분석"
+                wph.write_wph_excel(os.path.join(out_dir, xlsx_name), rows,
+                                    valid_wafers=valid, title=title)
+                made.append((m, recipe, len(rows), len(errors)))
+            return out_dir, made
+
+        def done(ok, res):
+            if not ok:
+                self._err("E191", "WPH 조사 실패", res)
+                return
+            out_dir, made = res
+            lines = [f"✓ 조사 완료 — 저장 폴더: {out_dir}", ""]
+            for m, recipe, n, nerr in made:
+                extra = f"  (오류 {nerr}건)" if nerr else ""
+                lines.append(f"· {m} / {recipe}: 리포트 {n}개{extra}")
+            lines.append("")
+            lines.append("각 대상마다 취합 텍스트(.txt)와 WPH 분석 엑셀(.xlsx)이 "
+                         "만들어졌습니다.")
+            self._wph_result_lbl.config(text="\n".join(lines), fg=self.p["text"])
+            self._set_status("WPH 조사 완료 — 결과 폴더를 엽니다.")
+            if messagebox.askyesno("WPH 조사 완료",
+                                   "\n".join(lines) + "\n\n결과 폴더를 열까요?",
+                                   parent=self):
+                self._open_in_excel(out_dir)
+
+        self._run_busy("WPH 조사(취합·엑셀 생성)", work, done)
 
     def _view_commonality(self):
         wrap = tk.Frame(self.body, bg=self.p["bg"])

@@ -256,6 +256,38 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
     감시는 **둘 다** 트레이 상주로 유지된다.
   · 오류 코드 E180~E190.
 
+## WPH 조사 (2026-09 — 헤드리스+GUI 완료, 브랜치 `version_v7.0`)
+
+장비 Report 폴더에 스캔마다 쌓이는 **batch report(HTML)** 를 recipe 기준으로 취합해
+**WPH(Wafers Per Hour)** 를 분석한다. 탭 'WPH 조사'. 헤드리스=`wph.py`(테스트됨).
+참조 자료(사용자 제공): `batch_report_to_text.py`(HTML→취합텍스트 파서)·
+`run_batch_report_to_text.bat`·예시 취합텍스트·`GH100_..._WPH_수식기반_..xlsx`(수식 양식).
+
+- **입력 = 장비 Report 폴더**(예: `P:\AOI-21\Reports`) — batch report 가 하위 폴더 없이
+  **바로** 쌓인다. 파일명 앞부분이 recipe(`2D@RE-GA285ABB_0859840PD-0A_..._BatchReport.htm`).
+- **원본 read-only·산출물 로컬만**: Report 폴더의 .htm 는 **읽기만**(수정/삭제/이동 금지),
+  취합 텍스트·결과 엑셀은 **로컬**(`localdirs`)에만 쓴다(OneDrive 금지). 추가 패키지 없이
+  stdlib `html.parser` + `openpyxl` 만 사용.
+- **흐름(GUI 2단계)**: ①호기 다중 선택 + **호기별 Report 폴더 직접 지정**(config
+  `wph_report_paths`, 탐색기로 미리 연결) + **recipe 접두 입력→[검색]으로 개수 표시**
+  (이름만 보므로 빠름·원본 무접근, 접두 매칭은 대소문자·주변공백 무시 `startswith`).
+  1개 이상인 호기만 대상. ②**유효 Lot 매수**(기본 25, config `wph_valid_wafers`,
+  recipe별 full-lot 매수 달라 변경 가능) 확인 → **[조사 시작]**.
+- **조사 = (호기, recipe)마다** 로컬 `WPH조사/조사_{시각}/` 폴더 하나에
+  `{호기}_{recipe}_{시각}_취합.txt`(참조 .py 형식, 헤더에 호기·recipe) +
+  `{호기}_{recipe}_{시각}_WPH.xlsx`(참조와 동일한 6시트 수식 엑셀). `collect_rows`(원본
+  read-only)→`write_combined_text`→`write_wph_excel`.
+- **엑셀 = 참조 양식과 동일**(입력만 넣으면 수식 자동계산). `01_Raw_Data` A:E 만 입력
+  (Report#/Source File/Wafers Scanned/**Avg Scan sec**/**Batch sec**), F:S·`02_{n}매_통계`·
+  `03_이상치`·`04_그래프데이터`·`05_대시보드` 는 전부 일반 셀 수식(표·동적배열·최신함수
+  회피 — 호환성). **핵심: Actual WPH = Wafers×3600÷Batch sec**, `Valid {n}` =
+  `IF(AND(C=n,D>0,E>0),"Y","")`. 유효매수 `n` 은 시트명·Valid·헤더·N/O 판정 참조에 반영.
+- **추가: `batch report 생성일자`(Batch End) 열을 맨 끝 U 에**(사용자 확정 — F:S 수식
+  참조에 영향 없게 T 뒤). Batch End(`30-Aug-26 09:41:31 PM`)를 `parse_batch_datetime`
+  (로케일 독립·AM/PM·자정/정오)로 파싱해 날짜셀, 실패 시 원문. 시간 `00:01:44`→초는
+  `hms_to_seconds`.
+- 오류 코드 E191(조사)·E192(검색).
+
 ## 이미 확정된 결정 (재질문 금지)
 
 아래는 사용자와 이미 합의가 끝난 사항이다. 같은 내용을 AskUserQuestion으로 **다시 묻지 말 것**.
@@ -399,6 +431,7 @@ python3 tests/test_collate.py      # 11 (레시피별 시트·전체 호기·직
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
+python3 tests/test_wph.py          # 6  (WPH: 시간→초·Batch End→생성일자·recipe 접두검색/카운트·원본 read-only 수집·취합텍스트·6시트 수식엑셀/생성일자U열/유효매수 변경)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_namestore.py    # 5  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)
@@ -584,7 +617,7 @@ python3 tests/test_downloader.py   # 8
 `자동감시/`(변경보고서 = 변경 시에만, `감시로그.txt` 1개에 append) ·
 `_세션/`(접속자 json·전역 잠금, 300초 하트비트 + 내용 같으면 쓰기 생략) ·
 문서 옆 `.editlock`(편집 중에만) · 형제 `프로그램/`(exe 2개 + 버전정보.json).
-**Commonality 산출물·수집 staging·로그·캐시는 전부 로컬**(`localdirs`).
+**Commonality 산출물·WPH 조사 산출물·수집 staging·로그·캐시는 전부 로컬**(`localdirs`).
 
 ## 자동 업데이트 (2026-08 확정 A안 — OneDrive만, 인터넷 미사용)
 
@@ -715,6 +748,13 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
     Zone=`Classification`/Alg=`Max Count`/Parameter=`{코드} {분류명}`/설정키=코드로
     ExtractRow 를 만든다. 코드가 수십 개라 **기본 사용=N**, 변환은 **RAW**(개수라
     픽셀→µ 계수 적용 금지). 나머지 필드의 뜻은 `manreclassify.py` 상단에 적혀 있다.
+- `param_manager/wph.py` — **WPH 조사 헤드리스**: batch report(HTML) 파서
+  (`parse_report`/`extract_row` — Wafers/Avg Scan sec/Batch sec/Batch End), 값 파서
+  (`hms_to_seconds`/`parse_batch_datetime`), recipe 접두 검색(`list_reports`/
+  `count_reports`/`collect_rows` — 원본 read-only), 취합 텍스트(`build_combined_text`/
+  `write_combined_text`), **참조와 동일한 6시트 수식 엑셀**(`write_wph_excel` —
+  생성일자 U열·유효매수 `valid_wafers`), 로컬 출력 경로(`new_investigation_dir`/
+  `target_filenames`).
 - `param_manager/collector.py` — 장비 네트워크 읽기전용 수집(net use, plan 자동 재사용).
   `FIXED_FILES`에 **RTP.txt 포함**(계수 자동 추정용). RTP.txt는 recipe 폴더에 위치.
   **Zones/ 하위구조 보존 복사**(staging 에 `Zones/*.ini` 그대로 — 파서 규칙과 일치).
