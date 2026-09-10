@@ -299,6 +299,14 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   어느 호기인지), **V=`batch report 생성일자`(Batch End)**. Batch End
   (`30-Aug-26 09:41:31 PM`)를 `parse_batch_datetime`(로케일 독립·AM/PM·자정/정오)로
   파싱해 날짜셀, 실패 시 원문. 시간 `00:01:44`→초는 `hms_to_seconds`.
+- **진행 상황 로딩창(2026-09)**: 검색·조사 모두 `_run_busy` 로딩 모달에 **지금 무엇을
+  하는지** 실시간 표시. `_run_busy(title, work, on_done)` 의 `work` 가 **인자 1개를
+  받으면 진행 콜백 `report` 를 넘긴다**(`report(msg)` 또는 `report(done,total,msg)`
+  → 상태 문구 + 진행률 막대). 스레드는 dict 에만 쓰고 poll 이 위젯을 갱신(스레드 안전).
+  · **파싱은 한 번만(`wph.investigate`)**: 종전엔 `collect_rows` 와
+    `write_combined_text` 가 각각 파일을 열어 리포트를 **두 번** 파싱했다(느린 단계가
+    배). 이제 `investigate` 가 한 번 읽어 (행, 취합텍스트, 오류)를 함께 만들고
+    `progress(done,total,name)` 로 리포트별 진행을 알린다(`[i/N] 호기 리포트 파싱 중…`).
 - 오류 코드 E191(조사)·E192(검색).
 
 ## 이미 확정된 결정 (재질문 금지)
@@ -444,7 +452,7 @@ python3 tests/test_collate.py      # 11 (레시피별 시트·전체 호기·직
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
-python3 tests/test_wph.py          # 7  (WPH: 시간→초·Batch End→생성일자·recipe 접두검색/카운트·원본 read-only 수집·취합텍스트(호기별)·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
+python3 tests/test_wph.py          # 8  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_namestore.py    # 5  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)
@@ -852,7 +860,8 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   (독립 파일), `_view_form`/`_form_new`/`_form_build_and_edit`/`_form_finalize`(실제 Excel),
   `_load_previous_form`, `_ask_scales`(변형별 계수), `_map_ips_to_machines`(IP↔호기),
   `_update_values_dialog`/`_update_collate_flow`/`_update_write_results`, `_history_dialog`/
-  `_show_diff_window`, `_run_busy`(로딩), `_file_menu`(저장폴더/다시읽기/다운로드).
+  `_show_diff_window`, `_run_busy`(로딩 모달 — `work` 가 인자 1개면 진행 콜백
+  `report(msg|done,total,msg)` 를 넘겨 상태 문구·진행률을 실시간 표시), `_file_menu`.
   하단 상태바 = `_set_status(msg, warn=)` — 문구가 있을 때만 **✕(닫기) 버튼**이 붙고
   (`clear_status`), warn=True 면 빨강. 경고문이 화면에 계속 남지 않게 한다.
 - `param_manager/engine.py` — `create_from_records`(PI_ALL/RDL_ALL 기록), `ParamRow`/`ParamRepository`,

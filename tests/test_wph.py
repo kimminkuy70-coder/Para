@@ -181,6 +181,27 @@ def test_excel_structure_and_valid_wafers():
     print("  wph OK: 엑셀 6시트·입력/수식·생성일자(U)·유효매수 변경 반영")
 
 
+def test_investigate_single_parse_progress():
+    """investigate = 한 번 파싱으로 행+취합텍스트 동시 생성 + 진행 콜백."""
+    with tempfile.TemporaryDirectory() as d:
+        _make_folder(d)
+        q = "2D@RE-GA285ABB_0859840PD-0A"
+        seen = []
+        rows, text, errs = wph.investigate(
+            d, q, "AOI-21", q, progress=lambda i, n, name: seen.append((i, n, name)))
+        assert not errs and len(rows) == 3
+        assert "REPORT_FILE_COUNT: 3" in text and "MACHINE: AOI-21" in text
+        # 진행 콜백이 리포트마다 (done,total,name) 로 호출됨
+        assert len(seen) == 3
+        assert seen[0][1] == 3 and seen[-1][0] == 3
+        assert all(isinstance(s[2], str) and s[2] for s in seen)
+        # names 로 특정 파일만
+        pick = wph.list_reports(d, q)[:1]
+        rows2, _t2, _e2 = wph.investigate(d, q, "AOI-21", q, names=pick)
+        assert len(rows2) == 1
+    print("  wph OK: investigate(한번 파싱·행+텍스트·진행콜백·names 선택)")
+
+
 def test_combined_multi_machine():
     """여러 호기 → 취합 텍스트는 호기별, 결과 엑셀은 통합 1개(호기 열로 구분)."""
     import openpyxl

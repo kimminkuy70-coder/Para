@@ -1897,10 +1897,16 @@ class EquipApp(tk.Tk):
     # ====================================================================
     def _run_busy(self, title, work, on_done, parent=None):
         """'로딩 중' 모달을 띄우고 work()를 백그라운드 스레드에서 실행한다.
-        work: 인자 없는 함수 — **GUI 위젯을 절대 건드리지 않는** 순수 작업만
-              (파싱/취합/저장/비교 등). 반환값은 on_done(ok, result)로 전달.
+        work: **GUI 위젯을 절대 건드리지 않는** 순수 작업(파싱/취합/저장/비교 등).
+              · 인자 없는 함수면 그대로 실행한다.
+              · **인자를 1개 받는 함수면 진행 보고 콜백 `report`** 를 넘긴다
+                (`work(report)`). `report(msg)` 또는 `report(done, total, msg)`
+                를 호출하면 로딩창의 상태 문구가 실시간으로 갱신되고, 진행률이
+                있으면 막대가 채워진다(값은 스레드가 dict 에만 담고, 실제 위젯
+                갱신은 메인 스레드의 poll 루프가 한다 — tkinter 스레드 안전).
         on_done(ok, result): 메인 스레드에서 호출(위젯 조작 안전). ok=False면
               result 는 예외 객체."""
+        import inspect
         parent = parent or self
         win = tk.Toplevel(parent)
         win.title(title)
@@ -1909,20 +1915,38 @@ class EquipApp(tk.Tk):
         win.resizable(False, False)
         tk.Label(win, text="⏳ " + title, bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["bold"]).pack(padx=28, pady=(18, 4))
-        tk.Label(win, text="잠시만 기다려 주세요…", bg=self.p["bg"], fg=self.p["muted"],
-                 font=self.fonts["sub"]).pack(padx=28, pady=(0, 6))
-        pb = ttk.Progressbar(win, mode="indeterminate", length=280)
+        status = tk.Label(win, text="잠시만 기다려 주세요…", bg=self.p["bg"],
+                          fg=self.p["muted"], font=self.fonts["sub"],
+                          width=52, anchor="center", wraplength=380)
+        status.pack(padx=28, pady=(0, 6))
+        pb = ttk.Progressbar(win, mode="indeterminate", length=380)
         pb.pack(padx=28, pady=(0, 18))
         pb.start(12)
         try:
             win.grab_set()
         except tk.TclError:
             pass
-        box = {"done": False, "ok": False, "res": None}
+        # 스레드는 여기(dict)에만 쓰고, 위젯 갱신은 메인 스레드 poll 이 한다.
+        box = {"done": False, "ok": False, "res": None,
+               "msg": "", "cur": 0, "total": 0, "seen": None, "mode": "indet"}
+
+        def report(*args):
+            # report(msg) 또는 report(done, total, msg)
+            if len(args) == 1:
+                box["msg"] = str(args[0] or "")
+            elif len(args) >= 3:
+                box["cur"], box["total"] = int(args[0]), int(args[1])
+                box["msg"] = str(args[2] or "")
+
+        # work 가 인자를 받으면 report 를 넘긴다(하위호환: 무인자면 그대로).
+        try:
+            wants = len(inspect.signature(work).parameters) >= 1
+        except (TypeError, ValueError):
+            wants = False
 
         def runner():
             try:
-                box["res"], box["ok"] = work(), True
+                box["res"], box["ok"] = (work(report) if wants else work()), True
             except Exception as e:  # noqa: BLE001
                 box["res"], box["ok"] = e, False
             finally:
@@ -1940,6 +1964,20 @@ class EquipApp(tk.Tk):
                 win.destroy()
                 on_done(box["ok"], box["res"])
                 return
+            # 진행 상황 반영(값이 바뀌었을 때만)
+            key = (box["msg"], box["cur"], box["total"])
+            if key != box["seen"]:
+                box["seen"] = key
+                if box["total"] > 0:
+                    if box["mode"] != "det":
+                        box["mode"] = "det"
+                        pb.stop()
+                        pb.config(mode="determinate", maximum=box["total"])
+                    pb["value"] = box["cur"]
+                    pct = f"  ({box['cur']}/{box['total']})"
+                else:
+                    pct = ""
+                status.config(text=(box["msg"] or "잠시만 기다려 주세요…") + pct)
             win.after(90, poll)
 
         win.after(90, poll)
@@ -4454,10 +4492,13 @@ class EquipApp(tk.Tk):
         row["btn_more"].config(state="disabled")
         self.update_idletasks()
 
-        def work():
+        def work(report):
+            report(f"{machine}: Report 폴더 목록을 읽는 중…\n{folder}")
             if not os.path.isdir(folder):
                 raise FileNotFoundError(folder)
-            return wph.list_reports(folder, query)
+            names = wph.list_reports(folder, query)
+            report(f"{machine}: {len(names)}개 발견 — 검색 완료")
+            return names
 
         def done(ok, res):
             if not ok:
@@ -4658,23 +4699,34 @@ class EquipApp(tk.Tk):
                     "계속할까요?", parent=self):
                 return
 
-        def work():
+        def work(report):
             # 취합 텍스트 = 호기별 1개, 결과 엑셀 = 모든 호기 합친 통합 1개.
+            report("조사 폴더를 준비하는 중…")
             out_dir = wph.new_investigation_dir(self.local_dir)
             made = []
             all_rows = []          # 통합 엑셀용(각 행에 호기 태그)
-            for m, folder, query, names in targets:
+            nmac = len(targets)
+            for mi, (m, folder, query, names) in enumerate(targets, start=1):
                 recipe = query or "(전체)"
-                rows, errors = wph.collect_rows(folder, query, names=names)
+
+                def prog(done, total, name, _m=m, _mi=mi):
+                    report(done, total,
+                           f"[{_mi}/{nmac}] {_m} 리포트 파싱 중… {name}")
+
+                # 리포트를 한 번만 파싱해 행 + 취합 텍스트를 함께 만든다.
+                rows, text, errors = wph.investigate(
+                    folder, query, m, recipe, names=names, progress=prog)
                 for rw in rows:
                     rw["machine"] = m
                 all_rows.extend(rows)
                 # 호기별 취합 텍스트(체크한 리포트만)
-                wph.write_combined_text(
-                    os.path.join(out_dir, wph.text_filename(m, recipe)),
-                    folder, query, m, recipe, names=names)
+                report(f"[{mi}/{nmac}] {m} 취합 텍스트 저장 중…")
+                from pathlib import Path as _P
+                _P(os.path.join(out_dir, wph.text_filename(m, recipe))).write_text(
+                    text, encoding="utf-8-sig")
                 made.append((m, recipe, len(rows), len(errors)))
             # 통합 WPH 엑셀 1개(호기 열로 구분, 통계·WPH 전체 합산)
+            report("통합 WPH 엑셀을 만드는 중…")
             machines = [m for m, _f, _q, _n in targets]
             xlsx_path = os.path.join(out_dir, wph.combined_excel_filename(machines))
             title = "WPH 통합 분석 (" + ", ".join(machines) + ")"

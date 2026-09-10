@@ -385,19 +385,8 @@ def _report_to_text(report: dict, index: int, total: int) -> str:
     return "\n".join(lines)
 
 
-def build_combined_text(folder, query: str, machine: str, recipe: str,
-                        names=None) -> tuple[str, int, list]:
-    """리포트를 취합 텍스트로 만든다. names 를 주면 그 파일들만(체크한 것).
-
-    반환: (text, report_count, errors). 헤더에 호기·recipe 를 박는다.
-    """
-    reports: list[dict] = []
-    errors: list[tuple[str, str]] = []
-    for name in _resolve_names(folder, query, names):
-        try:
-            reports.append(parse_report(Path(folder) / name))
-        except Exception as exc:  # noqa: BLE001
-            errors.append((name, str(exc)))
+def _compose_text(reports, machine, recipe, folder, errors) -> str:
+    """파싱된 report 목록 → 취합 텍스트(헤더에 호기·recipe)."""
     parts = [
         "BATCH REPORTS CONSOLIDATED TEXT",
         f"GENERATED_AT: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -414,7 +403,50 @@ def build_combined_text(folder, query: str, machine: str, recipe: str,
         parts.extend(["=" * 100, "[PARSE_ERRORS]"])
         parts.extend(f"{n}: {m}" for n, m in errors)
         parts.append("")
-    text = "\r\n".join("\n".join(parts).splitlines()) + "\r\n"
+    return "\r\n".join("\n".join(parts).splitlines()) + "\r\n"
+
+
+def investigate(folder, query: str, machine: str, recipe: str, names=None,
+                progress=None) -> tuple[list[dict], str, list]:
+    """리포트를 **한 번만** 파싱해 (입력행 목록, 취합 텍스트, 오류)를 함께 만든다.
+
+    종전에는 collect_rows 와 build_combined_text 가 각각 파일을 열어 **두 번**
+    파싱했다(느린 단계가 배로). 이제 한 번 읽어 둘 다 만든다.
+    progress(done, total, name) 콜백으로 진행 상황을 알린다(GUI 로딩창 갱신용).
+    """
+    resolved = _resolve_names(folder, query, names)
+    total = len(resolved)
+    reports: list[dict] = []
+    rows: list[dict] = []
+    errors: list[tuple[str, str]] = []
+    for i, name in enumerate(resolved, start=1):
+        if progress is not None:
+            progress(i, total, name)
+        p = Path(folder) / name
+        try:
+            rep = parse_report(p)
+            reports.append(rep)
+            rows.append(extract_row(rep))
+        except Exception as exc:  # noqa: BLE001
+            errors.append((name, str(exc)))
+    text = _compose_text(reports, machine, recipe, folder, errors)
+    return rows, text, errors
+
+
+def build_combined_text(folder, query: str, machine: str, recipe: str,
+                        names=None) -> tuple[str, int, list]:
+    """리포트를 취합 텍스트로 만든다. names 를 주면 그 파일들만(체크한 것).
+
+    반환: (text, report_count, errors). 헤더에 호기·recipe 를 박는다.
+    """
+    reports: list[dict] = []
+    errors: list[tuple[str, str]] = []
+    for name in _resolve_names(folder, query, names):
+        try:
+            reports.append(parse_report(Path(folder) / name))
+        except Exception as exc:  # noqa: BLE001
+            errors.append((name, str(exc)))
+    text = _compose_text(reports, machine, recipe, folder, errors)
     return text, len(reports), errors
 
 
