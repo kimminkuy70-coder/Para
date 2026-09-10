@@ -4305,13 +4305,14 @@ class EquipApp(tk.Tk):
         paths = self._wph_paths()
         prefixes = self._wph_prefixes()
 
-        # ── 단계 1/2 — 호기별 Report 폴더 + recipe 접두 검색 ──────────────
+        # ── 단계 1/2 — 호기별 Report 폴더 + recipe 검색 ──────────────
         self._step_header(
             inner, (1, 2), "호기 · Report 폴더 · recipe 검색",
             "조사할 호기를 체크하고, 그 호기의 Report 폴더를 한 번 지정하세요"
             "(예: P:\\AOI-21\\Reports — 탐색기에서 미리 연결해 두어야 합니다).\n"
-            "recipe 이름 앞부분까지만 입력하고 [검색]을 누르면 해당하는 리포트 "
-            "개수가 표시됩니다. 1개 이상인 호기만 조사 대상이 됩니다.")
+            "recipe 검색어를 입력하고 [검색]을 누르면 그 검색어가 **파일 이름에 포함된** "
+            "batch report 개수가 표시됩니다(여러 단어는 모두 포함). [📋 더보기]에서 "
+            "실제 리포트 목록을 보고 조사할 것만 체크할 수 있습니다(기본 전체 선택).")
 
         tk.Label(inner, text="✅ 조사할 호기를 체크하세요 (여러 개 선택 가능)",
                  bg=self.p["bg"], fg=self.p["text"],
@@ -4350,14 +4351,16 @@ class EquipApp(tk.Tk):
                                    font=self.fonts["sub"], anchor="w")
             lbl_folder.pack(side="left", fill="x", expand=True, padx=6)
 
-            # 2줄 — recipe 접두 + 검색 + 개수
+            # 2줄 — recipe 검색어 + 검색 + 개수 + 더보기(목록·체크)
             line2 = tk.Frame(block, bg=self.p["surface"])
             line2.pack(fill="x", pady=(4, 0))
-            tk.Label(line2, text="recipe 접두:", bg=self.p["surface"],
+            tk.Label(line2, text="recipe 검색어:", bg=self.p["surface"],
                      fg=self.p["text"], font=self.fonts["sub"]).pack(
                      side="left", padx=(24, 4))
-            tk.Entry(line2, textvariable=var_pref, font=self.fonts["base"],
-                     width=30).pack(side="left", padx=4)
+            ent = tk.Entry(line2, textvariable=var_pref, font=self.fonts["base"],
+                           width=30)
+            ent.pack(side="left", padx=4)
+            ent.bind("<Return>", lambda e, mm=m: self._wph_search(mm))
             tk.Button(line2, text="🔍 검색", relief="flat", bd=0,
                       bg=self.p["primary"], fg="#ffffff", padx=12, pady=3,
                       cursor="hand2",
@@ -4367,9 +4370,16 @@ class EquipApp(tk.Tk):
                                  fg=self.p["muted"], font=self.fonts["sub"],
                                  anchor="w")
             lbl_count.pack(side="left", padx=(6, 0))
+            btn_more = tk.Button(line2, text="📋 더보기", relief="flat", bd=0,
+                                 bg=self.p["head_bg"], fg=self.p["text"],
+                                 padx=10, pady=3, cursor="hand2",
+                                 state="disabled",
+                                 command=lambda mm=m: self._wph_more(mm))
+            btn_more.pack(side="left", padx=6)
             self._wph_rows[m] = {"inc": var_inc, "pref": var_pref,
                                  "lbl_folder": lbl_folder, "lbl_count": lbl_count,
-                                 "count": 0}
+                                 "btn_more": btn_more, "count": 0,
+                                 "all_names": [], "selected": set()}
 
         # ── 단계 2/2 — 유효 매수 + 조사 시작 ──────────────────────────────
         self._step_header(
@@ -4411,10 +4421,22 @@ class EquipApp(tk.Tk):
             row["inc"].set(True)
             row["lbl_count"].config(text="")
             row["count"] = 0
-        self._set_status(f"{machine} Report 폴더를 지정했습니다.")
+            row["all_names"] = []
+            row["selected"] = set()
+            row["btn_more"].config(state="disabled")
+        self._set_status(f"{machine} Report 폴더를 지정했습니다. [검색]을 눌러 "
+                         "리포트를 찾으세요.")
+
+    def _wph_count_text(self, row) -> str:
+        """개수 라벨 문구 — 발견 개수 + (선택 개수가 다르면) 선택 개수."""
+        total = len(row["all_names"])
+        sel = len(row["selected"])
+        if total and sel != total:
+            return f"{sel}개 선택 / {total}개 발견"
+        return f"{total}개 발견"
 
     def _wph_search(self, machine):
-        """recipe 접두로 리포트 개수를 센다(원본 무접근 — 이름만)."""
+        """recipe 검색어가 포함된 리포트 목록을 찾는다(원본 무접근 — 이름만)."""
         row = getattr(self, "_wph_rows", {}).get(machine)
         if not row:
             return
@@ -4422,23 +4444,26 @@ class EquipApp(tk.Tk):
         if not folder:
             row["lbl_count"].config(text="폴더 미지정", fg=self.p["danger"])
             return
-        prefix = row["pref"].get().strip()
-        # 접두 기억
+        query = row["pref"].get().strip()
+        # 검색어 기억
         prefs = self._wph_prefixes()
-        prefs[machine] = prefix
+        prefs[machine] = query
         self._cfg["wph_prefixes"] = prefs
         save_config(self._cfg)
         row["lbl_count"].config(text="검색 중…", fg=self.p["muted"])
+        row["btn_more"].config(state="disabled")
         self.update_idletasks()
 
         def work():
             if not os.path.isdir(folder):
                 raise FileNotFoundError(folder)
-            return wph.count_reports(folder, prefix)
+            return wph.list_reports(folder, query)
 
         def done(ok, res):
             if not ok:
                 row["count"] = 0
+                row["all_names"] = []
+                row["selected"] = set()
                 row["lbl_count"].config(text="접근 불가", fg=self.p["danger"])
                 if isinstance(res, FileNotFoundError):
                     self._set_status(
@@ -4447,12 +4472,150 @@ class EquipApp(tk.Tk):
                 else:
                     self._logerr("E192", res)
                 return
-            row["count"] = int(res)
+            names = list(res)
+            row["all_names"] = names
+            row["selected"] = set(names)      # 기본 = 전체 선택
+            row["count"] = len(names)
             row["lbl_count"].config(
-                text=f"{res}개 발견", fg=(self.p["ok"] if res else self.p["danger"]))
-            row["inc"].set(bool(res))
+                text=self._wph_count_text(row),
+                fg=(self.p["ok"] if names else self.p["danger"]))
+            row["btn_more"].config(state=("normal" if names else "disabled"))
+            row["inc"].set(bool(names))
 
         self._run_busy(f"{machine} 리포트 검색", work, done)
+
+    def _wph_more(self, machine):
+        """검색된 batch report 목록을 체크박스로 보여주고 조사 대상을 고른다.
+
+        전체선택/전체해제 · ↑↓ 이동 · Enter/Space 토글 · 기본 전체 선택.
+        """
+        row = getattr(self, "_wph_rows", {}).get(machine)
+        if not row or not row["all_names"]:
+            messagebox.showinfo("목록 없음", "먼저 [검색]으로 리포트를 찾으세요.",
+                                parent=self)
+            return
+        names = row["all_names"]
+        sel = set(row["selected"])          # 작업용 복사(확인 눌러야 반영)
+
+        win = tk.Toplevel(self)
+        win.title(f"{machine} — 조사할 batch report 선택")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        self._geo(win, 900, 620)
+
+        tk.Label(win, text=f"{machine} · batch report {len(names)}개",
+                 bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["title"]).pack(anchor="w", padx=14, pady=(12, 2))
+        info = tk.Label(win, text="", bg=self.p["bg"], fg=self.p["muted"],
+                        font=self.fonts["sub"])
+        info.pack(anchor="w", padx=14)
+        tk.Label(win,
+                 text="↑/↓ 이동 · Enter 또는 Space 로 체크/해제 · 조사할 리포트만 "
+                      "남기세요(기본 전체 선택).",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(
+                 anchor="w", padx=14, pady=(0, 6))
+
+        body = tk.Frame(win, bg=self.p["bg"])
+        body.pack(fill="both", expand=True, padx=14, pady=(0, 6))
+        sb = ttk.Scrollbar(body, orient="vertical")
+        lb = tk.Listbox(body, activestyle="dotbox", font=self.fonts["base"],
+                        selectmode="browse", yscrollcommand=sb.set,
+                        highlightthickness=1,
+                        highlightbackground=self.p["border"])
+        sb.config(command=lb.yview)
+        lb.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        def line(i):
+            mark = "☑" if names[i] in sel else "☐"
+            return f" {mark}  {names[i]}"
+
+        for i in range(len(names)):
+            lb.insert("end", line(i))
+        if names:
+            lb.selection_set(0)
+            lb.activate(0)
+            lb.focus_set()
+
+        def refresh_info():
+            info.config(text=f"선택 {len(sel)} / 전체 {len(names)}")
+        refresh_info()
+
+        def redraw(i):
+            cur = lb.index("active")
+            top = lb.nearest(0)
+            lb.delete(i)
+            lb.insert(i, line(i))
+            lb.selection_clear(0, "end")
+            lb.selection_set(cur)
+            lb.activate(cur)
+            lb.yview(top)
+
+        def toggle(i):
+            if names[i] in sel:
+                sel.discard(names[i])
+            else:
+                sel.add(names[i])
+            redraw(i)
+            refresh_info()
+
+        def on_key(_e):
+            try:
+                i = lb.index("active")
+            except tk.TclError:
+                return "break"
+            toggle(i)
+            return "break"
+
+        def on_click(e):
+            i = lb.nearest(e.y)
+            if i >= 0:
+                lb.activate(i)
+                toggle(i)
+            return "break"
+
+        lb.bind("<Return>", on_key)
+        lb.bind("<space>", on_key)
+        lb.bind("<Button-1>", on_click)
+
+        def set_all(v):
+            sel.clear()
+            if v:
+                sel.update(names)
+            top = lb.nearest(0)
+            cur = lb.index("active")
+            lb.delete(0, "end")
+            for i in range(len(names)):
+                lb.insert("end", line(i))
+            lb.selection_set(cur)
+            lb.activate(cur)
+            lb.yview(top)
+            refresh_info()
+
+        bar = tk.Frame(win, bg=self.p["bg"])
+        bar.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Button(bar, text="전체 선택", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], padx=12, pady=5, cursor="hand2",
+                  command=lambda: set_all(True)).pack(side="left")
+        tk.Button(bar, text="전체 해제", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], padx=12, pady=5, cursor="hand2",
+                  command=lambda: set_all(False)).pack(side="left", padx=6)
+
+        def confirm():
+            row["selected"] = set(sel)
+            row["lbl_count"].config(
+                text=self._wph_count_text(row),
+                fg=(self.p["ok"] if sel else self.p["danger"]))
+            row["inc"].set(bool(sel))
+            win.destroy()
+
+        tk.Button(bar, text="확인", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=18, pady=5, cursor="hand2",
+                  font=self.fonts["bold"], command=confirm).pack(side="right")
+        tk.Button(bar, text="취소", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], padx=12, pady=5, cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=6)
 
     def _wph_run(self):
         """체크된 호기(개수>0)를 모두 조사 — 취합 텍스트 + WPH 엑셀(로컬)."""
@@ -4468,14 +4631,15 @@ class EquipApp(tk.Tk):
         save_config(self._cfg)
 
         paths = self._wph_paths()
-        targets = []   # (호기, 폴더, 접두)
+        targets = []   # (호기, 폴더, 검색어, 선택 파일 목록)
         for m, row in getattr(self, "_wph_rows", {}).items():
             if not row["inc"].get():
                 continue
             folder = paths.get(m)
             if not folder:
                 continue
-            targets.append((m, folder, row["pref"].get().strip()))
+            names = sorted(row["selected"]) if row["selected"] else None
+            targets.append((m, folder, row["pref"].get().strip(), names))
         if not targets:
             messagebox.showinfo(
                 "대상 없음",
@@ -4483,14 +4647,14 @@ class EquipApp(tk.Tk):
                 "[검색]으로 리포트를 확인하세요.", parent=self)
             return
         # 검색을 안 한 대상은 먼저 검색하도록 안내(엉뚱한 전체 취합 방지)
-        unknown = [m for m, _f, _p in targets
+        unknown = [m for m, _f, _q, _n in targets
                    if self._wph_rows[m]["count"] == 0]
         if unknown:
             if not messagebox.askyesno(
                     "검색 확인",
-                    "다음 호기는 [검색]으로 리포트 개수를 확인하지 않았습니다:\n  "
+                    "다음 호기는 [검색]으로 리포트를 확인하지 않았습니다:\n  "
                     + ", ".join(unknown)
-                    + "\n\n그대로 조사를 진행하면 접두에 맞는 리포트가 없을 수 있습니다. "
+                    + "\n\n그대로 조사를 진행하면 검색어에 맞는 리포트가 없을 수 있습니다. "
                     "계속할까요?", parent=self):
                 return
 
@@ -4499,19 +4663,19 @@ class EquipApp(tk.Tk):
             out_dir = wph.new_investigation_dir(self.local_dir)
             made = []
             all_rows = []          # 통합 엑셀용(각 행에 호기 태그)
-            for m, folder, prefix in targets:
-                recipe = prefix or "(전체)"
-                rows, errors = wph.collect_rows(folder, prefix)
+            for m, folder, query, names in targets:
+                recipe = query or "(전체)"
+                rows, errors = wph.collect_rows(folder, query, names=names)
                 for rw in rows:
                     rw["machine"] = m
                 all_rows.extend(rows)
-                # 호기별 취합 텍스트
+                # 호기별 취합 텍스트(체크한 리포트만)
                 wph.write_combined_text(
                     os.path.join(out_dir, wph.text_filename(m, recipe)),
-                    folder, prefix, m, recipe)
+                    folder, query, m, recipe, names=names)
                 made.append((m, recipe, len(rows), len(errors)))
             # 통합 WPH 엑셀 1개(호기 열로 구분, 통계·WPH 전체 합산)
-            machines = [m for m, _f, _p in targets]
+            machines = [m for m, _f, _q, _n in targets]
             xlsx_path = os.path.join(out_dir, wph.combined_excel_filename(machines))
             title = "WPH 통합 분석 (" + ", ".join(machines) + ")"
             wph.write_wph_excel(xlsx_path, all_rows, valid_wafers=valid, title=title)
@@ -7350,6 +7514,11 @@ class EquipApp(tk.Tk):
             self._cfg["update_applied_version"] = release.version
             self._cfg.pop("update_skip_version", None)
             save_config(self._cfg)
+            # 교체 스크립트는 **구 exe 가 잠금 해제(= 프로세스 완전 종료)** 돼야
+            # 새 버전을 실행한다. 트레이 스레드 등이 남아 exe 가 계속 잠겨 있으면
+            # 스크립트가 2분 대기 후 '옛 버전'을 되살리므로, 업데이트 종료는
+            # **강제 종료**로 exe 를 즉시 풀어 준다(_shutdown 이 os._exit).
+            self._updating = True
             self.after(300, self._shutdown)   # 교체 스크립트가 내 종료를 기다림
 
         self._run_busy(f"업데이트 확인 중… ({release.version})", work, done)
@@ -9329,6 +9498,11 @@ class EquipApp(tk.Tk):
             pass
         self._tray_stop()
         self.destroy()
+        # 업데이트로 종료할 때는 남은 스레드가 exe 를 잠그지 않도록 **즉시** 종료한다.
+        # (교체 스크립트가 구 exe 삭제 성공을 종료 신호로 쓰므로 빨리 풀어 줘야
+        #  새 버전이 자동 실행된다.)
+        if getattr(self, "_updating", False):
+            os._exit(0)
 
     def _on_close(self):
         """X 버튼 — **장비/commonality 감시 중 하나라도 켜져 있으면** 트레이로 내리고,

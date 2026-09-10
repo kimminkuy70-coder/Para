@@ -10,7 +10,8 @@ Camtek AOI 장비는 스캔할 때마다 Report 폴더(예: ``P:\\AOI-21\\Report
 
 이 모듈은
 
-1. Report 폴더에서 **recipe 접두로 원하는 리포트만** 골라(카운트·수집),
+1. Report 폴더에서 **recipe 검색어(포함 검색)로 원하는 리포트만** 골라(카운트·수집·
+   이름 목록으로 선택),
 2. 각 리포트의 ``[BATCH_INFO]`` 에서 Wafers Scanned / Avg. Scan Time /
    Batch Time / Batch End 를 뽑고(HTML 파서는 사용자가 준 ``batch_report_to_text.py``
    를 이식),
@@ -267,7 +268,7 @@ def extract_row(report: dict) -> dict:
 #  3. Report 폴더 검색 (recipe 접두 매칭)
 # ===========================================================================
 def _norm_prefix(text: str) -> str:
-    """recipe 접두 매칭용 정규화 — 대소문자·주변 공백 무시(한글·기호는 보존)."""
+    """recipe 검색어 매칭용 정규화 — 대소문자·주변 공백 무시(한글·기호는 보존)."""
     return clean_text(text).lower()
 
 
@@ -275,49 +276,71 @@ def is_report_file(name: str) -> bool:
     return name.lower().endswith(REPORT_EXTS)
 
 
-def list_reports(folder, prefix: str = "") -> list[str]:
-    """폴더 바로 아래의 batch report 파일 이름 목록(정렬). prefix 로 접두 필터.
+def _matches(name: str, query: str) -> bool:
+    """검색어가 파일 이름에 **포함**되면 매칭(접두가 아니라 실제 검색).
+
+    공백으로 나뉜 여러 단어는 **모두 포함**돼야 매칭(순서 무관·AND).
+    빈 검색어는 모든 report 매칭.
+    """
+    nm = _norm_prefix(name)
+    terms = [t for t in _norm_prefix(query).split() if t]
+    return all(t in nm for t in terms)
+
+
+def list_reports(folder, query: str = "") -> list[str]:
+    """폴더 바로 아래의 batch report 파일 이름 목록(정렬). query 가 포함된 것만.
 
     원본을 열지 않고 **파일 이름만** 본다(빠르다·원본 무접근).
     """
     folder = Path(folder)
     if not folder.is_dir():
         return []
-    pref = _norm_prefix(prefix)
     out = []
     for entry in os.scandir(folder):
         if not entry.is_file():
             continue
         if not is_report_file(entry.name):
             continue
-        if pref and not _norm_prefix(entry.name).startswith(pref):
+        if not _matches(entry.name, query):
             continue
         out.append(entry.name)
     return sorted(out, key=str.lower)
 
 
-def count_reports(folder, prefix: str = "") -> int:
-    """recipe 접두에 맞는 리포트 개수(목록을 다 만들지 않고 센다)."""
+def count_reports(folder, query: str = "") -> int:
+    """검색어가 포함된 리포트 개수(목록을 다 만들지 않고 센다)."""
     folder = Path(folder)
     if not folder.is_dir():
         return 0
-    pref = _norm_prefix(prefix)
     n = 0
     for entry in os.scandir(folder):
         if entry.is_file() and is_report_file(entry.name):
-            if not pref or _norm_prefix(entry.name).startswith(pref):
+            if _matches(entry.name, query):
                 n += 1
     return n
 
 
-def collect_rows(folder, prefix: str = "") -> tuple[list[dict], list[tuple[str, str]]]:
-    """접두에 맞는 리포트를 모두 파싱해 입력 행 목록을 만든다(원본 read-only).
+def _resolve_names(folder, query: str, names) -> list[str]:
+    """조사 대상 파일 이름 목록 — names 를 주면 그것만(실재·report 만), 없으면 검색."""
+    if names is None:
+        return list_reports(folder, query)
+    folder = Path(folder)
+    out = []
+    for nm in names:
+        if is_report_file(nm) and (folder / nm).is_file():
+            out.append(nm)
+    return sorted(out, key=str.lower)
 
+
+def collect_rows(folder, query: str = "", names=None) -> tuple[list[dict], list[tuple[str, str]]]:
+    """리포트를 파싱해 입력 행 목록을 만든다(원본 read-only).
+
+    names 를 주면 **그 파일들만** 조사(체크박스로 고른 것), 없으면 검색어 매칭 전부.
     반환: (rows, errors[(파일명, 사유)]). rows 는 파일 이름순.
     """
     rows: list[dict] = []
     errors: list[tuple[str, str]] = []
-    for name in list_reports(folder, prefix):
+    for name in _resolve_names(folder, query, names):
         p = Path(folder) / name
         try:
             rows.append(extract_row(parse_report(p)))
@@ -362,14 +385,15 @@ def _report_to_text(report: dict, index: int, total: int) -> str:
     return "\n".join(lines)
 
 
-def build_combined_text(folder, prefix: str, machine: str, recipe: str) -> tuple[str, int, list]:
-    """접두에 맞는 리포트를 취합 텍스트로 만든다.
+def build_combined_text(folder, query: str, machine: str, recipe: str,
+                        names=None) -> tuple[str, int, list]:
+    """리포트를 취합 텍스트로 만든다. names 를 주면 그 파일들만(체크한 것).
 
     반환: (text, report_count, errors). 헤더에 호기·recipe 를 박는다.
     """
     reports: list[dict] = []
     errors: list[tuple[str, str]] = []
-    for name in list_reports(folder, prefix):
+    for name in _resolve_names(folder, query, names):
         try:
             reports.append(parse_report(Path(folder) / name))
         except Exception as exc:  # noqa: BLE001
@@ -394,8 +418,9 @@ def build_combined_text(folder, prefix: str, machine: str, recipe: str) -> tuple
     return text, len(reports), errors
 
 
-def write_combined_text(path, folder, prefix, machine, recipe) -> tuple[int, list]:
-    text, n, errors = build_combined_text(folder, prefix, machine, recipe)
+def write_combined_text(path, folder, query, machine, recipe,
+                        names=None) -> tuple[int, list]:
+    text, n, errors = build_combined_text(folder, query, machine, recipe, names)
     Path(path).write_text(text, encoding="utf-8-sig")
     return n, errors
 

@@ -80,21 +80,31 @@ def test_report_parse_and_extract():
     print("  wph OK: 리포트 파싱 + BATCH_INFO 추출(매수·초·생성일자)")
 
 
-def test_recipe_prefix_search():
+def test_recipe_search_contains():
     with tempfile.TemporaryDirectory() as d:
         _make_folder(d)
-        pref = "2D@RE-GA285ABB_0859840PD-0A"
-        # 접두 매칭: recipe A 3건만(다른 recipe·txt 제외)
-        assert wph.count_reports(d, pref) == 3
-        names = wph.list_reports(d, pref)
-        assert len(names) == 3 and all(n.startswith(pref) for n in names)
+        q = "2D@RE-GA285ABB_0859840PD-0A"
+        # 포함 매칭: recipe A 3건만(다른 recipe·txt 제외)
+        assert wph.count_reports(d, q) == 3
+        names = wph.list_reports(d, q)
+        assert len(names) == 3 and all(q in n for n in names)
         # 대소문자 무시
-        assert wph.count_reports(d, pref.lower()) == 3
-        # 접두 없이 = report 파일 전체(txt 제외) 4건
+        assert wph.count_reports(d, q.lower()) == 3
+        # **접두가 아니라 포함 검색** — 이름 중간의 토큰으로도 찾는다
+        assert wph.count_reports(d, "6392") == 3        # 파일명 중간의 공정번호
+        assert wph.count_reports(d, "L2") == 1          # 특정 Lot 만
+        # 여러 단어 = 모두 포함(AND, 순서 무관)
+        assert wph.count_reports(d, "GA285ABB L3") == 1
+        assert wph.count_reports(d, "OTHER") == 1       # 다른 recipe 도 검색됨
+        # 검색어 없이 = report 파일 전체(txt 제외) 4건
         assert wph.count_reports(d, "") == 4
-        # 없는 접두
         assert wph.count_reports(d, "ZZZ") == 0
-    print("  wph OK: recipe 접두 검색·카운트(대소문자무시·타recipe/비report 제외)")
+        # names 로 특정 파일만 조사
+        pick = names[:2]
+        rows, errs = wph.collect_rows(d, q, names=pick)
+        assert not errs and len(rows) == 2
+        assert {r["source_file"] for r in rows} == set(pick)
+    print("  wph OK: recipe 포함 검색·카운트(중간토큰·다단어AND·names 선택 조사)")
 
 
 def test_collect_rows_readonly():
