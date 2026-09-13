@@ -1,5 +1,10 @@
 # PI_ALL 장비 파라미터 관리 프로그램
 
+> **Claude / ChatGPT 협업:** 기준 브랜치는 `version_v7.0`입니다.
+> [협업 사용법](docs/AI_COLLABORATION.md) · [공통 규칙](AGENTS.md) ·
+> [최신 인수인계](docs/AI_HANDOFF.md) · [상세 설계](CLAUDE.md).
+> 아래 본문에는 초기 버전 설명이 포함되어 있습니다. 최신 작업은 위 문서를 먼저 확인하세요.
+
 Camtek AOI 장비의 **PI 코어 파라미터를 호기별로 관리·이력추적**하던 엑셀(.xlsm) + VBA 도구를,
 **오프라인 데스크톱 프로그램(tkinter)** 으로 옮긴 것입니다.
 

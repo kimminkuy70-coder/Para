@@ -2,9 +2,15 @@
 
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
 프로그램(Python/tkinter). 기존 Excel(.xlsm)+VBA 도구를 대체.
-현재 작업 브랜치: `claude/program-dev-prompt-file-f2oept`
+현재 공통 작업 브랜치: `version_v7.0`
 (**3차 재설계: 저장 폴더 기준 구조**. 설계/인수인계: `docs/재설계_저장폴더_구조.md`.
 이전 단계: `docs/AOI_구현_진행.md`).
+
+## Claude / ChatGPT 공통 작업 시작
+
+매 세션 먼저 `AGENTS.md`와 `docs/AI_HANDOFF.md`를 읽고 그 절차를 따른다.
+공통 협업 규칙의 원본은 `AGENTS.md`, 상세 설계와 기존 결정은 이 파일에 유지한다.
+과거 브랜치명·완료 상태는 역사적 기록일 수 있으므로 최신 코드와 인수인계를 대조한다.
 
 ## 3차 재설계(2026-07, 확정) — 저장 폴더 모델
 
