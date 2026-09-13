@@ -1,6 +1,6 @@
 # Claude · ChatGPT 번갈아 작업하기
 
-공통 소스는 GitHub의 `version_v7.0` 브랜치다. 각 AI는 같은 브랜치의
+공통 소스는 GitHub의 `version_new` 브랜치다. 각 AI는 같은 브랜치의
 최신 코드와 AGENTS.md / AI_HANDOFF.md / CLAUDE.md를 읽고 작업한다.
 채팅 내용 자체는 서로 전송되지 않으므로 결정과 남은 일을 인수인계에 적는다.
 
@@ -9,7 +9,7 @@ Git과 Python 3.11 이상을 준비하고 GitHub 쓰기 인증을 설정한다.
 이미 복제한 저장소는 새로 만들지 않고 변경 사항을 보존한 뒤 해당 브랜치로 이동한다.
 
 ```sh
-git clone --branch version_v7.0 --single-branch https://github.com/kimminkuy70-coder/Para.git
+git clone --branch version_new --single-branch https://github.com/kimminkuy70-coder/Para.git
 cd Para
 python -m venv .venv
 ```
@@ -41,7 +41,7 @@ python tools/ai_sync.py publish
 
 ## 두 AI에 똑같이 전달할 시작 문구
 
-> kimminkuy70-coder/Para의 version_v7.0 최신본을 확인하고 AGENTS.md,
+> kimminkuy70-coder/Para의 version_new 최신본을 확인하고 AGENTS.md,
 > docs/AI_HANDOFF.md, CLAUDE.md를 읽어 이어서 작업해.
 > 수정 후 테스트 결과와 남은 일을 인수인계에 기록하고 같은 브랜치에 반영해.
 

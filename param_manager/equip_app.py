@@ -66,15 +66,16 @@ RECIPE_LEVELS = {"PI": ["PI2", "PI3", "PI4"], "RDL": ["RDL1", "RDL2", "RDL3", "R
 def load_config() -> dict:
     try:
         with open(CONFIG_PATH, encoding="utf-8") as fh:
-            return json.load(fh)
+            data = json.load(fh)
+            return data if isinstance(data, dict) else {}
     except Exception:
         return {}
 
 
 def save_config(cfg: dict) -> None:
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as fh:
-            json.dump(cfg, fh, ensure_ascii=False)
+        from .atomicfile import write_json
+        write_json(CONFIG_PATH, cfg)
     except Exception:
         pass
 
@@ -1913,6 +1914,9 @@ class EquipApp(tk.Tk):
         win.configure(bg=self.p["bg"])
         win.transient(parent)
         win.resizable(False, False)
+        # Closing a busy dialog used to destroy its polling callback while work
+        # continued, losing completion/error handling. Keep it until completion.
+        win.protocol("WM_DELETE_WINDOW", lambda: self.bell())
         tk.Label(win, text="⏳ " + title, bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["bold"]).pack(padx=28, pady=(18, 4))
         status = tk.Label(win, text="잠시만 기다려 주세요…", bg=self.p["bg"],
@@ -1934,6 +1938,7 @@ class EquipApp(tk.Tk):
             # report(msg) 또는 report(done, total, msg)
             if len(args) == 1:
                 box["msg"] = str(args[0] or "")
+                box["cur"], box["total"] = 0, 0
             elif len(args) >= 3:
                 box["cur"], box["total"] = int(args[0]), int(args[1])
                 box["msg"] = str(args[2] or "")
@@ -1972,10 +1977,15 @@ class EquipApp(tk.Tk):
                     if box["mode"] != "det":
                         box["mode"] = "det"
                         pb.stop()
-                        pb.config(mode="determinate", maximum=box["total"])
+                        pb.config(mode="determinate")
+                    pb.config(maximum=box["total"])
                     pb["value"] = box["cur"]
                     pct = f"  ({box['cur']}/{box['total']})"
                 else:
+                    if box["mode"] != "indet":
+                        box["mode"] = "indet"
+                        pb.config(mode="indeterminate")
+                        pb.start(12)
                     pct = ""
                 status.config(text=(box["msg"] or "잠시만 기다려 주세요…") + pct)
             win.after(90, poll)
@@ -2859,11 +2869,18 @@ class EquipApp(tk.Tk):
         fixed_machine 을 주면(commonality: 조사 호기 1대) 파싱 태그를 무시하고 그 호기로 본다.
         """
         state = {"changed": 0, "missing": []}
+        # One snapshot per collection run; no shared-file writes or repeated
+        # scans for every parameter. The next run takes fresh rows.
+        rows = [dict(row) for row in self.coef_rows]
+        cache = {}
 
         def cb(equipment, variant=""):
             if fixed_machine:
                 equipment = fixed_machine
-            c = coefstore.lookup(self.coef_rows, equipment, variant)
+            lookup_key = (equipment, variant)
+            if lookup_key not in cache:
+                cache[lookup_key] = coefstore.lookup(rows, equipment, variant)
+            c = cache[lookup_key]
             if c is None:
                 key = (engine._s(equipment).strip(), engine._s(variant).strip())
                 if key[0] and key not in state["missing"]:
@@ -4679,7 +4696,10 @@ class EquipApp(tk.Tk):
             folder = paths.get(m)
             if not folder:
                 continue
-            names = sorted(row["selected"]) if row["selected"] else None
+            # An explicitly cleared selection must not become a full scan.
+            if row["all_names"] and not row["selected"]:
+                continue
+            names = sorted(row["selected"]) if row["all_names"] else None
             targets.append((m, folder, row["pref"].get().strip(), names))
         if not targets:
             messagebox.showinfo(
@@ -7406,7 +7426,7 @@ class EquipApp(tk.Tk):
             if not messagebox.askyesno("업데이트 확인",
                                        msg + "\n\n다시 시도할까요?"):
                 return
-        if getattr(self, "_watch_busy", False):
+        if getattr(self, "_watch_busy", False) or getattr(self, "_cmw_busy", False):
             # 업데이트는 앱을 종료시키므로 수집 도중에 하면 그 회차가 통째로 날아간다.
             # 다음 시작(또는 수동 확인) 때 다시 묻는다.
             if manual:
@@ -7531,6 +7551,9 @@ class EquipApp(tk.Tk):
                 self._err("E166", "업데이트 실패", res)
                 return
             local_exe = res
+            if getattr(self, "_watch_busy", False) or getattr(self, "_cmw_busy", False):
+                self._set_status("수집 작업이 끝난 뒤 업데이트를 다시 실행해 주세요.")
+                return
             current = updater.current_exe_path()
             backup = updater.backup_path_for(self.local_dir, current)
             # 파일명에 버전이 들어가므로 업데이트하면 로컬 exe 이름도 바뀐다.
@@ -9060,14 +9083,24 @@ class EquipApp(tk.Tk):
 
     def _run_bg(self, work, on_done):
         """모달 없이 백그라운드 실행(무인 감시용). GUI 갱신은 on_done 에서만."""
+        from queue import SimpleQueue, Empty
+        completed = SimpleQueue()
         def runner():
             try:
                 res = work()
             except Exception as e:  # noqa: BLE001
-                self.after(0, lambda e=e: on_done(False, e))
-                return
-            self.after(0, lambda: on_done(True, res))
+                completed.put((False, e))
+            else:
+                completed.put((True, res))
+        def poll():
+            try:
+                result = completed.get_nowait()
+            except Empty:
+                self.after(90, poll)
+            else:
+                on_done(*result)
         threading.Thread(target=runner, daemon=True).start()
+        self.after(90, poll)
 
     def _is_hidden(self) -> bool:
         """창이 트레이로 내려가 있는가(숨김/아이콘화)."""

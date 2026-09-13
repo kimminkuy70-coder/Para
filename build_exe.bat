@@ -93,7 +93,7 @@ if /i "%MODEARG%"=="onedir" (
 )
 
 echo [1/3] Installing build tools (openpyxl + tksheet + pyinstaller) ...
-python -m pip install openpyxl tksheet "pyinstaller>=6.0"
+python -m pip install -r requirements.txt -r requirements-build.txt
 if errorlevel 1 (
     echo [ERROR] Package install failed. Check your PyPI mirror/proxy policy.
     pause

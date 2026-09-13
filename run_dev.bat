@@ -17,7 +17,7 @@ echo Checking dependencies (openpyxl, tksheet) ...
 python -c "import openpyxl, tksheet" 2>nul
 if errorlevel 1 (
     echo Installing openpyxl + tksheet ...
-    python -m pip install openpyxl tksheet
+    python -m pip install -r requirements.txt
     if errorlevel 1 (
         echo [ERROR] Failed to install packages. Check your PyPI mirror/proxy.
         pause

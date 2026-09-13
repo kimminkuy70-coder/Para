@@ -2,7 +2,8 @@
 
 ## 기준과 읽는 순서
 - 저장소: https://github.com/kimminkuy70-coder/Para
-- 사용자 지정 공통 브랜치: `version_v7.0`. 기본 브랜치 `main`과 혼동하지 않는다.
+- 사용자 지정 작업 브랜치: `version_new`. 이 브랜치에만 commit/push한다.
+- 원본 `version_v7.0` 및 다른 브랜치 수정·push·merge 금지(이번 사용자 지시).
 - 매 세션 `python tools/ai_sync.py start`로 최신 코드를 받은 다음 이 파일,
   `docs/AI_HANDOFF.md`, `CLAUDE.md`, 작업 관련 설계 문서와 소스/테스트를 읽는다.
 - 두 AI의 대화 기록은 자동 공유되지 않는다. GitHub에 반영된 코드·결정·인수인계가 공통 기억이다.

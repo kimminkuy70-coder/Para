@@ -194,6 +194,8 @@ def load_settings(save_dir: str) -> tuple[WatchSettings, WatchState]:
             d = json.load(fh)
     except Exception:  # noqa: BLE001
         d = {}
+    if not isinstance(d, dict):
+        d = {}
     return (WatchSettings.from_dict(d.get("settings")),
             WatchState.from_dict(d.get("state")))
 
@@ -203,8 +205,10 @@ def save_settings(save_dir: str, settings: WatchSettings,
     p = settings_path(save_dir)
     payload = {"settings": settings.to_dict(),
                "state": (state or WatchState()).to_dict()}
+    # Serialize before opening, without adding temporary OneDrive files.
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
     with open(p, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False, indent=2)
+        fh.write(text)
     return p
 
 

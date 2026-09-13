@@ -4,6 +4,7 @@
 import os
 import sys
 import tempfile
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -35,7 +36,7 @@ def test_log_path_is_local_not_onedrive():
 
 
 def test_write_log_records_traceback():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory() as d, patch('param_manager.localdirs.active_root', return_value=d):
         try:
             raise ValueError("망가진 값")
         except ValueError as e:

@@ -296,14 +296,12 @@ def list_reports(folder, query: str = "") -> list[str]:
     if not folder.is_dir():
         return []
     out = []
-    for entry in os.scandir(folder):
-        if not entry.is_file():
-            continue
-        if not is_report_file(entry.name):
-            continue
-        if not _matches(entry.name, query):
-            continue
-        out.append(entry.name)
+    with os.scandir(folder) as entries:
+        for entry in entries:
+            # Filter names before stat: avoids unnecessary network metadata IO.
+            if is_report_file(entry.name) and _matches(entry.name, query):
+                if entry.is_file():
+                    out.append(entry.name)
     return sorted(out, key=str.lower)
 
 
@@ -313,10 +311,11 @@ def count_reports(folder, query: str = "") -> int:
     if not folder.is_dir():
         return 0
     n = 0
-    for entry in os.scandir(folder):
-        if entry.is_file() and is_report_file(entry.name):
-            if _matches(entry.name, query):
-                n += 1
+    with os.scandir(folder) as entries:
+        for entry in entries:
+            if is_report_file(entry.name) and _matches(entry.name, query):
+                if entry.is_file():
+                    n += 1
     return n
 
 
@@ -326,7 +325,9 @@ def _resolve_names(folder, query: str, names) -> list[str]:
         return list_reports(folder, query)
     folder = Path(folder)
     out = []
-    for nm in names:
+    for nm in dict.fromkeys(names):
+        if not isinstance(nm, str) or any(c in nm for c in '/\\:'):
+            raise ValueError("리포트 선택에는 폴더 경로가 아닌 파일 이름만 사용할 수 있습니다")
         if is_report_file(nm) and (folder / nm).is_file():
             out.append(nm)
     return sorted(out, key=str.lower)
@@ -477,6 +478,9 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
     from openpyxl.utils import get_column_letter
 
     n = int(valid_wafers)
+    if n <= 0:
+        raise ValueError("유효 Lot 매수는 1 이상이어야 합니다")
+    capacity = max(CAPACITY, len(rows))
     stats_sheet = f"02_{n}매_통계"
     head_fill = PatternFill("solid", fgColor=HEADER_FILL)
     in_fill = PatternFill("solid", fgColor=INPUT_FILL)
@@ -494,12 +498,12 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
     ws0.merge_cells("A1:H1")
     guide = [
         ("입력 위치", "01_Raw_Data 시트의 A:E 열만 입력합니다. 나머지는 수식입니다."),
-        ("추가 방법", f"A:E 열에 리포트를 추가하면 F:S·통계가 자동 계산됩니다(최대 {CAPACITY}개)."),
+        ("추가 방법", f"A:E 열에 리포트를 추가하면 F:S·통계가 자동 계산됩니다(최대 {capacity}개)."),
         ("시간 입력", "Avg Scan sec·Batch sec 는 초 단위 숫자입니다. 예: 00:01:44 = 104초."),
         ("자동 계산", "F:S 열과 통계/이상치/그래프/대시보드는 모두 일반 셀 수식입니다."),
         ("분석 조건", f"Wafers Scanned={n}, Avg Scan sec>0, Batch sec>0 인 행만 유효 {n}매 Lot."),
         ("WPH", "Actual WPH = Wafers Scanned × 3,600 ÷ Batch sec (전체 Batch Time 기준)."),
-        ("생성일자", "U열은 batch report 의 Batch End(배치 종료시각)입니다."),
+        ("생성일자", "V열은 batch report 의 Batch End(배치 종료시각)입니다."),
         ("호기별 요약", "06_호기별_WPH 시트에서 호기(U열)마다 유효 Lot·WPH를 따로 봅니다."),
         ("색상", "녹색=원본 입력, 파란색=수식 계산, 주황/연빨강=검토·이상 항목."),
         ("호환성", "Excel 표·동적배열·최신 통계함수를 피하고 STDEV/QUARTILE/INDEX 등만 사용."),
@@ -531,7 +535,7 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
 
-    lo, hi = FIRST_DATA_ROW, LAST_DATA_ROW
+    lo, hi = FIRST_DATA_ROW, FIRST_DATA_ROW + capacity - 1
     time_fmt, wph_fmt = "[h]:mm:ss", "0.00"
     for r in range(lo, hi + 1):
         ws.cell(row=r, column=6, value=f'=IF(D{r}="","",D{r}/86400)')

@@ -28,7 +28,10 @@ def log_path(save_dir=None) -> str:
         from . import localdirs
         return os.path.join(localdirs.logs_dir(localdirs.active_root()), LOG_NAME)
     except Exception:  # noqa: BLE001
-        base = save_dir if save_dir else os.path.expanduser("~")
+        # A logging failure must never redirect frequent writes to shared data.
+        base = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"),
+                            "CamtekAOI", "Logs")
+        os.makedirs(base, exist_ok=True)
         return os.path.join(base, LOG_NAME)
 
 

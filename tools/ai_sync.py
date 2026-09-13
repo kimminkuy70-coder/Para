@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-BRANCH = "version_v7.0"
+BRANCH = "version_new"
 REMOTE = "origin"
 
 
@@ -17,7 +17,7 @@ def git(*args):
 
 def require_ready():
     if git("branch", "--show-current") != BRANCH:
-        raise RuntimeError("Switch to version_v7.0 after preserving your current work.")
+        raise RuntimeError("Switch to version_new after preserving your current work.")
     if git("status", "--porcelain"):
         raise RuntimeError("Uncommitted files found. Review and commit your work first; nothing was discarded.")
     for kind in (False, True):

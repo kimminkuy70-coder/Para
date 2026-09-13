@@ -63,6 +63,8 @@ class SingleInstance:
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
         k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
         k32.CreateMutexW.restype = wintypes.HANDLE      # x64: 잘림 방지 필수
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        k32.CloseHandle.restype = wintypes.BOOL
         handle = k32.CreateMutexW(None, True, self.name)
         err = ctypes.get_last_error()
         if not handle:
@@ -77,7 +79,11 @@ class SingleInstance:
         if self._handle and available():
             try:
                 import ctypes
-                ctypes.WinDLL("kernel32").CloseHandle(self._handle)
+                from ctypes import wintypes
+                close = ctypes.WinDLL("kernel32").CloseHandle
+                close.argtypes = [wintypes.HANDLE]
+                close.restype = wintypes.BOOL
+                close(self._handle)
             except Exception:  # noqa: BLE001
                 pass
         self._handle = None
@@ -97,7 +103,14 @@ def activate_existing(window_title: str) -> bool:
         u32 = ctypes.WinDLL("user32", use_last_error=True)
         u32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
         u32.FindWindowW.restype = wintypes.HWND
+        u32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        u32.ShowWindow.restype = wintypes.BOOL
+        u32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        u32.SetForegroundWindow.restype = wintypes.BOOL
         hwnd = u32.FindWindowW(None, window_title)
+        if not hwnd:
+            # Same mutex across releases, but previous releases used this title.
+            hwnd = u32.FindWindowW(None, "Camtek AOI 장비 파라미터 관리")
         if not hwnd:
             return False
         u32.ShowWindow(hwnd, 9)                 # SW_RESTORE

@@ -127,6 +127,8 @@ class ReleaseInfo:
 
     @staticmethod
     def from_dict(d: dict) -> "ReleaseInfo | None":
+        if not isinstance(d, dict):
+            return None
         try:
             version = str(d.get("version") or "").strip()
             sha256 = str(d.get("sha256") or "").strip()
@@ -135,9 +137,14 @@ class ReleaseInfo:
             return None
         if not version or not sha256 or size <= 0:
             return None
+        filename = str(d.get("filename") or LEGACY_EXE_NAME)
+        if (not filename.lower().endswith('.exe') or
+                any(c in filename for c in '/\\:\r\n"') or
+                filename in ('.', '..')):
+            return None
         return ReleaseInfo(version=version,
                            # 파일명이 없는 구 매니페스트는 그 시절 고정 이름으로 해석
-                           filename=str(d.get("filename") or LEGACY_EXE_NAME),
+                           filename=filename,
                            sha256=sha256, size=size,
                            changelog=str(d.get("changelog") or ""),
                            published_at=str(d.get("published_at") or ""),
@@ -373,7 +380,10 @@ def verify_download(path: str, release: ReleaseInfo) -> tuple[bool, str]:
     if size != release.size:
         return False, ("파일 크기가 다릅니다(OneDrive 동기화가 아직 끝나지 않은 "
                        "것 같습니다). 잠시 후 다시 시도하세요.")
-    got = file_sha256(path)
+    try:
+        got = file_sha256(path)
+    except OSError as e:
+        return False, f"파일을 읽을 수 없습니다: {e}"
     if got.lower() != release.sha256.lower():
         return False, ("파일 내용이 일치하지 않습니다(다운로드가 손상됐을 수 "
                        "있습니다). 잠시 후 다시 시도하세요.")
@@ -414,6 +424,8 @@ def publish(save_dir: str, exe_path: str, version: str, changelog: str = "",
     # 구 위치(저장폴더 안)에 남아 있던 게시물은 정식 위치로 옮겨 한 곳에 모은다
     migrate_legacy_program_dir(save_dir)
     dest = os.path.join(program_dir(save_dir), filename)
+    if os.path.exists(dest) and file_sha256(dest) != file_sha256(exe_path):
+        raise ValueError("같은 버전의 다른 실행파일이 이미 게시되어 있습니다. 버전을 올려 다시 빌드하세요.")
     tmp = dest + ".tmp"
     shutil.copy2(exe_path, tmp)
     os.replace(tmp, dest)                    # 같은 폴더 내 원자적 교체
@@ -423,8 +435,10 @@ def publish(save_dir: str, exe_path: str, version: str, changelog: str = "",
                           changelog=changelog or "",
                           published_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                           published_by=user or "")
+    # Shared folder: do not introduce additional temporary JSON files.
+    text = json.dumps(release.to_dict(), ensure_ascii=False, indent=2)
     with open(manifest_path(save_dir), "w", encoding="utf-8") as fh:
-        json.dump(release.to_dict(), fh, ensure_ascii=False, indent=2)
+        fh.write(text)
 
     # 새 매니페스트가 자리잡은 뒤 구버전 정리(누적 방지). 실패해도 게시는 유효하다.
     prune_old_exes(save_dir, keep=filename)
@@ -508,19 +522,20 @@ def _write_bat(path: str, content: str) -> str:
     """배치스크립트 기록 — cmd.exe 가 읽는 **시스템 ANSI(한국어=cp949)** 로 쓴다.
 
     UTF-8 로 쓰면 경로에 한글이 있을 때(사용자 폴더·저장폴더 등) 깨져서 엉뚱한
-    파일을 건드린다. 개발환경(Linux)에는 'mbcs' 가 없으므로 cp949 → utf-8 순으로
-    물러난다. 되돌릴 수 없는 파일 조작을 하는 스크립트라 인코딩은 중요하다.
+    파일을 건드린다. 개발환경(Linux)에는 'mbcs' 가 없으므로 cp949 로 검사한다.
+    표현 불가능한 경로는 파일 교체 전에 중단한다.
     """
-    for enc in ("mbcs", "cp949", "utf-8"):
-        try:
-            with open(path, "w", encoding=enc, newline="\r\n") as fh:
-                fh.write(content)
-            return path
-        except (LookupError, UnicodeEncodeError):
-            continue
-    with open(path, "w", encoding="utf-8", errors="replace",
-              newline="\r\n") as fh:                       # 최후 수단
-        fh.write(content)
+    # Never silently change encoding for a destructive Windows script.
+    import codecs
+    try:
+        codecs.lookup("mbcs")
+        enc = "mbcs"
+    except LookupError:
+        enc = "cp949"  # non-Windows test environment only
+    normalized = content.replace("\r\n", "\n").replace("\n", "\r\n")
+    data = normalized.encode(enc)  # fail BEFORE creating a partial script
+    with open(path, "wb") as fh:
+        fh.write(data)
     return path
 
 
@@ -557,8 +572,15 @@ def build_swap_script(local_dir: str, pid: int, current_exe: str, new_exe: str,
     # (기존 build_exe.bat 도 같은 이유로 All-ASCII 를 지킨다.)
     # 경로(사용자 폴더에 한글이 있을 수 있음)와 로직 문구를 분리해서, **문구만**
     # ASCII 인지 검사한다. 경로는 cp949 로 기록되므로 한글이어도 안전하다.
+    def batch_path(value):
+        if any(c in value for c in '\r\n"'):
+            raise ValueError("실행파일 경로에 배치 파일에서 사용할 수 없는 문자가 있습니다")
+        return value.replace('%', '%%')
+
+    current_exe, new_exe, backup_path, target = map(
+        batch_path, (current_exe, new_exe, backup_path, target))
     header = (f'@echo off\r\n'
-              f'setlocal\r\n'
+              f'setlocal DisableDelayedExpansion\r\n'
               f'set "PID={pid}"\r\n'
               f'set "OLD={current_exe}"\r\n'
               f'set "NEW={new_exe}"\r\n'
@@ -569,8 +591,13 @@ rem Give the app a moment to close. ping is used instead of timeout because
 rem timeout needs a console and this script runs detached.
 ping -n 3 127.0.0.1 >nul 2>&1
 
-rem Keep exactly one rollback backup (never accumulates).
-if exist "%OLD%" copy /y "%OLD%" "%BACKUP%" >nul 2>&1
+rem Do not delete the installed program unless a fresh backup succeeded.
+if not exist "%OLD%" goto done
+copy /y "%OLD%" "%BACKUP%" >nul 2>&1
+if errorlevel 1 goto backup_failed
+if not exist "%BACKUP%" goto backup_failed
+fc /b "%OLD%" "%BACKUP%" >nul 2>&1
+if errorlevel 1 goto backup_failed
 
 rem Wait until the old program has REALLY exited. Windows cannot delete a
 rem running exe, so a successful delete is the exit check (locale safe, no PID
@@ -603,6 +630,11 @@ rem The old exe is already gone, so put it back from the backup - the user must
 rem never be left without a working program.
 if exist "%BACKUP%" copy /y "%BACKUP%" "%OLD%" >nul 2>&1
 if exist "%OLD%" start "" "%OLD%"
+goto done
+
+:backup_failed
+rem Leave the installed exe untouched when backup is unavailable.
+start "" "%OLD%"
 
 :done
 (goto) 2>nul & del "%~f0"

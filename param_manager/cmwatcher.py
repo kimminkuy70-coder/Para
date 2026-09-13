@@ -305,6 +305,7 @@ def scan_new(scan_roots, targets: list[tuple], seen: set, mtimes: dict,
                 subs = sorted((p for p in lot_dir.iterdir() if p.is_dir()),
                               key=lambda x: x.name.lower())
             except OSError:
+                out_mtimes.pop(key_path, None)  # retry transient directory failures
                 continue
             for sm_dir in subs:
                 k = sm_key(device, lot, sm_dir.name)
@@ -313,9 +314,11 @@ def scan_new(scan_roots, targets: list[tuple], seen: set, mtimes: dict,
                 # 아직 쓰는 중일 수 있다 — 조용해질 때까지 미룬다
                 if settle and (now - _dir_mtime(sm_dir)) < settle:
                     pending.append(k)
+                    out_mtimes.pop(key_path, None)
                     continue
                 if not _has_config(sm_dir):
                     pending.append(k)
+                    out_mtimes.pop(key_path, None)
                     continue
                 seen.add(k)                    # 같은 회차에서 백업본 중복 방지
                 new_items.append({
