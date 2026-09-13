@@ -8,6 +8,15 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 
 ## Claude / ChatGPT 공통 작업 시작
 
+### 빌드 이름/버전 변경 (2026-09-13)
+
+- 프로그램 이름은 `Camtek_AOI_manager`. `build.bat`는 `build_exe.bat` 호출용 진입점.
+- 빌드 입력 버전(예: 8.0)을 내부 __version__, Windows 파일 속성,
+  `dist/Camtek_AOI_manager_v8.0.exe`, 게시 파일명에 동일하게 적용한다.
+- 빈 버전 입력 시 중단한다. 저장소 초기값은 사용자 현재 버전에 맞춰 8.0으로 갱신.
+- updater는 구 `Camtek_AOI_Parameter_manage_v*` 이름도 인식해 이전 게시본과
+  롤백 보존/정리의 호환성을 유지한다. 아래 과거 고정 빌드명 설명보다 이 결정이 우선한다.
+
 매 세션 먼저 `AGENTS.md`와 `docs/AI_HANDOFF.md`를 읽고 그 절차를 따른다.
 공통 협업 규칙의 원본은 `AGENTS.md`, 상세 설계와 기존 결정은 이 파일에 유지한다.
 과거 브랜치명·완료 상태는 역사적 기록일 수 있으므로 최신 코드와 인수인계를 대조한다.

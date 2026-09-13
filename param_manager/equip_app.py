@@ -81,7 +81,7 @@ def save_config(cfg: dict) -> None:
 
 
 # 창 제목 — 중복 실행 시 기존 창을 찾는 데 쓰므로 실행 중에 바꾸지 않는다.
-APP_TITLE = "Camtek AOI 장비 파라미터 관리"
+APP_TITLE = "Camtek_AOI_manager"
 
 # 무인 수집에서 장비(관리공유 c$) 사이에 두는 간격(초).
 # 여러 장비를 몇 초 안에 연달아 접속하면 보안 모니터링이 '측면 이동 스캔'으로
@@ -7614,7 +7614,7 @@ class EquipApp(tk.Tk):
 
         def browse():
             p = filedialog.askopenfilename(
-                title="게시할 exe 선택(dist\\PI_Param_Manager.exe)",
+                title="게시할 exe 선택(dist\\Camtek_AOI_manager_v입력버전.exe)",
                 filetypes=[("실행 파일", "*.exe"), ("모든 파일", "*.*")], parent=win)
             if p:
                 exe_var.set(p)
@@ -7707,7 +7707,7 @@ class EquipApp(tk.Tk):
                     "이 exe 는 옆의 _internal 폴더·DLL 이 함께 있어야만 실행되므로 "
                     "단일 파일로 배포할 수 없습니다.\n\n"
                     "build_exe.bat 을 옵션 없이 실행해 만든 "
-                    "dist\\PI_Param_Manager.exe 를 선택하세요.", parent=win)
+                    "dist\\Camtek_AOI_manager_v입력버전.exe 를 선택하세요.", parent=win)
                 return
             if cur and not updater.is_newer(version, cur.version) and \
                     not messagebox.askyesno(

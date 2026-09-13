@@ -4,11 +4,19 @@
 - 저장소 `kimminkuy70-coder/Para`, 공통 브랜치 `version_v7.0`.
 - 협업 구성 반영 기준 커밋: `caefbff85fd8a33543db993e965edefd8472aeb6`.
 - 최신 커밋은 `git log -5 --oneline` 또는 GitHub 브랜치 HEAD로 확인한다.
-- 확인한 실행파일 내부 버전: `4.0.3`. 브랜치 v7.0을 앱 버전으로 간주하지 않는다.
+- 현재 소스 기본 버전: `8.0`. 빌드할 때 입력한 버전으로 다시 기록한다.
 - 현재 주요 기능: 장비 파라미터 양식/취합/비교, Commonality 조사·감시,
   WPH 조사, OneDrive 기반 exe 업데이트. 상세 구현은 CLAUDE.md와 소스 참고.
 
 ## 마지막 작업 — 2026-09-13, ChatGPT/Codex
+- 빌드 이름/버전 수정: `build.bat` 진입점 추가, 입력 필수 버전을 파일명·PE 속성·
+  내부 버전에 반영. 이름은 Camtek_AOI_manager, 예: Camtek_AOI_manager_v8.0.exe.
+- updater 게시 이름 변경 및 구 이름 인식 유지, GUI 제목/게시 안내 변경.
+- 검증: test_build_version.py 통과(8.0/8.1.2/9.0 및 구 이름 호환),
+  test_updater.py 28/28 통과, git diff --check 통과.
+- Windows exe 실제 빌드·배포는 미수행. 다음 단계는 Windows에서 빌드/실행 확인.
+
+## 이전 작업 — 공통 협업 구성
 - 목적: Claude와 ChatGPT가 순차 교대로 최신 소스와 결정 사항을 이어받도록 구성.
 - 추가: AGENTS.md(공통 규칙), tools/ai_sync.py(시작/게시),
   tools/check_project.py(기존 테스트 일괄 실행), docs/AI_COLLABORATION.md(사용 절차).

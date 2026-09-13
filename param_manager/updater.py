@@ -73,8 +73,9 @@ PROGRAM_DIRNAME = "프로그램"
 MANIFEST_NAME = "버전정보.json"
 
 # 게시 파일명 — 버전이 올라가면 파일명도 같이 바뀐다(사용자 지정 2026-08).
-EXE_STEM = "Camtek_AOI_Parameter_manage"
+EXE_STEM = "Camtek_AOI_manager"
 EXE_PREFIX = f"{EXE_STEM}_v"                    # + 버전 + ".exe"
+LEGACY_EXE_PREFIX = "Camtek_AOI_Parameter_manage_v"
 # 구버전(고정 파일명) 매니페스트 호환용 — 예전 게시본을 계속 읽을 수 있게.
 LEGACY_EXE_NAME = "PI_Param_Manager.exe"
 
@@ -104,7 +105,8 @@ def is_published_exe(name: str) -> bool:
     """`프로그램/` 폴더에서 우리가 게시한 exe 인가(구버전 고정 파일명 포함)."""
     low = str(name or "").lower()
     return low.endswith(".exe") and (
-        low.startswith(EXE_PREFIX.lower()) or low == LEGACY_EXE_NAME.lower())
+        low.startswith((EXE_PREFIX.lower(), LEGACY_EXE_PREFIX.lower()))
+        or low == LEGACY_EXE_NAME.lower())
 
 
 @dataclass
@@ -437,8 +439,9 @@ def version_of_filename(name: str) -> tuple[int, ...]:
     """
     base = os.path.basename(str(name or ""))
     stem = os.path.splitext(base)[0]
-    if stem.lower().startswith(EXE_PREFIX.lower()):
-        return parse_version(stem[len(EXE_PREFIX):])
+    for prefix in (EXE_PREFIX, LEGACY_EXE_PREFIX):
+        if stem.lower().startswith(prefix.lower()):
+            return parse_version(stem[len(prefix):])
     return (0,)
 
 

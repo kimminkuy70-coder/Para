@@ -1,5 +1,14 @@
 # PI_ALL 장비 파라미터 관리 프로그램
 
+## 현재 빌드 방법
+
+`build.bat` 또는 `build_exe.bat`를 실행하고 배포할 버전을 입력하세요.
+예: `8.0` 입력 → `dist/Camtek_AOI_manager_v8.0.exe` 생성.
+파일 속성 및 프로그램 내부 버전에도 입력값이 동일하게 기록됩니다.
+빈 입력은 이전 버전으로 자동 진행하지 않고 중단합니다.
+명령행에서는 `build_exe.bat 8.0`으로도 실행할 수 있습니다.
+아래 초기 버전의 `PI_Param_Manager.exe` 설명은 이 절차로 대체됩니다.
+
 > **Claude / ChatGPT 협업:** 기준 브랜치는 `version_v7.0`입니다.
 > [협업 사용법](docs/AI_COLLABORATION.md) · [공통 규칙](AGENTS.md) ·
 > [최신 인수인계](docs/AI_HANDOFF.md) · [상세 설계](CLAUDE.md).

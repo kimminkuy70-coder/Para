@@ -33,8 +33,8 @@ INIT_PY = os.path.join(ROOT, "param_manager", "__init__.py")
 # 실패한다(2026-08 실사고). 지워지지 않는 tools/ 아래에 만든다.
 VERSION_INFO = os.path.join(ROOT, "tools", "version_info.txt")
 
-APP_NAME = "Camtek AOI Parameter Manager"
-EXE_STEM = "Camtek_AOI_Parameter_manage"
+APP_NAME = "Camtek_AOI_manager"
+EXE_STEM = "Camtek_AOI_manager"
 
 
 def current_version() -> str:
@@ -46,8 +46,10 @@ def current_version() -> str:
 def normalize(version: str) -> str:
     """'v4.0.2' / ' 4.0.2 ' → '4.0.2'. 숫자가 없으면 예외."""
     v = re.sub(r"^[vV]+", "", str(version or "").strip())
-    if not re.match(r"^\d+(\.\d+)*$", v):
+    if not re.fullmatch(r"[0-9]+(\.[0-9]+){0,3}", v):
         raise SystemExit(f"[ERROR] version must look like 4.0.2 (got: {version!r})")
+    if any(int(n) > 65535 for n in v.split('.')):
+        raise SystemExit("[ERROR] Each Windows version component must be 0..65535")
     return v
 
 

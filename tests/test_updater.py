@@ -73,11 +73,11 @@ def test_is_newer_handles_uneven_length():
 
 def test_exe_filename_includes_version():
     """파일명에 버전이 들어간다(사용자 지정). 'v' 중복·금지문자는 정리."""
-    assert U.exe_filename("3.1.0") == "Camtek_AOI_Parameter_manage_v3.1.0.exe"
-    assert U.exe_filename("1.0") == "Camtek_AOI_Parameter_manage_v1.0.exe"
+    assert U.exe_filename("3.1.0") == "Camtek_AOI_manager_v3.1.0.exe"
+    assert U.exe_filename("1.0") == "Camtek_AOI_manager_v1.0.exe"
     # 사용자가 'v' 를 붙여 입력해도 '_vv' 가 되면 안 된다
-    assert U.exe_filename("v3.1.0") == "Camtek_AOI_Parameter_manage_v3.1.0.exe"
-    assert U.exe_filename("V2.5") == "Camtek_AOI_Parameter_manage_v2.5.exe"
+    assert U.exe_filename("v3.1.0") == "Camtek_AOI_manager_v3.1.0.exe"
+    assert U.exe_filename("V2.5") == "Camtek_AOI_manager_v2.5.exe"
     # 파일명에 못 쓰는 문자 제거
     assert "/" not in U.exe_filename("3/1")
     assert " " not in U.exe_filename("3.1.0 beta")
@@ -91,7 +91,7 @@ def test_publish_and_read_manifest_roundtrip():
         rel = U.publish(save_dir, exe, "3.1.0", changelog="감시 폴더 지정 추가",
                         user="홍길동")
         assert rel.version == "3.1.0"
-        assert rel.filename == "Camtek_AOI_Parameter_manage_v3.1.0.exe", rel.filename
+        assert rel.filename == "Camtek_AOI_manager_v3.1.0.exe", rel.filename
         assert rel.size == os.path.getsize(exe)
         assert rel.sha256 == U.file_sha256(exe)
         got = U.read_manifest(save_dir)
@@ -114,14 +114,14 @@ def test_publish_keeps_two_versions_for_rollback():
             U.publish(save_dir, exe, v)
         exes = U.list_published_exes(save_dir)
         assert len(exes) == U.KEEP_VERSIONS == 2, exes
-        assert sorted(exes) == ["Camtek_AOI_Parameter_manage_v3.3.0.exe",
-                                "Camtek_AOI_Parameter_manage_v3.4.0.exe"], exes
+        assert sorted(exes) == ["Camtek_AOI_manager_v3.3.0.exe",
+                                "Camtek_AOI_manager_v3.4.0.exe"], exes
         got = U.read_manifest(save_dir)
         assert got.version == "3.4.0"
         assert os.path.isfile(U.published_exe_path(save_dir, got))
         # 롤백 후보(직전 버전)가 실제로 남아 있어야 한다
         rollback = [n for n in exes if n != got.filename]
-        assert rollback == ["Camtek_AOI_Parameter_manage_v3.3.0.exe"], rollback
+        assert rollback == ["Camtek_AOI_manager_v3.3.0.exe"], rollback
         assert os.path.isfile(os.path.join(U.program_dir(save_dir), rollback[0]))
     print("  게시 후 2개 유지(신버전 + 롤백용 직전 버전) OK")
 
@@ -138,10 +138,10 @@ def test_prune_ranks_by_version_not_filetime():
                                           b"v" * (300 + i)), v)
         # 마지막 게시는 3.9.0 → 그것 + 남은 것 중 최신 버전(3.10.0)이 남아야 한다
         exes = sorted(U.list_published_exes(save_dir))
-        assert exes == ["Camtek_AOI_Parameter_manage_v3.10.0.exe",
-                        "Camtek_AOI_Parameter_manage_v3.9.0.exe"], exes
-        assert U.version_of_filename("Camtek_AOI_Parameter_manage_v3.10.0.exe") \
-            > U.version_of_filename("Camtek_AOI_Parameter_manage_v3.2.0.exe")
+        assert exes == ["Camtek_AOI_manager_v3.10.0.exe",
+                        "Camtek_AOI_manager_v3.9.0.exe"], exes
+        assert U.version_of_filename("Camtek_AOI_manager_v3.10.0.exe") \
+            > U.version_of_filename("Camtek_AOI_manager_v3.2.0.exe")
     print("  정리 우선순위 = 버전 번호(3.10 > 3.2) OK")
 
 
@@ -263,10 +263,10 @@ def test_swap_script_contains_required_steps():
     with tempfile.TemporaryDirectory() as local:
         script = U.build_swap_script(
             local, pid=12345,
-            current_exe=r"C:\Apps\Para\Camtek_AOI_Parameter_manage_v3.0.0.exe",
-            new_exe=r"C:\Users\a\AppData\Local\CamtekAOI\Temp\update_x\Camtek_AOI_Parameter_manage_v3.1.0.exe",
-            backup_path=r"C:\Users\a\AppData\Local\CamtekAOI\Camtek_AOI_Parameter_manage_v3.0.0_prev.exe",
-            target_exe=r"C:\Apps\Para\Camtek_AOI_Parameter_manage_v3.1.0.exe")
+            current_exe=r"C:\Apps\Para\Camtek_AOI_manager_v3.0.0.exe",
+            new_exe=r"C:\Users\a\AppData\Local\CamtekAOI\Temp\update_x\Camtek_AOI_manager_v3.1.0.exe",
+            backup_path=r"C:\Users\a\AppData\Local\CamtekAOI\Camtek_AOI_manager_v3.0.0_prev.exe",
+            target_exe=r"C:\Apps\Para\Camtek_AOI_manager_v3.1.0.exe")
         assert os.path.isfile(script)
         body = _script_body(script)
         cmds = "\n".join(_commands(body))
@@ -310,12 +310,12 @@ def test_swap_script_is_cp949_and_keeps_korean_paths():
     """cmd.exe 는 .bat 을 UTF-8 이 아니라 시스템 ANSI 로 읽는다. UTF-8 로 쓰면
     한글 경로가 깨져 엉뚱한 파일을 건드린다(되돌릴 수 없는 파일 조작이라 치명적)."""
     with tempfile.TemporaryDirectory() as local:
-        cur = r"C:\Users\홍길동\바탕 화면\Camtek_AOI_Parameter_manage_v3.0.0.exe"
+        cur = r"C:\Users\홍길동\바탕 화면\Camtek_AOI_manager_v3.0.0.exe"
         script = U.build_swap_script(
             local, pid=1, current_exe=cur,
             new_exe=os.path.join(local, "n.exe"),
             backup_path=os.path.join(local, "b_prev.exe"),
-            target_exe=r"C:\Users\홍길동\바탕 화면\Camtek_AOI_Parameter_manage_v3.1.0.exe")
+            target_exe=r"C:\Users\홍길동\바탕 화면\Camtek_AOI_manager_v3.1.0.exe")
         raw = open(script, "rb").read()
         body = raw.decode("cp949")            # cp949 로 읽혀야 정상
         assert "홍길동" in body and "바탕 화면" in body, "한글 경로가 보존돼야 함"
@@ -360,10 +360,10 @@ def test_swap_waits_on_old_exe_not_new_name():
 def test_local_target_uses_new_version_name():
     """업데이트하면 로컬 exe 이름도 새 버전으로 바뀐다(같은 폴더)."""
     rel = U.ReleaseInfo("3.1.0", U.exe_filename("3.1.0"), "ab" * 32, 10)
-    cur = os.path.join("folder", "Camtek_AOI_Parameter_manage_v3.0.0.exe")
+    cur = os.path.join("folder", "Camtek_AOI_manager_v3.0.0.exe")
     target = U.local_target_path(cur, rel)
     assert os.path.dirname(target) == os.path.dirname(os.path.abspath(cur))
-    assert os.path.basename(target) == "Camtek_AOI_Parameter_manage_v3.1.0.exe"
+    assert os.path.basename(target) == "Camtek_AOI_manager_v3.1.0.exe"
     print("  업데이트 후 로컬 파일명도 새 버전 OK")
 
 
@@ -371,7 +371,7 @@ def test_backup_name_is_ascii():
     """백업 경로는 배치스크립트에 들어가므로 ASCII 여야 안전하다."""
     with tempfile.TemporaryDirectory() as local:
         p = U.backup_path_for(local, os.path.join("x",
-                                                  "Camtek_AOI_Parameter_manage_v3.0.0.exe"))
+                                                  "Camtek_AOI_manager_v3.0.0.exe"))
         assert os.path.basename(p).isascii(), p
         assert os.path.basename(p).endswith("_prev.exe"), p
     print("  롤백 백업 파일명 ASCII OK")

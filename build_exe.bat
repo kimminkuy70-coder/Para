@@ -41,7 +41,7 @@ REM  single .exe - it only runs together with its _internal folder.
 REM ============================================================
 cd /d "%~dp0"
 
-set "APPNAME=PI_Param_Manager"
+set "APPNAME=Camtek_AOI_manager"
 set "VERARG=%~1"
 set "MODEARG=%~1"
 if /i not "%~1"=="onedir" set "MODEARG=%~2"
@@ -56,18 +56,23 @@ if "%CURVER%"=="" (
 if "%VERARG%"=="" (
     echo.
     echo   Current version: %CURVER%
-    set /p "VERARG=  Version to build (Enter = keep %CURVER%): "
+    set /p "VERARG=  Version to build (for example 8.0): "
 )
-if "%VERARG%"=="" set "VERARG=%CURVER%"
+if "%VERARG%"=="" (
+    echo [ERROR] Enter a version explicitly.
+    pause
+    exit /b 1
+)
 
 echo [0/3] Stamping version %VERARG% ...
-python tools\set_version.py %VERARG%
+python tools\set_version.py "%VERARG%"
 if errorlevel 1 (
     echo [ERROR] Version stamping failed. Use numbers like 4.0.3
     pause
     exit /b 1
 )
 for /f "delims=" %%V in ('python tools\set_version.py --show') do set "APPVER=%%V"
+set "APPNAME=%APPNAME%_v%APPVER%"
 echo     Building version %APPVER%
 REM  The version resource lives in tools\ on purpose: PyInstaller --clean wipes
 REM  everything inside the work path (build\), so a file there would vanish
