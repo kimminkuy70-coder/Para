@@ -9,7 +9,19 @@
 - 현재 주요 기능: 장비 파라미터 양식/취합/비교, Commonality 조사·감시,
   WPH 조사, OneDrive 기반 exe 업데이트. 상세 구현은 CLAUDE.md와 소스 참고.
 
-## 마지막 작업 — 2026-09-13, ChatGPT/Codex
+## 마지막 작업 — 2026-09-14, ChatGPT/Codex
+
+- 기준 a323f581f936aea7c22b7ac6d22397c2e20cc802, version_new만 수정.
+- 변환계수 확인 창 세로 스크롤/휠, 파라미터 왼쪽 장비풍 회색 테마·분류 색상 칸,
+  오른쪽 비교 구조 유지/톤 통일, 스크롤을 반영한 비고 인라인 편집 좌표 수정.
+- 장비화면이름.xlsx 마지막 색상코드 열 추가. 양식 편집기는 코드 텍스트 열,
+  값 확인은 색상 칸 더블클릭. 사용자 확정 시만 저장, 잠금/변경/충돌 검사 적용.
+- 변경 파일: equip_app.py, namestore.py, tests/test_parameter_colors.py.
+- 검증 및 구버전 쓰기 호환 한계: docs/UX_PARAMETER_COLORS.md. 전체 독립 테스트
+  31개 파일 통과, 샘플 의존 engine 1개 제외. 신규 색상 테스트 최종 7개 통과.
+- Windows GUI·DPI·실제 성능·exe 빌드·OneDrive 배포 미수행.
+
+## 이전 작업 — 2026-09-13 검토
 
 - `version_new` 분리 후 주요 기능·UX 작업 처리·성능·환경·보안·업데이트 경로 검토.
 - 전체 목록 및 미완료/Windows 확인 사항: `docs/REVIEW_VERSION_NEW.md`.

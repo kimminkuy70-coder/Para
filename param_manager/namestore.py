@@ -29,7 +29,7 @@ from . import engine
 
 NAME_FILENAME = "장비화면이름.xlsx"
 NAME_SHEET = "장비화면이름"
-NAME_HEADERS = ["Alg", "원본항목", "장비화면이름", "사용", "비고"]
+NAME_HEADERS = ["Alg", "원본항목", "장비화면이름", "사용", "비고", "색상코드"]
 _USE_TRUE = {"Y", "YES", "1", "TRUE", "O", "예", "사용", "체크"}
 _USE_FALSE = {"N", "NO", "0", "FALSE", "X", "아니오", "미사용"}
 _HDR_FILL = "1F4E78"
@@ -57,7 +57,7 @@ def _style_header(ws) -> None:
         c.alignment = Alignment(horizontal="center", vertical="center")
 
 
-_COL_W = (22, 26, 30, 8, 20)      # A,B,C,D(사용),E
+_COL_W = (22, 26, 30, 8, 20, 14)
 
 
 def _use_str(use) -> str:
@@ -83,7 +83,7 @@ def create_blank(path: str) -> str:
     ws.title = NAME_SHEET
     ws.append(NAME_HEADERS)
     _style_header(ws)
-    for col, w in zip("ABCDE", _COL_W):
+    for col, w in zip("ABCDEF", _COL_W):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
@@ -112,7 +112,7 @@ def load(path: str) -> list[dict]:
         if not orig:                       # 원본항목만 있으면 유효(이름 비어도 사용 정보 가능)
             continue
         out.append({"Alg": alg, "원본항목": orig, "장비화면이름": name,
-                    "사용": g("사용"), "비고": g("비고")})
+                    "사용": g("사용"), "비고": g("비고"), "색상코드": g("색상코드")})
     wb.close()
     return out
 
@@ -125,7 +125,7 @@ def save(path: str, rows: list[dict]) -> str:
     for r in rows:
         ws.append([engine._s(r.get(h)) for h in NAME_HEADERS])
     _style_header(ws)
-    for col, w in zip("ABCDE", _COL_W):
+    for col, w in zip("ABCDEF", _COL_W):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
@@ -181,7 +181,7 @@ def make_use_lookup(rows: list[dict]):
     return _cb
 
 
-def upsert(rows: list[dict], alg, orig, name=None, use=None) -> bool:
+def upsert(rows: list[dict], alg, orig, name=None, use=None, color=None) -> bool:
     """(alg, 원본항목) 행에 장비 화면 이름/사용 상태를 기록·갱신(마지막 승).
     name/use 는 넘어온 것만 갱신한다. 반환: 목록이 바뀌었는가. orig 가 비면 무시."""
     orig = engine._s(orig).strip()
@@ -189,10 +189,14 @@ def upsert(rows: list[dict], alg, orig, name=None, use=None) -> bool:
         return False
     name = engine._s(name).strip() if name is not None else None
     use_s = _use_str(use) if use is not None else None
+    color = normalize_color(color) if color is not None else None
     k = _key(alg, orig)
     for r in rows:
         if _key(r.get("Alg"), r.get("원본항목")) == k:
             changed = False
+            if color is not None and r.get("색상코드", "") != color:
+                r["색상코드"] = color
+                changed = True
             if name and engine._s(r.get("장비화면이름")).strip() != name:
                 r["장비화면이름"] = name
                 changed = True
@@ -203,7 +207,8 @@ def upsert(rows: list[dict], alg, orig, name=None, use=None) -> bool:
                 r["Alg"] = engine._s(alg).strip()
             return changed
     rows.append({"Alg": engine._s(alg).strip(), "원본항목": orig,
-                 "장비화면이름": name or "", "사용": use_s or "", "비고": ""})
+                 "장비화면이름": name or "", "사용": use_s or "", "비고": "",
+                 "색상코드": color or ""})
     return True
 
 
@@ -237,6 +242,115 @@ def apply_selected(rows: list[dict], selected: list[dict]) -> int:
         if not engine._s(orig).strip():
             continue
         name = engine._s(s.get("name")).strip() or engine._s(s.get("reco")).strip()
-        if upsert(rows, alg, orig, name=name or None, use=bool(s.get("use"))):
+        if upsert(rows, alg, orig, name=name or None,
+                  use=bool(s["use"]) if "use" in s else None,
+                  color=s.get("color")):
             changed += 1
     return changed
+
+
+def normalize_color(value):
+    """Empty means automatic; otherwise store a portable RGB hex code."""
+    value = engine._s(value).strip().upper()
+    if not value:
+        return ""
+    if not value.startswith('#'):
+        value = '#' + value
+    if not re.fullmatch(r'#[0-9A-F]{6}', value):
+        raise ValueError("색상은 #RRGGBB 형식으로 입력하세요. 예: #FFFF80 (빈칸=자동)")
+    return value
+
+
+def default_color(alg, parameter):
+    """Reference-inspired defaults, not an assertion about equipment metadata."""
+    name = _norm(parameter)
+    if 'rich' in name:
+        return '#FF7D88'
+    if 'elong' in name or ('adaptive' in name and 'bright' in name):
+        return '#FF8900'
+    if 'adaptive' in name and 'dark' in name:
+        return '#9080FF'
+    if 'cluster' in name or 'adaptiveactivation' in name or 'edgeuncertainty' in name:
+        return '#80F58A'
+    if 'dark' in name:
+        return '#F080F4'
+    if 'bright' in name:
+        return '#FFFF80'
+    return '#C9D0D2'
+
+
+def contrast_text(color):
+    try:
+        hx = normalize_color(color).lstrip('#')
+        r, g, b = (int(hx[i:i+2], 16) for i in (0, 2, 4))
+        return '#202020' if (299*r + 587*g + 114*b) >= 140000 else '#FFFFFF'
+    except (ValueError, TypeError):
+        return '#EEEEEE'
+
+
+def make_color_lookup(rows):
+    # Build once per screen/editor, never scan the workbook for every painted cell.
+    index = {}
+    for row in rows:
+        try:
+            color = normalize_color(row.get('색상코드'))
+        except ValueError:
+            continue
+        if color:
+            for field in ('원본항목', '장비화면이름'):
+                if row.get(field):
+                    index[_key(row.get('Alg'), row[field])] = color
+    return lambda alg, orig: index.get(_key(alg, orig), '')
+
+
+def resolve_original(rows, alg, display):
+    """Resolve a view label without silently editing an ambiguous mapping."""
+    candidates = {r['원본항목'] for r in rows
+                  if _norm(r.get('Alg')) == _norm(alg)
+                  and _norm(display) in (_norm(r.get('장비화면이름')), _norm(r.get('원본항목')))}
+    if not candidates:
+        from .ini_parser import KNOWN_DISPLAY_MAP
+        candidates = {key[-1] for key, info in KNOWN_DISPLAY_MAP.items()
+                      if _norm(info[0]) == _norm(alg) and _norm(info[1]) == _norm(display)}
+    if len(candidates) > 1:
+        raise ValueError("같은 표시 이름의 원본 항목이 여러 개입니다. 양식 만들기에서 색상을 지정하세요.")
+    return next(iter(candidates), display)
+
+
+def save_selected(path, selected, user, opened_stamp=None):
+    """One explicit user action, latest-file merge, existing soft-lock safeguards."""
+    from . import locking
+    previous = locking.status(path, user)
+    state = locking.acquire(path, user)
+    if not state.editable:
+        raise ValueError(locking.holder_message(state, '장비 화면 이름/색상'))
+    try:
+        stamp = locking.file_stamp(path)
+        if opened_stamp is not None and (stamp or (0, 0)) != opened_stamp:
+            raise ValueError('장비화면이름.xlsx가 변경되었습니다. 창을 다시 열어 최신 값을 확인하세요.')
+        rows = load(path)
+        changed = apply_selected(rows, selected)
+        if changed:
+            check = locking.check_before_save(path, user, stamp)
+            if not check['ok'] or locking.file_stamp(path) != stamp:
+                raise ValueError(check['reason'] or '저장 직전 파일이 변경되었습니다.')
+            save(path, rows)
+        return changed, rows
+    finally:
+        if previous.status != 'mine':
+            locking.release(path, user)
+
+
+def resolve_color_edits(entries, initial, current):
+    """One shared key may appear in many variants; do not undo one edited row."""
+    normalized = {r: normalize_color(value) for r, value in current.items()}
+    overrides = {}
+    for r, color in normalized.items():
+        if color != initial[r]:
+            e = entries[r]
+            key = _key(e['alg'], e['orig'])
+            if key in overrides and overrides[key] != color:
+                raise ValueError(f"{e['orig']}: 같은 Alg·원본 항목에 서로 다른 색상을 지정했습니다.")
+            overrides[key] = color
+    return {r: overrides.get(_key(entries[r]['alg'], entries[r]['orig']), color)
+            for r, color in normalized.items()}

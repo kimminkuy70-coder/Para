@@ -21,7 +21,7 @@ import time
 from datetime import datetime
 import tkinter as tk
 from pathlib import Path
-from tkinter import colorchooser, filedialog, messagebox, ttk
+from tkinter import colorchooser, filedialog, messagebox, simpledialog, ttk
 
 from tksheet import Sheet
 
@@ -1080,7 +1080,7 @@ class EquipApp(tk.Tk):
                  fg=(self.p["primary"] if "계수" in coef_txt else self.p["muted"]),
                  font=self.fonts["bold"]).pack(side="left", padx=(6, 0))
         tk.Label(head, text="왼쪽=선택 호기(값·비고) · 오른쪽=다른 호기 비교 · "
-                          "셀 우클릭=색칠 · 비고 더블클릭=편집   ",
+                          "색상 칸 더블클릭=분류색 · 비고 더블클릭=편집   ",
                  bg=self.p["surface"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="right", pady=8)
 
@@ -1139,9 +1139,10 @@ class EquipApp(tk.Tk):
 
         # 좌측(고정) 열: [Zone(검색시)] · Parameter · ★선택호기 · 비고
         # Alg 는 열에서 빼고 **그룹 헤더 행**으로 위에 한 번씩 표시(장비화면식).
-        left_headers = (["Zone"] if q else []) + ["Parameter", f"★ {machine}", "비고"]
-        left_widths = ([120] if q else []) + [300, 120, 210]
-        base = 1 if q else 0
+        left_headers = (["Zone"] if q else []) + ["색", "Parameter", f"★ {machine}", "비고"]
+        left_widths = ([100] if q else []) + [24, 290, 112, 180]
+        color_col = 1 if q else 0
+        base = color_col + 1
         c_sel = base + 1
         c_note = base + 2
 
@@ -1154,11 +1155,11 @@ class EquipApp(tk.Tk):
             if a != cur_alg:
                 cur_alg = a
                 left_data.append(([""] if q else []) +
-                                 [f"▸ {a or '(Alg 없음)'}", "", ""])
+                                 ["", f"▸ {a or '(Alg 없음)'}", "", ""])
                 right_data.append(["" for _ in others])
                 header_rows.append(li)
                 li += 1
-            left_data.append(([engine._s(r.get("Zone"))] if q else []) + [
+            left_data.append(([engine._s(r.get("Zone"))] if q else []) + ["",
                 engine._s(r.get("Parameter")), engine._s(r.get(machine)),
                 engine._s(r.get("비고"))])
             right_data.append([engine._s(r.get(m)) for m in others])
@@ -1167,13 +1168,16 @@ class EquipApp(tk.Tk):
         nrows = li
 
         def _mk(parent, headers, data, wraps):
-            sh = Sheet(parent, theme="light blue",
+            sh = Sheet(parent, theme="dark",
                        show_x_scrollbar=True, show_y_scrollbar=True,
                        font=(self.p["family"], 10, "normal"),
                        header_font=(self.p["family"], 10, "bold"))
             sh.headers(headers)
             sh.set_sheet_data(data or [[]], reset_col_positions=True)
             sh.set_options(table_wrap=wraps, header_wrap="w",
+                           table_bg="#333333", table_fg="#EEEEEE",
+                           header_bg="#454545", header_fg="#F5F5F5",
+                           table_grid_fg="#454545",
                            show_vertical_grid=True, show_horizontal_grid=True)
             # rc_select 제외: 우클릭이 드래그 선택을 지우지 않게(여러 셀 한번에 색칠)
             sh.enable_bindings("single_select", "drag_select", "row_select",
@@ -1191,12 +1195,17 @@ class EquipApp(tk.Tk):
         try:
             for ci, w in enumerate(left_widths):
                 ls.column_width(column=ci, width=w)
-            ls.highlight_columns(columns=[c_sel], bg=self.p["primary_lt"],
-                                 fg=self.p["text"])
-            ls.highlight_columns(columns=[c_note], bg="#fff8e1", fg=self.p["text"])
+            ls.set_options(show_vertical_grid=False, show_horizontal_grid=False)
+            ls.highlight_columns(columns=[c_sel], bg="#F5F5F5", fg="#202020")
+            ls.highlight_columns(columns=[c_note], bg="#3D3D3D", fg="#EEEEEE")
             if header_rows:
-                ls.highlight_rows(rows=header_rows, bg="#e2e8f0",
-                                  fg=self.p["text"], highlight_index=False)
+                ls.highlight_rows(rows=header_rows, bg="#292929",
+                                  fg="#FFFFFF", highlight_index=False)
+            color_of = namestore.make_color_lookup(getattr(self, "name_rows", []))
+            for row_index, parameter in param_row_of.items():
+                alg, name = parameter.get("Alg"), parameter.get("Parameter")
+                color = color_of(alg, name) or namestore.default_color(alg, name)
+                ls.highlight_cells(row=row_index, column=color_col, bg=color, redraw=False)
         except Exception:  # noqa: BLE001
             pass
         ls.hide("y_scrollbar")
@@ -1211,10 +1220,12 @@ class EquipApp(tk.Tk):
         def _on_note_dbl(e):
             rr = ls.identify_row(e)
             cc = ls.identify_column(e)
-            if rr is None or cc != c_note:
+            if rr is None:
                 return
             pr = param_row_of.get(rr)
-            if pr is not None:
+            if pr is not None and cc == color_col:
+                self._edit_parameter_color(pr)
+            elif pr is not None and cc == c_note:
                 self._edit_note_cell(ls, rr, c_note, pr, e)
         ls.MT.bind("<Double-Button-1>", _on_note_dbl, add="+")
 
@@ -1231,8 +1242,8 @@ class EquipApp(tk.Tk):
                 for i in range(len(others)):
                     rs.column_width(column=i, width=92)
                 if header_rows:
-                    rs.highlight_rows(rows=header_rows, bg="#e2e8f0",
-                                      fg=self.p["text"], highlight_index=False)
+                    rs.highlight_rows(rows=header_rows, bg="#292929",
+                                      fg="#FFFFFF", highlight_index=False)
             except Exception:  # noqa: BLE001
                 pass
             rs.pack(fill="both", expand=True)
@@ -1361,7 +1372,7 @@ class EquipApp(tk.Tk):
                     sheet.dehighlight_cells(cells=[(r, c)], redraw=False)
                 else:
                     store[key] = hx
-                    sheet.highlight_cells(cells=[(r, c)], bg=hx, redraw=False)
+                    sheet.highlight_cells(cells=[(r, c)], bg=hx, fg=namestore.contrast_text(hx), redraw=False)
             except Exception:  # noqa: BLE001
                 pass
         try:
@@ -1394,16 +1405,16 @@ class EquipApp(tk.Tk):
                 continue
             try:
                 if target == "param":
-                    ls.highlight_cells(row=sr, column=ctx["c_param"], bg=hx, redraw=False)
+                    ls.highlight_cells(row=sr, column=ctx["c_param"], bg=hx, fg=namestore.contrast_text(hx), redraw=False)
                 elif target == "비고":
-                    ls.highlight_cells(row=sr, column=ctx["c_note"], bg=hx, redraw=False)
+                    ls.highlight_cells(row=sr, column=ctx["c_note"], bg=hx, fg=namestore.contrast_text(hx), redraw=False)
                 elif target == "zone" and ctx["zone_col"] is not None:
-                    ls.highlight_cells(row=sr, column=ctx["zone_col"], bg=hx, redraw=False)
+                    ls.highlight_cells(row=sr, column=ctx["zone_col"], bg=hx, fg=namestore.contrast_text(hx), redraw=False)
                 elif target == machine:
-                    ls.highlight_cells(row=sr, column=ctx["c_sel"], bg=hx, redraw=False)
+                    ls.highlight_cells(row=sr, column=ctx["c_sel"], bg=hx, fg=namestore.contrast_text(hx), redraw=False)
                 elif rs is not None and target in others:
                     rs.highlight_cells(row=sr, column=others.index(target), bg=hx,
-                                       redraw=False)
+                                       fg=namestore.contrast_text(hx), redraw=False)
             except Exception:  # noqa: BLE001
                 pass
         try:
@@ -1418,15 +1429,25 @@ class EquipApp(tk.Tk):
         top = tk.Toplevel(self)
         top.wm_overrideredirect(True)
         top.attributes("-topmost", True)
-        top.wm_geometry(f"+{event.x_root}+{event.y_root}")
+        # Canvas coordinates include scrolling; mouse position is not the cell origin.
+        mt = sheet.MT
+        x = mt.winfo_rootx() + int(mt.col_positions[c] - mt.canvasx(0))
+        y = mt.winfo_rooty() + int(mt.row_positions[r] - mt.canvasy(0))
+        width = max(80, int(mt.col_positions[c + 1] - mt.col_positions[c]))
+        height = max(26, int(mt.row_positions[r + 1] - mt.row_positions[r]))
+        x = max(0, min(x, top.winfo_screenwidth() - width))
+        y = max(0, min(y, top.winfo_screenheight() - height))
+        top.wm_geometry(f"{width}x{height}+{x}+{y}")
         var = tk.StringVar(value=engine._s(pr.get("비고")))
         ent = tk.Entry(top, textvariable=var, font=self.fonts["base"],
                        width=32, relief="solid", bd=1)
-        ent.pack()
+        ent.pack(fill="both", expand=True)
         ent.focus_set()
         ent.select_range(0, "end")
 
         def commit(_=None):
+            if not top.winfo_exists():
+                return
             new = var.get().strip()
             top.destroy()
             if new == engine._s(pr.get("비고")):
@@ -1439,8 +1460,11 @@ class EquipApp(tk.Tk):
             self._persist_note(pr, new)
             self._set_status(f"비고 저장: {engine._s(pr.get('Parameter'))}")
         ent.bind("<Return>", commit)
-        ent.bind("<Escape>", lambda e: top.destroy())
-        ent.bind("<FocusOut>", lambda e: top.destroy())
+        def cancel(_=None):
+            if top.winfo_exists():
+                top.destroy()
+        ent.bind("<Escape>", cancel)
+        ent.bind("<FocusOut>", cancel)
 
     def _persist_note(self, pr, note):
         """최신 '파라미터 값 취합' 파일에서 이 파라미터 행을 찾아 비고를 갱신·저장."""
@@ -2929,24 +2953,54 @@ class EquipApp(tk.Tk):
             return 0
         return n
 
-    def _names_from_form(self, selected) -> int:
+    def _names_from_form(self, selected, opened_stamp=None) -> int:
         """양식 확정 시 사람이 정한 '장비 화면 항목 이름'과 '체크박스 상태'를
         장비화면이름.xlsx 에 기억한다(같은 alg·같은 원본 파라미터가 새 양식에 나오면
         자동으로 이름·체크를 맞춘다). selected = 편집기 전체 항목(체크/미체크 모두).
-        저장 실패는 양식 확정을 막지 않는다."""
+        저장 실패 시 -1을 반환해 편집 내용을 보존한다."""
         if not self.save_dir:
             return 0
         try:
-            rows = getattr(self, "name_rows", None)
-            if rows is None:
-                rows = self.name_rows = namestore.load(namestore.name_path(self.save_dir))
-            n = namestore.apply_selected(rows, selected)
-            if n:
-                namestore.save(namestore.name_path(self.save_dir), rows)
+            n, self.name_rows = namestore.save_selected(
+                namestore.name_path(self.save_dir), selected, self.user, opened_stamp)
             return n
         except Exception as e:  # noqa: BLE001
-            self._logerr("E146", e)        # 이름/체크 기억 실패는 확정을 막지 않는다
-            return 0
+            self._err("E146", "장비 화면 이름/색상 저장 실패", e)
+            return -1
+
+    def _edit_parameter_color(self, parameter):
+        if not self.save_dir:
+            return
+        path = namestore.name_path(self.save_dir)
+        try:
+            stamp = locking.file_stamp(path) or (0, 0)
+            rows = namestore.load(path)
+            alg, name = parameter.get("Alg"), parameter.get("Parameter")
+            orig = namestore.resolve_original(rows, alg, name)
+            old = namestore.make_color_lookup(rows)(alg, orig)
+            value = simpledialog.askstring(
+                "파라미터 분류 색상", f"{name}\n#RRGGBB 입력 (빈칸=자동 색상)\n"
+                "장비화면이름.xlsx에 저장되어 다음 양식에도 적용됩니다.",
+                initialvalue=old or namestore.default_color(alg, name), parent=self)
+            if value is None:
+                return
+            color = namestore.normalize_color(value)
+            if color == old:
+                return
+            selected = [{"alg": alg, "ext": {"key": orig}, "name": name, "color": color}]
+        except Exception as e:
+            self._err("E146", "색상 변경 실패", e)
+            return
+        def work():
+            return namestore.save_selected(path, selected, self.user, stamp)
+        def done(ok, result):
+            if not ok:
+                self._err("E146", "색상 저장 실패", result)
+                return
+            self.name_rows = result[1]
+            self._render()
+            self._set_status("파라미터 색상을 저장했습니다.")
+        self._run_busy("색상 저장 중…", work, done)
 
     def _coef_report_missing(self, state):
         """**값을 읽는 작업은 `변환계수.xlsx` 를 쓰지 않는다**(사용자 확정 2026-08).
@@ -3000,6 +3054,7 @@ class EquipApp(tk.Tk):
         recommended = recommended or {}
         win = tk.Toplevel(self)
         win.title("변환 계수 확인(변형별)")
+        self._geo(win, 900, 650)
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
@@ -3017,8 +3072,26 @@ class EquipApp(tk.Tk):
                   padx=10, pady=2, cursor="hand2",
                   command=lambda: self._rtp_coef_help(win)).pack(side="right", padx=(8, 0))
         opts = [f"{s:.16g}" for s in ini_parser.KNOWN_SCALES]
-        grid = tk.Frame(win, bg=self.p["bg"])
-        grid.pack(fill="both", expand=True, padx=14, pady=8)
+        scroll = tk.Frame(win, bg=self.p["bg"])
+        scroll.pack(fill="both", expand=True, padx=14, pady=8)
+        canvas = tk.Canvas(scroll, bg=self.p["bg"], highlightthickness=0)
+        bar = ttk.Scrollbar(scroll, orient="vertical", command=canvas.yview)
+        bar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        canvas.configure(yscrollcommand=bar.set)
+        grid = tk.Frame(canvas, bg=self.p["bg"])
+        item = canvas.create_window((0, 0), window=grid, anchor="nw")
+        grid.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(item, width=e.width))
+        def wheel(e):
+            if canvas.winfo_exists() and grid.winfo_height() > canvas.winfo_height():
+                delta = -1 if getattr(e, 'num', None) == 4 else 1 if getattr(e, 'num', None) == 5 else (-1 if e.delta > 0 else 1)
+                canvas.yview_scroll(delta * 3, "units")
+            return "break"
+        # Window-local binding: never hijack mouse wheels in other screens.
+        win.bind("<MouseWheel>", wheel)
+        win.bind("<Button-4>", wheel)
+        win.bind("<Button-5>", wheel)
         tk.Label(grid, text="변형", bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).grid(row=0, column=0, sticky="w")
         tk.Label(grid, text="계수(추천값 자동 입력)", bg=self.p["bg"], fg=self.p["muted"],
@@ -3032,8 +3105,11 @@ class EquipApp(tk.Tk):
             dec = recommended.get(v) or {}
             coef = dec.get("Coefficient")
             var = tk.StringVar(value=(f"{coef:.16g}" if coef is not None else ""))
-            ttk.Combobox(grid, textvariable=var, values=opts, width=26).grid(
-                row=i, column=1, padx=8, pady=4)
+            combo = ttk.Combobox(grid, textvariable=var, values=opts, width=26)
+            combo.grid(row=i, column=1, padx=8, pady=4)
+            combo.bind("<MouseWheel>", wheel)
+            combo.bind("<Button-4>", wheel)
+            combo.bind("<Button-5>", wheel)
             vars_[v] = var
             if coef is not None:
                 note = f"RTP 추정 {dec.get('Display')} · 신뢰도 {dec.get('Confidence')} " \
@@ -3813,18 +3889,19 @@ class EquipApp(tk.Tk):
         # 격자 구성·확정 규칙·표시값 계산이 동일하게 동작한다.
         label_values = editor_model.LABEL_VALUES
         _method = editor_model.method_of
+        name_stamp = (locking.file_stamp(namestore.name_path(self.save_dir)) or (0, 0)) if self.save_dir else None
+        if self.save_dir:
+            try:
+                self.name_rows = namestore.load(namestore.name_path(self.save_dir))
+            except Exception as e:
+                self._err("E147", "이름/색상 불러오기 실패", e)
+                return
         try:                                          # 파라미터 해석(파일 의존)
             # 장비 화면 이름 자동 채움: 새로 파싱해 만드는 양식(autoname=True)일 때만.
             #   기존 양식을 그대로 여는(이름이 이미 사람 값) 경로는 autoname=False.
             #   파일을 매번 새로 읽어 엑셀에서 직접 고친 이름도 곧바로 반영되게 한다.
             name_cb = use_cb = None
             if autoname:
-                if self.save_dir:
-                    try:
-                        self.name_rows = namestore.load(
-                            namestore.name_path(self.save_dir))
-                    except Exception as _e:  # noqa: BLE001
-                        self._logerr("E147", _e)
                 name_cb = namestore.make_lookup(getattr(self, "name_rows", []))
                 use_cb = namestore.make_use_lookup(getattr(self, "name_rows", []))
             entries = editor_model.build_entries(rows, base_keys=base_keys,
@@ -3902,7 +3979,7 @@ class EquipApp(tk.Tk):
 
         multi_variant = len(variants) > 1
         HDR = ["사용", "원본 항목(ini)", "장비 화면 항목 이름", "분류(변환방식)",
-               "원본값", "표시값(계수적용)"]
+               "원본값", "표시값(계수적용)", "색상코드 (#RRGGBB)"]
         try:                                          # 격자 구성(파일 의존)
             grid = editor_model.build_grid(entries, multi_variant, disp_of)
         except Exception as _e:  # noqa: BLE001
@@ -3913,6 +3990,12 @@ class EquipApp(tk.Tk):
         row_entry = grid["row_entry"]
         descend_param = grid["descend_param"]; descend_head = grid["descend_head"]
         ancestors = grid["ancestors"]
+        color_lookup = namestore.make_color_lookup(getattr(self, "name_rows", []))
+        for row_index, values in enumerate(data):
+            entry = row_entry.get(row_index)
+            values.append((color_lookup(entry["alg"], entry["orig"])
+                           or namestore.default_color(entry["alg"], entry["name"])) if entry else "")
+        initial_colors = {r: data[r][6] for r in row_entry}
 
         try:                                          # 표(tksheet) 생성
             sheet = Sheet(body, theme="light blue", headers=HDR, data=data,
@@ -3929,7 +4012,7 @@ class EquipApp(tk.Tk):
             win.destroy()
             return
         try:
-            sheet.set_column_widths([56, 300, 300, 130, 120, 150])
+            sheet.set_column_widths([56, 260, 260, 130, 100, 140, 155])
         except Exception as _e:  # noqa: BLE001
             self._logerr("E211", _e)
 
@@ -3996,6 +4079,7 @@ class EquipApp(tk.Tk):
             sheet.readonly("B"); sheet.readonly("E"); sheet.readonly("F")
             for hr in header_rows:
                 sheet.readonly(f"C{hr + 1}"); sheet.readonly(f"D{hr + 1}")
+                sheet.readonly(f"G{hr + 1}")
         except Exception as _e:  # noqa: BLE001
             self._logerr("E214", _e)
         # 계층 헤더 행 색칠(가독성)
@@ -4052,7 +4136,7 @@ class EquipApp(tk.Tk):
                   fg=self.p["text"], padx=10, pady=6, cursor="hand2",
                   command=lambda: set_all(False)).pack(side="left", padx=6)
         tk.Label(bt, text=("  (체크박스 클릭=선택 · 상위행 체크=하위 전체 선택·해제 · "
-                           "항목/분류는 셀을 더블클릭해 편집)"),
+                           "이름·색상 더블클릭 편집 / 색상 빈칸=자동)"),
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
         def to_excel():
@@ -4085,6 +4169,8 @@ class EquipApp(tk.Tk):
         def confirm():
             # 격자 셀에서 현재 상태를 읽어 selected 구성 → editor_model 이 저장 규칙 적용
             try:
+                resolved_colors = namestore.resolve_color_edits(
+                    row_entry, initial_colors, {r: sheet.get_cell_data(r, 6) for r in param_r})
                 selected = []
                 for r in param_r:
                     e = row_entry[r]
@@ -4093,6 +4179,7 @@ class EquipApp(tk.Tk):
                         # 장비 화면 항목 이름(C, col2)이 표시 이름 = 저장 Parameter.
                         # 비우면 build_records 가 원본(reco)으로 폴백한다.
                         "name": sheet.get_cell_data(r, 2),
+                        "color": resolved_colors[r],
                         "reco": e["reco"], "variant": e["variant"],
                         "zone": e["zone"], "alg": e["alg"], "ext": e["ext"],
                         "method": sheet.get_cell_data(r, 3),
@@ -4106,10 +4193,11 @@ class EquipApp(tk.Tk):
                 messagebox.showinfo("확정", "선택된 파라미터가 없습니다.", parent=win)
                 return
             # 편집기에서 고친 변형별 계수를 변환계수.xlsx 에도 반영(사람 확정 = 우선)
-            n_coef = self._coef_from_form(aoi, dict(used_scales), rows, level)
             # 사람이 정한 '장비 화면 항목 이름'과 '체크박스 상태'를 기억
             # (다음 새 양식에서 같은 항목의 이름·체크를 자동으로 맞춘다).
-            self._names_from_form(selected)
+            if self._names_from_form(selected, name_stamp) < 0:
+                return
+            n_coef = self._coef_from_form(aoi, dict(used_scales), rows, level)
             if on_confirm is not None:               # commonality 등 다른 저장 경로
                 # 확정 전에 **전체 후보 목록('원본')** 을 남긴다 — 다음에 '기존 양식
                 # 수정하기'로 열 때 빼 놓은 항목을 다시 넣을 수 있어야 하므로.
