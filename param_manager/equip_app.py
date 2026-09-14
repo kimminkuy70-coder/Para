@@ -2968,6 +2968,62 @@ class EquipApp(tk.Tk):
             self._err("E146", "장비 화면 이름/색상 저장 실패", e)
             return -1
 
+    def _choose_parameter_color(self, parent, initial, default, title="파라미터 색상"):
+        """One reusable preview dialog; no row widgets or writes while browsing colors."""
+        win = tk.Toplevel(parent)
+        win.title(title)
+        win.transient(parent)
+        win.configure(bg=self.p["bg"])
+        previous_grab = parent.grab_current()
+        win.grab_set()
+        value = tk.StringVar(value=initial or "")
+        result = {"color": None}
+        swatch = tk.Label(win, width=34, height=4, relief="solid", bd=1)
+        swatch.pack(fill="x", padx=16, pady=(16, 8))
+        entry = tk.Entry(win, textvariable=value, font=self.fonts["base"])
+        entry.pack(fill="x", padx=16)
+        hint = tk.Label(win, text="", bg=self.p["bg"], fg=self.p["muted"])
+        hint.pack(padx=16, pady=6)
+        def preview(*_):
+            try:
+                code = namestore.normalize_color(value.get())
+                shown = code or default
+                swatch.configure(bg=shown, fg=namestore.contrast_text(shown),
+                                 text=shown + ("  (자동)" if not code else ""))
+                hint.configure(text="직접 입력하거나 ‘색상표에서 선택’을 누르세요.")
+            except ValueError:
+                hint.configure(text="#RRGGBB 형식으로 입력하세요. 빈칸은 자동 색상입니다.")
+        def pick():
+            try:
+                start = namestore.normalize_color(value.get()) or default
+            except ValueError:
+                start = default
+            _, color = colorchooser.askcolor(initialcolor=start, parent=win,
+                                            title="색상을 보고 선택하세요")
+            if color:
+                value.set(color)
+        def confirm():
+            try:
+                result["color"] = namestore.normalize_color(value.get())
+            except ValueError as e:
+                messagebox.showwarning("색상 형식", str(e), parent=win)
+                return
+            win.destroy()
+        buttons = tk.Frame(win, bg=self.p["bg"])
+        buttons.pack(fill="x", padx=16, pady=(4, 16))
+        for label, command in (("색상표에서 선택", pick), ("자동 색상", lambda: value.set("")),
+                               ("적용", confirm), ("취소", win.destroy)):
+            tk.Button(buttons, text=label, command=command, padx=8).pack(side="left", padx=3)
+        value.trace_add("write", preview)
+        preview()
+        entry.focus_set()
+        win.bind("<Return>", lambda e: confirm())
+        win.bind("<Escape>", lambda e: win.destroy())
+        win.wait_window()
+        if previous_grab is not None and previous_grab.winfo_exists():
+            previous_grab.grab_set()
+        return result["color"]
+
     def _edit_parameter_color(self, parameter):
         if not self.save_dir:
             return
@@ -2978,10 +3034,8 @@ class EquipApp(tk.Tk):
             alg, name = parameter.get("Alg"), parameter.get("Parameter")
             orig = namestore.resolve_original(rows, alg, name)
             old = namestore.make_color_lookup(rows)(alg, orig)
-            value = simpledialog.askstring(
-                "파라미터 분류 색상", f"{name}\n#RRGGBB 입력 (빈칸=자동 색상)\n"
-                "장비화면이름.xlsx에 저장되어 다음 양식에도 적용됩니다.",
-                initialvalue=old or namestore.default_color(alg, name), parent=self)
+            value = self._choose_parameter_color(
+                self, old, namestore.default_color(alg, name), f"파라미터 분류 색상 — {name}")
             if value is None:
                 return
             color = namestore.normalize_color(value)
@@ -4018,6 +4072,25 @@ class EquipApp(tk.Tk):
 
         header_rows = [i for i, k in enumerate(kinds) if k != "param"]
         param_r = [i for i, k in enumerate(kinds) if k == "param"]
+        for r in param_r:
+            code = initial_colors[r]
+            sheet.highlight_cells(row=r, column=6, bg=code,
+                                  fg=namestore.contrast_text(code), redraw=False)
+
+        def preview_color_edit(event):
+            r, c = event.get("row"), event.get("column")
+            if r not in row_entry or c != 6:
+                return
+            try:
+                code = namestore.normalize_color(event.get("value"))
+                e = row_entry[r]
+                shown = code or namestore.default_color(e["alg"], e["name"])
+                sheet.highlight_cells(row=r, column=6, bg=shown,
+                                      fg=namestore.contrast_text(shown), redraw=False)
+                sheet.refresh()
+            except ValueError:
+                pass  # Validation on confirmation keeps the user's text editable.
+        sheet.extra_bindings("end_edit_cell", preview_color_edit)
 
         def sync_header(h):
             kids = descend_param.get(h, [])
@@ -4135,8 +4208,33 @@ class EquipApp(tk.Tk):
         tk.Button(bt, text="전체 해제", relief="flat", bd=0, bg=self.p["surface"],
                   fg=self.p["text"], padx=10, pady=6, cursor="hand2",
                   command=lambda: set_all(False)).pack(side="left", padx=6)
-        tk.Label(bt, text=("  (체크박스 클릭=선택 · 상위행 체크=하위 전체 선택·해제 · "
-                           "이름·색상 더블클릭 편집 / 색상 빈칸=자동)"),
+        def choose_colors():
+            chosen = {r for r, c in sheet.get_selected_cells() if r in row_entry}
+            if not chosen:
+                current = sheet.get_currently_selected()
+                if current and current.row in row_entry:
+                    chosen.add(current.row)
+            if not chosen:
+                messagebox.showinfo("색상 선택", "파라미터 행을 먼저 선택하세요.", parent=win)
+                return
+            first = min(chosen)
+            e = row_entry[first]
+            color = self._choose_parameter_color(
+                win, sheet.get_cell_data(first, 6), namestore.default_color(e["alg"], e["name"]),
+                f"선택한 {len(chosen)}개 항목 색상")
+            if color is None:
+                return
+            keys = {namestore._key(row_entry[r]["alg"], row_entry[r]["orig"]) for r in chosen}
+            for r, e in row_entry.items():
+                if namestore._key(e["alg"], e["orig"]) in keys:
+                    sheet.set_cell_data(r, 6, color, redraw=False)
+                    shown = color or namestore.default_color(e["alg"], e["name"])
+                    sheet.highlight_cells(row=r, column=6, bg=shown,
+                                          fg=namestore.contrast_text(shown), redraw=False)
+            sheet.refresh()
+        tk.Button(bt, text="색상 보고 선택…", command=choose_colors,
+                  padx=10, pady=6).pack(side="left", padx=6)
+        tk.Label(bt, text="색상 적용 후 양식 확정 시 저장",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"]).pack(side="left")
 
         def to_excel():
