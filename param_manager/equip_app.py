@@ -4911,6 +4911,7 @@ class EquipApp(tk.Tk):
             out_dir = wph.new_investigation_dir(self.local_dir)
             made = []
             all_rows = []          # 통합 엑셀용(각 행에 호기 태그)
+            all_errors = []
             nmac = len(targets)
             for mi, (m, folder, query, names) in enumerate(targets, start=1):
                 recipe = query or "(전체)"
@@ -4925,6 +4926,8 @@ class EquipApp(tk.Tk):
                 for rw in rows:
                     rw["machine"] = m
                 all_rows.extend(rows)
+                all_errors.extend({"machine": m, "source_file": name, "error": error}
+                                  for name, error in errors)
                 # 호기별 취합 텍스트(체크한 리포트만)
                 report(f"[{mi}/{nmac}] {m} 취합 텍스트 저장 중…")
                 from pathlib import Path as _P
@@ -4936,7 +4939,8 @@ class EquipApp(tk.Tk):
             machines = [m for m, _f, _q, _n in targets]
             xlsx_path = os.path.join(out_dir, wph.combined_excel_filename(machines))
             title = "WPH 통합 분석 (" + ", ".join(machines) + ")"
-            wph.write_wph_excel(xlsx_path, all_rows, valid_wafers=valid, title=title)
+            wph.write_wph_excel(xlsx_path, all_rows, valid_wafers=valid, title=title,
+                                parse_errors=all_errors)
             return out_dir, made, xlsx_path, len(all_rows)
 
         def done(ok, res):

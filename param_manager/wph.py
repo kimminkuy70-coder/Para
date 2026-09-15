@@ -261,6 +261,11 @@ def extract_row(report: dict) -> dict:
         "batch_sec": hms_to_seconds(meta.get("batchtime", "")),
         "batch_end": parse_batch_datetime(end_raw),
         "batch_end_raw": clean_text(end_raw),
+        "wafer_statuses": [
+            {"status": safe_field(w, "Pass/Fail", "Status", "State"),
+             "slot": safe_field(w, "Slot", "Slot No", "No"),
+             "wafer_id": safe_field(w, "Wafer ID")}
+            for w in report.get("wafers", [])],
     }
 
 
@@ -467,7 +472,7 @@ def _thin(openpyxl):
 
 
 def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID_WAFERS,
-                    title: str = "") -> str:
+                    title: str = "", parse_errors=None) -> str:
     """rows(입력 행 목록)로 참조 양식과 동일한 WPH 분석 엑셀을 만든다.
 
     rows 항목: {source_file, wafers, avg_scan_sec, batch_sec, batch_end|batch_end_raw}
@@ -779,6 +784,8 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
     for col in "BCDEFG":
         w6.column_dimensions[col].width = 16
 
+    from .wph_status import add_sheets
+    add_sheets(wb, rows, list(parse_errors or []))
     wb.save(str(path))
     return str(path)
 

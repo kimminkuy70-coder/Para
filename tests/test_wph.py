@@ -149,7 +149,8 @@ def test_excel_structure_and_valid_wafers():
         wb = openpyxl.load_workbook(out)
         assert wb.sheetnames == ["00_사용안내", "01_Raw_Data", "02_25매_통계",
                                  "03_이상치", "04_그래프데이터", "05_대시보드",
-                                 "06_호기별_WPH"]
+                                 "06_호기별_WPH", "07_상태요약", "08_Report목록",
+                                 "09_상태상세", "10_파싱오류"]
         ws = wb["01_Raw_Data"]
         assert ws["A1"].value == "Report"
         # 통합 엑셀: 호기(U) + 생성일자(V) 열
