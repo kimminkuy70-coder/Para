@@ -105,16 +105,37 @@ def add_sheets(wb, rows, errors):
         sheet.auto_filter.ref = f'A9:D{sheet.max_row}' if sheet is overview else sheet.dimensions
         for column, width in [('A', 24), ('B', 72), ('C', 24), ('D', 25), ('E', 32), ('F', 38), ('G', 55)]:
             sheet.column_dimensions[column].width = width
+    # Derive both frequency series from the exact rows written to 09_상태상세.
+    frequency, report_ids = Counter(), {}
+    for machine, filename, slot, wafer_id, category, original, raw in details:
+        if category == '상태 확인 불가':
+            continue
+        key = (category, original)
+        frequency[key] += 1
+        report_ids.setdefault(key, set()).add((machine, filename))
+    chart_rows = [[f'{category} / {original}', len(report_ids[(category, original)]), count]
+                  for (category, original), count in sorted(frequency.items(), key=lambda item: -item[1])]
+    if not chart_rows:
+        chart_rows = [['상세에 이슈 상태 없음', 0, 0]]
+    for c, label in enumerate(['09 상태상세 기준', 'Report 수 (중복 제외)', 'Wafer/Slot 발생 건수'], 9):
+        overview.cell(1, c, label)
+    for r, values in enumerate(chart_rows, 2):
+        for c, value in enumerate(values, 9):
+            cell = overview.cell(r, c, value)
+            if isinstance(value, str):
+                cell.data_type = 's'
     # Native charts over concrete numeric cells: no dynamic formula/cached value dependency.
-    for column, title, anchor in [(3, '상태 유형별 Report 수 (중복 포함)', 'I2'),
-                                   (4, '상태 유형별 Wafer/Slot 발생 건수', 'I42')]:
+    data_end = 9 + len(ordered)
+    overview.cell(data_end + 2, 1, '오류·중단·제외 상태 빈도 그래프 ↓ (유형별 중복 포함)')
+    for column, title, anchor in [(10, '09 상태상세 — 유형별 Report 수', f'A{data_end + 4}'),
+                                   (11, '09 상태상세 — 유형별 Wafer/Slot 발생 빈도', f'A{data_end + 36}')]:
         chart = BarChart()
         chart.type = 'bar'
         chart.style = 10
         chart.title = title
         chart.legend = None
-        chart.add_data(Reference(overview, min_col=column, min_row=9, max_row=overview.max_row), titles_from_data=True)
-        chart.set_categories(Reference(overview, min_col=2, min_row=10, max_row=overview.max_row))
+        chart.add_data(Reference(overview, min_col=column, min_row=1, max_row=len(chart_rows) + 1), titles_from_data=True)
+        chart.set_categories(Reference(overview, min_col=9, min_row=2, max_row=len(chart_rows) + 1))
         chart.dataLabels = DataLabelList()
         chart.dataLabels.showVal = True
         chart.width, chart.height = 23, max(8, min(14, len(ordered) * .65))

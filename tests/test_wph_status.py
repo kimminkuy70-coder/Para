@@ -6,10 +6,35 @@ from zipfile import ZipFile
 from xml.etree import ElementTree
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import openpyxl
-from param_manager import wph, wph_status as status
+from param_manager import wph, wph_status as status, wph_charts
 
 
 class StatusTests(unittest.TestCase):
+    def test_wph_numeric_chart_data(self):
+        rows = [dict(machine='AOI-1', wafers=25, avg_scan_sec=50, batch_sec=1800),
+                dict(machine='AOI-1', wafers=25, avg_scan_sec=100, batch_sec=3600),
+                dict(machine='AOI-2', wafers=2, avg_scan_sec=50, batch_sec=500),
+                dict(machine='AOI-2', wafers=25, avg_scan_sec=float('nan'), batch_sec=500)]
+        machines, reports, bands = wph_charts.summarize(rows, 25)
+        self.assertEqual(machines['AOI-1'], [2, 50, 5400])
+        self.assertEqual(len(machines), 1)
+        self.assertEqual([r[1] for r in reports], [50, 25])
+        self.assertEqual(bands, [0, 1, 0, 1, 0, 0])
+
+    def test_error_chart_data_matches_detail_rows(self):
+        rows = [dict(machine=m, source_file='same.htm', wafer_statuses=[
+                    dict(status='Aborted.'), dict(status='Aborted. + Skipped.')])
+                for m in ['AOI-1', 'AOI-2']]
+        rows.append(dict(source_file='unknown.htm', wafer_statuses=[]))
+        wb = openpyxl.Workbook()
+        status.add_sheets(wb, rows, [])
+        summary = wb['07_상태요약']
+        data = list(summary.iter_rows(min_row=2, max_row=3, min_col=9, max_col=11, values_only=True))
+        self.assertEqual(data[0], ('작업 중단 / Aborted.', 2, 4))
+        self.assertEqual(data[1], ('검사 제외 / Skipped.', 2, 2))
+        self.assertEqual(sum(r[2] for r in data), sum(1 for r in wb['09_상태상세'].iter_rows(min_row=2, values_only=True) if r[4] != '상태 확인 불가'))
+        wb.close()
+
     def test_counts_are_per_report_and_per_wafer(self):
         rows = [dict(source_file='a.htm', wafer_statuses=[
             {'status': 'Scan 2D Error. + Aborted. + Skipped.'}, {'status': 'Aborted.'}]),
@@ -45,6 +70,9 @@ class StatusTests(unittest.TestCase):
                 self.assertEqual(summary['B2'].value, 2)
                 self.assertEqual(summary['B6'].value, 1)
                 self.assertEqual(len(summary._charts), 2)
+                self.assertEqual(len(wb['05_대시보드']._charts), 3)
+                self.assertEqual(wb.active.title, '05_대시보드')
+                self.assertTrue(all(c.anchor._from.col == 0 for c in summary._charts))
                 self.assertEqual(wb['08_Report목록']['B2'].data_type, 's')
                 self.assertEqual(wb['09_상태상세']['D2'].data_type, 's')
                 self.assertEqual(wb['10_파싱오류']['B2'].value, 'broken.htm')

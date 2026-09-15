@@ -10,6 +10,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 
 ### WPH 상태 분류 (2026-09-15)
 
+- 후속: 05_대시보드 실제 WPH 차트 3개 생성(wph_charts.py).
+  07_상태요약 아래의 오류 차트 2개는 09_상태상세 행을 기준으로 집계한다.
+  차트용 값은 생성 시점 snapshot으로 수동 셀 편집 시 자동 재집계하지 않는다.
+
 - wph_status.py가 WPH 엑셀의 상태요약/Report목록/상태상세/파싱오류 및 기본 차트 2개를 생성.
 - Error/Failed/Aborted/Skipped/Nothing to Scan 등 원문을 보존한다. 빈 상태는 정상 제외.
 - 유형별 Report 중복 허용, 전체 이슈 Report 중복 제외. 슬롯 수는 원본 표 행 기준이다.

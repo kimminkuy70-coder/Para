@@ -786,6 +786,8 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
 
     from .wph_status import add_sheets
     add_sheets(wb, rows, list(parse_errors or []))
+    from .wph_charts import add_charts
+    add_charts(wb, rows, n)
     wb.save(str(path))
     return str(path)
 
