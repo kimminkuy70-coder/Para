@@ -127,16 +127,25 @@ def add_sheets(wb, rows, errors):
     # Native charts over concrete numeric cells: no dynamic formula/cached value dependency.
     data_end = 9 + len(ordered)
     overview.cell(data_end + 2, 1, '오류·중단·제외 상태 빈도 그래프 ↓ (유형별 중복 포함)')
-    for column, title, anchor in [(10, '09 상태상세 — 유형별 Report 수', f'A{data_end + 4}'),
-                                   (11, '09 상태상세 — 유형별 Wafer/Slot 발생 빈도', f'A{data_end + 36}')]:
-        chart = BarChart()
-        chart.type = 'bar'
-        chart.style = 10
-        chart.title = title
-        chart.legend = None
-        chart.add_data(Reference(overview, min_col=column, min_row=1, max_row=len(chart_rows) + 1), titles_from_data=True)
-        chart.set_categories(Reference(overview, min_col=9, min_row=2, max_row=len(chart_rows) + 1))
-        chart.dataLabels = DataLabelList()
-        chart.dataLabels.showVal = True
-        chart.width, chart.height = 23, max(8, min(14, len(ordered) * .65))
-        overview.add_chart(chart, anchor)
+    from .wph_charts import format_chart, value_labels
+    chart_index = 0
+    for column, title in [(10, '유형별 Report 수'), (11, '유형별 Wafer/Slot 발생 빈도')]:
+        # Long state labels get at most 12 categories per large chart.
+        for offset in range(0, len(chart_rows), 12):
+            first = 2 + offset
+            last = min(offset + 12, len(chart_rows)) + 1
+            chart = BarChart()
+            chart.type = 'bar'
+            chart.style = 10
+            chart.title = title + (f' ({offset // 12 + 1})' if len(chart_rows) > 12 else '')
+            format_chart(chart, horizontal=True)
+            chart.height = 20
+            chart.add_data(Reference(overview, min_col=column, min_row=first, max_row=last))
+            chart.set_categories(Reference(overview, min_col=9, min_row=first, max_row=last))
+            value_labels(chart)
+            chart.y_axis.scaling.orientation = 'maxMin'
+            anchor_row = data_end + 4 + chart_index * 44
+            for r in range(anchor_row, anchor_row + 44):
+                overview.row_dimensions[r].height = 18
+            overview.add_chart(chart, f'A{anchor_row}')
+            chart_index += 1

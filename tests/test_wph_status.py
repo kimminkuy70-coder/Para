@@ -2,6 +2,7 @@ import sys
 import tempfile
 from pathlib import Path
 import unittest
+from datetime import datetime
 from zipfile import ZipFile
 from xml.etree import ElementTree
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -10,6 +11,50 @@ from param_manager import wph, wph_status as status, wph_charts
 
 
 class StatusTests(unittest.TestCase):
+    def test_chronological_trends_and_readable_labels(self):
+        later, earlier = datetime(2026, 9, 15, 15), datetime(2026, 9, 14, 9)
+        base = dict(machine='AOI-1', wafers=25, avg_scan_sec=100)
+        rows = [dict(base, batch_sec=3600, batch_end=later, source_file='a.htm'),
+                dict(base, batch_sec=1800, batch_end=earlier, source_file='z.htm'),
+                dict(base, batch_sec=900, source_file='missing.htm')]
+        _, reports, _ = wph_charts.summarize(rows, 25)
+        self.assertEqual([r[2] for r in reports], ['z.htm', 'a.htm', 'missing.htm'])
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'time.xlsx'
+            wph.write_wph_excel(path, rows)
+            wb = openpyxl.load_workbook(path)
+            try:
+                data, dash = wb['04_그래프데이터'], wb['05_대시보드']
+                self.assertEqual(data['P2'].value, earlier)
+                self.assertEqual(data['P3'].value, later)
+                self.assertEqual(data['Q2'].value, 50)
+                self.assertEqual(data['T2'].value, 30)
+                self.assertIn('1건 제외', dash['A10'].value)
+                for chart in dash._charts[:2]:
+                    labels = chart.dataLabels
+                    self.assertTrue(labels.showVal)
+                    self.assertFalse(labels.showSerName)
+                    self.assertFalse(labels.showCatName)
+                    self.assertFalse(labels.showLegendKey)
+                    self.assertGreaterEqual(chart.anchor.ext.cx, 34 * 360000)
+                for chart in dash._charts[2:]:
+                    self.assertIn('$P$2:$P$3', chart.series[0].xVal.numRef.f)
+                    self.assertEqual(chart.x_axis.numFmt.formatCode, 'mm-dd hh:mm')
+                self.assertEqual([c.anchor._from.row for c in dash._charts], [11, 47, 83, 119])
+            finally:
+                wb.close()
+
+    def test_many_error_types_split_without_dropping_categories(self):
+        rows = [dict(machine='A', source_file='a', wafer_statuses=[
+            dict(status=f'Unexpected status {i}') for i in range(25)])]
+        wb = openpyxl.Workbook()
+        status.add_sheets(wb, rows, [])
+        charts = wb['07_상태요약']._charts
+        self.assertEqual(len(charts), 6)
+        self.assertIn('$J$26', charts[2].series[0].val.numRef.f)
+        self.assertFalse(charts[0].dataLabels.showCatName)
+        wb.close()
+
     def test_wph_numeric_chart_data(self):
         rows = [dict(machine='AOI-1', wafers=25, avg_scan_sec=50, batch_sec=1800),
                 dict(machine='AOI-1', wafers=25, avg_scan_sec=100, batch_sec=3600),
@@ -70,7 +115,7 @@ class StatusTests(unittest.TestCase):
                 self.assertEqual(summary['B2'].value, 2)
                 self.assertEqual(summary['B6'].value, 1)
                 self.assertEqual(len(summary._charts), 2)
-                self.assertEqual(len(wb['05_대시보드']._charts), 3)
+                self.assertEqual(len(wb['05_대시보드']._charts), 4)
                 self.assertEqual(wb.active.title, '05_대시보드')
                 self.assertTrue(all(c.anchor._from.col == 0 for c in summary._charts))
                 self.assertEqual(wb['08_Report목록']['B2'].data_type, 's')
