@@ -127,7 +127,7 @@ def add_sheets(wb, rows, errors):
     # Native charts over concrete numeric cells: no dynamic formula/cached value dependency.
     data_end = 9 + len(ordered)
     overview.cell(data_end + 2, 1, '오류·중단·제외 상태 빈도 그래프 ↓ (유형별 중복 포함)')
-    from .wph_charts import format_chart, value_labels
+    from .wph_charts import format_chart, value_labels, category_labels
     chart_index = 0
     for column, title in [(10, '유형별 Report 수'), (11, '유형별 Wafer/Slot 발생 빈도')]:
         # Long state labels get at most 12 categories per large chart.
@@ -141,8 +141,12 @@ def add_sheets(wb, rows, errors):
             format_chart(chart, horizontal=True)
             chart.height = 20
             chart.add_data(Reference(overview, min_col=column, min_row=first, max_row=last))
-            chart.set_categories(Reference(overview, min_col=9, min_row=first, max_row=last))
-            value_labels(chart)
+            category_labels(chart, overview, 9, first, last)
+            chart.x_axis.title = '상태 유형 (원문)'
+            chart.y_axis.title = 'Report 수 (건)' if column == 10 else 'Wafer/Slot 발생 건수'
+            chart.y_axis.numFmt = '0'
+            chart.y_axis.numFmt.sourceLinked = False
+            value_labels(chart, '0"건"')
             chart.y_axis.scaling.orientation = 'maxMin'
             anchor_row = data_end + 4 + chart_index * 44
             for r in range(anchor_row, anchor_row + 44):

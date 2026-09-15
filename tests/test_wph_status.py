@@ -39,7 +39,21 @@ class StatusTests(unittest.TestCase):
                     self.assertGreaterEqual(chart.anchor.ext.cx, 34 * 360000)
                 for chart in dash._charts[2:]:
                     self.assertIn('$P$2:$P$3', chart.series[0].xVal.numRef.f)
-                    self.assertEqual(chart.x_axis.numFmt.formatCode, 'mm-dd hh:mm')
+                    self.assertEqual(chart.x_axis.numFmt.formatCode, 'yyyy-mm-dd hh:mm')
+                    self.assertFalse(chart.x_axis.numFmt.sourceLinked)
+                    span = chart.x_axis.scaling.max - chart.x_axis.scaling.min
+                    self.assertAlmostEqual(span / chart.x_axis.majorUnit, 4)
+                for chart in dash._charts:
+                    for axis in (chart.x_axis, chart.y_axis):
+                        self.assertFalse(axis.delete)
+                        self.assertEqual(axis.tickLblPos, 'low')
+                        self.assertEqual(axis.txPr.p[0].pPr.defRPr.sz, 1100)
+                        self.assertIsNotNone(axis.title)
+                self.assertEqual(dash._charts[0].dataLabels.numFmt, '0.00" WPH"')
+                self.assertEqual(dash._charts[1].dataLabels.numFmt, '0"건"')
+                self.assertEqual(dash._charts[0].series[0].cat.strRef.strCache.pt[0].v, 'AOI-1')
+                self.assertEqual(dash._charts[1].series[0].cat.strRef.strCache.ptCount, 6)
+                self.assertEqual(dash._charts[2].x_axis.axPos, 'b')
                 self.assertEqual([c.anchor._from.row for c in dash._charts], [11, 47, 83, 119])
             finally:
                 wb.close()
@@ -53,6 +67,9 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(len(charts), 6)
         self.assertIn('$J$26', charts[2].series[0].val.numRef.f)
         self.assertFalse(charts[0].dataLabels.showCatName)
+        self.assertEqual(charts[0].dataLabels.numFmt, '0"건"')
+        self.assertEqual(charts[0].x_axis.tickLblPos, 'low')
+        self.assertFalse(charts[0].x_axis.delete)
         wb.close()
 
     def test_wph_numeric_chart_data(self):

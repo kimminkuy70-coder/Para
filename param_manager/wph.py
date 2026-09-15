@@ -795,6 +795,23 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
 # ===========================================================================
 #  6. 로컬 출력 경로 (OneDrive 금지 — 전부 로컬)
 # ===========================================================================
+def last_investigation(config):
+    """Only the last started investigation, never accumulated historic searches."""
+    saved = config.get('wph_last_investigation')
+    if not isinstance(saved, dict) or not isinstance(saved.get('prefixes'), dict):
+        return {}
+    return {m: query for m, query in saved['prefixes'].items()
+            if isinstance(m, str) and isinstance(query, str)}
+
+
+def remember_investigation(config, targets, valid_wafers):
+    prefixes = {machine: query for machine, folder, query, names in targets}
+    config['wph_last_investigation'] = {'prefixes': prefixes}
+    # Replace legacy values too, so opening an older build cannot restore stale searches.
+    config['wph_prefixes'] = dict(prefixes)
+    config['wph_valid_wafers'] = valid_wafers
+
+
 def sanitize(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*]', "_", str(name or "")).strip(" .") or "WPH"
 

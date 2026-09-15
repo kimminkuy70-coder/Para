@@ -10,17 +10,30 @@ def format_chart(chart, *, horizontal=False):
     from openpyxl.chart.layout import Layout, ManualLayout
     chart.width, chart.height = 34, 17
     chart.legend = None
-    chart.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=CharacterProperties(sz=1100)))])
+    chart.x_axis.axPos = 'l' if horizontal else 'b'
+    chart.y_axis.axPos = 'b' if horizontal else 'l'
+    chart.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(
+        defRPr=CharacterProperties(sz=1100, solidFill='202020')))])
+    for axis in (chart.x_axis, chart.y_axis):
+        axis.delete = False
+        axis.tickLblPos = 'low'
+        axis.majorTickMark = 'out'
+        axis.minorTickMark = 'none'
+        axis.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(
+            defRPr=CharacterProperties(sz=1100, solidFill='202020')))])
+        if hasattr(axis, 'tickLblSkip'):
+            axis.tickLblSkip = 1
+            axis.tickMarkSkip = 1
     if chart.title and chart.title.tx and chart.title.tx.rich:
         for p in chart.title.tx.rich.p:
             p.pPr = ParagraphProperties(defRPr=CharacterProperties(sz=1400, b=True))
         chart.title.overlay = False
     if horizontal:
         chart.layout = Layout(manualLayout=ManualLayout(
-            x=.40, y=.15, w=.52, h=.72, xMode='edge', yMode='edge'))
+            x=.40, y=.14, w=.50, h=.68, xMode='edge', yMode='edge'))
     else:
         chart.layout = Layout(manualLayout=ManualLayout(
-            x=.12, y=.15, w=.80, h=.70, xMode='edge', yMode='edge'))
+            x=.14, y=.14, w=.76, h=.62, xMode='edge', yMode='edge'))
 
 
 def value_labels(chart, number_format='0'):
@@ -36,6 +49,18 @@ def value_labels(chart, number_format='0'):
     labels.numFmt = number_format
     labels.txPr = chart.txPr
     chart.dataLabels = labels
+
+
+def category_labels(chart, sheet, column, first, last):
+    """Store readable category strings in chart XML as well as cell references."""
+    from openpyxl.chart import Reference
+    from openpyxl.chart.data_source import AxDataSource, StrRef, StrData, StrVal
+    labels = [str(sheet.cell(r, column).value or '') for r in range(first, last + 1)]
+    source = AxDataSource(strRef=StrRef(
+        f=str(Reference(sheet, min_col=column, min_row=first, max_row=last)),
+        strCache=StrData(ptCount=len(labels), pt=[StrVal(idx=i, v=value) for i, value in enumerate(labels)])))
+    for series in chart.series:
+        series.cat = source
 
 
 def summarize(rows, valid_wafers):
@@ -103,9 +128,12 @@ def add_charts(wb, rows, valid_wafers):
         chart.title, chart.style, chart.legend = title, 10, None
         format_chart(chart)
         chart.add_data(Reference(data, min_col=column + 1, min_row=1, max_row=max(1, count) + 1), titles_from_data=True)
-        chart.set_categories(Reference(data, min_col=column, min_row=2, max_row=max(1, count) + 1))
+        category_labels(chart, data, column, 2, max(1, count) + 1)
         chart.y_axis.title = 'Report 수' if column == 21 else 'WPH'
-        value_labels(chart, '0;-0;;' if column == 21 else '0.00')
+        chart.x_axis.title = '평균 Scan 시간 구간 (초)' if column == 21 else 'AOI 호기'
+        chart.y_axis.numFmt = '0' if column == 21 else '0.00'
+        chart.y_axis.numFmt.sourceLinked = False
+        value_labels(chart, '0"건"' if column == 21 else '0.00" WPH"')
         dashboard.add_chart(chart, anchor)
     for column, title, unit, anchor in [
         (17, '시간순 Actual WPH', 'WPH', 'A84'),
@@ -117,17 +145,24 @@ def add_charts(wb, rows, valid_wafers):
         format_chart(chart)
         chart.x_axis.title = 'Batch End (배치 종료 시각)'
         chart.x_axis.numFmt = 'mm-dd hh:mm'
+        chart.x_axis.numFmt.sourceLinked = False
         chart.y_axis.title = unit
+        chart.y_axis.numFmt = '0.00'
+        chart.y_axis.numFmt.sourceLinked = False
         if timed:
             series = Series(Reference(data, min_col=column, min_row=2, max_row=len(timed) + 1),
                             Reference(data, min_col=16, min_row=2, max_row=len(timed) + 1), title=unit)
             series.marker.symbol = 'circle'
             series.marker.size = 4
+            series.smooth = False
             chart.series.append(series)
             start, end = to_excel(timed[0][4], wb.epoch), to_excel(timed[-1][4], wb.epoch)
-            margin = max((end - start) * .03, 1 / 1440)
-            chart.x_axis.scaling.min, chart.x_axis.scaling.max = start - margin, end + margin
-            chart.x_axis.majorUnit = max((end - start + margin * 2) / 6, 1 / 1440)
+            # Five visible date/time ticks, including both ends; not viewer defaults.
+            lower, upper = (start, end) if end > start else (start - 2 / 1440, end + 2 / 1440)
+            chart.x_axis.scaling.min, chart.x_axis.scaling.max = lower, upper
+            chart.x_axis.majorUnit = (upper - lower) / 4
+            chart.x_axis.numFmt = 'mm-dd hh:mm:ss' if upper - lower < 5 / 1440 else 'yyyy-mm-dd hh:mm'
+            chart.x_axis.numFmt.sourceLinked = False
         else:
             dashboard.cell(int(anchor[1:]) - 1, 1, f'{title}: 시간 확인 가능한 유효 Report가 없습니다.')
         dashboard.add_chart(chart, anchor)

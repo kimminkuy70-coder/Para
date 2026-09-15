@@ -4500,8 +4500,8 @@ class EquipApp(tk.Tk):
         return dict(self._cfg.get("wph_report_paths") or {})
 
     def _wph_prefixes(self) -> dict:
-        """호기별 recipe 접두 기억 {호기: 접두}."""
-        return dict(self._cfg.get("wph_prefixes") or {})
+        """마지막 실제 조사 대상의 검색어만 복원한다."""
+        return wph.last_investigation(self._cfg)
 
     def _view_wph(self):
         wrap = tk.Frame(self.body, bg=self.p["bg"])
@@ -4569,7 +4569,7 @@ class EquipApp(tk.Tk):
             if idx:
                 tk.Frame(card, bg=self.p["head_bg"], height=1).pack(
                     fill="x", padx=8)
-            var_inc = tk.BooleanVar(value=bool(paths.get(m)))
+            var_inc = tk.BooleanVar(value=m in prefixes)
             var_pref = tk.StringVar(value=prefixes.get(m, ""))
 
             # 1줄 — 체크박스(호기 이름 포함) + 폴더 지정 + 폴더 경로
@@ -4686,11 +4686,7 @@ class EquipApp(tk.Tk):
             row["lbl_count"].config(text="폴더 미지정", fg=self.p["danger"])
             return
         query = row["pref"].get().strip()
-        # 검색어 기억
-        prefs = self._wph_prefixes()
-        prefs[machine] = query
-        self._cfg["wph_prefixes"] = prefs
-        save_config(self._cfg)
+        # Searching alone must not accumulate settings or replace the last investigation.
         row["lbl_count"].config(text="검색 중…", fg=self.p["muted"])
         row["btn_more"].config(state="disabled")
         self.update_idletasks()
@@ -4871,9 +4867,6 @@ class EquipApp(tk.Tk):
             messagebox.showwarning("매수 확인", "유효 Lot 매수는 1 이상의 정수여야 합니다.",
                                    parent=self)
             return
-        self._cfg["wph_valid_wafers"] = valid
-        save_config(self._cfg)
-
         paths = self._wph_paths()
         targets = []   # (호기, 폴더, 검색어, 선택 파일 목록)
         for m, row in getattr(self, "_wph_rows", {}).items():
@@ -4904,6 +4897,9 @@ class EquipApp(tk.Tk):
                     + "\n\n그대로 조사를 진행하면 검색어에 맞는 리포트가 없을 수 있습니다. "
                     "계속할까요?", parent=self):
                 return
+
+        wph.remember_investigation(self._cfg, targets, valid)
+        save_config(self._cfg)
 
         def work(report):
             # 취합 텍스트 = 호기별 1개, 결과 엑셀 = 모든 호기 합친 통합 1개.
