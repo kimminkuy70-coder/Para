@@ -58,19 +58,39 @@ class StatusTests(unittest.TestCase):
             finally:
                 wb.close()
 
-    def test_many_error_types_split_without_dropping_categories(self):
-        rows = [dict(machine='A', source_file='a', wafer_statuses=[
-            dict(status=f'Unexpected status {i}') for i in range(25)])]
-        wb = openpyxl.Workbook()
-        status.add_sheets(wb, rows, [])
-        charts = wb['07_상태요약']._charts
-        self.assertEqual(len(charts), 6)
-        self.assertIn('$J$26', charts[2].series[0].val.numRef.f)
-        self.assertFalse(charts[0].dataLabels.showCatName)
-        self.assertEqual(charts[0].dataLabels.numFmt, '0"건"')
-        self.assertEqual(charts[0].x_axis.tickLblPos, 'low')
-        self.assertFalse(charts[0].x_axis.delete)
-        wb.close()
+    def test_error_types_stay_together_with_readable_axes_and_spacing(self):
+        for count in (1, 13, 25):
+            with self.subTest(count=count), tempfile.TemporaryDirectory() as d:
+                rows = [dict(machine='A', source_file='a', wafer_statuses=[
+                    dict(status=f'Unexpected status {i}') for i in range(count)])]
+                wb = openpyxl.Workbook()
+                status.add_sheets(wb, rows, [])
+                path = Path(d) / 'status.xlsx'
+                wb.save(path)
+                wb.close()
+                wb = openpyxl.load_workbook(path)
+                try:
+                    charts = wb['07_상태요약']._charts
+                    self.assertEqual(len(charts), 2)
+                    for chart, column in zip(charts, ('J', 'K')):
+                        expected_range = f'${column}$2' + (f':${column}${count + 1}' if count > 1 else '')
+                        self.assertIn(expected_range, chart.series[0].val.numRef.f)
+                        cache = chart.series[0].cat.strRef.strCache
+                        self.assertEqual(cache.ptCount, count)
+                        self.assertIn(f'Unexpected status {count - 1}', cache.pt[-1].v)
+                        self.assertFalse(chart.dataLabels.showCatName)
+                        self.assertEqual(chart.dataLabels.numFmt, '0"건"')
+                        self.assertEqual(chart.x_axis.tickLblPos, 'low')
+                        self.assertFalse(chart.x_axis.delete)
+                        self.assertEqual(chart.y_axis.scaling.orientation, 'minMax')
+                        self.assertEqual(chart.y_axis.scaling.min, 0)
+                        self.assertEqual(chart.y_axis.majorUnit, 1)
+                        self.assertGreater(chart.y_axis.scaling.max, 1)
+                        self.assertGreaterEqual(chart.anchor.ext.cy, max(20, 6 + count * 1.1) * 360000 - 1)
+                    gap_points = (charts[1].anchor._from.row - charts[0].anchor._from.row) * 18
+                    self.assertGreater(gap_points, charts[0].anchor.ext.cy / 12700)
+                finally:
+                    wb.close()
 
     def test_wph_numeric_chart_data(self):
         rows = [dict(machine='AOI-1', wafers=25, avg_scan_sec=50, batch_sec=1800),

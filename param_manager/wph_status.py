@@ -1,5 +1,6 @@
 """Batch Report status summaries; no additional file/network reads."""
 import re
+import math
 from collections import Counter
 
 TYPES = (
@@ -128,28 +129,33 @@ def add_sheets(wb, rows, errors):
     data_end = 9 + len(ordered)
     overview.cell(data_end + 2, 1, '오류·중단·제외 상태 빈도 그래프 ↓ (유형별 중복 포함)')
     from .wph_charts import format_chart, value_labels, category_labels
-    chart_index = 0
+    anchor_row = data_end + 4
     for column, title in [(10, '유형별 Report 수'), (11, '유형별 Wafer/Slot 발생 빈도')]:
-        # Long state labels get at most 12 categories per large chart.
-        for offset in range(0, len(chart_rows), 12):
-            first = 2 + offset
-            last = min(offset + 12, len(chart_rows)) + 1
-            chart = BarChart()
-            chart.type = 'bar'
-            chart.style = 10
-            chart.title = title + (f' ({offset // 12 + 1})' if len(chart_rows) > 12 else '')
-            format_chart(chart, horizontal=True)
-            chart.height = 20
-            chart.add_data(Reference(overview, min_col=column, min_row=first, max_row=last))
-            category_labels(chart, overview, 9, first, last)
-            chart.x_axis.title = '상태 유형 (원문)'
-            chart.y_axis.title = 'Report 수 (건)' if column == 10 else 'Wafer/Slot 발생 건수'
-            chart.y_axis.numFmt = '0'
-            chart.y_axis.numFmt.sourceLinked = False
-            value_labels(chart, '0"건"')
-            chart.y_axis.scaling.orientation = 'maxMin'
-            anchor_row = data_end + 4 + chart_index * 44
-            for r in range(anchor_row, anchor_row + 44):
-                overview.row_dimensions[r].height = 18
-            overview.add_chart(chart, f'A{anchor_row}')
-            chart_index += 1
+        # One chart per metric: grow the canvas instead of orphaning a final page.
+        chart = BarChart()
+        chart.type = 'bar'
+        chart.style = 10
+        chart.title = title
+        format_chart(chart, horizontal=True)
+        chart.height = max(20, 6 + len(chart_rows) * 1.1)
+        chart.add_data(Reference(overview, min_col=column, min_row=2, max_row=len(chart_rows) + 1))
+        category_labels(chart, overview, 9, 2, len(chart_rows) + 1)
+        chart.x_axis.title = '상태 유형 (원문)'
+        chart.y_axis.title = 'Report 수 (건)' if column == 10 else 'Wafer/Slot 발생 건수'
+        chart.y_axis.numFmt = '0'
+        chart.y_axis.numFmt.sourceLinked = False
+        value_labels(chart, '0"건"')
+        # openpyxl retains x=category / y=numeric even for horizontal bars.
+        chart.x_axis.scaling.orientation = 'maxMin'
+        chart.y_axis.scaling.orientation = 'minMax'
+        chart.y_axis.scaling.min = 0
+        chart.y_axis.crosses = 'max'
+        maximum = max(row[column - 9] for row in chart_rows)
+        chart.y_axis.majorUnit = max(1, math.ceil(maximum / 5))
+        chart.y_axis.scaling.max = (math.floor(maximum / chart.y_axis.majorUnit) + 1) * chart.y_axis.majorUnit
+        # cm -> points -> 18pt rows, plus a visible gap after the chart.
+        row_span = math.ceil(chart.height * 72 / 2.54 / 18) + 4
+        for r in range(anchor_row, anchor_row + row_span):
+            overview.row_dimensions[r].height = 18
+        overview.add_chart(chart, f'A{anchor_row}')
+        anchor_row += row_span
