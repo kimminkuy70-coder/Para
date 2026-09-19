@@ -241,6 +241,19 @@ def parse_batch_datetime(text: str) -> datetime | None:
         return None
 
 
+def job_recipe(job_setup: str) -> str:
+    """리포트 내부 `Job/Setup` 값에서 **Job(=recipe) 이름**만 뽑는다(A안).
+
+    예: 'CMP2D-DT-GH10N-BIN1-H-U1_0856268PD-0A/6392' → 'CMP2D-...-0A'.
+    '/' 뒤(Setup 번호)는 버린다. 값이 없으면 '(미상)'.
+    **읽기 전용** — 이미 파싱한 텍스트에서 문자열만 자른다(파일 접근 없음).
+    """
+    txt = clean_text(job_setup)
+    if not txt:
+        return "(미상)"
+    return txt.split("/")[0].strip() or "(미상)"
+
+
 def extract_row(report: dict) -> dict:
     """parse_report 결과 → 엑셀 입력 한 행.
 
@@ -256,6 +269,7 @@ def extract_row(report: dict) -> dict:
     end_raw = meta.get("batchend", "") or ""
     return {
         "source_file": report.get("file_name", ""),
+        "recipe": job_recipe(meta.get("jobsetup", "")),
         "wafers": wafers,
         "avg_scan_sec": hms_to_seconds(meta.get("avgscantime", "")),
         "batch_sec": hms_to_seconds(meta.get("batchtime", "")),
@@ -281,19 +295,69 @@ def is_report_file(name: str) -> bool:
     return name.lower().endswith(REPORT_EXTS)
 
 
-def _matches(name: str, query: str) -> bool:
-    """검색어가 파일 이름에 **포함**되면 매칭(접두가 아니라 실제 검색).
+# 파일명 내장 날짜: `_YY-Mon-DD_(HH.MM.SS)_` (예: _26-Aug-30_(21.41.39)_).
+_FNAME_DT = re.compile(
+    r"[_-](\d{2})-([A-Za-z]{3})-(\d{2})_\((\d{2})\.(\d{2})\.(\d{2})\)")
 
-    공백으로 나뉜 여러 단어는 **모두 포함**돼야 매칭(순서 무관·AND).
-    빈 검색어는 모든 report 매칭.
+
+def parse_filename_datetime(name: str):
+    """batch report **파일명**의 내장 날짜(YY-Mon-DD)를 datetime 으로.
+
+    기간 필터는 파일을 열지 않고 이름만 보므로 빠르고 원본 무접근이다.
+    못 읽으면 None(그런 파일은 기간 필터에서 제외된다).
+    """
+    m = _FNAME_DT.search(str(name or ""))
+    if not m:
+        return None
+    yy, mon, dd, hh, mi, ss = m.groups()
+    month = _MONTHS.get(mon.lower())
+    if not month:
+        return None
+    try:
+        return datetime(2000 + int(yy), month, int(dd), int(hh), int(mi), int(ss))
+    except ValueError:
+        return None
+
+
+def _in_period(name: str, start, end) -> bool:
+    """파일명 날짜가 [start, end] 기간 안인가. start/end 는 date 또는 datetime.
+
+    end 가 date(자정)면 그날 전체를 포함하도록 하루 끝까지 본다.
+    기간 조건이 없으면(둘 다 None) 항상 True. 날짜를 못 읽는 파일은 제외.
+    """
+    if not start and not end:
+        return True
+    dt = parse_filename_datetime(name)
+    if dt is None:
+        return False
+    if start is not None:
+        s = start if isinstance(start, datetime) else datetime(start.year, start.month, start.day)
+        if dt < s:
+            return False
+    if end is not None:
+        if isinstance(end, datetime):
+            e = end
+        else:
+            e = datetime(end.year, end.month, end.day, 23, 59, 59)
+        if dt > e:
+            return False
+    return True
+
+
+def _matches(name: str, query: str, start=None, end=None) -> bool:
+    """검색어 포함(AND) **그리고** 기간(파일명 날짜) 조건을 모두 만족하면 매칭.
+
+    검색어가 비면 모든 report, 기간이 비면 모든 날짜. 둘 다 걸면 교집합.
     """
     nm = _norm_prefix(name)
     terms = [t for t in _norm_prefix(query).split() if t]
-    return all(t in nm for t in terms)
+    if not all(t in nm for t in terms):
+        return False
+    return _in_period(name, start, end)
 
 
-def list_reports(folder, query: str = "") -> list[str]:
-    """폴더 바로 아래의 batch report 파일 이름 목록(정렬). query 가 포함된 것만.
+def list_reports(folder, query: str = "", start=None, end=None) -> list[str]:
+    """폴더 바로 아래의 batch report 파일 이름 목록(정렬). 검색어·기간 조건 적용.
 
     원본을 열지 않고 **파일 이름만** 본다(빠르다·원본 무접근).
     """
@@ -304,21 +368,21 @@ def list_reports(folder, query: str = "") -> list[str]:
     with os.scandir(folder) as entries:
         for entry in entries:
             # Filter names before stat: avoids unnecessary network metadata IO.
-            if is_report_file(entry.name) and _matches(entry.name, query):
+            if is_report_file(entry.name) and _matches(entry.name, query, start, end):
                 if entry.is_file():
                     out.append(entry.name)
     return sorted(out, key=str.lower)
 
 
-def count_reports(folder, query: str = "") -> int:
-    """검색어가 포함된 리포트 개수(목록을 다 만들지 않고 센다)."""
+def count_reports(folder, query: str = "", start=None, end=None) -> int:
+    """검색어·기간 조건에 맞는 리포트 개수(목록을 다 만들지 않고 센다)."""
     folder = Path(folder)
     if not folder.is_dir():
         return 0
     n = 0
     with os.scandir(folder) as entries:
         for entry in entries:
-            if is_report_file(entry.name) and _matches(entry.name, query):
+            if is_report_file(entry.name) and _matches(entry.name, query, start, end):
                 if entry.is_file():
                     n += 1
     return n
@@ -805,7 +869,8 @@ def last_investigation(config):
 
 
 def remember_investigation(config, targets, valid_wafers):
-    prefixes = {machine: query for machine, folder, query, names in targets}
+    # targets 항목은 (호기, 폴더, 검색어, 목록) 또는 (…, 표시 라벨) 둘 다 허용.
+    prefixes = {t[0]: t[2] for t in targets}
     config['wph_last_investigation'] = {'prefixes': prefixes}
     # Replace legacy values too, so opening an older build cannot restore stale searches.
     config['wph_prefixes'] = dict(prefixes)

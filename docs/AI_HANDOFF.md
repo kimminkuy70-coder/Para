@@ -9,7 +9,38 @@
 - 현재 주요 기능: 장비 파라미터 양식/취합/비교, Commonality 조사·감시,
   WPH 조사, OneDrive 기반 exe 업데이트. 상세 구현은 CLAUDE.md와 소스 참고.
 
-## 마지막 작업 — 오류 차트 분할 제거 (2026-09-16, ChatGPT/Codex)
+## 마지막 작업 — WPH 기간 수집 + .html 결과 (2026-09-19, Claude)
+
+- version_new만 수정. 헤드리스 우선(테스트) 후 GUI 연결. Windows 실기·빌드 미수행.
+- **기간 수집**: 호기 행마다 수집 모드(‘recipe 검색어’ / ‘기간’) 선택. 기간은
+  **파일명 내장 날짜**(`_YY-Mon-DD_(HH.MM.SS)_`)로 판정한다 — 원본을 열지 않고
+  이름만 본다(빠름·read-only). `wph.parse_filename_datetime`/`_in_period`/`_matches`
+  (검색어 AND 기간 교집합)·`list_reports`/`count_reports(start,end)`. 파일명 날짜를
+  못 읽으면 기간에서 제외. GUI `_wph_period`(YYYY-MM-DD 파싱)·`_wph_search`가 모드에
+  따라 start/end를 넘김. 기간 모드는 검색어로 거르지 않고 선택 목록만 조사.
+- **recipe 구분 = A안(리포트 내부 Job/Setup의 Job 이름)**: `wph.job_recipe`(`/` 앞)로
+  `extract_row`가 각 행에 `recipe`를 채운다. 원본은 여전히 `read_bytes`만 —
+  Job 파일/`\Job\`은 접근하지 않고 이미 파싱된 텍스트에서 이름만 뽑는다(손상 없음).
+- **보기 모드(레시피별/호기통째)**: 조사 시작 옆 라디오. 기본 = ‘호기 → 레시피별’.
+  여러 호기면 호기로 먼저 묶고 그 안에서 recipe로 나눈다(by_recipe=True).
+- **결과 엑셀은 종전과 동일**(통합 1개). 추가로 **.html 결과**: 조사 완료 후
+  **자동으로** `_wph_html_dialog`(구성 화면)가 열린다. 지표 체크박스(WPH 요약·호기·
+  레시피별 WPH·Wafer scan 상태·에러 ①전체/②호기별/③호기×레시피·Report 목록·
+  파싱오류)로 넣을 것만 고르고 **화면 미리보기 표**(`wph_html.preview_tables`, .html과
+  같은 숫자)로 확인. **결과 리포트 제목(=배치레포트 이름) 편집 가능**(기본 템플릿,
+  .html 제목·파일명에 반영). [HTML 만들기] → `WPH_통합_{시각}.html`(같은 조사 폴더,
+  로컬) → 완료창 **[📄 결과 열기]/[📂 폴더 열기]**.
+- **에러 3단**(사용자 재요청): ①전체 ②호기별 ③호기별→레시피별 — `wph_html.compute`가
+  `wph_status.classify`를 재사용해 산출(리포트당 카테고리 1회, 이슈 Report 중복 제외).
+- 라벨 변경: “Wafer 상태 요약(정상/이슈/확인불가)” → **“Wafer scan 상태 요약
+  (정상/error/확인불가)”**.
+- 신규 헤드리스 `param_manager/wph_html.py`(파일 접근 없음, 메모리 rows/errors만 가공,
+  단일 .html·외부 의존 없음). 오류 코드 **E193**(.html 준비/저장).
+- 검증: `tools/check_project.py` 실패 없음. test_wph.py 9/9(기간 필터 추가),
+  신규 test_wph_html.py 5/5. `py_compile` 전체 통과. Windows GUI/Excel/브라우저
+  렌더·exe 빌드·OneDrive 배포는 미수행(새 빌드에서 실기 확인 필요).
+
+## 이전 작업 — 오류 차트 분할 제거 (2026-09-16, ChatGPT/Codex)
 
 - 시작 커밋 1b2a261d207d5cf719f57890da65a453006dd4fd, version_new만 수정.
 - wph_status.py: 12개씩 분할하던 규칙 제거. 모든 유형을 지표별 단일 차트로 표시.

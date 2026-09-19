@@ -53,6 +53,7 @@ from . import updater
 from . import watcher
 from . import workdirs
 from . import wph
+from . import wph_html
 from .engine import ParamRepository
 from .theme import apply_theme
 
@@ -4617,10 +4618,46 @@ class EquipApp(tk.Tk):
                                  state="disabled",
                                  command=lambda mm=m: self._wph_more(mm))
             btn_more.pack(side="left", padx=6)
+
+            # 3줄 — 수집 모드(검색어 / 기간) + 기간 날짜(기간 모드일 때만 활성)
+            line3 = tk.Frame(block, bg=self.p["surface"])
+            line3.pack(fill="x", pady=(4, 0))
+            var_mode = tk.StringVar(value="query")
+            var_start = tk.StringVar(value="")
+            var_end = tk.StringVar(value="")
+            tk.Label(line3, text="수집 모드:", bg=self.p["surface"],
+                     fg=self.p["text"], font=self.fonts["sub"]).pack(
+                     side="left", padx=(24, 4))
+            ent_s = tk.Entry(line3, textvariable=var_start, width=12,
+                             font=self.fonts["base"])
+            ent_e = tk.Entry(line3, textvariable=var_end, width=12,
+                             font=self.fonts["base"])
+
+            def _sync_mode(mm=m, es=ent_s, ee=ent_e, vmode=var_mode):
+                on = (vmode.get() == "period")
+                st = "normal" if on else "disabled"
+                es.config(state=st)
+                ee.config(state=st)
+
+            for val, lbl in (("query", "recipe 검색어"), ("period", "기간")):
+                tk.Radiobutton(line3, text=lbl, value=val, variable=var_mode,
+                               bg=self.p["surface"], fg=self.p["text"],
+                               activebackground=self.p["surface"],
+                               selectcolor=self.p["surface"], font=self.fonts["sub"],
+                               command=_sync_mode).pack(side="left", padx=(0, 2))
+            tk.Label(line3, text="기간(YYYY-MM-DD):", bg=self.p["surface"],
+                     fg=self.p["muted"], font=self.fonts["sub"]).pack(
+                     side="left", padx=(10, 2))
+            ent_s.pack(side="left", padx=2)
+            tk.Label(line3, text="~", bg=self.p["surface"], fg=self.p["muted"]).pack(side="left")
+            ent_e.pack(side="left", padx=2)
+            _sync_mode()
+
             self._wph_rows[m] = {"inc": var_inc, "pref": var_pref,
                                  "lbl_folder": lbl_folder, "lbl_count": lbl_count,
                                  "btn_more": btn_more, "count": 0,
-                                 "all_names": [], "selected": set()}
+                                 "all_names": [], "selected": set(),
+                                 "mode": var_mode, "start": var_start, "end": var_end}
 
         # ── 단계 2/2 — 유효 매수 + 조사 시작 ──────────────────────────────
         self._step_header(
@@ -4635,10 +4672,21 @@ class EquipApp(tk.Tk):
             value=str(self._cfg.get("wph_valid_wafers", wph.DEFAULT_VALID_WAFERS)))
         tk.Entry(ctrl, textvariable=self._wph_valid, width=6,
                  font=self.fonts["base"]).pack(side="left", padx=(4, 16))
+        tk.Label(ctrl, text="보기 모드:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"]).pack(side="left")
+        self._wph_byrecipe = tk.BooleanVar(value=True)
+        for val, lbl in ((True, "레시피별로 나눠 보기"),
+                         (False, "호기 하나로 통째 취합")):
+            tk.Radiobutton(ctrl, text=lbl, value=val,
+                           variable=self._wph_byrecipe,
+                           bg=self.p["bg"], fg=self.p["text"],
+                           activebackground=self.p["bg"],
+                           selectcolor=self.p["bg"],
+                           font=self.fonts["sub"]).pack(side="left", padx=(2, 0))
         tk.Button(ctrl, text="▶ 조사 시작", relief="flat", bd=0,
                   bg=self.p["ok"], fg="#ffffff", padx=16, pady=6, cursor="hand2",
                   font=self.fonts["bold"],
-                  command=self._wph_run).pack(side="left")
+                  command=self._wph_run).pack(side="left", padx=(16, 0))
 
         self._wph_result_lbl = tk.Label(inner, text="", bg=self.p["bg"],
                                         fg=self.p["muted"], font=self.fonts["sub"],
@@ -4676,8 +4724,24 @@ class EquipApp(tk.Tk):
             return f"{sel}개 선택 / {total}개 발견"
         return f"{total}개 발견"
 
+    def _wph_period(self, row):
+        """기간 모드 행의 시작·끝 날짜(date)를 돌려준다. 빈 칸은 None(무제한).
+
+        모드가 '검색어'면 (None, None). 형식('YYYY-MM-DD')이 틀리면 ValueError.
+        """
+        if row.get("mode") is None or row["mode"].get() != "period":
+            return None, None
+        import datetime as _dt
+
+        def _parse(s):
+            s = (s or "").strip()
+            if not s:
+                return None
+            return _dt.datetime.strptime(s, "%Y-%m-%d").date()
+        return _parse(row["start"].get()), _parse(row["end"].get())
+
     def _wph_search(self, machine):
-        """recipe 검색어가 포함된 리포트 목록을 찾는다(원본 무접근 — 이름만)."""
+        """recipe 검색어(포함) 또는 기간에 맞는 리포트 목록을 찾는다(원본 무접근 — 이름만)."""
         row = getattr(self, "_wph_rows", {}).get(machine)
         if not row:
             return
@@ -4686,6 +4750,14 @@ class EquipApp(tk.Tk):
             row["lbl_count"].config(text="폴더 미지정", fg=self.p["danger"])
             return
         query = row["pref"].get().strip()
+        try:
+            start, end = self._wph_period(row)
+        except ValueError:
+            row["lbl_count"].config(text="기간 형식 오류", fg=self.p["danger"])
+            self._set_status(
+                f"{machine}: 기간은 YYYY-MM-DD 형식으로 입력하세요(예: 2026-08-01).",
+                warn=True)
+            return
         # Searching alone must not accumulate settings or replace the last investigation.
         row["lbl_count"].config(text="검색 중…", fg=self.p["muted"])
         row["btn_more"].config(state="disabled")
@@ -4695,7 +4767,7 @@ class EquipApp(tk.Tk):
             report(f"{machine}: Report 폴더 목록을 읽는 중…\n{folder}")
             if not os.path.isdir(folder):
                 raise FileNotFoundError(folder)
-            names = wph.list_reports(folder, query)
+            names = wph.list_reports(folder, query, start, end)
             report(f"{machine}: {len(names)}개 발견 — 검색 완료")
             return names
 
@@ -4868,7 +4940,7 @@ class EquipApp(tk.Tk):
                                    parent=self)
             return
         paths = self._wph_paths()
-        targets = []   # (호기, 폴더, 검색어, 선택 파일 목록)
+        targets = []   # (호기, 폴더, 검색어, 선택 파일 목록, 표시 라벨)
         for m, row in getattr(self, "_wph_rows", {}).items():
             if not row["inc"].get():
                 continue
@@ -4879,7 +4951,15 @@ class EquipApp(tk.Tk):
             if row["all_names"] and not row["selected"]:
                 continue
             names = sorted(row["selected"]) if row["all_names"] else None
-            targets.append((m, folder, row["pref"].get().strip(), names))
+            query = row["pref"].get().strip()
+            if row.get("mode") is not None and row["mode"].get() == "period":
+                s = (row["start"].get() or "").strip()
+                e = (row["end"].get() or "").strip()
+                label = "기간 " + (f"{s}~{e}" if (s or e) else "(전체)")
+                # 기간 모드는 검색어로 거르지 않는다(선택 목록이 이미 기간 반영).
+                targets.append((m, folder, "", names, label))
+            else:
+                targets.append((m, folder, query, names, query or "(전체)"))
         if not targets:
             messagebox.showinfo(
                 "대상 없음",
@@ -4887,8 +4967,8 @@ class EquipApp(tk.Tk):
                 "[검색]으로 리포트를 확인하세요.", parent=self)
             return
         # 검색을 안 한 대상은 먼저 검색하도록 안내(엉뚱한 전체 취합 방지)
-        unknown = [m for m, _f, _q, _n in targets
-                   if self._wph_rows[m]["count"] == 0]
+        unknown = [t[0] for t in targets
+                   if self._wph_rows[t[0]]["count"] == 0]
         if unknown:
             if not messagebox.askyesno(
                     "검색 확인",
@@ -4901,6 +4981,8 @@ class EquipApp(tk.Tk):
         wph.remember_investigation(self._cfg, targets, valid)
         save_config(self._cfg)
 
+        by_recipe = bool(self._wph_byrecipe.get())
+
         def work(report):
             # 취합 텍스트 = 호기별 1개, 결과 엑셀 = 모든 호기 합친 통합 1개.
             report("조사 폴더를 준비하는 중…")
@@ -4909,8 +4991,8 @@ class EquipApp(tk.Tk):
             all_rows = []          # 통합 엑셀용(각 행에 호기 태그)
             all_errors = []
             nmac = len(targets)
-            for mi, (m, folder, query, names) in enumerate(targets, start=1):
-                recipe = query or "(전체)"
+            for mi, (m, folder, query, names, label) in enumerate(targets, start=1):
+                recipe = label
 
                 def prog(done, total, name, _m=m, _mi=mi):
                     report(done, total,
@@ -4932,18 +5014,19 @@ class EquipApp(tk.Tk):
                 made.append((m, recipe, len(rows), len(errors)))
             # 통합 WPH 엑셀 1개(호기 열로 구분, 통계·WPH 전체 합산)
             report("통합 WPH 엑셀을 만드는 중…")
-            machines = [m for m, _f, _q, _n in targets]
+            machines = [t[0] for t in targets]
             xlsx_path = os.path.join(out_dir, wph.combined_excel_filename(machines))
             title = "WPH 통합 분석 (" + ", ".join(machines) + ")"
             wph.write_wph_excel(xlsx_path, all_rows, valid_wafers=valid, title=title,
                                 parse_errors=all_errors)
-            return out_dir, made, xlsx_path, len(all_rows)
+            return out_dir, made, xlsx_path, all_rows, all_errors, machines
 
         def done(ok, res):
             if not ok:
                 self._err("E191", "WPH 조사 실패", res)
                 return
-            out_dir, made, xlsx_path, total = res
+            out_dir, made, xlsx_path, all_rows, all_errors, machines = res
+            total = len(all_rows)
             lines = [f"✓ 조사 완료 — 저장 폴더: {out_dir}", ""]
             for m, recipe, n, nerr in made:
                 extra = f"  (오류 {nerr}건)" if nerr else ""
@@ -4953,13 +5036,221 @@ class EquipApp(tk.Tk):
                          f"통합 파일 1개({os.path.basename(xlsx_path)}, 전체 {total}건)로 "
                          "만들어졌습니다.")
             self._wph_result_lbl.config(text="\n".join(lines), fg=self.p["text"])
-            self._set_status("WPH 조사 완료 — 결과 폴더를 엽니다.")
-            if messagebox.askyesno("WPH 조사 완료",
-                                   "\n".join(lines) + "\n\n결과 폴더를 열까요?",
-                                   parent=self):
-                self._open_in_excel(out_dir)
+            self._set_status("WPH 조사 완료 — 이제 .html 결과 구성 화면을 엽니다.")
+            # 엑셀 확정 후 자동으로 .html 결과 구성 화면으로 넘어간다.
+            self._wph_html_dialog(out_dir, all_rows, all_errors, machines,
+                                  valid, by_recipe)
 
         self._run_busy("WPH 조사(취합·엑셀 생성)", work, done)
+
+    def _wph_section_counts(self, computed) -> dict:
+        """섹션별 체크박스 옆에 붙일 개수 — 무엇이 얼마나 들어가는지 보여준다."""
+        c = computed
+        return {
+            "wph_summary": c["summary"]["valid_lots"],
+            "wph_by_recipe": len(c["wph_by_recipe"]),
+            "scan_status": c["scan_status"]["total"],
+            "err_overall": len(c["err_overall"]),
+            "err_by_machine": len(c["err_by_machine"]),
+            "err_by_recipe": len(c["err_by_recipe"]),
+            "raw": len(c["rows"]),
+            "parse_errors": len(c["errors"]),
+        }
+
+    def _wph_render_tables(self, parent, tables):
+        """미리보기 표들을 parent 에 다시 그린다(토글할 때마다 호출)."""
+        for w in parent.winfo_children():
+            w.destroy()
+        if not tables:
+            tk.Label(parent, text="선택된 지표가 없습니다. 위에서 넣을 항목을 체크하세요.",
+                     bg=self.p["surface"], fg=self.p["muted"],
+                     font=self.fonts["sub"]).pack(anchor="w", padx=10, pady=10)
+            return
+        for title, headers, body in tables:
+            tk.Label(parent, text=title, bg=self.p["surface"], fg=self.p["text"],
+                     font=self.fonts["bold"]).pack(anchor="w", padx=10, pady=(10, 2))
+            grid = tk.Frame(parent, bg=self.p["surface"])
+            grid.pack(fill="x", padx=10, pady=(0, 6))
+            for ci, h in enumerate(headers):
+                tk.Label(grid, text=str(h), bg=self.p["head_bg"], fg=self.p["text"],
+                         font=self.fonts["sub"], padx=8, pady=3,
+                         borderwidth=1, relief="solid").grid(
+                         row=0, column=ci, sticky="nsew")
+            for ri, r in enumerate(body[:60], start=1):
+                for ci, v in enumerate(r):
+                    tk.Label(grid, text=str(v), bg=self.p["surface"],
+                             fg=self.p["text"], font=self.fonts["sub"], padx=8, pady=2,
+                             borderwidth=1, relief="solid",
+                             anchor="w").grid(row=ri, column=ci, sticky="nsew")
+            if len(body) > 60:
+                tk.Label(grid, text=f"… 외 {len(body) - 60}행(.html 에는 전부 포함)",
+                         bg=self.p["surface"], fg=self.p["muted"],
+                         font=self.fonts["sub"]).grid(
+                         row=len(body[:60]) + 1, column=0, columnspan=len(headers),
+                         sticky="w", pady=(2, 0))
+
+    def _wph_html_dialog(self, out_dir, rows, errors, machines, valid, by_recipe):
+        """엑셀 확정 후 자동으로 여는 .html 결과 구성 화면.
+
+        · 각 지표(WPH·에러 ①②③·scan 상태 등)를 체크박스로 넣고/빼며 화면에 미리보기.
+        · 결과 리포트 제목(=배치레포트 이름)을 편집한다(기본 템플릿, .html 제목·파일명에 반영).
+        · [HTML 만들기] → 완료창([📄 결과 열기]/[📂 폴더 열기]).
+        """
+        import datetime as _dt
+        try:
+            computed = wph_html.compute(rows, errors, valid_wafers=valid)
+        except Exception as e:  # noqa: BLE001
+            self._err("E193", ".html 결과 준비 실패", e)
+            return
+        counts = self._wph_section_counts(computed)
+        default = wph_html.default_sections(errors)
+        today = _dt.date.today().isoformat()
+        default_title = f"WPH 통합 결과 — {today} ({', '.join(machines)})"
+
+        win = tk.Toplevel(self)
+        win.title("WPH .html 결과 만들기")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        self._geo(win, 1040, 740)
+
+        tk.Label(win, text="WPH 결과 .html 만들기", bg=self.p["bg"],
+                 fg=self.p["text"], font=self.fonts["title"]).pack(
+                 anchor="w", padx=14, pady=(12, 2))
+        tk.Label(win,
+                 text="엑셀은 이미 저장되었습니다. 여기서는 넣고 싶은 지표만 체크해 "
+                      "보기 좋은 .html 결과를 만듭니다. 화면 아래 미리보기가 .html 과 "
+                      "같은 숫자입니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=980).pack(anchor="w", padx=14, pady=(0, 8))
+
+        # ── 리포트 제목(=배치레포트 이름) 편집 ─────────────────────────
+        trow = tk.Frame(win, bg=self.p["bg"])
+        trow.pack(fill="x", padx=14, pady=(0, 6))
+        tk.Label(trow, text="결과 리포트 제목:", bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["bold"]).pack(side="left")
+        var_title = tk.StringVar(value=default_title)
+        tk.Entry(trow, textvariable=var_title, font=self.fonts["base"]).pack(
+            side="left", fill="x", expand=True, padx=(8, 0))
+
+        # ── 지표 체크박스 ──────────────────────────────────────────────
+        secbox = tk.LabelFrame(win, text="넣을 지표 선택", bg=self.p["bg"],
+                               fg=self.p["text"], font=self.fonts["sub"])
+        secbox.pack(fill="x", padx=14, pady=(2, 6))
+        secvars = {}
+
+        def sections_dict():
+            return {k: v.get() for k, v in secvars.items()}
+
+        # 미리보기 컨테이너(스크롤)는 아래에서 만들고, render 로 갱신.
+        prev_wrap = tk.Frame(win, bg=self.p["bg"])
+        prev_wrap.pack(fill="both", expand=True, padx=14, pady=(0, 6))
+        pcanvas = tk.Canvas(prev_wrap, bg=self.p["surface"], highlightthickness=1,
+                            highlightbackground=self.p["border"])
+        pbar = ttk.Scrollbar(prev_wrap, orient="vertical", command=pcanvas.yview)
+        pinner = tk.Frame(pcanvas, bg=self.p["surface"])
+        pinner.bind("<Configure>",
+                    lambda e: pcanvas.configure(scrollregion=pcanvas.bbox("all")))
+        pcanvas.create_window((0, 0), window=pinner, anchor="nw", tags="pi")
+        pcanvas.bind("<Configure>",
+                     lambda e: pcanvas.itemconfig("pi", width=e.width))
+        pcanvas.configure(yscrollcommand=pbar.set)
+        pcanvas.pack(side="left", fill="both", expand=True)
+        pbar.pack(side="right", fill="y")
+        self._wheelify(pcanvas)
+
+        def render():
+            tables = wph_html.preview_tables(computed, sections_dict(),
+                                             by_recipe=by_recipe)
+            self._wph_render_tables(pinner, tables)
+
+        cols = tk.Frame(secbox, bg=self.p["bg"])
+        cols.pack(fill="x", padx=6, pady=6)
+        for i, (key, label) in enumerate(wph_html.SECTION_TITLES.items()):
+            if key == "parse_errors" and not errors:
+                continue
+            var = tk.BooleanVar(value=bool(default.get(key)))
+            secvars[key] = var
+            n = counts.get(key, 0)
+            tk.Checkbutton(cols, text=f"{label}  ({n})", variable=var,
+                           bg=self.p["bg"], fg=self.p["text"],
+                           activebackground=self.p["bg"], selectcolor=self.p["bg"],
+                           font=self.fonts["sub"], anchor="w",
+                           command=render).grid(
+                           row=i // 2, column=i % 2, sticky="w", padx=8, pady=2)
+
+        render()
+
+        # ── 하단 버튼 ──────────────────────────────────────────────────
+        bar = tk.Frame(win, bg=self.p["bg"])
+        bar.pack(fill="x", padx=14, pady=(0, 12))
+
+        def make():
+            title = var_title.get().strip() or default_title
+            stamp = os.path.basename(out_dir).replace("조사_", "") or workdirs.stamp()
+            path = os.path.join(out_dir, f"WPH_통합_{stamp}.html")
+            meta = {
+                "생성일자": today,
+                "호기": ", ".join(machines),
+                "유효 Lot 매수": f"{valid} 매",
+                "보기 모드": ("호기 → 레시피별" if by_recipe else "호기 통째 취합"),
+                "Report 수": str(computed["summary"]["report_count"]),
+            }
+            try:
+                wph_html.write_html(path, computed, title=title, meta=meta,
+                                    sections=sections_dict(), by_recipe=by_recipe)
+            except Exception as e:  # noqa: BLE001
+                self._err("E193", ".html 결과 저장 실패", e)
+                return
+            win.destroy()
+            self._wph_html_done_window(path, out_dir)
+
+        tk.Button(bar, text="📄 HTML 만들기", relief="flat", bd=0, bg=self.p["ok"],
+                  fg="#ffffff", padx=18, pady=6, cursor="hand2",
+                  font=self.fonts["bold"], command=make).pack(side="right")
+        tk.Button(bar, text="나중에", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], padx=12, pady=6, cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=6)
+
+    def _wph_html_done_window(self, html_path, out_dir):
+        """.html 생성 완료 — [결과 열기]/[폴더 열기] 버튼 창."""
+        win = tk.Toplevel(self)
+        win.title("WPH .html 결과 완료")
+        win.configure(bg=self.p["bg"])
+        win.transient(self)
+        win.grab_set()
+        self._geo(win, 640, 320)
+        tk.Label(win, text="✓ .html 결과를 만들었습니다", bg=self.p["bg"],
+                 fg=self.p["ok"], font=self.fonts["title"]).pack(
+                 anchor="w", padx=16, pady=(16, 4))
+        tk.Label(win, text=html_path, bg=self.p["bg"], fg=self.p["text"],
+                 font=self.fonts["sub"], justify="left", wraplength=580).pack(
+                 anchor="w", padx=16, pady=(0, 2))
+        tk.Label(win,
+                 text="‘결과 열기’는 기본 브라우저로 .html 을 엽니다. ‘폴더 열기’는 "
+                      "엑셀·취합 텍스트·.html 이 함께 있는 조사 폴더를 엽니다.",
+                 bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
+                 justify="left", wraplength=580).pack(anchor="w", padx=16, pady=(0, 14))
+        bar = tk.Frame(win, bg=self.p["bg"])
+        bar.pack(fill="x", padx=16, pady=(0, 16))
+
+        def open_result():
+            if not self._open_in_excel(html_path):
+                self._set_status("결과 파일을 여는 프로그램을 찾지 못했습니다.", warn=True)
+
+        def open_folder():
+            if not self._open_in_excel(out_dir):
+                self._set_status("폴더를 여는 프로그램을 찾지 못했습니다.", warn=True)
+
+        tk.Button(bar, text="📄 결과 열기", relief="flat", bd=0, bg=self.p["primary"],
+                  fg="#ffffff", padx=18, pady=8, cursor="hand2",
+                  font=self.fonts["bold"], command=open_result).pack(side="left")
+        tk.Button(bar, text="📂 폴더 열기", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], padx=16, pady=8, cursor="hand2",
+                  command=open_folder).pack(side="left", padx=8)
+        tk.Button(bar, text="닫기", relief="flat", bd=0, bg=self.p["head_bg"],
+                  fg=self.p["text"], padx=14, pady=8, cursor="hand2",
+                  command=win.destroy).pack(side="right")
 
     def _view_commonality(self):
         wrap = tk.Frame(self.body, bg=self.p["bg"])

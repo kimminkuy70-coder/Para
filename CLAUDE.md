@@ -369,7 +369,33 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
     `write_combined_text` 가 각각 파일을 열어 리포트를 **두 번** 파싱했다(느린 단계가
     배). 이제 `investigate` 가 한 번 읽어 (행, 취합텍스트, 오류)를 함께 만들고
     `progress(done,total,name)` 로 리포트별 진행을 알린다(`[i/N] 호기 리포트 파싱 중…`).
-- 오류 코드 E191(조사)·E192(검색).
+- 오류 코드 E191(조사)·E192(검색)·E193(.html 결과).
+
+### WPH 기간 수집 + .html 결과 (2026-09-19 확정)
+
+- **수집 모드 = 호기 행마다 선택**(‘recipe 검색어’ / ‘기간’). 기간 판정 = **파일명 내장
+  날짜**(`_YY-Mon-DD_(HH.MM.SS)_`) — 원본을 열지 않고 이름만 본다(빠름·read-only).
+  `wph.parse_filename_datetime`/`_in_period`/`_matches`(검색어 AND 기간 교집합)·
+  `list_reports`/`count_reports(start,end)`. 파일명 날짜 못 읽으면 기간에서 제외.
+  GUI `_wph_period`(YYYY-MM-DD)·`_wph_search`가 모드에 따라 start/end 전달. 기간
+  모드는 검색어로 거르지 않고 [더보기]로 고른 목록만 조사.
+- **recipe 구분 = A안(리포트 내부 Job/Setup의 Job 이름)**: `wph.job_recipe`(`/` 앞)로
+  `extract_row`가 각 행에 `recipe`를 채운다. 원본은 `read_bytes`만 — Job 파일·`\Job\`
+  접근 없이 이미 파싱된 텍스트에서 이름만 뽑는다(손상 없음, 산출물 로컬만).
+- **보기 모드(레시피별/호기통째)**: 조사 시작 옆 라디오, 기본 ‘호기 → 레시피별’
+  (`by_recipe`). 여러 호기면 호기로 먼저 묶고 그 안에서 recipe로 나눈다.
+- **엑셀은 종전과 동일**(통합 1개). 조사 완료 후 **자동으로** `_wph_html_dialog`
+  (.html 구성 화면)가 열린다: 지표 체크박스(`wph_html.SECTION_TITLES`)로 넣을 것만
+  고르고 **화면 미리보기 표**(`preview_tables`, .html과 같은 숫자)로 확인 →
+  **결과 리포트 제목(편집 가능, 기본 템플릿)** → [HTML 만들기] →
+  `WPH_통합_{시각}.html`(같은 로컬 조사 폴더) → 완료창 [📄 결과 열기]/[📂 폴더 열기].
+- **에러 3단**: ①전체 ②호기별 ③호기별→레시피별. `wph_html.compute`가
+  `wph_status.classify` 재사용(리포트당 카테고리 1회, 이슈 Report 중복 제외).
+- 라벨: “Wafer 상태 요약(정상/이슈/확인불가)” → **“Wafer scan 상태 요약
+  (정상/error/확인불가)”**.
+- 헤드리스=`param_manager/wph_html.py`(파일 접근 없음 — 메모리 rows/errors만 가공,
+  단일 .html·외부 의존 없음, 테스트됨 `tests/test_wph_html.py` 5개). test_wph.py 는
+  기간 필터 추가로 9개.
 
 ## 이미 확정된 결정 (재질문 금지)
 
@@ -514,7 +540,8 @@ python3 tests/test_collate.py      # 11 (레시피별 시트·전체 호기·직
 python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑셀)
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
-python3 tests/test_wph.py          # 8  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
+python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
+python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_namestore.py    # 5  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)

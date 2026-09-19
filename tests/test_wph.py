@@ -107,6 +107,23 @@ def test_recipe_search_contains():
     print("  wph OK: recipe 포함 검색·카운트(중간토큰·다단어AND·names 선택 조사)")
 
 
+def test_period_filter():
+    from datetime import date
+    with tempfile.TemporaryDirectory() as d:
+        _make_folder(d)   # L1=Aug-30, L2=Jul-10, L3=Jul-02, OTHER=Jul-01
+        aug = wph.list_reports(d, "", date(2026, 8, 1), date(2026, 8, 31))
+        assert len(aug) == 1 and "26-Aug-30" in aug[0]           # 8월은 L1 하나
+        jul = wph.count_reports(d, "", date(2026, 7, 1), date(2026, 7, 31))
+        assert jul == 3                                          # 7월 3건(L2,L3,OTHER)
+        # 검색어 + 기간 교집합: recipe A 중 7월 것만(L2,L3) = 2
+        both = wph.count_reports(d, "2D@RE-GA285ABB", date(2026, 7, 1), date(2026, 7, 31))
+        assert both == 2
+        # 파일명 날짜 파서
+        dt = wph.parse_filename_datetime(aug[0])
+        assert (dt.year, dt.month, dt.day) == (2026, 8, 30)
+    print("  wph OK: 기간 필터(파일명 날짜)·검색어+기간 교집합")
+
+
 def test_collect_rows_readonly():
     with tempfile.TemporaryDirectory() as d:
         _make_folder(d)
