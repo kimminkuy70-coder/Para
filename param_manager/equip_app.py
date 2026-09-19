@@ -1029,20 +1029,66 @@ class EquipApp(tk.Tk):
 
     def _step_header(self, parent, step, title, desc=""):
         """다단계 흐름의 '단계 N/M · 제목' 헤더. step=(n, m) 또는 None.
-        None 이면 제목만(단계 배지 없음). 어느 창에서든 같은 모양으로 쓴다."""
+        None 이면 제목만(단계 배지 없음). 어느 창에서든 같은 모양으로 쓴다.
+        (미니멀: 라임 액센트 바 + 네이비 제목, 단계 배지는 라임.)"""
         bar = tk.Frame(parent, bg=self.p["bg"])
-        bar.pack(fill="x", padx=16, pady=(12, 2))
+        bar.pack(fill="x", padx=16, pady=(14, 2))
+        # 제목 왼쪽 라임 액센트 바(벤토·미니멀 공통 시그니처)
+        tk.Frame(bar, bg=self.p["accent"], width=4, height=20).pack(
+            side="left", padx=(0, 10))
         if step:
             n, m = step
-            tk.Label(bar, text=f"단계 {n}/{m}", bg=self.p["primary"], fg="#ffffff",
-                     font=self.fonts["sub"], padx=8, pady=1).pack(side="left")
+            tk.Label(bar, text=f"단계 {n}/{m}", bg=self.p["accent"],
+                     fg=self.p["on_accent"], font=self.fonts["sub"],
+                     padx=8, pady=1).pack(side="left", padx=(0, 10))
         tk.Label(bar, text=title, bg=self.p["bg"], fg=self.p["text"],
-                 font=self.fonts["title"]).pack(side="left", padx=(10 if step else 0, 0))
+                 font=self.fonts["title"]).pack(side="left")
         if desc:
             tk.Label(parent, text=desc, bg=self.p["bg"], fg=self.p["muted"],
                      font=self.fonts["sub"], justify="left",
                      wraplength=640).pack(anchor="w", padx=16, pady=(0, 6))
         return bar
+
+    def _bento_card(self, parent, title="", desc="", *, icon="", pad=(8, 6)):
+        """벤토 카드 = 흰 표면 + hairline 테두리 + 라임 액센트 제목.
+        본문(content) 프레임을 돌려준다. 여기에 위젯을 pack 하면 된다.
+        (미니멀: 넉넉한 여백·얇은 테두리·둥근모서리는 tkinter 한계로 생략.)"""
+        card = tk.Frame(parent, bg=self.p["surface"], highlightthickness=1,
+                        highlightbackground=self.p["border"],
+                        highlightcolor=self.p["border"])
+        card.pack(fill="x", padx=pad[0], pady=pad[1])
+        if title:
+            head = tk.Frame(card, bg=self.p["surface"])
+            head.pack(fill="x", padx=14, pady=(12, 2))
+            tk.Frame(head, bg=self.p["accent"], width=4, height=16).pack(
+                side="left", padx=(0, 8))
+            tk.Label(head, text=(f"{icon}  {title}" if icon else title),
+                     bg=self.p["surface"], fg=self.p["text"],
+                     font=self.fonts["h2"]).pack(side="left")
+        if desc:
+            tk.Label(card, text=desc, bg=self.p["surface"], fg=self.p["muted"],
+                     font=self.fonts["sub"], justify="left", wraplength=760).pack(
+                     anchor="w", padx=14, pady=(0, 2))
+        body = tk.Frame(card, bg=self.p["surface"])
+        body.pack(fill="both", expand=True, padx=14, pady=(4, 12))
+        return body
+
+    def _kpi_cell(self, parent, label, value, unit=""):
+        """히어로 통계 셀 — 큰 숫자(네이비) + 라임 단위. grid/pack 은 호출측이."""
+        c = tk.Frame(parent, bg=self.p["surface"], highlightthickness=1,
+                     highlightbackground=self.p["border"],
+                     highlightcolor=self.p["border"])
+        tk.Label(c, text=str(label), bg=self.p["surface"], fg=self.p["muted"],
+                 font=self.fonts["sub"]).pack(anchor="w", padx=14, pady=(12, 0))
+        row = tk.Frame(c, bg=self.p["surface"])
+        row.pack(anchor="w", padx=14, pady=(0, 12))
+        tk.Label(row, text=str(value), bg=self.p["surface"], fg=self.p["text"],
+                 font=self.fonts["kpi"]).pack(side="left")
+        if unit:
+            tk.Label(row, text=" " + str(unit), bg=self.p["surface"],
+                     fg=self.p["accent_dk"], font=self.fonts["sub"]).pack(
+                     side="left", anchor="s", pady=(0, 4))
+        return c
 
     # ====================================================================
     #  S4 — 파라미터 값 확인(tksheet, 읽기 전용) : Zone 탭 + 검색 + 단일 그리드
@@ -1695,6 +1741,8 @@ class EquipApp(tk.Tk):
         if not self._need_save_dir():
             return
         from .engine import SPECIAL_BOOL_COL, SPECIAL_HEADERS
+        self._step_header(self.body, None, "특이사항",
+                          "장비별 특이사항을 기록합니다 · 셀 색상·내용은 특이사항.xlsx 에 자동 저장.")
         self._toolbar("special")
         # 동시 편집 방지 — 다른 사람이 수정 중이면 읽기 전용
         doc = refdata.special_path(self.save_dir)
@@ -1782,6 +1830,8 @@ class EquipApp(tk.Tk):
         """참고자료 = 저장폴더의 참고자료.xlsx (사람 자유 메모, 셀 색상 저장)."""
         if not self._need_save_dir():
             return
+        self._step_header(self.body, None, "참고자료",
+                          "자유 메모 그리드 · 셀 색상·내용은 참고자료.xlsx 에 자동 저장.")
         self._toolbar("reference")
         doc = refdata.ref_path(self.save_dir)
         editable = self._acquire_doc(doc, "참고자료")
@@ -1838,6 +1888,8 @@ class EquipApp(tk.Tk):
         """장비 IP 주소 = 저장폴더의 장비 IP 주소.xlsx (호기·IP, 호기 버튼의 기준)."""
         if not self._need_save_dir():
             return
+        self._step_header(self.body, None, "장비 IP",
+                          "호기·IP·장비종류 · 호기 버튼과 값 업데이트의 기준이 되는 목록입니다.")
         doc = refdata.ip_path(self.save_dir)
         editable = self._acquire_doc(doc, "장비 IP 주소")
         if not editable:
@@ -2175,8 +2227,8 @@ class EquipApp(tk.Tk):
 
         bot = tk.Frame(win, bg=self.p["bg"])
         bot.pack(fill="x", padx=14, pady=(0, 12))
-        tk.Button(bot, text="선택 항목 다운로드", relief="flat", bd=0, bg=self.p["ok"],
-                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+        tk.Button(bot, text="선택 항목 다운로드", relief="flat", bd=0, bg=self.p["accent"],
+                  fg=self.p["on_accent"], padx=16, pady=6, cursor="hand2",
                   command=self._dl_run).pack(side="left")
         self._dl_status = tk.Label(bot, text="", bg=self.p["bg"], fg=self.p["muted"],
                                    font=self.fonts["sub"])
@@ -2752,7 +2804,7 @@ class EquipApp(tk.Tk):
 
         bt = tk.Frame(win, bg=self.p["bg"])
         bt.pack(fill="x", padx=14, pady=(4, 12))
-        tk.Button(bt, text="수집 시작", relief="flat", bd=0, bg=self.p["ok"], fg="#ffffff",
+        tk.Button(bt, text="수집 시작", relief="flat", bd=0, bg=self.p["accent"], fg=self.p["on_accent"],
                   padx=16, pady=6, cursor="hand2", command=run).pack(side="left")
         tk.Button(bt, text="닫기", relief="flat", bd=0, bg=self.p["surface"], padx=16,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="left", padx=8)
@@ -3437,7 +3489,7 @@ class EquipApp(tk.Tk):
                   bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
                   command=lambda: self._form_new(from_equipment=False)).pack(side="left", padx=8)
         tk.Button(box2, text="✏  기존 양식 수정하기", relief="flat", bd=0,
-                  bg=self.p["ok"], fg="#ffffff", padx=16, pady=8, cursor="hand2",
+                  bg=self.p["accent"], fg=self.p["on_accent"], padx=16, pady=8, cursor="hand2",
                   command=self._edit_existing_form).pack(side="left")
         tk.Button(box2, text="🗂  이전 버전 보기(읽기전용)", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=16, pady=8, cursor="hand2",
@@ -4340,8 +4392,8 @@ class EquipApp(tk.Tk):
                         + "\n지금 열어 볼까요?"):
                     self._open_collation_view(final)
             self._run_busy("양식 확정 중…", work, done)
-        tk.Button(bt, text="✔ 편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
-                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+        tk.Button(bt, text="✔ 편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["accent"],
+                  fg=self.p["on_accent"], padx=16, pady=6, cursor="hand2",
                   command=confirm).pack(side="right")
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=14,
                   pady=6, cursor="hand2", command=win.destroy).pack(side="right", padx=6)
@@ -4374,8 +4426,8 @@ class EquipApp(tk.Tk):
                   padx=12, pady=6, cursor="hand2",
                   command=lambda: (self._open_in_excel(draft),
                                    self._watch_excel_close(draft, win, back))).pack(side="left")
-        tk.Button(bt, text="편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
-                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+        tk.Button(bt, text="편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["accent"],
+                  fg=self.p["on_accent"], padx=16, pady=6, cursor="hand2",
                   command=lambda: self._form_finalize(draft, level, kind, scales,
                                                       run_dir, aoi, st, win,
                                                       prev_form=prev_form)).pack(side="right")
@@ -4686,7 +4738,7 @@ class EquipApp(tk.Tk):
                            selectcolor=self.p["bg"],
                            font=self.fonts["sub"]).pack(side="left", padx=(2, 0))
         tk.Button(ctrl, text="▶ 조사 시작", relief="flat", bd=0,
-                  bg=self.p["ok"], fg="#ffffff", padx=16, pady=6, cursor="hand2",
+                  bg=self.p["accent"], fg=self.p["on_accent"], padx=16, pady=6, cursor="hand2",
                   font=self.fonts["bold"],
                   command=self._wph_run).pack(side="left", padx=(16, 0))
 
@@ -5060,35 +5112,37 @@ class EquipApp(tk.Tk):
         }
 
     def _wph_render_tables(self, parent, tables):
-        """미리보기 표들을 parent 에 다시 그린다(토글할 때마다 호출)."""
+        """미리보기 표들을 parent 에 다시 그린다(토글할 때마다 호출).
+        각 지표는 벤토 카드 하나로, 헤더행은 네이비 톤으로."""
         for w in parent.winfo_children():
             w.destroy()
         if not tables:
-            tk.Label(parent, text="선택된 지표가 없습니다. 위에서 넣을 항목을 체크하세요.",
+            body = self._bento_card(parent, title="미리보기")
+            tk.Label(body, text="선택된 지표가 없습니다. 위에서 넣을 항목을 체크하세요.",
                      bg=self.p["surface"], fg=self.p["muted"],
-                     font=self.fonts["sub"]).pack(anchor="w", padx=10, pady=10)
+                     font=self.fonts["sub"]).pack(anchor="w")
             return
-        for title, headers, body in tables:
-            tk.Label(parent, text=title, bg=self.p["surface"], fg=self.p["text"],
-                     font=self.fonts["bold"]).pack(anchor="w", padx=10, pady=(10, 2))
-            grid = tk.Frame(parent, bg=self.p["surface"])
-            grid.pack(fill="x", padx=10, pady=(0, 6))
+        for title, headers, body_rows in tables:
+            cell = self._bento_card(parent, title=title, pad=(8, 5))
+            grid = tk.Frame(cell, bg=self.p["surface"])
+            grid.pack(fill="x")
             for ci, h in enumerate(headers):
-                tk.Label(grid, text=str(h), bg=self.p["head_bg"], fg=self.p["text"],
+                tk.Label(grid, text=str(h), bg=self.p["header_bar"], fg=self.p["header_fg"],
                          font=self.fonts["sub"], padx=8, pady=3,
                          borderwidth=1, relief="solid").grid(
                          row=0, column=ci, sticky="nsew")
-            for ri, r in enumerate(body[:60], start=1):
+            for ri, r in enumerate(body_rows[:60], start=1):
+                zebra = self.p["surface"] if ri % 2 else self.p["stripe"]
                 for ci, v in enumerate(r):
-                    tk.Label(grid, text=str(v), bg=self.p["surface"],
+                    tk.Label(grid, text=str(v), bg=zebra,
                              fg=self.p["text"], font=self.fonts["sub"], padx=8, pady=2,
                              borderwidth=1, relief="solid",
                              anchor="w").grid(row=ri, column=ci, sticky="nsew")
-            if len(body) > 60:
-                tk.Label(grid, text=f"… 외 {len(body) - 60}행(.html 에는 전부 포함)",
+            if len(body_rows) > 60:
+                tk.Label(grid, text=f"… 외 {len(body_rows) - 60}행(.html 에는 전부 포함)",
                          bg=self.p["surface"], fg=self.p["muted"],
                          font=self.fonts["sub"]).grid(
-                         row=len(body[:60]) + 1, column=0, columnspan=len(headers),
+                         row=len(body_rows[:60]) + 1, column=0, columnspan=len(headers),
                          sticky="w", pady=(2, 0))
 
     def _wph_html_dialog(self, out_dir, rows, errors, machines, valid, by_recipe):
@@ -5207,8 +5261,8 @@ class EquipApp(tk.Tk):
             win.destroy()
             self._wph_html_done_window(path, out_dir)
 
-        tk.Button(bar, text="📄 HTML 만들기", relief="flat", bd=0, bg=self.p["ok"],
-                  fg="#ffffff", padx=18, pady=6, cursor="hand2",
+        tk.Button(bar, text="📄 HTML 만들기", relief="flat", bd=0, bg=self.p["accent"],
+                  fg=self.p["on_accent"], padx=18, pady=6, cursor="hand2",
                   font=self.fonts["bold"], command=make).pack(side="right")
         tk.Button(bar, text="나중에", relief="flat", bd=0, bg=self.p["head_bg"],
                   fg=self.p["text"], padx=12, pady=6, cursor="hand2",
@@ -6791,8 +6845,8 @@ class EquipApp(tk.Tk):
                   padx=12, pady=6, cursor="hand2",
                   command=lambda: (self._open_in_excel(draft),
                                    self._watch_excel_close(draft, win, back))).pack(side="left")
-        tk.Button(bt, text="편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["ok"],
-                  fg="#ffffff", padx=16, pady=6, cursor="hand2",
+        tk.Button(bt, text="편집 완료 → 양식 확정", relief="flat", bd=0, bg=self.p["accent"],
+                  fg=self.p["on_accent"], padx=16, pady=6, cursor="hand2",
                   command=lambda: self._cm_form_finalize(draft, recipe, win)).pack(
                   side="right")
         tk.Button(bt, text="취소", relief="flat", bd=0, bg=self.p["surface"], padx=12,
