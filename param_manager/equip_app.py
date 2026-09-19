@@ -4524,7 +4524,7 @@ class EquipApp(tk.Tk):
     def _cm_step(self, parent, n, title, desc, buttons, done=False):
         """조사 단계 카드 1개. buttons=[(라벨, 콜백, 강조여부)]."""
         card = tk.Frame(parent, bg=self.p["surface"], bd=0, highlightthickness=1,
-                        highlightbackground=self.p["head_bg"])
+                        highlightbackground=self.p["border"])
         card.pack(fill="x", padx=4, pady=5)
         head = tk.Frame(card, bg=self.p["surface"])
         head.pack(fill="x", padx=12, pady=(10, 2))
@@ -4615,7 +4615,7 @@ class EquipApp(tk.Tk):
                  font=self.fonts["bold"]).pack(anchor="w", padx=10, pady=(4, 2))
 
         card = tk.Frame(inner, bg=self.p["surface"], highlightthickness=1,
-                        highlightbackground=self.p["head_bg"])
+                        highlightbackground=self.p["border"])
         card.pack(fill="x", padx=8, pady=4)
         for idx, m in enumerate(machines):
             # 호기 1대 = 2줄 블록(한 줄에 몰면 좁은 화면에서 체크박스가 가려진다).

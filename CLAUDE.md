@@ -397,6 +397,29 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
   단일 .html·외부 의존 없음, 테스트됨 `tests/test_wph_html.py` 5개). test_wph.py 는
   기간 필터 추가로 9개.
 
+## UI 테마 — 벤토 그리드 + 미니멀 (네이비+라임, 2026-09, 브랜치 `claude/ux-bento-navy-lime`)
+
+사용자 지정: **벤토 그리드 + 미니멀리즘** 조합, **네이비(구조) + 선명한 라임(강조)**,
+**폰트 = 맑은 고딕**(설치 보장). tkinter 한계로 둥근 모서리·그림자는 없고 hairline
+플랫 카드로 대체. 상단 탭바 구조는 유지(사이드바 전환 안 함).
+
+- **팔레트는 `theme.py PALETTE` 한 곳**(전 화면이 `self.p[...]` 참조 → 중앙 리컬러).
+  네이비 `header_bar #0f1e3d`/`primary #1b345f`, 라임 **`accent #a3e635`·`accent_dk`·
+  `accent_lt`·`on_accent #12244a`**(라임 위 글자는 항상 네이비=대비 확보). `ok #3f9142`
+  은 **성공 텍스트 의미로만** 유지(라임은 밝아 텍스트 가독 불가).
+- **폰트 위계**(맑은 고딕): `title 16`·`h2 12`·`kpi 22`·`base/bold/head 10`·`sub 9`·
+  `micro 8`. `_pick_family` 는 맑은 고딕 우선, 없으면 폴백.
+- **라임을 쓰는 곳**(강조): 상단/하위 활성 탭, 저장 버튼, `_step_header` 액센트 바·단계
+  배지, `_bento_card` 제목 바, 주요 CTA 8개(다운로드/수집 시작/조사 시작/양식 확정/
+  HTML 만들기 등 — 네이비 글자), 선택행 틴트(`select`).
+- **헬퍼**(equip_app): `_bento_card(parent, title, desc, icon)`→본문 프레임 ·
+  `_kpi_cell(parent, label, value, unit)`→히어로 통계 셀. 흰 표면 + `border` hairline.
+- **반드시 보존**: 값 확인 2분할 tksheet('장비 화면', `_screen_equipment`/`_mk`,
+  `theme="dark"`, 회색 `#333333`/`#454545`, 좌측 고정 호기+우측 비교+색상칸)는 실제
+  장비처럼 보여야 하므로 **팔레트와 무관하게 그대로 둔다**.
+- 순수 표현 계층만 변경(헤드리스 로직·기능 불변). 검증은 `py_compile param_manager/
+  *.py` + `tools/check_project.py`(실패 없음). 실제 화면 색·폰트는 Windows 실기 필요.
+
 ## 이미 확정된 결정 (재질문 금지)
 
 아래는 사용자와 이미 합의가 끝난 사항이다. 같은 내용을 AskUserQuestion으로 **다시 묻지 말 것**.

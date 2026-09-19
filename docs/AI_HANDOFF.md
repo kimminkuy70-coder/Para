@@ -9,7 +9,25 @@
 - 현재 주요 기능: 장비 파라미터 양식/취합/비교, Commonality 조사·감시,
   WPH 조사, OneDrive 기반 exe 업데이트. 상세 구현은 CLAUDE.md와 소스 참고.
 
-## 마지막 작업 — WPH 기간 수집 + .html 결과 (2026-09-19, Claude)
+## 마지막 작업 — UI 테마 벤토+미니멀(네이비+라임) (2026-09-19, Claude)
+
+- **별도 브랜치 `claude/ux-bento-navy-lime`**(version_new에서 분기). 이 UX 작업만 담음.
+  다른 AI 협업(version_new)을 방해하지 않도록 분리. 병합 시 새 PR.
+- 사용자 지정: **벤토 그리드 + 미니멀리즘**, **네이비(구조)+선명한 라임(강조)**,
+  **폰트=맑은 고딕**, **상단 탭바 유지**(사이드바 전환 안 함), **hairline 플랫 카드**
+  (tkinter 라 둥근 모서리·그림자 없음).
+- Phase A: `theme.py PALETTE`를 네이비+라임으로 교체(accent/accent_dk/accent_lt/
+  on_accent 추가, 라임 위 글자는 네이비). 맑은 고딕 위계(title16/h2 12/kpi22/…).
+  Primary(네이비)·Accent(라임) ttk 버튼 스타일. Phase B: 상단바 딥 네이비·내비 버튼
+  네이비 틴트·저장/활성 탭=라임. Phase C: `_bento_card`/`_kpi_cell` 헬퍼, `_step_header`
+  라임 액센트 바, 주요 CTA 8개 라임, WPH .html 미리보기 벤토 카드화, 특이사항/참고자료/
+  장비IP 제목 헤더. Phase D: 카드 테두리 hairline 통일.
+- **보존**: 값 확인 2분할 tksheet('장비 화면', dark 회색)는 그대로. 헤드리스 로직 불변.
+- 세부·재발방지: `CLAUDE.md` 의 'UI 테마 — 벤토 그리드 + 미니멀' 절.
+- 검증: `tools/check_project.py` 실패 없음, `py_compile` 전체 통과. **실제 화면 색·폰트·
+  레이아웃은 Windows 실기 필요**(개발환경 GUI 미지원). exe 빌드·배포 미수행.
+
+## 이전 작업 — WPH 기간 수집 + .html 결과 (2026-09-19, Claude)
 
 - version_new만 수정. 헤드리스 우선(테스트) 후 GUI 연결. Windows 실기·빌드 미수행.
 - **기간 수집**: 호기 행마다 수집 모드(‘recipe 검색어’ / ‘기간’) 선택. 기간은
