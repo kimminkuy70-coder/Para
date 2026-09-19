@@ -199,36 +199,37 @@ class EquipApp(tk.Tk):
         bar.pack_propagate(False)
 
         self.btn_back = tk.Button(bar, text="◀ 뒤로", relief="flat", bd=0,
-                                  bg="#334155", fg="#f8fafc", padx=12, pady=6,
-                                  activebackground="#475569", command=self.go_back)
+                                  bg="#1c3358", fg="#f8fafc", padx=12, pady=6,
+                                  activebackground="#274a7d", command=self.go_back)
         self.btn_back.pack(side="left", padx=(12, 4), pady=11)
         self.btn_fwd = tk.Button(bar, text="앞으로 ▶", relief="flat", bd=0,
-                                 bg="#334155", fg="#f8fafc", padx=12, pady=6,
-                                 activebackground="#475569", command=self.go_forward)
+                                 bg="#1c3358", fg="#f8fafc", padx=12, pady=6,
+                                 activebackground="#274a7d", command=self.go_forward)
         self.btn_fwd.pack(side="left", padx=4, pady=11)
         self.btn_home = tk.Button(bar, text="⌂ 처음", relief="flat", bd=0,
-                                  bg="#334155", fg="#f8fafc", padx=12, pady=6,
-                                  activebackground="#475569",
+                                  bg="#1c3358", fg="#f8fafc", padx=12, pady=6,
+                                  activebackground="#274a7d",
                                   command=lambda: self.navigate(screen="s0"))
         self.btn_home.pack(side="left", padx=4, pady=11)
 
         self.lbl_crumb = tk.Label(bar, text="", bg=self.p["header_bar"],
-                                  fg="#cbd5e1", font=self.fonts["sub"])
+                                  fg="#c4d0e6", font=self.fonts["sub"])
         self.lbl_crumb.pack(side="left", padx=16)
 
         self.btn_file = tk.Button(bar, text="⋯ 파일", relief="flat", bd=0,
-                                  bg="#334155", fg="#f8fafc", padx=12, pady=6,
-                                  activebackground="#475569", command=self._file_menu)
+                                  bg="#1c3358", fg="#f8fafc", padx=12, pady=6,
+                                  activebackground="#274a7d", command=self._file_menu)
         self.btn_file.pack(side="right", padx=(4, 12), pady=11)
         # 현재 접속자 표시(클릭 시 상세 목록) — 동시 편집 상황을 항상 보이게
         self._presence_lbl = tk.Label(bar, text="👤 나만 접속 중",
-                                      bg=self.p["header_bar"], fg="#cbd5e1",
+                                      bg=self.p["header_bar"], fg="#c4d0e6",
                                       font=self.fonts["sub"], cursor="hand2")
         self._presence_lbl.pack(side="right", padx=8, pady=11)
         self._presence_lbl.bind("<Button-1>", lambda e: self._show_sessions())
         self.btn_save = tk.Button(bar, text="💾 저장", relief="flat", bd=0,
-                                  bg=self.p["primary"], fg="#ffffff", padx=14, pady=6,
-                                  activebackground=self.p["primary_dk"], command=self.save)
+                                  bg=self.p["accent"], fg=self.p["on_accent"],
+                                  padx=14, pady=6, font=self.fonts["bold"],
+                                  activebackground=self.p["accent_dk"], command=self.save)
         self.btn_save.pack(side="right", padx=4, pady=11)
 
         self.title_lbl = tk.Label(bar, text="Camtek AOI 장비 파라미터 관리",
@@ -255,7 +256,7 @@ class EquipApp(tk.Tk):
                           command=lambda k=key: self._set_view(k))
             b.pack(side="left", padx=(8 if key == "param" else 2, 2), pady=4)
             b.bind("<Enter>", lambda e, k=key, w=b:
-                   w.config(bg=self.p["primary_lt"]) if k != self.view else None)
+                   w.config(bg=self.p["accent_lt"]) if k != self.view else None)
             b.bind("<Leave>", lambda e, k=key, w=b:
                    w.config(bg=self.p["head_bg"]) if k != self.view else None)
             self._tab_btns[key] = b
@@ -284,10 +285,11 @@ class EquipApp(tk.Tk):
         self._sync_tab_style()
 
     def _sync_tab_style(self):
+        # 활성 탭 = 선명한 라임(네이비 글자), 비활성 = 밝은 헤더 배경.
         for k, b in self._tab_btns.items():
             on = (k == self.view)
-            b.config(bg=(self.p["primary"] if on else self.p["head_bg"]),
-                     fg=("#ffffff" if on else self.p["muted"]))
+            b.config(bg=(self.p["accent"] if on else self.p["head_bg"]),
+                     fg=(self.p["on_accent"] if on else self.p["muted"]))
 
     def _set_view(self, key):
         self.view = key
@@ -304,7 +306,7 @@ class EquipApp(tk.Tk):
             on = (getattr(self, "sub_view", "manage") == key)
             b = tk.Button(bar, text=label, relief="flat", bd=0,
                           font=self.fonts["bold"], padx=18, pady=6, cursor="hand2",
-                          bg=(self.p["primary_lt"] if on else self.p["head_bg"]),
+                          bg=(self.p["accent_lt"] if on else self.p["head_bg"]),
                           fg=(self.p["primary"] if on else self.p["muted"]),
                           command=lambda k=key: self._set_subview(k))
             b.pack(side="left", padx=(10 if key == "manage" else 2, 2), pady=4)
