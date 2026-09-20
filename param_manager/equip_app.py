@@ -7615,13 +7615,60 @@ class EquipApp(tk.Tk):
                                    f"{os.path.basename(dest)} 저장.\n지금 Excel로 열까요?",
                                    parent=win):
                 self._open_in_excel(dest)
+        def save_html():
+            try:
+                path = self._diff_html_file(diff, old_label, new_label)
+            except Exception as e:  # noqa: BLE001
+                self._err("E199", "HTML 보기 생성 실패", e)
+                return
+            if not self._open_in_excel(path):
+                self._set_status(f"파일을 만들었습니다: {path}", warn=True)
+
         tk.Button(bt, text="변경내역 엑셀로 저장(비고 메모)", relief="flat", bd=0,
                   bg=self.p["primary"], fg="#ffffff", padx=14, pady=6, cursor="hand2",
                   command=save_excel).pack(side="left")
+        tk.Button(bt, text="🌐 HTML로 보기", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=14, pady=6, cursor="hand2",
+                  command=save_html).pack(side="left", padx=6)
         if diff.added_rows or diff.removed_rows:
             tk.Label(bt, text="  (행 추가/삭제는 엑셀 '행 추가·삭제' 시트에서 확인)",
                      bg=self.p["bg"], fg=self.p["muted"],
                      font=self.fonts["sub"]).pack(side="left", padx=8)
+
+    def _diff_html_file(self, diff, old_label, new_label) -> str:
+        """이력 비교 결과 하나를 읽기 전용 HTML(로컬)로 저장하고 경로를 돌려준다.
+        값 변경은 구분별 색(값변경=노랑/추가=초록/삭제=빨강), 추가·삭제 행 표 포함."""
+        kind_cls = {"값변경": "chg", "추가": "add", "삭제": "del"}
+        ch_headers = ["레시피", "PI", "Zone", "Alg", "Parameter", "호기",
+                      "이전 값", "새 값", "구분"]
+        ch_rows = [[c.sheet, c.pi, c.zone, c.alg, c.param, c.machine,
+                    c.old or "(빈)", c.new or "(빈)", c.kind] for c in diff.changes]
+        secs = [htmlview.section(
+            "값 변경", htmlview.table(
+                ch_headers, ch_rows,
+                aligns=["", "", "", "", "", "c", "", "", "c"],
+                row_class=lambda i, r: kind_cls.get(r[-1], "")),
+            tag=(f"{len(diff.changes)}건", "lime"))]
+        for label, rows in (("추가된 행", diff.added_rows),
+                            ("삭제된 행", diff.removed_rows)):
+            if rows:
+                body = [[r.get("sheet"), r.get("PI"), r.get("Recipe"), r.get("Zone"),
+                         r.get("Alg"), r.get("Parameter")] for r in rows]
+                secs.append(htmlview.section(
+                    label, htmlview.table(
+                        ["레시피", "PI", "Recipe", "Zone", "Alg", "Parameter"], body),
+                    tag=(f"{len(rows)}건", "warn" if label.startswith("삭제") else "")))
+        html = htmlview.page(
+            "Recipe 날짜별 비교", "".join(secs),
+            subtitle="달라진 부분만 · 읽기 전용",
+            meta={"이전": old_label, "최신": new_label,
+                  "기준 시각": htmlview.stamp_now(),
+                  "값 변경": f"{len(diff.changes)}건",
+                  "추가/삭제": f"{len(diff.added_rows)}/{len(diff.removed_rows)}"})
+        out_dir = os.path.join(self.local_dir, "보기")
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, f"비교_{workdirs.stamp()}.html")
+        return htmlview.write(path, html)
 
     # ====================================================================
     #  내보내기 — 레시피·호기·항목 선택(값 수정 가능) → Excel 저장
