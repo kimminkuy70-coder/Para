@@ -54,6 +54,7 @@ from . import watcher
 from . import workdirs
 from . import wph
 from . import wph_html
+from . import htmlview
 from .engine import ParamRepository
 from .theme import apply_theme
 
@@ -2089,6 +2090,9 @@ class EquipApp(tk.Tk):
         tk.Button(bar, text="📤 내보내기", relief="flat", bd=0,
                   bg=self.p["surface"], fg=self.p["text"], padx=12, pady=5, cursor="hand2",
                   command=self._export_dialog).pack(side="left", padx=4, pady=5)
+        tk.Button(bar, text="🌐 HTML로 보기", relief="flat", bd=0,
+                  bg=self.p["surface"], fg=self.p["text"], padx=12, pady=5, cursor="hand2",
+                  command=self._value_html_view).pack(side="left", padx=4, pady=5)
         self._watch_btn = tk.Button(bar, text="🔔 자동 감시", relief="flat", bd=0,
                                     bg=self.p["surface"], fg=self.p["text"], padx=12,
                                     pady=5, cursor="hand2",
@@ -2098,6 +2102,66 @@ class EquipApp(tk.Tk):
         tk.Label(bar, text="  (최신 '파라미터 값 취합'을 자동 표시 · 값 읽기전용)",
                  bg=self.p["head_bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left", padx=6)
+
+    def _value_html_view(self):
+        """최신 취합(값 확인)을 읽기 전용 HTML 스냅샷으로 내보내 브라우저로 연다.
+
+        편집(비고·색상)은 tkinter 화면 그대로 — 여기서는 보기/인쇄용 사본만 만든다.
+        산출물은 로컬(`localdirs`)만. 원본·저장폴더는 건드리지 않는다.
+        """
+        repo = self.repo
+        if not repo or not getattr(repo, "rows", None):
+            messagebox.showinfo(
+                "HTML로 보기",
+                "표시할 취합 값이 없습니다. 먼저 'Recipe 업데이트'로 값을 채우세요.",
+                parent=self)
+            return
+        machines = list(repo.aoi_units)
+
+        def work(report):
+            report("HTML 스냅샷을 만드는 중…")
+            # (PI, Recipe) 그룹별 표 — 등장 순서 보존
+            groups, index = [], {}
+            for r in repo.rows:
+                key = (engine._s(r.get("PI")), engine._s(r.get("Recipe")))
+                if key not in index:
+                    index[key] = len(groups)
+                    groups.append((key[0], key[1], []))
+                groups[index[key]][2].append(r)
+            headers = ["Zone", "Alg", "Parameter"] + machines + ["비고"]
+            aligns = ["", "", ""] + ["c"] * len(machines) + [""]
+            secs = []
+            for pi, recipe, rows in groups:
+                body = [[engine._s(r.get("Zone")), engine._s(r.get("Alg")),
+                         engine._s(r.get("Parameter"))]
+                        + [engine._s(r.get(m)) for m in machines]
+                        + [engine._s(r.get("비고"))] for r in rows]
+                title = f"{pi or '(레벨)'} · {recipe or '(변형)'}"
+                secs.append(htmlview.section(
+                    title, htmlview.table(headers, body, aligns=aligns),
+                    tag=(f"{len(rows)}행", "lime")))
+            html = htmlview.page(
+                "파라미터 값 확인 (스냅샷)", "".join(secs),
+                subtitle="최신 취합의 읽기 전용 보기 · 편집은 프로그램에서",
+                meta={"기준 시각": htmlview.stamp_now(),
+                      "호기": f"{len(machines)}대",
+                      "레시피 그룹": f"{len(groups)}개",
+                      "전체 행": f"{len(repo.rows)}행"})
+            out_dir = os.path.join(self.local_dir, "보기")
+            os.makedirs(out_dir, exist_ok=True)
+            path = os.path.join(out_dir, f"값확인_{workdirs.stamp()}.html")
+            htmlview.write(path, html)
+            return path
+
+        def done(ok, res):
+            if not ok:
+                self._err("E198", "HTML 보기 생성 실패", res)
+                return
+            self._set_status("값 확인 HTML 스냅샷을 브라우저로 엽니다.")
+            if not self._open_in_excel(res):
+                self._set_status(f"파일을 만들었습니다: {res}", warn=True)
+
+        self._run_busy("값 확인 HTML 보기", work, done)
 
     def _open_collation_view(self, path):
         """취합/양식 파일을 값 확인 화면(읽기전용 병합)으로 연다."""
