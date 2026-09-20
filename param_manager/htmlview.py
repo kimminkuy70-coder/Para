@@ -63,6 +63,7 @@ td.num,th.num{text-align:right}
 td.c,th.c{text-align:center}
 .grp td{background:var(--limebg);font-weight:700;color:var(--navy)}
 .chg{background:var(--warnbg)}.add{background:var(--okbg)}.del{background:var(--badbg)}
+td.out{background:#fde8c8}td.fail{background:#fff3b0}td.low{background:#fbe0dd}
 .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px}
 .pill.ok{color:var(--ok);background:var(--okbg)}
 .pill.warn{color:var(--warn);background:var(--warnbg)}
@@ -100,19 +101,28 @@ def kpi_cards(cards) -> str:
     return '<div class="cards">' + "".join(cells) + "</div>"
 
 
-def table(headers, rows, *, aligns=None, foot=None, row_class=None) -> str:
+def table(headers, rows, *, aligns=None, foot=None, row_class=None,
+          cell_class=None) -> str:
     """표 하나. headers=[str], rows=[[cell,...]]. aligns=['num'|'c'|''..] 열 정렬.
-    row_class(row_index, row)→css 클래스(diff 색칠 등). 셀은 전부 이스케이프."""
+    row_class(row_index, row)→행 css 클래스(diff 색칠 등).
+    cell_class(row_index, col_index, value)→셀 css 클래스(이탈 셀 색칠 등).
+    셀 값은 전부 이스케이프."""
     aligns = aligns or []
 
     def _al(i):
         return aligns[i] if i < len(aligns) else ""
 
+    def _tdcls(ri, ci):
+        parts = [_al(ci)]
+        if cell_class:
+            parts.append(cell_class(ri, ci, rows[ri][ci]) or "")
+        return _cls(" ".join(p for p in parts if p))
+
     head = "".join(f"<th{_cls(_al(i))}>{esc(h)}</th>" for i, h in enumerate(headers))
     body_rows = []
     for ri, r in enumerate(rows):
         rc = row_class(ri, r) if row_class else ""
-        tds = "".join(f"<td{_cls(_al(i))}>{esc(v)}</td>" for i, v in enumerate(r))
+        tds = "".join(f"<td{_tdcls(ri, i)}>{esc(v)}</td>" for i, v in enumerate(r))
         body_rows.append(f"<tr{_cls(rc)}>{tds}</tr>")
     tf = ""
     if foot:

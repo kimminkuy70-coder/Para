@@ -27,6 +27,15 @@ def test_empty_and_aligns_and_rowclass():
     print("  htmlview OK: 빈 표·정렬·행 클래스")
 
 
+def test_cell_class():
+    # 셀별 색칠(이탈 셀 등) — cell_class 콜백이 해당 td 에만 클래스 부여
+    html = hv.table(["S/M", "p1", "p2"], [["A", "1", "2"], ["B", "9", "3"]],
+                    cell_class=lambda ri, ci, v: "out" if (ri == 1 and ci == 1) else "")
+    assert 'class="out"' in html
+    assert html.count("out") == 1                 # 딱 한 셀만
+    print("  htmlview OK: 셀별 클래스(이탈 색칠)")
+
+
 def test_kpi_and_section():
     k = hv.kpi_cards([("정상률", "86.1", "%"), ("이슈", 72)])
     assert "정상률" in k and "86.1" in k and ">%<" in k and "72" in k

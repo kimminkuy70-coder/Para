@@ -7111,9 +7111,21 @@ class EquipApp(tk.Tk):
                        bg=self.p["head_bg"], fg=self.p["text"], selectcolor=self.p["bg"],
                        activebackground=self.p["head_bg"], font=self.fonts["sub"],
                        command=render).pack(side="left", padx=8)
+        def cm_html():
+            try:
+                path = self._cm_html_file(comparison, only_var.get())
+            except Exception as e:  # noqa: BLE001
+                self._err("E199", "HTML 보기 생성 실패", e)
+                return
+            if not self._open_in_excel(path):
+                self._set_status(f"파일을 만들었습니다: {path}", warn=True)
+
         tk.Button(bar, text="비교 엑셀 열기", relief="flat", bd=0, bg=self.p["surface"],
                   padx=10, pady=4, cursor="hand2",
                   command=lambda: self._open_in_excel(out_path)).pack(side="right", padx=8)
+        tk.Button(bar, text="🌐 HTML로 보기", relief="flat", bd=0, bg=self.p["surface"],
+                  padx=10, pady=4, cursor="hand2",
+                  command=cm_html).pack(side="right", padx=(0, 4))
 
         # 파라미터별 이탈 요약
         summ = tk.Frame(win, bg=self.p["bg"])
@@ -7124,6 +7136,52 @@ class EquipApp(tk.Tk):
                  bg=self.p["bg"], fg=self.p["muted"],
                  font=self.fonts["sub"]).pack(side="left", padx=8, pady=4)
         render()
+
+    def _cm_html_file(self, comparison, changed_only) -> str:
+        """Commonality 비교 결과를 읽기 전용 HTML(로컬)로 저장하고 경로를 돌려준다.
+
+        과반수 이탈 셀(주황)·fail S/M 식별칸(노랑)·낮은 매칭 행(연빨강)을 색으로 표시.
+        """
+        head_n = 3      # S/M · 호기 · Scan일자
+        params = (comparison["changed_params"] if changed_only
+                  else comparison["columns"][head_n:])
+        columns = list(comparison["columns"][:head_n]) + list(params)
+        rows = comparison["rows"]
+        col_at = list(columns)
+        outliers = comparison.get("outliers") or set()
+        fail_rows = comparison.get("fail_rows") or set()
+        low_rows = comparison.get("low_rows") or set()
+        body = [[engine._s(r.get(c)) for c in columns] for r in rows]
+
+        def cell_cls(ri, ci, _v):
+            if ci < head_n:
+                if ri in fail_rows:
+                    return "fail"
+                if ri in low_rows:
+                    return "low"
+                return ""
+            return "out" if (ri, col_at[ci]) in outliers else ""
+
+        aligns = ["c"] * head_n + [""] * (len(columns) - head_n)
+        tbl = htmlview.table(columns, body, aligns=aligns, cell_class=cell_cls)
+        note = ("주황 셀 = 과반수와 다른 값(이탈) · 노랑 식별칸 = fail S/M · "
+                "연빨강 = 양식 매칭 낮음. 값은 읽기 전용.")
+        secs = htmlview.section(
+            "호기 취합·비교", tbl,
+            tag=(f"변경 파라미터 {len(comparison['changed_params'])}개", "lime"),
+            note=note)
+        html = htmlview.page(
+            "Commonality 비교 결과", secs,
+            subtitle="여러 Lot·호기 값 비교 · 읽기 전용",
+            meta={"기준 시각": htmlview.stamp_now(),
+                  "행(S/M·호기)": f"{len(rows)}행",
+                  "표시 파라미터": f"{len(columns) - head_n}개"
+                  + ("(변경만)" if changed_only else "(전체)"),
+                  "이탈 셀": f"{len(outliers)}개"})
+        out_dir = os.path.join(self.local_dir, "보기")
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, f"Commonality비교_{workdirs.stamp()}.html")
+        return htmlview.write(path, html)
 
     def _load_previous_form(self):
         """이전 버전 불러오기 — 레시피 → 생성시간(버전) 선택 → 확정 양식 열기."""
