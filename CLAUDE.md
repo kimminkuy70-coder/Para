@@ -420,6 +420,28 @@ zones,count,thin}`) `thin` 이면 진행 전에 경고한다(GUI `_cm_make_form`
 - 순수 표현 계층만 변경(헤드리스 로직·기능 불변). 검증은 `py_compile param_manager/
   *.py` + `tools/check_project.py`(실패 없음). 실제 화면 색·폰트는 Windows 실기 필요.
 
+## 읽기 전용 HTML 뷰 (브랜치 `claude/ux-html-views`, 2026-09)
+
+사용자 지정: tkinter로만 보여주던 **읽기 전용** 결과 화면을 **브라우저가 렌더하는
+오프라인 HTML로도 볼 수 있게** 추가한다(tkinter 렌더 렉 회피·인쇄·공유). **기존
+엑셀·tksheet 뷰어는 그대로 두고 'HTML로 보기'만 추가**(대체 아님).
+
+- **경계(반드시)**: 브라우저 HTML은 **읽기 전용·한 방향**(파이썬→로컬 HTML→브라우저).
+  되쓰기(편집 저장)는 서버/브리지가 필요해 **금지** → **편집 화면은 tkinter 유지**
+  (값 확인 비고·색상, 특이사항/참고자료/장비IP, 양식 편집, 장비 I/O·컨트롤).
+- **제약**: 오프라인 단일 파일·인라인 CSS/SVG·CDN/서버 없음·텍스트 `esc()` 이스케이프·
+  산출물 **로컬 `localdirs`/보기/** (저장폴더 금지)·추가 패키지 없음.
+- **공용 모듈 `param_manager/htmlview.py`**(헤드리스, 테스트됨 `tests/test_htmlview.py` 5개):
+  `PAGE_CSS`(네이비+라임·인쇄·반응형) · `esc` · `kpi_cards` · `table(aligns/row_class/
+  cell_class)`(셀별 색칠) · `section` · `page` · `write` · `stamp_now`.
+- **붙인 곳**(equip_app, 전부 로컬 HTML 저장 후 `_open_in_excel`로 브라우저 열기):
+  · 값 확인 액션바 `🌐 HTML로 보기`(`_value_html_view` — (PI·Recipe) 그룹별 취합 스냅샷)
+  · 이력 비교 창 `🌐 HTML로 보기`(`_diff_html_file` — 값변경/추가/삭제 색)
+  · Commonality 뷰어 `🌐 HTML로 보기`(`_cm_html_file` — 이탈 셀 주황·fail 노랑·낮은매칭
+    연빨강, 변경만/전체 토글 반영)
+  · ⋯파일 `🌐 현황 요약 보기(HTML)`(`_status_dashboard` — 호기·레시피·최신취합·감시 상태)
+- 오류 코드 E198(값확인·현황)·E199(이력·Commonality HTML).
+
 ## 이미 확정된 결정 (재질문 금지)
 
 아래는 사용자와 이미 합의가 끝난 사항이다. 같은 내용을 AskUserQuestion으로 **다시 묻지 말 것**.
@@ -565,6 +587,7 @@ python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
+python3 tests/test_htmlview.py     # 5  (읽기전용 HTML 공용 빌더: 이스케이프·표(정렬/행클래스/셀별색칠)·KPI·섹션·전체문서(오프라인)·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_namestore.py    # 5  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)

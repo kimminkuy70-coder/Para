@@ -9,7 +9,20 @@
 - 현재 주요 기능: 장비 파라미터 양식/취합/비교, Commonality 조사·감시,
   WPH 조사, OneDrive 기반 exe 업데이트. 상세 구현은 CLAUDE.md와 소스 참고.
 
-## 마지막 작업 — UI 테마 벤토+미니멀(네이비+라임) (2026-09-19, Claude)
+## 마지막 작업 — 읽기 전용 HTML 뷰 추가 (2026-09-20, Claude)
+
+- **브랜치 `claude/ux-html-views`**(`claude/ux-bento-navy-lime`에서 복사·분기).
+- 목적(사용자): tkinter로만 보던 **읽기 전용** 화면을 **브라우저 오프라인 HTML로도**
+  보게 해 UI 렌더 렉을 피하고 더 깔끔·인쇄/공유. **기존 엑셀·tksheet는 유지, 'HTML로
+  보기'만 추가**(대체 아님). 편집·장비 I/O·컨트롤은 tkinter 그대로(되쓰기=서버 필요라 금지).
+- 공용 헤드리스 `param_manager/htmlview.py`(네이비+라임 CSS·인쇄·`esc`·table 셀별 색칠 등,
+  테스트 `tests/test_htmlview.py` 5개). 붙인 곳: 값 확인 `🌐 HTML로 보기`·이력 비교·
+  Commonality 뷰어·⋯파일 현황 요약. 산출물 로컬 `CamtekAOI/보기/`. 오류코드 E198·E199.
+- 제약 준수: 오프라인 단일 파일·CDN/서버 없음·원본/저장폴더 무접근·추가 패키지 0.
+- 검증: `tools/check_project.py` 실패 없음, `py_compile` 통과. **실제 브라우저 렌더·
+  Windows 실기는 미수행**(개발환경 GUI/브라우저 미지원).
+
+## 이전 작업 — UI 테마 벤토+미니멀(네이비+라임) (2026-09-19, Claude)
 
 - **별도 브랜치 `claude/ux-bento-navy-lime`**(version_new에서 분기). 이 UX 작업만 담음.
   다른 AI 협업(version_new)을 방해하지 않도록 분리. 병합 시 새 PR.

@@ -2215,6 +2215,7 @@ class EquipApp(tk.Tk):
         m.add_separator()
         m.add_command(label="로컬 작업 폴더…", command=self._local_dir_dialog)
         m.add_separator()
+        m.add_command(label="🌐 현황 요약 보기(HTML)…", command=self._status_dashboard)
         m.add_command(label="현재 접속자 보기…", command=self._show_sessions)
         m.add_separator()
         m.add_command(label="프로그램 정보…", command=self._about_dialog)
@@ -7182,6 +7183,84 @@ class EquipApp(tk.Tk):
         os.makedirs(out_dir, exist_ok=True)
         path = os.path.join(out_dir, f"Commonality비교_{workdirs.stamp()}.html")
         return htmlview.write(path, html)
+
+    def _status_dashboard(self):
+        """현황 요약을 읽기 전용 HTML 대시보드로 내보내 브라우저로 연다.
+
+        호기·레시피·최신 취합·감시 상태를 한눈에. 읽기 전용(편집은 각 탭에서).
+        """
+        if not self.save_dir:
+            messagebox.showinfo("현황 요약", "먼저 저장 폴더를 지정하세요.")
+            return
+
+        def work(report):
+            report("현황을 모으는 중…")
+            machines = self._all_machines()
+            try:
+                recipes = workdirs.list_recipes(self.save_dir)
+            except Exception:  # noqa: BLE001
+                recipes = []
+            try:
+                latest = workdirs.latest_collate(self.save_dir)
+            except Exception:  # noqa: BLE001
+                latest = None
+            eq_on = self._watch_is_on()
+            cm_on = self._cmw_is_on()
+
+            cards = [("호기", len(machines), "대"),
+                     ("레시피", len(recipes), "개"),
+                     ("장비 감시", "켜짐" if eq_on else "꺼짐", ""),
+                     ("Commonality 감시", "켜짐" if cm_on else "꺼짐", "")]
+            secs = [htmlview.kpi_cards(cards)]
+
+            # 호기 목록(호기·IP·장비종류)
+            mrows = [[m, refdata.ip_for(self.ip_rows, m) or "",
+                      refdata.device_type_for(self.ip_rows, m) or ""] for m in machines]
+            secs.append(htmlview.section(
+                "호기 목록", htmlview.table(["호기", "IP", "장비종류"], mrows),
+                tag=(f"{len(machines)}대", "lime")))
+
+            # 레시피 목록(버전 수)
+            rrows = []
+            for rc in recipes:
+                try:
+                    vers = workdirs.list_form_versions(self.save_dir, rc)
+                    n = len(vers)
+                except Exception:  # noqa: BLE001
+                    n = ""
+                rrows.append([rc, n])
+            secs.append(htmlview.section(
+                "레시피 목록", htmlview.table(["레시피", "저장 버전 수"], rrows,
+                                          aligns=["", "c"]),
+                tag=(f"{len(recipes)}개", "lime")))
+
+            # 감시 상태
+            wrows = [["장비 감시", "켜짐" if eq_on else "꺼짐"],
+                     ["Commonality 감시", "켜짐" if cm_on else "꺼짐"]]
+            secs.append(htmlview.section(
+                "자동 감시 상태", htmlview.table(["구분", "상태"], wrows, aligns=["", "c"]),
+                note="상태·설정 변경은 각 탭의 감시 창에서. 이 화면은 읽기 전용입니다."))
+
+            html = htmlview.page(
+                "Para 현황 요약", "".join(secs),
+                subtitle="호기 · 레시피 · 최신 취합 · 감시 상태",
+                meta={"기준 시각": htmlview.stamp_now(),
+                      "저장 폴더": os.path.basename(self.save_dir.rstrip("/\\")) or self.save_dir,
+                      "최신 취합": (os.path.basename(latest) if latest else "없음")})
+            out_dir = os.path.join(self.local_dir, "보기")
+            os.makedirs(out_dir, exist_ok=True)
+            path = os.path.join(out_dir, f"현황요약_{workdirs.stamp()}.html")
+            return htmlview.write(path, html)
+
+        def done(ok, res):
+            if not ok:
+                self._err("E198", "현황 요약 생성 실패", res)
+                return
+            self._set_status("현황 요약을 브라우저로 엽니다.")
+            if not self._open_in_excel(res):
+                self._set_status(f"파일을 만들었습니다: {res}", warn=True)
+
+        self._run_busy("현황 요약(HTML)", work, done)
 
     def _load_previous_form(self):
         """이전 버전 불러오기 — 레시피 → 생성시간(버전) 선택 → 확정 양식 열기."""
