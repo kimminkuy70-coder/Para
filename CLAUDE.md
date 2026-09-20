@@ -2,11 +2,24 @@
 
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
 프로그램(Python/tkinter). 기존 Excel(.xlsm)+VBA 도구를 대체.
-현재 공통 작업 브랜치: `version_new` (이번 검토 전용; 원본 및 다른 브랜치 수정 금지)
+현재 공통 작업 브랜치: `claude/ux-bento-navy-lime` (사용자 지정; 다른 브랜치 수정 금지)
 (**3차 재설계: 저장 폴더 기준 구조**. 설계/인수인계: `docs/재설계_저장폴더_구조.md`.
 이전 단계: `docs/AOI_구현_진행.md`).
 
 ## Claude / ChatGPT 공통 작업 시작
+
+### 배치 리포트 분석 확장 (2026-09-20, Codex)
+
+- 최신 사용자 지시: 이 브랜치에서 배치 분석만 구현. 대규모 개편과 `version_rev1`은 보류.
+  아래 과거 `version_new` 작업 지시는 당시 기록이며 현재 브랜치 기준은 이 절이다.
+- 구현/계산 정의/사양서와의 차이/보안/검증: `docs/BATCH_ANALYSIS_IMPLEMENTATION.md`.
+- `batchreport*.py`가 11지표, 로컬 증분 cache, HTML/SVG/Excel, 대시보드, tkinter를 담당한다.
+  WPH 기존 산출물은 M01 선택 시 보존한다. 추가 런타임 의존성과 장비 쓰기는 없다.
+- 캐시는 raw report+signature 단일 JSON 원자 교체. 과거 파일 늦은 도착/동일 이름 다른 내용/
+  조사 범위 변경을 다룬다. 고정 dashboard는 M02 선택 시 갱신한다.
+- 자동 조사 기본 OFF, 24시간 주기 + watcher backoff. `last_run`은 watcher가 읽는
+  `%Y-%m-%d %H:%M:%S` 형식(ISO T 형식을 쓰면 매분 재실행되므로 금지).
+- 실제 419건 sample 정답 재현과 Windows GUI/Excel/장비망/빌드/배포는 미검증.
 
 ### WPH 상태 분류 (2026-09-15)
 

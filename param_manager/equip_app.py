@@ -54,6 +54,7 @@ from . import watcher
 from . import workdirs
 from . import wph
 from . import wph_html
+from .batchreport_ui import BatchReportMixin
 from .engine import ParamRepository
 from .theme import apply_theme
 
@@ -110,7 +111,7 @@ def _sanitize_name(s: str) -> str:
     return re.sub(r'[<>:"/\\|?*]+', "_", str(s)).strip().strip(".") or "item"
 
 
-class EquipApp(tk.Tk):
+class EquipApp(BatchReportMixin, tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
@@ -189,6 +190,7 @@ class EquipApp(tk.Tk):
         # Commonality 감시는 파일서버를 훑으므로 장비 감시와 **엇갈리게** 시작해
         # 두 회차가 같은 순간에 겹치지 않게 한다.
         self.after(40_000, self._cmw_tick)      # Commonality 감시 주기 확인
+        self.after(70_000, self._batch_tick)    # 로컬 배치 분석 하루 1회 (명시적 ON)
 
     # ====================================================================
     #  상단 공통 크롬(뒤로/앞으로/브레드크럼/저장/파일)
@@ -248,7 +250,7 @@ class EquipApp(tk.Tk):
         # '양식 만들기'는 최상단 탭에서 빼고 'Recipe 관리' 안의 2차 탭으로 넣는다(항목3).
         for key, label in (("param", "Recipe 관리"),
                            ("commonality", "Commonality 조사"),
-                           ("wph", "WPH 조사"),
+                           ("wph", "배치 리포트 분석"),
                            ("special", "특이사항"), ("reference", "참고자료"),
                            ("ip", "장비 IP")):
             b = tk.Button(self.tabbar, text=label, relief="flat", bd=0,
@@ -4573,11 +4575,11 @@ class EquipApp(tk.Tk):
         vbar.pack(side="right", fill="y")
         self._wheelify(canvas)
 
-        tk.Label(inner, text="WPH 조사", bg=self.p["bg"], fg=self.p["text"],
+        tk.Label(inner, text="배치 리포트 분석", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=8, pady=(14, 2))
         tk.Label(inner,
                  text="장비 Report 폴더에 쌓인 batch report 를 recipe 기준으로 취합해 "
-                      "WPH(시간당 웨이퍼 수)를 분석합니다.\n"
+                      "WPH·스캔 가동률·오류·품질 지표를 분석합니다.\n"
                       "원본 리포트는 읽기만 하며(수정·삭제 안 함), 취합 텍스트와 결과 "
                       "엑셀은 로컬 폴더에만 저장됩니다.",
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
@@ -4676,9 +4678,11 @@ class EquipApp(tk.Tk):
             # 3줄 — 수집 모드(검색어 / 기간) + 기간 날짜(기간 모드일 때만 활성)
             line3 = tk.Frame(block, bg=self.p["surface"])
             line3.pack(fill="x", pady=(4, 0))
-            var_mode = tk.StringVar(value="query")
-            var_start = tk.StringVar(value="")
-            var_end = tk.StringVar(value="")
+            last_target = next((t for t in self._cfg.get("batch_last", {}).get("targets", [])
+                                if t.get("machine") == m), {})
+            var_mode = tk.StringVar(value=last_target.get("mode", "period" if last_target.get("start") or last_target.get("end") else "query"))
+            var_start = tk.StringVar(value=last_target.get("start", ""))
+            var_end = tk.StringVar(value=last_target.get("end", ""))
             tk.Label(line3, text="수집 모드:", bg=self.p["surface"],
                      fg=self.p["text"], font=self.fonts["sub"]).pack(
                      side="left", padx=(24, 4))
@@ -4746,6 +4750,7 @@ class EquipApp(tk.Tk):
                                         fg=self.p["muted"], font=self.fonts["sub"],
                                         justify="left", wraplength=760)
         self._wph_result_lbl.pack(anchor="w", padx=8, pady=(2, 12))
+        self._batch_controls(inner)
 
     def _wph_pick_folder(self, machine):
         """호기의 Report 폴더를 지정한다(config 저장, 재그리기 없이 라벨만 갱신)."""
@@ -4804,6 +4809,8 @@ class EquipApp(tk.Tk):
             row["lbl_count"].config(text="폴더 미지정", fg=self.p["danger"])
             return
         query = row["pref"].get().strip()
+        if row.get("mode") is not None and row["mode"].get() == "period":
+            query = ""
         try:
             start, end = self._wph_period(row)
         except ValueError:
@@ -4839,6 +4846,7 @@ class EquipApp(tk.Tk):
                     self._logerr("E192", res)
                 return
             names = list(res)
+            row["search_signature"] = (folder, query, start.isoformat() if start else '', end.isoformat() if end else '')
             row["all_names"] = names
             row["selected"] = set(names)      # 기본 = 전체 선택
             row["count"] = len(names)
@@ -4982,120 +4990,6 @@ class EquipApp(tk.Tk):
         tk.Button(bar, text="취소", relief="flat", bd=0, bg=self.p["head_bg"],
                   fg=self.p["text"], padx=12, pady=5, cursor="hand2",
                   command=win.destroy).pack(side="right", padx=6)
-
-    def _wph_run(self):
-        """체크된 호기(개수>0)를 모두 조사 — 취합 텍스트 + WPH 엑셀(로컬)."""
-        try:
-            valid = int(self._wph_valid.get().strip())
-            if valid <= 0:
-                raise ValueError
-        except (ValueError, AttributeError):
-            messagebox.showwarning("매수 확인", "유효 Lot 매수는 1 이상의 정수여야 합니다.",
-                                   parent=self)
-            return
-        paths = self._wph_paths()
-        targets = []   # (호기, 폴더, 검색어, 선택 파일 목록, 표시 라벨)
-        for m, row in getattr(self, "_wph_rows", {}).items():
-            if not row["inc"].get():
-                continue
-            folder = paths.get(m)
-            if not folder:
-                continue
-            # An explicitly cleared selection must not become a full scan.
-            if row["all_names"] and not row["selected"]:
-                continue
-            names = sorted(row["selected"]) if row["all_names"] else None
-            query = row["pref"].get().strip()
-            if row.get("mode") is not None and row["mode"].get() == "period":
-                s = (row["start"].get() or "").strip()
-                e = (row["end"].get() or "").strip()
-                label = "기간 " + (f"{s}~{e}" if (s or e) else "(전체)")
-                # 기간 모드는 검색어로 거르지 않는다(선택 목록이 이미 기간 반영).
-                targets.append((m, folder, "", names, label))
-            else:
-                targets.append((m, folder, query, names, query or "(전체)"))
-        if not targets:
-            messagebox.showinfo(
-                "대상 없음",
-                "조사할 호기가 없습니다. 호기를 체크하고 Report 폴더를 지정한 뒤 "
-                "[검색]으로 리포트를 확인하세요.", parent=self)
-            return
-        # 검색을 안 한 대상은 먼저 검색하도록 안내(엉뚱한 전체 취합 방지)
-        unknown = [t[0] for t in targets
-                   if self._wph_rows[t[0]]["count"] == 0]
-        if unknown:
-            if not messagebox.askyesno(
-                    "검색 확인",
-                    "다음 호기는 [검색]으로 리포트를 확인하지 않았습니다:\n  "
-                    + ", ".join(unknown)
-                    + "\n\n그대로 조사를 진행하면 검색어에 맞는 리포트가 없을 수 있습니다. "
-                    "계속할까요?", parent=self):
-                return
-
-        wph.remember_investigation(self._cfg, targets, valid)
-        save_config(self._cfg)
-
-        by_recipe = bool(self._wph_byrecipe.get())
-
-        def work(report):
-            # 취합 텍스트 = 호기별 1개, 결과 엑셀 = 모든 호기 합친 통합 1개.
-            report("조사 폴더를 준비하는 중…")
-            out_dir = wph.new_investigation_dir(self.local_dir)
-            made = []
-            all_rows = []          # 통합 엑셀용(각 행에 호기 태그)
-            all_errors = []
-            nmac = len(targets)
-            for mi, (m, folder, query, names, label) in enumerate(targets, start=1):
-                recipe = label
-
-                def prog(done, total, name, _m=m, _mi=mi):
-                    report(done, total,
-                           f"[{_mi}/{nmac}] {_m} 리포트 파싱 중… {name}")
-
-                # 리포트를 한 번만 파싱해 행 + 취합 텍스트를 함께 만든다.
-                rows, text, errors = wph.investigate(
-                    folder, query, m, recipe, names=names, progress=prog)
-                for rw in rows:
-                    rw["machine"] = m
-                all_rows.extend(rows)
-                all_errors.extend({"machine": m, "source_file": name, "error": error}
-                                  for name, error in errors)
-                # 호기별 취합 텍스트(체크한 리포트만)
-                report(f"[{mi}/{nmac}] {m} 취합 텍스트 저장 중…")
-                from pathlib import Path as _P
-                _P(os.path.join(out_dir, wph.text_filename(m, recipe))).write_text(
-                    text, encoding="utf-8-sig")
-                made.append((m, recipe, len(rows), len(errors)))
-            # 통합 WPH 엑셀 1개(호기 열로 구분, 통계·WPH 전체 합산)
-            report("통합 WPH 엑셀을 만드는 중…")
-            machines = [t[0] for t in targets]
-            xlsx_path = os.path.join(out_dir, wph.combined_excel_filename(machines))
-            title = "WPH 통합 분석 (" + ", ".join(machines) + ")"
-            wph.write_wph_excel(xlsx_path, all_rows, valid_wafers=valid, title=title,
-                                parse_errors=all_errors)
-            return out_dir, made, xlsx_path, all_rows, all_errors, machines
-
-        def done(ok, res):
-            if not ok:
-                self._err("E191", "WPH 조사 실패", res)
-                return
-            out_dir, made, xlsx_path, all_rows, all_errors, machines = res
-            total = len(all_rows)
-            lines = [f"✓ 조사 완료 — 저장 폴더: {out_dir}", ""]
-            for m, recipe, n, nerr in made:
-                extra = f"  (오류 {nerr}건)" if nerr else ""
-                lines.append(f"· {m} / {recipe}: 리포트 {n}개{extra}")
-            lines.append("")
-            lines.append(f"취합 텍스트는 호기별로, WPH 분석 엑셀은 모든 호기를 합친 "
-                         f"통합 파일 1개({os.path.basename(xlsx_path)}, 전체 {total}건)로 "
-                         "만들어졌습니다.")
-            self._wph_result_lbl.config(text="\n".join(lines), fg=self.p["text"])
-            self._set_status("WPH 조사 완료 — 이제 .html 결과 구성 화면을 엽니다.")
-            # 엑셀 확정 후 자동으로 .html 결과 구성 화면으로 넘어간다.
-            self._wph_html_dialog(out_dir, all_rows, all_errors, machines,
-                                  valid, by_recipe)
-
-        self._run_busy("WPH 조사(취합·엑셀 생성)", work, done)
 
     def _wph_section_counts(self, computed) -> dict:
         """섹션별 체크박스 옆에 붙일 개수 — 무엇이 얼마나 들어가는지 보여준다."""
@@ -5515,6 +5409,7 @@ class EquipApp(tk.Tk):
             if (s.enabled and s.machines and s.watch_plan
                     and os.path.isfile(s.watch_plan)
                     and not getattr(self, "_cmw_busy", False)
+                    and not getattr(self, "_batch_busy", False)
                     and watcher.should_run(datetime.now(), s, st)):
                 self._cmw_busy = True
 
@@ -9259,7 +9154,7 @@ class EquipApp(tk.Tk):
     def _watch_tick(self):
         """감시 주기 확인(가벼움). 실행 조건이면 1회차를 백그라운드로 돌린다."""
         try:
-            if self.save_dir and not self._watch_busy:
+            if self.save_dir and not self._watch_busy and not getattr(self, "_batch_busy", False):
                 s, state = watcher.load_settings(self.save_dir)
                 # 앱을 다시 켰을 때: 설정이 켜져 있으면 감시 잠금을 조용히 다시 잡는다
                 # (다른 PC 가 감시 중이면 조용히 실패 — 경고창으로 괴롭히지 않음).

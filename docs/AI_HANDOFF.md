@@ -1,7 +1,7 @@
 # AI 공통 인수인계
 
 ## 현재 기준
-- 저장소 `kimminkuy70-coder/Para`, 이번 작업 브랜치 `version_new`만 사용.
+- 저장소 `kimminkuy70-coder/Para`, 이번 작업 브랜치 `claude/ux-bento-navy-lime`만 사용.
 - 원본 기준: version_v7.0의 `ad895aedf298637df548b3963f30bf700ed79f14`. 다른 브랜치 수정 금지.
 - 협업 구성 반영 기준 커밋: `caefbff85fd8a33543db993e965edefd8472aeb6`.
 - 최신 커밋은 `git log -5 --oneline` 또는 GitHub 브랜치 HEAD로 확인한다.
@@ -9,7 +9,25 @@
 - 현재 주요 기능: 장비 파라미터 양식/취합/비교, Commonality 조사·감시,
   WPH 조사, OneDrive 기반 exe 업데이트. 상세 구현은 CLAUDE.md와 소스 참고.
 
-## 마지막 작업 — UI 테마 벤토+미니멀(네이비+라임) (2026-09-19, Claude)
+## 마지막 작업 — 배치 리포트 분석 확장 (2026-09-20, Codex)
+
+- 시작: `b235ec2402888fb3356292aafe55e895f021b5e8`. 사용자가 지정한 이 브랜치만 작업.
+  `version_rev1`과 대규모 UI/기반 개편은 보류. 기존 tkinter·테마·버전·배포 방식 유지.
+- 사양서 `docs/배치리포트분석_사양서.html` 기반 M01~M11, 지표 선택, 로컬 증분 수집,
+  HTML/SVG/Excel, 고정 dashboard, 수동/하루 1회 갱신, 백업 폴더를 구현했다.
+- 변경 파일과 지표 정의/사양서 보완: `docs/BATCH_ANALYSIS_IMPLEMENTATION.md`.
+  원본 파서/WPH 함수는 재사용한다. 현재 `_wph_run`은 `BatchReportMixin`에서 제공한다.
+- cache 단일 JSON 원자 교체로 batch/wafer 일관성 유지. 수정시각+크기 동일 파일은 재파싱하지
+  않는다. late file, 범위 변경, 원문 unknown, 백업 중복, 파싱 실패 재시도를 처리한다.
+- 품질 후보 기본 최소 과거 Pass 20개/수율 중앙−5pp는 사용자 변경 가능한 검토 기준이다.
+  실제 Hold/수리 원인으로 확정하지 않는다. Aborted 직접/연쇄도 추정으로 표시한다.
+- 검증: `python tests/test_batchreport.py` 16개 통과. `python tools/check_project.py`
+  실패 파일 없음(원본 .xlsm 의존 engine 테스트는 기존 규칙으로 제외).
+- 실제 419-report 샘플은 없어 정답 재현 미검증. Windows GUI/Excel/SMB/EDR와 대규모 실제
+  자료 확인 필요. exe 빌드/버전 변경/OneDrive 배포는 미수행. 소스 push는 exe 업데이트가 아니다.
+- 다음 AI는 위 구현 문서를 읽고 synthetic과 실제 샘플 검증을 구분한다.
+
+## 이전 작업 — UI 테마 벤토+미니멀(네이비+라임) (2026-09-19, Claude)
 
 - **별도 브랜치 `claude/ux-bento-navy-lime`**(version_new에서 분기). 이 UX 작업만 담음.
   다른 AI 협업(version_new)을 방해하지 않도록 분리. 병합 시 새 PR.
