@@ -17,3 +17,7 @@ tkvenv/
 .pi_param_manager.json
 *.editlock
 ~$*.xlsx
+# Desktop migration build products (never publish caches or vendored binaries).
+frontend/node_modules/
+frontend/dist/
+frontend/src-tauri/target/

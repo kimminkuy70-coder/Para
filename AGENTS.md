@@ -2,8 +2,10 @@
 
 ## 기준과 읽는 순서
 - 저장소: https://github.com/kimminkuy70-coder/Para
-- 사용자 지정 작업 브랜치: `claude/ux-bento-navy-lime`. 이 브랜치에만 commit/push한다.
-- 현재 요청은 배치 리포트 분석 확장만이다. 대규모 UI/기반 개편과 `version_rev1` 분기는 보류한다.
+- 사용자 지정 작업 브랜치: `version_rev1`. 이 브랜치에만 commit/push한다.
+- 최신 요청은 대규모 개편 계획 A 실행이다. `docs/Para_version_rev1_master_plan.html`과
+  `docs/REV1_IMPLEMENTATION.md`를 기준으로 기존 작업을 이어간다.
+- 원본 `claude/ux-bento-navy-lime`은 보존하며 수정하지 않는다.
 - 원본 `version_v7.0` 및 다른 브랜치 수정·push·merge 금지(이번 사용자 지시).
 - 매 세션 `python tools/ai_sync.py start`로 최신 코드를 받은 다음 이 파일,
   `docs/AI_HANDOFF.md`, `CLAUDE.md`, 작업 관련 설계 문서와 소스/테스트를 읽는다.
@@ -28,8 +30,10 @@
   같은 부모 SHA의 커밋을 만들고 비강제 fast-forward 갱신한다. 경쟁 갱신 거절 시 최신본과 다시 통합한다.
 
 ## 유지해야 할 프로젝트 제약
-- Python/tkinter Windows 데스크톱 앱. 런타임 의존성은 openpyxl + tksheet만.
-  Anaconda/conda 및 추가 런타임 패키지 금지.
+- 기존 Python/tkinter 엔진을 보존하고 Tauri + React/TypeScript로 단계적 개편한다.
+  Python 런타임 의존성은 openpyxl + tksheet를 유지한다. Anaconda/conda 금지.
+  신규 프런트엔드 의존성은 라이선스·고정 버전·SBOM 검토 후 도입한다.
+- 로컬 HTTP/TCP 서버도 금지. 정적 번들 + 제한된 stdio IPC만 사용한다.
 - 장비 원본은 읽기 전용. net use/자격증명 취급을 재도입하지 않는다.
 - 런타임 인터넷 접속 금지. 개발용 Git 동기화는 프로그램 실행 경로에 넣지 않는다.
 - 임시 수집물·로그 등은 기존 localdirs 규칙을 지킨다. OneDrive 쓰기를 늘리지 않는다.

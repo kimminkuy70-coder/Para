@@ -1,7 +1,7 @@
 # AI 공통 인수인계
 
 ## 현재 기준
-- 저장소 `kimminkuy70-coder/Para`, 이번 작업 브랜치 `claude/ux-bento-navy-lime`만 사용.
+- 저장소 `kimminkuy70-coder/Para`, 이번 작업 브랜치 `version_rev1`만 사용.
 - 원본 기준: version_v7.0의 `ad895aedf298637df548b3963f30bf700ed79f14`. 다른 브랜치 수정 금지.
 - 협업 구성 반영 기준 커밋: `caefbff85fd8a33543db993e965edefd8472aeb6`.
 - 최신 커밋은 `git log -5 --oneline` 또는 GitHub 브랜치 HEAD로 확인한다.
@@ -9,7 +9,22 @@
 - 현재 주요 기능: 장비 파라미터 양식/취합/비교, Commonality 조사·감시,
   WPH 조사, OneDrive 기반 exe 업데이트. 상세 구현은 CLAUDE.md와 소스 참고.
 
-## 마지막 작업 — 배치 리포트 분석 확장 (2026-09-20, Codex)
+## 마지막 작업 — 계획 A A1 통신 기반 (2026-09-20, Codex)
+
+- 최신 사용자 요청은 개편 계획 A 실행이다. 아래 배치 분석 당시 '개편 보류'는 과거 기록이다.
+- 기존 version_rev1 `4951f44`에서 이어서 수정. 분기 원본 UX 브랜치 `28c805f`는 변경하지 않음.
+- 실행 계획 `docs/Para_version_rev1_master_plan.html` (실제 첨부 (2).html),
+  상세 현황 `docs/REV1_IMPLEMENTATION.md`, 계약 `docs/REV1_IPC.md`를 먼저 읽는다.
+- Python 메모리 분석 stdio IPC: 제한된 명령, 단일 작업, 취소/오류/종료, 200행 분할 조회.
+  장비 읽기/출력 저장/React native 연결은 아직 없음. 기존 tkinter 실행 경로는 그대로다.
+- 테스트: `python tests/test_desktop_ipc.py` 9개 통과;
+  `python tools/check_project.py` 실패 파일 없음(.xlsm 필요 engine 기존 제외).
+- Rust 컴파일러 없음. Tauri/프런트엔드 빌드와 Windows 실기 미검증. exe/배포/버전 변경 없음.
+- 다음: Rust 환경/고정 의존성 및 라이선스 → 제한 native launcher → A2 배치 화면.
+  HTTP/TCP 서버 금지, 원본 읽기 전용, localdirs/OneDrive 규칙 보존.
+- 재개 예약 생성 완료. 다시 예약하지 말고 최신 HEAD/작업 중 세션을 확인하여 중복 변경 방지.
+
+## 이전 작업 — 배치 리포트 분석 확장 (2026-09-20, Codex)
 
 - 시작: `b235ec2402888fb3356292aafe55e895f021b5e8`. 사용자가 지정한 이 브랜치만 작업.
   `version_rev1`과 대규모 UI/기반 개편은 보류. 기존 tkinter·테마·버전·배포 방식 유지.

@@ -2,11 +2,23 @@
 
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
 프로그램(Python/tkinter). 기존 Excel(.xlsm)+VBA 도구를 대체.
-현재 공통 작업 브랜치: `claude/ux-bento-navy-lime` (사용자 지정; 다른 브랜치 수정 금지)
+현재 공통 작업 브랜치: `version_rev1` (사용자 지정; 원본 UX 브랜치와 다른 브랜치 수정 금지)
 (**3차 재설계: 저장 폴더 기준 구조**. 설계/인수인계: `docs/재설계_저장폴더_구조.md`.
 이전 단계: `docs/AOI_구현_진행.md`).
 
 ## Claude / ChatGPT 공통 작업 시작
+
+### 대규모 개편 A1 체크포인트 (2026-09-20, Codex)
+
+- 최신 사용자 지시에 따라 계획 A 보류를 해제했다. 실행 기준은
+  `docs/Para_version_rev1_master_plan.html`, 상태는 `docs/REV1_IMPLEMENTATION.md`이다.
+- 기존 `version_rev1` HEAD `4951f44`에서 이어 작업한다. 분기 원본은 UX 브랜치 `28c805f`.
+- `param_manager/desktop_ipc.py`는 메모리 내 분석 전용 stdio 프로토콜이다.
+  장비 접근/파일 저장/임의 shell 기능이 없다. 기존 Python 분석 엔진을 재사용한다.
+- 취소는 계산 전후 경계에서 협력적으로 처리한다. 현재 계산 중간 중단은 지원하지 않는다.
+- 아직 React↔Tauri↔Python 연결 및 Windows 패키징은 미완료다. 정적 화면을 실제 앱 완성으로
+  오인하지 말 것. Rust 컴파일러가 없는 환경에서 네이티브 빌드 성공을 주장하지 말 것.
+- 아래 과거 기록의 UX 브랜치/개편 보류 안내는 과거 작업 범위이며 현재 지시가 우선한다.
 
 ### 배치 리포트 분석 확장 (2026-09-20, Codex)
 

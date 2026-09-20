@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-BRANCH = "claude/ux-bento-navy-lime"
+BRANCH = "version_rev1"
 REMOTE = "origin"
 
 
