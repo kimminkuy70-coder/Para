@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import html
+import json
 import math
 import os
 import tempfile
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
@@ -134,8 +136,45 @@ aside{background:var(--slate-bg);border:1px solid var(--line);border-radius:8px;
 aside h2{border:none;padding:0;margin:0 0 6px;font-size:14px}
 aside ul{margin:4px 0 0 18px}aside li{margin:3px 0;font-size:12.5px;color:var(--soft)}
 .foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--faint)}
-@media(max-width:720px){.pad,.head{padding-left:16px;padding-right:16px}.kpis{grid-template-columns:repeat(2,1fr)}}
-@media print{body{background:#fff}.doc{box-shadow:none;margin:0}.chartbox,table,.note,.kpi,section{break-inside:avoid}}
+/* --- 부드러운 전환 · 둥근 모서리 · 드릴다운 모달 --- */
+.doc{border-radius:18px;overflow:hidden}
+.kpi{border-radius:14px;transition:transform .18s ease,box-shadow .18s ease}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(16,32,58,.10)}
+.chartbox{border-radius:14px;transition:box-shadow .18s ease}.chartbox:hover{box-shadow:0 6px 18px rgba(16,32,58,.06)}
+.note{border-radius:0 12px 12px 0}
+.metricnav{border-radius:14px}
+.mbtn{transition:background .2s ease,color .2s ease,border-color .2s ease,transform .12s ease}
+.mbtn:active{transform:scale(.96)}
+.periodnav button{transition:background .18s ease}
+aside{border-radius:14px}
+details>*:not(summary){animation:fade .25s ease}
+table{border-radius:12px;overflow:hidden}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+section.metric{animation:fadeup .3s ease}
+/* 클릭 가능한 lot 셀 */
+td .lotlink{color:var(--navy);font-weight:700;cursor:pointer;border-bottom:1px dashed var(--navy);border-radius:2px}
+td .lotlink:hover{background:var(--navy-bg)}
+/* 모달 */
+.ovl{position:fixed;inset:0;background:rgba(16,32,58,.45);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:50}
+.ovl.on{display:flex;animation:fade .18s ease}
+.modal{background:var(--paper);border-radius:18px;max-width:760px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:pop .24s ease}
+.modal .mhead{position:sticky;top:0;background:var(--navy);color:#fff;padding:16px 20px;display:flex;align-items:center;gap:10px;border-radius:18px 18px 0 0}
+.modal .mhead h3{font-size:16px;margin:0;flex:1;word-break:break-all}
+.modal .mhead .x{cursor:pointer;font-size:22px;line-height:1;background:none;border:none;color:#fff;opacity:.8}
+.modal .mhead .x:hover{opacity:1}
+.modal .mbody{padding:18px 20px}
+.modal .mbody .job{font-family:Consolas,monospace;font-size:12px;background:var(--navy-bg);color:var(--navy);padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:10px;word-break:break-all}
+.rep{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:9px 0;transition:box-shadow .15s ease}
+.rep:hover{box-shadow:0 4px 14px rgba(16,32,58,.08)}
+.rep .rt{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:12.5px;color:var(--soft)}
+.rep .rt b{color:var(--ink)}
+.rep .open{margin-left:auto;background:var(--lime,#a3e635);color:#12244a;border:none;border-radius:8px;padding:6px 12px;font:inherit;font-weight:800;font-size:12px;cursor:pointer;text-decoration:none}
+.rep .issues{margin-top:7px;font-size:12px;color:var(--rust)}
+.rep .issues span{display:block}
+@media(max-width:720px){.pad,.head{padding-left:16px;padding-right:16px}.kpis{grid-template-columns:repeat(2,1fr)}.doc{border-radius:0}}
+@media print{body{background:#fff}.doc{box-shadow:none;margin:0}.chartbox,table,.note,.kpi,section{break-inside:avoid}.ovl{display:none!important}}
 """
 
 
@@ -348,17 +387,31 @@ def _cell(value):
     return html.escape(text, quote=True)
 
 
-def _table_html(t):
+LOT_COLS = {"문제 Lot 상세": (0, 1), "Lot별 정상 Dice": (1, 0), "품질 이상 Lot 요약": (1, 0)}
+
+
+def _table_html(t, lot_id=None):
     open_attr = " open" if len(t["rows"]) <= 60 else ""
-    out = [f'<details{open_attr}><summary>{esc(t["title"])} · 전체 표 {len(t["rows"])}행 (원문 확인 · 열 머리 클릭=정렬)</summary>',
+    hint = "열 머리 클릭=정렬"
+    lot_col = LOT_COLS.get(t["title"]) if lot_id else None
+    if lot_col:
+        hint += " · Lot 클릭=상세/원문"
+    out = [f'<details{open_attr}><summary>{esc(t["title"])} · 전체 표 {len(t["rows"])}행 (원문 확인 · {hint})</summary>',
            '<table class="sortable"><thead><tr>', *('<th onclick="sortTable(this)">' + esc(h) + '</th>' for h in t["headers"]), '</tr></thead><tbody>']
     for row in t["rows"]:
-        out.append('<tr>' + ''.join('<td>' + _cell(cell) + '</td>' for cell in row) + '</tr>')
+        cells = []
+        idx = lot_id.get((row[lot_col[0]], row[lot_col[1]])) if lot_col else None
+        for i, cell in enumerate(row):
+            if lot_col and i == lot_col[1] and idx is not None:
+                cells.append(f'<td><span class="lotlink" onclick="openLot({idx})">{_cell(cell)}</span></td>')
+            else:
+                cells.append('<td>' + _cell(cell) + '</td>')
+        out.append('<tr>' + ''.join(cells) + '</tr>')
     out.append('</tbody></table></details>')
     return ''.join(out)
 
 
-def _block(t, cat2char):
+def _block(t, cat2char, lot_id=None):
     """One table's chart (if any) plus its collapsible source table."""
     title = t["title"]
     if title == "시간순 Actual WPH":
@@ -373,13 +426,37 @@ def _block(t, cat2char):
     else:
         chart = bars(t, cat2char)
     head = f'<div class="chartbox"><div class="cap">{esc(title)}</div>{chart}</div>' if chart.strip() else ''
-    return head + _table_html(t)
+    return head + _table_html(t, lot_id)
+
+
+def _lot_drilldown(result):
+    """Lot → 그 lot의 batch report 목록(시각·매수·이슈원문·원본 파일경로). 모달 드릴다운용."""
+    issues_by_batch = defaultdict(list)
+    for w in result["wafers"]:
+        status = (w.get("status") or "").strip()
+        if status and not w.get("pass") and any(s[0] != "상태 확인 불가" for s in w.get("states", [])):
+            if status not in issues_by_batch[w["batch_id"]]:
+                issues_by_batch[w["batch_id"]].append(status)
+    groups = defaultdict(list)
+    for b in result["batches"]:
+        groups[(b["job_setup"], b["lot"])].append(b)
+    lot_id, lot_data = {}, []
+    for (job, lot), items in groups.items():
+        items = sorted(items, key=lambda b: (b["start"] or datetime.max, b["id"]))
+        reports = [{"file": b.get("source_file", ""), "path": b.get("source_folder", "") or "",
+                    "start": display(b.get("start")), "end": display(b.get("end")),
+                    "wafers": b.get("wafers"), "wrows": b.get("wafer_rows"),
+                    "issues": sorted(set(issues_by_batch.get(b["id"], [])))} for b in items]
+        lot_id[(job, lot)] = len(lot_data)
+        lot_data.append({"job": job, "lot": lot, "reports": reports})
+    return lot_id, lot_data
 
 
 def build_html(result, collection, dashboard=False):
     title = "스캔 가동률 대시보드" if dashboard else "배치 리포트 분석"
     summary, batches = result["summary"], result["batches"]
     cat2char = _cat2char(result["tables"])
+    lot_id, lot_data = _lot_drilldown(result)
     starts = [b["start"] for b in batches if b.get("start")]
     ends = [b["end"] for b in batches if b.get("end")]
     span = f"{min(starts):%Y-%m-%d} ~ {max(ends):%Y-%m-%d}" if starts and ends else "—"
@@ -446,9 +523,9 @@ def build_html(result, collection, dashboard=False):
             unit = t["title"].split(" · ")[-1] if t["title"].startswith("스캔 가동률 · ") else ""
             if unit:
                 hidden = "" if unit == "일" else " hidden"
-                parts.append(f'<div data-period="{unit}"{hidden}>' + _block(t, cat2char) + '</div>')
+                parts.append(f'<div data-period="{unit}"{hidden}>' + _block(t, cat2char, lot_id) + '</div>')
             else:
-                parts.append(_block(t, cat2char))
+                parts.append(_block(t, cat2char, lot_id))
         if key == "M04":  # 성격 · 설명 · 실제 error 원문 (조사한 batch report 원문 그대로)
             char2raw = {}
             for tbl in result["tables"]:
@@ -499,8 +576,16 @@ def build_html(result, collection, dashboard=False):
         parts.append('<li>이번 실행에서는 읽기 오류·알림이 없습니다.</li>')
     parts.append('</ul></aside><aside><h2>지표 해석 · 한계 (전체 공통)</h2><ul>'
                  + ''.join('<li>' + esc(n) + '</li>' for n in NOTES) + '</ul></aside>')
-    parts.append('<div class="foot">※ 표에 표시된 값은 원본 batch report에서 그대로 파싱한 것이며, proxy·추정으로 표시된 지표는 상대 비교·참고용입니다. 자동 설비 제어에 사용하지 않습니다.</div>')
-    parts.append('</div></div><script>'
+    parts.append('<div class="foot">※ 표에 표시된 값은 원본 batch report에서 그대로 파싱한 것이며, proxy·추정으로 표시된 지표는 상대 비교·참고용입니다. 자동 설비 제어에 사용하지 않습니다. · Lot 이름을 클릭하면 그 lot의 리포트 상세와 원문 열기가 뜹니다.</div>')
+    # 드릴다운 모달 + lot 데이터(원본 파일 경로 포함 → '원문 열기'가 실제 .htm 을 연다)
+    lot_json = json.dumps(lot_data, ensure_ascii=False).replace("</", "<\\/")
+    parts.append('</div>'
+                 '<div class="ovl" id="ovl" onclick="if(event.target===this)closeLot()">'
+                 '<div class="modal"><div class="mhead"><h3 id="mtitle">Lot 상세</h3>'
+                 '<button class="x" onclick="closeLot()" aria-label="닫기">&times;</button></div>'
+                 '<div class="mbody" id="mbody"></div></div></div>'
+                 '</div>'
+                 f'<script>window.__LOTS={lot_json};'
                  'function period(p){document.querySelectorAll("[data-period]").forEach(function(e){e.hidden=e.dataset.period!==p})}'
                  'function showMetric(k){'
                  'document.querySelectorAll("section.metric").forEach(function(s){s.hidden=(s.id!=="sec-"+k)});'
@@ -514,6 +599,22 @@ def build_html(result, collection, dashboard=False):
                  'na=parseFloat(a.replace(/,/g,"")),nc=parseFloat(c.replace(/,/g,"")),'
                  'r=(!isNaN(na)&&!isNaN(nc))?na-nc:a.localeCompare(c,"ko");return d==="asc"?r:-r;});'
                  'rows.forEach(function(rw){b.appendChild(rw)});}'
+                 'function esc(s){var d=document.createElement("div");d.textContent=(s==null?"":String(s));return d.innerHTML;}'
+                 'function openLot(i){var L=window.__LOTS[i];if(!L)return;'
+                 'var h="<div class=\\"job\\">"+esc(L.job)+" · Lot "+esc(L.lot)+"</div>";'
+                 'h+="<p style=\\"font-size:12.5px;color:#54606e;margin:0 0 8px\\">스캔 시도(리포트) "+L.reports.length+"건 — 원문 열기는 실제 폴더 경로가 있을 때 그 .htm 을 엽니다.</p>";'
+                 'L.reports.forEach(function(r){'
+                 'var url=r.path?("file:///"+(r.path+"/"+r.file).replace(/\\\\/g,"/")):"";'
+                 'var open=url?("<a class=\\"open\\" href=\\""+encodeURI(url)+"\\" target=\\"_blank\\" rel=\\"noopener\\">📄 원문 열기</a>")'
+                 ':("<span class=\\"open\\" style=\\"opacity:.5;cursor:default\\" title=\\"실행 시 실제 Report 폴더 경로가 있으면 열립니다\\">📄 원문(경로 없음)</span>");'
+                 'h+="<div class=\\"rep\\"><div class=\\"rt\\"><b>"+esc(r.start)+"</b> → "+esc(r.end)+" · Wafers "+esc(r.wafers)+"/"+esc(r.wrows)+open+"</div>";'
+                 'if(r.issues&&r.issues.length){h+="<div class=\\"issues\\">"+r.issues.map(function(s){return "<span>"+esc(s)+"</span>";}).join("")+"</div>";}'
+                 'h+="<div style=\\"font-size:11px;color:#8592a0;margin-top:4px;word-break:break-all\\">"+esc(r.file)+"</div></div>";});'
+                 'document.getElementById("mbody").innerHTML=h;'
+                 'document.getElementById("mtitle").textContent="Lot 상세 · "+L.lot;'
+                 'document.getElementById("ovl").classList.add("on");}'
+                 'function closeLot(){document.getElementById("ovl").classList.remove("on");}'
+                 'document.addEventListener("keydown",function(e){if(e.key==="Escape")closeLot();});'
                  '</script></body></html>')
     return ''.join(parts)
 
