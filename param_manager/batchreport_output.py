@@ -22,42 +22,45 @@ NOTES = [
 # Section label, one-line purpose, and interpretation notes per metric key.
 METRIC_NAME = {
     "M01": "처리량 (WPH)", "M02": "스캔 가동률 · 유휴", "M03": "오류 유형별 빈도",
-    "M04": "오류 성격 분류", "M05": "Aborted 왜곡 보정", "M06": "재시작 간격",
-    "M07": "복구 baseline", "M08": "Recipe별 정상 defect 분포", "M09": "품질 이상 후보",
-    "M10": "배치 완주율", "M11": "미분류 상태 포착",
+    "M04": "Error 성격 분류", "M05": "Aborted 왜곡 보정", "M06": "재시작 간격",
+    "M07": "복구 baseline", "M08": "Recipe별 정상 Dice 통계", "M09": "품질 이상 후보",
+    "M10": "Lot 스캔 이슈율", "M11": "미분류 상태 포착",
 }
 PURPOSE = {
     "M01": "유효 Lot(설정 매수 충족)만으로 산출한 실제 처리량 — 호기·Recipe 비교와 시간 추이.",
     "M02": "선택·누적 Report의 스캔시간 ÷ 달력시간 proxy. OEE가 아닌 상대 비교용. 일/주/월 전환.",
-    "M03": "어떤 오류부터 대응하면 효과가 큰지 우선순위 — 발생 Report 수와 Wafer 수를 함께 표시.",
-    "M04": "자동화 방식 결정: 예방형(반자동 사전검증) vs 조치형(Auto Setup 후보).",
-    "M05": "작업 중단 이후 연쇄로 표기되는 Aborted를 분리해 실제 직접 중단 규모 파악.",
-    "M06": "이슈 배치 종료 → 같은 Job/Setup 다음 시작까지 간격. 유형별 소요 비교(실측 아님).",
+    "M03": "어떤 오류부터 대응하면 효과가 큰지 우선순위 — 발생 Wafer·Report·Lot 수를 함께 표시.",
+    "M04": "자동화 방식 결정: 예방형(반자동 사전검증) vs 조치형(Auto Setup 후보). Wafer·Report·Lot 기준.",
+    "M05": "작업 중단 이후 연쇄로 표기되는 Aborted를 분리해 실제 직접 중단 규모(Wafer·Lot) 파악.",
+    "M06": "이슈 배치 종료 → 같은 Job/Setup 다음 시작까지 간격(재스캔 간격). 유형별 소요 비교(실측 아님).",
     "M07": "재시작 간격의 대표값(복구 baseline proxy). 개선 전후 비교 기준선.",
-    "M08": "정상(Pass) wafer의 Recipe별 defect 수준 — 자동 Hold 임계치의 데이터 근거.",
+    "M08": "정상(Pass) wafer의 Recipe(Job/Setup)별 Scanned·Bad·Good Dice 통계 — 자동 Hold 임계치 근거.",
     "M09": "과거 정상 분포 대비 튀는 wafer 후보. 참고용이며 자동 제어에 쓰지 않음.",
-    "M10": "스캔 매수/행 수 기준 배치 완주 여부 분포.",
+    "M10": "Lot(=Job/Setup+Lot) 단위로 스캔 중 이슈·재스캔이 있었는지, 전체 Lot 중 문제 Lot 비중.",
     "M11": "사전 정의 목록에 없는 상태 문구를 자동 포착해 누락 방지.",
 }
 INTERPRET = {
     "M01": [("teal", "읽는 법", "합산 WPH는 웨이퍼를 batch time 총합으로 나눈 가중 처리량, 평균 WPH는 배치별 WPH의 산술평균입니다. 유효 Lot 매수(설정값)를 채운 배치만 집계합니다.")],
     "M02": [("amber", "주의", "가동률은 스캔시간 / 달력시간 proxy로 OEE가 아닙니다. 대기·PM·전원 OFF를 구분하지 않으며 100% 초과·음수 유휴는 숨기지 않습니다. 호기·기간 상대 비교로만 사용하세요.")],
-    "M03": [("teal", "읽는 법", "한 행에 여러 상태가 겹칠 수 있어 유형별 합계가 전체 Report 수보다 클 수 있습니다. 막대 색은 성격(예방형·조치형·중단·결과형·미확인)별 묶음입니다.")],
-    "M04": [("navy", "활용", "예방형은 반자동 사전검증으로, 조치형은 Auto Setup 후보로 분기해 대응 방식을 정합니다.")],
+    "M03": [("teal", "읽는 법", "한 wafer에 여러 상태가 겹칠 수 있어 유형별 합계가 전체 Report 수보다 클 수 있습니다. Lot 수는 같은 (Job/Setup, Lot)이 재스캔으로 여러 리포트가 돼도 1로 셉니다. 막대 색은 성격별 묶음입니다.")],
+    "M04": [("navy", "활용", "예방형은 반자동 사전검증으로, 조치형은 Auto Setup 후보로 분기해 대응 방식을 정합니다. 아래 표는 각 성격에 어떤 Error 유형이 묶이는지입니다.")],
     "M05": [("rust", "한계", "연쇄/직접 구분은 wafer 스캔 순서 기반 추정입니다. 장비 상세 Error Log가 연동되면 수동/자동 중단을 실측으로 구분해 신뢰도가 올라갑니다.")],
     "M06": [("rust", "한계", "간격은 배치 간 시각차 기반 proxy로 실제 수리시간이 아닙니다. 0~1440분만 집계에 포함합니다.")],
     "M07": [("slate", "참고", "baseline은 인증된 기준이 아니라 개선 추적용 대표값입니다.")],
-    "M08": [("amber", "주의", "임계치 후보는 정상 분포의 P95 등 통계값입니다. 인증된 Hold 기준이 아니며 사람이 확인 후 적용하세요.")],
+    "M08": [("amber", "주의", "임계치 후보는 정상 분포의 P95 등 통계값입니다. 인증된 Hold 기준이 아니며 사람이 확인 후 적용하세요."),
+            ("teal", "읽는 법", "Recipe = Job/Setup(예: 2D@R2-…-0B/Setup1). Good Dice = Scanned − Bad. 막대는 recipe별 정상 wafer의 Scanned/Bad/Good 평균입니다.")],
     "M09": [("rust", "한계", "이상 후보는 과거 정상 대비 상대 비교입니다. 자동 Hold·제어에 직접 쓰지 않습니다.")],
-    "M10": [("teal", "읽는 법", "완주율 = 스캔 매수 / wafer 행 수. '확인 불가'는 매수·행 수 정보가 없어 판정하지 못한 배치입니다.")],
+    "M10": [("teal", "읽는 법", "batch report에는 lot 기대 매수가 없어 '완주율'은 측정하지 않습니다(B안). 대신 lot마다 스캔 중 이슈가 있었는지와 재스캔(리포트≥2) 여부를 보고, 전체 lot 중 문제 lot 비중을 냅니다."),
+            ("navy", "활용", "'문제 Lot 상세'의 스캔 시도 수가 크거나 포함 이슈 유형이 반복되는 lot이 자동화·개선 1순위입니다.")],
     "M11": [("navy", "활용", "새 문구가 잡히면 분류 규칙에 추가해 다음 실행부터 정상 집계되도록 하세요.")],
 }
-# Category-character grouping colours (M03/M04) and completion-status colours (M10).
+# Category-character grouping colours (M03/M04), abort/lot-issue colours.
 BAR_BASE = "#347b9d"
 CHAR_COLOR = {"예방형": "#0e5f5c", "조치형": "#b7791f", "중단": "#1f3a5f",
               "결과형": "#64748b", "미확인": "#c0392b", "Unclassified": "#c0392b"}
-STATUS_COLOR = {"완주": "#0e5f5c", "부분": "#b7791f", "미스캔": "#c0392b", "확인 불가": "#64748b"}
+ISSUE_COLOR = {"이슈 발생 Lot": "#c0392b", "정상 Lot": "#0e5f5c", "재스캔(리포트≥2) Lot": "#b7791f"}
 ABORT_COLOR = {"원본 Aborted": "#1f3a5f", "직접 추정": "#c0392b", "연쇄 추정": "#94a3b8"}
+DICE_COLOR = {"Scanned 평균": "#1f3a5f", "Bad 평균": "#c0392b", "Good 평균": "#0e5f5c"}
 
 PAGE_CSS = """
 :root{--ink:#1b2430;--soft:#54606e;--faint:#8592a0;--line:#dde2e9;--line2:#eef1f5;
@@ -147,26 +150,29 @@ def atomic_text(path, text):
 
 def chart_data(table):
     rows, title = table["rows"], table["title"]
-    if title in {"유형별 빈도", "유형별 Wafer 발생 빈도"}:
-        wafer = title == '유형별 Wafer 발생 빈도'
-        return [(f"{r[3]} / {r[4]}", r[5 if wafer else 6]) for r in rows if r[0] == "전체"], "Wafer 발생 (건)" if wafer else "Report 수 (건)"
+    if title in {"유형별 빈도", "유형별 Wafer 발생 빈도", "유형별 Lot 발생 빈도"}:
+        col = {"유형별 빈도": 6, "유형별 Wafer 발생 빈도": 5, "유형별 Lot 발생 빈도": 7}[title]
+        unit = {"유형별 빈도": "Report 수 (건)", "유형별 Wafer 발생 빈도": "Wafer 발생 (건)", "유형별 Lot 발생 빈도": "Lot 수 (건)"}[title]
+        return [(f"{r[3]} / {r[4]}", r[col]) for r in rows if r[0] == "전체"], unit
     if title.startswith("스캔 가동률 ·"):
         latest = max((r[1] for r in rows), default=None)
         return [(f"{r[0]} · {display(r[1])[:10]}", r[5]) for r in rows if r[1] == latest and r[5] is not None], "최근 기간 스캔 가동률 (%)"
-    if title in {"오류 성격", "Aborted 보정", "완주율 요약"}:
+    if title == "유형별 재시작 간격 (유형 중복 허용)":
+        return [(r[0], r[2]) for r in rows if r[2] is not None], "평균 재시작 간격 (분)"
+    if title in {"Error 성격 분류", "Aborted 보정", "Lot 이슈 요약"}:
         return [(r[0], r[1]) for r in rows], table["headers"][1]
     return [], ""
 
 
 def _bar_fill(title, label, cat2char):
     """Colour a bar by its meaning so the chart groups read at a glance."""
-    if title in {"유형별 빈도", "유형별 Wafer 발생 빈도"}:
+    if title in {"유형별 빈도", "유형별 Wafer 발생 빈도", "유형별 Lot 발생 빈도"}:
         category = label.split(" / ")[0]
         return CHAR_COLOR.get((cat2char or {}).get(category), BAR_BASE)
-    if title == "오류 성격":
+    if title == "Error 성격 분류":
         return CHAR_COLOR.get(label, BAR_BASE)
-    if title == "완주율 요약":
-        return STATUS_COLOR.get(label, BAR_BASE)
+    if title == "Lot 이슈 요약":
+        return ISSUE_COLOR.get(label, BAR_BASE)
     if title == "Aborted 보정":
         return ABORT_COLOR.get(label, BAR_BASE)
     return BAR_BASE
@@ -180,13 +186,13 @@ def _legend(title, values, cat2char):
     """Distinct colour groups actually present, in a stable order."""
     seen = []
     for label, _ in values:
-        if title in {"유형별 빈도", "유형별 Wafer 발생 빈도"}:
+        if title in {"유형별 빈도", "유형별 Wafer 발생 빈도", "유형별 Lot 발생 빈도"}:
             char = (cat2char or {}).get(label.split(" / ")[0]) or "미확인"
             item = (CHAR_COLOR.get(char, BAR_BASE), _LEGEND_NAMES.get(char, char))
-        elif title == "오류 성격":
+        elif title == "Error 성격 분류":
             item = (CHAR_COLOR.get(label, BAR_BASE), _LEGEND_NAMES.get(label, label))
-        elif title in {"완주율 요약", "Aborted 보정"}:
-            table_color = STATUS_COLOR if title == "완주율 요약" else ABORT_COLOR
+        elif title in {"Lot 이슈 요약", "Aborted 보정"}:
+            table_color = ISSUE_COLOR if title == "Lot 이슈 요약" else ABORT_COLOR
             item = (table_color.get(label, BAR_BASE), label)
         else:
             return ""
@@ -263,14 +269,56 @@ def trend(table):
 
 
 def _cat2char(tables):
-    """유형(category) → 성격(character) map from the M03 detail table, for chart colours."""
+    """유형(category) → 성격(character) map from the M03 detail table, for chart colours.
+
+    상태 상세 헤더: 호기, Report, Lot, 원본 순서, Wafer ID, 유형(5), 분류 원문, 성격(7), …
+    """
     mapping = {}
     for t in tables:
         if t["title"] == "상태 상세":
             for row in t["rows"]:
-                if len(row) > 6 and row[4]:
-                    mapping.setdefault(row[4], row[6])
+                if len(row) > 7 and row[5]:
+                    mapping.setdefault(row[5], row[7])
     return mapping
+
+
+def dice_bars(rows):
+    """M08: recipe별 정상 wafer의 Dice 구성을 100% 누적 막대(Good/Bad 비율)로 보여준다.
+
+    Scanned 평균 규모가 recipe마다 크게 달라(수십~수천) 절대 길이는 작은 recipe가
+    안 보인다. 그래서 막대는 비율로 통일하고, Scanned/Bad 평균은 막대 오른쪽에 숫자로.
+    Bad 비율이 높은 recipe(=결함 많음)가 위로 오도록 정렬 → Hold 후보 판단에 직접 쓰인다.
+    """
+    data = []
+    for r in rows:
+        scanned, bad, good = r[2] or 0, r[3] or 0, r[4] or 0
+        if scanned or bad or good:
+            base = scanned if scanned else (good + bad)
+            data.append((r[0], scanned, bad, good, bad / base if base else 0))
+    if not data:
+        return ""
+    data.sort(key=lambda d: d[4], reverse=True)
+    axis_x, bar_x, bar_w = 470, 490, 500
+    height = 54 + len(data) * 40
+    out = [f'<svg role="img" aria-label="Recipe별 Dice 구성" viewBox="0 0 1180 {height}" style="min-width:820px">',
+           f'<text x="{bar_x}" y="22">정상 wafer Dice 구성 (막대 = 100%, Bad 비율 높은 순)</text>']
+    for i, (name, scanned, bad, good, ratio) in enumerate(data):
+        y = 42 + i * 40
+        gw = bar_w * (1 - ratio)
+        chunks = [name[j:j + 42] for j in range(0, len(name), 42)][:2]
+        out.append('<g><title>' + esc(f"{name}: Scanned {scanned:.1f} · Good {good:.1f} · Bad {bad:.1f} (Bad {ratio*100:.1f}%)") + '</title>')
+        for n, chunk in enumerate(chunks):
+            out.append(f'<text x="{axis_x}" y="{y + 12 + n * 15}" text-anchor="end" font-size="12.5">{esc(chunk)}</text>')
+        out.append(f'<rect x="{bar_x}" y="{y}" width="{gw:.2f}" height="24" rx="2" fill="#0e5f5c"/>')
+        out.append(f'<rect x="{bar_x + gw:.2f}" y="{y}" width="{bar_w - gw:.2f}" height="24" fill="#c0392b"/>')
+        if gw > 44:
+            out.append(f'<text x="{bar_x + 6}" y="{y + 17}" font-size="11" fill="#fff">{ratio*100:.0f}% Bad</text>')
+        out.append(f'<text class="val" x="{bar_x + bar_w + 10}" y="{y + 17}">Bad {esc(round(bad, 1))} · Scan {esc(round(scanned, 1))}</text></g>')
+    out.append('</svg>')
+    out.append('<div class="lgd"><span class="i"><span class="sw" style="background:#0e5f5c"></span>Good 비율</span>'
+               '<span class="i"><span class="sw" style="background:#c0392b"></span>Bad 비율</span>'
+               '<span class="i" style="color:#8592a0">오른쪽 숫자 = Bad·Scanned 평균(개)</span></div>')
+    return ''.join(out)
 
 
 def _table_html(t):
@@ -291,7 +339,10 @@ def _block(t, cat2char):
     elif title.startswith("스캔 가동률 · "):
         chart = bars(t, cat2char) + trend(t)
     elif title == "유형별 빈도":
-        chart = bars(t, cat2char) + bars(dict(t, title="유형별 Wafer 발생 빈도"), cat2char)
+        chart = (bars(dict(t, title="유형별 Wafer 발생 빈도"), cat2char)
+                 + bars(dict(t, title="유형별 Lot 발생 빈도"), cat2char))
+    elif title == "Recipe별 정상 Dice 통계":
+        chart = dice_bars(t["rows"])
     else:
         chart = bars(t, cat2char)
     head = f'<div class="chartbox"><div class="cap">{esc(title)}</div>{chart}</div>' if chart.strip() else ''
@@ -309,13 +360,19 @@ def build_html(result, collection, dashboard=False):
     wafer_rows = summary.get("Wafer 행 수") or 0
     pass_wafers = summary.get("Pass Wafer 수") or 0
     normal = pass_wafers / wafer_rows * 100 if wafer_rows else None
+    lots = summary.get("Lot 수") or 0
+    issue_lots = summary.get("이슈 발생 Lot 수") or 0
+    rescan_lots = summary.get("재스캔 Lot 수") or 0
+    reports = summary.get("Batch(리포트) 수") or 0
+    issue_pct = issue_lots / lots * 100 if lots else None
+    rescan_pct = rescan_lots / lots * 100 if lots else None
     badge = '<span class="draft">30분 자동 새로고침</span>' if dashboard else ''
 
     cards = [("t", f"{normal:.1f}%" if normal is not None else "—",
               f"정상 스캔 비율<br>(Pass {pass_wafers:,} / {wafer_rows:,}행)"),
-             ("", display(summary.get("Batch 수")), "분석 Batch 수"),
-             ("a", display(summary.get("이슈 Batch 수")), "이슈 포함 Batch"),
-             ("", display(summary.get("최근 24h Batch 수")), "최근 24h Batch")]
+             ("", f"{lots:,}", f"분석 Lot 수<br>(batch report {reports:,}건)"),
+             ("a", f"{issue_pct:.1f}%" if issue_pct is not None else "—", f"이슈 발생 Lot<br>({issue_lots:,} / {lots:,})"),
+             ("r", f"{rescan_pct:.1f}%" if rescan_pct is not None else "—", f"재스캔 Lot<br>({rescan_lots:,} / {lots:,})")]
 
     parts = ['<!doctype html><html lang="ko"><head><meta charset="utf-8">',
              '<meta name="viewport" content="width=device-width,initial-scale=1">',
@@ -324,7 +381,7 @@ def build_html(result, collection, dashboard=False):
              f'<title>{title}</title><style>{PAGE_CSS}</style></head><body><div class="doc">',
              '<div class="head"><div class="kick">AOI 배치 리포트 분석 · 오프라인 자동 산출</div>',
              f'<h1>{title}{badge}</h1><div class="meta">',
-             f'<span><b>분석 대상</b> Batch {len(batches):,}건 · wafer {wafer_rows:,}행</span>',
+             f'<span><b>분석 대상</b> Lot {lots:,}개 · batch report {len(batches):,}건 · wafer {wafer_rows:,}행</span>',
              f'<span><b>기간</b> {esc(span)}</span>',
              f'<span><b>호기</b> {esc(", ".join(machines)) or "—"} ({len(machines)}대)</span>',
              '<span><b>범위</b> M01–M03 (대시보드)</span>' if dashboard else '',
@@ -333,9 +390,8 @@ def build_html(result, collection, dashboard=False):
              '<div class="note navy"><span class="t">자동 새로고침 안내</span>이 페이지는 로컬 파일입니다. 자동 새로고침은 파일만 다시 엽니다. 새 데이터는 앱의 [지금 업데이트] 또는 실행 중 하루 1회 자동 분석으로 생성됩니다.</div>' if dashboard else '',
              '<div class="kpis">' + ''.join(f'<div class="kpi {c}"><div class="n">{esc(v)}</div><div class="l">{l}</div></div>' for c, v, l in cards) + '</div>']
     tv = summary.get("시각 누락/역전 Batch 수") or 0
-    rn = summary.get("Wafer Recipe 누락 행 수") or 0
-    if tv or rn:
-        parts.append(f'<div class="note rust"><span class="t">데이터 품질</span>시각 누락/역전 배치 {tv:,}건 · Recipe 누락 wafer 행 {rn:,}행 — 해당 지표(가동률·재시작 간격·Recipe별 분포)에서 제외될 수 있습니다.</div>')
+    if tv:
+        parts.append(f'<div class="note rust"><span class="t">데이터 품질</span>시각 누락/역전 배치 {tv:,}건 — 해당 지표(가동률·재시작 간격)에서 제외될 수 있습니다.</div>')
     parts.append('<aside><h2>조사 설정 · 선택 범위</h2><ul>'
                  + ''.join(f'<li>{esc(k)}: {esc(v)}</li>' for k, v in result["settings"].items())
                  + f'<li>선택 범위: {esc(collection.get("scope", ""))}</li></ul></aside>')
@@ -361,6 +417,18 @@ def build_html(result, collection, dashboard=False):
                 parts.append(f'<div data-period="{unit}"{hidden}>' + _block(t, cat2char) + '</div>')
             else:
                 parts.append(_block(t, cat2char))
+        if key == "M04":  # 성격 → 포함 Error 유형 (실제 나타난 유형만, 데이터 기반)
+            char2cats = {}
+            for cat, char in cat2char.items():
+                char2cats.setdefault(char, set()).add(cat)
+            if char2cats:
+                parts.append('<div class="chartbox"><div class="cap">성격별 포함 Error 유형</div>'
+                             '<table style="margin:0"><thead><tr><th>성격</th><th>포함 Error 유형</th></tr></thead><tbody>')
+                for char in ("예방형", "조치형", "중단", "결과형", "미확인"):
+                    if char in char2cats:
+                        name = _LEGEND_NAMES.get(char, char)
+                        parts.append(f'<tr><td>{esc(name)}</td><td>{esc(" · ".join(sorted(char2cats[char])))}</td></tr>')
+                parts.append('</tbody></table></div>')
         for variant, note_title, body in INTERPRET.get(key, []):
             parts.append(f'<div class="note {variant}"><span class="t">{esc(note_title)}</span>{esc(body)}</div>')
         parts.append('</section>')

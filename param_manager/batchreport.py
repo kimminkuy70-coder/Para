@@ -26,6 +26,16 @@ PREVENTIVE = {"맵 Import 오류", "2D Scan 오류", "Wafer ID 판독 오류", "
 ACTION = {"Alignment 오류", "Clean Reference 오류", "Focus Mapping 오류"}
 EXTRA = {"Clean Reference Error": "Clean Reference 오류",
          "Focus Mapping Error": "Focus Mapping 오류"}
+# Character → the error types (categories) that map to it, for the report legend.
+CHAR_MEMBERS = {"예방형": sorted(PREVENTIVE), "조치형": sorted(ACTION),
+                "중단": ["작업 중단"], "결과형": ["검사 제외"],
+                "미확인": ["기타/미분류 상태", "상태 확인 불가"]}
+
+
+def is_lot_placeholder(value):
+    """A wafer 'Lot' cell that is not a real lot id (unread id → 'LoadPort A' etc.)."""
+    v = str(value or "").strip()
+    return not v or v == "-" or v.lower().startswith("loadport")
 
 
 def number(raw):
@@ -111,6 +121,16 @@ def model(report, machine, identity):
     batch["types"] = sorted({s[0] for wafer in wafers for s in wafer["states"]})
     count, denominator = batch["wafers"], len(wafers)
     batch["completion"] = count / denominator * 100 if denominator and count is not None and 0 <= count <= denominator else None
+    # Lot = 같은 카세트 스캔 단위. batch report 에는 Lot 메타가 없어 wafer 표의 Lot 열
+    # (LoadPort/미판독 제외) 중 최빈값을 그 리포트의 lot 으로 본다. 중단·재스캔되면
+    # 같은 (Job/Setup, Lot) 이 여러 리포트로 나뉜다 → lot_key 로 묶어 지표를 lot 기준화.
+    real = Counter(w["lot"] for w in wafers if not is_lot_placeholder(w["lot"]))
+    batch["lot"] = real.most_common(1)[0][0] if real else "(미상)"
+    batch["lot_key"] = (batch["job_setup"], batch["lot"])
+    for wafer in wafers:
+        wafer["job_setup"] = batch["job_setup"]
+        wafer["lot"] = batch["lot"]
+        wafer["lot_key"] = batch["lot_key"]
     return batch, wafers
 
 
@@ -210,24 +230,31 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
             for scope, machine, recipe in [("전체", "전체", "전체"), ("호기", b["machine"], "전체"),
                                             ("호기×Recipe", b["machine"], b["recipe"])]:
                 key = (scope, machine, recipe, category, original)
-                item = frequency.setdefault(key, [0, set()])
+                item = frequency.setdefault(key, [0, set(), set()])
                 item[0] += 1
                 item[1].add(b["id"])
-            item = chars.setdefault(character, [0, set()])
+                item[2].add(b["lot_key"])
+            item = chars.setdefault(character, [0, set(), set()])
             item[0] += 1
             item[1].add(b["id"])
-            detail.append((b["machine"], b["source_file"], wafer["order"], wafer["wafer_id"], category,
+            item[2].add(b["lot_key"])
+            detail.append((b["machine"], b["source_file"], b["lot"], wafer["order"], wafer["wafer_id"], category,
                            original, character, wafer["status"], wafer["abort_kind"]))
-    table("M03", "유형별 빈도", ["범위", "호기", "Job Recipe", "유형", "분류 원문", "Wafer 발생 (건)", "Report 수 (건)"],
-          [(*k, v[0], len(v[1])) for k, v in sorted(frequency.items())])
-    table("M03", "상태 상세", ["호기", "Report", "원본 순서", "Wafer ID", "유형", "분류 원문", "성격", "상태 원문", "Aborted 추정"], detail)
-    table("M04", "오류 성격", ["성격", "Wafer 발생 (건)", "Report 수 (건)"],
-          [(k, v[0], len(v[1])) for k, v in sorted(chars.items())])
+    # Lot 수 = 그 유형/성격이 나타난 서로 다른 (Job/Setup, Lot) 개수(리포트 재스캔 중복 제외).
+    table("M03", "유형별 빈도", ["범위", "호기", "Job Recipe", "유형", "분류 원문", "Wafer 발생 (건)", "Report 수 (건)", "Lot 수 (건)"],
+          [(*k, v[0], len(v[1]), len(v[2])) for k, v in sorted(frequency.items())])
+    table("M03", "상태 상세", ["호기", "Report", "Lot", "원본 순서", "Wafer ID", "유형", "분류 원문", "성격", "상태 원문", "Aborted 추정"], detail)
+    table("M04", "Error 성격 분류", ["성격", "Wafer 발생 (건)", "Report 수 (건)", "Lot 수 (건)"],
+          [(k, v[0], len(v[1]), len(v[2])) for k, v in sorted(chars.items())])
     aborts = Counter(w["abort_kind"] for w in wafers if w["abort_kind"])
-    table("M05", "Aborted 보정", ["구분", "Wafer 수 (건)"],
-          [("원본 Aborted", sum(aborts.values())), ("직접 추정", aborts["직접 추정"]), ("연쇄 추정", aborts["연쇄 추정"])])
-    table("M05", "Aborted 근거", ["호기", "Report", "원본 순서", "Wafer ID", "추정"],
-          [(w["machine"], w["source_file"], w["order"], w["wafer_id"], w["abort_kind"]) for w in wafers if w["abort_kind"]])
+    abort_lots = {kind: {w["lot_key"] for w in wafers if w["abort_kind"] == kind} for kind in ("직접 추정", "연쇄 추정")}
+    all_abort_lots = abort_lots["직접 추정"] | abort_lots["연쇄 추정"]
+    table("M05", "Aborted 보정", ["구분", "Wafer 수 (건)", "Lot 수 (건)"],
+          [("원본 Aborted", sum(aborts.values()), len(all_abort_lots)),
+           ("직접 추정", aborts["직접 추정"], len(abort_lots["직접 추정"])),
+           ("연쇄 추정", aborts["연쇄 추정"], len(abort_lots["연쇄 추정"]))])
+    table("M05", "Aborted 근거", ["호기", "Report", "Lot", "원본 순서", "Wafer ID", "추정"],
+          [(w["machine"], w["source_file"], w["lot"], w["order"], w["wafer_id"], w["abort_kind"]) for w in wafers if w["abort_kind"]])
     nextbatch = {}
     for items in byjob.values():
         items.sort(key=lambda b: (b["start"], b["id"]))
@@ -263,12 +290,28 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
     table("M07", "복구 baseline (재시작 간격 proxy)", ["유효 건수", "제외 건수", "평균 (분)", "중앙 (분)", "최대 (분)"],
           [(len(validgaps), len(restarts) - len(validgaps), mean(validgaps) if validgaps else None,
             median(validgaps) if validgaps else None, max(validgaps) if validgaps else None)])
-    normal = defaultdict(list)
+    # 정상(Pass) wafer 의 Recipe(=Job/Setup)별 Scanned/Bad/Good Dice 통계.
+    # Good = 원문 Good Dice, 없으면 Scanned-Bad 로 보정. 통계값과 함께 차트로 보여준다.
+    dice = defaultdict(lambda: {"scanned": [], "bad": [], "good": []})
     for w in wafers:
-        if w["pass"] and w["recipe"] and w["bad_dice"] is not None:
-            normal[w["recipe"]].append(w["bad_dice"])
-    table("M08", "Recipe별 정상 Bad Dice", ["Wafer Recipe(s)", "표본 수", "평균", "중앙", "P95", "최대"],
-          [(k, len(v), mean(v), median(v), percentile(v, .95), max(v)) for k, v in sorted(normal.items())])
+        if not (w["pass"] and w["job_setup"]):
+            continue
+        d = dice[w["job_setup"]]
+        if w["scanned_dice"] is not None:
+            d["scanned"].append(w["scanned_dice"])
+        if w["bad_dice"] is not None:
+            d["bad"].append(w["bad_dice"])
+        good = w["good_dice"]
+        if good is None and w["scanned_dice"] is not None and w["bad_dice"] is not None:
+            good = w["scanned_dice"] - w["bad_dice"]
+        if good is not None:
+            d["good"].append(good)
+    stat = lambda xs, f: f(xs) if xs else None
+    table("M08", "Recipe별 정상 Dice 통계",
+          ["Job/Setup (recipe)", "표본 수", "Scanned 평균", "Bad 평균", "Good 평균", "Bad 중앙", "Bad P95", "Bad 최대"],
+          [(k, len(d["bad"]), stat(d["scanned"], mean), stat(d["bad"], mean), stat(d["good"], mean),
+            stat(d["bad"], median), percentile(d["bad"], .95) if d["bad"] else None, stat(d["bad"], max))
+           for k, d in sorted(dice.items())])
     # Batch-based evaluation prevents same-report wafers leaking into baseline.
     history_bad, history_yield, bybatch = defaultdict(list), defaultdict(list), defaultdict(list)
     for w in wafers:
@@ -284,12 +327,12 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
         if b['end'] != previous_time:
             for w in pending:
                 if w["bad_dice"] is not None:
-                    history_bad[w["recipe"]].append(w["bad_dice"])
+                    history_bad[w["job_setup"]].append(w["bad_dice"])
                 if w["yield_pct"] is not None and w["yield_pct"] <= 100:
-                    history_yield[w["recipe"]].append(w["yield_pct"])
+                    history_yield[w["job_setup"]].append(w["yield_pct"])
             pending, limits, previous_time = [], {}, b['end']
         for w in bybatch[b["id"]]:
-            recipe = w["recipe"]
+            recipe = w["job_setup"]
             if not recipe:
                 continue
             if recipe not in limits:
@@ -306,21 +349,44 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
                 anomalies.append((b["end"], b["machine"], b["source_file"], recipe, w["wafer_id"],
                                   w["bad_dice"], p95, w["yield_pct"], floor, " / ".join(reasons)))
         for w in bybatch[b["id"]]:
-            if w["pass"] and w["recipe"]:
+            if w["pass"] and w["job_setup"]:
                 pending.append(w)
-    table("M09", "품질 이상 후보 (자동 Hold 아님)", ["Batch End", "호기", "Report", "Wafer Recipe(s)", "Wafer ID", "Bad Dice", "과거 P95", "Yield (%)", "Yield 하한 (%)", "후보 근거"], anomalies)
-    completion = Counter("확인 불가" if b["completion"] is None else "완주" if b["completion"] == 100 else "미스캔" if b["completion"] == 0 else "부분" for b in batches)
-    table("M10", "완주율 요약", ["구분", "Batch 수"], sorted(completion.items()))
-    table("M10", "완주율 상세", ["호기", "Report", "스캔 매수", "Wafer 행 수", "완주율 (%)"],
-          [(b["machine"], b["source_file"], b["wafers"], b["wafer_rows"], b["completion"]) for b in batches])
-    table("M11", "미분류 · 누락 상태", ["호기", "Report", "원본 순서", "Wafer ID", "유형", "분류 원문", "성격", "상태 원문", "Aborted 추정"],
-          [r for r in detail if r[4] in {"Unclassified", "상태 확인 불가"}])
+    table("M09", "품질 이상 후보 (자동 Hold 아님)", ["Batch End", "호기", "Report", "Job/Setup (recipe)", "Wafer ID", "Bad Dice", "과거 P95", "Yield (%)", "Yield 하한 (%)", "후보 근거"], anomalies)
+    # M10: batch report 에는 lot 기대 매수가 없어 '완주율'은 측정 불가(B안).
+    # 대신 lot 단위로 '스캔 중 이슈가 났는지'와 '재스캔(리포트>1) 여부'를 뽑아,
+    # 전체 lot 중 문제 lot 비중을 본다. lot = (Job/Setup, Lot).
+    lotmap = defaultdict(list)
+    for b in batches:
+        lotmap[b["lot_key"]].append(b)
+    lot_rows, issue_lots, rescan_lots = [], 0, 0
+    for (job, lot), items in sorted(lotmap.items()):
+        items.sort(key=lambda b: (b["start"] or datetime.max, b["id"]))
+        issue = any(b["has_error"] for b in items)
+        types = sorted({t for b in items for t in b["types"]})
+        starts = [b["start"] for b in items if b["start"]]
+        ends = [b["end"] for b in items if b["end"]]
+        issue_lots += issue
+        rescan_lots += len(items) > 1
+        if issue:
+            lot_rows.append((job, lot, len(items), ", ".join(types),
+                             min(starts) if starts else None, max(ends) if ends else None))
+    total_lots = len(lotmap)
+    ok_lots = total_lots - issue_lots
+    pct = lambda n: n / total_lots * 100 if total_lots else None
+    table("M10", "Lot 이슈 요약", ["구분", "Lot 수", "비중 (%)"],
+          [("이슈 발생 Lot", issue_lots, pct(issue_lots)),
+           ("정상 Lot", ok_lots, pct(ok_lots)),
+           ("재스캔(리포트≥2) Lot", rescan_lots, pct(rescan_lots))])
+    table("M10", "문제 Lot 상세", ["Job/Setup", "Lot", "스캔 시도(리포트) 수", "포함 이슈 유형", "최초 스캔", "마지막 스캔"],
+          sorted(lot_rows, key=lambda r: r[2], reverse=True))
+    table("M11", "미분류 · 누락 상태", ["호기", "Report", "Lot", "원본 순서", "Wafer ID", "유형", "분류 원문", "성격", "상태 원문", "Aborted 추정"],
+          [r for r in detail if r[5] in {"Unclassified", "상태 확인 불가"}])
     return {"tables": tables, "batches": batches, "wafers": wafers, "selected": selected,
-            "summary": {"Batch 수": len(batches), "Wafer 행 수": len(wafers),
-                        "Pass Wafer 수": sum(w["pass"] for w in wafers),
-                        "시각 누락/역전 Batch 수": sum(not b['start'] or not b['end'] or b['end'] < b['start'] for b in batches),
-                        "Wafer Recipe 누락 행 수": sum(not w['recipe'] for w in wafers),
+            "summary": {"Batch(리포트) 수": len(batches), "Lot 수": len(lotmap),
+                        "Wafer 행 수": len(wafers), "Pass Wafer 수": sum(w["pass"] for w in wafers),
+                        "이슈 발생 Lot 수": issue_lots, "재스캔 Lot 수": rescan_lots,
                         "이슈 Batch 수": sum(b["has_error"] for b in batches),
+                        "시각 누락/역전 Batch 수": sum(not b['start'] or not b['end'] or b['end'] < b['start'] for b in batches),
                         "최근 24h Batch 수": sum(bool(b["end"] and now - timedelta(days=1) <= b["end"] <= now) for b in batches)},
             "settings": {"유효 Lot 매수 (WPH 전용)": valid_wafers, "이상 후보 최소 과거 정상 표본": min_baseline,
                          "Yield 하락 기준 (percentage points)": yield_drop, "분류 규칙 버전": RULE_VERSION},

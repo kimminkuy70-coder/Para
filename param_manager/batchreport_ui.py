@@ -194,7 +194,7 @@ class BatchReportMixin:
                     self._err('E194', '배치 리포트 분석 실패', result)
                 return
             summary = result['result']['summary']
-            self._set_status(f"배치 분석 {'일부 오류' if partial else '완료'} — Report {summary['Batch 수']}건 / {result['outdir']}")
+            self._set_status(f"배치 분석 {'일부 오류' if partial else '완료'} — Report {summary['Batch(리포트) 수']}건 · Lot {summary['Lot 수']}개 / {result['outdir']}")
             if not automatic:
                 self._batch_done(result, options)
 

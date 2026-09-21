@@ -48,15 +48,39 @@ class Metrics(unittest.TestCase):
         r = report(statuses=('Scan 2D Error.', 'Aborted.', 'Aborted.', 'Skipped.'), count=1)
         s = report('b.htm', statuses=('Aborted.', 'Aborted.'), count=0)
         c = br.compute(records(r, s), valid_wafers=25)
-        self.assertEqual(table(c, 'Aborted 보정'), [('원본 Aborted', 4), ('직접 추정', 1), ('연쇄 추정', 3)])
+        # Aborted 보정: (구분, Wafer 수, Lot 수). r·s 는 같은 job·Lot 이라 1 lot.
+        self.assertEqual(table(c, 'Aborted 보정'), [('원본 Aborted', 4, 1), ('직접 추정', 1, 1), ('연쇄 추정', 3, 1)])
         self.assertEqual(table(c, 'WPH'), [])
         self.assertEqual(c['summary']['이슈 Batch 수'], 2)
         self.assertEqual(c['batches'][0]['completion'], 25)
+        # 유형별 빈도 전체 행: (…, Wafer 발생, Report 수, Lot 수)
         abort = next(r for r in table(c, '유형별 빈도') if r[0] == '전체' and r[3] == '작업 중단')
-        self.assertEqual(abort[-2:], (4, 2))
+        self.assertEqual(abort[5:8], (4, 2, 1))
         c = br.compute(records(report(count=10)), selected=['M10'])
         self.assertIsNone(c['batches'][0]['completion'])
         self.assertTrue(all(t['key'] == 'M10' for t in c['tables']))
+
+    def test_lot_grouping_issue_dice_and_recipe_is_job_setup(self):
+        a = report('a.htm', statuses=('Pass', 'Pass', 'Pass', 'Aborted.'), job='JOB/1')
+        b = report('b.htm', statuses=('Pass',), job='JOB/1',
+                   start='19-Sep-26 12:00:00 PM', end='19-Sep-26 12:30:00 PM')  # 같은 lot 재스캔
+        d = report('d.htm', statuses=('Pass', 'Pass'), job='JOB/2')             # 정상 lot
+        c = br.compute(records(a, b, d), valid_wafers=25)
+        self.assertEqual(c['summary']['Lot 수'], 2)
+        self.assertEqual(c['summary']['이슈 발생 Lot 수'], 1)
+        self.assertEqual(c['summary']['재스캔 Lot 수'], 1)
+        issue = dict((r[0], r[1]) for r in table(c, 'Lot 이슈 요약'))
+        self.assertEqual((issue['이슈 발생 Lot'], issue['정상 Lot'], issue['재스캔(리포트≥2) Lot']), (1, 1, 1))
+        detail = table(c, '문제 Lot 상세')
+        self.assertEqual(len(detail), 1)
+        self.assertEqual((detail[0][0], detail[0][2]), ('JOB/1', 2))  # 2 스캔 시도
+        # M08 은 Recipe(=Job/Setup)별. Good = Scanned - Bad (원문 있으면 원문).
+        dice = {r[0]: r for r in table(c, 'Recipe별 정상 Dice 통계')}
+        self.assertIn('JOB/1', dice)
+        self.assertIn('JOB/2', dice)
+        self.assertEqual(dice['JOB/2'][1], 2)          # 표본 수 = Pass wafer 수
+        self.assertTrue(br.is_lot_placeholder('LoadPort A'))
+        self.assertFalse(br.is_lot_placeholder('KVY'))
 
     def test_wph_weighted_vs_arithmetic(self):
         c = br.compute(records(report(count=25), report('b.htm', count=25, seconds='00:30:00')), valid_wafers=25)

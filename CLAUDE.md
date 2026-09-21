@@ -8,6 +8,29 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 
 ## Claude / ChatGPT 공통 작업 시작
 
+### 배치 리포트 분석 — lot 기준 재정의 + 결과 시각화 (2026-09-21)
+
+- **lot = (Job/Setup, Lot 열 최빈값)**. batch report 1장 = 스캔 세션 1회이지 lot 이 아니라,
+  중단·재스캔되면 한 lot 이 리포트 2~3장(최대 9장)으로 나뉜다. `batchreport.model` 이
+  각 batch 에 `lot`/`lot_key` 를 매기고 wafer 에 `job_setup`/`lot`/`lot_key` 를 전파.
+  `is_lot_placeholder` 로 미판독 `LoadPort A`/`-`/빈칸은 lot 에서 제외(최빈값 계산 시).
+- **모든 count 지표에 Lot 수 열 추가**(M03 유형별·M04 성격·M05 Aborted): 같은 lot 이
+  재스캔으로 리포트가 여럿이어도 lot 은 1로 센다.
+- **M08 = Recipe(=Job/Setup)별 정상 Dice 통계**(구 per-wafer Recipe(s) 열 폐기 —
+  2D/PI_Bubble/x20 처럼 지저분했음). Scanned/Bad/Good 평균+Bad 중앙/P95/최대. HTML 은
+  Bad 비율 100% 누적막대(Scanned 규모가 recipe마다 수십~수천이라 절대길이는 안 보임).
+  Good=원문 Good Dice, 없으면 Scanned−Bad. M09 baseline 도 recipe 키를 job_setup 으로.
+- **M10 = 'Lot 스캔 이슈율'**(구 per-report 완주율 폐기 — batch report 에 lot 기대 매수가
+  없어 측정 불가, B안 확정). lot 마다 스캔 중 이슈 여부·재스캔(리포트≥2) 여부를 보고,
+  전체 lot 중 문제 lot 비중 + '문제 Lot 상세'(스캔 시도 수·포함 이슈 유형·기간).
+- **M04 = 'Error 성격 분류'**(이름 변경). HTML 에 **성격 → 포함 Error 유형** 표를
+  cat2char 역매핑으로 자동 생성(실제 나타난 유형만).
+- HTML 결과는 문서형(헤더 메타·색 KPI·지표별 목적/해석·성격색 막대·범례). 요약 KPI 는
+  Lot 기준(정상 스캔 비율·분석 Lot 수·이슈 Lot%·재스캔 Lot%). `summary` 키 재명명
+  (`Batch(리포트) 수`·`Lot 수`·`이슈 발생 Lot 수`·`재스캔 Lot 수`).
+- 실제 AOI-25 539리포트 취합텍스트로 end-to-end 검증(303 lot·이슈 121·재스캔 123).
+  `tests/test_batchreport.py` 갱신(Aborted 보정 Lot 열·유형별 빈도 Lot 열·lot 그룹/M10/M08).
+
 ### 배치 리포트 분석 확장 (2026-09-20, Codex)
 
 - 최신 사용자 지시: 이 브랜치에서 배치 분석만 구현. 대규모 개편과 `version_rev1`은 보류.
