@@ -2,11 +2,26 @@
 
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
 프로그램(Python/tkinter). 기존 Excel(.xlsm)+VBA 도구를 대체.
-현재 공통 작업 브랜치: `version_rev1` (사용자 지정; 원본 UX 브랜치와 다른 브랜치 수정 금지)
+현재 공통 작업 브랜치: `version_webview` (사용자 지정; 다른 브랜치 수정 금지)
 (**3차 재설계: 저장 폴더 기준 구조**. 설계/인수인계: `docs/재설계_저장폴더_구조.md`.
 이전 단계: `docs/AOI_구현_진행.md`).
 
 ## Claude / ChatGPT 공통 작업 시작
+
+### version_webview 통합 브랜치 (2026-09-21) — 계획 A 최종 완성 작업
+
+- **목적**: 계획서(`docs/Para_version_rev1_master_plan.html`) 기준으로 두 브랜치의 완성분을
+  하나로 합쳐 **여기서 계획 A(Tauri+React 웹 UI 개편)를 최종 완성**한다.
+  · `version_rev1` = 계획 A 골격(Tauri/React frontend + `desktop_*` IPC 어댑터 + 시험 패키징).
+  · `claude/ux-bento-navy-lime` = 계획 B 완성분 + 최신 배치 엔진(lot 재정의·10지표)·theme·
+    wph_html·HTML 뷰·net use 제거 등 tkinter 최신 기능.
+- **병합 방식**: `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 merge(분기점 `28c805f`).
+  rev1은 분기 후 배치 파일을 손대지 않아 최신 배치 엔진이 깨끗이 들어왔다(충돌=CLAUDE.md만).
+- **통합 후 필수 정합 작업**: 새 배치 엔진은 **10지표(M07 폐지)·lot 기준·summary 키 재명명**
+  (`Batch(리포트) 수`·`Lot 수`·`이슈 발생 Lot 수`·`재스캔 Lot 수`)이라, 이를 소비하는
+  `desktop_batch.py`와 frontend(`main.tsx`의 M07 지표·구 summary 키)를 최신 엔진에 맞춘다.
+- 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
+  native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
 ### 최신 재개: 문서 작업 worker (2026-09-22 KST)
 
@@ -48,6 +63,41 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 아직 React↔Tauri↔Python 연결 및 Windows 패키징은 미완료다. 정적 화면을 실제 앱 완성으로
   오인하지 말 것. Rust 컴파일러가 없는 환경에서 네이티브 빌드 성공을 주장하지 말 것.
 - 아래 과거 기록의 UX 브랜치/개편 보류 안내는 과거 작업 범위이며 현재 지시가 우선한다.
+
+### 배치 리포트 분석 — lot 기준 재정의 + 결과 시각화 (2026-09-21)
+
+- **lot = (Job/Setup, Lot 열 최빈값)**. batch report 1장 = 스캔 세션 1회이지 lot 이 아니라,
+  중단·재스캔되면 한 lot 이 리포트 2~3장(최대 9장)으로 나뉜다. `batchreport.model` 이
+  각 batch 에 `lot`/`lot_key` 를 매기고 wafer 에 `job_setup`/`lot`/`lot_key` 를 전파.
+  `is_lot_placeholder` 로 미판독 `LoadPort A`/`-`/빈칸은 lot 에서 제외(최빈값 계산 시).
+- **모든 count 지표에 Lot 수 열 추가**(M03 유형별·M04 성격·M05 Aborted): 같은 lot 이
+  재스캔으로 리포트가 여럿이어도 lot 은 1로 센다.
+- **M08 = Recipe(=Job/Setup)별 정상 Dice 통계**(구 per-wafer Recipe(s) 열 폐기 —
+  2D/PI_Bubble/x20 처럼 지저분했음). Scanned/Bad/Good 평균+Bad 중앙/P95/최대. HTML 은
+  Bad 비율 100% 누적막대(Scanned 규모가 recipe마다 수십~수천이라 절대길이는 안 보임).
+  Good=원문 Good Dice, 없으면 Scanned−Bad. M09 baseline 도 recipe 키를 job_setup 으로.
+- **M10 = 'Lot 스캔 이슈율'**(구 per-report 완주율 폐기 — batch report 에 lot 기대 매수가
+  없어 측정 불가, B안 확정). lot 마다 스캔 중 이슈 여부·재스캔(리포트≥2) 여부를 보고,
+  전체 lot 중 문제 lot 비중 + '문제 Lot 상세'(스캔 시도 수·포함 이슈 유형·기간).
+- **M04 = 'Error 성격 분류'**(이름 변경). HTML 에 **성격 → 포함 Error 유형** 표를
+  cat2char 역매핑으로 자동 생성(실제 나타난 유형만).
+- HTML 결과는 문서형(헤더 메타·색 KPI·지표별 목적/해석·성격색 막대·범례). 요약 KPI 는
+  Lot 기준(정상 스캔 비율·분석 Lot 수·이슈 Lot%·재스캔 Lot%). `summary` 키 재명명
+  (`Batch(리포트) 수`·`Lot 수`·`이슈 발생 Lot 수`·`재스캔 Lot 수`).
+- 실제 AOI-25 539리포트 취합텍스트로 end-to-end 검증(303 lot·이슈 121·재스캔 123).
+  `tests/test_batchreport.py` 갱신(Aborted 보정 Lot 열·유형별 빈도 Lot 열·lot 그룹/M10/M08).
+- **M02 자정 보정**: 자정 넘긴 배치를 시작일에 통째로 넣던 일 139.9% 버그 → 걸친 버킷에
+  시간 배분. 컬럼 간소화(스캔 시간·기간 길이·가동률·비스캔 시간)+용어 노트, '최근 기간'
+  막대 제거, 가동률 시계열 Y축 0~100% 고정. M06 재시작=**같은 lot** 연속 리포트 간격.
+- **M07(복구 baseline) 폐지** → M06 '유형별 재시작 간격' 표의 '(전체 유효)' 행으로 합침
+  (METRICS 10개). compute 는 알 수 없는 지표 키를 조용히 무시(구 설정의 M07 대비).
+- **결과 HTML 폴리시(외부 라이브러리 0 — CSP·오프라인 유지, 순수 CSS/JS)**: 지표 버튼 탭
+  (한 번에 하나·fadeup 전환)+[방법론] 패널, 둥근 카드·부드러운 hover/전환, 표 열 머리
+  클릭 정렬. **Lot 이름 클릭 → 드릴다운 모달**(그 lot의 리포트별 시각·매수·이슈 원문 +
+  '📄 원문 열기'=`file:///{source_folder}/{source_file}` 로 실제 .htm 열기 훅. 경로 없으면
+  '원문(경로 없음)' 비활성). 데이터는 `window.__LOTS` 로 임베드(`_lot_drilldown`).
+  M04 표=성격·설명·실제 error 원문 3열, M10 포함 이슈 유형=원문 줄바꿈. `batchreport_ui`
+  상태줄 summary 키 갱신.
 
 ### 배치 리포트 분석 확장 (2026-09-20, Codex)
 

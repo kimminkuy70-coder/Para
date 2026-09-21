@@ -48,15 +48,39 @@ class Metrics(unittest.TestCase):
         r = report(statuses=('Scan 2D Error.', 'Aborted.', 'Aborted.', 'Skipped.'), count=1)
         s = report('b.htm', statuses=('Aborted.', 'Aborted.'), count=0)
         c = br.compute(records(r, s), valid_wafers=25)
-        self.assertEqual(table(c, 'Aborted 보정'), [('원본 Aborted', 4), ('직접 추정', 1), ('연쇄 추정', 3)])
+        # Aborted 보정: (구분, Wafer 수, Lot 수). r·s 는 같은 job·Lot 이라 1 lot.
+        self.assertEqual(table(c, 'Aborted 보정'), [('원본 Aborted', 4, 1), ('직접 추정', 1, 1), ('연쇄 추정', 3, 1)])
         self.assertEqual(table(c, 'WPH'), [])
         self.assertEqual(c['summary']['이슈 Batch 수'], 2)
         self.assertEqual(c['batches'][0]['completion'], 25)
+        # 유형별 빈도 전체 행: (…, Wafer 발생, Report 수, Lot 수)
         abort = next(r for r in table(c, '유형별 빈도') if r[0] == '전체' and r[3] == '작업 중단')
-        self.assertEqual(abort[-2:], (4, 2))
+        self.assertEqual(abort[5:8], (4, 2, 1))
         c = br.compute(records(report(count=10)), selected=['M10'])
         self.assertIsNone(c['batches'][0]['completion'])
         self.assertTrue(all(t['key'] == 'M10' for t in c['tables']))
+
+    def test_lot_grouping_issue_dice_and_recipe_is_job_setup(self):
+        a = report('a.htm', statuses=('Pass', 'Pass', 'Pass', 'Aborted.'), job='JOB/1')
+        b = report('b.htm', statuses=('Pass',), job='JOB/1',
+                   start='19-Sep-26 12:00:00 PM', end='19-Sep-26 12:30:00 PM')  # 같은 lot 재스캔
+        d = report('d.htm', statuses=('Pass', 'Pass'), job='JOB/2')             # 정상 lot
+        c = br.compute(records(a, b, d), valid_wafers=25)
+        self.assertEqual(c['summary']['Lot 수'], 2)
+        self.assertEqual(c['summary']['이슈 발생 Lot 수'], 1)
+        self.assertEqual(c['summary']['재스캔 Lot 수'], 1)
+        issue = dict((r[0], r[1]) for r in table(c, 'Lot 이슈 요약'))
+        self.assertEqual((issue['이슈 발생 Lot'], issue['정상 Lot'], issue['재스캔(리포트≥2) Lot']), (1, 1, 1))
+        detail = table(c, '문제 Lot 상세')
+        self.assertEqual(len(detail), 1)
+        self.assertEqual((detail[0][0], detail[0][2]), ('JOB/1', 2))  # 2 스캔 시도
+        # M08 은 Recipe(=Job/Setup)별. Good = Scanned - Bad (원문 있으면 원문).
+        dice = {r[0]: r for r in table(c, 'Recipe별 정상 Dice 통계')}
+        self.assertIn('JOB/1', dice)
+        self.assertIn('JOB/2', dice)
+        self.assertEqual(dice['JOB/2'][1], 2)          # 표본 수 = Pass wafer 수
+        self.assertTrue(br.is_lot_placeholder('LoadPort A'))
+        self.assertFalse(br.is_lot_placeholder('KVY'))
 
     def test_wph_weighted_vs_arithmetic(self):
         c = br.compute(records(report(count=25), report('b.htm', count=25, seconds='00:30:00')), valid_wafers=25)
@@ -67,12 +91,16 @@ class Metrics(unittest.TestCase):
     def test_calendar_and_partial_week(self):
         r = report(start='31-Aug-26 11:30:00 PM', end='01-Sep-26 12:30:00 AM')
         c = br.compute(records(r), now=datetime(2026, 9, 2))
-        day = table(c, '스캔 가동률 · 일')[0]
+        # 자정 넘긴 1h 배치 → 08-31 에 0.5h, 09-01 에 0.5h 배분(139% 버그 방지).
+        days = table(c, '스캔 가동률 · 일')
+        day = days[0]
         self.assertEqual(day[1], datetime(2026, 8, 31))
-        self.assertAlmostEqual(day[5], 100 / 24)
+        self.assertAlmostEqual(day[3], 0.5)             # 스캔 시간(h)
+        self.assertAlmostEqual(day[5], 0.5 / 24 * 100)  # 가동률(%)
+        self.assertAlmostEqual(days[1][3], 0.5)         # 09-01 에도 0.5h
         week = table(c, '스캔 가동률 · 주')[0]
-        self.assertEqual(week[4], 24.5)
-        self.assertEqual(week[8], '진행 중')
+        self.assertEqual(week[4], 48)                   # 기간 길이(h) = 시작~현재
+        self.assertEqual(week[-1], '진행 중')
         month = table(c, '스캔 가동률 · 월')[0]
         self.assertEqual(month[4], 31 * 24)
 
@@ -82,22 +110,25 @@ class Metrics(unittest.TestCase):
             report('different.htm', start='19-Sep-26 11:01:00 AM', end='19-Sep-26 11:02:00 AM', job='JOB/2'),
             report('next.htm', start='19-Sep-26 11:10:00 AM', end='19-Sep-26 12:00:00 PM'),
             report('orphan.htm', statuses=('Aborted.',), start='19-Sep-26 01:00:00 PM', end='19-Sep-26 02:00:00 PM')))
-        restart = table(c, '재시작 간격')
+        restart = table(c, '재시작 간격(같은 lot 재스캔)')
         self.assertEqual(restart[0][-3:], ('next.htm', 10, '유효'))
         self.assertIn('없음', restart[1][-1])
-        self.assertEqual(table(c, '복구 baseline (재시작 간격 proxy)')[0], (1, 1, 10, 10, 10))
+        # M07 폐지 → 전체 요약이 M06 유형별 표의 '(전체 유효)' 마지막 행으로.
+        self.assertEqual(table(c, '유형별 재시작 간격 (유형 중복 허용)')[-1], ('(전체 유효)', 1, 10, 10, 10, 10))
 
     def test_p95_and_past_only_quality_baseline(self):
         early = report('early.htm', statuses=('Pass', 'Pass'), bad='1')
         later = report('later.htm', start='19-Sep-26 12:00:00 PM', end='19-Sep-26 01:00:00 PM', bad='9', yield_pct='80')
         c = br.compute(records(early, later), min_baseline=2, yield_drop=5)
         self.assertAlmostEqual(br.percentile([1, 2, 3, 4], .95), 3.85)
-        anomalies = table(c, '품질 이상 후보 (자동 Hold 아님)')
+        anomalies = table(c, '품질 이상 Wafer 상세 (자동 Hold 아님)')
         self.assertEqual(len(anomalies), 1)
-        self.assertEqual(anomalies[0][2], 'later.htm')
-        self.assertEqual(anomalies[0][6], 1)
-        self.assertEqual(anomalies[0][8], 94)
-        self.assertEqual(len(table(br.compute(records(later), min_baseline=2), '품질 이상 후보 (자동 Hold 아님)')), 0)
+        # (Lot, Job/Setup, Batch End, 호기, Report, Wafer ID, Bad, P95, Yield, 하한, 근거)
+        self.assertEqual(anomalies[0][4], 'later.htm')
+        self.assertEqual(anomalies[0][7], 1)
+        self.assertEqual(anomalies[0][9], 94)
+        self.assertEqual(len(table(br.compute(records(later), min_baseline=2), '품질 이상 Wafer 상세 (자동 Hold 아님)')), 0)
+        self.assertEqual(len(table(c, '품질 이상 Lot 요약')), 1)
 
     def test_missing_and_nonfinite(self):
         self.assertIsNone(br.number('nan'))
@@ -112,12 +143,12 @@ class Metrics(unittest.TestCase):
         a = report('a.htm', statuses=('Pass', 'Pass'), bad='1')
         b = report('b.htm', bad='99')
         c = br.compute(records(a, b), min_baseline=2)
-        self.assertEqual(table(c, '품질 이상 후보 (자동 Hold 아님)'), [])
-        c = br.compute(records(report(seconds='30:00:00')))
+        self.assertEqual(table(c, '품질 이상 Wafer 상세 (자동 Hold 아님)'), [])
+        c = br.compute(records(report(seconds='30:00:00')), now=datetime(2026, 9, 21))
         day = table(c, '스캔 가동률 · 일')[0]
-        self.assertEqual(day[5], 125)
-        self.assertLess(day[7], 0)
-        self.assertIn('100%', day[-1])
+        self.assertEqual(day[5], 125)       # 가동률(%): 스캔시간(30h) > 기간(24h)
+        self.assertLess(day[6], 0)          # 비스캔 시간(h) 음수
+        self.assertIn('100%', day[-1])      # 기간 상태에 100% 초과 표시
 
 
 class Collection(unittest.TestCase):
