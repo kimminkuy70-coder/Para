@@ -52,4 +52,49 @@ class DocumentsTests(unittest.TestCase):
         wb=openpyxl.load_workbook(path);self.addCleanup(wb.close)
         self.assertEqual(wb.active['B1'].data_type,'s')
 
+    def test_append_preserves_hidden_credentials_and_literal_formula(self):
+        result=self.doc.append({'snapshot':self.catalog['snapshot'],'values':['AOI-02','=1+1','Camtek']})
+        self.assertEqual(result['total'],2)
+        wb=openpyxl.load_workbook(self.path);self.addCleanup(wb.close)
+        self.assertEqual(wb.active['E2'].value,'secret-pass')
+        self.assertIsNone(wb.active['E3'].value)
+        self.assertEqual(wb.active['B3'].value,'=1+1')
+        self.assertEqual(wb.active['B3'].data_type,'s')
+
+    def test_append_rejects_invalid_and_stale(self):
+        original=Path(self.path).read_bytes()
+        for values in ([],['','',''],['x']*4,[True,'',''],['x'*4001,'','']):
+            with self.assertRaises(ValueError):
+                self.doc.append({'snapshot':self.catalog['snapshot'],'values':values})
+        self.assertEqual(Path(self.path).read_bytes(),original)
+        with open(self.path,'ab') as f:f.write(b'changed')
+        with self.assertRaises(ValueError):
+            self.doc.append({'snapshot':self.catalog['snapshot'],'values':['new','','']})
+
+    def test_append_other_lock_keeps_original(self):
+        original=Path(self.path).read_bytes()
+        locking.acquire(self.path,'another-user')
+        self.addCleanup(lambda:locking.release(self.path,'another-user'))
+        with self.assertRaises(ValueError):
+            self.doc.append({'snapshot':self.catalog['snapshot'],'values':['new','','']})
+        self.assertEqual(Path(self.path).read_bytes(),original)
+
+    def test_append_failed_replace_preserves_workbook_and_cleans_temp(self):
+        original=Path(self.path).read_bytes()
+        with patch('param_manager.desktop_documents.os.replace',side_effect=OSError('blocked')):
+            with self.assertRaises(OSError):
+                self.doc.append({'snapshot':self.catalog['snapshot'],'values':['new','','']})
+        self.assertEqual(Path(self.path).read_bytes(),original)
+        self.assertEqual(list(self.root.rglob('.rev1-document-*')),[])
+
+    def test_append_reference_and_missing_header(self):
+        path=refdata.ref_path(str(self.root));refdata.create_blank_reference(path)
+        cat=self.doc.open('reference')
+        result=self.doc.append({'snapshot':cat['snapshot'],'values':['text']*len(cat['headers'])})
+        self.assertEqual(result['total'],cat['total']+1)
+        wb=openpyxl.load_workbook(self.path);wb.active['B1']='unknown';wb.save(self.path);wb.close()
+        cat=self.doc.open('ip')
+        with self.assertRaises(ValueError):
+            self.doc.append({'snapshot':cat['snapshot'],'values':['new','','']})
+
 if __name__=='__main__':unittest.main()

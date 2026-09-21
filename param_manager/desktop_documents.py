@@ -59,7 +59,9 @@ class DesktopDocuments:
         return dict(snapshot=self.version,headers=self.headers,total=len(self.cells),source=self.path.name)
 
     def check_path(self):
-        if self.path.is_symlink() or not self.path.resolve().is_relative_to(self.root.resolve()):
+        if (any(p.is_symlink() or (hasattr(p,'is_junction') and p.is_junction())
+                for p in (self.path,*self.path.parents))
+                or not self.path.resolve().is_relative_to(self.root.resolve())):
             raise ValueError('공유 문서 연결 경로를 사용할 수 없습니다')
 
     def page(self, params):
@@ -78,6 +80,23 @@ class DesktopDocuments:
             raise ValueError('편집 가능한 셀을 선택하세요')
         if not isinstance(value,str) or len(value)>4000:raise ValueError('내용은 4000자까지 입력하세요')
         color=namestore.normalize_color(params['color'])
+        return self._write([(self.cells[r][0],self.columns[c],value,color)])
+
+    def append(self, params):
+        if set(params)!={'snapshot','values'} or not self.version or params['snapshot']!=self.version:
+            raise ValueError('문서를 새로고침하세요')
+        values=params['values']
+        if (not isinstance(values,list) or len(values)!=len(self.columns)
+                or any(not isinstance(v,str) or len(v)>4000 for v in values)
+                or not any(v.strip() for v in values)):
+            raise ValueError('새 행의 내용을 입력하세요. 각 셀은 4000자까지 가능합니다.')
+        if any(c is None for c in self.columns):
+            raise ValueError('필수 열이 없는 문서입니다. 기존 프로그램에서 양식을 확인하세요.')
+        row=self.cells[-1][0]+1 if self.cells else (1 if self.kind=='reference' else 2)
+        if row>100000:raise ValueError('문서 최대 행 수를 초과합니다.')
+        return self._write([(row,c,v,'') for c,v in zip(self.columns,values)])
+
+    def _write(self, updates):
         self.check_path();path=str(self.path);user=engine.current_user()
         previous=locking.status(path,user);state=locking.acquire(path,user)
         if not state.editable:raise ValueError(locking.holder_message(state,self.path.name))
@@ -86,12 +105,14 @@ class DesktopDocuments:
             check=locking.check_before_save(path,user,self.stamp)
             if not check['ok']:raise ValueError(check['reason'])
             wb=openpyxl.load_workbook(path);ws=wb[self.sheet]
-            cell=ws.cell(self.cells[r][0],self.columns[c]);cell.value=value;cell.data_type='s'
-            cell.fill=PatternFill('solid',fgColor=color[1:]) if color else PatternFill()
+            for row,column,value,color in updates:
+                cell=ws.cell(row,column);cell.value=value;cell.data_type='s'
+                cell.fill=PatternFill('solid',fgColor=color[1:]) if color else PatternFill()
             fd,temporary=tempfile.mkstemp(prefix='.rev1-document-',suffix='.xlsx',dir=self.path.parent)
             os.close(fd);wb.save(temporary)
             check=locking.check_before_save(path,user,self.stamp)
             if not check['ok'] or locking.file_stamp(path)!=self.stamp:raise ValueError(check['reason'] or '저장 직전 문서가 변경되었습니다.')
+            self.check_path()
             os.replace(temporary,path);temporary=None
         finally:
             if wb:wb.close()

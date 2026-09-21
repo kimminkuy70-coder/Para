@@ -20,6 +20,7 @@ id는 세션 내 증가하는 1..2^53−1 정수. 프레임 최대 4 MiB. NaN/In
 | document_open | ip/special/reference | 고정 공유 문서 snapshot |
 | document_page | snapshot/offset/limit | 최대 100행 |
 | document_edit | snapshot/row/column/value/color | 선택 셀만 잠금·변경 검사 후 저장 |
+| document_append | snapshot/values | 기존 문서의 표시 열 개수와 일치하는 문자열 배열, 셀당 4000자, 빈 행 거절; 잠금·변경 검사 후 끝에 추가 |
 | commonality_catalog | 없음 | 기존 로컬 수동/감시 결과의 opaque ID 목록, 최대 5000개 |
 | commonality_compare | catalog/files | 등록 ID 1~100개, 파일 변경 검사, accepted/completed/error |
 | commonality_page | snapshot/offset/limit/column/query/changed_only | 최대 100행·12파라미터, 상태·최빈값 이탈 |

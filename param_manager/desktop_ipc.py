@@ -20,7 +20,7 @@ from .desktop_commonality import DesktopCommonality
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "document_open", "document_page", "document_edit", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export"}
+METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export"}
 
 
 def encoded(value):
@@ -127,7 +127,8 @@ class Session:
                    "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine"},
                    "recipe_edit": {"snapshot","row","kind","value"}}
         allowed.update(document_open={'kind'},document_page={'snapshot','offset','limit'},
-                       document_edit={'snapshot','row','column','value','color'})
+                       document_edit={'snapshot','row','column','value','color'},
+                       document_append={'snapshot','values'})
         allowed.update(commonality_catalog=set(), commonality_compare={'catalog','files'},
                        commonality_page={'snapshot','offset','limit','column','query','changed_only'},
                        commonality_export={'snapshot','changed_only'})
@@ -147,7 +148,8 @@ class Session:
         elif method.startswith('document_'):
             if self.running:raise ValueError('배치 조사 완료 후 문서를 열어 주세요')
             action={'document_open':lambda:self.documents.open(params.get('kind')),
-                    'document_page':lambda:self.documents.page(params),'document_edit':lambda:self.documents.edit(params)}
+                    'document_page':lambda:self.documents.page(params),'document_edit':lambda:self.documents.edit(params),
+                    'document_append':lambda:self.documents.append(params)}
             self.emit(rid,'completed',document=action[method]())
         elif method.startswith('recipe_'):
             if self.running:

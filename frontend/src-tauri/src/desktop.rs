@@ -77,7 +77,7 @@ pub fn desktop_connect(app: tauri::AppHandle, state: tauri::State<'_, Desktop>,
 
 #[tauri::command]
 pub fn desktop_send(request: Value, state: tauri::State<'_, Desktop>) -> Result<(), String> {
-    const METHODS: [&str; 18] = ["contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "document_open", "document_page", "document_edit", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export"];
+    const METHODS: [&str; 19] = ["contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export"];
     if request["version"] != 1 || !request["id"].as_u64().is_some_and(|n| n > 0 && n <= 9007199254740991)
         || !request["method"].as_str().is_some_and(|m| METHODS.contains(&m))
         || !request["params"].is_object() || request.as_object().map(|o| o.len()) != Some(4) {

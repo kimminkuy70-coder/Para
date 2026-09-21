@@ -94,6 +94,12 @@ try{
   await page.getByRole('button',{name:'저장',exact:true}).click();
   await page.getByRole('button',{name:'10.0.0.2',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'10.0.0.2',exact:true}).evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)');
+  await page.getByRole('button',{name:'새 행 추가',exact:true}).click();
+  const newRow=page.locator('dialog[open]');
+  await newRow.getByLabel('호기',{exact:true}).fill('AOI-02');
+  await newRow.getByLabel('IP',{exact:true}).fill('10.0.0.3');
+  await newRow.getByRole('button',{name:'행 저장',exact:true}).click();
+  await page.getByRole('button',{name:'10.0.0.3',exact:true}).waitFor();
   await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
   await page.locator('.cm-file input').first().check();
   await page.getByRole('button',{name:'선택 결과 비교',exact:true}).click();
