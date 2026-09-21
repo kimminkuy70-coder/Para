@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — 공유 문서 IPC 응답성 (2026-09-22 KST)
+
+- 시작 원격 HEAD `aec6d012915c413a7999c5a001274584da12ad46`. 변경 대상 소스/문서는 원격 blob과 로컬 hash 일치 확인 후 작업. git 메타데이터 없는 복구 디렉터리이므로 AGENTS의 API fast-forward 절차 사용.
+- `document_open/edit/append`를 단일 worker로 실행. IPC 입력 처리가 Excel 읽기/저장/잠금 대기에 묶이지 않으며, document_page는 메모리 조회로 유지.
+- 작업 중 다른 문서/Recipe/분석 시작 거절. shutdown/EOF는 저장을 강제 중단하지 않고 worker 완료까지 대기. 별도 문서 취소/진행률은 미지원이며 블로킹 SMB 자체의 시간 제한도 별개다.
+- `tests/test_desktop_document_worker.py`에서 세 작업의 계약 응답/중복 차단/종료 대기, 오류 후 재시도와 OS 오류 상세 비노출 검증.
+- 검증 결과: 신규 2개 테스트(세 작업 하위 사례 포함), 전체 독립 테스트 42개 파일, 변경 Python 구문 검사 모두 통과. 브라우저/native 실행은 이번에 수행하지 않음.
+- Windows/WebView2/OneDrive 실기와 운영 배포 미수행. A4의 기능 누락 및 A5/A6 잔여는 이전 목록 그대로다. 재예약하지 않음.
+
 ## 최신 재개 — 공유 문서 행 추가 (2026-09-22 KST)
 
 - 시작 HEAD `eed56a2619edb32869713b903db52eb9380b599c`. 첨부 `(2).html`은 저장소 계획서와 끝 빈 줄 외 내용 동일.

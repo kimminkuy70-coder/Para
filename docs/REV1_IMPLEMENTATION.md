@@ -1,5 +1,13 @@
 # version_rev1 대규모 개편 구현 기록
 
+## 재개 체크포인트 — 문서 작업 응답성 (2026-09-22 KST)
+
+- 시작 `aec6d01`. A 구조/성능 요구사항에 맞춰 문서 열기·셀 저장·행 추가의 파일 I/O를 IPC 입력 스레드에서 분리했다. React 기존 accepted/completed 처리와 호환되며 계약 필드 변경 없음.
+- 단일 worker와 중복 작업 차단, 종료 시 완료 대기를 재사용. 문서 저장 중 강제 취소/종료 없음. 저장 실패 후 busy 해제 및 재시도 가능.
+- 신규 worker 시험은 open/edit/append 세 경로에서 계약 응답, 다른 편집·분석 차단, 종료 대기와 오류 경로를 검증한다. Windows/OneDrive 실기나 성능 실측의 대체가 아니다.
+- 검증: `python tests/test_desktop_document_worker.py` 2개(3작업 하위 사례 포함) 통과, `python tools/check_project.py` 42개 파일 실패 없음, 변경 Python 구문 검사 통과. 이번 변경은 프런트엔드 소스 불변; 브라우저/native 실기 재실행 없음.
+- 기능 개편 전체 완료 아님. 신규 Commonality 조사/감시, 양식/Recipe 전체 흐름, A2 잔여, A5/A6 검증 계속 필요. 운영 배포 없음.
+
 ## 재개 체크포인트 — 공유 문서 행 추가 (2026-09-22 KST)
 
 - 시작 `eed56a2`. 사용자 재첨부 계획서는 기존 문서와 끝 빈 줄 외 동일; version_rev1만 이어서 변경.

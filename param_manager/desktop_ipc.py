@@ -150,7 +150,13 @@ class Session:
             action={'document_open':lambda:self.documents.open(params.get('kind')),
                     'document_page':lambda:self.documents.page(params),'document_edit':lambda:self.documents.edit(params),
                     'document_append':lambda:self.documents.append(params)}
-            self.emit(rid,'completed',document=action[method]())
+            if method == 'document_page':
+                self.emit(rid,'completed',document=action[method]())
+            else:
+                self.running = True
+                self.emit(rid, 'accepted')
+                self.worker = threading.Thread(target=self.document_work, args=(rid, action[method]))
+                self.worker.start()
         elif method.startswith('recipe_'):
             if self.running:
                 raise ValueError('배치 조사 완료 후 비교 화면을 열어 주세요')
@@ -255,6 +261,20 @@ class Session:
             with self.lock:
                 self.running = False
                 self.emit(rid, "error", code="investigation_failed")
+
+    def document_work(self, rid, action):
+        # Workbook I/O and lock verification must not block protocol input.
+        # Saves are atomic operations: shutdown waits rather than interrupting them.
+        try:
+            value = action()
+            with self.lock:
+                self.running = False
+                self.emit(rid, 'completed', document=value)
+        except Exception as exc:
+            with self.lock:
+                self.running = False
+                self.emit(rid, 'error', code='document_failed',
+                          message=str(exc) if isinstance(exc, ValueError) else '공유 문서를 처리하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
 
     def commonality_work(self, rid, method, params):
         try:

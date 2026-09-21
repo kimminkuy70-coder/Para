@@ -37,7 +37,10 @@ IP 문서의 구 자격증명 열은 UI에 반환하지 않는다. 원문은 Rea
 단일 배치 작업을 유지하며 완료 뒤 release한다. 완료 이벤트 직전 running을 해제한다.
 취소는 파일/계산/출력 경계에서 처리하며 블로킹 SMB 호출을 강제 종료하지 않는다.
 최종 결과 게시를 시작한 이후의 늦은 취소는 완료된 결과를 되돌리지 않는다.
-Recipe/문서 작업은 배치 실행 중 거절한다. 이 작업은 동기 실행으로 별도 진행/취소는 아직 없다.
+Recipe/문서 작업은 다른 worker 실행 중 거절한다. Recipe는 동기 실행이다.
+문서 open/edit/append는 accepted 후 단일 worker에서 처리하며 completed/error를 보낸다.
+document_page는 동기 메모리 조회다. 문서 worker 중 중복 편집/조사를 거절하고 종료 시
+저장이 끝날 때까지 기다린다. 문서 작업의 별도 진행률/취소는 아직 없다.
 
 Native는 resources/sidecar의 고정 exe만 실행하고 PYTHONPATH/PYTHONHOME를 제거한다.
 송신 큐 최대 8개, 프레임 제한 4 MiB. EOF에서 Python은 취소 후 worker를 기다린다.
