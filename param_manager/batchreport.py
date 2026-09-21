@@ -183,27 +183,38 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
     table("M01", "시간순 Actual WPH", ["Batch End", "호기", "Report", "Actual WPH (wafer/h)"],
           [(b["end"], b["machine"], b["source_file"], b["wafers"] * 3600 / b["batch_sec"])
            for b in sorted(eligible, key=lambda b: (b["end"] or datetime.max, b["id"]))])
+    # 전체 관측 기간을 일/주/월 버킷으로 쪼개 버킷마다 가동률을 낸다. 자정(버킷 경계)을
+    # 넘긴 배치는 시작일에 통째로 넣지 않고 **각 버킷에 걸친 시간만큼만** 배분한다
+    # (예전엔 늦게 시작한 긴 배치가 시작일에 다 잡혀 하루 가동률이 139% 처럼 나왔다).
     for unit in ("일", "주", "월"):
-        grouped = defaultdict(list)
+        scan = defaultdict(float)    # (호기, 버킷시작) → 스캔 초 (버킷별 배분)
+        started = defaultdict(int)   # 그 버킷에서 시작한 배치 수
         for b in batches:
-            if b["start"] and b["end"] and b["end"] >= b["start"] and b["batch_sec"] is not None:
-                grouped[(b["machine"], bucket(b["start"], unit)[0])].append(b)
+            if not (b["start"] and b["end"] and b["end"] >= b["start"] and b["batch_sec"] is not None):
+                continue
+            duration = (b["end"] - b["start"]).total_seconds()
+            started[(b["machine"], bucket(b["start"], unit)[0])] += 1
+            cur = bucket(b["start"], unit)[0]
+            while cur <= b["end"]:
+                cbeg, cend = bucket(cur, unit)
+                overlap = (min(b["end"], cend) - max(b["start"], cbeg)).total_seconds()
+                if overlap > 0:
+                    scan[(b["machine"], cbeg)] += b["batch_sec"] * overlap / duration if duration > 0 else b["batch_sec"]
+                cur = cend
         rows = []
-        for (machine, begin), items in sorted(grouped.items()):
+        for machine, begin in sorted(set(scan) | set(started)):
             _, finish = bucket(begin, unit)
-            partial = unit != "일" and begin <= now < finish
-            last = max(b["end"] for b in items)
-            window_end = min(finish, last, now) if partial else finish
-            window = (window_end - begin).total_seconds()
-            active = (last - min(b["start"] for b in items)).total_seconds()
-            scan = sum(b["batch_sec"] for b in items)
-            ratio = scan / window * 100 if window > 0 else None
-            rows.append((machine, begin, len(items), scan / 3600, window / 3600,
-                         ratio, scan / active * 100 if active > 0 else None,
-                         (window - scan) / 3600, "진행 중" if partial else "완료 기간",
-                         "100% 초과/중복·기간 걸침 확인" if ratio and ratio > 100 else "선택 자료 기준"))
-        table("M02", f"스캔 가동률 · {unit}", ["호기", "기간 시작", "Batch 수", "스캔 (h)", "관측창 (h)",
-              "달력 가동률 (%)", "첫~끝 밀도 (%)", "미관측·유휴 추정 (h)", "기간 상태", "자료 범위"], rows)
+            partial = begin <= now < finish
+            window = ((min(finish, now) if partial else finish) - begin).total_seconds()
+            sec = scan.get((machine, begin), 0.0)
+            ratio = sec / window * 100 if window > 0 else None
+            state = "진행 중" if partial else "완료"
+            if ratio and ratio > 100:
+                state = ("진행 중" if partial else "완료") + " · 100% 초과(스캔시간>기간, 원문 확인)"
+            rows.append((machine, begin, started.get((machine, begin), 0), sec / 3600,
+                         window / 3600, ratio, (window - sec) / 3600, state))
+        table("M02", f"스캔 가동률 · {unit}",
+              ["호기", "기간", "Batch 수", "스캔 시간 (h)", "기간 길이 (h)", "가동률 (%)", "비스캔 시간 (h)", "기간 상태"], rows)
     bymachine, byjob = defaultdict(list), defaultdict(list)
     for b in batches:
         if b["start"]:
@@ -255,35 +266,40 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
            ("연쇄 추정", aborts["연쇄 추정"], len(abort_lots["연쇄 추정"]))])
     table("M05", "Aborted 근거", ["호기", "Report", "Lot", "원본 순서", "Wafer ID", "추정"],
           [(w["machine"], w["source_file"], w["lot"], w["order"], w["wafer_id"], w["abort_kind"]) for w in wafers if w["abort_kind"]])
-    nextbatch = {}
-    for items in byjob.values():
+    # 재시작 간격 = **같은 lot** 의 연속 리포트 간격(재스캔 지연). 한 lot 이 중단→재스캔되면
+    # 앞 리포트 끝 → 다음 리포트 시작까지 걸린 시간. lot 이 1장뿐이면 재스캔 없음.
+    nextinlot = {}
+    lotseq = defaultdict(list)
+    for b in batches:
+        if b["start"]:
+            lotseq[b["lot_key"]].append(b)
+    for items in lotseq.values():
         items.sort(key=lambda b: (b["start"], b["id"]))
         for current, following in zip(items, items[1:]):
-            nextbatch[current["id"]] = following
+            nextinlot[current["id"]] = following
     restarts, validgaps = [], []
     for b in batches:
         if not b["has_error"]:
             continue
-        following = nextbatch.get(b["id"])
+        following = nextinlot.get(b["id"])
         gap, reason = None, ""
-        if not b["job_setup"]:
-            reason = "Job/Setup 누락"
-        elif not b["start"] or not b["end"] or b["end"] < b["start"]:
+        if not b["start"] or not b["end"] or b["end"] < b["start"]:
             reason = "시각 누락/역전"
         elif not following:
-            reason = "같은 Job/Setup 다음 배치 없음"
+            reason = "같은 lot 재스캔 없음"
         else:
             gap = (following["start"] - b["end"]).total_seconds() / 60
             reason = "유효" if 0 <= gap <= 1440 else "겹침" if gap < 0 else "24h 초과"
             if reason == "유효":
                 validgaps.append(gap)
-        restarts.append((b["machine"], b["job_setup"], b["source_file"], ", ".join(b["types"]),
+        restarts.append((b["machine"], b["job_setup"], b["lot"], b["source_file"], ", ".join(b["types"]),
                          following["source_file"] if following else "", gap, reason))
-    table("M06", "재시작 간격", ["호기", "Job/Setup", "이슈 Report", "포함 유형", "다음 Report", "간격 (분)", "판정"], restarts)
+    table("M06", "재시작 간격(같은 lot 재스캔)",
+          ["호기", "Job/Setup", "Lot", "이슈 Report", "포함 유형", "다음 Report", "간격 (분)", "판정"], restarts)
     by_type = defaultdict(list)
     for item in restarts:
         if item[-1] == '유효':
-            for category in item[3].split(', '):
+            for category in item[4].split(', '):
                 by_type[category].append(item[-2])
     table("M06", "유형별 재시작 간격 (유형 중복 허용)", ["유형", "유효 Batch 수", "평균 (분)", "중앙 (분)", "P95 (분)", "최대 (분)"],
           [(k, len(v), mean(v), median(v), percentile(v, .95), max(v)) for k, v in sorted(by_type.items())])
@@ -312,6 +328,26 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
           [(k, len(d["bad"]), stat(d["scanned"], mean), stat(d["bad"], mean), stat(d["good"], mean),
             stat(d["bad"], median), percentile(d["bad"], .95) if d["bad"] else None, stat(d["bad"], max))
            for k, d in sorted(dice.items())])
+    # Lot 별 정상 Dice — 각 lot 이 어느 Job/Setup(recipe)인지 함께 적는다.
+    lotdice = defaultdict(lambda: {"scanned": [], "bad": [], "good": [], "job": ""})
+    for w in wafers:
+        if not (w["pass"] and w["lot_key"]):
+            continue
+        d = lotdice[w["lot_key"]]
+        d["job"] = w["job_setup"]
+        if w["scanned_dice"] is not None:
+            d["scanned"].append(w["scanned_dice"])
+        if w["bad_dice"] is not None:
+            d["bad"].append(w["bad_dice"])
+        good = w["good_dice"]
+        if good is None and w["scanned_dice"] is not None and w["bad_dice"] is not None:
+            good = w["scanned_dice"] - w["bad_dice"]
+        if good is not None:
+            d["good"].append(good)
+    table("M08", "Lot별 정상 Dice",
+          ["Lot", "Job/Setup (recipe)", "표본 수", "Scanned 평균", "Bad 평균", "Good 평균", "Bad 최대"],
+          [(lk[1], d["job"], len(d["bad"]), stat(d["scanned"], mean), stat(d["bad"], mean),
+            stat(d["good"], mean), stat(d["bad"], max)) for lk, d in sorted(lotdice.items())])
     # Batch-based evaluation prevents same-report wafers leaking into baseline.
     history_bad, history_yield, bybatch = defaultdict(list), defaultdict(list), defaultdict(list)
     for w in wafers:
@@ -346,12 +382,23 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
             if floor is not None and w["yield_pct"] is not None and w["yield_pct"] < floor:
                 reasons.append("Yield < 과거 정상 중앙 - 기준 pp")
             if reasons:
-                anomalies.append((b["end"], b["machine"], b["source_file"], recipe, w["wafer_id"],
+                anomalies.append((b["lot"], recipe, b["end"], b["machine"], b["source_file"], w["wafer_id"],
                                   w["bad_dice"], p95, w["yield_pct"], floor, " / ".join(reasons)))
         for w in bybatch[b["id"]]:
             if w["pass"] and w["job_setup"]:
                 pending.append(w)
-    table("M09", "품질 이상 후보 (자동 Hold 아님)", ["Batch End", "호기", "Report", "Job/Setup (recipe)", "Wafer ID", "Bad Dice", "과거 P95", "Yield (%)", "Yield 하한 (%)", "후보 근거"], anomalies)
+    # M09 는 lot 을 먼저 요약하고, 그 아래 wafer 상세를 둔다(요청 2026-09-21).
+    anom_lot = {}
+    for lot, job, end, *_ in anomalies:
+        item = anom_lot.setdefault((job, lot), [0, None])
+        item[0] += 1
+        if end and (item[1] is None or end > item[1]):
+            item[1] = end
+    table("M09", "품질 이상 Lot 요약", ["Lot", "Job/Setup (recipe)", "이상 Wafer 수", "최근 Batch End"],
+          [(lot, job, cnt, end) for (job, lot), (cnt, end) in sorted(anom_lot.items(), key=lambda kv: -kv[1][0])])
+    table("M09", "품질 이상 Wafer 상세 (자동 Hold 아님)",
+          ["Lot", "Job/Setup (recipe)", "Batch End", "호기", "Report", "Wafer ID", "Bad Dice", "과거 P95", "Yield (%)", "Yield 하한 (%)", "후보 근거"],
+          sorted(anomalies, key=lambda a: (a[1], a[0], a[2] or datetime.max)))
     # M10: batch report 에는 lot 기대 매수가 없어 '완주율'은 측정 불가(B안).
     # 대신 lot 단위로 '스캔 중 이슈가 났는지'와 '재스캔(리포트>1) 여부'를 뽑아,
     # 전체 lot 중 문제 lot 비중을 본다. lot = (Job/Setup, Lot).
@@ -362,13 +409,20 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
     for (job, lot), items in sorted(lotmap.items()):
         items.sort(key=lambda b: (b["start"] or datetime.max, b["id"]))
         issue = any(b["has_error"] for b in items)
-        types = sorted({t for b in items for t in b["types"]})
         starts = [b["start"] for b in items if b["start"]]
         ends = [b["end"] for b in items if b["end"]]
         issue_lots += issue
         rescan_lots += len(items) > 1
         if issue:
-            lot_rows.append((job, lot, len(items), ", ".join(types),
+            # 포함 이슈 유형 = 실제 Pass/Fail 원문(그대로), 유형마다 한 줄(줄바꿈).
+            seen, raws = set(), []
+            for b in items:
+                for w in bybatch[b["id"]]:
+                    status = (w["status"] or "").strip()
+                    if status and status not in seen and not w["pass"] and any(s[0] != "상태 확인 불가" for s in w["states"]):
+                        seen.add(status)
+                        raws.append(status)
+            lot_rows.append((job, lot, len(items), "\n".join(raws),
                              min(starts) if starts else None, max(ends) if ends else None))
     total_lots = len(lotmap)
     ok_lots = total_lots - issue_lots

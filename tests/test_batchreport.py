@@ -91,12 +91,16 @@ class Metrics(unittest.TestCase):
     def test_calendar_and_partial_week(self):
         r = report(start='31-Aug-26 11:30:00 PM', end='01-Sep-26 12:30:00 AM')
         c = br.compute(records(r), now=datetime(2026, 9, 2))
-        day = table(c, '스캔 가동률 · 일')[0]
+        # 자정 넘긴 1h 배치 → 08-31 에 0.5h, 09-01 에 0.5h 배분(139% 버그 방지).
+        days = table(c, '스캔 가동률 · 일')
+        day = days[0]
         self.assertEqual(day[1], datetime(2026, 8, 31))
-        self.assertAlmostEqual(day[5], 100 / 24)
+        self.assertAlmostEqual(day[3], 0.5)             # 스캔 시간(h)
+        self.assertAlmostEqual(day[5], 0.5 / 24 * 100)  # 가동률(%)
+        self.assertAlmostEqual(days[1][3], 0.5)         # 09-01 에도 0.5h
         week = table(c, '스캔 가동률 · 주')[0]
-        self.assertEqual(week[4], 24.5)
-        self.assertEqual(week[8], '진행 중')
+        self.assertEqual(week[4], 48)                   # 기간 길이(h) = 시작~현재
+        self.assertEqual(week[-1], '진행 중')
         month = table(c, '스캔 가동률 · 월')[0]
         self.assertEqual(month[4], 31 * 24)
 
@@ -106,7 +110,7 @@ class Metrics(unittest.TestCase):
             report('different.htm', start='19-Sep-26 11:01:00 AM', end='19-Sep-26 11:02:00 AM', job='JOB/2'),
             report('next.htm', start='19-Sep-26 11:10:00 AM', end='19-Sep-26 12:00:00 PM'),
             report('orphan.htm', statuses=('Aborted.',), start='19-Sep-26 01:00:00 PM', end='19-Sep-26 02:00:00 PM')))
-        restart = table(c, '재시작 간격')
+        restart = table(c, '재시작 간격(같은 lot 재스캔)')
         self.assertEqual(restart[0][-3:], ('next.htm', 10, '유효'))
         self.assertIn('없음', restart[1][-1])
         self.assertEqual(table(c, '복구 baseline (재시작 간격 proxy)')[0], (1, 1, 10, 10, 10))
@@ -116,12 +120,14 @@ class Metrics(unittest.TestCase):
         later = report('later.htm', start='19-Sep-26 12:00:00 PM', end='19-Sep-26 01:00:00 PM', bad='9', yield_pct='80')
         c = br.compute(records(early, later), min_baseline=2, yield_drop=5)
         self.assertAlmostEqual(br.percentile([1, 2, 3, 4], .95), 3.85)
-        anomalies = table(c, '품질 이상 후보 (자동 Hold 아님)')
+        anomalies = table(c, '품질 이상 Wafer 상세 (자동 Hold 아님)')
         self.assertEqual(len(anomalies), 1)
-        self.assertEqual(anomalies[0][2], 'later.htm')
-        self.assertEqual(anomalies[0][6], 1)
-        self.assertEqual(anomalies[0][8], 94)
-        self.assertEqual(len(table(br.compute(records(later), min_baseline=2), '품질 이상 후보 (자동 Hold 아님)')), 0)
+        # (Lot, Job/Setup, Batch End, 호기, Report, Wafer ID, Bad, P95, Yield, 하한, 근거)
+        self.assertEqual(anomalies[0][4], 'later.htm')
+        self.assertEqual(anomalies[0][7], 1)
+        self.assertEqual(anomalies[0][9], 94)
+        self.assertEqual(len(table(br.compute(records(later), min_baseline=2), '품질 이상 Wafer 상세 (자동 Hold 아님)')), 0)
+        self.assertEqual(len(table(c, '품질 이상 Lot 요약')), 1)
 
     def test_missing_and_nonfinite(self):
         self.assertIsNone(br.number('nan'))
@@ -136,12 +142,12 @@ class Metrics(unittest.TestCase):
         a = report('a.htm', statuses=('Pass', 'Pass'), bad='1')
         b = report('b.htm', bad='99')
         c = br.compute(records(a, b), min_baseline=2)
-        self.assertEqual(table(c, '품질 이상 후보 (자동 Hold 아님)'), [])
-        c = br.compute(records(report(seconds='30:00:00')))
+        self.assertEqual(table(c, '품질 이상 Wafer 상세 (자동 Hold 아님)'), [])
+        c = br.compute(records(report(seconds='30:00:00')), now=datetime(2026, 9, 21))
         day = table(c, '스캔 가동률 · 일')[0]
-        self.assertEqual(day[5], 125)
-        self.assertLess(day[7], 0)
-        self.assertIn('100%', day[-1])
+        self.assertEqual(day[5], 125)       # 가동률(%): 스캔시간(30h) > 기간(24h)
+        self.assertLess(day[6], 0)          # 비스캔 시간(h) 음수
+        self.assertIn('100%', day[-1])      # 기간 상태에 100% 초과 표시
 
 
 class Collection(unittest.TestCase):

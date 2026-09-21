@@ -41,7 +41,8 @@ PURPOSE = {
 }
 INTERPRET = {
     "M01": [("teal", "읽는 법", "합산 WPH는 웨이퍼를 batch time 총합으로 나눈 가중 처리량, 평균 WPH는 배치별 WPH의 산술평균입니다. 유효 Lot 매수(설정값)를 채운 배치만 집계합니다.")],
-    "M02": [("amber", "주의", "가동률은 스캔시간 / 달력시간 proxy로 OEE가 아닙니다. 대기·PM·전원 OFF를 구분하지 않으며 100% 초과·음수 유휴는 숨기지 않습니다. 호기·기간 상대 비교로만 사용하세요.")],
+    "M02": [("navy", "용어 설명", "· 스캔 시간(h): batch report의 Batch Time(스캔 시작~끝) 합 = 이 장비가 실제로 웨이퍼를 검사한 시간. 자정을 넘긴 배치는 걸친 날짜에 나눠 담습니다. · 기간 길이(h): 보는 단위의 달력 시간(일=24h, 주=168h, 진행 중 기간은 시작~현재). · 가동률(%): 스캔 시간 ÷ 기간 길이 ×100. 100%면 그 기간 내내 쉼 없이 스캔. · 비스캔 시간(h): 기간 길이 − 스캔 시간."),
+            ("amber", "주의 — OEE가 아닙니다", "스캔 안 한 나머지 시간이 '대기'인지 'PM(정비)'인지 '전원 OFF'인지 '셋업'인지 batch report만으로는 구분할 수 없어, 그 전부를 비스캔으로 묶습니다. 그래서 진짜 설비효율(OEE)이 아니라 '그 기간에 몇 %를 스캔에 썼나'라는 스캔 점유율 근사치이며, 절대값보다 호기끼리·기간끼리 상대 비교에 쓰세요. (드물게 리포트의 Batch Time이 실제 경과보다 길면 가동률이 100%를 넘을 수 있고, 그 경우 기간 상태에 표시합니다.)")],
     "M03": [("teal", "읽는 법", "한 wafer에 여러 상태가 겹칠 수 있어 유형별 합계가 전체 Report 수보다 클 수 있습니다. Lot 수는 같은 (Job/Setup, Lot)이 재스캔으로 여러 리포트가 돼도 1로 셉니다. 막대 색은 성격별 묶음입니다.")],
     "M04": [("navy", "활용", "예방형은 반자동 사전검증으로, 조치형은 Auto Setup 후보로 분기해 대응 방식을 정합니다. 아래 표는 각 성격에 어떤 Error 유형이 묶이는지입니다.")],
     "M05": [("rust", "한계", "연쇄/직접 구분은 wafer 스캔 순서 기반 추정입니다. 장비 상세 Error Log가 연동되면 수동/자동 중단을 실측으로 구분해 신뢰도가 올라갑니다.")],
@@ -50,8 +51,9 @@ INTERPRET = {
     "M08": [("amber", "주의", "임계치 후보는 정상 분포의 P95 등 통계값입니다. 인증된 Hold 기준이 아니며 사람이 확인 후 적용하세요."),
             ("teal", "읽는 법", "Recipe = Job/Setup(예: 2D@R2-…-0B/Setup1). Good Dice = Scanned − Bad. 막대는 recipe별 정상 wafer의 Scanned/Bad/Good 평균입니다.")],
     "M09": [("rust", "한계", "이상 후보는 과거 정상 대비 상대 비교입니다. 자동 Hold·제어에 직접 쓰지 않습니다.")],
-    "M10": [("teal", "읽는 법", "batch report에는 lot 기대 매수가 없어 '완주율'은 측정하지 않습니다(B안). 대신 lot마다 스캔 중 이슈가 있었는지와 재스캔(리포트≥2) 여부를 보고, 전체 lot 중 문제 lot 비중을 냅니다."),
-            ("navy", "활용", "'문제 Lot 상세'의 스캔 시도 수가 크거나 포함 이슈 유형이 반복되는 lot이 자동화·개선 1순위입니다.")],
+    "M10": [("teal", "읽는 법", "batch report에는 lot 기대 매수가 없어 '완주율'은 측정하지 않습니다(B안). 대신 lot마다 스캔 중 이슈가 있었는지와 재스캔(리포트≥2) 여부를 보고, 전체 lot 중 문제 lot 비중을 냅니다. 이슈 발생 Lot = 어느 리포트에서든 error/중단/skip이 있던 lot. 재스캔 Lot = 리포트가 2장 이상(중단 후 다시 스캔). 둘은 관련은 있지만 다릅니다 — 이슈인데 재스캔이 없는 lot(단발 에러)도, 이슈 표기 없이 나눠 스캔된 lot도 있습니다."),
+            ("slate", "스캔 시도 1회 = ?", "'스캔 시도(리포트) 수'가 1인 문제 lot은 이 장비(현재 분석 호기)에서 한 번 스캔→에러→재스캔 기록이 없다는 뜻입니다. 그 웨이퍼는 다른 AOI로 넘어가 재검사됐을 가능성이 높습니다(이 분석은 호기 1대만 봅니다)."),
+            ("navy", "활용", "'문제 Lot 상세'의 스캔 시도 수가 크거나 포함 이슈 유형이 반복되는 lot이 자동화·개선 1순위입니다. 포함 이슈 유형은 batch report 원문 그대로이며 유형마다 한 줄로 적습니다.")],
     "M11": [("navy", "활용", "새 문구가 잡히면 분류 규칙에 추가해 다음 실행부터 정상 집계되도록 하세요.")],
 }
 # Category-character grouping colours (M03/M04), abort/lot-issue colours.
@@ -61,6 +63,13 @@ CHAR_COLOR = {"예방형": "#0e5f5c", "조치형": "#b7791f", "중단": "#1f3a5f
 ISSUE_COLOR = {"이슈 발생 Lot": "#c0392b", "정상 Lot": "#0e5f5c", "재스캔(리포트≥2) Lot": "#b7791f"}
 ABORT_COLOR = {"원본 Aborted": "#1f3a5f", "직접 추정": "#c0392b", "연쇄 추정": "#94a3b8"}
 DICE_COLOR = {"Scanned 평균": "#1f3a5f", "Bad 평균": "#c0392b", "Good 평균": "#0e5f5c"}
+CHAR_DESC = {
+    "예방형": "장비를 세우진 않지만 사전 검증으로 막을 수 있는 유형(맵·Bin·판독 등). 반자동 사전검증 대상.",
+    "조치형": "Focus·Align·Clean Reference처럼 자동 셋업 보정이 필요한 유형. Auto Setup 후보.",
+    "중단": "스캔이 중단(Aborted)된 유형. 작업자·장비 중단 포함.",
+    "결과형": "검사에서 제외(Skipped)된 유형. 스캔 자체를 안 함.",
+    "미확인": "분류 규칙에 아직 없거나 상태를 확인할 수 없는 유형.",
+}
 
 PAGE_CSS = """
 :root{--ink:#1b2430;--soft:#54606e;--faint:#8592a0;--line:#dde2e9;--line2:#eef1f5;
@@ -106,6 +115,13 @@ svg .val{font-size:11px;font-weight:700;fill:var(--ink)}
 .lgd .i{display:flex;align-items:center;gap:5px}
 .lgd .sw{width:14px;height:12px;border-radius:2px;display:inline-block}
 details{margin:8px 0}summary{cursor:pointer;font-size:12.5px;color:var(--soft);font-weight:700}
+.metricnav{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 10px;padding:12px;background:var(--slate-bg);border:1px solid var(--line);border-radius:8px;position:sticky;top:0;z-index:2}
+.mbtn{padding:7px 13px;border:1px solid var(--line);background:#fff;color:var(--soft);border-radius:7px;cursor:pointer;font:inherit;font-size:12.5px;font-weight:700}
+.mbtn:hover{border-color:var(--navy);color:var(--navy)}
+.mbtn.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.mbtn.help{background:#fff;color:var(--teal);border-color:var(--teal)}
+.mbtn.help.on{background:var(--teal);color:#fff}
+.mbtn .mtiny{font-size:10px;opacity:.7;font-weight:600}
 .periodnav{display:flex;gap:6px;margin:8px 0}
 .periodnav button{padding:6px 16px;border:1px solid var(--navy);background:#fff;color:var(--navy);border-radius:6px;cursor:pointer;font:inherit;font-weight:700}
 .periodnav button:hover{background:var(--navy-bg)}
@@ -154,9 +170,6 @@ def chart_data(table):
         col = {"유형별 빈도": 6, "유형별 Wafer 발생 빈도": 5, "유형별 Lot 발생 빈도": 7}[title]
         unit = {"유형별 빈도": "Report 수 (건)", "유형별 Wafer 발생 빈도": "Wafer 발생 (건)", "유형별 Lot 발생 빈도": "Lot 수 (건)"}[title]
         return [(f"{r[3]} / {r[4]}", r[col]) for r in rows if r[0] == "전체"], unit
-    if title.startswith("스캔 가동률 ·"):
-        latest = max((r[1] for r in rows), default=None)
-        return [(f"{r[0]} · {display(r[1])[:10]}", r[5]) for r in rows if r[1] == latest and r[5] is not None], "최근 기간 스캔 가동률 (%)"
     if title == "유형별 재시작 간격 (유형 중복 허용)":
         return [(r[0], r[2]) for r in rows if r[2] is not None], "평균 재시작 간격 (분)"
     if title in {"Error 성격 분류", "Aborted 보정", "Lot 이슈 요약"}:
@@ -241,7 +254,9 @@ def trend(table):
         return ""
     times = [r[0].timestamp() for r in rows]
     lo, hi = min(times), max(times)
-    maximum = max(r[3] for r in rows) or 1
+    # 가동률은 Y축을 0~100%로 고정해 일/주/월 그래프가 같은 눈금으로 비교되게 한다
+    # (100% 초과 anomaly 는 맨 위에 붙는다). 그 외(WPH)는 데이터 최대값 기준.
+    maximum = 100 if utilization else (max(r[3] for r in rows) or 1)
     groups = {}
     for r in rows:
         groups.setdefault(r[1], []).append(r)
@@ -259,7 +274,7 @@ def trend(table):
     colors = ["#246d91", "#be5a25", "#764aa1", "#227a58", "#af345d"]
     for index, (machine, items) in enumerate(sorted(groups.items())):
         color = colors[index % len(colors)]
-        points = [(80 + (r[0].timestamp() - lo) / (hi - lo or 1) * 1000, 330 - r[3] / maximum * 290, r) for r in items]
+        points = [(80 + (r[0].timestamp() - lo) / (hi - lo or 1) * 1000, max(40, 330 - r[3] / maximum * 290), r) for r in items]
         parts.append(f'<polyline fill="none" stroke="{color}" stroke-width="2" points="' + ' '.join(f'{x:.2f},{y:.2f}' for x, y, _ in points) + '"/>')
         for x, y, r in points:
             parts.append(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="3" fill="{color}"><title>{esc(machine)} · {esc(r[0])} · {esc(r[2])}: {esc(r[3])} {esc(unit)}</title></circle>')
@@ -321,12 +336,20 @@ def dice_bars(rows):
     return ''.join(out)
 
 
+def _cell(value):
+    """Escape a cell; render embedded newlines (예: M10 포함 이슈 유형) as separate lines."""
+    text = display(value)
+    if "\n" in text:
+        return "<br>".join(html.escape(line, quote=True) for line in text.split("\n"))
+    return html.escape(text, quote=True)
+
+
 def _table_html(t):
     open_attr = " open" if len(t["rows"]) <= 60 else ""
     out = [f'<details{open_attr}><summary>{esc(t["title"])} · 전체 표 {len(t["rows"])}행 (원문 확인)</summary>',
            '<table><thead><tr>', *('<th>' + esc(h) + '</th>' for h in t["headers"]), '</tr></thead><tbody>']
     for row in t["rows"]:
-        out.append('<tr>' + ''.join('<td>' + esc(cell) + '</td>' for cell in row) + '</tr>')
+        out.append('<tr>' + ''.join('<td>' + _cell(cell) + '</td>' for cell in row) + '</tr>')
     out.append('</tbody></table></details>')
     return ''.join(out)
 
@@ -337,7 +360,7 @@ def _block(t, cat2char):
     if title == "시간순 Actual WPH":
         chart = trend(t)
     elif title.startswith("스캔 가동률 · "):
-        chart = bars(t, cat2char) + trend(t)
+        chart = trend(t)  # 버킷별 시계열만(최근 기간 막대 제거). Y축 0~100% 고정.
     elif title == "유형별 빈도":
         chart = (bars(dict(t, title="유형별 Wafer 발생 빈도"), cat2char)
                  + bars(dict(t, title="유형별 Lot 발생 빈도"), cat2char))
@@ -403,8 +426,13 @@ def build_html(result, collection, dashboard=False):
             groups[-1][1].append(t)
         else:
             groups.append((t["key"], [t]))
+    # 지표 버튼 탭 — 한 번에 한 지표만 보여준다(길게 나열돼 읽기 힘든 문제 해결).
+    nav = ['<div class="metricnav"><button class="mbtn help" data-sec="help" onclick="showMetric(\'help\')">📘 방법론·lot 기준</button>']
+    for i, (key, _) in enumerate(groups):
+        nav.append(f'<button class="mbtn{" on" if i == 0 else ""}" data-sec="{key}" onclick="showMetric(\'{key}\')">{esc(METRIC_NAME.get(key, key))} <span class="mtiny">[{key}]</span></button>')
+    parts.append(''.join(nav) + '</div>')
     for n, (key, ts) in enumerate(groups, 1):
-        parts.append(f'<section><h2>{n}. {esc(METRIC_NAME.get(key, key))} <span class="mtag">[{key}]</span></h2>')
+        parts.append(f'<section class="metric" id="sec-{key}"{"" if n == 1 else " hidden"}><h2>{n}. {esc(METRIC_NAME.get(key, key))} <span class="mtag">[{key}]</span></h2>')
         parts.append(f'<div class="sub">{esc(PURPOSE.get(key, ""))}</div>')
         if key == "M02" and any(x["title"].startswith("스캔 가동률 · ") for x in ts):
             parts.append('<div class="periodnav"><button onclick="period(\'일\')">일</button>'
@@ -417,21 +445,47 @@ def build_html(result, collection, dashboard=False):
                 parts.append(f'<div data-period="{unit}"{hidden}>' + _block(t, cat2char) + '</div>')
             else:
                 parts.append(_block(t, cat2char))
-        if key == "M04":  # 성격 → 포함 Error 유형 (실제 나타난 유형만, 데이터 기반)
-            char2cats = {}
-            for cat, char in cat2char.items():
-                char2cats.setdefault(char, set()).add(cat)
-            if char2cats:
-                parts.append('<div class="chartbox"><div class="cap">성격별 포함 Error 유형</div>'
-                             '<table style="margin:0"><thead><tr><th>성격</th><th>포함 Error 유형</th></tr></thead><tbody>')
+        if key == "M04":  # 성격 · 설명 · 실제 error 원문 (조사한 batch report 원문 그대로)
+            char2raw = {}
+            for tbl in result["tables"]:
+                if tbl["title"] == "상태 상세":
+                    for row in tbl["rows"]:
+                        if len(row) > 8 and row[7] and row[8]:
+                            char2raw.setdefault(row[7], set()).add(row[8].strip())
+            if char2raw:
+                parts.append('<div class="chartbox"><div class="cap">성격별 실제 Error 원문 (조사 대상 batch report에서 나온 문구)</div>'
+                             '<table style="margin:0"><thead><tr><th>성격</th><th>설명</th><th>포함 Error 유형 (원문)</th></tr></thead><tbody>')
                 for char in ("예방형", "조치형", "중단", "결과형", "미확인"):
-                    if char in char2cats:
+                    if char in char2raw:
                         name = _LEGEND_NAMES.get(char, char)
-                        parts.append(f'<tr><td>{esc(name)}</td><td>{esc(" · ".join(sorted(char2cats[char])))}</td></tr>')
+                        raws = "<br>".join(esc(r) for r in sorted(char2raw[char]))
+                        parts.append(f'<tr><td><b>{esc(name)}</b></td><td>{esc(CHAR_DESC.get(char, ""))}</td><td>{raws}</td></tr>')
                 parts.append('</tbody></table></div>')
         for variant, note_title, body in INTERPRET.get(key, []):
             parts.append(f'<div class="note {variant}"><span class="t">{esc(note_title)}</span>{esc(body)}</div>')
         parts.append('</section>')
+
+    parts.append(
+        '<section class="metric" id="sec-help" hidden><h2>📘 데이터 가공 방법 · lot 조사 기준</h2>'
+        '<div class="sub">이 리포트가 batch report 원본을 어떻게 지표로 바꾸는지 설명합니다.</div>'
+        '<div class="note navy"><span class="t">1. 입력 — batch report</span>'
+        '장비 Report 폴더에 스캔 1회마다 쌓이는 batch report(HTML) 한 장이 기본 단위입니다. 한 장에는 그 스캔의 '
+        'Batch Start/End·Batch Time·Job/Setup·wafer 표(각 wafer의 Lot·Wafer ID·Scanned/Bad/Good Dice·Pass/Fail)가 들어 있습니다. '
+        '원본은 읽기만 하고 수정하지 않습니다.</div>'
+        '<div class="note teal"><span class="t">2. lot 조사 기준 — 핵심</span>'
+        'batch report 1장 = 스캔 세션 1회이지 lot(카세트) 전체가 아닙니다. 스캔이 중단·재스캔되면 <b>한 lot이 리포트 여러 장</b>으로 '
+        '나뉩니다(실데이터 최대 9장). 그래서 <b>lot = (Job/Setup, wafer 표 Lot 열의 최빈값)</b>으로 정의하고, 같은 lot의 리포트들을 '
+        '묶어서 지표를 lot 기준으로 셉니다. wafer ID를 못 읽어 Lot 칸이 \'LoadPort A\'·\'-\'·빈칸인 행은 lot 판정에서 제외합니다.</div>'
+        '<div class="note slate"><span class="t">3. Recipe = Job/Setup</span>'
+        'Recipe는 wafer 표의 \'Recipe(s)\' 열(2D/PI_Bubble/x20 등, 지저분)이 아니라 배치의 <b>Job/Setup 전체</b>(예: 2D@R2-DT-GH10N-BIN1-H-U1_0858092PD-0B/Setup1)로 봅니다.</div>'
+        '<div class="note amber"><span class="t">4. 성격 분류</span>'
+        '각 wafer의 Pass/Fail 원문을 유형으로 분류하고, 유형을 5가지 성격(예방형·조치형·중단·결과형·미확인)으로 묶습니다. '
+        '한 원문이 두 성격에 걸칠 수 있습니다(예: \'Alignment Error. Aborted.\' = 조치형 + 중단). 성격별 실제 원문은 M04에서 봅니다.</div>'
+        '<div class="note rust"><span class="t">5. 한계 — proxy·추정</span>'
+        '가동률(스캔시간/달력시간)·재시작 간격·Aborted 연쇄/직접 구분은 batch report에서 얻을 수 있는 근사치·추정입니다. '
+        'OEE·실제 수리시간·실측 중단 구분이 아니며, 자동 설비 제어에 쓰지 않습니다. 이 분석은 <b>호기 1대</b> 기준이라, '
+        '다른 AOI로 넘어간 재검사는 여기서 보이지 않습니다.</div>'
+        '</section>')
 
     parts.append('<aside><h2>읽기 오류 · 중복 제외 · 알림</h2><ul>')
     for error in collection["errors"]:
@@ -442,7 +496,13 @@ def build_html(result, collection, dashboard=False):
     parts.append('</ul></aside><aside><h2>지표 해석 · 한계 (전체 공통)</h2><ul>'
                  + ''.join('<li>' + esc(n) + '</li>' for n in NOTES) + '</ul></aside>')
     parts.append('<div class="foot">※ 표에 표시된 값은 원본 batch report에서 그대로 파싱한 것이며, proxy·추정으로 표시된 지표는 상대 비교·참고용입니다. 자동 설비 제어에 사용하지 않습니다.</div>')
-    parts.append('</div></div><script>function period(p){document.querySelectorAll("[data-period]").forEach(function(e){e.hidden=e.dataset.period!==p})}</script></body></html>')
+    parts.append('</div></div><script>'
+                 'function period(p){document.querySelectorAll("[data-period]").forEach(function(e){e.hidden=e.dataset.period!==p})}'
+                 'function showMetric(k){'
+                 'document.querySelectorAll("section.metric").forEach(function(s){s.hidden=(s.id!=="sec-"+k)});'
+                 'document.querySelectorAll(".mbtn").forEach(function(b){b.classList.toggle("on",b.dataset.sec===k)});'
+                 'window.scrollTo(0,0);}'
+                 '</script></body></html>')
     return ''.join(parts)
 
 
