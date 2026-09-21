@@ -32,7 +32,7 @@ PURPOSE = {
     "M03": "어떤 오류부터 대응하면 효과가 큰지 우선순위 — 발생 Wafer·Report·Lot 수를 함께 표시.",
     "M04": "자동화 방식 결정: 예방형(반자동 사전검증) vs 조치형(Auto Setup 후보). Wafer·Report·Lot 기준.",
     "M05": "작업 중단 이후 연쇄로 표기되는 Aborted를 분리해 실제 직접 중단 규모(Wafer·Lot) 파악.",
-    "M06": "이슈 배치 종료 → 같은 Job/Setup 다음 시작까지 간격(재스캔 간격). 유형별 소요 비교(실측 아님).",
+    "M06": "이슈가 난 리포트 종료 → 같은 lot의 다음 리포트 시작까지 간격(재스캔 지연). 유형별 소요 비교(실측 아님).",
     "M07": "재시작 간격의 대표값(복구 baseline proxy). 개선 전후 비교 기준선.",
     "M08": "정상(Pass) wafer의 Recipe(Job/Setup)별 Scanned·Bad·Good Dice 통계 — 자동 Hold 임계치 근거.",
     "M09": "과거 정상 분포 대비 튀는 wafer 후보. 참고용이며 자동 제어에 쓰지 않음.",
@@ -40,8 +40,9 @@ PURPOSE = {
     "M11": "사전 정의 목록에 없는 상태 문구를 자동 포착해 누락 방지.",
 }
 INTERPRET = {
-    "M01": [("teal", "읽는 법", "합산 WPH는 웨이퍼를 batch time 총합으로 나눈 가중 처리량, 평균 WPH는 배치별 WPH의 산술평균입니다. 유효 Lot 매수(설정값)를 채운 배치만 집계합니다.")],
-    "M02": [("navy", "용어 설명", "· 스캔 시간(h): batch report의 Batch Time(스캔 시작~끝) 합 = 이 장비가 실제로 웨이퍼를 검사한 시간. 자정을 넘긴 배치는 걸친 날짜에 나눠 담습니다. · 기간 길이(h): 보는 단위의 달력 시간(일=24h, 주=168h, 진행 중 기간은 시작~현재). · 가동률(%): 스캔 시간 ÷ 기간 길이 ×100. 100%면 그 기간 내내 쉼 없이 스캔. · 비스캔 시간(h): 기간 길이 − 스캔 시간."),
+    "M01": [("teal", "읽는 법", "합산 WPH는 웨이퍼를 batch time 총합으로 나눈 가중 처리량, 평균 WPH는 배치별 WPH의 산술평균입니다."),
+            ("navy", "유효 스캔 = 무에러 완전 lot", "유효 스캔 수는 Wafers Scanned가 설정 매수(예: 25)와 정확히 같고 Batch Time>0 인 리포트만 셉니다. 스캔 에러가 있으면 Wafers Scanned가 그만큼 줄어 25 미만이 되므로 **에러 lot은 자동으로 빠집니다**(실데이터 158건 전부 무에러). 한 리포트=한 lot의 완전 스캔이라 사실상 '무에러 완전 lot 수'입니다.")],
+    "M02": [("navy", "용어 설명", "· 스캔 시간(h): batch report의 Batch Time(스캔 시작~끝) 합 = 이 장비가 실제로 웨이퍼를 검사한 시간. 자정을 넘긴 배치는 걸친 날짜에 나눠 담습니다. · 기간 길이(h): 보는 단위의 달력 시간(일=24h, 주=168h, 진행 중 기간은 시작~현재). · 가동률(%): 스캔 시간 ÷ 기간 길이 ×100. 100%면 그 기간 내내 쉼 없이 스캔. · 비스캔 시간(h): 기간 길이 − 스캔 시간. · Batch 수: 그 기간에 '시작한' 배치 수 — 전날 시작해 자정을 넘어온 배치의 스캔 시간도 이 날에 잡히므로, Batch 수는 적어도 스캔 시간이 클 수 있습니다(예: 하루 2배치인데 앞 배치가 밤새 돌면 가동률이 99%까지 나옵니다)."),
             ("amber", "주의 — OEE가 아닙니다", "스캔 안 한 나머지 시간이 '대기'인지 'PM(정비)'인지 '전원 OFF'인지 '셋업'인지 batch report만으로는 구분할 수 없어, 그 전부를 비스캔으로 묶습니다. 그래서 진짜 설비효율(OEE)이 아니라 '그 기간에 몇 %를 스캔에 썼나'라는 스캔 점유율 근사치이며, 절대값보다 호기끼리·기간끼리 상대 비교에 쓰세요. (드물게 리포트의 Batch Time이 실제 경과보다 길면 가동률이 100%를 넘을 수 있고, 그 경우 기간 상태에 표시합니다.)")],
     "M03": [("teal", "읽는 법", "한 wafer에 여러 상태가 겹칠 수 있어 유형별 합계가 전체 Report 수보다 클 수 있습니다. Lot 수는 같은 (Job/Setup, Lot)이 재스캔으로 여러 리포트가 돼도 1로 셉니다. 막대 색은 성격별 묶음입니다.")],
     "M04": [("navy", "활용", "예방형은 반자동 사전검증으로, 조치형은 Auto Setup 후보로 분기해 대응 방식을 정합니다. 아래 표는 각 성격에 어떤 Error 유형이 묶이는지입니다.")],
@@ -108,6 +109,10 @@ table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
 th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
 thead th{background:var(--navy);color:#fff;font-weight:700;font-size:12px;position:sticky;top:0}
 tbody tr:nth-child(even) td{background:#fafbfc}
+table.sortable th{cursor:pointer;user-select:none;white-space:nowrap}
+table.sortable th:hover{filter:brightness(1.3)}
+table.sortable th[data-dir=asc]::after{content:" ▲";font-size:9px}
+table.sortable th[data-dir=desc]::after{content:" ▼";font-size:9px}
 svg{display:block;max-width:100%;height:auto;font-family:inherit}
 svg text{font-size:12px;fill:var(--soft)}
 svg .val{font-size:11px;font-weight:700;fill:var(--ink)}
@@ -346,8 +351,8 @@ def _cell(value):
 
 def _table_html(t):
     open_attr = " open" if len(t["rows"]) <= 60 else ""
-    out = [f'<details{open_attr}><summary>{esc(t["title"])} · 전체 표 {len(t["rows"])}행 (원문 확인)</summary>',
-           '<table><thead><tr>', *('<th>' + esc(h) + '</th>' for h in t["headers"]), '</tr></thead><tbody>']
+    out = [f'<details{open_attr}><summary>{esc(t["title"])} · 전체 표 {len(t["rows"])}행 (원문 확인 · 열 머리 클릭=정렬)</summary>',
+           '<table class="sortable"><thead><tr>', *('<th onclick="sortTable(this)">' + esc(h) + '</th>' for h in t["headers"]), '</tr></thead><tbody>']
     for row in t["rows"]:
         out.append('<tr>' + ''.join('<td>' + _cell(cell) + '</td>' for cell in row) + '</tr>')
     out.append('</tbody></table></details>')
@@ -502,6 +507,14 @@ def build_html(result, collection, dashboard=False):
                  'document.querySelectorAll("section.metric").forEach(function(s){s.hidden=(s.id!=="sec-"+k)});'
                  'document.querySelectorAll(".mbtn").forEach(function(b){b.classList.toggle("on",b.dataset.sec===k)});'
                  'window.scrollTo(0,0);}'
+                 'function sortTable(th){var t=th.closest("table"),b=t.tBodies[0],i=[].indexOf.call(th.parentNode.children,th),'
+                 'd=th.getAttribute("data-dir")==="asc"?"desc":"asc";'
+                 '[].forEach.call(t.querySelectorAll("th"),function(h){h.removeAttribute("data-dir")});th.setAttribute("data-dir",d);'
+                 'var rows=[].slice.call(b.rows);rows.sort(function(x,y){'
+                 'var a=x.cells[i].innerText.trim(),c=y.cells[i].innerText.trim(),'
+                 'na=parseFloat(a.replace(/,/g,"")),nc=parseFloat(c.replace(/,/g,"")),'
+                 'r=(!isNaN(na)&&!isNaN(nc))?na-nc:a.localeCompare(c,"ko");return d==="asc"?r:-r;});'
+                 'rows.forEach(function(rw){b.appendChild(rw)});}'
                  '</script></body></html>')
     return ''.join(parts)
 

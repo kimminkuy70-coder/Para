@@ -177,7 +177,7 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
     for b in eligible:
         for key in [("전체", "전체"), (b["machine"], "전체"), (b["machine"], b["recipe"])]:
             groups[key].append(b)
-    table("M01", "WPH", ["호기", "Job Recipe", "유효 Batch 수", "합산 WPH (wafer/h)", "평균 WPH (wafer/h)"],
+    table("M01", "WPH", ["호기", "Job Recipe", "유효 스캔 수(25매 완전 lot)", "합산 WPH (wafer/h)", "평균 WPH (wafer/h)"],
           [(*k, len(v), sum(b["wafers"] for b in v) * 3600 / sum(b["batch_sec"] for b in v),
             mean(b["wafers"] * 3600 / b["batch_sec"] for b in v)) for k, v in sorted(groups.items())])
     table("M01", "시간순 Actual WPH", ["Batch End", "호기", "Report", "Actual WPH (wafer/h)"],
