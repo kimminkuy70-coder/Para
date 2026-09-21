@@ -1,45 +1,39 @@
-# A1 stdio 계약 v1 — 메모리 분석 기반
+# Desktop stdio 계약 v1
 
-상태: Python 측 기반 구현. Tauri launcher/React 연결, 실제 장비 수집 및 파일 출력은 미연결.
-실행: 번들 Python에서 `-m param_manager.desktop_ipc`. 개발 테스트는 같은 모듈을 사용한다.
-HTTP/TCP 포트를 열지 않는다. stdout은 UTF-8 NDJSON 전용이다.
+React → 제한 Tauri command → 고정 sidecar → 기존 Python 엔진.
+HTTP/TCP 서버 없음. stdout UTF-8 NDJSON. native 실제 Windows 실행은 미검증이다.
 
-## 요청
+요청은 `{ "version":1, "id":1, "method":"contract", "params":{} }`.
+id는 세션 내 증가하는 1..2^53−1 정수. 프레임 최대 4 MiB. NaN/Infinity/추가 필드는 거절.
 
-한 줄에 `{"version":1,"id":1,"method":"contract","params":{}}`.
-id는 세션 안에서 증가하는 1~2^53-1 정수다. 재사용/역전/알 수 없는 필드는 거절한다.
-요청/응답 한 줄 최대 4 MiB. 초과 요청은 오류 후 세션을 닫는다. JSON NaN/Infinity는 거절한다.
-
-| method | params | 결과 |
+| method | 입력/경계 | 결과 |
 |---|---|---|
-| contract | 없음 | 메서드/프레임/페이지 제한 |
-| analyze | records, 선택적 selected | accepted → progress → completed/error/cancelled |
-| table_page | job, table, 선택적 offset/limit | 최대 200행, 전체 행 수 |
-| cancel | job | 요청 접수; 진행 중이면 이후 cancelled |
-| release | job | 종료된 작업 결과 메모리 해제 |
-| shutdown | 없음 | 요청 차단, 취소 요청, worker 종료 대기 |
+| contract | 없음 | 메서드·제한 |
+| configuration | 없음 | 기존 설정에서 등록 호기·최신 조사 조건 |
+| investigate | 등록 호기 ID·검색어·날짜·M01~11 설정 | accepted/progress/completed/error/cancelled |
+| analyze | 최대 2,000 Report / 100,000 Wafer 메모리 데이터 | 기존 메모리 분석 |
+| table_page | job/table/offset/limit | 최대 200행 |
+| cancel / release / shutdown | job 또는 빈 입력 | 협력 취소 / 결과 해제 / 종료 대기 |
+| recipe_open | 없음 | 최신 기존 취합의 snapshot/Recipe/호기 |
+| recipe_page | snapshot/recipe/query/선택호기/offset/limit/호기 offset·limit | 최대 100행·비교 호기 12개 |
+| recipe_edit | snapshot/row/kind/value | color 또는 note만; 파라미터 값 수정 금지 |
+| document_open | ip/special/reference | 고정 공유 문서 snapshot |
+| document_page | snapshot/offset/limit | 최대 100행 |
+| document_edit | snapshot/row/column/value/color | 선택 셀만 잠금·변경 검사 후 저장 |
 
-analyze 요청 id가 job id다. 다른 요청의 id는 별개이며 계속 증가한다.
-한 세션에 보관하는 작업은 하나다. 완료/실패/취소 이후 release하고 다음 작업을 시작한다.
-worker가 종료되기 직전 release는 거절될 수 있으므로 native dispatcher에서 직렬화/재시도를 처리한다.
-summary와 테이블 목록만 완료 응답에 포함하고 실제 행은 table_page로 조회한다.
-페이지 응답도 4 MiB를 넘으면 response_too_large를 반환하므로 limit을 줄여 재요청한다.
+임의 파일/실행파일/명령 문자열을 입력받지 않는다. Python도 경로 경계를 검증한다.
+장비는 기존 설정 경로로 읽기만 한다. 배치 결과는 localdirs가 허용하는 로컬에 저장한다.
+공유 문서는 기존 형식을 보존하고 명시적 편집 시 잠금/변경 확인/원자 교체한다.
+IP 문서의 구 자격증명 열은 UI에 반환하지 않는다. 원문은 React 텍스트로 처리한다.
 
-records 최대 2,000 Report, 100,000 Wafer이며 프레임 바이트 제한도 함께 적용한다.
-각 record는 id, machine, report만 허용한다. report는 file_name, metadata(문자열 쌍 배열),
-wafers(문자열 필드 사전 배열), 선택적 table_count다. file_name은 표시 데이터이며 열지 않는다.
-selected는 기존 M01~M11이다. 현재 분석 설정은 엔진 기본값이며 설정 전달은 A2에서 추가한다.
+단일 배치 작업을 유지하며 완료 뒤 release한다. 완료 이벤트 직전 running을 해제한다.
+취소는 파일/계산/출력 경계에서 처리하며 블로킹 SMB 호출을 강제 종료하지 않는다.
+최종 결과 게시를 시작한 이후의 늦은 취소는 완료된 결과를 되돌리지 않는다.
+Recipe/문서 작업은 배치 실행 중 거절한다. 이 작업은 동기 실행으로 별도 진행/취소는 아직 없다.
 
-## 보안/생명주기 한계
+Native는 resources/sidecar의 고정 exe만 실행하고 PYTHONPATH/PYTHONHOME를 제거한다.
+송신 큐 최대 8개, 프레임 제한 4 MiB. EOF에서 Python은 취소 후 worker를 기다린다.
+Native 종료도 sidecar 종료를 기다린다. 응답 크기 초과 시 더 작은 페이지로 재요청해야 한다.
 
-- 파일/네트워크/자격증명/임의 코드 API 없음. 문자열은 HTML로 실행하지 않아야 한다.
-- Python 스레드가 계산하며 입력 수신은 계속한다. 계산 내부 취소 지점은 아직 없다.
-  취소 요청이 접수되어도 현재 compute가 반환할 때까지 시간이 걸릴 수 있다.
-- EOF/shutdown에서 협력 취소 후 join한다. 강제 종료나 공유 파일 쓰기는 하지 않는다.
-- 엔진 예외는 analysis_failed로 가린다. 원문/경로/비밀번호를 오류 응답에 넣지 않는다.
-- 메모리 상한은 입력 제한일 뿐 전체 RSS 보장이 아니다. 실자료 대용량 성능 검증이 필요하다.
-- shutdown 응답은 요청 접수 의미이며 프로세스 종료 완료는 native 측에서 별도 감시해야 한다.
-- 실제 native 연결 시 고정된 번들 실행파일만 시작하고 사용자 지정 executable/인자/경로를 받지 않는다.
-  stdin/stdout backpressure, 종료 감시, 이벤트 크기 제한, CSP 및 command allowlist를 함께 검증한다.
-
-검증: `python tests/test_desktop_ipc.py`. Windows/네이티브 통합 성공을 의미하지 않는다.
+브라우저 통합 테스트는 native를 대체하고 실제 Python과 연결한다. Rust/WebView2 시험을
+대체하지 않는다. 제한은 DOM/IPC 단위이며 전체 backend RSS 상한 보장은 아니다.

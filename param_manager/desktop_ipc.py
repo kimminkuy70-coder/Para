@@ -1,8 +1,8 @@
-"""Versioned, memory-only NDJSON adapter. No file, network or shell commands.
+"""Versioned NDJSON adapter with explicitly allowlisted domain operations.
 
-Run with the bundled Python as ``-m param_manager.desktop_ipc``. The native
-launcher is intentionally not wired yet. Cancellation is cooperative at engine
-boundaries, not an unsafe thread/process termination.
+The fixed native launcher owns this process. Filesystem access is confined by
+the domain adapters to configured sources, local outputs and shared workbooks.
+Cancellation is cooperative, never an unsafe thread/process termination.
 """
 from __future__ import annotations
 
@@ -11,12 +11,15 @@ import sys
 import threading
 from datetime import datetime
 
-from . import batchreport
+from . import batchreport, batchreport_store
+from .desktop_batch import DesktopBatch
+from .desktop_recipe import DesktopRecipe
+from .desktop_documents import DesktopDocuments
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "analyze", "table_page", "cancel", "release", "shutdown"}
+METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "document_open", "document_page", "document_edit"}
 
 
 def encoded(value):
@@ -79,6 +82,10 @@ class Session:
         self.job = None
         self.closed = False
         self.last_id = 0
+        self.batch = DesktopBatch()
+        self.recipe = DesktopRecipe()
+        self.documents = DesktopDocuments()
+        self.running = False
 
     def emit(self, request_id, event, **data):
         with self.lock:
@@ -109,14 +116,42 @@ class Session:
                 self.dispatch(request_id, method, params)
         except (ValueError, TypeError, KeyError) as exc:
             self.emit(request_id, "error", code="invalid_request", message=str(exc))
+        except Exception:
+            self.emit(request_id, "error", code="configuration_failed")
 
     def dispatch(self, rid, method, params):
-        allowed = {"analyze": {"records", "selected"}, "table_page": {"job", "table", "offset", "limit"},
-                   "cancel": {"job"}, "release": {"job"}}
+        allowed = {"analyze": {"records", "selected"}, "investigate": {"targets", "options"}, "table_page": {"job", "table", "offset", "limit"},
+                   "cancel": {"job"}, "release": {"job"},
+                   "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine"},
+                   "recipe_edit": {"snapshot","row","kind","value"}}
+        allowed.update(document_open={'kind'},document_page={'snapshot','offset','limit'},
+                       document_edit={'snapshot','row','column','value','color'})
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
-        if method == "contract":
+        if method.startswith('document_'):
+            if self.running:raise ValueError('배치 조사 완료 후 문서를 열어 주세요')
+            action={'document_open':lambda:self.documents.open(params.get('kind')),
+                    'document_page':lambda:self.documents.page(params),'document_edit':lambda:self.documents.edit(params)}
+            self.emit(rid,'completed',document=action[method]())
+        elif method.startswith('recipe_'):
+            if self.running:
+                raise ValueError('배치 조사 완료 후 비교 화면을 열어 주세요')
+            action = {'recipe_open': lambda: self.recipe.open(), 'recipe_page': lambda: self.recipe.page(params),
+                      'recipe_edit': lambda: self.recipe.edit(params)}
+            self.emit(rid, "completed", recipe=action[method]())
+        elif method == "contract":
             self.emit(rid, "completed", methods=sorted(METHODS), max_frame=MAX_FRAME, max_page=MAX_PAGE)
+        elif method == "configuration":
+            self.emit(rid, "completed", **self.batch.describe())
+        elif method == "investigate":
+            if self.job is not None:
+                raise ValueError("Release the previous job before starting another")
+            prepared = self.batch.prepare(params)
+            self.job, self.running = rid, True
+            self.cancelled.clear()
+            self.emit(rid, "accepted", job=rid)
+            self.worker = threading.Thread(target=self.investigate, args=(rid, prepared))
+            self.worker.start()
         elif method == "analyze":
             if self.job is not None:
                 raise ValueError("Release the previous job before starting another")
@@ -125,6 +160,7 @@ class Session:
             if not isinstance(selected, list) or not selected or any(not isinstance(k, str) or k not in batchreport.METRICS for k in selected):
                 raise ValueError("Invalid metrics")
             self.job = rid
+            self.running = True
             self.cancelled.clear()
             self.emit(rid, "accepted", job=rid)
             self.worker = threading.Thread(target=self.run, args=(rid, params["records"], selected))
@@ -136,7 +172,7 @@ class Session:
         else:
             if not integer(params.get("job"), 1, 2**53 - 1) or params["job"] != self.job:
                 raise ValueError("Unknown job")
-            running = self.worker is not None and self.worker.is_alive()
+            running = self.running
             if method == "cancel":
                 self.cancelled.set()
                 self.emit(rid, "completed", cancellation_requested=running)
@@ -159,6 +195,7 @@ class Session:
             self.emit(rid, "progress", phase="computing")
             result = None if self.cancelled.is_set() else self.compute(records, selected=selected)
             with self.lock:
+                self.running = False
                 if self.cancelled.is_set():
                     self.emit(rid, "cancelled")
                 else:
@@ -168,7 +205,38 @@ class Session:
                         for i, t in enumerate(result["tables"])])
         except Exception:
             # Do not expose source content, paths or credentials in protocol errors.
-            self.emit(rid, "error", code="analysis_failed")
+            with self.lock:
+                self.running = False
+                self.emit(rid, "error", code="analysis_failed")
+
+    def investigate(self, rid, prepared):
+        def progress(*args):
+            self.emit(rid, "progress", phase="investigating", message=str(args[-1]),
+                      current=args[0] if len(args) == 3 else None,
+                      total=args[1] if len(args) == 3 else None)
+        try:
+            output = self.batch.run(prepared, progress, self.cancelled.is_set)
+            result, collection = output["result"], output["collection"]
+            result["tables"].append(dict(key="READ", title="원본 읽기 오류", headers=["호기", "Report", "오류"],
+                rows=[(e["machine"], e["source_file"], e["error"]) for e in collection["errors"]]))
+            with self.lock:
+                self.running = False
+                self.result = result
+                # Service has committed its outputs. A late cancel is not a rollback.
+                self.emit(rid, "completed", summary=result["summary"],
+                    artifacts={k: output[k] for k in ("outdir", "html", "xlsx", "dashboard", "dashboard_error")},
+                    collection={"parsed": collection["parsed"], "reused": collection["reused"],
+                                "errors": len(collection["errors"]), "cached_only": collection["cached_only"]},
+                    tables=[dict(index=i, key=t["key"], title=t["title"], headers=t["headers"], total=len(t["rows"]))
+                            for i, t in enumerate(result["tables"])])
+        except batchreport_store.Cancelled:
+            with self.lock:
+                self.running = False
+                self.emit(rid, "cancelled")
+        except Exception:
+            with self.lock:
+                self.running = False
+                self.emit(rid, "error", code="investigation_failed")
 
     def close(self):
         with self.lock:

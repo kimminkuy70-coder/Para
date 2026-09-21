@@ -1,0 +1,100 @@
+"""Allowlisted shared workbooks, paged reads and optimistic locked cell edits."""
+import os
+from pathlib import Path
+import tempfile
+from uuid import uuid4
+import openpyxl
+from openpyxl.styles import PatternFill
+
+from . import engine, locking, namestore, refdata
+from .desktop_batch import read_json
+
+KINDS = {'ip':(refdata.ip_path,refdata.IP_SHEET,refdata.IP_HEADERS),
+         'special':(refdata.special_path,refdata.SPECIAL_SHEET,refdata.SPECIAL_HEADERS),
+         'reference':(refdata.ref_path,refdata.REF_SHEET,None)}
+
+
+class DesktopDocuments:
+    def __init__(self, config_path=None):
+        self.config_path=config_path or Path.home()/'.pi_param_manager.json'
+        self.version=None
+
+    def open(self, kind):
+        self.version=None
+        if not isinstance(kind,str) or kind not in KINDS:raise ValueError('문서 종류를 확인하세요')
+        cfg=read_json(self.config_path)
+        root=cfg.get('save_dir')
+        if not root:return dict(snapshot=None,headers=[],total=0,source='')
+        getter,sheet,headers=KINDS[kind]
+        self.path=Path(getter(root)).absolute()
+        self.root=Path(root).absolute()
+        self.check_path()
+        if not self.path.is_file():return dict(snapshot=None,headers=[],total=0,source=self.path.name)
+        self.stamp=locking.file_stamp(str(self.path))
+        wb=openpyxl.load_workbook(self.path)
+        try:
+            ws=wb[sheet] if sheet in wb.sheetnames else wb.worksheets[0]
+            if ws.max_row>100000 or ws.max_column>100:raise ValueError('문서가 너무 큽니다. 기존 프로그램에서 범위를 확인하세요.')
+            self.sheet=ws.title;self.kind=kind
+            if headers is None:
+                self.headers=[openpyxl.utils.get_column_letter(i) for i in range(1,ws.max_column+1)]
+                self.columns=list(range(1,ws.max_column+1));first=1
+            else:
+                actual=[engine._s(c.value).strip() for c in ws[1]]
+                self.headers=list(headers)
+                self.columns=[actual.index(h)+1 if h in actual else None for h in headers];first=2
+            self.cells=[]
+            for r in range(first,ws.max_row+1):
+                line=[]
+                for c in self.columns:
+                    cell=ws.cell(r,c) if c is not None else None
+                    color=''
+                    if cell and cell.fill.patternType=='solid' and cell.fill.fgColor.type=='rgb':
+                        color='#'+cell.fill.fgColor.rgb[-6:]
+                    line.append(dict(value=engine._s(cell.value) if cell else '',color=color,editable=c is not None))
+                self.cells.append((r,line))
+            if self.stamp!=locking.file_stamp(str(self.path)):raise ValueError('문서가 변경되었습니다. 다시 열어 주세요.')
+        finally:wb.close()
+        self.version=uuid4().hex
+        return dict(snapshot=self.version,headers=self.headers,total=len(self.cells),source=self.path.name)
+
+    def check_path(self):
+        if self.path.is_symlink() or not self.path.resolve().is_relative_to(self.root.resolve()):
+            raise ValueError('공유 문서 연결 경로를 사용할 수 없습니다')
+
+    def page(self, params):
+        if set(params)-{'snapshot','offset','limit'} or not self.version or params.get('snapshot')!=self.version:
+            raise ValueError('문서를 새로고침하세요')
+        offset,limit=params.get('offset',0),params.get('limit',100)
+        if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:
+            raise ValueError('문서 조회 범위를 확인하세요')
+        return dict(rows=[{'id':i,'cells':line} for i,(_,line) in enumerate(self.cells[offset:offset+limit],offset)],total=len(self.cells))
+
+    def edit(self, params):
+        if set(params)!={'snapshot','row','column','value','color'} or not self.version or params['snapshot']!=self.version:
+            raise ValueError('문서를 새로고침하세요')
+        r,c=params['row'],params['column'];value=params['value']
+        if type(r) is not int or not 0<=r<len(self.cells) or type(c) is not int or not 0<=c<len(self.columns) or self.columns[c] is None:
+            raise ValueError('편집 가능한 셀을 선택하세요')
+        if not isinstance(value,str) or len(value)>4000:raise ValueError('내용은 4000자까지 입력하세요')
+        color=namestore.normalize_color(params['color'])
+        self.check_path();path=str(self.path);user=engine.current_user()
+        previous=locking.status(path,user);state=locking.acquire(path,user)
+        if not state.editable:raise ValueError(locking.holder_message(state,self.path.name))
+        wb=None;temporary=None
+        try:
+            check=locking.check_before_save(path,user,self.stamp)
+            if not check['ok']:raise ValueError(check['reason'])
+            wb=openpyxl.load_workbook(path);ws=wb[self.sheet]
+            cell=ws.cell(self.cells[r][0],self.columns[c]);cell.value=value;cell.data_type='s'
+            cell.fill=PatternFill('solid',fgColor=color[1:]) if color else PatternFill()
+            fd,temporary=tempfile.mkstemp(prefix='.rev1-document-',suffix='.xlsx',dir=self.path.parent)
+            os.close(fd);wb.save(temporary)
+            check=locking.check_before_save(path,user,self.stamp)
+            if not check['ok'] or locking.file_stamp(path)!=self.stamp:raise ValueError(check['reason'] or '저장 직전 문서가 변경되었습니다.')
+            os.replace(temporary,path);temporary=None
+        finally:
+            if wb:wb.close()
+            if temporary and os.path.exists(temporary):os.unlink(temporary)
+            if previous.status!='mine':locking.release(path,user)
+        return self.open(self.kind)

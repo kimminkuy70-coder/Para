@@ -14,22 +14,24 @@ from . import batchreport, batchreport_output as output, batchreport_store as st
 RUN_LOCK = threading.Lock()
 
 
-def run(root, targets, options, progress=None, host_gap=2.0):
+def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
     if not RUN_LOCK.acquire(blocking=False):
         raise RuntimeError("배치 리포트 분석이 이미 실행 중입니다")
     staging = None
     try:
         base = store.local_root(root, [t['folder'] for t in targets]) / '배치분석'
         base.mkdir(parents=True, exist_ok=True)
-        collection = store.collect(root, targets, progress, host_gap)
+        collection = store.collect(root, targets, progress, host_gap, cancel=cancel)
         collection['scope'] = ' / '.join(f"{t['machine']} · {t.get('query') or '(전체 검색어)'} · {t.get('start') or '처음'}~{t.get('end') or '끝'} · "
                                        + (f"선택 {len(t['names'])}개" if t.get('names') is not None else '전체/신규 포함') for t in targets)
         if progress:
             progress('배치 분석 지표를 계산하는 중…')
+        store.checkpoint(cancel)
         result = batchreport.compute(collection['records'], selected=options['metrics'],
                                      valid_wafers=options['valid_wafers'],
                                      min_baseline=options.get('min_baseline', 20),
                                      yield_drop=options.get('yield_drop', 5.0))
+        store.checkpoint(cancel)
         staging = Path(tempfile.mkdtemp(prefix='.진행중_', dir=base))
         report_html = output.build_html(result, collection)
         output.atomic_text(staging / '배치리포트분석.html', report_html)
@@ -51,6 +53,8 @@ def run(root, targets, options, progress=None, host_gap=2.0):
             computed = wph_html.compute(rows, collection['errors'], valid_wafers=options['valid_wafers'])
             wph_html.write_html(staging / 'WPH_통합.html', computed, title='WPH 통합 결과', by_recipe=options.get('by_recipe', True))
         output.atomic_text(staging / '조사설정.json', json.dumps({'targets': targets, 'options': options}, ensure_ascii=False, indent=2))
+        store.checkpoint(cancel)
+        # Commit boundary: finish publication once begun; never forcibly interrupt.
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         outdir = base / ('조사_' + stamp)
         os.replace(staging, outdir)

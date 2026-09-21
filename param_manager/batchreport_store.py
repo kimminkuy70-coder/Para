@@ -19,6 +19,15 @@ from .atomicfile import write_json
 SCHEMA = 1
 
 
+class Cancelled(Exception):
+    """Cooperative interruption at a safe read/transaction boundary."""
+
+
+def checkpoint(cancel):
+    if cancel is not None and cancel():
+        raise Cancelled()
+
+
 def local_root(root, sources=()):
     raw = str(root)
     resolved = Path(root).resolve()
@@ -43,7 +52,7 @@ def dates(target):
     return start, end
 
 
-def collect(root, targets, progress=None, host_gap=2.0):
+def collect(root, targets, progress=None, host_gap=2.0, cancel=None):
     base = local_root(root, [t["folder"] for t in targets]) / "배치분석" / "누적"
     base.mkdir(parents=True, exist_ok=True)
     records, errors, notices = [], [], []
@@ -51,11 +60,14 @@ def collect(root, targets, progress=None, host_gap=2.0):
     dedup = set()
     filenames = {}
     for index, target in enumerate(targets):
+        checkpoint(cancel)
         if index and host_gap:
             time.sleep(host_gap)  # sequential hosts; same security pacing as watcher
         machine, folder = target["machine"], Path(target["folder"])
         source_id = hashlib.sha256((machine + "\0" + os.path.normcase(str(folder.resolve()))).encode()).hexdigest()
         cachefile = base / (source_id + ".json")
+        if cachefile.is_symlink() or cachefile.resolve().parent != base.resolve():
+            raise ValueError("분석 캐시 연결 경로를 사용할 수 없습니다")
         state = {"schema": SCHEMA, "entries": {}}
         if cachefile.exists():
             # Corrupt/unknown cache is never silently overwritten.
@@ -82,10 +94,13 @@ def collect(root, targets, progress=None, host_gap=2.0):
         else:
             errors.append({"machine": machine, "source_file": str(folder), "error": "원본 폴더 접근 불가 — 저장된 자료만 표시"})
         for n, name in enumerate(current, 1):
+            checkpoint(cancel)
             if progress:
                 progress(n, len(current), f"{machine}: {name}")
             path = folder / name
             try:
+                if path.resolve().parent != folder.resolve():
+                    raise ValueError("Report 연결 경로가 지정 폴더 밖을 가리킵니다")
                 before = path.stat()
                 signature = [before.st_mtime_ns, before.st_size]
                 saved = entries.get(name)
@@ -109,6 +124,7 @@ def collect(root, targets, progress=None, host_gap=2.0):
                 invalid.add(name)
                 errors.append({"machine": machine, "source_file": name, "error": str(exc)})
         state.update(machine=machine, folder=str(folder))
+        checkpoint(cancel)
         # Local writes only, old snapshot survives a failed replacement.
         write_json(cachefile, state)
         for name, entry in entries.items():

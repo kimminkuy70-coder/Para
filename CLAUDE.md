@@ -8,6 +8,16 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 
 ## Claude / ChatGPT 공통 작업 시작
 
+### 대규모 개편 새 UI 연결 (2026-09-21, Codex)
+
+- 현재 구현 상태는 `docs/REV1_IMPLEMENTATION.md`의 A0~A6 표가 기준이다.
+- native 고정 sidecar/React와 Python 도메인 어댑터 연결, 배치 조사, 가상화 Recipe
+  비교·색상·비고, 고정 공유 문서 셀 편집, 시험 패키징 도구를 추가했다.
+- backend 경계: 등록 호기/기존 save_dir만, 로컬 배치 결과, 잠금·변경 확인 공유 편집.
+  새 batch_last는 로컬 Cache 별도 schema 1이며 구 앱 설정을 덮어쓰지 않는다.
+- 전체 기능 전환 완료가 아니다. native Windows 빌드는 windres/환경 권한에서 막혔다.
+  기존 앱·빌드·배포 코드를 보존했고 운영 배포하지 않았다. IPC/패키징 상세 문서를 읽는다.
+
 ### 대규모 개편 A1 체크포인트 (2026-09-20, Codex)
 
 - 최신 사용자 지시에 따라 계획 A 보류를 해제했다. 실행 기준은

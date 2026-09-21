@@ -6,32 +6,51 @@
 - 계획 B는 원본 브랜치에서 위 SHA로 구현/검증됨: M01~M11, 로컬 증분 cache, 오프라인 HTML/SVG/Excel, 일일 tkinter dashboard.
 - 원본 브랜치는 이후 이 개편 작업에서 수정하지 않는다.
 
-## 계획 A 상태
-- A0: 완료. `version_rev1`을 검증된 B 커밋에서 생성.
-- A1: 진행 중. 기존 React/TypeScript + Tauri shell에 Python stdio 기반을 추가했다.
-  native launcher/React 연결 및 Windows 실행 gate는 아직 통과하지 않았다.
-- A2~A6: 미완료.
+## 계획 A 현재 상태 (2026-09-21)
+
+| 단계 | 구현 상태 | 남은 gate |
+|---|---|---|
+| A0 분기 | 완료, version_rev1만 변경 | 원본 브랜치 유지 |
+| A1 통신 | 고정 native sidecar·채널·종료 대기·제한 IPC 연결 | Windows 컴파일/실행/종료 실기 |
+| A2 배치 화면 | 11지표·호기/검색/기간·진행/취소·200행 표·5날짜 눈금·기존 출력 엔진 | 새 호기 폴더 등록, 개별 Report 선택, 자동 일일 갱신 UI, 실제 자료/SMB |
+| A3 비교표 | 100행·12비교열 가상화, 장비 톤 왼쪽·다중호기 오른쪽, 색상/비고/복사 | 대량 실자료·DPI/IME/클립보드 실기, 전체 Recipe 작업 동등성 |
+| A4 전체 UI | 장비 IP·특이사항·참고자료 기존 문서 조회/셀 수정 | Commonality, 양식 생성/편집, Recipe 업데이트/이력, 감시·트레이, 문서 행 추가 등 |
+| A5 패키징 | Windows 시험 빌드 스크립트·전체 폴더 manifest/무결성 시험·의존성 목록 도구 | 실제 빌드, 라이선스 누락 해소·최종 SBOM·서명·전체 구성 자동 업데이트/복구 |
+| A6 운영 | 미완료 | 회사 Windows/419 Report/SMB/OneDrive/Excel 검증 및 별도 배포 판단 |
+
+**전체 계획 완료가 아니다. 새 UI가 기존 앱을 완전히 대체하는 배포본이 아니다.**
+기존 tkinter 엔진/GUI/배포 코드는 보존했고 소스 버전 8.0을 올리지 않았다.
+
+## 이번 구현과 검증
+
+- 시작 HEAD: `4b81fe841b09c63db425444d404f7123598dc00c`.
+- React 정적 번들, Tauri 제한 stdio launcher, Python 도메인 어댑터 3개.
+- 배치 조건: 기존 설정 최초 읽기 + 새 UI의 마지막 실행 조건 한 벌만 로컬 Cache에 저장.
+  구 앱으로의 조건 역동기화는 미구현이다. 소스 폴더·공유 파일 일괄 변환 없음.
+- `python tools/check_project.py`: 실패 파일 없음. 원본 .xlsm 의존 engine 기존 제외.
+- Python 신규: batch 6, recipe 5, documents 4, bundle 4; 기존 IPC 9 통과.
+- `npm run build`: TypeScript·Vite 정적 빌드 통과. npm audit 당시 0건.
+- 브라우저↔실제 Python: 합성 Report 205개, 페이지200/5행, 날짜5눈금,
+  원문 script 이스케이프, 4 viewport, Recipe 2,000행/20호기에서 DOM100행/12비교열,
+  색상 저장/스크롤 시험. native IPC를 대체한 시험이며 실제 Tauri 실행 증거가 아니다.
+- 화면 캡처: `screenshots/rev1-batch.png`, `screenshots/rev1-recipe.png` (합성 데이터).
+- Rust 1.98.1 설치 후 Windows GNU check 시도: 의존성 컴파일 후 windres 부재로 중단.
+  apt 설치도 환경 권한 오류. 정책 변경/권한 우회하지 않음. native 빌드 성공 아님.
+- 패키징/라이선스/미검증 상세: `REV1_PACKAGING.md`; IPC: `REV1_IPC.md`.
+
+## 다음 작업 순서
+
+1. Windows 개발 환경에서 native 빌드·sidecar 리소스·종료/중복 실행을 먼저 검증.
+2. A4 기존 기능 목록을 일대일로 대조하면서 Commonality·양식/Recipe·감시/트레이 연결.
+3. A2 폴더 등록/Report 선택/일일 갱신, A3 실자료 성능·DPI 및 문서 편집 동등성.
+4. A5 의존성·라이선스·전체 구성 업데이트/복구 시험 후 A6 결과 제출. 운영 배포 별도.
+5. 사용자 새 요청에 따라 5시간30분 후 재개 예약 생성: 한국시간 2026-09-22 01:10경.
+   최신 원격/작업 중 세션을 확인하고 중복 작업·재예약하지 않는다.
 
 ## 불변 경계
-- 장비 SMB는 기존 Python 계층만 접근하고 원본 수정/삭제/이동 금지.
-- React UI가 UNC/임의 파일을 직접 읽지 않는다.
-- 외부 CDN, telemetry, 로컬 HTTP/TCP 서버를 사용하지 않는다.
-- Tauri command는 allowlist된 제한 명령만 제공한다. 임의 shell/Python 코드 실행 API 금지.
-- 배치 분석 산출물/cache/log는 기존 `localdirs` 로컬 경계를 유지한다.
-- 운영 배포/OneDrive 배포/자동 PR/강제 push는 별도 승인 전 수행하지 않는다.
 
-## 검증 상태
-- 계획 B 원본 커밋 기록: synthetic 16 tests + 기존 standalone suite 통과.
-- Windows GUI/Excel, 실제 419-report sample, SMB/EDR, executable deployment는 미검증.
-- Tauri shell은 저장소 구조 검토 단계이며 Windows 실기/패키징 검증 전이다.
-
-## 다음 작업
-1. Rust 가능한 개발 환경에서 기존 shell을 빌드하고 의존성 버전/lockfile/라이선스를 검증한다.
-2. `docs/REV1_IPC.md` 기준으로 고정 sidecar 실행파일 launcher, stdout 이벤트 전달,
-   종료 감시와 제한 command를 연결한다. 개발용 HTTP 서버는 실행하지 않는다.
-3. A2에서 기존 `batchreport*.py`를 호출하는 배치 화면 연결. 입력 설정 전달 및 기존
-   수집 서비스 경계 연결은 별도 구현하고 계산 결과/파일 출력 동등성을 검증한다.
-4. 이후 비교표 가상화/스크롤 동기화, 전체 UI, 패키징 순서로 진행.
+version_rev1만 publish. 원본 장비 읽기 전용, 기존 SMB 인증, 런타임 인터넷 및
+HTTP/TCP 서버 금지, 로컬 결과/공유 명시 편집 경계 유지. 강제 push·운영 배포 없음.
 
 ## 이번 체크포인트 (2026-09-20)
 
@@ -53,3 +72,11 @@
   변경하지 않았다. exe 빌드·버전 변경·OneDrive 운영 게시 없음.
 - 5시간 30분 뒤 재개 예약은 이미 생성했다. 다음 실행에서 중복 예약하지 말고 최신 원격
   HEAD와 작업 중 변경부터 확인한다. 다른 세션이 작업 중이면 충돌을 피한다.
+
+## 원격 분기 후 추가 변경 확인 (2026-09-21)
+
+게시 직전 원본 UX 브랜치는 다른 작업으로 `6bb50953a24323f33451c41383c2219c674021c0`까지
+진행된 것을 확인했다(Claude 배치 Lot 집계·자정 보정·M07 통합·HTML 드릴다운 등).
+이번 작업은 해당 브랜치를 수정하거나 덮어쓰지 않았다. version_rev1은 기존 분기 기준
+28c805f의 분석 엔진을 유지한다. 원본의 새 계산/표 schema와 새 UI 연결을 별도 비교·통합·
+재검증해야 하며 자동으로 최신 원본과 동등하다고 간주하지 않는다. 다음 세션 우선 비교 대상이다.
