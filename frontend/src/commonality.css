@@ -1,0 +1,4 @@
+.cm-files{max-height:250px;overflow:auto;border:1px solid #dce3ed;border-radius:8px}
+.cm-file{display:flex;gap:12px;padding:12px;border-bottom:1px solid #e9edf2}
+.cm-file small{display:block;color:#5c6c82;margin-top:4px}
+.cm-outlier{background:#fff2cc!important;color:#392b0b}

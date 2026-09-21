@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from test_batchreport import report, html_report
 from param_manager.desktop_batch import DesktopBatch
 from param_manager import desktop_ipc
-from param_manager import collate, workdirs, refdata
+from param_manager import collate, workdirs, refdata, commonality
 import openpyxl
 
 
@@ -34,6 +34,13 @@ if sys.argv[1] == 'init':
         {'PI2':collate.CollateRecipe(recipe='PI2',records=records)},machines)
     path=refdata.ip_path(str(shared));refdata.create_blank_ip(path)
     wb=openpyxl.load_workbook(path);wb.active.append(['AOI-01','10.0.0.1','Camtek']);wb.save(path);wb.close()
+    run = workdirs.commonality_run_dir(str(root/'local/Commonality'), 'AOI-01', 'sample')
+    cmfile = workdirs.commonality_result_path(run, 'R', 'AOI-01', 'sample')
+    cmrecords = [dict(PI='R', Recipe='V', Zone='Z', Alg='A', Parameter=f'P{i}',
+                      L1='1', L2='2', L3='1') for i in range(25)]
+    commonality.write_lot_result(cmfile, 'R', 'AOI-01',
+        collate.CollateRecipe(recipe='R', records=cmrecords), ['L1', 'L2', 'L3'],
+        fail_labels=['L2'], low_labels=['L3'])
     (root/'config.json').write_text(json.dumps(cfg), encoding='utf-8')
 else:
     original = desktop_ipc.Session
@@ -43,5 +50,6 @@ else:
             self.batch = DesktopBatch(Path(sys.argv[2])/'config.json')
             self.recipe.config_path = Path(sys.argv[2])/'config.json'
             self.documents.config_path = Path(sys.argv[2])/'config.json'
+            self.commonality.batch.config_path = Path(sys.argv[2])/'config.json'
     desktop_ipc.Session = FixtureSession
     desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)

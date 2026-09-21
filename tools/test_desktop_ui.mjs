@@ -94,6 +94,15 @@ try{
   await page.getByRole('button',{name:'저장',exact:true}).click();
   await page.getByRole('button',{name:'10.0.0.2',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'10.0.0.2',exact:true}).evaluate(el=>getComputedStyle(el).color),'rgb(255, 255, 255)');
+  await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
+  await page.locator('.cm-file input').first().check();
+  await page.getByRole('button',{name:'선택 결과 비교',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('.cm-outlier').length===12);
+  assert.equal(await page.locator('.table-scroll tbody tr').count(),3);
+  await page.getByRole('button',{name:'다음 파라미터',exact:true}).click();
+  await page.getByRole('button',{name:'비교 Excel 저장',exact:true}).click();
+  await page.getByLabel('저장된 Excel').waitFor();
+  assert((await page.getByLabel('저장된 Excel').inputValue()).endsWith('.xlsx'));
   assert.deepEqual(errors,[]);
   assert.equal(stderr,'');
   console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,maxDOMRows:200,timeTicks:5,scriptEscaped:true,serverPortsOpened:0}));

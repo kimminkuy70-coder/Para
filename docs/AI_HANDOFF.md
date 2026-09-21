@@ -1,5 +1,12 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Commonality 비교 UI (2026-09-21 UTC)
+
+- `version_rev1`의 `33ec8c1`에서 이어서 저장된 Commonality 결과 비교·Excel 출력만 새 UI에 연결했다. 전체 A/B 계획 완료가 아니다.
+- 최신 상세 상태는 `docs/REV1_IMPLEMENTATION.md` 맨 위를 읽는다. 신규 조사/감시와 Windows 실기는 남아 있다.
+- `desktop_commonality.py`와 4개 제한 IPC 메서드, React Commonality 화면, 5개 회귀 테스트 추가. 전체 검사 41개 파일 및 프런트엔드 빌드 통과.
+- 다른 브랜치·운영 배포물 변경 없음. 다음 작업자는 원격 HEAD/로컬 변경을 다시 확인하고 같은 파일 동시 수정을 피한다.
+
 ## 현재 기준
 - 저장소 `kimminkuy70-coder/Para`, 이번 작업 브랜치 `version_rev1`만 사용.
 - 원본 기준: version_v7.0의 `ad895aedf298637df548b3963f30bf700ed79f14`. 다른 브랜치 수정 금지.

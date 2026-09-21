@@ -1031,6 +1031,11 @@ def write_comparison(dest_xlsx: str, comparison: dict,
         for j, col in enumerate(columns[head_n:], start=head_n + 1):
             if (i, col) in outliers:
                 ws.cell(row=excel_row, column=j).fill = mismatch
+    # Source text must remain data, not executable Excel formulas.
+    for row in ws.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str):
+                cell.data_type = 's'
     ws.freeze_panes = "D2"
     ws.column_dimensions["A"].width = 16
     ws.column_dimensions["B"].width = 10

@@ -8,6 +8,13 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 
 ## Claude / ChatGPT 공통 작업 시작
 
+### 최신 재개: Commonality 저장 결과 비교 (2026-09-21 UTC)
+
+`version_rev1`의 `33ec8c1` 이후 저장 결과 목록·비교·페이지·Excel 출력 연결.
+전체 개편은 미완료이며 신규 Commonality 조사/감시와 Windows 실기 검증은 남아 있다.
+`docs/REV1_IMPLEMENTATION.md` 및 `docs/AI_HANDOFF.md`의 최신 항목을 먼저 읽는다.
+전체 Python 검사 41개 파일과 프런트엔드 빌드 통과. 운영 배포하지 않음.
+
 ### 대규모 개편 새 UI 연결 (2026-09-21, Codex)
 
 - 현재 구현 상태는 `docs/REV1_IMPLEMENTATION.md`의 A0~A6 표가 기준이다.

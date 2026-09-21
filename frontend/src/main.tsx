@@ -4,6 +4,7 @@ import {desktop, defaults, errorText, type Configuration, type Metric, type Opti
 import './styles.css';
 import {Recipe} from './Recipe';
 import {Documents} from './Documents';
+import {Commonality} from './Commonality';
 
 const metrics: [Metric,string,string][] = [
   ['M01','처리량 · WPH','유효 매수 기준 처리 속도'], ['M02','스캔 가동률','일·주·월, 관측 범위 기준'],
@@ -110,7 +111,7 @@ function App(){
     <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
     <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
     <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className={'connection '+(config?'connected':'')}>{connection}</span></div>
-      {tab==='Recipe 관리'?<Recipe/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:tab!=='배치 리포트 분석'?<section className="panel empty-state"><span className="step">전환 예정</span><h2>{tab} 화면을 준비하고 있습니다.</h2><p>기존 프로그램의 기능과 데이터는 유지됩니다. 현재 새 화면에서는 배치 분석을 우선 연결합니다.</p><button onClick={()=>setTab('배치 리포트 분석')}>배치 분석으로 돌아가기</button></section>:<>
+      {tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       {error&&<div className="alert" role="alert"><strong>확인이 필요합니다</strong><span>{error}</span><button aria-label="오류 안내 닫기" onClick={()=>setError('')}>×</button></div>}
       <section className="kpis" aria-label="조사 요약">{[['전체 Report',summary?.['Batch 수'],'건'],['Wafer 기록',summary?.['Wafer 행 수'],'행'],['이슈 Report',summary?.['이슈 Batch 수'],'건'],['읽기 오류',result?.collection?.errors,'건']].map(([label,value,unit])=><article key={String(label)}><span>{label}</span><strong>{text(value)}<small>{unit}</small></strong><p>{result?'마지막 완료 조사 기준':'조사 후 집계'}</p></article>)}</section>
       <div className="setup-grid"><section className="panel targets-panel"><div className="section-heading"><div><span className="step">01 · 조사 대상</span><h2>호기와 검색 범위</h2></div><span className="count">{selected.length}개 선택</span></div><p className="hint">검색어와 기간은 함께 적용됩니다. 비워 두면 해당 조건을 제한하지 않습니다.</p>

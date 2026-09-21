@@ -20,6 +20,13 @@ id는 세션 내 증가하는 1..2^53−1 정수. 프레임 최대 4 MiB. NaN/In
 | document_open | ip/special/reference | 고정 공유 문서 snapshot |
 | document_page | snapshot/offset/limit | 최대 100행 |
 | document_edit | snapshot/row/column/value/color | 선택 셀만 잠금·변경 검사 후 저장 |
+| commonality_catalog | 없음 | 기존 로컬 수동/감시 결과의 opaque ID 목록, 최대 5000개 |
+| commonality_compare | catalog/files | 등록 ID 1~100개, 파일 변경 검사, accepted/completed/error |
+| commonality_page | snapshot/offset/limit/column/query/changed_only | 최대 100행·12파라미터, 상태·최빈값 이탈 |
+| commonality_export | snapshot/changed_only | 고정 로컬 폴더의 새 Excel, accepted/completed/error |
+
+Commonality 비교/내보내기는 worker에서 실행하며 다른 조사와 중복 실행을 거절한다.
+별도 취소/진행률은 아직 없으며 종료 시 worker를 기다린다. 목록/페이지는 동기 작업이다.
 
 임의 파일/실행파일/명령 문자열을 입력받지 않는다. Python도 경로 경계를 검증한다.
 장비는 기존 설정 경로로 읽기만 한다. 배치 결과는 localdirs가 허용하는 로컬에 저장한다.

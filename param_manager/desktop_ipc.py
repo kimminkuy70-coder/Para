@@ -15,11 +15,12 @@ from . import batchreport, batchreport_store
 from .desktop_batch import DesktopBatch
 from .desktop_recipe import DesktopRecipe
 from .desktop_documents import DesktopDocuments
+from .desktop_commonality import DesktopCommonality
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "document_open", "document_page", "document_edit"}
+METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "document_open", "document_page", "document_edit", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export"}
 
 
 def encoded(value):
@@ -85,6 +86,7 @@ class Session:
         self.batch = DesktopBatch()
         self.recipe = DesktopRecipe()
         self.documents = DesktopDocuments()
+        self.commonality = DesktopCommonality()
         self.running = False
 
     def emit(self, request_id, event, **data):
@@ -126,9 +128,23 @@ class Session:
                    "recipe_edit": {"snapshot","row","kind","value"}}
         allowed.update(document_open={'kind'},document_page={'snapshot','offset','limit'},
                        document_edit={'snapshot','row','column','value','color'})
+        allowed.update(commonality_catalog=set(), commonality_compare={'catalog','files'},
+                       commonality_page={'snapshot','offset','limit','column','query','changed_only'},
+                       commonality_export={'snapshot','changed_only'})
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
-        if method.startswith('document_'):
+        if method.startswith('commonality_'):
+            if self.running:
+                raise ValueError('진행 중인 작업이 끝난 뒤 실행하세요')
+            if method in ('commonality_compare', 'commonality_export'):
+                self.running = True
+                self.emit(rid, 'accepted')
+                self.worker = threading.Thread(target=self.commonality_work, args=(rid, method, params))
+                self.worker.start()
+            else:
+                value = self.commonality.catalog() if method == 'commonality_catalog' else self.commonality.page(params)
+                self.emit(rid, 'completed', commonality=value)
+        elif method.startswith('document_'):
             if self.running:raise ValueError('배치 조사 완료 후 문서를 열어 주세요')
             action={'document_open':lambda:self.documents.open(params.get('kind')),
                     'document_page':lambda:self.documents.page(params),'document_edit':lambda:self.documents.edit(params)}
@@ -144,7 +160,7 @@ class Session:
         elif method == "configuration":
             self.emit(rid, "completed", **self.batch.describe())
         elif method == "investigate":
-            if self.job is not None:
+            if self.job is not None or self.running:
                 raise ValueError("Release the previous job before starting another")
             prepared = self.batch.prepare(params)
             self.job, self.running = rid, True
@@ -153,7 +169,7 @@ class Session:
             self.worker = threading.Thread(target=self.investigate, args=(rid, prepared))
             self.worker.start()
         elif method == "analyze":
-            if self.job is not None:
+            if self.job is not None or self.running:
                 raise ValueError("Release the previous job before starting another")
             validate_records(params.get("records"))
             selected = params.get("selected", list(batchreport.METRICS))
@@ -237,6 +253,19 @@ class Session:
             with self.lock:
                 self.running = False
                 self.emit(rid, "error", code="investigation_failed")
+
+    def commonality_work(self, rid, method, params):
+        try:
+            action = self.commonality.compare if method == 'commonality_compare' else self.commonality.export
+            value = action(params)
+            with self.lock:
+                self.running = False
+                self.emit(rid, 'completed', commonality=value)
+        except Exception as exc:
+            with self.lock:
+                self.running = False
+                self.emit(rid, 'error', code='commonality_failed',
+                          message=str(exc) if isinstance(exc, ValueError) else 'Commonality 결과를 처리하지 못했습니다.')
 
     def close(self):
         with self.lock:
