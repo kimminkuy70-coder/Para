@@ -5,6 +5,57 @@ import './commonality.css';
 type Catalog = {catalog:string;files:{id:string;name:string;folder:string}[]};
 type Result = {snapshot:string;total:number;parameters:number;changed:number};
 type Page = {headers:string[];total:number;parameter_total:number;rows:{id:number;values:string[];outliers:number[];fail:boolean;low_match:boolean}[]};
+type SurveyMachine = {id:string;root:string};
+type PlanRow = {device:string;process:string;sm:string;fail:boolean};
+type Preflight = {machine:string;roots:string[];total:number;found:number;missing:number;
+  rows:{label:string;device:string;lot:string;sm:string;exists:boolean;fail:boolean;scan_time:string;created:string;wafer:string;reason:string}[]};
+
+function emptyRow():PlanRow{return {device:'',process:'',sm:'',fail:false};}
+
+function SurveyPreflight(){
+  const [machines,setMachines]=useState<SurveyMachine[]>([]),[machine,setMachine]=useState('');
+  const [rows,setRows]=useState<PlanRow[]>([emptyRow()]);
+  const [result,setResult]=useState<Preflight>(),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  useEffect(()=>{(async()=>{
+    try{await desktop.connect();const r=(await desktop.request('cmsurvey_config').promise).cmsurvey as {machines:SurveyMachine[]};
+      setMachines(r.machines);setMachine(m=>m||(r.machines[0]?.id||''));}
+    catch(e){setError(errorText(e));}
+  })();},[]);
+  const set=(i:number,patch:Partial<PlanRow>)=>setRows(rs=>rs.map((r,j)=>j===i?{...r,...patch}:r));
+  async function run(){
+    if(!machine)return;setBusy(true);setError('');setResult(undefined);
+    const plan=rows.filter(r=>r.device.trim()||r.process.trim()||r.sm.trim())
+      .map(r=>({디바이스명:r.device.trim(),공정번호:r.process.trim(),'S/M':r.sm.trim(),AOI호기:machine,fail여부:r.fail?'Y':''}));
+    try{const r=await desktop.request('cmsurvey_preflight',{machine,plan}).promise;setResult(r.cmsurvey as Preflight);}
+    catch(e){setError(errorText(e));}finally{setBusy(false);}
+  }
+  if(machines.length===0)
+    return <section className="panel"><div className="section-heading"><div><span className="step">NEW SURVEY</span><h2>신규 조사 계획 확인</h2></div></div>
+      <p className="hint">Scanresult 루트가 설정된 호기가 없습니다. 기존 프로그램의 Commonality 탭에서 호기 폴더를 지정하면 여기에서 계획을 확인할 수 있습니다.</p></section>;
+  return <section className="panel">
+    <div className="section-heading"><div><span className="step">NEW SURVEY</span><h2>신규 조사 계획 확인</h2></div></div>
+    <p className="hint">조사할 Lot 계획을 입력하면 그 호기의 Scanresult 폴더에서 실제 Lot 폴더가 있는지 확인합니다(원본은 읽기 전용). 안전 복사·값 조사는 다음 단계입니다.</p>
+    {error&&<p className="alert" role="alert">{error}</p>}
+    <div className="form-filter"><label className="field">호기<select value={machine} onChange={e=>setMachine(e.target.value)}>
+      {machines.map(m=><option key={m.id} value={m.id}>{m.id}</option>)}</select></label></div>
+    <div className="table-scroll"><table><thead><tr><th>디바이스명</th><th>공정번호</th><th>S/M</th><th>fail</th><th></th></tr></thead>
+      <tbody>{rows.map((r,i)=><tr key={i}>
+        <td><input value={r.device} maxLength={256} onChange={e=>set(i,{device:e.target.value})}/></td>
+        <td><input value={r.process} maxLength={256} onChange={e=>set(i,{process:e.target.value})}/></td>
+        <td><input value={r.sm} maxLength={256} onChange={e=>set(i,{sm:e.target.value})}/></td>
+        <td style={{textAlign:'center'}}><input type="checkbox" checked={r.fail} onChange={e=>set(i,{fail:e.target.checked})}/></td>
+        <td><button className="linklike" disabled={rows.length===1} onClick={()=>setRows(rs=>rs.filter((_,j)=>j!==i))}>삭제</button></td></tr>)}</tbody></table></div>
+    <div className="dialog-actions"><button onClick={()=>setRows(rs=>[...rs,emptyRow()])}>행 추가</button>
+      <button className="primary" disabled={busy||!machine} onClick={run}>{busy?'확인 중…':'폴더 실재 확인'}</button></div>
+    {result&&<>
+      <p className="hint">발견 {result.found} · 없음 {result.missing} / 전체 {result.total} · 루트: {result.roots.join(' , ')}</p>
+      <div className="table-scroll"><table><thead><tr><th>상태</th><th>S/M 폴더</th><th>디바이스</th><th>공정</th><th>슬롯</th><th>Scan 일자</th><th>사유</th></tr></thead>
+        <tbody>{result.rows.map((r,i)=><tr key={i} className={r.exists?'':'muted'}>
+          <td>{r.exists?'발견':'없음'}{r.fail?' · Fail':''}</td><td>{r.label}</td><td>{r.device}</td><td>{r.lot}</td>
+          <td>{r.wafer||'—'}</td><td>{r.scan_time||'—'}</td><td>{r.reason||'—'}</td></tr>)}</tbody></table></div>
+    </>}
+  </section>;
+}
 
 export function Commonality() {
   const [catalog,setCatalog]=useState<Catalog>(),[selected,setSelected]=useState<string[]>([]);
@@ -40,7 +91,8 @@ export function Commonality() {
     try {const r=await desktop.request('commonality_export',{snapshot:result.snapshot,changed_only:changed}).promise;setOutput((r.commonality as {path:string}).path);}
     catch(e) {setError(errorText(e));} finally {setBusy(false);}
   }
-  return <section className="panel">
+  return <><SurveyPreflight/>
+  <section className="panel">
     <div className="section-heading"><div><span className="step">COMMONALITY</span><h2>Lot 파라미터 취합·비교</h2></div><button disabled={busy} onClick={refresh}>결과 목록 새로고침</button></div>
     <p className="hint">기존 수동 조사와 자동 감시에서 저장한 로컬 결과를 선택하세요. 원본 장비 파일은 변경하지 않습니다.</p>
     {error&&<p className="alert" role="alert">{error}</p>}
@@ -54,5 +106,5 @@ export function Commonality() {
       <div className="pagination"><span>{result.total?offset+1:0}–{Math.min(offset+100,result.total)} / {result.total}행</span><div><button disabled={busy||offset===0} onClick={()=>setOffset(n=>Math.max(0,n-100))}>이전</button><button disabled={busy||offset+100>=result.total} onClick={()=>setOffset(n=>n+100)}>다음</button></div></div>
     </>}
     {output&&<label className="field">저장된 Excel<input readOnly value={output}/></label>}
-  </section>;
+  </section></>;
 }

@@ -7,7 +7,7 @@ export type Configuration = {machines: {id: string; folder: string}[]; local_roo
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number};
-  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown} & Partial<Configuration>;
+  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown} & Partial<Configuration>;
 type Pending = {resolve: (v: Reply) => void; reject: (e: Error) => void; progress?: (v: Reply) => void};
 class DesktopClient {
   private next = 0;

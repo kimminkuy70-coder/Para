@@ -4,6 +4,21 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — A4 신규 Commonality 조사 계획 프리플라이트(웹) (2026-09-21)
+
+- **범위**: 지금까지 웹은 저장된 결과 비교/내보내기만 있었다. 여기서 **신규 조사의 첫
+  단계 = 계획 프리플라이트**를 붙였다. 조사 계획을 **데이터 행**(디바이스/공정/S·M/호기/
+  fail)으로 올리면, 그 호기의 **설정된 Scanresult 루트**(config `commonality_roots`)에서
+  실제 Lot 폴더 실재/변형/슬롯/Scan일자/사유를 해석해 발견·없음을 보고한다(원본 read-only).
+- **백엔드**: `param_manager/desktop_cmsurvey.py`(`DesktopCmSurvey.config/preflight`).
+  `commonality.filter_plan_for_machine`+`scanresult_roots`+`resolve_plan` 재사용. UI 는
+  경로를 넘기지 않는다(루트는 설정에서). IPC 동기 `cmsurvey_config`·`cmsurvey_preflight`.
+- **프런트엔드**: `Commonality.tsx` 최상단에 '신규 조사 계획 확인' 패널(호기 선택 +
+  편집 가능한 계획 표 + 발견/없음 결과표). `SurveyPreflight` 하위 컴포넌트.
+- **검증**: `tests/test_desktop_cmsurvey.py`(6) 통과. `tsc` 0건·`npm run build` 통과.
+- **남음(다음 증분)**: 안전복사→값 조사→결과 누적(로컬 commonality 레이아웃에 `조사_*.xlsx`
+  → 기존 비교 뷰어가 자동 인식), 디바이스/다중레시피 분리, 자동 감시(cmwatcher) 웹 연결.
+
 ## 재개 체크포인트 — A4 양식 만들기(웹) 1차 (2026-09-21)
 
 - **범위**: 저장폴더에 이미 있는 원본(초안)을 웹에서 열어 **항목 사용(Y/N)·표시이름·

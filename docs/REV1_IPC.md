@@ -30,6 +30,8 @@ id는 세션 내 증가하는 1..2^53−1 정수. 프레임 최대 4 MiB. NaN/In
 | commonality_compare | catalog/files | 등록 ID 1~100개, 파일 변경 검사, accepted/completed/error |
 | commonality_page | snapshot/offset/limit/column/query/changed_only | 최대 100행·12파라미터, 상태·최빈값 이탈 |
 | commonality_export | snapshot/changed_only | 고정 로컬 폴더의 새 Excel, accepted/completed/error |
+| cmsurvey_config | 없음 | Scanresult 루트가 설정된 호기 목록(config commonality_roots) |
+| cmsurvey_preflight | machine/plan | 계획(데이터 행)을 그 호기 Scanresult 루트에 해석 → 발견/없음 Lot |
 
 Commonality 비교/내보내기는 worker에서 실행하며 다른 조사와 중복 실행을 거절한다.
 별도 취소/진행률은 아직 없으며 종료 시 worker를 기다린다. 목록/페이지는 동기 작업이다.
