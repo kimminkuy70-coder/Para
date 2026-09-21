@@ -4,6 +4,18 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — A4 이력 확인(웹) (2026-09-21)
+
+- **범위**: 계획 A A4 'Recipe 값 업데이트·이력' 중 **이력 확인**을 웹에 붙였다. 저장폴더의
+  '파라미터 값 취합' 파일 2개를 골라 `history.diff_files` 로 **값이 달라진 셀만** 비교
+  (값변경/추가/삭제·종류·검색 필터·페이지). 전 과정 로컬·읽기 전용.
+- **백엔드**: `param_manager/desktop_history.py`(`DesktopHistory.files/diff/page`).
+  opaque id·file_stamp 변경 검사·save_dir 경로 경계. IPC 동기 `history_files/diff/page`.
+- **프런트엔드**: `frontend/src/History.tsx` + 네비 '이력 확인'.
+- **검증**: `tests/test_desktop_history.py`(5) 통과. `tsc` 0건·`npm run build` 통과.
+- **남음**: 값 업데이트(장비 SMB 수집→재취합)는 장비 접속이 필요해 별개 증분. 변경내역
+  Excel 저장(`history.write_diff_excel`) 웹 연결은 후속.
+
 ## 재개 체크포인트 — A4 신규 Commonality 조사 계획 프리플라이트(웹) (2026-09-21)
 
 - **범위**: 지금까지 웹은 저장된 결과 비교/내보내기만 있었다. 여기서 **신규 조사의 첫

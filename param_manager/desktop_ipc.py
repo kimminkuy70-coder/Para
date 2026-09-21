@@ -18,11 +18,12 @@ from .desktop_form import DesktopForm
 from .desktop_documents import DesktopDocuments
 from .desktop_commonality import DesktopCommonality
 from .desktop_cmsurvey import DesktopCmSurvey
+from .desktop_history import DesktopHistory
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight"}
+METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page"}
 
 
 def encoded(value):
@@ -89,6 +90,7 @@ class Session:
         self.recipe = DesktopRecipe()
         self.form = DesktopForm()
         self.cmsurvey = DesktopCmSurvey()
+        self.history = DesktopHistory()
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
         self.running = False
@@ -140,6 +142,8 @@ class Session:
                        form_page={'snapshot','variant','query','used_only','offset','limit'},
                        form_edit={'snapshot','row','kind','value'}, form_confirm={'snapshot','machine'})
         allowed.update(cmsurvey_config=set(), cmsurvey_preflight={'machine','plan'})
+        allowed.update(history_files=set(), history_diff={'catalog','old','new'},
+                       history_page={'snapshot','offset','limit','kind','query'})
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -190,6 +194,13 @@ class Session:
             action = {'cmsurvey_config': lambda: self.cmsurvey.config(),
                       'cmsurvey_preflight': lambda: self.cmsurvey.preflight(params)}
             self.emit(rid, 'completed', cmsurvey=action[method]())
+        elif method.startswith('history_'):
+            if self.running:
+                raise ValueError('배치 조사 완료 후 이력 확인을 열어 주세요')
+            action = {'history_files': lambda: self.history.files(),
+                      'history_diff': lambda: self.history.diff(params),
+                      'history_page': lambda: self.history.page(params)}
+            self.emit(rid, 'completed', history=action[method]())
         elif method == "contract":
             self.emit(rid, "completed", methods=sorted(METHODS), max_frame=MAX_FRAME, max_page=MAX_PAGE)
         elif method == "configuration":
