@@ -17,10 +17,10 @@ METRICS = {
     "M01": "WPH (유효 Lot만)", "M02": "스캔 가동률 · 유휴 gap",
     "M03": "오류 유형별 빈도", "M04": "오류 성격",
     "M05": "Aborted 직접 · 연쇄 추정", "M06": "재시작 간격",
-    "M07": "복구 baseline", "M08": "Recipe별 정상 Bad Dice 분포",
+    "M08": "Recipe별 정상 Bad Dice 분포",
     "M09": "Yield / Bad Dice 이상 후보", "M10": "완주율",
     "M11": "미분류 상태",
-}
+}  # M07(복구 baseline)은 M06 요약과 중복이라 폐지 — 전체 요약은 M06 표의 '(전체 유효)' 행으로.
 RULE_VERSION = 1
 PREVENTIVE = {"맵 Import 오류", "2D Scan 오류", "Wafer ID 판독 오류", "검사 대상 없음"}
 ACTION = {"Alignment 오류", "Clean Reference 오류", "Focus Mapping 오류"}
@@ -152,8 +152,9 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
     Baseline is descriptive, not a certified hold limit. M09 compares each wafer
     against earlier Pass wafers of the same Recipe(s), never future data.
     """
-    selected = list(METRICS) if selected is None else list(selected)
-    if not selected or any(key not in METRICS for key in selected):
+    # 알 수 없는 키(예: 폐지된 M07이 저장된 설정에 남은 경우)는 조용히 무시한다.
+    selected = list(METRICS) if selected is None else [k for k in selected if k in METRICS]
+    if not selected:
         raise ValueError("분석 지표를 하나 이상 선택하세요")
     if valid_wafers < 1 or min_baseline < 2 or not math.isfinite(yield_drop) or yield_drop < 0:
         raise ValueError("매수/최소 표본/수율 하락 기준을 확인하세요")
@@ -301,11 +302,12 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
         if item[-1] == '유효':
             for category in item[4].split(', '):
                 by_type[category].append(item[-2])
-    table("M06", "유형별 재시작 간격 (유형 중복 허용)", ["유형", "유효 Batch 수", "평균 (분)", "중앙 (분)", "P95 (분)", "최대 (분)"],
-          [(k, len(v), mean(v), median(v), percentile(v, .95), max(v)) for k, v in sorted(by_type.items())])
-    table("M07", "복구 baseline (재시작 간격 proxy)", ["유효 건수", "제외 건수", "평균 (분)", "중앙 (분)", "최대 (분)"],
-          [(len(validgaps), len(restarts) - len(validgaps), mean(validgaps) if validgaps else None,
-            median(validgaps) if validgaps else None, max(validgaps) if validgaps else None)])
+    type_rows = [(k, len(v), mean(v), median(v), percentile(v, .95), max(v)) for k, v in sorted(by_type.items())]
+    # M07(복구 baseline) 폐지 → 전체 유효 재시작 간격 요약을 마지막 행으로 합친다.
+    if validgaps:
+        type_rows.append(("(전체 유효)", len(validgaps), mean(validgaps), median(validgaps),
+                          percentile(validgaps, .95), max(validgaps)))
+    table("M06", "유형별 재시작 간격 (유형 중복 허용)", ["유형", "유효 Batch 수", "평균 (분)", "중앙 (분)", "P95 (분)", "최대 (분)"], type_rows)
     # 정상(Pass) wafer 의 Recipe(=Job/Setup)별 Scanned/Bad/Good Dice 통계.
     # Good = 원문 Good Dice, 없으면 Scanned-Bad 로 보정. 통계값과 함께 차트로 보여준다.
     dice = defaultdict(lambda: {"scanned": [], "bad": [], "good": []})

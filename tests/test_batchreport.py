@@ -113,7 +113,8 @@ class Metrics(unittest.TestCase):
         restart = table(c, '재시작 간격(같은 lot 재스캔)')
         self.assertEqual(restart[0][-3:], ('next.htm', 10, '유효'))
         self.assertIn('없음', restart[1][-1])
-        self.assertEqual(table(c, '복구 baseline (재시작 간격 proxy)')[0], (1, 1, 10, 10, 10))
+        # M07 폐지 → 전체 요약이 M06 유형별 표의 '(전체 유효)' 마지막 행으로.
+        self.assertEqual(table(c, '유형별 재시작 간격 (유형 중복 허용)')[-1], ('(전체 유효)', 1, 10, 10, 10, 10))
 
     def test_p95_and_past_only_quality_baseline(self):
         early = report('early.htm', statuses=('Pass', 'Pass'), bad='1')
