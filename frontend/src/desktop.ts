@@ -6,7 +6,7 @@ export type Table = {index: number; key: string; title: string; headers: string[
 export type Configuration = {machines: {id: string; folder: string}[]; local_root: string; last?: {targets?: Target[]; options?: Options}};
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
-  artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number};
+  artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;
   current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown} & Partial<Configuration>;
 type Pending = {resolve: (v: Reply) => void; reject: (e: Error) => void; progress?: (v: Reply) => void};
 class DesktopClient {

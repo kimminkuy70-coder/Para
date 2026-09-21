@@ -10,6 +10,7 @@ id는 세션 내 증가하는 1..2^53−1 정수. 프레임 최대 4 MiB. NaN/In
 |---|---|---|
 | contract | 없음 | 메서드·제한 |
 | configuration | 없음 | 기존 설정에서 등록 호기·최신 조사 조건 |
+| batch_reports | machine/query/start/end | 그 호기 Report 폴더의 파일 이름 목록(이름만, read-only) |
 | investigate | 등록 호기 ID·검색어·날짜·M01~11 설정 | accepted/progress/completed/error/cancelled |
 | analyze | 최대 2,000 Report / 100,000 Wafer 메모리 데이터 | 기존 메모리 분석 |
 | table_page | job/table/offset/limit | 최대 200행 |

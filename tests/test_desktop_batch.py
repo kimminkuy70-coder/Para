@@ -38,6 +38,18 @@ class DesktopBatchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.adapter.prepare(dict(self.params, targets=[item]))
 
+    def test_reports_listing_and_names_selection(self):
+        out = self.adapter.reports({'machine': 'AOI-01', 'query': '', 'start': '', 'end': ''})
+        self.assertIn('BatchReport_demo.htm', out['names'])
+        self.assertEqual(out['total'], len(out['names']))
+        with self.assertRaises(ValueError):
+            self.adapter.reports({'machine': 'AOI-02'})
+        _root, targets, _opts = self.adapter.prepare(
+            dict(self.params, targets=[{'machine': 'AOI-01', 'names': ['BatchReport_demo.htm']}]))
+        self.assertEqual(targets[0]['names'], ['BatchReport_demo.htm'])
+        with self.assertRaises(ValueError):
+            self.adapter.prepare(dict(self.params, targets=[{'machine': 'AOI-01', 'names': [123]}]))
+
     def test_options_and_dates(self):
         for value in ({'metrics':[]}, {'yield_drop':float('nan')}, {'valid_wafers':True}, {'min_baseline':1}, {'by_recipe':1}):
             with self.assertRaises(ValueError): options(value)

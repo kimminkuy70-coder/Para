@@ -53,6 +53,9 @@ function App(){
   const [loading,setLoading]=useState(false);
   const [cancelSent,setCancelSent]=useState(false);
   const [note,setNote]=useState('조사를 시작하면 결과가 여기에 표시됩니다.');
+  const [picks,setPicks]=useState<Record<string,string[]>>({});
+  const [picker,setPicker]=useState<{machine:string;names:string[];chosen:string[]}|undefined>();
+  const pickerDialog=useRef<HTMLDialogElement>(null);
   const job=useRef<number|undefined>(undefined), pageSequence=useRef(0);
   const PAGE=200;
 
@@ -80,7 +83,26 @@ function App(){
       .finally(()=>{if(sequence===pageSequence.current)setLoading(false);});
     return()=>{pageSequence.current++;};
   },[table,offset]);
-  const updateTarget=(id:string,key:'query'|'start'|'end',value:string)=>setTargets(old=>({...old,[id]:{...old[id],[key]:value}}));
+  const updateTarget=(id:string,key:'query'|'start'|'end',value:string)=>setTargets(old=>({...old,[id]:{...old[id],[key]:value},}));
+  useEffect(()=>{if(picker)pickerDialog.current?.showModal();else pickerDialog.current?.close();},[picker]);
+  async function openPicker(id:string){
+    const t=targets[id]||{machine:id,query:'',start:'',end:''};
+    setError('');
+    try{const r=await desktop.request('batch_reports',{machine:t.machine||id,query:t.query||'',start:t.start||'',end:t.end||''}).promise;
+      const rep=r.reports as {names:string[]};
+      const keep=picks[id]?picks[id].filter(n=>rep.names.includes(n)):rep.names;
+      setPicker({machine:id,names:rep.names,chosen:keep});}
+    catch(e){setError(errorText(e));}
+  }
+  function applyPicker(){
+    if(!picker)return;
+    const id=picker.machine;
+    setPicks(old=>{const next={...old};
+      if(picker.chosen.length===0||picker.chosen.length===picker.names.length)delete next[id];
+      else next[id]=picker.chosen;
+      return next;});
+    setPicker(undefined);
+  }
   const toggleMetric=(id:Metric)=>setOptions(old=>({...old,metrics:old.metrics.includes(id)?old.metrics.filter(k=>k!==id):[...old.metrics,id]}));
   async function start(){
     if(busy||!config)return;
@@ -92,7 +114,8 @@ function App(){
       if(job.current!==undefined)await desktop.request('release',{job:job.current}).promise;
       job.current=undefined;setTable(undefined);setRows([]);setResult(undefined);setOffset(0);
       const task=desktop.request('investigate',{targets:selected.map(id=>{
-        const {machine,query,start,end}=targets[id];return {machine,query,start,end};
+        const {machine,query,start,end}=targets[id];const names=picks[id];
+        return names&&names.length?{machine,query,start,end,names}:{machine,query,start,end};
       }),options},event=>{if(event.event==='accepted')job.current=event.job;setProgress(event);});
       const reply=await task.promise;
       if(reply.event==='cancelled'){setNote('조사가 취소되었습니다. 이전에 저장된 결과는 유지됩니다.');return;}
@@ -121,6 +144,7 @@ function App(){
         <div className="targets" aria-label="호기별 검색 조건">{config?.machines.length?config.machines.map(m=><fieldset key={m.id} disabled={busy} className={selected.includes(m.id)?'machine selected':'machine'}><legend><label><input type="checkbox" checked={selected.includes(m.id)} onChange={e=>setSelected(old=>e.target.checked?[...old,m.id]:old.filter(id=>id!==m.id))}/>{m.id}</label></legend>
           <p className="folder" title={m.folder}>{m.folder}</p><label className="field">Recipe 검색어<input aria-label={`${m.id} 검색어`} value={targets[m.id]?.query||''} maxLength={256} onChange={e=>updateTarget(m.id,'query',e.target.value)} placeholder="예: 2D CAMTEK"/></label>
           <div className="date-fields"><label className="field">시작일<input type="date" aria-label={`${m.id} 시작일`} value={targets[m.id]?.start||''} onChange={e=>updateTarget(m.id,'start',e.target.value)}/></label><label className="field">종료일<input type="date" aria-label={`${m.id} 종료일`} value={targets[m.id]?.end||''} onChange={e=>updateTarget(m.id,'end',e.target.value)}/></label></div>
+          <div className="report-pick"><button type="button" onClick={()=>openPicker(m.id)}>📋 리포트 선택…</button><span className="pick-count">{picks[m.id]?.length?`선택 ${picks[m.id].length}개`:'전체'}</span></div>
         </fieldset>):<div className="empty-state"><h3>등록된 호기가 없습니다.</h3><p>기존 프로그램에서 지정한 Report 폴더를 연결 후 불러옵니다. 새 화면의 폴더 등록 기능은 준비 중입니다.</p></div>}</div><p className="hint">마지막으로 시작한 조사 조건만 복원합니다. 원본 폴더는 수정하지 않습니다.</p>
       </section><section className="panel metrics-panel"><div className="section-heading"><div><span className="step">02 · 분석 설정</span><h2>필요한 지표 선택</h2></div><button disabled={busy} onClick={()=>setOptions(old=>({...old,metrics:old.metrics.length===11?[]:metrics.map(m=>m[0])}))}>{options.metrics.length===11?'전체 해제':'전체 선택'}</button></div>
         <fieldset disabled={busy} className="metric-list"><legend className="sr-only">분석 지표</legend>{metrics.map(([id,title,description])=><label key={id} className={options.metrics.includes(id)?'metric checked':'metric'}><input type="checkbox" checked={options.metrics.includes(id)} onChange={()=>toggleMetric(id)}/><span><b>{title}</b><small>{description}</small></span><code>{id}</code></label>)}</fieldset>
@@ -137,7 +161,16 @@ function App(){
           <div className="pagination"><span>{table?.total?`${offset+1}–${Math.min(offset+PAGE,table.total)} / ${table.total.toLocaleString()}행`:'0행'}</span><div><button disabled={loading||offset===0} onClick={()=>setOffset(n=>Math.max(0,n-PAGE))}>이전</button><button disabled={loading||offset+PAGE>=(table?.total||0)} onClick={()=>setOffset(n=>n+PAGE)}>다음</button></div></div>
           {result.artifacts&&<div className="outputs"><h3>저장된 결과</h3><p>아래 위치의 파일을 탐색기에서 열 수 있습니다.</p>{(['xlsx','html','outdir'] as const).map(key=><label className="field" key={key}>{key==='xlsx'?'Excel':key==='html'?'HTML':'결과 폴더'}<input readOnly value={result.artifacts?.[key]||''} onFocus={e=>e.target.select()}/></label>)}{result.artifacts.dashboard_error&&<p role="alert">가동률 대시보드 저장 실패: {result.artifacts.dashboard_error}</p>}</div>}
         </>}
-      </section></>}
+      </section>
+      <dialog className="edit-dialog" ref={pickerDialog} onClose={()=>setPicker(undefined)}>{picker&&<>
+        <h3>{picker.machine} · 조사할 Report 선택</h3>
+        <div className="dialog-actions" style={{justifyContent:'space-between'}}><span>선택 {picker.chosen.length} / 발견 {picker.names.length}</span>
+          <div><button type="button" onClick={()=>setPicker(p=>p&&{...p,chosen:[...p.names]})}>전체</button>
+            <button type="button" onClick={()=>setPicker(p=>p&&{...p,chosen:[]})}>해제</button></div></div>
+        <div className="pick-list">{picker.names.map(n=><label key={n} className="pick-item"><input type="checkbox" checked={picker.chosen.includes(n)} onChange={e=>setPicker(p=>p&&{...p,chosen:e.target.checked?[...p.chosen,n]:p.chosen.filter(x=>x!==n)})}/> {n}</label>)}
+          {picker.names.length===0&&<p className="table-empty">검색 결과가 없습니다.</p>}</div>
+        <div className="dialog-actions"><button type="button" onClick={()=>setPicker(undefined)}>취소</button>
+          <button type="button" className="primary" onClick={applyPicker}>적용</button></div></>}</dialog></>}
     </main><footer><span>Camtek AOI Manager · 개편 시험 화면</span><span>{config?.local_root?`로컬 결과: ${config.local_root}`:'데이터는 장비 원본과 분리하여 로컬에 저장합니다.'}</span></footer>
   </div>;
 }

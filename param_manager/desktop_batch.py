@@ -3,7 +3,7 @@ import json
 import math
 from pathlib import Path
 
-from . import atomicfile, batchreport, batchreport_service, batchreport_store, localdirs
+from . import atomicfile, batchreport, batchreport_service, batchreport_store, localdirs, wph
 
 
 def read_json(path):
@@ -70,19 +70,52 @@ class DesktopBatch:
         return dict(machines=[dict(id=name, folder=folder) for name, folder in sorted(paths.items())],
                     local_root=str(root), last=last)
 
+    def reports(self, params):
+        # List report file names for one machine, read-only, names only.
+        if set(params) - {"machine", "query", "start", "end"}:
+            raise ValueError("검색 조건을 확인하세요")
+        cfg, paths, _root, _ = self.configuration()
+        machine = params.get("machine")
+        if not isinstance(machine, str) or machine not in paths:
+            raise ValueError("등록된 호기를 선택하세요")
+        target = {}
+        for key in ("query", "start", "end"):
+            value = params.get(key, "")
+            if not isinstance(value, str) or len(value) > 256:
+                raise ValueError("검색어/기간을 확인하세요")
+            target[key] = value.strip()
+        start, end = batchreport_store.dates(target)
+        names, seen = [], set()
+        for folder in dict.fromkeys([paths[machine], *cfg.get("batch_extra_paths", {}).get(machine, [])]):
+            if not isinstance(folder, str) or not Path(folder).is_absolute():
+                continue
+            for name in wph.list_reports(folder, target["query"], start, end):
+                if name not in seen:
+                    seen.add(name)
+                    names.append(name)
+                    if len(names) > 5000:
+                        raise ValueError("검색 결과가 너무 많습니다. 검색어/기간을 좁히세요.")
+        return dict(machine=machine, total=len(names), names=sorted(names, key=str.lower))
+
     def prepare(self, params):
         if set(params) != {"targets", "options"} or not isinstance(params["targets"], list) or not 1 <= len(params["targets"]) <= 200:
             raise ValueError("조사할 호기를 선택하세요")
         cfg, paths, root, _ = self.configuration()
         targets, seen = [], set()
         for item in params["targets"]:
-            if not isinstance(item, dict) or set(item) - {"machine", "query", "start", "end"}:
+            if not isinstance(item, dict) or set(item) - {"machine", "query", "start", "end", "names"}:
                 raise ValueError("폴더 경로 대신 등록된 호기를 선택하세요")
             machine = item.get("machine")
             if not isinstance(machine, str) or machine not in paths or machine in seen:
                 raise ValueError("등록된 호기를 중복 없이 선택하세요")
             seen.add(machine)
-            target = dict(machine=machine, names=None)
+            names = item.get("names")
+            if names is not None:
+                # Selected report file names (from batch_reports); collect() re-validates each.
+                if not isinstance(names, list) or len(names) > 20000 or any(
+                        not isinstance(n, str) or len(n) > 1024 for n in names):
+                    raise ValueError("선택 Report 목록을 확인하세요")
+            target = dict(machine=machine, names=names)
             for key in ("query", "start", "end"):
                 value = item.get(key, "")
                 if not isinstance(value, str) or len(value) > 256:

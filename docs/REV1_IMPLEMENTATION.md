@@ -4,6 +4,18 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — A2 배치 개별 Report 선택(웹) (2026-09-21)
+
+- **범위**: 배치 화면에서 조사에 넣을 **개별 batch report 를 고른다**([더보기] = tkinter 와 동일).
+  호기별 [📋 리포트 선택…] → 파일 이름 목록(read-only)에서 체크 → 그 목록만 조사.
+- **백엔드**: `desktop_batch.reports`(그 호기 폴더 이름 목록, `wph.list_reports`), `prepare`가
+  타깃별 `names` 를 받는다(collect 가 이름을 재검증). IPC 동기 `batch_reports`.
+- **프런트엔드**: `main.tsx` 호기 카드에 리포트 선택 dialog + '선택 N개/전체' 표시. 선택분만
+  investigate `targets[].names` 로 전달(없으면 전체).
+- **검증**: `test_desktop_batch.py`(리스트+선택 왕복) 통과 · `tsc`/`build` 통과.
+- **남음(A2)**: 새 호기 Report 폴더 등록·자동 일일 갱신 UI 는 네이티브 경로 선택/스케줄러가
+  필요해 별개(Windows native) — 지금은 config 에 이미 등록된 호기만 대상.
+
 ## 재개 체크포인트 — A4 이력 확인(웹) (2026-09-21)
 
 - **범위**: 계획 A A4 'Recipe 값 업데이트·이력' 중 **이력 확인**을 웹에 붙였다. 저장폴더의

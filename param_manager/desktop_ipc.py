@@ -23,7 +23,7 @@ from .desktop_history import DesktopHistory
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page"}
 
 
 def encoded(value):
@@ -128,7 +128,7 @@ class Session:
             self.emit(request_id, "error", code="configuration_failed")
 
     def dispatch(self, rid, method, params):
-        allowed = {"analyze": {"records", "selected"}, "investigate": {"targets", "options"}, "table_page": {"job", "table", "offset", "limit"},
+        allowed = {"analyze": {"records", "selected"}, "investigate": {"targets", "options"}, "batch_reports": {"machine", "query", "start", "end"}, "table_page": {"job", "table", "offset", "limit"},
                    "cancel": {"job"}, "release": {"job"},
                    "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine"},
                    "recipe_edit": {"snapshot","row","kind","value"}}
@@ -205,6 +205,10 @@ class Session:
             self.emit(rid, "completed", methods=sorted(METHODS), max_frame=MAX_FRAME, max_page=MAX_PAGE)
         elif method == "configuration":
             self.emit(rid, "completed", **self.batch.describe())
+        elif method == "batch_reports":
+            if self.running:
+                raise ValueError("배치 조사 완료 후 목록을 다시 확인하세요")
+            self.emit(rid, "completed", reports=self.batch.reports(params))
         elif method == "investigate":
             if self.job is not None or self.running:
                 raise ValueError("Release the previous job before starting another")
