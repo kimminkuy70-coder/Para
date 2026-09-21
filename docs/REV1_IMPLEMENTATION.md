@@ -1,5 +1,28 @@
 # version_rev1 대규모 개편 구현 기록
 
+> **브랜치 이동(2026-09-21)**: 이 개편 작업은 이제 **`version_webview`** 브랜치에서 이어진다.
+> `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
+> 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
+
+## 재개 체크포인트 — webview 통합 (계획 B 최신 배치엔진 반영, 2026-09-21)
+
+- **목적**: 계획서대로 `version_rev1`(계획 A 골격)과 `claude/ux-bento-navy-lime`(계획 B
+  완성분 + 최신 배치엔진·theme·wph_html·HTML 뷰·net use 제거)을 `version_webview`로 합쳐
+  계획 A를 최종 완성하기 위한 통합 기준선을 만들었다.
+- **병합**: 분기점 `28c805f`. rev1은 분기 후 배치 파일을 손대지 않아 lot 기준 재정의(10지표,
+  M07 폐지, summary 키 재명명)가 깨끗이 들어왔다. 충돌은 `CLAUDE.md` 하나뿐 — 양쪽 최신
+  섹션을 모두 보존해 해결.
+- **정합 작업(핵심)**: 새 엔진의 `compute`/`build_html`/`write_excel` 시그니처는 rev1의
+  `batchreport_service.py`가 부르던 것과 일치해 어댑터는 그대로 동작. 바뀐 것은 **summary 키**
+  뿐 → `desktop_batch` 테스트 2곳·`batchreport_ui` 목 데이터를 `Batch(리포트) 수`/`Lot 수`로,
+  프런트엔드(`desktop.ts`·`main.tsx`)의 **지표 목록에서 M07 제거(11→10)**·라벨을 lot 기준으로,
+  **KPI를 lot 기준**(전체 Report·분석 Lot·이슈 Lot)으로 교체.
+- **검증**: `python tools/check_project.py` 실패 파일은 `test_batchreport.py`(tkinter 미설치
+  GUI 테스트)뿐 — 나머지 전부 통과. `desktop_*` 테스트 통과. 프런트엔드 `tsc --noEmit` 0건,
+  `npm run build`(tsc && vite build) 통과(35 모듈). Windows native/실기·배포는 미검증.
+- **남은 계획 A**: A2 새 호기 폴더 등록·개별 Report 선택·일일 갱신 UI, A4 양식 만들기·신규
+  Commonality 조사/감시·트레이·Recipe 값 업데이트/이력, A5 실제 빌드·서명·SBOM, A6 실기·배포.
+
 ## 재개 체크포인트 — 문서 작업 응답성 (2026-09-22 KST)
 
 - 시작 `aec6d01`. A 구조/성능 요구사항에 맞춰 문서 열기·셀 저장·행 추가의 파일 I/O를 IPC 입력 스레드에서 분리했다. React 기존 accepted/completed 처리와 호환되며 계약 필드 변경 없음.

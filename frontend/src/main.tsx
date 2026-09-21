@@ -8,10 +8,10 @@ import {Commonality} from './Commonality';
 
 const metrics: [Metric,string,string][] = [
   ['M01','처리량 · WPH','유효 매수 기준 처리 속도'], ['M02','스캔 가동률','일·주·월, 관측 범위 기준'],
-  ['M03','오류 유형별 빈도','Report 수 / Wafer 발생 수'], ['M04','오류 성격','예방·조치·결과성 분류'],
-  ['M05','Aborted 분석','직접·연쇄 중단 추정'], ['M06','재시작 간격','동일 호기·Job의 다음 배치'],
-  ['M07','복구 기준선','유효 표본 평균·중앙값'], ['M08','Recipe 품질 분포','정상 Pass의 Bad Dice'],
-  ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','배치 완주율','완주·부분·미스캔'],
+  ['M03','오류 유형별 빈도','Wafer 발생 · Report · Lot 수'], ['M04','오류 성격','예방·조치·결과성 분류'],
+  ['M05','Aborted 분석','직접·연쇄 중단 추정'], ['M06','재시작 간격','같은 lot 재스캔 간격'],
+  ['M08','Recipe 품질 분포','Lot별 정상 Bad Dice'],
+  ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
   ['M11','미분류 상태','알 수 없는 원문도 보존']
 ];
 const navigation = ['Recipe 관리','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
@@ -113,7 +113,7 @@ function App(){
     <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className={'connection '+(config?'connected':'')}>{connection}</span></div>
       {tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       {error&&<div className="alert" role="alert"><strong>확인이 필요합니다</strong><span>{error}</span><button aria-label="오류 안내 닫기" onClick={()=>setError('')}>×</button></div>}
-      <section className="kpis" aria-label="조사 요약">{[['전체 Report',summary?.['Batch 수'],'건'],['Wafer 기록',summary?.['Wafer 행 수'],'행'],['이슈 Report',summary?.['이슈 Batch 수'],'건'],['읽기 오류',result?.collection?.errors,'건']].map(([label,value,unit])=><article key={String(label)}><span>{label}</span><strong>{text(value)}<small>{unit}</small></strong><p>{result?'마지막 완료 조사 기준':'조사 후 집계'}</p></article>)}</section>
+      <section className="kpis" aria-label="조사 요약">{[['전체 Report',summary?.['Batch(리포트) 수'],'건'],['분석 Lot',summary?.['Lot 수'],'개'],['이슈 Lot',summary?.['이슈 발생 Lot 수'],'개'],['읽기 오류',result?.collection?.errors,'건']].map(([label,value,unit])=><article key={String(label)}><span>{label}</span><strong>{text(value)}<small>{unit}</small></strong><p>{result?'마지막 완료 조사 기준':'조사 후 집계'}</p></article>)}</section>
       <div className="setup-grid"><section className="panel targets-panel"><div className="section-heading"><div><span className="step">01 · 조사 대상</span><h2>호기와 검색 범위</h2></div><span className="count">{selected.length}개 선택</span></div><p className="hint">검색어와 기간은 함께 적용됩니다. 비워 두면 해당 조건을 제한하지 않습니다.</p>
         <div className="toolbar"><button disabled={busy||!config?.machines.length} onClick={()=>setSelected(config?.machines.map(m=>m.id)||[])}>전체 선택</button><button disabled={busy||!selected.length} onClick={()=>setSelected([])}>선택 해제</button></div>
         <div className="targets" aria-label="호기별 검색 조건">{config?.machines.length?config.machines.map(m=><fieldset key={m.id} disabled={busy} className={selected.includes(m.id)?'machine selected':'machine'}><legend><label><input type="checkbox" checked={selected.includes(m.id)} onChange={e=>setSelected(old=>e.target.checked?[...old,m.id]:old.filter(id=>id!==m.id))}/>{m.id}</label></legend>

@@ -301,7 +301,7 @@ class Scheduling(unittest.TestCase):
             def _run_bg(self, work, done):
                 self.launched += 1
                 done(True, {'collection': {'errors': []}, 'dashboard_error': '',
-                            'result': {'summary': {'Batch 수': 1}}, 'outdir': '/unused'})
+                            'result': {'summary': {'Batch(리포트) 수': 1, 'Lot 수': 1}}, 'outdir': '/unused'})
 
             def after(self, ms, fn):
                 self.delay = ms

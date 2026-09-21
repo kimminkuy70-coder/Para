@@ -47,7 +47,7 @@ class DesktopBatchTests(unittest.TestCase):
     def test_pipeline_output_and_latest_only_legacy_untouched(self):
         before = self.config.read_bytes(), self.rep.read_bytes()
         output = self.adapter.run(self.adapter.prepare(self.params), None, lambda:False)
-        self.assertEqual(output['result']['summary']['Batch 수'], 1)
+        self.assertEqual(output['result']['summary']['Batch(리포트) 수'], 1)
         self.assertTrue(Path(output['xlsx']).is_file())
         self.assertTrue(Path(output['html']).is_file())
         self.params['targets'][0]['query'] = 'missing'
@@ -96,7 +96,7 @@ class DesktopBatchTests(unittest.TestCase):
         events = [json.loads(line) for line in output.getvalue().splitlines()]
         final = events[-1]
         self.assertEqual(final['event'], 'completed')
-        self.assertEqual(final['summary']['Batch 수'], 1)
+        self.assertEqual(final['summary']['Batch(리포트) 수'], 1)
         session.handle(dict(version=1,id=2,method='table_page',params={'job':1,'table':0}))
         self.assertEqual(json.loads(output.getvalue().splitlines()[-1])['total'], 3)
         session.handle(dict(version=1,id=3,method='release',params={'job':1}))
