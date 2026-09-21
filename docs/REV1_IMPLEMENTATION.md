@@ -4,6 +4,27 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — 웹 UI 실행 가능화 + native 배선 버그 수정 (2026-09-21)
+
+- **치명 버그 수정(재발 방지)**: `frontend/src-tauri/src/desktop.rs`의 `desktop_send`
+  METHODS 배열이 **19개로 고정**돼 있어, 이후 추가한 `batch_reports`/`form_*`/`cmsurvey_*`/
+  `history_*` 가 **native 층에서 전부 차단**됐다(=웹에서 새 기능이 안 됨). 이 이중 목록이
+  드리프트의 원인이라, native 는 **봉투 형태 + method 토큰(소문자/밑줄) 검사만** 하고 정확한
+  허용 집합은 **신뢰 엔진(Python `desktop_ipc.METHODS`)**이 강제하도록 위임했다.
+- **개발 실행 가능화**: native 는 원래 **패키징된 고정 sidecar exe만** 실행해 `tauri dev`
+  에서 백엔드가 없었다(=데이터 안 뜸). `engine_command`에 **디버그 전용 폴백**을 추가 —
+  sidecar 가 없으면 저장소에서 `python -m param_manager.desktop_ipc` 를 실행한다
+  (`#[cfg(debug_assertions)]`, 릴리스에는 컴파일되지 않음). 이제 **Python+Node+Rust 만으로
+  `npm run tauri dev`** 가 실동작(PyInstaller 불필요).
+- **아이콘 누락 수정**: `tauri::generate_context!` 가 `icons/icon.png` 를 요구해 빌드가
+  실패했다. stdlib 생성기(`tools/make_icon.py`)로 `frontend/src-tauri/icons/`(32/128/256/512
+  png + multi-size ico) 생성, `tauri.conf.json bundle.icon` 을 그 세트로 교체.
+- **실행 도우미/문서**: 루트 `run_web_dev.bat`(준비물 점검→npm install→build→`tauri dev`,
+  전부 ASCII/cp949 안전), 사용법 `docs/WEB_UI_사용법.md`.
+- **검증(이 환경)**: GTK/webkit 개발 라이브러리 설치 후 **`cargo check` 통과(exit 0)** —
+  native Rust 가 실제로 컴파일됨. `python -m param_manager.desktop_ipc` 프로토콜 왕복 정상
+  (tkinter 없이 동작). 프런트 `tsc`/`build` 통과. **실제 창 실행·실장비는 Windows 필요**.
+
 ## 재개 체크포인트 — 웹 테마 M8 슬레이트/에메랄드 (2026-09-21)
 
 - **범위**: 사용자 확정 디자인 컨셉(para_demo.html M8)을 웹 UI(`frontend/src/styles.css`)에

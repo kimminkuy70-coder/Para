@@ -7,5 +7,5 @@
     "windows": [{"label":"main","title":"Camtek AOI Manager","width":1440,"height":900,"minWidth":960,"minHeight":640,"resizable":true}],
     "security": {"csp":"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'"}
   },
-  "bundle": {"active":true,"resources":["sidecar/"],"icon":["../../param_manager/data/para_icon.ico"]}
+  "bundle": {"active":true,"resources":["sidecar/"],"icon":["icons/32x32.png","icons/128x128.png","icons/128x128@2x.png","icons/icon.ico","icons/icon.png"]}
 }
