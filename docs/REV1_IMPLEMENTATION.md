@@ -4,6 +4,18 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — 웹 테마 M8 슬레이트/에메랄드 (2026-09-21)
+
+- **범위**: 사용자 확정 디자인 컨셉(para_demo.html M8)을 웹 UI(`frontend/src/styles.css`)에
+  이식. 팔레트를 **슬레이트 `#37474f` + 에메랄드 `#10b981`** 로 교체하고, Apple 계열 요소를
+  더했다: 스프링/ease 트랜지션, 부드러운 2단 그림자, 다이얼로그 sheet 슬라이드업 +
+  backdrop blur, `prefers-reduced-motion` 존중.
+- **방식**: :root 토큰(--navy/--lime 등 **이름 유지**)만 M8 값으로 바꿔 전 화면 자동 리컬러 +
+  강조 스팟(브랜드 마크·활성 탭·선택 타일·primary 버튼·진행바)을 에메랄드로. 값 확인 2분할
+  장비뷰(어두운 회색)는 CLAUDE.md 지침대로 **그대로 보존**.
+- **검증**: `tsc` 0건·`npm run build` 통과. 빌드본을 로컬 서버+Chromium 으로 렌더 스크린샷
+  확인(슬레이트 상단바·에메랄드 강조·lot KPI·10지표·양식 만들기/이력 확인 탭 정상).
+
 ## 재개 체크포인트 — A2 배치 개별 Report 선택(웹) (2026-09-21)
 
 - **범위**: 배치 화면에서 조사에 넣을 **개별 batch report 를 고른다**([더보기] = tkinter 와 동일).
