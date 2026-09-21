@@ -14,13 +14,14 @@ from datetime import datetime
 from . import batchreport, batchreport_store
 from .desktop_batch import DesktopBatch
 from .desktop_recipe import DesktopRecipe
+from .desktop_form import DesktopForm
 from .desktop_documents import DesktopDocuments
 from .desktop_commonality import DesktopCommonality
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export"}
+METHODS = {"contract", "configuration", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export"}
 
 
 def encoded(value):
@@ -85,6 +86,7 @@ class Session:
         self.last_id = 0
         self.batch = DesktopBatch()
         self.recipe = DesktopRecipe()
+        self.form = DesktopForm()
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
         self.running = False
@@ -132,6 +134,9 @@ class Session:
         allowed.update(commonality_catalog=set(), commonality_compare={'catalog','files'},
                        commonality_page={'snapshot','offset','limit','column','query','changed_only'},
                        commonality_export={'snapshot','changed_only'})
+        allowed.update(form_catalog=set(), form_open={'recipe','stamp'},
+                       form_page={'snapshot','variant','query','used_only','offset','limit'},
+                       form_edit={'snapshot','row','kind','value'}, form_confirm={'snapshot','machine'})
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -163,6 +168,19 @@ class Session:
             action = {'recipe_open': lambda: self.recipe.open(), 'recipe_page': lambda: self.recipe.page(params),
                       'recipe_edit': lambda: self.recipe.edit(params)}
             self.emit(rid, "completed", recipe=action[method]())
+        elif method.startswith('form_'):
+            if self.running:
+                raise ValueError('배치 조사 완료 후 양식 만들기를 열어 주세요')
+            if method == 'form_confirm':
+                # Confirmation writes a workbook and takes the form lock: run off the input thread.
+                self.running = True
+                self.emit(rid, 'accepted')
+                self.worker = threading.Thread(target=self.form_work, args=(rid, params))
+                self.worker.start()
+            else:
+                action = {'form_catalog': lambda: self.form.catalog(), 'form_open': lambda: self.form.open(params),
+                          'form_page': lambda: self.form.page(params), 'form_edit': lambda: self.form.edit(params)}
+                self.emit(rid, 'completed', form=action[method]())
         elif method == "contract":
             self.emit(rid, "completed", methods=sorted(METHODS), max_frame=MAX_FRAME, max_page=MAX_PAGE)
         elif method == "configuration":
@@ -275,6 +293,19 @@ class Session:
                 self.running = False
                 self.emit(rid, 'error', code='document_failed',
                           message=str(exc) if isinstance(exc, ValueError) else '공유 문서를 처리하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
+
+    def form_work(self, rid, params):
+        # Confirmation writes final + original workbooks under the form lock.
+        try:
+            value = self.form.confirm(params)
+            with self.lock:
+                self.running = False
+                self.emit(rid, 'completed', form=value)
+        except Exception as exc:
+            with self.lock:
+                self.running = False
+                self.emit(rid, 'error', code='form_failed',
+                          message=str(exc) if isinstance(exc, ValueError) else '양식을 확정하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
 
     def commonality_work(self, rid, method, params):
         try:

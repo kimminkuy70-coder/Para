@@ -17,6 +17,11 @@ id는 세션 내 증가하는 1..2^53−1 정수. 프레임 최대 4 MiB. NaN/In
 | recipe_open | 없음 | 최신 기존 취합의 snapshot/Recipe/호기 |
 | recipe_page | snapshot/recipe/query/선택호기/offset/limit/호기 offset·limit | 최대 100행·비교 호기 12개 |
 | recipe_edit | snapshot/row/kind/value | color 또는 note만; 파라미터 값 수정 금지 |
+| form_catalog | 없음 | 저장폴더 레시피별 편집 가능한 원본(초안) 버전 목록 |
+| form_open | recipe/stamp | 원본 초안을 열어 항목 grid snapshot(변형·사용·이름·변환) |
+| form_page | snapshot/variant/query/used_only/offset/limit | 최대 100행 |
+| form_edit | snapshot/row/kind/value | 사용(Y/N)·표시이름·변환(RAW/LINEAR/AREA)만 |
+| form_confirm | snapshot/machine | worker: 확정 양식+편집용 원본을 저장폴더 새 회차에 기록 |
 | document_open | ip/special/reference | 고정 공유 문서 snapshot |
 | document_page | snapshot/offset/limit | 최대 100행 |
 | document_edit | snapshot/row/column/value/color | 선택 셀만 잠금·변경 검사 후 저장 |

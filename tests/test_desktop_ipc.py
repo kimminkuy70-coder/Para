@@ -1,6 +1,8 @@
 """A1 protocol tests. Does not certify native Tauri/Windows integration."""
 import io
 import json
+import os
+import tempfile
 from pathlib import Path
 import subprocess
 import sys
@@ -8,7 +10,8 @@ import threading
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from param_manager import batchreport, desktop_ipc as ipc
+import openpyxl
+from param_manager import batchreport, desktop_ipc as ipc, formbuilder, workdirs
 
 
 def request(rid, method, **params):
@@ -35,6 +38,40 @@ class Protocol(unittest.TestCase):
     def finish(self):
         self.session.worker.join(timeout=5)
         self.assertFalse(self.session.worker.is_alive())
+
+    def test_form_open_edit_confirm(self):
+        tmp = tempfile.mkdtemp(prefix="rev1-ipc-form-")
+        save = os.path.join(tmp, "save")
+        os.makedirs(save)
+        st = "20260921_010101_000001"
+        run = workdirs.form_run_dir(save, "PI3", st)
+        rel = workdirs.related_dir(run)
+        openpyxl.Workbook().save(workdirs.form_final_path(run, "PI3", "AOI-01", st))
+        rows = [dict(layer="PI3", recipe="PI3", mag="PI", zone="Z1", alg="Scan2d",
+                     param="Min Defect Width", values={}, unit="", raws={"양식": "12"},
+                     use=True, extract={"src_file": "OpticPreset.ini", "section": "Scan2d",
+                                        "key": "MinWidth", "transform": "RAW", "source_path": ""})]
+        formbuilder.build_initial_workbook(rows, workdirs.form_original_path(rel, "PI3", "AOI-01", st),
+                                           level="PI3", source="t")
+        cfg = os.path.join(tmp, "c.json")
+        with open(cfg, "w", encoding="utf-8") as fh:
+            json.dump({"save_dir": save}, fh)
+        self.session.form.config_path = Path(cfg)
+
+        self.session.handle(request(1, "form_catalog"))
+        self.assertEqual(self.events()[-1]["form"]["recipes"][0]["recipe"], "PI3")
+        self.session.handle(request(2, "form_open", recipe="PI3", stamp=""))
+        snap = self.events()[-1]["form"]["version"]
+        self.session.handle(request(3, "form_page", snapshot=snap, variant="", query="",
+                                    used_only=False, offset=0, limit=100))
+        self.assertEqual(len(self.events()[-1]["form"]["rows"]), 1)
+        self.session.handle(request(4, "form_edit", snapshot=snap, row=0, kind="name", value="최소폭"))
+        self.session.handle(request(5, "form_confirm", snapshot=snap, machine="AOI-07"))
+        self.assertEqual(self.events()[-1]["event"], "accepted")
+        self.finish()
+        done = self.events()[-1]
+        self.assertEqual(done["event"], "completed")
+        self.assertTrue(os.path.exists(done["form"]["final"]))
 
     def test_contract_and_allowlist(self):
         self.session.handle(request(1, "contract"))

@@ -4,6 +4,25 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — A4 양식 만들기(웹) 1차 (2026-09-21)
+
+- **범위**: 저장폴더에 이미 있는 원본(초안)을 웹에서 열어 **항목 사용(Y/N)·표시이름·
+  변환(RAW/LINEAR/AREA)** 을 편집하고 **확정 양식 + 편집용 원본**을 새 회차로 저장한다.
+  장비/SMB 신규 수집은 별개 후속 — 여기서는 원본이 이미 있는 경우라 전 과정 오프라인·테스트 가능.
+- **백엔드**: `param_manager/desktop_form.py`(`DesktopForm`: catalog/open/page/edit/confirm).
+  `formbuilder.initial_to_pivot` → `editor_model.build_entries` 로 grid, 확정은 tested
+  `editor_model.build_records` → `extract_io.write_snapshot` 재사용. 계수는 coefstore
+  읽기전용 → 원본 라벨의 계수 → `ini_parser.DEFAULT_SCALE` 순 폴백(파일 미수정).
+  경로 경계는 save_dir 하위로 제한, snapshot 스테일 검사, 확정은 전역 잠금 `양식_{레시피}`.
+- **IPC**: `form_catalog/open/page/edit` 동기, `form_confirm` 은 worker(파일 쓰기+잠금).
+  `desktop_ipc.METHODS`/allowed/dispatch/`form_work` 추가.
+- **프런트엔드**: `frontend/src/Form.tsx` + 네비게이션 '양식 만들기'. 원본 선택 → grid 편집
+  (체크·이름 dialog·변환 select) → 호기 입력 후 확정 → 산출 경로 표시. styles.css 보강.
+- **검증**: `tests/test_desktop_form.py`(5) + `test_desktop_ipc.py` form 왕복 통과.
+  `tools/check_project.py` 실패=`test_batchreport.py`(tkinter)뿐. 프런트 `tsc` 0건·
+  `npm run build`(36 모듈) 통과. Windows native/실기 미검증.
+- **남음**: 장비/로컬 신규 수집(양식 새로 만들기), 계수 입력 UI, 다중 레시피, 레시피 삭제.
+
 ## 재개 체크포인트 — webview 통합 (계획 B 최신 배치엔진 반영, 2026-09-21)
 
 - **목적**: 계획서대로 `version_rev1`(계획 A 골격)과 `claude/ux-bento-navy-lime`(계획 B

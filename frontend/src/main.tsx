@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {desktop, defaults, errorText, type Configuration, type Metric, type Options, type Reply, type Table, type Target} from './desktop';
 import './styles.css';
 import {Recipe} from './Recipe';
+import {Form} from './Form';
 import {Documents} from './Documents';
 import {Commonality} from './Commonality';
 
@@ -14,7 +15,7 @@ const metrics: [Metric,string,string][] = [
   ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
   ['M11','미분류 상태','알 수 없는 원문도 보존']
 ];
-const navigation = ['Recipe 관리','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
+const navigation = ['Recipe 관리','양식 만들기','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
 const text = (value: unknown) => value == null ? '—' : typeof value === 'number' ? value.toLocaleString('ko-KR',{maximumFractionDigits:2}) : String(value);
 
 function Trend({rows}: {rows:(string|number|null)[][]}) {
@@ -111,7 +112,7 @@ function App(){
     <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
     <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
     <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className={'connection '+(config?'connected':'')}>{connection}</span></div>
-      {tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
+      {tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:tab==='양식 만들기'?<Form/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       {error&&<div className="alert" role="alert"><strong>확인이 필요합니다</strong><span>{error}</span><button aria-label="오류 안내 닫기" onClick={()=>setError('')}>×</button></div>}
       <section className="kpis" aria-label="조사 요약">{[['전체 Report',summary?.['Batch(리포트) 수'],'건'],['분석 Lot',summary?.['Lot 수'],'개'],['이슈 Lot',summary?.['이슈 발생 Lot 수'],'개'],['읽기 오류',result?.collection?.errors,'건']].map(([label,value,unit])=><article key={String(label)}><span>{label}</span><strong>{text(value)}<small>{unit}</small></strong><p>{result?'마지막 완료 조사 기준':'조사 후 집계'}</p></article>)}</section>
       <div className="setup-grid"><section className="panel targets-panel"><div className="section-heading"><div><span className="step">01 · 조사 대상</span><h2>호기와 검색 범위</h2></div><span className="count">{selected.length}개 선택</span></div><p className="hint">검색어와 기간은 함께 적용됩니다. 비워 두면 해당 조건을 제한하지 않습니다.</p>
