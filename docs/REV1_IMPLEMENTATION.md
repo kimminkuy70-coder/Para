@@ -4,6 +4,25 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — 기능 비교 후 버그 수정 + tkinter 미구현 기능 이식 (2026-09-22)
+
+- **비교 기준**: `claude/ux-bento-navy-lime`(이미 병합됨)의 tkinter `equip_app.py` 대비 웹 UI.
+- **버그**: 옛 설정의 M07 지표로 배치 조사가 거절되던 문제(백엔드·프런트 모두 모르는 키 무시),
+  설정에서 등록한 Report 폴더가 배치 탭에 재시작 전까지 안 보이던 문제(탭 진입 시 재조회),
+  모달 대화상자 뒤에 오류 토스트가 가려지던 문제(토스트를 popover 로 최상단 표시),
+  토스트 색 토큰(--ok/--bad/--ink/--mut) 미정의.
+- **이식한 기능**: 결과 파일 열기(`open_path`: 저장폴더·로컬 결과 폴더 안 문서/폴더만),
+  양식 확정 변환계수 표·`변환계수.xlsx` 반영·이전 값 이어받기·호기 선택, 양식 새로 만들기(수집),
+  이력 다중 비교·행 추가/삭제·Excel, 배치 하루 1회 자동 갱신·추가 Report 폴더, 문서 종료 토글·
+  장비종류 선택·행 삭제, Recipe Zone 필터·KLA 숨김·셀 색칠·내보내기·Excel로 열기·레시피 삭제,
+  로컬 작업 폴더·정보, **값 업데이트**(`desktop_update.py`: 수집 중 선택은 question 으로 되묻고
+  재개), **Commonality 신규 조사 전체**(`desktop_cmrun.py`).
+- **남김(결정 필요)**: 파라미터/Commonality 자동 감시, 트레이, 자동 업데이트·게시.
+- **검증**: 신규/확장 Python 테스트(`test_desktop_update/cmrun/formnew/open` 등) 통과, 전체 검사는
+  tkinter 없는 환경 탓 `test_batchreport.py` 1건만 실패(기존과 동일). `tools/test_desktop_ui.mjs`
+  브라우저 통합 시험을 현재 UI 에 맞게 고치고 위 흐름을 모두 추가 — 실제 Python 엔진으로 통과.
+  Windows/WebView2/실장비 실기는 미수행.
+
 ## 재개 체크포인트 — 웹 UI 스텝바이스텝 + 토스트 알림 (2026-09-22)
 
 - **요청**: 화면이 "보고서처럼 주르륵" 나열돼 보기 힘듦 → 각 기능을 **단계(스텝)**로,
