@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {desktop,errorText} from './desktop';
+import {desktop} from './desktop';
+import {Stepper,StepNav,notify,fail} from './ui';
 
 type Version={stamp:string;has_candidate:boolean;kind:string};
 type Recipe={recipe:string;versions:Version[];can_edit:boolean};
@@ -9,24 +10,26 @@ type Row={id:number;use:boolean;variant:string;zone:string;alg:string;orig:strin
 type Page={rows:Row[];total:number;used:number;grand_total:number;offset:number};
 type Confirmed={final:string;original:string;kept:number;total:number;sheet:string;name_note:string};
 const TRANSFORMS=['RAW','LINEAR','AREA'];
+const STEPS=['원본 선택','항목 편집','확정'];
 
 export function Form(){
+  const [step,setStep]=useState(0);
   const [catalog,setCatalog]=useState<Catalog>();
   const [recipe,setRecipe]=useState(''),[stamp,setStamp]=useState('');
   const [opened,setOpened]=useState<Opened>();
   const [variant,setVariant]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('');
   const [usedOnly,setUsedOnly]=useState(false),[offset,setOffset]=useState(0);
   const [data,setData]=useState<Page>();
-  const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
   const [machine,setMachine]=useState(''),[result,setResult]=useState<Confirmed>();
   const [renaming,setRenaming]=useState<Row>(),[nameValue,setNameValue]=useState('');
   const dialog=useRef<HTMLDialogElement>(null),sequence=useRef(0);
 
   async function loadCatalog(){
-    setLoading(true);setError('');
+    setLoading(true);
     try{await desktop.connect();const reply=await desktop.request('form_catalog').promise;
       setCatalog(reply.form as Catalog);}
-    catch(e){setError(errorText(e));}finally{setLoading(false);}
+    catch(e){fail(e);}finally{setLoading(false);}
   }
   useEffect(()=>{void loadCatalog();},[]);
   useEffect(()=>{const t=setTimeout(()=>setFilter(query),180);return()=>clearTimeout(t);},[query]);
@@ -34,17 +37,17 @@ export function Form(){
   useEffect(()=>{if(renaming){setNameValue(renaming.name);dialog.current?.showModal();}else dialog.current?.close();},[renaming]);
 
   async function open(r:string,s:string){
-    setError('');setResult(undefined);setBusy(true);
+    setResult(undefined);setBusy(true);
     try{const reply=await desktop.request('form_open',{recipe:r,stamp:s}).promise;
-      const o=reply.form as Opened;setOpened(o);setVariant('');setQuery('');setFilter('');setOffset(0);}
-    catch(e){setOpened(undefined);setError(errorText(e));}finally{setBusy(false);}
+      const o=reply.form as Opened;setOpened(o);setVariant('');setQuery('');setFilter('');setOffset(0);setStep(1);}
+    catch(e){setOpened(undefined);fail(e);}finally{setBusy(false);}
   }
   useEffect(()=>{
     if(!opened)return;
     const current=++sequence.current;setLoading(true);
     desktop.request('form_page',{snapshot:opened.version,variant,query:filter,used_only:usedOnly,offset,limit:100})
       .promise.then(reply=>{if(current===sequence.current)setData(reply.form as Page);})
-      .catch(e=>{if(current===sequence.current)setError(errorText(e));})
+      .catch(e=>{if(current===sequence.current)fail(e);})
       .finally(()=>{if(current===sequence.current)setLoading(false);});
     return()=>{sequence.current++;};
   },[opened,variant,filter,usedOnly,offset]);
@@ -52,47 +55,47 @@ export function Form(){
   async function edit(row:Row,kind:'use'|'name'|'transform',value:boolean|string){
     if(!opened)return;
     try{await desktop.request('form_edit',{snapshot:opened.version,row:row.id,kind,value}).promise;
-      // Refresh current page and used-count without losing position.
       const reply=await desktop.request('form_page',{snapshot:opened.version,variant,query:filter,used_only:usedOnly,offset,limit:100}).promise;
       const p=reply.form as Page;setData(p);setOpened(o=>o?{...o,used:p.used}:o);}
-    catch(e){setError(errorText(e));}
+    catch(e){fail(e);}
   }
-  async function saveName(){
-    if(!renaming)return;await edit(renaming,'name',nameValue.trim());setRenaming(undefined);
-  }
+  async function saveName(){if(!renaming)return;await edit(renaming,'name',nameValue.trim());setRenaming(undefined);}
   async function confirm(){
     if(!opened||!machine.trim())return;
-    setBusy(true);setError('');setResult(undefined);
+    setBusy(true);setResult(undefined);
     try{const reply=await desktop.request('form_confirm',{snapshot:opened.version,machine:machine.trim()}).promise;
-      setResult(reply.form as Confirmed);}
-    catch(e){setError(errorText(e));}finally{setBusy(false);}
+      setResult(reply.form as Confirmed);notify('양식 확정 완료','ok');}
+    catch(e){fail(e);}finally{setBusy(false);}
   }
 
   if(catalog&&!catalog.save_dir)
-    return <section className="panel"><p className="table-empty">먼저 저장폴더를 지정하세요. 기존 프로그램에서 저장폴더를 정하면 이곳에서 양식을 편집할 수 있습니다.</p></section>;
+    return <section className="panel"><p className="table-empty">먼저 [설정] 탭에서 저장폴더를 지정하세요.</p></section>;
   const editable=(catalog?.recipes||[]).filter(r=>r.can_edit);
   const versions=editable.find(r=>r.recipe===recipe)?.versions.filter(v=>v.has_candidate)||[];
 
-  return <>
-    {error&&<div className="alert" role="alert"><strong>확인이 필요합니다</strong><span>{error}</span><button aria-label="오류 안내 닫기" onClick={()=>setError('')}>×</button></div>}
-    <section className="panel">
-      <div className="section-heading"><div><span className="step">01 · 원본 선택</span><h2>양식 만들기 — 기존 원본 편집</h2></div>
-        <button disabled={loading||busy} onClick={loadCatalog}>목록 새로고침</button></div>
+  return <section className="panel">
+    <div className="section-heading"><div><span className="step">FORM</span><h2>양식 만들기 — 원본 편집·확정</h2></div>
+      <button disabled={loading||busy} onClick={loadCatalog}>목록 새로고침</button></div>
+    <Stepper labels={STEPS} current={step} onJump={i=>{if(i===0)setStep(0);else if(i===1&&opened)setStep(1);}}/>
+
+    <div className="step-body">
+    {step===0&&<>
+      <p className="hint">저장폴더에 이미 있는 <b>원본(초안)</b>을 골라 편집합니다. 장비에서 새로 수집해 만드는 흐름은 준비 중입니다.</p>
       {editable.length===0
-        ? <p className="table-empty">항목을 추가할 수 있는 원본(초안)이 있는 레시피가 없습니다. 기존 프로그램에서 원본이 저장된 버전이 필요합니다.</p>
-        : <div className="form-picker">
+        ? <p className="table-empty">항목을 추가할 수 있는 원본(초안)이 있는 레시피가 없습니다.</p>
+        : <div className="form-picker" style={{marginTop:14}}>
             <label className="field">레시피<select value={recipe} onChange={e=>{setRecipe(e.target.value);setStamp('');}}>
               <option value="">레시피 선택…</option>{editable.map(r=><option key={r.recipe} value={r.recipe}>{r.recipe}</option>)}</select></label>
             <label className="field">버전<select value={stamp} disabled={!recipe} onChange={e=>setStamp(e.target.value)}>
               <option value="">최신(원본 있는 버전)</option>{versions.map(v=><option key={v.stamp} value={v.stamp}>{v.stamp} · {v.kind||'원본'}</option>)}</select></label>
-            <button className="primary" disabled={!recipe||busy} onClick={()=>open(recipe,stamp)}>원본 열기 <span aria-hidden="true">→</span></button>
+            <button className="primary" disabled={!recipe||busy} onClick={()=>open(recipe,stamp)}>원본 열기 ▶</button>
           </div>}
-    </section>
+    </>}
 
-    {opened&&<section className="panel">
-      <div className="section-heading"><div><span className="step">02 · 항목 편집</span><h2>{opened.recipe} · {opened.level}</h2></div>
+    {step===1&&opened&&<>
+      <div className="section-heading"><div><h3>{opened.recipe} · {opened.level}</h3></div>
         <span className="count">사용 {opened.used} / 전체 {opened.total}</span></div>
-      <div className="form-filter">
+      <div className="form-filter" style={{marginTop:8}}>
         <label className="field">변형<select value={variant} onChange={e=>setVariant(e.target.value)}>
           <option value="">전체 변형</option>{opened.variants.map(v=><option key={v} value={v}>{v||'(기본)'}</option>)}</select></label>
         <label className="field">검색<input value={query} maxLength={256} placeholder="항목·이름·Zone·Alg" onChange={e=>setQuery(e.target.value)}/></label>
@@ -111,24 +114,32 @@ export function Form(){
       <div className="pagination"><span>{data?.total?`${offset+1}–${Math.min(offset+100,data.total)} / ${data.total}개`:'0개'}</span>
         <div><button disabled={loading||offset===0} onClick={()=>setOffset(n=>Math.max(0,n-100))}>이전</button>
           <button disabled={loading||offset+100>=(data?.total||0)} onClick={()=>setOffset(n=>n+100)}>다음</button></div></div>
-    </section>}
+    </>}
+    {step===1&&!opened&&<p className="table-empty">먼저 1단계에서 원본을 여세요.</p>}
 
-    {opened&&<section className="panel">
-      <div className="section-heading"><div><span className="step">03 · 확정</span><h2>양식 확정</h2></div></div>
+    {step===2&&opened&&<>
+      <h3>확정</h3>
       <div className="runbar"><div><strong>사용 {opened.used}개 항목으로 확정</strong>
         <p>확정하면 저장폴더에 새 회차의 확정 양식과 편집용 원본이 함께 저장됩니다.</p></div>
         <div className="actions"><input className="in" value={machine} placeholder="호기 (예: AOI-07)" maxLength={64} onChange={e=>setMachine(e.target.value)}/>
-          <button className="primary" disabled={busy||!machine.trim()||opened.used===0} onClick={confirm}>양식 확정 <span aria-hidden="true">→</span></button></div></div>
+          <button className="primary" disabled={busy||!machine.trim()||opened.used===0} onClick={confirm}>양식 확정 ▶</button></div></div>
       {result&&<div className="outputs"><h3>확정 완료 · {result.kept}개 항목 (시트 {result.sheet})</h3>
         {result.name_note&&<p role="alert">장비화면이름 저장 참고: {result.name_note}</p>}
         {([['final','확정 양식'],['original','편집용 원본']] as const).map(([k,label])=>
           <label className="field" key={k}>{label}<input readOnly value={result[k]} onFocus={e=>e.target.select()}/></label>)}</div>}
-    </section>}
+    </>}
+    {step===2&&!opened&&<p className="table-empty">먼저 원본을 열고 항목을 편집하세요.</p>}
+    </div>
+
+    <StepNav step={step} total={STEPS.length} onBack={()=>setStep(s=>s-1)}
+      onNext={()=>{if(step===0){if(recipe)open(recipe,stamp);}else if(step<STEPS.length-1)setStep(s=>s+1);else confirm();}}
+      nextLabel={step===0?'원본 열기':step===1?'확정 단계로':'양식 확정'}
+      nextDisabled={(step===0&&!recipe)||(step>=1&&!opened)||(step===2&&(!machine.trim()||opened?.used===0))} busy={busy}/>
 
     <dialog className="edit-dialog" ref={dialog} onClose={()=>setRenaming(undefined)}><form method="dialog" onSubmit={e=>{e.preventDefault();void saveName();}}>
       <h3>장비 화면 이름</h3><p className="sub">{renaming?.orig}</p>
       <input autoFocus value={nameValue} maxLength={200} onChange={e=>setNameValue(e.target.value)}/>
       <div className="dialog-actions"><button type="button" onClick={()=>setRenaming(undefined)}>취소</button>
         <button className="primary" type="submit">저장</button></div></form></dialog>
-  </>;
+  </section>;
 }

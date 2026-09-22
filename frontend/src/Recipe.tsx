@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {desktop,errorText} from './desktop';
+import {notify} from './ui';
 type Catalog={version:string|null;recipes:string[];machines:string[];source:string};
 type Row={id:number;name:string;alg:string;zone:string;variant:string;note:string;color:string;value:string;values:Record<string,string>};
 type Page={rows:Row[];total:number;machines:string[];offset:number;machine_total:number};
@@ -12,6 +13,7 @@ export function Recipe(){
   const [offset,setOffset]=useState(0),[column,setColumn]=useState(0);
   const [data,setData]=useState<Page>();
   const [loading,setLoading]=useState(false),[error,setError]=useState('');
+  useEffect(()=>{if(error){notify(error,'error');setError('');}},[error]);
   const [editing,setEditing]=useState<{row:Row;kind:'color'|'note'}>();
   const [value,setValue]=useState(''),[saving,setSaving]=useState(false);
   const [selected,setSelected]=useState<Row>();
@@ -59,7 +61,6 @@ export function Recipe(){
   return <section className="panel recipe-panel">
     <div className="section-heading"><div><span className="step">PARAMETER COMPARISON</span><h2>장비 파라미터 비교</h2></div><button disabled={loading||saving} onClick={refresh}>최신 취합 새로고침</button></div>
     <p className="hint">좌측은 기준 호기, 우측은 비교 호기입니다. 장비 값은 읽기 전용이며 색상과 비고만 수정할 수 있습니다.</p>
-    {error&&!editing&&<div className="alert" role="alert">{error}</div>}
     {!catalog?.version?<div className="empty-state"><h3>{loading?'최신 취합본을 불러오는 중…':'표시할 취합본이 없습니다.'}</h3><p>기존 프로그램에서 저장한 최신 파라미터 취합 파일을 사용합니다.</p></div>:<>
       <div className="recipe-controls"><label className="field">Recipe<select value={recipe} onChange={e=>setRecipe(e.target.value)}>{catalog.recipes.map(r=><option key={r}>{r}</option>)}</select></label><label className="field">기준 호기<select value={machine} onChange={e=>setMachine(e.target.value)}>{catalog.machines.map(m=><option key={m}>{m}</option>)}</select></label><label className="field">파라미터 검색<input value={query} onChange={e=>setQuery(e.target.value)} maxLength={256} placeholder="이름 · Alg · Zone · 비고"/></label><button disabled={!selected} onClick={copy}>선택 행 복사</button></div>
       <div className="comparison-info"><span>{catalog.source} · {data?.total.toLocaleString()||0}개 항목</span><div><button disabled={column===0||loading} onClick={()=>setColumn(n=>Math.max(0,n-12))}>이전 호기</button><span>{column+1}–{Math.min(column+12,catalog.machines.length)} / {catalog.machines.length}호기</span><button disabled={column+12>=catalog.machines.length||loading} onClick={()=>setColumn(n=>n+12)}>다음 호기</button></div></div>
@@ -79,7 +80,7 @@ export function Recipe(){
     <dialog ref={dialog} className="edit-dialog" onCancel={e=>{if(saving)e.preventDefault();else setEditing(undefined);}}>
       <h2>{editing?.kind==='color'?'파라미터 분류 색상':'비고 수정'}</h2><p>{editing?.row.name}</p>
       {editing?.kind==='color'?<><div className="color-preview" style={{background:/^#[\da-f]{6}$/i.test(value)?value:'#C9D0D2'}}/><label className="field">색상표에서 선택<input type="color" value={/^#[\da-f]{6}$/i.test(value)?value:'#C9D0D2'} onChange={e=>setValue(e.target.value)} disabled={saving}/></label><label className="field">색상 코드<input value={value} onChange={e=>setValue(e.target.value)} maxLength={7} disabled={saving}/></label><button onClick={()=>setValue('')} disabled={saving}>자동 색상으로 복원</button></>:<label className="field">비고<textarea value={value} onChange={e=>setValue(e.target.value)} maxLength={4000} rows={5} disabled={saving}/></label>}
-      {error&&<p role="alert" className="dialog-error">{error}</p>}<div className="dialog-actions"><button disabled={saving} onClick={()=>setEditing(undefined)}>취소</button><button className="primary" disabled={saving} onClick={save}>{saving?'저장 중…':'저장'}</button></div>
+      <div className="dialog-actions"><button disabled={saving} onClick={()=>setEditing(undefined)}>취소</button><button className="primary" disabled={saving} onClick={save}>{saving?'저장 중…':'저장'}</button></div>
     </dialog>
   </section>;
 }

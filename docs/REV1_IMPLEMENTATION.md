@@ -4,6 +4,23 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — 웹 UI 스텝바이스텝 + 토스트 알림 (2026-09-22)
+
+- **요청**: 화면이 "보고서처럼 주르륵" 나열돼 보기 힘듦 → 각 기능을 **단계(스텝)**로,
+  오류·알림은 **새 메시지창(팝업)**으로.
+- **공용 UI**(`frontend/src/ui.tsx`): `Toaster`+`notify(msg,kind)`+`fail(e)`(우측 상단
+  토스트, error 6.5s/그외 3.4s, ×닫기, 접근성 role), `Stepper`(단계 표시·완료 단계 클릭
+  이동)+`StepNav`(이전/다음·N/M·마지막 CTA). styles.css 에 토스트/스텝퍼 CSS 추가.
+- **스텝 전환**: Settings(저장폴더→Report→Scanresult 3단계), Form(원본 선택→항목 편집→
+  확정), History(파일 선택→결과), Commonality(신규조사 계획→결과 / 결과비교 파일선택→
+  비교표), 배치(조사 대상→분석 설정→실행·결과). 각 화면 한 번에 한 단계만 표시.
+- **오류 팝업 통일**: 전 화면 인라인 `.alert`/`.dialog-error` 제거. main/Recipe/Documents 는
+  기존 `setError`→토스트 브리지(`useEffect(error→notify)`), 나머지는 `fail(e)`/`notify` 직접.
+- **부수 수정**: 배치 '전체 선택/해제' 판정이 `metrics.length===11`(구 11지표)로 굳어 있던 것을
+  `===metrics.length`(현 10)로 교정.
+- **검증**: `tsc` 0건 · `npm run build` 통과 · 렌더 스크린샷으로 스텝퍼/토스트 동작 확인.
+  (Python 무변경 — 이번은 프런트 UX 전환.)
+
 ## 재개 체크포인트 — 저장폴더/폴더 등록 설정(웹 자립) (2026-09-22)
 
 - **문제**: 웹 UI 가 config 의 save_dir 을 **읽기만** 하고 지정하는 UI 가 없어, 기존 tkinter

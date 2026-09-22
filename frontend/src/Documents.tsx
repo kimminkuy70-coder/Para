@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {desktop,errorText} from './desktop';
+import {notify} from './ui';
 type Catalog={snapshot:string|null;headers:string[];total:number;source:string};
 type Cell={value:string;color:string;editable:boolean};
 type Row={id:number;cells:Cell[]};
@@ -11,6 +12,7 @@ function ink(color:string){
 export function Documents({kind}:{kind:'ip'|'special'|'reference'}){
   const [catalog,setCatalog]=useState<Catalog>(),[rows,setRows]=useState<Row[]>([]);
   const [offset,setOffset]=useState(0),[loading,setLoading]=useState(false),[error,setError]=useState('');
+  useEffect(()=>{if(error){notify(error,'error');setError('');}},[error]);
   const [editing,setEditing]=useState<{row:number;column:number;cell:Cell}>();
   const [value,setValue]=useState(''),[color,setColor]=useState(''),[saving,setSaving]=useState(false);
   const dialog=useRef<HTMLDialogElement>(null);
@@ -49,7 +51,6 @@ export function Documents({kind}:{kind:'ip'|'special'|'reference'}){
   }
   return <section className="panel"><div className="section-heading"><div><span className="step">SHARED WORKBOOK</span><h2>{catalog?.source||'공유 자료'}</h2></div><button disabled={loading||saving} onClick={refresh}>새로고침</button></div>
     <p className="hint">셀을 눌러 내용과 색상을 수정하세요. 저장 시 다른 사용자의 편집과 파일 변경 여부를 확인합니다.</p>
-    {error&&!editing&&!newValues&&<p className="alert" role="alert">{error}</p>}
     {!catalog?.snapshot?<div className="empty-state">{loading?'문서를 불러오는 중…':'기존 저장 폴더에 해당 문서가 없습니다.'}</div>:<>
       <button disabled={loading||saving} onClick={()=>{setError('');setNewValues(catalog.headers.map(()=>''));}}>새 행 추가</button>
       <div className="table-scroll document-table" aria-busy={loading}><table><thead><tr><th>행</th>{catalog.headers.map((h,i)=><th key={i}>{h}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={row.id}><td>{offset+index+1}</td>{row.cells.map((cell,column)=><td key={column}><button className="document-cell" style={{background:cell.color||undefined,color:ink(cell.color)}} disabled={!cell.editable||loading} onClick={()=>{setEditing({row:row.id,column,cell});setValue(cell.value);setColor(cell.color);setError('');}}>{cell.value||'—'}</button></td>)}</tr>)}</tbody></table></div>
@@ -59,8 +60,7 @@ export function Documents({kind}:{kind:'ip'|'special'|'reference'}){
     <dialog className="edit-dialog" ref={appendDialog} onCancel={e=>{if(saving)e.preventDefault();else setNewValues(undefined);}}>
       <h2>새 행 추가</h2><p className="hint">문서 마지막에 추가합니다. 저장 전까지 공유 파일은 변경되지 않습니다.</p>
       <div style={{maxHeight:'55vh',overflowY:'auto'}}>{newValues?.map((v,i)=><label className="field" key={i}>{catalog?.headers[i]}<textarea rows={2} maxLength={4000} value={v} disabled={saving} onChange={e=>setNewValues(values=>values?.map((old,j)=>j===i?e.target.value:old))}/></label>)}</div>
-      {error&&<p role="alert" className="dialog-error">{error}</p>}
-      <div className="dialog-actions"><button disabled={saving} onClick={()=>setNewValues(undefined)}>취소</button><button className="primary" disabled={saving||!newValues?.some(v=>v.trim())} onClick={append}>{saving?'저장 중…':'행 저장'}</button></div>
+            <div className="dialog-actions"><button disabled={saving} onClick={()=>setNewValues(undefined)}>취소</button><button className="primary" disabled={saving||!newValues?.some(v=>v.trim())} onClick={append}>{saving?'저장 중…':'행 저장'}</button></div>
     </dialog>
   </section>;
 }
