@@ -121,6 +121,18 @@ class DesktopForm:
                     used=sum(1 for e in self.entries if e["use"]),
                     source=Path(candidate).name)
 
+    def load_entries(self, entries, level, recipe, source=""):
+        """Edit entries built elsewhere (Commonality run) with the same page/edit API.
+        Confirmation of such entries is done by the caller, not `confirm`."""
+        if len(entries) > MAX_ENTRIES:
+            raise ValueError("항목이 너무 많습니다. 기존 프로그램에서 편집하세요.")
+        self.recipe, self.level, self.entries = recipe, level, entries
+        self.multi = len(editor_model.variants_of(entries)) > 1
+        self.version = uuid4().hex
+        return dict(version=self.version, recipe=recipe, level=level,
+                    variants=editor_model.variants_of(entries), total=len(entries),
+                    used=sum(1 for e in entries if e["use"]), source=source)
+
     # ---- page ----------------------------------------------------------
     def page(self, params):
         self._check(params, {"snapshot", "variant", "query", "used_only", "offset", "limit"})

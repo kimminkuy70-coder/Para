@@ -3,69 +3,12 @@ import {desktop} from './desktop';
 import {Stepper,StepNav,notify,fail} from './ui';
 import './commonality.css';
 import {OpenPath} from './OpenPath';
+import {CmRun} from './CmRun';
 
 type Catalog = {catalog:string;files:{id:string;name:string;folder:string}[]};
 type Result = {snapshot:string;total:number;parameters:number;changed:number};
 type Page = {headers:string[];total:number;parameter_total:number;rows:{id:number;values:string[];outliers:number[];fail:boolean;low_match:boolean}[]};
-type SurveyMachine = {id:string;root:string};
-type PlanRow = {device:string;process:string;sm:string;fail:boolean};
-type Preflight = {machine:string;roots:string[];total:number;found:number;missing:number;
-  rows:{label:string;device:string;lot:string;sm:string;exists:boolean;fail:boolean;scan_time:string;created:string;wafer:string;reason:string}[]};
-function emptyRow():PlanRow{return {device:'',process:'',sm:'',fail:false};}
-const SURVEY_STEPS=['조사 계획 입력','폴더 실재 결과'];
 const COMPARE_STEPS=['결과 파일 선택','비교표'];
-
-function SurveyPreflight(){
-  const [step,setStep]=useState(0);
-  const [machines,setMachines]=useState<SurveyMachine[]>([]),[machine,setMachine]=useState('');
-  const [rows,setRows]=useState<PlanRow[]>([emptyRow()]);
-  const [result,setResult]=useState<Preflight>(),[busy,setBusy]=useState(false);
-  useEffect(()=>{(async()=>{
-    try{await desktop.connect();const r=(await desktop.request('cmsurvey_config').promise).cmsurvey as {machines:SurveyMachine[]};
-      setMachines(r.machines);setMachine(m=>m||(r.machines[0]?.id||''));}
-    catch(e){fail(e);}
-  })();},[]);
-  const set=(i:number,patch:Partial<PlanRow>)=>setRows(rs=>rs.map((r,j)=>j===i?{...r,...patch}:r));
-  async function run(){
-    if(!machine)return;setBusy(true);setResult(undefined);
-    const plan=rows.filter(r=>r.device.trim()||r.process.trim()||r.sm.trim())
-      .map(r=>({디바이스명:r.device.trim(),공정번호:r.process.trim(),'S/M':r.sm.trim(),AOI호기:machine,fail여부:r.fail?'Y':''}));
-    try{const r=await desktop.request('cmsurvey_preflight',{machine,plan}).promise;setResult(r.cmsurvey as Preflight);setStep(1);}
-    catch(e){fail(e);}finally{setBusy(false);}
-  }
-  if(machines.length===0)
-    return <section className="panel"><div className="section-heading"><div><span className="step">NEW SURVEY</span><h2>신규 조사 계획 확인</h2></div></div>
-      <p className="hint">Scanresult 루트가 설정된 호기가 없습니다. [설정] 탭에서 호기별 Scanresult 루트를 먼저 등록하세요.</p></section>;
-  return <section className="panel">
-    <div className="section-heading"><div><span className="step">NEW SURVEY</span><h2>신규 조사 — 계획 확인</h2></div></div>
-    <Stepper labels={SURVEY_STEPS} current={step} onJump={i=>setStep(i)}/>
-    <div className="step-body">
-    {step===0&&<>
-      <p className="hint">조사할 Lot 계획을 입력하면 그 호기의 Scanresult에서 실제 Lot 폴더가 있는지 확인합니다(원본 읽기 전용).</p>
-      <div className="form-filter" style={{marginTop:12}}><label className="field">호기<select value={machine} onChange={e=>setMachine(e.target.value)}>
-        {machines.map(m=><option key={m.id} value={m.id}>{m.id}</option>)}</select></label></div>
-      <div className="table-scroll"><table><thead><tr><th>디바이스명</th><th>공정번호</th><th>S/M</th><th>fail</th><th></th></tr></thead>
-        <tbody>{rows.map((r,i)=><tr key={i}>
-          <td><input value={r.device} maxLength={256} onChange={e=>set(i,{device:e.target.value})}/></td>
-          <td><input value={r.process} maxLength={256} onChange={e=>set(i,{process:e.target.value})}/></td>
-          <td><input value={r.sm} maxLength={256} onChange={e=>set(i,{sm:e.target.value})}/></td>
-          <td style={{textAlign:'center'}}><input type="checkbox" checked={r.fail} onChange={e=>set(i,{fail:e.target.checked})}/></td>
-          <td><button className="linklike" disabled={rows.length===1} onClick={()=>setRows(rs=>rs.filter((_,j)=>j!==i))}>삭제</button></td></tr>)}</tbody></table></div>
-      <div className="toolbar" style={{marginTop:10}}><button onClick={()=>setRows(rs=>[...rs,emptyRow()])}>행 추가</button></div>
-    </>}
-    {step===1&&result&&<>
-      <p className="hint">발견 {result.found} · 없음 {result.missing} / 전체 {result.total} · 루트: {result.roots.join(' , ')}</p>
-      <div className="table-scroll"><table><thead><tr><th>상태</th><th>S/M 폴더</th><th>디바이스</th><th>공정</th><th>슬롯</th><th>Scan 일자</th><th>사유</th></tr></thead>
-        <tbody>{result.rows.map((r,i)=><tr key={i} className={r.exists?'':'muted'}>
-          <td>{r.exists?'발견':'없음'}{r.fail?' · Fail':''}</td><td>{r.label}</td><td>{r.device}</td><td>{r.lot}</td>
-          <td>{r.wafer||'—'}</td><td>{r.scan_time||'—'}</td><td>{r.reason||'—'}</td></tr>)}</tbody></table></div>
-    </>}
-    {step===1&&!result&&<p className="table-empty">먼저 1단계에서 계획을 입력해 확인하세요.</p>}
-    </div>
-    <StepNav step={step} total={SURVEY_STEPS.length} onBack={()=>setStep(0)}
-      onNext={()=>step===0?run():setStep(0)} nextLabel={step===0?'폴더 실재 확인':'계획 다시 입력'} busy={busy}/>
-  </section>;
-}
 
 export function Commonality() {
   const [step,setStep]=useState(0);
@@ -76,7 +19,7 @@ export function Commonality() {
   const [query,setQuery]=useState(''),[filter,setFilter]=useState(''),[changed,setChanged]=useState(false);
   async function refresh() {
     setBusy(true);
-    try {await desktop.connect();setCatalog((await desktop.request('commonality_catalog').promise).commonality as Catalog);setSelected([]);}
+    try {await desktop.connect();setCatalog((await desktop.request('commonality_catalog').promise).commonality as Catalog);setSelected([]);setStep(0);}
     catch(e) {fail(e);} finally {setBusy(false);}
   }
   useEffect(()=>{void refresh();},[]);
@@ -101,7 +44,7 @@ export function Commonality() {
     try {const r=await desktop.request('commonality_export',{snapshot:result.snapshot,changed_only:changed}).promise;setOutput((r.commonality as {path:string}).path);notify('비교 Excel 저장 완료','ok');}
     catch(e) {fail(e);} finally {setBusy(false);}
   }
-  return <><SurveyPreflight/>
+  return <><CmRun onFinished={()=>void refresh()}/>
   <section className="panel">
     <div className="section-heading"><div><span className="step">COMPARE</span><h2>저장 결과 비교</h2></div><button disabled={busy} onClick={refresh}>결과 목록 새로고침</button></div>
     <Stepper labels={COMPARE_STEPS} current={step} onJump={i=>setStep(i)}/>

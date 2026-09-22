@@ -176,11 +176,30 @@ try{
   await page.locator('.cm-file input').first().check();
   await page.getByRole('button',{name:'선택 결과 비교 ▶',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.cm-outlier').length===12);
-  assert.equal(await page.locator('.table-scroll tbody tr').count(),3);
+  assert.equal(await page.locator('section.panel').last().locator('.table-scroll tbody tr').count(),3);
   await page.getByRole('button',{name:'다음 파라미터',exact:true}).click();
   await page.getByRole('button',{name:'비교 Excel 저장',exact:true}).click();
   await page.getByLabel('저장된 Excel').waitFor();
   assert((await page.getByLabel('저장된 Excel').inputValue()).endsWith('.xlsx'));
+  // B: 신규 Commonality 조사 — plan → slots → safe copy → coefficients → form → values → compare list.
+  await page.getByLabel('1행 디바이스명').fill('DEVA-1');
+  await page.getByLabel('1행 공정번호').fill('6321');
+  await page.getByLabel('1행 S/M').fill('HPG');
+  await page.getByRole('button',{name:'S/M 폴더 찾기 ▶',exact:true}).click();
+  await page.getByLabel('HPG 슬롯 CX02').check();
+  await page.getByRole('button',{name:'안전 복사 ▶',exact:true}).click();
+  await page.getByLabel('안전 복사 위치').waitFor();
+  await page.getByLabel(/조사 제목/).fill('PI3');
+  await page.getByRole('button',{name:'변환계수 확인 ▶',exact:true}).click();
+  await page.getByText('[PI3] 변형별 변환계수').waitFor();
+  await page.getByRole('button',{name:'양식 편집 ▶',exact:true}).click();
+  await page.getByText('PI3 · 조사 양식').waitFor();
+  await page.getByRole('button',{name:'양식 확정 ▶',exact:true}).click();
+  await page.getByLabel('확정 양식').waitFor();
+  await page.getByRole('button',{name:'값 조사 실행',exact:true}).click();
+  await page.getByText('모든 조사 단위를 마쳤습니다').waitFor();
+  await page.getByLabel('조사 결과').waitFor();
+  await page.waitForFunction(()=>document.querySelectorAll('.cm-file').length===2);
   // B: 양식 확정 — registered machine list, coefficient table, value inheritance.
   await page.getByRole('button',{name:'양식 만들기',exact:true}).click();
   await page.locator('select').first().selectOption('PI2');

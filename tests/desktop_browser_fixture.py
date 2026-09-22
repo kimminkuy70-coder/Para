@@ -58,6 +58,12 @@ if sys.argv[1] == 'init':
     commonality.write_lot_result(cmfile, 'R', 'AOI-01',
         collate.CollateRecipe(recipe='R', records=cmrecords), ['L1', 'L2', 'L3'],
         fail_labels=['L2'], low_labels=['L3'])
+    # Fake Scanresult tree for a new Commonality run (read-only source).
+    from test_commonality import _make_wafer
+    for sm, wafers in (('HPG', ('CX01', 'CX02')), ('TVS', ('CX01',))):
+        for w in wafers:
+            _make_wafer(root/'eq', 'AOI-01', '2D@R2-DEVA-1_0855360PD-0A', '6321' if sm == 'HPG' else '6322', sm, w)
+    cfg['commonality_roots'] = {'AOI-01': str(root/'eq')}
     (root/'config.json').write_text(json.dumps(cfg), encoding='utf-8')
 else:
     original = desktop_ipc.Session
@@ -68,8 +74,10 @@ else:
             self.batch = DesktopBatch(config)
             self.commonality.batch.config_path = config
             for adapter in (self.recipe, self.documents, self.form, self.cmsurvey,
-                            self.history, self.config, self.opener, self.update):
+                            self.history, self.config, self.opener, self.update, self.cmrun):
                 adapter.config_path = config
+            self.cmrun.survey.config_path = config
+            self.cmrun.form.config_path = config
             self.update.job_root_override = lambda m: Path(sys.argv[2])/'equip'/m/'Job'
     desktop_ipc.Session = FixtureSession
     desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)

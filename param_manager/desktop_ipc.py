@@ -22,11 +22,12 @@ from .desktop_history import DesktopHistory
 from .desktop_config import DesktopConfig
 from .desktop_open import DesktopOpen
 from .desktop_update import DesktopUpdate
+from .desktop_cmrun import DesktopCmRun
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "open_path"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "open_path"}
 
 
 def encoded(value):
@@ -97,6 +98,7 @@ class Session:
         self.config = DesktopConfig()
         self.opener = DesktopOpen()
         self.update = DesktopUpdate()
+        self.cmrun = DesktopCmRun()
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
         self.running = False
@@ -163,6 +165,11 @@ class Session:
         allowed.update(update_prepare=set(), update_set_local_source={'path'},
                        update_collect={'recipes','machines','source','answers'}, update_preview={'mapping'},
                        update_commit={'include'}, update_cancel=set())
+        allowed.update(cmrun_plan={'machine','plan'}, cmrun_copy={'picks'}, cmrun_units=set(),
+                       cmrun_detect={'unit','base'}, cmrun_parse={'unit','scales','base_form'},
+                       cmrun_page={'snapshot','variant','query','used_only','offset','limit'},
+                       cmrun_edit={'snapshot','row','kind','value'}, cmrun_confirm={'unit','snapshot'},
+                       cmrun_collate={'unit','mapping'}, cmrun_reset=set())
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -260,6 +267,19 @@ class Session:
                 self.background(rid, 'update', action[method], '값 업데이트를 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.')
             else:
                 self.emit(rid, 'completed', update=action[method]())
+        elif method.startswith('cmrun_'):
+            if self.running:
+                raise ValueError('진행 중인 작업이 끝난 뒤 Commonality 조사를 진행하세요')
+            action = {'cmrun_plan': lambda: self.cmrun.plan(params), 'cmrun_copy': lambda: self.cmrun.copy(params),
+                      'cmrun_units': lambda: self.cmrun.units(params), 'cmrun_detect': lambda: self.cmrun.detect(params),
+                      'cmrun_parse': lambda: self.cmrun.parse(params), 'cmrun_page': lambda: self.cmrun.form.page(params),
+                      'cmrun_edit': lambda: self.cmrun.form.edit(params), 'cmrun_confirm': lambda: self.cmrun.confirm(params),
+                      'cmrun_collate': lambda: self.cmrun.collate(params), 'cmrun_reset': lambda: self.cmrun.reset(params)}
+            if method in ('cmrun_page', 'cmrun_edit', 'cmrun_units', 'cmrun_reset'):
+                self.emit(rid, 'completed', cmrun=action[method]())
+            else:
+                # Scanresult traversal, safe copy, parsing and workbook writes run off the input thread.
+                self.background(rid, 'cmrun', action[method], 'Commonality 조사를 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.')
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))

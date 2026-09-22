@@ -89,3 +89,5 @@ tr.muted td{color:#9aa8ba}
 .wide-dialog{width:640px}.pick-list.short{max-height:160px;overflow:auto}.pick-list.cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
 button.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 @media(max-width:1000px){.recipe-controls{grid-template-columns:1fr 1fr}}
+.slot-picks{display:flex;flex-wrap:wrap;gap:8px}.slot-picks label{display:flex;align-items:center;gap:4px;font-size:12px}
+tr.fail-row td{background:#fff7d6}tr.row-now td{background:#effaf5}
