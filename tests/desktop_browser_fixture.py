@@ -25,7 +25,8 @@ if sys.argv[1] == 'init':
         (source / rep['file_name']).write_text(html_report(rep), encoding='utf-8')
     cfg = {'local_dir': str(root/'local'), 'wph_report_paths': {'AOI-01':str(source),'AOI-02':str(root/'offline-02'),'AOI-03':str(root/'offline-03')},
            'batch_last': {'targets':[{'machine':'AOI-01','query':'','start':'','end':''}],
-                          'options':{'valid_wafers':1}}}
+                          # M07 was retired; older saved settings must still start (A1).
+                          'options':{'valid_wafers':1,'metrics':['M01','M02','M03','M07','M10']}}}
     shared=root/'shared';shared.mkdir();cfg['save_dir']=str(shared)
     machines=[f'AOI-{i:02}' for i in range(1,21)]
     records=[dict(PI='PI2',Recipe='R1',Zone='Surface',Alg='GlobalRTP',Parameter=f'Min Defect Bright {i}',
@@ -47,9 +48,11 @@ else:
     class FixtureSession(original):
         def __init__(self, output):
             super().__init__(output)
-            self.batch = DesktopBatch(Path(sys.argv[2])/'config.json')
-            self.recipe.config_path = Path(sys.argv[2])/'config.json'
-            self.documents.config_path = Path(sys.argv[2])/'config.json'
-            self.commonality.batch.config_path = Path(sys.argv[2])/'config.json'
+            config = Path(sys.argv[2])/'config.json'
+            self.batch = DesktopBatch(config)
+            self.commonality.batch.config_path = config
+            for adapter in (self.recipe, self.documents, self.form, self.cmsurvey,
+                            self.history, self.config):
+                adapter.config_path = config
     desktop_ipc.Session = FixtureSession
     desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)

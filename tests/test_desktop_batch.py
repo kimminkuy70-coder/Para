@@ -53,6 +53,12 @@ class DesktopBatchTests(unittest.TestCase):
     def test_options_and_dates(self):
         for value in ({'metrics':[]}, {'yield_drop':float('nan')}, {'valid_wafers':True}, {'min_baseline':1}, {'by_recipe':1}):
             with self.assertRaises(ValueError): options(value)
+        # Retired metric keys saved by older versions are dropped, not rejected.
+        self.assertEqual(options({'metrics':['M01','M07','M03','M01']})['metrics'], ['M01','M03'])
+        with self.assertRaises(ValueError): options({'metrics':['M07']})
+        cfg = dict(self.cfg, batch_last={'targets': [], 'options': {'metrics': ['M01', 'M07']}})
+        self.config.write_text(json.dumps(cfg), encoding='utf-8')
+        self.assertEqual(self.adapter.describe()['last']['options']['metrics'], ['M01'])
         with self.assertRaises(ValueError):
             self.adapter.prepare(dict(self.params, targets=[{'machine':'AOI-01','start':'2026-09-21','end':'2026-09-01'}]))
 

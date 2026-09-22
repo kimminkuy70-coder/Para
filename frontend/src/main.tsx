@@ -65,20 +65,35 @@ function App(){
   const job=useRef<number|undefined>(undefined), pageSequence=useRef(0);
   const PAGE=200;
 
-  useEffect(()=>{
-    let active=true;
-    desktop.connect().then(()=>desktop.request('configuration').promise).then(reply=>{
-      if(!active)return;
-      const data=reply as Configuration;
+  // (Re)load the registered machines. Runs at start and whenever the batch tab
+  // is entered, so folders registered in [설정] appear without restarting.
+  const first=useRef(true);
+  async function loadConfig(){
+    try{
+      await desktop.connect();
+      const data=(await desktop.request('configuration').promise) as Configuration;
       if(!Array.isArray(data.machines))throw new Error('configuration_failed');
       setConfig(data);setConnection('로컬 엔진 연결됨');
+      const ids=new Set(data.machines.map(m=>m.id));
       const saved=data.last?.targets||[];
-      setTargets(Object.fromEntries(data.machines.map(m=>[m.id,{machine:m.id,query:'',start:'',end:'',...saved.find(t=>t.machine===m.id)}])));
-      setSelected([...new Set(saved.map(t=>t.machine))].filter(id=>data.machines.some(m=>m.id===id)));
-      if(data.last?.options)setOptions({...defaults,...data.last.options});
-    }).catch(e=>{if(active){setConnection('연결 확인 필요');setError(errorText(e));}});
-    return()=>{active=false;};
-  },[]);
+      if(first.current){
+        first.current=false;
+        setTargets(Object.fromEntries(data.machines.map(m=>[m.id,{machine:m.id,query:'',start:'',end:'',...saved.find(t=>t.machine===m.id)}])));
+        setSelected([...new Set(saved.map(t=>t.machine))].filter(id=>ids.has(id)));
+        // Drop retired metric keys (e.g. M07) that older versions saved.
+        if(data.last?.options)setOptions(old=>{const merged={...defaults,...data.last!.options};
+          const known=merged.metrics.filter(k=>metrics.some(m=>m[0]===k));
+          return {...merged,metrics:known.length?known:old.metrics};});
+      }else{
+        // Keep typed conditions for existing machines; add new ones, drop removed ones.
+        setTargets(old=>Object.fromEntries(data.machines.map(m=>[m.id,old[m.id]||{machine:m.id,query:'',start:'',end:'',...saved.find(t=>t.machine===m.id)}])));
+        setSelected(old=>old.filter(id=>ids.has(id)));
+        setPicks(old=>Object.fromEntries(Object.entries(old).filter(([id])=>ids.has(id))));
+      }
+    }catch(e){setConnection('연결 확인 필요');setError(errorText(e));}
+  }
+  useEffect(()=>{void loadConfig();},[]);
+  useEffect(()=>{if(tab==='배치 리포트 분석'&&!first.current&&!busy)void loadConfig();},[tab]);
   useEffect(()=>{
     if(!table||job.current===undefined)return;
     const sequence=++pageSequence.current;

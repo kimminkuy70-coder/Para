@@ -24,8 +24,14 @@ def options(raw):
     result = dict(metrics=list(batchreport.METRICS), valid_wafers=25, min_baseline=20, yield_drop=5.0, by_recipe=True)
     result.update(raw)
     metrics = result["metrics"]
-    if not isinstance(metrics, list) or not metrics or len(metrics) > 11 or any(not isinstance(m, str) or m not in batchreport.METRICS for m in metrics):
+    if not isinstance(metrics, list) or len(metrics) > 64 or any(not isinstance(m, str) for m in metrics):
         raise ValueError("지표를 하나 이상 선택하세요")
+    # Saved settings from older versions may still list retired metrics (M07).
+    # Drop unknown keys like batchreport.compute does instead of rejecting the run.
+    metrics = list(dict.fromkeys(m for m in metrics if m in batchreport.METRICS))
+    if not metrics:
+        raise ValueError("지표를 하나 이상 선택하세요")
+    result["metrics"] = metrics
     for key, low in (("valid_wafers", 1), ("min_baseline", 2)):
         if type(result[key]) is not int or not low <= result[key] <= 100000:
             raise ValueError("매수/표본 수를 확인하세요")
@@ -67,6 +73,11 @@ class DesktopBatch:
 
     def describe(self):
         _, paths, root, last = self.configuration()
+        saved = last.get("options") if isinstance(last.get("options"), dict) else None
+        if saved and isinstance(saved.get("metrics"), list):
+            # Hide retired metric keys (e.g. M07) from the UI's restored selection.
+            last = dict(last, options=dict(saved, metrics=[
+                m for m in saved["metrics"] if isinstance(m, str) and m in batchreport.METRICS]))
         return dict(machines=[dict(id=name, folder=folder) for name, folder in sorted(paths.items())],
                     local_root=str(root), last=last)
 

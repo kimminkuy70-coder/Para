@@ -51,6 +51,26 @@ try{
     await page.evaluate(()=>document.fonts.ready);
   }
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
+  // A3: a toast raised while a modal dialog is open must be the topmost element.
+  await page.getByRole('button',{name:'Recipe 관리',exact:true}).click();
+  await page.getByRole('button',{name:'Min Defect Bright 0 색상 변경',exact:true}).click();
+  await page.locator('dialog[open] input:not([type])').fill('#12');
+  await page.locator('dialog[open]').getByRole('button',{name:'저장',exact:true}).click();
+  const toast=page.locator('.toast.error').filter({hasText:'#RRGGBB'});
+  await toast.waitFor();
+  // Inert (modal-blocked) nodes are skipped by hit testing, so check that the
+  // toaster was (re)opened as a popover, i.e. placed above the open dialog in the top layer.
+  assert(await page.evaluate(()=>document.querySelector('.toaster').matches(':popover-open')&&document.querySelector('dialog').open),'toast hidden behind modal');
+  await page.keyboard.press('Escape');
+  // A2: a Report folder registered in [설정] appears in the batch tab without restart.
+  const extra=join(fixture,'equipment-04');await mkdir(extra);
+  await page.getByRole('button',{name:'설정',exact:true}).click();
+  await page.getByRole('tab',{name:'배치 Report 폴더'}).click();
+  await page.getByLabel('호기').fill('AOI-04');await page.getByLabel('폴더').fill(extra);
+  await page.getByRole('button',{name:'추가',exact:true}).click();
+  await page.getByText(extra,{exact:true}).waitFor();
+  await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
+  await page.getByLabel('AOI-04 검색어').waitFor();
   for(const [width,height] of [[1920,1080],[2880,1800],[1280,720],[960,640]]){
     await page.setViewportSize({width,height});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`page overflow ${width}`);
@@ -58,6 +78,11 @@ try{
     await input.fill('test');await input.fill('');
   }
   await page.setViewportSize({width:1440,height:1000});
+  await page.getByRole('button',{name:'다음 ▶',exact:true}).click();
+  // A1: the retired M07 from saved settings is dropped; 4 of 10 metrics restored.
+  assert.equal(await page.locator('.metric-list input:checked').count(),4);
+  await page.getByRole('button',{name:'전체 선택',exact:true}).click();
+  await page.getByRole('button',{name:'다음 ▶',exact:true}).click();
   await page.getByRole('button',{name:'조사 시작'}).click();
   await page.getByText('조사를 완료했습니다.',{exact:true}).waitFor({timeout:60000});
   await page.getByLabel('분석 표',{exact:true}).selectOption({label:'시간순 Actual WPH · 205행'});
@@ -102,7 +127,7 @@ try{
   await page.getByRole('button',{name:'10.0.0.3',exact:true}).waitFor();
   await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
   await page.locator('.cm-file input').first().check();
-  await page.getByRole('button',{name:'선택 결과 비교',exact:true}).click();
+  await page.getByRole('button',{name:'선택 결과 비교 ▶',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.cm-outlier').length===12);
   assert.equal(await page.locator('.table-scroll tbody tr').count(),3);
   await page.getByRole('button',{name:'다음 파라미터',exact:true}).click();

@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {errorText} from './desktop';
 
 /* ------------------------------------------------------------------ */
@@ -24,8 +24,21 @@ export function fail(e:unknown){return notify(errorText(e),'error');}
 
 export function Toaster(){
   const [items,setItems]=useState<Toast[]>(toasts);
+  const host=useRef<HTMLDivElement>(null);
   useEffect(()=>{listeners.add(setItems);return()=>{listeners.delete(setItems);};},[]);
-  return <div className="toaster" aria-live="polite">{items.map(t=>
+  // A modal <dialog> lives in the browser top layer, above any z-index, so a
+  // plain fixed toaster would be hidden behind it (and its backdrop). Showing
+  // the toaster as a manual popover re-inserts it at the top of the top layer
+  // each time a toast arrives, so errors raised inside dialogs stay visible.
+  useEffect(()=>{
+    const el=host.current as (HTMLDivElement&{showPopover?:()=>void;hidePopover?:()=>void})|null;
+    if(!el||!el.showPopover||!el.hidePopover)return;
+    try{
+      if(el.matches(':popover-open'))el.hidePopover();
+      if(items.length)el.showPopover();
+    }catch{/* popover unsupported: falls back to the fixed-position toaster */}
+  },[items]);
+  return <div ref={host} popover="manual" className="toaster" aria-live="polite">{items.map(t=>
     <div key={t.id} className={'toast '+t.kind} role={t.kind==='error'?'alert':'status'}>
       <span className="ic" aria-hidden="true">{t.kind==='error'?'!':t.kind==='ok'?'✓':'i'}</span>
       <span className="msg">{t.msg}</span>
