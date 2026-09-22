@@ -11,9 +11,11 @@
 - **공용 UI**(`frontend/src/ui.tsx`): `Toaster`+`notify(msg,kind)`+`fail(e)`(우측 상단
   토스트, error 6.5s/그외 3.4s, ×닫기, 접근성 role), `Stepper`(단계 표시·완료 단계 클릭
   이동)+`StepNav`(이전/다음·N/M·마지막 CTA). styles.css 에 토스트/스텝퍼 CSS 추가.
-- **스텝 전환**: Settings(저장폴더→Report→Scanresult 3단계), Form(원본 선택→항목 편집→
-  확정), History(파일 선택→결과), Commonality(신규조사 계획→결과 / 결과비교 파일선택→
-  비교표), 배치(조사 대상→분석 설정→실행·결과). 각 화면 한 번에 한 단계만 표시.
+- **Settings 는 스텝이 아니라 하위 탭**(사용자 지정): 설정창 안에서 `저장폴더 / 배치 Report
+  폴더 / Scanresult 루트` **서브탭**(`.subtabs`)으로 전환. 스텝바이스텝은 **나머지 기능만**.
+- **스텝 전환**: Form(원본 선택→항목 편집→확정), History(파일 선택→결과),
+  Commonality(신규조사 계획→결과 / 결과비교 파일선택→비교표), 배치(조사 대상→분석 설정→
+  실행·결과). 각 화면 한 번에 한 단계만 표시.
 - **오류 팝업 통일**: 전 화면 인라인 `.alert`/`.dialog-error` 제거. main/Recipe/Documents 는
   기존 `setError`→토스트 브리지(`useEffect(error→notify)`), 나머지는 `fail(e)`/`notify` 직접.
 - **부수 수정**: 배치 '전체 선택/해제' 판정이 `metrics.length===11`(구 11지표)로 굳어 있던 것을

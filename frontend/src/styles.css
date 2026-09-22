@@ -73,3 +73,10 @@ tr.muted td{color:#9aa8ba}
 .stepnav .stepcount{font-size:12px;color:var(--mut);font-weight:700}
 .stepnav .btn{min-width:120px}
 .step-body{min-height:120px}
+
+/* ===== 설정 하위 탭 ===== */
+.subtabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin:18px 0 18px}
+.subtabs button{border:0;border-radius:0;border-bottom:2px solid transparent;background:transparent;color:var(--mut);font-weight:700;padding:10px 14px;min-height:0;white-space:nowrap}
+.subtabs button:hover:not(:disabled){background:var(--band);border-color:transparent}
+.subtabs button.active{color:var(--navy);border-bottom-color:var(--lime)}
+.subtab-body{min-height:120px}
