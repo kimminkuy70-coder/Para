@@ -1,17 +1,15 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useState} from 'react';
 import {desktop,pickFolder} from './desktop';
 import {Stepper,StepNav,notify,fail} from './ui';
 import {OpenPath} from './OpenPath';
+import {QuestionDialog,withAnswer,noAnswers,type Question,type Answers} from './CollectQuestion';
 
 type Machine={id:string;ip:string;type:string;local:string};
 type Prepared={recipes:string[];machines:Machine[];local_source:string;local_source_ok:boolean};
-type Question={kind:'match';machine:string;levels:string[];jobs:string[];suggested:Record<string,string[]>}
-  |{kind:'setup';machine:string;job:string;title:string;options:string[]};
 type Table={rows:[string,string][];parsed:string[];unmatched:string[]};
 type Collected={stage:string;collected:string[];errors:{machine:string;error:string}[];tables:Record<string,Table>;coef_missing:{machine:string;variant:string}[];rows:number};
 type PreviewRow={recipe:string;missing_form:boolean;carried:boolean;matched_rows:number;filled_cells:number;mismatches:number;mismatch_names:string[]};
 type Done={path:string;recipes:{recipe:string;matched_rows:number;filled_cells:number;carried:boolean}[];notes:string[]};
-type Answers={match:Record<string,Record<string,string[]>>;setup:Record<string,Record<string,string>>};
 const STEPS=['대상 선택','수집','하위 레시피 매칭','결과 확인'];
 const NONE='';
 
@@ -21,13 +19,12 @@ export function Update(){
   const [recipes,setRecipes]=useState<string[]>([]),[machines,setMachines]=useState<string[]>([]);
   const [source,setSource]=useState<'equipment'|'local'>('equipment'),[localPath,setLocalPath]=useState('');
   const [busy,setBusy]=useState(false),[progressText,setProgressText]=useState('');
-  const [answers,setAnswers]=useState<Answers>({match:{},setup:{}});
-  const [question,setQuestion]=useState<Question>(),[draft,setDraft]=useState<Record<string,string[]>|string>();
+  const [answers,setAnswers]=useState<Answers>(noAnswers());
+  const [question,setQuestion]=useState<Question>();
   const [collected,setCollected]=useState<Collected>();
   const [mapping,setMapping]=useState<Record<string,Record<string,string>>>({});
   const [preview,setPreview]=useState<PreviewRow[]>(),[include,setInclude]=useState<string[]>([]);
   const [done,setDone]=useState<Done>();
-  const qDialog=useRef<HTMLDialogElement>(null);
 
   async function load(){
     try{await desktop.connect();const r=(await desktop.request('update_prepare').promise).update as Prepared;
@@ -35,19 +32,17 @@ export function Update(){
     catch(e){fail(e);}
   }
   useEffect(()=>{void load();},[]);
-  useEffect(()=>{if(question)qDialog.current?.showModal();else qDialog.current?.close();},[question]);
 
   async function cancelFlow(silent=false){
     try{await desktop.request('update_cancel').promise;if(!silent)notify('값 업데이트를 취소했습니다.','info');}catch(e){fail(e);}
-    setCollected(undefined);setPreview(undefined);setQuestion(undefined);setAnswers({match:{},setup:{}});setStep(0);
+    setCollected(undefined);setPreview(undefined);setQuestion(undefined);setAnswers(noAnswers());setStep(0);
   }
   async function collect(next:Answers){
     setBusy(true);setProgressText(source==='equipment'?'장비에서 설정 파일을 읽기 전용으로 복사하고 있습니다…':'로컬 폴더에서 설정 파일을 읽고 있습니다…');
     try{
       const r=(await desktop.request('update_collect',{recipes,machines,source,answers:next}).promise).update as {stage:string;question?:Question}&Collected;
       if(r.stage==='question'&&r.question){
-        const q=r.question;setQuestion(q);
-        setDraft(q.kind==='match'?Object.fromEntries(q.levels.map(l=>[l,q.suggested[l]||[]])):(q.options[0]||''));
+        setQuestion(r.question);
         return;
       }
       setCollected(r);
@@ -59,16 +54,9 @@ export function Update(){
     }catch(e){fail(e);setStep(0);}
     finally{setBusy(false);setProgressText('');}
   }
-  function answer(){
-    if(!question||draft===undefined)return;
-    const next:Answers={match:{...answers.match},setup:{...answers.setup}};
-    if(question.kind==='match'){
-      const chosen=draft as Record<string,string[]>;
-      if(!Object.values(chosen).some(v=>v.length)){notify('레시피별 Job 폴더를 하나 이상 고르세요.','error');return;}
-      next.match[question.machine]=chosen;
-    }else{
-      next.setup[question.machine]={...(next.setup[question.machine]||{}),[question.job]:draft as string};
-    }
+  function answer(value:Record<string,string[]>|string){
+    if(!question)return;
+    const next=withAnswer(answers,question,value);
     setAnswers(next);setQuestion(undefined);void collect(next);
   }
   async function runPreview(map:Record<string,string>){
@@ -86,7 +74,7 @@ export function Update(){
   async function commit(){
     setBusy(true);
     try{const r=(await desktop.request('update_commit',{include}).promise).update as Done;
-      setDone(r);setStep(0);notify('파라미터 값 취합 파일을 만들었습니다.','ok');setCollected(undefined);setPreview(undefined);setAnswers({match:{},setup:{}});}
+      setDone(r);setStep(0);notify('파라미터 값 취합 파일을 만들었습니다.','ok');setCollected(undefined);setPreview(undefined);setAnswers(noAnswers());}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   async function saveLocal(path:string){
@@ -146,22 +134,10 @@ export function Update(){
     </div>
     {step!==1&&<StepNav step={step} total={STEPS.length} busy={busy}
       onBack={()=>{if(step===3&&collected&&Object.keys(collected.tables).length)setStep(2);else if(step>=2)void cancelFlow(true);else setStep(0);}}
-      onNext={()=>{if(step===0){setDone(undefined);setAnswers({match:{},setup:{}});setStep(1);void collect({match:{},setup:{}});}
+      onNext={()=>{if(step===0){setDone(undefined);setAnswers(noAnswers());setStep(1);void collect(noAnswers());}
         else if(step===2)void runPreview(mappingPayload());else if(step===3)void commit();}}
       nextLabel={step===0?'수집 시작':step===2?'매칭 확인':'취합 저장'} nextDisabled={step===0&&!ready}/>}
 
-    <dialog className="edit-dialog wide-dialog" ref={qDialog} onCancel={e=>{e.preventDefault();}}>{question&&<>
-      {question.kind==='match'?<>
-        <h2>{question.machine} · 레시피 ↔ Job 폴더</h2>
-        <p className="hint">레시피마다 장비 Job 폴더를 고르세요(복수 선택). 이름이 맞는 폴더는 미리 체크했습니다. 고른 Job 안의 Recipe 를 전부 수집합니다. 다음 호기는 같은 Job 이름으로 자동 매칭합니다.</p>
-        {question.levels.map(l=><div key={l}><h3>{l}</h3><div className="pick-list short">{question.jobs.map(j=>{const cur=(draft as Record<string,string[]>)?.[l]||[];
-          return <label key={j} className="pick-item"><input type="checkbox" checked={cur.includes(j)} onChange={e=>setDraft(d=>{const o={...(d as Record<string,string[]>)};o[l]=e.target.checked?[...cur,j]:cur.filter(v=>v!==j);return o;})}/> {j}{question.suggested[l]?.includes(j)?'  ◀ 추천':''}</label>;})}
-          {question.jobs.length===0&&<p className="table-empty">장비에서 Job 폴더를 찾지 못했습니다.</p>}</div></div>)}
-      </>:<>
-        <h2>{question.machine} · Setup 선택</h2><p className="hint">{question.title}</p>
-        <div className="pick-list short">{question.options.map(o=><label key={o} className="pick-item"><input type="radio" name="setup" checked={draft===o} onChange={()=>setDraft(o)}/> {o}</label>)}</div>
-      </>}
-      <div className="dialog-actions"><button onClick={()=>void cancelFlow()}>수집 취소</button><button className="primary" onClick={answer}>확인하고 계속</button></div></>}
-    </dialog>
+    <QuestionDialog question={question} onAnswer={answer} onCancel={()=>void cancelFlow()}/>
   </section>;
 }

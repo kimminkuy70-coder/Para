@@ -245,6 +245,20 @@ try{
   await page.waitForFunction(()=>document.querySelector('.table-scroll tbody tr td:last-child')?.textContent==='행 삭제');
   await page.getByRole('button',{name:'변경내역 Excel 저장',exact:true}).click();
   assert((await page.getByLabel('저장된 변경내역').inputValue()).includes('이력비교'));
+  // B: 양식 만들기 — 새로 만들기 from equipment (Job question → coefficients → editor → confirm).
+  await page.getByRole('button',{name:'양식 만들기',exact:true}).click();
+  await page.getByRole('tab',{name:'새로 만들기(장비·로컬 수집)'}).click();
+  await page.getByLabel('새 레시피 이름').fill('PI2');
+  await page.locator('.pick-item').filter({hasText:'AOI-01'}).locator('input').check();
+  await page.getByRole('button',{name:'수집 시작',exact:true}).click();
+  await page.locator('dialog[open]').getByRole('button',{name:'확인하고 계속',exact:true}).click();
+  await page.getByText('변형별 변환계수',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'파라미터 불러오기 ▶',exact:true}).first().click();
+  await page.getByText(/사용 \d+ \/ 전체 \d+/).waitFor();
+  await page.getByRole('button',{name:'확정 단계로 ▶',exact:true}).click();
+  await page.getByLabel('확정 호기').selectOption('AOI-01');
+  await page.locator('.runbar').getByRole('button',{name:'양식 확정 ▶'}).click();
+  await page.getByLabel('확정 양식').waitFor();
   assert.deepEqual(errors,[]);
   assert.equal(stderr,'');
   console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,maxDOMRows:200,timeTicks:5,scriptEscaped:true,serverPortsOpened:0}));

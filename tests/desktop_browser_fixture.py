@@ -79,5 +79,7 @@ else:
             self.cmrun.survey.config_path = config
             self.cmrun.form.config_path = config
             self.update.job_root_override = lambda m: Path(sys.argv[2])/'equip'/m/'Job'
+            self.formnew.config_path = config
+            self.formnew.collector.job_root_override = self.update.job_root_override
     desktop_ipc.Session = FixtureSession
     desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)

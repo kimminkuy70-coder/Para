@@ -127,9 +127,12 @@ class DesktopUpdate:
         return self.prepare({})
 
     # ---- step 1: collect + parse -----------------------------------------
-    def collect(self, params):
+    def gather(self, params, allow_new=False, hold=True):
+        """Validate the request and copy/locate the sources. Returns a `question`
+        payload, or the sources to parse. `allow_new` lets 양식 만들기 name a recipe
+        that has no form yet; `hold` takes the global collate lock (value update only)."""
         if set(params) - {"recipes", "machines", "source", "answers"}:
-            raise ValueError("값 업데이트 요청을 확인하세요")
+            raise ValueError("수집 요청을 확인하세요")
         cfg = self._cfg()
         save = cfg["save_dir"]
         recipes, machines, source = params.get("recipes"), params.get("machines"), params.get("source")
@@ -138,7 +141,7 @@ class DesktopUpdate:
             raise ValueError("수집 방식을 확인하세요")
         known = set(workdirs.list_recipes(save))
         if (not isinstance(recipes, list) or not recipes or len(recipes) > MAX_ITEMS
-                or any(not isinstance(r, str) or r not in known for r in recipes)):
+                or any(not isinstance(r, str) or not r.strip() or (r not in known and not allow_new) for r in recipes)):
             raise ValueError("양식이 있는 레시피를 하나 이상 고르세요")
         rows = self._ip_rows(save)
         registered = refdata.machines(rows)
@@ -147,7 +150,8 @@ class DesktopUpdate:
             raise ValueError("[장비 IP]에 등록된 호기를 하나 이상 고르세요")
         recipes = list(dict.fromkeys(recipes))
         machines = list(dict.fromkeys(machines))
-        self._hold(save)
+        if hold:
+            self._hold(save)
         key = (tuple(recipes), tuple(machines), source)
         if not self.state or self.state.get("key") != key:
             self.state = dict(key=key, sources={}, errors={}, plan=None, staging=None)
@@ -171,12 +175,23 @@ class DesktopUpdate:
             sources = [(d, lvl, m) for m in machines for d, lvl in state["sources"].get(m, [])]
             if not sources:
                 raise ValueError("수집된 호기가 없습니다. " + "; ".join(f"{m}: {e}" for m, e in state["errors"].items()))
-            pivot, missing = self._parse(save, recipes, sources, dlevel)
         except Question as q:
             return dict(stage="question", question=q.payload,
                         collected=[m for m in machines if m in state["sources"]])
         except Exception:
             # Keep nothing half-done: a failed run must not hold the collate lock.
+            self.cancel({})
+            raise
+        return dict(stage="sources", save=save, recipes=recipes, machines=machines, sources=sources, dlevel=dlevel)
+
+    def collect(self, params):
+        out = self.gather(params)
+        if out.get("stage") == "question":
+            return out
+        state, save, recipes, machines = self.state, out["save"], out["recipes"], out["machines"]
+        try:
+            pivot, missing = self._parse(save, recipes, out["sources"], out["dlevel"])
+        except Exception:
             self.cancel({})
             raise
         if not pivot:

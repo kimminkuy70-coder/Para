@@ -2,6 +2,8 @@ import {useEffect,useRef,useState} from 'react';
 import {desktop} from './desktop';
 import {Stepper,StepNav,notify,fail} from './ui';
 import {OpenPath} from './OpenPath';
+import {QuestionDialog,withAnswer,noAnswers,type Question,type Answers} from './CollectQuestion';
+import {pickFolder} from './desktop';
 
 type Version={stamp:string;has_candidate:boolean;kind:string};
 type Recipe={recipe:string;versions:Version[];can_edit:boolean};
@@ -10,6 +12,8 @@ type Opened={version:string;recipe:string;level:string;variants:string[];total:n
 type Row={id:number;use:boolean;variant:string;zone:string;alg:string;orig:string;name:string;transform:string;raw:string;display:string};
 type Page={rows:Row[];total:number;used:number;grand_total:number;offset:number};
 type Scale={variant:string;coef:number;source:string;needed:boolean};
+type NewPrep={machines:{id:string;ip:string;local:string;type:string}[];local_source:string;local_source_ok:boolean;existing:string[]};
+type NewScale={variant:string;coef:number;source:string;confidence:string;reason:string};
 type Confirmed={final:string;original:string;kept:number;total:number;sheet:string;name_note:string;
   coef:{saved:number;defaulted:string[];unregistered:string[];error:string};
   merge:{collate:string;added:number;error:string}|null};
@@ -27,6 +31,12 @@ export function Form(){
   const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
   const [machine,setMachine]=useState(''),[result,setResult]=useState<Confirmed>();
   const [renaming,setRenaming]=useState<Row>(),[nameValue,setNameValue]=useState('');
+  // 새로 만들기(장비/로컬 수집) — tkinter _form_new.
+  const [mode,setMode]=useState<'edit'|'new'>('edit');
+  const [newPrep,setNewPrep]=useState<NewPrep>(),[newName,setNewName]=useState(''),[newSource,setNewSource]=useState<'equipment'|'local'>('equipment');
+  const [newMachines,setNewMachines]=useState<string[]>([]),[answers,setAnswers]=useState<Answers>(noAnswers()),[question,setQuestion]=useState<Question>();
+  const [newScales,setNewScales]=useState<NewScale[]>(),[newScaleEdit,setNewScaleEdit]=useState<Record<string,string>>({}),[localPath,setLocalPath]=useState('');
+  const [similar,setSimilar]=useState<{recipe:string;match:number;total:number}[]>([]),[baseForm,setBaseForm]=useState('');
   const [scales,setScales]=useState<Scale[]>([]),[scaleEdits,setScaleEdits]=useState<Record<string,string>>({});
   const dialog=useRef<HTMLDialogElement>(null),sequence=useRef(0);
 
@@ -41,6 +51,31 @@ export function Form(){
   useEffect(()=>{setOffset(0);},[variant,filter,usedOnly]);
   useEffect(()=>{if(renaming){setNameValue(renaming.name);dialog.current?.showModal();}else dialog.current?.close();},[renaming]);
 
+  useEffect(()=>{if(mode==='new'&&!newPrep)desktop.request('formnew_prepare').promise
+    .then(r=>{const p=r.formnew as NewPrep;setNewPrep(p);setLocalPath(p.local_source);}).catch(fail);},[mode]);
+  async function newCollect(next:Answers){
+    setBusy(true);
+    try{const r=(await desktop.request('formnew_collect',{recipe:newName.trim(),machines:newMachines,source:newSource,answers:next}).promise).formnew as
+        {stage:string;question?:Question;scales?:NewScale[];errors?:{machine:string;error:string}[]};
+      if(r.stage==='question'&&r.question){setQuestion(r.question);return;}
+      setNewScales(r.scales);setNewScaleEdit({});
+      if(r.errors?.length)notify(`수집 실패 ${r.errors.length}대: `+r.errors.map(e=>`${e.machine}(${e.error})`).join(', '),'error');}
+    catch(e){fail(e);}finally{setBusy(false);}
+  }
+  const newScaleValue=(x:NewScale)=>newScaleEdit[x.variant]??String(x.coef);
+  const newScaleBad=!!newScales?.some(x=>!(Number(newScaleValue(x))>0));
+  async function newParse(base=baseForm){
+    if(!newScales)return;
+    setBusy(true);
+    try{const r=(await desktop.request('formnew_parse',{scales:Object.fromEntries(newScales.map(x=>[x.variant,Number(newScaleValue(x))])),base_form:base}).promise).formnew as
+        {form:Opened;similar:{recipe:string;match:number;total:number}[];base_form:string};
+      setOpened(r.form);setSimilar(r.similar);setBaseForm(r.base_form);setVariant('');setQuery('');setFilter('');setOffset(0);setResult(undefined);setStep(1);}
+    catch(e){fail(e);}finally{setBusy(false);}
+  }
+  async function saveLocal(path:string){
+    try{const r=(await desktop.request('update_set_local_source',{path}).promise).update as NewPrep;
+      setNewPrep(p=>p&&{...p,...r});setLocalPath(r.local_source);notify('로컬 상위 폴더 저장','ok');}catch(e){fail(e);}
+  }
   async function open(r:string,s:string){
     setResult(undefined);setBusy(true);
     try{const reply=await desktop.request('form_open',{recipe:r,stamp:s}).promise;
@@ -97,7 +132,10 @@ export function Form(){
 
     <div className="step-body">
     {step===0&&<>
-      <p className="hint">저장폴더에 이미 있는 <b>원본(초안)</b>을 골라 편집합니다. 장비에서 새로 수집해 만드는 흐름은 준비 중입니다.</p>
+      <div className="subtabs" role="tablist">{([['edit','기존 원본 편집'],['new','새로 만들기(장비·로컬 수집)']] as const).map(([id,label])=>
+        <button key={id} role="tab" aria-selected={mode===id} className={mode===id?'active':''} onClick={()=>setMode(id)}>{label}</button>)}</div>
+      {mode==='edit'?<>
+      <p className="hint">저장폴더에 이미 있는 <b>원본(초안)</b>을 골라 편집합니다.</p>
       {editable.length===0
         ? <p className="table-empty">항목을 추가할 수 있는 원본(초안)이 있는 레시피가 없습니다.</p>
         : <div className="form-picker" style={{marginTop:14}}>
@@ -107,11 +145,35 @@ export function Form(){
               <option value="">최신(원본 있는 버전)</option>{versions.map(v=><option key={v.stamp} value={v.stamp}>{v.stamp} · {v.kind||'원본'}</option>)}</select></label>
             <button className="primary" disabled={!recipe||busy} onClick={()=>open(recipe,stamp)}>원본 열기 ▶</button>
           </div>}
+      </>:<>
+      <p className="hint">장비(또는 로컬 복사본)의 설정 파일을 읽어 새 레시피 양식을 만듭니다. 원본은 읽기만 하고, 복사본은 로컬 작업 폴더에만 둡니다.</p>
+      {!newPrep?<p className="hint">불러오는 중…</p>:<>
+        <div className="form-filter" style={{marginTop:12}}>
+          <label className="field" style={{width:200}}>레시피(레벨) 이름<input list="form-existing" aria-label="새 레시피 이름" value={newName} maxLength={64} placeholder="예: PI3" onChange={e=>{setNewName(e.target.value);setNewScales(undefined);}}/></label>
+          <datalist id="form-existing">{newPrep.existing.map(r=><option key={r} value={r}/>)}</datalist>
+          <label className="field checkbox"><input type="radio" name="fsrc" checked={newSource==='equipment'} onChange={()=>{setNewSource('equipment');setNewMachines([]);setNewScales(undefined);}}/>🖥 장비 IP에서</label>
+          <label className="field checkbox"><input type="radio" name="fsrc" checked={newSource==='local'} onChange={()=>{setNewSource('local');setNewMachines([]);setNewScales(undefined);}}/>📁 로컬 복사본에서</label></div>
+        {newPrep.existing.includes(newName.trim())&&<p className="warn">이미 있는 레시피입니다. 확정하면 새 회차 양식이 만들어집니다(이전 값은 이어받기).</p>}
+        {newSource==='local'&&<div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>로컬 상위 폴더<input value={localPath} onChange={e=>setLocalPath(e.target.value)} maxLength={4096}/></label>
+          <button onClick={async()=>{const p=await pickFolder();if(p){setLocalPath(p);void saveLocal(p);}}}>📁 찾기</button><button disabled={!localPath.trim()} onClick={()=>saveLocal(localPath.trim())}>저장</button></div>}
+        <div className="pick-list short cols">{newPrep.machines.map(m=>{const ok=newSource==='equipment'?!!m.ip:!!m.local;
+          return <label key={m.id} className={'pick-item'+(ok?'':' muted')}><input type="checkbox" disabled={!ok} checked={newMachines.includes(m.id)}
+            onChange={e=>{setNewScales(undefined);setNewMachines(x=>e.target.checked?[...x,m.id]:x.filter(v=>v!==m.id));}}/> {m.id}</label>;})}</div>
+        <div className="toolbar"><button className="primary" disabled={busy||!newName.trim()||!newMachines.length} onClick={()=>{const a=noAnswers();setAnswers(a);void newCollect(a);}}>{busy&&!newScales?'수집 중…':'수집 시작'}</button></div>
+        {newScales&&<div className="outputs"><h3>변형별 변환계수</h3><p className="hint">RTP.txt 로 추정한 값을 미리 채웠습니다. 확인하고 필요하면 고치세요.</p>
+          <table className="tbl"><thead><tr><th>변형</th><th>계수</th><th>출처</th><th>추정 신뢰도</th></tr></thead><tbody>{newScales.map(x=><tr key={x.variant}>
+            <td>{x.variant||'(기본)'}</td><td><input type="number" step="any" aria-label={`${x.variant||'기본'} 새 양식 계수`} value={newScaleValue(x)} onChange={e=>setNewScaleEdit(v=>({...v,[x.variant]:e.target.value}))}/></td>
+            <td className={x.source==='기본값'?'warn':''}>{newScaleEdit[x.variant]!==undefined?'직접 입력':x.source}</td><td title={x.reason}>{x.confidence||'—'}</td></tr>)}</tbody></table>
+          <div className="toolbar"><button className="primary" disabled={busy||newScaleBad} onClick={()=>void newParse('')}>파라미터 불러오기 ▶</button></div></div>}
+      </>}
+      </>}
     </>}
 
     {step===1&&opened&&<>
       <div className="section-heading"><div><h3>{opened.recipe} · {opened.level}</h3></div>
         <span className="count">사용 {opened.used} / 전체 {opened.total}</span></div>
+      {mode==='new'&&similar.length>0&&<div className="form-filter"><label className="field">기존 레시피 양식 활용(사용 항목 맞추기)<select value={baseForm} disabled={busy} onChange={e=>void newParse(e.target.value)}>
+        <option value="">새로 만들기(파서 추천)</option>{similar.map(x=><option key={x.recipe} value={x.recipe}>{x.recipe} — 일치 {x.match}/{x.total}</option>)}</select></label></div>}
       <div className="form-filter" style={{marginTop:8}}>
         <label className="field">변형<select value={variant} onChange={e=>setVariant(e.target.value)}>
           <option value="">전체 변형</option>{opened.variants.map(v=><option key={v} value={v}>{v||'(기본)'}</option>)}</select></label>
@@ -167,10 +229,12 @@ export function Form(){
     </div>
 
     <StepNav step={step} total={STEPS.length} onBack={()=>setStep(s=>s-1)}
-      onNext={()=>{if(step===0){if(recipe)open(recipe,stamp);}else if(step<STEPS.length-1)setStep(s=>s+1);else confirm();}}
-      nextLabel={step===0?'원본 열기':step===1?'확정 단계로':'양식 확정'}
-      nextDisabled={(step===0&&!recipe)||(step>=1&&!opened)||(step===2&&(!machine.trim()||opened?.used===0||scaleInvalid))} busy={busy}/>
+      onNext={()=>{if(step===0){if(mode==='new'){if(newScales)void newParse('');}else if(recipe)open(recipe,stamp);}else if(step<STEPS.length-1)setStep(s=>s+1);else confirm();}}
+      nextLabel={step===0?(mode==='new'?'파라미터 불러오기':'원본 열기'):step===1?'확정 단계로':'양식 확정'}
+      nextDisabled={(step===0&&(mode==='new'?!newScales||newScaleBad:!recipe))||(step>=1&&!opened)||(step===2&&(!machine.trim()||opened?.used===0||scaleInvalid))} busy={busy}/>
 
+    <QuestionDialog question={question} onAnswer={v=>{if(!question)return;const next=withAnswer(answers,question,v);setAnswers(next);setQuestion(undefined);void newCollect(next);}}
+      onCancel={()=>{setQuestion(undefined);void desktop.request('formnew_cancel').promise.catch(fail);}}/>
     <dialog className="edit-dialog" ref={dialog} onClose={()=>setRenaming(undefined)}><form method="dialog" onSubmit={e=>{e.preventDefault();void saveName();}}>
       <h3>장비 화면 이름</h3><p className="sub">{renaming?.orig}</p>
       <input autoFocus value={nameValue} maxLength={200} onChange={e=>setNameValue(e.target.value)}/>

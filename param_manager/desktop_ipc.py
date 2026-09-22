@@ -23,11 +23,12 @@ from .desktop_config import DesktopConfig
 from .desktop_open import DesktopOpen
 from .desktop_update import DesktopUpdate
 from .desktop_cmrun import DesktopCmRun
+from .desktop_formnew import DesktopFormNew
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "open_path"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "open_path"}
 
 
 def encoded(value):
@@ -99,6 +100,7 @@ class Session:
         self.opener = DesktopOpen()
         self.update = DesktopUpdate()
         self.cmrun = DesktopCmRun()
+        self.formnew = DesktopFormNew(self.form)
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
         self.running = False
@@ -170,6 +172,8 @@ class Session:
                        cmrun_page={'snapshot','variant','query','used_only','offset','limit'},
                        cmrun_edit={'snapshot','row','kind','value'}, cmrun_confirm={'unit','snapshot'},
                        cmrun_collate={'unit','mapping'}, cmrun_reset=set())
+        allowed.update(formnew_prepare=set(), formnew_collect={'recipe','machines','source','answers'},
+                       formnew_parse={'scales','base_form'}, formnew_cancel=set())
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -280,6 +284,17 @@ class Session:
             else:
                 # Scanresult traversal, safe copy, parsing and workbook writes run off the input thread.
                 self.background(rid, 'cmrun', action[method], 'Commonality 조사를 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.')
+        elif method.startswith('formnew_'):
+            if self.running:
+                raise ValueError('진행 중인 작업이 끝난 뒤 양식을 만드세요')
+            action = {'formnew_prepare': lambda: self.formnew.prepare(params),
+                      'formnew_collect': lambda: self.formnew.collect(params),
+                      'formnew_parse': lambda: self.formnew.parse(params),
+                      'formnew_cancel': lambda: self.formnew.cancel(params)}
+            if method in ('formnew_collect', 'formnew_parse'):
+                self.background(rid, 'formnew', action[method], '양식 만들기 수집을 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.')
+            else:
+                self.emit(rid, 'completed', formnew=action[method]())
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))
@@ -462,6 +477,7 @@ class Session:
         self.result = None
         try:
             self.update.cancel({})      # never leave the global collate lock behind
+            self.formnew.cancel({})
         except Exception:  # noqa: BLE001
             pass
 
