@@ -19,11 +19,12 @@ from .desktop_documents import DesktopDocuments
 from .desktop_commonality import DesktopCommonality
 from .desktop_cmsurvey import DesktopCmSurvey
 from .desktop_history import DesktopHistory
+from .desktop_config import DesktopConfig
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove"}
 
 
 def encoded(value):
@@ -91,6 +92,7 @@ class Session:
         self.form = DesktopForm()
         self.cmsurvey = DesktopCmSurvey()
         self.history = DesktopHistory()
+        self.config = DesktopConfig()
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
         self.running = False
@@ -144,6 +146,9 @@ class Session:
         allowed.update(cmsurvey_config=set(), cmsurvey_preflight={'machine','plan'})
         allowed.update(history_files=set(), history_diff={'catalog','old','new'},
                        history_page={'snapshot','offset','limit','kind','query'})
+        allowed.update(config_state=set(), config_set_save_dir={'path'},
+                       config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
+                       config_remove={'kind','machine'})
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -201,6 +206,13 @@ class Session:
                       'history_diff': lambda: self.history.diff(params),
                       'history_page': lambda: self.history.page(params)}
             self.emit(rid, 'completed', history=action[method]())
+        elif method.startswith('config_'):
+            action = {'config_state': lambda: self.config.state(),
+                      'config_set_save_dir': lambda: self.config.set_save_dir(params),
+                      'config_set_report_path': lambda: self.config.set_report_path(params),
+                      'config_set_scanresult_root': lambda: self.config.set_scanresult_root(params),
+                      'config_remove': lambda: self.config.remove(params)}
+            self.emit(rid, 'completed', config=action[method]())
         elif method == "contract":
             self.emit(rid, "completed", methods=sorted(METHODS), max_frame=MAX_FRAME, max_page=MAX_PAGE)
         elif method == "configuration":

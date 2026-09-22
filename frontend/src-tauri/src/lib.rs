@@ -1,11 +1,22 @@
 #[tauri::command]
 fn app_contract_version() -> &'static str { "1" }
 
+/// Open the OS folder chooser and return the selected absolute path, or null if
+/// the user cancels. The path is the user's explicit Explorer-style choice — the
+/// same trust model as the tkinter program — and the Python engine validates it
+/// before persisting. No arbitrary path is injectable from the web layer.
+#[tauri::command]
+fn pick_folder() -> Option<String> {
+    rfd::FileDialog::new()
+        .pick_folder()
+        .and_then(|path| path.to_str().map(str::to_string))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(desktop::Desktop::default())
-        .invoke_handler(tauri::generate_handler![app_contract_version, desktop::desktop_connect, desktop::desktop_send])
+        .invoke_handler(tauri::generate_handler![app_contract_version, pick_folder, desktop::desktop_connect, desktop::desktop_send])
         .build(tauri::generate_context!())
         .expect("failed to build Camtek AOI Manager")
         .run(|app, event| {

@@ -7,7 +7,16 @@ export type Configuration = {machines: {id: string; folder: string}[]; local_roo
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;
-  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown} & Partial<Configuration>;
+  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown} & Partial<Configuration>;
+
+// Native folder chooser (Tauri command). Returns the user-selected absolute
+// path, or null if cancelled or not running inside the desktop shell (then the
+// user types/pastes the path instead).
+export async function pickFolder(): Promise<string|null> {
+  if (!isTauri()) return null;
+  try { return (await invoke<string|null>('pick_folder')) ?? null; }
+  catch { return null; }
+}
 type Pending = {resolve: (v: Reply) => void; reject: (e: Error) => void; progress?: (v: Reply) => void};
 class DesktopClient {
   private next = 0;

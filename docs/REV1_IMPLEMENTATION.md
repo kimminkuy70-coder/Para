@@ -4,6 +4,25 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — 저장폴더/폴더 등록 설정(웹 자립) (2026-09-22)
+
+- **문제**: 웹 UI 가 config 의 save_dir 을 **읽기만** 하고 지정하는 UI 가 없어, 기존 tkinter
+  로 저장폴더를 안 잡아두면 전 화면이 빈다(=사용자의 "파일 불러오기부터 안 됨"). 또한
+  참고: 패키지 엔진(desktop_engine_entry)은 SingleInstance 를 써서 **tkinter 가 켜져 있으면
+  엔진이 안 뜬다**(기존 프로그램을 끄면 정상 — 사용자 확인).
+- **추가(네이티브 폴더 선택)**: Rust `pick_folder` 커맨드(rfd) — OS 폴더 선택창을 열어
+  사용자가 고른 절대경로만 반환(탐색기로 고르는 것과 같은 신뢰 모델, 임의 경로 주입 불가).
+  `lib.rs` invoke_handler 에 등록. `cargo check` 통과.
+- **추가(설정 저장)**: `param_manager/desktop_config.py`(`DesktopConfig`) + IPC 동기
+  `config_state`/`config_set_save_dir`(+ 초기 파일 `장비 IP/참고자료/특이사항.xlsx` 자동 생성,
+  tkinter 첫 실행과 동일)/`config_set_report_path`/`config_set_scanresult_root`/`config_remove`.
+  경로 검증(절대·존재·symlink 거부), `atomicfile.write_json` 로 공유 config 원자 기록,
+  무관 키 보존.
+- **프런트엔드**: `frontend/src/Settings.tsx` + **'설정' 탭(맨 앞·기본 진입)**. 저장폴더 지정
+  (찾기/직접입력/저장), 호기별 Report 폴더·Scanresult 루트 등록/삭제. `desktop.ts pickFolder`.
+- **검증**: `tests/test_desktop_config.py`(5)·IPC·`config_state` 왕복 통과. `tsc`/`build` 통과.
+  렌더 스크린샷으로 설정 탭 확인. Windows 실기(폴더창 실제 표시)는 사용자 확인 필요.
+
 ## 재개 체크포인트 — GitHub Actions 윈도우 빌드(개인 PC 툴체인 불필요) (2026-09-22)
 
 - **배경**: 사용자 PC에 Python 만 있고 Rust·Node 는 회사 승인이 필요. pywebview 로 host 를

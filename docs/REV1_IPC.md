@@ -36,6 +36,14 @@ id는 세션 내 증가하는 1..2^53−1 정수. 프레임 최대 4 MiB. NaN/In
 | history_files | 없음 | 저장폴더 '파라미터 값 취합' 파일 목록(opaque id) |
 | history_diff | catalog/old/new | 두 취합 파일 비교 snapshot(값변경·추가행·삭제행) |
 | history_page | snapshot/offset/limit/kind/query | 변경 셀 최대 100건 |
+| config_state | 없음 | 현재 저장폴더·Report 폴더·Scanresult 루트 |
+| config_set_save_dir | path | 저장폴더 저장(+초기 파일 생성). 경로=네이티브 폴더 선택 |
+| config_set_report_path | machine/path | 호기별 배치 Report 폴더 등록 |
+| config_set_scanresult_root | machine/path | 호기별 Commonality Scanresult 루트 등록 |
+| config_remove | kind/machine | 등록된 Report/Scanresult 항목 삭제 |
+
+Native `pick_folder` 커맨드(rfd)가 OS 폴더 선택창을 열어 사용자가 고른 절대경로만
+돌려준다(탐색기로 폴더 고르는 것과 같은 신뢰 모델). 엔진이 검증 후 공유 config 에 저장.
 
 Commonality 비교/내보내기는 worker에서 실행하며 다른 조사와 중복 실행을 거절한다.
 별도 취소/진행률은 아직 없으며 종료 시 worker를 기다린다. 목록/페이지는 동기 작업이다.
