@@ -125,6 +125,34 @@ try{
   await newRow.getByLabel('IP',{exact:true}).fill('10.0.0.3');
   await newRow.getByRole('button',{name:'행 저장',exact:true}).click();
   await page.getByRole('button',{name:'10.0.0.3',exact:true}).waitFor();
+  // B: 장비종류 is a fixed choice; rows can be deleted.
+  await page.getByRole('row').filter({hasText:'10.0.0.3'}).getByRole('button',{name:'—',exact:true}).click();
+  await page.locator('dialog[open] select').selectOption('KLA');
+  await page.locator('dialog[open]').getByRole('button',{name:'저장',exact:true}).click();
+  await page.getByRole('row').filter({hasText:'10.0.0.3'}).getByRole('button',{name:'KLA',exact:true}).waitFor();
+  await page.getByRole('button',{name:'2행 삭제',exact:true}).click();
+  await page.locator('dialog[open]').getByRole('button',{name:'삭제',exact:true}).click();
+  await page.getByRole('button',{name:'10.0.0.3',exact:true}).waitFor({state:'detached'});
+  // B: 특이사항 종료 여부 toggles with one click.
+  await page.getByRole('button',{name:'특이사항',exact:true}).click();
+  const done=page.getByRole('checkbox',{name:'1행 종료 여부'});
+  await done.waitFor();assert.equal(await done.getAttribute('aria-checked'),'false');
+  await done.click();
+  await page.waitForFunction(()=>document.querySelector('[aria-label="1행 종료 여부"]')?.getAttribute('aria-checked')==='true');
+  // B: daily auto-run switch and an extra Report folder in 설정.
+  await page.getByRole('button',{name:'설정',exact:true}).click();
+  await page.getByRole('tab',{name:'배치 자동·추가 폴더'}).click();
+  await page.getByLabel('자동 갱신 사용 (기본 꺼짐)').click();
+  await page.getByText('자동 갱신을 켰습니다').waitFor();
+  const archive=join(fixture,'archive-01');await mkdir(archive);
+  await page.locator('select').last().selectOption('AOI-01');
+  await page.getByLabel('추가 폴더').fill(archive);
+  await page.getByRole('button',{name:'추가',exact:true}).click();
+  await page.getByText(archive,{exact:true}).waitFor();
+  await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
+  await page.locator('.stepper').getByRole('button',{name:/조사 대상/}).click();
+  await page.getByText('+ '+archive,{exact:true}).waitFor();
+  await page.getByText('하루 1회 자동 갱신: 켜짐',{exact:false}).waitFor();
   await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
   await page.locator('.cm-file input').first().check();
   await page.getByRole('button',{name:'선택 결과 비교 ▶',exact:true}).click();

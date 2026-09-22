@@ -25,7 +25,7 @@ from .desktop_open import DesktopOpen
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "open_path"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "open_path"}
 
 
 def encoded(value):
@@ -138,7 +138,7 @@ class Session:
                    "recipe_edit": {"snapshot","row","kind","value"}}
         allowed.update(document_open={'kind'},document_page={'snapshot','offset','limit'},
                        document_edit={'snapshot','row','column','value','color'},
-                       document_append={'snapshot','values'})
+                       document_append={'snapshot','values'}, document_delete={'snapshot','row'})
         allowed.update(commonality_catalog=set(), commonality_compare={'catalog','files'},
                        commonality_page={'snapshot','offset','limit','column','query','changed_only'},
                        commonality_export={'snapshot','changed_only'})
@@ -152,7 +152,8 @@ class Session:
                        history_export={'snapshot','pair'})
         allowed.update(config_state=set(), config_set_save_dir={'path'},
                        config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
-                       config_remove={'kind','machine'}, open_path={'path','reveal'})
+                       config_remove={'kind','machine'}, open_path={'path','reveal'},
+                       config_set_batch_auto={'enabled'}, config_set_extra_paths={'machine','paths'})
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -170,7 +171,8 @@ class Session:
             if self.running:raise ValueError('배치 조사 완료 후 문서를 열어 주세요')
             action={'document_open':lambda:self.documents.open(params.get('kind')),
                     'document_page':lambda:self.documents.page(params),'document_edit':lambda:self.documents.edit(params),
-                    'document_append':lambda:self.documents.append(params)}
+                    'document_append':lambda:self.documents.append(params),
+                    'document_delete':lambda:self.documents.delete(params)}
             if method == 'document_page':
                 self.emit(rid,'completed',document=action[method]())
             else:
@@ -217,7 +219,9 @@ class Session:
                       'config_set_save_dir': lambda: self.config.set_save_dir(params),
                       'config_set_report_path': lambda: self.config.set_report_path(params),
                       'config_set_scanresult_root': lambda: self.config.set_scanresult_root(params),
-                      'config_remove': lambda: self.config.remove(params)}
+                      'config_remove': lambda: self.config.remove(params),
+                      'config_set_batch_auto': lambda: self.config.set_batch_auto(params),
+                      'config_set_extra_paths': lambda: self.config.set_extra_paths(params)}
             self.emit(rid, 'completed', config=action[method]())
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
@@ -306,6 +310,10 @@ class Session:
             result, collection = output["result"], output["collection"]
             result["tables"].append(dict(key="READ", title="원본 읽기 오류", headers=["호기", "Report", "오류"],
                 rows=[(e["machine"], e["source_file"], e["error"]) for e in collection["errors"]]))
+            try:
+                self.batch.record_run(True, partial=bool(collection["errors"] or output["dashboard_error"]))
+            except (OSError, ValueError):
+                pass  # schedule bookkeeping never hides a finished analysis
             with self.lock:
                 self.running = False
                 self.result = result
@@ -321,6 +329,10 @@ class Session:
                 self.running = False
                 self.emit(rid, "cancelled")
         except Exception:
+            try:
+                self.batch.record_run(False, error="조사 실패")
+            except (OSError, ValueError):
+                pass
             with self.lock:
                 self.running = False
                 self.emit(rid, "error", code="investigation_failed")

@@ -28,6 +28,24 @@ class DesktopConfigTests(unittest.TestCase):
         with open(self.cfg, encoding="utf-8") as fh:
             return json.load(fh)
 
+    def test_batch_auto_and_extra_paths(self):
+        self.assertFalse(self.a.state()["batch_auto"])
+        self.assertTrue(self.a.set_batch_auto({"enabled": True})["batch_auto"])
+        with self.assertRaises(ValueError):
+            self.a.set_batch_auto({"enabled": 1})
+        archive = os.path.join(self.tmp, "archive")
+        os.makedirs(archive)
+        with self.assertRaises(ValueError):          # main folder must be registered first
+            self.a.set_extra_paths({"machine": "AOI-01", "paths": [archive]})
+        self.a.set_report_path({"machine": "AOI-01", "path": self.reports})
+        for bad in ([self.reports], [os.path.join(self.tmp, "missing")], "x"):
+            with self.assertRaises(ValueError):
+                self.a.set_extra_paths({"machine": "AOI-01", "paths": bad})
+        state = self.a.set_extra_paths({"machine": "AOI-01", "paths": [archive, archive]})
+        self.assertEqual(state["extra_paths"], {"AOI-01": [str(Path(archive).absolute())]})
+        self.assertEqual(self._cfg()["unrelated"], "keep")
+        self.assertEqual(self.a.set_extra_paths({"machine": "AOI-01", "paths": []})["extra_paths"], {})
+
     def test_set_save_dir_creates_initial_files_and_persists(self):
         out = self.a.set_save_dir({"path": self.save})
         self.assertEqual(out["save_dir"], str(Path(self.save).absolute()))

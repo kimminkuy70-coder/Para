@@ -2,8 +2,8 @@ import {useEffect,useState} from 'react';
 import {desktop,pickFolder} from './desktop';
 import {notify,fail} from './ui';
 
-type State={save_dir:string;local_dir:string;report_paths:Record<string,string>;scanresult_roots:Record<string,string>};
-const TABS:[string,string][]=[['save','저장폴더'],['report','배치 Report 폴더'],['scan','Scanresult 루트']];
+type State={save_dir:string;local_dir:string;report_paths:Record<string,string>;scanresult_roots:Record<string,string>;extra_paths:Record<string,string[]>;batch_auto:boolean};
+const TABS:[string,string][]=[['save','저장폴더'],['report','배치 Report 폴더'],['auto','배치 자동·추가 폴더'],['scan','Scanresult 루트']];
 
 export function Settings(){
   const [sub,setSub]=useState('save');
@@ -12,6 +12,7 @@ export function Settings(){
   const [busy,setBusy]=useState(false);
   const [rMachine,setRMachine]=useState(''),[rPath,setRPath]=useState('');
   const [sMachine,setSMachine]=useState(''),[sPath,setSPath]=useState('');
+  const [xMachine,setXMachine]=useState(''),[xPath,setXPath]=useState('');
 
   async function load(){
     try{await desktop.connect();const r=(await desktop.request('config_state').promise).config as State;
@@ -52,7 +53,7 @@ export function Settings(){
       <p className="hint">모든 산출물(양식·취합·문서)이 이 폴더 아래 저장됩니다. 처음 지정하면 장비 IP·참고자료·특이사항 초기 파일이 자동 생성됩니다.</p>
       <div className="form-filter" style={{marginTop:14}}>
         <label className="field" style={{flex:1,minWidth:280}}>저장폴더 경로
-          <input value={saveDir} placeholder="예: D:\\AOI\\저장폴더" maxLength={4096} onChange={e=>setSaveDir(e.target.value)}/></label>
+          <input value={saveDir} placeholder="예: D:\AOI\저장폴더" maxLength={4096} onChange={e=>setSaveDir(e.target.value)}/></label>
         <button onClick={()=>browse(setSaveDir)}>📁 찾기</button>
         <button className="primary" disabled={busy||!saveDir.trim()} onClick={saveSave}>저장</button></div>
       {st?.save_dir&&<p className="hint">현재 저장폴더: <code>{st.save_dir}</code></p>}
@@ -66,9 +67,27 @@ export function Settings(){
         <td style={{width:60}}><button className="linklike" disabled={busy} onClick={()=>req('config_remove',{kind:'report',machine:m},'삭제됨')}>삭제</button></td></tr>)}</tbody></table>}
       <div className="form-filter" style={{marginTop:12}}>
         <label className="field" style={{width:150}}>호기<input value={rMachine} placeholder="AOI-21" maxLength={64} onChange={e=>setRMachine(e.target.value)}/></label>
-        <label className="field" style={{flex:1,minWidth:240}}>폴더<input value={rPath} placeholder="예: P:\\AOI-21\\Reports" maxLength={4096} onChange={e=>setRPath(e.target.value)}/></label>
+        <label className="field" style={{flex:1,minWidth:240}}>폴더<input value={rPath} placeholder="예: P:\AOI-21\Reports" maxLength={4096} onChange={e=>setRPath(e.target.value)}/></label>
         <button onClick={()=>browse(setRPath)}>📁 찾기</button>
         <button className="primary" disabled={busy||!rMachine.trim()||!rPath.trim()} onClick={()=>req('config_set_report_path',{machine:rMachine.trim(),path:rPath.trim()},'Report 폴더 등록',()=>{setRMachine('');setRPath('');})}>추가</button></div>
+    </>}
+
+    {sub==='auto'&&<>
+      <h3>하루 1회 자동 갱신</h3>
+      <p className="hint">앱이 켜져 있는 동안 마지막 조사 조건(호기·검색어·기간·지표)으로 하루 한 번 배치 분석을 다시 실행합니다. 기존 프로그램과 같은 설정을 쓰므로 둘이 같은 날 중복 실행하지 않습니다.</p>
+      <label className="field checkbox" style={{marginTop:10}}><input type="checkbox" disabled={busy||!st} checked={!!st?.batch_auto}
+        onChange={e=>req('config_set_batch_auto',{enabled:e.target.checked},e.target.checked?'자동 갱신을 켰습니다':'자동 갱신을 껐습니다')}/>자동 갱신 사용 (기본 꺼짐)</label>
+      <h3 style={{marginTop:24}}>호기별 추가 Report 폴더</h3>
+      <p className="hint">기본 Report 폴더 외에 함께 조사할 폴더(예: 백업·보관 폴더)입니다. 호기당 최대 20개.</p>
+      {reportRows.length===0?<p className="table-empty">먼저 [배치 Report 폴더]에서 호기를 등록하세요.</p>:<>
+        {Object.entries(st?.extra_paths||{}).length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{Object.entries(st?.extra_paths||{}).flatMap(([m,list])=>list.map(p=><tr key={m+p}>
+          <td style={{width:110,fontWeight:700}}>{m}</td><td><code>{p}</code></td>
+          <td style={{width:60}}><button className="linklike" disabled={busy} onClick={()=>req('config_set_extra_paths',{machine:m,paths:list.filter(x=>x!==p)},'삭제됨')}>삭제</button></td></tr>))}</tbody></table>}
+        <div className="form-filter" style={{marginTop:12}}>
+          <label className="field" style={{width:150}}>호기<select value={xMachine} onChange={e=>setXMachine(e.target.value)}><option value="">선택…</option>{reportRows.map(([m])=><option key={m} value={m}>{m}</option>)}</select></label>
+          <label className="field" style={{flex:1,minWidth:240}}>추가 폴더<input value={xPath} placeholder="예: P:\AOI-21\Reports_backup" maxLength={4096} onChange={e=>setXPath(e.target.value)}/></label>
+          <button onClick={()=>browse(setXPath)}>📁 찾기</button>
+          <button className="primary" disabled={busy||!xMachine||!xPath.trim()} onClick={()=>req('config_set_extra_paths',{machine:xMachine,paths:[...(st?.extra_paths[xMachine]||[]),xPath.trim()]},'추가 폴더 등록',()=>setXPath(''))}>추가</button></div></>}
     </>}
 
     {sub==='scan'&&<>
@@ -79,7 +98,7 @@ export function Settings(){
         <td style={{width:60}}><button className="linklike" disabled={busy} onClick={()=>req('config_remove',{kind:'scanresult',machine:m},'삭제됨')}>삭제</button></td></tr>)}</tbody></table>}
       <div className="form-filter" style={{marginTop:12}}>
         <label className="field" style={{width:150}}>호기<input value={sMachine} placeholder="AOI-9" maxLength={64} onChange={e=>setSMachine(e.target.value)}/></label>
-        <label className="field" style={{flex:1,minWidth:240}}>폴더<input value={sPath} placeholder="예: W:\\AOI-9" maxLength={4096} onChange={e=>setSPath(e.target.value)}/></label>
+        <label className="field" style={{flex:1,minWidth:240}}>폴더<input value={sPath} placeholder="예: W:\AOI-9" maxLength={4096} onChange={e=>setSPath(e.target.value)}/></label>
         <button onClick={()=>browse(setSPath)}>📁 찾기</button>
         <button className="primary" disabled={busy||!sMachine.trim()||!sPath.trim()} onClick={()=>req('config_set_scanresult_root',{machine:sMachine.trim(),path:sPath.trim()},'Scanresult 루트 등록',()=>{setSMachine('');setSPath('');})}>추가</button></div>
     </>}

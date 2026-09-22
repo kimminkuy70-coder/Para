@@ -50,7 +50,8 @@ function App(){
   // Route any batch error into a top-right toast (then clear so the same
   // message can be shown again). No inline red bar.
   useEffect(()=>{if(error){notify(error,'error');setError('');}},[error]);
-  const [busy,setBusy]=useState(false);
+  const [busy,setBusy]=useState(false),[autoRun,setAutoRun]=useState(false);
+  const busyRef=useRef(false),autoBlocked=useRef(false);
   const [progress,setProgress]=useState<Reply>();
   const [result,setResult]=useState<Reply>();
   const [table,setTable]=useState<Table>();
@@ -126,26 +127,59 @@ function App(){
     setPicker(undefined);
   }
   const toggleMetric=(id:Metric)=>setOptions(old=>({...old,metrics:old.metrics.includes(id)?old.metrics.filter(k=>k!==id):[...old.metrics,id]}));
+  type Payload={machine:string;query:string;start:string;end:string;names?:string[]}[];
   async function start(){
     if(busy||!config)return;
     if(!selected.length||!options.metrics.length){setError('호기와 분석 지표를 하나 이상 선택하세요.');return;}
     if(!Number.isInteger(options.valid_wafers)||options.valid_wafers<1||!Number.isInteger(options.min_baseline)||options.min_baseline<2||!Number.isFinite(options.yield_drop)||options.yield_drop<0||options.yield_drop>100){setError('매수·표본 수·Yield 기준을 확인하세요.');return;}
     if(selected.some(id=>targets[id].start&&targets[id].end&&targets[id].start>targets[id].end)){setError('시작일은 종료일보다 늦을 수 없습니다.');return;}
-    setBusy(true);setCancelSent(false);setError('');setProgress(undefined);
+    autoBlocked.current=false;
+    await launch(selected.map(id=>{
+      const {machine,query,start,end}=targets[id];const names=picks[id];
+      return names&&names.length?{machine,query,start,end,names}:{machine,query,start,end};
+    }),options,false);
+  }
+  async function launch(payload:Payload,opts:Options,automatic:boolean){
+    busyRef.current=true;setBusy(true);setAutoRun(automatic);setCancelSent(false);setError('');setProgress(undefined);
     try{
       if(job.current!==undefined)await desktop.request('release',{job:job.current}).promise;
       job.current=undefined;setTable(undefined);setRows([]);setResult(undefined);setOffset(0);
-      const task=desktop.request('investigate',{targets:selected.map(id=>{
-        const {machine,query,start,end}=targets[id];const names=picks[id];
-        return names&&names.length?{machine,query,start,end,names}:{machine,query,start,end};
-      }),options},event=>{if(event.event==='accepted')job.current=event.job;setProgress(event);});
+      const task=desktop.request('investigate',{targets:payload,options:opts},event=>{if(event.event==='accepted')job.current=event.job;setProgress(event);});
       const reply=await task.promise;
       if(reply.event==='cancelled'){setNote('조사가 취소되었습니다. 이전에 저장된 결과는 유지됩니다.');return;}
       setResult(reply);setTable(reply.tables?.[0]);
-      setNote(reply.collection?.errors?'일부 원본을 읽지 못했습니다. 읽기 오류 표를 확인하세요.':'조사를 완료했습니다.');
-    }catch(e){setError(errorText(e));setNote('조사 완료 여부를 확인하세요. 오류 안내를 참고해 주세요.');}
-    finally{setBusy(false);}
+      setNote((automatic?'하루 1회 자동 갱신: ':'')+(reply.collection?.errors?'일부 원본을 읽지 못했습니다. 읽기 오류 표를 확인하세요.':'조사를 완료했습니다.'));
+      if(automatic)notify('배치 리포트 자동 갱신을 완료했습니다.','ok');
+    }catch(e){
+      if(automatic){
+        // Do not retry every minute after a failed automatic run; a manual run re-enables it.
+        autoBlocked.current=true;notify('배치 리포트 자동 갱신 실패: '+errorText(e),'error');
+      }else setError(errorText(e));
+      setNote('조사 완료 여부를 확인하세요. 오류 안내를 참고해 주세요.');
+    }
+    finally{busyRef.current=false;setBusy(false);setAutoRun(false);}
   }
+  // Daily automatic re-run with the last investigation's conditions (tkinter
+  // `batch_auto`). Checked every minute while the app is open; the engine decides
+  // whether it is due from the shared `batch_schedule`.
+  useEffect(()=>{
+    const timer=window.setInterval(async()=>{
+      if(busyRef.current||autoBlocked.current)return;
+      try{
+        const data=(await desktop.request('configuration').promise) as Configuration;
+        if(!data.auto?.enabled||!data.auto.due||busyRef.current)return;
+        const ids=new Set(data.machines.map(m=>m.id));
+        const seen=new Set<string>();
+        const payload:Payload=(data.last?.targets||[]).filter(t=>ids.has(t.machine)&&!seen.has(t.machine)&&seen.add(t.machine))
+          .map(({machine,query,start,end,names})=>names&&names.length?{machine,query:query||'',start:start||'',end:end||'',names}:{machine,query:query||'',start:start||'',end:end||''});
+        const saved={...defaults,...data.last?.options};
+        const known=(saved.metrics||[]).filter(k=>metrics.some(m=>m[0]===k));
+        if(!payload.length||!known.length)return;
+        await launch(payload,{...saved,metrics:known},true);
+      }catch{/* engine busy with another screen: try again next minute */}
+    },60000);
+    return()=>window.clearInterval(timer);
+  },[]);
   async function cancel(){
     if(job.current===undefined)return;
     setCancelSent(true);
@@ -165,9 +199,10 @@ function App(){
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>
       <div className="step-body">
       {bstep===0&&<><p className="hint">조사할 호기를 고르고 검색어·기간·리포트를 정합니다. 호기가 없으면 [설정] 탭에서 Report 폴더를 등록하세요.</p>
+        <p className="hint">하루 1회 자동 갱신: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › 배치 자동·추가 폴더]에서 바꿀 수 있습니다.</p>
         <div className="toolbar"><button disabled={busy||!config?.machines.length} onClick={()=>setSelected(config?.machines.map(m=>m.id)||[])}>전체 선택</button><button disabled={busy||!selected.length} onClick={()=>setSelected([])}>선택 해제</button></div>
         <div className="targets" aria-label="호기별 검색 조건">{config?.machines.length?config.machines.map(m=><fieldset key={m.id} disabled={busy} className={selected.includes(m.id)?'machine selected':'machine'}><legend><label><input type="checkbox" checked={selected.includes(m.id)} onChange={e=>setSelected(old=>e.target.checked?[...old,m.id]:old.filter(id=>id!==m.id))}/>{m.id}</label></legend>
-          <p className="folder" title={m.folder}>{m.folder}</p><label className="field">Recipe 검색어<input aria-label={`${m.id} 검색어`} value={targets[m.id]?.query||''} maxLength={256} onChange={e=>updateTarget(m.id,'query',e.target.value)} placeholder="예: 2D CAMTEK"/></label>
+          <p className="folder" title={m.folder}>{m.folder}</p>{m.extra?.map(f=><p key={f} className="folder" title={f}>+ {f}</p>)}<label className="field">Recipe 검색어<input aria-label={`${m.id} 검색어`} value={targets[m.id]?.query||''} maxLength={256} onChange={e=>updateTarget(m.id,'query',e.target.value)} placeholder="예: 2D CAMTEK"/></label>
           <div className="date-fields"><label className="field">시작일<input type="date" aria-label={`${m.id} 시작일`} value={targets[m.id]?.start||''} onChange={e=>updateTarget(m.id,'start',e.target.value)}/></label><label className="field">종료일<input type="date" aria-label={`${m.id} 종료일`} value={targets[m.id]?.end||''} onChange={e=>updateTarget(m.id,'end',e.target.value)}/></label></div>
           <div className="report-pick"><button type="button" onClick={()=>openPicker(m.id)}>📋 리포트 선택…</button><span className="pick-count">{picks[m.id]?.length?`선택 ${picks[m.id].length}개`:'전체'}</span></div>
         </fieldset>):<div className="empty-state"><h3>등록된 호기가 없습니다.</h3><p>[설정] 탭에서 호기별 Report 폴더를 등록하세요.</p></div>}</div></>}
@@ -179,7 +214,7 @@ function App(){
 
       {bstep===2&&<>
       <section className="kpis" aria-label="조사 요약">{[['전체 Report',summary?.['Batch(리포트) 수'],'건'],['분석 Lot',summary?.['Lot 수'],'개'],['이슈 Lot',summary?.['이슈 발생 Lot 수'],'개'],['읽기 오류',result?.collection?.errors,'건']].map(([label,value,unit])=><article key={String(label)}><span>{label}</span><strong>{text(value)}<small>{unit}</small></strong><p>{result?'마지막 완료 조사 기준':'조사 후 집계'}</p></article>)}</section>
-      <section className="runbar" aria-label="조사 실행"><div><strong>{busy?(cancelSent?'안전한 중단 지점을 기다리는 중…':'조사 진행 중…'):`${selected.length}개 호기 · ${options.metrics.length}개 지표`}</strong><p role="status" aria-live="polite">{busy?(progress?.message||'장비 기록을 순차적으로 확인합니다.'):note}</p></div><div className="actions">{busy?<button onClick={cancel} disabled={cancelSent}>{cancelSent?'취소 요청됨':'조사 취소'}</button>:<button className="primary" disabled={!config||!selected.length||!options.metrics.length} onClick={start}>조사 시작 →</button>}</div></section>
+      <section className="runbar" aria-label="조사 실행"><div><strong>{busy?(cancelSent?'안전한 중단 지점을 기다리는 중…':autoRun?'하루 1회 자동 갱신 진행 중…':'조사 진행 중…'):`${selected.length}개 호기 · ${options.metrics.length}개 지표`}</strong><p role="status" aria-live="polite">{busy?(progress?.message||'장비 기록을 순차적으로 확인합니다.'):note}</p></div><div className="actions">{busy?<button onClick={cancel} disabled={cancelSent}>{cancelSent?'취소 요청됨':'조사 취소'}</button>:<button className="primary" disabled={!config||!selected.length||!options.metrics.length} onClick={start}>조사 시작 →</button>}</div></section>
       {busy&&<div className="progress-line" role="progressbar" aria-label="조사 중" aria-valuetext={progress?.message||'조사 중'}><span/></div>}
       <div className="results"><div className="section-heading"><div><h3>분석 결과</h3></div>{result&&<span className="count">{result.tables?.length}개 표</span>}</div>
         {!result?<div className="empty-state"><span className="empty-symbol" aria-hidden="true">▤</span><h3>{busy?'결과를 준비하고 있습니다.':'아직 조사 결과가 없습니다.'}</h3><p>조사가 끝나면 요약, 상세 표, 저장된 Excel·HTML 위치를 확인할 수 있습니다.</p></div>:<>

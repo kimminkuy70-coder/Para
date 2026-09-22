@@ -50,6 +50,20 @@ class DesktopBatchTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.adapter.prepare(dict(self.params, targets=[{'machine': 'AOI-01', 'names': [123]}]))
 
+    def test_auto_state_and_run_record(self):
+        from datetime import datetime
+        self.assertEqual(self.adapter.describe()['auto']['enabled'], False)
+        cfg = dict(self.cfg, batch_auto=True)
+        self.config.write_text(json.dumps(cfg), encoding='utf-8')
+        self.assertTrue(self.adapter.auto_state()['due'])          # never ran
+        self.adapter.record_run(True)
+        state = json.loads(self.config.read_text(encoding='utf-8'))
+        self.assertEqual(state['unrelated'], 'preserve')
+        datetime.strptime(state['batch_schedule']['last_run'], '%Y-%m-%d %H:%M:%S')   # watcher format, no 'T'
+        self.assertFalse(self.adapter.auto_state()['due'])         # ran today
+        self.adapter.record_run(False, error='조사 실패')
+        self.assertEqual(json.loads(self.config.read_text(encoding='utf-8'))['batch_schedule']['fail_count'], 1)
+
     def test_options_and_dates(self):
         for value in ({'metrics':[]}, {'yield_drop':float('nan')}, {'valid_wafers':True}, {'min_baseline':1}, {'by_recipe':1}):
             with self.assertRaises(ValueError): options(value)

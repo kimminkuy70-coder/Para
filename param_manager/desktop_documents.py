@@ -7,8 +7,16 @@ import openpyxl
 from openpyxl.styles import PatternFill
 
 from . import engine, locking, namestore, refdata
+
+
+def refdata_bool(value):
+    return engine._s(value).strip() in ('☑','Y','1','True','종료','예')  # same set as refdata.load_special
 from .desktop_batch import read_json
 
+CHECKED, UNCHECKED = '☑', '☐'
+# Columns with a fixed vocabulary, matching the tkinter editors.
+KINDS_META = {'special': {refdata.SPECIAL_BOOL_COL: dict(type='bool')},
+              'ip': {'장비종류': dict(type='choice', choices=list(refdata.DEVICE_TYPES))}}
 KINDS = {'ip':(refdata.ip_path,refdata.IP_SHEET,refdata.IP_HEADERS),
          'special':(refdata.special_path,refdata.SPECIAL_SHEET,refdata.SPECIAL_HEADERS),
          'reference':(refdata.ref_path,refdata.REF_SHEET,None)}
@@ -55,8 +63,16 @@ class DesktopDocuments:
                 self.cells.append((r,line))
             if self.stamp!=locking.file_stamp(str(self.path)):raise ValueError('문서가 변경되었습니다. 다시 열어 주세요.')
         finally:wb.close()
+        meta=KINDS_META.get(kind,{})
+        self.columns_meta=[meta.get(h,dict(type='text')) for h in self.headers]
+        for _,line in self.cells:
+            for cell,info in zip(line,self.columns_meta):
+                if info['type']=='bool':
+                    # Stored as ☑/☐ by the tkinter app; older files may hold Y/True/종료.
+                    cell['value']=CHECKED if refdata_bool(cell['value']) else UNCHECKED
         self.version=uuid4().hex
-        return dict(snapshot=self.version,headers=self.headers,total=len(self.cells),source=self.path.name)
+        return dict(snapshot=self.version,headers=self.headers,columns=self.columns_meta,
+                    total=len(self.cells),source=self.path.name)
 
     def check_path(self):
         if (any(p.is_symlink() or (hasattr(p,'is_junction') and p.is_junction())
@@ -80,7 +96,25 @@ class DesktopDocuments:
             raise ValueError('편집 가능한 셀을 선택하세요')
         if not isinstance(value,str) or len(value)>4000:raise ValueError('내용은 4000자까지 입력하세요')
         color=namestore.normalize_color(params['color'])
+        value=self._checked_value(c,value)
         return self._write([(self.cells[r][0],self.columns[c],value,color)])
+
+    def _checked_value(self,c,value):
+        info=self.columns_meta[c]
+        if info['type']=='bool':
+            if value not in (CHECKED,UNCHECKED,''):raise ValueError('종료 여부는 ☑ 또는 ☐ 입니다')
+            return value or UNCHECKED
+        if info['type']=='choice' and value and value not in info['choices']:
+            raise ValueError('허용된 값 중에서 고르세요: '+', '.join(info['choices']))
+        return value
+
+    def delete(self, params):
+        """Delete one data row (tkinter right-click 행 삭제), same lock/change checks."""
+        if set(params)!={'snapshot','row'} or not self.version or params['snapshot']!=self.version:
+            raise ValueError('문서를 새로고침하세요')
+        r=params['row']
+        if type(r) is not int or not 0<=r<len(self.cells):raise ValueError('삭제할 행을 선택하세요')
+        return self._write([],delete_row=self.cells[r][0])
 
     def append(self, params):
         if set(params)!={'snapshot','values'} or not self.version or params['snapshot']!=self.version:
@@ -94,9 +128,10 @@ class DesktopDocuments:
             raise ValueError('필수 열이 없는 문서입니다. 기존 프로그램에서 양식을 확인하세요.')
         row=self.cells[-1][0]+1 if self.cells else (1 if self.kind=='reference' else 2)
         if row>100000:raise ValueError('문서 최대 행 수를 초과합니다.')
+        values=[self._checked_value(i,v) for i,v in enumerate(values)]
         return self._write([(row,c,v,'') for c,v in zip(self.columns,values)])
 
-    def _write(self, updates):
+    def _write(self, updates, delete_row=None):
         self.check_path();path=str(self.path);user=engine.current_user()
         previous=locking.status(path,user);state=locking.acquire(path,user)
         if not state.editable:raise ValueError(locking.holder_message(state,self.path.name))
@@ -108,6 +143,8 @@ class DesktopDocuments:
             for row,column,value,color in updates:
                 cell=ws.cell(row,column);cell.value=value;cell.data_type='s'
                 cell.fill=PatternFill('solid',fgColor=color[1:]) if color else PatternFill()
+            if delete_row is not None:
+                ws.delete_rows(delete_row)
             fd,temporary=tempfile.mkstemp(prefix='.rev1-document-',suffix='.xlsx',dir=self.path.parent)
             os.close(fd);wb.save(temporary)
             check=locking.check_before_save(path,user,self.stamp)

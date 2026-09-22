@@ -47,10 +47,48 @@ class DesktopConfig:
         cfg = self._read()
         report = cfg.get("wph_report_paths")
         roots = cfg.get("commonality_roots")
+        extra = cfg.get("batch_extra_paths")
         return dict(save_dir=cfg.get("save_dir") or "",
                     local_dir=cfg.get("local_dir") or "",
                     report_paths=report if isinstance(report, dict) else {},
-                    scanresult_roots=roots if isinstance(roots, dict) else {})
+                    scanresult_roots=roots if isinstance(roots, dict) else {},
+                    extra_paths={m: [p for p in v if isinstance(p, str)] for m, v in extra.items()
+                                 if isinstance(v, list)} if isinstance(extra, dict) else {},
+                    batch_auto=bool(cfg.get("batch_auto")))
+
+    def set_batch_auto(self, params):
+        if set(params) != {"enabled"} or type(params["enabled"]) is not bool:
+            raise ValueError("자동 조사 설정을 확인하세요")
+        cfg = self._read()
+        cfg["batch_auto"] = params["enabled"]
+        self._write(cfg)
+        return self.state()
+
+    def set_extra_paths(self, params):
+        """Additional Report folders scanned together with a machine's main folder
+        (tkinter `batch_extra_paths`, e.g. an archive/backup folder)."""
+        if set(params) != {"machine", "paths"} or not isinstance(params["paths"], list) or len(params["paths"]) > 20:
+            raise ValueError("추가 폴더 목록을 확인하세요")
+        machine = self._valid_machine(params["machine"])
+        cfg = self._read()
+        main = (cfg.get("wph_report_paths") or {}).get(machine)
+        if not main:
+            raise ValueError("먼저 이 호기의 Report 폴더를 등록하세요")
+        paths = []
+        for raw in params["paths"]:
+            path = self._valid_dir(raw, "추가 Report 폴더")
+            if Path(path) == Path(main).absolute():
+                raise ValueError("기본 Report 폴더와 같은 폴더입니다")
+            if path not in paths:
+                paths.append(path)
+        extra = cfg.get("batch_extra_paths") if isinstance(cfg.get("batch_extra_paths"), dict) else {}
+        if paths:
+            extra[machine] = paths
+        else:
+            extra.pop(machine, None)
+        cfg["batch_extra_paths"] = extra
+        self._write(cfg)
+        return self.state()
 
     def set_save_dir(self, params):
         if set(params) != {"path"}:

@@ -45,6 +45,8 @@ if sys.argv[1] == 'init':
         pv('R1-x20','Width','W','3.5','LINEAR')],workdirs.form_original_path(workdirs.related_dir(run),'PI2','AOI-01',st),level='PI2',source='fixture')
     path=refdata.ip_path(str(shared));refdata.create_blank_ip(path)
     wb=openpyxl.load_workbook(path);wb.active.append(['AOI-01','10.0.0.1','Camtek']);wb.save(path);wb.close()
+    special=refdata.special_path(str(shared));refdata.create_blank_special(special)
+    wb=openpyxl.load_workbook(special);wb.active.append(['2026-09-01','AOI-01','L1','S','PI','점검','진행','','메모']);wb.save(special);wb.close()
     run = workdirs.commonality_run_dir(str(root/'local/Commonality'), 'AOI-01', 'sample')
     cmfile = workdirs.commonality_result_path(run, 'R', 'AOI-01', 'sample')
     cmrecords = [dict(PI='R', Recipe='V', Zone='Z', Alg='A', Parameter=f'P{i}',

@@ -22,6 +22,37 @@ class DocumentsTests(unittest.TestCase):
         self.doc=DesktopDocuments(self.cfg);self.catalog=self.doc.open('ip')
         self.patch=patch.object(locking,'VERIFY_DELAY_SEC',0);self.patch.start();self.addCleanup(self.patch.stop)
 
+    def test_choice_column_and_row_delete(self):
+        self.assertEqual(self.catalog['columns'][2],{'type':'choice','choices':['Camtek','KLA']})
+        with self.assertRaises(ValueError):
+            self.doc.edit({'snapshot':self.catalog['snapshot'],'row':0,'column':2,'value':'Other','color':''})
+        cat=self.doc.edit({'snapshot':self.catalog['snapshot'],'row':0,'column':2,'value':'KLA','color':''})
+        cat=self.doc.append({'snapshot':cat['snapshot'],'values':['AOI-02','10.0.0.2','Camtek']})
+        self.assertEqual(cat['total'],2)
+        cat=self.doc.delete({'snapshot':cat['snapshot'],'row':0})
+        self.assertEqual(cat['total'],1)
+        wb=openpyxl.load_workbook(self.path);self.addCleanup(wb.close)
+        self.assertEqual([c.value for c in wb.active[2]][:3],['AOI-02','10.0.0.2','Camtek'])
+        self.assertIsNone(wb.active['D2'].value)     # deleted row's credentials went with it, not shifted
+        with self.assertRaises(ValueError):
+            self.doc.delete({'snapshot':cat['snapshot'],'row':5})
+
+    def test_special_done_toggle(self):
+        path=refdata.special_path(str(self.root));refdata.create_blank_special(path)
+        wb=openpyxl.load_workbook(path);ws=wb.active
+        ws.append(['2026-09-01','AOI-01','L1','S','PI','t','진행','Y','메모']);wb.save(path);wb.close()
+        cat=self.doc.open('special')
+        col=cat['headers'].index('종료 여부')
+        self.assertEqual(cat['columns'][col],{'type':'bool'})
+        row=self.doc.page({'snapshot':cat['snapshot']})['rows'][0]
+        self.assertEqual(row['cells'][col]['value'],'☑')      # legacy 'Y' shown as checked
+        with self.assertRaises(ValueError):
+            self.doc.edit({'snapshot':cat['snapshot'],'row':0,'column':col,'value':'yes','color':''})
+        self.doc.edit({'snapshot':cat['snapshot'],'row':0,'column':col,'value':'☐','color':''})
+        rows,_=refdata.load_special(path)
+        self.assertFalse(rows[0]['종료 여부'])
+        self.assertEqual(rows[0]['특이사항'],'메모')
+
     def test_credentials_never_exposed(self):
         payload=self.doc.page({'snapshot':self.catalog['snapshot']})
         self.assertEqual(len(payload['rows'][0]['cells']),3)

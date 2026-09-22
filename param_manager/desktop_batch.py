@@ -1,9 +1,10 @@
 """Desktop batch adapter. UI supplies machine IDs, never filesystem paths."""
 import json
 import math
+from datetime import datetime
 from pathlib import Path
 
-from . import atomicfile, batchreport, batchreport_service, batchreport_store, localdirs, wph
+from . import atomicfile, batchreport, batchreport_service, batchreport_store, localdirs, watcher, wph
 
 
 def read_json(path):
@@ -78,8 +79,35 @@ class DesktopBatch:
             # Hide retired metric keys (e.g. M07) from the UI's restored selection.
             last = dict(last, options=dict(saved, metrics=[
                 m for m in saved["metrics"] if isinstance(m, str) and m in batchreport.METRICS]))
-        return dict(machines=[dict(id=name, folder=folder) for name, folder in sorted(paths.items())],
-                    local_root=str(root), last=last)
+        cfg = read_json(self.config_path)
+        extra = cfg.get("batch_extra_paths") if isinstance(cfg.get("batch_extra_paths"), dict) else {}
+        return dict(machines=[dict(id=name, folder=folder, extra=[p for p in extra.get(name, []) if isinstance(p, str)])
+                              for name, folder in sorted(paths.items())],
+                    local_root=str(root), last=last, auto=self.auto_state(cfg))
+
+    def auto_state(self, cfg=None):
+        """Daily automatic re-run (tkinter `batch_auto`/`batch_schedule`, shared keys so
+        the two programs never both run the same day)."""
+        cfg = read_json(self.config_path) if cfg is None else cfg
+        schedule = cfg.get("batch_schedule") if isinstance(cfg.get("batch_schedule"), dict) else {}
+        settings = watcher.WatchSettings(enabled=bool(cfg.get("batch_auto")), interval_hours=24)
+        state = watcher.WatchState.from_dict(schedule)
+        return dict(enabled=settings.enabled, last_run=state.last_run, last_result=state.last_result,
+                    due=bool(watcher.should_run(datetime.now(), settings, state)))
+
+    def record_run(self, ok, partial=False, error=""):
+        """Record the run in `batch_schedule` with the watcher's `%Y-%m-%d %H:%M:%S`
+        format (an ISO 'T' timestamp would make the watcher re-run every minute)."""
+        cfg = read_json(self.config_path)
+        old = cfg.get("batch_schedule") if isinstance(cfg.get("batch_schedule"), dict) else {}
+        try:
+            fails = int(old.get("fail_count", 0))
+        except (TypeError, ValueError):
+            fails = 0
+        cfg["batch_schedule"] = {"last_run": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                 "fail_count": 0 if ok and not partial else min(fails + 1, 4),
+                                 "last_result": "완료" if ok and not partial else "일부 오류" if ok else error or "실패"}
+        atomicfile.write_json(str(self.config_path), cfg)
 
     def reports(self, params):
         # List report file names for one machine, read-only, names only.

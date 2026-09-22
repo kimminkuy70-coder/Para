@@ -1,9 +1,10 @@
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 export type Metric = 'M01'|'M02'|'M03'|'M04'|'M05'|'M06'|'M08'|'M09'|'M10'|'M11';
 export type Options = {metrics: Metric[]; valid_wafers: number; min_baseline: number; yield_drop: number; by_recipe: boolean};
-export type Target = {machine: string; query: string; start: string; end: string};
+export type Target = {machine: string; query: string; start: string; end: string; names?: string[]};
 export type Table = {index: number; key: string; title: string; headers: string[]; total: number};
-export type Configuration = {machines: {id: string; folder: string}[]; local_root: string; last?: {targets?: Target[]; options?: Options}};
+export type Configuration = {machines: {id: string; folder: string; extra?: string[]}[]; local_root: string; last?: {targets?: Target[]; options?: Options};
+  auto?: {enabled: boolean; due: boolean; last_run: string; last_result: string}};
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;
