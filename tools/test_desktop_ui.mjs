@@ -25,7 +25,7 @@ lines.on('line',line=>{const message=JSON.parse(line);const sequence=index++;del
 let stderr='';engine.stderr.on('data',d=>stderr+=d);
 try{
   await page.exposeBinding('nativeInvoke',async(_,command,args)=>{
-    if(command==='desktop_connect'){channel=Number(args.onEvent.split(':')[1]);return;}
+    if(command==='desktop_connect'){channel=Number(args.onEvent.split(':')[1]);index=0;return;}  // a new Channel counts from 0, as in Tauri
     assert.equal(command,'desktop_send');engine.stdin.write(JSON.stringify(args.request)+'\n');
   });
   await page.addInitScript(()=>{
@@ -78,7 +78,15 @@ try{
     await input.fill('test');await input.fill('');
   }
   await page.setViewportSize({width:1440,height:1000});
+  // A10: an empty report selection is refused instead of silently meaning 'all'.
+  await page.getByRole('group').filter({hasText:'AOI-01'}).getByRole('button',{name:'📋 리포트 선택…'}).click();
+  await page.locator('dialog[open]').getByRole('button',{name:'해제',exact:true}).click();
+  await page.locator('dialog[open]').getByRole('button',{name:'적용',exact:true}).click();
+  await page.locator('.toast.error').filter({hasText:'하나 이상'}).waitFor();
+  await page.locator('dialog[open]').getByRole('button',{name:'취소',exact:true}).click();
   await page.getByRole('button',{name:'다음 ▶',exact:true}).click();
+  // A10: metric titles come from the engine (M10 = Lot 스캔 이슈율).
+  await page.locator('.metric-list').getByText('Lot 스캔 이슈율',{exact:true}).waitFor();
   // A1: the retired M07 from saved settings is dropped; 4 of 10 metrics restored.
   assert.equal(await page.locator('.metric-list input:checked').count(),4);
   await page.getByRole('button',{name:'전체 선택',exact:true}).click();
@@ -259,6 +267,11 @@ try{
   await page.getByLabel('확정 호기').selectOption('AOI-01');
   await page.locator('.runbar').getByRole('button',{name:'양식 확정 ▶'}).click();
   await page.getByLabel('확정 양식').waitFor();
+  // A7: a reloaded page re-attaches to the same engine (ids keep increasing, no 'already connected').
+  await page.reload();
+  await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'이력 확인',exact:true}).click();
+  await page.locator('.cm-file input').first().waitFor();
   assert.deepEqual(errors,[]);
   assert.equal(stderr,'');
   console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,maxDOMRows:200,timeTicks:5,scriptEscaped:true,serverPortsOpened:0}));

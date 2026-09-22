@@ -83,7 +83,9 @@ class DesktopBatch:
         extra = cfg.get("batch_extra_paths") if isinstance(cfg.get("batch_extra_paths"), dict) else {}
         return dict(machines=[dict(id=name, folder=folder, extra=[p for p in extra.get(name, []) if isinstance(p, str)])
                               for name, folder in sorted(paths.items())],
-                    local_root=str(root), last=last, auto=self.auto_state(cfg))
+                    local_root=str(root), last=last, auto=self.auto_state(cfg),
+                    # Engine titles so the UI labels never drift from the analysis (A10).
+                    metrics=[dict(id=k, title=v) for k, v in batchreport.METRICS.items()])
 
     def auto_state(self, cfg=None):
         """Daily automatic re-run (tkinter `batch_auto`/`batch_schedule`, shared keys so

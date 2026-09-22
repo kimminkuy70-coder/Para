@@ -9,6 +9,23 @@ from openpyxl.styles import PatternFill
 from . import engine, locking, namestore, refdata
 
 
+def is_number(value):
+    return isinstance(value,(int,float)) and not isinstance(value,bool)
+
+
+def as_number(text):
+    """'12' → 12, '1.5' → 1.5; anything else (IPs, '1e3', blanks) → None."""
+    t=text.strip()
+    if not t or len(t)>30:
+        return None
+    import re
+    if re.fullmatch(r'-?\d+',t):
+        return int(t)
+    if re.fullmatch(r'-?\d+\.\d+',t):
+        return float(t)
+    return None
+
+
 def refdata_bool(value):
     return engine._s(value).strip() in ('☑','Y','1','True','종료','예')  # same set as refdata.load_special
 from .desktop_batch import read_json
@@ -97,6 +114,10 @@ class DesktopDocuments:
         if not isinstance(value,str) or len(value)>4000:raise ValueError('내용은 4000자까지 입력하세요')
         color=namestore.normalize_color(params['color'])
         value=self._checked_value(c,value)
+        # Unchanged color → leave the fill alone. Theme/indexed fills are shown as no
+        # color, so rewriting them would silently erase the user's highlight (A8).
+        if color==self.cells[r][1][c]['color']:
+            color=None
         return self._write([(self.cells[r][0],self.columns[c],value,color)])
 
     def _checked_value(self,c,value):
@@ -129,7 +150,7 @@ class DesktopDocuments:
         row=self.cells[-1][0]+1 if self.cells else (1 if self.kind=='reference' else 2)
         if row>100000:raise ValueError('문서 최대 행 수를 초과합니다.')
         values=[self._checked_value(i,v) for i,v in enumerate(values)]
-        return self._write([(row,c,v,'') for c,v in zip(self.columns,values)])
+        return self._write([(row,c,v,None) for c,v in zip(self.columns,values)])
 
     def _write(self, updates, delete_row=None):
         self.check_path();path=str(self.path);user=engine.current_user()
@@ -141,8 +162,14 @@ class DesktopDocuments:
             if not check['ok']:raise ValueError(check['reason'])
             wb=openpyxl.load_workbook(path);ws=wb[self.sheet]
             for row,column,value,color in updates:
-                cell=ws.cell(row,column);cell.value=value;cell.data_type='s'
-                cell.fill=PatternFill('solid',fgColor=color[1:]) if color else PatternFill()
+                cell=ws.cell(row,column)
+                number=as_number(value) if is_number(cell.value) else None
+                if number is not None:
+                    cell.value=number          # keep numeric cells numeric (A8)
+                else:
+                    cell.value=value;cell.data_type='s'   # text only, never a formula
+                if color is not None:
+                    cell.fill=PatternFill('solid',fgColor=color[1:]) if color else PatternFill()
             if delete_row is not None:
                 ws.delete_rows(delete_row)
             fd,temporary=tempfile.mkstemp(prefix='.rev1-document-',suffix='.xlsx',dir=self.path.parent)

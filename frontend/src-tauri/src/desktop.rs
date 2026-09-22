@@ -1,13 +1,17 @@
 //! Fixed packaged sidecar only. No shell plugin, user paths or executable args.
 use serde_json::{json, Value};
 use std::{io::{BufRead, BufReader, Read, Write}, process::{Command, Stdio},
-    sync::{Arc, Mutex, atomic::AtomicU8, mpsc::{sync_channel, SyncSender}}, thread::JoinHandle};
+    sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU8, Ordering}, mpsc::{sync_channel, SyncSender}}, thread::JoinHandle};
 use tauri::{ipc::Channel, Manager};
 
 const MAX_FRAME: usize = 4 * 1024 * 1024;
 type Writer = Arc<Mutex<Option<SyncSender<Vec<u8>>>>>;
+type Events = Arc<Mutex<Channel<Value>>>;
 
-pub struct Bridge { writer: Writer, waiter: JoinHandle<()> }
+/// `events` is swappable: a reloaded page re-attaches its new channel to the
+/// running engine instead of being refused (A7). `alive` turns false when the
+/// engine's output ends, so the next connect starts a fresh engine.
+pub struct Bridge { writer: Writer, waiter: JoinHandle<()>, events: Events, alive: Arc<AtomicBool> }
 #[derive(Default)]
 pub struct Desktop(pub Mutex<Option<Bridge>>, pub AtomicU8);
 
@@ -60,7 +64,14 @@ fn engine_command(app: &tauri::AppHandle) -> Result<Command, String> {
 pub fn desktop_connect(app: tauri::AppHandle, state: tauri::State<'_, Desktop>,
     on_event: Channel<Value>) -> Result<(), String> {
     let mut slot = state.0.lock().map_err(|_| "engine_state")?;
-    if slot.is_some() { return Err("engine_already_connected".into()); }
+    if let Some(bridge) = slot.as_ref() {
+        if bridge.alive.load(Ordering::SeqCst) {
+            // Page reload: keep the engine (and its job/locks), redirect its events.
+            *bridge.events.lock().map_err(|_| "engine_state")? = on_event;
+            return Ok(());
+        }
+    }
+    if let Some(dead) = slot.take() { dead.finish(); }
     let mut command = engine_command(&app)?;
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     #[cfg(windows)] {
@@ -73,6 +84,10 @@ pub fn desktop_connect(app: tauri::AppHandle, state: tauri::State<'_, Desktop>,
     let (tx, rx) = sync_channel::<Vec<u8>>(8);
     let writer = Arc::new(Mutex::new(Some(tx)));
     let failure_writer = writer.clone();
+    let events: Events = Arc::new(Mutex::new(on_event));
+    let reader_events = events.clone();
+    let alive = Arc::new(AtomicBool::new(true));
+    let reader_alive = alive.clone();
     std::thread::spawn(move || {
         for bytes in rx {
             if input.write_all(&bytes).and_then(|_| input.flush()).is_err() { break; }
@@ -87,16 +102,21 @@ pub fn desktop_connect(app: tauri::AppHandle, state: tauri::State<'_, Desktop>,
             if line.len() > MAX_FRAME { break; }
             match serde_json::from_slice::<Value>(&line) {
                 Ok(event) if event["version"] == 1 => {
-                    if on_event.send(event).is_err() { break; }
+                    // A page that is reloading may have dropped its channel; keep
+                    // reading so the engine never blocks on a full pipe.
+                    if let Ok(channel) = reader_events.lock() { let _ = channel.send(event); }
                 }
                 _ => break,
             }
         }
+        reader_alive.store(false, Ordering::SeqCst);
         if let Ok(mut writer) = failure_writer.lock() { writer.take(); }
-        let _ = on_event.send(json!({"version":1,"id":null,"event":"error","code":"engine_closed"}));
+        if let Ok(channel) = reader_events.lock() {
+            let _ = channel.send(json!({"version":1,"id":null,"event":"error","code":"engine_closed"}));
+        }
     });
     let waiter = std::thread::spawn(move || { let _ = child.wait(); });
-    *slot = Some(Bridge { writer, waiter });
+    *slot = Some(Bridge { writer, waiter, events, alive });
     Ok(())
 }
 

@@ -92,14 +92,15 @@ export function Form(){
     return()=>{sequence.current++;};
   },[opened,variant,filter,usedOnly,offset]);
 
-  async function edit(row:Row,kind:'use'|'name'|'transform',value:boolean|string){
-    if(!opened)return;
+  async function edit(row:Row,kind:'use'|'name'|'transform',value:boolean|string):Promise<boolean>{
+    if(!opened)return false;
     try{await desktop.request('form_edit',{snapshot:opened.version,row:row.id,kind,value}).promise;
       const reply=await desktop.request('form_page',{snapshot:opened.version,variant,query:filter,used_only:usedOnly,offset,limit:100}).promise;
-      const p=reply.form as Page;setData(p);setOpened(o=>o?{...o,used:p.used}:o);}
-    catch(e){fail(e);}
+      const p=reply.form as Page;setData(p);setOpened(o=>o?{...o,used:p.used}:o);return true;}
+    catch(e){fail(e);return false;}
   }
-  async function saveName(){if(!renaming)return;await edit(renaming,'name',nameValue.trim());setRenaming(undefined);}
+  // Keep the dialog (and the typed name) open when saving fails (A4).
+  async function saveName(){if(!renaming)return;if(await edit(renaming,'name',nameValue.trim()))setRenaming(undefined);}
   const machines=catalog?.machines||[];
   // Coefficients for LINEAR/AREA items of the chosen machine (변환계수.xlsx → 원본 라벨 → 기본값).
   useEffect(()=>{

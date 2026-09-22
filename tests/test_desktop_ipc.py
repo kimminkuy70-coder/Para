@@ -58,9 +58,13 @@ class Protocol(unittest.TestCase):
             json.dump({"save_dir": save}, fh)
         self.session.form.config_path = Path(cfg)
 
+        # Workbook reads run on the worker (A9): accepted, then completed.
         self.session.handle(request(1, "form_catalog"))
+        self.assertEqual(self.events()[-1]["event"], "accepted")
+        self.finish()
         self.assertEqual(self.events()[-1]["form"]["recipes"][0]["recipe"], "PI3")
         self.session.handle(request(2, "form_open", recipe="PI3", stamp=""))
+        self.finish()
         snap = self.events()[-1]["form"]["version"]
         self.session.handle(request(3, "form_page", snapshot=snap, variant="", query="",
                                     used_only=False, offset=0, limit=100))
@@ -72,6 +76,20 @@ class Protocol(unittest.TestCase):
         done = self.events()[-1]
         self.assertEqual(done["event"], "completed")
         self.assertTrue(os.path.exists(done["form"]["final"]))
+
+    def test_error_codes_do_not_blame_configuration(self):
+        # A6: an I/O failure in another screen is not reported as a configuration failure.
+        from unittest.mock import patch
+        patcher = patch.object(ipc, "log_failure", lambda *a: None)   # keep test logs out of the repo
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        def boom():
+            raise PermissionError("C:/secret/path")
+        self.session.config.state = boom
+        self.session.handle(request(1, "config_state"))
+        event = self.events()[-1]
+        self.assertEqual((event["event"], event["code"]), ("error", "access_denied"))
+        self.assertNotIn("secret", json.dumps(event))
 
     def test_contract_and_allowlist(self):
         self.session.handle(request(1, "contract"))

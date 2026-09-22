@@ -22,6 +22,25 @@ class DocumentsTests(unittest.TestCase):
         self.doc=DesktopDocuments(self.cfg);self.catalog=self.doc.open('ip')
         self.patch=patch.object(locking,'VERIFY_DELAY_SEC',0);self.patch.start();self.addCleanup(self.patch.stop)
 
+    def test_theme_fill_and_number_preserved(self):
+        from openpyxl.styles import PatternFill
+        from openpyxl.styles.colors import Color
+        wb=openpyxl.load_workbook(self.path);ws=wb.active
+        ws['A2'].fill=PatternFill('solid',fgColor=Color(theme=4))   # theme color: shown as no color
+        ws['B2']=42                                                 # numeric cell
+        wb.save(self.path);wb.close()
+        cat=self.doc.open('ip')
+        self.assertEqual(self.doc.page({'snapshot':cat['snapshot']})['rows'][0]['cells'][0]['color'],'')
+        cat=self.doc.edit({'snapshot':cat['snapshot'],'row':0,'column':0,'value':'AOI-01X','color':''})
+        cat=self.doc.edit({'snapshot':cat['snapshot'],'row':0,'column':1,'value':'43','color':''})
+        wb=openpyxl.load_workbook(self.path);self.addCleanup(wb.close);ws=wb.active
+        self.assertEqual(ws['A2'].value,'AOI-01X')
+        self.assertEqual(ws['A2'].fill.fgColor.theme,4)             # theme fill kept
+        self.assertEqual(ws['B2'].value,43)                         # still a number
+        self.doc.edit({'snapshot':cat['snapshot'],'row':0,'column':1,'value':'=1+1','color':''})
+        wb2=openpyxl.load_workbook(self.path);self.addCleanup(wb2.close)
+        self.assertEqual((wb2.active['B2'].value,wb2.active['B2'].data_type),('=1+1','s'))   # never a formula
+
     def test_choice_column_and_row_delete(self):
         self.assertEqual(self.catalog['columns'][2],{'type':'choice','choices':['Camtek','KLA']})
         with self.assertRaises(ValueError):

@@ -53,6 +53,18 @@ function App(){
   useEffect(()=>{if(error){notify(error,'error');setError('');}},[error]);
   const [busy,setBusy]=useState(false),[autoRun,setAutoRun]=useState(false);
   const busyRef=useRef(false),autoBlocked=useRef(false);
+  const [engineDown,setEngineDown]=useState(false);
+  useEffect(()=>desktop.onStatus((connected,code)=>{
+    setEngineDown(!connected);
+    if(!connected){busyRef.current=false;setBusy(false);notify(errorText(code),'error');}
+  }),[]);
+  async function reconnect(){
+    // A new engine starts clean: the old job/snapshots are gone, so reload screens.
+    job.current=undefined;setResult(undefined);setTable(undefined);setRows([]);
+    await loadConfig();
+    if(!desktop.closed){setEngineDown(false);setScreenKey(k=>k+1);notify('분석 엔진에 다시 연결했습니다.','ok');}
+  }
+  const [screenKey,setScreenKey]=useState(0);
   const [progress,setProgress]=useState<Reply>();
   const [result,setResult]=useState<Reply>();
   const [table,setTable]=useState<Table>();
@@ -107,7 +119,11 @@ function App(){
       .finally(()=>{if(sequence===pageSequence.current)setLoading(false);});
     return()=>{pageSequence.current++;};
   },[table,offset]);
-  const updateTarget=(id:string,key:'query'|'start'|'end',value:string)=>setTargets(old=>({...old,[id]:{...old[id],[key]:value},}));
+  const updateTarget=(id:string,key:'query'|'start'|'end',value:string)=>{
+    setTargets(old=>({...old,[id]:{...old[id],[key]:value},}));
+    // The chosen report names came from the old search; they no longer apply (A10).
+    setPicks(old=>{if(!old[id])return old;const next={...old};delete next[id];return next;});
+  };
   useEffect(()=>{if(picker)pickerDialog.current?.showModal();else pickerDialog.current?.close();},[picker]);
   async function openPicker(id:string){
     const t=targets[id]||{machine:id,query:'',start:'',end:''};
@@ -121,8 +137,9 @@ function App(){
   function applyPicker(){
     if(!picker)return;
     const id=picker.machine;
+    if(picker.chosen.length===0){notify('조사할 Report를 하나 이상 고르세요. 전체를 조사하려면 [전체]를 누르세요.','error');return;}
     setPicks(old=>{const next={...old};
-      if(picker.chosen.length===0||picker.chosen.length===picker.names.length)delete next[id];
+      if(picker.chosen.length===picker.names.length)delete next[id];
       else next[id]=picker.chosen;
       return next;});
     setPicker(undefined);
@@ -193,8 +210,9 @@ function App(){
     <Toaster/>
     <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
     <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
-    <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className={'connection '+(config?'connected':'')}>{connection}</span></div>
-      {tab==='설정'?<Settings/>:tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:tab==='값 업데이트'?<Update/>:tab==='양식 만들기'?<Form/>:tab==='이력 확인'?<History/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
+    <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
+        {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>
+      <div key={screenKey} style={{display:'contents'}}>{tab==='설정'?<Settings/>:tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:tab==='값 업데이트'?<Update/>:tab==='양식 만들기'?<Form/>:tab==='이력 확인'?<History/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       <section className="panel">
       <div className="section-heading"><div><span className="step">BATCH</span><h2>배치 리포트 분석</h2></div><span className="count">{selected.length}개 호기 · {options.metrics.length}개 지표</span></div>
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>
@@ -209,7 +227,7 @@ function App(){
         </fieldset>):<div className="empty-state"><h3>등록된 호기가 없습니다.</h3><p>[설정] 탭에서 호기별 Report 폴더를 등록하세요.</p></div>}</div></>}
 
       {bstep===1&&<><div className="section-heading"><div><h3>필요한 지표 선택</h3></div><button disabled={busy} onClick={()=>setOptions(old=>({...old,metrics:old.metrics.length===metrics.length?[]:metrics.map(m=>m[0])}))}>{options.metrics.length===metrics.length?'전체 해제':'전체 선택'}</button></div>
-        <fieldset disabled={busy} className="metric-list"><legend className="sr-only">분석 지표</legend>{metrics.map(([id,title,description])=><label key={id} className={options.metrics.includes(id)?'metric checked':'metric'}><input type="checkbox" checked={options.metrics.includes(id)} onChange={()=>toggleMetric(id)}/><span><b>{title}</b><small>{description}</small></span><code>{id}</code></label>)}</fieldset>
+        <fieldset disabled={busy} className="metric-list"><legend className="sr-only">분석 지표</legend>{metrics.map(([id,fallback,description])=>{const title=config?.metrics?.find(m=>m.id===id)?.title||fallback;return <label key={id} className={options.metrics.includes(id)?'metric checked':'metric'}><input type="checkbox" checked={options.metrics.includes(id)} onChange={()=>toggleMetric(id)}/><span><b>{title}</b><small>{description}</small></span><code>{id}</code></label>;})}</fieldset>
         <fieldset className="thresholds" disabled={busy}><legend>계산 기준</legend>{[['valid_wafers','WPH 유효 매수',1,100000],['min_baseline','최소 정상 표본',2,100000],['yield_drop','Yield 하락 (pp)',0,100]].map(([key,label,min,max])=><label className="field" key={key}>{label}<input type="number" min={min} max={max} step={key==='yield_drop'?'0.1':'1'} value={Number.isNaN(options[key as keyof Options])?'':Number(options[key as keyof Options])} onChange={e=>setOptions(old=>({...old,[key]:e.target.value===''?NaN:Number(e.target.value)}))}/></label>)}</fieldset>
         <p className="hint">중단·복구·품질 결과는 검토용 추정입니다. 장비 설정이나 자동 Hold를 변경하지 않습니다.</p></>}
 
@@ -242,7 +260,7 @@ function App(){
         <div className="pick-list">{picker.names.map(n=><label key={n} className="pick-item"><input type="checkbox" checked={picker.chosen.includes(n)} onChange={e=>setPicker(p=>p&&{...p,chosen:e.target.checked?[...p.chosen,n]:p.chosen.filter(x=>x!==n)})}/> {n}</label>)}
           {picker.names.length===0&&<p className="table-empty">검색 결과가 없습니다.</p>}</div>
         <div className="dialog-actions"><button type="button" onClick={()=>setPicker(undefined)}>취소</button>
-          <button type="button" className="primary" onClick={applyPicker}>적용</button></div></>}</dialog></>}
+          <button type="button" className="primary" onClick={applyPicker}>적용</button></div></>}</dialog></>}</div>
     </main><footer><span>Camtek AOI Manager · 개편 시험 화면</span><span>{config?.local_root?`로컬 결과: ${config.local_root}`:'데이터는 장비 원본과 분리하여 로컬에 저장합니다.'}</span></footer>
   </div>;
 }

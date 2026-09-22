@@ -18,7 +18,7 @@ METRICS = {
     "M03": "오류 유형별 빈도", "M04": "오류 성격",
     "M05": "Aborted 직접 · 연쇄 추정", "M06": "재시작 간격",
     "M08": "Recipe별 정상 Bad Dice 분포",
-    "M09": "Yield / Bad Dice 이상 후보", "M10": "완주율",
+    "M09": "Yield / Bad Dice 이상 후보", "M10": "Lot 스캔 이슈율",
     "M11": "미분류 상태",
 }  # M07(복구 baseline)은 M06 요약과 중복이라 폐지 — 전체 요약은 M06 표의 '(전체 유효)' 행으로.
 RULE_VERSION = 1

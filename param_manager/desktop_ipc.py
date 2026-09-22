@@ -80,6 +80,29 @@ def validate_records(records):
                 raise ValueError("Invalid wafer fields")
 
 
+def log_failure(method, exc):
+    """Record the traceback in the local error log that 설정 › 정보 opens (never
+    OneDrive). Logging must never raise into the protocol."""
+    try:
+        from . import errlog, localdirs
+        localdirs.set_root(str(DesktopBatch().configuration()[2]))
+        errlog.write_log(None, f"WEB-{method}", f"웹 엔진 {method} 실패", exc)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def failure_code(exc, request):
+    if isinstance(request, dict) and request.get("method") == "configuration":
+        return "configuration_failed"
+    if isinstance(exc, PermissionError):
+        return "access_denied"
+    if isinstance(exc, FileNotFoundError):
+        return "file_missing"
+    if isinstance(exc, OSError):
+        return "io_failed"
+    return "engine_failed"
+
+
 class Session:
     def __init__(self, output, compute=None):
         self.output = output
@@ -134,8 +157,11 @@ class Session:
                 self.dispatch(request_id, method, params)
         except (ValueError, TypeError, KeyError) as exc:
             self.emit(request_id, "error", code="invalid_request", message=str(exc))
-        except Exception:
-            self.emit(request_id, "error", code="configuration_failed")
+        except Exception as exc:
+            # Classify without exposing paths or source content (A6): only the
+            # configuration request itself reports a configuration failure.
+            log_failure(request.get("method") if isinstance(request, dict) else "?", exc)
+            self.emit(request_id, "error", code=failure_code(exc, request))
 
     def dispatch(self, rid, method, params):
         allowed = {"analyze": {"records", "selected"}, "investigate": {"targets", "options"}, "batch_reports": {"machine", "query", "start", "end"}, "table_page": {"job", "table", "offset", "limit"},
@@ -208,8 +234,8 @@ class Session:
                       'recipe_export': lambda: self.recipe.export(params),
                       'recipe_delete_preview': lambda: self.recipe.delete_preview(params),
                       'recipe_delete': lambda: self.recipe.delete(params)}
-            if method in ('recipe_export', 'recipe_delete'):
-                # Workbook writes and folder moves run off the protocol input thread.
+            if method in ('recipe_open', 'recipe_edit', 'recipe_export', 'recipe_delete'):
+                # Collation/workbook reads and writes (often on OneDrive) run off the input thread (A9).
                 self.background(rid, 'recipe', action[method], '레시피 작업을 완료하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
             else:
                 self.emit(rid, "completed", recipe=action[method]())
@@ -226,13 +252,21 @@ class Session:
                 action = {'form_catalog': lambda: self.form.catalog(), 'form_open': lambda: self.form.open(params),
                           'form_page': lambda: self.form.page(params), 'form_edit': lambda: self.form.edit(params),
                           'form_scales': lambda: self.form.scales(params)}
-                self.emit(rid, 'completed', form=action[method]())
+                if method in ('form_catalog', 'form_open', 'form_scales'):
+                    # Reads candidate/coefficient workbooks from the save folder (A9).
+                    self.background(rid, 'form', action[method], '양식을 읽지 못했습니다. 파일 접근과 잠금을 확인하세요.')
+                else:
+                    self.emit(rid, 'completed', form=action[method]())
         elif method.startswith('cmsurvey_'):
             if self.running:
                 raise ValueError('배치 조사 완료 후 Commonality 계획을 확인하세요')
             action = {'cmsurvey_config': lambda: self.cmsurvey.config(),
                       'cmsurvey_preflight': lambda: self.cmsurvey.preflight(params)}
-            self.emit(rid, 'completed', cmsurvey=action[method]())
+            if method == 'cmsurvey_preflight':
+                # Scanresult traversal over the equipment share (A9).
+                self.background(rid, 'cmsurvey', action[method], 'Scanresult 폴더를 확인하지 못했습니다. 장비 연결을 확인하세요.')
+            else:
+                self.emit(rid, 'completed', cmsurvey=action[method]())
         elif method.startswith('history_'):
             if self.running:
                 raise ValueError('배치 조사 완료 후 이력 확인을 열어 주세요')
@@ -240,7 +274,11 @@ class Session:
                       'history_diff': lambda: self.history.diff(params),
                       'history_page': lambda: self.history.page(params),
                       'history_export': lambda: self.history.export(params)}
-            self.emit(rid, 'completed', history=action[method]())
+            if method in ('history_diff', 'history_export'):
+                # Loading two or more collation workbooks is slow on OneDrive (A9).
+                self.background(rid, 'history', action[method], '취합 파일을 비교하지 못했습니다. 파일 접근을 확인하세요.')
+            else:
+                self.emit(rid, 'completed', history=action[method]())
         elif method.startswith('config_'):
             if self.running and method in ('config_set_save_dir', 'config_set_local_dir', 'config_purge_temp'):
                 raise ValueError('진행 중인 작업이 끝난 뒤 폴더 설정을 바꾸세요')
@@ -421,6 +459,8 @@ class Session:
                     self.running = False
                     self.emit(rid, 'completed', **{key: value})
             except Exception as exc:
+                if not isinstance(exc, ValueError):
+                    log_failure(key, exc)
                 with self.lock:
                     self.running = False
                     self.emit(rid, 'error', code=f'{key}_failed',
