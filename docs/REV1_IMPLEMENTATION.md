@@ -4,6 +4,22 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — GitHub Actions 윈도우 빌드(개인 PC 툴체인 불필요) (2026-09-22)
+
+- **배경**: 사용자 PC에 Python 만 있고 Rust·Node 는 회사 승인이 필요. pywebview 로 host 를
+  바꾸면 Tauri 의 Rust 보안 경계·무서버 원칙이 깨져 **계획 이탈**이므로 채택 안 함. 대신
+  **빌드만 GitHub 윈도우 러너에서** 하고 완성 폴더를 배포(=REV1_PACKAGING 의 포터블 폴더).
+- **추가**: `.github/workflows/build-desktop.yml` — windows-latest 에서 Python/Node/Rust(MSVC)
+  준비 → `set_version.py` → PyInstaller onedir 사이드카(`Camtek_AOI_engine`) → `sidecar/` 로
+  스테이징 → `npm ci` → `npm run tauri -- build --no-bundle` → **exe + sidecar 폴더**를
+  artifact 로 업로드. 트리거는 `workflow_dispatch`(버전 입력) + 태그 `v*.*.*` push.
+- **사용자 절차**: Actions 탭 → Run workflow(브랜치 version_webview, 버전) 또는 `git tag
+  v8.1.0 && git push origin v8.1.0` → Artifacts 다운로드 → 폴더 통째로 실행(sidecar 옆에 유지).
+  개인 PC 설치 0(WebView2만). `docs/WEB_UI_사용법.md` 2절에 정리.
+- **검증**: 워크플로 YAML 파싱 OK(15 steps). 각 단계는 `tools/build_desktop.py`(검증된 로컬
+  빌드)와 동일한 명령·경로를 온라인(캐시 없는 CI)용으로 옮긴 것. 실제 러너 빌드는 사용자가
+  실행해 확인(윈도우 러너 필요). native `cargo check`·프런트 build 는 이미 통과.
+
 ## 재개 체크포인트 — 웹 UI 실행 가능화 + native 배선 버그 수정 (2026-09-21)
 
 - **치명 버그 수정(재발 방지)**: `frontend/src-tauri/src/desktop.rs`의 `desktop_send`

@@ -1,0 +1,127 @@
+name: Build Windows Desktop (Tauri)
+
+# Builds the version_webview web UI into a portable Windows package on a
+# GitHub-hosted Windows runner, so no individual PC needs Rust or Node.
+# The finished folder (app exe + Python sidecar) is uploaded as an artifact;
+# download it and distribute it the same way as the existing program
+# (e.g. via OneDrive). End-user PCs need only the WebView2 runtime.
+#
+# Two ways to trigger:
+#   - Actions tab -> this workflow -> "Run workflow" (needs the file on the
+#     default branch; enter a version).
+#   - Push a tag like v8.1.0 on any branch that contains this file:
+#       git tag v8.1.0 && git push origin v8.1.0
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 8.1.0"
+        required: true
+        default: "0.1.0"
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $v = "${{ github.event.inputs.version }}"
+          } else {
+            $v = "${{ github.ref_name }}" -replace '^v',''
+          }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { Write-Error "Version must be MAJOR.MINOR.PATCH (got '$v')"; exit 1 }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Building version $v"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Rust (MSVC)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri
+
+      - name: Stamp version (__version__ + PE version-info)
+        run: python tools/set_version.py ${{ steps.ver.outputs.version }}
+
+      - name: Set app version in tauri.conf.json
+        shell: pwsh
+        run: |
+          $p = "frontend/src-tauri/tauri.conf.json"
+          $j = Get-Content $p -Raw | ConvertFrom-Json
+          $j.version = "${{ steps.ver.outputs.version }}"
+          $j | ConvertTo-Json -Depth 20 | Set-Content $p -Encoding utf8
+
+      - name: Install Python deps + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Build Python engine sidecar (PyInstaller onedir)
+        run: >
+          pyinstaller --noconfirm --clean --onedir --console
+          --name Camtek_AOI_engine --paths .
+          --version-file tools/version_info.txt
+          --add-data "param_manager/data;param_manager/data"
+          tools/desktop_engine_entry.py
+
+      - name: Stage sidecar into Tauri resources
+        shell: pwsh
+        run: |
+          $dst = "frontend/src-tauri/sidecar"
+          if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
+          Copy-Item -Recurse "dist/Camtek_AOI_engine" $dst
+          if (-not (Test-Path "$dst/Camtek_AOI_engine.exe")) { Write-Error "sidecar exe missing"; exit 1 }
+
+      - name: Install frontend packages
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Tauri app (release, no installer)
+        working-directory: frontend
+        run: npm run tauri -- build --no-bundle
+
+      - name: Assemble portable package
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $out = "Camtek_AOI_manager_v$ver"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $exe = "frontend/src-tauri/target/release/camtek-aoi-manager.exe"
+          if (-not (Test-Path $exe)) { Write-Error "native exe missing; build failed"; exit 1 }
+          Copy-Item $exe "$out/Camtek_AOI_manager.exe"
+          Copy-Item -Recurse "frontend/src-tauri/sidecar" "$out/sidecar"
+          Copy-Item "docs/REV1_PACKAGING.md" "$out/READ_BEFORE_USE.md"
+          Copy-Item "docs/WEB_UI_사용법.md" "$out/사용법.md"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Camtek_AOI_manager_v${{ steps.ver.outputs.version }}
+          path: Camtek_AOI_manager_v${{ steps.ver.outputs.version }}/
+          retention-days: 30
