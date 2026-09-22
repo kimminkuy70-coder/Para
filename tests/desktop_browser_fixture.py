@@ -33,6 +33,16 @@ if sys.argv[1] == 'init':
         **{'비고':''},**{m:str(i+(j%3)) for j,m in enumerate(machines)}) for i in range(2000)]
     collate.write_collation(workdirs.collate_path(str(shared),'20260921_010101'),
         {'PI2':collate.CollateRecipe(recipe='PI2',records=records)},machines)
+    # A confirmed form + editable candidate for PI2 (one LINEAR variant) for 양식 만들기.
+    from param_manager import formbuilder
+    st='20260920_010101_000001'
+    run=workdirs.form_run_dir(str(shared),'PI2',st)
+    openpyxl.Workbook().save(workdirs.form_final_path(run,'PI2','AOI-01',st))
+    def pv(variant,param,key,raw,transform='RAW'):
+        return dict(layer='PI2',recipe='PI2',mag=variant,zone='Surface',alg='GlobalRTP',param=param,values={},unit='',
+                    raws={'양식':raw},use=True,extract={'src_file':'OpticPreset.ini','section':'Scan2d','key':key,'transform':transform,'source_path':''})
+    formbuilder.build_initial_workbook([pv('R1','Min Defect Bright 0','K0','5'),pv('R1','Min Defect Bright 1','K1','6'),
+        pv('R1-x20','Width','W','3.5','LINEAR')],workdirs.form_original_path(workdirs.related_dir(run),'PI2','AOI-01',st),level='PI2',source='fixture')
     path=refdata.ip_path(str(shared));refdata.create_blank_ip(path)
     wb=openpyxl.load_workbook(path);wb.active.append(['AOI-01','10.0.0.1','Camtek']);wb.save(path);wb.close()
     run = workdirs.commonality_run_dir(str(root/'local/Commonality'), 'AOI-01', 'sample')
@@ -52,7 +62,7 @@ else:
             self.batch = DesktopBatch(config)
             self.commonality.batch.config_path = config
             for adapter in (self.recipe, self.documents, self.form, self.cmsurvey,
-                            self.history, self.config):
+                            self.history, self.config, self.opener):
                 adapter.config_path = config
     desktop_ipc.Session = FixtureSession
     desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)

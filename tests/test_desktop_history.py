@@ -56,6 +56,28 @@ class DesktopHistoryTests(unittest.TestCase):
         row = page["rows"][0]
         self.assertEqual((row["old"], row["new"], row["kind"], row["machine"]), ("3000", "7000", "값변경", "AOI-24"))
 
+    def test_row_lists_multi_file_and_export(self):
+        _collate_file(workdirs.collate_path(self.save, "20260303_000000_000000"),
+                      [("PI3", "PI", "GlobalRTP", "GLOBAL", "Max Defects", {"AOI-24": "8000", "AOI-25": "3000"}),
+                       ("PI3", "PI", "PI Opening", "Surface", "새 항목", {"AOI-24": "9"})], ["AOI-24", "AOI-25"])
+        with open(self.cfg, "w", encoding="utf-8") as fh:
+            json.dump({"save_dir": self.save, "local_dir": os.path.join(self.tmp, "local")}, fh)
+        files = self.h.files()
+        ids = [f["id"] for f in files["files"]][::-1]      # oldest first
+        d = self.h.diff({"catalog": files["catalog"], "files": ids})
+        self.assertEqual([(p["changes"], p["added"], p["removed"]) for p in d["pairs"]], [(1, 1, 1), (1, 0, 0)])
+        added = self.h.page({"snapshot": d["snapshot"], "pair": 0, "kind": "행 추가"})
+        self.assertEqual([r["param"] for r in added["rows"]], ["새 항목"])
+        removed = self.h.page({"snapshot": d["snapshot"], "pair": 0, "kind": "행 삭제"})
+        self.assertEqual([r["param"] for r in removed["rows"]], ["삭제될 항목"])
+        second = self.h.page({"snapshot": d["snapshot"], "pair": 1})
+        self.assertEqual((second["rows"][0]["old"], second["rows"][0]["new"]), ("7000", "8000"))
+        with self.assertRaises(ValueError):
+            self.h.page({"snapshot": d["snapshot"], "pair": 2})
+        path = self.h.export({"snapshot": d["snapshot"], "pair": 1})["path"]
+        self.assertTrue(path.startswith(os.path.join(self.tmp, "local")) and os.path.isfile(path))
+        self.assertFalse(any(n.startswith(".rev1-history-") for n in os.listdir(os.path.dirname(path))))
+
     def test_page_query_filter(self):
         files = self.h.files()
         ids = [f["id"] for f in files["files"]]

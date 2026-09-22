@@ -1,14 +1,18 @@
 import {useEffect,useRef,useState} from 'react';
 import {desktop} from './desktop';
 import {Stepper,StepNav,notify,fail} from './ui';
+import {OpenPath} from './OpenPath';
 
 type Version={stamp:string;has_candidate:boolean;kind:string};
 type Recipe={recipe:string;versions:Version[];can_edit:boolean};
-type Catalog={save_dir:boolean;recipes:Recipe[]};
+type Catalog={save_dir:boolean;recipes:Recipe[];machines?:string[]};
 type Opened={version:string;recipe:string;level:string;variants:string[];total:number;used:number;source:string};
 type Row={id:number;use:boolean;variant:string;zone:string;alg:string;orig:string;name:string;transform:string;raw:string;display:string};
 type Page={rows:Row[];total:number;used:number;grand_total:number;offset:number};
-type Confirmed={final:string;original:string;kept:number;total:number;sheet:string;name_note:string};
+type Scale={variant:string;coef:number;source:string;needed:boolean};
+type Confirmed={final:string;original:string;kept:number;total:number;sheet:string;name_note:string;
+  coef:{saved:number;defaulted:string[];unregistered:string[];error:string};
+  merge:{collate:string;added:number;error:string}|null};
 const TRANSFORMS=['RAW','LINEAR','AREA'];
 const STEPS=['원본 선택','항목 편집','확정'];
 
@@ -23,6 +27,7 @@ export function Form(){
   const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
   const [machine,setMachine]=useState(''),[result,setResult]=useState<Confirmed>();
   const [renaming,setRenaming]=useState<Row>(),[nameValue,setNameValue]=useState('');
+  const [scales,setScales]=useState<Scale[]>([]),[scaleEdits,setScaleEdits]=useState<Record<string,string>>({});
   const dialog=useRef<HTMLDialogElement>(null),sequence=useRef(0);
 
   async function loadCatalog(){
@@ -60,10 +65,22 @@ export function Form(){
     catch(e){fail(e);}
   }
   async function saveName(){if(!renaming)return;await edit(renaming,'name',nameValue.trim());setRenaming(undefined);}
+  const machines=catalog?.machines||[];
+  // Coefficients for LINEAR/AREA items of the chosen machine (변환계수.xlsx → 원본 라벨 → 기본값).
+  useEffect(()=>{
+    if(step!==2||!opened||!machine.trim()){setScales([]);return;}
+    let active=true;
+    desktop.request('form_scales',{snapshot:opened.version,machine:machine.trim()}).promise
+      .then(r=>{if(active){setScales((r.form as {scales:Scale[]}).scales.filter(x=>x.needed));setScaleEdits({});}})
+      .catch(e=>{if(active)fail(e);});
+    return()=>{active=false;};
+  },[step,opened,machine]);
+  const scaleInvalid=Object.values(scaleEdits).some(v=>!(Number(v)>0&&Number.isFinite(Number(v))));
   async function confirm(){
-    if(!opened||!machine.trim())return;
+    if(!opened||!machine.trim()||scaleInvalid)return;
     setBusy(true);setResult(undefined);
-    try{const reply=await desktop.request('form_confirm',{snapshot:opened.version,machine:machine.trim()}).promise;
+    const edited=Object.fromEntries(Object.entries(scaleEdits).map(([k,v])=>[k,Number(v)]));
+    try{const reply=await desktop.request('form_confirm',{snapshot:opened.version,machine:machine.trim(),scales:edited}).promise;
       setResult(reply.form as Confirmed);notify('양식 확정 완료','ok');}
     catch(e){fail(e);}finally{setBusy(false);}
   }
@@ -121,12 +138,30 @@ export function Form(){
       <h3>확정</h3>
       <div className="runbar"><div><strong>사용 {opened.used}개 항목으로 확정</strong>
         <p>확정하면 저장폴더에 새 회차의 확정 양식과 편집용 원본이 함께 저장됩니다.</p></div>
-        <div className="actions"><input className="in" value={machine} placeholder="호기 (예: AOI-07)" maxLength={64} onChange={e=>setMachine(e.target.value)}/>
-          <button className="primary" disabled={busy||!machine.trim()||opened.used===0} onClick={confirm}>양식 확정 ▶</button></div></div>
+        <div className="actions">{machines.length
+            ?<select aria-label="확정 호기" value={machine} onChange={e=>setMachine(e.target.value)}><option value="">호기 선택…</option>{machines.map(m=><option key={m} value={m}>{m}</option>)}</select>
+            :<input className="in" aria-label="확정 호기" value={machine} placeholder="호기 (예: AOI-07)" maxLength={64} onChange={e=>setMachine(e.target.value)}/>}
+          <button className="primary" disabled={busy||!machine.trim()||opened.used===0||scaleInvalid} onClick={confirm}>양식 확정 ▶</button></div></div>
+      {!machines.length&&<p className="hint">[장비 IP] 문서에 호기가 없어 직접 입력합니다. 호기를 등록하면 목록에서 고를 수 있습니다.</p>}
+      {scales.length>0&&<div className="outputs"><h3>변환계수 (LINEAR/AREA 항목)</h3>
+        <p className="hint">값을 바꾸면 이 양식에 적용되고 변환계수.xlsx 에도 반영됩니다. '기본값'은 등록된 계수가 없어 기본 계수로 계산된다는 뜻입니다.</p>
+        <table className="tbl"><thead><tr><th>변형</th><th>계수</th><th>출처</th></tr></thead><tbody>{scales.map(x=><tr key={x.variant}>
+          <td>{x.variant||'(기본)'}</td>
+          <td><input aria-label={`${x.variant||'기본'} 변환계수`} type="number" step="any" min="0" value={scaleEdits[x.variant]??String(x.coef)}
+            onChange={e=>setScaleEdits(old=>{const next={...old};if(e.target.value===String(x.coef))delete next[x.variant];else next[x.variant]=e.target.value;return next;})}/></td>
+          <td className={x.source==='기본값'&&scaleEdits[x.variant]===undefined?'warn':''}>{scaleEdits[x.variant]!==undefined?'직접 입력':x.source}</td></tr>)}</tbody></table>
+        {scaleInvalid&&<p role="alert">변환계수는 0보다 큰 숫자여야 합니다.</p>}</div>}
       {result&&<div className="outputs"><h3>확정 완료 · {result.kept}개 항목 (시트 {result.sheet})</h3>
         {result.name_note&&<p role="alert">장비화면이름 저장 참고: {result.name_note}</p>}
-        {([['final','확정 양식'],['original','편집용 원본']] as const).map(([k,label])=>
-          <label className="field" key={k}>{label}<input readOnly value={result[k]} onFocus={e=>e.target.select()}/></label>)}</div>}
+        {([['final','확정 양식'],['original','편집용 원본']] as const).map(([k,label])=><OpenPath key={k} label={label} path={result[k]}/>)}
+        {result.coef.saved>0&&<p>변환계수.xlsx 반영: {result.coef.saved}건</p>}
+        {result.coef.unregistered.length>0&&<p role="alert">변환계수.xlsx 에 행이 없어 기록하지 않은 변형: {result.coef.unregistered.join(', ')} (MAG 를 알아야 새 행을 만들 수 있습니다. 파일에 직접 추가하세요.)</p>}
+        {result.coef.defaulted.length>0&&<p role="alert">계수가 없어 기본 계수로 계산한 변형: {result.coef.defaulted.join(', ')}</p>}
+        {result.coef.error&&<p role="alert">변환계수 저장 실패: {result.coef.error}</p>}
+        {result.merge&&(result.merge.collate
+          ?<><OpenPath label="이전 값을 이어받은 취합 파일" path={result.merge.collate}/>
+            <p>{result.merge.added?`새로(변경) 추가된 파라미터 ${result.merge.added}개는 값이 비어 있습니다. 값 업데이트로 채우세요.`:'기존 파라미터 값은 이전 취합본에서 이어받았습니다.'}</p></>
+          :result.merge.error?<p role="alert">이전 값 이어받기 실패: {result.merge.error}</p>:null)}</div>}
     </>}
     {step===2&&!opened&&<p className="table-empty">먼저 원본을 열고 항목을 편집하세요.</p>}
     </div>
@@ -134,7 +169,7 @@ export function Form(){
     <StepNav step={step} total={STEPS.length} onBack={()=>setStep(s=>s-1)}
       onNext={()=>{if(step===0){if(recipe)open(recipe,stamp);}else if(step<STEPS.length-1)setStep(s=>s+1);else confirm();}}
       nextLabel={step===0?'원본 열기':step===1?'확정 단계로':'양식 확정'}
-      nextDisabled={(step===0&&!recipe)||(step>=1&&!opened)||(step===2&&(!machine.trim()||opened?.used===0))} busy={busy}/>
+      nextDisabled={(step===0&&!recipe)||(step>=1&&!opened)||(step===2&&(!machine.trim()||opened?.used===0||scaleInvalid))} busy={busy}/>
 
     <dialog className="edit-dialog" ref={dialog} onClose={()=>setRenaming(undefined)}><form method="dialog" onSubmit={e=>{e.preventDefault();void saveName();}}>
       <h3>장비 화면 이름</h3><p className="sub">{renaming?.orig}</p>

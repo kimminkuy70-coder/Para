@@ -93,6 +93,41 @@ class DesktopFormTests(unittest.TestCase):
         self.assertNotIn("Max Defects", params)
         wb.close()
 
+    def test_scales_coef_store_and_value_inheritance(self):
+        from param_manager import coefstore, collate, refdata
+        # Registered machines come from the shared 장비 IP workbook.
+        ip = refdata.ip_path(self.save)
+        refdata.create_blank_ip(ip)
+        refdata.save_ip(ip, [{"호기": "AOI-07", "IP": "10.0.0.7", "장비종류": "Camtek"}])
+        coefstore.save(coefstore.coef_path(self.save),
+                       [{"호기": "AOI-07", "MAG": "x5", "변형": "PI-bubble", "계수": "0.5", "비고": ""}])
+        # A previous collation holds a value that the edited form must inherit.
+        prev = workdirs.collate_path(self.save, "20260920_000000")
+        rec = {"PI": "PI3", "Recipe": "PI-bubble", "Zone": "Zone2", "Alg": "Scan2d",
+               "Parameter": "Sensitivity µm", "비고": "", "AOI-07": "7.7"}
+        collate.write_collation(prev, {"PI3": collate.CollateRecipe(recipe="PI3", records=[rec])}, ["AOI-07"])
+
+        catalog = self.form.catalog()
+        self.assertEqual(catalog["machines"], ["AOI-07"])
+        snap = self.form.open({"recipe": "PI3", "stamp": ""})["version"]
+        scales = {s["variant"]: s for s in self.form.scales({"snapshot": snap, "machine": "AOI-07"})["scales"]}
+        self.assertEqual((scales["PI-bubble"]["coef"], scales["PI-bubble"]["source"]), (0.5, "변환계수.xlsx"))
+        self.assertTrue(scales["PI-bubble"]["needed"])       # LINEAR item in use
+        self.assertFalse(scales["PI"]["needed"])             # only RAW items
+        for bad in ({"PI-bubble": 0}, {"PI-bubble": float("inf")}, {"PI-bubble": "1"}):
+            with self.assertRaises(ValueError):
+                self.form.confirm({"snapshot": snap, "machine": "AOI-07", "scales": bad})
+
+        result = self.form.confirm({"snapshot": snap, "machine": "AOI-07", "scales": {"PI-bubble": 1.25}})
+        self.assertEqual(result["coef"]["saved"], 1)
+        self.assertEqual(coefstore.lookup(coefstore.load(coefstore.coef_path(self.save)), "AOI-07", "PI-bubble"), 1.25)
+        merged = result["merge"]
+        self.assertTrue(merged["collate"] and os.path.exists(merged["collate"]), merged)
+        sheets, machines = collate.load_collation(merged["collate"])
+        self.assertEqual(machines, ["AOI-07"])
+        values = {r["Parameter"]: r.get("AOI-07") for rows in sheets.values() for r in rows}
+        self.assertEqual(values.get("Sensitivity µm"), "7.7")
+
     def test_used_only_and_query_filter(self):
         self.form.catalog()
         opened = self.form.open({"recipe": "PI3", "stamp": ""})

@@ -9,6 +9,7 @@ import {Settings} from './Settings';
 import {Documents} from './Documents';
 import {Commonality} from './Commonality';
 import {Toaster,notify,Stepper,StepNav} from './ui';
+import {OpenPath} from './OpenPath';
 
 const metrics: [Metric,string,string][] = [
   ['M01','처리량 · WPH','유효 매수 기준 처리 속도'], ['M02','스캔 가동률','일·주·월, 관측 범위 기준'],
@@ -186,7 +187,12 @@ function App(){
           {table?.title==='시간순 Actual WPH'&&!loading&&<Trend rows={rows}/>}
           <div className="table-scroll" tabIndex={0} aria-label={table?.title} aria-busy={loading}><table><thead><tr>{table?.headers.map((h,i)=><th key={i} scope="col">{h}</th>)}</tr></thead><tbody>{rows.map((row,i)=><tr key={`${offset}-${i}`}>{row.map((cell,j)=><td key={j}>{text(cell)}</td>)}</tr>)}</tbody></table>{(loading||!rows.length)&&<p className="table-empty">{loading?'표를 불러오는 중…':'이 지표에 해당하는 결과가 없습니다.'}</p>}</div>
           <div className="pagination"><span>{table?.total?`${offset+1}–${Math.min(offset+PAGE,table.total)} / ${table.total.toLocaleString()}행`:'0행'}</span><div><button disabled={loading||offset===0} onClick={()=>setOffset(n=>Math.max(0,n-PAGE))}>이전</button><button disabled={loading||offset+PAGE>=(table?.total||0)} onClick={()=>setOffset(n=>n+PAGE)}>다음</button></div></div>
-          {result.artifacts&&<div className="outputs"><h3>저장된 결과</h3><p>아래 위치의 파일을 탐색기에서 열 수 있습니다.</p>{(['xlsx','html','outdir'] as const).map(key=><label className="field" key={key}>{key==='xlsx'?'Excel':key==='html'?'HTML':'결과 폴더'}<input readOnly value={result.artifacts?.[key]||''} onFocus={e=>e.target.select()}/></label>)}{result.artifacts.dashboard_error&&<p role="alert">가동률 대시보드 저장 실패: {result.artifacts.dashboard_error}</p>}</div>}
+          {result.artifacts&&<div className="outputs"><h3>저장된 결과</h3><p>버튼으로 파일을 바로 열거나 탐색기에서 위치를 볼 수 있습니다.</p>
+            {result.artifacts.xlsx&&<OpenPath label="Excel" path={result.artifacts.xlsx}/>}
+            {result.artifacts.html&&<OpenPath label="HTML" path={result.artifacts.html}/>}
+            {result.artifacts.dashboard&&<OpenPath label="가동률 대시보드" path={result.artifacts.dashboard}/>}
+            {result.artifacts.outdir&&<OpenPath label="결과 폴더" path={result.artifacts.outdir} folder/>}
+            {result.artifacts.dashboard_error&&<p role="alert">가동률 대시보드 저장 실패: {result.artifacts.dashboard_error}</p>}</div>}
         </>}
       </div></>}
       </div>

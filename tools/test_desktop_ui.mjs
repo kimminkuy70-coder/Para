@@ -134,6 +134,31 @@ try{
   await page.getByRole('button',{name:'비교 Excel 저장',exact:true}).click();
   await page.getByLabel('저장된 Excel').waitFor();
   assert((await page.getByLabel('저장된 Excel').inputValue()).endsWith('.xlsx'));
+  // B: 양식 확정 — registered machine list, coefficient table, value inheritance.
+  await page.getByRole('button',{name:'양식 만들기',exact:true}).click();
+  await page.locator('select').first().selectOption('PI2');
+  await page.getByRole('button',{name:'원본 열기 ▶',exact:true}).first().click();
+  await page.getByText('사용 3 / 전체 3',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'확정 단계로 ▶',exact:true}).click();
+  await page.getByLabel('확정 호기').selectOption('AOI-01');
+  const coef=page.getByLabel('R1-x20 변환계수');
+  await coef.waitFor();
+  await page.getByText('원본 라벨',{exact:true}).or(page.getByText('기본값',{exact:true})).first().waitFor();
+  await coef.fill('0');
+  await page.getByText('변환계수는 0보다 큰 숫자여야 합니다.').waitFor();
+  await coef.fill('1.5');
+  await page.locator('.runbar').getByRole('button',{name:'양식 확정 ▶'}).click();
+  await page.getByLabel('이전 값을 이어받은 취합 파일').waitFor();
+  assert((await page.getByLabel('확정 양식').inputValue()).endsWith('.xlsx'));
+  // B: 이력 — the inherited collation is a second file; row lists and Excel export.
+  await page.getByRole('button',{name:'이력 확인',exact:true}).click();
+  await page.locator('.cm-file input').nth(1).waitFor();
+  await page.getByRole('button',{name:'비교 ▶',exact:true}).click();
+  await page.getByText(/값변경 \d+ · 추가행 \d+ · 삭제행 \d+/).waitFor();
+  await page.getByLabel('종류').selectOption('행 삭제');
+  await page.waitForFunction(()=>document.querySelector('.table-scroll tbody tr td:last-child')?.textContent==='행 삭제');
+  await page.getByRole('button',{name:'변경내역 Excel 저장',exact:true}).click();
+  assert((await page.getByLabel('저장된 변경내역').inputValue()).includes('이력비교'));
   assert.deepEqual(errors,[]);
   assert.equal(stderr,'');
   console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,maxDOMRows:200,timeTicks:5,scriptEscaped:true,serverPortsOpened:0}));

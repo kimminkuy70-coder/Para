@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react';
 import {desktop} from './desktop';
 import {Stepper,StepNav,notify,fail} from './ui';
 import './commonality.css';
+import {OpenPath} from './OpenPath';
 
 type Catalog = {catalog:string;files:{id:string;name:string;folder:string}[]};
 type Result = {snapshot:string;total:number;parameters:number;changed:number};
@@ -116,7 +117,7 @@ export function Commonality() {
       <div className="pagination"><span>파라미터 {page?.parameter_total?column+1:0}–{Math.min(column+12,page?.parameter_total||0)} / {page?.parameter_total||0}</span><div><button disabled={busy||column===0} onClick={()=>setColumn(n=>Math.max(0,n-12))}>이전 파라미터</button><button disabled={busy||column+12>=(page?.parameter_total||0)} onClick={()=>setColumn(n=>n+12)}>다음 파라미터</button></div></div>
       <div className="table-scroll" aria-busy={busy}><table><thead><tr><th>상태</th>{page?.headers.map((h,i)=><th key={i}>{h}</th>)}</tr></thead><tbody>{page?.rows.map(row=><tr key={row.id}><td>{[row.fail?'Fail':'',row.low_match?'낮은 매칭':''].filter(Boolean).join(' · ')||'—'}</td>{row.values.map((value,i)=><td key={i} className={row.outliers.includes(i)?'cm-outlier':''} title={value}>{value||'—'}</td>)}</tr>)}</tbody></table></div>
       <div className="pagination"><span>{result.total?offset+1:0}–{Math.min(offset+100,result.total)} / {result.total}행</span><div><button disabled={busy||offset===0} onClick={()=>setOffset(n=>Math.max(0,n-100))}>이전</button><button disabled={busy||offset+100>=result.total} onClick={()=>setOffset(n=>n+100)}>다음</button></div></div>
-      {output&&<label className="field" style={{marginTop:12}}>저장된 Excel<input readOnly value={output}/></label>}
+      {output&&<OpenPath label="저장된 Excel" path={output}/>}
     </>}
     {step===1&&!result&&<p className="table-empty">먼저 1단계에서 결과 파일을 골라 비교하세요.</p>}
     </div>

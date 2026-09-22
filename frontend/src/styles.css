@@ -80,3 +80,5 @@ tr.muted td{color:#9aa8ba}
 .subtabs button:hover:not(:disabled){background:var(--band);border-color:transparent}
 .subtabs button.active{color:var(--navy);border-bottom-color:var(--lime)}
 .subtab-body{min-height:120px}
+.warn{color:var(--bad);font-weight:700}
+.open-path{display:flex;gap:10px;align-items:end;margin:10px 0}.open-path .field{flex:1;min-width:0}.open-actions{display:flex;gap:6px;flex:none}
