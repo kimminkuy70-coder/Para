@@ -197,9 +197,29 @@ try{
   await page.locator('.runbar').getByRole('button',{name:'양식 확정 ▶'}).click();
   await page.getByLabel('이전 값을 이어받은 취합 파일').waitFor();
   assert((await page.getByLabel('확정 양식').inputValue()).endsWith('.xlsx'));
+  // B: 값 업데이트 — equipment collection asks for the Job folder, then variants → preview → write.
+  await page.getByRole('button',{name:'값 업데이트',exact:true}).click();
+  await page.locator('.pick-item').filter({hasText:'PI2'}).locator('input').check();
+  await page.locator('.pick-item').filter({hasText:'AOI-01'}).locator('input').check();
+  await page.getByRole('button',{name:'수집 시작 ▶',exact:true}).click();
+  const ask=page.locator('dialog[open]');
+  await ask.getByText('AOI-01 · 레시피 ↔ Job 폴더').waitFor();
+  assert(await ask.locator('.pick-item').filter({hasText:'R_TB500_PI2 - Enhanced'}).locator('input').isChecked());
+  await ask.getByRole('button',{name:'확인하고 계속',exact:true}).click();
+  await page.getByText('결과 확인',{exact:true}).waitFor();
+  await page.waitForFunction(()=>[...document.querySelectorAll('.stepper .st')].findIndex(e=>e.classList.contains('now'))>=2);
+  if(await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).isVisible())await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).click();
+  await page.getByRole('button',{name:'취합 저장',exact:true}).waitFor();
+  const keep=page.getByLabel('그래도 포함');
+  if(await keep.count())await keep.first().check();
+  await page.getByRole('button',{name:'취합 저장',exact:true}).click();
+  await page.getByLabel('취합 파일').waitFor();
   // B: 이력 — the inherited collation is a second file; row lists and Excel export.
   await page.getByRole('button',{name:'이력 확인',exact:true}).click();
-  await page.locator('.cm-file input').nth(1).waitFor();
+  await page.locator('.cm-file input').nth(2).waitFor();
+  // Newest first: [값 업데이트, 이어받기, fixture]. Compare the fixture with the inherited one.
+  await page.locator('.cm-file input').nth(0).uncheck();
+  await page.locator('.cm-file input').nth(2).check();
   await page.getByRole('button',{name:'비교 ▶',exact:true}).click();
   await page.getByText(/값변경 \d+ · 추가행 \d+ · 삭제행 \d+/).waitFor();
   await page.getByLabel('종류').selectOption('행 삭제');

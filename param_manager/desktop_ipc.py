@@ -21,11 +21,12 @@ from .desktop_cmsurvey import DesktopCmSurvey
 from .desktop_history import DesktopHistory
 from .desktop_config import DesktopConfig
 from .desktop_open import DesktopOpen
+from .desktop_update import DesktopUpdate
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "open_path"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "open_path"}
 
 
 def encoded(value):
@@ -95,6 +96,7 @@ class Session:
         self.history = DesktopHistory()
         self.config = DesktopConfig()
         self.opener = DesktopOpen()
+        self.update = DesktopUpdate()
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
         self.running = False
@@ -158,6 +160,9 @@ class Session:
                        config_set_batch_auto={'enabled'}, config_set_extra_paths={'machine','paths'},
                        config_set_hide_kla={'enabled'}, config_local_state=set(), config_set_local_dir={'path'},
                        config_purge_temp=set(), config_about=set())
+        allowed.update(update_prepare=set(), update_set_local_source={'path'},
+                       update_collect={'recipes','machines','source','answers'}, update_preview={'mapping'},
+                       update_commit={'include'}, update_cancel=set())
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -241,6 +246,20 @@ class Session:
                       'config_purge_temp': lambda: self.config.purge_temp(params),
                       'config_about': lambda: self.config.about(params)}
             self.emit(rid, 'completed', config=action[method]())
+        elif method.startswith('update_'):
+            if self.running:
+                raise ValueError('진행 중인 작업이 끝난 뒤 값 업데이트를 진행하세요')
+            action = {'update_prepare': lambda: self.update.prepare(params),
+                      'update_set_local_source': lambda: self.update.set_local_source(params),
+                      'update_collect': lambda: self.update.collect(params),
+                      'update_preview': lambda: self.update.preview(params),
+                      'update_commit': lambda: self.update.commit(params),
+                      'update_cancel': lambda: self.update.cancel(params)}
+            if method in ('update_collect', 'update_preview', 'update_commit'):
+                # Equipment reads, parsing and the collation write run off the input thread.
+                self.background(rid, 'update', action[method], '값 업데이트를 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.')
+            else:
+                self.emit(rid, 'completed', update=action[method]())
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))
@@ -421,6 +440,10 @@ class Session:
         if self.worker is not None:
             self.worker.join()
         self.result = None
+        try:
+            self.update.cancel({})      # never leave the global collate lock behind
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def serve(source, output):

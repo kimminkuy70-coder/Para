@@ -43,6 +43,10 @@ if sys.argv[1] == 'init':
                     raws={'양식':raw},use=True,extract={'src_file':'OpticPreset.ini','section':'Scan2d','key':key,'transform':transform,'source_path':''})
     formbuilder.build_initial_workbook([pv('R1','Min Defect Bright 0','K0','5'),pv('R1','Min Defect Bright 1','K1','6'),
         pv('R1-x20','Width','W','3.5','LINEAR')],workdirs.form_original_path(workdirs.related_dir(run),'PI2','AOI-01',st),level='PI2',source='fixture')
+    # Fake equipment tree for 값 업데이트 (the collector's job_root_override test hook).
+    from test_ini_parser import _mk_recipe
+    _mk_recipe(root/'equip'/'AOI-01'/'Job'/'R_TB500_PI2 - Enhanced'/'6324'/'Recipes'/'R1')
+    (root/'equip'/'AOI-01'/'Job'/'Other job').mkdir(parents=True)
     path=refdata.ip_path(str(shared));refdata.create_blank_ip(path)
     wb=openpyxl.load_workbook(path);wb.active.append(['AOI-01','10.0.0.1','Camtek']);wb.save(path);wb.close()
     special=refdata.special_path(str(shared));refdata.create_blank_special(special)
@@ -64,7 +68,8 @@ else:
             self.batch = DesktopBatch(config)
             self.commonality.batch.config_path = config
             for adapter in (self.recipe, self.documents, self.form, self.cmsurvey,
-                            self.history, self.config, self.opener):
+                            self.history, self.config, self.opener, self.update):
                 adapter.config_path = config
+            self.update.job_root_override = lambda m: Path(sys.argv[2])/'equip'/m/'Job'
     desktop_ipc.Session = FixtureSession
     desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)

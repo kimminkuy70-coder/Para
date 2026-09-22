@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {desktop, defaults, errorText, type Configuration, type Metric, type Options, type Reply, type Table, type Target} from './desktop';
 import './styles.css';
 import {Recipe} from './Recipe';
+import {Update} from './Update';
 import {Form} from './Form';
 import {History} from './History';
 import {Settings} from './Settings';
@@ -19,7 +20,7 @@ const metrics: [Metric,string,string][] = [
   ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
   ['M11','미분류 상태','알 수 없는 원문도 보존']
 ];
-const navigation = ['설정','Recipe 관리','양식 만들기','이력 확인','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
+const navigation = ['설정','Recipe 관리','값 업데이트','양식 만들기','이력 확인','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
 const text = (value: unknown) => value == null ? '—' : typeof value === 'number' ? value.toLocaleString('ko-KR',{maximumFractionDigits:2}) : String(value);
 
 function Trend({rows}: {rows:(string|number|null)[][]}) {
@@ -193,7 +194,7 @@ function App(){
     <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
     <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
     <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className={'connection '+(config?'connected':'')}>{connection}</span></div>
-      {tab==='설정'?<Settings/>:tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:tab==='양식 만들기'?<Form/>:tab==='이력 확인'?<History/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
+      {tab==='설정'?<Settings/>:tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:tab==='값 업데이트'?<Update/>:tab==='양식 만들기'?<Form/>:tab==='이력 확인'?<History/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       <section className="panel">
       <div className="section-heading"><div><span className="step">BATCH</span><h2>배치 리포트 분석</h2></div><span className="count">{selected.length}개 호기 · {options.metrics.length}개 지표</span></div>
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>
