@@ -25,7 +25,7 @@ from .desktop_open import DesktopOpen
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "open_path"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "open_path"}
 
 
 def encoded(value):
@@ -134,8 +134,10 @@ class Session:
     def dispatch(self, rid, method, params):
         allowed = {"analyze": {"records", "selected"}, "investigate": {"targets", "options"}, "batch_reports": {"machine", "query", "start", "end"}, "table_page": {"job", "table", "offset", "limit"},
                    "cancel": {"job"}, "release": {"job"},
-                   "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine"},
-                   "recipe_edit": {"snapshot","row","kind","value"}}
+                   "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine","zone","hide_kla"},
+                   "recipe_edit": {"snapshot","row","kind","value","target"},
+                   "recipe_export": {"snapshot","recipes","machines","query","zone"},
+                   "recipe_delete_preview": {"recipe"}, "recipe_delete": {"recipe","confirm"}}
         allowed.update(document_open={'kind'},document_page={'snapshot','offset','limit'},
                        document_edit={'snapshot','row','column','value','color'},
                        document_append={'snapshot','values'}, document_delete={'snapshot','row'})
@@ -153,7 +155,9 @@ class Session:
         allowed.update(config_state=set(), config_set_save_dir={'path'},
                        config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
                        config_remove={'kind','machine'}, open_path={'path','reveal'},
-                       config_set_batch_auto={'enabled'}, config_set_extra_paths={'machine','paths'})
+                       config_set_batch_auto={'enabled'}, config_set_extra_paths={'machine','paths'},
+                       config_set_hide_kla={'enabled'}, config_local_state=set(), config_set_local_dir={'path'},
+                       config_purge_temp=set(), config_about=set())
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -184,8 +188,15 @@ class Session:
             if self.running:
                 raise ValueError('배치 조사 완료 후 비교 화면을 열어 주세요')
             action = {'recipe_open': lambda: self.recipe.open(), 'recipe_page': lambda: self.recipe.page(params),
-                      'recipe_edit': lambda: self.recipe.edit(params)}
-            self.emit(rid, "completed", recipe=action[method]())
+                      'recipe_edit': lambda: self.recipe.edit(params),
+                      'recipe_export': lambda: self.recipe.export(params),
+                      'recipe_delete_preview': lambda: self.recipe.delete_preview(params),
+                      'recipe_delete': lambda: self.recipe.delete(params)}
+            if method in ('recipe_export', 'recipe_delete'):
+                # Workbook writes and folder moves run off the protocol input thread.
+                self.background(rid, 'recipe', action[method], '레시피 작업을 완료하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
+            else:
+                self.emit(rid, "completed", recipe=action[method]())
         elif method.startswith('form_'):
             if self.running:
                 raise ValueError('배치 조사 완료 후 양식 만들기를 열어 주세요')
@@ -215,13 +226,20 @@ class Session:
                       'history_export': lambda: self.history.export(params)}
             self.emit(rid, 'completed', history=action[method]())
         elif method.startswith('config_'):
+            if self.running and method in ('config_set_save_dir', 'config_set_local_dir', 'config_purge_temp'):
+                raise ValueError('진행 중인 작업이 끝난 뒤 폴더 설정을 바꾸세요')
             action = {'config_state': lambda: self.config.state(),
                       'config_set_save_dir': lambda: self.config.set_save_dir(params),
                       'config_set_report_path': lambda: self.config.set_report_path(params),
                       'config_set_scanresult_root': lambda: self.config.set_scanresult_root(params),
                       'config_remove': lambda: self.config.remove(params),
                       'config_set_batch_auto': lambda: self.config.set_batch_auto(params),
-                      'config_set_extra_paths': lambda: self.config.set_extra_paths(params)}
+                      'config_set_extra_paths': lambda: self.config.set_extra_paths(params),
+                      'config_set_hide_kla': lambda: self.config.set_hide_kla(params),
+                      'config_local_state': lambda: self.config.local_state(),
+                      'config_set_local_dir': lambda: self.config.set_local_dir(params),
+                      'config_purge_temp': lambda: self.config.purge_temp(params),
+                      'config_about': lambda: self.config.about(params)}
             self.emit(rid, 'completed', config=action[method]())
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
@@ -336,6 +354,25 @@ class Session:
             with self.lock:
                 self.running = False
                 self.emit(rid, "error", code="investigation_failed")
+
+    def background(self, rid, key, action, failure):
+        """Run one slow file operation on a worker; same single-job rule as documents."""
+        self.running = True
+        self.emit(rid, 'accepted')
+
+        def work():
+            try:
+                value = action()
+                with self.lock:
+                    self.running = False
+                    self.emit(rid, 'completed', **{key: value})
+            except Exception as exc:
+                with self.lock:
+                    self.running = False
+                    self.emit(rid, 'error', code=f'{key}_failed',
+                              message=str(exc) if isinstance(exc, ValueError) else failure)
+        self.worker = threading.Thread(target=work)
+        self.worker.start()
 
     def document_work(self, rid, action):
         # Workbook I/O and lock verification must not block protocol input.

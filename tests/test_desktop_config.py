@@ -28,6 +28,24 @@ class DesktopConfigTests(unittest.TestCase):
         with open(self.cfg, encoding="utf-8") as fh:
             return json.load(fh)
 
+    def test_local_dir_about_and_purge(self):
+        local = os.path.join(self.tmp, "pc")
+        os.makedirs(local)
+        state = self.a.set_local_dir({"path": local})
+        self.assertEqual(state["root"], str(Path(local, "CamtekAOI").resolve()))
+        self.assertTrue(os.path.isdir(os.path.join(local, "CamtekAOI", "logs")) or os.path.isdir(os.path.join(local, "CamtekAOI")))
+        self.assertEqual(self._cfg()["local_dir"], os.path.join(str(Path(local).absolute()), "CamtekAOI"))
+        onedrive = os.path.join(self.tmp, "OneDrive - Corp")
+        os.makedirs(onedrive)
+        with self.assertRaises(ValueError):
+            self.a.set_local_dir({"path": onedrive})
+        self.a.set_report_path({"machine": "AOI-01", "path": self.reports})
+        with self.assertRaises(ValueError):                       # inside an equipment source
+            self.a.set_local_dir({"path": self.reports})
+        self.assertIn("removed", self.a.purge_temp({}))
+        about = self.a.about({})
+        self.assertTrue(about["version"] and about["logs"].startswith(state["root"]))
+
     def test_batch_auto_and_extra_paths(self):
         self.assertFalse(self.a.state()["batch_auto"])
         self.assertTrue(self.a.set_batch_auto({"enabled": True})["batch_auto"])

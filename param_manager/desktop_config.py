@@ -10,8 +10,8 @@ initial reference files if they are missing, like the tkinter first run.
 import os
 from pathlib import Path
 
-from . import atomicfile, refdata
-from .desktop_batch import read_json
+from . import __version__, atomicfile, engine, localdirs, refdata
+from .desktop_batch import DesktopBatch, read_json
 
 MAX_PATH = 4096
 MAX_MACHINE = 64
@@ -55,6 +55,57 @@ class DesktopConfig:
                     extra_paths={m: [p for p in v if isinstance(p, str)] for m, v in extra.items()
                                  if isinstance(v, list)} if isinstance(extra, dict) else {},
                     batch_auto=bool(cfg.get("batch_auto")))
+
+    # ---- local work folder (tkinter '로컬 작업 폴더') ---------------------
+    def local_state(self):
+        root = DesktopBatch(self.config_path).configuration()[2]
+        return dict(root=str(root), summary=localdirs.describe(str(root)),
+                    onedrive=localdirs.is_under_onedrive(str(root)), default=localdirs.default_root())
+
+    def set_local_dir(self, params):
+        """Local temp/log/cache/result root. Must stay off OneDrive and network
+        shares (the 2026-08 mass-sync incident); like tkinter, a `CamtekAOI`
+        folder is created inside the chosen folder."""
+        if set(params) != {"path"}:
+            raise ValueError("로컬 작업 폴더 경로를 확인하세요")
+        picked = self._valid_dir(params["path"], "로컬 작업 폴더")
+        if picked.startswith(("\\\\", "//")) or localdirs.is_under_onedrive(picked):
+            raise ValueError("로컬 작업 폴더는 OneDrive/네트워크 공유가 아닌 이 PC의 폴더여야 합니다")
+        root = picked if Path(picked).name == localdirs.APP_DIRNAME else str(Path(picked) / localdirs.APP_DIRNAME)
+        cfg = self._read()
+        # Refuse output next to/inside registered equipment sources (same rule as batch output).
+        from . import batchreport_store
+        batchreport_store.local_root(root, (cfg.get("wph_report_paths") or {}).values())
+        localdirs.ensure(root)
+        cfg["local_dir"] = root
+        self._write(cfg)
+        return self.local_state()
+
+    def purge_temp(self, params):
+        if params:
+            raise ValueError("정리 요청을 확인하세요")
+        root = self.local_state()["root"]
+        removed = localdirs.cleanup_temp(root, keep_hours=localdirs.TEMP_KEEP_HOURS)
+        return dict(self.local_state(), removed=removed)
+
+    def about(self, params):
+        if params:
+            raise ValueError("정보 요청을 확인하세요")
+        try:
+            root = self.local_state()["root"]
+            logs = localdirs.logs_dir(root)
+        except (OSError, ValueError):
+            root, logs = "", ""
+        return dict(version=__version__, user=engine.current_user(), config=str(self.config_path),
+                    local_root=root, logs=logs)
+
+    def set_hide_kla(self, params):
+        if set(params) != {"enabled"} or type(params["enabled"]) is not bool:
+            raise ValueError("KLA 숨김 설정을 확인하세요")
+        cfg = self._read()
+        cfg["hide_kla"] = params["enabled"]
+        self._write(cfg)
+        return self.state()
 
     def set_batch_auto(self, params):
         if set(params) != {"enabled"} or type(params["enabled"]) is not bool:

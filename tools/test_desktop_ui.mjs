@@ -112,6 +112,19 @@ try{
   await page.getByRole('button',{name:'다음 호기',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('.comparison-header')?.textContent.includes('AOI-20'));
   await page.screenshot({path:join(root,'docs/screenshots/rev1-recipe.png'),fullPage:true});
+  // B: Recipe tools — Zone filter, paint mode (shared cell colors), export.
+  await page.getByLabel('Zone').selectOption('Surface');
+  await page.getByLabel('🖌 셀 색칠 모드').check();
+  await page.locator('.comparison-viewport').evaluate(el=>{el.scrollTop=0;});
+  const firstCell=page.locator('.comparison-row').first().locator('span[data-machine]').first();
+  await firstCell.waitFor();
+  await firstCell.click();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('.comparison-row span[data-machine]')).backgroundColor==='rgb(255, 242, 204)');
+  await page.getByLabel('🖌 셀 색칠 모드').uncheck();
+  await page.getByRole('button',{name:'내보내기…',exact:true}).click();
+  await page.locator('dialog[open]').getByRole('button',{name:'Excel로 내보내기',exact:true}).click();
+  assert((await page.locator('dialog[open]').getByLabel('저장된 Excel').inputValue()).includes('내보내기'));
+  await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
   await page.getByRole('button',{name:'장비 IP',exact:true}).click();
   await page.getByRole('button',{name:'10.0.0.1',exact:true}).click();
   await page.locator('dialog textarea').fill('10.0.0.2');
@@ -149,6 +162,12 @@ try{
   await page.getByLabel('추가 폴더').fill(archive);
   await page.getByRole('button',{name:'추가',exact:true}).click();
   await page.getByText(archive,{exact:true}).waitFor();
+  await page.getByRole('tab',{name:'정보'}).click();
+  await page.getByLabel('오류 로그 폴더').waitFor();
+  await page.getByRole('tab',{name:'로컬 작업 폴더'}).click();
+  await page.getByLabel('현재 위치').waitFor();
+  await page.getByRole('button',{name:'오래된 임시 폴더 정리',exact:true}).click();
+  await page.getByText(/오래된 임시 폴더 \d+개 정리/).waitFor();
   await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
   await page.locator('.stepper').getByRole('button',{name:/조사 대상/}).click();
   await page.getByText('+ '+archive,{exact:true}).waitFor();

@@ -24,6 +24,54 @@ class RecipeTests(unittest.TestCase):
         self.adapter=DesktopRecipe(self.config);self.catalog=self.adapter.open()
         self.patch=patch.object(locking,'VERIFY_DELAY_SEC',0);self.patch.start();self.addCleanup(self.patch.stop)
 
+    def _local(self):
+        cfg=json.loads(self.config.read_text());cfg['local_dir']=str(self.root/'local')
+        self.config.write_text(json.dumps(cfg))
+
+    def test_zone_filter_kla_hide_and_cell_colors(self):
+        from param_manager import refdata
+        ip=refdata.ip_path(str(self.shared));refdata.create_blank_ip(ip)
+        refdata.save_ip(ip,[{'호기':'AOI-01','IP':'','장비종류':'KLA'},{'호기':'AOI-02','IP':'','장비종류':'Camtek'}])
+        cat=self.adapter.open()
+        self.assertEqual(cat['zones'],{'PI2':['Surface']});self.assertEqual(cat['machine_types']['AOI-01'],'KLA')
+        page=self.adapter.page({'snapshot':cat['version'],'selected_machine':'AOI-02','hide_kla':True})
+        self.assertNotIn('AOI-01',page['machines']);self.assertEqual(page['machine_total'],19)
+        self.assertEqual(self.adapter.page({'snapshot':cat['version'],'selected_machine':'AOI-02','zone':'Other'})['total'],0)
+        self.adapter.edit({'snapshot':cat['version'],'row':0,'kind':'cell','target':'AOI-03','value':'#ffee00'})
+        row=self.adapter.page({'snapshot':cat['version'],'selected_machine':'AOI-02','limit':1})['rows'][0]
+        self.assertEqual(row['cells'],{'AOI-03':'#FFEE00'})
+        store=json.loads((self.shared/'값확인_셀색상.json').read_text(encoding='utf-8'))
+        self.assertEqual(list(store.values()),['#FFEE00'])      # tkinter key format: 5 fields + target
+        self.assertEqual(len(next(iter(store)).split('\x1f')),6)
+        self.adapter.edit({'snapshot':cat['version'],'row':0,'kind':'cell','target':'AOI-03','value':''})
+        self.assertEqual(json.loads((self.shared/'값확인_셀색상.json').read_text(encoding='utf-8')),{})
+        with self.assertRaises(ValueError):
+            self.adapter.edit({'snapshot':cat['version'],'row':0,'kind':'cell','target':'../x','value':'#ffee00'})
+
+    def test_export_filters_to_local_folder(self):
+        self._local()
+        out=self.adapter.export({'snapshot':self.catalog['version'],'recipes':['PI2'],'machines':['AOI-05','AOI-02'],'query':'Bright 1'})
+        self.assertTrue(out['path'].startswith(str(self.root/'local')))
+        wb=openpyxl.load_workbook(out['path']);self.addCleanup(wb.close)
+        heads=[c.value for c in wb.active[1]]
+        self.assertEqual(heads[-2:],['AOI-02','AOI-05'])          # machine order kept from the collation
+        self.assertEqual(out['rows'],wb.active.max_row-1)
+        for bad in ({'recipes':[],'machines':['AOI-01']},{'recipes':['X'],'machines':['AOI-01']},{'recipes':['PI2'],'machines':['AOI-99']}):
+            with self.assertRaises(ValueError):self.adapter.export({'snapshot':self.catalog['version'],**bad})
+
+    def test_recipe_delete_moves_locally_and_drops_sheet(self):
+        self._local()
+        run=workdirs.form_run_dir(str(self.shared),'PI2','20260920_000000')
+        openpyxl.Workbook().save(Path(run)/'PI2_양식.xlsx')
+        prev=self.adapter.delete_preview({'recipe':'PI2'})
+        self.assertEqual((prev['versions'],prev['files']),(1,1))
+        with self.assertRaises(ValueError):self.adapter.delete({'recipe':'PI2','confirm':'pi2'})
+        out=self.adapter.delete({'recipe':'PI2','confirm':'PI2'})
+        self.assertTrue(out['moved'].startswith(str(self.root/'local')) and Path(out['moved']).is_dir())
+        self.assertEqual(out['sheets'],1)
+        self.assertEqual(workdirs.list_recipes(str(self.shared)),[])
+        self.assertEqual(collate.load_collation(self.path)[0],{})
+
     def test_row_column_bounds_search_and_baseline(self):
         data=self.adapter.page({'snapshot':self.catalog['version'],'selected_machine':'AOI-20','limit':100})
         self.assertEqual(data['total'],205);self.assertEqual(len(data['rows']),100)

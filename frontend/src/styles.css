@@ -83,3 +83,9 @@ tr.muted td{color:#9aa8ba}
 .warn{color:var(--bad);font-weight:700}
 .open-path{display:flex;gap:10px;align-items:end;margin:10px 0}.open-path .field{flex:1;min-width:0}.open-actions{display:flex;gap:6px;flex:none}
 .doc-check{font-size:18px;text-align:center}
+.recipe-controls{grid-template-columns:1fr 160px 150px 1fr auto}
+.recipe-tools{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:-8px 0 14px}.recipe-tools input[type=color]{width:44px;height:32px;padding:2px}
+.comparison-viewport.painting .comparison-row span,.comparison-viewport.painting .note-button{cursor:crosshair}
+.wide-dialog{width:640px}.pick-list.short{max-height:160px;overflow:auto}.pick-list.cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}
+button.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+@media(max-width:1000px){.recipe-controls{grid-template-columns:1fr 1fr}}

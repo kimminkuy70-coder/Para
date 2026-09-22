@@ -1,9 +1,10 @@
 import {useEffect,useState} from 'react';
 import {desktop,pickFolder} from './desktop';
 import {notify,fail} from './ui';
+import {OpenPath} from './OpenPath';
 
 type State={save_dir:string;local_dir:string;report_paths:Record<string,string>;scanresult_roots:Record<string,string>;extra_paths:Record<string,string[]>;batch_auto:boolean};
-const TABS:[string,string][]=[['save','저장폴더'],['report','배치 Report 폴더'],['auto','배치 자동·추가 폴더'],['scan','Scanresult 루트']];
+const TABS:[string,string][]=[['save','저장폴더'],['report','배치 Report 폴더'],['auto','배치 자동·추가 폴더'],['scan','Scanresult 루트'],['local','로컬 작업 폴더'],['about','정보']];
 
 export function Settings(){
   const [sub,setSub]=useState('save');
@@ -13,6 +14,18 @@ export function Settings(){
   const [rMachine,setRMachine]=useState(''),[rPath,setRPath]=useState('');
   const [sMachine,setSMachine]=useState(''),[sPath,setSPath]=useState('');
   const [xMachine,setXMachine]=useState(''),[xPath,setXPath]=useState('');
+  type Local={root:string;summary:string;onedrive:boolean;default:string;removed?:number};
+  type About={version:string;user:string;config:string;local_root:string;logs:string};
+  const [local,setLocal]=useState<Local>(),[localPath,setLocalPath]=useState(''),[about,setAbout]=useState<About>();
+  useEffect(()=>{
+    if(sub==='local')desktop.request('config_local_state').promise.then(r=>setLocal(r.config as Local)).catch(fail);
+    if(sub==='about')desktop.request('config_about').promise.then(r=>setAbout(r.config as About)).catch(fail);
+  },[sub]);
+  async function localReq(method:string,params:object,ok:(r:Local)=>string){
+    setBusy(true);
+    try{const r=(await desktop.request(method,params).promise).config as Local;setLocal(r);notify(ok(r),'ok');}
+    catch(e){fail(e);}finally{setBusy(false);}
+  }
 
   async function load(){
     try{await desktop.connect();const r=(await desktop.request('config_state').promise).config as State;
@@ -88,6 +101,29 @@ export function Settings(){
           <label className="field" style={{flex:1,minWidth:240}}>추가 폴더<input value={xPath} placeholder="예: P:\AOI-21\Reports_backup" maxLength={4096} onChange={e=>setXPath(e.target.value)}/></label>
           <button onClick={()=>browse(setXPath)}>📁 찾기</button>
           <button className="primary" disabled={busy||!xMachine||!xPath.trim()} onClick={()=>req('config_set_extra_paths',{machine:xMachine,paths:[...(st?.extra_paths[xMachine]||[]),xPath.trim()]},'추가 폴더 등록',()=>setXPath(''))}>추가</button></div></>}
+    </>}
+
+    {sub==='local'&&<>
+      <h3>로컬 작업 폴더</h3>
+      <p className="hint">임시 수집물·로그·캐시·분석 결과가 쌓이는 이 PC의 폴더입니다. OneDrive·네트워크 공유는 지정할 수 없습니다(대량 동기화 방지). 고른 폴더 안에 CamtekAOI 폴더가 만들어집니다.</p>
+      {local&&<><OpenPath label="현재 위치" path={local.root} folder/>
+        <p className="hint">{local.summary}{local.onedrive?' · ⚠ OneDrive 안입니다':''}</p></>}
+      <div className="form-filter" style={{marginTop:12}}>
+        <label className="field" style={{flex:1,minWidth:280}}>새 위치<input value={localPath} placeholder="예: D:\Work" maxLength={4096} onChange={e=>setLocalPath(e.target.value)}/></label>
+        <button onClick={()=>browse(setLocalPath)}>📁 찾기</button>
+        <button className="primary" disabled={busy||!localPath.trim()} onClick={()=>localReq('config_set_local_dir',{path:localPath.trim()},r=>`로컬 작업 폴더 변경: ${r.root}`)}>변경</button></div>
+      <div className="toolbar"><button disabled={busy||!local} onClick={()=>localReq('config_purge_temp',{},r=>`오래된 임시 폴더 ${r.removed??0}개 정리`)}>오래된 임시 폴더 정리</button></div>
+      <p className="hint">정리는 {`6시간`} 넘게 지난 임시 회차 폴더만 지웁니다(진행 중 작업 보호).</p>
+    </>}
+
+    {sub==='about'&&<>
+      <h3>프로그램 정보</h3>
+      {about?<table className="tbl" style={{marginTop:12}}><tbody>
+        <tr><td style={{width:140,fontWeight:700}}>엔진 버전</td><td>{about.version}</td></tr>
+        <tr><td style={{fontWeight:700}}>사용자</td><td>{about.user}</td></tr>
+        <tr><td style={{fontWeight:700}}>설정 파일</td><td><code>{about.config}</code></td></tr></tbody></table>:<p className="hint">불러오는 중…</p>}
+      {about?.logs&&<OpenPath label="오류 로그 폴더" path={about.logs} folder/>}
+      <p className="hint">문제가 생기면 오류 로그 폴더의 파일을 담당자에게 전달하세요.</p>
     </>}
 
     {sub==='scan'&&<>
