@@ -4,6 +4,24 @@
 > `version_rev1`을 베이스로 `claude/ux-bento-navy-lime`을 병합해 두 브랜치의 완성분을 하나로 합쳤다.
 > 계획서: `docs/Para_version_rev1_master_plan.html`. 아래 A0~A6 표는 그대로 유효하다.
 
+## 재개 체크포인트 — A4~A10 수정 + 웹 자동 업데이트(B4 a안) (2026-09-22)
+
+- **A4~A10**: 양식 이름 저장 실패 시 창 유지, 엔진 종료 사유 보존·[다시 연결], 오류 분류
+  (access_denied/file_missing/io_failed/engine_failed)+로컬 로그, 새로고침 시 엔진 재연결
+  (Rust 이벤트 채널 교체, id 단조 증가), 문서 테마색·숫자 보존, 느린 읽기 worker 이동,
+  지표 제목 엔진 기준(M10='Lot 스캔 이슈율'), 빈 리포트 선택 거부·조건 변경 시 선택 초기화.
+- **자동 업데이트(`desktop_appupdate.py`)**: 기존 A안(OneDrive `프로그램\`, 인터넷 없음, 로컬 검증,
+  분리 스크립트 교체)을 그대로 따르되 배포물을 **zip 1개 + `버전정보_web.json`**(tkinter 게시물과
+  분리)으로. 적용 = 로컬 Temp 복사·크기/SHA 검증 → `<설치>.new` 에 풀고 `package-manifest.json` 으로
+  파일별 검증 → 앱 종료 후 스크립트가 **설치 폴더 이름 바꾸기 성공 = 종료 신호**로 `.prev`(롤백 1개)와
+  교체 → 같은 경로로 재실행. 게시·확인·건너뛰기·직접 설치 UI, Rust `app_exit`.
+  `desktop_bundle` 로직을 `param_manager/desktop_package.py` 로 옮겨 엔진이 검증에 사용.
+- **발견·수정**: `local_dir` 미설정 시 패키지 엔진의 기본 로컬 폴더가 `<설치>\sidecar\CamtekAOI`
+  (업데이트로 교체되는 폴더 안)가 되던 문제 → `%LOCALAPPDATA%\CamtekAOI`, 설치 폴더 안 지정 금지.
+- **문서**: `docs/WEB_UI_초기설정.md`, `docs/WEB_UI_기존자료_연동.md`(패키지에도 포함).
+- **검증**: Python 테스트·브라우저 통합 시험·`cargo check` 통과. 교체 스크립트의 실제 폴더 이동·재실행은
+  Windows 실기 필요(리눅스에서 스크립트 내용만 검증).
+
 ## 재개 체크포인트 — 기능 비교 후 버그 수정 + tkinter 미구현 기능 이식 (2026-09-22)
 
 - **비교 기준**: `claude/ux-bento-navy-lime`(이미 병합됨)의 tkinter `equip_app.py` 대비 웹 UI.

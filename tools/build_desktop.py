@@ -65,6 +65,8 @@ def build(app_version):
     shutil.copy2(exe,package/'Camtek_AOI_manager.exe')
     shutil.copytree(native/'sidecar',package/'sidecar')
     shutil.copy2(ROOT/'docs/REV1_PACKAGING.md',package/'READ_BEFORE_USE.md')
+    shutil.copy2(ROOT/'docs/WEB_UI_초기설정.md',package/'초기설정.md')
+    shutil.copy2(ROOT/'docs/WEB_UI_기존자료_연동.md',package/'기존자료_연동.md')
     generate(stage, package/'licenses')
     (package/'licenses/python-build-environment.txt').write_text(
         subprocess.check_output([sys.executable,'-m','pip','freeze'],text=True),encoding='utf-8')

@@ -118,6 +118,11 @@ jobs:
           Copy-Item -Recurse "frontend/src-tauri/sidecar" "$out/sidecar"
           Copy-Item "docs/REV1_PACKAGING.md" "$out/READ_BEFORE_USE.md"
           Copy-Item "docs/WEB_UI_사용법.md" "$out/사용법.md"
+          Copy-Item "docs/WEB_UI_초기설정.md" "$out/초기설정.md"
+          Copy-Item "docs/WEB_UI_기존자료_연동.md" "$out/기존자료_연동.md"
+
+      - name: Write package manifest (version + file hashes, used by self-update)
+        run: python tools/desktop_bundle.py create "Camtek_AOI_manager_v${{ steps.ver.outputs.version }}" --version ${{ steps.ver.outputs.version }}
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4

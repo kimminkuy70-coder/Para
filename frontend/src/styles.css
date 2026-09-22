@@ -92,3 +92,5 @@ button.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 .slot-picks{display:flex;flex-wrap:wrap;gap:8px}.slot-picks label{display:flex;align-items:center;gap:4px;font-size:12px}
 tr.fail-row td{background:#fff7d6}tr.row-now td{background:#effaf5}
 .connection-box{display:flex;align-items:center;gap:8px}
+.update-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 24px;background:#ecfdf5;border-bottom:1px solid #a7f3d0;color:var(--ink);font-size:13px}.update-banner .changelog{margin:4px 0 0;color:var(--muted);white-space:pre-wrap}.update-banner .actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:1000px){.update-banner{flex-direction:column;align-items:flex-start}}

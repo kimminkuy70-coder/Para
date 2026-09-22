@@ -72,6 +72,9 @@ class DesktopConfig:
         if picked.startswith(("\\\\", "//")) or localdirs.is_under_onedrive(picked):
             raise ValueError("로컬 작업 폴더는 OneDrive/네트워크 공유가 아닌 이 PC의 폴더여야 합니다")
         root = picked if Path(picked).name == localdirs.APP_DIRNAME else str(Path(picked) / localdirs.APP_DIRNAME)
+        from .desktop_appupdate import inside_install
+        if inside_install(root):
+            raise ValueError("로컬 작업 폴더를 앱 설치 폴더 안에 둘 수 없습니다(업데이트 때 교체됩니다)")
         cfg = self._read()
         # Refuse output next to/inside registered equipment sources (same rule as batch output).
         from . import batchreport_store

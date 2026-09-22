@@ -8,7 +8,7 @@ export type Configuration = {machines: {id: string; folder: string; extra?: stri
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;
-  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown} & Partial<Configuration>;
+  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown} & Partial<Configuration>;
 
 // Native folder chooser (Tauri command). Returns the user-selected absolute
 // path, or null if cancelled or not running inside the desktop shell (then the
@@ -18,6 +18,12 @@ export async function pickFolder(): Promise<string|null> {
   try { return (await invoke<string|null>('pick_folder')) ?? null; }
   catch { return null; }
 }
+/** Quit the desktop app (used right after a self-update was staged). */
+export async function exitApp(): Promise<void> {
+  if (isTauri()) await invoke('app_exit');
+}
+export type AppUpdate = {current: string; installed: boolean; available: string; newer: boolean; changelog: string;
+  published_at: string; skipped: boolean; failed: boolean; program_dir: string};
 type Pending = {resolve: (v: Reply) => void; reject: (e: Error) => void; progress?: (v: Reply) => void};
 class DesktopClient {
   // Ids keep increasing across page reloads because a reload re-attaches to the

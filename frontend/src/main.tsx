@@ -11,6 +11,7 @@ import {Documents} from './Documents';
 import {Commonality} from './Commonality';
 import {Toaster,notify,Stepper,StepNav} from './ui';
 import {OpenPath} from './OpenPath';
+import {UpdateBanner} from './AppUpdate';
 
 const metrics: [Metric,string,string][] = [
   ['M01','처리량 · WPH','유효 매수 기준 처리 속도'], ['M02','스캔 가동률','일·주·월, 관측 범위 기준'],
@@ -209,6 +210,7 @@ function App(){
   return <div className="app">
     <Toaster/>
     <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
+    <UpdateBanner busy={busy}/>
     <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
     <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
         {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>

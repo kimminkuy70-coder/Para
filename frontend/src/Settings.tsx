@@ -2,6 +2,8 @@ import {useEffect,useState} from 'react';
 import {desktop,pickFolder} from './desktop';
 import {notify,fail} from './ui';
 import {OpenPath} from './OpenPath';
+import {installUpdate,openProgramDir} from './AppUpdate';
+import type {AppUpdate} from './desktop';
 
 type State={save_dir:string;local_dir:string;report_paths:Record<string,string>;scanresult_roots:Record<string,string>;extra_paths:Record<string,string[]>;batch_auto:boolean};
 const TABS:[string,string][]=[['save','저장폴더'],['report','배치 Report 폴더'],['auto','배치 자동·추가 폴더'],['scan','Scanresult 루트'],['local','로컬 작업 폴더'],['about','정보']];
@@ -16,6 +18,18 @@ export function Settings(){
   const [xMachine,setXMachine]=useState(''),[xPath,setXPath]=useState('');
   type Local={root:string;summary:string;onedrive:boolean;default:string;removed?:number};
   type About={version:string;user:string;config:string;local_root:string;logs:string};
+  const [upd,setUpd]=useState<AppUpdate>(),[pubPath,setPubPath]=useState(''),[pubNotes,setPubNotes]=useState('');
+  async function checkUpdate(){
+    try{const r=(await desktop.request('appupdate_check').promise).appupdate as AppUpdate;setUpd(r);
+      notify(r.newer?`새 버전 ${r.available}이 있습니다.`:r.available?`최신 버전입니다(${r.current}).`:'게시된 웹 버전이 없습니다.','info');}
+    catch(e){fail(e);}
+  }
+  async function publishPackage(){
+    setBusy(true);
+    try{const r=(await desktop.request('appupdate_publish',{path:pubPath.trim(),notes:pubNotes}).promise).appupdate as {version:string;filename:string};
+      notify(`${r.version} 게시 완료 (${r.filename}). 다른 PC는 다음 실행 때 알림을 받습니다.`,'ok');setPubNotes('');}
+    catch(e){fail(e);}finally{setBusy(false);}
+  }
   const [local,setLocal]=useState<Local>(),[localPath,setLocalPath]=useState(''),[about,setAbout]=useState<About>();
   useEffect(()=>{
     if(sub==='local')desktop.request('config_local_state').promise.then(r=>setLocal(r.config as Local)).catch(fail);
@@ -123,6 +137,17 @@ export function Settings(){
         <tr><td style={{fontWeight:700}}>사용자</td><td>{about.user}</td></tr>
         <tr><td style={{fontWeight:700}}>설정 파일</td><td><code>{about.config}</code></td></tr></tbody></table>:<p className="hint">불러오는 중…</p>}
       {about?.logs&&<OpenPath label="오류 로그 폴더" path={about.logs} folder/>}
+      <h3 style={{marginTop:24}}>업데이트</h3>
+      <div className="toolbar"><button onClick={checkUpdate}>업데이트 확인</button><button onClick={openProgramDir}>게시 폴더 열기</button>
+        {upd?.newer&&<button className="primary" disabled={busy||!upd.installed} onClick={()=>void installUpdate()}>지금 {upd.available}(으)로 업데이트</button>}</div>
+      {upd&&<p className="hint">현재 {upd.current} · 게시 {upd.available||'없음'}{upd.changelog?` — ${upd.changelog}`:''}</p>}
+      <details style={{marginTop:16}}><summary>개발자: 새 버전 게시</summary>
+        <p className="hint">빌드된 패키지 폴더(GitHub Actions 아티팩트를 압축 해제한 폴더 또는 build_desktop.py 결과)를 고르면 zip 1개로 묶어 게시 폴더에 올립니다. 폴더 안의 package-manifest.json 으로 모든 파일을 검증하고, 버전도 그 파일에서 읽습니다.</p>
+        <div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>패키지 폴더<input value={pubPath} maxLength={4096} onChange={e=>setPubPath(e.target.value)}/></label>
+          <button onClick={()=>browse(setPubPath)}>📁 찾기</button></div>
+        <label className="field">변경 내용<textarea rows={3} maxLength={4000} value={pubNotes} onChange={e=>setPubNotes(e.target.value)}/></label>
+        <div className="toolbar"><button className="primary" disabled={busy||!pubPath.trim()} onClick={publishPackage}>게시</button></div>
+      </details>
       <p className="hint">문제가 생기면 오류 로그 폴더의 파일을 담당자에게 전달하세요.</p>
     </>}
 

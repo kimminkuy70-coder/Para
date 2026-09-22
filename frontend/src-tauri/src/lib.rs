@@ -12,11 +12,16 @@ fn pick_folder() -> Option<String> {
         .and_then(|path| path.to_str().map(str::to_string))
 }
 
+/// Quit the app so a staged self-update can swap the install folder. Goes
+/// through ExitRequested below, which lets the engine finish cleanly first.
+#[tauri::command]
+fn app_exit(app: tauri::AppHandle) { app.exit(0); }
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(desktop::Desktop::default())
-        .invoke_handler(tauri::generate_handler![app_contract_version, pick_folder, desktop::desktop_connect, desktop::desktop_send])
+        .invoke_handler(tauri::generate_handler![app_contract_version, pick_folder, app_exit, desktop::desktop_connect, desktop::desktop_send])
         .build(tauri::generate_context!())
         .expect("failed to build Camtek AOI Manager")
         .run(|app, event| {

@@ -51,6 +51,12 @@ try{
     await page.evaluate(()=>document.fonts.ready);
   }
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
+  // Self-update: the published package is announced; a dev run cannot install it.
+  const banner=page.locator('.update-banner');
+  await banner.getByText('새 버전 99.1.0').waitFor();
+  assert(await banner.getByRole('button',{name:'지금 업데이트'}).isDisabled());
+  await banner.getByRole('button',{name:'이 버전 건너뛰기'}).click();
+  await banner.waitFor({state:'detached'});
   // A3: a toast raised while a modal dialog is open must be the topmost element.
   await page.getByRole('button',{name:'Recipe 관리',exact:true}).click();
   await page.getByRole('button',{name:'Min Defect Bright 0 색상 변경',exact:true}).click();
@@ -172,6 +178,8 @@ try{
   await page.getByText(archive,{exact:true}).waitFor();
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('오류 로그 폴더').waitFor();
+  await page.getByRole('button',{name:'업데이트 확인',exact:true}).click();
+  await page.getByText('새 버전 99.1.0이 있습니다.').waitFor();
   await page.getByRole('tab',{name:'로컬 작업 폴더'}).click();
   await page.getByLabel('현재 위치').waitFor();
   await page.getByRole('button',{name:'오래된 임시 폴더 정리',exact:true}).click();

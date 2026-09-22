@@ -65,6 +65,12 @@ if sys.argv[1] == 'init':
             _make_wafer(root/'eq', 'AOI-01', '2D@R2-DEVA-1_0855360PD-0A', '6321' if sm == 'HPG' else '6322', sm, w)
     cfg['commonality_roots'] = {'AOI-01': str(root/'eq')}
     (root/'config.json').write_text(json.dumps(cfg), encoding='utf-8')
+    # A published web package newer than the running engine (self-update banner).
+    from param_manager import desktop_appupdate, desktop_package
+    pkg = root/'pkg'; (pkg/'sidecar').mkdir(parents=True)
+    (pkg/'Camtek_AOI_manager.exe').write_bytes(b'app'); (pkg/'sidecar'/'Camtek_AOI_engine.exe').write_bytes(b'engine')
+    desktop_package.create(pkg, '99.1.0')
+    desktop_appupdate.publish(str(shared), str(pkg), str(root/'local'), '테스트 게시', 'fixture')
 else:
     original = desktop_ipc.Session
     class FixtureSession(original):
@@ -74,7 +80,7 @@ else:
             self.batch = DesktopBatch(config)
             self.commonality.batch.config_path = config
             for adapter in (self.recipe, self.documents, self.form, self.cmsurvey,
-                            self.history, self.config, self.opener, self.update, self.cmrun):
+                            self.history, self.config, self.opener, self.update, self.cmrun, self.appupdate):
                 adapter.config_path = config
             self.cmrun.survey.config_path = config
             self.cmrun.form.config_path = config

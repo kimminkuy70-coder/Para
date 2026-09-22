@@ -54,7 +54,9 @@ class DesktopBatch:
         paths = cfg.get("wph_report_paths") or {}
         if not isinstance(paths, dict):
             raise ValueError("기존 Report 폴더 설정을 확인하세요")
-        requested_root = Path(cfg.get("local_dir") or localdirs.default_root()).absolute()
+        from .desktop_appupdate import default_local_root
+        # Packaged web app: never default into the install folder (an update replaces it).
+        requested_root = Path(cfg.get("local_dir") or default_local_root()).absolute()
         for part in (requested_root, *requested_root.parents):
             if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
                 raise ValueError("로컬 결과 폴더의 연결 경로는 사용할 수 없습니다")
