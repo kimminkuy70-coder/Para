@@ -48,6 +48,8 @@ export function Documents({kind}:{kind:'ip'|'special'|'reference'}){
     catch(e){setError(errorText(e));}finally{setLoading(false);}
   }
   useEffect(()=>{void refresh();},[kind]);
+  // Leaving the document releases its edit lock (held while open, like the tkinter screen).
+  useEffect(()=>()=>{desktop.request('document_close').promise.catch(()=>undefined);},[]);
   useEffect(()=>{
     if(!catalog?.snapshot)return;
     let active=true;setLoading(true);

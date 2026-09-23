@@ -7,7 +7,7 @@ from uuid import uuid4
 import json
 import os as _os
 import openpyxl
-from . import (atomicfile, collate, engine, exporter, localdirs, locking, namestore,
+from . import (collate, shared_io, engine, exporter, localdirs, locking, namestore,
                refdata, rtp_parser as rtp, watcher, workdirs)
 from .desktop_batch import DesktopBatch, read_json
 
@@ -42,6 +42,8 @@ class DesktopRecipe:
         if not path:
             return dict(version=None, recipes=[], machines=[], source='')
         self.path = self.safe_path(path)
+        if getattr(self, 'held', None) and self.held != self.path:
+            self.close()            # a newer collation: release the old file's lock
         before = locking.file_stamp(self.path)
         sheets, self.machines = collate.load_collation(self.path)
         if before != locking.file_stamp(self.path):
@@ -57,8 +59,9 @@ class DesktopRecipe:
         self.types = self._machine_types()
         self.version = uuid4().hex
         zones = {sheet: sorted({engine._s(r.get('Zone')).strip() for r in rows} - {''}) for sheet, rows in sheets.items()}
-        return dict(version=self.version, recipes=list(sheets), machines=self.machines, source=Path(path).name,
-                    path=self.path, zones=zones, machine_types=self.types, hide_kla=bool(cfg.get('hide_kla', True)))
+        self.last_catalog = dict(version=self.version, recipes=list(sheets), machines=self.machines, source=Path(path).name,
+                                 path=self.path, zones=zones, machine_types=self.types, hide_kla=bool(cfg.get('hide_kla', True)))
+        return self.last_catalog
 
     def _machine_types(self):
         try:
@@ -145,12 +148,12 @@ class DesktopRecipe:
             alg,name=engine._s(row.get('Alg')),engine._s(row.get('Parameter'))
             original=namestore.resolve_original(self.names,alg,name)
             namestore.save_selected(self.name_path,[{'alg':alg,'ext':{'key':original},'name':name,'color':color}],user,self.name_stamp)
+            # Only the names file changed: reload it, not the collation/IP/colors (fewer OneDrive reads).
+            self.name_stamp=locking.file_stamp(self.name_path) or (0,0)
+            self.names=namestore.load(self.name_path)
         else:
-            previous=locking.status(self.path,user)
-            acquired=locking.acquire(self.path,user)
-            if not acquired.editable:
-                raise ValueError(locking.holder_message(acquired,'비고'))
-            wb=None; temporary=None
+            self._hold(user)
+            wb=None
             try:
                 check=locking.check_before_save(self.path,user,self.stamp)
                 if not check['ok']: raise ValueError(check['reason'])
@@ -163,33 +166,65 @@ class DesktopRecipe:
                 cells=[cells for cells in ws.iter_rows(min_row=2) if tuple(engine._s(cells[idx[k]].value) for k in key)==wanted]
                 if len(cells)!=1: raise ValueError('동일 항목이 여러 개입니다. 기존 프로그램에서 비고를 확인하세요.')
                 cell=cells[0][idx['비고']];cell.value=value;cell.data_type='s'
-                fd,temporary=tempfile.mkstemp(prefix='.rev1-note-',suffix='.xlsx',dir=Path(self.path).parent)
-                os.close(fd);wb.save(temporary)
                 check=locking.check_before_save(self.path,user,self.stamp)
                 if not check['ok'] or locking.file_stamp(self.path)!=self.stamp:
                     raise ValueError(check['reason'] or '저장 직전 문서가 변경되었습니다.')
-                os.replace(temporary,self.path);temporary=None
+                # One write onto the collation; no temp workbook in the shared folder.
+                from .desktop_batch import DesktopBatch
+                shared_io.save_workbook(wb,self.path,str(DesktopBatch(self.config_path).configuration()[2]))
             finally:
                 if wb: wb.close()
-                if temporary and os.path.exists(temporary): os.unlink(temporary)
-                if previous.status!='mine':locking.release(self.path,user)
-        return self.open()
+            row['비고']=value                  # memory, instead of reading the file back
+            self.stamp=locking.file_stamp(self.path)
+        return self._catalog()
+
+    def _catalog(self):
+        self.version=uuid4().hex
+        return dict(self.last_catalog,version=self.version)
+
+    def _hold(self, user):
+        """Keep the collation's edit lock while Recipe 관리 is open instead of
+        creating/deleting it around every note (each is an OneDrive event)."""
+        if getattr(self,'held',None) not in (None,self.path):
+            self.close()
+        state=locking.acquire(self.path,user)
+        if not state.editable:
+            raise ValueError(locking.holder_message(state,'비고'))
+        self.held=self.path
+
+    def close(self):
+        held=getattr(self,'held',None)
+        if held:
+            try:locking.release(held,engine.current_user())
+            except OSError:pass
+        self.held=None
+        return dict(closed=True)
+
+    def paint(self, params):
+        """Apply a batch of cell colors with ONE write of 값확인_셀색상.json (the UI
+        collects clicks and sends them together)."""
+        self.check(params,{'snapshot','cells'})
+        cells=params.get('cells')
+        if not isinstance(cells,list) or not 1<=len(cells)<=500:
+            raise ValueError('색칠할 칸을 확인하세요')
+        colors=self._load_colors()   # re-read once: another user may have painted meanwhile
+        for item in cells:
+            if not isinstance(item,dict) or set(item)!={'row','target','color'}:
+                raise ValueError('색칠할 칸을 확인하세요')
+            index,target,value=item['row'],item['target'],item['color']
+            if (type(index) is not int or not 0<=index<len(self.rows) or not isinstance(target,str)
+                    or target not in ('param','비고','zone',*self.machines) or not isinstance(value,str)):
+                raise ValueError('색칠할 칸을 선택하세요')
+            color=namestore.normalize_color(value) if value else ''
+            key='\x1f'.join(row_key(self.rows[index][1])+(target,))
+            if color:colors[key]=color
+            else:colors.pop(key,None)
+        shared_io.write_json(self._colors_path(),colors)
+        self.colors=colors
+        return dict(version=self.version,painted=len(cells))
 
     def _paint(self, index, target, value):
-        """Per-cell highlight in the shared view (tkinter 셀 색칠). Stored in
-        값확인_셀색상.json keyed by row identity + target column; '' clears it."""
-        if not isinstance(target,str) or target not in ('param','비고','zone',*self.machines):
-            raise ValueError('색칠할 칸을 선택하세요')
-        color=namestore.normalize_color(value) if value else ''
-        key='\x1f'.join(row_key(self.rows[index][1])+(target,))
-        colors=self._load_colors()   # re-read: another user may have painted meanwhile
-        if color:
-            colors[key]=color
-        else:
-            colors.pop(key,None)
-        atomicfile.write_json(self._colors_path(),colors)
-        self.colors=colors
-        return dict(version=self.version,painted=target,color=color)
+        return self.paint(dict(snapshot=self.version,cells=[dict(row=index,target=target,color=value)]))
 
     # ---- export (tkinter 내보내기) ----------------------------------------
     def export(self, params):

@@ -129,13 +129,34 @@ class DocumentsTests(unittest.TestCase):
             self.doc.append({'snapshot':self.catalog['snapshot'],'values':['new','','']})
         self.assertEqual(Path(self.path).read_bytes(),original)
 
-    def test_append_failed_replace_preserves_workbook_and_cleans_temp(self):
+    def test_failed_save_preserves_workbook_and_adds_nothing_to_save_folder(self):
+        cfg=json.loads(self.cfg.read_text());cfg['local_dir']=str(self.root.parent/(self.root.name+'-local'))
+        self.cfg.write_text(json.dumps(cfg))
         original=Path(self.path).read_bytes()
-        with patch('param_manager.desktop_documents.os.replace',side_effect=OSError('blocked')):
+        before=sorted(p.name for p in self.root.iterdir())
+        with patch('param_manager.shared_io.shutil.copyfile',side_effect=OSError('blocked')):
             with self.assertRaises(OSError):
                 self.doc.append({'snapshot':self.catalog['snapshot'],'values':['new','','']})
         self.assertEqual(Path(self.path).read_bytes(),original)
-        self.assertEqual(list(self.root.rglob('.rev1-document-*')),[])
+        # OneDrive rule: no temp workbook next to the shared document (only the held edit lock).
+        after=sorted(p.name for p in self.root.iterdir())
+        self.assertEqual([n for n in after if n not in before and not n.endswith('.editlock')],[])
+
+    def test_lock_held_while_open_and_one_write_per_save(self):
+        cfg=json.loads(self.cfg.read_text());cfg['local_dir']=str(self.root.parent/(self.root.name+'-local'))
+        self.cfg.write_text(json.dumps(cfg))
+        from param_manager import engine as eng
+        writes=[]
+        real=eng.write_lock
+        with patch.object(eng,'write_lock',side_effect=lambda *a,**k:(writes.append(1),real(*a,**k))[1]):
+            cat=self.catalog
+            for i in range(3):
+                cat=self.doc.edit({'snapshot':cat['snapshot'],'row':0,'column':1,'value':f'10.0.0.{i}','color':''})
+        self.assertEqual(len(writes),1)                       # lock written once, not per save
+        self.assertEqual(locking.status(self.path,eng.current_user()).status,'mine')
+        self.assertEqual(self.doc.page({'snapshot':cat['snapshot']})['rows'][0]['cells'][1]['value'],'10.0.0.2')
+        self.doc.close()
+        self.assertEqual(locking.status(self.path,eng.current_user()).status,'free')
 
     def test_append_reference_and_missing_header(self):
         path=refdata.ref_path(str(self.root));refdata.create_blank_reference(path)

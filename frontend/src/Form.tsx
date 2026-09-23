@@ -6,7 +6,7 @@ import {QuestionDialog,withAnswer,noAnswers,type Question,type Answers} from './
 import {pickFolder} from './desktop';
 
 type Version={stamp:string;has_candidate:boolean;kind:string};
-type Recipe={recipe:string;versions:Version[];can_edit:boolean};
+type Recipe={recipe:string};
 type Catalog={save_dir:boolean;recipes:Recipe[];machines?:string[]};
 type Opened={version:string;recipe:string;level:string;variants:string[];total:number;used:number;source:string};
 type Row={id:number;use:boolean;variant:string;zone:string;alg:string;orig:string;name:string;transform:string;raw:string;display:string};
@@ -37,6 +37,14 @@ export function Form(){
   const [newMachines,setNewMachines]=useState<string[]>([]),[answers,setAnswers]=useState<Answers>(noAnswers()),[question,setQuestion]=useState<Question>();
   const [newScales,setNewScales]=useState<NewScale[]>(),[newScaleEdit,setNewScaleEdit]=useState<Record<string,string>>({}),[localPath,setLocalPath]=useState('');
   const [similar,setSimilar]=useState<{recipe:string;match:number;total:number}[]>([]),[baseForm,setBaseForm]=useState('');
+  // Versions are read only for the chosen recipe (not every recipe at once — OneDrive rule).
+  const [recipeVersions,setRecipeVersions]=useState<{recipe:string;versions:Version[];can_edit:boolean}>();
+  useEffect(()=>{
+    if(!recipe){setRecipeVersions(undefined);return;}
+    let active=true;
+    desktop.request('form_versions',{recipe}).promise.then(r=>{if(active)setRecipeVersions(r.form as {recipe:string;versions:Version[];can_edit:boolean});}).catch(e=>{if(active)fail(e);});
+    return()=>{active=false;};
+  },[recipe]);
   const [scales,setScales]=useState<Scale[]>([]),[scaleEdits,setScaleEdits]=useState<Record<string,string>>({});
   const dialog=useRef<HTMLDialogElement>(null),sequence=useRef(0);
 
@@ -123,8 +131,9 @@ export function Form(){
 
   if(catalog&&!catalog.save_dir)
     return <section className="panel"><p className="table-empty">먼저 [설정] 탭에서 저장폴더를 지정하세요.</p></section>;
-  const editable=(catalog?.recipes||[]).filter(r=>r.can_edit);
-  const versions=editable.find(r=>r.recipe===recipe)?.versions.filter(v=>v.has_candidate)||[];
+  const editable=catalog?.recipes||[];
+  const versions=(recipeVersions?.recipe===recipe?recipeVersions.versions:[]).filter(v=>v.has_candidate);
+  const noCandidate=recipeVersions?.recipe===recipe&&!recipeVersions.can_edit;
 
   return <section className="panel">
     <div className="section-heading"><div><span className="step">FORM</span><h2>양식 만들기 — 원본 편집·확정</h2></div>
@@ -138,13 +147,14 @@ export function Form(){
       {mode==='edit'?<>
       <p className="hint">저장폴더에 이미 있는 <b>원본(초안)</b>을 골라 편집합니다.</p>
       {editable.length===0
-        ? <p className="table-empty">항목을 추가할 수 있는 원본(초안)이 있는 레시피가 없습니다.</p>
+        ? <p className="table-empty">저장폴더에 레시피 양식이 없습니다. [새로 만들기]로 만드세요.</p>
         : <div className="form-picker" style={{marginTop:14}}>
             <label className="field">레시피<select value={recipe} onChange={e=>{setRecipe(e.target.value);setStamp('');}}>
               <option value="">레시피 선택…</option>{editable.map(r=><option key={r.recipe} value={r.recipe}>{r.recipe}</option>)}</select></label>
             <label className="field">버전<select value={stamp} disabled={!recipe} onChange={e=>setStamp(e.target.value)}>
               <option value="">최신(원본 있는 버전)</option>{versions.map(v=><option key={v.stamp} value={v.stamp}>{v.stamp} · {v.kind||'원본'}</option>)}</select></label>
-            <button className="primary" disabled={!recipe||busy} onClick={()=>open(recipe,stamp)}>원본 열기 ▶</button>
+            {noCandidate&&<p className="warn">이 레시피는 항목을 추가할 원본(초안)이 없습니다. [새로 만들기]로 다시 읽어 만드세요.</p>}
+            <button className="primary" disabled={!recipe||busy||noCandidate} onClick={()=>open(recipe,stamp)}>원본 열기 ▶</button>
           </div>}
       </>:<>
       <p className="hint">장비(또는 로컬 복사본)의 설정 파일을 읽어 새 레시피 양식을 만듭니다. 원본은 읽기만 하고, 복사본은 로컬 작업 폴더에만 둡니다.</p>

@@ -95,16 +95,10 @@ class DesktopFormNew:
         pivot, _machines = ini_parser.build_pivot([c for c in configs if ini_parser.config_valid(c)])
         if not pivot:
             raise ValueError("읽힌 파라미터가 없습니다. 수집된 설정 파일을 확인하세요.")
-        forms = {}
-        for r in workdirs.list_recipes(save):
-            if r == self.recipe:
-                continue
-            f = workdirs.latest_form(save, r)
-            if f:
-                try:
-                    forms[r] = formbuilder.form_params(f)
-                except Exception:  # noqa: BLE001 - similarity hint only
-                    pass
+        from .formcache import similar_forms
+        from .desktop_batch import DesktopBatch
+        # Cached per form file (local): unchanged forms are not re-opened on OneDrive.
+        forms = similar_forms(save, str(DesktopBatch(self.config_path).configuration()[2]), exclude=self.recipe) if save else {}
         ranked = formbuilder.rank_similar_forms(formbuilder.pivot_param_keys(pivot), forms)
         base = params["base_form"]
         if not isinstance(base, str) or (base and base not in forms):

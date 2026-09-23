@@ -66,18 +66,31 @@ export function Recipe(){
       accept(reply.recipe as Catalog);setEditing(undefined);setSelected(undefined);
     }catch(e){setError(errorText(e));}finally{setSaving(false);}
   }
-  // 셀 색칠 mode: a click paints (or clears) that one cell, stored in 값확인_셀색상.json.
-  async function paintCell(row:Row,target:string){
-    if(!catalog?.version)return;
-    const color=erase?'':brush;
-    try{await desktop.request('recipe_edit',{snapshot:catalog.version,row:row.id,kind:'cell',target,value:color}).promise;
-      setData(d=>d&&{...d,rows:d.rows.map(r=>{if(r.id!==row.id)return r;const cells={...(r.cells||{})};
-        if(color)cells[target]=color.toUpperCase();else delete cells[target];return {...r,cells};})});}
+  // 셀 색칠 mode: clicks paint immediately on screen and are saved together
+  // (one write of 값확인_셀색상.json per burst — OneDrive write rule).
+  const queue=useRef<{row:number;target:string;color:string}[]>([]),flushTimer=useRef<number|undefined>(undefined);
+  const snapshot=useRef<string|null>(null);
+  useEffect(()=>{snapshot.current=catalog?.version??null;},[catalog]);
+  async function flushPaint(){
+    window.clearTimeout(flushTimer.current);
+    const cells=queue.current;queue.current=[];
+    if(!cells.length||!snapshot.current)return;
+    try{await desktop.request('recipe_paint',{snapshot:snapshot.current,cells}).promise;}
     catch(e){setError(errorText(e));}
   }
+  function paintCell(row:Row,target:string){
+    const color=erase?'':brush;
+    queue.current=[...queue.current.filter(c=>!(c.row===row.id&&c.target===target)),{row:row.id,target,color}];
+    window.clearTimeout(flushTimer.current);flushTimer.current=window.setTimeout(()=>void flushPaint(),1500);
+    setData(d=>d&&{...d,rows:d.rows.map(r=>{if(r.id!==row.id)return r;const cells={...(r.cells||{})};
+      if(color)cells[target]=color.toUpperCase();else delete cells[target];return {...r,cells};})});
+  }
+  useEffect(()=>{if(!paint)void flushPaint();},[paint]);
+  // Leaving the screen: save pending paint, then release the collation edit lock.
+  useEffect(()=>()=>{void flushPaint().finally(()=>desktop.request('recipe_close').promise.catch(()=>undefined));},[]);
   const cellStyle=(row:Row,target:string)=>{const c=row.cells?.[target];return c?{background:c,color:ink(c)}:undefined;};
   const onCell=(row:Row,target:string,fallback?:()=>void)=>(e:React.MouseEvent)=>{
-    if(paint){e.stopPropagation();void paintCell(row,target);}else fallback?.();};
+    if(paint){e.stopPropagation();paintCell(row,target);}else fallback?.();};
   async function copy(){
     if(!selected||!data)return;
     try{await navigator.clipboard.writeText([selected.zone,selected.alg,selected.name,selected.value,selected.note,...data.machines.map(m=>selected.values[m])].join('\t'));}

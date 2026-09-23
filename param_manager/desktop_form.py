@@ -62,13 +62,24 @@ class DesktopForm:
         if root is None:
             return dict(save_dir=False, recipes=[])
         self.root = root
-        recipes = []
-        for recipe in workdirs.list_recipes(str(root)):
-            versions = [dict(stamp=v["stamp"], has_candidate=v["has_candidate"], kind=v["kind"])
-                        for v in workdirs.form_version_status(str(root), recipe)]
-            recipes.append(dict(recipe=recipe, versions=versions,
-                                can_edit=any(v["has_candidate"] for v in versions)))
+        # Names only: scanning every recipe's version folders at once is exactly the
+        # burst of shared-folder access to avoid. Versions load per recipe (versions()).
+        recipes = [dict(recipe=r) for r in workdirs.list_recipes(str(root))]
         return dict(save_dir=True, recipes=recipes, machines=self._machines())
+
+    def versions(self, params):
+        if set(params) != {"recipe"}:
+            raise ValueError("레시피를 선택하세요")
+        root = self._load_root()
+        if root is None:
+            raise ValueError("먼저 저장폴더를 지정하세요")
+        self.root = root
+        recipe = params["recipe"]
+        if not isinstance(recipe, str) or recipe not in workdirs.list_recipes(str(root)):
+            raise ValueError("등록된 레시피를 선택하세요")
+        versions = [dict(stamp=v["stamp"], has_candidate=v["has_candidate"], kind=v["kind"])
+                    for v in workdirs.form_version_status(str(root), recipe)]
+        return dict(recipe=recipe, versions=versions, can_edit=any(v["has_candidate"] for v in versions))
 
     def _machines(self):
         # Registered machines = the shared '장비 IP' workbook, like the tkinter app.

@@ -1,12 +1,11 @@
 """Allowlisted shared workbooks, paged reads and optimistic locked cell edits."""
 import os
 from pathlib import Path
-import tempfile
 from uuid import uuid4
 import openpyxl
 from openpyxl.styles import PatternFill
 
-from . import engine, locking, namestore, refdata
+from . import engine, locking, namestore, refdata, shared_io
 
 
 def is_number(value):
@@ -51,6 +50,8 @@ class DesktopDocuments:
         root=cfg.get('save_dir')
         if not root:return dict(snapshot=None,headers=[],total=0,source='')
         getter,sheet,headers=KINDS[kind]
+        if getattr(self,'held',None) and self.held!=str(Path(getter(root)).absolute()):
+            self.close()                     # leaving a document releases its lock
         self.path=Path(getter(root)).absolute()
         self.root=Path(root).absolute()
         self.check_path()
@@ -152,11 +153,32 @@ class DesktopDocuments:
         values=[self._checked_value(i,v) for i,v in enumerate(values)]
         return self._write([(row,c,v,None) for c,v in zip(self.columns,values)])
 
+    def _local_root(self):
+        from .desktop_batch import DesktopBatch
+        return str(DesktopBatch(self.config_path).configuration()[2])
+
+    def _hold(self, path, user):
+        """Edit lock kept while this document stays open (tkinter: one lock per
+        screen visit). Acquiring and releasing around every cell save made each
+        edit three OneDrive file events (lock create, save, lock delete)."""
+        if getattr(self, 'held', None) not in (None, path):
+            self.close()
+        state=locking.acquire(path,user)     # 'mine' → refresh() rewrites only near expiry
+        if not state.editable:raise ValueError(locking.holder_message(state,self.path.name))
+        self.held=path
+
+    def close(self):
+        held=getattr(self,'held',None)
+        if held:
+            try:locking.release(held,engine.current_user())
+            except OSError:pass
+        self.held=None
+        return dict(closed=True)
+
     def _write(self, updates, delete_row=None):
         self.check_path();path=str(self.path);user=engine.current_user()
-        previous=locking.status(path,user);state=locking.acquire(path,user)
-        if not state.editable:raise ValueError(locking.holder_message(state,self.path.name))
-        wb=None;temporary=None
+        self._hold(path,user)
+        wb=None
         try:
             check=locking.check_before_save(path,user,self.stamp)
             if not check['ok']:raise ValueError(check['reason'])
@@ -172,14 +194,22 @@ class DesktopDocuments:
                     cell.fill=PatternFill('solid',fgColor=color[1:]) if color else PatternFill()
             if delete_row is not None:
                 ws.delete_rows(delete_row)
-            fd,temporary=tempfile.mkstemp(prefix='.rev1-document-',suffix='.xlsx',dir=self.path.parent)
-            os.close(fd);wb.save(temporary)
             check=locking.check_before_save(path,user,self.stamp)
             if not check['ok'] or locking.file_stamp(path)!=self.stamp:raise ValueError(check['reason'] or '저장 직전 문서가 변경되었습니다.')
             self.check_path()
-            os.replace(temporary,path);temporary=None
+            # No temp file next to the shared document: one write onto the target.
+            shared_io.save_workbook(wb,path,self._local_root())
         finally:
             if wb:wb.close()
-            if temporary and os.path.exists(temporary):os.unlink(temporary)
-            if previous.status!='mine':locking.release(path,user)
+        if delete_row is None and len(updates)==1 and updates[0][0]<=self.cells[-1][0]:
+            # Plain cell edit: update memory instead of reading the file back.
+            row,column,value,color=updates[0]
+            for r,line in self.cells:
+                if r==row:
+                    cell=line[self.columns.index(column)]
+                    cell['value']=value
+                    if color is not None:cell['color']=color
+            self.stamp=locking.file_stamp(path);self.version=uuid4().hex
+            return dict(snapshot=self.version,headers=self.headers,columns=self.columns_meta,
+                        total=len(self.cells),source=self.path.name)
         return self.open(self.kind)

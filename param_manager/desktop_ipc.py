@@ -29,7 +29,7 @@ from .desktop_appupdate import DesktopAppUpdate
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "form_catalog", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path"}
 
 
 def encoded(value):
@@ -171,14 +171,15 @@ class Session:
                    "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine","zone","hide_kla"},
                    "recipe_edit": {"snapshot","row","kind","value","target"},
                    "recipe_export": {"snapshot","recipes","machines","query","zone"},
-                   "recipe_delete_preview": {"recipe"}, "recipe_delete": {"recipe","confirm"}}
+                   "recipe_delete_preview": {"recipe"}, "recipe_delete": {"recipe","confirm"},
+                   "recipe_paint": {"snapshot","cells"}, "recipe_close": set()}
         allowed.update(document_open={'kind'},document_page={'snapshot','offset','limit'},
                        document_edit={'snapshot','row','column','value','color'},
-                       document_append={'snapshot','values'}, document_delete={'snapshot','row'})
+                       document_append={'snapshot','values'}, document_delete={'snapshot','row'}, document_close=set())
         allowed.update(commonality_catalog=set(), commonality_compare={'catalog','files'},
                        commonality_page={'snapshot','offset','limit','column','query','changed_only'},
                        commonality_export={'snapshot','changed_only'})
-        allowed.update(form_catalog=set(), form_open={'recipe','stamp'},
+        allowed.update(form_catalog=set(), form_versions={'recipe'}, form_open={'recipe','stamp'},
                        form_page={'snapshot','variant','query','used_only','offset','limit'},
                        form_edit={'snapshot','row','kind','value'}, form_scales={'snapshot','machine'},
                        form_confirm={'snapshot','machine','scales'})
@@ -218,12 +219,13 @@ class Session:
                 value = self.commonality.catalog() if method == 'commonality_catalog' else self.commonality.page(params)
                 self.emit(rid, 'completed', commonality=value)
         elif method.startswith('document_'):
-            if self.running:raise ValueError('배치 조사 완료 후 문서를 열어 주세요')
+            if self.running and method!='document_close':raise ValueError('배치 조사 완료 후 문서를 열어 주세요')
             action={'document_open':lambda:self.documents.open(params.get('kind')),
                     'document_page':lambda:self.documents.page(params),'document_edit':lambda:self.documents.edit(params),
                     'document_append':lambda:self.documents.append(params),
                     'document_delete':lambda:self.documents.delete(params)}
-            if method == 'document_page':
+            action['document_close']=lambda:self.documents.close()
+            if method in ('document_page','document_close'):
                 self.emit(rid,'completed',document=action[method]())
             else:
                 self.running = True
@@ -231,13 +233,15 @@ class Session:
                 self.worker = threading.Thread(target=self.document_work, args=(rid, action[method]))
                 self.worker.start()
         elif method.startswith('recipe_'):
-            if self.running:
+            if self.running and method != 'recipe_close':
                 raise ValueError('배치 조사 완료 후 비교 화면을 열어 주세요')
             action = {'recipe_open': lambda: self.recipe.open(), 'recipe_page': lambda: self.recipe.page(params),
                       'recipe_edit': lambda: self.recipe.edit(params),
                       'recipe_export': lambda: self.recipe.export(params),
                       'recipe_delete_preview': lambda: self.recipe.delete_preview(params),
-                      'recipe_delete': lambda: self.recipe.delete(params)}
+                      'recipe_delete': lambda: self.recipe.delete(params),
+                      'recipe_paint': lambda: self.recipe.paint(params),
+                      'recipe_close': lambda: self.recipe.close()}
             if method in ('recipe_open', 'recipe_edit', 'recipe_export', 'recipe_delete'):
                 # Collation/workbook reads and writes (often on OneDrive) run off the input thread (A9).
                 self.background(rid, 'recipe', action[method], '레시피 작업을 완료하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
@@ -255,8 +259,9 @@ class Session:
             else:
                 action = {'form_catalog': lambda: self.form.catalog(), 'form_open': lambda: self.form.open(params),
                           'form_page': lambda: self.form.page(params), 'form_edit': lambda: self.form.edit(params),
-                          'form_scales': lambda: self.form.scales(params)}
-                if method in ('form_catalog', 'form_open', 'form_scales'):
+                          'form_scales': lambda: self.form.scales(params),
+                          'form_versions': lambda: self.form.versions(params)}
+                if method in ('form_catalog', 'form_versions', 'form_open', 'form_scales'):
                     # Reads candidate/coefficient workbooks from the save folder (A9).
                     self.background(rid, 'form', action[method], '양식을 읽지 못했습니다. 파일 접근과 잠금을 확인하세요.')
                 else:
@@ -534,6 +539,8 @@ class Session:
         self.result = None
         try:
             self.update.cancel({})      # never leave the global collate lock behind
+            self.documents.close()      # nor a held document edit lock
+            self.recipe.close()
             self.formnew.cancel({})
         except Exception:  # noqa: BLE001
             pass

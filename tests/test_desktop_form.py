@@ -53,10 +53,10 @@ class DesktopFormTests(unittest.TestCase):
     def test_catalog_lists_editable_recipe(self):
         cat = self.form.catalog()
         self.assertTrue(cat["save_dir"])
-        recipes = {r["recipe"]: r for r in cat["recipes"]}
-        self.assertIn("PI3", recipes)
-        self.assertTrue(recipes["PI3"]["can_edit"])
-        self.assertTrue(recipes["PI3"]["versions"][0]["has_candidate"])
+        self.assertEqual(cat["recipes"], [{"recipe": "PI3"}])      # names only (no version scan)
+        versions = self.form.versions({"recipe": "PI3"})
+        self.assertTrue(versions["can_edit"])
+        self.assertTrue(versions["versions"][0]["has_candidate"])
 
     def test_open_page_edit_confirm(self):
         self.form.catalog()

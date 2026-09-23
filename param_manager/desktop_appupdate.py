@@ -130,8 +130,9 @@ def publish(save_dir: str, package: str, local_root: str, changelog: str = "", u
                 for file in sorted(root.rglob("*")):
                     if file.is_file():
                         zf.write(file, file.relative_to(root).as_posix())
-            shutil.copy2(built, dest + ".tmp")    # one file on OneDrive, replaced atomically
-            os.replace(dest + ".tmp", dest)
+            # One file event on OneDrive (no .tmp beside it). The manifest is written
+            # after this copy, and clients verify size + SHA-256 before using it.
+            shutil.copy2(built, dest)
         finally:
             localdirs.drop(local)
     release = dict(version=version, filename=zip_name(version), sha256=updater.file_sha256(dest),

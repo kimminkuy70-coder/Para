@@ -109,7 +109,9 @@ class DesktopUpdate:
             local = resolve_local_machine_dir(source, m) if source and os.path.isdir(source) else None
             machines.append(dict(id=m, ip=refdata.ip_for(rows, m), type=refdata.device_type_for(rows, m),
                                  local=local or ""))
-        recipes = [r for r in workdirs.list_recipes(save) if workdirs.latest_form(save, r)]
+        # Names only (one listing). Checking every recipe's form folder here was a
+        # burst of shared-folder reads; a recipe without a form is reported at preview.
+        recipes = workdirs.list_recipes(save)
         return dict(recipes=recipes, machines=machines, local_source=source,
                     local_source_ok=bool(source and os.path.isdir(source)))
 
