@@ -11,7 +11,9 @@
 - 개발 네트워크에서 승인된 경로로 의존성을 준비한 뒤, `python tools/build_desktop.py 8.1.0`.
   8.1.0은 예시이며 실제 버전은 명시적으로 지정한다. 이 명령을 이번 환경에서는 실행하지 않았다.
 - 스크립트는 `build/desktop-*`에 소스를 복사하고 해당 복사본에만 버전을 찍는다.
-  Python sidecar는 console/onedir로 패키징한다. stdio를 유지하고 native에서 콘솔 창을 숨긴다.
+  Python sidecar는 console/onedir로 패키징한다. stdio를 유지하고 native에서 콘솔 창을 숨긴다
+  (CREATE_NO_WINDOW). 앱 exe 자체는 `#![windows_subsystem = "windows"]`(debug 빌드 포함)라
+  검은 콘솔 창이 뜨지 않는다 — 예전 시험본에서 그 창을 닫으면 프로그램 전체가 꺼졌다.
 - npm ci / Cargo build는 offline/lockfile 조건으로 실행한다. 캐시가 없으면 실패하며
   자동 다운로드·정책 우회·방화벽 변경을 하지 않는다. 실패 staging은 조사용으로 남긴다.
 - 출력은 `dist/Camtek_AOI_manager_v<버전>/` 전체 폴더다. UI exe, sidecar exe와

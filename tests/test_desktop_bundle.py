@@ -34,4 +34,18 @@ class PackageTests(unittest.TestCase):
         for value in ('8.0','../8.1.0','01.2.3','1.2.65536'):
             with self.assertRaises(ValueError):bundle.version(value)
 
+
+
+class NoConsoleWindowTests(unittest.TestCase):
+    """The packaged app must not open a black console window (closing it killed the app)."""
+    def test_gui_subsystem_and_hidden_engine(self):
+        native = Path(__file__).resolve().parents[1]/'frontend/src-tauri/src'
+        main = (native/'main.rs').read_text(encoding='utf-8')
+        self.assertIn('#![windows_subsystem = "windows"]', main)
+        self.assertNotIn('cfg_attr', main)           # not only for release builds
+        self.assertIn('0x08000000', (native/'desktop.rs').read_text(encoding='utf-8'))   # CREATE_NO_WINDOW
+        upd = (Path(__file__).resolve().parents[1]/'param_manager/desktop_appupdate.py').read_text(encoding='utf-8')
+        self.assertIn('0x08000000', upd)             # swap script runs hidden too
+
+
 if __name__=='__main__':unittest.main()
