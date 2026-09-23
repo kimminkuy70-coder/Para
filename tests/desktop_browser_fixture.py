@@ -87,5 +87,10 @@ else:
             self.update.job_root_override = lambda m: Path(sys.argv[2])/'equip'/m/'Job'
             self.formnew.config_path = config
             self.formnew.collector.job_root_override = self.update.job_root_override
+            self.pwatch.config_path = config
+            self.pwatch.job_root_override = self.update.job_root_override
+            self.pwatch.sleep = lambda _s: None
+            self.cmwatch.config_path = config
+            self.cmwatch.form.config_path = config
     desktop_ipc.Session = FixtureSession
     desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)

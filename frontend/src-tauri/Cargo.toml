@@ -12,7 +12,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# tray-icon: notification-area icon while an automatic watch keeps running with
+# the window closed (tkinter tray.py). Part of the tauri crate itself.
+tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Native folder chooser for the save-folder / folder-registration setup.

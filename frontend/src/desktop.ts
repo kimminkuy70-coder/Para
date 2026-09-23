@@ -8,7 +8,7 @@ export type Configuration = {machines: {id: string; folder: string; extra?: stri
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;
-  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown} & Partial<Configuration>;
+  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown; watch?: unknown; pwatch?: unknown; cmwatch?: unknown; notice?: WatchNotice} & Partial<Configuration>;
 
 // Native folder chooser (Tauri command). Returns the user-selected absolute
 // path, or null if cancelled or not running inside the desktop shell (then the
@@ -21,6 +21,12 @@ export async function pickFolder(): Promise<string|null> {
 /** Quit the desktop app (used right after a self-update was staged). */
 export async function exitApp(): Promise<void> {
   if (isTauri()) await invoke('app_exit');
+}
+/** Pushed by the engine's watch scheduler (id null, event 'notice'). */
+export type WatchNotice = {kind: string; title: string; summary: string; report?: string; at?: string; by_other?: boolean};
+/** Tray / hide-on-close: keep the app running in the notification area while a watch is on. */
+export async function setBackground(enabled: boolean, tooltip: string): Promise<void> {
+  if (isTauri()) { try { await invoke('set_background', {enabled, tooltip}); } catch { /* older shell */ } }
 }
 export type AppUpdate = {current: string; installed: boolean; available: string; newer: boolean; changelog: string;
   published_at: string; skipped: boolean; failed: boolean; program_dir: string};
@@ -36,6 +42,8 @@ class DesktopClient {
   /** Why the engine went away (e.g. already_running), kept for later requests (A5). */
   private closeCode = 'engine_closed';
   private listeners = new Set<(connected: boolean, code: string) => void>();
+  private noticeListeners = new Set<(n: WatchNotice) => void>();
+  onNotice(listener: (n: WatchNotice) => void) { this.noticeListeners.add(listener); return () => { this.noticeListeners.delete(listener); }; }
   onStatus(listener: (connected: boolean, code: string) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   get closed() { return this.disconnected; }
   connect() {
@@ -48,6 +56,11 @@ class DesktopClient {
       const channel = new Channel<Reply>();
       channel.onmessage = message => {
         if (message.version !== 1) return;
+        if (message.id === null && message.event === 'notice') {
+          // Unsolicited watch result; the engine is still connected.
+          if (message.notice) this.noticeListeners.forEach(l => l(message.notice!));
+          return;
+        }
         if (message.id === null) {
           this.disconnected = true;
           // engine_closed follows an earlier, more specific reason: keep the first one.

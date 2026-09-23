@@ -11,7 +11,7 @@ import sys
 import threading
 from datetime import datetime
 
-from . import batchreport, batchreport_store
+from . import batchreport, batchreport_store, engine, locking
 from .desktop_batch import DesktopBatch
 from .desktop_recipe import DesktopRecipe
 from .desktop_form import DesktopForm
@@ -25,11 +25,14 @@ from .desktop_update import DesktopUpdate
 from .desktop_cmrun import DesktopCmRun
 from .desktop_formnew import DesktopFormNew
 from .desktop_appupdate import DesktopAppUpdate
+from .desktop_watch import CmWatch, ParamWatch
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
+LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
 
 
 def encoded(value):
@@ -129,6 +132,13 @@ class Session:
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
         self.running = False
+        self.pwatch = ParamWatch()
+        self.cmwatch = CmWatch()
+        self.watching = None            # 'param' | 'cm' while a watch cycle runs
+        self.watch_thread = None
+        self.notices = []               # recent watch notices (re-shown after a UI reload)
+        self.stop_ticks = threading.Event()
+        self.ticker = None
 
     def emit(self, request_id, event, **data):
         with self.lock:
@@ -205,6 +215,14 @@ class Session:
                        formnew_parse={'scales','base_form'}, formnew_cancel=set())
         allowed.update(appupdate_check=set(), appupdate_skip={'version'}, appupdate_apply=set(),
                        appupdate_publish={'path','notes'}, appupdate_open_dir=set())
+        allowed.update(watch_status=set(), pwatch_state=set(),
+                       pwatch_save={'enabled','interval_hours','window_start','window_end','notify_on_change_only'},
+                       pwatch_set_path={'machine','recipe','rel'}, pwatch_copy_paths={'source','targets'},
+                       pwatch_jobs={'machine','sub'}, pwatch_run=set(), cmwatch_state=set(),
+                       cmwatch_save={'enabled','interval_hours','window_start','window_end','settle_minutes','machines','plan'},
+                       cmwatch_run=set(), cmwatch_candidates={'machine','device','lot'}, cmwatch_begin={'sm','title'},
+                       cmwatch_page={'snapshot','variant','query','used_only','offset','limit'},
+                       cmwatch_edit={'snapshot','row','kind','value'}, cmwatch_confirm={'snapshot'}, cmwatch_cancel=set())
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
         if method.startswith('commonality_'):
@@ -355,6 +373,41 @@ class Session:
                 self.background(rid, 'appupdate', action[method], '업데이트를 준비하지 못했습니다. 게시 폴더와 로컬 저장 공간을 확인하세요.')
             else:
                 self.emit(rid, 'completed', appupdate=action[method]())
+        elif method == 'watch_status':
+            self.emit(rid, 'completed', watch=self.watch_status())
+        elif method in ('pwatch_run', 'cmwatch_run'):
+            # '▶ 즉시 확인': same cycle as the scheduler, on the watch thread.
+            if self.watching or self.running:
+                raise ValueError('진행 중인 작업(또는 감시 회차)이 끝난 뒤 실행하세요')
+            self.emit(rid, 'accepted')
+            self.start_watch('param' if method == 'pwatch_run' else 'cm', rid)
+        elif method.startswith('pwatch_'):
+            action = {'pwatch_state': lambda: self.pwatch.state(params), 'pwatch_save': lambda: self.pwatch.save(params),
+                      'pwatch_set_path': lambda: self.pwatch.set_path(params),
+                      'pwatch_copy_paths': lambda: self.pwatch.copy_paths(params),
+                      'pwatch_jobs': lambda: self.pwatch.jobs(params)}
+            if method in ('pwatch_save', 'pwatch_set_path', 'pwatch_copy_paths') and self.watching == 'param':
+                raise ValueError('감시 회차가 끝난 뒤 설정을 바꾸세요')
+            if self.running:
+                raise ValueError('진행 중인 작업이 끝난 뒤 실행하세요')
+            # Shared settings / equipment folder listing: off the input thread.
+            self.background(rid, 'pwatch', action[method], '자동 감시 설정을 처리하지 못했습니다. 저장폴더와 장비 연결을 확인하세요.')
+        elif method.startswith('cmwatch_'):
+            action = {'cmwatch_state': lambda: self.cmwatch.state(params), 'cmwatch_save': lambda: self.cmwatch.save(params),
+                      'cmwatch_candidates': lambda: self.cmwatch.candidates(params),
+                      'cmwatch_begin': lambda: self.cmwatch.begin(params),
+                      'cmwatch_page': lambda: self.cmwatch.form.page(params),
+                      'cmwatch_edit': lambda: self.cmwatch.form.edit(params),
+                      'cmwatch_confirm': lambda: self.cmwatch.confirm(params),
+                      'cmwatch_cancel': lambda: self.cmwatch.cancel(params)}
+            if method in ('cmwatch_save', 'cmwatch_confirm') and self.watching == 'cm':
+                raise ValueError('감시 회차가 끝난 뒤 설정을 바꾸세요')
+            if method in ('cmwatch_page', 'cmwatch_edit', 'cmwatch_cancel', 'cmwatch_state'):
+                self.emit(rid, 'completed', cmwatch=action[method]())
+            else:
+                if self.running:
+                    raise ValueError('진행 중인 작업이 끝난 뒤 실행하세요')
+                self.background(rid, 'cmwatch', action[method], 'Commonality 감시 작업을 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.')
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))
@@ -530,10 +583,112 @@ class Session:
                 self.emit(rid, 'error', code='commonality_failed',
                           message=str(exc) if isinstance(exc, ValueError) else 'Commonality 결과를 처리하지 못했습니다.')
 
+    # ---- automatic watches ------------------------------------------------------
+    def watch_status(self):
+        try:
+            p_on = self.pwatch.state_cached_enabled()
+        except Exception:  # noqa: BLE001 - no save folder yet
+            p_on = False
+        try:
+            c_on = bool(self.cmwatch._load()[1].enabled)
+        except Exception:  # noqa: BLE001
+            c_on = False
+        return dict(param=p_on, param_owned=bool(self.pwatch.owned), commonality=c_on,
+                    busy=self.watching or "", notices=list(self.notices[-20:]))
+
+    def notify(self, notice):
+        notice = dict(notice, at=datetime.now().strftime("%Y-%m-%d %H:%M"))
+        self.notices = (self.notices + [notice])[-50:]
+        self.emit(None, 'notice', notice=notice)
+
+    def start_watch(self, kind, rid=None):
+        """One watch cycle on its own thread. Manual runs answer `rid`; scheduled
+        runs only publish a notice (when something was found / changed / failed)."""
+        self.watching = kind
+        watch = self.pwatch if kind == 'param' else self.cmwatch
+
+        def work():
+            try:
+                value = watch.run(manual=rid is not None)
+                err = None
+            except Exception as exc:  # noqa: BLE001 - reported below
+                if not isinstance(exc, ValueError):
+                    log_failure(f'{kind}_watch', exc)
+                value, err = None, (str(exc) if isinstance(exc, ValueError) else '감시 회차를 완료하지 못했습니다.')
+            with self.lock:
+                self.watching = None
+                if self.closed:
+                    return
+                key = 'pwatch' if kind == 'param' else 'cmwatch'
+                if rid is not None:
+                    if err:
+                        self.emit(rid, 'error', code=f'{key}_failed', message=err)
+                    else:
+                        self.emit(rid, 'completed', **{key: value})
+                elif err:
+                    self.notify(dict(kind=f'{key}_failed', title='자동 감시 실패', summary=err))
+                elif kind == 'param' and value.get('has_change'):
+                    self.notify(dict(kind='param_watch', title='파라미터 자동 감시 — 변경 감지',
+                                     summary=value['summary'], report=value.get('report', '')))
+                elif kind == 'cm' and value.get('found'):
+                    self.notify(dict(kind='cm_watch', title='Commonality 자동 감시 — 새 S/M',
+                                     summary=value['summary'], report=''))
+        self.watch_thread = threading.Thread(target=work, daemon=True)
+        self.watch_thread.start()
+
+    def tick(self, now=None):
+        """Scheduler step (every TICK_SEC). Never overlaps a user job or another cycle
+        (single equipment access at a time, like the tkinter `_watch_busy` rule)."""
+        import time as _time
+        now = _time.monotonic() if now is None else now
+        with self.lock:
+            if self.closed:
+                return
+            if now - getattr(self, '_last_refresh', -1e9) >= LOCK_REFRESH_SEC:
+                self._last_refresh = now
+                user = engine.current_user()
+                for held in (getattr(self.documents, 'held', None), getattr(self.recipe, 'held', None)):
+                    if held:
+                        try:
+                            locking.refresh(str(held), user)
+                        except OSError:
+                            pass
+                try:
+                    self.pwatch.refresh_lock()
+                except OSError:
+                    pass
+            if self.watching or self.running:
+                return
+        try:
+            if self.cmwatch.due():
+                with self.lock:
+                    if not (self.watching or self.running or self.closed):
+                        self.start_watch('cm')
+                return
+            if self.pwatch.due():
+                with self.lock:
+                    if not (self.watching or self.running or self.closed):
+                        self.start_watch('param')
+                return
+            notice = self.pwatch.poll_shared()       # a cycle finished on another PC
+            if notice:
+                with self.lock:
+                    self.notify(notice)
+        except Exception as exc:  # noqa: BLE001 - the scheduler must keep running
+            log_failure('watch_tick', exc)
+
+    def start_scheduler(self):
+        def loop():
+            while not self.stop_ticks.wait(TICK_SEC):
+                self.tick()
+        self.ticker = threading.Thread(target=loop, daemon=True)
+        self.ticker.start()
+
     def close(self):
         with self.lock:
             self.closed = True
             self.cancelled.set()
+        self.stop_ticks.set()
         if self.worker is not None:
             self.worker.join()
         self.result = None
@@ -542,12 +697,14 @@ class Session:
             self.documents.close()      # nor a held document edit lock
             self.recipe.close()
             self.formnew.cancel({})
+            self.pwatch.release()       # another PC may take the watch over
         except Exception:  # noqa: BLE001
             pass
 
 
 def serve(source, output):
     session = Session(output)
+    session.start_scheduler()
     try:
         while not session.closed:
             frame = source.readline(MAX_FRAME + 1)

@@ -94,3 +94,8 @@ tr.fail-row td{background:#fff7d6}tr.row-now td{background:#effaf5}
 .connection-box{display:flex;align-items:center;gap:8px}
 .update-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 24px;background:#ecfdf5;border-bottom:1px solid #a7f3d0;color:var(--ink);font-size:13px}.update-banner .changelog{margin:4px 0 0;color:var(--muted);white-space:pre-wrap}.update-banner .actions{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:1000px){.update-banner{flex-direction:column;align-items:flex-start}}
+/* 자동 감시: inline panels (not modal dialogs) and the notice list */
+.edit-dialog.inline{display:block;position:static;width:auto;max-width:none;margin:16px 0;background:var(--surface,#fff)}
+button.pick-item{width:100%;background:transparent;border:0;border-bottom:1px solid #eef2f6;border-radius:0;text-align:left;cursor:pointer;min-height:0}
+button.pick-item:hover{background:#f2f6fa}
+.notice-list{list-style:none;margin:8px 0 0;padding:0}.notice-list li{border-bottom:1px solid var(--line);padding:10px 2px}.notice-list p{margin:4px 0;white-space:pre-wrap;font-size:13px}.notice-list small{color:var(--muted)}

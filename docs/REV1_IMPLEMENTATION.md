@@ -313,3 +313,20 @@ HTTP/TCP 서버 금지, 로컬 결과/공유 명시 편집 경계 유지. 강제
 이번 작업은 해당 브랜치를 수정하거나 덮어쓰지 않았다. version_rev1은 기존 분기 기준
 28c805f의 분석 엔진을 유지한다. 원본의 새 계산/표 schema와 새 UI 연결을 별도 비교·통합·
 재검증해야 하며 자동으로 최신 원본과 동등하다고 간주하지 않는다. 다음 세션 우선 비교 대상이다.
+
+## 자동 감시·트레이 + OneDrive 접근 재검토 (2026-09-23)
+
+- OneDrive 재검토(`6781d00`): 공유폴더 임시파일·편집마다 잠금 생성/삭제·셀 색칠 클릭마다 쓰기·
+  편집 후 전체 재읽기·양식 목록/유사도 계산 시 전 레시피 스캔·게시 .tmp 를 제거
+  (`shared_io`, `formcache`, 문서/Recipe 화면 단위 잠금 보유). 테스트 `test_desktop_onedrive.py`.
+- 자동 감시: `param_manager/desktop_watch.py`(ParamWatch=tkinter `_watch_*`, CmWatch=`_cmw_*`
+  포팅), IPC `watch_status`/`pwatch_*`/`cmwatch_*`, 엔진 스케줄러 스레드(`Session.tick`, 60초,
+  사용자 작업·다른 회차와 겹치지 않음) + 알림 이벤트(`id:null, event:notice`).
+  공유 `감시설정.json` 은 유휴 PC에서 5분에 1회만 읽음(tkinter 는 1분). 회차 취합은 로컬에 먼저
+  쓰고 변경/첫 기준선일 때만 저장폴더로 복사, 장비 사이 2초 간격, 수집 중 바뀐 파일 제외,
+  staging 즉시 삭제, 전역 잠금 `자동감시` 는 만료 절반 이후에만 갱신. 테스트 `test_desktop_watch.py`.
+- 트레이: Tauri `tray-icon` feature(tauri 크레이트 자체 기능, 전이 크레이트 tray-icon·png·ico,
+  Linux 전용 libappindicator — SBOM 검토 항목). `set_background(enabled, tooltip)` 커맨드,
+  감시 ON 이면 창 닫기=숨김, 좌클릭=열기, 메뉴=열기/종료. 풍선(토스트) 알림은 notification
+  플러그인(새 의존성)이 필요해 넣지 않고 툴팁·앱 내 알림으로 대체.
+- 미검증: Windows 실기 트레이 동작, 실제 장비 SMB 무인 회차, 장시간 상주.
