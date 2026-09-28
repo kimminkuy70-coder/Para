@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {desktop,errorText,type WatchNotice} from './desktop';
 import {notify,fail,LoadFailed} from './ui';
 import {OpenPath} from './OpenPath';
+import {FormEditor} from './FormEditor';
 
 type Interval={hours:number;label:string};
 type PTarget={machine:string;recipe:string;path:string};
@@ -16,10 +17,7 @@ type CState={enabled:boolean;interval_hours:number;intervals:Interval[];window_s
   fail_count:number;baseline:boolean;next_run:string;results:string;log:string};
 type Browse={machine:string;recipe:string;sub:string;dirs:string[];is_recipe:boolean};
 type Cand={sm:string;created:string;scan:string;slots:number};
-type Row={id:number;use:boolean;variant:string;zone:string;alg:string;orig:string;name:string;transform:string;raw:string;display:string};
-type Page={rows:Row[];total:number;used:number;offset:number};
 const HOURS=Array.from({length:24},(_,i)=>i);
-const TRANSFORMS=['RAW','LINEAR','AREA'];
 
 async function ask<T>(method:string,params:object,key:'pwatch'|'cmwatch'|'watch',onError?:(m:string)=>void):Promise<T|undefined>{
   try{return (await desktop.request(method,params).promise)[key] as T;}
@@ -122,7 +120,6 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   const [st,setSt]=useState<CState>(),[busy,setBusy]=useState(false),[plan,setPlan]=useState<CPlan[]>([]);
   const [target,setTarget]=useState<CTarget>(),[cands,setCands]=useState<Cand[]>([]),[sm,setSm]=useState(''),[title,setTitle]=useState('');
   const [editing,setEditing]=useState<{version:string;recipe:string;index:number;total:number;used:number}>();
-  const [page,setPage]=useState<Page>(),[offset,setOffset]=useState(0);
   const [loadError,setLoadError]=useState('');
   const load=()=>{setLoadError('');return ask<CState>('cmwatch_state',{},'cmwatch',st?undefined:setLoadError).then(s=>{if(s){setSt(s);setPlan(s.plan.length?s.plan:[{device:'',lot:'',machines:'',note:''}]);}});};
   useEffect(()=>{void load();},[]);
@@ -140,20 +137,8 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   }
   function opened(r:{stage:string;form?:{version:string;used:number};recipe?:string;index?:number;total?:number;forms?:string[]}|undefined){
     if(!r)return;
-    if(r.stage==='edit'&&r.form){setEditing({version:r.form.version,recipe:r.recipe||'',index:r.index||0,total:r.total||1,used:r.form.used});setOffset(0);}
+    if(r.stage==='edit'&&r.form){setEditing({version:r.form.version,recipe:r.recipe||'',index:r.index||0,total:r.total||1,used:r.form.used});}
     else if(r.stage==='done'){setEditing(undefined);setTarget(undefined);notify(`감시 양식 ${r.forms?.length||0}개를 지정했습니다: ${(r.forms||[]).join(', ')}`,'ok');void load();}
-  }
-  useEffect(()=>{
-    if(!editing)return;let active=true;
-    desktop.request('cmwatch_page',{snapshot:editing.version,variant:'',query:'',used_only:false,offset,limit:100}).promise
-      .then(r=>{if(active)setPage(r.cmwatch as Page);}).catch(e=>{if(active)fail(e);});
-    return()=>{active=false;};
-  },[editing,offset]);
-  async function edit(row:Row,kind:'use'|'name'|'transform',value:boolean|string){
-    if(!editing)return;
-    try{await desktop.request('cmwatch_edit',{snapshot:editing.version,row:row.id,kind,value}).promise;
-      const r=(await desktop.request('cmwatch_page',{snapshot:editing.version,variant:'',query:'',used_only:false,offset,limit:100}).promise).cmwatch as Page;
-      setPage(r);setEditing(o=>o&&{...o,used:r.used});}catch(e){fail(e);}
   }
   async function now(){
     setBusy(true);
@@ -204,15 +189,8 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
 
     {editing&&<div className="edit-dialog inline" role="dialog" aria-label="감시 양식 편집">
       <div className="section-heading"><div><h3>{editing.recipe} 감시 양식 ({editing.index+1}/{editing.total})</h3></div><span className="count">사용 {editing.used}</span></div>
-      <div className="table-scroll"><table><thead><tr><th>사용</th><th>변형</th><th>Zone</th><th>Alg</th><th>원본 항목</th><th>표시 이름</th><th>변환</th><th>값</th></tr></thead>
-        <tbody>{(page?.rows||[]).map(row=><tr key={row.id} className={row.use?'':'muted'}>
-          <td><input type="checkbox" checked={row.use} aria-label={`${row.orig} 사용`} onChange={e=>edit(row,'use',e.target.checked)}/></td>
-          <td>{row.variant||'(기본)'}</td><td>{row.zone}</td><td>{row.alg}</td><td>{row.orig}</td>
-          <td><input value={row.name} maxLength={200} aria-label={`${row.orig} 표시 이름`} onChange={e=>setPage(p=>p&&{...p,rows:p.rows.map(r=>r.id===row.id?{...r,name:e.target.value}:r)})} onBlur={e=>void edit(row,'name',e.target.value)}/></td>
-          <td><select value={row.transform} aria-label={`${row.orig} 변환`} onChange={e=>edit(row,'transform',e.target.value)}>{TRANSFORMS.map(t=><option key={t}>{t}</option>)}</select></td>
-          <td>{row.display||row.raw}</td></tr>)}</tbody></table></div>
-      <div className="pagination"><span>{page?.total?`${offset+1}–${Math.min(offset+100,page.total)} / ${page.total}개`:'0개'}</span>
-        <div><button disabled={offset===0} onClick={()=>setOffset(n=>Math.max(0,n-100))}>이전</button><button disabled={offset+100>=(page?.total||0)} onClick={()=>setOffset(n=>n+100)}>다음</button></div></div>
+      <FormEditor version={editing.version} pageMethod="cmwatch_page" editMethod="cmwatch_edit" replyKey="cmwatch"
+        onUsed={n=>setEditing(o=>o&&o.used!==n?{...o,used:n}:o)}/>
       <div className="toolbar"><button onClick={async()=>{await run('cmwatch_cancel',{});setEditing(undefined);setTarget(undefined);}}>취소</button>
         <button className="primary" disabled={busy||!editing.used} onClick={async()=>opened(await run('cmwatch_confirm',{snapshot:editing.version}))}>양식 확정{editing.index+1<editing.total?' · 다음 레시피 ▶':''}</button></div></div>}
   </section>;

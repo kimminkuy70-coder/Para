@@ -216,8 +216,8 @@ def test_append_to_cm_plan_with_created_date():
         new = [r for r in rows if r["S/M"] == "NEW1"][0]
         assert new["디바이스명"] == DEV and new["공정번호"] == LOT
         assert new["AOI호기"] == "AOI-9"
-        assert new["생성일자"] == "2026-08-11 13:20", new
-        assert new.get("fail여부", "") == "", "fail 은 사람이 채운다"
+        assert "생성일자" not in new, "새 계획 양식에는 생성일자 열이 없다(2026-09)"
+        assert new.get(cm.ISSUE_KEY, "") == "", "이슈 Lot 은 사람이 채운다"
 
         # 같은 항목을 또 넣어도 늘지 않는다
         res2 = cw.append_cm_plan(plan, items, machine="AOI-9")
@@ -226,14 +226,14 @@ def test_append_to_cm_plan_with_created_date():
 
 
 def test_append_adds_column_to_old_plan():
-    """'생성일자' 열이 없는 구 계획 파일에도 열을 만들어 채운다."""
+    """구 계획 파일('fail여부'·'생성일자' 열)도 그대로 읽고, 있는 생성일자 칸은 채운다."""
     with tempfile.TemporaryDirectory() as tmp:
         plan = os.path.join(tmp, cm.PLAN_FILENAME)
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Lot목록"
-        ws.append(["디바이스명", "공정번호", "S/M", "AOI호기", "fail여부"])  # 구 5열
-        ws.append([DEV, LOT, "HPG", "AOI-9", ""])
+        ws.append(["디바이스명", "공정번호", "S/M", "AOI호기", "fail여부", "생성일자"])  # 구 6열
+        ws.append([DEV, LOT, "HPG", "AOI-9", "Y", ""])
         wb.save(plan)
         wb.close()
         cw.append_cm_plan(plan, [{"key": cw.sm_key(DEV, LOT, "NEW1"), "device": DEV,
@@ -244,7 +244,8 @@ def test_append_adds_column_to_old_plan():
         assert new["생성일자"] == "2026-08-11 13:20", new
         old = [r for r in rows if r["S/M"] == "HPG"][0]
         assert old["디바이스명"] == DEV, "기존 행이 밀리면 안 된다"
-    print("  구 계획 파일에 생성일자 열 추가 OK")
+        assert old[cm.ISSUE_KEY] == "Y" and cm.is_issue(old), "구 'fail여부' 는 '이슈 Lot' 으로 읽힌다"
+    print("  구 계획 파일(fail여부·생성일자) 호환 OK")
 
 
 def test_settings_roundtrip_is_local():

@@ -26,6 +26,7 @@ let stderr='',background={enabled:false,tooltip:''};engine.stderr.on('data',d=>s
 try{
   await page.exposeBinding('nativeInvoke',async(_,command,args)=>{
     if(command==='set_background'){background=args;return;}   // tray residency request
+    if(command==='pick_file')return join(fixture,'old_plan.xlsx');   // native Excel picker → fixture plan
     if(command==='desktop_connect'){channel=Number(args.onEvent.split(':')[1]);index=0;return;}  // a new Channel counts from 0, as in Tauri
     assert.equal(command,'desktop_send');engine.stdin.write(JSON.stringify(args.request)+'\n');
   });
@@ -218,10 +219,30 @@ try{
   await page.getByLabel('저장된 Excel').waitFor();
   assert((await page.getByLabel('저장된 Excel').inputValue()).endsWith('.xlsx'));
   // B: 신규 Commonality 조사 — plan → slots → safe copy → coefficients → form → values → compare list.
+  // Plan Excel import (old headers fail여부/생성일자 → 이슈 Lot), unregistered machine → 설정 jump.
+  await page.getByRole('button',{name:'📂 계획 엑셀 불러오기',exact:true}).click();
+  await page.getByText('계획 3행을 불러왔습니다',{exact:false}).waitFor();
+  assert.equal(await page.getByLabel('1행 이슈 Lot').isChecked(),true);
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-cm-plan.png'),fullPage:true});
+  await page.getByRole('button',{name:'AOI-21 경로 지정 ▶',exact:true}).click();
+  await page.getByRole('tab',{name:'Scanresult 루트',selected:true}).waitFor();
+  assert.equal(await page.getByLabel('호기',{exact:true}).inputValue(),'AOI-21');
+  // Back to Commonality: the imported plan is still there (screen kept alive).
+  await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
+  assert.equal(await page.getByLabel('1행 디바이스명').inputValue(),'DEVA-1');
+  // Row selection delete / delete all.
+  await page.getByLabel('2행 선택').check();await page.getByLabel('3행 선택').check();
+  await page.getByRole('button',{name:'선택 삭제 (2)',exact:true}).click();
+  assert.equal(await page.getByLabel('2행 디바이스명').count(),0);
+  page.once('dialog',d=>d.accept());
+  await page.getByRole('button',{name:'전체 삭제',exact:true}).click();
+  assert.equal(await page.getByLabel('1행 디바이스명').inputValue(),'');
   await page.getByLabel('1행 디바이스명').fill('DEVA-1');
   await page.getByLabel('1행 공정번호').fill('6321');
   await page.getByLabel('1행 S/M').fill('HPG');
+  await page.getByLabel('1행 이슈 Lot').check();
   await page.getByRole('button',{name:'S/M 폴더 찾기 ▶',exact:true}).click();
+  await page.getByText('HPG · 이슈 Lot',{exact:true}).waitFor();
   await page.getByLabel('HPG 슬롯 CX02').check();
   await page.getByRole('button',{name:'안전 복사 ▶',exact:true}).click();
   await page.getByLabel('안전 복사 위치').waitFor();
@@ -230,6 +251,18 @@ try{
   await page.getByText('[PI3] 변형별 변환계수').waitFor();
   await page.getByRole('button',{name:'양식 편집 ▶',exact:true}).click();
   await page.getByText('PI3 · 조사 양식').waitFor();
+  // Zone-grouped editor with keyboard: Enter toggles 사용 of the cursor row.
+  await page.locator('.zone-tabs [role=tab]').first().waitFor();
+  await page.locator('.kept-screen:not([hidden]) .form-editor').screenshot({path:join(root,'docs/screenshots/rev1-cm-editor.png')});
+  const grid=page.locator('.kept-screen:not([hidden]) .editor-grid');
+  const firstUse=grid.locator('tbody tr').first().locator('input[type=checkbox]');
+  const was=await firstUse.isChecked();
+  await grid.focus();await page.keyboard.press('Enter');
+  await page.waitForFunction(w=>document.querySelector('.kept-screen:not([hidden]) .editor-grid tbody tr input[type=checkbox]').checked!==w,was);
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await grid.locator('tbody tr').nth(1).getAttribute('aria-selected'),'true');
+  await page.keyboard.press('ArrowUp');await page.keyboard.press('Enter');     // back to the original state
+  await page.waitForFunction(w=>document.querySelector('.kept-screen:not([hidden]) .editor-grid tbody tr input[type=checkbox]').checked===w,was);
   await page.getByRole('button',{name:'양식 확정 ▶',exact:true}).click();
   await page.getByLabel('확정 양식').waitFor();
   await page.getByRole('button',{name:'값 조사 실행',exact:true}).click();
@@ -262,30 +295,33 @@ try{
   assert(await ask.locator('.pick-item').filter({hasText:'R_TB500_PI2 - Enhanced'}).locator('input').isChecked());
   await ask.getByRole('button',{name:'확인하고 계속',exact:true}).click();
   await page.getByText('결과 확인',{exact:true}).waitFor();
-  await page.waitForFunction(()=>[...document.querySelectorAll('.stepper .st')].findIndex(e=>e.classList.contains('now'))>=2);
+  await page.waitForFunction(()=>[...document.querySelectorAll('.kept-screen:not([hidden]) .stepper .st')].findIndex(e=>e.classList.contains('now'))>=2);
   if(await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).isVisible())await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).click();
   await page.getByRole('button',{name:'취합 저장',exact:true}).waitFor();
   const keep=page.getByLabel('그래도 포함');
   if(await keep.count())await keep.first().check();
   await page.getByRole('button',{name:'취합 저장',exact:true}).click();
-  await page.getByLabel('취합 파일').waitFor();
+  await page.getByLabel('취합 파일',{exact:true}).waitFor();
   // B: 이력 — the inherited collation is a second file; row lists and Excel export.
   await page.getByRole('button',{name:'이력 확인',exact:true}).click();
-  await page.locator('.cm-file input').nth(2).waitFor();
+  await page.locator('.kept-screen:not([hidden]) .cm-file input').nth(2).waitFor();
   // Newest first: [값 업데이트, 이어받기, fixture]. Compare the fixture with the inherited one.
-  await page.locator('.cm-file input').nth(0).uncheck();
-  await page.locator('.cm-file input').nth(2).check();
+  await page.locator('.kept-screen:not([hidden]) .cm-file input').nth(0).uncheck();
+  await page.locator('.kept-screen:not([hidden]) .cm-file input').nth(2).check();
   await page.getByRole('button',{name:'비교 ▶',exact:true}).click();
   await page.getByText(/값변경 \d+ · 추가행 \d+ · 삭제행 \d+/).waitFor();
   await page.getByLabel('종류').selectOption('행 삭제');
-  await page.waitForFunction(()=>document.querySelector('.table-scroll tbody tr td:last-child')?.textContent==='행 삭제');
+  await page.waitForFunction(()=>document.querySelector('.kept-screen:not([hidden]) .table-scroll tbody tr td:last-child')?.textContent==='행 삭제');
   await page.getByRole('button',{name:'변경내역 Excel 저장',exact:true}).click();
   assert((await page.getByLabel('저장된 변경내역').inputValue()).includes('이력비교'));
   // B: 양식 만들기 — 새로 만들기 from equipment (Job question → coefficients → editor → confirm).
   await page.getByRole('button',{name:'양식 만들기',exact:true}).click();
+  // The screen kept its finished state while we were away (tab keep-alive); start over.
+  await page.getByText('확정 완료',{exact:false}).first().waitFor();
+  await page.locator('.kept-screen:not([hidden]) .stepper').getByRole('button',{name:/원본 선택/}).click();
   await page.getByRole('tab',{name:'새로 만들기(장비·로컬 수집)'}).click();
   await page.getByLabel('새 레시피 이름').fill('PI2');
-  await page.locator('.pick-item').filter({hasText:'AOI-01'}).locator('input').check();
+  await page.locator('.kept-screen:not([hidden]) .pick-item').filter({hasText:'AOI-01'}).locator('input').check();
   await page.getByRole('button',{name:'수집 시작',exact:true}).click();
   await page.locator('dialog[open]').getByRole('button',{name:'확인하고 계속',exact:true}).click();
   await page.getByText('변형별 변환계수',{exact:true}).waitFor();

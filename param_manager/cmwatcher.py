@@ -383,7 +383,7 @@ def plan_backup_path(plan_path: str) -> str:
 
 
 def append_cm_plan(plan_path: str, items: list[dict], machine: str = "") -> dict:
-    """찾은 S/M 을 **조사 계획 엑셀**에 덧붙인다(생성일자 포함).
+    """찾은 S/M 을 **조사 계획 엑셀**에 덧붙인다(구 파일에 '생성일자' 열이 있으면 그 칸도).
 
     · 사람이 관리하는 파일이므로 **쓰기 전에 백업 1부**를 같은 폴더에 남긴다.
     · 이미 같은 (디바이스, 공정, S/M) 행이 있으면 넣지 않는다.
@@ -403,15 +403,8 @@ def append_cm_plan(plan_path: str, items: list[dict], machine: str = "") -> dict
     ws = wb["Lot목록"] if "Lot목록" in wb.sheetnames else wb[wb.sheetnames[0]]
     heads = [engine._s(c.value).strip() for c in ws[1]]
     heads = [cm._HEADER_ALIASES.get(h, h) for h in heads]
-    # 구 파일에 '생성일자' 열이 없으면 뒤에 만들어 준다
-    if "생성일자" not in heads:
-        ws.cell(1, len(heads) + 1).value = "생성일자"
-        if ws[1][0].fill is not None:
-            c = ws.cell(1, len(heads) + 1)
-            c.fill = PatternFill("solid", fgColor=_HDR_FILL)
-            c.font = Font(color="FFFFFF", bold=True)
-            c.alignment = Alignment(horizontal="center", vertical="center")
-        heads.append("생성일자")
+    # '생성일자' 열은 2026-09 부터 계획에 두지 않는다(조사할 때 폴더에서 직접 읽음).
+    # 그 열이 있는 구 파일에만 값을 채워 준다 — 새로 만들지는 않는다.
     hidx = {h: i for i, h in enumerate(heads) if h}
 
     have = set()
@@ -431,7 +424,7 @@ def append_cm_plan(plan_path: str, items: list[dict], machine: str = "") -> dict
             continue
         have.add(it["key"])
         vals = {"디바이스명": it["device"], "공정번호": it["lot"], "S/M": it["sm"],
-                "AOI호기": machine or it.get("machine", ""), "fail여부": "",
+                "AOI호기": machine or it.get("machine", ""), cm.ISSUE_KEY: "",
                 "생성일자": it.get("created", "")}
         line = [""] * len(heads)
         for h, i in hidx.items():

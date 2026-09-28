@@ -18,6 +18,12 @@ export async function pickFolder(): Promise<string|null> {
   try { return (await invoke<string|null>('pick_folder')) ?? null; }
   catch { return null; }
 }
+/** Native file chooser for a Lot plan workbook (.xlsx/.xlsm); null if cancelled / not desktop. */
+export async function pickFile(): Promise<string|null> {
+  if (!isTauri()) return null;
+  try { return (await invoke<string|null>('pick_file')) ?? null; }
+  catch { return null; }
+}
 /** Quit the desktop app (used right after a self-update was staged). */
 export async function exitApp(): Promise<void> {
   if (isTauri()) await invoke('app_exit');

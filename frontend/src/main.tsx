@@ -23,6 +23,7 @@ const metrics: [Metric,string,string][] = [
   ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
   ['M11','미분류 상태','알 수 없는 원문도 보존']
 ];
+const KEEP = ['Commonality 조사','값 업데이트','양식 만들기','이력 확인','자동 감시'];
 const navigation = ['설정','Recipe 관리','값 업데이트','양식 만들기','이력 확인','자동 감시','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
 const text = (value: unknown) => value == null ? '—' : typeof value === 'number' ? value.toLocaleString('ko-KR',{maximumFractionDigits:2}) : String(value);
 
@@ -68,6 +69,15 @@ function App(){
     if(!desktop.closed){setEngineDown(false);setScreenKey(k=>k+1);void syncWatch();notify('분석 엔진에 다시 연결했습니다.','ok');}
   }
   const [screenKey,setScreenKey]=useState(0);
+  // Other screens can ask to open a tab (e.g. Commonality → 설정 › Scanresult 루트).
+  useEffect(()=>{const go=(e:Event)=>setTab((e as CustomEvent<string>).detail);window.addEventListener('para:navigate',go);return()=>window.removeEventListener('para:navigate',go);},[]);
+  // Workflow screens stay mounted after the first visit, so leaving a tab never
+  // loses an in-progress step (Commonality 조사, 값 업데이트, 양식 만들기 …). Screens
+  // that hold a shared-document edit lock (문서, Recipe 관리) still unmount so the lock
+  // is handed back when you leave them.
+  const [visited,setVisited]=useState<string[]>([]);
+  useEffect(()=>{if(KEEP.includes(tab))setVisited(v=>v.includes(tab)?v:[...v,tab]);},[tab]);
+  useEffect(()=>{window.dispatchEvent(new CustomEvent('para:tab',{detail:tab}));},[tab]);
   // Automatic watches run in the engine; the app shows their notices and keeps
   // itself resident in the tray (hide on close) while any watch is on.
   const [notices,setNotices]=useState<WatchNotice[]>([]);
@@ -239,7 +249,11 @@ function App(){
     <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
     <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
         {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>
-      <div key={screenKey} style={{display:'contents'}}>{tab==='설정'?<Settings/>:tab==='Commonality 조사'?<Commonality/>:tab==='Recipe 관리'?<Recipe/>:tab==='값 업데이트'?<Update/>:tab==='양식 만들기'?<Form/>:tab==='이력 확인'?<History/>:tab==='자동 감시'?<Watch notices={notices} onChanged={()=>void syncWatch()}/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
+      <div key={screenKey} style={{display:'contents'}}>
+      {visited.map(name=><div key={name} hidden={tab!==name} className="kept-screen">{
+        name==='Commonality 조사'?<Commonality/>:name==='값 업데이트'?<Update/>:name==='양식 만들기'?<Form/>:name==='이력 확인'?<History/>
+        :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}
+      {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:tab==='Recipe 관리'?<Recipe/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       <section className="panel">
       <div className="section-heading"><div><span className="step">BATCH</span><h2>배치 리포트 분석</h2></div><span className="count">{selected.length}개 호기 · {options.metrics.length}개 지표</span></div>
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>

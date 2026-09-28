@@ -1,7 +1,8 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useState} from 'react';
 import {desktop,errorText} from './desktop';
 import {Stepper,StepNav,notify,fail,LoadFailed} from './ui';
 import {OpenPath} from './OpenPath';
+import {FormEditor} from './FormEditor';
 import {QuestionDialog,withAnswer,noAnswers,type Question,type Answers} from './CollectQuestion';
 import {pickFolder} from './desktop';
 
@@ -9,15 +10,12 @@ type Version={stamp:string;has_candidate:boolean;kind:string};
 type Recipe={recipe:string};
 type Catalog={save_dir:boolean;recipes:Recipe[];machines?:string[]};
 type Opened={version:string;recipe:string;level:string;variants:string[];total:number;used:number;source:string};
-type Row={id:number;use:boolean;variant:string;zone:string;alg:string;orig:string;name:string;transform:string;raw:string;display:string};
-type Page={rows:Row[];total:number;used:number;grand_total:number;offset:number};
 type Scale={variant:string;coef:number;source:string;needed:boolean};
 type NewPrep={machines:{id:string;ip:string;local:string;type:string}[];local_source:string;local_source_ok:boolean;existing:string[]};
 type NewScale={variant:string;coef:number;source:string;confidence:string;reason:string};
 type Confirmed={final:string;original:string;kept:number;total:number;sheet:string;name_note:string;
   coef:{saved:number;defaulted:string[];unregistered:string[];error:string};
   merge:{collate:string;added:number;error:string}|null};
-const TRANSFORMS=['RAW','LINEAR','AREA'];
 const STEPS=['원본 선택','항목 편집','확정'];
 
 export function Form(){
@@ -25,12 +23,8 @@ export function Form(){
   const [catalog,setCatalog]=useState<Catalog>();
   const [recipe,setRecipe]=useState(''),[stamp,setStamp]=useState('');
   const [opened,setOpened]=useState<Opened>();
-  const [variant,setVariant]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('');
-  const [usedOnly,setUsedOnly]=useState(false),[offset,setOffset]=useState(0);
-  const [data,setData]=useState<Page>();
   const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
   const [machine,setMachine]=useState(''),[result,setResult]=useState<Confirmed>();
-  const [renaming,setRenaming]=useState<Row>(),[nameValue,setNameValue]=useState('');
   // 새로 만들기(장비/로컬 수집) — tkinter _form_new.
   const [mode,setMode]=useState<'edit'|'new'>('edit');
   const [newPrep,setNewPrep]=useState<NewPrep>(),[newName,setNewName]=useState(''),[newSource,setNewSource]=useState<'equipment'|'local'>('equipment');
@@ -46,7 +40,6 @@ export function Form(){
     return()=>{active=false;};
   },[recipe]);
   const [scales,setScales]=useState<Scale[]>([]),[scaleEdits,setScaleEdits]=useState<Record<string,string>>({});
-  const dialog=useRef<HTMLDialogElement>(null),sequence=useRef(0);
 
   async function loadCatalog(){
     setLoading(true);
@@ -55,9 +48,6 @@ export function Form(){
     catch(e){fail(e);}finally{setLoading(false);}
   }
   useEffect(()=>{void loadCatalog();},[]);
-  useEffect(()=>{const t=setTimeout(()=>setFilter(query),180);return()=>clearTimeout(t);},[query]);
-  useEffect(()=>{setOffset(0);},[variant,filter,usedOnly]);
-  useEffect(()=>{if(renaming){setNameValue(renaming.name);dialog.current?.showModal();}else dialog.current?.close();},[renaming]);
 
   const [newPrepError,setNewPrepError]=useState(''),[newPrepTry,setNewPrepTry]=useState(0);
   useEffect(()=>{if(mode==='new'&&!newPrep){setNewPrepError('');desktop.request('formnew_prepare').promise
@@ -78,7 +68,7 @@ export function Form(){
     setBusy(true);
     try{const r=(await desktop.request('formnew_parse',{scales:Object.fromEntries(newScales.map(x=>[x.variant,Number(newScaleValue(x))])),base_form:base}).promise).formnew as
         {form:Opened;similar:{recipe:string;match:number;total:number}[];base_form:string};
-      setOpened(r.form);setSimilar(r.similar);setBaseForm(r.base_form);setVariant('');setQuery('');setFilter('');setOffset(0);setResult(undefined);setStep(1);}
+      setOpened(r.form);setSimilar(r.similar);setBaseForm(r.base_form);setResult(undefined);setStep(1);}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   async function saveLocal(path:string){
@@ -88,28 +78,9 @@ export function Form(){
   async function open(r:string,s:string){
     setResult(undefined);setBusy(true);
     try{const reply=await desktop.request('form_open',{recipe:r,stamp:s}).promise;
-      const o=reply.form as Opened;setOpened(o);setVariant('');setQuery('');setFilter('');setOffset(0);setStep(1);}
+      const o=reply.form as Opened;setOpened(o);setStep(1);}
     catch(e){setOpened(undefined);fail(e);}finally{setBusy(false);}
   }
-  useEffect(()=>{
-    if(!opened)return;
-    const current=++sequence.current;setLoading(true);
-    desktop.request('form_page',{snapshot:opened.version,variant,query:filter,used_only:usedOnly,offset,limit:100})
-      .promise.then(reply=>{if(current===sequence.current)setData(reply.form as Page);})
-      .catch(e=>{if(current===sequence.current)fail(e);})
-      .finally(()=>{if(current===sequence.current)setLoading(false);});
-    return()=>{sequence.current++;};
-  },[opened,variant,filter,usedOnly,offset]);
-
-  async function edit(row:Row,kind:'use'|'name'|'transform',value:boolean|string):Promise<boolean>{
-    if(!opened)return false;
-    try{await desktop.request('form_edit',{snapshot:opened.version,row:row.id,kind,value}).promise;
-      const reply=await desktop.request('form_page',{snapshot:opened.version,variant,query:filter,used_only:usedOnly,offset,limit:100}).promise;
-      const p=reply.form as Page;setData(p);setOpened(o=>o?{...o,used:p.used}:o);return true;}
-    catch(e){fail(e);return false;}
-  }
-  // Keep the dialog (and the typed name) open when saving fails (A4).
-  async function saveName(){if(!renaming)return;if(await edit(renaming,'name',nameValue.trim()))setRenaming(undefined);}
   const machines=catalog?.machines||[];
   // Coefficients for LINEAR/AREA items of the chosen machine (변환계수.xlsx → 원본 라벨 → 기본값).
   useEffect(()=>{
@@ -186,25 +157,8 @@ export function Form(){
         <span className="count">사용 {opened.used} / 전체 {opened.total}</span></div>
       {mode==='new'&&similar.length>0&&<div className="form-filter"><label className="field">기존 레시피 양식 활용(사용 항목 맞추기)<select value={baseForm} disabled={busy} onChange={e=>void newParse(e.target.value)}>
         <option value="">새로 만들기(파서 추천)</option>{similar.map(x=><option key={x.recipe} value={x.recipe}>{x.recipe} — 일치 {x.match}/{x.total}</option>)}</select></label></div>}
-      <div className="form-filter" style={{marginTop:8}}>
-        <label className="field">변형<select value={variant} onChange={e=>setVariant(e.target.value)}>
-          <option value="">전체 변형</option>{opened.variants.map(v=><option key={v} value={v}>{v||'(기본)'}</option>)}</select></label>
-        <label className="field">검색<input value={query} maxLength={256} placeholder="항목·이름·Zone·Alg" onChange={e=>setQuery(e.target.value)}/></label>
-        <label className="field checkbox"><input type="checkbox" checked={usedOnly} onChange={e=>setUsedOnly(e.target.checked)}/>사용 항목만</label>
-      </div>
-      <div className="table-scroll" aria-busy={loading}><table><thead><tr>
-        <th>사용</th><th>변형</th><th>Zone</th><th>Alg</th><th>원본 항목</th><th>장비 화면 이름</th><th>변환</th><th>원본값</th></tr></thead>
-        <tbody>{(data?.rows||[]).map(row=><tr key={row.id} className={row.use?'':'muted'}>
-          <td><input type="checkbox" checked={row.use} onChange={e=>edit(row,'use',e.target.checked)} aria-label={`${row.orig} 사용`}/></td>
-          <td>{row.variant||'(기본)'}</td><td>{row.zone}</td><td>{row.alg}</td><td>{row.orig}</td>
-          <td><button className="linklike" onClick={()=>setRenaming(row)}>{row.name||'(이름 없음)'}</button></td>
-          <td><select value={row.transform} onChange={e=>edit(row,'transform',e.target.value)} aria-label={`${row.orig} 변환`}>
-            {TRANSFORMS.map(t=><option key={t} value={t}>{t}</option>)}</select></td>
-          <td>{row.display||row.raw}</td></tr>)}</tbody></table>
-        {(loading||!(data?.rows||[]).length)&&<p className="table-empty">{loading?'불러오는 중…':'표시할 항목이 없습니다.'}</p>}</div>
-      <div className="pagination"><span>{data?.total?`${offset+1}–${Math.min(offset+100,data.total)} / ${data.total}개`:'0개'}</span>
-        <div><button disabled={loading||offset===0} onClick={()=>setOffset(n=>Math.max(0,n-100))}>이전</button>
-          <button disabled={loading||offset+100>=(data?.total||0)} onClick={()=>setOffset(n=>n+100)}>다음</button></div></div>
+      <FormEditor version={opened.version} pageMethod="form_page" editMethod="form_edit" replyKey="form" variants={opened.variants}
+        onUsed={n=>setOpened(o=>o&&o.used!==n?{...o,used:n}:o)}/>
     </>}
     {step===1&&!opened&&<p className="table-empty">먼저 1단계에서 원본을 여세요.</p>}
 
@@ -247,10 +201,5 @@ export function Form(){
 
     <QuestionDialog question={question} onAnswer={v=>{if(!question)return;const next=withAnswer(answers,question,v);setAnswers(next);setQuestion(undefined);void newCollect(next);}}
       onCancel={()=>{setQuestion(undefined);void desktop.request('formnew_cancel').promise.catch(fail);}}/>
-    <dialog className="edit-dialog" ref={dialog} onClose={()=>setRenaming(undefined)}><form method="dialog" onSubmit={e=>{e.preventDefault();void saveName();}}>
-      <h3>장비 화면 이름</h3><p className="sub">{renaming?.orig}</p>
-      <input autoFocus value={nameValue} maxLength={200} onChange={e=>setNameValue(e.target.value)}/>
-      <div className="dialog-actions"><button type="button" onClick={()=>setRenaming(undefined)}>취소</button>
-        <button className="primary" type="submit">저장</button></div></form></dialog>
   </section>;
 }

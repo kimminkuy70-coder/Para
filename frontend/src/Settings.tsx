@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {desktop,pickFolder} from './desktop';
 import {notify,fail,LoadFailed} from './ui';
 import {errorText} from './desktop';
+import {takeSettingsIntent} from './nav';
 import {OpenPath,openPath} from './OpenPath';
 import {installUpdate,openProgramDir} from './AppUpdate';
 import type {AppUpdate} from './desktop';
@@ -13,12 +14,14 @@ const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 �
 const periodLabel=(h:number)=>h%24===0?(h===24?'하루 1회 (24시간)':h===168?'일주일 1회':`${h/24}일마다`):`${h}시간마다`;
 
 export function Settings(){
-  const [sub,setSub]=useState('save');
+  // Another screen may open 설정 on a given tab with a machine to register (nav.ts).
+  const [intent]=useState(()=>takeSettingsIntent());
+  const [sub,setSub]=useState(intent?.sub||'save');
   const [st,setSt]=useState<State>();
   const [saveDir,setSaveDir]=useState('');
   const [busy,setBusy]=useState(false);
   const [rMachine,setRMachine]=useState(''),[rPath,setRPath]=useState('');
-  const [sMachine,setSMachine]=useState(''),[sPath,setSPath]=useState('');
+  const [sMachine,setSMachine]=useState(intent?.sub==='scan'?intent.machine||'':''),[sPath,setSPath]=useState('');
   const [xMachine,setXMachine]=useState(''),[xPath,setXPath]=useState('');
   type Local={root:string;summary:string;onedrive:boolean;default:string;removed?:number};
   type About={version:string;user:string;config:string;local_root:string;logs:string};

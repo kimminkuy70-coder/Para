@@ -27,6 +27,9 @@ SCALED = {"LINEAR", "AREA"}
 MAX_SCALE = 1e6
 
 
+ZONE_LIMIT = 3000          # rows returned for one Zone (the frame stays well under MAX_FRAME)
+
+
 class DesktopForm:
     def __init__(self, config_path=None):
         # Only tests inject config_path; IPC never accepts it.
@@ -148,8 +151,12 @@ class DesktopForm:
 
     # ---- page ----------------------------------------------------------
     def page(self, params):
-        self._check(params, {"snapshot", "variant", "query", "used_only", "offset", "limit"})
+        self._check(params, {"snapshot", "variant", "query", "used_only", "offset", "limit", "zone"})
         variant = params.get("variant", "")
+        # Zone view (2026-09): one Zone at a time instead of 100-row pages.
+        zone = params.get("zone")
+        if zone is not None and (not isinstance(zone, str) or len(zone) > 256):
+            raise ValueError("Zone 을 확인하세요")
         query = params.get("query", "")
         used_only = params.get("used_only", False)
         if not isinstance(variant, str) or not isinstance(query, str) or len(query) > 256:
@@ -157,7 +164,7 @@ class DesktopForm:
         if type(used_only) is not bool:
             raise ValueError("표시 조건을 확인하세요")
         offset, limit = params.get("offset", 0), params.get("limit", 100)
-        for value, low, high in ((offset, 0, 10000000), (limit, 1, 100)):
+        for value, low, high in ((offset, 0, 10000000), (limit, 1, ZONE_LIMIT if zone is not None else 100)):
             if type(value) is not int or not low <= value <= high:
                 raise ValueError("표 조회 범위를 확인하세요")
         q = query.casefold()
@@ -170,6 +177,13 @@ class DesktopForm:
             if q and q not in (e["orig"] + " " + e["name"] + " " + e["zone"] + " " + e["alg"]).casefold():
                 continue
             matches.append((i, e))
+        zones = {}
+        for _i, e in matches:
+            z = zones.setdefault(e["zone"], dict(zone=e["zone"], total=0, used=0))
+            z["total"] += 1
+            z["used"] += 1 if e["use"] else 0
+        if zone is not None:
+            matches = [(i, e) for i, e in matches if e["zone"] == zone]
         rows = []
         for i, e in matches[offset:offset + limit]:
             method = editor_model.method_of(e["label"])
@@ -179,7 +193,7 @@ class DesktopForm:
                              display=editor_model.safe_display(e["raw"], method, None)))
         return dict(rows=rows, total=len(matches),
                     used=sum(1 for e in self.entries if e["use"]),
-                    grand_total=len(self.entries), offset=offset)
+                    grand_total=len(self.entries), offset=offset, zones=list(zones.values()))
 
     # ---- edit ----------------------------------------------------------
     def edit(self, params):

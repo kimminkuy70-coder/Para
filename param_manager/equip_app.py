@@ -6097,7 +6097,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
         tk.Label(win, text="조사할 S/M 폴더를 선택하세요(변형 이름 포함). 기본은 전체 선택.",
                  bg=self.p["bg"], fg=self.p["text"], font=self.fonts["bold"]).pack(
                  anchor="w", padx=14, pady=(12, 2))
-        tk.Label(win, text="노란색 = fail(계획 fail여부=Y) · ✗ = 폴더 없음(선택 불가) · "
+        tk.Label(win, text="노란색 = 이슈 Lot(계획 이슈 Lot=Y) · ✗ = 폴더 없음(선택 불가) · "
                            "슬롯이 여러 개면 오른쪽에서 조사할 슬롯을 고르세요(기본=첫 번째)\n"
                            "'수정' = S/M 폴더 수정 시각(= Scan 일자) — 언제 스캔된 "
                            "자료인지 보고 고르세요.",

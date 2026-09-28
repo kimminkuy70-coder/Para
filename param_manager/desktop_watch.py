@@ -664,8 +664,14 @@ class CmWatch(_Base):
                                      coef_lookup=lambda _e, v="", _m=b["machine"]: coefstore.lookup(rows, _m, v),
                                      recipe_prefix=cur["prefix"])
             if pivot:
-                from . import editor_model
-                entries = editor_model.build_entries(pivot)
+                from . import editor_model, namestore
+                try:
+                    names = namestore.load(namestore.name_path(save)) if save else []
+                except (OSError, ValueError):
+                    names = []
+                # Same remembered names/checks as every other form editor (장비화면이름.xlsx).
+                entries = editor_model.build_entries(pivot, name_lookup=namestore.make_lookup(names),
+                                                     use_lookup=namestore.make_use_lookup(names))
                 opened = self.form.load_entries(entries, level=cur["recipe"], recipe=cur["recipe"],
                                                 source=f"감시 대표 S/M {b['cand']['sm']}")
                 return dict(stage="edit", form=opened, recipe=cur["recipe"], index=b["idx"], total=len(b["queue"]))
@@ -696,6 +702,14 @@ class CmWatch(_Base):
         extract_io.write_snapshot(form, records, machines=[], sheet_name=kind, extracts=extracts, stage="final",
                                   level=cur["recipe"], aoi=b["machine"], source=f"commonality 감시 {cur['recipe']}",
                                   user=engine.current_user(), scales=used)
+        if save:
+            from . import namestore
+            try:
+                namestore.save_selected(namestore.name_path(save), [
+                    dict(alg=e["alg"], ext={"key": e["orig"]}, name=e["name"], use=e["use"]) for e in self.form.entries],
+                    engine.current_user())
+            except Exception:  # noqa: BLE001 - remembering names never blocks the watch form
+                pass
         b["entries"].append(dict(form=form, recipe=cur["recipe"], prefix=cur["prefix"], sm=b["cand"]["sm"]))
         b["idx"] += 1
         return self._open_next()

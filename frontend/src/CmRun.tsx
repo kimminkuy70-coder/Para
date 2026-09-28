@@ -1,55 +1,92 @@
 import {useEffect,useState} from 'react';
-import {desktop} from './desktop';
+import {desktop,pickFile,type Reply} from './desktop';
 import {Stepper,StepNav,notify,fail} from './ui';
-import {OpenPath} from './OpenPath';
+import {OpenPath,openPath} from './OpenPath';
+import {FormEditor} from './FormEditor';
+import {goToSettings} from './nav';
 
 type SurveyMachine={id:string;root:string};
-type PlanRow={device:string;process:string;sm:string;fail:boolean};
+// '이슈 Lot' (구 'fail여부'): 이슈가 있었던 Lot — 비교표·뷰어에서 노란색으로 표시.
+type PlanRow={device:string;process:string;sm:string;machine:string;issue:boolean};
 type Lot={id:number;label:string;device:string;lot:string;sm:string;exists:boolean;fail:boolean;scan_time:string;created:string;reason:string;wafers:string[];wafer:string};
 type Unit={unit:number;device:string;recipe:string;lots:number;files:{global_:boolean;optic:boolean;zones:number};thin:boolean;config_dir:string;title:string;result:string};
 type Scale={variant:string;coef:number;source:string;confidence:string;reason:string};
 type Opened={version:string;total:number;used:number;variants:string[]};
-type Row={id:number;use:boolean;variant:string;zone:string;alg:string;orig:string;name:string;transform:string;raw:string;display:string};
-type Page={rows:Row[];total:number;used:number;offset:number};
 type Variants={rows:[string,string][];parsed:string[];unmatched:string[]}|null;
 const STEPS=['조사 계획','S/M·슬롯 선택','안전 복사','변환계수','양식 편집','값 조사'];
-const TRANSFORMS=['RAW','LINEAR','AREA'];
-const emptyRow=():PlanRow=>({device:'',process:'',sm:'',fail:false});
+const emptyRow=(machine=''):PlanRow=>({device:'',process:'',sm:'',machine,issue:false});
+const ISSUE_RE=/^(y|yes|o|1|true|fail|ng|예|이슈|issue)$/i;
+// Same machine-number rule as the engine (AOI-9 == AOI-09, 'AOI-4,6,9' lists several).
+const machineNums=(t:string)=>new Set((t.match(/\d+/g)||[]).map(n=>Number(n)));
+const forMachine=(row:PlanRow,machine:string)=>{const want=[...machineNums(machine)][0];return !row.machine.trim()||(want!==undefined&&machineNums(row.machine).has(want));};
+const complete=(r:PlanRow)=>!!(r.device.trim()&&r.process.trim()&&r.sm.trim());
 
 /** New Commonality investigation, one machine at a time (tkinter 수동 조사 1~5단계). */
 export function CmRun({onFinished}:{onFinished:()=>void}){
   const [step,setStep]=useState(0),[busy,setBusy]=useState(false);
   const [machines,setMachines]=useState<SurveyMachine[]>([]),[machine,setMachine]=useState('');
   const [rows,setRows]=useState<PlanRow[]>([emptyRow()]),[paste,setPaste]=useState('');
+  const [checked,setChecked]=useState<number[]>([]),[unregistered,setUnregistered]=useState<string[]>([]),[planFile,setPlanFile]=useState('');
+  const [progress,setProgress]=useState('');
   const [lots,setLots]=useState<Lot[]>([]),[picked,setPicked]=useState<Record<number,string[]>>({});
   const [units,setUnits]=useState<Unit[]>([]),[unit,setUnit]=useState(0),[staging,setStaging]=useState('');
   const [base,setBase]=useState(''),[title,setTitle]=useState(''),[scales,setScales]=useState<Scale[]>([]),[scaleEdit,setScaleEdit]=useState<Record<string,string>>({});
   const [similar,setSimilar]=useState<{recipe:string;match:number;total:number}[]>([]),[baseForm,setBaseForm]=useState('');
-  const [opened,setOpened]=useState<Opened>(),[page,setPage]=useState<Page>(),[offset,setOffset]=useState(0),[usedOnly,setUsedOnly]=useState(false);
+  const [opened,setOpened]=useState<Opened>();
   const [variants,setVariants]=useState<Variants>(),[mapping,setMapping]=useState<Record<string,string>>({}),[formPath,setFormPath]=useState('');
 
-  useEffect(()=>{(async()=>{
+  async function loadMachines(){
     try{await desktop.connect();const r=(await desktop.request('cmsurvey_config').promise).cmsurvey as {machines:SurveyMachine[]};
-      setMachines(r.machines);setMachine(m=>m||(r.machines[0]?.id||''));}
+      setMachines(r.machines);setMachine(m=>m&&r.machines.some(x=>x.id===m)?m:(r.machines[0]?.id||''));}
     catch(e){fail(e);}
-  })();},[]);
-  async function call<T>(method:string,params:object){
+  }
+  useEffect(()=>{void loadMachines();},[]);
+  // Coming back from 설정 (this screen stays mounted): pick up newly registered roots.
+  useEffect(()=>{const again=(e:Event)=>{if((e as CustomEvent<string>).detail==='Commonality 조사')void loadMachines();};
+    window.addEventListener('para:tab',again);return()=>window.removeEventListener('para:tab',again);},[]);
+  async function call<T>(method:string,params:object,onStep?:(m:string)=>void){
     setBusy(true);
-    try{return (await desktop.request(method,params).promise).cmrun as T;}
+    try{return (await desktop.request(method,params,onStep?(v:Reply)=>{if(v.message)onStep(v.message);}:undefined).promise).cmrun as T;}
     catch(e){fail(e);return undefined;}finally{setBusy(false);}
   }
   const setRow=(i:number,patch:Partial<PlanRow>)=>setRows(rs=>rs.map((r,j)=>j===i?{...r,...patch}:r));
-  // Paste rows copied from the plan Excel (디바이스명 · 공정번호 · S/M · [AOI호기] · [fail여부]).
+  const addRows=(add:PlanRow[],replace=false)=>{setRows(rs=>{const keep=replace?[]:rs.filter(r=>r.device||r.process||r.sm);const n=[...keep,...add];return n.length?n:[emptyRow(machine)];});setChecked([]);};
+  // Paste rows copied from the plan Excel (디바이스명 · 공정번호 · S/M · [AOI호기] · [이슈 Lot]).
   function applyPaste(){
     const parsed=paste.split(/\r?\n/).map(l=>l.split('\t').map(c=>c.trim())).filter(c=>c.length>=3&&c.slice(0,3).some(Boolean))
-      .filter(c=>!/디바이스/.test(c[0])).map(c=>({device:c[0],process:c[1],sm:c[2],fail:/^(y|yes|o|1|true|fail)$/i.test(c[4]||'')}));
+      .filter(c=>!/디바이스/.test(c[0])).map(c=>({device:c[0],process:c[1],sm:c[2],machine:c[3]||machine,issue:ISSUE_RE.test(c[4]||'')}));
     if(!parsed.length){notify('붙여넣은 내용에서 행을 찾지 못했습니다. 엑셀에서 디바이스명·공정번호·S/M 열을 복사하세요.','error');return;}
-    setRows(rs=>[...rs.filter(r=>r.device||r.process||r.sm),...parsed]);setPaste('');notify(`${parsed.length}행을 추가했습니다.`,'ok');
+    addRows(parsed);setPaste('');notify(`${parsed.length}행을 추가했습니다.`,'ok');
   }
+  // 📂 계획 엑셀 불러오기 (새 양식 · 구 양식의 fail여부/생성일자 열 모두 읽음).
+  async function importPlan(){
+    const path=await pickFile();
+    if(!path){notify('파일 선택이 취소되었거나 데스크톱 앱이 아닙니다.','info');return;}
+    setBusy(true);
+    try{const r=(await desktop.request('cmsurvey_read_plan',{path}).promise).cmsurvey as {path:string;rows:PlanRow[];unregistered:string[]};
+      if(!r.rows.length){notify('계획 엑셀에 행이 없습니다. 디바이스명·공정번호·S/M 을 채워 주세요.','error');return;}
+      addRows(r.rows,true);setPlanFile(r.path);setUnregistered(r.unregistered);
+      const mine=r.rows.filter(x=>forMachine(x,machine)).length;
+      notify(`계획 ${r.rows.length}행을 불러왔습니다${machine?` (현재 호기 ${machine}: ${mine}행)`:''}.`,'ok');}
+    catch(e){fail(e);}finally{setBusy(false);}
+  }
+  // 📄 새 계획 엑셀 양식 (현재 표의 완성된 행을 채워서) — 로컬 Commonality/계획 폴더에 만들고 엽니다.
+  async function makeTemplate(){
+    setBusy(true);
+    try{const plan=rows.filter(complete).map(r=>({디바이스명:r.device.trim(),공정번호:r.process.trim(),'S/M':r.sm.trim(),AOI호기:r.machine.trim(),'이슈 Lot':r.issue?'Y':''}));
+      const r=(await desktop.request('cmsurvey_plan_template',{rows:plan}).promise).cmsurvey as {path:string;rows:number};
+      notify(`계획 엑셀 양식을 만들었습니다(${r.rows}행). 채워서 저장한 뒤 [📂 계획 엑셀 불러오기]로 읽으세요.`,'ok');
+      setPlanFile(r.path);await openPath(r.path);}
+    catch(e){fail(e);}finally{setBusy(false);}
+  }
+  function removeChecked(){setRows(rs=>{const n=rs.filter((_,i)=>!checked.includes(i));return n.length?n:[emptyRow(machine)];});setChecked([]);}
+  function removeAll(){if(!window.confirm(`조사 계획 ${rows.length}행을 모두 지울까요?`))return;setRows([emptyRow(machine)]);setChecked([]);setUnregistered([]);setPlanFile('');}
   async function resolve(){
-    const plan=rows.filter(r=>r.device.trim()||r.process.trim()||r.sm.trim())
-      .map(r=>({디바이스명:r.device.trim(),공정번호:r.process.trim(),'S/M':r.sm.trim(),AOI호기:machine,fail여부:r.fail?'Y':''}));
-    const r=await call<{lots:Lot[]}>('cmrun_plan',{machine,plan});
+    const plan=rows.filter(r=>complete(r)&&forMachine(r,machine))
+      .map(r=>({디바이스명:r.device.trim(),공정번호:r.process.trim(),'S/M':r.sm.trim(),AOI호기:r.machine.trim()||machine,'이슈 Lot':r.issue?'Y':''}));
+    setProgress('S/M 폴더 찾기를 시작합니다…');
+    const r=await call<{lots:Lot[]}>('cmrun_plan',{machine,plan},setProgress);
+    setProgress('');
     if(!r)return;
     setLots(r.lots);setPicked(Object.fromEntries(r.lots.filter(l=>l.exists).map(l=>[l.id,l.wafer?[l.wafer]:[]])));setStep(1);
   }
@@ -71,25 +108,13 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
     const payload=Object.fromEntries(scales.map(s=>[s.variant,Number(scaleValue(s))]));
     const r=await call<{form:Opened;similar:{recipe:string;match:number;total:number}[];base_form:string}>('cmrun_parse',{unit,scales:payload,base_form:form});
     if(!r)return;
-    setOpened(r.form);setSimilar(r.similar);setBaseForm(r.base_form);setOffset(0);setStep(4);
-  }
-  useEffect(()=>{
-    if(step!==4||!opened)return;let active=true;
-    desktop.request('cmrun_page',{snapshot:opened.version,variant:'',query:'',used_only:usedOnly,offset,limit:100}).promise
-      .then(r=>{if(active)setPage(r.cmrun as Page);}).catch(e=>{if(active)fail(e);});
-    return()=>{active=false;};
-  },[step,opened,offset,usedOnly]);
-  async function edit(row:Row,kind:'use'|'name'|'transform',value:boolean|string){
-    if(!opened)return;
-    try{await desktop.request('cmrun_edit',{snapshot:opened.version,row:row.id,kind,value}).promise;
-      const r=(await desktop.request('cmrun_page',{snapshot:opened.version,variant:'',query:'',used_only:usedOnly,offset,limit:100}).promise).cmrun as Page;
-      setPage(r);setOpened(o=>o&&{...o,used:r.used});}
-    catch(e){fail(e);}
+    setOpened(r.form);setSimilar(r.similar);setBaseForm(r.base_form);setStep(4);
   }
   async function confirmForm(){
     if(!opened)return;
-    const r=await call<{form:string;kept:number;variants:Variants}>('cmrun_confirm',{unit,snapshot:opened.version});
+    const r=await call<{form:string;kept:number;variants:Variants;notes?:string[]}>('cmrun_confirm',{unit,snapshot:opened.version});
     if(!r)return;
+    (r.notes||[]).forEach(n=>notify(n,'error'));
     setFormPath(r.form);setVariants(r.variants);
     setMapping(Object.fromEntries((r.variants?.rows||[]).map(([form,auto])=>[form,auto])));setStep(5);
   }
@@ -100,14 +125,16 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
     if(!r)return;
     setUnits(r.units);notify(`값 조사 완료 · 매칭 ${r.matched_rows}행 · 채운 셀 ${r.filled_cells}개${r.mismatches?` · 불일치 ${r.mismatches}건`:''}`,'ok');
     const next=r.units.findIndex(u=>!u.result);
-    setOpened(undefined);setPage(undefined);setVariants(undefined);
+    setOpened(undefined);setVariants(undefined);
     if(next>=0){setUnit(next);setStep(2);}else{setStep(2);onFinished();}
   }
   async function restart(){await call('cmrun_reset',{});setStep(0);setLots([]);setUnits([]);setOpened(undefined);}
 
   if(machines.length===0)
-    return <section className="panel"><div className="section-heading"><div><span className="step">NEW SURVEY</span><h2>신규 Commonality 조사</h2></div></div>
-      <p className="hint">Scanresult 루트가 설정된 호기가 없습니다. [설정] 탭에서 호기별 Scanresult 루트를 먼저 등록하세요.</p></section>;
+    return <section className="panel"><div className="section-heading"><div><span className="step">NEW SURVEY</span><h2>신규 Commonality 조사</h2></div>
+      <button onClick={()=>void loadMachines()}>새로고침</button></div>
+      <p className="hint">Scanresult 루트가 설정된 호기가 없습니다. 호기별 장비 폴더(Scanresult 상위 폴더)를 먼저 등록하세요.</p>
+      <div className="toolbar"><button className="primary" onClick={()=>goToSettings({sub:'scan'})}>설정 › Scanresult 루트로 이동 ▶</button></div></section>;
   const current=units[unit];
   const allDone=units.length>0&&units.every(u=>u.result);
   return <section className="panel">
@@ -116,26 +143,43 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
     <Stepper labels={STEPS} current={step}/>
     <div className="step-body">
     {step===0&&<>
-      <p className="hint">조사할 Lot 계획을 입력하면 그 호기의 Scanresult(백업본 포함)에서 S/M 폴더를 찾습니다. 원본은 읽기만 합니다.</p>
-      <div className="form-filter" style={{marginTop:12}}><label className="field">호기<select value={machine} onChange={e=>setMachine(e.target.value)}>
-        {machines.map(m=><option key={m.id} value={m.id}>{m.id}</option>)}</select></label></div>
-      <div className="table-scroll"><table><thead><tr><th>디바이스명</th><th>공정번호</th><th>S/M</th><th>fail</th><th></th></tr></thead>
-        <tbody>{rows.map((r,i)=><tr key={i}>
+      <p className="hint">조사할 Lot 계획을 입력하거나 엑셀로 불러오면, 고른 호기의 Scanresult(백업본 포함)에서 S/M 폴더를 찾습니다. 원본은 읽기만 합니다.</p>
+      <div className="form-filter" style={{marginTop:12}}><label className="field">조사 호기<select value={machine} onChange={e=>setMachine(e.target.value)}>
+        {machines.map(m=><option key={m.id} value={m.id}>{m.id}</option>)}</select></label>
+        <button onClick={()=>goToSettings({sub:'scan'})} title="목록에 없는 호기의 장비 폴더를 등록합니다">＋ 다른 호기 장비 폴더 등록…</button></div>
+      {unregistered.length>0&&<div className="warn-box" role="alert"><b>장비 폴더가 등록되지 않은 호기</b>가 계획에 있습니다. 경로를 지정하면 그 호기도 조사할 수 있습니다.
+        <div className="toolbar">{unregistered.map(m=><button key={m} onClick={()=>goToSettings({sub:'scan',machine:m})}>{m} 경로 지정 ▶</button>)}</div></div>}
+      <div className="toolbar">
+        <button disabled={busy} onClick={importPlan}>📂 계획 엑셀 불러오기</button>
+        <button disabled={busy} onClick={makeTemplate}>📄 계획 엑셀 양식 만들기</button>
+        <span className="spacer"/>
+        <button onClick={()=>setRows(rs=>[...rs,emptyRow(machine)])}>행 추가</button>
+        <button disabled={!checked.length} onClick={removeChecked}>선택 삭제{checked.length?` (${checked.length})`:''}</button>
+        <button disabled={rows.length===1&&!complete(rows[0])&&!rows[0].device} onClick={removeAll}>전체 삭제</button></div>
+      {planFile&&<p className="hint">계획 파일: <code>{planFile}</code></p>}
+      <div className="table-scroll cm-plan"><table><thead><tr>
+        <th><input type="checkbox" aria-label="모든 행 선택" checked={rows.length>0&&checked.length===rows.length}
+          onChange={e=>setChecked(e.target.checked?rows.map((_,i)=>i):[])}/></th>
+        <th>디바이스명</th><th>공정번호</th><th>S/M</th><th>AOI호기</th><th>이슈 Lot</th><th></th></tr></thead>
+        <tbody>{rows.map((r,i)=>{const other=!forMachine(r,machine);return <tr key={i} className={other?'muted':''} title={other?`${machine} 조사에서 제외(다른 호기 행)`:''}>
+          <td><input type="checkbox" aria-label={`${i+1}행 선택`} checked={checked.includes(i)} onChange={e=>setChecked(c=>e.target.checked?[...c,i]:c.filter(x=>x!==i))}/></td>
           <td><input aria-label={`${i+1}행 디바이스명`} value={r.device} maxLength={256} onChange={e=>setRow(i,{device:e.target.value})}/></td>
           <td><input aria-label={`${i+1}행 공정번호`} value={r.process} maxLength={256} onChange={e=>setRow(i,{process:e.target.value})}/></td>
           <td><input aria-label={`${i+1}행 S/M`} value={r.sm} maxLength={256} onChange={e=>setRow(i,{sm:e.target.value})}/></td>
-          <td style={{textAlign:'center'}}><input type="checkbox" checked={r.fail} onChange={e=>setRow(i,{fail:e.target.checked})}/></td>
-          <td><button className="linklike" disabled={rows.length===1} onClick={()=>setRows(rs=>rs.filter((_,j)=>j!==i))}>삭제</button></td></tr>)}</tbody></table></div>
-      <div className="toolbar"><button onClick={()=>setRows(rs=>[...rs,emptyRow()])}>행 추가</button></div>
-      <label className="field">엑셀 계획에서 붙여넣기 (디바이스명 · 공정번호 · S/M · AOI호기 · fail여부 열을 복사)<textarea rows={3} value={paste} onChange={e=>setPaste(e.target.value)} placeholder="엑셀에서 행을 복사해 여기에 붙여넣으세요"/></label>
+          <td><input aria-label={`${i+1}행 AOI호기`} value={r.machine} maxLength={256} placeholder={machine} onChange={e=>setRow(i,{machine:e.target.value})}/></td>
+          <td style={{textAlign:'center'}}><input type="checkbox" aria-label={`${i+1}행 이슈 Lot`} checked={r.issue} onChange={e=>setRow(i,{issue:e.target.checked})}/></td>
+          <td><button className="linklike" onClick={()=>{setRows(rs=>{const n=rs.filter((_,j)=>j!==i);return n.length?n:[emptyRow(machine)];});setChecked([]);}}>삭제</button></td></tr>;})}</tbody></table></div>
+      <p className="hint">{rows.filter(complete).length}행 입력 · {machine} 조사 대상 {rows.filter(r=>complete(r)&&forMachine(r,machine)).length}행 (AOI호기가 다른 행은 흐리게 표시되고 이번 조사에서 빠집니다. 비우면 조사 호기로 봅니다.)</p>
+      <label className="field">엑셀에서 붙여넣기 (디바이스명 · 공정번호 · S/M · AOI호기 · 이슈 Lot 열을 복사)<textarea rows={3} value={paste} onChange={e=>setPaste(e.target.value)} placeholder="엑셀에서 행을 복사해 여기에 붙여넣으세요"/></label>
       <div className="toolbar"><button disabled={!paste.trim()} onClick={applyPaste}>붙여넣은 행 추가</button></div>
+      {busy&&progress&&<div className="runbar" role="status" aria-live="polite"><div><strong>S/M 폴더 찾는 중…</strong><p>{progress}</p></div></div>}
     </>}
     {step===1&&<>
       <p className="hint">조사할 S/M 폴더를 고르세요(기본: 찾은 폴더 전체). 슬롯(웨이퍼)을 여러 개 고르면 슬롯마다 따로 조사하고 열 이름 뒤에 슬롯명이 붙습니다. '수정' = Scan 일자.</p>
       <div className="table-scroll"><table><thead><tr><th>선택</th><th>S/M 폴더</th><th>디바이스</th><th>공정</th><th>슬롯</th><th>수정(Scan)</th><th>상태</th></tr></thead>
         <tbody>{lots.map(l=><tr key={l.id} className={(l.exists?'':'muted ')+(l.fail?'fail-row':'')}>
           <td><input type="checkbox" aria-label={`${l.label} 선택`} disabled={!l.exists} checked={l.id in picked} onChange={e=>setPicked(p=>{const n={...p};if(e.target.checked)n[l.id]=l.wafer?[l.wafer]:[];else delete n[l.id];return n;})}/></td>
-          <td>{l.label}{l.fail?' · Fail':''}</td><td>{l.device}</td><td>{l.lot}</td>
+          <td>{l.label}{l.fail?' · 이슈 Lot':''}</td><td>{l.device}</td><td>{l.lot}</td>
           <td>{l.wafers.length>1&&l.id in picked?<div className="slot-picks">{l.wafers.map(w=><label key={w}><input type="checkbox" aria-label={`${l.label} 슬롯 ${w}`} checked={picked[l.id]?.includes(w)} onChange={e=>setPicked(p=>{const cur=p[l.id]||[];const next=e.target.checked?[...cur,w]:cur.filter(x=>x!==w);return next.length?{...p,[l.id]:next}:p;})}/>{w}</label>)}</div>:(l.wafer||'—')}</td>
           <td>{l.scan_time||'—'}</td><td>{l.exists?'발견':l.reason||'없음'}</td></tr>)}</tbody></table></div>
       <p className="hint">{Object.keys(picked).length}개 선택 · 복사본은 로컬 작업 폴더의 Commonality 아래에 둡니다.</p>
@@ -162,17 +206,10 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
     {step===4&&opened&&<>
       <div className="section-heading"><div><h3>{title} · 조사 양식</h3></div><span className="count">사용 {opened.used} / 전체 {opened.total}</span></div>
       {similar.length>0&&<div className="form-filter"><label className="field">기존 양식 기준으로 사용 항목 맞추기<select value={baseForm} disabled={busy} onChange={e=>void parse(e.target.value)}>
-        <option value="">(파서 기본 추천)</option>{similar.map(s=><option key={s.recipe} value={s.recipe}>{s.recipe} — 일치 {s.match}/{s.total}</option>)}</select></label>
-        <label className="field checkbox"><input type="checkbox" checked={usedOnly} onChange={e=>{setUsedOnly(e.target.checked);setOffset(0);}}/>사용 항목만</label></div>}
-      <div className="table-scroll"><table><thead><tr><th>사용</th><th>변형</th><th>Zone</th><th>Alg</th><th>원본 항목</th><th>표시 이름</th><th>변환</th><th>값</th></tr></thead>
-        <tbody>{(page?.rows||[]).map(row=><tr key={row.id} className={row.use?'':'muted'}>
-          <td><input type="checkbox" checked={row.use} aria-label={`${row.orig} 사용`} onChange={e=>edit(row,'use',e.target.checked)}/></td>
-          <td>{row.variant||'(기본)'}</td><td>{row.zone}</td><td>{row.alg}</td><td>{row.orig}</td>
-          <td><input value={row.name} maxLength={200} aria-label={`${row.orig} 표시 이름`} onChange={e=>setPage(p=>p&&{...p,rows:p.rows.map(r=>r.id===row.id?{...r,name:e.target.value}:r)})} onBlur={e=>void edit(row,'name',e.target.value)}/></td>
-          <td><select value={row.transform} aria-label={`${row.orig} 변환`} onChange={e=>edit(row,'transform',e.target.value)}>{TRANSFORMS.map(t=><option key={t}>{t}</option>)}</select></td>
-          <td>{row.display||row.raw}</td></tr>)}</tbody></table></div>
-      <div className="pagination"><span>{page?.total?`${offset+1}–${Math.min(offset+100,page.total)} / ${page.total}개`:'0개'}</span>
-        <div><button disabled={offset===0} onClick={()=>setOffset(n=>Math.max(0,n-100))}>이전</button><button disabled={offset+100>=(page?.total||0)} onClick={()=>setOffset(n=>n+100)}>다음</button></div></div>
+        <option value="">(파서 기본 추천)</option>{similar.map(s=><option key={s.recipe} value={s.recipe}>{s.recipe} — 일치 {s.match}/{s.total}</option>)}</select></label></div>}
+      <p className="hint">지난번에 정한 장비 화면 이름·체크 상태(장비화면이름.xlsx)를 자동으로 적용했습니다. 확정하면 이번 설정도 기억합니다.</p>
+      <FormEditor version={opened.version} pageMethod="cmrun_page" editMethod="cmrun_edit" replyKey="cmrun" variants={opened.variants}
+        onUsed={n=>setOpened(o=>o&&o.used!==n?{...o,used:n}:o)}/>
     </>}
     {step===5&&<>
       <OpenPath label="확정 양식" path={formPath}/>
@@ -187,7 +224,7 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
     {!(step===2&&allDone)&&<StepNav step={step} total={STEPS.length} busy={busy} onBack={()=>setStep(s=>s===3||s===4||s===5?2:Math.max(0,s-1))}
       onNext={()=>{if(step===0)void resolve();else if(step===1)void copy();else if(step===2)void detect();else if(step===3)void parse();else if(step===4)void confirmForm();else void collate();}}
       nextLabel={['S/M 폴더 찾기','안전 복사','변환계수 확인','양식 편집','양식 확정','값 조사 실행'][step]}
-      nextDisabled={(step===0&&(!machine||!rows.some(r=>r.device.trim()&&r.process.trim()&&r.sm.trim())))||(step===1&&!Object.keys(picked).length)
+      nextDisabled={(step===0&&(!machine||!rows.some(r=>complete(r)&&forMachine(r,machine))))||(step===1&&!Object.keys(picked).length)
         ||(step===2&&!base.trim())||(step===3&&scaleBad)||(step===4&&!opened?.used)}/>}
   </section>;
 }

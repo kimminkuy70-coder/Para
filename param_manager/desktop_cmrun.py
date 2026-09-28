@@ -70,8 +70,12 @@ class DesktopCmRun:
         if not mine:
             raise ValueError("이 호기에 해당하는 계획 행이 없습니다. AOI호기를 확인하세요.")
         scan_roots = cm.scanresult_roots(roots[machine], machine)
-        report(f'{machine} Scanresult 에서 계획 {len(mine)}행의 S/M 폴더 찾는 중…')
-        lots = cm.resolve_plan(scan_roots, mine)
+        report(f'{machine} Scanresult 폴더 {len(scan_roots)}개(백업 포함)에서 계획 {len(mine)}행의 S/M 폴더를 찾습니다…')
+
+        def progress(i, n, row):
+            report(f"[{i}/{n}] {row.get('디바이스명', '')} / {row.get('공정번호', '')} / {row.get('S/M', '')} 찾는 중…")
+        lots = cm.resolve_plan(scan_roots, mine, progress=progress)
+        report(f'찾기 완료 — 발견 {sum(1 for l in lots if l.exists)} / 전체 {len(lots)}')
         if len(lots) > MAX_LOTS:
             raise ValueError("S/M 폴더가 너무 많습니다. 계획을 나눠 진행하세요.")
         self.state = dict(machine=machine, lots=lots)
@@ -256,11 +260,52 @@ class DesktopCmRun:
                                   stage="final", level=unit["title"], aoi=state["machine"],
                                   source=f"commonality {unit['title']}", user=engine.current_user(), scales=used)
         unit["form_path"] = form_path
+        notes = self._remember(unit, entries, used, form_path)
         table = collate.variant_match_table(collate.form_variants(form_path), collate.parsed_variants(unit["pivot"]))
         needed = any(engine._s(f).strip() for f, _ in table["rows"]) or any(engine._s(p).strip() for p in table["parsed"])
-        return dict(unit=params["unit"], form=form_path, kept=len(records),
+        return dict(unit=params["unit"], form=form_path, kept=len(records), notes=notes,
                     variants=dict(rows=[list(r) for r in table["rows"]], parsed=table["parsed"],
                                   unmatched=table["unmatched_parsed"]) if needed else None)
+
+    def _remember(self, unit, entries, used_scales, form_path):
+        """Same after-confirm bookkeeping as the tkinter Commonality editor
+        (`_names_from_form` / `_coef_from_form` / `_save_candidate_snapshot`):
+        ① remember display names + checkbox states in 장비화면이름.xlsx so the next
+        form with the same items opens the same way, ② record the confirmed
+        per-variant coefficients in 변환계수.xlsx (a person confirmed them),
+        ③ keep the full candidate list ('원본') next to the local form so items left
+        out now can be added back later. Each step is best effort."""
+        notes = []
+        save = self._save_dir()
+        user = engine.current_user()
+        if save:
+            try:
+                namestore.save_selected(namestore.name_path(save), [
+                    dict(alg=e["alg"], ext={"key": e["orig"]}, name=e["name"], use=e["use"]) for e in entries], user)
+            except Exception as exc:  # noqa: BLE001
+                notes.append(f"장비화면이름 저장 실패: {exc}")
+            try:
+                if used_scales:
+                    rows = self._coef_rows()
+                    mags = {e["variant"]: "" for e in entries}
+                    for r in unit.get("pivot") or []:
+                        if r.get("mag") and r.get("mags"):
+                            mags[r["mag"]] = next(iter(r["mags"].values()), "")
+                    n = coefstore.apply_form_scales(rows, self.state["machine"], dict(used_scales), mags,
+                                                    note=f"{unit['title']} Commonality 양식 확정")
+                    if n:
+                        coefstore.save(coefstore.coef_path(save), rows)
+            except Exception as exc:  # noqa: BLE001
+                notes.append(f"변환계수 저장 실패: {exc}")
+        try:
+            original = form_path[:-5] + "_원본.xlsx" if form_path.endswith(".xlsx") else form_path + "_원본.xlsx"
+            pivot = [dict(layer=unit["title"], recipe=unit["title"], mag=e["variant"], zone=e["zone"], alg=e["alg"],
+                          param=engine._s(e["name"]).strip() or e["reco"], values={}, unit="", raws={"양식": e["raw"]},
+                          use=e["use"], extract=dict(e["ext"] or {})) for e in entries]
+            formbuilder.build_initial_workbook(pivot, original, level=unit["title"], source=f"commonality 원본 {unit['title']}")
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"전체 후보(원본) 저장 실패: {exc}")
+        return notes
 
     # ---- 6. Lot values → result workbook -------------------------------------------
     def collate(self, params):

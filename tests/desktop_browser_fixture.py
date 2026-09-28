@@ -64,6 +64,13 @@ if sys.argv[1] == 'init':
         for w in wafers:
             _make_wafer(root/'eq', 'AOI-01', '2D@R2-DEVA-1_0855360PD-0A', '6321' if sm == 'HPG' else '6322', sm, w)
     cfg['commonality_roots'] = {'AOI-01': str(root/'eq')}
+    # An old-format Lot plan (fail여부 / 생성일자 columns) for the import button.
+    plan_wb = openpyxl.Workbook(); plan_ws = plan_wb.active; plan_ws.title = 'Lot목록'
+    plan_ws.append(['디바이스명', '공정번호', 'S/M', 'AOI호기', 'fail여부', '생성일자'])
+    plan_ws.append(['DEVA-1', '6321', 'HPG', 'AOI-01', 'Y', '2026-08-01'])
+    plan_ws.append(['DEVA-1', '6322', 'TVS', 'AOI-01', '', ''])
+    plan_ws.append(['DEVB', '7000', 'X', 'AOI-21', '', ''])
+    plan_wb.save(root/'old_plan.xlsx')
     (root/'config.json').write_text(json.dumps(cfg), encoding='utf-8')
     # A published web package newer than the running engine (self-update banner).
     from param_manager import desktop_appupdate, desktop_package

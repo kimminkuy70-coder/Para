@@ -36,7 +36,7 @@ BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 관리', 'do
               'update': '값 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 감시 회차'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
 LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
@@ -211,10 +211,11 @@ class Session:
                        commonality_page={'snapshot','offset','limit','column','query','changed_only'},
                        commonality_export={'snapshot','changed_only'})
         allowed.update(form_catalog=set(), form_versions={'recipe'}, form_open={'recipe','stamp'},
-                       form_page={'snapshot','variant','query','used_only','offset','limit'},
+                       form_page={'snapshot','variant','query','used_only','offset','limit','zone'},
                        form_edit={'snapshot','row','kind','value'}, form_scales={'snapshot','machine'},
                        form_confirm={'snapshot','machine','scales'})
-        allowed.update(cmsurvey_config=set(), cmsurvey_preflight={'machine','plan'})
+        allowed.update(cmsurvey_config=set(), cmsurvey_preflight={'machine','plan'}, cmsurvey_plan_template={'rows'},
+                       cmsurvey_read_plan={'path'})
         allowed.update(history_files=set(), history_diff={'catalog','old','new','files'},
                        history_page={'snapshot','pair','offset','limit','kind','query'},
                        history_export={'snapshot','pair'})
@@ -229,7 +230,7 @@ class Session:
                        update_commit={'include'}, update_cancel=set())
         allowed.update(cmrun_plan={'machine','plan'}, cmrun_copy={'picks'}, cmrun_units=set(),
                        cmrun_detect={'unit','base'}, cmrun_parse={'unit','scales','base_form'},
-                       cmrun_page={'snapshot','variant','query','used_only','offset','limit'},
+                       cmrun_page={'snapshot','variant','query','used_only','offset','limit','zone'},
                        cmrun_edit={'snapshot','row','kind','value'}, cmrun_confirm={'unit','snapshot'},
                        cmrun_collate={'unit','mapping'}, cmrun_reset=set())
         allowed.update(formnew_prepare=set(), formnew_collect={'recipe','machines','source','answers'},
@@ -242,7 +243,7 @@ class Session:
                        pwatch_jobs={'machine','sub'}, pwatch_run=set(), cmwatch_state=set(),
                        cmwatch_save={'enabled','interval_hours','window_start','window_end','settle_minutes','machines','plan'},
                        cmwatch_run=set(), cmwatch_candidates={'machine','device','lot'}, cmwatch_begin={'sm','title'},
-                       cmwatch_page={'snapshot','variant','query','used_only','offset','limit'},
+                       cmwatch_page={'snapshot','variant','query','used_only','offset','limit','zone'},
                        cmwatch_edit={'snapshot','row','kind','value'}, cmwatch_confirm={'snapshot'}, cmwatch_cancel=set())
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
@@ -374,6 +375,10 @@ class Session:
                 # Scanresult traversal over the equipment share (A9).
                 bg(rid, 'cmsurvey', lambda: self.cmsurvey.preflight(params),
                    'Scanresult 폴더를 확인하지 못했습니다. 장비 연결을 확인하세요.', ('cmsurvey', 'equipment'))
+            elif method == 'cmsurvey_plan_template':
+                bg(rid, 'cmsurvey', lambda: self.cmsurvey.plan_template(params), '계획 엑셀을 만들지 못했습니다. 로컬 작업 폴더를 확인하세요.')
+            elif method == 'cmsurvey_read_plan':
+                bg(rid, 'cmsurvey', lambda: self.cmsurvey.read_plan(params), '계획 엑셀을 읽지 못했습니다. 파일이 열려 있거나 형식이 다른지 확인하세요.')
             else:
                 self.idle('cmsurvey')
                 self.emit(rid, 'completed', cmsurvey=self.cmsurvey.config())

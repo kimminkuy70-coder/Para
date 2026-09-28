@@ -12,6 +12,17 @@ fn pick_folder() -> Option<String> {
         .and_then(|path| path.to_str().map(str::to_string))
 }
 
+/// Open the OS file chooser for a Lot plan workbook (.xlsx/.xlsm) and return the
+/// chosen absolute path, or null. Same trust model as `pick_folder`: the person's
+/// explicit choice; the Python engine reads it read-only and validates it.
+#[tauri::command]
+fn pick_file() -> Option<String> {
+    rfd::FileDialog::new()
+        .add_filter("Excel", &["xlsx", "xlsm"])
+        .pick_file()
+        .and_then(|path| path.to_str().map(str::to_string))
+}
+
 /// Quit the app so a staged self-update can swap the install folder. Goes
 /// through ExitRequested below, which lets the engine finish cleanly first.
 #[tauri::command]
@@ -84,7 +95,7 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![app_contract_version, pick_folder, app_exit, set_background, desktop::desktop_connect, desktop::desktop_send])
+        .invoke_handler(tauri::generate_handler![app_contract_version, pick_folder, pick_file, app_exit, set_background, desktop::desktop_connect, desktop::desktop_send])
         .build(tauri::generate_context!())
         .expect("failed to build Camtek AOI Manager")
         .run(|app, event| {

@@ -116,3 +116,17 @@ button.pick-item:hover{background:#f2f6fa}
 .current-settings{border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:14px 0;background:#f8fafc}
 .current-settings h3{margin:0 0 8px}.current-settings th{text-align:left;width:170px;white-space:nowrap;font-weight:700}
 .current-settings td code{overflow-wrap:anywhere}.current-settings .warn{color:#a33820}
+/* Form editor: Zone tabs, keyboard cursor */
+.zone-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.zone-tabs button{min-height:0;padding:5px 10px;border-radius:999px;font-size:12.5px}
+.zone-tabs button.active{background:var(--navy,#1b345f);color:#fff;border-color:var(--navy,#1b345f)}
+.zone-tabs small{opacity:.75;margin-left:4px}
+.editor-grid{max-height:560px;outline:none}
+.editor-grid:focus{box-shadow:0 0 0 2px #a3e63588 inset}
+.editor-grid tr.cursor-row td{box-shadow:inset 0 2px 0 #1b345f,inset 0 -2px 0 #1b345f}
+.editor-grid tr.muted td{opacity:.62}
+.editor-grid td input:not([type=checkbox]){width:100%;min-width:140px}
+.kept-screen:not([hidden]){display:contents}
+.warn-box{border:1px solid #f1c27d;background:#fff7e6;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13px}
+.toolbar .spacer{flex:1}
+.cm-plan tr.muted td{opacity:.5}

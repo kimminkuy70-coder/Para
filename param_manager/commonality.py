@@ -26,8 +26,11 @@ Scanresult 아래 여러 **Lot**(웨이퍼 로트)의 파라미터 값을 조사
 
 from __future__ import annotations
 
+import os
 import re
+import threading
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -42,12 +45,18 @@ from . import collate, downloader, engine, ini_parser
 # 조사할 Lot 목록(사람이 채우는 파일). '감시 대상 계획'(cmwatcher.WATCH_PLAN_*) 과
 # 헷갈리지 않게 파일 이름을 구분한다 — 이건 **무엇을 조사할지**, 저건 **무엇을 감시할지**.
 PLAN_FILENAME = "Commonality_Lot계획.xlsx"
-# '생성일자' = 자동 감시가 새 S/M 을 찾아 넣을 때 그 폴더가 언제 생겼는지(사람 입력 아님).
-PLAN_HEADERS = ["디바이스명", "공정번호", "S/M", "AOI호기", "fail여부", "생성일자"]
-# 구 템플릿(LOT번호) 하위호환 — 읽을 때 공정번호로 통일.
+# 2026-09 사용자 지정: 'fail여부' → **'이슈 Lot'**, '생성일자' 열 삭제(S/M 폴더 생성일시는
+# 조사할 때 프로그램이 직접 읽어 결과에 적으므로 사람이 적을 필요가 없다).
+ISSUE_KEY = "이슈 Lot"
+PLAN_HEADERS = ["디바이스명", "공정번호", "S/M", "AOI호기", ISSUE_KEY]
+# 구 템플릿 하위호환 — 읽을 때 새 이름으로 통일(LOT번호 → 공정번호, fail여부 → 이슈 Lot).
 _HEADER_ALIASES = {"LOT번호": "공정번호", "LOT": "공정번호", "공정 번호": "공정번호",
-                   "공정 Number": "공정번호", "Fail": "fail여부", "FAIL": "fail여부",
-                   "fail": "fail여부", "fail 여부": "fail여부"}
+                   "공정 Number": "공정번호", "Fail": ISSUE_KEY, "FAIL": ISSUE_KEY,
+                   "fail": ISSUE_KEY, "fail 여부": ISSUE_KEY, "fail여부": ISSUE_KEY,
+                   "이슈Lot": ISSUE_KEY, "이슈 LOT": ISSUE_KEY, "이슈LOT": ISSUE_KEY,
+                   "이슈 lot": ISSUE_KEY, "이슈lot": ISSUE_KEY}
+# 결과 엑셀 '_정보' 시트에서 이슈 Lot S/M 을 적는 행 이름(구 파일의 'Fail' 도 읽는다).
+ISSUE_INFO = "이슈 Lot"
 _YES = {"y", "yes", "1", "true", "o", "예", "fail", "ng", "불량"}
 
 # 취합 비교에서 값이 과반수와 다를 때 칠하는 색(연한 주황).
@@ -79,7 +88,7 @@ def create_plan_template(path: str, rows: list[dict] | None = None) -> str:
         c.fill = fill
         c.font = white
         c.alignment = Alignment(horizontal="center", vertical="center")
-    for col, w in zip("ABCDEF", (28, 18, 12, 12, 10, 18)):
+    for col, w in zip("ABCDE", (28, 18, 14, 12, 10)):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
     info = wb.create_sheet("사용법")
@@ -91,9 +100,9 @@ def create_plan_template(path: str, rows: list[dict] | None = None) -> str:
         ["3) S/M: 공정 폴더 아래 폴더명(예: HPG / TVS / HCH). 변형 이름"
          "(CFG X20, CFG #14 REWORK 등)도 자동으로 찾아 후보로 올립니다."],
         ["4) AOI호기: 이 공정이 검사된 호기(예: AOI-6). 선택한 호기 행만 조사합니다."],
-        ["5) fail여부: 이 S/M 이 fail 이면 Y(비교표·뷰어에서 노란색으로 표시). 아니면 비움/N."],
-        ["6) 생성일자: 비워 두세요. 자동 감시가 새 S/M 을 찾아 넣을 때 그 폴더가"],
-        ["   언제 생겼는지 자동으로 채웁니다."],
+        ["5) 이슈 Lot: 이슈가 있었던 Lot 이면 Y(비교표·뷰어에서 노란색으로 표시). 아니면 비움/N."],
+        ["※ S/M 폴더가 언제 생겼는지(생성일자)는 조사할 때 프로그램이 폴더에서 직접 읽어"],
+        ["   결과에 적습니다. 계획에는 적지 않습니다."],
     ]:
         info.append(line)
     info.column_dimensions["A"].width = 70
@@ -174,7 +183,7 @@ class LotFolder:
     has_rtp: bool = False
     has_optic: bool = False
     reason: str = ""                  # 실패 사유(폴더 없음 등)
-    fail: bool = False                # 계획의 fail여부=Y (노란색 표시)
+    fail: bool = False                # 계획의 '이슈 Lot'=Y (노란색 표시)
 
 
 def _is_scanresult_name(name: str) -> bool:
@@ -184,14 +193,7 @@ def _is_scanresult_name(name: str) -> bool:
 
 def _find_scanresult_dirs(parent: Path) -> list[Path]:
     """parent 바로 아래 'Scanresult*' 폴더 **전부**(백업본 포함, 이름순)."""
-    if not parent.is_dir():
-        return []
-    try:
-        return sorted((p for p in parent.iterdir()
-                       if p.is_dir() and _is_scanresult_name(p.name)),
-                      key=lambda x: x.name.lower())
-    except OSError:
-        return []
+    return [p for p in _subdirs(Path(parent)) if _is_scanresult_name(p.name)]
 
 
 def _find_scanresult_dir(parent: Path) -> Path | None:
@@ -246,6 +248,45 @@ def scanresult_root(root_base: str, machine: str) -> Path:
     return scanresult_roots(root_base, machine)[0]
 
 
+_LIST = threading.local()
+
+
+@contextmanager
+def _listing_cache():
+    """이 블록 안에서는 폴더 목록을 한 번만 읽는다(같은 스레드 한정)."""
+    outer = getattr(_LIST, "cache", None)
+    _LIST.cache = {} if outer is None else outer
+    try:
+        yield
+    finally:
+        _LIST.cache = outer
+
+
+def _entry_is_dir(entry) -> bool:
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
+
+
+def _subdirs(parent: Path) -> list[Path]:
+    """parent 바로 아래 폴더들(이름순). os.scandir 의 entry.is_dir() 는 Windows 에서
+    목록을 읽을 때 함께 온 정보를 써서 **폴더마다 따로 stat 하지 않는다** — 장비
+    공유폴더(SMB)에서 Path.iterdir()+is_dir() 는 하위 폴더 수만큼 왕복이 생겼다."""
+    cache = getattr(_LIST, "cache", None)
+    key = str(parent)
+    if cache is not None and key in cache:
+        return cache[key]
+    try:
+        with os.scandir(parent) as it:
+            dirs = sorted((Path(e.path) for e in it if _entry_is_dir(e)), key=lambda x: x.name.lower())
+    except OSError:
+        dirs = []
+    if cache is not None:
+        cache[key] = dirs
+    return dirs
+
+
 def _find_children(parent: Path, name: str, *, contains: bool = True) -> list[Path]:
     """parent 아래에서 name 과 맞는 폴더 **후보 전부**(정확일치 먼저, 그 뒤 이름순).
 
@@ -260,16 +301,10 @@ def _find_children(parent: Path, name: str, *, contains: bool = True) -> list[Pa
       ('SUA RERURN PG8E10' 처럼 오타·군더더기가 붙은 폴더 흡수). 이 단계는 느슨해서
       정상 후보가 있을 때는 쓰지 않는다.
     """
-    if not parent.is_dir():
-        return []
-    try:
-        dirs = sorted((p for p in parent.iterdir() if p.is_dir()),
-                      key=lambda x: x.name.lower())
-    except OSError:
-        return []
     nk = _norm(name)
     if not nk:
         return []
+    dirs = _subdirs(parent)
     exact = [p for p in dirs if _norm(p.name) == nk]
     if not contains:
         return exact
@@ -295,16 +330,13 @@ def _bfs_exact(parent: Path, name: str, max_depth: int = 3) -> list[Path]:
     """parent 이하 max_depth 단계까지 **정규화 정확일치** 폴더(가장 얕은 깊이 우선).
     공정번호처럼 숫자라 포함매칭이 위험할 때, 중간 폴더가 한 단계 더 있어도 찾는다."""
     nk = _norm(name)
-    if not parent.is_dir() or not nk:
+    if not nk:
         return []
     level = [parent]
     for _ in range(max_depth):
         found, nxt = [], []
         for d in level:
-            try:
-                kids = [p for p in d.iterdir() if p.is_dir()]
-            except OSError:
-                kids = []
+            kids = _subdirs(d)
             for k in kids:
                 if _norm(k.name) == nk:
                     found.append(k)
@@ -351,13 +383,7 @@ def list_wafers(sm_dir: Path) -> list[Path]:
     이름순 첫 번째지만, **어느 슬롯을 볼지 사람이 고를 수 있어야 한다**
     (슬롯마다 스캔이 다르게 남아 있을 수 있음).
     """
-    if not sm_dir.is_dir():
-        return []
-    try:
-        return sorted((p for p in sm_dir.iterdir() if p.is_dir()),
-                      key=lambda x: x.name.lower())
-    except OSError:
-        return []
+    return list(_subdirs(Path(sm_dir)))
 
 
 def _first_wafer(sm_dir: Path) -> Path | None:
@@ -511,15 +537,26 @@ def resolve_lot(scan_roots, device: str, lot: str, sm: str,
     return resolve_lot_variants(scan_roots, device, lot, sm, machine)[0]
 
 
-def resolve_plan(scan_roots, plan_rows: list[dict]) -> list[LotFolder]:
+def is_issue(row: dict) -> bool:
+    """계획 행의 '이슈 Lot'(구 'fail여부') 가 Y 인지."""
+    return _is_yes(row.get(ISSUE_KEY, row.get("fail여부")))
+
+
+def resolve_plan(scan_roots, plan_rows: list[dict], progress=None) -> list[LotFolder]:
     """계획 행들 → LotFolder 목록. S/M 변형은 각각 별도 항목으로 펼친다.
-    scan_roots 는 Scanresult 루트 하나 또는 여러 개(백업본 포함). fail여부(Y) 반영."""
+    scan_roots 는 Scanresult 루트 하나 또는 여러 개(백업본 포함). '이슈 Lot'(Y) 반영.
+
+    progress(i, n, row) 는 행마다 불린다(웹 UI 진행 표시). 한 번의 호출 안에서는
+    같은 폴더 목록을 한 번만 읽는다(`_listing_cache`) — 행마다 Scanresult·디바이스
+    폴더를 다시 나열하면 장비 공유폴더라 그만큼 느리다."""
     out = []
-    for r in plan_rows:
-        fail = _is_yes(r.get("fail여부"))
-        out.extend(resolve_lot_variants(
-            scan_roots, r.get("디바이스명", ""), r.get("공정번호", ""),
-            r.get("S/M", ""), r.get("AOI호기", ""), fail))
+    with _listing_cache():
+        for i, r in enumerate(plan_rows, 1):
+            if progress is not None:
+                progress(i, len(plan_rows), r)
+            out.extend(resolve_lot_variants(
+                scan_roots, r.get("디바이스명", ""), r.get("공정번호", ""),
+                r.get("S/M", ""), r.get("AOI호기", ""), is_issue(r)))
     return out
 
 
@@ -764,7 +801,7 @@ def write_lot_result(dest_xlsx: str, recipe: str, machine: str,
     for label in lot_labels:
         meta.append(["Lot", label])
     for label in fail_labels:
-        meta.append(["Fail", label])
+        meta.append([ISSUE_INFO, label])
     for label in low_labels:
         meta.append(["LowMatch", label])           # 양식 매칭이 적었던 S/M
     wb.save(dest_xlsx)
@@ -785,7 +822,7 @@ def read_lot_result(path: str) -> dict:
                 machine = engine._s(row[1])
             elif row[0] == "레시피":
                 recipe = engine._s(row[1])
-            elif row[0] == "Fail":
+            elif row[0] in (ISSUE_INFO, "Fail"):          # 구 결과 파일은 "Fail"
                 fails.add(engine._s(row[1]))
             elif row[0] == "LowMatch":
                 lows.add(engine._s(row[1]))

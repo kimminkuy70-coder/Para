@@ -274,6 +274,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 ## Commonality 조사 (브랜치 `claude/commonality-survey`, 설계: `docs/commonality_조사_설계.md`)
 
 Scanresult 아래 여러 **Lot**의 파라미터 변경/공통성 조사. 탭 'Commonality 조사'.
+**계획 엑셀 열(2026-09 사용자 지정)**: 디바이스명·공정번호·S/M·AOI호기·**이슈 Lot**(구 'fail여부' — 읽을 때
+별칭으로 통일, `commonality.ISSUE_KEY`). **생성일자 열은 두지 않는다**(S/M 폴더 생성일시는 조사 때 폴더에서 읽음).
+결과 `_정보` 시트 행 이름도 '이슈 Lot'(구 'Fail' 도 읽음).
 경로 `{루트}/{호기}/Scanresult/{2D@디바이스_레시피}/{공정번호}/{S/M}/{슬롯}/`.
 **조사할 슬롯(웨이퍼) 폴더는 S/M 선택창에서 고른다 — 다중 선택**(기본=이름순 첫 번째).
 행 오른쪽 `슬롯 n/N ▾` 버튼 → `_cm_pick_slots`(체크박스 다중) · 하단 '슬롯 일괄:
