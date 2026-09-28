@@ -39,6 +39,14 @@ BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 값 확인',
               'watch': '자동 감시 회차'}
 METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
+# Background jobs that only read (local or OneDrive/equipment). Closing the app does not
+# wait for them — waiting for a slow read kept the old engine alive after the window
+# closed, and a quick relaunch then had to wait for it. Jobs that write always finish.
+READ_ONLY = {"recipe_open", "recipe_delete_preview", "document_open", "form_catalog", "form_versions", "form_open",
+             "form_scales", "formnew_prepare", "formnew_scales", "history_files", "history_diff",
+             "commonality_catalog", "commonality_compare", "cmsurvey_preflight", "cmsurvey_read_plan",
+             "update_prepare", "appupdate_check", "pwatch_state", "pwatch_jobs", "cmwatch_state",
+             "cmwatch_candidates", "batch_reports", "watch_status", "cmrun_plan"}
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
 LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
 
@@ -279,8 +287,9 @@ class Session:
         if domain in self.busy:
             raise ValueError(f"{BUSY_LABEL.get(domain, domain)} 작업이 아직 진행 중입니다. 끝난 뒤 다시 시도하세요.")
 
-    def spawn(self, target, *args):
+    def spawn(self, target, *args, read_only=False):
         thread = threading.Thread(target=target, args=args, daemon=True)
+        thread.read_only = read_only
         self.worker = thread
         self.workers.add(thread)
         thread.start()
@@ -319,7 +328,7 @@ class Session:
                 desktop_progress.log_slow(method_of.get(rid, key), time.monotonic() - started, steps)
                 method_of.pop(rid, None)
                 self.workers.discard(threading.current_thread())
-        self.spawn(work)
+        self.spawn(work, read_only=method_of.get(rid) in READ_ONLY)
 
     def route(self, rid, method, params):
         bg = self.background
@@ -482,7 +491,9 @@ class Session:
             else:
                 self.emit(rid, 'completed', appupdate=action[method]())
         elif method == 'watch_status':
-            self.emit(rid, 'completed', watch=self.watch_status())
+            # Reads the watch settings in the (OneDrive) save folder: never on the input
+            # thread, or a slow OneDrive read at start-up delays every other screen.
+            bg(rid, 'watch', self.watch_status, '자동 감시 상태를 읽지 못했습니다.', ('watchstatus',))
         elif method in ('pwatch_run', 'cmwatch_run'):
             # '▶ 즉시 확인': same cycle as the scheduler, on the watch thread.
             self.idle('equipment')
@@ -736,8 +747,10 @@ class Session:
             self.closed = True
             self.cancelled.set()
         self.stop_ticks.set()
+        started = time.monotonic()
         for worker in list(self.workers):
-            worker.join()                # saves are atomic: wait, never interrupt
+            if not getattr(worker, 'read_only', False):
+                worker.join()            # saves are atomic: wait, never interrupt
         self.result = None
         try:
             self.update.cancel({})      # never leave the global collate lock behind
@@ -747,9 +760,11 @@ class Session:
             self.pwatch.release()       # another PC may take the watch over
         except Exception:  # noqa: BLE001
             pass
+        if getattr(self, 'log_timing', False):
+            desktop_progress.log_event(f"엔진 종료 {time.monotonic() - started:.1f}s")
 
 
-def serve(source, output):
+def serve(source, output, startup=""):
     session = Session(output)
     try:
         # Logs (errors, slow-request timings) go to the web app's local folder,
@@ -758,6 +773,9 @@ def serve(source, output):
         localdirs.set_root(str(DesktopBatch(session.batch.config_path).configuration()[2]))
     except Exception:  # noqa: BLE001 - a bad local setting is reported by the screens
         pass
+    if startup:
+        session.log_timing = True
+        desktop_progress.log_event(startup)
     session.start_scheduler()
     try:
         while not session.closed:

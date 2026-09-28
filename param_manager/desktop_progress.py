@@ -48,3 +48,17 @@ def log_slow(method: str, seconds: float, steps=()) -> None:
             fh.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}\t{method}\t{seconds:.1f}s\t{trail}\n")
     except Exception:  # noqa: BLE001 - logging is best effort
         pass
+
+
+def log_event(text: str) -> None:
+    """One line per engine start/stop in the same local timing log (start-up speed)."""
+    try:
+        from . import localdirs
+        root = localdirs.active_root()
+        folder = localdirs.logs_dir(root) if root else ""
+        if not folder:
+            return
+        with open(os.path.join(folder, "작업시간_로그.txt"), "a", encoding="utf-8") as fh:
+            fh.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}\t{text}\n")
+    except Exception:  # noqa: BLE001 - logging is best effort
+        pass

@@ -40,7 +40,12 @@ class DocumentWorkerTests(unittest.TestCase):
                         send(8, 'shutdown', {})
                         closer = threading.Thread(target=lambda: (session.close(), closed.set()))
                         closer.start()
-                        self.assertFalse(closed.wait(.05))
+                        if method == 'document_open':
+                            # A read never holds the app open at exit (quick relaunch).
+                            self.assertTrue(closed.wait(2))
+                        else:
+                            # A save is never interrupted: closing waits for it.
+                            self.assertFalse(closed.wait(.05))
                     finally:
                         proceed.set()
                         session.close()
@@ -57,8 +62,9 @@ class DocumentWorkerTests(unittest.TestCase):
                 for i in (4, 5):
                     self.assertFalse(any(e['id']==i and '진행 중' in e.get('message','') for e in events))
                     self.assertTrue(any(e['id']==i for e in events))
-                self.assertEqual(events[-1]['document']['snapshot'], 'finished')
-                self.assertFalse(any(w.is_alive() for w in session.workers))
+                if method != 'document_open':        # saves finish before the engine exits
+                    self.assertEqual(events[-1]['document']['snapshot'], 'finished')
+                    self.assertFalse(any(w.is_alive() for w in session.workers if not getattr(w, 'read_only', False)))
 
     def test_error_clears_busy_and_sanitizes_os_details(self):
         output = io.BytesIO()
