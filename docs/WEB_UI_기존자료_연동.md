@@ -17,9 +17,9 @@
 |---|---|---|
 | `save_dir` | 저장폴더 | 설정 › 저장폴더 |
 | `local_dir` | 로컬 작업 폴더 | 설정 › 로컬 작업 폴더 |
-| `wph_report_paths` / `batch_extra_paths` | 호기별 Report 폴더 / 추가 폴더 | 설정 › 배치 Report 폴더 · 배치 자동·추가 폴더 |
+| `wph_report_paths` / `batch_extra_paths` | 호기별 Report 폴더 / 추가 폴더 | 설정 › Batch Report 루트 |
 | `commonality_roots` | 호기별 Scanresult 루트 | 설정 › Scanresult 루트 |
-| `batch_auto` / `batch_schedule` | 배치 하루 1회 자동 갱신, 마지막 실행 시각 | 설정 › 배치 자동·추가 폴더 |
+| `batch_auto` / `batch_schedule` | 배치 자동 분석 켜짐, 마지막 실행 시각 (웹 전용 주기 `batch_interval_hours`, 기존 프로그램은 항상 하루 1회) | 설정 › Batch Report 분석 주기 설정 |
 | `local_root` | 값 업데이트용 '로컬 상위 폴더' | 값 업데이트 › 로컬 복사본 |
 | `hide_kla` | KLA 장비 숨기기 | Recipe 관리 |
 

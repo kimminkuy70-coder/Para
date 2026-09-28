@@ -177,7 +177,7 @@ class SchedulerTests(unittest.TestCase):
         session.pwatch = Fake({"has_change": False, "summary": "변경 없음"}, due=False)
         session.tick(now=0)
         session.watch_thread.join(5)
-        session.running = True                          # a user job blocks the scheduler
+        session.busy['equipment'] = 99                  # a user's equipment read blocks the scheduler
         session.cmwatch.is_due = True
         session.tick(now=1)
         self.assertEqual(session.cmwatch.runs, 1)
@@ -187,7 +187,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertIsNone(notices[0]["id"])
         self.assertEqual(notices[0]["notice"]["kind"], "cm_watch")
         self.assertEqual(session.notices[-1]["summary"], "새 S/M 1개")
-        session.running = False
+        session.busy.clear()
         session.close()
 
 

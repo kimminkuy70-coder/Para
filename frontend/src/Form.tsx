@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {desktop} from './desktop';
-import {Stepper,StepNav,notify,fail} from './ui';
+import {desktop,errorText} from './desktop';
+import {Stepper,StepNav,notify,fail,LoadFailed} from './ui';
 import {OpenPath} from './OpenPath';
 import {QuestionDialog,withAnswer,noAnswers,type Question,type Answers} from './CollectQuestion';
 import {pickFolder} from './desktop';
@@ -59,8 +59,9 @@ export function Form(){
   useEffect(()=>{setOffset(0);},[variant,filter,usedOnly]);
   useEffect(()=>{if(renaming){setNameValue(renaming.name);dialog.current?.showModal();}else dialog.current?.close();},[renaming]);
 
-  useEffect(()=>{if(mode==='new'&&!newPrep)desktop.request('formnew_prepare').promise
-    .then(r=>{const p=r.formnew as NewPrep;setNewPrep(p);setLocalPath(p.local_source);}).catch(fail);},[mode]);
+  const [newPrepError,setNewPrepError]=useState(''),[newPrepTry,setNewPrepTry]=useState(0);
+  useEffect(()=>{if(mode==='new'&&!newPrep){setNewPrepError('');desktop.request('formnew_prepare').promise
+    .then(r=>{const p=r.formnew as NewPrep;setNewPrep(p);setLocalPath(p.local_source);}).catch(e=>setNewPrepError(errorText(e)));}},[mode,newPrepTry]);
   async function newCollect(next:Answers){
     setBusy(true);
     try{const r=(await desktop.request('formnew_collect',{recipe:newName.trim(),machines:newMachines,source:newSource,answers:next}).promise).formnew as
@@ -158,7 +159,7 @@ export function Form(){
           </div>}
       </>:<>
       <p className="hint">장비(또는 로컬 복사본)의 설정 파일을 읽어 새 레시피 양식을 만듭니다. 원본은 읽기만 하고, 복사본은 로컬 작업 폴더에만 둡니다.</p>
-      {!newPrep?<p className="hint">불러오는 중…</p>:<>
+      {!newPrep?(newPrepError?<LoadFailed message={newPrepError} onRetry={()=>setNewPrepTry(n=>n+1)}/>:<p className="hint">불러오는 중…</p>):<>
         <div className="form-filter" style={{marginTop:12}}>
           <label className="field" style={{width:200}}>레시피(레벨) 이름<input list="form-existing" aria-label="새 레시피 이름" value={newName} maxLength={64} placeholder="예: PI3" onChange={e=>{setNewName(e.target.value);setNewScales(undefined);}}/></label>
           <datalist id="form-existing">{newPrep.existing.map(r=><option key={r} value={r}/>)}</datalist>

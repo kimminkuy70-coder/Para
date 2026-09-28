@@ -48,13 +48,15 @@ class DesktopConfig:
         report = cfg.get("wph_report_paths")
         roots = cfg.get("commonality_roots")
         extra = cfg.get("batch_extra_paths")
+        from .desktop_batch import BATCH_INTERVALS
         return dict(save_dir=cfg.get("save_dir") or "",
                     local_dir=cfg.get("local_dir") or "",
                     report_paths=report if isinstance(report, dict) else {},
                     scanresult_roots=roots if isinstance(roots, dict) else {},
                     extra_paths={m: [p for p in v if isinstance(p, str)] for m, v in extra.items()
                                  if isinstance(v, list)} if isinstance(extra, dict) else {},
-                    batch_auto=bool(cfg.get("batch_auto")))
+                    batch_auto=bool(cfg.get("batch_auto")),
+                    batch=DesktopBatch(self.config_path).auto_state(cfg), batch_intervals=list(BATCH_INTERVALS))
 
     # ---- local work folder (tkinter '로컬 작업 폴더') ---------------------
     def local_state(self):
@@ -111,9 +113,14 @@ class DesktopConfig:
         return self.state()
 
     def set_batch_auto(self, params):
-        if set(params) != {"enabled"} or type(params["enabled"]) is not bool:
+        from .desktop_batch import BATCH_INTERVALS
+        if set(params) - {"enabled", "interval_hours"} or type(params.get("enabled")) is not bool:
             raise ValueError("자동 조사 설정을 확인하세요")
         cfg = self._read()
+        if "interval_hours" in params:
+            if type(params["interval_hours"]) not in (int, float) or params["interval_hours"] not in BATCH_INTERVALS:
+                raise ValueError("분석 주기를 목록에서 고르세요")
+            cfg["batch_interval_hours"] = params["interval_hours"]
         cfg["batch_auto"] = params["enabled"]
         self._write(cfg)
         return self.state()

@@ -72,8 +72,10 @@ try{
   // A2: a Report folder registered in [설정] appears in the batch tab without restart.
   const extra=join(fixture,'equipment-04');await mkdir(extra);
   await page.getByRole('button',{name:'설정',exact:true}).click();
-  await page.getByRole('tab',{name:'배치 Report 폴더'}).click();
-  await page.getByLabel('호기').fill('AOI-04');await page.getByLabel('폴더').fill(extra);
+  // 설정 tabs in the requested order.
+  assert.deepEqual(await page.getByRole('tab').allInnerTexts(),['저장 폴더','로컬 작업 폴더','Batch Report 루트','Batch Report 분석 주기 설정','Scanresult 루트','정보']);
+  await page.getByRole('tab',{name:'Batch Report 루트'}).click();
+  await page.getByLabel('호기',{exact:true}).fill('AOI-04');await page.getByLabel('폴더',{exact:true}).fill(extra);
   await page.getByRole('button',{name:'추가',exact:true}).click();
   await page.getByText(extra,{exact:true}).waitFor();
   await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
@@ -169,13 +171,16 @@ try{
   await page.waitForFunction(()=>document.querySelector('[aria-label="1행 종료 여부"]')?.getAttribute('aria-checked')==='true');
   // B: daily auto-run switch and an extra Report folder in 설정.
   await page.getByRole('button',{name:'설정',exact:true}).click();
-  await page.getByRole('tab',{name:'배치 자동·추가 폴더'}).click();
-  await page.getByLabel('자동 갱신 사용 (기본 꺼짐)').click();
-  await page.getByText('자동 갱신을 켰습니다').waitFor();
+  await page.getByRole('tab',{name:'Batch Report 분석 주기 설정'}).click();
+  await page.getByLabel('자동 분석 사용 (기본 꺼짐)').click();
+  await page.getByText('자동 분석을 켰습니다').waitFor();
+  await page.getByLabel('분석 주기').selectOption('12');
+  await page.getByText('분석 주기를 저장했습니다').waitFor();
+  await page.getByRole('tab',{name:'Batch Report 루트'}).click();
   const archive=join(fixture,'archive-01');await mkdir(archive);
-  await page.locator('select').last().selectOption('AOI-01');
-  await page.getByLabel('추가 폴더').fill(archive);
-  await page.getByRole('button',{name:'추가',exact:true}).click();
+  await page.getByLabel('추가 폴더 호기').selectOption('AOI-01');
+  await page.getByLabel('추가 폴더',{exact:true}).fill(archive);
+  await page.getByRole('button',{name:'추가 폴더 등록',exact:true}).click();
   await page.getByText(archive,{exact:true}).waitFor();
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('오류 로그 폴더').waitFor();
@@ -188,7 +193,7 @@ try{
   await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
   await page.locator('.stepper').getByRole('button',{name:/조사 대상/}).click();
   await page.getByText('+ '+archive,{exact:true}).waitFor();
-  await page.getByText('하루 1회 자동 갱신: 켜짐',{exact:false}).waitFor();
+  await page.getByText('자동 분석: 켜짐',{exact:false}).waitFor();
   await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
   await page.locator('.cm-file input').first().check();
   await page.getByRole('button',{name:'선택 결과 비교 ▶',exact:true}).click();

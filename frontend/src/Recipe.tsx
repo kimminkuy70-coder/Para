@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {desktop,errorText} from './desktop';
-import {notify} from './ui';
+import {notify,LoadFailed} from './ui';
 import {OpenPath,openPath} from './OpenPath';
 type Catalog={version:string|null;recipes:string[];machines:string[];source:string;path?:string;
   zones?:Record<string,string[]>;machine_types?:Record<string,string>;hide_kla?:boolean};
@@ -34,10 +34,11 @@ export function Recipe(){
     setMachine(old=>next.machines.includes(old)?old:(next.machines[0]||''));
     if(typeof next.hide_kla==='boolean')setHideKla(next.hide_kla);
   }
+  const [loadError,setLoadError]=useState('');
   async function refresh(){
-    setLoading(true);setError('');
+    setLoading(true);setError('');setLoadError('');
     try{await desktop.connect();const reply=await desktop.request('recipe_open').promise;accept(reply.recipe as Catalog);}
-    catch(e){setError(errorText(e));}finally{setLoading(false);}
+    catch(e){setLoadError(errorText(e));}finally{setLoading(false);}
   }
   useEffect(()=>{void refresh();},[]);
   useEffect(()=>{const timer=setTimeout(()=>setFilter(query),180);return()=>clearTimeout(timer);},[query]);
@@ -141,7 +142,7 @@ export function Recipe(){
         <button disabled={!catalog?.version} onClick={()=>setExporting({recipes:recipe?[recipe]:[],machines:[...(catalog?.machines||[])],filtered:false})}>내보내기…</button>
         <button onClick={openRemove}>레시피 삭제…</button></div></div>
     <p className="hint">좌측은 기준 호기, 우측은 비교 호기입니다. 장비 값은 읽기 전용이며 색상·비고·셀 색칠만 수정할 수 있습니다.</p>
-    {!catalog?.version?<div className="empty-state"><h3>{loading?'최신 취합본을 불러오는 중…':'표시할 취합본이 없습니다.'}</h3><p>기존 프로그램에서 저장한 최신 파라미터 취합 파일을 사용합니다.</p></div>:<>
+    {!catalog?.version&&loadError&&!loading?<LoadFailed message={loadError} onRetry={()=>void refresh()}/>:!catalog?.version?<div className="empty-state"><h3>{loading?'최신 취합본을 불러오는 중…':'표시할 취합본이 없습니다.'}</h3><p>기존 프로그램에서 저장한 최신 파라미터 취합 파일을 사용합니다.</p></div>:<>
       <div className="recipe-controls">
         <label className="field">Recipe<select value={recipe} onChange={e=>setRecipe(e.target.value)}>{catalog.recipes.map(r=><option key={r}>{r}</option>)}</select></label>
         <label className="field">Zone<select aria-label="Zone" value={zone} onChange={e=>setZone(e.target.value)}><option value="">전체 Zone</option>{zones.map(z=><option key={z}>{z}</option>)}</select></label>

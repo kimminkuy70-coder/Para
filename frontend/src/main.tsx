@@ -190,7 +190,7 @@ function App(){
       const reply=await task.promise;
       if(reply.event==='cancelled'){setNote('조사가 취소되었습니다. 이전에 저장된 결과는 유지됩니다.');return;}
       setResult(reply);setTable(reply.tables?.[0]);
-      setNote((automatic?'하루 1회 자동 갱신: ':'')+(reply.collection?.errors?'일부 원본을 읽지 못했습니다. 읽기 오류 표를 확인하세요.':'조사를 완료했습니다.'));
+      setNote((automatic?'자동 분석: ':'')+(reply.collection?.errors?'일부 원본을 읽지 못했습니다. 읽기 오류 표를 확인하세요.':'조사를 완료했습니다.'));
       if(automatic)notify('배치 리포트 자동 갱신을 완료했습니다.','ok');
     }catch(e){
       if(automatic){
@@ -243,7 +243,7 @@ function App(){
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>
       <div className="step-body">
       {bstep===0&&<><p className="hint">조사할 호기를 고르고 검색어·기간·리포트를 정합니다. 호기가 없으면 [설정] 탭에서 Report 폴더를 등록하세요.</p>
-        <p className="hint">하루 1회 자동 갱신: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › 배치 자동·추가 폴더]에서 바꿀 수 있습니다.</p>
+        <p className="hint">자동 분석: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › Batch Report 분석 주기 설정]에서 바꿀 수 있습니다.</p>
         <div className="toolbar"><button disabled={busy||!config?.machines.length} onClick={()=>setSelected(config?.machines.map(m=>m.id)||[])}>전체 선택</button><button disabled={busy||!selected.length} onClick={()=>setSelected([])}>선택 해제</button></div>
         <div className="targets" aria-label="호기별 검색 조건">{config?.machines.length?config.machines.map(m=><fieldset key={m.id} disabled={busy} className={selected.includes(m.id)?'machine selected':'machine'}><legend><label><input type="checkbox" checked={selected.includes(m.id)} onChange={e=>setSelected(old=>e.target.checked?[...old,m.id]:old.filter(id=>id!==m.id))}/>{m.id}</label></legend>
           <p className="folder" title={m.folder}>{m.folder}</p>{m.extra?.map(f=><p key={f} className="folder" title={f}>+ {f}</p>)}<label className="field">Recipe 검색어<input aria-label={`${m.id} 검색어`} value={targets[m.id]?.query||''} maxLength={256} onChange={e=>updateTarget(m.id,'query',e.target.value)} placeholder="예: 2D CAMTEK"/></label>
@@ -258,7 +258,7 @@ function App(){
 
       {bstep===2&&<>
       <section className="kpis" aria-label="조사 요약">{[['전체 Report',summary?.['Batch(리포트) 수'],'건'],['분석 Lot',summary?.['Lot 수'],'개'],['이슈 Lot',summary?.['이슈 발생 Lot 수'],'개'],['읽기 오류',result?.collection?.errors,'건']].map(([label,value,unit])=><article key={String(label)}><span>{label}</span><strong>{text(value)}<small>{unit}</small></strong><p>{result?'마지막 완료 조사 기준':'조사 후 집계'}</p></article>)}</section>
-      <section className="runbar" aria-label="조사 실행"><div><strong>{busy?(cancelSent?'안전한 중단 지점을 기다리는 중…':autoRun?'하루 1회 자동 갱신 진행 중…':'조사 진행 중…'):`${selected.length}개 호기 · ${options.metrics.length}개 지표`}</strong><p role="status" aria-live="polite">{busy?(progress?.message||'장비 기록을 순차적으로 확인합니다.'):note}</p></div><div className="actions">{busy?<button onClick={cancel} disabled={cancelSent}>{cancelSent?'취소 요청됨':'조사 취소'}</button>:<button className="primary" disabled={!config||!selected.length||!options.metrics.length} onClick={start}>조사 시작 →</button>}</div></section>
+      <section className="runbar" aria-label="조사 실행"><div><strong>{busy?(cancelSent?'안전한 중단 지점을 기다리는 중…':autoRun?'자동 분석 진행 중…':'조사 진행 중…'):`${selected.length}개 호기 · ${options.metrics.length}개 지표`}</strong><p role="status" aria-live="polite">{busy?(progress?.message||'장비 기록을 순차적으로 확인합니다.'):note}</p></div><div className="actions">{busy?<button onClick={cancel} disabled={cancelSent}>{cancelSent?'취소 요청됨':'조사 취소'}</button>:<button className="primary" disabled={!config||!selected.length||!options.metrics.length} onClick={start}>조사 시작 →</button>}</div></section>
       {busy&&<div className="progress-line" role="progressbar" aria-label="조사 중" aria-valuetext={progress?.message||'조사 중'}><span/></div>}
       <div className="results"><div className="section-heading"><div><h3>분석 결과</h3></div>{result&&<span className="count">{result.tables?.length}개 표</span>}</div>
         {!result?<div className="empty-state"><span className="empty-symbol" aria-hidden="true">▤</span><h3>{busy?'결과를 준비하고 있습니다.':'아직 조사 결과가 없습니다.'}</h3><p>조사가 끝나면 요약, 상세 표, 저장된 Excel·HTML 위치를 확인할 수 있습니다.</p></div>:<>

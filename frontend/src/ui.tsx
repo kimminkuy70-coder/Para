@@ -70,3 +70,9 @@ export function StepNav({step,total,onBack,onNext,nextLabel='다음',nextDisable
     <button className="btn primary" disabled={nextDisabled||busy} onClick={onNext}>{busy?'처리 중…':nextLabel}{step<total-1?' ▶':''}</button>
   </div>;
 }
+
+/** Shown instead of an endless "불러오는 중…" when the first load of a screen failed. */
+export function LoadFailed({message,onRetry}:{message:string;onRetry:()=>void}){
+  return <div className="empty-state" role="alert"><h3>불러오지 못했습니다.</h3><p>{message}</p>
+    <button className="primary" onClick={onRetry}>다시 시도</button></div>;
+}

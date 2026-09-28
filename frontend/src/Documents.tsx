@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {desktop,errorText} from './desktop';
-import {notify} from './ui';
+import {notify,LoadFailed} from './ui';
 type Column={type:'text'|'bool'|'choice';choices?:string[]};
 type Catalog={snapshot:string|null;headers:string[];columns?:Column[];total:number;source:string};
 type Cell={value:string;color:string;editable:boolean};
@@ -42,10 +42,11 @@ export function Documents({kind}:{kind:'ip'|'special'|'reference'}){
       setOffset(Math.floor((updated.total-1)/100)*100);setCatalog(updated);setNewValues(undefined);
     }catch(e){setError(errorText(e));}finally{setSaving(false);}
   }
+  const [loadError,setLoadError]=useState('');
   async function refresh(){
-    setLoading(true);setError('');
+    setLoading(true);setError('');setLoadError('');
     try{await desktop.connect();setOffset(0);setRows([]);setCatalog((await desktop.request('document_open',{kind}).promise).document as Catalog);}
-    catch(e){setError(errorText(e));}finally{setLoading(false);}
+    catch(e){setLoadError(errorText(e));}finally{setLoading(false);}
   }
   useEffect(()=>{void refresh();},[kind]);
   // Leaving the document releases its edit lock (held while open, like the tkinter screen).
@@ -68,7 +69,7 @@ export function Documents({kind}:{kind:'ip'|'special'|'reference'}){
   }
   return <section className="panel"><div className="section-heading"><div><span className="step">SHARED WORKBOOK</span><h2>{catalog?.source||'공유 자료'}</h2></div><button disabled={loading||saving} onClick={refresh}>새로고침</button></div>
     <p className="hint">셀을 눌러 내용과 색상을 수정하세요. 저장 시 다른 사용자의 편집과 파일 변경 여부를 확인합니다.</p>
-    {!catalog?.snapshot?<div className="empty-state">{loading?'문서를 불러오는 중…':'기존 저장 폴더에 해당 문서가 없습니다.'}</div>:<>
+    {!catalog?.snapshot?(loadError&&!loading?<LoadFailed message={loadError} onRetry={()=>void refresh()}/>:<div className="empty-state">{loading?'문서를 불러오는 중…':'기존 저장 폴더에 해당 문서가 없습니다.'}</div>):<>
       <button disabled={loading||saving} onClick={()=>{setError('');setNewValues(catalog.headers.map((_,i)=>kindOf(i)==='bool'?'☐':''));}}>새 행 추가</button>
       <div className="table-scroll document-table" aria-busy={loading}><table><thead><tr><th>행</th>{catalog.headers.map((h,i)=><th key={i}>{h}</th>)}<th aria-label="행 삭제"></th></tr></thead><tbody>{rows.map((row,index)=><tr key={row.id}><td>{offset+index+1}</td>{row.cells.map((cell,column)=><td key={column}>{kindOf(column)==='bool'
             ?<button className="document-cell doc-check" role="checkbox" aria-checked={cell.value==='☑'} aria-label={`${offset+index+1}행 ${catalog.headers[column]}`} style={{background:cell.color||undefined,color:ink(cell.color)}} disabled={!cell.editable||loading||saving} onClick={()=>toggle(row.id,column,cell)}>{cell.value==='☑'?'☑':'☐'}</button>

@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
-import {desktop,pickFolder} from './desktop';
-import {Stepper,StepNav,notify,fail} from './ui';
+import {desktop,pickFolder,errorText} from './desktop';
+import {Stepper,StepNav,notify,fail,LoadFailed} from './ui';
 import {OpenPath} from './OpenPath';
 import {QuestionDialog,withAnswer,noAnswers,type Question,type Answers} from './CollectQuestion';
 
@@ -26,10 +26,12 @@ export function Update(){
   const [preview,setPreview]=useState<PreviewRow[]>(),[include,setInclude]=useState<string[]>([]);
   const [done,setDone]=useState<Done>();
 
+  const [loadError,setLoadError]=useState('');
   async function load(){
+    setLoadError('');
     try{await desktop.connect();const r=(await desktop.request('update_prepare').promise).update as Prepared;
       setPrep(r);setLocalPath(r.local_source);}
-    catch(e){fail(e);}
+    catch(e){setLoadError(errorText(e));}
   }
   useEffect(()=>{void load();},[]);
 
@@ -81,7 +83,7 @@ export function Update(){
     try{const r=(await desktop.request('update_set_local_source',{path}).promise).update as Prepared;setPrep(r);setLocalPath(r.local_source);notify('로컬 상위 폴더 저장','ok');}
     catch(e){fail(e);}
   }
-  if(!prep)return <section className="panel"><p className="table-empty">불러오는 중…</p></section>;
+  if(!prep)return <section className="panel">{loadError?<LoadFailed message={loadError} onRetry={()=>void load()}/>:<p className="table-empty">불러오는 중…</p>}</section>;
   const available=prep.machines.filter(m=>source==='equipment'?m.ip:m.local);
   const ready=recipes.length>0&&machines.length>0&&(source==='equipment'||prep.local_source_ok);
 

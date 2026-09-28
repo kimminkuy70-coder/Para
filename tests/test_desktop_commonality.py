@@ -90,13 +90,16 @@ class CommonalityTests(unittest.TestCase):
         with patch.object(session.commonality, 'compare', side_effect=delayed):
             session.handle(dict(version=1, id=1, method='commonality_compare', params={'catalog':'x','files':['0']}))
             self.assertTrue(started.wait(1))
-            session.handle(dict(version=1, id=2, method='analyze', params={'records': []}))
+            # Same screen: refused while its job runs. Another screen (batch) is not blocked.
+            session.handle(dict(version=1, id=2, method='commonality_export', params={'snapshot':'x','changed_only':False}))
+            session.handle(dict(version=1, id=3, method='analyze', params={'records': []}))
             proceed.set()
             session.close()
         events = [json.loads(line) for line in output.getvalue().splitlines()]
-        self.assertTrue(any(e['id']==2 and e['event']=='error' for e in events))
+        self.assertTrue(any(e['id']==2 and e['event']=='error' and '진행 중' in e.get('message','') for e in events))
+        self.assertTrue(any(e['id']==3 and e['event']=='accepted' for e in events))   # ran (then stopped by close)
         self.assertTrue(any(e['id']==1 and e['event']=='completed' for e in events))
-        self.assertFalse(session.worker.is_alive())
+        self.assertFalse(any(w.is_alive() for w in session.workers))
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
-import {desktop,type WatchNotice} from './desktop';
-import {notify,fail} from './ui';
+import {desktop,errorText,type WatchNotice} from './desktop';
+import {notify,fail,LoadFailed} from './ui';
 import {OpenPath} from './OpenPath';
 
 type Interval={hours:number;label:string};
@@ -21,8 +21,9 @@ type Page={rows:Row[];total:number;used:number;offset:number};
 const HOURS=Array.from({length:24},(_,i)=>i);
 const TRANSFORMS=['RAW','LINEAR','AREA'];
 
-async function ask<T>(method:string,params:object,key:'pwatch'|'cmwatch'|'watch'):Promise<T|undefined>{
-  try{return (await desktop.request(method,params).promise)[key] as T;}catch(e){fail(e);return undefined;}
+async function ask<T>(method:string,params:object,key:'pwatch'|'cmwatch'|'watch',onError?:(m:string)=>void):Promise<T|undefined>{
+  try{return (await desktop.request(method,params).promise)[key] as T;}
+  catch(e){if(onError)onError(errorText(e));else fail(e);return undefined;}
 }
 function Schedule({interval,intervals,start,end,onChange,disabled}:{interval:number;intervals:Interval[];start:number;end:number;
   onChange:(k:'interval_hours'|'window_start'|'window_end',v:number)=>void;disabled?:boolean}){
@@ -42,7 +43,8 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
   const [st,setSt]=useState<PState>(),[busy,setBusy]=useState(false);
   const [add,setAdd]=useState({machine:'',recipe:''}),[browse,setBrowse]=useState<Browse>();
   const [copyFrom,setCopyFrom]=useState(''),[copyTo,setCopyTo]=useState<string[]>([]);
-  const load=()=>ask<PState>('pwatch_state',{},'pwatch').then(s=>s&&setSt(s));
+  const [loadError,setLoadError]=useState('');
+  const load=()=>{setLoadError('');return ask<PState>('pwatch_state',{},'pwatch',st?undefined:setLoadError).then(s=>s&&setSt(s));};
   useEffect(()=>{void load();},[]);
   async function run<T>(method:string,params:object){
     setBusy(true);const r=await ask<T>(method,params,'pwatch');setBusy(false);return r;
@@ -68,7 +70,7 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
     }catch(e){fail(e);}
     setBusy(false);void load();
   }
-  if(!st)return <section className="panel"><h2>파라미터 자동 감시</h2><p className="hint">설정을 불러오는 중…</p></section>;
+  if(!st)return <section className="panel"><h2>파라미터 자동 감시</h2>{loadError?<LoadFailed message={loadError} onRetry={()=>void load()}/>:<p className="hint">설정을 불러오는 중…</p>}</section>;
   const byMachine=st.machines.map(m=>({m,rows:st.targets.filter(t=>t.machine===m)})).filter(x=>x.rows.length);
   const parts=browse?.sub?browse.sub.split('\\'):[];
   return <section className="panel">
@@ -121,7 +123,8 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   const [target,setTarget]=useState<CTarget>(),[cands,setCands]=useState<Cand[]>([]),[sm,setSm]=useState(''),[title,setTitle]=useState('');
   const [editing,setEditing]=useState<{version:string;recipe:string;index:number;total:number;used:number}>();
   const [page,setPage]=useState<Page>(),[offset,setOffset]=useState(0);
-  const load=()=>ask<CState>('cmwatch_state',{},'cmwatch').then(s=>{if(s){setSt(s);setPlan(s.plan.length?s.plan:[{device:'',lot:'',machines:'',note:''}]);}});
+  const [loadError,setLoadError]=useState('');
+  const load=()=>{setLoadError('');return ask<CState>('cmwatch_state',{},'cmwatch',st?undefined:setLoadError).then(s=>{if(s){setSt(s);setPlan(s.plan.length?s.plan:[{device:'',lot:'',machines:'',note:''}]);}});};
   useEffect(()=>{void load();},[]);
   async function run<T>(method:string,params:object){setBusy(true);const r=await ask<T>(method,params,'cmwatch');setBusy(false);return r;}
   async function save(enabled:boolean){
@@ -159,7 +162,7 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
     catch(e){fail(e);}
     setBusy(false);void load();
   }
-  if(!st)return <section className="panel"><h2>Commonality 자동 감시</h2><p className="hint">설정을 불러오는 중…</p></section>;
+  if(!st)return <section className="panel"><h2>Commonality 자동 감시</h2>{loadError?<LoadFailed message={loadError} onRetry={()=>void load()}/>:<p className="hint">설정을 불러오는 중…</p>}</section>;
   return <section className="panel">
     <div className="section-heading"><div><span className="step">WATCH</span><h2>Commonality 자동 감시 (여러 호기 무인)</h2></div>
       <button className={st.enabled?'primary':''} disabled={busy} aria-pressed={st.enabled} onClick={()=>save(!st.enabled)}>{st.enabled?'● 켜짐':'○ 꺼짐'}</button></div>

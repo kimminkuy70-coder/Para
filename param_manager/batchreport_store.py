@@ -37,9 +37,19 @@ def local_root(root, sources=()):
         import ctypes
         if ctypes.windll.kernel32.GetDriveTypeW(str(resolved.anchor)) == 4:
             raise ValueError("네트워크 드라이브에는 분석 결과를 저장할 수 없습니다")
+    # Lexical check only. Path.resolve() on an equipment share (a mapped P: drive or a
+    # UNC path) opens it, and a disconnected share blocks for the SMB timeout (tens of
+    # seconds). This runs on nearly every request, so with a team config listing many
+    # machines the whole engine looked frozen ("불러오는 중" forever).
+    def key(p):
+        return os.path.normcase(os.path.normpath(os.path.abspath(str(p))))
+    mine = key(resolved)
     for source in sources:
-        origin = Path(source).resolve()
-        if resolved == origin or origin in resolved.parents or resolved in origin.parents:
+        raw_source = str(source or "")
+        if not raw_source or raw_source.startswith(("\\\\", "//")):
+            continue                           # a network share can never contain the local root
+        origin = key(raw_source)
+        if mine == origin or mine.startswith(origin.rstrip(os.sep) + os.sep) or origin.startswith(mine.rstrip(os.sep) + os.sep):
             raise ValueError("분석 저장 위치와 장비 원본 폴더는 분리해야 합니다")
     return resolved
 

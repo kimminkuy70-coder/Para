@@ -44,6 +44,16 @@ def options(raw):
     return result
 
 
+# Web-only analysis period (the tkinter program always uses 24 h; it ignores this key).
+# Kept to a few long periods: every run reads the equipment Report folders.
+BATCH_INTERVALS = (6, 12, 24, 48, 168)
+
+
+def batch_interval(cfg):
+    value = cfg.get("batch_interval_hours", 24)
+    return value if type(value) in (int, float) and value in BATCH_INTERVALS else 24
+
+
 class DesktopBatch:
     def __init__(self, config_path=None):
         # Only tests inject config_path; IPC never accepts it.
@@ -94,9 +104,11 @@ class DesktopBatch:
         the two programs never both run the same day)."""
         cfg = read_json(self.config_path) if cfg is None else cfg
         schedule = cfg.get("batch_schedule") if isinstance(cfg.get("batch_schedule"), dict) else {}
-        settings = watcher.WatchSettings(enabled=bool(cfg.get("batch_auto")), interval_hours=24)
+        settings = watcher.WatchSettings(enabled=bool(cfg.get("batch_auto")), interval_hours=batch_interval(cfg))
         state = watcher.WatchState.from_dict(schedule)
-        return dict(enabled=settings.enabled, last_run=state.last_run, last_result=state.last_result,
+        nxt = watcher.next_run_at(settings, state) if settings.enabled and state.last_run else None
+        return dict(enabled=settings.enabled, interval_hours=settings.interval_hours, last_run=state.last_run,
+                    last_result=state.last_result, next_run=nxt.strftime("%Y-%m-%d %H:%M") if nxt else "",
                     due=bool(watcher.should_run(datetime.now(), settings, state)))
 
     def record_run(self, ok, partial=False, error=""):

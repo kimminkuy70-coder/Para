@@ -36,7 +36,8 @@ class DocumentWorkerTests(unittest.TestCase):
                         send(3, 'document_page', {'snapshot': 'old'})
                         send(4, 'analyze', {'records': []})
                         send(5, 'recipe_open', {})
-                        send(6, 'shutdown', {})
+                        send(7, 'document_open', {'kind': 'ip'})
+                        send(8, 'shutdown', {})
                         closer = threading.Thread(target=lambda: (session.close(), closed.set()))
                         closer.start()
                         self.assertFalse(closed.wait(.05))
@@ -48,10 +49,16 @@ class DocumentWorkerTests(unittest.TestCase):
                 events = [json.loads(line) for line in output.getvalue().splitlines()]
                 self.assertEqual(events[0]['event'], 'accepted')
                 self.assertTrue(any(e['id']==2 and e['event']=='completed' for e in events))
-                for i in (3,4,5):
-                    self.assertTrue(any(e['id']==i and e['event']=='error' for e in events))
+                # The same screen is still guarded while its job runs...
+                for i in (3, 7):
+                    self.assertTrue(any(e['id']==i and e['event']=='error' and '진행 중' in e.get('message','') for e in events))
+                # ...but other screens are no longer blocked by a slow document (the
+                # "불러오는 중 forever" bug): they are accepted and run on their own.
+                for i in (4, 5):
+                    self.assertFalse(any(e['id']==i and '진행 중' in e.get('message','') for e in events))
+                    self.assertTrue(any(e['id']==i for e in events))
                 self.assertEqual(events[-1]['document']['snapshot'], 'finished')
-                self.assertFalse(session.worker.is_alive())
+                self.assertFalse(any(w.is_alive() for w in session.workers))
 
     def test_error_clears_busy_and_sanitizes_os_details(self):
         output = io.BytesIO()

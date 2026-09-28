@@ -30,6 +30,11 @@ from .desktop_watch import CmWatch, ParamWatch
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
+BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 관리', 'document': '문서', 'form': '양식 만들기',
+              'commonality': 'Commonality 결과', 'cmsurvey': 'Commonality 계획 확인', 'history': '이력 확인',
+              'update': '값 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
+              'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
+              'watch': '자동 감시 회차'}
 METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
 LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
@@ -131,7 +136,9 @@ class Session:
         self.appupdate = DesktopAppUpdate()
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
-        self.running = False
+        self.busy = {}                  # domain slot -> request id (see claim())
+        self.busy_kind = {}
+        self.workers = set()
         self.pwatch = ParamWatch()
         self.cmwatch = CmWatch()
         self.watching = None            # 'param' | 'cm' while a watch cycle runs
@@ -200,7 +207,7 @@ class Session:
         allowed.update(config_state=set(), config_set_save_dir={'path'},
                        config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
                        config_remove={'kind','machine'}, open_path={'path','reveal'},
-                       config_set_batch_auto={'enabled'}, config_set_extra_paths={'machine','paths'},
+                       config_set_batch_auto={'enabled','interval_hours'}, config_set_extra_paths={'machine','paths'},
                        config_set_hide_kla={'enabled'}, config_local_state=set(), config_set_local_dir={'path'},
                        config_purge_temp=set(), config_about=set())
         allowed.update(update_prepare=set(), update_set_local_source={'path'},
@@ -225,89 +232,139 @@ class Session:
                        cmwatch_edit={'snapshot','row','kind','value'}, cmwatch_confirm={'snapshot'}, cmwatch_cancel=set())
         if set(params) - allowed.get(method, set()):
             raise ValueError("Unexpected parameters")
+        self.route(rid, method, params)
+
+    # ---- job slots ------------------------------------------------------------------
+    # One slot per screen/domain instead of one global "busy" flag: a slow read on one
+    # screen (e.g. a large collation on OneDrive) must not leave every other screen
+    # stuck at "불러오는 중". Jobs that read the equipment or its shares also take the
+    # shared 'equipment' slot so this PC never reads equipment twice at once.
+    @property
+    def running(self):
+        return bool(self.busy)
+
+    def claim(self, rid, *domains):
+        for d in domains:
+            if d in self.busy:
+                raise ValueError(f"{BUSY_LABEL.get(self.busy_kind.get(d, d), d)} 작업이 아직 진행 중입니다. 끝난 뒤 다시 시도하세요.")
+        for d in domains:
+            self.busy[d] = rid
+            self.busy_kind[d] = d
+
+    def free(self, *domains):
+        for d in domains:
+            self.busy.pop(d, None)
+            self.busy_kind.pop(d, None)
+
+    def idle(self, domain):
+        if domain in self.busy:
+            raise ValueError(f"{BUSY_LABEL.get(domain, domain)} 작업이 아직 진행 중입니다. 끝난 뒤 다시 시도하세요.")
+
+    def spawn(self, target, *args):
+        thread = threading.Thread(target=target, args=args, daemon=True)
+        self.worker = thread
+        self.workers.add(thread)
+        thread.start()
+        return thread
+
+    def background(self, rid, key, action, failure, domains=None):
+        """Run one slow operation on a worker. `key` is the reply field; the job
+        holds its domain slot(s) (default: the key) until it finishes."""
+        domains = tuple(domains or (key,))
+        self.claim(rid, *domains)
+        self.emit(rid, 'accepted')
+
+        def work():
+            try:
+                value = action()
+                with self.lock:
+                    self.free(*domains)
+                    self.emit(rid, 'completed', **{key: value})
+            except Exception as exc:
+                if not isinstance(exc, ValueError):
+                    log_failure(key, exc)
+                with self.lock:
+                    self.free(*domains)
+                    self.emit(rid, 'error', code=f'{key}_failed',
+                              message=str(exc) if isinstance(exc, ValueError) else failure)
+            finally:
+                self.workers.discard(threading.current_thread())
+        self.spawn(work)
+
+    def route(self, rid, method, params):
+        bg = self.background
         if method.startswith('commonality_'):
-            if self.running:
-                raise ValueError('진행 중인 작업이 끝난 뒤 실행하세요')
+            self.idle('commonality')
             if method in ('commonality_compare', 'commonality_export'):
-                self.running = True
-                self.emit(rid, 'accepted')
-                self.worker = threading.Thread(target=self.commonality_work, args=(rid, method, params))
-                self.worker.start()
+                action = self.commonality.compare if method == 'commonality_compare' else self.commonality.export
+                bg(rid, 'commonality', lambda: action(params), 'Commonality 결과를 처리하지 못했습니다.')
+            elif method == 'commonality_catalog':
+                bg(rid, 'commonality', self.commonality.catalog, 'Commonality 결과 목록을 읽지 못했습니다. 로컬 작업 폴더를 확인하세요.')
             else:
-                value = self.commonality.catalog() if method == 'commonality_catalog' else self.commonality.page(params)
-                self.emit(rid, 'completed', commonality=value)
+                self.emit(rid, 'completed', commonality=self.commonality.page(params))
         elif method.startswith('document_'):
-            if self.running and method!='document_close':raise ValueError('배치 조사 완료 후 문서를 열어 주세요')
-            action={'document_open':lambda:self.documents.open(params.get('kind')),
-                    'document_page':lambda:self.documents.page(params),'document_edit':lambda:self.documents.edit(params),
-                    'document_append':lambda:self.documents.append(params),
-                    'document_delete':lambda:self.documents.delete(params)}
-            action['document_close']=lambda:self.documents.close()
-            if method in ('document_page','document_close'):
-                self.emit(rid,'completed',document=action[method]())
+            if method == 'document_close':
+                # Always allowed: leaving the screen must hand the edit lock back.
+                self.emit(rid, 'completed', document=self.documents.close() if 'document' not in self.busy else None)
+                return
+            self.idle('document')
+            action = {'document_open': lambda: self.documents.open(params.get('kind')),
+                      'document_edit': lambda: self.documents.edit(params),
+                      'document_append': lambda: self.documents.append(params),
+                      'document_delete': lambda: self.documents.delete(params)}
+            if method == 'document_page':
+                self.emit(rid, 'completed', document=self.documents.page(params))
             else:
-                self.running = True
-                self.emit(rid, 'accepted')
-                self.worker = threading.Thread(target=self.document_work, args=(rid, action[method]))
-                self.worker.start()
+                # Workbook I/O and lock verification must not block protocol input.
+                bg(rid, 'document', action[method], '공유 문서를 처리하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
         elif method.startswith('recipe_'):
-            if self.running and method != 'recipe_close':
-                raise ValueError('배치 조사 완료 후 비교 화면을 열어 주세요')
+            if method == 'recipe_close':
+                self.emit(rid, 'completed', recipe=self.recipe.close() if 'recipe' not in self.busy else None)
+                return
+            self.idle('recipe')
             action = {'recipe_open': lambda: self.recipe.open(), 'recipe_page': lambda: self.recipe.page(params),
                       'recipe_edit': lambda: self.recipe.edit(params),
                       'recipe_export': lambda: self.recipe.export(params),
                       'recipe_delete_preview': lambda: self.recipe.delete_preview(params),
                       'recipe_delete': lambda: self.recipe.delete(params),
-                      'recipe_paint': lambda: self.recipe.paint(params),
-                      'recipe_close': lambda: self.recipe.close()}
-            if method in ('recipe_open', 'recipe_edit', 'recipe_export', 'recipe_delete'):
+                      'recipe_paint': lambda: self.recipe.paint(params)}
+            if method in ('recipe_page',):
+                self.emit(rid, 'completed', recipe=action[method]())
+            else:
                 # Collation/workbook reads and writes (often on OneDrive) run off the input thread (A9).
-                self.background(rid, 'recipe', action[method], '레시피 작업을 완료하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
-            else:
-                self.emit(rid, "completed", recipe=action[method]())
+                bg(rid, 'recipe', action[method], '레시피 작업을 완료하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
         elif method.startswith('form_'):
-            if self.running:
-                raise ValueError('배치 조사 완료 후 양식 만들기를 열어 주세요')
-            if method == 'form_confirm':
-                # Confirmation writes a workbook and takes the form lock: run off the input thread.
-                self.running = True
-                self.emit(rid, 'accepted')
-                self.worker = threading.Thread(target=self.form_work, args=(rid, params))
-                self.worker.start()
+            self.idle('form')
+            action = {'form_catalog': lambda: self.form.catalog(), 'form_open': lambda: self.form.open(params),
+                      'form_page': lambda: self.form.page(params), 'form_edit': lambda: self.form.edit(params),
+                      'form_scales': lambda: self.form.scales(params),
+                      'form_versions': lambda: self.form.versions(params),
+                      'form_confirm': lambda: self.form.confirm(params)}
+            if method in ('form_page', 'form_edit'):
+                self.emit(rid, 'completed', form=action[method]())
             else:
-                action = {'form_catalog': lambda: self.form.catalog(), 'form_open': lambda: self.form.open(params),
-                          'form_page': lambda: self.form.page(params), 'form_edit': lambda: self.form.edit(params),
-                          'form_scales': lambda: self.form.scales(params),
-                          'form_versions': lambda: self.form.versions(params)}
-                if method in ('form_catalog', 'form_versions', 'form_open', 'form_scales'):
-                    # Reads candidate/coefficient workbooks from the save folder (A9).
-                    self.background(rid, 'form', action[method], '양식을 읽지 못했습니다. 파일 접근과 잠금을 확인하세요.')
-                else:
-                    self.emit(rid, 'completed', form=action[method]())
+                bg(rid, 'form', action[method], '양식을 처리하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
         elif method.startswith('cmsurvey_'):
-            if self.running:
-                raise ValueError('배치 조사 완료 후 Commonality 계획을 확인하세요')
-            action = {'cmsurvey_config': lambda: self.cmsurvey.config(),
-                      'cmsurvey_preflight': lambda: self.cmsurvey.preflight(params)}
             if method == 'cmsurvey_preflight':
                 # Scanresult traversal over the equipment share (A9).
-                self.background(rid, 'cmsurvey', action[method], 'Scanresult 폴더를 확인하지 못했습니다. 장비 연결을 확인하세요.')
+                bg(rid, 'cmsurvey', lambda: self.cmsurvey.preflight(params),
+                   'Scanresult 폴더를 확인하지 못했습니다. 장비 연결을 확인하세요.', ('cmsurvey', 'equipment'))
             else:
-                self.emit(rid, 'completed', cmsurvey=action[method]())
+                self.idle('cmsurvey')
+                self.emit(rid, 'completed', cmsurvey=self.cmsurvey.config())
         elif method.startswith('history_'):
-            if self.running:
-                raise ValueError('배치 조사 완료 후 이력 확인을 열어 주세요')
+            self.idle('history')
             action = {'history_files': lambda: self.history.files(),
                       'history_diff': lambda: self.history.diff(params),
                       'history_page': lambda: self.history.page(params),
                       'history_export': lambda: self.history.export(params)}
-            if method in ('history_diff', 'history_export'):
-                # Loading two or more collation workbooks is slow on OneDrive (A9).
-                self.background(rid, 'history', action[method], '취합 파일을 비교하지 못했습니다. 파일 접근을 확인하세요.')
-            else:
+            if method == 'history_page':
                 self.emit(rid, 'completed', history=action[method]())
+            else:
+                # Listing/loading collation workbooks is slow on OneDrive (A9).
+                bg(rid, 'history', action[method], '취합 파일을 읽지 못했습니다. 파일 접근을 확인하세요.')
         elif method.startswith('config_'):
-            if self.running and method in ('config_set_save_dir', 'config_set_local_dir', 'config_purge_temp'):
+            if self.busy and method in ('config_set_save_dir', 'config_set_local_dir', 'config_purge_temp'):
                 raise ValueError('진행 중인 작업이 끝난 뒤 폴더 설정을 바꾸세요')
             action = {'config_state': lambda: self.config.state(),
                       'config_set_save_dir': lambda: self.config.set_save_dir(params),
@@ -321,24 +378,26 @@ class Session:
                       'config_set_local_dir': lambda: self.config.set_local_dir(params),
                       'config_purge_temp': lambda: self.config.purge_temp(params),
                       'config_about': lambda: self.config.about(params)}
-            self.emit(rid, 'completed', config=action[method]())
+            if method == 'config_set_save_dir':
+                # Checks/creates the reference files in the (OneDrive) save folder.
+                bg(rid, 'config', action[method], '저장폴더를 설정하지 못했습니다. 폴더 접근을 확인하세요.')
+            else:
+                self.emit(rid, 'completed', config=action[method]())
         elif method.startswith('update_'):
-            if self.running:
-                raise ValueError('진행 중인 작업이 끝난 뒤 값 업데이트를 진행하세요')
+            self.idle('update')
             action = {'update_prepare': lambda: self.update.prepare(params),
                       'update_set_local_source': lambda: self.update.set_local_source(params),
                       'update_collect': lambda: self.update.collect(params),
                       'update_preview': lambda: self.update.preview(params),
                       'update_commit': lambda: self.update.commit(params),
                       'update_cancel': lambda: self.update.cancel(params)}
-            if method in ('update_collect', 'update_preview', 'update_commit'):
-                # Equipment reads, parsing and the collation write run off the input thread.
-                self.background(rid, 'update', action[method], '값 업데이트를 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.')
-            else:
+            if method == 'update_cancel':
                 self.emit(rid, 'completed', update=action[method]())
+            else:
+                bg(rid, 'update', action[method], '값 업데이트를 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.',
+                   ('update', 'equipment') if method == 'update_collect' else ('update',))
         elif method.startswith('cmrun_'):
-            if self.running:
-                raise ValueError('진행 중인 작업이 끝난 뒤 Commonality 조사를 진행하세요')
+            self.idle('cmrun')
             action = {'cmrun_plan': lambda: self.cmrun.plan(params), 'cmrun_copy': lambda: self.cmrun.copy(params),
                       'cmrun_units': lambda: self.cmrun.units(params), 'cmrun_detect': lambda: self.cmrun.detect(params),
                       'cmrun_parse': lambda: self.cmrun.parse(params), 'cmrun_page': lambda: self.cmrun.form.page(params),
@@ -348,18 +407,20 @@ class Session:
                 self.emit(rid, 'completed', cmrun=action[method]())
             else:
                 # Scanresult traversal, safe copy, parsing and workbook writes run off the input thread.
-                self.background(rid, 'cmrun', action[method], 'Commonality 조사를 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.')
+                bg(rid, 'cmrun', action[method], 'Commonality 조사를 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.',
+                   ('cmrun', 'equipment') if method in ('cmrun_plan', 'cmrun_copy') else ('cmrun',))
         elif method.startswith('formnew_'):
-            if self.running:
-                raise ValueError('진행 중인 작업이 끝난 뒤 양식을 만드세요')
+            self.idle('form')
             action = {'formnew_prepare': lambda: self.formnew.prepare(params),
                       'formnew_collect': lambda: self.formnew.collect(params),
                       'formnew_parse': lambda: self.formnew.parse(params),
                       'formnew_cancel': lambda: self.formnew.cancel(params)}
-            if method in ('formnew_collect', 'formnew_parse'):
-                self.background(rid, 'formnew', action[method], '양식 만들기 수집을 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.')
-            else:
+            if method == 'formnew_cancel':
                 self.emit(rid, 'completed', formnew=action[method]())
+            else:
+                # Same form slot as 양식 만들기 (they share the editor).
+                bg(rid, 'formnew', action[method], '양식 만들기를 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.',
+                   ('form', 'equipment') if method == 'formnew_collect' else ('form',))
         elif method.startswith('appupdate_'):
             action = {'appupdate_check': lambda: self.appupdate.check(params),
                       'appupdate_skip': lambda: self.appupdate.skip(params),
@@ -367,18 +428,20 @@ class Session:
                       'appupdate_publish': lambda: self.appupdate.publish(params),
                       'appupdate_open_dir': lambda: self.appupdate.open_dir(params)}
             if method in ('appupdate_apply', 'appupdate_publish'):
-                if self.running:
+                if method == 'appupdate_apply' and self.busy:
                     raise ValueError('진행 중인 작업이 끝난 뒤 업데이트하세요')
                 # Copy/verify/extract or zip a whole package: worker thread.
-                self.background(rid, 'appupdate', action[method], '업데이트를 준비하지 못했습니다. 게시 폴더와 로컬 저장 공간을 확인하세요.')
+                bg(rid, 'appupdate', action[method], '업데이트를 준비하지 못했습니다. 게시 폴더와 로컬 저장 공간을 확인하세요.')
+            elif method == 'appupdate_check':
+                # Reads the manifest in the (OneDrive) program folder.
+                bg(rid, 'appupdate', action[method], '업데이트 정보를 읽지 못했습니다. 게시 폴더를 확인하세요.')
             else:
                 self.emit(rid, 'completed', appupdate=action[method]())
         elif method == 'watch_status':
             self.emit(rid, 'completed', watch=self.watch_status())
         elif method in ('pwatch_run', 'cmwatch_run'):
             # '▶ 즉시 확인': same cycle as the scheduler, on the watch thread.
-            if self.watching or self.running:
-                raise ValueError('진행 중인 작업(또는 감시 회차)이 끝난 뒤 실행하세요')
+            self.idle('equipment')
             self.emit(rid, 'accepted')
             self.start_watch('param' if method == 'pwatch_run' else 'cm', rid)
         elif method.startswith('pwatch_'):
@@ -388,10 +451,8 @@ class Session:
                       'pwatch_jobs': lambda: self.pwatch.jobs(params)}
             if method in ('pwatch_save', 'pwatch_set_path', 'pwatch_copy_paths') and self.watching == 'param':
                 raise ValueError('감시 회차가 끝난 뒤 설정을 바꾸세요')
-            if self.running:
-                raise ValueError('진행 중인 작업이 끝난 뒤 실행하세요')
             # Shared settings / equipment folder listing: off the input thread.
-            self.background(rid, 'pwatch', action[method], '자동 감시 설정을 처리하지 못했습니다. 저장폴더와 장비 연결을 확인하세요.')
+            bg(rid, 'pwatch', action[method], '자동 감시 설정을 처리하지 못했습니다. 저장폴더와 장비 연결을 확인하세요.')
         elif method.startswith('cmwatch_'):
             action = {'cmwatch_state': lambda: self.cmwatch.state(params), 'cmwatch_save': lambda: self.cmwatch.save(params),
                       'cmwatch_candidates': lambda: self.cmwatch.candidates(params),
@@ -402,12 +463,12 @@ class Session:
                       'cmwatch_cancel': lambda: self.cmwatch.cancel(params)}
             if method in ('cmwatch_save', 'cmwatch_confirm') and self.watching == 'cm':
                 raise ValueError('감시 회차가 끝난 뒤 설정을 바꾸세요')
-            if method in ('cmwatch_page', 'cmwatch_edit', 'cmwatch_cancel', 'cmwatch_state'):
+            self.idle('cmwatch')
+            if method in ('cmwatch_page', 'cmwatch_edit', 'cmwatch_cancel'):
                 self.emit(rid, 'completed', cmwatch=action[method]())
             else:
-                if self.running:
-                    raise ValueError('진행 중인 작업이 끝난 뒤 실행하세요')
-                self.background(rid, 'cmwatch', action[method], 'Commonality 감시 작업을 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.')
+                bg(rid, 'cmwatch', action[method], 'Commonality 감시 작업을 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.',
+                   ('cmwatch', 'equipment') if method in ('cmwatch_candidates', 'cmwatch_begin') else ('cmwatch',))
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))
@@ -416,31 +477,30 @@ class Session:
         elif method == "configuration":
             self.emit(rid, "completed", **self.batch.describe())
         elif method == "batch_reports":
-            if self.running:
-                raise ValueError("배치 조사 완료 후 목록을 다시 확인하세요")
-            self.emit(rid, "completed", reports=self.batch.reports(params))
+            # Lists an equipment Report folder (network): never on the input thread.
+            bg(rid, 'reports', lambda: self.batch.reports(params),
+               'Report 폴더를 읽지 못했습니다. 장비 연결을 확인하세요.', ('batch',))
         elif method == "investigate":
-            if self.job is not None or self.running:
+            if self.job is not None:
                 raise ValueError("Release the previous job before starting another")
             prepared = self.batch.prepare(params)
-            self.job, self.running = rid, True
+            self.claim(rid, 'batch', 'equipment')
+            self.job = rid
             self.cancelled.clear()
             self.emit(rid, "accepted", job=rid)
-            self.worker = threading.Thread(target=self.investigate, args=(rid, prepared))
-            self.worker.start()
+            self.spawn(self.investigate, rid, prepared)
         elif method == "analyze":
-            if self.job is not None or self.running:
+            if self.job is not None:
                 raise ValueError("Release the previous job before starting another")
             validate_records(params.get("records"))
             selected = params.get("selected", list(batchreport.METRICS))
             if not isinstance(selected, list) or not selected or any(not isinstance(k, str) or k not in batchreport.METRICS for k in selected):
                 raise ValueError("Invalid metrics")
+            self.claim(rid, 'batch')
             self.job = rid
-            self.running = True
             self.cancelled.clear()
             self.emit(rid, "accepted", job=rid)
-            self.worker = threading.Thread(target=self.run, args=(rid, params["records"], selected))
-            self.worker.start()
+            self.spawn(self.run, rid, params["records"], selected)
         elif method == "shutdown":
             self.closed = True
             self.cancelled.set()
@@ -448,14 +508,14 @@ class Session:
         else:
             if not integer(params.get("job"), 1, 2**53 - 1) or params["job"] != self.job:
                 raise ValueError("Unknown job")
-            running = self.running
+            running = 'batch' in self.busy
             if method == "cancel":
                 self.cancelled.set()
                 self.emit(rid, "completed", cancellation_requested=running)
             elif method == "release":
                 if running:
                     raise ValueError("Job still running")
-                self.result, self.job, self.worker = None, None, None
+                self.result, self.job = None, None
                 self.emit(rid, "completed")
             elif method == "table_page":
                 if self.result is None:
@@ -471,7 +531,7 @@ class Session:
             self.emit(rid, "progress", phase="computing")
             result = None if self.cancelled.is_set() else self.compute(records, selected=selected)
             with self.lock:
-                self.running = False
+                self.free('batch')
                 if self.cancelled.is_set():
                     self.emit(rid, "cancelled")
                 else:
@@ -482,7 +542,7 @@ class Session:
         except Exception:
             # Do not expose source content, paths or credentials in protocol errors.
             with self.lock:
-                self.running = False
+                self.free('batch')
                 self.emit(rid, "error", code="analysis_failed")
 
     def investigate(self, rid, prepared):
@@ -500,7 +560,7 @@ class Session:
             except (OSError, ValueError):
                 pass  # schedule bookkeeping never hides a finished analysis
             with self.lock:
-                self.running = False
+                self.free('batch', 'equipment')
                 self.result = result
                 # Service has committed its outputs. A late cancel is not a rollback.
                 self.emit(rid, "completed", summary=result["summary"],
@@ -511,7 +571,7 @@ class Session:
                             for i, t in enumerate(result["tables"])])
         except batchreport_store.Cancelled:
             with self.lock:
-                self.running = False
+                self.free('batch', 'equipment')
                 self.emit(rid, "cancelled")
         except Exception:
             try:
@@ -519,69 +579,8 @@ class Session:
             except (OSError, ValueError):
                 pass
             with self.lock:
-                self.running = False
+                self.free('batch', 'equipment')
                 self.emit(rid, "error", code="investigation_failed")
-
-    def background(self, rid, key, action, failure):
-        """Run one slow file operation on a worker; same single-job rule as documents."""
-        self.running = True
-        self.emit(rid, 'accepted')
-
-        def work():
-            try:
-                value = action()
-                with self.lock:
-                    self.running = False
-                    self.emit(rid, 'completed', **{key: value})
-            except Exception as exc:
-                if not isinstance(exc, ValueError):
-                    log_failure(key, exc)
-                with self.lock:
-                    self.running = False
-                    self.emit(rid, 'error', code=f'{key}_failed',
-                              message=str(exc) if isinstance(exc, ValueError) else failure)
-        self.worker = threading.Thread(target=work)
-        self.worker.start()
-
-    def document_work(self, rid, action):
-        # Workbook I/O and lock verification must not block protocol input.
-        # Saves are atomic operations: shutdown waits rather than interrupting them.
-        try:
-            value = action()
-            with self.lock:
-                self.running = False
-                self.emit(rid, 'completed', document=value)
-        except Exception as exc:
-            with self.lock:
-                self.running = False
-                self.emit(rid, 'error', code='document_failed',
-                          message=str(exc) if isinstance(exc, ValueError) else '공유 문서를 처리하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
-
-    def form_work(self, rid, params):
-        # Confirmation writes final + original workbooks under the form lock.
-        try:
-            value = self.form.confirm(params)
-            with self.lock:
-                self.running = False
-                self.emit(rid, 'completed', form=value)
-        except Exception as exc:
-            with self.lock:
-                self.running = False
-                self.emit(rid, 'error', code='form_failed',
-                          message=str(exc) if isinstance(exc, ValueError) else '양식을 확정하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
-
-    def commonality_work(self, rid, method, params):
-        try:
-            action = self.commonality.compare if method == 'commonality_compare' else self.commonality.export
-            value = action(params)
-            with self.lock:
-                self.running = False
-                self.emit(rid, 'completed', commonality=value)
-        except Exception as exc:
-            with self.lock:
-                self.running = False
-                self.emit(rid, 'error', code='commonality_failed',
-                          message=str(exc) if isinstance(exc, ValueError) else 'Commonality 결과를 처리하지 못했습니다.')
 
     # ---- automatic watches ------------------------------------------------------
     def watch_status(self):
@@ -604,6 +603,8 @@ class Session:
     def start_watch(self, kind, rid=None):
         """One watch cycle on its own thread. Manual runs answer `rid`; scheduled
         runs only publish a notice (when something was found / changed / failed)."""
+        self.claim(rid, 'equipment')     # one equipment reader at a time on this PC
+        self.busy_kind['equipment'] = 'watch'
         self.watching = kind
         watch = self.pwatch if kind == 'param' else self.cmwatch
 
@@ -617,6 +618,7 @@ class Session:
                 value, err = None, (str(exc) if isinstance(exc, ValueError) else '감시 회차를 완료하지 못했습니다.')
             with self.lock:
                 self.watching = None
+                self.free('equipment')
                 if self.closed:
                     return
                 key = 'pwatch' if kind == 'param' else 'cmwatch'
@@ -637,8 +639,8 @@ class Session:
         self.watch_thread.start()
 
     def tick(self, now=None):
-        """Scheduler step (every TICK_SEC). Never overlaps a user job or another cycle
-        (single equipment access at a time, like the tkinter `_watch_busy` rule)."""
+        """Scheduler step (every TICK_SEC). Never overlaps another equipment reader
+        (a user's collection or another cycle), like the tkinter `_watch_busy` rule."""
         import time as _time
         now = _time.monotonic() if now is None else now
         with self.lock:
@@ -657,17 +659,17 @@ class Session:
                     self.pwatch.refresh_lock()
                 except OSError:
                     pass
-            if self.watching or self.running:
+            if self.watching or 'equipment' in self.busy:
                 return
         try:
             if self.cmwatch.due():
                 with self.lock:
-                    if not (self.watching or self.running or self.closed):
+                    if not (self.watching or 'equipment' in self.busy or self.closed):
                         self.start_watch('cm')
                 return
             if self.pwatch.due():
                 with self.lock:
-                    if not (self.watching or self.running or self.closed):
+                    if not (self.watching or 'equipment' in self.busy or self.closed):
                         self.start_watch('param')
                 return
             notice = self.pwatch.poll_shared()       # a cycle finished on another PC
@@ -689,8 +691,8 @@ class Session:
             self.closed = True
             self.cancelled.set()
         self.stop_ticks.set()
-        if self.worker is not None:
-            self.worker.join()
+        for worker in list(self.workers):
+            worker.join()                # saves are atomic: wait, never interrupt
         self.result = None
         try:
             self.update.cancel({})      # never leave the global collate lock behind
