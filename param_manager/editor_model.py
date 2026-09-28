@@ -63,8 +63,8 @@ def build_entries(rows, base_keys=None, default_use=None,
     name_lookup(alg, orig) → 저장된 장비 화면 이름|None. **넘어오면 항상** 적용해 지난번
     저장한 이름을 미리 채운다(파서 표시명 param 대신). 기존 양식을 그대로 여는 경로
     (이름이 이미 사람 값)는 호출측에서 name_lookup 을 아예 안 넘겨(None) 원 이름을 지킨다.
-    use_lookup(alg, orig) → 저장된 체크박스 상태(True/False/None). 같은 (alg,원본항목)을
-    지난번에 체크/해제한 그대로 새 양식에 미리 맞춘다(name_lookup 과 함께만 넘긴다)."""
+    use_lookup(alg, orig, zone) → 저장된 체크박스 상태(True/False/None). 같은 **Zone·Alg·
+    원본항목**을 지난번에 체크/해제한 그대로 새 양식에 미리 맞춘다(Zone 이 다르면 적용 안 함)."""
     entries = []
     for r in rows:
         zone = engine._s(r.get("zone")); alg = engine._s(r.get("alg"))
@@ -85,7 +85,7 @@ def build_entries(rows, base_keys=None, default_use=None,
         orig = engine._s(ext.get("key")).strip() or param
         # '지난번 저장한 체크박스 상태' 가 있으면 그것을 우선(같은 항목 매번 다시 체크 방지).
         if use_lookup is not None:
-            remembered_use = use_lookup(alg, orig)
+            remembered_use = use_lookup(alg, orig, zone)
             if remembered_use is not None:
                 use = bool(remembered_use)
         # '지난번 저장한 장비 화면 이름' 자동 채움(name_lookup 이 넘어왔을 때만).

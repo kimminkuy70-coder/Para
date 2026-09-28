@@ -5,10 +5,12 @@
 새 양식을 만들 때 같은 (alg, 원본항목) 이 나오면 그 이름을 자동으로 불러온다
 (사람이 그대로 두거나 다시 바꿀 수 있음).
 
-  헤더: [Alg, 원본항목, 장비화면이름, 사용, 비고]
-  키   : (Alg, 원본항목) 정규화 — 원본항목 = 실제 ini 항목 이름(설정 Parameter)
-  사용 : 마지막으로 확정한 체크박스 상태(Y/N). 새 양식에서 같은 (alg,원본항목)이 나오면
-         이 값으로 체크를 미리 맞춘다(매번 같은 항목을 다시 체크하지 않게).
+  헤더: [Alg, 원본항목, 장비화면이름, 사용, 비고, 색상코드, Zone]
+  이름·색상 키 : (Alg, 원본항목) 정규화 — Zone 칸이 빈 행. 원본항목 = 실제 ini 항목 이름.
+  사용(체크) 키: **(Zone, Alg, 원본항목)** — Zone 칸이 채워진 행에만 기록한다(2026-09).
+         같은 Alg·같은 파라미터라도 Zone 마다 체크 여부가 다르므로, 한 Zone 에서 체크한
+         것이 다른 Zone 으로 번지면 안 된다. Zone 이 다르면(또는 Zone 을 모르는 구 파일의
+         사용 값이면) 기억을 적용하지 않고 파서 기본값을 쓴다.
 
 변환계수.xlsx(coefstore)와 같은 원칙:
   · 저장폴더(OneDrive) 공유 파일 → 담당자끼리 같은 이름을 쓴다.
@@ -29,7 +31,7 @@ from . import engine
 
 NAME_FILENAME = "장비화면이름.xlsx"
 NAME_SHEET = "장비화면이름"
-NAME_HEADERS = ["Alg", "원본항목", "장비화면이름", "사용", "비고", "색상코드"]
+NAME_HEADERS = ["Alg", "원본항목", "장비화면이름", "사용", "비고", "색상코드", "Zone"]
 _USE_TRUE = {"Y", "YES", "1", "TRUE", "O", "예", "사용", "체크"}
 _USE_FALSE = {"N", "NO", "0", "FALSE", "X", "아니오", "미사용"}
 _HDR_FILL = "1F4E78"
@@ -57,7 +59,7 @@ def _style_header(ws) -> None:
         c.alignment = Alignment(horizontal="center", vertical="center")
 
 
-_COL_W = (22, 26, 30, 8, 20, 14)
+_COL_W = (22, 26, 30, 8, 20, 14, 22)
 
 
 def _use_str(use) -> str:
@@ -83,7 +85,7 @@ def create_blank(path: str) -> str:
     ws.title = NAME_SHEET
     ws.append(NAME_HEADERS)
     _style_header(ws)
-    for col, w in zip("ABCDEF", _COL_W):
+    for col, w in zip("ABCDEFG", _COL_W):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
@@ -112,7 +114,8 @@ def load(path: str) -> list[dict]:
         if not orig:                       # 원본항목만 있으면 유효(이름 비어도 사용 정보 가능)
             continue
         out.append({"Alg": alg, "원본항목": orig, "장비화면이름": name,
-                    "사용": g("사용"), "비고": g("비고"), "색상코드": g("색상코드")})
+                    "사용": g("사용"), "비고": g("비고"), "색상코드": g("색상코드"),
+                    "Zone": g("Zone")})
     wb.close()
     return out
 
@@ -125,12 +128,16 @@ def save(path: str, rows: list[dict]) -> str:
     for r in rows:
         ws.append([engine._s(r.get(h)) for h in NAME_HEADERS])
     _style_header(ws)
-    for col, w in zip("ABCDEF", _COL_W):
+    for col, w in zip("ABCDEFG", _COL_W):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = "A2"
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     wb.save(path)
     return path
+
+
+def _zone_of(row) -> str:
+    return _norm(row.get("Zone"))
 
 
 def lookup(rows: list[dict], alg, orig) -> str | None:
@@ -150,66 +157,92 @@ def lookup(rows: list[dict], alg, orig) -> str | None:
     return by_orig
 
 
-def use_of(rows: list[dict], alg, orig):
-    """(alg, 원본항목) → 저장된 체크박스 상태(True/False). 없거나 빈칸이면 None.
-    Alg 가 정확히 안 맞아도 원본항목만 맞으면 폴백."""
+def use_of(rows: list[dict], alg, orig, zone=""):
+    """(Zone, alg, 원본항목) → 저장된 체크박스 상태(True/False). 셋이 모두 맞는 행이
+    없으면 None. Zone 이 비었거나 다르면 적용하지 않는다(다른 Zone 으로 번짐 방지)."""
+    z = _norm(zone)
+    if not z:
+        return None
     k = _key(alg, orig)
-    by_orig = None
     for r in rows:
-        u = _parse_use(r.get("사용"))
-        if u is None:
-            continue
-        rk = _key(r.get("Alg"), r.get("원본항목"))
-        if rk == k:
-            return u
-        if by_orig is None and _norm(r.get("원본항목")) == _norm(orig):
-            by_orig = u
-    return by_orig
+        if _zone_of(r) == z and _key(r.get("Alg"), r.get("원본항목")) == k:
+            u = _parse_use(r.get("사용"))
+            if u is not None:
+                return u
+    return None
 
 
 def make_lookup(rows: list[dict]):
-    """editor_model.build_entries 에 넘길 이름 조회 콜백 (alg, orig) -> name|None."""
+    """editor_model.build_entries 에 넘길 이름 조회 콜백 (alg, orig) -> name|None.
+    색인을 한 번만 만든다(항목 수천 개 × 행 수천 개를 매번 훑지 않게)."""
+    exact, by_orig = {}, {}
+    for r in rows:
+        nm = engine._s(r.get("장비화면이름")).strip()
+        if not nm:
+            continue
+        exact.setdefault(_key(r.get("Alg"), r.get("원본항목")), nm)
+        by_orig.setdefault(_norm(r.get("원본항목")), nm)
+
     def _cb(alg, orig):
-        return lookup(rows, alg, orig)
+        return exact.get(_key(alg, orig), by_orig.get(_norm(orig)))
     return _cb
 
 
 def make_use_lookup(rows: list[dict]):
-    """editor_model.build_entries 에 넘길 사용 조회 콜백 (alg, orig) -> bool|None."""
-    def _cb(alg, orig):
-        return use_of(rows, alg, orig)
+    """editor_model.build_entries 에 넘길 사용 조회 콜백 (alg, orig, zone) -> bool|None.
+    Zone·Alg·원본항목이 모두 맞을 때만 값을 돌려준다(`use_of` 와 같은 규칙)."""
+    index = {}
+    for r in rows:
+        z = _zone_of(r)
+        u = _parse_use(r.get("사용"))
+        if z and u is not None:
+            index.setdefault((z,) + _key(r.get("Alg"), r.get("원본항목")), u)
+
+    def _cb(alg, orig, zone=""):
+        z = _norm(zone)
+        return index.get((z,) + _key(alg, orig)) if z else None
     return _cb
 
 
-def upsert(rows: list[dict], alg, orig, name=None, use=None, color=None) -> bool:
-    """(alg, 원본항목) 행에 장비 화면 이름/사용 상태를 기록·갱신(마지막 승).
-    name/use 는 넘어온 것만 갱신한다. 반환: 목록이 바뀌었는가. orig 가 비면 무시."""
+def upsert(rows: list[dict], alg, orig, name=None, use=None, color=None, zone=None) -> bool:
+    """이름·색상은 (alg, 원본항목) 행(Zone 칸 빈 행)에, 사용 상태는 (Zone, alg, 원본항목)
+    행에 기록·갱신한다(마지막 승). 넘어온 것만 갱신. 사용 상태는 Zone 을 알 때만 기록한다
+    — Zone 없이 기억하면 다른 Zone 의 같은 항목에 번진다. 반환: 목록이 바뀌었는가."""
     orig = engine._s(orig).strip()
     if not orig:
         return False
     name = engine._s(name).strip() if name is not None else None
     use_s = _use_str(use) if use is not None else None
     color = normalize_color(color) if color is not None else None
+    zone_s = engine._s(zone).strip()
     k = _key(alg, orig)
-    for r in rows:
-        if _key(r.get("Alg"), r.get("원본항목")) == k:
-            changed = False
-            if color is not None and r.get("색상코드", "") != color:
-                r["색상코드"] = color
+    changed = False
+    if name or color is not None:
+        base = next((r for r in rows if not _zone_of(r) and _key(r.get("Alg"), r.get("원본항목")) == k), None)
+        if base is None:
+            rows.append({"Alg": engine._s(alg).strip(), "원본항목": orig, "장비화면이름": name or "",
+                         "사용": "", "비고": "", "색상코드": color or "", "Zone": ""})
+            changed = True
+        else:
+            if color is not None and base.get("색상코드", "") != color:
+                base["색상코드"] = color
                 changed = True
-            if name and engine._s(r.get("장비화면이름")).strip() != name:
-                r["장비화면이름"] = name
+            if name and engine._s(base.get("장비화면이름")).strip() != name:
+                base["장비화면이름"] = name
                 changed = True
-            if use_s is not None and engine._s(r.get("사용")).strip().upper() != use_s:
-                r["사용"] = use_s
-                changed = True
-            if engine._s(r.get("Alg")).strip() == "" and engine._s(alg).strip():
-                r["Alg"] = engine._s(alg).strip()
-            return changed
-    rows.append({"Alg": engine._s(alg).strip(), "원본항목": orig,
-                 "장비화면이름": name or "", "사용": use_s or "", "비고": "",
-                 "색상코드": color or ""})
-    return True
+            if engine._s(base.get("Alg")).strip() == "" and engine._s(alg).strip():
+                base["Alg"] = engine._s(alg).strip()
+    if use_s is not None and zone_s:
+        z = _norm(zone_s)
+        row = next((r for r in rows if _zone_of(r) == z and _key(r.get("Alg"), r.get("원본항목")) == k), None)
+        if row is None:
+            rows.append({"Alg": engine._s(alg).strip(), "원본항목": orig, "장비화면이름": "",
+                         "사용": use_s, "비고": "", "색상코드": "", "Zone": zone_s})
+            changed = True
+        elif engine._s(row.get("사용")).strip().upper() != use_s:
+            row["사용"] = use_s
+            changed = True
+    return changed
 
 
 def apply_records(rows: list[dict], records: list[dict], extracts: list[dict]) -> int:
@@ -230,11 +263,11 @@ def apply_records(rows: list[dict], records: list[dict], extracts: list[dict]) -
 
 
 def apply_selected(rows: list[dict], selected: list[dict]) -> int:
-    """양식 편집기의 **전체 항목**(체크/미체크 모두)에서 (Alg, 원본키) →
-    (장비 화면 이름, 사용 상태)를 기억한다. 새 양식에서 같은 항목의 이름·체크를
+    """양식 편집기의 **전체 항목**(체크/미체크 모두)에서 (Alg, 원본키) → 장비 화면 이름,
+    (Zone, Alg, 원본키) → 사용 상태를 기억한다. 새 양식에서 같은 항목의 이름·체크를
     자동으로 맞추는 근거가 된다. 반환: 바뀐 행 수.
 
-    selected 각 항목: {alg, ext(원본키 'key'), name(표시 이름), reco(표시명 폴백), use}."""
+    selected 각 항목: {zone, alg, ext(원본키 'key'), name(표시 이름), reco(표시명 폴백), use}."""
     changed = 0
     for s in selected:
         alg = s.get("alg")
@@ -244,7 +277,7 @@ def apply_selected(rows: list[dict], selected: list[dict]) -> int:
         name = engine._s(s.get("name")).strip() or engine._s(s.get("reco")).strip()
         if upsert(rows, alg, orig, name=name or None,
                   use=bool(s["use"]) if "use" in s else None,
-                  color=s.get("color")):
+                  color=s.get("color"), zone=s.get("zone")):
             changed += 1
     return changed
 

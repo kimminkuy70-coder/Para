@@ -674,7 +674,7 @@ python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성�
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
-python3 tests/test_namestore.py    # 5  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)
+python3 tests/test_namestore.py    # 6  (체크 기억 Zone 일치 필수 포함)  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
@@ -1016,7 +1016,10 @@ GitHub 직접 폴링/다운로드는 기각(런타임 외부 네트워크 금지
   `(호기,변형)`), `apply_form_scales`(양식 확정 계수 반영). MAG 열은 참고용(매칭 안 함).
 - `param_manager/namestore.py` — **장비화면이름.xlsx (Alg+원본항목→장비 화면 이름·사용)
   저장소**(coefstore 와 같은 원칙: 공유 파일·사람 확정 때만 쓰기·조회 읽기전용).
-  헤더 `[Alg, 원본항목, 장비화면이름, 사용, 비고]`. `apply_selected`(양식 확정 시 편집기
+  헤더 `[Alg, 원본항목, 장비화면이름, 사용, 비고, 색상코드, Zone]`.
+  **체크(사용) 기억은 (Zone, Alg, 원본항목) 셋 다 맞을 때만 적용(2026-09)** — Zone 칸이 찬
+  행에 Zone 별로 기록하고, 이름·색상은 Zone 칸 빈 행((Alg, 원본항목))에 공유한다.
+  Zone 이 다르거나 구 파일(Zone 없음)의 사용 값은 적용하지 않는다(다른 Zone 으로 번짐 방지). `apply_selected`(양식 확정 시 편집기
   **전체 항목**의 표시 이름 + **체크박스 상태(Y/N)** 를 기억) · `apply_records`(하위호환,
   이름만) · `make_lookup`/`make_use_lookup`(editor_model `build_entries(name_lookup=,
   use_lookup=)` 콜백) · `lookup`/`use_of`(정규화·한글 보존, Alg 안 맞아도 원본항목만

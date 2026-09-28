@@ -329,7 +329,7 @@ class DesktopForm:
             # Remember display names + checkbox states for future forms (best effort).
             name_note = ""
             try:
-                name_selected = [dict(alg=e["alg"], ext={"key": e["orig"]}, name=e["name"],
+                name_selected = [dict(zone=e["zone"], alg=e["alg"], ext={"key": e["orig"]}, name=e["name"],
                                       use=e["use"]) for e in self.entries]
                 npath = self._safe(namestore.name_path(str(self.root)))
                 namestore.save_selected(npath, name_selected, user)

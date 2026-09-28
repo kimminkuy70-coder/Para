@@ -67,24 +67,24 @@ def test_new_form_autofill_but_edit_keeps():
 
 
 def test_use_checkbox_memory():
-    """확정한 체크박스 상태(사용 Y/N)를 기억해 새 양식에서 파서 기본값을 덮어쓴다."""
+    """확정한 체크박스 상태(사용 Y/N)를 (Zone, Alg, 원본항목)으로 기억해 새 양식에서
+    파서 기본값을 덮어쓴다."""
     rows = []
     selected = [
-        {"alg": "Genesis", "ext": {"key": "BrightSeedTh"},
+        {"zone": "Genesis", "alg": "Genesis", "ext": {"key": "BrightSeedTh"},
          "name": "밝기 민감도", "reco": "Bright Sensitivity", "use": True},
-        {"alg": "Surface", "ext": {"key": "Elongation"},
+        {"zone": "Surface", "alg": "Surface", "ext": {"key": "Elongation"},
          "name": "Elongation", "reco": "Elongation", "use": False},
     ]
     assert ns.apply_selected(rows, selected) == 2
-    assert rows[0]["사용"] == "Y" and rows[1]["사용"] == "N"
     # 파일 왕복 후에도 사용 상태 보존
     d = tempfile.mkdtemp()
     p = os.path.join(d, ns.NAME_FILENAME)
     ns.save(p, rows)
     back = ns.load(p)
-    assert ns.use_of(back, "Genesis", "BrightSeedTh") is True
-    assert ns.use_of(back, "Surface", "Elongation") is False
-    assert ns.use_of(back, "Surface", "NeverSeen") is None
+    assert ns.use_of(back, "Genesis", "BrightSeedTh", "Genesis") is True
+    assert ns.use_of(back, "Surface", "Elongation", "Surface") is False
+    assert ns.use_of(back, "Surface", "NeverSeen", "Surface") is None
     # 새 양식: 파서 기본값과 반대라도 기억한 체크 상태가 우선
     pivot = [_pivot("Genesis", "BrightSeedTh", "Bright Sensitivity", use=False),
              _pivot("Surface", "Elongation", "Elongation", use=True)]
@@ -96,10 +96,38 @@ def test_use_checkbox_memory():
     ok("체크박스 상태 기억·파일 왕복·새 양식 자동 적용(파서 기본값 덮어씀)")
 
 
+def test_use_memory_requires_same_zone():
+    """같은 Alg·원본항목이라도 Zone 이 다르면 체크 기억을 적용하지 않는다(2026-09)."""
+    rows = []
+    ns.apply_selected(rows, [
+        {"zone": "Zone1", "alg": "Genesis", "ext": {"key": "BrightSeedTh"}, "name": "밝기", "use": True},
+        {"zone": "Zone2", "alg": "Genesis", "ext": {"key": "BrightSeedTh"}, "name": "밝기", "use": False},
+    ])
+    # 이름은 (Alg, 원본항목) 한 행, 체크는 Zone 마다 한 행
+    assert sum(1 for r in rows if not r["Zone"]) == 1
+    assert sorted(r["Zone"] for r in rows if r["Zone"]) == ["Zone1", "Zone2"]
+    use = ns.make_use_lookup(rows)
+    assert use("Genesis", "BrightSeedTh", "Zone1") is True
+    assert use("Genesis", "BrightSeedTh", "Zone2") is False
+    assert use("Genesis", "BrightSeedTh", "Zone3") is None        # 처음 보는 Zone → 파서 기본
+    assert use("Surface", "BrightSeedTh", "Zone1") is None        # Alg 다르면(원본항목만 같아도) 안 씀
+    assert use("Genesis", "BrightSeedTh", "") is None
+    pivot = [dict(_pivot("Genesis", "BrightSeedTh", "Bright", use=False), zone=z) for z in ("Zone1", "Zone2", "Zone3")]
+    ents = em.build_entries(pivot, name_lookup=ns.make_lookup(rows), use_lookup=use)
+    assert [e["use"] for e in ents] == [True, False, False]
+    assert all(e["name"] == "밝기" for e in ents)                 # 이름은 Zone 과 무관하게 공유
+    # 구 파일(Zone 열 없음)의 사용 값은 어느 Zone 에도 번지지 않는다
+    legacy = [{"Alg": "Genesis", "원본항목": "BrightSeedTh", "장비화면이름": "밝기", "사용": "Y", "비고": ""}]
+    assert ns.make_use_lookup(legacy)("Genesis", "BrightSeedTh", "Zone1") is None
+    assert ns.use_of(legacy, "Genesis", "BrightSeedTh", "Zone1") is None
+    assert ns.make_lookup(legacy)("Genesis", "BrightSeedTh") == "밝기"
+    ok("체크 기억은 Zone·Alg·원본항목 모두 일치할 때만 / 이름은 공유 / 구 파일 사용값 무시")
+
+
 def test_use_overrides_base_keys():
     """기존 레시피 활용(base_keys)로 체크될 항목도 기억한 사용=N 이면 해제된다."""
     rows = [{"Alg": "Surface", "원본항목": "Elongation", "장비화면이름": "Elongation",
-             "사용": "N", "비고": ""}]
+             "사용": "N", "비고": "", "Zone": "Surface"}]
     pivot = [_pivot("Surface", "Elongation", "Elongation")]
     ents = em.build_entries(
         pivot, base_keys={("surface", "surface", "elongation")},

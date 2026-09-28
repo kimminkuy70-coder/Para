@@ -293,7 +293,7 @@ class DesktopCmRun:
         if save:
             try:
                 namestore.save_selected(namestore.name_path(save), [
-                    dict(alg=e["alg"], ext={"key": e["orig"]}, name=e["name"], use=e["use"]) for e in entries], user)
+                    dict(zone=e["zone"], alg=e["alg"], ext={"key": e["orig"]}, name=e["name"], use=e["use"]) for e in entries], user)
             except Exception as exc:  # noqa: BLE001
                 notes.append(f"장비화면이름 저장 실패: {exc}")
             try:

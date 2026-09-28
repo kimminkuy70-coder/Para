@@ -706,7 +706,7 @@ class CmWatch(_Base):
             from . import namestore
             try:
                 namestore.save_selected(namestore.name_path(save), [
-                    dict(alg=e["alg"], ext={"key": e["orig"]}, name=e["name"], use=e["use"]) for e in self.form.entries],
+                    dict(zone=e["zone"], alg=e["alg"], ext={"key": e["orig"]}, name=e["name"], use=e["use"]) for e in self.form.entries],
                     engine.current_user())
             except Exception:  # noqa: BLE001 - remembering names never blocks the watch form
                 pass
