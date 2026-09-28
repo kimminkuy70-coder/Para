@@ -66,7 +66,7 @@ function App(){
     if(!desktop.closed){setEngineDown(false);setScreenKey(k=>k+1);void syncWatch();notify('분석 엔진에 다시 연결했습니다.','ok');}
   }
   const [screenKey,setScreenKey]=useState(0);
-  // Other screens can ask to open a tab (e.g. Commonality → 설정 › Scanresult 루트).
+  // Other screens can ask to open a tab (e.g. Commonality → 설정 › AOI 장비 호기 루트).
   useEffect(()=>{const go=(e:Event)=>setTab((e as CustomEvent<string>).detail);window.addEventListener('para:navigate',go);return()=>window.removeEventListener('para:navigate',go);},[]);
   // Workflow screens stay mounted after the first visit, so leaving a tab never
   // loses an in-progress step (Commonality 조사, Recipe 관리의 업데이트·양식 …). Screens
@@ -255,14 +255,14 @@ function App(){
       <div className="section-heading"><div><span className="step">BATCH</span><h2>배치 리포트 분석</h2></div><span className="count">{selected.length}개 호기 · {options.metrics.length}개 지표</span></div>
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>
       <div className="step-body">
-      {bstep===0&&<><p className="hint">조사할 호기를 고르고 검색어·기간·리포트를 정합니다. 호기가 없으면 [설정] 탭에서 Report 폴더를 등록하세요.</p>
+      {bstep===0&&<><p className="hint">조사할 호기를 고르고 검색어·기간·리포트를 정합니다. 호기가 없으면 [설정 › AOI 장비 호기 루트]에서 호기 폴더를 등록하세요(그 아래 Reports 폴더를 읽습니다).</p>
         <p className="hint">자동 분석: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › Batch Report 분석 주기 설정]에서 바꿀 수 있습니다.</p>
         <div className="toolbar"><button disabled={busy||!config?.machines.length} onClick={()=>setSelected(config?.machines.map(m=>m.id)||[])}>전체 선택</button><button disabled={busy||!selected.length} onClick={()=>setSelected([])}>선택 해제</button></div>
         <div className="targets" aria-label="호기별 검색 조건">{config?.machines.length?config.machines.map(m=><fieldset key={m.id} disabled={busy} className={selected.includes(m.id)?'machine selected':'machine'}><legend><label><input type="checkbox" checked={selected.includes(m.id)} onChange={e=>setSelected(old=>e.target.checked?[...old,m.id]:old.filter(id=>id!==m.id))}/>{m.id}</label></legend>
           <p className="folder" title={m.folder}>{m.folder}</p>{m.extra?.map(f=><p key={f} className="folder" title={f}>+ {f}</p>)}<label className="field">Recipe 검색어<input aria-label={`${m.id} 검색어`} value={targets[m.id]?.query||''} maxLength={256} onChange={e=>updateTarget(m.id,'query',e.target.value)} placeholder="예: 2D CAMTEK"/></label>
           <div className="date-fields"><label className="field">시작일<input type="date" aria-label={`${m.id} 시작일`} value={targets[m.id]?.start||''} onChange={e=>updateTarget(m.id,'start',e.target.value)}/></label><label className="field">종료일<input type="date" aria-label={`${m.id} 종료일`} value={targets[m.id]?.end||''} onChange={e=>updateTarget(m.id,'end',e.target.value)}/></label></div>
           <div className="report-pick"><button type="button" onClick={()=>openPicker(m.id)}>📋 리포트 선택…</button><span className="pick-count">{picks[m.id]?.length?`선택 ${picks[m.id].length}개`:'전체'}</span></div>
-        </fieldset>):<div className="empty-state"><h3>등록된 호기가 없습니다.</h3><p>[설정] 탭에서 호기별 Report 폴더를 등록하세요.</p></div>}</div></>}
+        </fieldset>):<div className="empty-state"><h3>등록된 호기가 없습니다.</h3><p>[설정 › AOI 장비 호기 루트]에서 호기 폴더를 등록하세요. 그 아래 Reports 폴더를 읽습니다.</p></div>}</div></>}
 
       {bstep===1&&<><div className="section-heading"><div><h3>필요한 지표 선택</h3></div><button disabled={busy} onClick={()=>setOptions(old=>({...old,metrics:old.metrics.length===metrics.length?[]:metrics.map(m=>m[0])}))}>{options.metrics.length===metrics.length?'전체 해제':'전체 선택'}</button></div>
         <fieldset disabled={busy} className="metric-list"><legend className="sr-only">분석 지표</legend>{metrics.map(([id,fallback,description])=>{const title=config?.metrics?.find(m=>m.id===id)?.title||fallback;return <label key={id} className={options.metrics.includes(id)?'metric checked':'metric'}><input type="checkbox" checked={options.metrics.includes(id)} onChange={()=>toggleMetric(id)}/><span><b>{title}</b><small>{description}</small></span><code>{id}</code></label>;})}</fieldset>
@@ -299,7 +299,7 @@ function App(){
           {picker.names.length===0&&<p className="table-empty">검색 결과가 없습니다.</p>}</div>
         <div className="dialog-actions"><button type="button" onClick={()=>setPicker(undefined)}>취소</button>
           <button type="button" className="primary" onClick={applyPicker}>적용</button></div></>}</dialog></>}</div>
-    </main><footer><span>Camtek AOI Manager · 개편 시험 화면</span><span>{config?.local_root?`로컬 결과: ${config.local_root}`:'데이터는 장비 원본과 분리하여 로컬에 저장합니다.'}</span></footer>
+    </main><footer><span>Camtek AOI Manager</span><span>{config?.local_root?`로컬 결과: ${config.local_root}`:'데이터는 장비 원본과 분리하여 로컬에 저장합니다.'}</span></footer>
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

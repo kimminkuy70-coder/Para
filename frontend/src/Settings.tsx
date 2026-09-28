@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {desktop,pickFolder} from './desktop';
+import {desktop,pickFolder,pickFile} from './desktop';
 import {notify,fail,LoadFailed} from './ui';
 import {errorText} from './desktop';
 import {takeSettingsIntent} from './nav';
@@ -8,21 +8,26 @@ import {installUpdate,openProgramDir} from './AppUpdate';
 import type {AppUpdate} from './desktop';
 
 type Auto={enabled:boolean;interval_hours:number;last_run:string;last_result:string;next_run:string};
-type State={save_dir:string;local_dir:string;report_paths:Record<string,string>;scanresult_roots:Record<string,string>;extra_paths:Record<string,string[]>;batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string};
-type Edit={kind:'report'|'scanresult'|'extra';machine:string;newMachine:string;path:string;orig?:string};
-const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 폴더'],['report','Batch Report 루트'],['auto','Batch Report 분석 주기 설정'],['scan','Scanresult 루트'],['about','정보']];
+type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
+type State={save_dir:string;local_dir:string;aoi:Aoi[];batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string};
+type ExtraKind='report'|'scanresult';
+type Edit={kind:'aoi'|'extra';machine:string;newMachine:string;path:string;orig?:string;extraKind?:ExtraKind};
+const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 폴더'],['aoi','AOI 장비 호기 루트'],['auto','Batch Report 분석 주기 설정'],['about','정보']];
+const EXTRA_LABEL:Record<ExtraKind,string>={report:'Batch Report',scanresult:'Scanresult'};
 const periodLabel=(h:number)=>h%24===0?(h===24?'하루 1회 (24시간)':h===168?'일주일 1회':`${h/24}일마다`):`${h}시간마다`;
+const baseName=(p:string)=>p.split(/[\\/]/).filter(Boolean).pop()||p;
+// 이전 화면 이름('report'·'scan')으로 들어와도 통합 탭을 연다.
+const subOf=(s?:string)=>s==='report'||s==='scan'?'aoi':s||'save';
 
 export function Settings(){
   // Another screen may open 설정 on a given tab with a machine to register (nav.ts).
   const [intent]=useState(()=>takeSettingsIntent());
-  const [sub,setSub]=useState(intent?.sub||'save');
+  const [sub,setSub]=useState(subOf(intent?.sub));
   const [st,setSt]=useState<State>();
   const [saveDir,setSaveDir]=useState('');
   const [busy,setBusy]=useState(false);
-  const [rMachine,setRMachine]=useState(''),[rPath,setRPath]=useState('');
-  const [sMachine,setSMachine]=useState(intent?.sub==='scan'?intent.machine||'':''),[sPath,setSPath]=useState('');
-  const [xMachine,setXMachine]=useState(''),[xPath,setXPath]=useState('');
+  const [aMachine,setAMachine]=useState(subOf(intent?.sub)==='aoi'?intent?.machine||'':''),[aPath,setAPath]=useState('');
+  const [xMachine,setXMachine]=useState(''),[xKind,setXKind]=useState<ExtraKind>('report'),[xPath,setXPath]=useState('');
   type Local={root:string;summary:string;onedrive:boolean;default:string;removed?:number};
   type About={version:string;user:string;config:string;local_root:string;logs:string};
   const [upd,setUpd]=useState<AppUpdate>(),[pubPath,setPubPath]=useState(''),[pubNotes,setPubNotes]=useState('');
@@ -34,7 +39,7 @@ export function Settings(){
   async function publishPackage(){
     setBusy(true);
     try{const r=(await desktop.request('appupdate_publish',{path:pubPath.trim(),notes:pubNotes}).promise).appupdate as {version:string;filename:string};
-      notify(`${r.version} 게시 완료 (${r.filename}). 다른 PC는 다음 실행 때 알림을 받습니다.`,'ok');setPubNotes('');}
+      notify(`${r.version} 게시 완료 (${r.filename}). 다른 PC는 다음 실행 때 알림을 받습니다.`,'ok');setPubNotes('');setPubPath('');}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   const [local,setLocal]=useState<Local>(),[localPath,setLocalPath]=useState(''),[about,setAbout]=useState<About>();
@@ -71,99 +76,134 @@ export function Settings(){
   }
   async function req(method:string,params:object,ok:string,after?:()=>void){
     setBusy(true);
-    try{const r=(await desktop.request(method,params).promise).config as State;setSt(r);notify(ok,'ok');after&&after();}
+    try{const r=(await desktop.request(method,params).promise).config as State&{notice?:string};setSt(r);
+      notify(r.notice?`${ok} — ${r.notice}`:ok,r.notice&&/찾지 못했습니다/.test(r.notice)?'info':'ok');after&&after();}
     catch(e){fail(e);}finally{setBusy(false);}
   }
 
   // '수정': one row at a time becomes editable (machine name + folder).
   const [edit,setEdit]=useState<Edit>();
+  const aois=st?.aoi||[];
+  const extrasOf=(m:string,k:ExtraKind)=>aois.find(a=>a.machine===m)?.extra[k]||[];
   async function saveEdit(){
     if(!edit||!st)return;
     if(edit.kind==='extra'){
-      const list=(st.extra_paths[edit.machine]||[]).map(p=>p===edit.orig?edit.path.trim():p);
-      await req('config_set_extra_paths',{machine:edit.machine,paths:list},'추가 폴더를 수정했습니다',()=>setEdit(undefined));
+      const k=edit.extraKind!;
+      const list=extrasOf(edit.machine,k).map(p=>p===edit.orig?edit.path.trim():p);
+      await req('config_set_aoi_extra',{machine:edit.machine,kind:k,paths:list},'추가 폴더를 수정했습니다',()=>setEdit(undefined));
     }else{
-      await req('config_edit_root',{kind:edit.kind,machine:edit.machine,new_machine:edit.newMachine.trim(),path:edit.path.trim()},
-        `${edit.newMachine.trim()} 경로를 수정했습니다`,()=>setEdit(undefined));
+      await req('config_edit_aoi_root',{machine:edit.machine,new_machine:edit.newMachine.trim(),path:edit.path.trim()},
+        `${edit.newMachine.trim()} 호기 루트를 수정했습니다`,()=>setEdit(undefined));
     }
   }
-  // A plain render function (not a component) so the edit inputs keep focus while typing.
-  function rootRow(kind:Edit['kind'],machine:string,path:string,orig?:string){
-    const key=kind+machine+(orig||'');
-    const editing=edit&&edit.kind===kind&&edit.machine===machine&&(kind!=='extra'||edit.orig===orig);
-    if(editing)return <tr key={key} className="row-now"><td colSpan={3}><div className="form-filter" style={{margin:0}}>
-      {kind!=='extra'?<label className="field" style={{width:130}}>호기<input value={edit.newMachine} maxLength={64} aria-label={`${machine} 새 호기 이름`}
-        onChange={e=>setEdit(o=>o&&{...o,newMachine:e.target.value})}/></label>:<b style={{alignSelf:'center'}}>{machine}</b>}
-      <label className="field" style={{flex:1,minWidth:220}}>폴더<input value={edit.path} maxLength={4096} aria-label={`${machine} 새 폴더`}
+  function editRow(key:string,cols:number){
+    if(!edit)return null;
+    return <tr key={key} className="row-now"><td colSpan={cols}><div className="form-filter" style={{margin:0}}>
+      {edit.kind==='aoi'?<label className="field" style={{width:130}}>호기<input value={edit.newMachine} maxLength={64} aria-label={`${edit.machine} 새 호기 이름`}
+        onChange={e=>setEdit(o=>o&&{...o,newMachine:e.target.value})}/></label>
+        :<b style={{alignSelf:'center'}}>{edit.machine} · {EXTRA_LABEL[edit.extraKind!]}</b>}
+      <label className="field" style={{flex:1,minWidth:220}}>폴더<input value={edit.path} maxLength={4096} aria-label={`${edit.machine} 새 폴더`}
         onChange={e=>setEdit(o=>o&&{...o,path:e.target.value})}/></label>
       <button onClick={()=>browse(v=>setEdit(o=>o&&{...o,path:v}))}>📁 찾기</button>
-      <button className="primary" disabled={busy||!edit.path.trim()||(kind!=='extra'&&!edit.newMachine.trim())} onClick={saveEdit}>저장</button>
+      <button className="primary" disabled={busy||!edit.path.trim()||(edit.kind==='aoi'&&!edit.newMachine.trim())} onClick={saveEdit}>저장</button>
       <button disabled={busy} onClick={()=>setEdit(undefined)}>취소</button></div></td></tr>;
-    const remove=kind==='extra'
-      ?()=>req('config_set_extra_paths',{machine,paths:(st?.extra_paths[machine]||[]).filter(x=>x!==orig)},'삭제됨')
-      :()=>req('config_remove',{kind:kind==='report'?'report':'scanresult',machine},'삭제됨');
-    return <tr key={key}><td style={{width:110,fontWeight:700}}>{machine}</td><td><code>{path}</code></td>
-      <td style={{width:110,whiteSpace:'nowrap'}}><button className="linklike" disabled={busy} aria-label={`${machine} 수정`}
-        onClick={()=>setEdit({kind,machine,newMachine:machine,path,orig})}>수정</button>{' '}
-        <button className="linklike" disabled={busy} aria-label={`${machine} 삭제`} onClick={remove}>삭제</button></td></tr>;
   }
-  const reportRows=Object.entries(st?.report_paths||{});
-  const scanRows=Object.entries(st?.scanresult_roots||{});
+  const actions=(label:string,onEdit:()=>void,onRemove:()=>void)=><td style={{width:110,whiteSpace:'nowrap'}}>
+    <button className="linklike" disabled={busy} aria-label={`${label} 수정`} onClick={onEdit}>수정</button>{' '}
+    <button className="linklike" disabled={busy} aria-label={`${label} 삭제`} onClick={onRemove}>삭제</button></td>;
+  // A plain render function (not a component) so the edit inputs keep focus while typing.
+  function aoiRow(a:Aoi){
+    const key='aoi'+a.machine;
+    if(edit?.kind==='aoi'&&edit.machine===a.machine)return editRow(key,4);
+    return <tr key={key}><td style={{width:110,fontWeight:700}}>{a.machine}</td>
+      <td><code>{a.root||'—'}</code>{a.legacy&&<div className="hint">기존 설정(따로 등록) — [수정]에서 호기 폴더를 저장하면 통합됩니다.</div>}</td>
+      <td className="hint" style={{whiteSpace:'nowrap'}}>
+        <div>Reports: {a.report?<code>{baseName(a.report)}</code>:<b className="warn">없음</b>}</div>
+        <div>Scanresult: {a.scanresult?'자동 탐색(백업 포함)':<b className="warn">미등록</b>}</div></td>
+      {actions(a.machine,()=>setEdit({kind:'aoi',machine:a.machine,newMachine:a.machine,path:a.root}),
+        ()=>{if(window.confirm(`${a.machine} 호기 루트와 추가 폴더 등록을 모두 삭제할까요? (폴더 자체는 지우지 않습니다)`))
+          void req('config_remove_aoi',{machine:a.machine},`${a.machine} 삭제됨`);})}</tr>;
+  }
+  function extraRow(m:string,k:ExtraKind,p:string){
+    const key='x'+m+k+p;
+    if(edit?.kind==='extra'&&edit.machine===m&&edit.extraKind===k&&edit.orig===p)return editRow(key,4);
+    return <tr key={key}><td style={{width:110,fontWeight:700}}>{m}</td><td style={{width:120}}>{EXTRA_LABEL[k]}</td><td><code>{p}</code></td>
+      {actions(`${m} ${p}`,()=>setEdit({kind:'extra',machine:m,newMachine:m,path:p,orig:p,extraKind:k}),
+        ()=>void req('config_set_aoi_extra',{machine:m,kind:k,paths:extrasOf(m,k).filter(x=>x!==p)},'추가 폴더 삭제됨'))}</tr>;
+  }
+  const extraRows=aois.flatMap(a=>(['report','scanresult'] as ExtraKind[]).flatMap(k=>a.extra[k].map(p=>extraRow(a.machine,k,p))));
+  const extraCount=aois.reduce((n,a)=>n+a.extra.report.length+a.extra.scanresult.length,0);
   return <section className="panel">
     <div className="section-heading"><div><span className="step">SETTINGS</span><h2>설정</h2></div>
       <button disabled={busy} onClick={load}>새로고침</button></div>
     <p className="hint">웹 앱과 기존 프로그램은 <b>같은 설정 파일</b>을 공유합니다. 경로는 [📁 찾기]로 고르거나 직접 붙여넣을 수 있습니다.</p>
 
-    <div className="subtabs" role="tablist">{TABS.map(([id,label])=>
-      <button key={id} role="tab" aria-selected={sub===id} className={sub===id?'active':''} onClick={()=>setSub(id)}>{label}</button>)}</div>
-
     {loadError&&!st&&<LoadFailed message={loadError} onRetry={()=>void load()}/>}
-    {st&&<div className="current-settings" aria-label="현재 설정">
-      <h3>현재 설정</h3>
+    {st&&<details className="current-settings" aria-label="현재 설정">
+      <summary><h3>현재 설정</h3><span className="hint">{st.save_dir?'저장 폴더 지정됨':'⚠ 저장 폴더 미지정'} · AOI 호기 {aois.length}대 · 자동 분석 {st.batch_auto?'켜짐':'꺼짐'}</span></summary>
       <table className="tbl"><tbody>
         <tr><th>저장 폴더</th><td>{st.save_dir?<code>{st.save_dir}</code>:<b className="warn">미지정 — [저장 폴더] 탭에서 지정하세요</b>}</td>
           <td>{st.save_dir&&<button className="linklike" onClick={()=>openPath(st.save_dir)}>폴더 열기</button>}</td></tr>
         <tr><th>로컬 작업 폴더</th><td><code>{st.local_root||st.local_dir||'—'}</code>{!st.local_dir&&<span className="hint"> (기본값)</span>}</td>
           <td>{st.local_root&&!st.local_root.startsWith('(')&&<button className="linklike" onClick={()=>openPath(st.local_root!)}>폴더 열기</button>}</td></tr>
-        <tr><th>Batch Report 루트</th><td>{reportRows.length?`${reportRows.length}개 호기 · ${reportRows.map(([m])=>m).join(', ')}`:'없음'}
-          {Object.keys(st.extra_paths||{}).length>0&&<span className="hint"> · 추가 폴더 {Object.values(st.extra_paths).flat().length}개</span>}</td>
-          <td><button className="linklike" onClick={()=>setSub('report')}>보기</button></td></tr>
+        <tr><th>AOI 장비 호기 루트</th><td>{aois.length?`${aois.length}개 호기 · ${aois.map(a=>a.machine).join(', ')}`:'없음'}
+          {extraCount>0&&<span className="hint"> · 추가 폴더 {extraCount}개</span>}</td>
+          <td><button className="linklike" onClick={()=>setSub('aoi')}>보기</button></td></tr>
         <tr><th>Batch Report 자동 분석</th><td>{st.batch_auto?`켜짐 · ${periodLabel(st.batch?.interval_hours??24)}`:'꺼짐'}</td>
           <td><button className="linklike" onClick={()=>setSub('auto')}>보기</button></td></tr>
-        <tr><th>Scanresult 루트</th><td>{scanRows.length?`${scanRows.length}개 호기 · ${scanRows.map(([m])=>m).join(', ')}`:'없음'}</td>
-          <td><button className="linklike" onClick={()=>setSub('scan')}>보기</button></td></tr>
         <tr><th>설정 파일</th><td><code>{st.config_file||'—'}</code></td><td/></tr>
-      </tbody></table></div>}
+      </tbody></table></details>}
+
+    <div className="subtabs" role="tablist">{TABS.map(([id,label])=>
+      <button key={id} role="tab" aria-selected={sub===id} className={sub===id?'active':''} onClick={()=>setSub(id)}>{label}</button>)}</div>
+
     <div className="subtab-body">
     {sub==='save'&&<>
       <h3>저장 폴더 지정 <span className="hint" style={{fontWeight:400}}>— 필수</span></h3>
-      <p className="hint">모든 산출물(양식·취합·문서)이 이 폴더 아래 저장됩니다. 처음 지정하면 장비 IP·참고자료·특이사항 초기 파일이 자동 생성됩니다.</p>
+      <p className="hint"><b>다른 사람과 공유하는 산출물이 OneDrive 폴더에 저장됩니다. 팀이 함께 쓰는 OneDrive 경로를 지정해 주세요.</b></p>
+      <table className="tbl" style={{marginTop:8}}><tbody>
+        <tr><th style={{width:170}}>공유 문서</th><td>장비 IP 주소 · 참고자료 · 특이사항 · 변환계수 · 장비화면이름 (.xlsx) — 처음 지정하면 장비 IP·참고자료·특이사항이 자동 생성됩니다</td></tr>
+        <tr><th>Recipe 양식</th><td><code>양식\{'{레시피}'}\{'{생성시각}'}\</code> — 확정 양식 1개 + 관련파일(원본·수정본)</td></tr>
+        <tr><th>파라미터 값 취합</th><td><code>파라미터 값 취합\파라미터 값 취합_{'{시각}'}.xlsx</code> — 레시피 업데이트 1회당 1개</td></tr>
+        <tr><th>자동 감시</th><td><code>감시설정.json</code> · <code>자동감시\</code> 변경보고서(변경이 있을 때만)·감시로그</td></tr>
+        <tr><th>동시 접속 정보</th><td><code>_세션\</code> 접속자·작업 잠금, 편집 중인 문서 옆 <code>.editlock</code></td></tr>
+        <tr><th>새 버전 게시</th><td>저장 폴더 <b>옆</b>의 <code>프로그램\</code> 폴더(개발자가 게시한 설치 파일)</td></tr>
+      </tbody></table>
+      <p className="hint">Commonality 조사 결과·배치 리포트 분석 결과·장비 수집 임시 파일·로그는 OneDrive 가 아니라 <b>로컬 작업 폴더</b>에 저장됩니다(대량 동기화 방지).</p>
       <div className="form-filter" style={{marginTop:14}}>
-        <label className="field" style={{flex:1,minWidth:280}}>저장폴더 경로
-          <input value={saveDir} placeholder="예: D:\AOI\저장폴더" maxLength={4096} onChange={e=>setSaveDir(e.target.value)}/></label>
+        <label className="field" style={{flex:1,minWidth:280}}>OneDrive 저장폴더 경로
+          <input value={saveDir} placeholder="예: C:\Users\이름\OneDrive - 회사\AOI 파라미터" maxLength={4096} onChange={e=>setSaveDir(e.target.value)}/></label>
         <button onClick={()=>browse(setSaveDir)}>📁 찾기</button>
         <button className="primary" disabled={busy||!saveDir.trim()} onClick={saveSave}>저장</button></div>
       {st?.save_dir&&<p className="hint">현재 저장폴더: <code>{st.save_dir}</code></p>}
     </>}
 
-    {sub==='report'&&<>
-      <h3>호기별 Batch Report 루트 등록</h3>
-      <p className="hint">배치 리포트 분석에서 각 호기의 batch report(.htm)가 쌓이는 폴더입니다.</p>
-      {reportRows.length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{reportRows.map(([m,p])=>rootRow('report',m,p))}</tbody></table>}
+    {sub==='aoi'&&<>
+      <h3>AOI 장비 호기 루트 등록</h3>
+      <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 배치 리포트 분석이,
+        <b> Scanresult</b> 폴더(<code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사가 읽습니다. 장비 폴더는 읽기만 합니다.</p>
+      {aois.length>0&&<table className="tbl" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th/></tr></thead>
+        <tbody>{aois.map(aoiRow)}</tbody></table>}
       <div className="form-filter" style={{marginTop:12}}>
-        <label className="field" style={{width:150}}>호기<input value={rMachine} placeholder="AOI-21" maxLength={64} onChange={e=>setRMachine(e.target.value)}/></label>
-        <label className="field" style={{flex:1,minWidth:240}}>폴더<input value={rPath} placeholder="예: P:\AOI-21\Reports" maxLength={4096} onChange={e=>setRPath(e.target.value)}/></label>
-        <button onClick={()=>browse(setRPath)}>📁 찾기</button>
-        <button className="primary" disabled={busy||!rMachine.trim()||!rPath.trim()} onClick={()=>req('config_set_report_path',{machine:rMachine.trim(),path:rPath.trim()},'Report 폴더 등록',()=>{setRMachine('');setRPath('');})}>추가</button></div>
-      <h3 style={{marginTop:24}}>호기별 추가 Report 폴더</h3>
-      <p className="hint">기본 Report 폴더 외에 함께 조사할 폴더(예: 백업·보관 폴더)입니다. 호기당 최대 20개.</p>
-      {reportRows.length===0?<p className="table-empty">먼저 위에서 호기별 Batch Report 루트를 등록하세요.</p>:<>
-        {Object.entries(st?.extra_paths||{}).length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{Object.entries(st?.extra_paths||{}).flatMap(([m,list])=>list.map(p=>rootRow('extra',m,p,p)))}</tbody></table>}
+        <label className="field" style={{width:150}}>호기<input value={aMachine} placeholder="AOI-9" maxLength={64} onChange={e=>setAMachine(e.target.value)}/></label>
+        <label className="field" style={{flex:1,minWidth:240}}>호기 폴더<input value={aPath} placeholder="예: W:\AOI-9" maxLength={4096} onChange={e=>setAPath(e.target.value)}/></label>
+        <button onClick={()=>browse(setAPath)}>📁 찾기</button>
+        <button className="primary" disabled={busy||!aMachine.trim()||!aPath.trim()}
+          onClick={()=>req('config_set_aoi_root',{machine:aMachine.trim(),path:aPath.trim()},`${aMachine.trim()} 등록`,()=>{setAMachine('');setAPath('');})}>추가</button></div>
+
+      <h3 style={{marginTop:24}}>호기별 추가 폴더 (백업·보관본)</h3>
+      <p className="hint">호기 루트 밖에 있는 백업·보관 폴더를 함께 읽게 합니다. <b>Batch Report</b> 는 배치 리포트 분석이 기본 Reports 와 함께 조사하고,
+        <b> Scanresult</b> 는 Commonality 조사가 S/M 폴더를 찾을 때 함께 뒤집니다(그 아래 Scanresult* 폴더도 인식). 호기·종류당 최대 20개.</p>
+      {aois.length===0?<p className="table-empty">먼저 위에서 AOI 장비 호기 루트를 등록하세요.</p>:<>
+        {extraRows.length>0&&<table className="tbl" style={{marginTop:12}}><thead><tr><th>호기</th><th>종류</th><th>추가 폴더</th><th/></tr></thead><tbody>{extraRows}</tbody></table>}
         <div className="form-filter" style={{marginTop:12}}>
-          <label className="field" style={{width:150}}>추가 폴더 호기<select value={xMachine} onChange={e=>setXMachine(e.target.value)}><option value="">선택…</option>{reportRows.map(([m])=><option key={m} value={m}>{m}</option>)}</select></label>
-          <label className="field" style={{flex:1,minWidth:240}}>추가 폴더<input value={xPath} placeholder="예: P:\AOI-21\Reports_backup" maxLength={4096} onChange={e=>setXPath(e.target.value)}/></label>
+          <label className="field" style={{width:150}}>추가 폴더 호기<select value={xMachine} onChange={e=>setXMachine(e.target.value)}><option value="">선택…</option>{aois.map(a=><option key={a.machine} value={a.machine}>{a.machine}</option>)}</select></label>
+          <label className="field" style={{width:160}}>추가 폴더 종류<select value={xKind} onChange={e=>setXKind(e.target.value as ExtraKind)}>
+            <option value="report">Batch Report</option><option value="scanresult">Scanresult</option></select></label>
+          <label className="field" style={{flex:1,minWidth:240}}>추가 폴더<input value={xPath} placeholder={xKind==='report'?'예: P:\\AOI-9\\Reports_backup':'예: W:\\보관\\AOI-9\\Scanresult_2025'} maxLength={4096} onChange={e=>setXPath(e.target.value)}/></label>
           <button onClick={()=>browse(setXPath)}>📁 찾기</button>
-          <button className="primary" disabled={busy||!xMachine||!xPath.trim()} onClick={()=>req('config_set_extra_paths',{machine:xMachine,paths:[...(st?.extra_paths[xMachine]||[]),xPath.trim()]},'추가 폴더 등록',()=>setXPath(''))}>추가 폴더 등록</button></div></>}
+          <button className="primary" disabled={busy||!xMachine||!xPath.trim()}
+            onClick={()=>req('config_set_aoi_extra',{machine:xMachine,kind:xKind,paths:[...extrasOf(xMachine,xKind),xPath.trim()]},'추가 폴더 등록',()=>setXPath(''))}>추가 폴더 등록</button></div></>}
     </>}
 
     {sub==='auto'&&<>
@@ -208,25 +248,21 @@ export function Settings(){
         {upd?.newer&&<button className="primary" disabled={busy||!upd.installed} onClick={()=>void installUpdate()}>지금 {upd.available}(으)로 업데이트</button>}</div>
       {upd&&<p className="hint">현재 {upd.current} · 게시 {upd.available||'없음'}{upd.changelog?` — ${upd.changelog}`:''}</p>}
       <details style={{marginTop:16}}><summary>개발자: 새 버전 게시</summary>
-        <p className="hint">빌드된 패키지 폴더(GitHub Actions 아티팩트를 압축 해제한 폴더 또는 build_desktop.py 결과)를 고르면 zip 1개로 묶어 게시 폴더에 올립니다. 폴더 안의 package-manifest.json 으로 모든 파일을 검증하고, 버전도 그 파일에서 읽습니다.</p>
-        <div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>패키지 폴더<input value={pubPath} maxLength={4096} onChange={e=>setPubPath(e.target.value)}/></label>
-          <button onClick={()=>browse(setPubPath)}>📁 찾기</button></div>
+        <p className="hint">GitHub Actions 빌드 페이지(예: <code>…/actions/runs/…/artifacts/…</code>)에서 <b>브라우저로 받은 zip 파일을 그대로</b> 고르세요.
+          압축은 이 PC의 로컬 임시 폴더에서만 풀고, 안의 package-manifest.json 으로 모든 파일을 검증한 뒤 버전을 읽어 게시 폴더에 zip 1개로 올립니다.
+          다른 PC는 다음 실행 때 업데이트 알림을 받습니다. 이미 압축을 푼 패키지 폴더도 고를 수 있습니다.</p>
+        <p className="hint">프로그램이 GitHub 링크에서 직접 내려받지는 않습니다 — 아티팩트 링크는 GitHub 로그인이 필요해 프로그램이 인증 정보를 보관해야 하고,
+          서명 없는 프로그램이 인터넷에서 실행 파일 묶음을 받아 교체하는 동작은 백신(Defender)의 다운로더 탐지 대상이 될 수 있기 때문입니다.</p>
+        <div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>패키지 zip (또는 폴더)<input value={pubPath} maxLength={4096}
+          placeholder="예: C:\\Users\\이름\\Downloads\\Camtek_AOI_manager_v8.1.0.zip" onChange={e=>setPubPath(e.target.value)}/></label>
+          <button onClick={async()=>{const p=await pickFile('zip');if(p)setPubPath(p);else notify('파일 선택이 취소되었거나 데스크톱 앱이 아닙니다. 경로를 직접 붙여넣어 주세요.','info');}}>📦 zip 찾기</button>
+          <button onClick={()=>browse(setPubPath)}>📁 폴더 찾기</button></div>
         <label className="field">변경 내용<textarea rows={3} maxLength={4000} value={pubNotes} onChange={e=>setPubNotes(e.target.value)}/></label>
         <div className="toolbar"><button className="primary" disabled={busy||!pubPath.trim()} onClick={publishPackage}>게시</button></div>
       </details>
       <p className="hint">문제가 생기면 오류 로그 폴더의 파일을 담당자에게 전달하세요.</p>
     </>}
 
-    {sub==='scan'&&<>
-      <h3>호기별 Commonality Scanresult 루트 등록</h3>
-      <p className="hint">Commonality 조사에서 그 호기의 Scanresult(백업본 포함)가 있는 상위 폴더입니다.</p>
-      {scanRows.length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{scanRows.map(([m,p])=>rootRow('scanresult',m,p))}</tbody></table>}
-      <div className="form-filter" style={{marginTop:12}}>
-        <label className="field" style={{width:150}}>호기<input value={sMachine} placeholder="AOI-9" maxLength={64} onChange={e=>setSMachine(e.target.value)}/></label>
-        <label className="field" style={{flex:1,minWidth:240}}>폴더<input value={sPath} placeholder="예: W:\AOI-9" maxLength={4096} onChange={e=>setSPath(e.target.value)}/></label>
-        <button onClick={()=>browse(setSPath)}>📁 찾기</button>
-        <button className="primary" disabled={busy||!sMachine.trim()||!sPath.trim()} onClick={()=>req('config_set_scanresult_root',{machine:sMachine.trim(),path:sPath.trim()},'Scanresult 루트 등록',()=>{setSMachine('');setSPath('');})}>추가</button></div>
-    </>}
     </div>
   </section>;
 }

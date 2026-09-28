@@ -137,8 +137,8 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
   if(machines.length===0)
     return <section className="panel"><div className="section-heading"><div><span className="step">NEW SURVEY</span><h2>신규 Commonality 조사</h2></div>
       <button onClick={()=>void loadMachines()}>새로고침</button></div>
-      <p className="hint">Scanresult 루트가 설정된 호기가 없습니다. 호기별 장비 폴더(Scanresult 상위 폴더)를 먼저 등록하세요.</p>
-      <div className="toolbar"><button className="primary" onClick={()=>goToSettings({sub:'scan'})}>설정 › Scanresult 루트로 이동 ▶</button></div></section>;
+      <p className="hint">등록된 AOI 장비 호기 루트가 없습니다. [설정 › AOI 장비 호기 루트]에서 호기 폴더(Scanresult·Reports 가 들어 있는 폴더)를 먼저 등록하세요.</p>
+      <div className="toolbar"><button className="primary" onClick={()=>goToSettings({sub:'aoi'})}>설정 › AOI 장비 호기 루트로 이동 ▶</button></div></section>;
   const current=units[unit];
   const allDone=units.length>0&&units.every(u=>u.result);
   return <section className="panel">
@@ -150,9 +150,9 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
       <p className="hint">조사할 Lot 계획을 입력하거나 엑셀로 불러오면, 고른 호기의 Scanresult(백업본 포함)에서 S/M 폴더를 찾습니다. 원본은 읽기만 합니다.</p>
       <div className="form-filter" style={{marginTop:12}}><label className="field">조사 호기<select value={machine} onChange={e=>setMachine(e.target.value)}>
         {machines.map(m=><option key={m.id} value={m.id}>{m.id}</option>)}</select></label>
-        <button onClick={()=>goToSettings({sub:'scan'})} title="목록에 없는 호기의 장비 폴더를 등록합니다">＋ 다른 호기 장비 폴더 등록…</button></div>
+        <button onClick={()=>goToSettings({sub:'aoi'})} title="목록에 없는 호기의 장비 폴더를 등록합니다">＋ 다른 호기 장비 폴더 등록…</button></div>
       {unregistered.length>0&&<div className="warn-box" role="alert"><b>장비 폴더가 등록되지 않은 호기</b>가 계획에 있습니다. 경로를 지정하면 그 호기도 조사할 수 있습니다.
-        <div className="toolbar">{unregistered.map(m=><button key={m} onClick={()=>goToSettings({sub:'scan',machine:m})}>{m} 경로 지정 ▶</button>)}</div></div>}
+        <div className="toolbar">{unregistered.map(m=><button key={m} onClick={()=>goToSettings({sub:'aoi',machine:m})}>{m} 경로 지정 ▶</button>)}</div></div>}
       <div className="toolbar">
         <button disabled={busy} onClick={importPlan}>📂 계획 엑셀 불러오기</button>
         <button disabled={busy} onClick={makeTemplate}>📄 계획 엑셀 양식 만들기</button>

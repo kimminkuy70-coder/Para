@@ -100,14 +100,49 @@ def read_manifest(save_dir: str) -> dict | None:
     return data
 
 
+def _package_root(extracted: Path) -> Path:
+    """압축을 푼 폴더에서 package-manifest.json 이 있는 패키지 폴더(최상위 또는 두 단계 아래)."""
+    for depth in range(3):
+        hits = sorted(p.parent for p in extracted.glob("/".join(["*"] * depth + [desktop_package.MANIFEST])))
+        if len(hits) == 1:
+            return hits[0]
+        if len(hits) > 1:
+            raise ValueError("zip 안에 패키지가 여러 개 있습니다. GitHub Actions 에서 받은 zip 하나만 고르세요")
+    raise ValueError("zip 안에 package-manifest.json 이 없습니다. GitHub Actions 빌드 아티팩트 zip 인지 확인하세요")
+
+
 def publish(save_dir: str, package: str, local_root: str, changelog: str = "", user: str = "") -> dict:
-    """Zip a built package folder (the CI artifact / build_desktop output) into the
-    program folder and update the web manifest last."""
+    """Publish a built package: the **GitHub Actions artifact .zip as downloaded**
+    (extracted in local Temp only — never on OneDrive) or an already extracted
+    package folder. It is re-zipped into the program folder and the web manifest
+    is updated last.
+
+    The app itself never downloads from GitHub (2026-09 review): artifact links need
+    a signed-in GitHub account (the program would have to keep a token), and an
+    unsigned exe that fetches a zip from the internet and then swaps executables
+    matches downloader/dropper heuristics — the same risk class as the 2026-08
+    Defender deletion. The developer downloads the zip in a browser and uploads it."""
     if not save_dir:
         raise ValueError("먼저 저장폴더를 지정하세요")
-    root = Path(package)
-    if not root.is_dir():
-        raise ValueError("게시할 패키지 폴더를 찾을 수 없습니다")
+    src = Path(package)
+    if src.is_file() and src.suffix.lower() == ".zip":
+        if src.stat().st_size > MAX_ZIP:
+            raise ValueError("패키지 zip 이 너무 큽니다")
+        work = localdirs.new_temp_run(localdirs.ensure(local_root), "webpackage")
+        try:
+            try:
+                _safe_extract(str(src), Path(work))
+            except zipfile.BadZipFile as exc:
+                raise ValueError("zip 파일을 열 수 없습니다. 다운로드가 끝났는지 확인하세요") from exc
+            return _publish_folder(save_dir, _package_root(Path(work)), local_root, changelog, user)
+        finally:
+            localdirs.drop(work)
+    if not src.is_dir():
+        raise ValueError("게시할 패키지 zip 파일 또는 폴더를 찾을 수 없습니다")
+    return _publish_folder(save_dir, src, local_root, changelog, user)
+
+
+def _publish_folder(save_dir: str, root: Path, local_root: str, changelog: str, user: str) -> dict:
     info = desktop_package.verify(root)          # all files present, unchanged, versioned
     version = info["version"]
     folder = updater.program_dir(save_dir)
@@ -330,7 +365,7 @@ class DesktopAppUpdate:
     def publish(self, params):
         if set(params) - {"path", "notes"} or not isinstance(params.get("path"), str) \
                 or not isinstance(params.get("notes", ""), str) or len(params.get("notes", "")) > 4000:
-            raise ValueError("게시할 패키지 폴더와 변경 내용을 확인하세요")
+            raise ValueError("게시할 패키지(zip 또는 폴더)와 변경 내용을 확인하세요")
         from . import engine
         cfg = self._cfg()
         return publish(cfg.get("save_dir") or "", params["path"], self._local_root(),

@@ -69,7 +69,9 @@ class DesktopCmRun:
         mine = cm.filter_plan_for_machine(self.survey._validate_plan(params.get("plan")), machine)
         if not mine:
             raise ValueError("이 호기에 해당하는 계획 행이 없습니다. AOI호기를 확인하세요.")
-        scan_roots = cm.scanresult_roots(roots[machine], machine)
+        from .desktop_config import scanresult_roots_for
+        # 호기 루트 아래 Scanresult*(백업 포함) + 설정에서 추가한 Scanresult 보관 폴더.
+        scan_roots = scanresult_roots_for(read_json(self.survey.config_path), machine)
         report(f'{machine} Scanresult 폴더 {len(scan_roots)}개(백업 포함)에서 계획 {len(mine)}행의 S/M 폴더를 찾습니다…')
 
         def progress(i, n, row):

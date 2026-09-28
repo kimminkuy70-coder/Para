@@ -54,6 +54,11 @@ def batch_interval(cfg):
     return value if type(value) in (int, float) and value in BATCH_INTERVALS else 24
 
 
+def _name_key(text):
+    from .desktop_config import name_key
+    return name_key(text)
+
+
 class DesktopBatch:
     def __init__(self, config_path=None):
         # Only tests inject config_path; IPC never accepts it.
@@ -94,7 +99,7 @@ class DesktopBatch:
         cfg = read_json(self.config_path)
         extra = cfg.get("batch_extra_paths") if isinstance(cfg.get("batch_extra_paths"), dict) else {}
         return dict(machines=[dict(id=name, folder=folder, extra=[p for p in extra.get(name, []) if isinstance(p, str)])
-                              for name, folder in sorted(paths.items())],
+                              for name, folder in sorted(paths.items(), key=lambda kv: _name_key(kv[0]))],
                     local_root=str(root), last=last, auto=self.auto_state(cfg),
                     # Engine titles so the UI labels never drift from the analysis (A10).
                     metrics=[dict(id=k, title=v) for k, v in batchreport.METRICS.items()])

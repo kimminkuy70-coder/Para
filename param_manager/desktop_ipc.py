@@ -37,7 +37,7 @@ BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 값 확인',
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 감시 회차'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 # Background jobs that only read (local or OneDrive/equipment). Closing the app does not
 # wait for them — waiting for a slow read kept the old engine alive after the window
@@ -232,6 +232,8 @@ class Session:
                        config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
                        config_remove={'kind','machine'}, config_edit_root={'kind','machine','new_machine','path'}, open_path={'path','reveal'},
                        config_set_batch_auto={'enabled','interval_hours'}, config_set_extra_paths={'machine','paths'},
+                       config_set_aoi_root={'machine','path'}, config_edit_aoi_root={'machine','new_machine','path'},
+                       config_remove_aoi={'machine'}, config_set_aoi_extra={'machine','kind','paths'},
                        config_set_hide_kla={'enabled'}, config_local_state=set(), config_set_local_dir={'path'},
                        config_purge_temp=set(), config_about=set())
         allowed.update(update_prepare=set(), update_set_local_source={'path'},
@@ -418,13 +420,18 @@ class Session:
                       'config_edit_root': lambda: self.config.edit_root(params),
                       'config_set_batch_auto': lambda: self.config.set_batch_auto(params),
                       'config_set_extra_paths': lambda: self.config.set_extra_paths(params),
+                      'config_set_aoi_root': lambda: self.config.set_aoi_root(params),
+                      'config_edit_aoi_root': lambda: self.config.edit_aoi_root(params),
+                      'config_remove_aoi': lambda: self.config.remove_aoi(params),
+                      'config_set_aoi_extra': lambda: self.config.set_aoi_extra(params),
                       'config_set_hide_kla': lambda: self.config.set_hide_kla(params),
                       'config_local_state': lambda: self.config.local_state(),
                       'config_set_local_dir': lambda: self.config.set_local_dir(params),
                       'config_purge_temp': lambda: self.config.purge_temp(params),
                       'config_about': lambda: self.config.about(params)}
             if method in ('config_set_save_dir', 'config_set_report_path', 'config_set_scanresult_root',
-                          'config_edit_root', 'config_set_extra_paths', 'config_set_local_dir'):
+                          'config_edit_root', 'config_set_extra_paths', 'config_set_local_dir',
+                          'config_set_aoi_root', 'config_edit_aoi_root', 'config_set_aoi_extra'):
                 # These check the chosen folder (OneDrive / equipment share): never on the input thread.
                 bg(rid, 'config', action[method], '폴더를 확인하지 못했습니다. 경로와 연결 상태를 확인하세요.')
             else:

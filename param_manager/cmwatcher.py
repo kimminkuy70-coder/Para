@@ -685,7 +685,9 @@ def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
         targets = targets_for_machine(plan_rows, m)
         if not targets:
             continue
-        roots = cm.scanresult_roots(root, m)
+        # 값이 목록이면 호기 루트 + 추가 Scanresult 보관 폴더(웹 설정 'AOI 장비 호기 루트').
+        roots = list(dict.fromkeys(r for base in (root if isinstance(root, list) else [root])
+                                   for r in cm.scanresult_roots(base, m)))
         res = scan_new(roots, targets, seen_set(state, m),
                        (state.mtimes.get(m) or {}),
                        settle_minutes=settings.settle_minutes)

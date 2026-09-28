@@ -19,9 +19,9 @@ export async function pickFolder(): Promise<string|null> {
   catch { return null; }
 }
 /** Native file chooser for a Lot plan workbook (.xlsx/.xlsm); null if cancelled / not desktop. */
-export async function pickFile(): Promise<string|null> {
+export async function pickFile(kind: 'excel'|'zip' = 'excel'): Promise<string|null> {
   if (!isTauri()) return null;
-  try { return (await invoke<string|null>('pick_file')) ?? null; }
+  try { return (await invoke<string|null>('pick_file', {kind})) ?? null; }
   catch { return null; }
 }
 /** Quit the desktop app (used right after a self-update was staged). */

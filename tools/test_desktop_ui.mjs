@@ -73,26 +73,33 @@ try{
   assert(await page.evaluate(()=>document.querySelector('.toaster').matches(':popover-open')&&document.querySelector('dialog').open),'toast hidden behind modal');
   await page.keyboard.press('Escape');
   // A2: a Report folder registered in [설정] appears in the batch tab without restart.
-  const extra=join(fixture,'equipment-04');await mkdir(extra);
+  const extra=join(fixture,'equipment-04');await mkdir(join(extra,'Reports'),{recursive:true});
   await page.getByRole('button',{name:'설정',exact:true}).click();
   // 설정 tabs in the requested order.
-  assert.deepEqual(await page.getByRole('tab').allInnerTexts(),['저장 폴더','로컬 작업 폴더','Batch Report 루트','Batch Report 분석 주기 설정','Scanresult 루트','정보']);
-  await page.getByRole('tab',{name:'Batch Report 루트'}).click();
-  await page.getByLabel('호기',{exact:true}).fill('AOI-04');await page.getByLabel('폴더',{exact:true}).fill(extra);
+  assert.deepEqual(await page.getByRole('tab').allInnerTexts(),['저장 폴더','로컬 작업 폴더','AOI 장비 호기 루트','Batch Report 분석 주기 설정','정보']);
+  // 현재 설정 is folded by default, above the tabs.
+  assert.equal(await page.getByLabel('현재 설정').evaluate(d=>d.open),false);
+  await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();
+  // One machine folder registers both its Reports (batch) and Scanresult (Commonality).
+  await page.getByLabel('호기',{exact:true}).fill('AOI-04');await page.getByLabel('호기 폴더',{exact:true}).fill(extra);
   await page.getByRole('button',{name:'추가',exact:true}).click();
+  await page.getByText(/AOI-04 등록 — AOI-04: Batch Report: Reports/).waitFor();
   await page.getByText(extra,{exact:true}).waitFor();
+  // Machines are listed in name order (AOI-01 … AOI-04).
+  assert.deepEqual(await page.locator('.subtab-body table').first().locator('tbody tr td:first-child').allInnerTexts(),['AOI-01','AOI-02','AOI-03','AOI-04']);
   await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
   await page.getByLabel('AOI-04 검색어').waitFor();
   // 설정: current-settings summary and '수정' (rename + keep folder) of a Batch Report root.
   await page.getByRole('button',{name:'설정',exact:true}).click();
   const summary=page.getByLabel('현재 설정');
-  await summary.getByText(/Batch Report 루트/).waitFor();
+  await summary.locator('summary').click();
+  await summary.getByText(/AOI 장비 호기 루트/).first().waitFor();
   assert(/AOI-04/.test(await summary.innerText()),'summary lists registered roots');
-  await page.getByRole('tab',{name:'Batch Report 루트'}).click();
+  await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();
   await page.getByRole('button',{name:'AOI-04 수정'}).click();
   await page.getByLabel('AOI-04 새 호기 이름').fill('AOI-05');
   await page.getByRole('button',{name:'저장',exact:true}).click();
-  await page.getByText('AOI-05 경로를 수정했습니다').waitFor();
+  await page.getByText(/AOI-05 호기 루트를 수정했습니다/).waitFor();
   await page.getByRole('button',{name:'AOI-05 수정'}).waitFor();
   assert(/AOI-05/.test(await summary.innerText())&&!/AOI-04/.test(await summary.innerText()));
   await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
@@ -193,12 +200,13 @@ try{
   await page.getByText('자동 분석을 켰습니다').waitFor();
   await page.getByLabel('분석 주기').selectOption('12');
   await page.getByText('분석 주기를 저장했습니다').waitFor();
-  await page.getByRole('tab',{name:'Batch Report 루트'}).click();
+  await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();
   const archive=join(fixture,'archive-01');await mkdir(archive);
   await page.getByLabel('추가 폴더 호기').selectOption('AOI-01');
   await page.getByLabel('추가 폴더',{exact:true}).fill(archive);
   await page.getByRole('button',{name:'추가 폴더 등록',exact:true}).click();
   await page.getByText(archive,{exact:true}).waitFor();
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-settings-aoi.png'),fullPage:true});
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('오류 로그 폴더').waitFor();
   await page.getByRole('button',{name:'업데이트 확인',exact:true}).click();
@@ -227,7 +235,7 @@ try{
   assert.equal(await page.getByLabel('1행 이슈 Lot').isChecked(),true);
   await page.screenshot({path:join(root,'docs/screenshots/rev1-cm-plan.png'),fullPage:true});
   await page.getByRole('button',{name:'AOI-21 경로 지정 ▶',exact:true}).click();
-  await page.getByRole('tab',{name:'Scanresult 루트',selected:true}).waitFor();
+  await page.getByRole('tab',{name:'AOI 장비 호기 루트',selected:true}).waitFor();
   assert.equal(await page.getByLabel('호기',{exact:true}).inputValue(),'AOI-21');
   // Back to Commonality: the imported plan is still there (screen kept alive).
   await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();

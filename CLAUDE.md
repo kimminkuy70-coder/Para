@@ -23,6 +23,22 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 설정 'AOI 장비 호기 루트' 일원화 + 개발자 zip 게시 (2026-09-28)
+
+- **호기 폴더 하나**(예: `W:\AOI-9`)만 등록(`config_set_aoi_root`, config `aoi_roots`)하면 그 아래
+  `Reports`(배치 리포트 분석)와 `Scanresult*`(백업본 포함, Commonality)를 함께 쓴다. 등록·수정 때
+  한 번만 폴더를 보고(`desktop_config.find_report_dir`) **구 키 `wph_report_paths`·`commonality_roots`
+  를 같은 값으로 맞춘다**(기존 프로그램과 설정 파일 공유 — 배치/Commonality 코드도 이 키를 계속 읽음).
+  목록 표시(`aoi_view`)는 경로 문자열만 본다(장비 공유 접근 금지). 구 설정은 한 호기로 묶어 'legacy' 표시.
+- **호기별 추가 폴더**(`config_set_aoi_extra`, kind=report → `batch_extra_paths`, kind=scanresult →
+  `aoi_extra[m].scanresult`). Scanresult 추가분은 `desktop_config.scanresult_roots_for` 로
+  수동 조사(`cmrun.plan`)·감시 후보·감시 회차(`cmwatcher` 의 roots 값이 목록이면 전부)가 함께 뒤진다.
+  모든 목록은 이름 순(`name_key`, AOI-9 < AOI-10).
+- **새 버전 게시 = GitHub Actions 아티팩트 zip 업로드**(`desktop_appupdate.publish` 가 .zip 을 받음 —
+  로컬 Temp 에서만 풀고 package-manifest 검증 후 재압축 게시). **앱이 GitHub 링크에서 직접 받지 않는다**:
+  아티팩트 링크는 GitHub 로그인(토큰 보관) 필요 + 서명 없는 exe 의 인터넷 다운로드→실행 파일 교체는
+  Defender 다운로더 탐지 위험(2026-08 삭제 사고와 같은 유형). 런타임 인터넷 금지 원칙 유지.
+
 ### 최신 재개: 문서 작업 worker (2026-09-22 KST)
 
 `aec6d01` 이후 문서 열기/셀 저장/행 추가는 accepted 후 worker 완료 이벤트를 반환한다.

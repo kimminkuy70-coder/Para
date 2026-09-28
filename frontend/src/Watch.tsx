@@ -123,6 +123,10 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   const [loadError,setLoadError]=useState('');
   const load=()=>{setLoadError('');return ask<CState>('cmwatch_state',{},'cmwatch',st?undefined:setLoadError).then(s=>{if(s){setSt(s);setPlan(s.plan.length?s.plan:[{device:'',lot:'',machines:'',note:''}]);}});};
   useEffect(()=>{void load();},[]);
+  // 설정에서 호기 루트를 추가/삭제하면 이 탭으로 돌아올 때 호기 목록만 새로 받는다(편집 중인 계획은 유지).
+  useEffect(()=>{const again=(e:Event)=>{if((e as CustomEvent<string>).detail!=='자동 감시')return;
+    void ask<CState>('cmwatch_state',{},'cmwatch').then(s=>s&&setSt(o=>o?{...o,available:s.available}:s));};
+    window.addEventListener('para:tab',again);return()=>window.removeEventListener('para:tab',again);},[]);
   async function run<T>(method:string,params:object){setBusy(true);const r=await ask<T>(method,params,'cmwatch');setBusy(false);return r;}
   async function save(enabled:boolean){
     if(!st)return;
@@ -159,7 +163,7 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
     <div className="form-filter"><label className="field">안정화 대기(분)<input type="number" min={0} max={1440} value={st.settle_minutes} onChange={e=>setSt(s=>s&&{...s,settle_minutes:Number(e.target.value)})}/></label>
       <span>감시 호기:</span>{st.available.length?st.available.map(m=><label key={m} className="field checkbox"><input type="checkbox" checked={st.machines.includes(m)}
         onChange={e=>setSt(s=>s&&{...s,machines:e.target.checked?[...s.machines,m]:s.machines.filter(x=>x!==m)})}/>{m}</label>)
-        :<span className="hint">[설정]에서 호기별 Scanresult 루트를 먼저 등록하세요.</span>}</div>
+        :<span className="hint">[설정 › AOI 장비 호기 루트]에서 호기 폴더를 먼저 등록하세요.</span>}</div>
     <h3>감시 대상 계획 (S/M 칸 없음 — 그 공정 아래 전부가 대상)</h3>
     <div className="table-scroll"><table><thead><tr><th>디바이스명</th><th>공정번호</th><th>AOI호기(비우면 전체)</th><th>비고</th><th></th></tr></thead>
       <tbody>{plan.map((p,i)=><tr key={i}>{(['device','lot','machines','note'] as const).map(k=><td key={k}><input value={p[k]} maxLength={256} aria-label={`${i+1}행 ${k}`}

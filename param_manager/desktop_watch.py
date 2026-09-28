@@ -573,7 +573,13 @@ class CmWatch(_Base):
         s.window_end = self._hour(params.get("window_end", s.window_end))
         s.settle_minutes = float(settle)
         s.machines = list(dict.fromkeys(machines))
-        s.roots = {m: roots[m] for m in s.machines}
+        # 호기 루트 + 설정에서 추가한 Scanresult 보관 폴더(있으면 목록으로 — cmwatcher 가 둘 다 읽음).
+        extra = self._cfg().get("aoi_extra") if isinstance(self._cfg().get("aoi_extra"), dict) else {}
+        s.roots = {}
+        for m in s.machines:
+            more = [p for p in ((extra.get(m) or {}).get("scanresult") or []) if isinstance(p, str) and p.strip()] \
+                if isinstance(extra.get(m), dict) else []
+            s.roots[m] = [roots[m], *more] if more else roots[m]
         if params["enabled"] and not (s.machines and s.watch_plan and os.path.isfile(s.watch_plan)):
             raise ValueError("먼저 감시할 호기와 감시 대상 계획을 지정하세요")
         s.enabled = params["enabled"]
@@ -619,7 +625,8 @@ class CmWatch(_Base):
         roots = self._cfg().get("commonality_roots") or {}
         if params["machine"] not in roots:
             raise ValueError("Scanresult 루트가 등록된 호기를 고르세요")
-        scan = cm.scanresult_roots(roots[params["machine"]], params["machine"])
+        from .desktop_config import scanresult_roots_for
+        scan = scanresult_roots_for(self._cfg(), params["machine"])
         cands = cmwatcher.sm_candidates(scan, params["device"], params["lot"])
         self.building = dict(machine=params["machine"], device=params["device"], lot=params["lot"], cands=cands)
         return dict(candidates=[dict(sm=c["sm"], created=c["created"], scan=c["scan"], slots=c["slots"])

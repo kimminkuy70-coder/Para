@@ -8,6 +8,7 @@ existing tkinter program shares. Setting the save folder also creates the three
 initial reference files if they are missing, like the tkinter first run.
 """
 import os
+import re
 from pathlib import Path
 
 from . import __version__, atomicfile, engine, localdirs, refdata
@@ -15,6 +16,68 @@ from .desktop_batch import DesktopBatch, read_json
 
 MAX_PATH = 4096
 MAX_MACHINE = 64
+MAX_EXTRA = 20
+EXTRA_KINDS = ("report", "scanresult")
+
+
+def name_key(text):
+    """이름 순 정렬 키 — 숫자는 크기로(AOI-9 < AOI-10), 대소문자 무시."""
+    return [(0, int(t), "") if t.isdigit() else (1, 0, t.lower()) for t in re.split(r"(\d+)", str(text)) if t]
+
+
+def _is_report_name(name):
+    return re.sub(r"[\s_\-]+", "", name).lower() in ("report", "reports")
+
+
+def find_report_dir(root):
+    """호기 루트 바로 아래의 Batch Report 폴더(`Reports`/`Report`, 대소문자 무시).
+    사람이 호기 루트를 등록·수정할 때 한 번만 본다(요청마다 장비 폴더를 열지 않는다)."""
+    try:
+        names = sorted((e.name for e in os.scandir(root) if e.is_dir()), key=name_key)
+    except OSError:
+        return ""
+    exact = [n for n in names if n.lower() == "reports"]
+    hits = exact or [n for n in names if _is_report_name(n)]
+    return str(Path(root) / hits[0]) if hits else ""
+
+
+def aoi_view(cfg):
+    """설정 파일 → 'AOI 장비 호기 루트' 목록(이름 순). 구 설정(`wph_report_paths`·
+    `commonality_roots` 를 따로 등록)도 한 호기로 묶어 보여 준다 — 파일은 건드리지
+    않고 경로 문자열만 본다(장비 폴더 접근 없음)."""
+    def table(key):
+        v = cfg.get(key)
+        return {m: p for m, p in v.items() if isinstance(m, str) and isinstance(p, str) and p.strip()} \
+            if isinstance(v, dict) else {}
+    roots, reports, scans = table("aoi_roots"), table("wph_report_paths"), table("commonality_roots")
+    extra = cfg.get("batch_extra_paths") if isinstance(cfg.get("batch_extra_paths"), dict) else {}
+    aoi_extra = cfg.get("aoi_extra") if isinstance(cfg.get("aoi_extra"), dict) else {}
+    out = []
+    for m in sorted(set(roots) | set(reports) | set(scans), key=name_key):
+        report = reports.get(m, "")
+        root = roots.get(m) or scans.get(m) or (
+            str(Path(report).parent) if report and _is_report_name(Path(report).name) else report)
+        mine = aoi_extra.get(m) if isinstance(aoi_extra.get(m), dict) else {}
+        out.append(dict(
+            machine=m, root=root, report=report, scanresult=scans.get(m, ""), legacy=m not in roots,
+            extra=dict(report=sorted((p for p in extra.get(m, []) if isinstance(p, str)), key=name_key),
+                       scanresult=sorted((p for p in mine.get("scanresult", []) if isinstance(p, str)), key=name_key))))
+    return out
+
+
+def scanresult_roots_for(cfg, machine):
+    """Commonality 가 그 호기에서 뒤질 Scanresult 폴더 전부 = 호기 루트 아래 Scanresult*
+    (백업본 자동) + 사람이 추가한 Scanresult 보관 폴더(각각 아래 Scanresult* 도 인식)."""
+    from . import commonality as cm
+    roots = cfg.get("commonality_roots") if isinstance(cfg.get("commonality_roots"), dict) else {}
+    out = []
+    if roots.get(machine):
+        out += cm.scanresult_roots(roots[machine], machine)
+    extra = (cfg.get("aoi_extra") or {}).get(machine) if isinstance(cfg.get("aoi_extra"), dict) else None
+    for p in (extra or {}).get("scanresult", []) if isinstance(extra, dict) else []:
+        if isinstance(p, str) and p.strip():
+            out += cm.scanresult_roots(p, machine)
+    return list(dict.fromkeys(out))
 
 
 class DesktopConfig:
@@ -49,7 +112,7 @@ class DesktopConfig:
         roots = cfg.get("commonality_roots")
         extra = cfg.get("batch_extra_paths")
         from .desktop_batch import BATCH_INTERVALS
-        return dict(save_dir=cfg.get("save_dir") or "",
+        return dict(save_dir=cfg.get("save_dir") or "", aoi=aoi_view(cfg),
                     local_dir=cfg.get("local_dir") or "",
                     report_paths=report if isinstance(report, dict) else {},
                     scanresult_roots=roots if isinstance(roots, dict) else {},
@@ -157,6 +220,122 @@ class DesktopConfig:
         else:
             extra.pop(machine, None)
         cfg["batch_extra_paths"] = extra
+        self._write(cfg)
+        return self.state()
+
+    # ---- AOI 장비 호기 루트 (Batch Report + Scanresult 일원화, 2026-09) --------------
+    # 호기 폴더(예: W:\\AOI-9) 하나만 등록하면 그 아래 Reports 는 배치 리포트 분석이,
+    # Scanresult*(백업본 포함)는 Commonality 가 쓴다. 기존 프로그램과 설정 파일을 공유하므로
+    # 구 키(wph_report_paths·commonality_roots·batch_extra_paths)도 같은 값으로 맞춰 둔다.
+    def _aoi_write(self, cfg, machine, root):
+        report = find_report_dir(root)
+        for key in ("aoi_roots", "commonality_roots", "wph_report_paths"):
+            if not isinstance(cfg.get(key), dict):
+                cfg[key] = {}
+        cfg["aoi_roots"][machine] = root
+        cfg["commonality_roots"][machine] = root
+        if report:
+            cfg["wph_report_paths"][machine] = report
+        else:
+            cfg["wph_report_paths"].pop(machine, None)
+        return report
+
+    def _aoi_result(self, machine, root, report):
+        from . import commonality as cm
+        scans = [p.name for p in cm._find_scanresult_dirs(Path(root))]
+        notes = []
+        notes.append(f"Batch Report: {Path(report).name}" if report else
+                     "Reports 폴더를 찾지 못했습니다 — 배치 리포트 분석 목록에는 나오지 않습니다")
+        notes.append(f"Scanresult: {', '.join(scans)}" if scans else
+                     "Scanresult 폴더를 찾지 못했습니다 — Commonality 조사 전에 폴더를 확인하세요")
+        return dict(self.state(), notice=f"{machine}: " + " · ".join(notes))
+
+    def set_aoi_root(self, params):
+        if set(params) != {"machine", "path"}:
+            raise ValueError("호기와 폴더를 확인하세요")
+        machine = self._valid_machine(params["machine"])
+        root = self._valid_dir(params["path"], "AOI 장비 호기 루트")
+        cfg = self._read()
+        if any(v["machine"] == machine for v in aoi_view(cfg)):
+            raise ValueError(f"{machine} 은(는) 이미 등록되어 있습니다. 목록에서 [수정]을 쓰세요")
+        report = self._aoi_write(cfg, machine, root)
+        self._write(cfg)
+        return self._aoi_result(machine, root, report)
+
+    def edit_aoi_root(self, params):
+        if set(params) != {"machine", "new_machine", "path"}:
+            raise ValueError("수정할 항목을 확인하세요")
+        old = self._valid_machine(params["machine"])
+        new = self._valid_machine(params["new_machine"])
+        root = self._valid_dir(params["path"], "AOI 장비 호기 루트")
+        cfg = self._read()
+        known = {v["machine"] for v in aoi_view(cfg)}
+        if old not in known:
+            raise ValueError("등록되지 않은 호기입니다. 새로고침하세요")
+        if new != old and new in known:
+            raise ValueError(f"{new} 은(는) 이미 등록되어 있습니다")
+        if new != old:
+            for key in ("aoi_roots", "commonality_roots", "wph_report_paths", "batch_extra_paths", "aoi_extra"):
+                table = cfg.get(key)
+                if isinstance(table, dict) and old in table:
+                    table[new] = table.pop(old)
+        report = self._aoi_write(cfg, new, root)
+        self._write(cfg)
+        return self._aoi_result(new, root, report)
+
+    def remove_aoi(self, params):
+        if set(params) != {"machine"}:
+            raise ValueError("삭제 대상을 확인하세요")
+        machine = self._valid_machine(params["machine"])
+        cfg = self._read()
+        for key in ("aoi_roots", "commonality_roots", "wph_report_paths", "batch_extra_paths", "aoi_extra"):
+            table = cfg.get(key)
+            if isinstance(table, dict):
+                table.pop(machine, None)
+        self._write(cfg)
+        return self.state()
+
+    def set_aoi_extra(self, params):
+        """호기별 추가 폴더(백업·보관본). kind=report → 배치 리포트 분석이 함께 읽고
+        (구 `batch_extra_paths`), kind=scanresult → Commonality 가 함께 뒤진다."""
+        if set(params) != {"machine", "kind", "paths"} or params.get("kind") not in EXTRA_KINDS \
+                or not isinstance(params["paths"], list) or len(params["paths"]) > MAX_EXTRA:
+            raise ValueError(f"추가 폴더 목록을 확인하세요(호기당 종류별 최대 {MAX_EXTRA}개)")
+        machine = self._valid_machine(params["machine"])
+        kind = params["kind"]
+        cfg = self._read()
+        view = next((v for v in aoi_view(cfg) if v["machine"] == machine), None)
+        if view is None:
+            raise ValueError("먼저 이 호기의 AOI 장비 호기 루트를 등록하세요")
+        label = "추가 Report 폴더" if kind == "report" else "추가 Scanresult 폴더"
+        main = view["report"] if kind == "report" else view["scanresult"] or view["root"]
+        paths = []
+        for raw in params["paths"]:
+            path = self._valid_dir(raw, label)
+            if main and Path(path) == Path(main).absolute():
+                raise ValueError("기본 폴더와 같은 폴더입니다")
+            if path not in paths:
+                paths.append(path)
+        paths.sort(key=name_key)
+        if kind == "report":
+            table = cfg.get("batch_extra_paths") if isinstance(cfg.get("batch_extra_paths"), dict) else {}
+            if paths:
+                table[machine] = paths
+            else:
+                table.pop(machine, None)
+            cfg["batch_extra_paths"] = table
+        else:
+            table = cfg.get("aoi_extra") if isinstance(cfg.get("aoi_extra"), dict) else {}
+            mine = table.get(machine) if isinstance(table.get(machine), dict) else {}
+            if paths:
+                mine["scanresult"] = paths
+            else:
+                mine.pop("scanresult", None)
+            if mine:
+                table[machine] = mine
+            else:
+                table.pop(machine, None)
+            cfg["aoi_extra"] = table
         self._write(cfg)
         return self.state()
 

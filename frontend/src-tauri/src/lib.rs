@@ -16,10 +16,16 @@ fn pick_folder() -> Option<String> {
 /// chosen absolute path, or null. Same trust model as `pick_folder`: the person's
 /// explicit choice; the Python engine reads it read-only and validates it.
 #[tauri::command]
-fn pick_file() -> Option<String> {
-    rfd::FileDialog::new()
-        .add_filter("Excel", &["xlsx", "xlsm"])
-        .pick_file()
+fn pick_file(kind: Option<String>) -> Option<String> {
+    // Only the two file kinds the engine accepts: a Lot plan workbook, or the
+    // build package zip a developer downloaded from GitHub Actions.
+    let dialog = rfd::FileDialog::new();
+    let dialog = if kind.as_deref() == Some("zip") {
+        dialog.add_filter("패키지 zip", &["zip"])
+    } else {
+        dialog.add_filter("Excel", &["xlsx", "xlsm"])
+    };
+    dialog.pick_file()
         .and_then(|path| path.to_str().map(str::to_string))
 }
 
