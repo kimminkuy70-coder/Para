@@ -1,6 +1,7 @@
 """Read existing local Commonality results through opaque IDs, never UI paths."""
 import os
 from fnmatch import fnmatchcase
+from datetime import datetime
 from pathlib import Path
 import tempfile
 from uuid import uuid4
@@ -54,12 +55,16 @@ class DesktopCommonality:
                     candidates.add(path)
                 if len(candidates) > 5000:
                     raise ValueError('결과 파일이 5000개를 초과합니다. 기존 결과를 정리하세요.')
-        self.files = {str(i): (p, locking.file_stamp(str(p)))
-                      for i, p in enumerate(sorted(candidates, reverse=True))}
+        # Always newest first (by last save time), whatever folder a result lives in —
+        # manual survey runs and auto-watch results used to be grouped by path instead.
+        stamped = [(p, locking.file_stamp(str(p))) for p in candidates]
+        stamped.sort(key=lambda x: ((x[1] or (0, 0))[0], x[0].name), reverse=True)
+        self.files = {str(i): item for i, item in enumerate(stamped)}
         self.catalog_id = uuid4().hex
         return dict(catalog=self.catalog_id, files=[
-            dict(id=i, name=p.name, folder=str(p.parent.relative_to(self.root)))
-            for i, (p, _) in self.files.items()])
+            dict(id=i, name=p.name, folder=str(p.parent.relative_to(self.root)),
+                 modified=datetime.fromtimestamp(stamp[0]).strftime("%Y-%m-%d %H:%M") if stamp else "")
+            for i, (p, stamp) in self.files.items()])
 
     def compare(self, params):
         ids = params.get('files')

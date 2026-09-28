@@ -102,5 +102,24 @@ class CommonalityTests(unittest.TestCase):
         self.assertFalse(any(w.is_alive() for w in session.workers))
 
 
+class CatalogOrderTests(unittest.TestCase):
+    def test_results_are_listed_newest_first(self):
+        import os, time
+        tmp = Path(tempfile.mkdtemp(prefix='rev1-cmorder-'))
+        cfg = tmp / 'c.json'
+        cfg.write_text(json.dumps({'local_dir': str(tmp / 'local')}), encoding='utf-8')
+        local = tmp / 'local'
+        paths = [local / 'Commonality' / 'commonality' / 'AOI-9' / 'run_z' / '조사_z_old.xlsx',
+                 local / 'commonality' / '자동감시' / 'AOI-9' / '결과' / '감시조사_mid.xlsx',
+                 local / 'Commonality' / 'commonality' / 'AOI-1' / 'run_a' / '조사_a_new.xlsx']
+        for i, p in enumerate(paths):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b'x')
+            os.utime(p, (time.time() - 3000 + i * 1000,) * 2)
+        files = DesktopCommonality(cfg).catalog()['files']
+        self.assertEqual([f['name'] for f in files], ['조사_a_new.xlsx', '감시조사_mid.xlsx', '조사_z_old.xlsx'])
+        self.assertTrue(all(f['modified'] for f in files))
+
+
 if __name__ == '__main__':
     unittest.main()
