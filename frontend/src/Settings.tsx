@@ -2,12 +2,13 @@ import {useEffect,useState} from 'react';
 import {desktop,pickFolder} from './desktop';
 import {notify,fail,LoadFailed} from './ui';
 import {errorText} from './desktop';
-import {OpenPath} from './OpenPath';
+import {OpenPath,openPath} from './OpenPath';
 import {installUpdate,openProgramDir} from './AppUpdate';
 import type {AppUpdate} from './desktop';
 
 type Auto={enabled:boolean;interval_hours:number;last_run:string;last_result:string;next_run:string};
-type State={save_dir:string;local_dir:string;report_paths:Record<string,string>;scanresult_roots:Record<string,string>;extra_paths:Record<string,string[]>;batch_auto:boolean;batch?:Auto;batch_intervals?:number[]};
+type State={save_dir:string;local_dir:string;report_paths:Record<string,string>;scanresult_roots:Record<string,string>;extra_paths:Record<string,string[]>;batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string};
+type Edit={kind:'report'|'scanresult'|'extra';machine:string;newMachine:string;path:string;orig?:string};
 const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 폴더'],['report','Batch Report 루트'],['auto','Batch Report 분석 주기 설정'],['scan','Scanresult 루트'],['about','정보']];
 const periodLabel=(h:number)=>h%24===0?(h===24?'하루 1회 (24시간)':h===168?'일주일 1회':`${h/24}일마다`):`${h}시간마다`;
 
@@ -71,6 +72,38 @@ export function Settings(){
     catch(e){fail(e);}finally{setBusy(false);}
   }
 
+  // '수정': one row at a time becomes editable (machine name + folder).
+  const [edit,setEdit]=useState<Edit>();
+  async function saveEdit(){
+    if(!edit||!st)return;
+    if(edit.kind==='extra'){
+      const list=(st.extra_paths[edit.machine]||[]).map(p=>p===edit.orig?edit.path.trim():p);
+      await req('config_set_extra_paths',{machine:edit.machine,paths:list},'추가 폴더를 수정했습니다',()=>setEdit(undefined));
+    }else{
+      await req('config_edit_root',{kind:edit.kind,machine:edit.machine,new_machine:edit.newMachine.trim(),path:edit.path.trim()},
+        `${edit.newMachine.trim()} 경로를 수정했습니다`,()=>setEdit(undefined));
+    }
+  }
+  // A plain render function (not a component) so the edit inputs keep focus while typing.
+  function rootRow(kind:Edit['kind'],machine:string,path:string,orig?:string){
+    const key=kind+machine+(orig||'');
+    const editing=edit&&edit.kind===kind&&edit.machine===machine&&(kind!=='extra'||edit.orig===orig);
+    if(editing)return <tr key={key} className="row-now"><td colSpan={3}><div className="form-filter" style={{margin:0}}>
+      {kind!=='extra'?<label className="field" style={{width:130}}>호기<input value={edit.newMachine} maxLength={64} aria-label={`${machine} 새 호기 이름`}
+        onChange={e=>setEdit(o=>o&&{...o,newMachine:e.target.value})}/></label>:<b style={{alignSelf:'center'}}>{machine}</b>}
+      <label className="field" style={{flex:1,minWidth:220}}>폴더<input value={edit.path} maxLength={4096} aria-label={`${machine} 새 폴더`}
+        onChange={e=>setEdit(o=>o&&{...o,path:e.target.value})}/></label>
+      <button onClick={()=>browse(v=>setEdit(o=>o&&{...o,path:v}))}>📁 찾기</button>
+      <button className="primary" disabled={busy||!edit.path.trim()||(kind!=='extra'&&!edit.newMachine.trim())} onClick={saveEdit}>저장</button>
+      <button disabled={busy} onClick={()=>setEdit(undefined)}>취소</button></div></td></tr>;
+    const remove=kind==='extra'
+      ?()=>req('config_set_extra_paths',{machine,paths:(st?.extra_paths[machine]||[]).filter(x=>x!==orig)},'삭제됨')
+      :()=>req('config_remove',{kind:kind==='report'?'report':'scanresult',machine},'삭제됨');
+    return <tr key={key}><td style={{width:110,fontWeight:700}}>{machine}</td><td><code>{path}</code></td>
+      <td style={{width:110,whiteSpace:'nowrap'}}><button className="linklike" disabled={busy} aria-label={`${machine} 수정`}
+        onClick={()=>setEdit({kind,machine,newMachine:machine,path,orig})}>수정</button>{' '}
+        <button className="linklike" disabled={busy} aria-label={`${machine} 삭제`} onClick={remove}>삭제</button></td></tr>;
+  }
   const reportRows=Object.entries(st?.report_paths||{});
   const scanRows=Object.entries(st?.scanresult_roots||{});
   return <section className="panel">
@@ -82,6 +115,22 @@ export function Settings(){
       <button key={id} role="tab" aria-selected={sub===id} className={sub===id?'active':''} onClick={()=>setSub(id)}>{label}</button>)}</div>
 
     {loadError&&!st&&<LoadFailed message={loadError} onRetry={()=>void load()}/>}
+    {st&&<div className="current-settings" aria-label="현재 설정">
+      <h3>현재 설정</h3>
+      <table className="tbl"><tbody>
+        <tr><th>저장 폴더</th><td>{st.save_dir?<code>{st.save_dir}</code>:<b className="warn">미지정 — [저장 폴더] 탭에서 지정하세요</b>}</td>
+          <td>{st.save_dir&&<button className="linklike" onClick={()=>openPath(st.save_dir)}>폴더 열기</button>}</td></tr>
+        <tr><th>로컬 작업 폴더</th><td><code>{st.local_root||st.local_dir||'—'}</code>{!st.local_dir&&<span className="hint"> (기본값)</span>}</td>
+          <td>{st.local_root&&!st.local_root.startsWith('(')&&<button className="linklike" onClick={()=>openPath(st.local_root!)}>폴더 열기</button>}</td></tr>
+        <tr><th>Batch Report 루트</th><td>{reportRows.length?`${reportRows.length}개 호기 · ${reportRows.map(([m])=>m).join(', ')}`:'없음'}
+          {Object.keys(st.extra_paths||{}).length>0&&<span className="hint"> · 추가 폴더 {Object.values(st.extra_paths).flat().length}개</span>}</td>
+          <td><button className="linklike" onClick={()=>setSub('report')}>보기</button></td></tr>
+        <tr><th>Batch Report 자동 분석</th><td>{st.batch_auto?`켜짐 · ${periodLabel(st.batch?.interval_hours??24)}`:'꺼짐'}</td>
+          <td><button className="linklike" onClick={()=>setSub('auto')}>보기</button></td></tr>
+        <tr><th>Scanresult 루트</th><td>{scanRows.length?`${scanRows.length}개 호기 · ${scanRows.map(([m])=>m).join(', ')}`:'없음'}</td>
+          <td><button className="linklike" onClick={()=>setSub('scan')}>보기</button></td></tr>
+        <tr><th>설정 파일</th><td><code>{st.config_file||'—'}</code></td><td/></tr>
+      </tbody></table></div>}
     <div className="subtab-body">
     {sub==='save'&&<>
       <h3>저장 폴더 지정 <span className="hint" style={{fontWeight:400}}>— 필수</span></h3>
@@ -97,9 +146,7 @@ export function Settings(){
     {sub==='report'&&<>
       <h3>호기별 Batch Report 루트 등록</h3>
       <p className="hint">배치 리포트 분석에서 각 호기의 batch report(.htm)가 쌓이는 폴더입니다.</p>
-      {reportRows.length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{reportRows.map(([m,p])=><tr key={m}>
-        <td style={{width:110,fontWeight:700}}>{m}</td><td><code>{p}</code></td>
-        <td style={{width:60}}><button className="linklike" disabled={busy} onClick={()=>req('config_remove',{kind:'report',machine:m},'삭제됨')}>삭제</button></td></tr>)}</tbody></table>}
+      {reportRows.length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{reportRows.map(([m,p])=>rootRow('report',m,p))}</tbody></table>}
       <div className="form-filter" style={{marginTop:12}}>
         <label className="field" style={{width:150}}>호기<input value={rMachine} placeholder="AOI-21" maxLength={64} onChange={e=>setRMachine(e.target.value)}/></label>
         <label className="field" style={{flex:1,minWidth:240}}>폴더<input value={rPath} placeholder="예: P:\AOI-21\Reports" maxLength={4096} onChange={e=>setRPath(e.target.value)}/></label>
@@ -108,9 +155,7 @@ export function Settings(){
       <h3 style={{marginTop:24}}>호기별 추가 Report 폴더</h3>
       <p className="hint">기본 Report 폴더 외에 함께 조사할 폴더(예: 백업·보관 폴더)입니다. 호기당 최대 20개.</p>
       {reportRows.length===0?<p className="table-empty">먼저 위에서 호기별 Batch Report 루트를 등록하세요.</p>:<>
-        {Object.entries(st?.extra_paths||{}).length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{Object.entries(st?.extra_paths||{}).flatMap(([m,list])=>list.map(p=><tr key={m+p}>
-          <td style={{width:110,fontWeight:700}}>{m}</td><td><code>{p}</code></td>
-          <td style={{width:60}}><button className="linklike" disabled={busy} onClick={()=>req('config_set_extra_paths',{machine:m,paths:list.filter(x=>x!==p)},'삭제됨')}>삭제</button></td></tr>))}</tbody></table>}
+        {Object.entries(st?.extra_paths||{}).length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{Object.entries(st?.extra_paths||{}).flatMap(([m,list])=>list.map(p=>rootRow('extra',m,p,p)))}</tbody></table>}
         <div className="form-filter" style={{marginTop:12}}>
           <label className="field" style={{width:150}}>추가 폴더 호기<select value={xMachine} onChange={e=>setXMachine(e.target.value)}><option value="">선택…</option>{reportRows.map(([m])=><option key={m} value={m}>{m}</option>)}</select></label>
           <label className="field" style={{flex:1,minWidth:240}}>추가 폴더<input value={xPath} placeholder="예: P:\AOI-21\Reports_backup" maxLength={4096} onChange={e=>setXPath(e.target.value)}/></label>
@@ -172,9 +217,7 @@ export function Settings(){
     {sub==='scan'&&<>
       <h3>호기별 Commonality Scanresult 루트 등록</h3>
       <p className="hint">Commonality 조사에서 그 호기의 Scanresult(백업본 포함)가 있는 상위 폴더입니다.</p>
-      {scanRows.length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{scanRows.map(([m,p])=><tr key={m}>
-        <td style={{width:110,fontWeight:700}}>{m}</td><td><code>{p}</code></td>
-        <td style={{width:60}}><button className="linklike" disabled={busy} onClick={()=>req('config_remove',{kind:'scanresult',machine:m},'삭제됨')}>삭제</button></td></tr>)}</tbody></table>}
+      {scanRows.length>0&&<table className="tbl" style={{marginTop:12}}><tbody>{scanRows.map(([m,p])=>rootRow('scanresult',m,p))}</tbody></table>}
       <div className="form-filter" style={{marginTop:12}}>
         <label className="field" style={{width:150}}>호기<input value={sMachine} placeholder="AOI-9" maxLength={64} onChange={e=>setSMachine(e.target.value)}/></label>
         <label className="field" style={{flex:1,minWidth:240}}>폴더<input value={sPath} placeholder="예: W:\AOI-9" maxLength={4096} onChange={e=>setSPath(e.target.value)}/></label>

@@ -28,6 +28,7 @@ from pathlib import Path
 from . import (coefstore, collate, collector, engine, extract_io, ini_parser, localdirs,
                locking, refdata, watcher, workdirs)
 from .desktop_batch import DesktopBatch, read_json
+from .desktop_progress import report
 
 MAX_ITEMS = 500
 
@@ -102,6 +103,7 @@ class DesktopUpdate:
             raise ValueError("요청을 확인하세요")
         cfg = self._cfg()
         save = cfg["save_dir"]
+        report('장비 IP 목록 읽는 중…')
         rows = self._ip_rows(save)
         source = cfg.get("local_root") or ""
         machines = []
@@ -111,6 +113,7 @@ class DesktopUpdate:
                                  local=local or ""))
         # Names only (one listing). Checking every recipe's form folder here was a
         # burst of shared-folder reads; a recipe without a form is reported at preview.
+        report('레시피(양식) 목록 읽는 중…')
         recipes = workdirs.list_recipes(save)
         return dict(recipes=recipes, machines=machines, local_source=source,
                     local_source_ok=bool(source and os.path.isdir(source)))
@@ -167,6 +170,7 @@ class DesktopUpdate:
                 if not root or not os.path.isdir(root):
                     raise ValueError("먼저 로컬 상위 폴더를 지정하세요")
                 for m in machines:
+                    report(f'{m} 로컬 복사본 찾는 중…')
                     found = resolve_local_machine_dir(root, m)
                     if found:
                         state["sources"][m] = [(found, dlevel)]
@@ -192,6 +196,7 @@ class DesktopUpdate:
             return out
         state, save, recipes, machines = self.state, out["save"], out["recipes"], out["machines"]
         try:
+            report(f'수집한 설정 파일 {len(out["sources"])}건 분석 중…')
             pivot, missing = self._parse(save, recipes, out["sources"], out["dlevel"])
         except Exception:
             self.cancel({})
@@ -229,6 +234,7 @@ class DesktopUpdate:
             if not ip:
                 state["errors"][m] = "[장비 IP]에 IP가 없습니다"
                 continue
+            report(f'{m} ({ip}) 장비에서 설정 파일 복사 중…')
 
             def staging_for(_kw, m=m):
                 d = os.path.join(state["staging"], _sanitize_name(m))
@@ -330,6 +336,7 @@ class DesktopUpdate:
         rows = collate.apply_variant_map(state["pivot"], mapping)
         machines_all = refdata.machines(self._ip_rows(save))
         coef_rows = coefstore.load(coefstore.coef_path(save)) if os.path.isfile(coefstore.coef_path(save)) else []
+        report('직전 취합본과 비교해 값 채우는 중…')
         results = collate.build_collation(save, recipes, rows, machines_all,
                                           prev_collate_path=workdirs.latest_collate(save),
                                           coef_lookup=coefstore.make_lookup(coef_rows),
@@ -363,6 +370,7 @@ class DesktopUpdate:
             raise ValueError("취합할 레시피가 없습니다. " + "; ".join(notes))
         save = self._cfg()["save_dir"]
         dest = workdirs.collate_path(save, workdirs.stamp())
+        report('저장폴더에 새 취합 파일 쓰는 중…')
         collate.write_collation(dest, made, state["machines_all"])
         summary = [dict(recipe=r, matched_rows=v.matched_rows, filled_cells=v.filled_cells,
                         carried=bool(getattr(v, "carried", False))) for r, v in made.items()]

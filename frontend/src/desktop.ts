@@ -30,6 +30,8 @@ export async function setBackground(enabled: boolean, tooltip: string): Promise<
 }
 export type AppUpdate = {current: string; installed: boolean; available: string; newer: boolean; changelog: string;
   published_at: string; skipped: boolean; failed: boolean; program_dir: string};
+/** One request (or the engine start) in flight, for the progress panel. */
+export type Activity = {id: number; method: string; started: number; message: string};
 type Pending = {resolve: (v: Reply) => void; reject: (e: Error) => void; progress?: (v: Reply) => void};
 class DesktopClient {
   // Ids keep increasing across page reloads because a reload re-attaches to the
@@ -43,6 +45,17 @@ class DesktopClient {
   private closeCode = 'engine_closed';
   private listeners = new Set<(connected: boolean, code: string) => void>();
   private noticeListeners = new Set<(n: WatchNotice) => void>();
+  // In-flight requests + engine start, shown by the progress panel so a slow
+  // OneDrive/equipment read is visible instead of a silent "불러오는 중".
+  private active = new Map<number, Activity>();
+  private activityListeners = new Set<(a: Activity[]) => void>();
+  onActivity(listener: (a: Activity[]) => void) { this.activityListeners.add(listener); listener([...this.active.values()]); return () => { this.activityListeners.delete(listener); }; }
+  private track(id: number, method: string | null, message = '') {
+    if (method === null) this.active.delete(id);
+    else { const old = this.active.get(id); this.active.set(id, {id, method, started: old?.started ?? Date.now(), message: message || old?.message || ''}); }
+    const list = [...this.active.values()];
+    this.activityListeners.forEach(l => l(list));
+  }
   onNotice(listener: (n: WatchNotice) => void) { this.noticeListeners.add(listener); return () => { this.noticeListeners.delete(listener); }; }
   onStatus(listener: (connected: boolean, code: string) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   get closed() { return this.disconnected; }
@@ -67,20 +80,25 @@ class DesktopClient {
           if (message.code && (this.closeCode === 'engine_closed' || message.code !== 'engine_closed')) this.closeCode = message.code;
           this.pending.forEach(p => p.reject(new Error(this.closeCode)));
           this.pending.clear();
+          [...this.active.keys()].forEach(k => this.track(k, null));
           this.listeners.forEach(l => l(false, this.closeCode));
           return;
         }
         const pending = this.pending.get(message.id);
         if (!pending) return;
-        if (message.event === 'accepted' || message.event === 'progress') pending.progress?.(message);
-        else {
+        if (message.event === 'accepted' || message.event === 'progress') {
+          if (message.message) this.track(message.id, this.active.get(message.id)?.method ?? '', message.message);
+          pending.progress?.(message);
+        } else {
           this.pending.delete(message.id);
+          this.track(message.id, null);
           if (message.event === 'error') pending.reject(new Error(message.message || message.code));
           else pending.resolve(message);
         }
       };
+      this.track(0, 'connect', '분석 엔진을 시작하고 있습니다…');
       this.connecting = invoke<void>('desktop_connect', {onEvent: channel}).then(() => this.listeners.forEach(l => l(true, '')));
-      this.connecting.catch(() => { this.connecting = undefined; });
+      this.connecting.then(() => this.track(0, null), () => { this.connecting = undefined; this.track(0, null); });
     }
     return this.connecting;
   }
@@ -89,11 +107,13 @@ class DesktopClient {
     const promise = new Promise<Reply>((resolve, reject) => {
       if (this.disconnected) { reject(new Error(this.closeCode)); return; }
       this.pending.set(id, {resolve, reject, progress});
+      this.track(id, method);
       // Serialize writes only; cancellation does not wait for analysis completion.
       this.sends = this.sends.catch(() => undefined).then(() =>
         invoke('desktop_send', {request: {version: 1, id, method, params}})
       ).catch(async error => {
         this.pending.delete(id);
+        this.track(id, null);
         // A send can fail just before the engine's own exit reason arrives; give
         // that message a moment so the user sees the real cause (A5).
         if (String(error) === 'engine_busy_or_closed') await new Promise(r => setTimeout(r, 300));

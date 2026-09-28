@@ -18,6 +18,7 @@ import math
 from . import (coefstore, collate, editor_model, engine, extract_io, formbuilder,
                ini_parser, locking, namestore, refdata, workdirs)
 from .desktop_batch import read_json
+from .desktop_progress import report
 
 MAX_ENTRIES = 40000
 KINDS = {"use", "name", "transform"}
@@ -115,6 +116,7 @@ class DesktopForm:
             raise ValueError("항목을 추가할 수 있는 원본이 없습니다. 기존 프로그램에서 원본을 만든 버전을 선택하세요.")
         path = self._safe(candidate)
         before = locking.file_stamp(path)
+        report(f'양식 원본 읽는 중: {Path(path).name}')
         pivot, _used, _names = formbuilder.initial_to_pivot(path)
         if before != locking.file_stamp(path):
             raise ValueError("조회 중 원본 파일이 변경되었습니다. 다시 열어 주세요.")

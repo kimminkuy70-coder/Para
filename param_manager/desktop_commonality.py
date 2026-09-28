@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from . import commonality as cm, engine, locking, workdirs
 from .desktop_batch import DesktopBatch
+from .desktop_progress import report
 
 
 class DesktopCommonality:
@@ -75,6 +76,7 @@ class DesktopCommonality:
             if locking.file_stamp(str(path)) != stamp:
                 raise ValueError('결과 파일이 변경되었습니다. 목록을 새로고침하세요.')
             paths.append(str(path))
+        report(f'조사 결과 {len(paths)}개 읽고 비교하는 중…')
         result = cm.build_comparison(paths)
         for i in ids:
             path, stamp = self.files[i]

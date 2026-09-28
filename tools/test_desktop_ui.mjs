@@ -80,6 +80,20 @@ try{
   await page.getByText(extra,{exact:true}).waitFor();
   await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
   await page.getByLabel('AOI-04 검색어').waitFor();
+  // 설정: current-settings summary and '수정' (rename + keep folder) of a Batch Report root.
+  await page.getByRole('button',{name:'설정',exact:true}).click();
+  const summary=page.getByLabel('현재 설정');
+  await summary.getByText(/Batch Report 루트/).waitFor();
+  assert(/AOI-04/.test(await summary.innerText()),'summary lists registered roots');
+  await page.getByRole('tab',{name:'Batch Report 루트'}).click();
+  await page.getByRole('button',{name:'AOI-04 수정'}).click();
+  await page.getByLabel('AOI-04 새 호기 이름').fill('AOI-05');
+  await page.getByRole('button',{name:'저장',exact:true}).click();
+  await page.getByText('AOI-05 경로를 수정했습니다').waitFor();
+  await page.getByRole('button',{name:'AOI-05 수정'}).waitFor();
+  assert(/AOI-05/.test(await summary.innerText())&&!/AOI-04/.test(await summary.innerText()));
+  await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
+  await page.getByLabel('AOI-05 검색어').waitFor();
   for(const [width,height] of [[1920,1080],[2880,1800],[1280,720],[960,640]]){
     await page.setViewportSize({width,height});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`page overflow ${width}`);

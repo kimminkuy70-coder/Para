@@ -6,6 +6,7 @@ import openpyxl
 from openpyxl.styles import PatternFill
 
 from . import engine, locking, namestore, refdata, shared_io
+from .desktop_progress import report
 
 
 def is_number(value):
@@ -57,6 +58,7 @@ class DesktopDocuments:
         self.check_path()
         if not self.path.is_file():return dict(snapshot=None,headers=[],total=0,source=self.path.name)
         self.stamp=locking.file_stamp(str(self.path))
+        report(f'{self.path.name} 읽는 중…')
         wb=openpyxl.load_workbook(self.path)
         try:
             ws=wb[sheet] if sheet in wb.sheetnames else wb.worksheets[0]

@@ -89,5 +89,35 @@ class ScreenIndependenceTests(unittest.TestCase):
         session.close()
 
 
+class ProgressTests(unittest.TestCase):
+    def test_step_messages_reach_the_ui_and_slow_jobs_are_logged(self):
+        from param_manager import desktop_progress, localdirs
+        tmp = Path(tempfile.mkdtemp(prefix="rev1-prog-"))
+        out = io.BytesIO()
+        session = Session(out)
+
+        def slow_open():
+            desktop_progress.report("취합 파일 읽는 중: 파라미터 값 취합_1.xlsx")
+            return {"version": "v"}
+        old_root = localdirs.active_root()
+        localdirs.set_root(str(tmp))
+        try:
+            with patch.object(session.recipe, "open", side_effect=slow_open), \
+                    patch.object(desktop_progress, "SLOW_SEC", 0.0):
+                session.handle(dict(version=1, id=1, method="recipe_open", params={}))
+                for w in list(session.workers):
+                    w.join(2)
+        finally:
+            localdirs.set_root(old_root)
+            session.close()
+        events = [json.loads(line) for line in out.getvalue().splitlines()]
+        self.assertTrue(any(e["event"] == "progress" and "취합 파일 읽는 중" in e["message"] for e in events))
+        log = (tmp / "Logs" / "작업시간_로그.txt").read_text(encoding="utf-8")
+        self.assertIn("recipe_open", log)
+        self.assertIn("취합 파일 읽는 중", log)
+        # Outside a job, report() is a no-op (headless use / tests).
+        desktop_progress.report("ignored")
+
+
 if __name__ == "__main__":
     unittest.main()

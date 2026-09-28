@@ -10,6 +10,7 @@ import openpyxl
 from . import (collate, shared_io, engine, exporter, localdirs, locking, namestore,
                refdata, rtp_parser as rtp, watcher, workdirs)
 from .desktop_batch import DesktopBatch, read_json
+from .desktop_progress import report
 
 VIEW_COLORS = '값확인_셀색상.json'   # same per-cell color store as the tkinter view
 KEY_FIELDS = ('PI', 'Recipe', 'Zone', 'Alg', 'Parameter')
@@ -38,6 +39,7 @@ class DesktopRecipe:
         if not cfg.get('save_dir'):
             return dict(version=None, recipes=[], machines=[], source='')
         self.root = Path(cfg['save_dir']).absolute()
+        report('저장폴더에서 최신 파라미터 취합 파일을 찾는 중…')
         path = workdirs.latest_collate(str(self.root))
         if not path:
             return dict(version=None, recipes=[], machines=[], source='')
@@ -45,12 +47,14 @@ class DesktopRecipe:
         if getattr(self, 'held', None) and self.held != self.path:
             self.close()            # a newer collation: release the old file's lock
         before = locking.file_stamp(self.path)
+        report(f'취합 파일 읽는 중: {Path(path).name} (OneDrive에 내려받지 않은 파일이면 오래 걸릴 수 있습니다)')
         sheets, self.machines = collate.load_collation(self.path)
         if before != locking.file_stamp(self.path):
             raise ValueError('조회 중 취합 파일이 변경되었습니다. 다시 열어 주세요.')
         self.stamp = before
         self.name_path = self.safe_path(namestore.name_path(str(self.root)))
         self.name_stamp = locking.file_stamp(self.name_path) or (0, 0)
+        report('장비화면이름·셀 색상 읽는 중…')
         self.names = namestore.load(self.name_path)
         if self.name_stamp != (locking.file_stamp(self.name_path) or (0, 0)):
             raise ValueError('조회 중 색상 파일이 변경되었습니다. 다시 열어 주세요.')

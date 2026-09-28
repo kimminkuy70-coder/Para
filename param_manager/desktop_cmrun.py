@@ -17,6 +17,7 @@ from pathlib import Path
 from . import (coef_detector, coefstore, collate, commonality as cm, engine, editor_model,
                extract_io, formbuilder, ini_parser, localdirs, namestore, workdirs)
 from .desktop_batch import DesktopBatch, read_json
+from .desktop_progress import report
 from .desktop_cmsurvey import DesktopCmSurvey
 from .desktop_form import DesktopForm
 
@@ -69,6 +70,7 @@ class DesktopCmRun:
         if not mine:
             raise ValueError("이 호기에 해당하는 계획 행이 없습니다. AOI호기를 확인하세요.")
         scan_roots = cm.scanresult_roots(roots[machine], machine)
+        report(f'{machine} Scanresult 에서 계획 {len(mine)}행의 S/M 폴더 찾는 중…')
         lots = cm.resolve_plan(scan_roots, mine)
         if len(lots) > MAX_LOTS:
             raise ValueError("S/M 폴더가 너무 많습니다. 계획을 나눠 진행하세요.")
@@ -108,7 +110,8 @@ class DesktopCmRun:
         run_dir = workdirs.commonality_run_dir(self._cm_root(), machine, st)
         staging = workdirs.commonality_staging(run_dir)
         lot_dirs, fails = [], []
-        for lot in selected:
+        for i, lot in enumerate(selected, 1):
+            report(f'[{i}/{len(selected)}] {lot.label} 안전 복사 중…')
             res = cm.copy_lot(lot, staging, verify=True)
             lot_dirs.append((lot.label, res["dest"]))
             if lot.fail:
@@ -202,6 +205,7 @@ class DesktopCmRun:
 
         def lookup(_equipment, variant=""):
             return coefstore.lookup(rows, machine, variant)   # Commonality: fixed machine
+        report('복사한 Lot 설정 파일 분석 중…')
         pivot, labels = cm.parse_lots(unit["lot_dirs"], level=unit["title"], scales=unit["scales"],
                                       coef_lookup=lookup, recipe_prefix=unit["prefix"])
         if not pivot:

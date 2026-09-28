@@ -56,7 +56,16 @@ class DesktopConfig:
                     extra_paths={m: [p for p in v if isinstance(p, str)] for m, v in extra.items()
                                  if isinstance(v, list)} if isinstance(extra, dict) else {},
                     batch_auto=bool(cfg.get("batch_auto")),
-                    batch=DesktopBatch(self.config_path).auto_state(cfg), batch_intervals=list(BATCH_INTERVALS))
+                    batch=DesktopBatch(self.config_path).auto_state(cfg), batch_intervals=list(BATCH_INTERVALS),
+                    # Effective local folder (config or default) + the config file itself, for the
+                    # "현재 설정" summary. Pure path computation, no folder access.
+                    local_root=self._local_root_text(), config_file=str(self.config_path))
+
+    def _local_root_text(self):
+        try:
+            return str(DesktopBatch(self.config_path).configuration()[2])
+        except (OSError, ValueError) as exc:
+            return f"(확인 필요: {exc})"
 
     # ---- local work folder (tkinter '로컬 작업 폴더') ---------------------
     def local_state(self):
@@ -181,7 +190,7 @@ class DesktopConfig:
         paths[machine] = path
         cfg["wph_report_paths"] = paths
         self._write(cfg)
-        return dict(report_paths=paths)
+        return self.state()
 
     def set_scanresult_root(self, params):
         if set(params) != {"machine", "path"}:
@@ -195,7 +204,35 @@ class DesktopConfig:
         roots[machine] = path
         cfg["commonality_roots"] = roots
         self._write(cfg)
-        return dict(scanresult_roots=roots)
+        return self.state()
+
+    def edit_root(self, params):
+        """'수정' for a registered root: change its folder and/or its machine name.
+        A renamed Batch Report root keeps its extra (backup) folders."""
+        if set(params) != {"kind", "machine", "new_machine", "path"}:
+            raise ValueError("수정할 항목을 확인하세요")
+        key = {"report": "wph_report_paths", "scanresult": "commonality_roots"}.get(params.get("kind"))
+        if not key:
+            raise ValueError("수정 종류를 확인하세요")
+        old = self._valid_machine(params["machine"])
+        new = self._valid_machine(params["new_machine"])
+        label = "Report 폴더" if key == "wph_report_paths" else "Scanresult 루트"
+        path = self._valid_dir(params["path"], label)
+        cfg = self._read()
+        table = cfg.get(key) if isinstance(cfg.get(key), dict) else {}
+        if old not in table:
+            raise ValueError("등록되지 않은 호기입니다. 새로고침하세요")
+        if new != old and new in table:
+            raise ValueError(f"{new} 은(는) 이미 등록되어 있습니다")
+        # Keep the original order; rename in place.
+        cfg[key] = {(new if m == old else m): (path if m == old else p) for m, p in table.items()}
+        if key == "wph_report_paths" and new != old:
+            extra = cfg.get("batch_extra_paths") if isinstance(cfg.get("batch_extra_paths"), dict) else {}
+            if old in extra:
+                extra[new] = extra.pop(old)
+                cfg["batch_extra_paths"] = extra
+        self._write(cfg)
+        return self.state()
 
     def remove(self, params):
         if set(params) != {"kind", "machine"}:

@@ -101,6 +101,25 @@ class DesktopConfigTests(unittest.TestCase):
         self.assertNotIn("AOI-21", after["report_paths"])
         self.assertIn("AOI-9", after["scanresult_roots"])
 
+    def test_edit_root_changes_path_and_name(self):
+        other = os.path.join(self.tmp, "reports2")
+        os.makedirs(other)
+        self.a.set_report_path({"machine": "AOI-21", "path": self.reports})
+        self.a.set_report_path({"machine": "AOI-22", "path": self.reports})
+        self.a.set_extra_paths({"machine": "AOI-21", "paths": [other]})
+        st = self.a.edit_root({"kind": "report", "machine": "AOI-21", "new_machine": "AOI-31", "path": other})
+        self.assertEqual(list(st["report_paths"]), ["AOI-31", "AOI-22"])          # order kept
+        self.assertEqual(st["report_paths"]["AOI-31"], str(Path(other).absolute()))
+        self.assertEqual(st["extra_paths"], {"AOI-31": [str(Path(other).absolute())]})   # backups follow
+        self.assertTrue(st["save_dir"] == "" and "local_root" in st and st["config_file"])
+        with self.assertRaises(ValueError):          # name clash
+            self.a.edit_root({"kind": "report", "machine": "AOI-31", "new_machine": "AOI-22", "path": other})
+        with self.assertRaises(ValueError):          # missing folder
+            self.a.edit_root({"kind": "report", "machine": "AOI-31", "new_machine": "AOI-31", "path": os.path.join(self.tmp, "nope")})
+        self.a.set_scanresult_root({"machine": "AOI-9", "path": self.reports})
+        st = self.a.edit_root({"kind": "scanresult", "machine": "AOI-9", "new_machine": "AOI-9", "path": other})
+        self.assertEqual(st["scanresult_roots"]["AOI-9"], str(Path(other).absolute()))
+
     def test_registration_rejects_bad(self):
         with self.assertRaises(ValueError):
             self.a.set_report_path({"machine": "", "path": self.reports})

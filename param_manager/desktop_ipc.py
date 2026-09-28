@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import time
 from datetime import datetime
 
-from . import batchreport, batchreport_store, engine, locking
+from . import batchreport, batchreport_store, desktop_progress, engine, locking
 from .desktop_batch import DesktopBatch
 from .desktop_recipe import DesktopRecipe
 from .desktop_form import DesktopForm
@@ -35,7 +36,8 @@ BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 관리', 'do
               'update': '값 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 감시 회차'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+method_of = {}           # request id -> method name (for the slow-request log)
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
 LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
 
@@ -156,6 +158,17 @@ class Session:
             self.output.flush()
 
     def handle(self, request):
+        started = time.monotonic()
+        try:
+            self._handle(request)
+        finally:
+            method = request.get("method") if isinstance(request, dict) else "?"
+            desktop_progress.log_slow(f"{method} (입력 처리)", time.monotonic() - started)
+            rid = request.get("id") if isinstance(request, dict) else None
+            if rid not in self.busy.values():
+                method_of.pop(rid, None)     # background jobs drop their own entry
+
+    def _handle(self, request):
         request_id = None
         try:
             if not isinstance(request, dict) or set(request) != {"version", "id", "method", "params"}:
@@ -173,6 +186,7 @@ class Session:
             with self.lock:
                 if self.closed:
                     raise ValueError("Session closed")
+                method_of[request_id] = method
                 self.dispatch(request_id, method, params)
         except (ValueError, TypeError, KeyError) as exc:
             self.emit(request_id, "error", code="invalid_request", message=str(exc))
@@ -206,7 +220,7 @@ class Session:
                        history_export={'snapshot','pair'})
         allowed.update(config_state=set(), config_set_save_dir={'path'},
                        config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
-                       config_remove={'kind','machine'}, open_path={'path','reveal'},
+                       config_remove={'kind','machine'}, config_edit_root={'kind','machine','new_machine','path'}, open_path={'path','reveal'},
                        config_set_batch_auto={'enabled','interval_hours'}, config_set_extra_paths={'machine','paths'},
                        config_set_hide_kla={'enabled'}, config_local_state=set(), config_set_local_dir={'path'},
                        config_purge_temp=set(), config_about=set())
@@ -274,7 +288,15 @@ class Session:
         self.claim(rid, *domains)
         self.emit(rid, 'accepted')
 
+        started, steps = time.monotonic(), []
+
+        def step(message):
+            # Engine step message → the UI progress panel (and the slow-request log).
+            steps.append((time.monotonic() - started, message))
+            self.emit(rid, 'progress', message=message)
+
         def work():
+            desktop_progress.set_reporter(step)
             try:
                 value = action()
                 with self.lock:
@@ -288,6 +310,9 @@ class Session:
                     self.emit(rid, 'error', code=f'{key}_failed',
                               message=str(exc) if isinstance(exc, ValueError) else failure)
             finally:
+                desktop_progress.set_reporter(None)
+                desktop_progress.log_slow(method_of.get(rid, key), time.monotonic() - started, steps)
+                method_of.pop(rid, None)
                 self.workers.discard(threading.current_thread())
         self.spawn(work)
 
@@ -371,6 +396,7 @@ class Session:
                       'config_set_report_path': lambda: self.config.set_report_path(params),
                       'config_set_scanresult_root': lambda: self.config.set_scanresult_root(params),
                       'config_remove': lambda: self.config.remove(params),
+                      'config_edit_root': lambda: self.config.edit_root(params),
                       'config_set_batch_auto': lambda: self.config.set_batch_auto(params),
                       'config_set_extra_paths': lambda: self.config.set_extra_paths(params),
                       'config_set_hide_kla': lambda: self.config.set_hide_kla(params),
@@ -378,9 +404,10 @@ class Session:
                       'config_set_local_dir': lambda: self.config.set_local_dir(params),
                       'config_purge_temp': lambda: self.config.purge_temp(params),
                       'config_about': lambda: self.config.about(params)}
-            if method == 'config_set_save_dir':
-                # Checks/creates the reference files in the (OneDrive) save folder.
-                bg(rid, 'config', action[method], '저장폴더를 설정하지 못했습니다. 폴더 접근을 확인하세요.')
+            if method in ('config_set_save_dir', 'config_set_report_path', 'config_set_scanresult_root',
+                          'config_edit_root', 'config_set_extra_paths', 'config_set_local_dir'):
+                # These check the chosen folder (OneDrive / equipment share): never on the input thread.
+                bg(rid, 'config', action[method], '폴더를 확인하지 못했습니다. 경로와 연결 상태를 확인하세요.')
             else:
                 self.emit(rid, 'completed', config=action[method]())
         elif method.startswith('update_'):
@@ -706,6 +733,13 @@ class Session:
 
 def serve(source, output):
     session = Session(output)
+    try:
+        # Logs (errors, slow-request timings) go to the web app's local folder,
+        # never the install folder or the save folder.
+        from . import localdirs
+        localdirs.set_root(str(DesktopBatch(session.batch.config_path).configuration()[2]))
+    except Exception:  # noqa: BLE001 - a bad local setting is reported by the screens
+        pass
     session.start_scheduler()
     try:
         while not session.closed:

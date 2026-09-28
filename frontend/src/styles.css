@@ -99,3 +99,20 @@ tr.fail-row td{background:#fff7d6}tr.row-now td{background:#effaf5}
 button.pick-item{width:100%;background:transparent;border:0;border-bottom:1px solid #eef2f6;border-radius:0;text-align:left;cursor:pointer;min-height:0}
 button.pick-item:hover{background:#f2f6fa}
 .notice-list{list-style:none;margin:8px 0 0;padding:0}.notice-list li{border-bottom:1px solid var(--line);padding:10px 2px}.notice-list p{margin:4px 0;white-space:pre-wrap;font-size:13px}.notice-list small{color:var(--muted)}
+/* Progress panel: what the engine is doing now (bottom-right, above content). */
+.activity{position:fixed;right:18px;bottom:18px;z-index:40;width:360px;max-width:calc(100vw - 36px);background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px #0f1e3d2e;padding:12px 14px;font-size:13px}
+.activity.folded{width:auto}
+.activity-head{display:flex;align-items:center;gap:8px}.activity-head b{flex:1}
+.activity-head .x{border:0;background:transparent;min-height:0;padding:2px 6px;cursor:pointer;font-size:14px}
+.activity ul{list-style:none;margin:8px 0 0;padding:0;max-height:240px;overflow:auto}
+.activity li{padding:6px 0;border-top:1px solid #eef2f6}
+.activity-row{display:flex;justify-content:space-between;gap:10px;font-weight:600}
+.activity .elapsed{font-variant-numeric:tabular-nums;color:var(--muted,#667085);font-weight:400}
+.activity li p{margin:3px 0 0;color:var(--muted,#667085);font-size:12px;overflow-wrap:anywhere}
+.activity-hint{margin:8px 0 0;font-size:12px;color:#8a5a00;background:#fff7e0;border-radius:8px;padding:8px}
+.spinner{width:14px;height:14px;border-radius:50%;border:2px solid #cfd8e3;border-top-color:#1b345f;animation:spin .9s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spinner{animation:none}}
+.current-settings{border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:14px 0;background:#f8fafc}
+.current-settings h3{margin:0 0 8px}.current-settings th{text-align:left;width:170px;white-space:nowrap;font-weight:700}
+.current-settings td code{overflow-wrap:anywhere}.current-settings .warn{color:#a33820}

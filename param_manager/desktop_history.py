@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from . import history, locking, workdirs
 from .desktop_batch import DesktopBatch, read_json
+from .desktop_progress import report
 
 KINDS = ("", "값변경", "추가", "삭제", "행 추가", "행 삭제")
 MAX_FILES = 10
@@ -71,7 +72,10 @@ class DesktopHistory:
             if locking.file_stamp(path) != stamp:
                 raise ValueError("취합 파일이 변경되었습니다. 목록을 새로고침하세요.")
             paths.append(path)
-        self.pairs = [(Path(a).name, Path(b).name, history.diff_files(a, b)) for a, b in zip(paths, paths[1:])]
+        self.pairs = []
+        for a, b in zip(paths, paths[1:]):
+            report(f'비교 중: {Path(a).name} → {Path(b).name}')
+            self.pairs.append((Path(a).name, Path(b).name, history.diff_files(a, b)))
         self.snapshot = uuid4().hex
         summary = [dict(index=i, old=o, new=n, changes=len(d.changes), added=len(d.added_rows),
                         removed=len(d.removed_rows)) for i, (o, n, d) in enumerate(self.pairs)]
