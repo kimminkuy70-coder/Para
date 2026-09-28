@@ -372,3 +372,14 @@ HTTP/TCP 서버 금지, 로컬 결과/공유 명시 편집 경계 유지. 강제
 9. 점검 결과: 열 때 이름·체크 기억 적용은 되어 있었으나 **확정 시 저장이 빠져 있었다**(수동 Commonality·자동 감시 양식).
    tkinter 와 같게 확정 시 장비화면이름.xlsx(이름·체크)·변환계수.xlsx·전체 후보 `_원본.xlsx` 저장 추가. 자동 감시 양식은 열 때도 기억값 적용.
 테스트: `tests/test_desktop_cmplan.py`(5), 브라우저 통합 테스트에 가져오기·설정 이동·keep-alive·행 삭제·키보드 추가.
+
+## Recipe 관리 통합 · 편집기 일괄 선택 · S/M 상세 (2026-09-28)
+
+- 상단 탭 '값 업데이트/양식 만들기/이력 확인' 제거 → **Recipe 관리** 안의 탭(`RecipeHub.tsx`):
+  Recipe 값 확인 · 레시피 업데이트 · 신규 Recipe 만들기 · Recipe 양식 편집하기 · 레시피 날짜별 비교하기.
+  값 확인(편집 잠금 보유)은 보일 때만 마운트, 나머지 4개는 keep-alive.
+- 신규/편집이 엔진 편집기 하나(`self.form`)를 공유하면 한쪽을 열 때 다른 쪽 스냅샷이 무효가 되므로
+  `formnew` 전용 `DesktopForm` + IPC `formnew_page/edit/bulk/scales/confirm`, 작업 슬롯도 `formnew` 로 분리.
+- 편집기: `*_bulk`(이 Zone / 모든 Zone 전체 선택·해제, 검색·변형 조건 적용), Enter/Space 후 다음 행.
+- Commonality 안전 복사 후 조사 단위별 `sm_list`(열 이름·디바이스·공정·S/M·슬롯·Scan/생성일자·이슈 Lot·원본/복사 경로) 창.
+- '원본 열기'는 레시피/버전 목록을 다 읽은 뒤 활성화(같은 화면 작업 중복 거절로 인한 경합 방지).

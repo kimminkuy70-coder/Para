@@ -31,12 +31,13 @@ from .desktop_watch import CmWatch, ParamWatch
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 관리', 'document': '문서', 'form': '양식 만들기',
-              'commonality': 'Commonality 결과', 'cmsurvey': 'Commonality 계획 확인', 'history': '이력 확인',
-              'update': '값 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
+BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 값 확인', 'document': '문서', 'form': 'Recipe 양식 편집하기',
+              'formnew': '신규 Recipe 만들기',
+              'commonality': 'Commonality 결과', 'cmsurvey': 'Commonality 계획 확인', 'history': '레시피 날짜별 비교하기',
+              'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 감시 회차'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
 LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
@@ -134,7 +135,7 @@ class Session:
         self.opener = DesktopOpen()
         self.update = DesktopUpdate()
         self.cmrun = DesktopCmRun()
-        self.formnew = DesktopFormNew(self.form)
+        self.formnew = DesktopFormNew(DesktopForm())
         self.appupdate = DesktopAppUpdate()
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
@@ -212,7 +213,7 @@ class Session:
                        commonality_export={'snapshot','changed_only'})
         allowed.update(form_catalog=set(), form_versions={'recipe'}, form_open={'recipe','stamp'},
                        form_page={'snapshot','variant','query','used_only','offset','limit','zone'},
-                       form_edit={'snapshot','row','kind','value'}, form_scales={'snapshot','machine'},
+                       form_edit={'snapshot','row','kind','value'}, form_scales={'snapshot','machine'}, form_bulk={'snapshot','value','variant','query','used_only','zone'}, cmrun_bulk={'snapshot','value','variant','query','used_only','zone'}, cmwatch_bulk={'snapshot','value','variant','query','used_only','zone'},
                        form_confirm={'snapshot','machine','scales'})
         allowed.update(cmsurvey_config=set(), cmsurvey_preflight={'machine','plan'}, cmsurvey_plan_template={'rows'},
                        cmsurvey_read_plan={'path'})
@@ -234,7 +235,10 @@ class Session:
                        cmrun_edit={'snapshot','row','kind','value'}, cmrun_confirm={'unit','snapshot'},
                        cmrun_collate={'unit','mapping'}, cmrun_reset=set())
         allowed.update(formnew_prepare=set(), formnew_collect={'recipe','machines','source','answers'},
-                       formnew_parse={'scales','base_form'}, formnew_cancel=set())
+                       formnew_parse={'scales','base_form'}, formnew_cancel=set(),
+                       formnew_page={'snapshot','variant','query','used_only','offset','limit','zone'},
+                       formnew_edit={'snapshot','row','kind','value'}, formnew_bulk={'snapshot','value','variant','query','used_only','zone'},
+                       formnew_scales={'snapshot','machine'}, formnew_confirm={'snapshot','machine','scales'})
         allowed.update(appupdate_check=set(), appupdate_skip={'version'}, appupdate_apply=set(),
                        appupdate_publish={'path','notes'}, appupdate_open_dir=set())
         allowed.update(watch_status=set(), pwatch_state=set(),
@@ -363,10 +367,11 @@ class Session:
             self.idle('form')
             action = {'form_catalog': lambda: self.form.catalog(), 'form_open': lambda: self.form.open(params),
                       'form_page': lambda: self.form.page(params), 'form_edit': lambda: self.form.edit(params),
+                      'form_bulk': lambda: self.form.bulk(params),
                       'form_scales': lambda: self.form.scales(params),
                       'form_versions': lambda: self.form.versions(params),
                       'form_confirm': lambda: self.form.confirm(params)}
-            if method in ('form_page', 'form_edit'):
+            if method in ('form_page', 'form_edit', 'form_bulk'):
                 self.emit(rid, 'completed', form=action[method]())
             else:
                 bg(rid, 'form', action[method], '양식을 처리하지 못했습니다. 파일 접근과 잠금을 확인하세요.')
@@ -434,25 +439,32 @@ class Session:
                       'cmrun_units': lambda: self.cmrun.units(params), 'cmrun_detect': lambda: self.cmrun.detect(params),
                       'cmrun_parse': lambda: self.cmrun.parse(params), 'cmrun_page': lambda: self.cmrun.form.page(params),
                       'cmrun_edit': lambda: self.cmrun.form.edit(params), 'cmrun_confirm': lambda: self.cmrun.confirm(params),
+                      'cmrun_bulk': lambda: self.cmrun.form.bulk(params),
                       'cmrun_collate': lambda: self.cmrun.collate(params), 'cmrun_reset': lambda: self.cmrun.reset(params)}
-            if method in ('cmrun_page', 'cmrun_edit', 'cmrun_units', 'cmrun_reset'):
+            if method in ('cmrun_page', 'cmrun_edit', 'cmrun_bulk', 'cmrun_units', 'cmrun_reset'):
                 self.emit(rid, 'completed', cmrun=action[method]())
             else:
                 # Scanresult traversal, safe copy, parsing and workbook writes run off the input thread.
                 bg(rid, 'cmrun', action[method], 'Commonality 조사를 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.',
                    ('cmrun', 'equipment') if method in ('cmrun_plan', 'cmrun_copy') else ('cmrun',))
         elif method.startswith('formnew_'):
-            self.idle('form')
+            # 신규 Recipe 만들기 has its own editor state (separate from Recipe 양식 편집하기)
+            # so both tabs can be open at once.
+            self.idle('formnew')
             action = {'formnew_prepare': lambda: self.formnew.prepare(params),
                       'formnew_collect': lambda: self.formnew.collect(params),
                       'formnew_parse': lambda: self.formnew.parse(params),
-                      'formnew_cancel': lambda: self.formnew.cancel(params)}
-            if method == 'formnew_cancel':
+                      'formnew_cancel': lambda: self.formnew.cancel(params),
+                      'formnew_page': lambda: self.formnew.form.page(params),
+                      'formnew_edit': lambda: self.formnew.form.edit(params),
+                      'formnew_bulk': lambda: self.formnew.form.bulk(params),
+                      'formnew_scales': lambda: self.formnew.form.scales(params),
+                      'formnew_confirm': lambda: self.formnew.form.confirm(params)}
+            if method in ('formnew_cancel', 'formnew_page', 'formnew_edit', 'formnew_bulk'):
                 self.emit(rid, 'completed', formnew=action[method]())
             else:
-                # Same form slot as 양식 만들기 (they share the editor).
-                bg(rid, 'formnew', action[method], '양식 만들기를 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.',
-                   ('form', 'equipment') if method == 'formnew_collect' else ('form',))
+                bg(rid, 'formnew', action[method], '신규 Recipe 만들기를 완료하지 못했습니다. 장비 연결과 파일 접근을 확인하세요.',
+                   ('formnew', 'equipment') if method == 'formnew_collect' else ('formnew',))
         elif method.startswith('appupdate_'):
             action = {'appupdate_check': lambda: self.appupdate.check(params),
                       'appupdate_skip': lambda: self.appupdate.skip(params),
@@ -491,12 +503,13 @@ class Session:
                       'cmwatch_begin': lambda: self.cmwatch.begin(params),
                       'cmwatch_page': lambda: self.cmwatch.form.page(params),
                       'cmwatch_edit': lambda: self.cmwatch.form.edit(params),
+                      'cmwatch_bulk': lambda: self.cmwatch.form.bulk(params),
                       'cmwatch_confirm': lambda: self.cmwatch.confirm(params),
                       'cmwatch_cancel': lambda: self.cmwatch.cancel(params)}
             if method in ('cmwatch_save', 'cmwatch_confirm') and self.watching == 'cm':
                 raise ValueError('감시 회차가 끝난 뒤 설정을 바꾸세요')
             self.idle('cmwatch')
-            if method in ('cmwatch_page', 'cmwatch_edit', 'cmwatch_cancel'):
+            if method in ('cmwatch_page', 'cmwatch_edit', 'cmwatch_bulk', 'cmwatch_cancel'):
                 self.emit(rid, 'completed', cmwatch=action[method]())
             else:
                 bg(rid, 'cmwatch', action[method], 'Commonality 감시 작업을 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.',

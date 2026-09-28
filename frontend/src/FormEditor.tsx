@@ -17,7 +17,7 @@ const ZONE_LIMIT=3000;
  * PageUp/PageDown · Home/End.
  */
 export function FormEditor({version,pageMethod,editMethod,replyKey,variants,onUsed}:{
-  version:string;pageMethod:string;editMethod:string;replyKey:'form'|'cmrun'|'cmwatch';variants?:string[];onUsed?:(n:number)=>void}){
+  version:string;pageMethod:string;editMethod:string;replyKey:'form'|'formnew'|'cmrun'|'cmwatch';variants?:string[];onUsed?:(n:number)=>void}){
   const [variant,setVariant]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState(''),[usedOnly,setUsedOnly]=useState(false);
   const [zones,setZones]=useState<Zone[]>([]),[zone,setZone]=useState<string>();
   const [rows,setRows]=useState<EditorRow[]>([]),[loading,setLoading]=useState(false);
@@ -75,7 +75,8 @@ export function FormEditor({version,pageMethod,editMethod,replyKey,variants,onUs
     if(e.key==='Home'){e.preventDefault();moveTo(0);return;}
     if(e.key==='End'){e.preventDefault();moveTo(rows.length-1);return;}
     const row=rows[cursor];if(!row)return;
-    if(e.key==='Enter'||e.key===' '){e.preventDefault();void edit(row,'use',!row.use);return;}
+    // Toggle and step to the next row, so a column of items can be ticked with Enter Enter Enter…
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();void edit(row,'use',!row.use);if(cursor<rows.length-1)moveTo(cursor+1);return;}
     if(e.key==='F2'){e.preventDefault();box.current?.querySelector<HTMLInputElement>(`[data-row="${cursor}"] input[data-name]`)?.focus();}
   }
   const cancelName=useRef(false);
@@ -84,6 +85,14 @@ export function FormEditor({version,pageMethod,editMethod,replyKey,variants,onUs
     if(!cancelName.current&&v!==undefined&&v.trim()!==row.name)void edit(row,'name',v.trim());
     cancelName.current=false;
     setNames(n=>{const c={...n};delete c[row.id];return c;});
+  }
+  // 전체 선택/해제: this Zone only, or every item in the current view (variant/search filters).
+  async function bulk(value:boolean,thisZone:boolean){
+    try{
+      const r=(await desktop.request(pageMethod.replace(/_page$/,'_bulk'),{snapshot:version,value,variant,query:filter,used_only:usedOnly,
+        ...(thisZone&&zone!==undefined?{zone}:{})}).promise)[replyKey] as {changed:number;used:number};
+      onUsed?.(r.used);await load(zone);
+    }catch(e){fail(e);}
   }
   const multi=(variants||[]).length>1;
   const current=zones.find(z=>z.zone===zone);
@@ -97,7 +106,13 @@ export function FormEditor({version,pageMethod,editMethod,replyKey,variants,onUs
     <div className="zone-tabs" role="tablist" aria-label="Zone">{zones.map(z=>
       <button key={z.zone} role="tab" aria-selected={z.zone===zone} className={z.zone===zone?'active':''} onClick={()=>goZone(z.zone)}>
         {z.zone||'(Zone 없음)'} <small>{z.used}/{z.total}</small></button>)}</div>
-    <p className="hint">키보드: ↑/↓ 행 이동 · <b>Enter</b>(또는 Space) 사용 체크 · F2 이름 편집 · Ctrl+←/→ 이전/다음 Zone. 같은 Alg 는 같은 색으로 묶었습니다.</p>
+    <div className="toolbar bulk-bar"><span>사용 체크:</span>
+      <button disabled={loading||!rows.length} onClick={()=>void bulk(true,true)}>이 Zone 전체 선택</button>
+      <button disabled={loading||!rows.length} onClick={()=>void bulk(false,true)}>이 Zone 전체 해제</button>
+      <button disabled={loading||!zones.length} onClick={()=>void bulk(true,false)}>모든 Zone 전체 선택</button>
+      <button disabled={loading||!zones.length} onClick={()=>void bulk(false,false)}>모든 Zone 전체 해제</button></div>
+    <p className="hint">키보드: ↑/↓ 행 이동 · <b>Enter</b>(또는 Space) 사용 체크 후 다음 행으로 · F2 이름 편집 · Ctrl+←/→ 이전/다음 Zone. 같은 Alg 는 같은 색으로 묶었습니다.
+      전체 선택/해제는 검색·변형·'사용 항목만' 조건에 맞는 항목에만 적용됩니다.</p>
     <div className="table-scroll editor-grid" ref={box} tabIndex={0} onKeyDown={onKey} aria-busy={loading}
       aria-label={`양식 편집 — ${current?.zone||''} Zone`} aria-activedescendant={rows[cursor]?`row-${rows[cursor].id}`:undefined}>
       <table><thead><tr><th>사용</th>{multi&&<th>변형</th>}<th>Alg</th><th>원본 항목</th><th>장비 화면 이름</th><th>변환</th><th>값</th></tr></thead>

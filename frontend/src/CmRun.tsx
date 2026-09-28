@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {desktop,pickFile,type Reply} from './desktop';
 import {Stepper,StepNav,notify,fail} from './ui';
 import {OpenPath,openPath} from './OpenPath';
@@ -9,7 +9,8 @@ type SurveyMachine={id:string;root:string};
 // '이슈 Lot' (구 'fail여부'): 이슈가 있었던 Lot — 비교표·뷰어에서 노란색으로 표시.
 type PlanRow={device:string;process:string;sm:string;machine:string;issue:boolean};
 type Lot={id:number;label:string;device:string;lot:string;sm:string;exists:boolean;fail:boolean;scan_time:string;created:string;reason:string;wafers:string[];wafer:string};
-type Unit={unit:number;device:string;recipe:string;lots:number;files:{global_:boolean;optic:boolean;zones:number};thin:boolean;config_dir:string;title:string;result:string};
+type SmInfo={label:string;device?:string;lot?:string;sm?:string;slot?:string;scan_time?:string;created?:string;issue?:boolean;source?:string;copied:string};
+type Unit={unit:number;device:string;recipe:string;lots:number;sm_list?:SmInfo[];files:{global_:boolean;optic:boolean;zones:number};thin:boolean;config_dir:string;title:string;result:string};
 type Scale={variant:string;coef:number;source:string;confidence:string;reason:string};
 type Opened={version:string;total:number;used:number;variants:string[]};
 type Variants={rows:[string,string][];parsed:string[];unmatched:string[]}|null;
@@ -28,6 +29,9 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
   const [rows,setRows]=useState<PlanRow[]>([emptyRow()]),[paste,setPaste]=useState('');
   const [checked,setChecked]=useState<number[]>([]),[unregistered,setUnregistered]=useState<string[]>([]),[planFile,setPlanFile]=useState('');
   const [progress,setProgress]=useState('');
+  // [S/M] cell → which Lot folders a unit covers (shown after the safe copy).
+  const [smUnit,setSmUnit]=useState<Unit>(),smDialog=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{if(smUnit)smDialog.current?.showModal();else smDialog.current?.close();},[smUnit]);
   const [lots,setLots]=useState<Lot[]>([]),[picked,setPicked]=useState<Record<number,string[]>>({});
   const [units,setUnits]=useState<Unit[]>([]),[unit,setUnit]=useState(0),[staging,setStaging]=useState('');
   const [base,setBase]=useState(''),[title,setTitle]=useState(''),[scales,setScales]=useState<Scale[]>([]),[scaleEdit,setScaleEdit]=useState<Record<string,string>>({});
@@ -188,7 +192,8 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
       {staging&&<OpenPath label="안전 복사 위치" path={staging} folder/>}
       <p className="hint">디바이스·레시피마다 양식을 따로 만들어 순서대로 조사합니다(파일 이름: 조사제목[_디바이스][_레시피]).</p>
       <table className="tbl"><thead><tr><th>#</th><th>디바이스</th><th>레시피</th><th>S/M</th><th>읽을 파일</th><th>결과</th></tr></thead><tbody>{units.map(u=><tr key={u.unit} className={u.unit===unit&&!allDone?'row-now':''}>
-        <td>{u.unit+1}</td><td>{u.device||'—'}</td><td>{u.recipe||'(단일)'}</td><td>{u.lots}</td>
+        <td>{u.unit+1}</td><td>{u.device||'—'}</td><td>{u.recipe||'(단일)'}</td>
+        <td><button className="linklike" aria-label={`${u.unit+1}번 조사 단위 S/M ${u.lots}개 보기`} onClick={()=>setSmUnit(u)}>{u.lots}개 보기</button></td>
         <td className={u.thin?'warn':''}>GlobalRTP {u.files.global_?'O':'X'} · OpticPreset {u.files.optic?'O':'X'} · Zones {u.files.zones}{u.thin?' — GlobalRTP만 읽힘':''}</td>
         <td>{u.result?<OpenPath label="조사 결과" path={u.result}/>:u.unit===unit?'다음 차례':'대기'}</td></tr>)}</tbody></table>
       {current?.thin&&!current.result&&<p className="warn">이 레시피는 GlobalRTP 밖에 읽을 파일이 없습니다. 이대로 진행하면 양식에 GlobalRTP 항목만 들어갑니다. 확인할 폴더: {current.config_dir}</p>}
@@ -226,5 +231,15 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
       nextLabel={['S/M 폴더 찾기','안전 복사','변환계수 확인','양식 편집','양식 확정','값 조사 실행'][step]}
       nextDisabled={(step===0&&(!machine||!rows.some(r=>complete(r)&&forMachine(r,machine))))||(step===1&&!Object.keys(picked).length)
         ||(step===2&&!base.trim())||(step===3&&scaleBad)||(step===4&&!opened?.used)}/>}
+    <dialog className="edit-dialog wide-dialog sm-dialog" ref={smDialog} onClose={()=>setSmUnit(undefined)}>{smUnit&&<>
+      <h3>{smUnit.unit+1}번 조사 단위 — S/M {smUnit.sm_list?.length||smUnit.lots}개</h3>
+      <p className="sub">{[smUnit.device&&`디바이스 ${smUnit.device}`,smUnit.recipe&&`레시피 ${smUnit.recipe}`].filter(Boolean).join(' · ')||'단일 디바이스·레시피'}</p>
+      <div className="table-scroll"><table><thead><tr><th>S/M(열 이름)</th><th>디바이스</th><th>공정</th><th>S/M 폴더</th><th>슬롯</th><th>Scan 일자</th><th>생성일자</th><th>이슈 Lot</th></tr></thead>
+        <tbody>{(smUnit.sm_list||[]).map(x=><tr key={x.label} className={x.issue?'fail-row':''} title={`원본: ${x.source||'—'}\n복사본: ${x.copied}`}>
+          <td><b>{x.label}</b></td><td>{x.device||'—'}</td><td>{x.lot||'—'}</td><td>{x.sm||'—'}</td><td>{x.slot||'—'}</td>
+          <td>{x.scan_time||'—'}</td><td>{x.created||'—'}</td><td>{x.issue?'Y':''}</td></tr>)}</tbody></table></div>
+      <p className="hint">행에 마우스를 올리면 원본 폴더와 로컬 복사본 경로가 보입니다.</p>
+      <div className="dialog-actions">{smUnit.sm_list?.[0]?.copied&&<button onClick={()=>void openPath(smUnit.sm_list![0].copied.replace(/[\\/][^\\/]+$/,''))}>복사본 폴더 열기</button>}
+        <button className="primary" onClick={()=>setSmUnit(undefined)}>닫기</button></div></>}</dialog>
   </section>;
 }

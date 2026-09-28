@@ -2,10 +2,6 @@ import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {desktop, defaults, errorText, setBackground, type WatchNotice, type Configuration, type Metric, type Options, type Reply, type Table, type Target} from './desktop';
 import './styles.css';
-import {Recipe} from './Recipe';
-import {Update} from './Update';
-import {Form} from './Form';
-import {History} from './History';
 import {Settings} from './Settings';
 import {Documents} from './Documents';
 import {Commonality} from './Commonality';
@@ -13,6 +9,7 @@ import {Toaster,notify,Stepper,StepNav} from './ui';
 import {OpenPath} from './OpenPath';
 import {UpdateBanner} from './AppUpdate';
 import {Watch} from './Watch';
+import {RecipeHub} from './RecipeHub';
 import {ActivityPanel} from './Activity';
 
 const metrics: [Metric,string,string][] = [
@@ -23,8 +20,8 @@ const metrics: [Metric,string,string][] = [
   ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
   ['M11','미분류 상태','알 수 없는 원문도 보존']
 ];
-const KEEP = ['Commonality 조사','값 업데이트','양식 만들기','이력 확인','자동 감시'];
-const navigation = ['설정','Recipe 관리','값 업데이트','양식 만들기','이력 확인','자동 감시','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
+const KEEP = ['Recipe 관리','Commonality 조사','자동 감시'];
+const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
 const text = (value: unknown) => value == null ? '—' : typeof value === 'number' ? value.toLocaleString('ko-KR',{maximumFractionDigits:2}) : String(value);
 
 function Trend({rows}: {rows:(string|number|null)[][]}) {
@@ -72,7 +69,7 @@ function App(){
   // Other screens can ask to open a tab (e.g. Commonality → 설정 › Scanresult 루트).
   useEffect(()=>{const go=(e:Event)=>setTab((e as CustomEvent<string>).detail);window.addEventListener('para:navigate',go);return()=>window.removeEventListener('para:navigate',go);},[]);
   // Workflow screens stay mounted after the first visit, so leaving a tab never
-  // loses an in-progress step (Commonality 조사, 값 업데이트, 양식 만들기 …). Screens
+  // loses an in-progress step (Commonality 조사, Recipe 관리의 업데이트·양식 …). Screens
   // that hold a shared-document edit lock (문서, Recipe 관리) still unmount so the lock
   // is handed back when you leave them.
   const [visited,setVisited]=useState<string[]>([]);
@@ -251,9 +248,9 @@ function App(){
         {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>
       <div key={screenKey} style={{display:'contents'}}>
       {visited.map(name=><div key={name} hidden={tab!==name} className="kept-screen">{
-        name==='Commonality 조사'?<Commonality/>:name==='값 업데이트'?<Update/>:name==='양식 만들기'?<Form/>:name==='이력 확인'?<History/>
+        name==='Commonality 조사'?<Commonality/>:name==='Recipe 관리'?<RecipeHub active={tab==='Recipe 관리'}/>
         :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}
-      {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:tab==='Recipe 관리'?<Recipe/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
+      {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       <section className="panel">
       <div className="section-heading"><div><span className="step">BATCH</span><h2>배치 리포트 분석</h2></div><span className="count">{selected.length}개 호기 · {options.metrics.length}개 지표</span></div>
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>

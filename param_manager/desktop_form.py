@@ -216,6 +216,31 @@ class DesktopForm:
             entry["label"] = editor_model.label_of(value)
         return dict(ok=True, used=sum(1 for e in self.entries if e["use"]))
 
+    def bulk(self, params):
+        """전체 선택/해제: set 사용 for every entry matching the current view
+        (variant/search/used-only filters, and the Zone when one is given)."""
+        self._check(params, {"snapshot", "value", "variant", "query", "used_only", "zone"})
+        value, variant, query = params.get("value"), params.get("variant", ""), params.get("query", "")
+        zone, used_only = params.get("zone"), params.get("used_only", False)
+        if type(value) is not bool or not isinstance(variant, str) or not isinstance(query, str) or len(query) > 256 \
+                or type(used_only) is not bool or (zone is not None and not isinstance(zone, str)):
+            raise ValueError("전체 선택 조건을 확인하세요")
+        q = query.casefold()
+        changed = 0
+        for e in self.entries:
+            if variant and e["variant"] != variant:
+                continue
+            if used_only and not e["use"]:
+                continue
+            if zone is not None and e["zone"] != zone:
+                continue
+            if q and q not in (e["orig"] + " " + e["name"] + " " + e["zone"] + " " + e["alg"]).casefold():
+                continue
+            if e["use"] != value:
+                e["use"] = value
+                changed += 1
+        return dict(ok=True, changed=changed, used=sum(1 for e in self.entries if e["use"]))
+
     # ---- scales ----------------------------------------------------------
     def _scale_table(self, machine, coef_rows):
         """Per variant: coefficient to use and where it came from.

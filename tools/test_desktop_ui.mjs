@@ -22,6 +22,8 @@ const errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 const lines=createInterface({input:engine.stdout});
 lines.on('line',line=>{const message=JSON.parse(line);const sequence=index++;delivery=delivery.then(()=>page.evaluate(({channel,message,sequence})=>window.__callbacks[channel]({index:sequence,message}),{channel,message,sequence}));});
+// Recipe 관리 holds the recipe workflows as tabs (값 확인 · 업데이트 · 신규 · 양식 편집 · 날짜별 비교).
+async function recipeTab(name){await page.getByRole('button',{name:'Recipe 관리',exact:true}).click();await page.getByRole('tab',{name,exact:true}).click();}
 let stderr='',background={enabled:false,tooltip:''};engine.stderr.on('data',d=>stderr+=d);
 try{
   await page.exposeBinding('nativeInvoke',async(_,command,args)=>{
@@ -246,6 +248,10 @@ try{
   await page.getByLabel('HPG 슬롯 CX02').check();
   await page.getByRole('button',{name:'안전 복사 ▶',exact:true}).click();
   await page.getByLabel('안전 복사 위치').waitFor();
+  // [S/M] cell → which Lot folders this unit covers.
+  await page.getByRole('button',{name:/1번 조사 단위 S\/M 2개 보기/}).click();
+  await page.locator('dialog[open]').getByText('HPG·CX02',{exact:true}).waitFor();
+  await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
   await page.getByLabel(/조사 제목/).fill('PI3');
   await page.getByRole('button',{name:'변환계수 확인 ▶',exact:true}).click();
   await page.getByText('[PI3] 변형별 변환계수').waitFor();
@@ -253,16 +259,20 @@ try{
   await page.getByText('PI3 · 조사 양식').waitFor();
   // Zone-grouped editor with keyboard: Enter toggles 사용 of the cursor row.
   await page.locator('.zone-tabs [role=tab]').first().waitFor();
-  await page.locator('.kept-screen:not([hidden]) .form-editor').screenshot({path:join(root,'docs/screenshots/rev1-cm-editor.png')});
-  const grid=page.locator('.kept-screen:not([hidden]) .editor-grid');
+  await page.locator('.form-editor:not([hidden] *)').screenshot({path:join(root,'docs/screenshots/rev1-cm-editor.png')});
+  const grid=page.locator('.editor-grid:not([hidden] *)');
   const firstUse=grid.locator('tbody tr').first().locator('input[type=checkbox]');
   const was=await firstUse.isChecked();
   await grid.focus();await page.keyboard.press('Enter');
-  await page.waitForFunction(w=>document.querySelector('.kept-screen:not([hidden]) .editor-grid tbody tr input[type=checkbox]').checked!==w,was);
-  await page.keyboard.press('ArrowDown');
-  assert.equal(await grid.locator('tbody tr').nth(1).getAttribute('aria-selected'),'true');
+  await page.waitForFunction(w=>document.querySelector('.editor-grid:not([hidden] *) tbody tr input[type=checkbox]').checked!==w,was);
+  assert.equal(await grid.locator('tbody tr').nth(1).getAttribute('aria-selected'),'true');   // Enter moved down
   await page.keyboard.press('ArrowUp');await page.keyboard.press('Enter');     // back to the original state
-  await page.waitForFunction(w=>document.querySelector('.kept-screen:not([hidden]) .editor-grid tbody tr input[type=checkbox]').checked===w,was);
+  await page.waitForFunction(w=>document.querySelector('.editor-grid:not([hidden] *) tbody tr input[type=checkbox]').checked===w,was);
+  // 전체 해제 / 전체 선택 over every Zone.
+  await page.getByRole('button',{name:'모든 Zone 전체 해제',exact:true}).click();
+  await page.getByText('사용 0 / 전체',{exact:false}).first().waitFor();
+  await page.getByRole('button',{name:'모든 Zone 전체 선택',exact:true}).click();
+  await page.waitForFunction(()=>!/사용 0 \//.test(document.body.innerText));
   await page.getByRole('button',{name:'양식 확정 ▶',exact:true}).click();
   await page.getByLabel('확정 양식').waitFor();
   await page.getByRole('button',{name:'값 조사 실행',exact:true}).click();
@@ -270,8 +280,8 @@ try{
   await page.getByLabel('조사 결과').waitFor();
   await page.waitForFunction(()=>document.querySelectorAll('.cm-file').length===2);
   // B: 양식 확정 — registered machine list, coefficient table, value inheritance.
-  await page.getByRole('button',{name:'양식 만들기',exact:true}).click();
-  await page.locator('select').first().selectOption('PI2');
+  await recipeTab('Recipe 양식 편집하기');
+  await page.locator('select:not([hidden] *)').first().selectOption('PI2');
   await page.getByRole('button',{name:'원본 열기 ▶',exact:true}).first().click();
   await page.getByText('사용 3 / 전체 3',{exact:true}).waitFor();
   await page.getByRole('button',{name:'확정 단계로 ▶',exact:true}).click();
@@ -286,7 +296,7 @@ try{
   await page.getByLabel('이전 값을 이어받은 취합 파일').waitFor();
   assert((await page.getByLabel('확정 양식').inputValue()).endsWith('.xlsx'));
   // B: 값 업데이트 — equipment collection asks for the Job folder, then variants → preview → write.
-  await page.getByRole('button',{name:'값 업데이트',exact:true}).click();
+  await recipeTab('레시피 업데이트');
   await page.locator('.pick-item').filter({hasText:'PI2'}).locator('input').check();
   await page.locator('.pick-item').filter({hasText:'AOI-01'}).locator('input').check();
   await page.getByRole('button',{name:'수집 시작 ▶',exact:true}).click();
@@ -295,7 +305,7 @@ try{
   assert(await ask.locator('.pick-item').filter({hasText:'R_TB500_PI2 - Enhanced'}).locator('input').isChecked());
   await ask.getByRole('button',{name:'확인하고 계속',exact:true}).click();
   await page.getByText('결과 확인',{exact:true}).waitFor();
-  await page.waitForFunction(()=>[...document.querySelectorAll('.kept-screen:not([hidden]) .stepper .st')].findIndex(e=>e.classList.contains('now'))>=2);
+  await page.waitForFunction(()=>[...document.querySelectorAll('.stepper:not([hidden] *) .st')].findIndex(e=>e.classList.contains('now'))>=2);
   if(await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).isVisible())await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).click();
   await page.getByRole('button',{name:'취합 저장',exact:true}).waitFor();
   const keep=page.getByLabel('그래도 포함');
@@ -303,34 +313,31 @@ try{
   await page.getByRole('button',{name:'취합 저장',exact:true}).click();
   await page.getByLabel('취합 파일',{exact:true}).waitFor();
   // B: 이력 — the inherited collation is a second file; row lists and Excel export.
-  await page.getByRole('button',{name:'이력 확인',exact:true}).click();
-  await page.locator('.kept-screen:not([hidden]) .cm-file input').nth(2).waitFor();
+  await recipeTab('레시피 날짜별 비교하기');
+  await page.locator('.cm-file:not([hidden] *) input').nth(2).waitFor();
   // Newest first: [값 업데이트, 이어받기, fixture]. Compare the fixture with the inherited one.
-  await page.locator('.kept-screen:not([hidden]) .cm-file input').nth(0).uncheck();
-  await page.locator('.kept-screen:not([hidden]) .cm-file input').nth(2).check();
+  await page.locator('.cm-file:not([hidden] *) input').nth(0).uncheck();
+  await page.locator('.cm-file:not([hidden] *) input').nth(2).check();
   await page.getByRole('button',{name:'비교 ▶',exact:true}).click();
   await page.getByText(/값변경 \d+ · 추가행 \d+ · 삭제행 \d+/).waitFor();
   await page.getByLabel('종류').selectOption('행 삭제');
-  await page.waitForFunction(()=>document.querySelector('.kept-screen:not([hidden]) .table-scroll tbody tr td:last-child')?.textContent==='행 삭제');
+  await page.waitForFunction(()=>document.querySelector('.table-scroll:not([hidden] *) tbody tr td:last-child')?.textContent==='행 삭제');
   await page.getByRole('button',{name:'변경내역 Excel 저장',exact:true}).click();
   assert((await page.getByLabel('저장된 변경내역').inputValue()).includes('이력비교'));
   // B: 양식 만들기 — 새로 만들기 from equipment (Job question → coefficients → editor → confirm).
-  await page.getByRole('button',{name:'양식 만들기',exact:true}).click();
-  // The screen kept its finished state while we were away (tab keep-alive); start over.
-  await page.getByText('확정 완료',{exact:false}).first().waitFor();
-  await page.locator('.kept-screen:not([hidden]) .stepper').getByRole('button',{name:/원본 선택/}).click();
-  await page.getByRole('tab',{name:'새로 만들기(장비·로컬 수집)'}).click();
+  // The edit tab keeps its finished state (keep-alive) while the new-recipe tab is separate.
+  await recipeTab('신규 Recipe 만들기');
   await page.getByLabel('새 레시피 이름').fill('PI2');
-  await page.locator('.kept-screen:not([hidden]) .pick-item').filter({hasText:'AOI-01'}).locator('input').check();
+  await page.locator('.pick-item:not([hidden] *)').filter({hasText:'AOI-01'}).locator('input').check();
   await page.getByRole('button',{name:'수집 시작',exact:true}).click();
   await page.locator('dialog[open]').getByRole('button',{name:'확인하고 계속',exact:true}).click();
   await page.getByText('변형별 변환계수',{exact:true}).waitFor();
   await page.getByRole('button',{name:'파라미터 불러오기 ▶',exact:true}).first().click();
-  await page.getByText(/사용 \d+ \/ 전체 \d+/).waitFor();
+  await page.locator('.count:not([hidden] *)').filter({hasText:/사용 \d+ \/ 전체 \d+/}).first().waitFor();
   await page.getByRole('button',{name:'확정 단계로 ▶',exact:true}).click();
-  await page.getByLabel('확정 호기').selectOption('AOI-01');
-  await page.locator('.runbar').getByRole('button',{name:'양식 확정 ▶'}).click();
-  await page.getByLabel('확정 양식').waitFor();
+  await page.locator('[aria-label="확정 호기"]:not([hidden] *)').selectOption('AOI-01');
+  await page.locator('.runbar:not([hidden] *)').getByRole('button',{name:'양식 확정 ▶'}).click();
+  await page.locator('.open-path:not([hidden] *)').filter({hasText:'확정 양식'}).first().waitFor();
   // 자동 감시: pick a Job folder on the (fake) equipment, turn the watch on, run once.
   await page.getByRole('button',{name:'자동 감시',exact:true}).click();
   const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 감시'})});
@@ -353,7 +360,7 @@ try{
   // A7: a reloaded page re-attaches to the same engine (ids keep increasing, no 'already connected').
   await page.reload();
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'이력 확인',exact:true}).click();
+  await recipeTab('레시피 날짜별 비교하기');
   await page.locator('.cm-file input').first().waitFor();
   assert.deepEqual(errors,[]);
   assert.equal(stderr,'');

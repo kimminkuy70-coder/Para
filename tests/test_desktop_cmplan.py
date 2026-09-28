@@ -134,5 +134,40 @@ class EditorAndConfirmTests(unittest.TestCase):
         self.assertEqual((same["name"], same["use"]), ("내가 정한 이름", True))
 
 
+class BulkAndDetailTests(unittest.TestCase):
+    def test_bulk_select_and_sm_details_and_separate_new_recipe_editor(self):
+        from param_manager import desktop_ipc
+        import io
+        tmp = Path(tempfile.mkdtemp(prefix="rev1-cmbulk-"))
+        _make_wafer(tmp / "eq", "AOI-6", DEV, "6321", "HPG", "CX01", delta=25)
+        _make_wafer(tmp / "eq", "AOI-6", DEV, "6321", "HPG", "CX02", delta=30)
+        cfg = tmp / "c.json"
+        cfg.write_text(json.dumps({"save_dir": "", "local_dir": str(tmp / "local"),
+                                   "commonality_roots": {"AOI-6": str(tmp / "eq")}}), encoding="utf-8")
+        run = DesktopCmRun(cfg)
+        out = run.plan({"machine": "AOI-6", "plan": [{"디바이스명": "DEVA-1", "공정번호": "6321", "S/M": "HPG",
+                                                       "AOI호기": "AOI-6", cm.ISSUE_KEY: "Y"}]})
+        copied = run.copy({"picks": [{"id": out["lots"][0]["id"], "wafers": ["CX01", "CX02"]}]})
+        sm = copied["units"][0]["sm_list"]
+        self.assertEqual([x["label"] for x in sm], ["HPG·CX01", "HPG·CX02"])
+        self.assertEqual({x["slot"] for x in sm}, {"CX01", "CX02"})
+        self.assertTrue(all(x["issue"] and x["sm"] == "HPG" and x["lot"] == "6321" for x in sm))
+        det = run.detect({"unit": 0, "base": "PI3"})
+        snap = run.parse({"unit": 0, "scales": {s["variant"]: s["coef"] for s in det["scales"]}, "base_form": ""})["form"]["version"]
+        zones = [z["zone"] for z in run.form.page({"snapshot": snap, "used_only": False, "limit": 100})["zones"]]
+        off = run.form.bulk({"snapshot": snap, "value": False, "variant": "", "query": "", "used_only": False})
+        self.assertEqual(off["used"], 0)
+        on = run.form.bulk({"snapshot": snap, "value": True, "variant": "", "query": "", "used_only": False, "zone": zones[0]})
+        page = run.form.page({"snapshot": snap, "used_only": False, "limit": 3000, "zone": zones[0]})
+        self.assertEqual(on["used"], len(page["rows"]))
+        self.assertTrue(all(r["use"] for r in page["rows"]))
+        with self.assertRaises(ValueError):
+            run.form.bulk({"snapshot": "stale", "value": True})
+        # 신규 Recipe 만들기 and Recipe 양식 편집하기 no longer share one editor.
+        session = desktop_ipc.Session(io.BytesIO())
+        self.assertIsNot(session.formnew.form, session.form)
+        session.close()
+
+
 if __name__ == "__main__":
     unittest.main()

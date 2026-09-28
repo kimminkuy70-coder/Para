@@ -146,9 +146,21 @@ class DesktopCmRun:
         return units
 
     def _units_view(self):
+        # S/M details per unit (the '[S/M]' cell opens them): which Lot folders a unit covers.
+        by_label = {l.label: l for l in self.state.get("selected") or []}
+
+        def detail(label, copied):
+            lot = by_label.get(label)
+            if lot is None:
+                return dict(label=label, copied=str(copied))
+            return dict(label=label, device=lot.device, lot=lot.lot, sm=lot.sm,
+                        slot=lot.wafer_dir.name if lot.wafer_dir is not None else "",
+                        scan_time=lot.scan_time, created=lot.created, issue=bool(lot.fail),
+                        source=str(lot.wafer_dir or ""), copied=str(copied))
         return [dict(unit=i, device=u["device"], recipe=u["recipe"], lots=len(u["lot_dirs"]),
                      files=u["files"], thin=u["thin"], config_dir=u["config_dir"],
-                     title=u.get("title", ""), result=u["done"] or "")
+                     title=u.get("title", ""), result=u["done"] or "",
+                     sm_list=[detail(lbl, d) for lbl, d in u["lot_dirs"]])
                 for i, u in enumerate(self.state["units"])]
 
     def units(self, params):

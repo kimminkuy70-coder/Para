@@ -83,7 +83,7 @@ class ScreenIndependenceTests(unittest.TestCase):
         self.assertEqual(done[2]["update"], {"recipes": ["PI3"]})
         self.assertEqual(done[3]["event"], "completed")
         self.assertEqual(done[4]["event"], "error")
-        self.assertIn("Recipe 관리", done[4]["message"])
+        self.assertIn("Recipe 값 확인", done[4]["message"])
         self.assertEqual(done[1]["event"], "completed")
         self.assertFalse(session.running)
         session.close()

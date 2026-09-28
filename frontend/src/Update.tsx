@@ -36,7 +36,7 @@ export function Update(){
   useEffect(()=>{void load();},[]);
 
   async function cancelFlow(silent=false){
-    try{await desktop.request('update_cancel').promise;if(!silent)notify('값 업데이트를 취소했습니다.','info');}catch(e){fail(e);}
+    try{await desktop.request('update_cancel').promise;if(!silent)notify('레시피 업데이트를 취소했습니다.','info');}catch(e){fail(e);}
     setCollected(undefined);setPreview(undefined);setQuestion(undefined);setAnswers(noAnswers());setStep(0);
   }
   async function collect(next:Answers){
@@ -88,7 +88,7 @@ export function Update(){
   const ready=recipes.length>0&&machines.length>0&&(source==='equipment'||prep.local_source_ok);
 
   return <section className="panel">
-    <div className="section-heading"><div><span className="step">VALUE UPDATE</span><h2>파라미터 값 업데이트</h2></div>
+    <div className="section-heading"><div><span className="step">RECIPE UPDATE</span><h2>레시피 업데이트 — 장비 값 수집·취합</h2></div>
       <button disabled={busy} onClick={load}>목록 새로고침</button></div>
     <Stepper labels={STEPS} current={step}/>
     <div className="step-body">
@@ -99,7 +99,7 @@ export function Update(){
       <p className="hint">레시피 양식에 맞춰 장비(또는 로컬 복사본)의 값을 읽어 새 '파라미터 값 취합' 파일을 만듭니다. 이번에 고르지 않은 호기·레시피는 직전 취합본 값을 유지합니다. 장비 원본은 읽기만 합니다.</p>
       <h3>① 레시피</h3>
       {prep.recipes.length?<div className="pick-list short cols">{prep.recipes.map(r=><label key={r} className="pick-item"><input type="checkbox" checked={recipes.includes(r)} onChange={e=>setRecipes(x=>e.target.checked?[...x,r]:x.filter(v=>v!==r))}/> {r}</label>)}</div>
-        :<p className="table-empty">확정된 양식이 없습니다. [양식 만들기]를 먼저 하세요.</p>}
+        :<p className="table-empty">확정된 양식이 없습니다. [신규 Recipe 만들기]를 먼저 하세요.</p>}
       <h3>② 수집 방식</h3>
       <div className="toolbar"><label className="field checkbox"><input type="radio" name="source" checked={source==='equipment'} onChange={()=>{setSource('equipment');setMachines([]);}}/>🖥 장비 IP에서 수집</label>
         <label className="field checkbox"><input type="radio" name="source" checked={source==='local'} onChange={()=>{setSource('local');setMachines([]);}}/>📁 로컬 복사본에서</label></div>

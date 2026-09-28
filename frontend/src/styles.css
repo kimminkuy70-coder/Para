@@ -130,3 +130,6 @@ button.pick-item:hover{background:#f2f6fa}
 .warn-box{border:1px solid #f1c27d;background:#fff7e6;border-radius:10px;padding:10px 12px;margin:10px 0;font-size:13px}
 .toolbar .spacer{flex:1}
 .cm-plan tr.muted td{opacity:.5}
+.bulk-bar{margin:6px 0}.bulk-bar span{align-self:center;font-size:12.5px;color:var(--muted,#667085)}
+.sm-dialog{width:980px}.sm-dialog .table-scroll{max-height:60vh}
+.hub-screen:not([hidden]){display:contents}.hub-tabs{margin:0 0 14px}
