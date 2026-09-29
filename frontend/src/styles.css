@@ -185,3 +185,12 @@ details.current-settings[open]>summary{margin-bottom:8px}
 .update-result td.hot{color:#9a3412;font-weight:700}
 .badge{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;background:#a3e635;color:#12244a;font-size:11px;font-weight:700}
 .source-choice input[type=radio]{width:16px;height:16px;margin:0;flex:none}
+/* 자동 감시: ON/OFF 스위치 · 현황표 · 최근 알림 고정 */
+.onoff{min-width:84px;font-weight:800;letter-spacing:.06em;border-radius:999px;padding:8px 18px;border:2px solid transparent}
+.onoff.on{background:#1f9d55;color:#fff;border-color:#1f9d55}
+.onoff.off{background:#dc2626;color:#fff;border-color:#dc2626}
+.onoff:hover:not(:disabled){filter:brightness(1.07)}
+.st-on{color:#1f9d55}.st-off{color:#dc2626}
+.watch-status th{width:170px;text-align:left;white-space:nowrap}
+.watch-status .open-path{margin:4px 0}
+.notice-panel .notice-list{max-height:200px;overflow:auto}

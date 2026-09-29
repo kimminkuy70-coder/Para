@@ -386,21 +386,39 @@ try{
   // 자동 감시: pick a Job folder on the (fake) equipment, turn the watch on, run once.
   await page.getByRole('button',{name:'자동 감시',exact:true}).click();
   const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 감시'})});
+  // 최근 알림 first, then one tab per watch; status table above the wizard.
+  await page.getByRole('heading',{name:'최근 알림'}).waitFor();
+  await pw.getByLabel('파라미터 자동 감시 현황').waitFor();
+  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ① 주기·시간대 → ② 감시 대상
   await pw.getByLabel('호기').selectOption('AOI-01');
   await pw.getByLabel('레시피').selectOption('PI2');
   await pw.getByRole('button',{name:'📁 장비에서 폴더 고르기…'}).click();
   await page.getByRole('button',{name:'📁 R_TB500_PI2 - Enhanced'}).click();
   await page.getByRole('button',{name:'이 폴더로 지정'}).click();
   await pw.getByRole('cell',{name:'R_TB500_PI2 - Enhanced'}).waitFor();
-  await pw.getByRole('button',{name:'○ 꺼짐'}).click();
-  await pw.getByRole('button',{name:'● 켜짐'}).waitFor();
+  // ON/OFF works without finishing the wizard; OFF is red.
+  const pOff=pw.getByRole('button',{name:/파라미터 자동 감시 OFF/});
+  assert.equal(await pOff.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(220, 38, 38)');
+  await pOff.click();
+  await pw.getByRole('button',{name:/파라미터 자동 감시 ON/}).waitFor();
+  await pw.getByLabel('파라미터 자동 감시 현황').getByText('ON',{exact:true}).waitFor();
+  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ③ 확인·저장
   await pw.getByRole('button',{name:'▶ 즉시 확인'}).click();
   await page.locator('.toast').filter({hasText:/즉시 확인 완료|취합된 레시피가 없습니다/}).first().waitFor({timeout:60000});
-  await page.getByRole('heading',{name:'Commonality 자동 감시 (여러 호기 무인)'}).waitFor();
+  await page.locator('.notice-list li').filter({hasText:'파라미터 자동 감시 — 시작'}).first().waitFor();
   assert(background.enabled&&background.tooltip.includes('장비 ✓'),'watch on must keep the app resident in the tray');
   await page.screenshot({path:join(root,'docs/screenshots/rev1-watch.png'),fullPage:true});
-  await pw.getByRole('button',{name:'● 켜짐'}).click();
-  await pw.getByRole('button',{name:'○ 꺼짐'}).waitFor();
+  // The Commonality watch is its own tab with its own wizard.
+  await page.getByRole('tab',{name:'Commonality 자동 감시 (여러 호기 무인)'}).click();
+  await page.getByRole('heading',{name:'Commonality 자동 감시 (여러 호기 무인)'}).waitFor();
+  const cw=page.locator('section.panel',{has:page.getByRole('heading',{name:'Commonality 자동 감시 (여러 호기 무인)'})});
+  await cw.getByLabel('Commonality 자동 감시 현황').waitFor();
+  await cw.getByRole('button',{name:'다음 ▶',exact:true}).click();
+  await cw.locator('[role=group][aria-label="감시 호기"]').waitFor();
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-watch-cm.png'),fullPage:true});
+  await page.getByRole('tab',{name:'파라미터 자동 감시'}).click();
+  await pw.getByRole('button',{name:/파라미터 자동 감시 ON/}).click();
+  await pw.getByRole('button',{name:/파라미터 자동 감시 OFF/}).waitFor();
   await page.waitForFunction(()=>true);assert.equal(background.enabled,false);
   // A7: a reloaded page re-attaches to the same engine (ids keep increasing, no 'already connected').
   await page.reload();
