@@ -4,10 +4,17 @@ import {notify,LoadFailed} from './ui';
 import {OpenPath,openPath} from './OpenPath';
 type Catalog={version:string|null;recipes:string[];machines:string[];source:string;path?:string;
   zones?:Record<string,string[]>;machine_types?:Record<string,string>;hide_kla?:boolean};
-type Row={id:number;name:string;alg:string;zone:string;variant:string;note:string;color:string;value:string;values:Record<string,string>;cells?:Record<string,string>};
-type Page={rows:Row[];total:number;machines:string[];offset:number;machine_total:number};
+type Row={kind:'row';id:number;name:string;alg:string;zone:string;variant:string;note:string;color:string;value:string;values:Record<string,string>;cells?:Record<string,string>};
+// Zone / Alg title lines between rows (접기·펼치기).
+type Group={kind:'zone'|'alg';key:string;title:string;zone:string;alg?:string;count:number;groups?:number;collapsed:boolean};
+type Page={rows:(Row|Group)[];total:number;row_total:number;machines:string[];offset:number;machine_total:number;empty_machines:string[];group_keys:string[]};
 type Preview={recipes:string[];recipe?:string;versions?:number;files?:number;bytes?:number;watched?:string[];latest?:string};
 const HEIGHT=42;
+const MPAGE=100;          // 비교 호기 한 화면(이전/다음 호기)
+const LEFT=570;           // 색상 22 + Parameter 235 + ★ 기준 호기 값 140 + 비고 173
+const COL=120;
+const loadFlag=(k:string,d:boolean)=>{try{const v=localStorage.getItem(k);return v===null?d:v==='1';}catch{return d;}};
+const saveFlag=(k:string,v:boolean)=>{try{localStorage.setItem(k,v?'1':'0');}catch{/* per-viewer convenience only */}};
 const ink=(hex?:string)=>{if(!hex||!/^#[\da-f]{6}$/i.test(hex))return undefined;
   const [r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));return r*.299+g*.587+b*.114>150?'#111827':'#ffffff';};
 
@@ -16,6 +23,8 @@ export function Recipe(){
   const [recipe,setRecipe]=useState(''),[machine,setMachine]=useState('');
   const [query,setQuery]=useState(''),[filter,setFilter]=useState(''),[zone,setZone]=useState('');
   const [hideKla,setHideKla]=useState(true);
+  const [hideEmpty,setHideEmpty]=useState(()=>loadFlag('para.recipe.hideEmpty',false));
+  const [collapsed,setCollapsed]=useState<string[]>([]);
   const [offset,setOffset]=useState(0),[column,setColumn]=useState(0);
   const [data,setData]=useState<Page>();
   const [loading,setLoading]=useState(false),[error,setError]=useState('');
@@ -42,19 +51,19 @@ export function Recipe(){
   }
   useEffect(()=>{void refresh();},[]);
   useEffect(()=>{const timer=setTimeout(()=>setFilter(query),180);return()=>clearTimeout(timer);},[query]);
-  useEffect(()=>{setZone('');},[recipe]);
+  useEffect(()=>{setZone('');setCollapsed([]);},[recipe]);
   useEffect(()=>{setOffset(0);setSelected(undefined);if(viewport.current)viewport.current.scrollTop=0;},[recipe,machine,filter,zone]);
-  useEffect(()=>{setColumn(0);},[hideKla]);
+  useEffect(()=>{setColumn(0);},[hideKla,hideEmpty]);
   useEffect(()=>{
     if(!catalog?.version||!machine)return;
     const current=++sequence.current;setLoading(true);
     desktop.request('recipe_page',{snapshot:catalog.version,recipe,selected_machine:machine,query:filter,zone,hide_kla:hideKla,
-      offset,limit:100,machine_offset:column,machine_limit:12}).promise.then(reply=>{
+      hide_empty:hideEmpty,group:true,collapsed,offset,limit:100,machine_offset:column,machine_limit:MPAGE}).promise.then(reply=>{
         if(current===sequence.current)setData(reply.recipe as Page);
       }).catch(e=>{if(current===sequence.current)setError(errorText(e));})
       .finally(()=>{if(current===sequence.current)setLoading(false);});
     return()=>{sequence.current++;};
-  },[catalog,recipe,machine,filter,zone,hideKla,offset,column]);
+  },[catalog,recipe,machine,filter,zone,hideKla,hideEmpty,collapsed,offset,column]);
   useEffect(()=>{if(editing)dialog.current?.showModal();else dialog.current?.close();},[editing]);
   useEffect(()=>{if(exporting)exportDialog.current?.showModal();else exportDialog.current?.close();},[Boolean(exporting)]);
   useEffect(()=>{if(removing)removeDialog.current?.showModal();else removeDialog.current?.close();},[Boolean(removing)]);
@@ -83,7 +92,7 @@ export function Recipe(){
     const color=erase?'':brush;
     queue.current=[...queue.current.filter(c=>!(c.row===row.id&&c.target===target)),{row:row.id,target,color}];
     window.clearTimeout(flushTimer.current);flushTimer.current=window.setTimeout(()=>void flushPaint(),1500);
-    setData(d=>d&&{...d,rows:d.rows.map(r=>{if(r.id!==row.id)return r;const cells={...(r.cells||{})};
+    setData(d=>d&&{...d,rows:d.rows.map(r=>{if(r.kind!=='row'||r.id!==row.id)return r;const cells={...(r.cells||{})};
       if(color)cells[target]=color.toUpperCase();else delete cells[target];return {...r,cells};})});
   }
   useEffect(()=>{if(!paint)void flushPaint();},[paint]);
@@ -133,7 +142,12 @@ export function Recipe(){
   }
   const columns=data?.machines||[];
   const zones=catalog?.zones?.[recipe]||[];
-  const grid={gridTemplateColumns:`520px repeat(${columns.length}, 120px)`};
+  const grid={gridTemplateColumns:`${LEFT}px repeat(${columns.length}, ${COL}px)`};
+  const fullWidth=LEFT+columns.length*COL;
+  const toggleGroup=(key:string)=>setCollapsed(c=>c.includes(key)?c.filter(k=>k!==key):[...c,key]);
+  // 모두 접기: 전체 Zone 이면 Zone 제목만, 특정 Zone 이면 Alg 제목을 접는다.
+  const collapseAll=()=>setCollapsed((data?.group_keys||[]).filter(k=>zone?k.startsWith('a\x1f'):k.startsWith('z\x1f')));
+  async function toggleEmpty(next:boolean){setHideEmpty(next);saveFlag('para.recipe.hideEmpty',next);}
   const visibleTotal=data?.machine_total??catalog?.machines.length??0;
   return <section className="panel recipe-panel">
     <div className="section-heading"><div><span className="step">PARAMETER COMPARISON</span><h2>장비 파라미터 비교</h2></div>
@@ -151,19 +165,30 @@ export function Recipe(){
         <button disabled={!selected} onClick={copy}>선택 행 복사</button></div>
       <div className="recipe-tools">
         <label className="field checkbox"><input type="checkbox" checked={hideKla} onChange={e=>void toggleKla(e.target.checked)}/>KLA 장비 숨기기</label>
+        <label className="field checkbox" title="이 레시피에서 파라미터 값이 하나도 없는 호기를 비교 열에서 뺍니다"><input type="checkbox" checked={hideEmpty} onChange={e=>void toggleEmpty(e.target.checked)}/>값 없는 호기 제외</label>
+        {hideEmpty&&!!data?.empty_machines.length&&<span className="hint" title={data.empty_machines.join(', ')}>값 없는 호기 {data.empty_machines.length}대 숨김</span>}
+        <span className="group-tools"><button type="button" disabled={!collapsed.length} onClick={()=>setCollapsed([])}>모두 펼치기</button>
+          <button type="button" disabled={!data?.group_keys.length} onClick={collapseAll}>{zone?'Alg 모두 접기':'Zone 모두 접기'}</button></span>
         <label className="field checkbox"><input type="checkbox" checked={paint} onChange={e=>setPaint(e.target.checked)}/>🖌 셀 색칠 모드</label>
         {paint&&<><input type="color" aria-label="색칠 색상" value={brush} disabled={erase} onChange={e=>setBrush(e.target.value)}/>
           <label className="field checkbox"><input type="checkbox" checked={erase} onChange={e=>setErase(e.target.checked)}/>지우개</label>
           <span className="hint">칸을 누르면 {erase?'색을 지웁니다':'색을 칠합니다'}. 모든 사용자에게 같이 보입니다.</span></>}
       </div>
-      <div className="comparison-info"><span>{catalog.source} · {data?.total.toLocaleString()||0}개 항목</span><div><button disabled={column===0||loading} onClick={()=>setColumn(n=>Math.max(0,n-12))}>이전 호기</button><span>{visibleTotal?column+1:0}–{Math.min(column+12,visibleTotal)} / {visibleTotal}호기</span><button disabled={column+12>=visibleTotal||loading} onClick={()=>setColumn(n=>n+12)}>다음 호기</button></div></div>
+      <div className="comparison-info"><span>{catalog.source} · {(data?.row_total??0).toLocaleString()}개 항목</span><div><button disabled={column===0||loading} onClick={()=>setColumn(n=>Math.max(0,n-MPAGE))}>이전 호기</button><span>{visibleTotal?column+1:0}–{Math.min(column+MPAGE,visibleTotal)} / {visibleTotal}호기</span><button disabled={column+MPAGE>=visibleTotal||loading} onClick={()=>setColumn(n=>n+MPAGE)}>다음 호기</button></div></div>
       <div className={'comparison-viewport'+(paint?' painting':'')} ref={viewport} tabIndex={0} aria-label="장비 파라미터 비교표" aria-busy={loading} onScroll={e=>{
         const start=Math.max(0,Math.floor((e.currentTarget.scrollTop-HEIGHT)/HEIGHT));
         setOffset(Math.floor(start/40)*40);
       }}>
         <div className="comparison-header" style={grid}><div className="equipment-left"><span>색상</span><span>Parameter / Alg · Zone</span><span>★ {machine}</span><span>비고</span></div>{columns.map(m=><span key={m}>{m}</span>)}</div>
-        <div className="comparison-body" style={{height:(data?.total||0)*HEIGHT,minWidth:520+columns.length*120}}>
-          {data?.rows.map((row,i)=><div key={row.id} className={'comparison-row '+(selected?.id===row.id?'row-selected':'')} style={{...grid,top:(data.offset+i)*HEIGHT,height:HEIGHT}} onClick={()=>setSelected(row)}>
+        <div className="comparison-body" style={{height:(data?.total||0)*HEIGHT,minWidth:fullWidth}}>
+          {data?.rows.map((row,i)=>row.kind!=='row'
+            ?<div key={row.key} className={'comparison-group group-'+row.kind+(row.collapsed?' collapsed':'')} style={{top:(data.offset+i)*HEIGHT,height:HEIGHT,width:fullWidth}}>
+              <button type="button" className="group-toggle" aria-expanded={!row.collapsed} onClick={()=>toggleGroup(row.key)}
+                aria-label={`${row.kind==='zone'?'Zone':'Alg'} ${row.title} ${row.collapsed?'펼치기':'접기'}`}>
+                <span className="caret" aria-hidden="true">{row.collapsed?'▸':'▾'}</span>
+                <span className="group-kind">{row.kind==='zone'?'Zone':'Alg'}</span><b>{row.title}</b>
+                <small>{row.kind==='zone'?`Alg ${row.groups}개 · `:(zone?'':`${row.zone} · `)}{row.count.toLocaleString()}개 항목</small></button></div>
+            :<div key={row.id} className={'comparison-row '+(selected?.id===row.id?'row-selected':'')} style={{...grid,top:(data.offset+i)*HEIGHT,height:HEIGHT}} onClick={()=>setSelected(row)}>
             <div className="equipment-left"><button className="color-button" style={{background:row.color}} aria-label={`${row.name} 색상 변경`} title={row.color} onClick={()=>begin(row,'color')}/>
               <span title={`${row.name}\n${row.alg} · ${row.zone} · ${row.variant}`} className="parameter-label" style={cellStyle(row,'param')} onClick={onCell(row,'param')}>{row.name}<small>{row.alg} · {row.zone}</small></span>
               <span className="equipment-value" title={row.value} style={cellStyle(row,machine)} onClick={onCell(row,machine)}>{row.value||'—'}</span>
@@ -171,7 +196,7 @@ export function Recipe(){
             {columns.map(m=><span key={m} data-machine={m} className={row.values[m]&&row.value&&row.values[m]!==row.value?'different':''} style={cellStyle(row,m)} title={row.values[m]} onClick={onCell(row,m)}>{row.values[m]||'—'}</span>)}
           </div>)}
         </div>
-      </div><p className="hint" role="status">{loading?'표를 불러오는 중…':'현재 화면 주변 최대 100행 · 비교 호기 12개만 렌더링합니다. 색상 버튼과 비고를 눌러 수정하세요.'}</p>
+      </div><p className="hint" role="status">{loading?'표를 불러오는 중…':`현재 화면 주변 최대 100행 · 비교 호기 ${MPAGE}개씩 보여 줍니다. Zone·Alg 제목을 눌러 접거나 펼치고, 색상 버튼과 비고를 눌러 수정하세요.`}</p>
     </>}
     <dialog ref={dialog} className="edit-dialog" onCancel={e=>{if(saving)e.preventDefault();else setEditing(undefined);}}>
       <h2>{editing?.kind==='color'?'파라미터 분류 색상':'비고 수정'}</h2><p>{editing?.row.name}</p>

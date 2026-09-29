@@ -208,7 +208,8 @@ class Session:
     def dispatch(self, rid, method, params):
         allowed = {"analyze": {"records", "selected"}, "investigate": {"targets", "options"}, "batch_reports": {"machine", "query", "start", "end"}, "table_page": {"job", "table", "offset", "limit"},
                    "cancel": {"job"}, "release": {"job"},
-                   "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine","zone","hide_kla"},
+                   "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine","zone","hide_kla",
+                                   "hide_empty","group","collapsed"},
                    "recipe_edit": {"snapshot","row","kind","value","target"},
                    "recipe_export": {"snapshot","recipes","machines","query","zone"},
                    "recipe_delete_preview": {"recipe"}, "recipe_delete": {"recipe","confirm"},

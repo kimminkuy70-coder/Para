@@ -142,19 +142,36 @@ try{
   await page.locator('.table-scroll').getByText('<script>window.injected=true</script>',{exact:true}).first().waitFor();
   assert.equal(await page.evaluate(()=>window.injected),undefined);
   await page.getByRole('button',{name:'Recipe 관리',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelectorAll('.comparison-row').length===100);
+  // Zone → Alg title lines take two of the first 100 lines.
+  await page.waitForFunction(()=>document.querySelectorAll('.comparison-row').length===98&&document.querySelectorAll('.comparison-group').length===2);
   await page.getByRole('button',{name:'Min Defect Bright 0 색상 변경',exact:true}).click();
   await page.locator('dialog input[type=text], dialog input:not([type])').fill('#1267AB');
   await page.getByRole('button',{name:'저장',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('dialog').open);
   await page.locator('.comparison-viewport').evaluate(el=>{el.scrollTop=42042;});
-  await page.waitForFunction(()=>document.querySelector('.comparison-row')?.textContent.includes('Min Defect Bright 1000'));
+  await page.waitForFunction(()=>[...document.querySelectorAll('.comparison-row')].some(r=>r.textContent.includes('Min Defect Bright 1000')));
   assert.equal(await page.locator('.comparison-row').count(),100);
-  await page.getByRole('button',{name:'다음 호기',exact:true}).click();
+  // Up to 100 comparison machines on one screen: all 20 fit, so 다음 호기 is off.
   await page.waitForFunction(()=>document.querySelector('.comparison-header')?.textContent.includes('AOI-20'));
+  assert.equal(await page.getByRole('button',{name:'다음 호기',exact:true}).isDisabled(),true);
+  // The ★ baseline column is wide enough for a long value.
+  assert((await page.locator('.equipment-value').first().evaluate(el=>el.getBoundingClientRect().width))>=125);
+  // Collapse / expand the Zone title.
+  await page.locator('.comparison-viewport').evaluate(el=>{el.scrollTop=0;});
+  await page.getByRole('button',{name:'Zone Surface 접기',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('.comparison-row').length===0&&document.querySelectorAll('.comparison-group').length===1);
+  await page.getByRole('button',{name:'모두 펼치기',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('.comparison-row').length===98);
+  await page.getByRole('button',{name:'Alg GlobalRTP 접기',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('.comparison-row').length===0&&document.querySelectorAll('.comparison-group').length===2);
+  await page.getByRole('button',{name:'Alg GlobalRTP 펼치기',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('.comparison-row').length===98);
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-recipe-groups.png'),fullPage:true});
+  await page.getByLabel('값 없는 호기 제외').check();
+  await page.getByLabel('값 없는 호기 제외').uncheck();
   await page.screenshot({path:join(root,'docs/screenshots/rev1-recipe.png'),fullPage:true});
   // B: Recipe tools — Zone filter, paint mode (shared cell colors), export.
-  await page.getByLabel('Zone').selectOption('Surface');
+  await page.getByLabel('Zone',{exact:true}).selectOption('Surface');
   await page.getByLabel('🖌 셀 색칠 모드').check();
   await page.locator('.comparison-viewport').evaluate(el=>{el.scrollTop=0;});
   const firstCell=page.locator('.comparison-row').first().locator('span[data-machine]').first();

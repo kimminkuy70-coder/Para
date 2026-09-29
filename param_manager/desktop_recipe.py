@@ -21,6 +21,9 @@ def row_key(row):
     return tuple(engine._s(row.get(f)).strip() for f in KEY_FIELDS)
 
 
+MACHINE_PAGE = 100      # 비교 호기 한 화면(이전/다음 호기)
+
+
 class DesktopRecipe:
     def __init__(self, config_path=None):
         self.config_path = config_path or Path.home()/'.pi_param_manager.json'
@@ -94,14 +97,18 @@ class DesktopRecipe:
             raise ValueError('비교 화면을 새로고침하세요')
 
     def page(self, params):
-        self.check(params, {'snapshot','recipe','query','offset','limit','machine_offset','machine_limit','selected_machine','zone','hide_kla'})
+        self.check(params, {'snapshot','recipe','query','offset','limit','machine_offset','machine_limit','selected_machine','zone','hide_kla',
+                            'hide_empty','group','collapsed'})
         recipe, query, zone = params.get('recipe',''), params.get('query',''), params.get('zone','')
-        hide_kla = params.get('hide_kla', False)
-        if not isinstance(recipe,str) or not isinstance(query,str) or len(query)>256 or not isinstance(zone,str) or type(hide_kla) is not bool:
+        hide_kla, hide_empty, group = params.get('hide_kla', False), params.get('hide_empty', False), params.get('group', False)
+        collapsed = params.get('collapsed', [])
+        if not isinstance(recipe,str) or not isinstance(query,str) or len(query)>256 or not isinstance(zone,str) \
+                or any(type(v) is not bool for v in (hide_kla, hide_empty, group)) \
+                or not isinstance(collapsed,list) or len(collapsed)>20000 or any(not isinstance(k,str) or len(k)>1024 for k in collapsed):
             raise ValueError('검색 조건을 확인하세요')
         offset, limit = params.get('offset',0), params.get('limit',100)
         start, count = params.get('machine_offset',0), params.get('machine_limit',12)
-        for v, low, high in ((offset,0,10000000),(limit,1,100),(start,0,100000),(count,1,12)):
+        for v, low, high in ((offset,0,10000000),(limit,1,100),(start,0,100000),(count,1,MACHINE_PAGE)):
             if type(v) is not int or not low<=v<=high:
                 raise ValueError('표 조회 범위를 확인하세요')
         matches = [(i,s,r) for i,(s,r) in enumerate(self.rows) if (not recipe or s==recipe)
@@ -114,16 +121,69 @@ class DesktopRecipe:
         rows=[]
         # Selected value is separate from the requested 12 comparison columns.
         # KLA machines can be hidden from the comparison columns (tkinter hide_kla).
-        visible=[m for m in self.machines if not (hide_kla and self.types.get(m,'').upper()=='KLA')]
+        # 값이 하나도 없는 호기(이 레시피 기준)는 비교 열에서 뺄 수 있다(검색·Zone 과 무관하게 판단).
+        empty = self._empty_machines(recipe) if hide_empty else set()
+        visible=[m for m in self.machines if not (hide_kla and self.types.get(m,'').upper()=='KLA') and m not in empty]
         machines=visible[start:start+count]
-        for i,s,r in matches[offset:offset+limit]:
+        # group=True: Zone → Alg 제목 줄(접기/펼치기)을 행 사이에 끼운 목록을 쪽 단위로 준다.
+        items, keys = (self._grouped(matches, not zone, set(collapsed)) if group
+                       else ([('row',m) for m in matches], []))
+        for kind, item in items[offset:offset+limit]:
+            if kind != 'row':
+                rows.append(dict(item, kind=kind))
+                continue
+            i,s,r = item
             alg, name = engine._s(r.get('Alg')), engine._s(r.get('Parameter'))
-            rows.append(dict(id=i,recipe=s,variant=engine._s(r.get('Recipe')),zone=engine._s(r.get('Zone')),
+            rows.append(dict(kind='row',id=i,recipe=s,variant=engine._s(r.get('Recipe')),zone=engine._s(r.get('Zone')),
                 alg=alg,name=name,note=engine._s(r.get('비고')),
                 color=color(alg,name) or namestore.default_color(alg,name),value=engine._s(r.get(selected)),
                 values={m:engine._s(r.get(m)) for m in machines},
                 cells=self._cell_colors(r,[selected,*machines])))
-        return dict(rows=rows,total=len(matches),machines=machines,offset=offset,machine_total=len(visible))
+        return dict(rows=rows,total=len(items),row_total=len(matches),machines=machines,offset=offset,
+                    machine_total=len(visible),empty_machines=sorted(empty, key=self.machines.index),group_keys=keys)
+
+    def _empty_machines(self, recipe):
+        cache = getattr(self, '_empty_cache', None)
+        if cache is None or cache[0] != self.version:
+            cache = self._empty_cache = (self.version, {})
+        if recipe not in cache[1]:
+            filled = set()
+            for s, r in self.rows:
+                if recipe and s != recipe:
+                    continue
+                filled.update(m for m in self.machines if m not in filled and engine._s(r.get(m)).strip())
+            cache[1][recipe] = {m for m in self.machines if m not in filled}
+        return cache[1][recipe]
+
+    @staticmethod
+    def _grouped(matches, by_zone, collapsed):
+        """matches → [(kind, item)] with Zone/Alg title items. Groups keep first-appearance
+        order; a collapsed group keeps its title and hides what is under it."""
+        tree = {}
+        for m in matches:
+            r = m[2]
+            zone, alg = engine._s(r.get('Zone')).strip(), engine._s(r.get('Alg')).strip()
+            tree.setdefault(zone, {}).setdefault(alg, []).append(m)
+        items, keys = [], []
+        for zone, algs in tree.items():
+            zkey = 'z\x1f' + zone
+            if by_zone:
+                keys.append(zkey)
+                items.append(('zone', dict(key=zkey, title=zone or '(Zone 없음)', zone=zone,
+                                           count=sum(len(v) for v in algs.values()), groups=len(algs),
+                                           collapsed=zkey in collapsed)))
+                if zkey in collapsed:
+                    for alg in algs:
+                        keys.append('a\x1f' + zone + '\x1f' + alg)
+                    continue
+            for alg, rows in algs.items():
+                akey = 'a\x1f' + zone + '\x1f' + alg
+                keys.append(akey)
+                items.append(('alg', dict(key=akey, title=alg or '(Alg 없음)', zone=zone, alg=alg,
+                                          count=len(rows), collapsed=akey in collapsed)))
+                if akey not in collapsed:
+                    items.extend(('row', m) for m in rows)
+        return items, keys
 
     def _cell_colors(self, row, machines):
         base='\x1f'.join(row_key(row))
