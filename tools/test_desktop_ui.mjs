@@ -307,10 +307,17 @@ try{
   // B: 양식 확정 — registered machine list, coefficient table, value inheritance.
   await recipeTab('Recipe 양식 편집하기');
   await page.locator('select:not([hidden] *)').first().selectOption('PI2');
-  await page.getByRole('button',{name:'원본 열기 ▶',exact:true}).first().click();
+  // The inline button now opens the Excel original; the editor opens from [원본 열기 ▶].
+  const excelBtn=page.locator('button:not([hidden] *)',{hasText:'📊 엑셀 원본 열기'});
+  await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.includes('엑셀 원본 열기')&&!b.disabled));
+  assert.equal(await page.locator('.form-picker:not([hidden] *)').getByRole('button',{name:'원본 열기 ▶',exact:true}).count(),0);
+  assert(await excelBtn.isEnabled());
+  await page.locator('.stepnav:not([hidden] *)').getByRole('button',{name:'원본 열기 ▶',exact:true}).click();
   await page.getByText('사용 3 / 전체 3',{exact:true}).waitFor();
   await page.getByRole('button',{name:'확정 단계로 ▶',exact:true}).click();
-  await page.getByLabel('확정 호기').selectOption('AOI-01');
+  // No machine picker: the machine comes from the form itself.
+  assert.equal(await page.locator('[aria-label="확정 호기"]:not([hidden] *)').count(),0);
+  await page.locator('.hint:not([hidden] *)',{hasText:'기준 호기: AOI-01'}).first().waitFor();
   const coef=page.getByLabel('R1-x20 변환계수');
   await coef.waitFor();
   await page.getByText('원본 라벨',{exact:true}).or(page.getByText('기본값',{exact:true})).first().waitFor();
@@ -321,9 +328,15 @@ try{
   await page.getByLabel('이전 값을 이어받은 취합 파일').waitFor();
   assert((await page.getByLabel('확정 양식').inputValue()).endsWith('.xlsx'));
   // B: 값 업데이트 — equipment collection asks for the Job folder, then variants → preview → write.
-  await recipeTab('레시피 업데이트');
-  await page.locator('.pick-item').filter({hasText:'PI2'}).locator('input').check();
-  await page.locator('.pick-item').filter({hasText:'AOI-01'}).locator('input').check();
+  await recipeTab('Recipe 업데이트');
+  // Row lists with a real '전체 선택' checkbox; clicking a row toggles it.
+  const upRecipes=page.locator('[role=group][aria-label="레시피"]:not([hidden] *)');
+  await upRecipes.locator('tr',{hasText:'PI2'}).click();
+  assert(await upRecipes.getByLabel('PI2 선택').isChecked());
+  const upMachines=page.locator('[role=group][aria-label="호기"]:not([hidden] *)');
+  await upMachines.getByLabel('호기 전체 선택').check();
+  await upMachines.getByLabel('호기 전체 선택').uncheck();
+  await upMachines.getByLabel('AOI-01 선택').check();
   await page.getByRole('button',{name:'수집 시작 ▶',exact:true}).click();
   const ask=page.locator('dialog[open]');
   await ask.getByText('AOI-01 · 레시피 ↔ Job 폴더').waitFor();
@@ -332,11 +345,18 @@ try{
   await page.getByText('결과 확인',{exact:true}).waitFor();
   await page.waitForFunction(()=>[...document.querySelectorAll('.stepper:not([hidden] *) .st')].findIndex(e=>e.classList.contains('now'))>=2);
   if(await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).isVisible())await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).click();
-  await page.getByRole('button',{name:'취합 저장',exact:true}).waitFor();
+  await page.getByRole('button',{name:'취합 저장 ▶',exact:true}).waitFor();
   const keep=page.getByLabel('그래도 포함');
   if(await keep.count())await keep.first().check();
-  await page.getByRole('button',{name:'취합 저장',exact:true}).click();
-  await page.getByLabel('취합 파일',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'취합 저장 ▶',exact:true}).click();
+  // 결과 확인 stays on its own step: per-recipe table, then the file path, then [처음으로].
+  await page.locator('.update-result tbody tr').filter({hasText:'PI2'}).waitFor();
+  await page.getByLabel('취합 파일 경로',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'수집 시작 ▶',exact:true}).count(),0);
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-update-result.png'),fullPage:true});
+  await page.getByRole('button',{name:'⟲ 처음으로',exact:true}).click();
+  await page.getByRole('button',{name:'수집 시작 ▶',exact:true}).waitFor();
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-update-select.png'),fullPage:true});
   // B: 이력 — the inherited collation is a second file; row lists and Excel export.
   await recipeTab('레시피 날짜별 비교하기');
   await page.locator('.cm-file:not([hidden] *) input').nth(2).waitFor();
@@ -353,14 +373,14 @@ try{
   // The edit tab keeps its finished state (keep-alive) while the new-recipe tab is separate.
   await recipeTab('신규 Recipe 만들기');
   await page.getByLabel('새 레시피 이름').fill('PI2');
-  await page.locator('.pick-item:not([hidden] *)').filter({hasText:'AOI-01'}).locator('input').check();
+  await page.locator('[role=group][aria-label="수집 호기"]:not([hidden] *)').getByLabel('AOI-01 선택').check();
   await page.getByRole('button',{name:'수집 시작',exact:true}).click();
   await page.locator('dialog[open]').getByRole('button',{name:'확인하고 계속',exact:true}).click();
   await page.getByText('변형별 변환계수',{exact:true}).waitFor();
   await page.getByRole('button',{name:'파라미터 불러오기 ▶',exact:true}).first().click();
   await page.locator('.count:not([hidden] *)').filter({hasText:/사용 \d+ \/ 전체 \d+/}).first().waitFor();
   await page.getByRole('button',{name:'확정 단계로 ▶',exact:true}).click();
-  await page.locator('[aria-label="확정 호기"]:not([hidden] *)').selectOption('AOI-01');
+  await page.locator('.hint:not([hidden] *)',{hasText:'기준 호기: AOI-01'}).first().waitFor();
   await page.locator('.runbar:not([hidden] *)').getByRole('button',{name:'양식 확정 ▶'}).click();
   await page.locator('.open-path:not([hidden] *)').filter({hasText:'확정 양식'}).first().waitFor();
   // 자동 감시: pick a Job folder on the (fake) equipment, turn the watch on, run once.

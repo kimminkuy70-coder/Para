@@ -5,11 +5,13 @@ import {OpenPath} from './OpenPath';
 import {FormEditor} from './FormEditor';
 import {QuestionDialog,withAnswer,noAnswers,type Question,type Answers} from './CollectQuestion';
 import {pickFolder} from './desktop';
+import {RowPick} from './RowPick';
+import {openPath} from './OpenPath';
 
-type Version={stamp:string;has_candidate:boolean;kind:string};
+type Version={stamp:string;has_candidate:boolean;kind:string;candidate?:string;machine?:string};
 type Recipe={recipe:string};
 type Catalog={save_dir:boolean;recipes:Recipe[];machines?:string[]};
-type Opened={version:string;recipe:string;level:string;variants:string[];total:number;used:number;source:string};
+type Opened={version:string;recipe:string;level:string;variants:string[];total:number;used:number;source:string;machine?:string};
 type Scale={variant:string;coef:number;source:string;needed:boolean};
 type NewPrep={machines:{id:string;ip:string;local:string;type:string}[];local_source:string;local_source_ok:boolean;existing:string[]};
 type NewScale={variant:string;coef:number;source:string;confidence:string;reason:string};
@@ -85,22 +87,24 @@ export function Form({mode}:{mode:'edit'|'new'}){
       const o=reply.form as Opened;setOpened(o);setStep(1);}
     catch(e){setOpened(undefined);fail(e);}finally{setBusy(false);}
   }
-  const machines=mode==='new'?(newPrep?.machines||[]).map(m=>m.id):catalog?.machines||[];
+  // 확정 호기는 묻지 않는다: 편집 = 그 양식을 처음 만든 호기(파일 이름), 신규 = 수집한 호기.
+  useEffect(()=>{setMachine(opened?.machine||'');},[opened?.version]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const confirmMachine=machine.trim()||'미지정';
   // Coefficients for LINEAR/AREA items of the chosen machine (변환계수.xlsx → 원본 라벨 → 기본값).
   useEffect(()=>{
-    if(step!==2||!opened||!machine.trim()){setScales([]);return;}
+    if(step!==2||!opened){setScales([]);return;}
     let active=true;
-    desktop.request(`${api}_scales`,{snapshot:opened.version,machine:machine.trim()}).promise
+    desktop.request(`${api}_scales`,{snapshot:opened.version,machine:confirmMachine}).promise
       .then(r=>{if(active){setScales((r[api] as {scales:Scale[]}).scales.filter(x=>x.needed));setScaleEdits({});}})
       .catch(e=>{if(active)fail(e);});
     return()=>{active=false;};
   },[step,opened,machine]);
   const scaleInvalid=Object.values(scaleEdits).some(v=>!(Number(v)>0&&Number.isFinite(Number(v))));
   async function confirm(){
-    if(!opened||!machine.trim()||scaleInvalid)return;
+    if(!opened||scaleInvalid)return;
     setBusy(true);setResult(undefined);
     const edited=Object.fromEntries(Object.entries(scaleEdits).map(([k,v])=>[k,Number(v)]));
-    try{const reply=await desktop.request(`${api}_confirm`,{snapshot:opened.version,machine:machine.trim(),scales:edited}).promise;
+    try{const reply=await desktop.request(`${api}_confirm`,{snapshot:opened.version,machine:confirmMachine,scales:edited}).promise;
       setResult(reply[api] as Confirmed);notify('양식 확정 완료','ok');}
     catch(e){fail(e);}finally{setBusy(false);}
   }
@@ -112,6 +116,8 @@ export function Form({mode}:{mode:'edit'|'new'}){
   const noCandidate=recipeVersions?.recipe===recipe&&!recipeVersions.can_edit;
   // The engine runs one job per screen: wait for the list/version reads before opening.
   const listing=loading||(!!recipe&&recipeVersions?.recipe!==recipe);
+  // [엑셀 원본 열기]: 고른 버전(없으면 최신)의 Excel 원본(전체 후보 목록) 파일.
+  const excelOriginal=(stamp?versions.find(v=>v.stamp===stamp):versions[0])?.candidate||'';
 
   return <section className="panel">
     <div className="section-heading"><div><span className="step">{mode==='new'?'NEW RECIPE':'EDIT RECIPE'}</span>
@@ -130,8 +136,10 @@ export function Form({mode}:{mode:'edit'|'new'}){
               <option value="">레시피 선택…</option>{editable.map(r=><option key={r.recipe} value={r.recipe}>{r.recipe}</option>)}</select></label>
             <label className="field">버전<select value={stamp} disabled={!recipe} onChange={e=>setStamp(e.target.value)}>
               <option value="">최신(원본 있는 버전)</option>{versions.map(v=><option key={v.stamp} value={v.stamp}>{v.stamp} · {v.kind||'원본'}</option>)}</select></label>
+            <p className="hint" style={{gridColumn:'1 / -1',margin:0}}>[📊 엑셀 원본 열기]는 원본 파일을 Excel 로 엽니다(보기용). 화면에서 항목을 편집하려면 아래 [원본 열기 ▶]를 누르세요.</p>
             {noCandidate&&<p className="warn">이 레시피는 항목을 추가할 원본(초안)이 없습니다. [신규 Recipe 만들기] 탭에서 다시 읽어 만드세요.</p>}
-            <button className="primary" disabled={!recipe||busy||noCandidate||listing} onClick={()=>open(recipe,stamp)}>{listing&&recipe?'버전 확인 중…':'원본 열기 ▶'}</button>
+            <button disabled={!excelOriginal||busy||listing} title={excelOriginal||'이 버전에는 Excel 원본이 없습니다'}
+              onClick={()=>void openPath(excelOriginal)}>{listing&&recipe?'버전 확인 중…':'📊 엑셀 원본 열기'}</button>
           </div>}
       </>:<>
       <p className="hint">장비(또는 로컬 복사본)의 설정 파일을 읽어 새 레시피 양식을 만듭니다. 원본은 읽기만 하고, 복사본은 로컬 작업 폴더에만 둡니다.</p>
@@ -139,14 +147,20 @@ export function Form({mode}:{mode:'edit'|'new'}){
         <div className="form-filter" style={{marginTop:12}}>
           <label className="field" style={{width:200}}>레시피(레벨) 이름<input list="form-existing" aria-label="새 레시피 이름" value={newName} maxLength={64} placeholder="예: PI3" onChange={e=>{setNewName(e.target.value);setNewScales(undefined);}}/></label>
           <datalist id="form-existing">{newPrep.existing.map(r=><option key={r} value={r}/>)}</datalist>
-          <label className="field checkbox"><input type="radio" name="fsrc" checked={newSource==='equipment'} onChange={()=>{setNewSource('equipment');setNewMachines([]);setNewScales(undefined);}}/>🖥 장비 IP에서</label>
-          <label className="field checkbox"><input type="radio" name="fsrc" checked={newSource==='local'} onChange={()=>{setNewSource('local');setNewMachines([]);setNewScales(undefined);}}/>📁 로컬 복사본에서</label></div>
+          <div className="source-choice" role="radiogroup" aria-label="수집 방식" style={{alignSelf:'end'}}>
+            <label><input type="radio" name="fsrc" checked={newSource==='equipment'} onChange={()=>{setNewSource('equipment');setNewMachines([]);setNewScales(undefined);}}/>🖥 장비 IP에서 수집</label>
+            <label><input type="radio" name="fsrc" checked={newSource==='local'} onChange={()=>{setNewSource('local');setNewMachines([]);setNewScales(undefined);}}/>📁 로컬 복사본에서</label></div></div>
         {newPrep.existing.includes(newName.trim())&&<p className="warn">이미 있는 레시피입니다. 확정하면 새 회차 양식이 만들어집니다(이전 값은 이어받기).</p>}
         {newSource==='local'&&<div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>로컬 상위 폴더<input value={localPath} onChange={e=>setLocalPath(e.target.value)} maxLength={4096}/></label>
           <button onClick={async()=>{const p=await pickFolder();if(p){setLocalPath(p);void saveLocal(p);}}}>📁 찾기</button><button disabled={!localPath.trim()} onClick={()=>saveLocal(localPath.trim())}>저장</button></div>}
-        <div className="pick-list short cols">{newPrep.machines.map(m=>{const ok=newSource==='equipment'?!!m.ip:!!m.local;
-          return <label key={m.id} className={'pick-item'+(ok?'':' muted')}><input type="checkbox" disabled={!ok} checked={newMachines.includes(m.id)}
-            onChange={e=>{setNewScales(undefined);setNewMachines(x=>e.target.checked?[...x,m.id]:x.filter(v=>v!==m.id));}}/> {m.id}</label>;})}</div>
+        <h3>호기</h3>
+        <RowPick label="수집 호기" columns={['호기',newSource==='equipment'?'IP':'로컬 폴더','장비 종류']} value={newMachines}
+          onChange={v=>{setNewScales(undefined);setNewMachines(v);}}
+          rows={newPrep.machines.map(m=>{const where=newSource==='equipment'?m.ip:m.local;
+            return {id:m.id,disabled:!where,title:where||(newSource==='equipment'?'IP 없음':'폴더 없음'),
+              cells:[<b key="m">{m.id}</b>,where?<code key="w">{where}</code>:<span key="w" className="warn">{newSource==='equipment'?'IP 없음':'폴더 없음'}</span>,m.type||'—']};})}
+          empty={<p className="table-empty">[장비 IP] 문서에 호기가 없습니다.</p>}/>
+        {newMachines.length>1&&<p className="hint">여러 호기를 고르면 항목은 모두 합쳐 만들고, 확정 양식의 기준 호기(계수·파일 이름)는 먼저 고른 {newMachines[0]} 입니다.</p>}
         <div className="toolbar"><button className="primary" disabled={busy||!newName.trim()||!newMachines.length} onClick={()=>{const a=noAnswers();setAnswers(a);void newCollect(a);}}>{busy&&!newScales?'수집 중…':'수집 시작'}</button></div>
         {newScales&&<div className="outputs"><h3>변형별 변환계수</h3><p className="hint">RTP.txt 로 추정한 값을 미리 채웠습니다. 확인하고 필요하면 고치세요.</p>
           <table className="tbl"><thead><tr><th>변형</th><th>계수</th><th>출처</th><th>추정 신뢰도</th></tr></thead><tbody>{newScales.map(x=><tr key={x.variant}>
@@ -171,11 +185,9 @@ export function Form({mode}:{mode:'edit'|'new'}){
       <h3>확정</h3>
       <div className="runbar"><div><strong>사용 {opened.used}개 항목으로 확정</strong>
         <p>확정하면 저장폴더에 새 회차의 확정 양식과 편집용 원본이 함께 저장됩니다.</p></div>
-        <div className="actions">{machines.length
-            ?<select aria-label="확정 호기" value={machine} onChange={e=>setMachine(e.target.value)}><option value="">호기 선택…</option>{machines.map(m=><option key={m} value={m}>{m}</option>)}</select>
-            :<input className="in" aria-label="확정 호기" value={machine} placeholder="호기 (예: AOI-07)" maxLength={64} onChange={e=>setMachine(e.target.value)}/>}
-          <button className="primary" disabled={busy||!machine.trim()||opened.used===0||scaleInvalid} onClick={confirm}>양식 확정 ▶</button></div></div>
-      {!machines.length&&<p className="hint">[장비 IP] 문서에 호기가 없어 직접 입력합니다. 호기를 등록하면 목록에서 고를 수 있습니다.</p>}
+        <div className="actions"><button className="primary" disabled={busy||opened.used===0||scaleInvalid} onClick={confirm}>양식 확정 ▶</button></div></div>
+      <p className="hint">기준 호기: <b>{confirmMachine}</b> — {mode==='new'?'수집한 호기':'이 양식을 처음 만든 호기'}입니다(따로 고르지 않습니다).
+        변환계수를 찾고 파일 이름({opened.recipe}_{confirmMachine}호기_참조_…)을 붙이는 데만 씁니다.</p>
       {scales.length>0&&<div className="outputs"><h3>변환계수 (LINEAR/AREA 항목)</h3>
         <p className="hint">값을 바꾸면 이 양식에 적용되고 변환계수.xlsx 에도 반영됩니다. '기본값'은 등록된 계수가 없어 기본 계수로 계산된다는 뜻입니다.</p>
         <table className="tbl"><thead><tr><th>변형</th><th>계수</th><th>출처</th></tr></thead><tbody>{scales.map(x=><tr key={x.variant}>
@@ -193,7 +205,7 @@ export function Form({mode}:{mode:'edit'|'new'}){
         {result.coef.error&&<p role="alert">변환계수 저장 실패: {result.coef.error}</p>}
         {result.merge&&(result.merge.collate
           ?<><OpenPath label="이전 값을 이어받은 취합 파일" path={result.merge.collate}/>
-            <p>{result.merge.added?`새로(변경) 추가된 파라미터 ${result.merge.added}개는 값이 비어 있습니다. 레시피 업데이트로 채우세요.`:'기존 파라미터 값은 이전 취합본에서 이어받았습니다.'}</p></>
+            <p>{result.merge.added?`새로(변경) 추가된 파라미터 ${result.merge.added}개는 값이 비어 있습니다. Recipe 업데이트로 채우세요.`:'기존 파라미터 값은 이전 취합본에서 이어받았습니다.'}</p></>
           :result.merge.error?<p role="alert">이전 값 이어받기 실패: {result.merge.error}</p>:null)}</div>}
     </>}
     {step===2&&!opened&&<p className="table-empty">먼저 원본을 열고 항목을 편집하세요.</p>}
@@ -202,7 +214,7 @@ export function Form({mode}:{mode:'edit'|'new'}){
     <StepNav step={step} total={STEPS.length} onBack={()=>setStep(s=>s-1)}
       onNext={()=>{if(step===0){if(mode==='new'){if(newScales)void newParse('');}else if(recipe)open(recipe,stamp);}else if(step<STEPS.length-1)setStep(s=>s+1);else confirm();}}
       nextLabel={step===0?(mode==='new'?'파라미터 불러오기':'원본 열기'):step===1?'확정 단계로':'양식 확정'}
-      nextDisabled={(step===0&&(mode==='new'?!newScales||newScaleBad:!recipe||listing||noCandidate))||(step>=1&&!opened)||(step===2&&(!machine.trim()||opened?.used===0||scaleInvalid))} busy={busy}/>
+      nextDisabled={(step===0&&(mode==='new'?!newScales||newScaleBad:!recipe||listing||noCandidate))||(step>=1&&!opened)||(step===2&&(opened?.used===0||scaleInvalid))} busy={busy}/>
 
     <QuestionDialog question={question} onAnswer={v=>{if(!question)return;const next=withAnswer(answers,question,v);setAnswers(next);setQuestion(undefined);void newCollect(next);}}
       onCancel={()=>{setQuestion(undefined);void desktop.request('formnew_cancel').promise.catch(fail);}}/>

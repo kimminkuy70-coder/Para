@@ -164,7 +164,7 @@ export function Settings(){
       <table className="tbl" style={{marginTop:8}}><tbody>
         <tr><th style={{width:170}}>공유 문서</th><td>장비 IP 주소 · 참고자료 · 특이사항 · 변환계수 · 장비화면이름 (.xlsx) — 처음 지정하면 장비 IP·참고자료·특이사항이 자동 생성됩니다</td></tr>
         <tr><th>Recipe 양식</th><td><code>양식\{'{레시피}'}\{'{생성시각}'}\</code> — 확정 양식 1개 + 관련파일(원본·수정본)</td></tr>
-        <tr><th>파라미터 값 취합</th><td><code>파라미터 값 취합\파라미터 값 취합_{'{시각}'}.xlsx</code> — 레시피 업데이트 1회당 1개</td></tr>
+        <tr><th>파라미터 값 취합</th><td><code>파라미터 값 취합\파라미터 값 취합_{'{시각}'}.xlsx</code> — Recipe 업데이트 1회당 1개</td></tr>
         <tr><th>자동 감시</th><td><code>감시설정.json</code> · <code>자동감시\</code> 변경보고서(변경이 있을 때만)·감시로그</td></tr>
         <tr><th>동시 접속 정보</th><td><code>_세션\</code> 접속자·작업 잠금, 편집 중인 문서 옆 <code>.editlock</code></td></tr>
         <tr><th>새 버전 게시</th><td>저장 폴더 <b>옆</b>의 <code>프로그램\</code> 폴더(개발자가 게시한 설치 파일)</td></tr>

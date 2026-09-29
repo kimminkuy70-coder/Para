@@ -5,7 +5,7 @@ import {Form} from './Form';
 import {History} from './History';
 
 /** Recipe 관리: the collation viewer plus the four recipe workflows as tabs. */
-export const RECIPE_TABS:[string,string][]=[['view','Recipe 값 확인'],['update','레시피 업데이트'],['new','신규 Recipe 만들기'],
+export const RECIPE_TABS:[string,string][]=[['view','Recipe 값 확인'],['update','Recipe 업데이트'],['new','신규 Recipe 만들기'],
   ['edit','Recipe 양식 편집하기'],['history','레시피 날짜별 비교하기']];
 
 export function RecipeHub({active}:{active:boolean}){

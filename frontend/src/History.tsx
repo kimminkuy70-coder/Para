@@ -62,7 +62,7 @@ export function History(){
     {step===0&&<>
       <p className="hint">저장폴더의 '파라미터 값 취합' 파일을 2개 이상(최대 10개) 고르면 시간 순서대로 이웃한 파일끼리 비교합니다(읽기 전용).</p>
       {(files?.files.length||0)<2
-        ? <p className="table-empty">비교할 취합 파일이 2개 이상 필요합니다. 레시피 업데이트를 먼저 하세요.</p>
+        ? <p className="table-empty">비교할 취합 파일이 2개 이상 필요합니다. Recipe 업데이트를 먼저 하세요.</p>
         : <><div className="cm-files">{files!.files.map(f=><label key={f.id} className="cm-file">
             <input type="checkbox" disabled={busy} checked={chosen.includes(f.id)}
               onChange={e=>setChosen(c=>e.target.checked?[...c,f.id]:c.filter(i=>i!==f.id))}/><span>{f.name}</span></label>)}</div>

@@ -60,6 +60,36 @@ def resolve_local_machine_dir(root, machine):
     return None
 
 
+_NO_CHANGE = dict(changed=0, added=0, removed=0, new_rows=0, gone_rows=0, changed_machines=[], new_sheet=False)
+
+
+def _changes_by_recipe(prev, dest):
+    """직전 취합본 → 새 취합본 비교를 레시피(시트)별 개수로. 결과 표에서 '이번에 바뀐 것'을
+    눈에 띄게 보여 주기 위한 요약이라, 비교가 실패해도 저장은 이미 끝난 것으로 둔다."""
+    if not prev:
+        return {}
+    try:
+        from . import history
+        diff = history.diff_files(prev, dest)
+        old_sheets = set(collate.load_collation(prev)[0])
+    except Exception:  # noqa: BLE001 - a summary only
+        return {}
+    out = {}
+
+    def slot(recipe):
+        return out.setdefault(recipe, dict(_NO_CHANGE, changed_machines=[], new_sheet=recipe not in old_sheets))
+    for c in diff.changes:
+        d = slot(c.sheet)
+        d["changed" if c.kind == "값변경" else "added" if c.kind == "추가" else "removed"] += 1
+        if c.machine not in d["changed_machines"]:
+            d["changed_machines"].append(c.machine)
+    for r in diff.added_rows:
+        slot(r.get("sheet", ""))["new_rows"] += 1
+    for r in diff.removed_rows:
+        slot(r.get("sheet", ""))["gone_rows"] += 1
+    return out
+
+
 class DesktopUpdate:
     def __init__(self, config_path=None):
         self.config_path = Path(config_path) if config_path else Path.home() / ".pi_param_manager.json"
@@ -369,13 +399,18 @@ class DesktopUpdate:
         if not [r for r, v in made.items() if not getattr(v, "carried", False)]:
             raise ValueError("취합할 레시피가 없습니다. " + "; ".join(notes))
         save = self._cfg()["save_dir"]
+        prev = workdirs.latest_collate(save)
         dest = workdirs.collate_path(save, workdirs.stamp())
         report('저장폴더에 새 취합 파일 쓰는 중…')
         collate.write_collation(dest, made, state["machines_all"])
+        report('직전 취합과 비교하는 중…')
+        changes = _changes_by_recipe(prev, dest)
         summary = [dict(recipe=r, matched_rows=v.matched_rows, filled_cells=v.filled_cells,
-                        carried=bool(getattr(v, "carried", False))) for r, v in made.items()]
+                        carried=bool(getattr(v, "carried", False)), **changes.get(r, _NO_CHANGE))
+                   for r, v in made.items()]
         self.cancel({})
-        return dict(stage="done", path=dest, recipes=summary, notes=notes)
+        return dict(stage="done", path=dest, recipes=summary, notes=notes,
+                    previous=os.path.basename(prev) if prev else "")
 
     def cancel(self, params):
         if params:

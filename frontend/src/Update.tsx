@@ -3,14 +3,18 @@ import {desktop,pickFolder,errorText} from './desktop';
 import {Stepper,StepNav,notify,fail,LoadFailed} from './ui';
 import {OpenPath} from './OpenPath';
 import {QuestionDialog,withAnswer,noAnswers,type Question,type Answers} from './CollectQuestion';
+import {RowPick} from './RowPick';
 
 type Machine={id:string;ip:string;type:string;local:string};
 type Prepared={recipes:string[];machines:Machine[];local_source:string;local_source_ok:boolean};
 type Table={rows:[string,string][];parsed:string[];unmatched:string[]};
 type Collected={stage:string;collected:string[];errors:{machine:string;error:string}[];tables:Record<string,Table>;coef_missing:{machine:string;variant:string}[];rows:number};
 type PreviewRow={recipe:string;missing_form:boolean;carried:boolean;matched_rows:number;filled_cells:number;mismatches:number;mismatch_names:string[]};
-type Done={path:string;recipes:{recipe:string;matched_rows:number;filled_cells:number;carried:boolean}[];notes:string[]};
-const STEPS=['대상 선택','수집','하위 레시피 매칭','결과 확인'];
+type DoneRecipe={recipe:string;matched_rows:number;filled_cells:number;carried:boolean;
+  changed?:number;added?:number;removed?:number;new_rows?:number;gone_rows?:number;changed_machines?:string[];new_sheet?:boolean};
+type Done={path:string;recipes:DoneRecipe[];notes:string[];previous?:string};
+const STEPS=['대상 선택','수집','하위 레시피 매칭','취합 미리보기','결과 확인'];
+const changedOf=(r:DoneRecipe)=>(r.changed||0)+(r.added||0)+(r.removed||0)+(r.new_rows||0)+(r.gone_rows||0)+(r.new_sheet?1:0);
 const NONE='';
 
 export function Update(){
@@ -36,7 +40,7 @@ export function Update(){
   useEffect(()=>{void load();},[]);
 
   async function cancelFlow(silent=false){
-    try{await desktop.request('update_cancel').promise;if(!silent)notify('레시피 업데이트를 취소했습니다.','info');}catch(e){fail(e);}
+    try{await desktop.request('update_cancel').promise;if(!silent)notify('Recipe 업데이트를 취소했습니다.','info');}catch(e){fail(e);}
     setCollected(undefined);setPreview(undefined);setQuestion(undefined);setAnswers(noAnswers());setStep(0);
   }
   async function collect(next:Answers){
@@ -67,6 +71,7 @@ export function Update(){
       setPreview(r.recipes);setInclude([]);setStep(3);}
     catch(e){fail(e);}finally{setBusy(false);}
   }
+  function restart(){setDone(undefined);setRecipes([]);setMachines([]);setStep(0);}
   function mappingPayload(){
     // {수집 이름: 양식 이름}; a form variant left on 'none' is simply not filled.
     const out:Record<string,string>={};
@@ -76,7 +81,7 @@ export function Update(){
   async function commit(){
     setBusy(true);
     try{const r=(await desktop.request('update_commit',{include}).promise).update as Done;
-      setDone(r);setStep(0);notify('파라미터 값 취합 파일을 만들었습니다.','ok');setCollected(undefined);setPreview(undefined);setAnswers(noAnswers());}
+      setDone(r);setStep(4);notify('파라미터 값 취합 파일을 만들었습니다.','ok');setCollected(undefined);setPreview(undefined);setAnswers(noAnswers());}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   async function saveLocal(path:string){
@@ -88,30 +93,30 @@ export function Update(){
   const ready=recipes.length>0&&machines.length>0&&(source==='equipment'||prep.local_source_ok);
 
   return <section className="panel">
-    <div className="section-heading"><div><span className="step">RECIPE UPDATE</span><h2>레시피 업데이트 — 장비 값 수집·취합</h2></div>
+    <div className="section-heading"><div><span className="step">RECIPE UPDATE</span><h2>Recipe 업데이트 — 장비 값 수집·취합</h2></div>
       <button disabled={busy} onClick={load}>목록 새로고침</button></div>
     <Stepper labels={STEPS} current={step}/>
     <div className="step-body">
     {step===0&&<>
-      {done&&<div className="outputs"><h3>완료 · 새 취합 파일</h3><OpenPath label="취합 파일" path={done.path}/>
-        <ul>{done.recipes.map(r=><li key={r.recipe}>{r.recipe}: {r.carried?'직전 취합본 값 유지':`매칭 ${r.matched_rows}행 · 값 ${r.filled_cells}칸`}</li>)}{done.notes.map(n=><li key={n}>{n}</li>)}</ul>
-        <p className="hint">Recipe 관리 화면에서 [최신 취합 새로고침]을 누르면 반영됩니다.</p></div>}
       <p className="hint">레시피 양식에 맞춰 장비(또는 로컬 복사본)의 값을 읽어 새 '파라미터 값 취합' 파일을 만듭니다. 이번에 고르지 않은 호기·레시피는 직전 취합본 값을 유지합니다. 장비 원본은 읽기만 합니다.</p>
       <h3>① 레시피</h3>
-      {prep.recipes.length?<div className="pick-list short cols">{prep.recipes.map(r=><label key={r} className="pick-item"><input type="checkbox" checked={recipes.includes(r)} onChange={e=>setRecipes(x=>e.target.checked?[...x,r]:x.filter(v=>v!==r))}/> {r}</label>)}</div>
-        :<p className="table-empty">확정된 양식이 없습니다. [신규 Recipe 만들기]를 먼저 하세요.</p>}
+      <RowPick label="레시피" columns={['레시피']} value={recipes} onChange={setRecipes}
+        rows={prep.recipes.map(r=>({id:r,cells:[r]}))}
+        empty={<p className="table-empty">확정된 양식이 없습니다. [신규 Recipe 만들기]를 먼저 하세요.</p>}/>
       <h3>② 수집 방식</h3>
-      <div className="toolbar"><label className="field checkbox"><input type="radio" name="source" checked={source==='equipment'} onChange={()=>{setSource('equipment');setMachines([]);}}/>🖥 장비 IP에서 수집</label>
-        <label className="field checkbox"><input type="radio" name="source" checked={source==='local'} onChange={()=>{setSource('local');setMachines([]);}}/>📁 로컬 복사본에서</label></div>
+      <div className="source-choice" role="radiogroup" aria-label="수집 방식">
+        <label><input type="radio" name="source" checked={source==='equipment'} onChange={()=>{setSource('equipment');setMachines([]);}}/>🖥 장비 IP에서 수집</label>
+        <label><input type="radio" name="source" checked={source==='local'} onChange={()=>{setSource('local');setMachines([]);}}/>📁 로컬 복사본에서</label></div>
       {source==='equipment'?<p className="hint">※ 고른 장비는 먼저 탐색기(Win+R)로 \\장비IP\c$ 에 한 번 연결돼 있어야 합니다(비밀번호 입력 없음). 복사본은 로컬 작업 폴더에만 둡니다.</p>
         :<div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>로컬 상위 폴더(그 아래 호기 이름 폴더를 찾습니다)<input value={localPath} onChange={e=>setLocalPath(e.target.value)} maxLength={4096}/></label>
           <button onClick={async()=>{const p=await pickFolder();if(p){setLocalPath(p);void saveLocal(p);}}}>📁 찾기</button>
           <button disabled={!localPath.trim()} onClick={()=>saveLocal(localPath.trim())}>저장</button></div>}
-      <h3>③ 호기 <button type="button" className="linklike" onClick={()=>setMachines(x=>x.length===available.length?[]:available.map(m=>m.id))}>{machines.length===available.length&&available.length?'전체 해제':'전체 선택'}</button></h3>
-      {prep.machines.length?<div className="pick-list short cols">{prep.machines.map(m=>{const ok=source==='equipment'?!!m.ip:!!m.local;
-        return <label key={m.id} className={'pick-item'+(ok?'':' muted')} title={source==='equipment'?m.ip||'IP 없음':m.local||'폴더 없음'}>
-          <input type="checkbox" disabled={!ok} checked={machines.includes(m.id)} onChange={e=>setMachines(x=>e.target.checked?[...x,m.id]:x.filter(v=>v!==m.id))}/> {m.id}{m.type==='KLA'?' (KLA)':''}</label>;})}</div>
-        :<p className="table-empty">[장비 IP] 문서에 호기가 없습니다.</p>}
+      <h3>③ 호기</h3>
+      <RowPick label="호기" columns={['호기',source==='equipment'?'IP':'로컬 폴더','장비 종류']} value={machines} onChange={setMachines}
+        rows={prep.machines.map(m=>{const where=source==='equipment'?m.ip:m.local;
+          return {id:m.id,disabled:!where,title:where||(source==='equipment'?'IP 없음':'폴더 없음'),
+            cells:[<b key="m">{m.id}</b>,where?<code key="w">{where}</code>:<span key="w" className="warn">{source==='equipment'?'IP 없음':'폴더 없음'}</span>,m.type||'—']};})}
+        empty={<p className="table-empty">[장비 IP] 문서에 호기가 없습니다.</p>}/>
     </>}
     {step===1&&<div className="runbar"><div><strong>{busy?'수집 중…':'대기'}</strong><p role="status">{progressText||'장비 선택이 필요하면 창이 열립니다.'}</p></div>
       <div className="actions"><button disabled={busy} onClick={()=>cancelFlow()}>취소</button></div></div>}
@@ -133,10 +138,26 @@ export function Update(){
         <td>{r.mismatches>0&&!r.missing_form?<label className="field checkbox"><input type="checkbox" checked={include.includes(r.recipe)} onChange={e=>setInclude(x=>e.target.checked?[...x,r.recipe]:x.filter(v=>v!==r.recipe))}/>그래도 포함</label>:r.missing_form?'—':'포함'}</td></tr>)}</tbody></table>
       <p className="hint">불일치 항목은 값 없이 유지됩니다. 저장하면 새 '파라미터 값 취합' 파일이 저장폴더에 만들어집니다.</p>
     </>}
+    {step===4&&done&&<div className="update-result">
+      <h3>완료 · 새 취합 파일</h3>
+      <p className="hint">{done.previous?`직전 취합본(${done.previous})과 비교한 결과입니다. 이번에 바뀐 레시피는 색으로 표시했습니다.`:'첫 취합 파일입니다(비교할 직전 취합본 없음).'}</p>
+      <table className="tbl"><thead><tr><th>레시피</th><th>처리</th><th>값 변경</th><th>새로 채운 값</th><th>지워진 값</th><th>새 항목</th><th>빠진 항목</th><th>바뀐 호기</th></tr></thead>
+        <tbody>{done.recipes.map(r=>{const hot=changedOf(r)>0;const n=(v?:number)=><td className={'num'+(v?' hot':'')}>{v||0}</td>;
+          return <tr key={r.recipe} className={hot?'row-changed':''}>
+            <td><b>{r.recipe}</b>{r.new_sheet&&<span className="badge"> 새 레시피</span>}</td>
+            <td>{r.carried?'직전 값 유지(이번에 안 고름)':`매칭 ${r.matched_rows}행 · 값 ${r.filled_cells}칸`}</td>
+            {n(r.changed)}{n(r.added)}{n(r.removed)}{n(r.new_rows)}{n(r.gone_rows)}
+            <td>{r.changed_machines?.length?r.changed_machines.join(', '):hot?'—':'변경 없음'}</td></tr>;})}</tbody></table>
+      {done.notes.length>0&&<ul>{done.notes.map(x=><li key={x}>{x}</li>)}</ul>}
+      <OpenPath label="취합 파일 경로" path={done.path}/>
+      <p className="hint">[Recipe 값 확인]에서 [최신 취합 새로고침]을 누르면 반영됩니다. 바뀐 칸을 자세히 보려면 [레시피 날짜별 비교하기]를 쓰세요.</p>
+      <div className="stepnav"><span/><span className="stepcount">{STEPS.length} / {STEPS.length}</span>
+        <button className="btn primary" onClick={restart}>⟲ 처음으로</button></div>
+    </div>}
     </div>
-    {step!==1&&<StepNav step={step} total={STEPS.length} busy={busy}
+    {step!==1&&step!==4&&<StepNav step={step} total={STEPS.length} busy={busy}
       onBack={()=>{if(step===3&&collected&&Object.keys(collected.tables).length)setStep(2);else if(step>=2)void cancelFlow(true);else setStep(0);}}
-      onNext={()=>{if(step===0){setDone(undefined);setAnswers(noAnswers());setStep(1);void collect(noAnswers());}
+      onNext={()=>{if(step===0){setAnswers(noAnswers());setStep(1);void collect(noAnswers());}
         else if(step===2)void runPreview(mappingPayload());else if(step===3)void commit();}}
       nextLabel={step===0?'수집 시작':step===2?'매칭 확인':'취합 저장'} nextDisabled={step===0&&!ready}/>}
 

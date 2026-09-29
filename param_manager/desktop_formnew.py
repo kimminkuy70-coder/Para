@@ -113,6 +113,9 @@ class DesktopFormNew:
         self.form.root = self.form._load_root()
         opened = self.form.load_entries(entries, level=self.recipe, recipe=self.recipe,
                                         source=f"수집: {', '.join(sorted({m for _, _, m in self.sources}))}")
+        # 확정 호기 = 수집한 호기(여러 대면 처음 고른 호기). 사람에게 다시 묻지 않는다.
+        collected = list(dict.fromkeys(m for _, _, m in self.sources))
+        opened["machine"] = collected[0] if collected else ""
         return dict(form=opened, similar=[dict(recipe=r, match=n, total=t) for r, n, t in ranked[:8]],
                     base_form=base, machines=sorted({m for _, _, m in self.sources}))
 

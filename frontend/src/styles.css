@@ -162,3 +162,26 @@ details.current-settings[open]>summary{margin-bottom:8px}
 .notice-list li.live .spinner{display:inline-block;width:10px;height:10px;margin-right:8px;vertical-align:middle}
 .notice-list li.quiet:not(.live) b{font-weight:600;color:var(--muted)}
 .notice-list li.failed{border-left:3px solid #c2410c;padding-left:10px}
+/* 행 목록 선택표(RowPick) */
+.row-pick{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin:6px 0 4px;overscroll-behavior:contain}
+.row-pick .tbl{margin:0}
+.row-pick thead th{position:sticky;top:0;z-index:1}
+.row-pick tbody tr{cursor:pointer}
+.row-pick tbody tr:hover{background:#f2f6fa}
+.row-pick tbody tr.row-on{background:#f3fbe4}
+.row-pick tbody tr.muted{cursor:default;color:var(--muted)}
+.row-pick-check{width:110px;white-space:nowrap}
+.row-pick-all{display:inline-flex;align-items:center;gap:6px;font-weight:700;cursor:pointer}
+.row-pick input[type=checkbox],.row-pick input[type=radio]{width:16px;height:16px}
+.row-pick+.hint{margin-top:0}
+/* 수집 방식 선택: 두 칸이 줄바꿈 없이 */
+.source-choice{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0}
+.source-choice label{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-width:220px;padding:10px 14px;
+  border:1px solid var(--line);border-radius:8px;cursor:pointer;font-weight:600}
+.source-choice label:has(input:checked){border-color:var(--lime);background:#f3fbe4}
+/* Recipe 업데이트 결과: 이번에 바뀐 레시피·칸 */
+.update-result tr.row-changed{background:#fff7e0}
+.update-result td.num{text-align:right;font-variant-numeric:tabular-nums}
+.update-result td.hot{color:#9a3412;font-weight:700}
+.badge{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;background:#a3e635;color:#12244a;font-size:11px;font-weight:700}
+.source-choice input[type=radio]{width:16px;height:16px;margin:0;flex:none}

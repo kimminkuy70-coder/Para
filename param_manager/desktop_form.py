@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import math
+import re
 
 from . import (coefstore, collate, editor_model, engine, extract_io, formbuilder,
                ini_parser, locking, namestore, refdata, workdirs)
@@ -28,6 +29,13 @@ MAX_SCALE = 1e6
 
 
 ZONE_LIMIT = 3000          # rows returned for one Zone (the frame stays well under MAX_FRAME)
+
+
+def machine_of_form(path) -> str:
+    """'{레시피}_{호기}호기_참조_{시각}.xlsx' / '{레시피}_원본_{호기}호기_참조_…' → 호기.
+    양식을 확정할 때 붙인 호기(계수 조회·파일 이름 기준). 모르면 ''."""
+    m = re.search(r"_([^_]+?)호기_참조_", Path(str(path or "")).name)
+    return m.group(1) if m else ""
 
 
 class DesktopForm:
@@ -81,7 +89,9 @@ class DesktopForm:
         recipe = params["recipe"]
         if not isinstance(recipe, str) or recipe not in workdirs.list_recipes(str(root)):
             raise ValueError("등록된 레시피를 선택하세요")
-        versions = [dict(stamp=v["stamp"], has_candidate=v["has_candidate"], kind=v["kind"])
+        # candidate = the Excel '원본' (full candidate list) — [엑셀 원본 열기] opens it in Excel.
+        versions = [dict(stamp=v["stamp"], has_candidate=v["has_candidate"], kind=v["kind"],
+                         candidate=v["candidate"] or "", machine=machine_of_form(v["final"]))
                     for v in workdirs.form_version_status(str(root), recipe)]
         return dict(recipe=recipe, versions=versions, can_edit=any(v["has_candidate"] for v in versions))
 
@@ -131,11 +141,13 @@ class DesktopForm:
         self.entries = editor_model.build_entries(pivot)
         self.multi = len(editor_model.variants_of(self.entries)) > 1
         self.version = uuid4().hex
+        # 확정할 때 쓰는 호기 = 이 양식을 처음 만든 호기(파일 이름에 있음). 사람에게 다시 묻지 않는다.
+        machine = machine_of_form(candidate)
         return dict(version=self.version, recipe=recipe, level=self.level,
                     variants=editor_model.variants_of(self.entries),
                     total=len(self.entries),
                     used=sum(1 for e in self.entries if e["use"]),
-                    source=Path(candidate).name)
+                    source=Path(candidate).name, machine=machine)
 
     def load_entries(self, entries, level, recipe, source=""):
         """Edit entries built elsewhere (Commonality run) with the same page/edit API.

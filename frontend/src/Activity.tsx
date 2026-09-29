@@ -10,7 +10,7 @@ const LABEL:Record<string,string>={
   document_open:'공유 문서 불러오기',document_edit:'문서 저장',document_append:'행 추가 저장',document_delete:'행 삭제 저장',
   form_catalog:'Recipe 양식 목록 읽기',form_versions:'양식 버전 읽기',form_open:'Recipe 양식 불러오기',form_scales:'변환계수 읽기',form_confirm:'Recipe 양식 확정 저장',
   formnew_prepare:'신규 Recipe 만들기 준비',formnew_collect:'장비/로컬에서 설정 수집',formnew_parse:'설정 파일 분석',formnew_scales:'변환계수 읽기',formnew_confirm:'신규 Recipe 양식 저장',
-  update_prepare:'레시피 업데이트 준비',update_set_local_source:'로컬 상위 폴더 확인',update_collect:'장비/로컬에서 설정 수집',
+  update_prepare:'Recipe 업데이트 준비',update_set_local_source:'로컬 상위 폴더 확인',update_collect:'장비/로컬에서 설정 수집',
   update_preview:'취합 미리보기',update_commit:'취합 파일 저장',
   history_files:'취합 파일 목록 읽기',history_diff:'레시피 날짜별 비교',history_export:'변경내역 Excel 저장',
   commonality_catalog:'Commonality 결과 목록 읽기',commonality_compare:'Commonality 결과 비교',commonality_export:'비교표 Excel 저장',
