@@ -94,6 +94,10 @@ class CommonalityTests(unittest.TestCase):
             session.handle(dict(version=1, id=2, method='commonality_export', params={'snapshot':'x','changed_only':False}))
             session.handle(dict(version=1, id=3, method='analyze', params={'records': []}))
             proceed.set()
+            # Read-only jobs are not waited for at close (fast relaunch), so let this one
+            # finish first; otherwise its 'completed' event races the close.
+            for w in list(session.workers):
+                w.join(3)
             session.close()
         events = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertTrue(any(e['id']==2 and e['event']=='error' and '진행 중' in e.get('message','') for e in events))

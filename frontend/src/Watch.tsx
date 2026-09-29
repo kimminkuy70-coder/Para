@@ -204,8 +204,10 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
 export function Watch({notices,onChanged}:{notices:WatchNotice[];onChanged:()=>void}){
   return <>
     <section className="panel"><div className="section-heading"><div><span className="step">NOTICE</span><h2>최근 알림</h2></div></div>
-      <p className="hint">감시가 켜져 있으면 창을 닫아도 알림 영역(트레이)에 남아 계속 감시합니다. 트레이 아이콘을 누르면 다시 열립니다.</p>
-      {notices.length?<ul className="notice-list">{[...notices].reverse().map((n,i)=><li key={i}><b>{n.title}</b> <small>{n.at}</small><p>{n.summary}</p>
+      <p className="hint">감시가 켜져 있으면 창을 닫아도 알림 영역(트레이)에 남아 계속 감시합니다. 트레이 아이콘을 누르면 다시 열립니다.
+        회차마다 시작 → 진행 중 → 결과(변경 없음 포함)가 여기에 남습니다. 변경·새 S/M·실패만 팝업으로도 알립니다.</p>
+      {notices.length?<ul className="notice-list">{[...notices].reverse().map((n,i)=><li key={i} className={(n.live?'live ':'')+(n.quiet?'quiet ':'')+(n.kind.endsWith('_failed')?'failed':'')}>
+        {n.live&&<span className="spinner" aria-hidden="true"/>}<b>{n.title}</b> <small>{n.at}</small><p>{n.summary}</p>
         {n.report&&<OpenPath label="변경보고서" path={n.report}/>}</li>)}</ul>:<p className="table-empty">아직 알림이 없습니다.</p>}</section>
     <ParamWatch onChanged={onChanged}/>
     <CmWatch onChanged={onChanged}/>

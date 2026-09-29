@@ -156,3 +156,9 @@ details.current-settings[open]>summary{margin-bottom:8px}
 .equipment-value{min-width:0}
 .group-tools{display:inline-flex;gap:8px;margin-left:auto}
 .group-tools button{min-height:30px;padding:4px 10px;font-size:12px}
+
+/* 최근 알림: 진행 중(한 줄, 계속 바뀜) · 조용한 기록 · 실패 */
+.notice-list li.live{background:#f3fbe4;border-left:3px solid var(--lime);padding-left:10px}
+.notice-list li.live .spinner{display:inline-block;width:10px;height:10px;margin-right:8px;vertical-align:middle}
+.notice-list li.quiet:not(.live) b{font-weight:600;color:var(--muted)}
+.notice-list li.failed{border-left:3px solid #c2410c;padding-left:10px}

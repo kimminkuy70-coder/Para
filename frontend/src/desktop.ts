@@ -29,7 +29,14 @@ export async function exitApp(): Promise<void> {
   if (isTauri()) await invoke('app_exit');
 }
 /** Pushed by the engine's watch scheduler (id null, event 'notice'). */
-export type WatchNotice = {kind: string; title: string; summary: string; report?: string; at?: string; by_other?: boolean};
+export type WatchNotice = {kind: string; title: string; summary: string; report?: string; at?: string; by_other?: boolean;
+  /** which watch ('pwatch'|'cmwatch'); quiet = list only (no pop-up); live = the one '진행 중' line, replaced by the next notice */
+  watch?: string; quiet?: boolean; live?: boolean};
+/** Add a notice to the recent list: a watch's live '진행 중' line is replaced, not stacked. */
+export function mergeNotice(list: WatchNotice[], n: WatchNotice): WatchNotice[] {
+  const kept = n.watch ? list.filter(o => !(o.live && o.watch === n.watch)) : list;
+  return [...kept, n].slice(-50);
+}
 /** Tray / hide-on-close: keep the app running in the notification area while a watch is on. */
 export async function setBackground(enabled: boolean, tooltip: string): Promise<void> {
   if (isTauri()) { try { await invoke('set_background', {enabled, tooltip}); } catch { /* older shell */ } }

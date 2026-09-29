@@ -29,6 +29,7 @@ from pathlib import Path
 from . import (cmwatcher, coefstore, collate, collector, commonality as cm, downloader as dl, engine,
                extract_io, ini_parser, localdirs, locking, refdata, watcher, workdirs)
 from .desktop_batch import DesktopBatch, read_json
+from .desktop_progress import report
 
 HOST_GAP_SEC = 2.0          # between machines (same as the tkinter unattended collector)
 SHARED_POLL_SEC = 300       # how often other PCs read the shared watch state
@@ -355,7 +356,9 @@ class ParamWatch(_Base):
         if need and plan is None:
             raise RuntimeError("다음 감시 대상의 폴더가 지정되지 않았습니다: " + ", ".join(need[:8]))
         coef_rows = self._coef_rows(save)
+        report(f"장비 {len(mr)}대 · 레시피 {len(recipes)}개 수집을 시작합니다…")
         pivot, skipped = self._collect(mr, s, plan, rows, save, local, coef_rows)
+        report("수집한 값으로 취합표를 만드는 중…")
         out = collate.build_collation(save, recipes, pivot, all_machines, prev_collate_path=prev,
                                       coef_lookup=coefstore.make_lookup(coef_rows))
         made = {r: v for r, v in out.items() if not v.missing_form}
@@ -367,6 +370,7 @@ class ParamWatch(_Base):
         try:
             tmp = os.path.join(tmp_dir, os.path.basename(workdirs.collate_path(save, st)))
             collate.write_collation(tmp, made, all_machines)
+            report("직전 취합과 비교하는 중…")
             res = watcher.compare_and_report(save, prev, tmp, st)
             if res.has_change or not prev:
                 dest = workdirs.collate_path(save, st)
@@ -416,6 +420,7 @@ class ParamWatch(_Base):
                     continue
                 if idx:
                     self.sleep(HOST_GAP_SEC)   # not a burst over many admin shares
+                report(f"[{idx + 1}/{len(mr)}] {m} 설정 파일 복사 중… ({', '.join(recipes)})")
                 try:
                     fixed = {r: watcher.path_for(s.recipe_paths, m, r) for r in recipes}
                     fixed = {r: v for r, v in fixed.items() if v}
@@ -601,7 +606,8 @@ class CmWatch(_Base):
             raise ValueError("먼저 감시할 호기와 감시 대상 계획을 지정하세요")
         save = self._cfg().get("save_dir") or ""
         try:
-            res = cmwatcher.run_cycle(s, st, local_root=local, coef_rows=self._coef_rows(save) if save else [])
+            res = cmwatcher.run_cycle(s, st, local_root=local, coef_rows=self._coef_rows(save) if save else [],
+                                      progress=report)
         except Exception as exc:  # noqa: BLE001
             st.fail_count = int(st.fail_count or 0) + 1
             st.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

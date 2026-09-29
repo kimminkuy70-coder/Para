@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {desktop, defaults, errorText, setBackground, type WatchNotice, type Configuration, type Metric, type Options, type Reply, type Table, type Target} from './desktop';
+import {desktop, defaults, errorText, setBackground, mergeNotice, type WatchNotice, type Configuration, type Metric, type Options, type Reply, type Table, type Target} from './desktop';
 import './styles.css';
 import {Settings} from './Settings';
 import {Documents} from './Documents';
@@ -90,9 +90,11 @@ function App(){
   }
   useEffect(()=>{
     const off=desktop.onNotice(n=>{
-      setNotices(old=>[...old,n].slice(-50));lastNotice.current=n.summary;
-      notify(`${n.title}: ${n.summary}`,n.kind.endsWith('_failed')?'error':'info');
-      void syncWatch();
+      setNotices(old=>mergeNotice(old,n));
+      if(!n.live)lastNotice.current=n.summary;
+      // 진행 과정(시작·진행 중·변경 없음)은 [자동 감시 › 최근 알림]에만, 변경·새 S/M·실패는 팝업도.
+      if(!n.quiet)notify(`${n.title}: ${n.summary}`,n.kind.endsWith('_failed')?'error':'info');
+      if(!n.live)void syncWatch();
     });
     void syncWatch();
     return off;

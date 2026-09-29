@@ -47,6 +47,7 @@ READ_ONLY = {"recipe_open", "recipe_delete_preview", "document_open", "form_cata
              "commonality_catalog", "commonality_compare", "cmsurvey_preflight", "cmsurvey_read_plan",
              "update_prepare", "appupdate_check", "pwatch_state", "pwatch_jobs", "cmwatch_state",
              "cmwatch_candidates", "batch_reports", "watch_status", "cmrun_plan"}
+WATCH_PROGRESS_SEC = 1.0  # live '진행 중' notice: at most one update per second
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
 LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
 
@@ -661,7 +662,11 @@ class Session:
 
     def notify(self, notice):
         notice = dict(notice, at=datetime.now().strftime("%Y-%m-%d %H:%M"))
-        self.notices = (self.notices + [notice])[-50:]
+        # A watch cycle keeps one live '진행 중' line: every new notice of the same watch
+        # replaces it (the next step, or the final result).
+        watch = notice.get('watch')
+        kept = [n for n in self.notices if not (watch and n.get('live') and n.get('watch') == watch)]
+        self.notices = (kept + [notice])[-50:]
         self.emit(None, 'notice', notice=notice)
 
     def start_watch(self, kind, rid=None):
@@ -671,8 +676,26 @@ class Session:
         self.busy_kind['equipment'] = 'watch'
         self.watching = kind
         watch = self.pwatch if kind == 'param' else self.cmwatch
+        key = 'pwatch' if kind == 'param' else 'cmwatch'
+        label = '파라미터 자동 감시' if kind == 'param' else 'Commonality 자동 감시'
+        # Every cycle leaves a trail in 최근 알림: 시작 → 진행 중(한 줄, 계속 바뀜) → 결과.
+        # quiet = list only (no pop-up); changes, new S/M and failures still pop up.
+        self.notify(dict(kind=f'{key}_start', watch=key, quiet=True, title=f'{label} — 시작',
+                         summary=('즉시 확인' if rid is not None else '정기 회차') + '를 시작합니다.'))
+        last = [0.0]
+
+        def progress(message):
+            now = time.monotonic()
+            if now - last[0] < WATCH_PROGRESS_SEC:
+                return                                  # at most one line per second
+            last[0] = now
+            with self.lock:
+                if not self.closed:
+                    self.notify(dict(kind=f'{key}_progress', watch=key, quiet=True, live=True,
+                                     title=f'{label} — 진행 중', summary=str(message)[:300]))
 
         def work():
+            desktop_progress.set_reporter(progress)
             try:
                 value = watch.run(manual=rid is not None)
                 err = None
@@ -680,25 +703,34 @@ class Session:
                 if not isinstance(exc, ValueError):
                     log_failure(f'{kind}_watch', exc)
                 value, err = None, (str(exc) if isinstance(exc, ValueError) else '감시 회차를 완료하지 못했습니다.')
+            finally:
+                desktop_progress.set_reporter(None)
             with self.lock:
                 self.watching = None
                 self.free('equipment')
                 if self.closed:
                     return
-                key = 'pwatch' if kind == 'param' else 'cmwatch'
                 if rid is not None:
                     if err:
                         self.emit(rid, 'error', code=f'{key}_failed', message=err)
                     else:
                         self.emit(rid, 'completed', **{key: value})
-                elif err:
-                    self.notify(dict(kind=f'{key}_failed', title='자동 감시 실패', summary=err))
+                if err:
+                    self.notify(dict(kind=f'{key}_failed', watch=key, quiet=rid is not None,
+                                     title=f'{label} — 실패', summary=err))
                 elif kind == 'param' and value.get('has_change'):
-                    self.notify(dict(kind='param_watch', title='파라미터 자동 감시 — 변경 감지',
+                    self.notify(dict(kind='param_watch', watch=key, quiet=rid is not None,
+                                     title='파라미터 자동 감시 — 변경 감지',
                                      summary=value['summary'], report=value.get('report', '')))
                 elif kind == 'cm' and value.get('found'):
-                    self.notify(dict(kind='cm_watch', title='Commonality 자동 감시 — 새 S/M',
-                                     summary=value['summary'], report=''))
+                    self.notify(dict(kind='cm_watch', watch=key, quiet=rid is not None,
+                                     title='Commonality 자동 감시 — 새 S/M', summary=value['summary'], report=''))
+                else:
+                    # Nothing new: still say the cycle ran and what it saw (list only).
+                    extra = value.get('skipped') if kind == 'param' else value.get('notes')
+                    detail = f" · 건너뜀/메모: {', '.join(map(str, extra[:5]))}" if extra else ''
+                    self.notify(dict(kind=f'{key}_done', watch=key, quiet=True, title=f'{label} — 완료',
+                                     summary=f"{value.get('summary') or '변경 없음'}{detail}"))
         self.watch_thread = threading.Thread(target=work, daemon=True)
         self.watch_thread.start()
 

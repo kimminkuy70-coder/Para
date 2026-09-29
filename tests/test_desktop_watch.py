@@ -183,11 +183,51 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(session.cmwatch.runs, 1)
         frames = [json.loads(l) for l in out.getvalue().decode().splitlines()]
         notices = [f for f in frames if f["event"] == "notice"]
-        self.assertEqual(len(notices), 1)
-        self.assertIsNone(notices[0]["id"])
-        self.assertEqual(notices[0]["notice"]["kind"], "cm_watch")
+        # 시작(목록만) → 결과(새 S/M 은 팝업도).
+        self.assertEqual([n["notice"]["kind"] for n in notices], ["cmwatch_start", "cm_watch"])
+        self.assertTrue(all(n["id"] is None for n in notices))
+        self.assertTrue(notices[0]["notice"]["quiet"])
+        self.assertFalse(notices[1]["notice"].get("quiet"))
         self.assertEqual(session.notices[-1]["summary"], "새 S/M 1개")
         session.busy.clear()
+        session.close()
+
+    def test_no_change_cycle_still_leaves_progress_and_result_in_recent_notices(self):
+        """변경이 없어도 최근 알림에 시작 → 진행 중(한 줄로 갱신) → 완료가 남는다(팝업 없음)."""
+        from param_manager import desktop_progress
+        out = io.BytesIO()
+        session = desktop_ipc.Session(out)
+
+        class Quiet:
+            owned = None
+            def due(self):
+                return True
+            def run(self, manual=False):
+                desktop_progress.report("[1/2] AOI-01 설정 파일 복사 중…")
+                desktop_progress.report("직전 취합과 비교하는 중…")      # throttled out (same second)
+                return {"has_change": False, "summary": "변경 없음", "skipped": ["AOI-02(IP 없음)"]}
+            def poll_shared(self):
+                return None
+            def refresh_lock(self):
+                pass
+            def release(self):
+                pass
+
+        class Idle(Quiet):
+            def due(self):
+                return False
+        session.cmwatch, session.pwatch = Idle(), Quiet()
+        session.tick(now=0)
+        session.watch_thread.join(5)
+        kinds = [n["kind"] for n in session.notices]
+        self.assertEqual(kinds, ["pwatch_start", "pwatch_done"])            # live line replaced by the result
+        self.assertTrue(all(n["quiet"] for n in session.notices))
+        self.assertIn("변경 없음", session.notices[-1]["summary"])
+        self.assertIn("AOI-02(IP 없음)", session.notices[-1]["summary"])
+        frames = [json.loads(l)["notice"] for l in out.getvalue().decode().splitlines() if '"notice"' in l]
+        live = [f for f in frames if f.get("live")]
+        self.assertEqual([f["summary"] for f in live], ["[1/2] AOI-01 설정 파일 복사 중…"])
+        self.assertEqual(live[0]["title"], "파라미터 자동 감시 — 진행 중")
         session.close()
 
 

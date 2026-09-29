@@ -661,7 +661,7 @@ def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str
 
 
 def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
-              local_root: str, coef_rows: list | None = None) -> dict:
+              local_root: str, coef_rows: list | None = None, progress=None) -> dict:
     """감시 **1회차 전체**를 GUI 없이 돈다 — 스캔 → 계획 추가 → 자동 조사.
 
     GUI(`equip_app._cmw_cycle_work`)는 이 함수를 부르기만 한다. 오케스트레이션을
@@ -676,8 +676,11 @@ def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
     plan_rows = read_watch_plan(settings.watch_plan)      # 없으면 예외(호출측이 잡음)
     roots_cfg = dict(settings.roots or {})
     found, surveyed, notes = [], [], []
+    say = progress or (lambda _msg: None)          # 진행 문구(웹 앱 '최근 알림'), 없으면 무시
+    machines = list(settings.machines or [])
 
-    for m in (settings.machines or []):
+    for mi, m in enumerate(machines, 1):
+        say(f"[{mi}/{len(machines)}] {m} 새 S/M 폴더 확인 중…")
         root = roots_cfg.get(m) or ""
         if not root:
             notes.append(f"{m}: 호기 폴더 미지정 — 건너뜀")
@@ -727,6 +730,7 @@ def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
             for fi in forms:
                 recipe = fi.get("recipe") or lotno
                 prefix = fi.get("prefix") or ""
+                say(f"{m} {dev}/{lotno} [{recipe}] 새 S/M {len(group)}건 복사·값 조사 중…")
                 try:
                     out = survey_items(
                         group, machine=m, form_path=fi["form"], recipe=recipe,
