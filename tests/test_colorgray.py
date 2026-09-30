@@ -75,7 +75,17 @@ class ColorGrayTests(unittest.TestCase):
         rec = job["wafers"][0]["records"][0]
         self.assertEqual((rec["color"], rec["gray"], rec["gw"]), ("C1.jpg", "F1.t.1.jpg", cg.GW))
         got = a.read({"wafer": 0, "record": 0, "kind": "gray"})
-        self.assertEqual(base64.b64decode(got["data"]), GRAY_JPEG)
+        self.assertEqual((base64.b64decode(got["data"]), got["next"]), (GRAY_JPEG, None))
+        import param_manager.desktop_colorgray as dcg
+        old_chunk, dcg.CHUNK = dcg.CHUNK, 500                  # pieces are reassembled in order
+        try:
+            first = a.read({"wafer": 0, "record": 0, "kind": "gray"})
+            rest = a.read({"wafer": 0, "record": 0, "kind": "gray", "offset": first["next"]})
+        finally:
+            dcg.CHUNK = old_chunk
+        self.assertEqual(base64.b64decode(first["data"]) + base64.b64decode(rest["data"]), GRAY_JPEG)
+        self.assertIsNone(rest["next"])
+        self.assertEqual(dcg.MAX_SOURCE, 5 * 1024 * 1024)
         with self.assertRaises(ValueError):
             a.read({"wafer": 0, "record": 5, "kind": "color"})
         with self.assertRaises(ValueError):

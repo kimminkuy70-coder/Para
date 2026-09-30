@@ -23,7 +23,8 @@ from pathlib import Path
 
 from . import colorgray, desktop_progress
 
-MAX_SOURCE = 2_900_000          # raw bytes per source image (base64 must fit the 4 MB frame)
+MAX_SOURCE = 5 * 1024 * 1024    # raw bytes per source image; larger ones are listed as failures
+CHUNK = 2_000_000               # read in pieces: base64 of one piece must fit the 4 MB IPC frame
 MAX_OUTPUT = 2_900_000
 KINDS_IN = ("color", "gray")
 KINDS_OUT = ("crop", "color_thumb", "gray_thumb", "crop_thumb")
@@ -135,14 +136,26 @@ class DesktopColorGray:
                     for w in job["wafers"]]))
 
     def read(self, params):
-        if set(params) != {"wafer", "record", "kind"} or params.get("kind") not in KINDS_IN:
+        """One source image, in CHUNK-sized pieces (`offset` → next piece) so a file up
+        to MAX_SOURCE never exceeds the IPC frame limit."""
+        if set(params) - {"offset"} != {"wafer", "record", "kind"} or params.get("kind") not in KINDS_IN:
             raise ValueError("읽을 이미지를 확인하세요")
+        offset = params.get("offset", 0)
+        if type(offset) is not int or offset < 0:
+            raise ValueError("읽을 위치를 확인하세요")
         _, rec = self._record(params)
         path = Path(rec["color_path" if params["kind"] == "color" else "gray_path"])
         size = path.stat().st_size
         if size > MAX_SOURCE:
-            raise ValueError(f"이미지가 너무 큽니다({size // 1024} KB): {path.name}")
-        return dict(name=path.name, data=base64.b64encode(path.read_bytes()).decode("ascii"))
+            raise ValueError(f"이미지가 너무 큽니다({size / 1048576:.1f} MB > 5 MB): {path.name}")
+        if offset > size:
+            raise ValueError("읽을 위치를 확인하세요")
+        with path.open("rb") as fh:
+            fh.seek(offset)
+            piece = fh.read(CHUNK)
+        end = offset + len(piece)
+        return dict(name=path.name, size=size, data=base64.b64encode(piece).decode("ascii"),
+                    next=end if end < size else None)
 
     def put(self, params):
         if set(params) - {"wafer", "record", "kind", "data", "box"} or params.get("kind") not in KINDS_OUT:

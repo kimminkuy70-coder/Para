@@ -16,15 +16,20 @@ type Finished={workbook:string;matched:number;failed:number;failures_csv:string;
 const STEPS=['폴더 선택','Wafer 확인','저장 위치','실행 검토','처리 진행','완료'];
 const TW=360,TH=270;
 
-const b64ToBlob=(b64:string)=>{const s=atob(b64);const a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new Blob([a],{type:'image/jpeg'});};
+const b64Bytes=(b64:string)=>{const s=atob(b64);const a=new Uint8Array(new ArrayBuffer(s.length));for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a;};
 async function toB64(canvas:OffscreenCanvas,quality:number){
   const buf=new Uint8Array(await (await canvas.convertToBlob({type:'image/jpeg',quality})).arrayBuffer());
   let s='';for(let i=0;i<buf.length;i+=0x8000)s+=String.fromCharCode(...buf.subarray(i,i+0x8000));
   return btoa(s);
 }
+/** Source JPEG (≤ 5 MB) read in pieces — one IPC message is limited to 4 MB. */
 async function source(wafer:number,record:number,kind:'color'|'gray'){
-  const r=(await desktop.request('cgm_read',{wafer,record,kind}).promise).colorgray as {data:string};
-  return createImageBitmap(b64ToBlob(r.data),{imageOrientation:'from-image'});
+  const parts:Uint8Array<ArrayBuffer>[]=[];let offset:number|null=0;
+  while(offset!==null){
+    const r=(await desktop.request('cgm_read',{wafer,record,kind,offset}).promise).colorgray as {data:string;next:number|null};
+    parts.push(b64Bytes(r.data));offset=r.next;
+  }
+  return createImageBitmap(new Blob(parts,{type:'image/jpeg'}),{imageOrientation:'from-image'});
 }
 /** Shrink-to-fit on a white 360×270 canvas (never enlarged), optional red cross at the fault. */
 function thumb(img:ImageBitmap|OffscreenCanvas,marker?:{x:number;y:number;w:number;h:number}){
@@ -145,12 +150,18 @@ export function ColorGray(){
     </>}
     {step===2&&<>
       <p className="hint">결과(Excel · Crop 이미지 · 썸네일)는 이미지 수만큼 파일이 생기므로 <b>로컬 디스크</b>에만 저장합니다(OneDrive·네트워크·원본 폴더 안은 불가).</p>
-      <div className="radio-list" role="radiogroup" aria-label="결과 저장 위치">
-        <label><input type="radio" name="cgm-out" checked={mode==='default'} onChange={()=>setMode('default')}/> 로컬 작업 폴더 (기본) <code>{defaultOut}\{'{'}시각{'}'}</code></label>
-        <label><input type="radio" name="cgm-out" checked={mode==='custom'} onChange={()=>setMode('custom')}/> 다른 로컬 폴더</label>
+      <div className="out-choice" role="radiogroup" aria-label="결과 저장 위치">
+        <div className={'out-row'+(mode==='default'?' on':'')}>
+          <button type="button" role="radio" aria-checked={mode==='default'} className={'out-pick'+(mode==='default'?' on':'')} onClick={()=>setMode('default')}>로컬 작업 폴더 (기본)</button>
+          <code className="out-path" title={defaultOut}>{defaultOut}\{'{'}실행 시각{'}'}</code>
+        </div>
+        <div className={'out-row'+(mode==='custom'?' on':'')}>
+          <button type="button" role="radio" aria-checked={mode==='custom'} className={'out-pick'+(mode==='custom'?' on':'')} onClick={()=>setMode('custom')}>다른 로컬 폴더</button>
+          <input className="out-path" aria-label="다른 로컬 폴더 경로" placeholder="폴더 경로를 입력하거나 [찾아보기]" value={custom}
+            onFocus={()=>setMode('custom')} onChange={e=>{setCustom(e.target.value);setMode('custom');}}/>
+          <button type="button" onClick={()=>void browse(p=>{setCustom(p);setMode('custom');})}>📁 찾아보기…</button>
+        </div>
       </div>
-      {mode==='custom'&&<div className="form-filter"><label className="field" style={{flex:1}}>저장 위치<input aria-label="결과 저장 위치" value={custom} onChange={e=>setCustom(e.target.value)}/></label>
-        <button onClick={()=>void browse(setCustom)}>📁 찾아보기…</button></div>}
     </>}
     {step===3&&<>
       <table className="tbl watch-status" aria-label="실행 전 검토"><tbody>

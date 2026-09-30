@@ -269,7 +269,7 @@ class Session:
         allowed.update(watch_status=set(), pwatch_state=set(),
                        pwatch_save={'enabled','interval_hours','window_start','window_end','notify_on_change_only'},
                        pwatch_set_path={'machine','recipe','rel'}, pwatch_copy_paths={'source','targets'},
-                       pwatch_jobs={'machine','sub'}, pwatch_connections={'machines'}, diag_client={'events'}, diag_bundle=set(), cgm_scan={'root'}, cgm_start={'wafers','output'}, cgm_state=set(), cgm_read={'wafer','record','kind'}, cgm_put={'wafer','record','kind','data','box'}, cgm_fail={'wafer','record','reason'}, cgm_finish={'wafer'}, cgm_reset=set(), pwatch_run=set(), cmwatch_state=set(),
+                       pwatch_jobs={'machine','sub'}, pwatch_connections={'machines'}, diag_client={'events'}, diag_bundle=set(), cgm_scan={'root'}, cgm_start={'wafers','output'}, cgm_state=set(), cgm_read={'wafer','record','kind','offset'}, cgm_put={'wafer','record','kind','data','box'}, cgm_fail={'wafer','record','reason'}, cgm_finish={'wafer'}, cgm_reset=set(), pwatch_run=set(), cmwatch_state=set(),
                        cmwatch_save={'enabled','interval_hours','window_start','window_end','settle_minutes','machines','plan'},
                        cmwatch_run=set(), cmwatch_candidates={'machine','device','lot'}, cmwatch_begin={'sm','title'}, cmwatch_recipes={'indexes'},
                        cmwatch_page={'snapshot','variant','query','used_only','offset','limit','zone'},

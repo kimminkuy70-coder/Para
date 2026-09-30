@@ -21,6 +21,9 @@ const metrics: [Metric,string,string][] = [
   ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
   ['M11','미분류 상태','알 수 없는 원문도 보존']
 ];
+const SUBTITLE: Record<string,string> = {
+  'Color·Gray 매칭':'AOI Color 이미지와 같은 위치의 Gray 스캔 이미지를 찾아 잘라 붙이고, 나란히 비교하는 Excel 을 만드세요.'
+};
 const KEEP = ['Recipe 관리','Commonality 조사','자동 감시','Color·Gray 매칭'];
 const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','배치 리포트 분석','Color·Gray 매칭','특이사항','참고자료','장비 IP'];
 const text = (value: unknown) => value == null ? '—' : typeof value === 'number' ? value.toLocaleString('ko-KR',{maximumFractionDigits:2}) : String(value);
@@ -247,7 +250,7 @@ function App(){
     <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
     <UpdateBanner busy={busy}/>
     <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
-    <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
+    <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>{SUBTITLE[tab]||'장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.'}</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
         {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>
       <div key={screenKey} style={{display:'contents'}}>
       {visited.map(name=><div key={name} hidden={tab!==name} className="kept-screen">{

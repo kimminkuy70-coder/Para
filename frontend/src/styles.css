@@ -224,3 +224,12 @@ kbd{display:inline-block;padding:1px 6px;border:1px solid #b8c4d2;border-bottom-
 .log-box{max-height:240px;overflow:auto;background:#0f1e3d;color:#dbe7f5;border-radius:10px;padding:10px 14px;font-size:12.5px;white-space:pre-wrap;margin:10px 0}
 .radio-list{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px}
 .radio-list label{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.out-choice{display:flex;flex-direction:column;gap:10px;margin:10px 0 14px}
+.out-row{display:grid;grid-template-columns:200px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.out-row.on{border-color:#9fd8b8;background:#f4fbf7}
+.out-row:first-child{grid-template-columns:200px minmax(0,1fr)}
+.out-pick{min-height:40px;border-radius:8px;border:2px solid #cfd8e3;background:#fff;color:var(--navy);font-weight:700}
+.out-pick.on,.out-pick.on:hover:not(:disabled){background:var(--lime);border-color:var(--lime);color:var(--onacc)}
+.out-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+input.out-path{padding:9px 12px;border:1px solid var(--line);border-radius:8px}
+@media (max-width:720px){.out-row,.out-row:first-child{grid-template-columns:1fr}}

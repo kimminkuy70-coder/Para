@@ -31,7 +31,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   그대로 GW=3168,GH=1024,GP)·원본 읽기(`cgm_read` base64, 목록에 있는 파일만)·UI 산출 JPEG 저장(`cgm_put`, 이름은 엔진이
   만듦·JPEG 헤더 검사)·Excel(`cgm_finish`, openpyxl `Image` 서브클래스 `JpegImage` 로 Pillow 없이 삽입).
 - 출력 = 로컬만(`batchreport_store.local_root`: OneDrive/네트워크/원본 겹침 거부). 기본 `{로컬}/ColorGray매칭/{폴더}/{시각}`.
-  사용자 지정 폴더는 `DesktopColorGray.extra_roots` 로 `open_path` 허용. 테스트 `tests/test_colorgray.py`(+ JPEG 픽스처
+  사용자 지정 폴더는 `DesktopColorGray.extra_roots` 로 `open_path` 허용. 원본 한도 5MB(`MAX_SOURCE`, v10.1.0) —
+  base64 가 4MB IPC 프레임을 넘으므로 `cgm_read(offset)` 가 2MB(`CHUNK`)씩 나눠 주고 UI 가 이어 붙인다. 테스트 `tests/test_colorgray.py`(+ JPEG 픽스처
   `tests/colorgray_fixture.py`, UI 하네스 전체 흐름).
 
 ### 엔진 시작 5~10분 원인·수정 + v9.10.2 (2026-09-30)

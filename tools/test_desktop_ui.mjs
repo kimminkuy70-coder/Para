@@ -434,7 +434,15 @@ try{
   await cg.getByLabel('Lot 또는 Wafer 폴더').fill(join(fixture,'cglot'));
   await cg.getByRole('button',{name:'Wafer 찾기'}).click();
   await cg.locator('[role=group][aria-label="처리할 Wafer"]').getByText('2개 선택').waitFor();
+  await page.getByText('AOI Color 이미지와 같은 위치의 Gray 스캔 이미지를 찾아').waitFor();
   await cg.getByRole('button',{name:'다음 ▶',exact:true}).click();          // → 저장 위치 (기본 = 로컬)
+  const outs=cg.getByRole('radiogroup',{name:'결과 저장 위치'});
+  assert.equal(await outs.getByRole('radio',{name:'로컬 작업 폴더 (기본)'}).getAttribute('aria-checked'),'true');
+  await outs.getByRole('radio',{name:'다른 로컬 폴더'}).click();
+  assert.equal(await outs.getByRole('radio',{name:'다른 로컬 폴더'}).getAttribute('aria-checked'),'true');
+  await page.waitForTimeout(400);   // let the button colour transition finish
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-colorgray-output.png'),fullPage:true});
+  await outs.getByRole('radio',{name:'로컬 작업 폴더 (기본)'}).click();
   await cg.getByRole('button',{name:'다음 ▶',exact:true}).click();          // → 실행 검토
   await cg.getByLabel('실행 전 검토').waitFor();
   await cg.getByRole('button',{name:'▶ 처리 시작'}).click();
