@@ -47,6 +47,10 @@ if sys.argv[1] == 'init':
     from test_ini_parser import _mk_recipe
     _mk_recipe(root/'equip'/'AOI-01'/'Job'/'R_TB500_PI2 - Enhanced'/'6324'/'Recipes'/'R1')
     (root/'equip'/'AOI-01'/'Job'/'Other job').mkdir(parents=True)
+    # Color·Gray 매칭: a Lot folder with two small wafers (real JPEGs, no Pillow).
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from colorgray_fixture import make_wafer
+    make_wafer(root/'cglot'/'Slot01','W01');make_wafer(root/'cglot'/'Slot02','W02')
     path=refdata.ip_path(str(shared));refdata.create_blank_ip(path)
     wb=openpyxl.load_workbook(path);wb.active.append(['AOI-01','10.0.0.1','Camtek']);wb.save(path);wb.close()
     special=refdata.special_path(str(shared));refdata.create_blank_special(special)

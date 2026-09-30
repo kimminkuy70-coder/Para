@@ -11,6 +11,7 @@ import {UpdateBanner} from './AppUpdate';
 import {Watch} from './Watch';
 import {RecipeHub} from './RecipeHub';
 import {ActivityPanel} from './Activity';
+import {ColorGray} from './ColorGray';
 
 const metrics: [Metric,string,string][] = [
   ['M01','처리량 · WPH','유효 매수 기준 처리 속도'], ['M02','스캔 가동률','일·주·월, 관측 범위 기준'],
@@ -20,8 +21,8 @@ const metrics: [Metric,string,string][] = [
   ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
   ['M11','미분류 상태','알 수 없는 원문도 보존']
 ];
-const KEEP = ['Recipe 관리','Commonality 조사','자동 감시'];
-const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','배치 리포트 분석','특이사항','참고자료','장비 IP'];
+const KEEP = ['Recipe 관리','Commonality 조사','자동 감시','Color·Gray 매칭'];
+const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','배치 리포트 분석','Color·Gray 매칭','특이사항','참고자료','장비 IP'];
 const text = (value: unknown) => value == null ? '—' : typeof value === 'number' ? value.toLocaleString('ko-KR',{maximumFractionDigits:2}) : String(value);
 
 function Trend({rows}: {rows:(string|number|null)[][]}) {
@@ -251,6 +252,7 @@ function App(){
       <div key={screenKey} style={{display:'contents'}}>
       {visited.map(name=><div key={name} hidden={tab!==name} className="kept-screen">{
         name==='Commonality 조사'?<Commonality/>:name==='Recipe 관리'?<RecipeHub active={tab==='Recipe 관리'}/>
+        :name==='Color·Gray 매칭'?<ColorGray/>
         :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}
       {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       <section className="panel">

@@ -218,3 +218,9 @@ kbd{display:inline-block;padding:1px 6px;border:1px solid #b8c4d2;border-bottom-
 .path-sample code{white-space:normal;overflow-wrap:anywhere}
 .row-pick-sel{margin:4px 0 0;font-size:12.5px}
 .sel-chip{display:inline-block;margin:2px 4px 0 0;padding:1px 8px;border-radius:999px;background:#f3fbe4;border:1px solid #cde9a8;font-size:12px}
+/* Color · Gray 매칭 */
+.progress-bar{height:12px;border-radius:999px;background:#e6ecf2;overflow:hidden;margin:10px 0 6px}
+.progress-bar i{display:block;height:100%;background:var(--lime);transition:width .3s var(--ease)}
+.log-box{max-height:240px;overflow:auto;background:#0f1e3d;color:#dbe7f5;border-radius:10px;padding:10px 14px;font-size:12.5px;white-space:pre-wrap;margin:10px 0}
+.radio-list{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px}
+.radio-list label{display:flex;gap:8px;align-items:center;flex-wrap:wrap}

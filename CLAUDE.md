@@ -23,6 +23,17 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Color · Gray 매칭 탭 + v10.0.0 (2026-09-30)
+
+- 외부 도구 'AOI Color-Gray Matcher v16'(pywebview+Pillow) 이식. 상단 탭 `Color·Gray 매칭`(KEEP — 탭 이동해도 작업 유지).
+- **Pillow 금지(추가 패키지 금지)라 픽셀 작업은 WebView canvas** 에서 한다(`frontend/src/ColorGray.tsx`: 디코드·Crop·
+  썸네일·JPEG 인코딩). 엔진(`param_manager/colorgray.py` 헤드리스 + `desktop_colorgray.py`)은 탐색·좌표 매칭(원본 수식
+  그대로 GW=3168,GH=1024,GP)·원본 읽기(`cgm_read` base64, 목록에 있는 파일만)·UI 산출 JPEG 저장(`cgm_put`, 이름은 엔진이
+  만듦·JPEG 헤더 검사)·Excel(`cgm_finish`, openpyxl `Image` 서브클래스 `JpegImage` 로 Pillow 없이 삽입).
+- 출력 = 로컬만(`batchreport_store.local_root`: OneDrive/네트워크/원본 겹침 거부). 기본 `{로컬}/ColorGray매칭/{폴더}/{시각}`.
+  사용자 지정 폴더는 `DesktopColorGray.extra_roots` 로 `open_path` 허용. 테스트 `tests/test_colorgray.py`(+ JPEG 픽스처
+  `tests/colorgray_fixture.py`, UI 하네스 전체 흐름).
+
 ### 엔진 시작 5~10분 원인·수정 + v9.10.2 (2026-09-30)
 
 - 진단 로그: 설정 읽기 15ms, **모듈 로딩 625s**(json 5s·copy 10s 등 소모듈마다 1.1s/10.2s 대기, 별도 파일

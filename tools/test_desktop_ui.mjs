@@ -428,6 +428,21 @@ try{
   await pw.getByRole('button',{name:/파라미터 자동 감시 ON/}).click();
   await pw.getByRole('button',{name:/파라미터 자동 감시 OFF/}).waitFor();
   await page.waitForFunction(()=>true);assert.equal(background.enabled,false);
+  // Color·Gray 매칭: scan a Lot folder, process both wafers (canvas crop/thumbnails), Excel per wafer.
+  await page.getByRole('button',{name:'Color·Gray 매칭',exact:true}).click();
+  const cg=page.locator('section.panel',{has:page.getByRole('heading',{name:'Color · Gray 매칭'})});
+  await cg.getByLabel('Lot 또는 Wafer 폴더').fill(join(fixture,'cglot'));
+  await cg.getByRole('button',{name:'Wafer 찾기'}).click();
+  await cg.locator('[role=group][aria-label="처리할 Wafer"]').getByText('2개 선택').waitFor();
+  await cg.getByRole('button',{name:'다음 ▶',exact:true}).click();          // → 저장 위치 (기본 = 로컬)
+  await cg.getByRole('button',{name:'다음 ▶',exact:true}).click();          // → 실행 검토
+  await cg.getByLabel('실행 전 검토').waitFor();
+  await cg.getByRole('button',{name:'▶ 처리 시작'}).click();
+  await cg.getByLabel('Wafer별 결과').getByRole('row').nth(2).waitFor({timeout:60000});
+  await cg.getByText('완료',{exact:true}).first().waitFor();
+  const cgRows=await cg.getByLabel('Wafer별 결과').getByRole('row').allInnerTexts();
+  assert(cgRows.slice(1).every(t=>/\t1\t2\t/.test(t)),'each wafer: 1 matched, 2 failed — '+JSON.stringify(cgRows));
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-colorgray.png'),fullPage:true});
   // A7: a reloaded page re-attaches to the same engine (ids keep increasing, no 'already connected').
   await page.reload();
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();

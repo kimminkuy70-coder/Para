@@ -20,11 +20,12 @@ const LABEL:Record<string,string>={
   pwatch_state:'자동 감시 설정 읽기',pwatch_save:'자동 감시 설정 저장',pwatch_jobs:'장비 Job 폴더 읽기',pwatch_run:'파라미터 자동 감시 실행',
   cmwatch_state:'Commonality 감시 설정 읽기',cmwatch_save:'Commonality 감시 설정 저장',cmwatch_run:'Commonality 자동 감시 실행',
   cmwatch_candidates:'대표 S/M 후보 찾기',cmwatch_begin:'대표 S/M 복사',cmwatch_confirm:'감시 양식 저장',
+  cgm_scan:'Color·Gray — Wafer 찾기',cgm_start:'Color·Gray — 좌표 매칭',cgm_finish:'Color·Gray — Excel 만들기',
   appupdate_check:'업데이트 확인',appupdate_apply:'업데이트 준비',appupdate_publish:'새 버전 게시',
 };
 // Background housekeeping that should never pop the panel up on its own.
 const QUIET=new Set(['watch_status','document_close','recipe_close','document_page','recipe_page','form_page','history_page',
-  'commonality_page','cmrun_page','cmwatch_page','formnew_page','table_page','release','cancel','contract','open_path','diag_client']);
+  'commonality_page','cmrun_page','cmwatch_page','formnew_page','table_page','release','cancel','contract','open_path','diag_client','cgm_read','cgm_put','cgm_fail','cgm_state','cgm_reset']);
 const SHOW_AFTER_MS=700, SLOW_MS=15000;
 
 /** Bottom-right card: what the engine is doing now and for how long. */

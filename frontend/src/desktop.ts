@@ -8,7 +8,7 @@ export type Configuration = {machines: {id: string; folder: string; extra?: stri
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;
-  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown; watch?: unknown; pwatch?: unknown; cmwatch?: unknown; diag?: unknown; notice?: WatchNotice} & Partial<Configuration>;
+  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown; watch?: unknown; pwatch?: unknown; cmwatch?: unknown; diag?: unknown; colorgray?: unknown; notice?: WatchNotice} & Partial<Configuration>;
 
 // Native folder chooser (Tauri command). Returns the user-selected absolute
 // path, or null if cancelled or not running inside the desktop shell (then the
@@ -76,7 +76,7 @@ class DesktopClient {
   private diag: {t: number; text: string}[] = [{t: performance.timeOrigin, text: '화면(웹뷰) 로딩 시작'}];
   private diagTimer?: number;
   private diagQuiet = new Set(['table_page','recipe_page','form_page','document_page','history_page','commonality_page',
-    'cmrun_page','cmwatch_page','formnew_page','open_path']);
+    'cmrun_page','cmwatch_page','formnew_page','open_path','cgm_read','cgm_put']);
   private note(text: string) {
     if (this.diag.length < 400) this.diag.push({t: Date.now(), text});
     if (!this.diagTimer) this.diagTimer = window.setTimeout(() => { this.diagTimer = undefined; this.flushDiag(); }, 5000);

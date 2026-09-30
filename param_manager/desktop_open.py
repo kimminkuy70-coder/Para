@@ -14,7 +14,7 @@ import subprocess
 
 from .desktop_batch import DesktopBatch, read_json
 
-OPENABLE = {".xlsx", ".xlsm", ".xls", ".html", ".htm", ".csv", ".txt", ".png", ".pdf"}
+OPENABLE = {".xlsx", ".xlsm", ".xls", ".html", ".htm", ".csv", ".txt", ".png", ".pdf", ".jpg", ".jpeg"}
 MAX_PATH = 4096
 
 
@@ -31,6 +31,9 @@ class DesktopOpen:
             roots.append(Path(DesktopBatch(self.config_path).configuration()[2]).absolute())
         except ValueError:
             pass
+        # Output folders the user picked for Color · Gray 매칭 (checked local when chosen).
+        from .desktop_colorgray import DesktopColorGray
+        roots.extend(Path(p) for p in DesktopColorGray.extra_roots)
         return roots
 
     def resolve(self, raw):
