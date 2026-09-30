@@ -24,7 +24,7 @@ const LABEL:Record<string,string>={
 };
 // Background housekeeping that should never pop the panel up on its own.
 const QUIET=new Set(['watch_status','document_close','recipe_close','document_page','recipe_page','form_page','history_page',
-  'commonality_page','cmrun_page','cmwatch_page','formnew_page','table_page','release','cancel','contract','open_path']);
+  'commonality_page','cmrun_page','cmwatch_page','formnew_page','table_page','release','cancel','contract','open_path','diag_client']);
 const SHOW_AFTER_MS=700, SLOW_MS=15000;
 
 /** Bottom-right card: what the engine is doing now and for how long. */
@@ -47,6 +47,6 @@ export function ActivityPanel(){
       <div className="activity-row"><span>{LABEL[a.method]||a.method}</span><span className="elapsed">{sec}초</span></div>
       {a.message&&<p>{a.message}</p>}</li>;})}</ul>
       {slow&&<p className="activity-hint">OneDrive 파일을 내려받거나 장비 폴더 응답을 기다리는 중일 수 있습니다. 창을 닫지 말고 기다려 주세요.
-        오래 걸린 단계는 [설정 › 정보]의 로그 폴더 <code>작업시간_로그.txt</code>에 기록됩니다.</p>}</>}
+        단계별 소요시간은 자동 기록되며, [설정 › 정보 › 진단 로그 묶기]로 zip 하나를 만들어 전달하면 원인을 분석할 수 있습니다.</p>}</>}
   </div>;
 }

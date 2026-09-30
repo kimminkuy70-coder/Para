@@ -65,7 +65,9 @@ class DesktopBatch:
         self.config_path = config_path or Path.home() / ".pi_param_manager.json"
 
     def configuration(self):
-        cfg = read_json(self.config_path)
+        from . import desktop_diag
+        with desktop_diag.timed(f"설정 파일 읽기 {self.config_path}", 200):
+            cfg = read_json(self.config_path)
         paths = cfg.get("wph_report_paths") or {}
         if not isinstance(paths, dict):
             raise ValueError("기존 Report 폴더 설정을 확인하세요")
@@ -75,13 +77,16 @@ class DesktopBatch:
         for part in (requested_root, *requested_root.parents):
             if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
                 raise ValueError("로컬 결과 폴더의 연결 경로는 사용할 수 없습니다")
-        root = batchreport_store.local_root(requested_root, paths.values())
+        with desktop_diag.timed(f"로컬 결과 폴더 확인 {requested_root}", 200):
+            root = batchreport_store.local_root(requested_root, paths.values())
         # Reject redirected output trees, including cache/output directory junctions.
-        for path in (root, root / "Cache", root / "배치분석", root / "배치분석" / "누적", root / "배치분석" / "대시보드"):
-            for part in (path, *path.parents):
-                if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
-                    raise ValueError("로컬 결과 폴더의 연결 경로는 사용할 수 없습니다")
-        latest = read_json(root / "Cache" / "rev1_batch_last.json")
+        with desktop_diag.timed("로컬 결과 폴더 연결경로 검사", 200):
+            for path in (root, root / "Cache", root / "배치분석", root / "배치분석" / "누적", root / "배치분석" / "대시보드"):
+                for part in (path, *path.parents):
+                    if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
+                        raise ValueError("로컬 결과 폴더의 연결 경로는 사용할 수 없습니다")
+        with desktop_diag.timed("최근 조사 설정 읽기(Cache/rev1_batch_last.json)", 200):
+            latest = read_json(root / "Cache" / "rev1_batch_last.json")
         if latest and latest.get("schema_version") != 1:
             raise ValueError("최근 조사 설정 버전을 확인하세요")
         last = latest.get("last", cfg.get("batch_last", {}))

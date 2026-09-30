@@ -29,7 +29,7 @@ export function Settings(){
   const [aMachine,setAMachine]=useState(subOf(intent?.sub)==='aoi'?intent?.machine||'':''),[aPath,setAPath]=useState('');
   const [xMachine,setXMachine]=useState(''),[xKind,setXKind]=useState<ExtraKind>('report'),[xPath,setXPath]=useState('');
   type Local={root:string;summary:string;onedrive:boolean;default:string;removed?:number};
-  type About={version:string;user:string;config:string;local_root:string;logs:string};
+  type About={version:string;user:string;config:string;local_root:string;logs:string;diag_log?:string};
   const [upd,setUpd]=useState<AppUpdate>(),[pubPath,setPubPath]=useState(''),[pubNotes,setPubNotes]=useState('');
   async function checkUpdate(){
     try{const r=(await desktop.request('appupdate_check').promise).appupdate as AppUpdate;setUpd(r);
@@ -42,6 +42,7 @@ export function Settings(){
       notify(`${r.version} 게시 완료 (${r.filename}). 다른 PC는 다음 실행 때 알림을 받습니다.`,'ok');setPubNotes('');setPubPath('');}
     catch(e){fail(e);}finally{setBusy(false);}
   }
+  const [diagZip,setDiagZip]=useState('');
   const [local,setLocal]=useState<Local>(),[localPath,setLocalPath]=useState(''),[about,setAbout]=useState<About>();
   const [subError,setSubError]=useState(''),[subTry,setSubTry]=useState(0);
   useEffect(()=>{
@@ -243,6 +244,15 @@ export function Settings(){
         <tr><td style={{fontWeight:700}}>사용자</td><td>{about.user}</td></tr>
         <tr><td style={{fontWeight:700}}>설정 파일</td><td><code>{about.config}</code></td></tr></tbody></table>:subError?<LoadFailed message={subError} onRetry={()=>setSubTry(n=>n+1)}/>:<p className="hint">불러오는 중…</p>}
       {about?.logs&&<OpenPath label="오류 로그 폴더" path={about.logs} folder/>}
+      <h3 style={{marginTop:24}}>진단 로그 (느림 원인 찾기)</h3>
+      <p className="hint">프로그램 시작·설정 읽기·각 작업이 <b>어느 단계에서 몇 초 걸렸는지</b> 자동으로 기록합니다
+        (실행파일 풀기·백신 검사 → 모듈 로딩 → 설정 파일 읽기 → 화면 요청 대기·처리, 부팅 후 경과시간·메모리).
+        파일 내용·비밀번호는 기록하지 않습니다. 느렸던 직후 <b>[진단 로그 묶기]</b>를 눌러 만들어진 zip 파일 하나를 전달하면 원인을 분석할 수 있습니다.</p>
+      <div className="toolbar"><button className="primary" disabled={busy} onClick={async()=>{
+        try{const r=await desktop.request('diag_bundle').promise;setDiagZip((r.diag as {path:string}).path);notify('진단 로그를 묶었습니다.','ok');}
+        catch(e){notify(errorText(e),'error');}}}>진단 로그 묶기 (zip)</button></div>
+      {diagZip&&<OpenPath label="진단 로그 zip" path={diagZip}/>}
+      {about?.diag_log&&<OpenPath label="상세 진단 로그" path={about.diag_log}/>}
       <h3 style={{marginTop:24}}>업데이트</h3>
       <div className="toolbar"><button onClick={checkUpdate}>업데이트 확인</button><button onClick={openProgramDir}>게시 폴더 열기</button>
         {upd?.newer&&<button className="primary" disabled={busy||!upd.installed} onClick={()=>void installUpdate()}>지금 {upd.available}(으)로 업데이트</button>}</div>

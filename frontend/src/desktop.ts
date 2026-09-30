@@ -8,7 +8,7 @@ export type Configuration = {machines: {id: string; folder: string; extra?: stri
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;
-  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown; watch?: unknown; pwatch?: unknown; cmwatch?: unknown; notice?: WatchNotice} & Partial<Configuration>;
+  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown; watch?: unknown; pwatch?: unknown; cmwatch?: unknown; diag?: unknown; notice?: WatchNotice} & Partial<Configuration>;
 
 // Native folder chooser (Tauri command). Returns the user-selected absolute
 // path, or null if cancelled or not running inside the desktop shell (then the
@@ -69,6 +69,24 @@ class DesktopClient {
     const list = [...this.active.values()];
     this.activityListeners.forEach(l => l(list));
   }
+  // Screen-side timeline for the engine's detailed log (상세_진단_로그.txt): when the
+  // page loaded, when the engine was started, when each request was sent/answered.
+  // Compared with the engine's own lines it shows whether time went to engine
+  // start-up, waiting in the pipe, or the work itself.
+  private diag: {t: number; text: string}[] = [{t: performance.timeOrigin, text: '화면(웹뷰) 로딩 시작'}];
+  private diagTimer?: number;
+  private diagQuiet = new Set(['table_page','recipe_page','form_page','document_page','history_page','commonality_page',
+    'cmrun_page','cmwatch_page','formnew_page','open_path']);
+  private note(text: string) {
+    if (this.diag.length < 400) this.diag.push({t: Date.now(), text});
+    if (!this.diagTimer) this.diagTimer = window.setTimeout(() => { this.diagTimer = undefined; this.flushDiag(); }, 5000);
+  }
+  private flushDiag() {
+    if (this.disconnected || !this.diag.length || !this.connecting) return;
+    const events = this.diag.splice(0, 200);
+    this.request('diag_client', {events}).promise.catch(() => undefined);
+    if (this.diag.length) this.note('(이어서)');
+  }
   onNotice(listener: (n: WatchNotice) => void) { this.noticeListeners.add(listener); return () => { this.noticeListeners.delete(listener); }; }
   onStatus(listener: (connected: boolean, code: string) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   get closed() { return this.disconnected; }
@@ -104,13 +122,24 @@ class DesktopClient {
           pending.progress?.(message);
         } else {
           this.pending.delete(message.id);
+          const took = Date.now() - (this.active.get(message.id)?.started ?? Date.now());
+          const method = this.active.get(message.id)?.method ?? '';
           this.track(message.id, null);
+          if (method && method !== 'diag_client' && (took >= 300 || !this.diagQuiet.has(method))) {
+            this.note(`응답 #${message.id} ${method} ${message.event} ${took}ms`);
+            if (method === 'configuration' || took >= 3000) window.setTimeout(() => this.flushDiag(), 0);
+          }
           if (message.event === 'error') pending.reject(new Error(message.message || message.code));
           else pending.resolve(message);
         }
       };
       this.track(0, 'connect', '분석 엔진을 시작하고 있습니다…');
-      this.connecting = invoke<void>('desktop_connect', {onEvent: channel}).then(() => this.listeners.forEach(l => l(true, '')));
+      const asked = Date.now();
+      this.note('엔진 시작 요청(desktop_connect)');
+      this.connecting = invoke<void>('desktop_connect', {onEvent: channel}).then(() => {
+        this.note(`엔진 프로세스 연결됨 ${Date.now() - asked}ms (이후 엔진이 모듈을 다 읽어야 첫 응답)`);
+        this.listeners.forEach(l => l(true, ''));
+      });
       this.connecting.then(() => this.track(0, null), () => { this.connecting = undefined; this.track(0, null); });
     }
     return this.connecting;
@@ -121,6 +150,7 @@ class DesktopClient {
       if (this.disconnected) { reject(new Error(this.closeCode)); return; }
       this.pending.set(id, {resolve, reject, progress});
       this.track(id, method);
+      if (method !== 'diag_client' && !this.diagQuiet.has(method)) this.note(`요청 보냄 #${id} ${method}`);
       // Serialize writes only; cancellation does not wait for analysis completion.
       this.sends = this.sends.catch(() => undefined).then(() =>
         invoke('desktop_send', {request: {version: 1, id, method, params}})

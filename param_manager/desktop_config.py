@@ -173,8 +173,9 @@ class DesktopConfig:
             logs = localdirs.logs_dir(root)
         except (OSError, ValueError):
             root, logs = "", ""
+        from . import desktop_diag
         return dict(version=__version__, user=engine.current_user(), config=str(self.config_path),
-                    local_root=root, logs=logs)
+                    local_root=root, logs=logs, diag_log=desktop_diag.path())
 
     def set_hide_kla(self, params):
         if set(params) != {"enabled"} or type(params["enabled"]) is not bool:

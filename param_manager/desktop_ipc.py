@@ -7,12 +7,13 @@ Cancellation is cooperative, never an unsafe thread/process termination.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import time
 from datetime import datetime
 
-from . import batchreport, batchreport_store, desktop_progress, engine, locking
+from . import batchreport, batchreport_store, desktop_diag, desktop_progress, engine, locking
 from .desktop_batch import DesktopBatch
 from .desktop_recipe import DesktopRecipe
 from .desktop_form import DesktopForm
@@ -37,7 +38,7 @@ BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 값 확인',
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 감시 회차'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 # Background jobs that only read (local or OneDrive/equipment). Closing the app does not
 # wait for them — waiting for a slow read kept the old engine alive after the window
@@ -47,6 +48,9 @@ READ_ONLY = {"recipe_open", "recipe_delete_preview", "document_open", "form_cata
              "commonality_catalog", "commonality_compare", "cmsurvey_preflight", "cmsurvey_read_plan",
              "update_prepare", "appupdate_check", "pwatch_state", "pwatch_jobs", "cmwatch_state",
              "cmwatch_candidates", "batch_reports", "watch_status", "cmrun_plan"}
+# Frequent page/scroll requests: only logged in the detailed log when slow.
+DIAG_QUIET = {"table_page", "recipe_page", "form_page", "document_page", "history_page", "commonality_page",
+              "cmrun_page", "cmwatch_page", "formnew_page", "diag_client", "open_path"}
 WATCH_PROGRESS_SEC = 1.0  # live '진행 중' notice: at most one update per second
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
 LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
@@ -169,10 +173,17 @@ class Session:
 
     def handle(self, request):
         started = time.monotonic()
+        method = request.get("method") if isinstance(request, dict) else "?"
+        rid0 = request.get("id") if isinstance(request, dict) else None
+        if method not in DIAG_QUIET:
+            desktop_diag.event(f"요청 받음 #{rid0} {method} (앞 요청 뒤 대기 {getattr(self, 'frame_wait', 0):.2f}s)")
         try:
             self._handle(request)
         finally:
-            method = request.get("method") if isinstance(request, dict) else "?"
+            took = time.monotonic() - started
+            if method not in DIAG_QUIET or took >= 0.5:
+                bgjob = rid0 in self.busy.values()
+                desktop_diag.event(f"요청 처리 #{rid0} {method} {took * 1000:.0f}ms" + (" → 백그라운드 작업으로 넘김" if bgjob else ""))
             desktop_progress.log_slow(f"{method} (입력 처리)", time.monotonic() - started)
             rid = request.get("id") if isinstance(request, dict) else None
             if rid not in self.busy.values():
@@ -256,7 +267,7 @@ class Session:
         allowed.update(watch_status=set(), pwatch_state=set(),
                        pwatch_save={'enabled','interval_hours','window_start','window_end','notify_on_change_only'},
                        pwatch_set_path={'machine','recipe','rel'}, pwatch_copy_paths={'source','targets'},
-                       pwatch_jobs={'machine','sub'}, pwatch_connections={'machines'}, pwatch_run=set(), cmwatch_state=set(),
+                       pwatch_jobs={'machine','sub'}, pwatch_connections={'machines'}, diag_client={'events'}, diag_bundle=set(), pwatch_run=set(), cmwatch_state=set(),
                        cmwatch_save={'enabled','interval_hours','window_start','window_end','settle_minutes','machines','plan'},
                        cmwatch_run=set(), cmwatch_candidates={'machine','device','lot'}, cmwatch_begin={'sm','title'}, cmwatch_recipes={'indexes'},
                        cmwatch_page={'snapshot','variant','query','used_only','offset','limit','zone'},
@@ -311,6 +322,7 @@ class Session:
         def step(message):
             # Engine step message → the UI progress panel (and the slow-request log).
             steps.append((time.monotonic() - started, message))
+            desktop_diag.event(f"  #{rid} {method_of.get(rid, key)} 단계 +{steps[-1][0]:.1f}s {message}")
             self.emit(rid, 'progress', message=message)
 
         def work():
@@ -329,6 +341,7 @@ class Session:
                               message=str(exc) if isinstance(exc, ValueError) else failure)
             finally:
                 desktop_progress.set_reporter(None)
+                desktop_diag.event(f"작업 끝 #{rid} {method_of.get(rid, key)} {(time.monotonic() - started) * 1000:.0f}ms")
                 desktop_progress.log_slow(method_of.get(rid, key), time.monotonic() - started, steps)
                 method_of.pop(rid, None)
                 self.workers.discard(threading.current_thread())
@@ -537,6 +550,12 @@ class Session:
             else:
                 bg(rid, 'cmwatch', action[method], 'Commonality 감시 작업을 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.',
                    ('cmwatch', 'equipment') if method in ('cmwatch_candidates', 'cmwatch_begin') else ('cmwatch',))
+        elif method == 'diag_client':
+            self.emit(rid, 'completed', diag=desktop_diag.client_events(params))
+        elif method == 'diag_bundle':
+            from . import localdirs
+            folder = os.path.dirname(desktop_diag.path()) or localdirs.logs_dir(self.config.local_state()["root"])
+            self.emit(rid, 'completed', diag=dict(path=desktop_diag.bundle(folder), log=desktop_diag.path()))
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))
@@ -808,23 +827,38 @@ class Session:
 
 
 def serve(source, output, startup=""):
-    session = Session(output)
+    with desktop_diag.timed("엔진 세션 준비"):
+        session = Session(output)
+    from . import localdirs
     try:
         # Logs (errors, slow-request timings) go to the web app's local folder,
         # never the install folder or the save folder.
-        from . import localdirs
-        localdirs.set_root(str(DesktopBatch(session.batch.config_path).configuration()[2]))
+        with desktop_diag.timed("시작 설정 읽기(로컬 작업 폴더 확인)"):
+            localdirs.set_root(str(DesktopBatch(session.batch.config_path).configuration()[2]))
     except Exception:  # noqa: BLE001 - a bad local setting is reported by the screens
+        pass
+    try:
+        root = localdirs.active_root()
+        if not root:
+            from .desktop_appupdate import default_local_root
+            root = str(default_local_root())
+        desktop_diag.attach(localdirs.logs_dir(root))
+    except Exception:  # noqa: BLE001 - diagnostics are best effort
         pass
     if startup:
         session.log_timing = True
         desktop_progress.log_event(startup)
-    session.start_scheduler()
+        desktop_diag.event(startup)
+    with desktop_diag.timed("자동 감시 스케줄러 시작"):
+        session.start_scheduler()
+    desktop_diag.event("요청 받을 준비 완료 — 이 시각 전에 화면이 보낸 요청은 여기까지 대기했습니다")
     try:
         while not session.closed:
+            idle = time.monotonic()
             frame = source.readline(MAX_FRAME + 1)
             if not frame:
                 break
+            session.frame_wait = time.monotonic() - idle
             if len(frame) > MAX_FRAME:
                 session.emit(None, "error", code="frame_too_large")
                 break  # Fail closed; do not reinterpret the tail as another request.
