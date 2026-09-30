@@ -24,7 +24,7 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: read
+  contents: write   # the release step below creates the v{version} tag + GitHub Release
 
 jobs:
   build:
@@ -130,3 +130,21 @@ jobs:
           name: Camtek_AOI_manager_v${{ steps.ver.outputs.version }}
           path: Camtek_AOI_manager_v${{ steps.ver.outputs.version }}/
           retention-days: 30
+
+      # Release page with a short change summary. Notes come from
+      # docs/release_notes/v{version}.md (skipped when that file is absent).
+      # A tag created with GITHUB_TOKEN does not re-trigger this workflow.
+      - name: Create GitHub Release (tag + notes + zip)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $notes = "docs/release_notes/v$ver.md"
+          if (-not (Test-Path $notes)) { Write-Host "no $notes - release skipped"; exit 0 }
+          $zip = "Camtek_AOI_manager_v$ver.zip"
+          Compress-Archive -Path "Camtek_AOI_manager_v$ver" -DestinationPath $zip -Force
+          gh release view "v$ver" 2>$null
+          if ($LASTEXITCODE -eq 0) { gh release upload "v$ver" $zip --clobber; gh release edit "v$ver" --notes-file $notes }
+          else { gh release create "v$ver" $zip --target "${{ github.sha }}" --title "Camtek AOI Manager v$ver" --notes-file $notes }
+          if ($LASTEXITCODE -ne 0) { Write-Error "release failed"; exit 1 }

@@ -389,12 +389,20 @@ try{
   // 최근 알림 first, then one tab per watch; status table above the wizard.
   await page.getByRole('heading',{name:'최근 알림'}).waitFor();
   await pw.getByLabel('파라미터 자동 감시 현황').waitFor();
-  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ① 주기·시간대 → ② 감시 대상
+  // Selected sub-tab is highlighted green like the top tabs.
+  assert.equal(await page.getByRole('tab',{name:'파라미터 자동 감시'}).evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(234, 250, 243)');
+  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ① 주기·시간대 → ② 장비 연결 확인
+  const conn=pw.locator('[role=group][aria-label="연결 확인 호기"]');
+  await conn.getByLabel('AOI-01 선택').check();
+  await pw.getByRole('button',{name:/선택 호기 연결 확인/}).click();
+  await conn.getByText('✓ 연결됨').first().waitFor();
+  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ③ 감시 대상
   await pw.getByLabel('호기').selectOption('AOI-01');
-  await pw.getByLabel('레시피').selectOption('PI2');
-  await pw.getByRole('button',{name:'📁 장비에서 폴더 고르기…'}).click();
-  await page.getByRole('button',{name:'📁 R_TB500_PI2 - Enhanced'}).click();
-  await page.getByRole('button',{name:'이 폴더로 지정'}).click();
+  await pw.locator('[role=group][aria-label="감시할 레시피"]').getByText('PI2',{exact:true}).click();
+  await pw.getByRole('button',{name:/📁 장비에서 폴더 고르기/}).click();
+  const fp=pw.getByRole('dialog',{name:'Job 폴더 선택'});
+  await fp.getByRole('button',{name:'📁 R_TB500_PI2 - Enhanced'}).click();
+  await fp.getByRole('button',{name:"이 폴더를 'PI2'에 지정"}).click();
   await pw.getByRole('cell',{name:'R_TB500_PI2 - Enhanced'}).waitFor();
   // ON/OFF works without finishing the wizard; OFF is red.
   const pOff=pw.getByRole('button',{name:/파라미터 자동 감시 OFF/});
@@ -402,7 +410,7 @@ try{
   await pOff.click();
   await pw.getByRole('button',{name:/파라미터 자동 감시 ON/}).waitFor();
   await pw.getByLabel('파라미터 자동 감시 현황').getByText('ON',{exact:true}).waitFor();
-  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ③ 확인·저장
+  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ④ 확인·저장
   await pw.getByRole('button',{name:'▶ 즉시 확인'}).click();
   await page.locator('.toast').filter({hasText:/즉시 확인 완료|취합된 레시피가 없습니다/}).first().waitFor({timeout:60000});
   await page.locator('.notice-list li').filter({hasText:'파라미터 자동 감시 — 시작'}).first().waitFor();

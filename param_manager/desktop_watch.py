@@ -139,6 +139,8 @@ class ParamWatch(_Base):
                     notify_on_change_only=s.notify_on_change_only, targets=targets,
                     paths={m: dict(v) for m, v in s.recipe_paths.items() if m != watcher.ANY_MACHINE},
                     machines=refdata.machines(self._ip_rows(save)), recipes=workdirs.list_recipes(save),
+                    # 장비 연결 확인 단계: 호기별 IP(탐색기 주소 \\IP\c$ 복사용). 파일 이름 IP 만, 접속은 안 함.
+                    ips={m: refdata.ip_for(self._ip_rows(save), m) or "" for m in refdata.machines(self._ip_rows(save))},
                     last_run=st.last_run, last_result=st.last_result, fail_count=st.fail_count,
                     next_run=nxt.strftime("%Y-%m-%d %H:%M") if nxt else "",
                     owned=self.owned == save,
@@ -204,11 +206,15 @@ class ParamWatch(_Base):
         return self.state()
 
     def copy_paths(self, params):
-        """'이 호기 경로를 다른 호기에 복사' (Job trees are often identical)."""
+        """'이 호기 경로를 다른 호기에 복사'. 장비마다 Job 폴더 이름이 조금씩 다를 수 있어
+        그대로 붙여 넣지 않고 **대상 장비의 실제 Job 폴더를 읽어** 확인한다:
+        같은 이름이 있으면 그대로(same), 비슷한 이름이 딱 하나면 그 이름으로(matched),
+        없거나 여럿이면 지정하지 않고 알린다(missing/ambiguous). 장비 연결이 안 되면 offline."""
         if set(params) != {"source", "targets"} or not isinstance(params["targets"], list):
             raise ValueError("복사할 호기를 확인하세요")
         save = self._save_dir()
-        machines = refdata.machines(self._ip_rows(save))
+        rows = self._ip_rows(save)
+        machines = refdata.machines(rows)
         if params["source"] not in machines or any(t not in machines for t in params["targets"]):
             raise ValueError("[장비 IP]에 등록된 호기만 고를 수 있습니다")
         s, st = watcher.load_settings(save)
@@ -216,13 +222,91 @@ class ParamWatch(_Base):
         src = dict(rp.get(params["source"]) or {})
         if not src:
             raise ValueError("원본 호기에 지정된 폴더가 없습니다")
-        for t in params["targets"]:
-            if t != params["source"]:
-                rp[t] = dict(src)
+        report_rows = []
+        targets = [t for t in params["targets"] if t != params["source"]]
+        for i, t in enumerate(targets):
+            if i:
+                self.sleep(HOST_GAP_SEC)       # one machine at a time, never a burst
+            report(f"[{i + 1}/{len(targets)}] {t} 의 Job 폴더에서 같은 레시피 폴더를 찾는 중…")
+            ip = refdata.ip_for(rows, t)
+            try:
+                base = self._job_root(t, ip) if ip else None
+                dirs = [p.name for p in collector.list_dirs(base)] if base is not None and base.is_dir() else None
+            except Exception:  # noqa: BLE001 - unreachable share
+                dirs = None
+            inner = dict(rp.get(t) or {})
+            for recipe, rel in src.items():
+                out = dict(machine=t, recipe=recipe, source_rel=rel, rel="", status="", note="")
+                if dirs is None:
+                    out.update(status="offline", note="장비에 연결되지 않아 확인하지 못했습니다(지정 안 함)")
+                else:
+                    parts = rel.split("\\")
+                    head, rest = parts[0], parts[1:]
+                    if head in dirs:
+                        found = head
+                        out["status"] = "same"
+                    else:
+                        cands = [d for d in dirs if collector.norm_match(d) == collector.norm_match(head)] or \
+                                [d for d in dirs if collector.contains_keyword(d, head) or collector.contains_keyword(head, d)]
+                        if len(cands) == 1:
+                            found = cands[0]
+                            out.update(status="matched", note=f"이름이 달라 '{found}' 로 맞췄습니다")
+                        else:
+                            found = ""
+                            out.update(status="ambiguous" if cands else "missing",
+                                       note=(f"비슷한 폴더가 {len(cands)}개라 고르지 않았습니다: {', '.join(cands[:4])}" if cands
+                                             else "같은(비슷한) Job 폴더가 없습니다"))
+                    if found:
+                        full = "\\".join([found, *rest])
+                        try:
+                            deep_ok = not rest or base.joinpath(found, *rest).is_dir()
+                        except Exception:  # noqa: BLE001
+                            deep_ok = False
+                        out["rel"] = full if deep_ok else found
+                        if rest and not deep_ok:
+                            out["note"] = (out["note"] + " · " if out["note"] else "") + "하위 폴더가 달라 Job 폴더까지만 지정(그 아래는 자동으로 찾음)"
+                        inner[recipe] = out["rel"]
+                report_rows.append(out)
+            if inner:
+                rp[t] = inner
         s.recipe_paths = rp
         watcher.sync_selection(s)
         watcher.save_settings(save, s, st)
-        return self.state()
+        return dict(self.state(), copy_report=report_rows)
+
+    def connections(self, params):
+        """장비 연결 확인: 탐색기로 \\IP\c$ 에 로그인해 둔 세션으로 \Job 이 보이는지.
+        자격증명은 다루지 않는다(보기만). 호스트 사이 간격을 둬 스캔처럼 보이지 않게 한다."""
+        if set(params) != {"machines"} or not isinstance(params["machines"], list) or len(params["machines"]) > 200:
+            raise ValueError("확인할 호기를 고르세요")
+        save = self._save_dir()
+        rows = self._ip_rows(save)
+        known = refdata.machines(rows)
+        out = []
+        for i, m in enumerate(params["machines"]):
+            if m not in known:
+                raise ValueError("[장비 IP]에 등록된 호기만 확인할 수 있습니다")
+            ip = refdata.ip_for(rows, m)
+            unc = f"\\\\{ip}\\c$" if ip else ""
+            report(f"[{i + 1}/{len(params['machines'])}] {m} 연결 확인 중…")
+            if not ip:
+                out.append(dict(machine=m, ip="", unc="", ok=False, reason="IP 없음 — [장비 IP] 문서에 IP를 적으세요"))
+                continue
+            if i and not self.job_root_override:
+                self.sleep(watcher.PROBE_GAP_SEC)
+            if self.job_root_override:
+                ok = self._job_root(m, ip).is_dir()
+                reason = "" if ok else "Job 폴더가 보이지 않습니다"
+            elif not watcher.probe_host(ip):
+                ok, reason = False, "장비가 응답하지 않습니다(전원·네트워크 확인)"
+            else:
+                try:
+                    ok = Path(watcher.job_path_for(ip)).exists()
+                except Exception:  # noqa: BLE001
+                    ok = False
+                reason = "" if ok else "로그인이 필요합니다 — Win+R 에 주소를 붙여 넣고 로그인하세요"
+            out.append(dict(machine=m, ip=ip, unc=unc, ok=ok, reason=reason))
+        return dict(results=out, checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     def _job_root(self, machine, ip):
         if self.job_root_override:
@@ -661,10 +745,26 @@ class CmWatch(_Base):
         got = cm.copy_lot(lot_obj, copy_dir)                     # original read-only
         local_slot = Path(got["dest"])
         recs = cm.detect_recipes([(cand["sm"], local_slot)])
-        queue = ([{"recipe": f"{title}_{r['name']}", "prefix": r["prefix"]} for r in recs] if recs
-                 else [{"recipe": title, "prefix": ""}])
+        queue = ([{"recipe": f"{title}_{r['name']}", "prefix": r["prefix"], "name": r["name"]} for r in recs] if recs
+                 else [{"recipe": title, "prefix": "", "name": ""}])
         b.update(cand=cand, slot=str(local_slot), queue=queue, idx=0, entries=[],
                  run_dir=cmwatcher.watch_dir(local, b["machine"], "양식"), st=st)
+        if len(queue) > 1:
+            # 하위 레시피가 여럿이면 어느 것을 감시(조사)할지 먼저 고른다(중간 단계).
+            return dict(stage="recipes", sm=cand["sm"], recipes=[
+                dict(index=i, name=q["name"] or q["recipe"], recipe=q["recipe"], prefix=q["prefix"])
+                for i, q in enumerate(queue)])
+        return self._open_next()
+
+    def pick_recipes(self, params):
+        """중간 단계: 고른 하위 레시피만 양식을 만든다(나머지는 감시 조사에서 빠짐)."""
+        b = self.building
+        if set(params) != {"indexes"} or not b or "queue" not in b or b.get("idx"):
+            raise ValueError("대표 S/M 을 다시 고르세요")
+        idx = params["indexes"]
+        if not isinstance(idx, list) or not idx or any(type(i) is not int or not 0 <= i < len(b["queue"]) for i in idx):
+            raise ValueError("조사할 하위 레시피를 한 개 이상 고르세요")
+        b["queue"] = [q for i, q in enumerate(b["queue"]) if i in set(idx)]
         return self._open_next()
 
     def _open_next(self):

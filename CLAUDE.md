@@ -23,6 +23,17 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 자동 감시 설정 마법사 개선 + v9.10.0 (2026-09-30)
+
+- 파라미터 감시 마법사 = 주기·시간대 → **장비 연결 확인**(`pwatch_connections`: 호기별 `\\IP\c$`
+  주소 복사·Win+R 안내, 445 확인 PROBE_GAP_SEC 간격 — 자격증명 미취급) → 감시 대상 → 확인·저장.
+- 폴더 고르기는 버튼 바로 아래 인라인 패널, **레시피 여러 개**를 차례로 지정. 다른 호기 적용
+  (`pwatch_copy_paths`)은 대상 장비의 실제 Job 목록을 보고 같음/유사 1개만 지정(여러 개·없음·
+  미연결은 결과표 안내), 장비 사이 HOST_GAP_SEC.
+- Commonality 감시 양식: 다중 레시피면 `stage='recipes'` → `cmwatch_recipes(indexes)` 로 고른 것만 편집.
+  양식 지정 재진입 시 S/M 찾기 완료 전 이전 목록 선택 불가.
+- 릴리즈 노트 = `docs/release_notes/v{버전}.md` — 워크플로가 있으면 태그+GitHub Release(zip 첨부) 생성.
+
 ### 설정 'AOI 장비 호기 루트' 일원화 + 개발자 zip 게시 (2026-09-28)
 
 - **호기 폴더 하나**(예: `W:\AOI-9`)만 등록(`config_set_aoi_root`, config `aoi_roots`)하면 그 아래

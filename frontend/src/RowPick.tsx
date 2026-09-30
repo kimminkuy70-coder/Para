@@ -24,6 +24,7 @@ export function RowPick({label,columns,rows,value,onChange,empty,single=false}:{
           <td className="row-pick-check"><input type={single?'radio':'checkbox'} disabled={r.disabled} checked={on}
             aria-label={`${r.id} 선택`} onChange={e=>toggle(r.id,e.target.checked)}/></td>
           {r.cells.map((c,i)=><td key={i}>{c}</td>)}</tr>;})}</tbody></table></div>
-    <p className="hint">{value.length}개 선택{enabled.length!==rows.length?` · 고를 수 없는 항목 ${rows.length-enabled.length}개`:''}</p>
+    <p className="row-pick-sel" aria-live="polite"><b>{value.length}개 선택</b>{value.length>0&&<>: {value.slice(0,20).map(v=><span key={v} className="sel-chip">{v}</span>)}{value.length>20?` 외 ${value.length-20}개`:''}</>}
+      {enabled.length!==rows.length&&<span className="hint"> · 고를 수 없는 항목 {rows.length-enabled.length}개</span>}</p>
   </div>;
 }

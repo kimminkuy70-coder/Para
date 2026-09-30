@@ -194,3 +194,27 @@ details.current-settings[open]>summary{margin-bottom:8px}
 .watch-status th{width:170px;text-align:left;white-space:nowrap}
 .watch-status .open-path{margin:4px 0}
 .notice-panel .notice-list{max-height:200px;overflow:auto}
+/* 자동 감시 탭: 선택된 탭은 상단 메뉴처럼 초록 */
+.watch-tabs button{border-radius:8px 8px 0 0;border-bottom:3px solid transparent}
+.watch-tabs button.active{color:var(--navy);background:#eafaf3;border-bottom-color:var(--lime)}
+/* 현황 표: 테두리·배경으로 구분 */
+.watch-status-box{border:2px solid #9fd8b8;background:#f4fbf7;border-radius:12px;padding:10px 16px 14px;margin:12px 0 18px}
+.watch-status-box h3{margin:4px 0 8px}
+.watch-status-box .watch-status{background:#fff}
+/* 안내 상자·칩 선택·폴더 고르기 */
+.guide-box{border:1px solid #c9d9ea;background:#f5f9ff;border-radius:10px;padding:12px 16px;margin:10px 0}
+.guide-box ol{margin:8px 0 8px 18px;padding:0}.guide-box li{margin:3px 0}
+kbd{display:inline-block;padding:1px 6px;border:1px solid #b8c4d2;border-bottom-width:2px;border-radius:4px;background:#fff;font-size:12px}
+.chip-pick{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.chip-pick label{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;cursor:pointer;white-space:nowrap}
+.chip-pick label.on{border-color:var(--lime);background:#f3fbe4;font-weight:700}
+.chip-pick input{width:14px;height:14px;margin:0}
+.folder-pick{border:2px solid var(--lime);border-radius:10px;padding:12px 14px;margin:6px 0 14px;background:#fff}
+.folder-pick-head{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.recipe-queue .q{display:inline-block;margin:0 4px 2px 0;padding:2px 8px;border-radius:6px;background:#eef2f6}
+.recipe-queue .q.now{background:#a3e635;color:#12244a;font-weight:700}
+.recipe-queue .q.done{color:#1f9d55}
+.help-btn{min-height:0!important;width:20px;height:20px;padding:0;border-radius:50%;font-size:12px;font-weight:800;line-height:18px;margin-left:4px}
+.path-sample code{white-space:normal;overflow-wrap:anywhere}
+.row-pick-sel{margin:4px 0 0;font-size:12.5px}
+.sel-chip{display:inline-block;margin:2px 4px 0 0;padding:1px 8px;border-radius:999px;background:#f3fbe4;border:1px solid #cde9a8;font-size:12px}

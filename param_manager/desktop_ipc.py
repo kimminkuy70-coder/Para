@@ -37,7 +37,7 @@ BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 값 확인',
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 감시 회차'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 # Background jobs that only read (local or OneDrive/equipment). Closing the app does not
 # wait for them — waiting for a slow read kept the old engine alive after the window
@@ -256,9 +256,9 @@ class Session:
         allowed.update(watch_status=set(), pwatch_state=set(),
                        pwatch_save={'enabled','interval_hours','window_start','window_end','notify_on_change_only'},
                        pwatch_set_path={'machine','recipe','rel'}, pwatch_copy_paths={'source','targets'},
-                       pwatch_jobs={'machine','sub'}, pwatch_run=set(), cmwatch_state=set(),
+                       pwatch_jobs={'machine','sub'}, pwatch_connections={'machines'}, pwatch_run=set(), cmwatch_state=set(),
                        cmwatch_save={'enabled','interval_hours','window_start','window_end','settle_minutes','machines','plan'},
-                       cmwatch_run=set(), cmwatch_candidates={'machine','device','lot'}, cmwatch_begin={'sm','title'},
+                       cmwatch_run=set(), cmwatch_candidates={'machine','device','lot'}, cmwatch_begin={'sm','title'}, cmwatch_recipes={'indexes'},
                        cmwatch_page={'snapshot','variant','query','used_only','offset','limit','zone'},
                        cmwatch_edit={'snapshot','row','kind','value'}, cmwatch_confirm={'snapshot'}, cmwatch_cancel=set())
         if set(params) - allowed.get(method, set()):
@@ -512,15 +512,18 @@ class Session:
             action = {'pwatch_state': lambda: self.pwatch.state(params), 'pwatch_save': lambda: self.pwatch.save(params),
                       'pwatch_set_path': lambda: self.pwatch.set_path(params),
                       'pwatch_copy_paths': lambda: self.pwatch.copy_paths(params),
-                      'pwatch_jobs': lambda: self.pwatch.jobs(params)}
+                      'pwatch_jobs': lambda: self.pwatch.jobs(params),
+                      'pwatch_connections': lambda: self.pwatch.connections(params)}
             if method in ('pwatch_save', 'pwatch_set_path', 'pwatch_copy_paths') and self.watching == 'param':
                 raise ValueError('감시 회차가 끝난 뒤 설정을 바꾸세요')
             # Shared settings / equipment folder listing: off the input thread.
-            bg(rid, 'pwatch', action[method], '자동 감시 설정을 처리하지 못했습니다. 저장폴더와 장비 연결을 확인하세요.')
+            bg(rid, 'pwatch', action[method], '자동 감시 설정을 처리하지 못했습니다. 저장폴더와 장비 연결을 확인하세요.',
+               ('pwatch', 'equipment') if method in ('pwatch_copy_paths', 'pwatch_connections') else ('pwatch',))
         elif method.startswith('cmwatch_'):
             action = {'cmwatch_state': lambda: self.cmwatch.state(params), 'cmwatch_save': lambda: self.cmwatch.save(params),
                       'cmwatch_candidates': lambda: self.cmwatch.candidates(params),
                       'cmwatch_begin': lambda: self.cmwatch.begin(params),
+                      'cmwatch_recipes': lambda: self.cmwatch.pick_recipes(params),
                       'cmwatch_page': lambda: self.cmwatch.form.page(params),
                       'cmwatch_edit': lambda: self.cmwatch.form.edit(params),
                       'cmwatch_bulk': lambda: self.cmwatch.form.bulk(params),
