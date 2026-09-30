@@ -61,5 +61,50 @@ class DiagTests(unittest.TestCase):
         self.assertLess(os.path.getsize(path), 400)
 
 
+class BootTests(unittest.TestCase):
+    def test_waiting_requests_get_progress_and_frames_keep_order(self):
+        import io
+        import json
+        import time
+        from param_manager import desktop_boot as boot
+        frames_in = (b'{"version":1,"id":7,"method":"configuration","params":{}}\n'
+                     b'{"version":1,"id":8,"method":"config_state","params":{}}\n')
+        out = io.BytesIO()
+        old = boot.PROGRESS_SEC
+        boot.PROGRESS_SEC = 0.05
+        try:
+            frames = boot.FrameQueue(io.BytesIO(frames_in), 4096)
+            value = boot.load_with_progress(lambda: (time.sleep(0.4), "ipc")[1], frames, out)
+        finally:
+            boot.PROGRESS_SEC = old
+        self.assertEqual(value, "ipc")
+        events = [json.loads(line) for line in out.getvalue().decode("utf-8").splitlines()]
+        self.assertTrue(events)
+        self.assertEqual({e["id"] for e in events}, {7, 8})
+        self.assertTrue(all(e["event"] == "progress" and "엔진 준비 중" in e["message"] for e in events))
+        # serve() then reads the very same frames, in order, then EOF.
+        self.assertIn(b'"id":7', frames.readline(4097))
+        self.assertIn(b'"id":8', frames.readline(4097))
+        self.assertEqual(frames.readline(4097), b"")
+
+    def test_loader_error_is_raised(self):
+        import io
+        from param_manager import desktop_boot as boot
+        frames = boot.FrameQueue(io.BytesIO(b""), 10)
+        with self.assertRaises(ImportError):
+            boot.load_with_progress(lambda: (_ for _ in ()).throw(ImportError("x")), frames, io.BytesIO())
+
+    def test_entry_frame_limit_matches_ipc(self):
+        from param_manager import desktop_ipc
+        src = (Path(__file__).resolve().parents[1] / "tools" / "desktop_engine_entry.py").read_text(encoding="utf-8")
+        self.assertIn(f"MAX_FRAME = 4 * 1024 * 1024", src)
+        self.assertEqual(desktop_ipc.MAX_FRAME, 4 * 1024 * 1024)
+
+    def test_builds_use_noarchive(self):
+        root = Path(__file__).resolve().parents[1]
+        self.assertIn("--debug noarchive", (root / ".github/workflows/build-desktop.yml").read_text(encoding="utf-8"))
+        self.assertIn("'--debug','noarchive'", (root / "tools/build_desktop.py").read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -51,7 +51,8 @@ def build(app_version):
     cargo.write_text(re.sub(r'^version = "[^"]+"',f'version = "{app_version}"',cargo.read_text(),count=1,flags=re.M))
     lock=native/'Cargo.lock'
     lock.write_text(re.sub(r'(name = "camtek-aoi-manager"\nversion = ")[^"]+',r'\g<1>'+app_version,lock.read_text(),count=1))
-    run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--console',
+    # noarchive: see build-desktop.yml (per-import re-open of the exe + security scan).
+    run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--onedir','--console','--debug','noarchive',
          '--name','Camtek_AOI_engine','--paths',stage,'--version-file',stage/'tools/version_info.txt',
          '--add-data',str(stage/'param_manager/data')+';param_manager/data',
          stage/'tools/desktop_engine_entry.py'],stage)

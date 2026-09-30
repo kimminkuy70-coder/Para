@@ -23,6 +23,18 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 엔진 시작 5~10분 원인·수정 + v9.10.2 (2026-09-30)
+
+- 진단 로그: 설정 읽기 15ms, **모듈 로딩 625s**(json 5s·copy 10s 등 소모듈마다 1.1s/10.2s 대기, 별도 파일
+  `.pyd` 는 정상). PyInstaller 6 `pyimod01_archive` 가 **import 마다 PYZ(=exe 내장)를 다시 open** →
+  보안 프로그램이 서명 없는 exe open 마다 검사. 검사 캐시가 있을 때만 0.2s.
+- 수정: sidecar 빌드 `--debug noarchive`(워크플로·`tools/build_desktop.py` — **되돌리지 말 것**,
+  `tests/test_desktop_diag.py` 가 고정). `.pyc` 가 `_internal/` 에 개별 파일로.
+- `param_manager/desktop_boot.py`: 엔트리가 heavy import 를 스레드로 돌리는 동안 stdin 프레임을 큐에
+  받고(`FrameQueue` — serve 가 그대로 읽음) 대기 요청에 `progress` 이벤트(모듈 수·경과)를 보낸다.
+  설정 읽기 경로만 가볍게 분리하는 안은 기각 — batch+config 만으로 350개 중 310개(openpyxl 포함)를 import.
+- `desktop_diag._process_age` Windows 핸들 타입 지정(GetCurrentProcess -1 이 32비트로 잘려 '측정 불가').
+
 ### 상세 진단 로그 + v9.10.1 (2026-09-30)
 
 - '기존 설정 읽기'가 들쭉날쭉 = 화면의 첫 `configuration` 요청이 **엔진 모듈 로딩이 끝날 때까지 파이프에서

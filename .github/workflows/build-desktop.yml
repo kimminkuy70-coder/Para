@@ -82,9 +82,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-build.txt
 
+      # --debug noarchive: modules as separate .pyc files under _internal/ instead of
+      # an archive inside the exe. PyInstaller re-opens its archive file for every
+      # module import, and a security scanner checking the (unsigned) exe on each
+      # open made start-up take 5-10 minutes (상세_진단_로그 2026-09-30).
       - name: Build Python engine sidecar (PyInstaller onedir)
         run: >
-          pyinstaller --noconfirm --clean --onedir --console
+          pyinstaller --noconfirm --clean --onedir --console --debug noarchive
           --name Camtek_AOI_engine --paths .
           --version-file tools/version_info.txt
           --add-data "param_manager/data;param_manager/data"

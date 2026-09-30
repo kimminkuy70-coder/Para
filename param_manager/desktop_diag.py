@@ -150,12 +150,21 @@ def stop_import_timer() -> None:
 # ---------------------------------------------------------------- PC facts
 def _process_age() -> float | None:
     """Seconds from this process's creation to T0 (bootloader + interpreter start)."""
-    if os.name != "nt":
-        return None
     try:
+        if os.name != "nt":
+            with open("/proc/self/stat", encoding="ascii") as fh:
+                ticks = int(fh.read().rsplit(")", 1)[1].split()[19])
+            with open("/proc/stat", encoding="ascii") as fh:
+                boot = next(int(line.split()[1]) for line in fh if line.startswith("btime"))
+            return T0 - (boot + ticks / os.sysconf("SC_CLK_TCK"))
         import ctypes
         from ctypes import wintypes
         k32 = ctypes.windll.kernel32
+        # Explicit types: GetCurrentProcess returns the pseudo handle -1, which the
+        # default c_int conversion truncated to 32 bits (→ '측정 불가' on 64-bit).
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        k32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        k32.GetProcessTimes.restype = wintypes.BOOL
         ft = [wintypes.FILETIME() for _ in range(4)]
         if not k32.GetProcessTimes(k32.GetCurrentProcess(), *[ctypes.byref(f) for f in ft]):
             return None
