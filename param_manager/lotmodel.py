@@ -48,7 +48,7 @@ UNKNOWN = "미분류"
 # 판정(묶음 안 웨이퍼 최종 결과) — 사용자 피드백(2026-10-04)으로 '회복' 같은 해석어 대신 일어난 일을 그대로 쓴다.
 OK, RECOVERED, DUPLICATE, UNRESOLVED = "한 번에 Pass", "재스캔 Pass", "중복 Pass", "Pass 없음"
 # Lot 상태
-LOT_DONE, LOT_RESCANNED, LOT_OPEN = "한 번에 완료", "재스캔으로 완료", "Pass 못 한 웨이퍼 있음"
+LOT_DONE, LOT_RESCANNED, LOT_OPEN = "한 번에 완료", "재스캔으로 완료", "Pass하지 못한 wafer 존재"
 
 
 # ---------------------------------------------------------------------------

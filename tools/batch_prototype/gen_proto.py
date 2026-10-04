@@ -2,9 +2,11 @@
 
     python tools/batch_prototype/gen_proto.py <Batch Report 폴더> [출력.html]
 
-실제 앱 화면(frontend/src/styles.css)을 그대로 입혀 ① Lot 추적 ② 찾기·취합 ③ 가동률·원인 ④ WPH 의
-UX 와 로직을 눌러 보게 한다. Lot 규칙은 param_manager.lotmodel 을 그대로 쓰고, ③·④ 계산은 구현 예정
-로직을 여기서 미리 계산한다. **장비 접근·파일 저장 없음.** 실자료는 저장소에 넣지 않는다(인자로 지정).
+실제 앱 화면(frontend/src/styles.css)을 그대로 입혀 [가동률 조사 및 분석](Lot 추적 · 가동률 · WPH)과
+[Batch Report 찾기 · 취합] 두 탭의 UX 와 로직을 눌러 보게 한다. Lot 규칙은 param_manager.lotmodel 을 그대로
+쓰고, 가동률·WPH 계산은 구현 예정 로직을 여기서 미리 계산한다. **장비 접근·파일 저장 없음.**
+실자료는 저장소에 넣지 않는다(인자로 지정). 실자료에 호기 정보가 없어 AOI-X 로 넣고, 30호기 배치를
+보이려고 자료 없는 예시 호기 AOI-1~29 를 함께 둔다.
 """
 import json
 import sys
@@ -21,6 +23,7 @@ if len(sys.argv) < 2:
 SAMPLE = Path(sys.argv[1])
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else Path.cwd() / 'Batch Report 프로토타입.html'
 MACHINE, ROOT = 'AOI-X', r'Y:\AOI-X'
+DEMO_MACHINES = [f'AOI-{n}' for n in range(1, 30)]   # 화면 배치용 예시(자료 없음)
 
 
 def t(v):
@@ -171,7 +174,9 @@ for li, lot in enumerate(model['lots']):
         eff.append({'m': b['machines'][-1], 'r': f"{job} · {b['step']}", 'd': t(b['start'])[:10], 'w': valid, 's': sec,
                     'n': len(b['attempts']), 'lot': li, 'b': bi})
 
-DATA = {'machines': [{'id': MACHINE, 'root': ROOT}], 'R': R, 'lots': lots, 'excluded': excluded, 'B': B,
+machines = [{'id': m, 'root': 'W:\\' + m, 'demo': True} for m in DEMO_MACHINES]
+machines.append({'id': MACHINE, 'root': ROOT, 'demo': False, 'reports': len(R)})
+DATA = {'machines': machines, 'R': R, 'lots': lots, 'excluded': excluded, 'B': B,
         'C': {'base': base, 'eff': eff}, 'criteria': lotreport.CRITERIA,
         'range': [min(r['s'] for r in R if r['s'])[:10], max(r['s'] for r in R if r['s'])[:10]]}
 payload = json.dumps(DATA, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')

@@ -74,17 +74,35 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   호기 이동 조건(48h + 미해결 + 같은 공정 단계)은 **사용자 확정**(2026-10-04).
   · 연쇄(앞 오류 뒤 Aborted/Skipped)만 있는 웨이퍼의 원인 = 그 Batch Report 의 첫 오류(`trigger`, `chain_only`).
   · **표시 규칙(사용자 피드백 2026-10-04)**: ①해석어 금지 — 웨이퍼 결과는 `한 번에 Pass / 재스캔 Pass / 중복 Pass /
-    Pass 없음`, Lot 상태는 `한 번에 완료 / 재스캔으로 완료 / Pass 못 한 웨이퍼 있음`('회복'·'미해결' 쓰지 않음).
+    Pass 없음`, Lot 상태는 `한 번에 완료 / 재스캔으로 완료 / Pass하지 못한 wafer 존재`('회복'·'미해결' 쓰지 않음;
+    `lotmodel.LOT_OPEN`, 2026-10-04 2차 피드백으로 문구 변경).
     ②**오류는 Batch Report 원문 그대로**(약어·한글 분류로 바꾸지 않음; 묶어 셀 때만 첫 문구 `cause`, 내부 분류 `cause_type`).
     ③Lot 을 고르면 **Lot 취합 표(묶음별) → 웨이퍼 취합 표**가 맨 위, 시도 이력·오류 지도는 그 아래.
 - **화면 프로토타입(검토 중)**: `tools/batch_prototype/gen_proto.py <Batch Report 폴더> [출력.html]` — 실제 앱 CSS 로
-  ① Lot 추적 ② 찾기·취합 ③ 가동률·원인 ④ WPH 를 실자료로 눌러 보는 단일 HTML(장비 접근·저장 없음, 실자료는 저장소 밖).
-  구상: ①③④ 는 공통 '조사 범위'(호기·기간 → 조사 시작 · ? 판정 기준) 한 번으로 같은 Lot 결과를 쓰고, ② 는 파일 이름 검색
-  → Lot·묶음별 결과(같은 묶음의 키워드 밖 Batch Report 도 회색으로) → 원문 보기/원본 열기/Scanresult 경로 → 취합(중복 알림:
-  Pass 2번 이상만 고르게, 오류 뒤 Pass 1번은 자동) → Lot 취합·웨이퍼 표 → Excel. 중복 선택은 로컬 저장해 ①~④ 공유(예정).
-  ③ 달력 시간 = 유효 스캔(고른 웨이퍼 몫) + 버려진 스캔(오류·중복 몫, 오류 원문별) + 재스캔 대기(같은 묶음 시도 사이 중
-  장비가 아무것도 안 스캔한 시간) + 점검 스캔 + 기타. ④ 레시피 = Job · Recipe(s), 기준 WPH(25행 모두 Pass) vs 실효 WPH
-  (묶음: Pass 웨이퍼 ÷ 모든 시도 시간), 손실률. 사용자 피드백 대기.
+  실자료를 눌러 보는 단일 HTML(장비 접근·저장 없음, 실자료는 저장소 밖. 실자료에 호기 정보가 없어 AOI-X, 30호기 배치용 예시 AOI-1~29).
+  **2차 피드백(2026-10-04, 사용자 Lot.md) 반영 구조**:
+  · **큰 탭 2개**: `가동률 조사 및 분석`(안쪽 탭 Lot 추적 · 가동률·원인 · WPH — 조사 범위 공통) / `Batch Report 찾기 · 취합`.
+  · **조사 범위**: 호기 박스 고정 격자(`repeat(auto-fill,minmax(138px,1fr))`, 높이 고정 — 30대여도 줄·칸 정렬), 전체 선택/해제,
+    `⚙ AOI 장비 호기 루트 설정`(실제 앱은 `para:navigate` 로 설정 탭). **`이미 읽은 Batch Report는 다시 읽지 않기` 기본 켜짐**
+    (파일 이름·수정시각·크기 같으면 캐시 — 엔진 `batchreport_store.collect` 가 이미 signature 재사용; 끄면 전부 다시 읽는
+    옵션은 엔진에 추가 예정). 기간 프리셋(최근 30/90일/전체).
+  · **'묶음' 용어 화면에서 삭제** — 사용자에게는 모두 Lot. 내부 구조(lotmodel bunch)는 유지하고 화면은 '공정 단계(Recipe(s)) ·
+    날짜'로 줄을 나눈다(WBG→CMP 를 더하면 같은 웨이퍼가 두 번 들어가므로). `lotreport.CRITERIA` 도 '이어서 스캔'으로 바꿈.
+  · **Lot 추적**: 기능 설명 카드 → **누르는 지표 5개**(조사 범위 내 Lot Scan 완료 / Batch Report 존재(=리포트 수, 묶음 수 아님) /
+    재스캔으로 완료된 Lot / Pass하지 못한 Lot(다른 호기 확인 필요) / 중복 Scan한 wafer가 존재하는 Lot) — 누르면 아래 목록이
+    바뀜(Batch Report 지표는 Batch Report 목록 → 행 = 원문). 기간별 Lot Scan 누적 막대(툴팁·클릭=기간 필터) →
+    **`Lot 단위 Scan List`**(필터: 상태 `Pass하지 못한 wafer 존재`, `재스캔`, 호기 이동. 중복 Pass 필터 삭제) →
+    **`조사 범위 내 Lot Scan Error 요약`**(열 = Error 원문 · Lot · 재스캔하여 Pass한 Lot · Pass하지 못한 Lot · wafer — 전부 Lot
+    단위, '그중 연쇄' 삭제. Lot 판정: 그 Error 난 wafer가 모두 Pass면 앞, 하나라도 끝내 못 하면 뒤).
+  · **Lot 클릭 = 새 창**(큰 dialog) 탭 2개: ①`Lot 이력 상세` — 맨 위 **시간순 요약 그래프**(Batch Report마다 Pass/연쇄/Error
+    막대, 사이 간격·호기 이동·공정 바뀜) + 문장 요약 + Batch Report 이력 + Lot × wafer 오류 지도 ②`Lot · wafer 취합`.
+  · **중복 Pass 선택·선택 저장 = 개발자 기능**(토글, 실제 앱은 설정 › 정보). 기본은 모든 화면이 추천(가장 나중 Pass).
+    찾기·취합도 기본은 추천 자동 + 안내, 선택 창은 개발자 기능에서만.
+  · 모든 표 칸·버튼·라벨 한 줄(`white-space:nowrap`, 넘치면 가로 스크롤), 문장은 `word-break:keep-all`. 차트는 외부 라이브러리
+    없이 SVG(툴팁·클릭·범례 켜고 끄기): 가동률 누적 막대, WPH 산점도(Lot별 실효 WPH, 기준 WPH 선, 점 클릭 = Lot 창).
+  가동률 = 유효 스캔(최종으로 쓰는 웨이퍼 몫) + 버려진 스캔(오류·중복 몫, 오류 원문별) + 재스캔 대기(같은 Lot 이어서 스캔 사이 중
+  장비가 아무것도 안 스캔한 시간) + 점검 스캔 + 기타. WPH 레시피 = Job · Recipe(s), 기준 WPH(25행 모두 Pass) vs 실효 WPH
+  (Lot·공정 단계: Pass 웨이퍼 ÷ 이어서 스캔한 모든 Batch Time), 손실률. 사용자 피드백 대기.
 - **Lot 추적 HTML(`param_manager/lotreport.py`)**: 조사(`batchreport_service.run`)마다 `BatchReport_Lot추적.html`
   (`LOT_HTML`, 결과 `lots`) 생성 — KPI · Lot 목록(검색/상태/호기/나눠 스캔/중복/호기 이동 필터) · Lot 클릭 → 묶음별 시도
   (원문 열기 `file:///`) + **Lot × 웨이퍼 오류 지도** + Dice 합계 · 원인별 Lot(연쇄 따로) · 점검 스캔 목록. 외부 의존 없음.

@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Batch Report 프로토타입 2차 피드백(Lot.md) 반영 (2026-10-04 KST, `version_v10`)
+
+- 사용자 Lot.md 전 항목을 `tools/batch_prototype/proto_template.html`·`gen_proto.py` 에 반영(구조는 CLAUDE.md '화면 프로토타입' 절):
+  큰 탭 2개(가동률 조사 및 분석 / 찾기·취합), 30호기 고정 격자 + 설정 이동 버튼, '이미 읽은 Batch Report 다시 읽지 않기'(기본 켜짐),
+  '묶음' 화면 용어 삭제, Lot 추적 설명·누르는 지표 5개·Lot 단위 Scan List·Lot Scan Error 요약(Lot 단위), Lot 클릭 = 새 창
+  (Lot 이력 상세 첫 탭 — 시간순 요약 그래프), 중복 Pass 선택·저장 = 개발자 기능, 줄바꿈 금지, SVG 인터랙티브 차트.
+- 엔진 문구: `lotmodel.LOT_OPEN` = `Pass하지 못한 wafer 존재`, `lotreport.CRITERIA` 에서 '묶음' → '이어서 스캔'(? 버튼 공통 문구).
+  `BatchReport_Lot추적.html`(lotreport) 본문 표에는 아직 '묶음'이 남아 있다 — 프로토타입 확정 후 웹 화면 구현 때 함께 정리.
+- 지표 정정: 사용자가 '340개 Batch Report'로 적은 340 은 묶음(이어서 스캔한 단위) 수. 실자료 Batch Report 는 420(Lot 417 + 점검 3).
+- 검증: Chromium(playwright-core) 로 지표 5개 클릭·목록 전환·원문·차트 툴팁/클릭·Error 요약 필터·Lot 창 두 탭·개발자 기능 on/off·
+  가동률/WPH 차트·설정 이동·조사(캐시 끔, 30호기)·찾기·취합 확인, JS 오류 0, 1440px·420px 가로 넘침 0, 줄바꿈된 표 칸 0.
+  test_lotmodel 15(실자료 포함), test_desktop_batch, test_batchreport(tkinter 없는 1건 외) 통과. Windows 실기·빌드·배포 미수행.
+- 다음: 사용자 검토 → 확정분을 웹 화면(`frontend/src/main.tsx` Batch Report 탭)·엔진(캐시 끄기 옵션, 중복 선택 저장)에 구현.
+
 ## 최신 재개 — Batch Report 명칭 통일 (2026-10-04 KST, 브랜치 `version_v10`)
 
 - 시작 HEAD `7b7d41e`. 브랜치 `claude/version-webview-branch-compare-gnax2c` 를 사용자 지시로 `version_v10` 으로 이름 변경(같은 커밋).

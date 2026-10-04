@@ -16,29 +16,32 @@ from .batchreport_output import PAGE_CSS
 
 # (제목, 설명, 예) — 앱 화면 ? 버튼(desktop_batch.describe → lot_criteria)과 HTML 이 같은 문구를 쓴다.
 CRITERIA = [
-    ("조사 단위", "Batch Report 1장 = 스캔 시도 1번입니다. 시도를 '묶음'으로, 묶음을 'Lot'으로 묶어 봅니다. "
-     "Lot 하나가 Batch Report 여러 장으로 나뉘는 것이 보통입니다.", ""),
+    ("조사 단위", "Batch Report 1장 = 스캔 1번입니다. 한 Lot은 Error 재스캔 · 나눠 스캔 · 호기 이동으로 "
+     "Batch Report 여러 장에 나뉘는 것이 보통이라, Batch Report를 Lot 단위로 다시 모아 봅니다.", ""),
     ("S/M", "파일 이름에서 Job/Setup 뒤, 날짜 앞 문자열을 S/M으로 씁니다. 웨이퍼 Lot 칸이 전부 LoadPort여도 "
      "파일 이름에는 남아 있습니다.", "…0A_6392_KDT-PR RW_26-May-06_… → KDT-PR RW"),
     ("Lot 코드", "S/M 안에서 처음 나오는 영문 3글자 단어입니다. 호기마다 Job이나 S/M 꼬리가 달라도 이 3글자는 같습니다. "
      "3글자 단어가 없으면 점검 스캔으로 보고 Lot에서 뺍니다.", "BAW-0911S → BAW · 0701 N SPT … → SPT · 0, FOCUS → 점검 스캔"),
     ("Lot ID 확인", "Wafer ID가 SF14G25-A0 형식이면 앞 5자를 실제 Lot ID로 봅니다. 같은 코드라도 Lot ID가 다르면 "
      "다른 Lot입니다. 1글자만 다르면 ID 판독 오차로 같은 Lot입니다.", "BAH → SC93F · SA78K 두 Lot / SH47T ≈ SA47T"),
-    ("묶음", f"한 번의 검사를 끝내려고 연달아 한 시도들입니다. 같은 호기에서 앞 시도 끝부터 다음 시도 시작까지 "
-     f"{lm.SAME_MACHINE_GAP_H}시간 이하면 같은 묶음입니다.", "WBG 단계 · CMP 단계 · 재검사는 각각 다른 묶음"),
-    ("호기 이동", f"다른 호기의 시도는 ① {lm.MOVE_GAP_H}시간 이내 ② 앞 묶음에 Pass 못 한 웨이퍼가 남음 "
-     "③ 같은 공정 단계(Recipe(s))일 때만 같은 묶음으로 잇습니다. 시간만 보면 다음 공정 스캔과 구분되지 않기 때문입니다.",
-     "AOI-9에서 3번 실패 → AOI-12에서 완료 = 한 묶음"),
+    ("이어서 스캔", f"같은 Lot을 같은 호기에서 앞 Batch Report 끝부터 다음 시작까지 {lm.SAME_MACHINE_GAP_H}시간 이하로 "
+     "다시 스캔하면 이어서 스캔한 것(재스캔 · 나눠 스캔)으로 봅니다. 공정 단계가 바뀌거나(WBG → CMP) 오래 뒤에 다시 검사하면 "
+     "같은 Lot 안에서 줄을 나눠 셉니다 — 같은 웨이퍼를 두 번 더하지 않기 위해서입니다.",
+     "2D_WBG 스캔 → 3일 뒤 2D 스캔 = 같은 Lot, 두 줄"),
+    ("호기 이동", f"다른 호기의 Batch Report는 ① {lm.MOVE_GAP_H}시간 이내 ② 앞 스캔에 Pass하지 못한 웨이퍼가 남음 "
+     "③ 같은 공정 단계(Recipe(s))일 때만 이어서 스캔한 것으로 봅니다. 시간만 보면 다음 공정 스캔과 구분되지 않기 때문입니다.",
+     "AOI-9에서 3번 실패 → AOI-12에서 완료 = 이어서 스캔"),
     ("슬롯", "웨이퍼 표가 25행이면 1행 = 25번 … 25행 = 1번입니다(장비가 25→1 순으로 스캔). "
      "25행이 아니면 Wafer ID로 맞춥니다.", "Slot 14 · 14 · SF14G14-A0 → 14번"),
     ("Error 판정", "Pass/Fail 칸이 Pass가 아니면 빈칸을 포함해 전부 Error입니다. 문구가 여럿이면 첫 문구가 원인입니다.",
      "Scan 2D Error. Aborted. → 2D Scan 오류"),
-    ("연쇄", "같은 Batch Report에서 앞에 오류가 있었으면 뒤따르는 Aborted · Skipped는 연쇄로 표시합니다. "
-     "원인 집계에서는 연쇄를 따로 셉니다.", ""),
-    ("웨이퍼 결과", "묶음 안에서 웨이퍼마다 한 번에 Pass · 재스캔 Pass(Error 뒤 다시 스캔해 Pass) · 중복 Pass(Pass 2번 이상) · "
-     "Pass 없음(끝까지 Pass 못 함)으로 나눕니다. 묶음이 다르면 중복이 아닙니다.", ""),
-    ("오류 표시", "오류는 Batch Report의 Pass/Fail 원문 그대로 보여 줍니다. 묶어서 셀 때만 첫 문구를 씁니다.", "Scan 2D Error. Aborted. → 첫 문구 Scan 2D Error."),
-    ("중복 선택 · Dice 합계", "중복이면 가장 나중 Pass를 추천 선택합니다. Dice 합계는 웨이퍼마다 고른 행 하나만 더합니다.", ""),
+    ("연쇄", "같은 Batch Report에서 앞에 Error가 있었으면 뒤따르는 Aborted · Skipped는 연쇄로 표시하고, "
+     "Error 집계에서는 그 앞 Error 문구로 셉니다.", ""),
+    ("웨이퍼 결과", "이어서 스캔한 Batch Report들 안에서 웨이퍼마다 한 번에 Pass · 재스캔 Pass(Error 뒤 다시 스캔해 Pass) · "
+     "중복 Pass(Pass 2번 이상) · Pass 없음(끝까지 Pass하지 못함)으로 나눕니다. 공정 단계가 다른 스캔은 중복이 아닙니다.", ""),
+    ("오류 표시", "오류는 Batch Report의 Pass/Fail 원문 그대로 보여 줍니다. 모아서 셀 때만 첫 문구를 씁니다.", "Scan 2D Error. Aborted. → 첫 문구 Scan 2D Error."),
+    ("중복 Pass · Dice 합계", "같은 웨이퍼가 Pass 2번 이상이면 가장 나중 Pass를 씁니다(추천, 기본). Dice 합계는 웨이퍼마다 "
+     "쓴 행 하나만 더합니다. 다른 Pass로 직접 바꾸는 것은 개발자 기능입니다.", ""),
     ("한계", "Lot ID가 없는 스캔(WBG 숫자 ID)끼리는 같은 3글자를 다른 Lot이 다시 써도 구분할 수 없습니다. "
      "호기 이동은 조사에 포함된 호기의 Batch Report끼리만 이어집니다.", ""),
 ]
@@ -160,7 +163,7 @@ LOT_JS = r"""
 var D=window.__LOTDATA,L=D.lots,V=['한 번에 Pass','재스캔 Pass','중복 Pass','Pass 없음'],VC={'한 번에 Pass':'v-ok','재스캔 Pass':'v-re','중복 Pass':'v-dup','Pass 없음':'v-open'};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function num(v){return v==null?'—':(Math.round(v*100)/100).toLocaleString();}
-function pill(l){var c=l.state==='Pass 못 한 웨이퍼 있음'?'bad':l.state==='재스캔으로 완료'?'rec':'ok',h='<span class="pill '+c+'">'+esc(l.state)+'</span>';
+function pill(l){var c=l.state==='Pass하지 못한 wafer 존재'?'bad':l.state==='재스캔으로 완료'?'rec':'ok',h='<span class="pill '+c+'">'+esc(l.state)+'</span>';
  if(l.duplicates)h+=' <span class="pill dup">중복 Pass '+l.duplicates+'</span>';if(l.moved)h+=' <span class="pill mv">호기 이동</span>';return h;}
 var q=document.getElementById('q'),st=document.getElementById('st'),mc=document.getElementById('mc'),
     fd=document.getElementById('fd'),fm=document.getElementById('fm'),fs=document.getElementById('fs'),body=document.getElementById('lotbody'),cnt=document.getElementById('cnt');
