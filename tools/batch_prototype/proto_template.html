@@ -64,6 +64,13 @@ body.nologic .logic{display:none}
 .devonly{display:none!important}
 body.dev .devonly{display:revert!important}
 body.dev .devonly.flex{display:flex!important}
+.devbar{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border-radius:10px;padding:9px 14px;margin:0 0 14px;font-size:12.5px;box-shadow:var(--sh1)}
+.devbar.on{background:#f3eefc;border:1px solid #d9c9f2;color:#4a2f7a}.devbar.info{background:#eef4fb;border:1px solid #cddcee;color:#31517c}
+.devbar .grow{flex:1}.devbar button{min-height:28px;padding:3px 12px;font-size:12px}
+.stamp{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12.5px;background:#f6f8fb;border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0 0 12px}
+.stamp b{color:var(--navy)}
+.tag-man{font-size:10.5px;font-weight:800;color:#31517c;background:#e5ecf6;border-radius:4px;padding:0 5px;margin-left:6px}
+.tag-draft{font-size:10.5px;font-weight:800;color:#8a5a00;background:#fdf0d5;border-radius:4px;padding:0 5px;margin-left:6px}
 .devnote{background:#f3eefc;border:1px solid #d9c9f2;color:#5b3f8f;border-radius:8px;padding:8px 12px;font-size:12px;margin:8px 0}
 /* Lot 추적 설명 */
 .intro{border:1px solid #cfe7dc;background:linear-gradient(180deg,#f3fbf7,#fff);border-radius:12px;padding:16px 18px;margin-bottom:6px}
@@ -243,6 +250,7 @@ tr.outside td{color:#97a3b2}
 <div class="page-heading"><div><p class="eyebrow">PROCESS INTELLIGENCE</p><h1>Batch Report</h1><p>장비 Report 폴더의 Batch Report를 Lot 단위로 모아 가동률 · Lot 추적 · WPH를 보고, 필요한 Batch Report를 찾아 취합합니다.</p></div>
   <div class="heading-tools"><span class="proto-badge">프로토타입 · 실자료 Batch Report 420개</span><label class="tgl"><input type="checkbox" id="logicToggle" checked> 로직 설명 보기</label><label class="tgl dev" title="실제 앱: 설정 › 정보 › 개발자 기능"><input type="checkbox" id="devToggle"> 개발자 기능</label><span class="connection connected">엔진 연결됨(모의)</span></div></div>
 
+<div class="devbar" id="devBar" hidden role="status"></div>
 <div class="maintabs" role="tablist" aria-label="Batch Report 기능" id="mainTabs">
   <button role="tab" data-main="analysis" class="active" aria-selected="true">가동률 조사 및 분석<small>Lot 추적 · 가동률 · WPH — 조사 범위 공통</small></button>
   <button role="tab" data-main="find" aria-selected="false">Batch Report 찾기 · 취합<small>파일 이름으로 찾아 Lot별 Dice 취합</small></button>
@@ -302,7 +310,8 @@ tr.outside td{color:#97a3b2}
     <li>Batch Report 1장 = 스캔 1번. S/M 안 첫 영문 3글자 = Lot 코드이고, 전체 Wafer ID(앞 5자)가 있으면 Lot ID로 다시 확인합니다.</li>
     <li>같은 Lot을 같은 호기에서 12시간 이내로 다시 스캔하면 <b>이어서 스캔</b>한 것(재스캔 · 나눠 스캔)입니다. 다른 호기는 48시간 이내 + 앞 스캔에 Pass하지 못한 wafer + 같은 공정 단계(Recipe(s))일 때만 이어서 <b>호기 이동</b>으로 표시합니다.</li>
     <li>공정 단계가 바뀌면(예: 2D_WBG → 2D) 같은 Lot 안에서 줄을 나눠 셉니다 — 같은 wafer를 두 번 더하지 않기 위해서입니다.</li>
-    <li>wafer 결과: 한 번에 Pass · 재스캔 Pass · 중복 Pass · Pass 없음. 같은 wafer가 2번 이상 Pass면 <b>가장 나중 Pass</b>를 씁니다(추천 · 기본). 직접 바꾸고 저장하는 것은 개발자 기능입니다.</li></ol></div>
+    <li>wafer 결과: 한 번에 Pass · 재스캔 Pass · 중복 Pass · Pass 없음. 같은 wafer가 2번 이상 Pass면 <b>가장 나중 Pass</b>를 씁니다(추천 · 기본). 직접 바꾸고 저장하는 것은 개발자 기능입니다.</li>
+    <li><b>개발자 기능을 켜고 끄는 것만으로는 숫자가 바뀌지 않습니다.</b> 결과는 추천 + <b>저장된</b> 사람 선택으로만 정해지고(저장된 선택은 꺼도 계속 적용 · 화면 위 안내 막대와 결과마다 '선택 기준'에 표시), 저장 안 한 선택이 있으면 끄기 전에 저장/버리기를 묻습니다. 조사 중에는 바꿀 수 없습니다. 실제 앱은 저장된 선택으로 가동률 · WPH도 다시 계산합니다(프로토타입은 추천 기준으로 미리 계산).</li></ol></div>
   <section class="card2"><div class="section-heading"><div><h2>조사 범위 내 Lot Scan Error 요약</h2><p class="sub">wafer마다 Pass/Fail 원문의 첫 문구로 셉니다(앞 Error 뒤 따라온 Aborted · Skipped는 그 앞 Error로). 개수는 모두 <b>Lot</b> 기준 — 행을 누르면 그 Error가 난 Lot만 위 목록에 보입니다.</p></div><span class="count" id="causeCount"></span></div>
     <div class="legend" style="display:flex;gap:16px;font-size:12px;color:var(--muted);margin:10px 0 6px"><span><i style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#10b981;margin-right:6px"></i>재스캔하여 Pass한 Lot</span><span><i style="display:inline-block;width:11px;height:11px;border-radius:3px;background:#c2410c;margin-right:6px"></i>Pass하지 못한 Lot</span></div>
     <div class="table-scroll" style="max-height:380px"><table class="t-compact"><thead><tr><th>Error 원문(첫 문구)</th><th class="num">Lot</th><th></th><th class="num" title="이 Error가 난 wafer가 모두 재스캔으로 Pass한 Lot">재스캔하여 Pass한 Lot</th><th class="num" title="이 Error가 난 wafer 중 끝까지 Pass하지 못한 wafer가 있는 Lot">Pass하지 못한 Lot</th><th class="num">wafer</th></tr></thead><tbody id="causeBody"></tbody></table></div></section>
@@ -411,6 +420,9 @@ tr.outside td{color:#97a3b2}
   <div class="subtabs lw-tabs" role="tablist" id="lotTabs"><button role="tab" data-lt="hist" class="active">Lot 이력 상세</button><button role="tab" data-lt="agg">Lot · wafer 취합</button></div>
   <div class="lw-body" id="lotBody"></div>
 </dialog>
+<dialog class="edit-dialog" id="devOffDlg" aria-labelledby="devOffTitle"><h3 id="devOffTitle">저장하지 않은 선택이 있습니다</h3>
+  <p class="sub" id="devOffMsg"></p><p class="sub">개발자 기능을 끄면 직접 고치는 화면이 닫히므로, 저장할지 버릴지 먼저 정해 주세요. 이미 저장된 선택은 그대로 적용됩니다.</p>
+  <div class="dialog-actions"><button data-close>취소(켜 둔 채로)</button><button id="devDropOff">버리고 끄기</button><button class="primary" id="devSaveOff" style="min-width:0">저장하고 끄기</button></div></dialog>
 <dialog class="edit-dialog mid" id="critDlg" aria-labelledby="critTitle"><h3 id="critTitle">Lot 판정 기준</h3>
   <p class="sub">한 Lot은 Batch Report 여러 장으로 나뉘고 다른 호기로 옮겨 다시 스캔되기도 합니다. 아래 기준으로 Batch Report를 Lot으로 모읍니다.</p>
   <dl class="crit" id="critList"></dl><div class="dialog-actions"><button class="primary" data-close>닫기</button></div></dialog>
@@ -457,8 +469,20 @@ window.addEventListener('scroll',function(){tip.hidden=true;},true);
 document.addEventListener('click',function(e){var c=e.target.closest('[data-close]');if(c)c.closest('dialog').close();
   if(e.target.closest('[data-crit]'))openDlg('critDlg');if(e.target.closest('[data-gosettings]'))showView('settings');});
 $('logicToggle').addEventListener('change',function(){document.body.classList.toggle('nologic',!this.checked);});
-$('devToggle').addEventListener('change',function(){document.body.classList.toggle('dev',this.checked);
-  toast(this.checked?'개발자 기능을 켰습니다 — 중복 Pass를 직접 고르고 저장할 수 있습니다.':'개발자 기능을 껐습니다 — 모든 화면이 추천(가장 나중 Pass)을 씁니다.');if($('lotDlg').open)drawLotBody();});
+/* 개발자 기능 = '직접 고치는 화면'만 연다. 결과 숫자는 저장된 선택(saved)으로만 정해지므로 켜고 끄는 것만으로는 바뀌지 않는다.
+   ① 저장 안 한 선택이 있으면 끄기 전에 저장/버리기를 묻는다 ② 조사 중에는 바꿀 수 없다 ③ 결과마다 '선택 기준'을 적는다. */
+$('devToggle').addEventListener('change',function(){
+  if(!this.checked&&nKeys(draft)){this.checked=true;$('devOffMsg').textContent='개발자 기능에서 고쳤지만 저장하지 않은 중복 Pass 선택이 '+nKeys(draft)+'건 있습니다.';openDlg('devOffDlg');return;}
+  setDev(this.checked);});
+function setDev(on){$('devToggle').checked=on;document.body.classList.toggle('dev',on);updDevBar();if($('lotDlg').open)drawLotBody();checkAggStamp();
+  toast(on?'개발자 기능을 켰습니다 — 중복 Pass를 직접 고칠 수 있습니다. 저장해야 결과에 반영됩니다.':'개발자 기능을 껐습니다 — 결과 숫자는 그대로입니다(저장된 사람 선택 '+nKeys(saved)+'건 계속 적용).');}
+$('devSaveOff').onclick=function(){saveDrafts();$('devOffDlg').close();setDev(false);};
+$('devDropOff').onclick=function(){draft={};$('devOffDlg').close();setDev(false);};
+function updDevBar(){var b=$('devBar'),ns=nKeys(saved),nd=nKeys(draft);
+  if(isDev()){b.className='devbar on';b.innerHTML='<b>개발자 기능 켜짐</b><span>중복 Pass를 Lot 창 [Lot · wafer 취합]에서 직접 고칠 수 있습니다 · 저장된 사람 선택 '+ns+'건 적용 중'+(nd?' · <b>저장 안 한 선택 '+nd+'건</b>(저장 전에는 결과에 반영 안 됨)':'')+'</span><span class="grow"></span>'+(nd?'<button type="button" class="primary" data-dev="save" style="min-width:0">저장</button><button type="button" data-dev="drop">버리기</button>':'');}
+  else if(ns){b.className='devbar info';b.innerHTML='<span>ⓘ 저장된 사람 선택 <b>'+ns+'건</b>이 결과에 적용 중입니다(개발자 기능에서 저장). 나머지 wafer는 추천(가장 나중 Pass).</span>';}
+  b.hidden=!isDev()&&!ns;}
+$('devBar').onclick=function(e){var a=e.target.closest('[data-dev]');if(!a)return;if(a.getAttribute('data-dev')==='save')saveDrafts();else{draft={};updDevBar();if($('lotDlg').open)drawLotBody();toast('저장 안 한 선택을 버렸습니다.');}};
 
 /* ---------- 원문 행 해석(엔진 lotmodel 과 같은 규칙) ---------- */
 function cols(r){if(!r._c){var h=r.h.map(function(x){return x.toLowerCase().replace(/[^a-z0-9]/g,'');});r._c={st:h.indexOf('passfail'),id:h.indexOf('waferid'),sc:h.indexOf('scanneddice'),bad:h.indexOf('baddice'),good:h.indexOf('gooddice')};}return r._c;}
@@ -516,6 +540,7 @@ function setStatus(prefix){var n=scopeReports().length;$('scopeStatus').textCont
 $('runBtn').onclick=function(){
   var sel=M.filter(function(m){return machinesOn[m.id];});if(!sel.length){toast('조사할 호기를 하나 이상 고르세요.');return;}
   var b=this,reuse=$('reuse').checked,steps=[],fresh=0,cached=0;b.disabled=true;$('runProgress').hidden=false;
+  $('devToggle').disabled=true;$('devToggle').parentNode.title='조사 중에는 바꿀 수 없습니다(조사가 시작할 때의 선택 기준으로 끝까지 계산)';
   range.from=$('allDates').checked?D.range[0]:$('from').value||D.range[0];range.to=$('allDates').checked?D.range[1]:$('to').value||D.range[1];
   sel.forEach(function(m){if(m.demo){steps.push([m.id+' · 예시 호기 — 프로토타입 자료 없음 (실제: Reports 폴더 이름 · 수정시각 확인)',60,function(){mstat[m.id]='예시 · 자료 없음';}]);return;}
     var cnt=R.filter(function(r){return r.m===m.id&&inRange(r.s);}).length;
@@ -524,7 +549,7 @@ $('runBtn').onclick=function(){
     steps.push(['다음 호기까지 2초 대기(장비 접속 매너) — 프로토타입은 생략',120,null]);});
   steps.push(['Lot 단위로 모으는 중…',400,null]);
   var i=0;(function next(){var s=steps[i];$('scopeStatus').textContent=s[0];$('runProgress').firstElementChild.style.width=((i+1)/steps.length*100).toFixed(0)+'%';if(s[2])s[2]();
-    if(++i<steps.length)setTimeout(next,s[1]);else setTimeout(function(){b.disabled=false;$('runProgress').hidden=true;drawScopeGrid();
+    if(++i<steps.length)setTimeout(next,s[1]);else setTimeout(function(){b.disabled=false;$('runProgress').hidden=true;drawScopeGrid();$('devToggle').disabled=false;$('devToggle').parentNode.title='실제 앱: 설정 › 정보 › 개발자 기능';
       setStatus('조사 완료 (새로 읽음 '+fresh+' · 캐시 사용 '+cached+' · 읽기 오류 0)');renderAll();toast(reuse?'조사 완료 — 이미 읽은 Batch Report는 캐시를 써서 빨리 끝났습니다.':'조사 완료 — 캐시 없이 전부 다시 읽었습니다.');},s[1]);})();
 };
 $('critList').innerHTML=D.criteria.map(function(c){return '<div><dt>'+esc(c[0])+'</dt><dd>'+esc(c[1])+(c[2]?'<small>'+esc(c[2])+'</small>':'')+'</dd></div>';}).join('');
@@ -553,8 +578,16 @@ function legend(el,keys,hid,redraw){el.innerHTML=keys.map(function(k){return '<b
   el.onclick=function(e){var b=e.target.closest('[data-k]');if(!b)return;var k=b.getAttribute('data-k');hid[k]=!hid[k];legend(el,keys,hid,redraw);redraw();};}
 
 /* ---------- 중복 Pass 선택 — 기본은 추천(가장 나중 Pass). 바꾸기는 개발자 기능 ---------- */
-var choice={};   // "li|bi|k" → 시도 번호(개발자 기능에서만 바뀜)
-function pickOf(li,bi,w){var k=li+'|'+bi+'|'+w.k;return isDev()&&choice[k]!=null?choice[k]:w.pick;}
+// saved = 저장된 사람 선택(실제 앱: 로컬 Cache batch_lot_choices.json) — 개발자 기능을 꺼도 그대로 적용.
+// draft = 개발자 기능에서 고쳤지만 아직 저장 안 한 선택 — Lot 창에서만 미리 보이고 결과(찾기·가동률·WPH)에는 안 쓴다.
+var saved={},draft={};
+function pickKey(li,bi,w){return li+'|'+bi+'|'+w.k;}
+function waferOf(k){var p=k.split('|'),b=LOTS[+p[0]].bunches[+p[1]],wk=p.slice(2).join('|');return b.wafers.filter(function(w){return w.k===wk;})[0];}
+function savedPick(li,bi,w){var k=pickKey(li,bi,w);return saved[k]!=null?saved[k]:w.pick;}
+function pickOf(li,bi,w,preview){var k=pickKey(li,bi,w);return preview&&isDev()&&draft[k]!=null?draft[k]:savedPick(li,bi,w);}
+function nKeys(o,li){return Object.keys(o).filter(function(k){return li==null||k.split('|')[0]===String(li);}).length;}
+function saveDrafts(){var n=nKeys(draft);Object.keys(draft).forEach(function(k){if(draft[k]===waferOf(k).pick)delete saved[k];else saved[k]=draft[k];});draft={};updDevBar();if($('lotDlg').open)drawLotBody();
+  toast('선택 '+n+'건을 저장했습니다 — 개발자 기능을 꺼도 이 선택이 적용되고, 결과에 "사람 선택 '+nKeys(saved)+'건"으로 표시됩니다.');}
 
 /* =================== Lot 추적 =================== */
 var LF={mode:'lot',state:'',dup:false,period:null,cause:null},lotUnit='w',lotHid={};
@@ -627,9 +660,12 @@ $('lotTabs').onclick=function(e){var b=e.target.closest('[data-lt]');if(b)setLot
 $('lotToFind').onclick=function(){var l=LOTS[curLot];$('lotDlg').close();$('findQ').value=l.code;$('mainTabs').querySelector('[data-main=find]').click();runFind();};
 function drawLotBody(){if(curLot==null)return;var li=curLot;$('lotBody').innerHTML=lotTab==='hist'?histHtml(li):aggHtml(li);
   if(lotTab==='hist')$('lotTimeline').innerHTML=timeline(LOTS[li]);
-  $('lotBody').querySelectorAll('select[data-w]').forEach(function(sel){sel.onchange=function(){choice[sel.getAttribute('data-w')]=+sel.value;drawLotBody();};});}
+  $('lotBody').querySelectorAll('select[data-w]').forEach(function(sel){sel.onchange=function(){var k=sel.getAttribute('data-w'),w=waferOf(k),v=+sel.value,base=saved[k]!=null?saved[k]:w.pick;
+    if(v===base)delete draft[k];else draft[k]=v;updDevBar();drawLotBody();};});
+  var l=LOTS[li],ns=nKeys(saved,li);$('lotPills').innerHTML=stPill(l.state)+(l.moved?' <span class="st mv">호기 이동</span>':'')+(l.dup?' <span class="st dup">중복 Scan wafer '+l.dup+'</span>':'')+(ns?' <span class="st mv">사람 선택 '+ns+'건 적용</span>':'');}
 $('lotBody').addEventListener('click',function(e){var r=e.target.closest('[data-raw]');if(r){showRaw(+r.getAttribute('data-raw'));return;}
-  if(e.target.closest('#saveChoice'))toast('선택을 저장했습니다(개발자 기능) — 로컬 Cache에 남고 찾기 · 취합 · 가동률 · WPH도 이 선택으로 다시 계산합니다.');
+  if(e.target.closest('#saveChoice'))saveDrafts();
+  if(e.target.closest('#resetLot')){var li=curLot;LOTS[li].bunches.forEach(function(b,bi){b.wafers.forEach(function(w){var k=pickKey(li,bi,w);if(saved[k]!=null)draft[k]=w.pick;else delete draft[k];});});updDevBar();drawLotBody();toast('이 Lot을 추천으로 되돌리는 선택을 만들었습니다 — [선택 저장]을 눌러야 반영됩니다.');}
   if(e.target.closest('#aggXlsx'))toast('앱에서는 로컬 결과 폴더에 Lot_'+LOTS[curLot].label+'_취합_{시각}.xlsx 를 만듭니다.');});
 /* 1) 시간순 요약 그래프 — Batch Report마다 막대 하나(초록 Pass · 주황 연쇄 · 빨강 Error), 사이 간격 · 호기 이동 표시 */
 function timeline(l){var F=flat(l),SP=172,L=34,W=Math.max(L*2+F.length*SP,560),H=262,top=66,bh=118,maxRows=Math.max.apply(null,F.map(function(x){return R[x.g].rows.length;}).concat([1]));
@@ -677,19 +713,19 @@ function histHtml(li){var l=LOTS[li],F=flat(l),num_={};F.forEach(function(x){num
   h+='</tr><tr>';l.bunches.forEach(function(b,bi){b.att.forEach(function(g,ai){h+='<th'+(ai?'':' class="gsep"')+'>#'+num_[bi+'|'+ai]+'<small>'+esc(R[g].m)+' '+esc(R[g].s.slice(11))+'</small></th>';});h+='<th>결과</th>';});h+='</tr></thead><tbody>';
   keys.forEach(function(k){var rw=slots[k],id='';Object.keys(rw).forEach(function(bi){if(isRealId(rw[bi].id))id=rw[bi].id;});h+='<tr><th>'+esc(k)+'</th><td>'+esc(id||rw[Object.keys(rw)[0]].id)+'</td>';
     l.bunches.forEach(function(b,bi){var w=rw[bi];if(!w){h+='<td class="c-n gsep" colspan="'+(b.att.length+1)+'">·</td>';return;}
-      var cells=b.att.map(function(_,ai){return '<td class="c-n'+(ai?'':' gsep')+'">·</td>';}),p=pickOf(li,bi,w),passes=w.cells.filter(function(c){return row(b.att[c[0]],c[1]).pass;}).length;
+      var cells=b.att.map(function(_,ai){return '<td class="c-n'+(ai?'':' gsep')+'">·</td>';}),p=pickOf(li,bi,w,true),passes=w.cells.filter(function(c){return row(b.att[c[0]],c[1]).pass;}).length;
       w.cells.forEach(function(c){var r=row(b.att[c[0]],c[1]),cls=r.pass?'c-p'+(passes>1?(c[0]===p?' c-pick':' c-drop'):''):chainAt(b.att[c[0]],c[1])?'c-c':'c-e';
         cells[c[0]]='<td class="'+cls+(c[0]?'':' gsep')+'" data-tip="'+esc('#'+num_[bi+'|'+c[0]]+' '+R[b.att[c[0]]].s+' · '+R[b.att[c[0]]].m+'\n'+r.status+'\nScanned '+num(r.sc)+' · Bad '+num(r.bad)+' · Good '+num(r.good))+'">'+esc(r.status)+'</td>';});
       h+=cells.join('')+'<td class="'+VC[w.v]+'">'+esc(w.v)+'</td>';});
     h+='</tr>';});
   return h+'</tbody></table></div>';}
-function bunchTotals(li,b,bi){var t={sc:0,bad:0,good:0,c:{}};b.wafers.forEach(function(w){var p=pickOf(li,bi,w);t.c[w.v]=(t.c[w.v]||0)+1;
+function bunchTotals(li,b,bi,preview){var t={sc:0,bad:0,good:0,c:{}};b.wafers.forEach(function(w){var p=pickOf(li,bi,w,preview);t.c[w.v]=(t.c[w.v]||0)+1;
   if(p!=null){var cell=w.cells.filter(function(c){return c[0]===p;})[0];if(cell){var r=row(b.att[cell[0]],cell[1]);if(r.pass&&r.sc!=null){t.sc+=r.sc;t.bad+=r.bad||0;t.good+=r.good||0;}}}});t.y=t.sc?t.good/t.sc*100:null;return t;}
 function aggHtml(li){var l=LOTS[li],F=flat(l),num_={};F.forEach(function(x){num_[x.bi+'|'+x.ai]=x.n;});
-  var h='<div class="devnote devonly">개발자 기능 켜짐 — 같은 wafer Pass가 여럿이면 아래 wafer 취합에서 쓸 Batch Report를 직접 고르고 저장할 수 있습니다. 끄면 모두 추천(가장 나중 Pass)으로 돌아갑니다.</div>';
+  var ns=nKeys(saved,li),nd=nKeys(draft,li),h='<div class="stamp"><span>선택 기준: <b>추천(가장 나중 Pass)</b>'+(ns?' + <b>저장된 사람 선택 '+ns+'건</b>':'')+'</span>'+(isDev()&&nd?'<span class="v2">· 저장 전 미리 보기 '+nd+'건 — 아래 숫자에 포함, 다른 화면에는 아직 반영 안 됨</span>':'')+'</div><div class="devnote devonly">개발자 기능 켜짐 — 같은 wafer Pass가 여럿이면 아래 wafer 취합에서 쓸 Batch Report를 직접 고르고 저장할 수 있습니다. 끄면 모두 추천(가장 나중 Pass)으로 돌아갑니다.</div>';
   h+='<h3>Lot 취합<small>공정 단계마다 한 줄 — 2D_WBG · 2D처럼 다른 공정 스캔을 더하면 같은 wafer가 두 번 들어가므로 따로 셉니다.</small></h3>';
   h+='<div class="table-scroll" style="max-height:none"><table class="t-compact"><thead><tr><th>공정 단계(Recipe(s))</th><th>기간</th><th>호기</th><th class="num">Batch Report</th><th class="num">wafer</th>'+V.map(function(v){return '<th class="num">'+v+'</th>';}).join('')+'<th class="num">Scanned</th><th class="num">Bad</th><th class="num">Good</th><th class="num">Yield</th></tr></thead><tbody>';
-  l.bunches.forEach(function(b,bi){var t=bunchTotals(li,b,bi);h+='<tr><td><b>'+esc(b.step||'—')+'</b></td><td>'+esc(b.s)+' ~ '+esc(b.e.slice(5))+'</td><td>'+esc(b.machines.join(' → '))+(b.moved?' <span class="st mv">호기 이동</span>':'')+'</td><td class="num">'+b.att.length+'</td><td class="num">'+b.wafers.length+'</td>'+
+  l.bunches.forEach(function(b,bi){var t=bunchTotals(li,b,bi,true);h+='<tr><td><b>'+esc(b.step||'—')+'</b></td><td>'+esc(b.s)+' ~ '+esc(b.e.slice(5))+'</td><td>'+esc(b.machines.join(' → '))+(b.moved?' <span class="st mv">호기 이동</span>':'')+'</td><td class="num">'+b.att.length+'</td><td class="num">'+b.wafers.length+'</td>'+
     V.map(function(v){return '<td class="num '+VC[v]+'">'+(t.c[v]||'')+'</td>';}).join('')+'<td class="num">'+num(t.sc)+'</td><td class="num">'+num(t.bad)+'</td><td class="num">'+num(t.good)+'</td><td class="num">'+(t.y==null?'—':num(t.y,2)+'%')+'</td></tr>';});
   h+='</tbody></table></div>';
   var slots={},keys=[];l.bunches.forEach(function(b,bi){b.wafers.forEach(function(w){var k=w.slot==null?'ID '+w.id:w.slot;if(!slots[k]){slots[k]={};keys.push(k);}slots[k][bi]=w;});});
@@ -699,14 +735,15 @@ function aggHtml(li){var l=LOTS[li],F=flat(l),num_={};F.forEach(function(x){num_
   h+='</tr><tr>';l.bunches.forEach(function(){h+='<th class="gsep">결과(쓰는 Batch Report 원문)</th><th>쓰는 Batch Report</th><th>Scanned</th><th>Bad</th><th>Good</th>';});h+='</tr></thead><tbody>';
   keys.forEach(function(k){var rw=slots[k],id='';Object.keys(rw).forEach(function(bi){if(isRealId(rw[bi].id))id=rw[bi].id;});h+='<tr><th>'+esc(k)+'</th><td>'+esc(id||rw[Object.keys(rw)[0]].id)+'</td>';
     l.bunches.forEach(function(b,bi){var w=rw[bi];if(!w){h+='<td class="c-n gsep" colspan="5">·</td>';return;}
-      var p=pickOf(li,bi,w),cell=p==null?null:w.cells.filter(function(c){return c[0]===p;})[0],last=w.cells[w.cells.length-1],r=cell?row(b.att[cell[0]],cell[1]):row(b.att[last[0]],last[1]);
+      var wk=pickKey(li,bi,w),p=pickOf(li,bi,w,true),cell=p==null?null:w.cells.filter(function(c){return c[0]===p;})[0],last=w.cells[w.cells.length-1],r=cell?row(b.att[cell[0]],cell[1]):row(b.att[last[0]],last[1]);
+      var tag=isDev()&&draft[wk]!=null?'<span class="tag-draft" data-tip="개발자 기능에서 고쳤지만 아직 저장 안 함\n저장해야 결과에 반영됩니다">저장 전</span>':saved[wk]!=null?'<span class="tag-man" data-tip="개발자 기능에서 저장한 사람 선택\n(추천은 #'+esc(String(w.pick==null?'—':num_[bi+'|'+w.pick]))+')">사람 선택</span>':'';
       var passes=w.cells.filter(function(c){return row(b.att[c[0]],c[1]).pass;}),pick;
       if(passes.length>1){pick=isDev()?'<span class="pickrow"><select data-w="'+li+'|'+bi+'|'+esc(w.k)+'" aria-label="슬롯 '+esc(k)+' 쓸 Batch Report">'+passes.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===p?' selected':'')+'>#'+num_[bi+'|'+c[0]]+' '+esc(R[b.att[c[0]]].s.slice(5))+(c[0]===w.pick?' (추천)':'')+'</option>';}).join('')+'</select></span>'
-          :'#'+num_[bi+'|'+p]+' '+esc(R[b.att[p]].s.slice(5))+'<span class="rectag" data-tip="'+esc('같은 wafer Pass '+passes.length+'번 — 가장 나중 Pass를 씁니다(추천)\n직접 바꾸기는 개발자 기능')+'">추천</span>';}
+          :'#'+num_[bi+'|'+p]+' '+esc(R[b.att[p]].s.slice(5))+(tag||'<span class="rectag" data-tip="'+esc('같은 wafer Pass '+passes.length+'번 — 가장 나중 Pass를 씁니다(추천)\n직접 바꾸기는 개발자 기능')+'">추천</span>');pick+=isDev()?tag:'';}
       else pick=p==null?'—':'#'+num_[bi+'|'+p]+' '+esc(R[b.att[p]].s.slice(5));
       h+='<td class="gsep '+VC[w.v]+'">'+esc(r.status)+(w.v!=='한 번에 Pass'?' <small>('+esc(w.v)+')</small>':'')+'</td><td>'+pick+'</td><td class="n">'+(p==null?'—':num(r.sc))+'</td><td class="n">'+(p==null?'—':num(r.bad))+'</td><td class="n">'+(p==null?'—':num(r.good))+'</td>';});
     h+='</tr>';});
-  h+='</tbody></table></div><div class="savebar"><button type="button" id="aggXlsx">Excel로 저장</button><button type="button" class="primary devonly" id="saveChoice">선택 저장</button><span class="hint devonly" style="margin:0">저장하면 로컬 Cache(batch_lot_choices.json)에 남고 찾기 · 취합 · 가동률 · WPH도 같은 선택을 씁니다. 프로토타입은 메모리에만.</span></div>';
+  h+='</tbody></table></div><div class="savebar"><button type="button" id="aggXlsx">Excel로 저장</button><button type="button" class="primary devonly" id="saveChoice"'+(nKeys(draft,li)?'':' disabled')+'>선택 저장</button><button type="button" class="devonly" id="resetLot"'+(nKeys(saved,li)?'':' disabled')+'>이 Lot 추천으로 되돌리기</button><span class="hint devonly" style="margin:0">저장하면 로컬 Cache(batch_lot_choices.json)에 남고, 개발자 기능을 꺼도 찾기 · 가동률 · WPH가 같은 선택을 씁니다. 프로토타입은 메모리에만.</span></div>';
   return h;}
 
 /* ---------- 원문 보기 ---------- */
@@ -753,7 +790,8 @@ function updSel(){var k=Object.keys(sel).length;$('selInfo').textContent='선택
 function groupSel(){var g={},o=[];Object.keys(sel).map(Number).sort(function(a,b){return R[a].s<R[b].s?-1:1;}).forEach(function(i){var r=R[i];if(r.lot==null)return;var k=r.lot+'|'+r.b;if(!g[k]){g[k]={li:r.lot,bi:r.b,att:[]};o.push(k);}g[k].att.push(i);});return o.map(function(k){return g[k];});}
 function keyOf(i,k,idmap){var s=R[i].slot[k];if(s!=null)return 'S'+pad(s);var id=row(i,k).id;return idmap[id]!=null?'S'+pad(idmap[id]):'ID:'+id;}
 function recIdx(c){for(var j=c.length-1;j>=0;j--)if(c[j].pass)return j;return c.length-1;}
-$('aggBtn').onclick=function(){aggGroups=groupSel().map(function(g){var idmap={};g.att.forEach(function(i){R[i].rows.forEach(function(_,k){var r=row(i,k);if(r.slot!=null&&isRealId(r.id))idmap[r.id]=r.slot;});});
+var aggStamp=null;
+function startAgg(){aggStamp={dev:isDev(),manual:0};aggGroups=groupSel().map(function(g){var idmap={};g.att.forEach(function(i){R[i].rows.forEach(function(_,k){var r=row(i,k);if(r.slot!=null&&isRealId(r.id))idmap[r.id]=r.slot;});});
     var w={},keys=[];g.att.forEach(function(i){R[i].rows.forEach(function(_,k){var key=keyOf(i,k,idmap);if(!w[key]){w[key]=[];keys.push(key);}w[key].push(row(i,k));});});
     keys.sort(function(a,b){return a<b?1:-1;});g.w=w;g.keys=keys;return g;});
   if(!aggGroups.length){toast('Lot으로 모인 Batch Report를 골라 주세요(점검 스캔은 취합하지 않습니다).');return;}
@@ -771,8 +809,11 @@ $('aggBtn').onclick=function(){aggGroups=groupSel().map(function(g){var idmap={}
 $('dupBody').addEventListener('change',function(e){var k=e.target.getAttribute('data-k');if(k)aggChoice[k]=+e.target.value;});
 $('dupLatest').onclick=function(){$('dupBody').querySelectorAll('.dupwafer').forEach(function(d){var r=d.querySelectorAll('input');r[r.length-1].checked=true;aggChoice[r[0].getAttribute('data-k')]=r.length-1;});};
 $('dupRec').onclick=function(){$('dupBody').querySelectorAll('.dupwafer').forEach(function(d){var r=d.querySelectorAll('input'),k=r[0].getAttribute('data-k'),p=k.split('|'),c=aggGroups[+p[0]].w[p.slice(1).join('|')],j=recIdx(c);r[j].checked=true;aggChoice[k]=j;});};
-$('dupOk').onclick=function(){$('dupDlg').close();showAgg();};
-function showAgg(){var h=(aggNote?'<div class="alert" style="margin-bottom:12px"><span>'+esc(aggNote)+'</span></div>':'')+'<h3 style="margin-top:4px">Lot 취합</h3><div class="table-scroll" style="max-height:none"><table class="t-compact"><thead><tr><th>Lot</th><th>공정 단계</th><th>호기</th><th class="num">고른 Batch Report</th><th class="num">wafer</th><th class="num">Pass</th><th class="num">Pass 없음</th><th class="num">Scanned</th><th class="num">Bad</th><th class="num">Good</th><th class="num">Yield</th></tr></thead><tbody>',w='';
+$('aggBtn').onclick=startAgg;
+$('dupOk').onclick=function(){$('dupDlg').close();aggStamp.manual=0;aggGroups.forEach(function(g,gi){g.keys.forEach(function(k){if(g.w[k].length>1&&aggChoice[gi+'|'+k]!==recIdx(g.w[k]))aggStamp.manual++;});});showAgg();};
+function checkAggStamp(){var w=$('aggWarn');if(!w)return;var on=fstep===2&&aggStamp&&aggStamp.manual&&!isDev();w.hidden=!on;}
+function showAgg(){var st=aggStamp||{manual:0},h='<div class="alert" id="aggWarn" hidden style="margin-bottom:12px"><span>이 결과에는 개발자 기능에서 직접 고른 선택 '+st.manual+'건이 들어 있습니다(개발자 기능은 지금 꺼짐). 다른 화면과 기준을 맞추려면 다시 취합하세요.</span><button type="button" id="aggRedo" style="font-size:12px;min-height:30px;padding:4px 12px">추천으로 다시 취합</button></div>'+
+  '<div class="stamp"><span>선택 기준: <b>최신 스캔 자동</b>(Pass가 있으면 가장 나중 Pass)'+(st.manual?' + <b>개발자 직접 선택 '+st.manual+'건</b>':'')+'</span><span style="color:var(--muted)">취합 시각 '+new Date().toTimeString().slice(0,5)+' · Excel 첫 줄에도 같은 문구를 적습니다</span></div>'+(aggNote?'<div class="alert" style="margin-bottom:12px"><span>'+esc(aggNote)+'</span></div>':'')+'<h3 style="margin-top:4px">Lot 취합</h3><div class="table-scroll" style="max-height:none"><table class="t-compact"><thead><tr><th>Lot</th><th>공정 단계</th><th>호기</th><th class="num">고른 Batch Report</th><th class="num">wafer</th><th class="num">Pass</th><th class="num">Pass 없음</th><th class="num">Scanned</th><th class="num">Bad</th><th class="num">Good</th><th class="num">Yield</th></tr></thead><tbody>',w='';
   aggGroups.forEach(function(g,gi){var t={sc:0,bad:0,good:0,p:0,np:0},ms={},b=LOTS[g.li].bunches[g.bi];g.att.forEach(function(i){ms[R[i].m]=1;});
     w+='<h3>wafer — Lot '+esc(LOTS[g.li].label)+' · '+esc(grpLabel(b))+'</h3><div class="usedr"><span>고른 Batch Report</span>'+g.att.map(function(i,n){var st=stats(i);return '<button type="button" data-raw="'+i+'" data-tip="'+esc(R[i].f+'\nPass '+st.pass+' / '+st.n+'행'+(firstErr(i)?'\n첫 Error: '+firstErr(i):'')+'\n누르면 원문')+'">#'+(n+1)+' '+esc(R[i].s.slice(5))+' · '+esc(R[i].m)+' 원문 보기</button>';}).join('')+'</div><div class="mapscroll"><table class="map"><thead><tr><th>슬롯</th><th>Wafer ID</th><th>쓰는 Batch Report</th><th>결과 원문</th><th>Scanned</th><th>Bad</th><th>Good</th><th>Yield</th><th></th></tr></thead><tbody>';
     g.keys.forEach(function(k){var c=g.w[k],x=c[aggChoice[gi+'|'+k]];if(x.pass){t.p++;if(x.sc!=null){t.sc+=x.sc;t.bad+=x.bad||0;t.good+=x.good||0;}}else t.np++;
@@ -780,8 +821,8 @@ function showAgg(){var h=(aggNote?'<div class="alert" style="margin-bottom:12px"
       w+='<tr><th>'+esc(k.replace(/^S0?/,'').replace(/^ID:/,''))+'</th><td>'+esc(id)+'</td><td style="font-family:Consolas,monospace;font-size:11px">'+esc(R[x.i].s)+' · '+esc(R[x.i].f)+(c.length>1?' <span class="rectag" data-tip="'+esc(c.length+'장 중 추천(가장 나중 Pass)으로 선택')+'">'+c.length+'장 중 추천</span>':'')+'</td><td class="'+(x.pass?'c-p':'c-e')+'">'+esc(x.status)+'</td><td class="n">'+num(x.sc)+'</td><td class="n">'+num(x.bad)+'</td><td class="n">'+num(x.good)+'</td><td class="n">'+(x.sc?num(x.good/x.sc*100,1)+'%':'—')+'</td><td><button type="button" data-raw="'+x.i+'" style="min-height:22px;padding:1px 8px;font-size:11px">원문</button></td></tr>';});
     w+='</tbody></table></div>';
     h+='<tr><td><button type="button" class="linklike" data-golot="'+g.li+'">'+esc(LOTS[g.li].label)+'</button></td><td>'+esc(grpLabel(b))+'</td><td>'+esc(Object.keys(ms).join(', '))+'</td><td class="num">'+g.att.length+'</td><td class="num">'+g.keys.length+'</td><td class="num">'+t.p+'</td><td class="num">'+t.np+'</td><td class="num">'+num(t.sc)+'</td><td class="num">'+num(t.bad)+'</td><td class="num">'+num(t.good)+'</td><td class="num">'+(t.sc?num(t.good/t.sc*100,2)+'%':'—')+'</td></tr>';});
-  $('aggResult').innerHTML=h+'</tbody></table></div>'+w;fstep=2;stepper();}
-$('aggResult').onclick=function(e){var l=e.target.closest('[data-golot]');if(l){openLot(+l.getAttribute('data-golot'));return;}var r=e.target.closest('[data-raw]');if(r)showRaw(+r.getAttribute('data-raw'));};
+  $('aggResult').innerHTML=h+'</tbody></table></div>'+w;fstep=2;stepper();checkAggStamp();}
+$('aggResult').onclick=function(e){if(e.target.closest('#aggRedo')){startAgg();return;}var l=e.target.closest('[data-golot]');if(l){openLot(+l.getAttribute('data-golot'));return;}var r=e.target.closest('[data-raw]');if(r)showRaw(+r.getAttribute('data-raw'));};
 $('saveXlsx').onclick=function(){toast('앱에서는 로컬 결과 폴더에 BatchReport_취합_{시각}.xlsx(Lot 취합 · wafer 시트)를 만들고 [열기] · [폴더에서 보기]를 보여 줍니다.');};
 
 /* =================== 가동률 · 원인 =================== */
@@ -937,7 +978,7 @@ $('cleanBody').onclick=function(e){var l=e.target.closest('[data-li]');if(l){ope
 $('cleanChips').onclick=function(e){if(e.target.closest('[data-clear]')){cleanBin=null;drawWph();}};
 
 function renderAll(){$('scopeCount').textContent=M.filter(function(m){return machinesOn[m.id];}).length+'개 호기 · '+range.from+' ~ '+range.to;drawList();drawCauses();drawSub();}
-stepper();setStatus('지난 조사 결과를 보여 주는 중');renderAll();
+stepper();setStatus('지난 조사 결과를 보여 주는 중');renderAll();updDevBar();
 window.__proto={openLot:openLot,LOTS:LOTS};
 })();
 </script>
