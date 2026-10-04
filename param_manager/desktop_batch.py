@@ -1,6 +1,5 @@
 """Desktop batch adapter. UI supplies machine IDs, never filesystem paths."""
 import json
-import math
 from datetime import datetime
 from pathlib import Path
 
@@ -22,23 +21,20 @@ def read_json(path):
 def options(raw):
     if not isinstance(raw, dict) or set(raw) - {"metrics", "valid_wafers", "min_baseline", "yield_drop", "by_recipe"}:
         raise ValueError("분석 설정을 확인하세요")
-    result = dict(metrics=list(batchreport.METRICS), valid_wafers=25, min_baseline=20, yield_drop=5.0, by_recipe=True)
-    result.update(raw)
+    result = dict(metrics=list(batchreport.METRICS), valid_wafers=25, by_recipe=True)
+    # M09 was retired; its thresholds may still arrive from older saved settings. Ignore them.
+    result.update({k: v for k, v in raw.items() if k not in ("min_baseline", "yield_drop")})
     metrics = result["metrics"]
     if not isinstance(metrics, list) or len(metrics) > 64 or any(not isinstance(m, str) for m in metrics):
         raise ValueError("지표를 하나 이상 선택하세요")
-    # Saved settings from older versions may still list retired metrics (M07).
+    # Saved settings from older versions may still list retired metrics (M07, M09).
     # Drop unknown keys like batchreport.compute does instead of rejecting the run.
     metrics = list(dict.fromkeys(m for m in metrics if m in batchreport.METRICS))
     if not metrics:
         raise ValueError("지표를 하나 이상 선택하세요")
     result["metrics"] = metrics
-    for key, low in (("valid_wafers", 1), ("min_baseline", 2)):
-        if type(result[key]) is not int or not low <= result[key] <= 100000:
-            raise ValueError("매수/표본 수를 확인하세요")
-    drop = result["yield_drop"]
-    if type(drop) not in (int, float) or not math.isfinite(drop) or not 0 <= drop <= 100:
-        raise ValueError("Yield 하락 기준은 0~100입니다")
+    if type(result["valid_wafers"]) is not int or not 1 <= result["valid_wafers"] <= 100000:
+        raise ValueError("WPH 유효 매수를 확인하세요")
     if type(result["by_recipe"]) is not bool:
         raise ValueError("Recipe 설정을 확인하세요")
     return result
@@ -98,7 +94,7 @@ class DesktopBatch:
         _, paths, root, last = self.configuration()
         saved = last.get("options") if isinstance(last.get("options"), dict) else None
         if saved and isinstance(saved.get("metrics"), list):
-            # Hide retired metric keys (e.g. M07) from the UI's restored selection.
+            # Hide retired metric keys (e.g. M07, M09) from the UI's restored selection.
             last = dict(last, options=dict(saved, metrics=[
                 m for m in saved["metrics"] if isinstance(m, str) and m in batchreport.METRICS]))
         cfg = read_json(self.config_path)

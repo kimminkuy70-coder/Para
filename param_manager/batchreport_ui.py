@@ -138,26 +138,14 @@ class BatchReportMixin:
         for key, title in batchreport.METRICS.items():
             variables[key] = tk.BooleanVar(value=key in saved.get('metrics', batchreport.METRICS))
             ttk.Checkbutton(outer, text=f'{key}  {title}', variable=variables[key]).pack(anchor='w', pady=3)
-        baseline = tk.StringVar(value=str(saved.get('min_baseline', 20)))
-        drop = tk.StringVar(value=str(saved.get('yield_drop', 5)))
-        for label, var in [('이상 후보 최소 과거 Pass 표본 (2 이상)', baseline), ('Yield 하락 기준 (percentage points)', drop)]:
-            line = ttk.Frame(outer)
-            line.pack(fill='x', pady=5)
-            ttk.Label(line, text=label).pack(side='left')
-            ttk.Entry(line, textvariable=var, width=9).pack(side='right')
-        ttk.Label(outer, text='Aborted·복구·품질 지표는 추정/후보입니다. 장비 설정이나 자동 Hold를 변경하지 않습니다.\n전체 선택 상태는 이후 신규 Report도 포함하며, 일부 파일 선택은 선택 목록을 유지합니다.', wraplength=630).pack(anchor='w', pady=10)
+        ttk.Label(outer, text='Aborted·복구 지표는 추정입니다. 장비 설정이나 자동 Hold를 변경하지 않습니다.\n전체 선택 상태는 이후 신규 Report도 포함하며, 일부 파일 선택은 선택 목록을 유지합니다.', wraplength=630).pack(anchor='w', pady=10)
 
         def start():
-            import math
-            try:
-                selected = [k for k, v in variables.items() if v.get()]
-                n, d = int(baseline.get()), float(drop.get())
-                if not selected or n < 2 or not math.isfinite(d) or d < 0:
-                    raise ValueError
-            except ValueError:
-                messagebox.showwarning('설정 확인', '지표를 하나 이상 선택하고 유효한 기준을 입력하세요.', parent=win)
+            selected = [k for k, v in variables.items() if v.get()]
+            if not selected:
+                messagebox.showwarning('설정 확인', '지표를 하나 이상 선택하세요.', parent=win)
                 return
-            options = {'metrics': selected, 'valid_wafers': valid, 'min_baseline': n, 'yield_drop': d,
+            options = {'metrics': selected, 'valid_wafers': valid,
                        'by_recipe': bool(self._wph_byrecipe.get())}
             win.destroy()
             self._batch_launch(targets, options)

@@ -18,7 +18,7 @@ const metrics: [Metric,string,string][] = [
   ['M03','오류 유형별 빈도','Wafer 발생 · Report · Lot 수'], ['M04','오류 성격','예방·조치·결과성 분류'],
   ['M05','Aborted 분석','직접·연쇄 중단 추정'], ['M06','재시작 간격','같은 lot 재스캔 간격'],
   ['M08','Recipe 품질 분포','Lot별 정상 Bad Dice'],
-  ['M09','품질 이상 후보','과거 정상 표본과 비교'], ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
+  ['M10','Lot 스캔 이슈율','이슈·재스캔 Lot 비중'],
   ['M11','미분류 상태','알 수 없는 원문도 보존']
 ];
 const SUBTITLE: Record<string,string> = {
@@ -187,7 +187,7 @@ function App(){
   async function start(){
     if(busy||!config)return;
     if(!selected.length||!options.metrics.length){setError('호기와 분석 지표를 하나 이상 선택하세요.');return;}
-    if(!Number.isInteger(options.valid_wafers)||options.valid_wafers<1||!Number.isInteger(options.min_baseline)||options.min_baseline<2||!Number.isFinite(options.yield_drop)||options.yield_drop<0||options.yield_drop>100){setError('매수·표본 수·Yield 기준을 확인하세요.');return;}
+    if(!Number.isInteger(options.valid_wafers)||options.valid_wafers<1){setError('WPH 유효 매수를 확인하세요.');return;}
     if(selected.some(id=>targets[id].start&&targets[id].end&&targets[id].start>targets[id].end)){setError('시작일은 종료일보다 늦을 수 없습니다.');return;}
     autoBlocked.current=false;
     await launch(selected.map(id=>{
@@ -273,8 +273,8 @@ function App(){
 
       {bstep===1&&<><div className="section-heading"><div><h3>필요한 지표 선택</h3></div><button disabled={busy} onClick={()=>setOptions(old=>({...old,metrics:old.metrics.length===metrics.length?[]:metrics.map(m=>m[0])}))}>{options.metrics.length===metrics.length?'전체 해제':'전체 선택'}</button></div>
         <fieldset disabled={busy} className="metric-list"><legend className="sr-only">분석 지표</legend>{metrics.map(([id,fallback,description])=>{const title=config?.metrics?.find(m=>m.id===id)?.title||fallback;return <label key={id} className={options.metrics.includes(id)?'metric checked':'metric'}><input type="checkbox" checked={options.metrics.includes(id)} onChange={()=>toggleMetric(id)}/><span><b>{title}</b><small>{description}</small></span><code>{id}</code></label>;})}</fieldset>
-        <fieldset className="thresholds" disabled={busy}><legend>계산 기준</legend>{[['valid_wafers','WPH 유효 매수',1,100000],['min_baseline','최소 정상 표본',2,100000],['yield_drop','Yield 하락 (pp)',0,100]].map(([key,label,min,max])=><label className="field" key={key}>{label}<input type="number" min={min} max={max} step={key==='yield_drop'?'0.1':'1'} value={Number.isNaN(options[key as keyof Options])?'':Number(options[key as keyof Options])} onChange={e=>setOptions(old=>({...old,[key]:e.target.value===''?NaN:Number(e.target.value)}))}/></label>)}</fieldset>
-        <p className="hint">중단·복구·품질 결과는 검토용 추정입니다. 장비 설정이나 자동 Hold를 변경하지 않습니다.</p></>}
+        <fieldset className="thresholds" disabled={busy}><legend>계산 기준</legend><label className="field">WPH 유효 매수<input type="number" min={1} max={100000} step="1" value={Number.isNaN(options.valid_wafers)?'':options.valid_wafers} onChange={e=>setOptions(old=>({...old,valid_wafers:e.target.value===''?NaN:Number(e.target.value)}))}/></label></fieldset>
+        <p className="hint">중단·복구 결과는 검토용 추정입니다. 장비 설정이나 자동 Hold를 변경하지 않습니다.</p></>}
 
       {bstep===2&&<>
       <section className="kpis" aria-label="조사 요약">{[['전체 Report',summary?.['Batch(리포트) 수'],'건'],['분석 Lot',summary?.['Lot 수'],'개'],['이슈 Lot',summary?.['이슈 발생 Lot 수'],'개'],['읽기 오류',result?.collection?.errors,'건']].map(([label,value,unit])=><article key={String(label)}><span>{label}</span><strong>{text(value)}<small>{unit}</small></strong><p>{result?'마지막 완료 조사 기준':'조사 후 집계'}</p></article>)}</section>

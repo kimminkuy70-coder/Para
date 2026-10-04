@@ -65,8 +65,13 @@ class DesktopBatchTests(unittest.TestCase):
         self.assertEqual(json.loads(self.config.read_text(encoding='utf-8'))['batch_schedule']['fail_count'], 1)
 
     def test_options_and_dates(self):
-        for value in ({'metrics':[]}, {'yield_drop':float('nan')}, {'valid_wafers':True}, {'min_baseline':1}, {'by_recipe':1}):
+        for value in ({'metrics':[]}, {'valid_wafers':True}, {'valid_wafers':0}, {'by_recipe':1}):
             with self.assertRaises(ValueError): options(value)
+        # M09 was retired: its thresholds from older saved settings are ignored, not rejected.
+        kept = options({'metrics':['M01','M09'], 'min_baseline':1, 'yield_drop':float('nan')})
+        self.assertEqual(kept['metrics'], ['M01'])
+        self.assertNotIn('min_baseline', kept)
+        self.assertNotIn('yield_drop', kept)
         # Retired metric keys saved by older versions are dropped, not rejected.
         self.assertEqual(options({'metrics':['M01','M07','M03','M01']})['metrics'], ['M01','M03'])
         with self.assertRaises(ValueError): options({'metrics':['M07']})

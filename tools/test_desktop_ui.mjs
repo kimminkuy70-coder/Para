@@ -120,7 +120,7 @@ try{
   await page.getByRole('button',{name:'다음 ▶',exact:true}).click();
   // A10: metric titles come from the engine (M10 = Lot 스캔 이슈율).
   await page.locator('.metric-list').getByText('Lot 스캔 이슈율',{exact:true}).waitFor();
-  // A1: the retired M07 from saved settings is dropped; 4 of 10 metrics restored.
+  // A1: the retired M07 from saved settings is dropped; 4 of 9 metrics restored.
   assert.equal(await page.locator('.metric-list input:checked').count(),4);
   await page.getByRole('button',{name:'전체 선택',exact:true}).click();
   await page.getByRole('button',{name:'다음 ▶',exact:true}).click();

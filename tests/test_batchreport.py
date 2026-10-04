@@ -116,19 +116,15 @@ class Metrics(unittest.TestCase):
         # M07 폐지 → 전체 요약이 M06 유형별 표의 '(전체 유효)' 마지막 행으로.
         self.assertEqual(table(c, '유형별 재시작 간격 (유형 중복 허용)')[-1], ('(전체 유효)', 1, 10, 10, 10, 10))
 
-    def test_p95_and_past_only_quality_baseline(self):
+    def test_p95_and_retired_quality_candidates(self):
+        self.assertAlmostEqual(br.percentile([1, 2, 3, 4], .95), 3.85)
+        # M09(품질 이상 후보) 폐지: 지표 목록에 없고, 구 설정의 키·기준값을 넘겨도 조용히 무시한다.
+        self.assertNotIn('M09', br.METRICS)
         early = report('early.htm', statuses=('Pass', 'Pass'), bad='1')
         later = report('later.htm', start='19-Sep-26 12:00:00 PM', end='19-Sep-26 01:00:00 PM', bad='9', yield_pct='80')
-        c = br.compute(records(early, later), min_baseline=2, yield_drop=5)
-        self.assertAlmostEqual(br.percentile([1, 2, 3, 4], .95), 3.85)
-        anomalies = table(c, '품질 이상 Wafer 상세 (자동 Hold 아님)')
-        self.assertEqual(len(anomalies), 1)
-        # (Lot, Job/Setup, Batch End, 호기, Report, Wafer ID, Bad, P95, Yield, 하한, 근거)
-        self.assertEqual(anomalies[0][4], 'later.htm')
-        self.assertEqual(anomalies[0][7], 1)
-        self.assertEqual(anomalies[0][9], 94)
-        self.assertEqual(len(table(br.compute(records(later), min_baseline=2), '품질 이상 Wafer 상세 (자동 Hold 아님)')), 0)
-        self.assertEqual(len(table(c, '품질 이상 Lot 요약')), 1)
+        c = br.compute(records(early, later), selected=['M08', 'M09'], min_baseline=2, yield_drop=5)
+        self.assertEqual({t['key'] for t in c['tables']}, {'M08'})
+        self.assertFalse(any('품질 이상' in t['title'] for t in c['tables']))
 
     def test_missing_and_nonfinite(self):
         self.assertIsNone(br.number('nan'))
@@ -139,11 +135,7 @@ class Metrics(unittest.TestCase):
         c = br.compute(records(report(start='', end='')))
         self.assertEqual(table(c, '스캔 가동률 · 일'), [])
 
-    def test_same_time_is_not_past_and_percent_over_100_is_visible(self):
-        a = report('a.htm', statuses=('Pass', 'Pass'), bad='1')
-        b = report('b.htm', bad='99')
-        c = br.compute(records(a, b), min_baseline=2)
-        self.assertEqual(table(c, '품질 이상 Wafer 상세 (자동 Hold 아님)'), [])
+    def test_percent_over_100_is_visible(self):
         c = br.compute(records(report(seconds='30:00:00')), now=datetime(2026, 9, 21))
         day = table(c, '스캔 가동률 · 일')[0]
         self.assertEqual(day[5], 125)       # 가동률(%): 스캔시간(30h) > 기간(24h)

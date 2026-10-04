@@ -18,9 +18,11 @@ METRICS = {
     "M03": "오류 유형별 빈도", "M04": "오류 성격",
     "M05": "Aborted 직접 · 연쇄 추정", "M06": "재시작 간격",
     "M08": "Recipe별 정상 Bad Dice 분포",
-    "M09": "Yield / Bad Dice 이상 후보", "M10": "Lot 스캔 이슈율",
+    "M10": "Lot 스캔 이슈율",
     "M11": "미분류 상태",
 }  # M07(복구 baseline)은 M06 요약과 중복이라 폐지 — 전체 요약은 M06 표의 '(전체 유효)' 행으로.
+# M09(Yield/Bad Dice 이상 후보)도 폐지(2026-10-04 사용자 확정): 웨이퍼당 Dice 가 수십 개인 제품은
+# Bad 1~2개만으로 Yield 기준(중앙-5pp)에 걸려 Pass 웨이퍼의 28% 가 후보로 나왔다(실데이터).
 RULE_VERSION = 1
 PREVENTIVE = {"맵 Import 오류", "2D Scan 오류", "Wafer ID 판독 오류", "검사 대상 없음"}
 ACTION = {"Alignment 오류", "Clean Reference 오류", "Focus Mapping 오류"}
@@ -146,18 +148,18 @@ def bucket(dt, unit):
     return begin, begin + timedelta(days=1)
 
 
-def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop=5.0, now=None):
+def compute(records, selected=None, valid_wafers=25, now=None, **_retired):
     """Return common tables consumed by HTML, Excel and GUI.
 
-    Baseline is descriptive, not a certified hold limit. M09 compares each wafer
-    against earlier Pass wafers of the same Recipe(s), never future data.
+    `_retired` absorbs settings of retired metrics (M09 min_baseline/yield_drop)
+    that older callers or saved settings may still pass.
     """
-    # 알 수 없는 키(예: 폐지된 M07이 저장된 설정에 남은 경우)는 조용히 무시한다.
+    # 알 수 없는 키(예: 폐지된 M07·M09가 저장된 설정에 남은 경우)는 조용히 무시한다.
     selected = list(METRICS) if selected is None else [k for k in selected if k in METRICS]
     if not selected:
         raise ValueError("분석 지표를 하나 이상 선택하세요")
-    if valid_wafers < 1 or min_baseline < 2 or not math.isfinite(yield_drop) or yield_drop < 0:
-        raise ValueError("매수/최소 표본/수율 하락 기준을 확인하세요")
+    if valid_wafers < 1:
+        raise ValueError("WPH 유효 매수를 확인하세요")
     now = now or datetime.now()
     batches, wafers = [], []
     for record in records:
@@ -350,57 +352,9 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
           ["Lot", "Job/Setup (recipe)", "표본 수", "Scanned 평균", "Bad 평균", "Good 평균", "Bad 최대"],
           [(lk[1], d["job"], len(d["bad"]), stat(d["scanned"], mean), stat(d["bad"], mean),
             stat(d["good"], mean), stat(d["bad"], max)) for lk, d in sorted(lotdice.items())])
-    # Batch-based evaluation prevents same-report wafers leaking into baseline.
-    history_bad, history_yield, bybatch = defaultdict(list), defaultdict(list), defaultdict(list)
+    bybatch = defaultdict(list)
     for w in wafers:
         bybatch[w["batch_id"]].append(w)
-    anomalies = []
-    ordered_batches = sorted(batches, key=lambda b: (b["end"] or datetime.max, b["id"])) if 'M09' in selected else []
-    pending, previous_time = [], None
-    limits = {}
-    for b in ordered_batches:
-        if not b["end"]:
-            continue
-        # Batches with identical end time cannot supply earlier evidence to each other.
-        if b['end'] != previous_time:
-            for w in pending:
-                if w["bad_dice"] is not None:
-                    history_bad[w["job_setup"]].append(w["bad_dice"])
-                if w["yield_pct"] is not None and w["yield_pct"] <= 100:
-                    history_yield[w["job_setup"]].append(w["yield_pct"])
-            pending, limits, previous_time = [], {}, b['end']
-        for w in bybatch[b["id"]]:
-            recipe = w["job_setup"]
-            if not recipe:
-                continue
-            if recipe not in limits:
-                bad, yields = history_bad[recipe], history_yield[recipe]
-                limits[recipe] = (percentile(bad, .95) if len(bad) >= min_baseline else None,
-                                  median(yields) - yield_drop if len(yields) >= min_baseline else None)
-            p95, floor = limits[recipe]
-            reasons = []
-            if p95 is not None and w["bad_dice"] is not None and w["bad_dice"] > p95:
-                reasons.append("Bad Dice > 과거 정상 P95")
-            if floor is not None and w["yield_pct"] is not None and w["yield_pct"] < floor:
-                reasons.append("Yield < 과거 정상 중앙 - 기준 pp")
-            if reasons:
-                anomalies.append((b["lot"], recipe, b["end"], b["machine"], b["source_file"], w["wafer_id"],
-                                  w["bad_dice"], p95, w["yield_pct"], floor, " / ".join(reasons)))
-        for w in bybatch[b["id"]]:
-            if w["pass"] and w["job_setup"]:
-                pending.append(w)
-    # M09 는 lot 을 먼저 요약하고, 그 아래 wafer 상세를 둔다(요청 2026-09-21).
-    anom_lot = {}
-    for lot, job, end, *_ in anomalies:
-        item = anom_lot.setdefault((job, lot), [0, None])
-        item[0] += 1
-        if end and (item[1] is None or end > item[1]):
-            item[1] = end
-    table("M09", "품질 이상 Lot 요약", ["Lot", "Job/Setup (recipe)", "이상 Wafer 수", "최근 Batch End"],
-          [(lot, job, cnt, end) for (job, lot), (cnt, end) in sorted(anom_lot.items(), key=lambda kv: -kv[1][0])])
-    table("M09", "품질 이상 Wafer 상세 (자동 Hold 아님)",
-          ["Lot", "Job/Setup (recipe)", "Batch End", "호기", "Report", "Wafer ID", "Bad Dice", "과거 P95", "Yield (%)", "Yield 하한 (%)", "후보 근거"],
-          sorted(anomalies, key=lambda a: (a[1], a[0], a[2] or datetime.max)))
     # M10: Batch Report 에는 lot 기대 매수가 없어 '완주율'은 측정 불가(B안).
     # 대신 lot 단위로 '스캔 중 이슈가 났는지'와 '재스캔(리포트>1) 여부'를 뽑아,
     # 전체 lot 중 문제 lot 비중을 본다. lot = (Job/Setup, Lot).
@@ -444,6 +398,5 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
                         "이슈 Batch 수": sum(b["has_error"] for b in batches),
                         "시각 누락/역전 Batch 수": sum(not b['start'] or not b['end'] or b['end'] < b['start'] for b in batches),
                         "최근 24h Batch 수": sum(bool(b["end"] and now - timedelta(days=1) <= b["end"] <= now) for b in batches)},
-            "settings": {"유효 Lot 매수 (WPH 전용)": valid_wafers, "이상 후보 최소 과거 정상 표본": min_baseline,
-                         "Yield 하락 기준 (percentage points)": yield_drop, "분류 규칙 버전": RULE_VERSION},
+            "settings": {"유효 Lot 매수 (WPH 전용)": valid_wafers, "분류 규칙 버전": RULE_VERSION},
             "created": now}

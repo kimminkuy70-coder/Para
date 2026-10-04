@@ -1,6 +1,6 @@
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
-export type Metric = 'M01'|'M02'|'M03'|'M04'|'M05'|'M06'|'M08'|'M09'|'M10'|'M11';
-export type Options = {metrics: Metric[]; valid_wafers: number; min_baseline: number; yield_drop: number; by_recipe: boolean};
+export type Metric = 'M01'|'M02'|'M03'|'M04'|'M05'|'M06'|'M08'|'M10'|'M11';
+export type Options = {metrics: Metric[]; valid_wafers: number; by_recipe: boolean};
 export type Target = {machine: string; query: string; start: string; end: string; names?: string[]};
 export type Table = {index: number; key: string; title: string; headers: string[]; total: number};
 export type Configuration = {machines: {id: string; folder: string; extra?: string[]}[]; local_root: string; last?: {targets?: Target[]; options?: Options};
@@ -167,7 +167,7 @@ class DesktopClient {
   }
 }
 export const desktop = new DesktopClient();
-export const defaults: Options = {metrics:['M01','M02','M03','M04','M05','M06','M08','M09','M10','M11'],valid_wafers:25,min_baseline:20,yield_drop:5,by_recipe:true};
+export const defaults: Options = {metrics:['M01','M02','M03','M04','M05','M06','M08','M10','M11'],valid_wafers:25,by_recipe:true};
 export function errorText(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   return ({desktop_required:'데스크톱 앱에서 열면 기존 호기 설정을 불러올 수 있습니다.',

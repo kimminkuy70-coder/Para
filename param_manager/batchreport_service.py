@@ -28,9 +28,7 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
             progress('배치 분석 지표를 계산하는 중…')
         store.checkpoint(cancel)
         result = batchreport.compute(collection['records'], selected=options['metrics'],
-                                     valid_wafers=options['valid_wafers'],
-                                     min_baseline=options.get('min_baseline', 20),
-                                     yield_drop=options.get('yield_drop', 5.0))
+                                     valid_wafers=options['valid_wafers'])
         store.checkpoint(cancel)
         staging = Path(tempfile.mkdtemp(prefix='.진행중_', dir=base))
         report_html = output.build_html(result, collection)
