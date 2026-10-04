@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Batch Report 프로토타입 3차 피드백(Batch Report.md) 반영 (2026-10-04 KST, `version_v10`)
+
+- 찾기·취합(최신 자동·3/3 원문 보기), 가동률(용어 `Error·중복 스캔`·`재스캔 전 대기`, 호기 탭, 기간 행 → 오른쪽 상세, 24시간 시간표,
+  Error 원문별 시간 = wafer마다 자기 원문 · 대기는 Error wafer 비율 분배), WPH(용어 카드, 호기별 전체 WPH, 정상 스캔 Batch Report
+  WPH 분포·목록), 조사 범위 `모든 호기`·`모든 기간` 체크박스. 상세는 CLAUDE.md '화면 프로토타입' 절.
+- 정상 스캔 표본 정의 변경: 25행 모두 Pass 인 Batch Report 전부(275) → **같은 Lot 을 한 번에 끝낸 것만**(233, 재스캔 묶음 제외).
+- 검증: Chromium 으로 새 상호작용 전부(호기 탭·기간 행 → 상세·시간표 클릭 → 원문·WPH 분포 클릭·취합 원문·모든 호기/기간) 확인,
+  JS 오류 0, 1440px·420px 가로 넘침 0, 줄바꿈된 표 칸 0. Windows 실기·빌드·배포 미수행.
+
 ## 최신 재개 — Batch Report 프로토타입 2차 피드백(Lot.md) 반영 (2026-10-04 KST, `version_v10`)
 
 - 사용자 Lot.md 전 항목을 `tools/batch_prototype/proto_template.html`·`gen_proto.py` 에 반영(구조는 CLAUDE.md '화면 프로토타입' 절):

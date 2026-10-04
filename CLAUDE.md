@@ -100,9 +100,25 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     찾기·취합도 기본은 추천 자동 + 안내, 선택 창은 개발자 기능에서만.
   · 모든 표 칸·버튼·라벨 한 줄(`white-space:nowrap`, 넘치면 가로 스크롤), 문장은 `word-break:keep-all`. 차트는 외부 라이브러리
     없이 SVG(툴팁·클릭·범례 켜고 끄기): 가동률 누적 막대, WPH 산점도(Lot별 실효 WPH, 기준 WPH 선, 점 클릭 = Lot 창).
-  가동률 = 유효 스캔(최종으로 쓰는 웨이퍼 몫) + 버려진 스캔(오류·중복 몫, 오류 원문별) + 재스캔 대기(같은 Lot 이어서 스캔 사이 중
-  장비가 아무것도 안 스캔한 시간) + 점검 스캔 + 기타. WPH 레시피 = Job · Recipe(s), 기준 WPH(25행 모두 Pass) vs 실효 WPH
-  (Lot·공정 단계: Pass 웨이퍼 ÷ 이어서 스캔한 모든 Batch Time), 손실률. 사용자 피드백 대기.
+  **3차 피드백(2026-10-04, 사용자 Batch Report.md) 반영**:
+  · 조사 범위: `모든 호기`·`모든 기간` 체크박스(모든 기간 = 날짜 입력 잠금, 프리셋 30/90일).
+  · 찾기·취합: 같은 wafer 여러 장이면 **최신 스캔으로 자동**(Pass 있으면 가장 나중 Pass), 선택 창은 개발자 기능. 3/3 결과에
+    `고른 Batch Report … 원문 보기` 버튼과 wafer 행마다 `원문`.
+  · 가동률 용어(사용자 지적): '버려진 스캔' → **`Error·중복 스캔`**(스캔은 했지만 Error 났거나 이미 Pass한 wafer를 다시 스캔해
+    최종 결과에 안 쓰인 시간), '재스캔 대기' → **`재스캔 전 대기`**(Error 뒤 같은 Lot을 다시 스캔하기까지 장비가 아무것도 안
+    스캔한 시간). 용어 카드 5개를 화면 위에 둔다. **호기 탭**(전체 호기 · 호기마다) — 전체 탭에 `호기별 가동률 비교`(행 = 호기).
+    **기간 행을 누르면 오른쪽 상세 창**(시간 구성 · 레시피별 유효 스캔 점유 · Error 원문별 잃은 시간). **24시간 시간표**: 전체 탭 =
+    하루 × 호기(◀ 날짜 ▶), 호기 탭 = 선택 기간의 날마다 한 줄. Batch Report 막대(모두 Pass/Error 포함/점검) + 아래 노란 줄 =
+    재스캔 전 대기, 아래 표 = 그 범위 Batch Report·대기를 시간순(원문 보기).
+  · **Error 원문별 시간 산정**: Batch Time ÷ Dice 있는 행 수 = wafer 1장 몫, wafer마다 **자기** Error 원문(첫 문구)으로
+    (한 장에 Error가 여러 종류여도 구분), 연쇄 Aborted·Skipped는 앞 Error 원문으로. Dice 있는 행이 없으면 Batch Time 을 Error 행
+    원문 비율로. 재스캔 전 대기는 앞 Batch Report 의 Error wafer 원문 비율로 나눔(종전: 첫 Error 하나에 몰아줌). wafer 수 열은
+    Dice 없는 Error 행도 센다.
+  · WPH 용어: 기준 WPH → **`정상 스캔 WPH`**(Lot 을 한 번에 25매 모두 Pass 한 Batch Report — 같은 Lot 재스캔 없는 것만),
+    실효 WPH → **`실제 WPH (재스캔 포함)`**, 손실률 → **`처리량 감소`**(1 − 실제 ÷ 정상), 묶음 → `Lot 수`, Pass wafer 열 삭제(툴팁).
+    **호기별 전체 WPH(레시피 통합)** 표, 레시피별 WPH 표, **정상 스캔 Batch Report WPH**(건수·합산·중앙값·최소~최대·평균
+    Batch Time, WPH 분포 막대 클릭 = 구간 필터, 목록 → 원문), Lot별 실제 WPH 산점도, 처리량이 많이 줄어든 Lot.
+  사용자 피드백 대기.
 - **Lot 추적 HTML(`param_manager/lotreport.py`)**: 조사(`batchreport_service.run`)마다 `BatchReport_Lot추적.html`
   (`LOT_HTML`, 결과 `lots`) 생성 — KPI · Lot 목록(검색/상태/호기/나눠 스캔/중복/호기 이동 필터) · Lot 클릭 → 묶음별 시도
   (원문 열기 `file:///`) + **Lot × 웨이퍼 오류 지도** + Dice 합계 · 원인별 Lot(연쇄 따로) · 점검 스캔 목록. 외부 의존 없음.

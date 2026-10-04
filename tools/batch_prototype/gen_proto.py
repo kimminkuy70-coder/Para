@@ -79,8 +79,9 @@ excluded = [idx[a['id']] for a in model['excluded']]
 # 4) B 가동률·원인 — 일 단위(호기별)
 DUP = 'Pass 다시 스캔(중복)'
 SPLIT = '오류 없이 나눠 스캔'
+# err[원문] = [Error·중복 스캔 초, 재스캔 전 대기 초, Lot 집합, wafer 수]
 days = defaultdict(lambda: {'valid': 0.0, 'dropped': 0.0, 'wait': 0.0, 'check': 0.0, 'rec': defaultdict(float),
-                            'err': defaultdict(lambda: [0.0, 0.0, set()]), 'lots': set()})
+                            'err': defaultdict(lambda: [0.0, 0.0, set(), 0]), 'lots': set()})
 
 
 # 호기별 '스캔 중' 구간(모든 Batch Report). 재스캔 대기는 그 사이 장비가 다른 것도 안 스캔한 시간만.
@@ -101,6 +102,11 @@ for m in busy:
 def idle_seconds(machine, s0, e0):
     used = sum(max(0.0, (min(e0, b) - max(s0, a)).total_seconds()) for a, b in busy[machine] if a < e0 and b > s0)
     return max(0.0, (e0 - s0).total_seconds() - used)
+
+
+def reason_of(r):
+    """웨이퍼 행의 Error 원문(첫 문구). 앞 Error 뒤 연쇄(Aborted/Skipped)는 그 앞 Error 문구로."""
+    return (r['phrase'] if r['kind'] == '원인' else r['trigger_phrase']) or '(빈 칸)'
 
 
 def first_error(a):
@@ -128,26 +134,37 @@ for li, lot in enumerate(model['lots']):
             recipe = f"{a['job']} · {a['step']}"
             if scanned:
                 share = sec / len(scanned)
-                for r in scanned:
-                    if (p, r['order']) in picked:
+                for r in a['rows']:
+                    has = r['scanned'] is not None
+                    if has and (p, r['order']) in picked:
                         day['valid'] += share
                         day['rec'][recipe] += share
+                    elif r['pass'] and not has:
+                        continue
                     else:
-                        reason = DUP if r['pass'] else (r['phrase'] if r['kind'] == '원인' else r['trigger_phrase']) or '(빈 칸)'
-                        day['dropped'] += share
-                        e = day['err'][reason]; e[0] += share; e[2].add(li)
+                        # Error wafer 수는 Dice 없는 행도 센다. 시간 몫은 Dice 있는 행만(Batch Time ÷ Dice 있는 행 수).
+                        reason = DUP if r['pass'] else reason_of(r)
+                        e = day['err'][reason]; e[2].add(li); e[3] += 1
+                        if has:
+                            day['dropped'] += share; e[0] += share
             else:
-                reason = first_error(a) or SPLIT
+                # Dice 있는 행이 하나도 없으면 Batch Time 전부를 Error 행 원문 비율로 나눈다.
+                bad = Counter(reason_of(r) for r in a['rows'] if not r['pass'])
                 day['dropped'] += sec
-                e = day['err'][reason]; e[0] += sec; e[2].add(li)
+                for reason, n in (bad.items() or [(SPLIT, 0)]):
+                    e = day['err'][reason]; e[0] += sec * (n / sum(bad.values()) if bad else 1); e[2].add(li); e[3] += n
             if p + 1 < len(b['attempts']):
                 nxt = b['attempts'][p + 1]
                 if a['end'] and nxt['start'] and nxt['start'] > a['end']:
                     gap = idle_seconds(a['machine'], a['end'], nxt['start'])
-                    reason = first_error(a) or (DUP if any(r['pass'] for r in nxt['rows']) else SPLIT)
+                    # 재스캔 전 대기는 앞 Batch Report 의 Error 행들 원문 비율로 나눈다(한 장에 Error 가 여럿이어도 구분).
+                    bad = Counter(reason_of(r) for r in a['rows'] if not r['pass'])
+                    if not bad:
+                        bad = Counter({DUP if any(r['pass'] for r in nxt['rows']) else SPLIT: 1})
                     wday = days[(a['end'].strftime('%Y-%m-%d'), a['machine'])]
                     wday['wait'] += gap
-                    e = wday['err'][reason]; e[1] += gap; e[2].add(li)
+                    for reason, n in bad.items():
+                        e = wday['err'][reason]; e[1] += gap * n / sum(bad.values()); e[2].add(li)
 for g in excluded:
     a = attempts[g]
     if a['start'] and a['batch_sec']:
@@ -155,15 +172,19 @@ for g in excluded:
 B = [{'d': d, 'm': m, 'valid': round(v['valid']), 'dropped': round(v['dropped']), 'wait': round(v['wait']),
       'check': round(v['check']), 'lots': len(v['lots']),
       'rec': {k: round(x) for k, x in v['rec'].items()},
-      'err': {k: [round(x[0]), round(x[1]), sorted(x[2])] for k, x in v['err'].items()}}
+      'err': {k: [round(x[0]), round(x[1]), sorted(x[2]), x[3]] for k, x in v['err'].items()}}
      for (d, m), v in sorted(days.items())]
 
-# 5) C WPH — 기준(25행 모두 Pass 한 장) / 실효(묶음: Pass 웨이퍼 ÷ 모든 시도 시간)
+# 5) C WPH — 정상 스캔(Lot 을 한 번에 25매 모두 Pass 한 Batch Report) / 실제(Lot·공정 단계: Pass 웨이퍼 ÷ 쓴 모든 시간)
 base, eff = [], []
-for a in attempts:
-    if len(a['rows']) == lm.FULL_SLOTS and all(r['pass'] for r in a['rows']) and (a['batch_sec'] or 0) > 0 and a['code']:
-        base.append({'m': a['machine'], 'r': f"{a['job']} · {a['step']}", 'd': t(a['start'])[:10],
-                     'w': 25, 's': a['batch_sec']})
+for li, lot in enumerate(model['lots']):
+    for bi, b in enumerate(lot['bunches']):
+        if len(b['attempts']) != 1:
+            continue
+        a = b['attempts'][0]
+        if len(a['rows']) == lm.FULL_SLOTS and all(r['pass'] for r in a['rows']) and (a['batch_sec'] or 0) > 0:
+            base.append({'m': a['machine'], 'r': f"{a['job']} · {a['step']}", 'd': t(a['start'])[:10],
+                         'w': lm.FULL_SLOTS, 's': a['batch_sec'], 'g': idx[a['id']], 'lot': li})
 for li, lot in enumerate(model['lots']):
     for bi, b in enumerate(lot['bunches']):
         sec = sum(a['batch_sec'] or 0 for a in b['attempts'])
