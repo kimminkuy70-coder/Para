@@ -23,7 +23,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
-### Wafer Map 수정하기 탭 추가 (2026-10-04, 브랜치 `version_v10`)
+### Wafer Map 수정하기 탭 추가 + v10.2.0 (2026-10-04, 브랜치 `version_v10`)
 
 - 외부 도구 'Wafer Map Converter WebView2 v6'(pywebview+Pillow+numpy+matplotlib) 이식. 상단 탭
   `Wafer Map 수정하기`(설정과 동일 계층, KEEP — 탭 이동해도 작업 유지). 단계별 마법사 6단계
