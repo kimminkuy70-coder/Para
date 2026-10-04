@@ -4,7 +4,8 @@ export type Options = {metrics: Metric[]; valid_wafers: number; by_recipe: boole
 export type Target = {machine: string; query: string; start: string; end: string; names?: string[]};
 export type Table = {index: number; key: string; title: string; headers: string[]; total: number};
 export type Configuration = {machines: {id: string; folder: string; extra?: string[]}[]; local_root: string; last?: {targets?: Target[]; options?: Options};
-  auto?: {enabled: boolean; due: boolean; last_run: string; last_result: string}; metrics?: {id: string; title: string}[]};
+  auto?: {enabled: boolean; due: boolean; last_run: string; last_result: string}; metrics?: {id: string; title: string}[];
+  lot_criteria?: {title: string; text: string; example: string}[]};
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;

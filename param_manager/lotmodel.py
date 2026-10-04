@@ -157,16 +157,16 @@ def attempt(record):
     raw_rows = report.get("wafers", [])
     lots = [wph.safe_field(w, "Lot") for w in raw_rows]
     sm = sm_of(report.get("file_name", ""), job, setup, lots)
-    rows, triggered = [], False
+    rows, trigger = [], None
     for index, raw in enumerate(raw_rows):
         wid = wph.safe_field(raw, "Wafer ID")
         status = wph.safe_field(raw, "Pass/Fail", "Status", "State")
         cause = cause_of(status)
         kind = None
         if cause:
-            # 앞에 오류가 있었으면 Aborted/Skipped 는 연쇄, 아니면 그 자체가 원인(직접).
-            kind = "연쇄" if cause[0] in CHAIN_TYPES and triggered else "원인"
-            triggered = True
+            # 앞에 오류가 있었으면 Aborted/Skipped 는 연쇄(원인 = 그 앞 첫 오류), 아니면 그 자체가 원인(직접).
+            kind = "연쇄" if cause[0] in CHAIN_TYPES and trigger else "원인"
+            trigger = trigger or cause[0]
         good = _number(wph.safe_field(raw, "Good Dice"))
         scanned = _number(wph.safe_field(raw, "Scanned Dice"))
         bad = _number(wph.safe_field(raw, "Bad Dice"))
@@ -176,6 +176,7 @@ def attempt(record):
                      "wafer_id": wid, "lot_id": full_id(wid)[0], "status": status,
                      "pass": cause is None, "cause": cause[0] if cause else "",
                      "phrase": cause[1] if cause else "", "kind": kind,
+                     "trigger": trigger if kind == "연쇄" else "",
                      "scanned": scanned, "bad": bad, "good": good,
                      "yield": _number(wph.safe_field(raw, "Yield")),
                      "recipe": wph.safe_field(raw, "Recipe(s)", "Recipe")})
@@ -245,14 +246,18 @@ def resolve(attempts, overrides=None, bunch_key=None):
             else:
                 for name in ("scanned", "bad", "good"):
                     totals[name] += row[name]
-        first_error = next((r for _, r in errors if r["kind"] == "원인"), errors[0][1] if errors else None)
+        # 웨이퍼의 원인 = 직접 오류의 첫 문구. 연쇄뿐이면 그 연쇄를 일으킨 같은 Batch Report 의 첫 오류.
+        direct = next((r for _, r in errors if r["kind"] == "원인"), None)
+        chained = next((r for _, r in errors if r["kind"] == "연쇄"), None)
         slots = [r["slot"] for _, r in items if r["slot"] is not None]
         wafers.append({"key": key, "slot": slots[0] if slots else None,
                        "wafer_id": next((r["wafer_id"] for _, r in items if is_real_id(r["wafer_id"])), items[0][1]["wafer_id"]),
                        "cells": [{"attempt": p, "status": r["status"], "pass": r["pass"], "cause": r["cause"],
                                   "kind": r["kind"]} for p, r in items],
                        "pick": pick[0] if pick else None, "overridden": overridden,
-                       "verdict": verdict, "cause": first_error["cause"] if first_error else ""})
+                       "verdict": verdict,
+                       "cause": direct["cause"] if direct else chained["trigger"] if chained else "",
+                       "chain_only": bool(chained and not direct)})
     totals["yield"] = totals["good"] / totals["scanned"] * 100 if totals["scanned"] else None
     return wafers, dict(counts), totals
 

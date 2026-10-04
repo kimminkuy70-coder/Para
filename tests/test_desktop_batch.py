@@ -34,6 +34,7 @@ class DesktopBatchTests(unittest.TestCase):
 
     def test_configuration_and_path_allowlist(self):
         self.assertEqual(self.adapter.describe()['machines'][0]['id'], 'AOI-01')
+        self.assertIn('Lot 코드', [c['title'] for c in self.adapter.describe()['lot_criteria']])   # ? 버튼 문구는 엔진 한 곳에서
         for item in ({'machine':'AOI-02'}, {'machine':'AOI-01','folder':'/etc'}, {'machine':'../secret'}):
             with self.assertRaises(ValueError):
                 self.adapter.prepare(dict(self.params, targets=[item]))

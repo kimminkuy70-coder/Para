@@ -9,9 +9,10 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from . import batchreport, batchreport_output as output, batchreport_store as store, wph, wph_html
+from . import batchreport, batchreport_output as output, batchreport_store as store, lotmodel, lotreport, wph, wph_html
 
 RUN_LOCK = threading.Lock()
+LOT_HTML = 'BatchReport_Lot추적.html'
 
 
 def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
@@ -33,6 +34,10 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
         staging = Path(tempfile.mkdtemp(prefix='.진행중_', dir=base))
         report_html = output.build_html(result, collection)
         output.atomic_text(staging / 'BatchReport_분석.html', report_html)
+        if progress:
+            progress('Lot 추적(시도 → 묶음 → Lot)을 만드는 중…')
+        # Lot 단위 추적: 한 Lot 이 여러 Batch Report·여러 호기로 나뉘는 것을 묶는다(lotmodel).
+        output.atomic_text(staging / LOT_HTML, lotreport.build_html(lotmodel.build(collection['records']), collection['scope']))
         if progress:
             progress('분석 Excel과 기존 WPH 산출물을 만드는 중…')
         output.write_excel(staging / 'BatchReport_분석.xlsx', result, collection)
@@ -64,7 +69,7 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
                 output.atomic_text(dashboard, output.build_html(result, collection, dashboard=True))
             except OSError as exc:
                 dashboard_error = str(exc)
-        return {'outdir': str(outdir), 'html': str(outdir / 'BatchReport_분석.html'),
+        return {'outdir': str(outdir), 'html': str(outdir / 'BatchReport_분석.html'), 'lots': str(outdir / LOT_HTML),
                 'xlsx': str(outdir / 'BatchReport_분석.xlsx'),
                 'dashboard': str(dashboard) if 'M02' in options['metrics'] and not dashboard_error else '',
                 'dashboard_error': dashboard_error, 'result': result, 'collection': collection,

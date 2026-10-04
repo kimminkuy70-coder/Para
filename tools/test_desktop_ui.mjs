@@ -126,6 +126,11 @@ try{
   await page.getByRole('button',{name:'다음 ▶',exact:true}).click();
   await page.getByRole('button',{name:'조사 시작'}).click();
   await page.getByText('조사를 완료했습니다.',{exact:true}).waitFor({timeout:60000});
+  // Every investigation also writes the Lot 추적 HTML; ? next to 조사 explains the Lot criteria.
+  assert((await page.getByLabel('Lot 추적 HTML',{exact:true}).inputValue()).endsWith('BatchReport_Lot추적.html'));
+  await page.getByRole('button',{name:'Lot 판정 기준',exact:true}).click();
+  await page.locator('dialog[open]').getByText('Lot 코드',{exact:true}).waitFor();
+  await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
   await page.getByLabel('분석 표',{exact:true}).selectOption({label:'시간순 Actual WPH · 205행'});
   await page.getByRole('img',{name:'Batch End 시간순 WPH 추이'}).waitFor();
   assert.equal(await page.locator('.table-scroll tbody tr').count(),200);

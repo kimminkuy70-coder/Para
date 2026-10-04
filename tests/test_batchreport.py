@@ -228,6 +228,10 @@ class Collection(unittest.TestCase):
         result = service.run(self.root, [self.target], options, host_gap=0)
         page = Path(result['html']).read_text()
         self.assertNotIn('<script>alert(1)</script>', page)
+        # Lot 추적 HTML 도 함께 만든다(원문 escape, 판정 기준 포함).
+        lots = Path(result['lots']).read_text(encoding='utf-8')
+        self.assertIn('Lot 판정 기준', lots)
+        self.assertNotIn('<script>alert(1)</script>', lots)
         self.assertIn('&lt;script&gt;', page)
         self.assertIn('2026-09-19', page)
         self.assertIn('data-period="주"', page)

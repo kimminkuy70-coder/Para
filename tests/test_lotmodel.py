@@ -143,6 +143,18 @@ class Bunches(unittest.TestCase):
         self.assertEqual(wafer(bunch, 22)["cause"], "2D Scan 오류")
         self.assertEqual(wafer(bunch, 20)["cause"], "Wafer ID 판독 오류")
 
+    def test_chained_wafer_cause_is_the_trigger(self):
+        """KVW: Nothing to Scan 뒤의 Skipped 는 원인 '검사 대상 없음'(연쇄)로 센다."""
+        m = lm.build(records(("AOI-1", report("KVW WBG", full(["Nothing to Scan."] * 8 + ["Skipped."] * 17), "2026-07-09 17:25")),
+                             ("AOI-1", report("KVW WBG", full([]), "2026-07-09 20:02"))))
+        bunch = only(m, "KVW")["bunches"][0]
+        self.assertEqual((wafer(bunch, 18)["cause"], wafer(bunch, 18)["chain_only"]), ("검사 대상 없음", False))
+        self.assertEqual((wafer(bunch, 17)["cause"], wafer(bunch, 17)["chain_only"]), ("검사 대상 없음", True))
+        from param_manager import lotreport
+        summary = {c["cause"]: c for c in lotreport.cause_summary(m)}
+        self.assertEqual((summary["검사 대상 없음"]["wafers"], summary["검사 대상 없음"]["chain"]), (25, 17))
+        self.assertNotIn("검사 제외", summary)
+
     def test_override_changes_pick_and_totals(self):
         m = lm.build(records(("AOI-1", report("KVW WBG", full([]), "2026-07-09 20:02")),
                              ("AOI-1", report("KVW WBG", full([]), "2026-07-09 21:42"))))

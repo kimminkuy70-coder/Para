@@ -20,7 +20,19 @@
 - 검증: test_lotmodel 14 OK, test_batchreport(tkinter 없는 1건 제외 — 기존과 동일), test_desktop_batch, test_desktop_ipc,
   test_wph, test_wph_html, `npx tsc --noEmit`, `tools/check_project.py`(test_batchreport 의 tkinter 1건 외 통과).
   브라우저 UI 시험·Windows 실기·빌드·배포 미수행.
-- 확인 대기: 호기 이동 판정 조건(48h + 미해결 + 같은 공정 단계). 다음: D(Lot 추적) 화면 + 사람 선택 저장(로컬 Cache).
+- 호기 이동 판정 조건(48h + 미해결 + 같은 공정 단계) 사용자 확정.
+
+## 최신 재개 — Batch Report Lot 추적 HTML + ? 판정 기준 (2026-10-04 KST, `version_v10`)
+
+- 신규 `param_manager/lotreport.py`: lotmodel → 오프라인 단일 HTML. 조사마다 `BatchReport_Lot추적.html` 생성(서비스 결과 `lots`,
+  IPC artifacts `lots`). 기준 문구 `CRITERIA` 단일 출처 → HTML [? Lot 판정 기준] · 웹 '조사 시작' 옆 ? 버튼(`lot_criteria`) · tkinter.
+- lotmodel: 연쇄만 있는 웨이퍼의 원인 = 같은 Batch Report 첫 오류(`trigger`/`chain_only`). 원인별 Lot 표에 '그중 연쇄'.
+- HTML 버그 수정: 검색칸 blur(change)로 표가 다시 그려져 첫 행 클릭이 사라지던 문제(같은 조건이면 다시 그리지 않음).
+- 검증: test_lotmodel 15, test_batchreport(tkinter 1건 외), test_desktop_batch, test_desktop_ipc, test_wph(9), test_wph_html(5),
+  `tools/check_project.py`(tkinter 1건 외), `npx tsc`·`vite build`, **브라우저 UI 시험 `tools/test_desktop_ui.mjs` 전체 통과**
+  (PARA_TEST_NODE_MODULES=playwright 설치 폴더, /opt/pw-browsers Chromium). 실자료 HTML 을 Chromium 으로 열어 클릭·필터·좁은 화면 확인.
+  `docs/screenshots/rev1-batch.png` 갱신(? 버튼·Lot 추적 HTML). Windows 실기·빌드·배포 미수행.
+- 다음: 사용자 HTML 검토 피드백 반영 → 중복 웨이퍼 사람 선택 저장(로컬 Cache) → A(찾기·취합) · B(가동률·원인) · C(WPH).
 
 ## 최신 재개 — 공유 문서 IPC 응답성 (2026-09-22 KST)
 

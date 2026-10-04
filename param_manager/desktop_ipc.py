@@ -669,7 +669,7 @@ class Session:
                 self.result = result
                 # Service has committed its outputs. A late cancel is not a rollback.
                 self.emit(rid, "completed", summary=result["summary"],
-                    artifacts={k: output[k] for k in ("outdir", "html", "xlsx", "dashboard", "dashboard_error")},
+                    artifacts={k: output[k] for k in ("outdir", "html", "lots", "xlsx", "dashboard", "dashboard_error")},
                     collection={"parsed": collection["parsed"], "reused": collection["reused"],
                                 "errors": len(collection["errors"]), "cached_only": collection["cached_only"]},
                     tables=[dict(index=i, key=t["key"], title=t["title"], headers=t["headers"], total=len(t["rows"]))

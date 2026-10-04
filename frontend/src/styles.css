@@ -233,3 +233,12 @@ kbd{display:inline-block;padding:1px 6px;border:1px solid #b8c4d2;border-bottom-
 .out-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
 input.out-path{padding:9px 12px;border:1px solid var(--line);border-radius:8px}
 @media (max-width:720px){.out-row,.out-row:first-child{grid-template-columns:1fr}}
+
+/* Batch Report: Lot 판정 기준 (? 버튼) */
+.help-btn.lg{width:32px;height:32px;font-size:15px;line-height:30px;margin-left:8px}
+.criteria-dialog{width:720px}
+.criteria{margin:8px 0 0;max-height:60vh;overflow:auto;display:flex;flex-direction:column;gap:10px}
+.criteria>div{display:grid;grid-template-columns:130px 1fr;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.criteria dt{font-weight:800}.criteria dd{margin:0;font-size:13px;line-height:1.6}
+.criteria dd small{display:block;margin-top:2px;color:var(--muted);font-family:Consolas,monospace;font-size:12px}
+@media(max-width:640px){.criteria>div{grid-template-columns:1fr;gap:2px}}

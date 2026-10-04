@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from . import atomicfile, batchreport, batchreport_service, batchreport_store, localdirs, watcher, wph
+from . import atomicfile, batchreport, batchreport_service, batchreport_store, localdirs, lotreport, watcher, wph
 
 
 def read_json(path):
@@ -103,7 +103,9 @@ class DesktopBatch:
                               for name, folder in sorted(paths.items(), key=lambda kv: _name_key(kv[0]))],
                     local_root=str(root), last=last, auto=self.auto_state(cfg),
                     # Engine titles so the UI labels never drift from the analysis (A10).
-                    metrics=[dict(id=k, title=v) for k, v in batchreport.METRICS.items()])
+                    metrics=[dict(id=k, title=v) for k, v in batchreport.METRICS.items()],
+                    # Lot 판정 기준 — 화면 ? 버튼과 Lot 추적 HTML 이 같은 문구(엔진 한 곳)를 쓴다.
+                    lot_criteria=[dict(title=t, text=d, example=e) for t, d, e in lotreport.CRITERIA])
 
     def auto_state(self, cfg=None):
         """Daily automatic re-run (tkinter `batch_auto`/`batch_schedule`, shared keys so

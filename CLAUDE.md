@@ -71,7 +71,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   `정상/회복/중복/미해결`, 가장 나중 Pass 추천 + `overrides={(묶음 key, 'S25'): 시도 id}` 로 사람 선택, 고른 행만 Dice 합계.
   원인 = 첫 문구, Aborted/Skipped 는 앞 오류 뒤면 '연쇄'. 테스트 `tests/test_lotmodel.py`(14, 실자료는
   `PARA_BATCH_SAMPLE=폴더` 지정 시). 실자료 420개 → Lot 251 · 묶음 340 · 점검 스캔 3 · 미해결 Lot 7.
-  화면(D Lot 추적·A 찾기/취합)과 사람 선택 저장은 다음 단계.
+  호기 이동 조건(48h + 미해결 + 같은 공정 단계)은 **사용자 확정**(2026-10-04).
+  · 연쇄(앞 오류 뒤 Aborted/Skipped)만 있는 웨이퍼의 원인 = 그 Batch Report 의 첫 오류(`trigger`, `chain_only`).
+- **Lot 추적 HTML(`param_manager/lotreport.py`)**: 조사(`batchreport_service.run`)마다 `BatchReport_Lot추적.html`
+  (`LOT_HTML`, 결과 `lots`) 생성 — KPI · Lot 목록(검색/상태/호기/나눠 스캔/중복/호기 이동 필터) · Lot 클릭 → 묶음별 시도
+  (원문 열기 `file:///`) + **Lot × 웨이퍼 오류 지도** + Dice 합계 · 원인별 Lot(연쇄 따로) · 점검 스캔 목록. 외부 의존 없음.
+  · **Lot 판정 기준 = `lotreport.CRITERIA` 한 곳** — HTML 의 [? Lot 판정 기준], 웹 화면 '조사 시작' 옆 **? 버튼**
+    (`desktop_batch.describe` → `lot_criteria`), tkinter 지표 선택창 [? Lot 판정 기준] 이 같은 문구를 쓴다(사용자 요청).
+  · 웹 결과 '저장된 결과'와 tkinter 완료창에 `Lot 추적 HTML` 열기. 사람 선택 저장(중복 웨이퍼)은 다음 단계.
 
 ### Color · Gray 매칭 탭 + v10.0.0 (2026-09-30)
 
@@ -780,7 +787,7 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
-python3 tests/test_lotmodel.py     # 14 (Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
+python3 tests/test_lotmodel.py     # 15 (연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)

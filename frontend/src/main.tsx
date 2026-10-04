@@ -114,7 +114,7 @@ function App(){
   const [bstep,setBstep]=useState(0);
   const [picks,setPicks]=useState<Record<string,string[]>>({});
   const [picker,setPicker]=useState<{machine:string;names:string[];chosen:string[]}|undefined>();
-  const pickerDialog=useRef<HTMLDialogElement>(null);
+  const pickerDialog=useRef<HTMLDialogElement>(null), criteriaDialog=useRef<HTMLDialogElement>(null);
   const job=useRef<number|undefined>(undefined), pageSequence=useRef(0);
   const PAGE=200;
 
@@ -278,7 +278,8 @@ function App(){
 
       {bstep===2&&<>
       <section className="kpis" aria-label="조사 요약">{[['전체 Report',summary?.['Batch(리포트) 수'],'건'],['분석 Lot',summary?.['Lot 수'],'개'],['이슈 Lot',summary?.['이슈 발생 Lot 수'],'개'],['읽기 오류',result?.collection?.errors,'건']].map(([label,value,unit])=><article key={String(label)}><span>{label}</span><strong>{text(value)}<small>{unit}</small></strong><p>{result?'마지막 완료 조사 기준':'조사 후 집계'}</p></article>)}</section>
-      <section className="runbar" aria-label="조사 실행"><div><strong>{busy?(cancelSent?'안전한 중단 지점을 기다리는 중…':autoRun?'자동 분석 진행 중…':'조사 진행 중…'):`${selected.length}개 호기 · ${options.metrics.length}개 지표`}</strong><p role="status" aria-live="polite">{busy?(progress?.message||'장비 기록을 순차적으로 확인합니다.'):note}</p></div><div className="actions">{busy?<button onClick={cancel} disabled={cancelSent}>{cancelSent?'취소 요청됨':'조사 취소'}</button>:<button className="primary" disabled={!config||!selected.length||!options.metrics.length} onClick={start}>조사 시작 →</button>}</div></section>
+      <section className="runbar" aria-label="조사 실행"><div><strong>{busy?(cancelSent?'안전한 중단 지점을 기다리는 중…':autoRun?'자동 분석 진행 중…':'조사 진행 중…'):`${selected.length}개 호기 · ${options.metrics.length}개 지표`}</strong><p role="status" aria-live="polite">{busy?(progress?.message||'장비 기록을 순차적으로 확인합니다.'):note}</p></div><div className="actions">{busy?<button onClick={cancel} disabled={cancelSent}>{cancelSent?'취소 요청됨':'조사 취소'}</button>:<button className="primary" disabled={!config||!selected.length||!options.metrics.length} onClick={start}>조사 시작 →</button>}
+        <button type="button" className="help-btn lg" aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 조사하는지 보기" onClick={()=>criteriaDialog.current?.showModal()}>?</button></div></section>
       {busy&&<div className="progress-line" role="progressbar" aria-label="조사 중" aria-valuetext={progress?.message||'조사 중'}><span/></div>}
       <div className="results"><div className="section-heading"><div><h3>분석 결과</h3></div>{result&&<span className="count">{result.tables?.length}개 표</span>}</div>
         {!result?<div className="empty-state"><span className="empty-symbol" aria-hidden="true">▤</span><h3>{busy?'결과를 준비하고 있습니다.':'아직 조사 결과가 없습니다.'}</h3><p>조사가 끝나면 요약, 상세 표, 저장된 Excel·HTML 위치를 확인할 수 있습니다.</p></div>:<>
@@ -287,6 +288,7 @@ function App(){
           <div className="table-scroll" tabIndex={0} aria-label={table?.title} aria-busy={loading}><table><thead><tr>{table?.headers.map((h,i)=><th key={i} scope="col">{h}</th>)}</tr></thead><tbody>{rows.map((row,i)=><tr key={`${offset}-${i}`}>{row.map((cell,j)=><td key={j}>{text(cell)}</td>)}</tr>)}</tbody></table>{(loading||!rows.length)&&<p className="table-empty">{loading?'표를 불러오는 중…':'이 지표에 해당하는 결과가 없습니다.'}</p>}</div>
           <div className="pagination"><span>{table?.total?`${offset+1}–${Math.min(offset+PAGE,table.total)} / ${table.total.toLocaleString()}행`:'0행'}</span><div><button disabled={loading||offset===0} onClick={()=>setOffset(n=>Math.max(0,n-PAGE))}>이전</button><button disabled={loading||offset+PAGE>=(table?.total||0)} onClick={()=>setOffset(n=>n+PAGE)}>다음</button></div></div>
           {result.artifacts&&<div className="outputs"><h3>저장된 결과</h3><p>버튼으로 파일을 바로 열거나 탐색기에서 위치를 볼 수 있습니다.</p>
+            {result.artifacts.lots&&<OpenPath label="Lot 추적 HTML" path={result.artifacts.lots}/>}
             {result.artifacts.xlsx&&<OpenPath label="Excel" path={result.artifacts.xlsx}/>}
             {result.artifacts.html&&<OpenPath label="HTML" path={result.artifacts.html}/>}
             {result.artifacts.dashboard&&<OpenPath label="가동률 대시보드" path={result.artifacts.dashboard}/>}
@@ -297,6 +299,13 @@ function App(){
       </div>
       <StepNav step={bstep} total={3} onBack={()=>setBstep(s=>s-1)} onNext={()=>setBstep(s=>bstep<2?s+1:0)} nextLabel={bstep<2?'다음':'처음으로'} nextDisabled={(bstep===0&&!selected.length)||(bstep===1&&!options.metrics.length)}/>
       </section>
+      <dialog className="edit-dialog criteria-dialog" ref={criteriaDialog} aria-labelledby="lot-criteria-title">
+        <h3 id="lot-criteria-title">Lot 판정 기준</h3>
+        <p className="sub">한 Lot은 Batch Report 여러 장으로 나뉘고 다른 호기로 옮겨 다시 스캔되기도 합니다. 조사 결과의 [Lot 추적 HTML]은 아래 기준으로 Batch Report를 묶습니다.</p>
+        <dl className="criteria">{(config?.lot_criteria||[]).map(c=><div key={c.title}><dt>{c.title}</dt><dd>{c.text}{c.example&&<small>{c.example}</small>}</dd></div>)}</dl>
+        {!config?.lot_criteria?.length&&<p className="table-empty">엔진에서 기준을 받지 못했습니다. 엔진 연결을 확인하세요.</p>}
+        <div className="dialog-actions"><button type="button" className="primary" onClick={()=>criteriaDialog.current?.close()}>닫기</button></div>
+      </dialog>
       <dialog className="edit-dialog" ref={pickerDialog} onClose={()=>setPicker(undefined)}>{picker&&<>
         <h3>{picker.machine} · 조사할 Report 선택</h3>
         <div className="dialog-actions" style={{justifyContent:'space-between'}}><span>선택 {picker.chosen.length} / 발견 {picker.names.length}</span>

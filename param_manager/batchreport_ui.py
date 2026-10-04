@@ -151,6 +151,20 @@ class BatchReportMixin:
             self._batch_launch(targets, options)
 
         ttk.Button(outer, text='선택 지표로 조사 시작', command=start).pack(side='bottom', fill='x', pady=8)
+        ttk.Button(outer, text='? Lot 판정 기준', command=lambda: self._lot_criteria(win)).pack(side='bottom', anchor='e')
+
+    def _lot_criteria(self, parent):
+        from .lotreport import CRITERIA
+        text = '\n\n'.join(f'■ {t}\n{d}' + (f'\n  예) {e}' if e else '') for t, d, e in CRITERIA)
+        win = tk.Toplevel(parent)
+        win.title('Lot 판정 기준')
+        win.geometry('680x620')
+        win.transient(parent)
+        box = tk.Text(win, wrap='word', padx=14, pady=12)
+        box.insert('1.0', text)
+        box.configure(state='disabled')
+        box.pack(fill='both', expand=True)
+        ttk.Button(win, text='닫기', command=win.destroy).pack(pady=8)
 
     def _batch_launch(self, targets, options, automatic=False):
         if getattr(self, '_batch_busy', False) or getattr(self, '_watch_busy', False) or getattr(self, '_cmw_busy', False):
@@ -216,7 +230,8 @@ class BatchReportMixin:
         ttk.Label(body, text='표를 더블클릭하면 결과 값을 페이지별로 확인할 수 있습니다.').pack(anchor='w')
         bar = ttk.Frame(body)
         bar.pack(fill='x', pady=12)
-        for label, path in [('분석 HTML', result['html']), ('분석 Excel', result['xlsx']), ('결과 폴더', result['outdir']), ('대시보드', result['dashboard'])]:
+        for label, path in [('Lot 추적 HTML', result.get('lots')), ('분석 HTML', result['html']), ('분석 Excel', result['xlsx']),
+                            ('결과 폴더', result['outdir']), ('대시보드', result['dashboard'])]:
             if path:
                 ttk.Button(bar, text=label, command=lambda p=path: self._open_path(p)).pack(side='left', padx=4)
         if 'M01' in options['metrics']:
