@@ -88,7 +88,7 @@ try{
   // Machines are listed in name order (AOI-01 … AOI-04).
   assert.deepEqual(await page.locator('.subtab-body table').first().locator('tbody tr td:first-child').allInnerTexts(),['AOI-01','AOI-02','AOI-03','AOI-04']);
   await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
-  await page.getByLabel('AOI-04 검색어').waitFor();
+  await page.getByLabel('AOI-04 선택').waitFor();
   // 설정: current-settings summary and '수정' (rename + keep folder) of a Batch Report root.
   await page.getByRole('button',{name:'설정',exact:true}).click();
   const summary=page.getByLabel('현재 설정');
@@ -103,49 +103,70 @@ try{
   await page.getByRole('button',{name:'AOI-05 수정'}).waitFor();
   assert(/AOI-05/.test(await summary.innerText())&&!/AOI-04/.test(await summary.innerText()));
   await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
-  await page.getByLabel('AOI-05 검색어').waitFor();
+  await page.getByLabel('AOI-05 선택').waitFor();
+  // Batch Report 분석 (가동률 조사 및 분석 · 찾기 · 취합): fixed machine grid, no page overflow.
   for(const [width,height] of [[1920,1080],[2880,1800],[1280,720],[960,640]]){
     await page.setViewportSize({width,height});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`page overflow ${width}`);
-    const input=page.getByLabel('AOI-01 검색어');
-    await input.fill('test');await input.fill('');
   }
   await page.setViewportSize({width:1440,height:1000});
-  // A10: an empty report selection is refused instead of silently meaning 'all'.
-  await page.getByRole('group').filter({hasText:'AOI-01'}).getByRole('button',{name:'📋 리포트 선택…'}).click();
-  await page.locator('dialog[open]').getByRole('button',{name:'해제',exact:true}).click();
-  await page.locator('dialog[open]').getByRole('button',{name:'적용',exact:true}).click();
-  await page.locator('.toast.error').filter({hasText:'하나 이상'}).waitFor();
-  await page.locator('dialog[open]').getByRole('button',{name:'취소',exact:true}).click();
-  await page.getByRole('button',{name:'다음 ▶',exact:true}).click();
-  // A10: metric titles come from the engine (M10 = Lot 스캔 이슈율).
-  await page.locator('.metric-list').getByText('Lot 스캔 이슈율',{exact:true}).waitFor();
-  // A1: the retired M07 from saved settings is dropped; 4 of 9 metrics restored.
-  assert.equal(await page.locator('.metric-list input:checked').count(),4);
-  await page.getByRole('button',{name:'전체 선택',exact:true}).click();
-  await page.getByRole('button',{name:'다음 ▶',exact:true}).click();
-  await page.getByRole('button',{name:'조사 시작'}).click();
-  await page.getByText('조사를 완료했습니다.',{exact:true}).waitFor({timeout:60000});
+  // The last investigation's machines are restored (AOI-01); the old saved M07 metric must not block a run (A1).
+  assert(await page.getByLabel('AOI-01 선택').isChecked());
+  await page.getByRole('button',{name:'조사 시작 →'}).click();
+  await page.locator('.toast').filter({hasText:'조사를 완료했습니다.'}).waitFor({timeout:60000});
+  await page.locator('.scope-status').filter({hasText:'Batch Report 205개'}).waitFor();
   // Every investigation also writes the Lot 추적 HTML; ? next to 조사 explains the Lot criteria.
+  await page.getByText(/저장된 결과 파일/).click();
   assert((await page.getByLabel('Lot 추적 HTML',{exact:true}).inputValue()).endsWith('BatchReport_Lot추적.html'));
   await page.getByRole('button',{name:'Lot 판정 기준',exact:true}).click();
   await page.locator('dialog[open]').getByText('Lot 코드',{exact:true}).waitFor();
   await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
-  await page.getByLabel('분석 표',{exact:true}).selectOption({label:'시간순 Actual WPH · 205행'});
-  await page.getByRole('img',{name:'Batch End 시간순 WPH 추이'}).waitFor();
-  assert.equal(await page.locator('.table-scroll tbody tr').count(),200);
-  assert.equal(await page.locator('.trend svg text[y="248"]').count(),5);
-  await page.getByRole('button',{name:'다음',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelectorAll('.table-scroll tbody tr').length===5);
-  await page.getByRole('button',{name:'이전',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelectorAll('.table-scroll tbody tr').length===200);
+  // Lot 추적: 205 reports → 69 Lots (3 reports each, one wafer per report).
+  const kpi=page.locator('.kpib button');
+  assert.match(await kpi.nth(0).innerText(),/69/);
+  assert.match(await kpi.nth(1).innerText(),/205/);
+  await kpi.nth(1).click();
+  // Batch Report list → 원문: source text is shown as text, never executed.
+  await page.locator('.tabpanel tbody tr').filter({hasText:'BatchReport_000.htm'}).click();
+  await page.locator('dialog[open]').getByText('<script>window.injected=true</script>',{exact:true}).first().waitFor();
+  assert.equal(await page.evaluate(()=>window.injected),undefined);
+  await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
+  // Lot window: 이력 상세 (timeline) and 취합 tabs, Excel export to the local result folder.
+  await kpi.nth(0).click();
+  await page.locator('.tabpanel tbody tr.clickable').first().click();
+  await page.locator('dialog.lotwin[open] svg[aria-label="시간순 Batch Report 요약"]').waitFor();
+  await page.locator('dialog.lotwin').getByRole('tab',{name:'Lot · wafer 취합'}).click();
+  await page.locator('dialog.lotwin').getByRole('button',{name:'Excel로 저장',exact:true}).click();
+  assert((await page.locator('dialog.lotwin').getByLabel('저장된 Excel').inputValue()).includes('취합'));
+  await page.locator('dialog.lotwin').getByRole('button',{name:'닫기',exact:true}).click();
   await mkdir(join(root,'docs/screenshots'),{recursive:true});
   await page.screenshot({path:join(root,'docs/screenshots/rev1-batch.png'),fullPage:true});
-  const options=await page.getByLabel('분석 표',{exact:true}).locator('option').allTextContents();
-  const unknown=options.find(t=>t.startsWith('미분류 · 누락 상태'));
-  assert(unknown);await page.getByLabel('분석 표',{exact:true}).selectOption({label:unknown});
-  await page.locator('.table-scroll').getByText('<script>window.injected=true</script>',{exact:true}).first().waitFor();
-  assert.equal(await page.evaluate(()=>window.injected),undefined);
+  await page.getByRole('tab',{name:'가동률 · 원인',exact:true}).click();
+  await page.locator('svg[aria-label="24시간 시간표"]').waitFor();
+  await page.getByRole('tab',{name:'WPH',exact:true}).click();
+  await page.getByText('호기별 전체 WPH').waitFor();
+  // Developer mode lives in 설정 › 정보; the Batch screen shows its bar while it is on.
+  await page.getByRole('button',{name:'설정',exact:true}).click();
+  await page.getByRole('tab',{name:'정보'}).click();
+  await page.getByLabel('개발자 기능',{exact:true}).check();
+  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
+  await page.locator('.devbar').getByText('개발자 기능 켜짐').waitFor();
+  await page.getByRole('button',{name:'설정',exact:true}).click();
+  await page.getByRole('tab',{name:'정보'}).click();
+  await page.getByLabel('개발자 기능',{exact:true}).uncheck();
+  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
+  await page.locator('.devbar').waitFor({state:'detached'});
+  // 찾기 · 취합: file-name search → Lot groups → aggregate → Excel.
+  await page.getByRole('tab',{name:/Batch Report 찾기/}).click();
+  await page.getByLabel('Batch Report 키워드').fill('BatchReport_00');
+  await page.getByRole('button',{name:'검색 →'}).click();
+  await page.locator('.groups .group').first().waitFor({timeout:60000});
+  await page.locator('.group .gh input[type=checkbox]').first().check();
+  await page.getByRole('button',{name:'선택한 Batch Report 취합 →'}).click();
+  await page.locator('.stamp').filter({hasText:'최신 스캔 자동'}).waitFor();
+  await page.getByRole('button',{name:'Excel로 저장',exact:true}).click();
+  assert((await page.locator('.kept-screen:not([hidden])').getByLabel('저장된 Excel').inputValue()).includes('BatchReport_취합_'));
+  await page.getByRole('tab',{name:/가동률 조사 및 분석/}).click();
   await page.getByRole('button',{name:'Recipe 관리',exact:true}).click();
   // Zone → Alg title lines take two of the first 100 lines.
   await page.waitForFunction(()=>document.querySelectorAll('.comparison-row').length===98&&document.querySelectorAll('.comparison-group').length===2);
@@ -240,8 +261,8 @@ try{
   await page.getByRole('button',{name:'오래된 임시 폴더 정리',exact:true}).click();
   await page.getByText(/오래된 임시 폴더 \d+개 정리/).waitFor();
   await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
-  await page.locator('.stepper').getByRole('button',{name:/조사 대상/}).click();
-  await page.getByText('+ '+archive,{exact:true}).waitFor();
+  // The extra Report folder is part of the machine box (its tooltip lists every folder).
+  await page.waitForFunction(a=>[...document.querySelectorAll('.mbox')].some(b=>(b.getAttribute('data-tip')||'').includes('+ '+a)),archive);
   await page.getByText('자동 분석: 켜짐',{exact:false}).waitFor();
   await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
   await page.locator('.cm-file input').first().check();
@@ -250,8 +271,10 @@ try{
   assert.equal(await page.locator('section.panel').last().locator('.table-scroll tbody tr').count(),3);
   await page.getByRole('button',{name:'다음 파라미터',exact:true}).click();
   await page.getByRole('button',{name:'비교 Excel 저장',exact:true}).click();
-  await page.getByLabel('저장된 Excel').waitFor();
-  assert((await page.getByLabel('저장된 Excel').inputValue()).endsWith('.xlsx'));
+  // Kept (hidden) screens such as Batch Report 분석 may hold their own '저장된 Excel' field.
+  const visibleScreen=page.locator('.kept-screen:not([hidden])');
+  await visibleScreen.getByLabel('저장된 Excel').waitFor();
+  assert((await visibleScreen.getByLabel('저장된 Excel').inputValue()).endsWith('.xlsx'));
   // B: 신규 Commonality 조사 — plan → slots → safe copy → coefficients → form → values → compare list.
   // Plan Excel import (old headers fail여부/생성일자 → 이슈 Lot), unregistered machine → 설정 jump.
   await page.getByRole('button',{name:'📂 계획 엑셀 불러오기',exact:true}).click();
@@ -465,7 +488,7 @@ try{
   await page.locator('.cm-file input').first().waitFor();
   assert.deepEqual(errors,[]);
   assert.equal(stderr,'');
-  console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,maxDOMRows:200,timeTicks:5,scriptEscaped:true,serverPortsOpened:0}));
+  console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,lots:69,scriptEscaped:true,serverPortsOpened:0}));
 }finally{
   lines.close();engine.stdin.end();
   await new Promise(resolve=>engine.exitCode!==null?resolve():engine.once('exit',resolve));

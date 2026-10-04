@@ -39,6 +39,25 @@ class DesktopOpen:
         roots.extend(Path(p) for p in DesktopWaferMap.extra_roots)
         return roots
 
+    def _report_file(self, path):
+        """Batch Report 원본(.htm) 열기 — 등록한 호기 Report 폴더·추가 폴더 **바로 아래** 파일만.
+        장비 공유 경로라 resolve() 로 풀지 않고 글자로만 비교한다(끊긴 공유에서 멈추지 않게)."""
+        from . import wph
+        if path.suffix.lower() not in (".htm", ".html") or not wph.is_report_file(path.name):
+            return False
+        cfg = read_json(self.config_path)
+
+        def key(p):
+            return os.path.normcase(os.path.normpath(os.path.abspath(str(p))))
+        parent = key(path.parent)
+        for name in ("wph_report_paths", "batch_extra_paths"):
+            table = cfg.get(name) if isinstance(cfg.get(name), dict) else {}
+            for value in table.values():
+                for folder in (value if isinstance(value, list) else [value]):
+                    if isinstance(folder, str) and folder.strip() and Path(folder).is_absolute() and key(folder) == parent:
+                        return True
+        return False
+
     def resolve(self, raw):
         if not isinstance(raw, str) or not raw.strip() or len(raw) > MAX_PATH or "\0" in raw:
             raise ValueError("열 파일 경로를 확인하세요")
@@ -51,6 +70,8 @@ class DesktopOpen:
             raise ValueError("이 종류의 파일은 열 수 없습니다")
         if not path.is_file() and not path.is_dir():
             raise ValueError("파일 또는 폴더만 열 수 있습니다")
+        if path.is_file() and self._report_file(path):
+            return path
         real = path.resolve()
         if not any(real == root.resolve() or real.is_relative_to(root.resolve()) for root in self._roots()):
             raise ValueError("저장폴더 또는 로컬 결과 폴더 안의 파일만 열 수 있습니다")

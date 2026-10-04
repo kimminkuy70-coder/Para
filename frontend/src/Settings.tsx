@@ -6,6 +6,8 @@ import {takeSettingsIntent} from './nav';
 import {OpenPath,openPath} from './OpenPath';
 import {installUpdate,openProgramDir} from './AppUpdate';
 import type {AppUpdate} from './desktop';
+import {useDev,setDevOn,saveDrafts,dropDrafts} from './devmode';
+import {DevHelp,DevOff} from './DevHelp';
 
 type Auto={enabled:boolean;interval_hours:number;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
@@ -43,6 +45,15 @@ export function Settings(){
     catch(e){fail(e);}finally{setBusy(false);}
   }
   const [diagZip,setDiagZip]=useState('');
+  // 개발자 기능(Batch Report 중복 Pass 직접 선택): 저장 안 한 선택이 있으면 끄기 전에 묻고, 조사 중에는 잠근다.
+  const dev=useDev();
+  const [devOff,setDevOff]=useState(false),[devHelp,setDevHelp]=useState(false);
+  function toggleDev(on:boolean){
+    if(!on&&dev.drafts){setDevOff(true);return;}
+    setDevOn(on);
+    notify(on?'개발자 기능을 켰습니다 — Batch Report Lot 창에서 중복 Pass를 직접 고칠 수 있습니다. 저장해야 결과에 반영됩니다.'
+      :'개발자 기능을 껐습니다 — 결과 숫자는 그대로입니다(저장된 사람 선택은 계속 적용).','info');
+  }
   const [local,setLocal]=useState<Local>(),[localPath,setLocalPath]=useState(''),[about,setAbout]=useState<About>();
   const [subError,setSubError]=useState(''),[subTry,setSubTry]=useState(0);
   useEffect(()=>{
@@ -244,6 +255,19 @@ export function Settings(){
         <tr><td style={{fontWeight:700}}>사용자</td><td>{about.user}</td></tr>
         <tr><td style={{fontWeight:700}}>설정 파일</td><td><code>{about.config}</code></td></tr></tbody></table>:subError?<LoadFailed message={subError} onRetry={()=>setSubTry(n=>n+1)}/>:<p className="hint">불러오는 중…</p>}
       {about?.logs&&<OpenPath label="오류 로그 폴더" path={about.logs} folder/>}
+      <div className="bv">
+        <h3 style={{marginTop:24}}>개발자 기능</h3>
+        <div className="devrow"><label className="switch" title={dev.locked?'Batch Report 조사 중에는 바꿀 수 없습니다(조사를 시작할 때의 기준으로 끝까지 계산)':undefined}>
+            <input type="checkbox" aria-label="개발자 기능" checked={dev.on} disabled={dev.locked} onChange={e=>toggleDev(e.target.checked)}/>
+            <span><b>개발자 기능 — Batch Report 중복 Pass 직접 선택</b><small>같은 wafer가 Pass를 2번 이상 받았을 때 쓸 Batch Report를 고르고 저장합니다. 켜고 끄는 것만으로는 결과 숫자가 바뀌지 않습니다.</small></span></label>
+          <button type="button" className="help-btn lg" aria-label="개발자 기능 설명" title="개발자 기능은 뭐가 다른가요?" onClick={()=>setDevHelp(true)}>?</button></div>
+        {dev.locked&&<p className="hint">Batch Report 조사 중에는 바꿀 수 없습니다.</p>}
+        {dev.on&&dev.drafts>0&&<p className="hint">저장 안 한 선택 {dev.drafts}건 — Batch Report 화면 위 안내 막대에서 저장하거나 버릴 수 있습니다.</p>}
+        <DevOff open={devOff} count={dev.drafts} onHelp={()=>setDevHelp(true)} onCancel={()=>setDevOff(false)}
+          onSave={async()=>{if(await saveDrafts()){setDevOff(false);setDevOn(false);notify('선택을 저장하고 개발자 기능을 껐습니다.','ok');}}}
+          onDrop={()=>{dropDrafts();setDevOff(false);setDevOn(false);notify('저장 안 한 선택을 버리고 개발자 기능을 껐습니다.','info');}}/>
+        <DevHelp open={devHelp} onClose={()=>setDevHelp(false)}/>
+      </div>
       <h3 style={{marginTop:24}}>진단 로그 (느림 원인 찾기)</h3>
       <p className="hint">프로그램 시작·설정 읽기·각 작업이 <b>어느 단계에서 몇 초 걸렸는지</b> 자동으로 기록합니다
         (실행파일 풀기·백신 검사 → 모듈 로딩 → 설정 파일 읽기 → 화면 요청 대기·처리, 부팅 후 경과시간·메모리).

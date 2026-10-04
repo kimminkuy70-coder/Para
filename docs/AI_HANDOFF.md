@@ -1,5 +1,16 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Batch Report 프로토타입을 실제 앱으로 (2026-10-04 KST, `version_v11`)
+
+- 사용자 지시로 검토 중이던 프로토타입 화면을 실제 앱 `Batch Report 분석` 탭에 옮김. 상세는 CLAUDE.md
+  'Batch Report 화면 실제 앱 반영' 절. 엔진 `batchview.py` + `desktop_batch.BatchViews` + IPC `batch_*`, 화면 `Batch*.tsx`.
+- 개발자 기능은 설정 › 정보로 옮김(프로토타입의 화면 위 토글 대신). 남은 화면 수정은 앱에서 이어서 한다.
+- 사용자 확정: 저장된 사람 선택은 PC마다 따로(로컬 Cache), 호기가 아주 많으면 호기 격자 안에서 스크롤. 사용자 지시로 v11.1.0 릴리즈
+  (`docs/release_notes/v11.1.0.md`, Actions workflow_dispatch — 이 환경은 태그 push 가 403).
+- 검증: `tests/test_batchview.py` 11 · 전체 Python 테스트(tkinter 없는 기존 1건만 실패) · tsc · vite build · `tools/test_desktop_ui.mjs`
+  · 실자료 420개로 브라우저 전 화면 확인(스크래치, 저장소 밖). Windows 실기 미검증.
+- push · 릴리즈는 사용자가 말할 때만.
+
 ## 최신 재개 — version_v11 통합 + v11.0.0 릴리즈 (2026-10-04 KST)
 
 - `version_v11` = `version_v10`(HEAD `b8e5a98`) + `claude/camtek-aoi-review-deploy-w796ec`(HEAD `07444ad`) merge. 충돌 없음.

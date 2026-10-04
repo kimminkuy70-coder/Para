@@ -39,8 +39,9 @@ BUSY_LABEL = {'batch': 'Batch Report 분석', 'recipe': 'Recipe 값 확인', 'do
               'commonality': 'Commonality 결과', 'cmsurvey': 'Commonality 계획 확인', 'history': '레시피 날짜별 비교하기',
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
-              'watch': '자동 감시 회차', 'colorgray': 'Color·Gray 매칭', 'wafermap': 'Wafer Map 수정하기'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+              'watch': '자동 감시 회차', 'colorgray': 'Color·Gray 매칭', 'wafermap': 'Wafer Map 수정하기',
+              'batchexport': 'Batch Report Excel 저장'}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "batch_restore", "batch_view", "batch_lot", "batch_raw", "batch_choices", "batch_find", "batch_aggregate", "batch_export", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 # Background jobs that only read (local or OneDrive/equipment). Closing the app does not
 # wait for them — waiting for a slow read kept the old engine alive after the window
@@ -49,9 +50,9 @@ READ_ONLY = {"recipe_open", "recipe_delete_preview", "document_open", "form_cata
              "form_scales", "formnew_prepare", "formnew_scales", "history_files", "history_diff",
              "commonality_catalog", "commonality_compare", "cmsurvey_preflight", "cmsurvey_read_plan",
              "update_prepare", "appupdate_check", "pwatch_state", "pwatch_jobs", "cmwatch_state",
-             "cmwatch_candidates", "batch_reports", "watch_status", "cmrun_plan", "cgm_scan", "cgm_read", "wm_scan"}
+             "cmwatch_candidates", "batch_reports", "batch_restore", "watch_status", "cmrun_plan", "cgm_scan", "cgm_read", "wm_scan"}
 # Frequent page/scroll requests: only logged in the detailed log when slow.
-DIAG_QUIET = {"table_page", "recipe_page", "form_page", "document_page", "history_page", "commonality_page",
+DIAG_QUIET = {"table_page", "batch_view", "batch_lot", "batch_raw", "recipe_page", "form_page", "document_page", "history_page", "commonality_page",
               "cmrun_page", "cmwatch_page", "formnew_page", "diag_client", "open_path", "cgm_read", "cgm_put", "wm_image"}
 WATCH_PROGRESS_SEC = 1.0  # live '진행 중' notice: at most one update per second
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
@@ -223,6 +224,10 @@ class Session:
 
     def dispatch(self, rid, method, params):
         allowed = {"analyze": {"records", "selected"}, "investigate": {"targets", "options"}, "batch_reports": {"machine", "query", "start", "end"}, "table_page": {"job", "table", "offset", "limit"},
+                   "batch_restore": set(), "batch_view": {"view", "version", "offset"}, "batch_lot": {"view", "lot"},
+                   "batch_raw": {"view", "report"}, "batch_choices": {"view", "changes"},
+                   "batch_find": {"machines", "query", "start", "end"}, "batch_aggregate": {"view", "reports"},
+                   "batch_export": {"view", "kind", "reports", "choices", "lot", "drafts", "stamp"},
                    "cancel": {"job"}, "release": {"job"},
                    "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine","zone","hide_kla",
                                    "hide_empty","group","collapsed"},
@@ -602,6 +607,25 @@ class Session:
             # Lists an equipment Report folder (network): never on the input thread.
             bg(rid, 'reports', lambda: self.batch.reports(params),
                'Report 폴더를 읽지 못했습니다. 장비 연결을 확인하세요.', ('batch',))
+        elif method in ("batch_view", "batch_lot", "batch_raw", "batch_aggregate"):
+            # In-memory view (built after an investigation / search): quick, on the input thread.
+            action = {"batch_view": self.batch.view_chunk, "batch_lot": self.batch.view_lot,
+                      "batch_raw": self.batch.view_raw, "batch_aggregate": self.batch.aggregate}[method]
+            self.emit(rid, "completed", batch=action(params))
+        elif method == "batch_restore":
+            # Last investigation from the local cache only (no equipment access).
+            bg(rid, 'batch', self.batch.restore, '지난 조사 결과를 불러오지 못했습니다. 로컬 작업 폴더를 확인하세요.', ('batch',))
+        elif method == "batch_choices":
+            # Saved duplicate-Pass choices (local Cache) → recompute every view with them.
+            bg(rid, 'batch', lambda: self.batch.save_choices(params), '선택을 저장하지 못했습니다. 로컬 작업 폴더를 확인하세요.', ('batch',))
+        elif method == "batch_export":
+            bg(rid, 'batch', lambda: self.batch.export(params), 'Excel 을 저장하지 못했습니다. 로컬 작업 폴더와 Excel 열림 여부를 확인하세요.',
+               ('batchexport',))
+        elif method == "batch_find":
+            prepared = self.batch.prepare_find(params)
+            # Lists the equipment Report folders (names) and reads matching reports: worker + equipment slot.
+            bg(rid, 'batch', lambda: self.batch.find(prepared, desktop_progress.report),
+               'Batch Report 를 찾지 못했습니다. 장비 연결과 로컬 작업 폴더를 확인하세요.', ('batch', 'equipment'))
         elif method == "investigate":
             if self.job is not None:
                 raise ValueError("Release the previous job before starting another")
@@ -675,6 +699,12 @@ class Session:
         try:
             output = self.batch.run(prepared, progress, self.cancelled.is_set)
             result, collection = output["result"], output["collection"]
+            view = None
+            try:
+                progress("화면용 Lot · 가동률 · WPH 를 계산하는 중…")
+                view = self.batch.set_view("scope", collection["records"], extra=self.batch.scope_extra(prepared, output))
+            except Exception as exc:  # noqa: BLE001 - the saved outputs are still valid
+                log_failure("batch_view", exc)
             result["tables"].append(dict(key="READ", title="원본 읽기 오류", headers=["호기", "Report", "오류"],
                 rows=[(e["machine"], e["source_file"], e["error"]) for e in collection["errors"]]))
             try:
@@ -685,7 +715,7 @@ class Session:
                 self.free('batch', 'equipment')
                 self.result = result
                 # Service has committed its outputs. A late cancel is not a rollback.
-                self.emit(rid, "completed", summary=result["summary"],
+                self.emit(rid, "completed", summary=result["summary"], view=view,
                     artifacts={k: output[k] for k in ("outdir", "html", "lots", "xlsx", "dashboard", "dashboard_error")},
                     collection={"parsed": collection["parsed"], "reused": collection["reused"],
                                 "errors": len(collection["errors"]), "cached_only": collection["cached_only"]},

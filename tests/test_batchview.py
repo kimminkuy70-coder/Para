@@ -1,0 +1,255 @@
+"""새 Batch Report 화면(가동률 조사 및 분석 · 찾기 · 취합) 엔진 테스트.
+
+합성 자료는 test_lotmodel 과 같은 형식(실제 Batch Report 424개에서 확인한 열·Wafer ID·S/M)을 쓴다.
+장비 접근 없음 — 임시 폴더를 Report 폴더로 쓴다.
+"""
+import io
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from param_manager import batchview, batchreport_store as store, lotmodel as lm
+from param_manager.desktop_batch import DesktopBatch, VIEW_CHUNK
+from param_manager.desktop_ipc import Session
+from param_manager.desktop_open import DesktopOpen
+from test_batchreport import html_report
+from test_lotmodel import report, full, records
+
+
+def lot_records():
+    """BAW: 첫 스캔 S25 Error → 1시간 뒤 재스캔 Pass(재스캔으로 완료).
+    NSW: 한 번에 25매 모두 Pass(정상 스캔 WPH). SPT: 같은 wafer 를 Pass 두 번(중복 Pass).
+    FOCUS: 점검 스캔(Lot 제외). 자정을 넘긴 스캔(NSW 23:30~00:30)."""
+    return records(
+        ("AOI-1", report("BAW", full(["Scan 2D Error."]), "2026-09-01 10:00", minutes=50)),
+        ("AOI-1", report("BAW", [("25", "Pass")], "2026-09-01 11:30", minutes=10)),
+        ("AOI-1", report("NSW", full([]), "2026-09-01 23:30", minutes=60)),
+        ("AOI-1", report("SPT", full([]), "2026-09-02 08:00", minutes=50)),
+        ("AOI-1", report("SPT", [("25", "Pass")], "2026-09-02 09:00", minutes=10)),
+        ("AOI-1", report("FOCUS", [("1", "Pass")], "2026-09-02 12:00", minutes=5)),
+    )
+
+
+class ViewNumbers(unittest.TestCase):
+    def setUp(self):
+        self.view = batchview.View(lot_records())
+        self.p = self.view.payload()
+
+    def lot(self, code):
+        return next(i for i, lot in enumerate(self.p['lots']) if lot['code'] == code)
+
+    def test_lots_reports_and_states(self):
+        self.assertEqual(len(self.p['R']), 6)
+        self.assertEqual(self.p['excluded'], [5])                    # FOCUS = 점검 스캔
+        baw = self.p['lots'][self.lot('BAW')]
+        self.assertEqual((baw['state'], baw['re'], baw['multi']), (lm.LOT_RESCANNED, 1, True))
+        self.assertEqual(baw['cz'], [['Scan 2D Error.', 1, False]])
+        self.assertEqual(self.p['lots'][self.lot('SPT')]['dup'], 1)
+        r0 = self.p['R'][0]
+        self.assertEqual((r0['n'], r0['ok'], r0['err'], r0['fe']), (25, 24, 1, 'Scan 2D Error.'))
+        self.assertEqual(self.p['range'], ['2026-09-01', '2026-09-02'])
+
+    def test_utilization_shares_waits_and_midnight(self):
+        days = {(b['d'], b['m']): b for b in self.p['B']}
+        d1 = days[('2026-09-01', 'AOI-1')]
+        # BAW 첫 스캔 50분 ÷ Dice 있는 24행(Error 행은 Dice '-') → Pass 24장 유효, Error 1장은 시간 몫 없음.
+        self.assertEqual(d1['err']['Scan 2D Error.'][3], 1)
+        # 재스캔 전 대기 = 10:50 → 11:30 (40분), 앞 Batch Report 의 Error 원문으로.
+        self.assertEqual(d1['err']['Scan 2D Error.'][1], 2400)
+        self.assertEqual(self.p['waits'][0]['s'], '2026-09-01 10:50')
+        # 자정을 넘긴 NSW 60분: 9/1 에 30분, 9/2 에 30분.
+        nsw = 'CMP2D-DT-GH10N-BIN1-H-U1_0856268PD-0A · 2D_WBG'
+        self.assertEqual(sum(b['valid'] for b in self.p['B']), 50 * 60 + 10 * 60 + 60 * 60 + 50 * 60 * 24 / 25 + 10 * 60)
+        self.assertEqual(days[('2026-09-02', 'AOI-1')]['check'], 300)
+        self.assertGreater(d1['rec'][nsw], 0)
+        # SPT: 같은 wafer Pass 두 번 → 먼저 스캔한 몫이 Error·중복 스캔(DUP)
+        d2 = days[('2026-09-02', 'AOI-1')]
+        self.assertEqual(d2['err'][batchview.DUP][0], 120)
+
+    def test_wph_base_and_effective(self):
+        base = {self.p['R'][b['g']]['sm'] for b in self.p['C']['base']}
+        self.assertEqual(base, {'NSW'})                               # BAW·SPT 는 재스캔이 있어 정상 스캔 아님
+        baw = next(e for e in self.p['C']['eff'] if e['lot'] == self.lot('BAW'))
+        self.assertEqual((baw['w'], baw['s'], baw['n']), (25, 3600, 2))
+
+    def test_lot_detail_raw_and_aggregate(self):
+        li = self.lot('SPT')
+        detail = self.view.lot(li)
+        s25 = next(w for w in detail['bunches'][0]['wafers'] if w['k'] == 'S25')
+        self.assertEqual((s25['v'], s25['pick'], s25['rec'], len(s25['cells'])), (lm.DUPLICATE, 1, 1, 2))
+        self.assertEqual(s25['cells'][0][1:5], ['Pass', True, False, 29])
+        raw = self.view.raw(0)
+        self.assertEqual(raw['h'][0], 'Lot')
+        self.assertEqual(len(raw['rows']), 25)
+        groups = self.view.aggregate(self.p['lots'][li]['bunches'][0]['att'] + [5])   # 점검 스캔은 빠진다
+        self.assertEqual(len(groups), 1)
+        w = groups[0]['w']['S25']
+        self.assertEqual((len(w['cells']), w['rec'], w['saved']), (2, 1, False))
+        with self.assertRaises(ValueError):
+            self.view.aggregate([5])
+
+    def test_saved_choice_changes_numbers_not_toggle(self):
+        li = self.lot('SPT')
+        b = self.view.model['lots'][li]['bunches'][0]
+        first = b['attempts'][0]['id']
+        saved = batchview.View(lot_records(), overrides={(b['key'], 'S25'): first})
+        p = saved.payload()
+        self.assertEqual(p['saved'], 1)
+        s25 = next(w for w in saved.lot(li)['bunches'][0]['wafers'] if w['k'] == 'S25')
+        self.assertEqual((s25['pick'], s25['rec'], s25['ov']), (0, 1, True))
+        # 사람이 앞 스캔을 고르면 뒤 스캔 몫이 Error·중복 스캔이 된다(가동률도 같은 선택을 쓴다).
+        d2 = next(x for x in p['B'] if x['d'] == '2026-09-02')
+        self.assertEqual(d2['err'][batchview.DUP][0], 600)
+        self.assertTrue(saved.aggregate(p['lots'][li]['bunches'][0]['att'])[0]['w']['S25']['saved'])
+
+    def test_day_parts(self):
+        from datetime import datetime
+        parts = batchview.day_parts(datetime(2026, 9, 1, 23), datetime(2026, 9, 2, 1))
+        self.assertEqual(parts, [('2026-09-01', 0.5), ('2026-09-02', 0.5)])
+
+
+class DesktopFlow(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        base = Path(self.temp.name)
+        self.source = base / 'equipment'
+        self.source.mkdir()
+        for record in lot_records():
+            (self.source / record['report']['file_name']).write_text(html_report(record['report']), encoding='utf-8')
+        self.config = base / 'config.json'
+        self.config.write_text(json.dumps({'wph_report_paths': {'AOI-1': str(self.source)},
+                                           'local_dir': str(base / 'local')}), encoding='utf-8')
+        self.batch = DesktopBatch(self.config)
+        self.output = io.BytesIO()
+        self.session = Session(self.output)
+        self.session.batch = self.batch
+        self.addCleanup(self.session.close)
+        self.rid = 0
+
+    def call(self, method, **params):
+        self.rid += 1
+        self.session.handle(dict(version=1, id=self.rid, method=method, params=params))
+        for worker in list(self.session.workers):
+            worker.join(20)
+        if self.session.worker:
+            self.session.worker.join(20)
+        events = [json.loads(line) for line in self.output.getvalue().splitlines()]
+        return [e for e in events if e['id'] == self.rid][-1]
+
+    def investigate(self, reuse=True):
+        if self.session.job is not None:
+            self.call('release', job=self.session.job)          # 화면도 새 조사 전에 앞 조사를 놓는다
+        return self.call('investigate', targets=[{'machine': 'AOI-1', 'query': '', 'start': '', 'end': ''}],
+                         options={'valid_wafers': 25, 'reuse': reuse})
+
+    def view(self, name, meta):
+        data, offset = '', 0
+        while True:
+            reply = self.call('batch_view', view=name, version=meta['version'], offset=offset)['batch']
+            data += reply['data']
+            offset += len(reply['data'])
+            if offset >= reply['size']:
+                return json.loads(data)
+
+    def test_investigate_view_lot_raw_choices_restore(self):
+        reply = self.investigate()
+        self.assertEqual(reply['event'], 'completed')
+        meta = reply['view']
+        p = self.view('scope', meta)
+        self.assertEqual(len(p['R']), 6)
+        self.assertEqual(p['mstat']['AOI-1']['parsed'], 6)
+        self.assertEqual(p['scope']['machines'], ['AOI-1'])
+        self.assertTrue(p['artifacts']['lots'].endswith('BatchReport_Lot추적.html'))
+        li = next(i for i, lot in enumerate(p['lots']) if lot['code'] == 'SPT')
+        lot = self.call('batch_lot', view='scope', lot=li)['batch']
+        self.assertEqual(len(lot['bunches'][0]['wafers']), 25)
+        raw = self.call('batch_raw', view='scope', report=0)['batch']
+        self.assertEqual(Path(raw['path']).parent, self.source)
+        # 원본 열기: 등록한 Report 폴더 바로 아래 .htm 만 허용(장비 경로라 resolve 안 함).
+        self.assertEqual(DesktopOpen(self.config).resolve(raw['path']), Path(raw['path']))
+        stray = Path(self.temp.name) / 'x_BatchReport.htm'
+        stray.write_text('x', encoding='utf-8')
+        with self.assertRaises(ValueError):
+            DesktopOpen(self.config).resolve(str(stray))
+        # 개발자 기능 [선택 저장]: 앞 스캔(위치 0)을 고르면 로컬 Cache 에 남고 결과가 다시 계산된다.
+        saved = self.call('batch_choices', view='scope', changes=[[li, 0, 'S25', 0]])
+        self.assertEqual(saved['batch']['saved'], 1)
+        meta2 = saved['batch']['views']['scope']
+        self.assertGreater(meta2['version'], meta['version'])
+        self.assertEqual(meta2['saved'], 1)
+        choices = json.loads((Path(self.temp.name) / 'local' / 'Cache' / 'batch_lot_choices.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(choices['choices']), 1)
+        # 옛 version 으로 조각을 달라고 하면 거절(화면이 다시 받는다).
+        self.assertEqual(self.call('batch_view', view='scope', version=meta['version'], offset=0)['event'], 'error')
+        # 추천으로 되돌리면 저장에서 지운다.
+        self.assertEqual(self.call('batch_choices', view='scope', changes=[[li, 0, 'S25', 1]])['batch']['saved'], 0)
+        # 새 엔진(앱 다시 시작): 장비 접근 없이 캐시만으로 지난 조사 결과를 다시 보여 준다.
+        fresh = DesktopBatch(self.config)
+        restored = fresh.restore()
+        self.assertTrue(restored['restored'])
+        self.assertEqual(restored['meta']['reports'], 6)
+        again = json.loads(fresh._view_items()['scope']['blob'])
+        self.assertEqual([r['f'] for r in again['R']], [r['f'] for r in p['R']])   # 같은 id → 같은 저장 선택 키
+
+    def test_reuse_off_rereads(self):
+        self.investigate()
+        p = self.view('scope', self.investigate()['view'])
+        self.assertEqual(p['mstat']['AOI-1'], {'parsed': 0, 'reused': 6, 'records': 6, 'offline': False})
+        p = self.view('scope', self.investigate(reuse=False)['view'])
+        self.assertEqual(p['mstat']['AOI-1']['parsed'], 6)
+
+    def test_find_neighbors_aggregate_and_excel(self):
+        # 'BAW' 키워드: 같은 호기에서 앞뒤 13시간 안의 Batch Report 도 읽어 Lot 으로 모은다.
+        reply = self.call('batch_find', machines=['AOI-1'], query='BAW', start='', end='')
+        self.assertEqual(reply['event'], 'completed', reply)
+        p = self.view('find', reply['batch'])
+        self.assertEqual(sorted(p['R'][g]['sm'] for g in p['hits']), ['BAW', 'BAW'])
+        self.assertIn('NSW', {r['sm'] for r in p['R']})             # 키워드 밖 · 이어서 스캔 후보
+        key = next(k for k in p['scan'] if k.endswith('|BAW'))
+        self.assertTrue(p['scan'][key]['pattern'].endswith(os.path.join('Scanresult*', lm.attempt(lot_records()[0])['job'], '6392', 'BAW')))
+        groups = self.call('batch_aggregate', view='find', reports=p['hits'])['batch']['groups']
+        self.assertEqual(len(groups), 1)
+        out = self.call('batch_export', view='find', kind='agg', reports=p['hits'], choices={}, stamp='최신 스캔 자동')
+        path = Path(out['batch']['path'])
+        self.assertTrue(path.is_file())
+        from openpyxl import load_workbook
+        wb = load_workbook(path)
+        self.assertEqual(wb['Lot 취합']['A1'].value, 'Batch Report 찾기 · 취합 · 선택 기준: 최신 스캔 자동')
+        self.assertEqual(wb['Lot 취합'].max_row, 3)
+        self.assertEqual(wb['wafer'].max_row, 27)
+        li = p['R'][p['hits'][0]]['lot']
+        out = self.call('batch_export', view='find', kind='lot', lot=li, drafts={}, stamp='추천')
+        self.assertTrue(Path(out['batch']['path']).name.startswith('Lot_BAW_취합_'))
+        # 빈 키워드 · 등록 안 된 호기는 거절.
+        self.assertEqual(self.call('batch_find', machines=['AOI-1'], query='', start='', end='')['event'], 'error')
+        self.assertEqual(self.call('batch_find', machines=['AOI-9'], query='X', start='', end='')['event'], 'error')
+
+    def test_chunks_reassemble(self):
+        meta = self.investigate()['view']
+        self.assertLess(meta['size'], VIEW_CHUNK)
+        original = VIEW_CHUNK
+        import param_manager.desktop_batch as db
+        db.VIEW_CHUNK = 100
+        try:
+            p = self.view('scope', meta)
+        finally:
+            db.VIEW_CHUNK = original
+        self.assertEqual(len(p['R']), 6)
+
+    def test_cache_loader_reads_only_local(self):
+        self.investigate()
+        target = {'machine': 'AOI-1', 'folder': str(self.source), 'query': '', 'start': '', 'end': ''}
+        renamed = self.source.with_name('gone')
+        self.source.rename(renamed)                  # 장비 연결이 끊겨도 캐시만으로 읽는다
+        out = store.load_cached(Path(self.temp.name) / 'local', [target])
+        self.assertEqual(len(out['records']), 6)
+
+
+if __name__ == '__main__':
+    unittest.main()

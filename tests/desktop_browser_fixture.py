@@ -22,6 +22,9 @@ if sys.argv[1] == 'init':
         rep = report('BatchReport_%03d.htm' % i, statuses=(status,), count=1,
                      start=start.strftime('%d-%b-%y %I:%M:%S %p'),
                      end=(start+timedelta(minutes=10)).strftime('%d-%b-%y %I:%M:%S %p'), seconds='00:10:00')
+        # Lot 단위 화면용: 3장마다 Lot 하나(AAA, AAB …), 한 장에 웨이퍼 하나씩 나눠 스캔.
+        n = i // 3
+        rep['wafers'][0].update({'Lot': ''.join(chr(65 + (n // 26 ** k) % 26) for k in (2, 1, 0)), 'Wafer ID': str(i % 3 + 1)})
         (source / rep['file_name']).write_text(html_report(rep), encoding='utf-8')
     cfg = {'local_dir': str(root/'local'), 'wph_report_paths': {'AOI-01':str(source),'AOI-02':str(root/'offline-02'),'AOI-03':str(root/'offline-03')},
            'batch_last': {'targets':[{'machine':'AOI-01','query':'','start':'','end':''}],

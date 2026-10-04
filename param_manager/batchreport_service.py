@@ -22,7 +22,7 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
     try:
         base = store.local_root(root, [t['folder'] for t in targets]) / '배치분석'
         base.mkdir(parents=True, exist_ok=True)
-        collection = store.collect(root, targets, progress, host_gap, cancel=cancel)
+        collection = store.collect(root, targets, progress, host_gap, cancel=cancel, reuse=options.get('reuse', True))
         collection['scope'] = ' / '.join(f"{t['machine']} · {t.get('query') or '(전체 검색어)'} · {t.get('start') or '처음'}~{t.get('end') or '끝'} · "
                                        + (f"선택 {len(t['names'])}개" if t.get('names') is not None else '전체/신규 포함') for t in targets)
         if progress:

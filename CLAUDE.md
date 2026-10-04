@@ -23,14 +23,49 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 화면 실제 앱 반영 (2026-10-04, 브랜치 `version_v11`)
+
+- 사용자 지시("2번으로 해")로 **검토 중이던 프로토타입(`tools/batch_prototype`)을 그대로 실제 앱 `Batch Report 분석` 탭으로 옮겼다**.
+  남은 수정은 프로토타입이 아니라 앱에서 이어서 한다. 종전 3단계(조사 대상 → 지표 선택 → 표 보기) 화면은 없앴다
+  (기존 산출물 — 분석 HTML/Excel · Lot 추적 HTML · 가동률 대시보드 · WPH — 은 조사마다 그대로 만들고 [저장된 결과 파일]에서 연다).
+- **엔진 `param_manager/batchview.py`(헤드리스)**: `View(records, overrides)` — 프로토타입 `gen_proto.py` 계산을 그대로 옮김
+  (실자료 420개로 유효/Error·중복/대기/점검 합계가 프로토타입과 일치). 다른 점 2가지: ①자정을 넘긴 스캔·대기는 **날마다 나눠** 넣음
+  (`day_parts`) ②재스캔 전 대기는 **같은 호기** 연속 시도만(다른 호기 이동은 대기로 세지 않음 — 시간표의 노란 줄과 같은 기준).
+  `payload()` = 한 번에 보내는 요약(Batch Report 요약 · Lot 요약(`cz`=Error 원문별 wafer·미해결) · 가동률 일 단위 `B` · `waits` ·
+  WPH `C`), `lot(li)` · `raw(g)` = 누를 때만(원문 행은 요약에 넣지 않음), `aggregate(gs)` = 찾기·취합 후보(추천 = 저장된 사람 선택
+  → 가장 나중 Pass → 가장 나중 스캔), `write_excel`(1행 = 선택 기준).
+- **전송**: 요약은 ASCII JSON 문자열을 엔진 메모리에 두고 `batch_view{view,version,offset}` 로 1,000,000자씩 받아 이어 붙인다
+  (IPC 4MB 프레임). 저장·재조사로 결과가 바뀌면 version 이 올라가 옛 조각 요청은 거절된다.
+- **IPC(`desktop_ipc`)**: `investigate` 끝에 `set_view('scope')` → 응답 `view` 메타. `batch_restore`(화면을 열 때 지난 조사 범위를
+  **로컬 캐시만으로** 다시 — `batchreport_store.load_cached` 가 캐시 파일 안 (호기, 폴더) 문자열로 짝을 찾음, 장비 경로 resolve 금지) ·
+  `batch_view` · `batch_lot` · `batch_raw` · `batch_aggregate`(입력 스레드, 메모리) · `batch_choices`(개발자 [선택 저장] → 로컬
+  `Cache/batch_lot_choices.json` `{schema:1, choices:{"묶음key\twafer key": 시도 id}}`, 추천과 같으면 지움 → 조사·찾기 결과를 다시 계산) ·
+  `batch_find`(파일 이름 검색 + 같은 호기 앞뒤 13시간 Batch Report 까지 읽어 Lot 으로 — '키워드 밖 · 같은 Lot 이어서 스캔' 표시,
+  Scanresult 경로는 폴더 이름만 확인) · `batch_export`(찾기·취합 / Lot 창 → `{로컬}/배치분석/취합/*.xlsx`).
+- **캐시 재사용 끄기**: 옵션 `reuse`(기본 True) → `batchreport_store.collect(reuse=False)` 면 서명이 같아도 다시 연다. 호기별 읽음/캐시
+  수(`by_machine`)를 호기 박스에 표시. 자동 분석은 늘 reuse=True.
+- **원본 열기**: `desktop_open._report_file` — 등록한 Report 폴더·추가 폴더 **바로 아래** `*_BatchReport.htm` 만 허용, 장비 경로라
+  resolve 하지 않고 글자로만 비교(끊긴 공유에서 멈추지 않게).
+- **화면(`frontend/src/Batch*.tsx`, `batchData.ts`, `BatchCharts.tsx`, CSS 는 `styles.css` 끝 `.bv` 범위)**: `Batch.tsx`(조사 범위 ·
+  큰 탭 2개 · 원문 창 · 판정 기준) / `BatchLot.tsx`(Lot 추적) / `BatchLotWindow.tsx`(Lot 창) / `BatchUtil.tsx`(가동률 · 24시간 시간표) /
+  `BatchWph.tsx` / `BatchFind.tsx`. Batch Report 탭은 KEEP(탭을 옮겨도 결과 · Lot 창 · 저장 안 한 선택 유지). 로직 설명 상자는 접힌
+  `<details>`.
+- **개발자 기능 = 설정 › 정보 › 개발자 기능**(`devmode.ts`, 이 PC 화면 설정 localStorage — 엔진에 보내지 않음). 저장 안 한 선택이
+  있으면 끄기 전 `저장하고 끄기/버리고 끄기/취소`(`DevHelp.tsx` 의 `DevOff`), 조사 중 잠금(`setDevLocked`), ? 설명(`DevHelp`).
+  Batch 화면 위 안내 막대(켜짐 / 저장된 사람 선택 n건 적용 중). 업데이트 배너도 조사 중에는 대기(`useDev().locked`).
+- **사용자 확정(2026-10-04)**: ①저장한 중복 Pass 선택은 **PC마다 따로**(로컬 Cache, OneDrive 공유 안 함 — 다른 PC 와 숫자가 다르면
+  결과의 '선택 기준'으로 보인다) ②호기가 아주 많으면 호기 격자 **안에서 스크롤**(4줄까지 보임, `.bv .mgrid` max-height). v11.1.0 릴리즈.
+- 테스트: `tests/test_batchview.py`(11: 수치·자정 분할·WPH·상세·사람 선택이 숫자를 바꿈·IPC 흐름·조각 재조립·캐시만 복원·reuse 끄기·
+  찾기 이웃·Excel·원본 열기 허용 범위), `tools/test_desktop_ui.mjs` Batch 부분 새 화면으로 교체(fixture Batch Report 에 Lot 코드 부여).
+
 ### version_v11 통합 + v11.0.0 (2026-10-04)
 
 - 사용자 지시로 `version_v10`(Batch Report 프로토타입 2·3차 피드백·개발자 기능 안전장치) +
   `claude/camtek-aoi-review-deploy-w796ec`(Wafer Map 수정하기 · 메모 탭 통합)을 합쳐 **`version_v11`** 을 만들고
   `v11.0.0` 태그로 릴리즈(`build-desktop.yml` — 태그 push 가 빌드 + GitHub Release). 충돌 없음(CLAUDE.md 자동 병합).
 - 메모 탭 통합으로 `tools/test_desktop_ui.mjs` 의 `장비 IP`/`특이사항` 이동이 깨져 있던 것(상단 버튼 → `메모` 하위 탭)을 고쳤다.
-- **push · 릴리즈는 사용자가 말할 때만**(2026-10-04 사용자 지시) — Batch Report 프로토타입은 검토 중이라 HTML 로만 보여 주고,
-  확정 전에는 커밋 · push · 실제 앱 코드 반영을 하지 않는다.
+- **push · 릴리즈는 사용자가 말할 때만**(2026-10-04 사용자 지시). (이후 사용자가 프로토타입을 앱으로 옮기라고 해 위 절에서 반영함 —
+  push · 릴리즈는 여전히 사용자가 말할 때만.)
 
 ### Wafer Map 수정하기 탭 추가 + v10.2.0 (2026-10-04, 브랜치 `version_v10`)
 
@@ -892,6 +927,7 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
+python3 tests/test_batchview.py    # 11 (새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
 python3 tests/test_lotmodel.py     # 15 (연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)

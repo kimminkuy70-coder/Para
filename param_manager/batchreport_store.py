@@ -62,11 +62,14 @@ def dates(target):
     return start, end
 
 
-def collect(root, targets, progress=None, host_gap=2.0, cancel=None):
+def collect(root, targets, progress=None, host_gap=2.0, cancel=None, reuse=True):
+    """reuse=False: 캐시 서명(수정시각·크기)이 같아도 고른 범위를 전부 다시 연다
+    (화면 '이미 읽은 Batch Report는 다시 읽지 않기'를 끈 경우)."""
     base = local_root(root, [t["folder"] for t in targets]) / "배치분석" / "누적"
     base.mkdir(parents=True, exist_ok=True)
     records, errors, notices = [], [], []
     parsed, reused = 0, 0
+    by_machine = {}
     dedup = set()
     filenames = {}
     for index, target in enumerate(targets):
@@ -74,6 +77,7 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None):
         if index and host_gap:
             time.sleep(host_gap)  # sequential hosts; same security pacing as watcher
         machine, folder = target["machine"], Path(target["folder"])
+        stat = by_machine.setdefault(machine, {"parsed": 0, "reused": 0, "records": 0, "offline": False})
         source_id = hashlib.sha256((machine + "\0" + os.path.normcase(str(folder.resolve()))).encode()).hexdigest()
         cachefile = base / (source_id + ".json")
         if cachefile.is_symlink() or cachefile.resolve().parent != base.resolve():
@@ -103,6 +107,7 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None):
             current = [n for n in wph.list_reports(folder, target.get("query", ""), start, end) if matches(n)]
         else:
             errors.append({"machine": machine, "source_file": str(folder), "error": "원본 폴더 접근 불가 — 저장된 자료만 표시"})
+            stat["offline"] = True
         for n, name in enumerate(current, 1):
             checkpoint(cancel)
             if progress:
@@ -114,8 +119,9 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None):
                 before = path.stat()
                 signature = [before.st_mtime_ns, before.st_size]
                 saved = entries.get(name)
-                if saved and saved.get("signature") == signature:
+                if reuse and saved and saved.get("signature") == signature:
                     reused += 1
+                    stat["reused"] += 1
                     continue
                 # Reuse the established parser exactly once per changed source.
                 report = wph.parse_report(path)
@@ -130,6 +136,7 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None):
                 digest = hashlib.sha256(json.dumps(content, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
                 entries[name] = {"signature": signature, "digest": digest, "report": report}
                 parsed += 1
+                stat["parsed"] += 1
             except Exception as exc:
                 invalid.add(name)
                 errors.append({"machine": machine, "source_file": name, "error": str(exc)})
@@ -137,20 +144,67 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None):
         checkpoint(cancel)
         # Local writes only, old snapshot survives a failed replacement.
         write_json(cachefile, state)
-        for name, entry in entries.items():
-            if not matches(name) or name in invalid:
-                continue
-            key = (machine, entry["digest"])
-            if key in dedup:
-                notices.append(f"{machine} / {name}: 동일 내용 백업 중복 제외")
-                continue
-            dedup.add(key)
-            name_key = (machine, name)
-            if name_key in filenames and filenames[name_key] != entry['digest']:
-                notices.append(f"{machine} / {name}: 같은 이름의 다른 내용 보존 — Batches 원본 폴더 열 참조")
-            filenames[name_key] = entry['digest']
-            records.append({"id": source_id + ":" + name, "machine": machine,
-                            "source_folder": str(folder), "report": entry["report"], "cached_only": name not in current})
+        added = _emit(records, notices, dedup, filenames, source_id, machine, folder, entries,
+                      lambda name: matches(name) and name not in invalid, set(current))
+        stat["records"] += added
     return {"records": records, "errors": errors, "notices": notices,
-            "parsed": parsed, "reused": reused,
+            "parsed": parsed, "reused": reused, "by_machine": by_machine,
             "cached_only": sum(r["cached_only"] for r in records)}
+
+
+def _emit(records, notices, dedup, filenames, source_id, machine, folder, entries, keep, current):
+    added = 0
+    for name, entry in entries.items():
+        if not keep(name):
+            continue
+        key = (machine, entry["digest"])
+        if key in dedup:
+            notices.append(f"{machine} / {name}: 동일 내용 백업 중복 제외")
+            continue
+        dedup.add(key)
+        name_key = (machine, name)
+        if name_key in filenames and filenames[name_key] != entry['digest']:
+            notices.append(f"{machine} / {name}: 같은 이름의 다른 내용 보존 — Batches 원본 폴더 열 참조")
+        filenames[name_key] = entry['digest']
+        records.append({"id": source_id + ":" + name, "machine": machine,
+                        "source_folder": str(folder), "report": entry["report"], "cached_only": name not in current})
+        added += 1
+    return added
+
+
+def load_cached(root, targets):
+    """지난 조사 범위를 **로컬 캐시에서만** 다시 읽는다(장비 폴더 접근 없음 — 화면을 열 때 지난 결과 표시용).
+
+    캐시 파일 이름은 원본 폴더 경로로 만든 해시라 그 경로를 다시 풀면(resolve) 장비 공유에 접속하게
+    된다. 그래서 캐시 파일 안에 적어 둔 (호기, 폴더) 문자열로 짝을 찾는다."""
+    base = local_root(root, [t["folder"] for t in targets]) / "배치분석" / "누적"
+    records, notices, dedup, filenames, by_machine = [], [], set(), {}, {}
+    if not base.is_dir():
+        return {"records": records, "errors": [], "notices": notices, "parsed": 0, "reused": 0,
+                "by_machine": by_machine, "cached_only": 0}
+    states = {}
+    for cachefile in sorted(base.glob("*.json")):
+        if cachefile.is_symlink():
+            continue
+        try:
+            state = json.loads(cachefile.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if state.get("schema") == SCHEMA and isinstance(state.get("entries"), dict):
+            states[(state.get("machine"), os.path.normcase(str(state.get("folder", ""))))] = (cachefile.stem, state)
+    for target in targets:
+        machine = target["machine"]
+        stat = by_machine.setdefault(machine, {"parsed": 0, "reused": 0, "records": 0, "offline": False})
+        found = states.get((machine, os.path.normcase(str(Path(target["folder"])))))
+        if not found:
+            continue
+        source_id, state = found
+        start, end = dates(target)
+        requested = set(target["names"]) if target.get("names") is not None else None
+
+        def keep(name, target=target, start=start, end=end, requested=requested):
+            return (requested is None or name in requested) and wph._matches(name, target.get("query", ""), start, end)
+        stat["records"] += _emit(records, notices, dedup, filenames, source_id, machine, target["folder"],
+                                 state["entries"], keep, set())
+    return {"records": records, "errors": [], "notices": notices, "parsed": 0, "reused": len(records),
+            "by_machine": by_machine, "cached_only": len(records)}
