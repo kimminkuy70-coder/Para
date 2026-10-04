@@ -150,7 +150,8 @@ export function WaferMap(){
       <span className="count">{scan?`파일 ${picked.length} / ${validCount}`:'원본 읽기 전용'}</span></div>
     <p className="hint">Wafer Map TXT 를 Excel 로 펼쳐 Bin Code die 를 고치고, <b>원본 그대로</b> 다시 TXT 로 되돌립니다.
       원본 TXT 는 건드리지 않고 <code>_Map_Edit.xlsx</code> · <code>_Converted.txt</code> 와 맵 이미지(PNG) 를 새로 만듭니다.
-      손대지 않은 맵은 TXT→Excel→TXT 를 거쳐도 바이트가 동일합니다.</p>
+      손대지 않은 맵은 TXT→Excel→TXT 를 거쳐도 (헤더·빈 줄·줄바꿈·BOM 까지) 바이트가 동일합니다.
+      헤더(머리말)는 Excel 의 <code>Header_Edit</code> 시트에서 <b>수정 값</b> 칸을 채울 때만 바뀝니다(맵 크기 ROWCT·COLCT 제외).</p>
     <Stepper labels={STEPS} current={step} onJump={i=>{if(!busy&&i<=3&&(i===0||validCount))setStep(i);}}/>
     <div className="step-body">
     {step===0&&<>

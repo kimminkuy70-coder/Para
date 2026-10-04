@@ -121,6 +121,17 @@ class RoundTripTests(unittest.TestCase):
         data = sample_txt('\n')
         self.assertFalse(self._roundtrip(data).startswith(b'\xef\xbb\xbf'))
 
+    def test_roundtrip_trailing_blank_lines(self):
+        # 실제 장비 TXT 처럼 마지막 RowData 뒤에 빈 줄이 있어도 그대로 보존
+        data = sample_txt('\r\n') + b'\r\n\r\n'
+        self.assertEqual(self._roundtrip(data), data)
+
+    def test_roundtrip_empty_header_values(self):
+        # 값이 빈 헤더(XDIES:/YDIES: 처럼)도 그대로 보존
+        extra = b'XDIES:\r\nYDIES:\r\n'
+        data = extra + sample_txt('\r\n')
+        self.assertEqual(self._roundtrip(data), data)
+
     def test_edit_one_die_changes_only_that_code(self):
         """Excel 에서 한 die 를 003→022 로 고치면 TXT 에서도 그 자리만 바뀐다 (나머지 동일)."""
         from openpyxl import load_workbook
@@ -139,6 +150,71 @@ class RoundTripTests(unittest.TestCase):
         wm.excel_to_txt(xlsx, back)
         expect = sample_txt('\n').replace(b'RowData:___ 000 000 003', b'RowData:___ 000 000 022', 1)
         self.assertEqual(back.read_bytes(), expect)
+
+
+class HeaderEditTests(unittest.TestCase):
+    """헤더 수정 시트: 원본/수정 값·수정 값 우선·빈칸이면 원본 유지·맵 크기 보호."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.src = self.dir / 'W01.txt'
+        self.src.write_bytes(sample_txt('\r\n'))
+        self.xlsx = self.dir / 'W01_Map_Edit.xlsx'
+        wm.txt_to_excel(self.src, self.xlsx)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _set_edit(self, key, new):
+        from openpyxl import load_workbook
+        wb = load_workbook(self.xlsx)
+        he = wb['Header_Edit']
+        for r in range(wm.HEADER_EDIT_START, he.max_row + 1):
+            if he.cell(r, 1).value == key:
+                he.cell(r, 3).value = new
+                break
+        else:
+            raise AssertionError(f'{key} 행을 찾지 못함')
+        wb.save(self.xlsx)
+
+    def test_sheet_lists_original_values(self):
+        from openpyxl import load_workbook
+        wb = load_workbook(self.xlsx)
+        self.assertIn('Header_Edit', wb.sheetnames)
+        self.assertEqual(wb['Original_Header'].sheet_state, 'hidden')
+        he = wb['Header_Edit']
+        found = {he.cell(r, 1).value: he.cell(r, 2).value
+                 for r in range(wm.HEADER_EDIT_START, he.max_row + 1) if he.cell(r, 1).value}
+        self.assertEqual(found['WAFER'], 'W01')
+        self.assertEqual(found['DEVICE'], 'DEV-A')
+        self.assertEqual(found['ROWCT'], '8')
+
+    def test_empty_edit_keeps_original_bytes(self):
+        back = self.dir / 'out.txt'
+        wm.excel_to_txt(self.xlsx, back)
+        self.assertEqual(back.read_bytes(), sample_txt('\r\n'))   # 아무것도 안 고치면 바이트 동일
+
+    def test_edit_changes_only_that_header(self):
+        self._set_edit('DEVICE', 'DEV-B')
+        back = self.dir / 'out.txt'
+        wm.excel_to_txt(self.xlsx, back)
+        expect = sample_txt('\r\n').replace(b'DEVICE:DEV-A', b'DEVICE:DEV-B', 1)
+        self.assertEqual(back.read_bytes(), expect)
+
+    def test_protected_size_edit_ignored(self):
+        self._set_edit('ROWCT', 99)                               # 맵 크기는 못 바꾼다
+        back = self.dir / 'out.txt'
+        wm.excel_to_txt(self.xlsx, back)
+        self.assertEqual(back.read_bytes(), sample_txt('\r\n'))   # ROWCT 그대로 8
+
+    def test_edit_preserves_leading_zero(self):
+        self.src.write_bytes(sample_txt('\r\n').replace(b'LOT:LOT01', b'BCEQU:000', 1))
+        wm.txt_to_excel(self.src, self.xlsx)
+        self._set_edit('BCEQU', '007')
+        back = self.dir / 'out.txt'
+        wm.excel_to_txt(self.xlsx, back)
+        self.assertIn(b'BCEQU:007', back.read_bytes())
+        self.assertNotIn(b'BCEQU:7\r', back.read_bytes())
 
 
 class AdapterTests(unittest.TestCase):

@@ -34,14 +34,19 @@ def decode(path):
 
 def parse_txt(path):
     text, enc, nl = decode(path)
+    # split(nl) (not splitlines): 빈 줄·끝 빈 줄까지 그대로 남겨 바이트 단위로 되돌릴 수 있게 한다.
+    # `layout` = 각 줄이 RowData('R')인지 그 외 줄('H')인지의 순서 → Excel→TXT 때 원래 배치 복원.
     headers = []
     rows = []
+    layout = []
     meta = {}
-    for line in text.splitlines():
+    for line in text.split(nl):
         if line.startswith('RowData:'):
             rows.append(line[8:].strip().split())
+            layout.append('R')
         else:
             headers.append(line)
+            layout.append('H')
             if ':' in line:
                 k, v = line.split(':', 1)
                 meta[k.strip()] = v.strip()
@@ -54,7 +59,7 @@ def parse_txt(path):
     if bad:
         raise ValueError(f'열 수 오류 Row: {bad[:8]}')
     return {'headers': headers, 'rows': rows, 'meta': meta, 'encoding': enc, 'newline': nl,
-            'row_count': rc, 'col_count': cc}
+            'row_count': rc, 'col_count': cc, 'layout': ''.join(layout)}
 
 
 def discover(root, suffixes, skip_generated=True):
@@ -89,6 +94,29 @@ COLOR_NAME = {'FFFFFF': '흰색', 'DDF3DF': '연두색', 'D62728': '빨강', 'D0
               '7B1FA2': '보라', '1565C0': '파랑', '666666': '회색', 'F4B183': '살구색'}
 UNKNOWN_COLOR = 'F4B183'
 IMAGE_KINDS = [('code', 'BinCode_Map', 'Bin Code Map'), ('meaning', 'BinMeaning_Map', 'Bin Meaning Map')]
+# 맵 격자 크기는 Map_Edit 셀 수로 정해지므로 헤더에서 바꾸면 TXT 가 깨진다 → 편집 금지.
+HEADER_PROTECT = {'ROWCT', 'COLCT'}
+HEADER_EDIT_START = 5           # Header_Edit 시트에서 항목이 시작하는 행
+
+
+def _header_text(v):
+    """헤더 수정 값 셀 → 문자열. 숫자로 저장돼도(정수) 소수점 없이 그대로."""
+    if v is None:
+        return ''
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def _apply_header_edit(original_line, new_value):
+    """`key:value` 줄의 값 부분만 new_value 로 바꾼다 — 키·콜론·콜론 뒤 공백은 원본 그대로
+    둬서 꼭 필요한 글자만 바뀌게 한다(콜론이 없으면 원본 유지)."""
+    if ':' not in original_line:
+        return original_line
+    idx = original_line.index(':')
+    before, after = original_line[:idx + 1], original_line[idx + 1:]
+    lead = after[:len(after) - len(after.lstrip())]
+    return before + lead + new_value
 
 
 def image_base(out):
@@ -181,6 +209,61 @@ def write_legend(ws, rows, rc, cc, cache, styles, get_column_letter):
     return codes
 
 
+def write_header_edit(wb, headers, styles):
+    """사람이 헤더를 보고 고치는 시트(`Header_Edit`): 항목 · 원본 값 · 수정 값.
+    수정 값만 채우면 Excel→TXT 때 그 항목만 바뀐다(비우면 원본 유지). 맵 크기(ROWCT/COLCT)는
+    격자로 정해지므로 수정 불가로 표시하고, 재조립 때도 무시한다. D열(원본 줄 번호)로 Original_Header 와
+    연결하고 숨긴다."""
+    PatternFill, Font, Border, Side, Alignment = styles
+    ws = wb.create_sheet('Header_Edit')
+    ws.sheet_view.showGridLines = False
+    thin = Side(style='thin', color='B7B7B7')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_fill = PatternFill('solid', fgColor='1F4E78')
+    head_font = Font(bold=True, color='FFFFFF', size=10)
+    gray = PatternFill('solid', fgColor='EFEFEF')
+    ws.cell(1, 1, '헤더(머리말) 수정').font = Font(bold=True, size=13, color='1F4E78')
+    ws.cell(2, 1, '· [수정 값] 칸만 채우면 그 항목만 바뀝니다. 비워 두면 원본 값 그대로 TXT 로 저장됩니다.').font = Font(size=9, color='333333')
+    ws.cell(3, 1, '· 맵 크기(ROWCT·COLCT)는 맵 격자로 정해지므로 수정할 수 없습니다. 그 외 헤더 변경은 극히 예외입니다.').font = Font(size=9, color='C00000')
+    for i, title in enumerate(['헤더 항목', '원본 값', '수정 값 (비우면 원본 유지)']):
+        c = ws.cell(4, 1 + i, title)
+        c.fill = head_fill
+        c.font = head_font
+        c.alignment = Alignment(horizontal='center', vertical='center')
+        c.border = box
+    r = HEADER_EDIT_START
+    for line_no, line in enumerate(headers, 1):
+        if ':' not in line:
+            continue                        # key:value 줄만 노출(그 외는 Original_Header 로 보존)
+        key, value = line.split(':', 1)
+        key, value = key.strip(), value.strip()
+        kc = ws.cell(r, 1, key)
+        kc.border = box
+        kc.font = Font(size=10, bold=True)
+        kc.alignment = Alignment(vertical='center')
+        oc = ws.cell(r, 2, value)
+        oc.border = box
+        oc.number_format = '@'              # 앞자리 0 보존(예: BCEQU 000)
+        oc.font = Font(size=10)
+        oc.alignment = Alignment(vertical='center')
+        ec = ws.cell(r, 3)
+        ec.border = box
+        ec.number_format = '@'
+        ec.alignment = Alignment(vertical='center')
+        ws.cell(r, 4, line_no)              # Original_Header Line_No 와 연결(숨김)
+        if key in HEADER_PROTECT:
+            kc.fill = oc.fill = gray
+            ec.value = '수정 불가 (맵 크기)'
+            ec.fill = gray
+            ec.font = Font(size=9, italic=True, color='999999')
+        r += 1
+    for col, w in zip('ABC', [18, 34, 34]):
+        ws.column_dimensions[col].width = w
+    ws.column_dimensions['D'].hidden = True
+    ws.freeze_panes = 'A5'
+    return ws
+
+
 def map_payload(rows, meta, base):
     """Everything the WebView canvas needs to draw BinCode_Map / BinMeaning_Map, so no
     numpy/matplotlib is added (original `create_images` logic, moved to the screen).
@@ -230,14 +313,17 @@ def txt_to_excel(src, out):
         for c, code in enumerate(row):
             _apply(ws.cell(5 + r, 2 + c), code, cache, styles)
     write_legend(ws, rows, rc, cc, cache, styles, get_column_letter)
-    h = wb.create_sheet('Original_Header')
+    write_header_edit(wb, d['headers'], styles)          # 사람이 보고 고치는 헤더 시트(2번째 탭)
+    h = wb.create_sheet('Original_Header')               # 바이트 보존용 원본 줄(숨김, Excel→TXT 의 기준)
     h.append(['Line_No', 'Original_Header_Line'])
     for i, line in enumerate(d['headers'], 1):
         h.append([i, line])
+    h.sheet_state = 'hidden'
     m = wb.create_sheet('_Converter_Metadata')
     m['A1'] = json.dumps({'row_count': rc, 'col_count': cc, 'start_row': 5, 'start_col': 2,
                           'source_encoding': d['encoding'],
                           'source_newline': 'CRLF' if d['newline'] == '\r\n' else 'LF',
+                          'layout': d['layout'],
                           'valid_codes': sorted({x for r in rows for x in r})}, ensure_ascii=False)
     m.sheet_state = 'veryHidden'
     wb.save(out)
@@ -259,9 +345,30 @@ def excel_to_txt(src, out):
         ws = wb['Map_Edit']
         rc, cc = int(md['row_count']), int(md['col_count'])
         sr, sc = int(md.get('start_row', 5)), int(md.get('start_col', 2))
-        headers = [str(wb['Original_Header'].cell(r, 2).value)
-                   for r in range(2, wb['Original_Header'].max_row + 1)
-                   if wb['Original_Header'].cell(r, 2).value is not None]
+        layout = md.get('layout')
+        # Original_Header: 원본 줄을 Line_No 순서대로(빈 줄 = None → '').
+        oh = wb['Original_Header']
+        literals_by_no = {}
+        for r in range(2, oh.max_row + 1):
+            ln = oh.cell(r, 1).value
+            if ln is None:
+                continue
+            v = oh.cell(r, 2).value
+            literals_by_no[int(ln)] = '' if v is None else str(v)
+        literals = [literals_by_no[i] for i in sorted(literals_by_no)]
+        # Header_Edit 시트의 '수정 값'을 적용(비면 원본 유지, 맵 크기 ROWCT/COLCT 는 무시).
+        edits = {}
+        if 'Header_Edit' in wb.sheetnames:
+            he = wb['Header_Edit']
+            for r in range(HEADER_EDIT_START, he.max_row + 1):
+                ln, new = he.cell(r, 4).value, _header_text(he.cell(r, 3).value)
+                if ln is not None and new.strip():
+                    edits[int(ln)] = new
+
+        def literal(line_no, text):
+            if line_no in edits and (text.split(':', 1)[0].strip() if ':' in text else '') not in HEADER_PROTECT:
+                return _apply_header_edit(text, edits[line_no])
+            return text
         enc = md.get('source_encoding', 'utf-8')
         nl = '\r\n' if md.get('source_newline') == 'CRLF' else '\n'
     elif 'Map_수정' in wb.sheetnames and '원본_헤더' in wb.sheetnames:
@@ -271,7 +378,10 @@ def excel_to_txt(src, out):
                 for r in range(2, h.max_row + 1) if h.cell(r, 1).value is not None}
         rc, cc = int(vals['ROWCT']), int(vals['COLCT'])
         sr, sc = 5, 2
-        headers = [f'{k}:{v}' for k, v in vals.items()]
+        literals = [f'{k}:{v}' for k, v in vals.items()]
+        layout = None
+        edits = {}
+        literal = lambda line_no, text: text  # noqa: E731
         enc = 'utf-8'
         nl = '\r\n'
     else:
@@ -285,9 +395,23 @@ def excel_to_txt(src, out):
                 raise ValueError(f'빈 맵 셀: {ws.cell(sr + r, sc + c).coordinate}')
             row.append(_code(v))
         rows.append(row)
-    Path(out).write_text(nl.join(headers + ['RowData:' + ' '.join(r) for r in rows]) + nl, encoding=enc, newline='')
+    rowlines = ['RowData:' + ' '.join(r) for r in rows]
+    if layout:
+        # 원래 줄 배치 그대로 복원(끝 빈 줄 포함) — 'R'=다음 맵 행, 'H'=다음 원본 줄.
+        parts, ri, li = [], 0, 0
+        for ch in layout:
+            if ch == 'R':
+                parts.append(rowlines[ri]); ri += 1
+            else:
+                parts.append(literal(li + 1, literals[li])); li += 1
+        text_out = nl.join(parts)
+    else:
+        # 레거시(layout 없음): 헤더 다음에 RowData, 끝에 줄바꿈 하나.
+        text_out = nl.join([literal(i + 1, t) for i, t in enumerate(literals)] + rowlines) + nl
+    Path(out).write_text(text_out, encoding=enc, newline='')
     meta = {}
-    for x in headers:
+    for i, x in enumerate(literals):
+        x = literal(i + 1, x)
         if ':' in x:
             k, v = x.split(':', 1)
             meta[k] = v

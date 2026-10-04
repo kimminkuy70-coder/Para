@@ -35,15 +35,25 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   화면이 PNG 2장을 그려 `wm_image` 로 저장(`png_size` 헤더 검사). 결과 화면에 썸네일+확대 뷰어.
 - **원본 보존이 핵심**: 변환은 늘 새 파일(`_Map_Edit.xlsx`/`_Converted.txt`)을 만들고 원본 TXT 는
   읽기만 한다. 손대지 않은 맵은 TXT→Excel→TXT 왕복 후 **바이트가 동일**하다 — BOM 은 실제 있을 때만
-  (`utf-8-sig`), 줄바꿈(CRLF/LF)·앞자리 0(텍스트 '@' 셀 + `_code` 3자리 복원)을 veryHidden
-  `_Converter_Metadata` 시트로 보존. 사람이 고치는 부분은 **Map_Edit 의 색칠된 die 셀(Bin Code)뿐**,
-  `___`(웨이퍼 외곽)·맵 크기(ROWCT/COLCT)·헤더(Original_Header)는 건드리지 않는다.
+  (`utf-8-sig`), 줄바꿈(CRLF/LF)·앞자리 0(텍스트 '@' 셀 + `_code` 3자리 복원)·**끝 빈 줄까지** 보존한다.
+  이를 위해 `parse_txt` 는 `splitlines()` 대신 `text.split(nl)` 로 나누고, 줄 순서를 `layout`('R'=RowData,
+  'H'=그 외 줄) 로 기록해 `_Converter_Metadata`(veryHidden) 에 담는다. `excel_to_txt` 는 layout 대로 원본
+  줄 배치를 그대로 복원한다(끝 빈 줄 포함). 사람이 고치는 부분은 **Map_Edit 의 색칠된 die 셀(Bin Code)뿐**,
+  `___`(웨이퍼 외곽)·맵 크기(ROWCT/COLCT)는 건드리지 않는다.
+- **헤더(머리말) 수정 시트 `Header_Edit`(2026-10-04 사용자 요청)**: TXT→Excel 때 헤더(`DEVICE`/`LOT`/
+  `WAFER`/`FNLOC`/`BCEQU`/`REFPX`/`REFPY`/`DUTMS`/`XDIES`/`YDIES` 등 `key:value` 줄)를 **항목·원본 값·
+  수정 값** 3열로 펼친다. Excel→TXT 때 **수정 값이 채워진 항목만** 그 값으로, 비면 원본 그대로 변환한다
+  (`_apply_header_edit` 는 키·콜론·콜론 뒤 공백을 보존하고 값만 교체). **맵 크기 `ROWCT`/`COLCT` 는
+  `HEADER_PROTECT` 로 '수정 불가' 표시 + 재조립 때 무시**(격자와 어긋나면 TXT 가 깨지므로). 바이트 보존의
+  기준 원본 줄은 숨김 시트 `Original_Header`(D열 Line_No 로 Header_Edit 와 연결), 빈 줄도 보존. 헤더 수정은
+  극히 예외라 기본은 Bin Code die 만 고친다.
 - 어댑터 `desktop_wafermap.py`: `wm_scan`(재귀 탐색+메타, TXT 모드는 `_Converted` 제외·Excel 모드는
   `_Map_Edit.xlsx` 유지·`~$` 잠금 제외) · `wm_start`(파일별 결과·이미지 경로 미리 확정) ·
   `wm_convert`(한 파일 변환, worker) · `wm_image`(화면이 그린 PNG 저장, 경로는 엔진이 정함). 결과는
   기본 원본과 같은 폴더(또는 사용자 폴더, 하위 구조 유지) → `DesktopWaferMap.extra_roots` 로
-  `open_path` 허용. 테스트 `tests/test_wafermap.py`(14: 파싱·탐색·**왕복 바이트 동일(LF/CRLF/BOM)**·
-  한 die 수정 반영·PNG 검사·어댑터 흐름).
+  `open_path` 허용. 테스트 `tests/test_wafermap.py`(21: 파싱·탐색·**왕복 바이트 동일(LF/CRLF/BOM/끝 빈 줄/
+  빈 헤더값)**·한 die 수정 반영·헤더 수정(원본·수정 값·수정 우선·빈칸이면 원본·맵 크기 보호·앞자리 0)·
+  PNG 검사·어댑터 흐름).
 
 ### Batch Report 명칭 통일 + 재설계 방향 (2026-10-04, 브랜치 `version_v10`)
 
