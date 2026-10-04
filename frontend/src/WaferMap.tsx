@@ -155,7 +155,7 @@ export function WaferMap(){
     <Stepper labels={STEPS} current={step} onJump={i=>{if(!busy&&i<=3&&(i===0||validCount))setStep(i);}}/>
     <div className="step-body">
     {step===0&&<>
-      <div className="out-choice" role="radiogroup" aria-label="변환 방향">
+      <div className="out-choice wm-mode" role="radiogroup" aria-label="변환 방향">
         {(['txt','excel'] as const).map(mo=>
           <div key={mo} className={'out-row'+(mode===mo?' on':'')}>
             <button type="button" role="radio" aria-checked={mode===mo} className={'out-pick'+(mode===mo?' on':'')}

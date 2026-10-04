@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {desktop, defaults, errorText, setBackground, mergeNotice, type WatchNotice, type Configuration, type Metric, type Options, type Reply, type Table, type Target} from './desktop';
 import './styles.css';
 import {Settings} from './Settings';
-import {Documents} from './Documents';
+import {Memo} from './Memo';
 import {Commonality} from './Commonality';
 import {Toaster,notify,Stepper,StepNav} from './ui';
 import {OpenPath} from './OpenPath';
@@ -24,10 +24,11 @@ const metrics: [Metric,string,string][] = [
 ];
 const SUBTITLE: Record<string,string> = {
   'Color·Gray 매칭':'AOI Color 이미지와 같은 위치의 Gray 스캔 이미지를 찾아 잘라 붙이고, 나란히 비교하는 Excel 을 만드세요.',
-  'Wafer Map 수정하기':'Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리세요.'
+  'Wafer Map 수정하기':'Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리세요.',
+  '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.'
 };
 const KEEP = ['Recipe 관리','Commonality 조사','자동 감시','Color·Gray 매칭','Wafer Map 수정하기'];
-const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','특이사항','참고자료','장비 IP'];
+const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','메모'];
 const text = (value: unknown) => value == null ? '—' : typeof value === 'number' ? value.toLocaleString('ko-KR',{maximumFractionDigits:2}) : String(value);
 
 function Trend({rows}: {rows:(string|number|null)[][]}) {
@@ -260,7 +261,7 @@ function App(){
         :name==='Color·Gray 매칭'?<ColorGray/>
         :name==='Wafer Map 수정하기'?<WaferMap/>
         :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}
-      {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
+      {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:tab==='메모'?<Memo/>:<>
       <section className="panel">
       <div className="section-heading"><div><span className="step">BATCH</span><h2>Batch Report 분석</h2></div><span className="count">{selected.length}개 호기 · {options.metrics.length}개 지표</span></div>
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>

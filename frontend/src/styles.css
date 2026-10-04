@@ -243,6 +243,11 @@ input.out-path{padding:9px 12px;border:1px solid var(--line);border-radius:8px}
 .criteria dd small{display:block;margin-top:2px;color:var(--muted);font-family:Consolas,monospace;font-size:12px}
 @media(max-width:640px){.criteria>div{grid-template-columns:1fr;gap:2px}}
 
+/* Wafer Map 수정하기 — 1단계 변환 방향 버튼: 가장 긴 글자 폭으로 두 버튼 같은 너비, 줄바꿈 없음 */
+.out-choice.wm-mode{display:grid;grid-template-columns:max-content minmax(0,1fr)}
+.out-choice.wm-mode .out-row{grid-column:1/-1;grid-template-columns:subgrid}
+.out-choice.wm-mode .out-pick{white-space:nowrap;padding:0 22px;min-height:44px}
+@media (max-width:720px){.out-choice.wm-mode{grid-template-columns:1fr}.out-choice.wm-mode .out-pick{white-space:normal}}
 /* Wafer Map 수정하기 — 결과 맵 이미지 썸네일 + 확대 뷰어 */
 .wm-imgcell{display:flex;flex-wrap:wrap;gap:12px}
 .wm-imgcell>span{display:flex;flex-direction:column;align-items:center;gap:4px}
