@@ -23,6 +23,55 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### version_v11 통합 + v11.0.0 (2026-10-04)
+
+- 사용자 지시로 `version_v10`(Batch Report 프로토타입 2·3차 피드백·개발자 기능 안전장치) +
+  `claude/camtek-aoi-review-deploy-w796ec`(Wafer Map 수정하기 · 메모 탭 통합)을 합쳐 **`version_v11`** 을 만들고
+  `v11.0.0` 태그로 릴리즈(`build-desktop.yml` — 태그 push 가 빌드 + GitHub Release). 충돌 없음(CLAUDE.md 자동 병합).
+- 메모 탭 통합으로 `tools/test_desktop_ui.mjs` 의 `장비 IP`/`특이사항` 이동이 깨져 있던 것(상단 버튼 → `메모` 하위 탭)을 고쳤다.
+- **push · 릴리즈는 사용자가 말할 때만**(2026-10-04 사용자 지시) — Batch Report 프로토타입은 검토 중이라 HTML 로만 보여 주고,
+  확정 전에는 커밋 · push · 실제 앱 코드 반영을 하지 않는다.
+
+### Wafer Map 수정하기 탭 추가 + v10.2.0 (2026-10-04, 브랜치 `version_v10`)
+
+- 외부 도구 'Wafer Map Converter WebView2 v6'(pywebview+Pillow+numpy+matplotlib) 이식. 상단 탭
+  `Wafer Map 수정하기`(설정과 동일 계층, KEEP — 탭 이동해도 작업 유지). 단계별 마법사 6단계
+  (변환 방향·폴더 → 파일 선택 → 저장 위치 → 실행 검토 → 처리 진행 → 완료).
+- **변환(TXT↔Excel) 로직은 원본 그대로** 옮겼다(`param_manager/wafermap.py`, openpyxl 전용).
+  **원본이 numpy+matplotlib 로 그리던 맵 이미지(BinCode_Map·BinMeaning_Map PNG)만 추가 패키지 금지
+  규칙 때문에 WebView canvas 에서 그린다**(Color·Gray 매칭과 같은 방식, `frontend/src/WaferMap.tsx`
+  `renderMap`). 엔진은 변환 후 맵 데이터(`map_payload`: rows·counts·present·colors·mean)를 돌려주고,
+  화면이 PNG 2장을 그려 `wm_image` 로 저장(`png_size` 헤더 검사). 결과 화면에 썸네일+확대 뷰어.
+- **원본 보존이 핵심**: 변환은 늘 새 파일(`_Map_Edit.xlsx`/`_Converted.txt`)을 만들고 원본 TXT 는
+  읽기만 한다. 손대지 않은 맵은 TXT→Excel→TXT 왕복 후 **바이트가 동일**하다 — BOM 은 실제 있을 때만
+  (`utf-8-sig`), 줄바꿈(CRLF/LF)·앞자리 0(텍스트 '@' 셀 + `_code` 3자리 복원)·**끝 빈 줄까지** 보존한다.
+  이를 위해 `parse_txt` 는 `splitlines()` 대신 `text.split(nl)` 로 나누고, 줄 순서를 `layout`('R'=RowData,
+  'H'=그 외 줄) 로 기록해 `_Converter_Metadata`(veryHidden) 에 담는다. `excel_to_txt` 는 layout 대로 원본
+  줄 배치를 그대로 복원한다(끝 빈 줄 포함). 사람이 고치는 부분은 **Map_Edit 의 색칠된 die 셀(Bin Code)뿐**,
+  `___`(웨이퍼 외곽)·맵 크기(ROWCT/COLCT)는 건드리지 않는다.
+- **헤더(머리말) 수정 시트 `Header_Edit`(2026-10-04 사용자 요청)**: TXT→Excel 때 헤더(`DEVICE`/`LOT`/
+  `WAFER`/`FNLOC`/`BCEQU`/`REFPX`/`REFPY`/`DUTMS`/`XDIES`/`YDIES` 등 `key:value` 줄)를 **항목·원본 값·
+  수정 값·비고(설명)** 4열로 펼친다(비고 = `HEADER_DESC` 의 항목 뜻, 모르는 항목은 빈칸. 연결용 Line_No 는
+  숨김 E열 `HEADER_LINE_COL`). Excel→TXT 때 **수정 값이 채워진 항목만** 그 값으로, 비면 원본 그대로 변환한다
+  (`_apply_header_edit` 는 키·콜론·콜론 뒤 공백을 보존하고 값만 교체). **맵 크기 `ROWCT`/`COLCT` 는
+  `HEADER_PROTECT` 로 '수정 불가' 표시 + 재조립 때 무시**(격자와 어긋나면 TXT 가 깨지므로). 바이트 보존의
+  기준 원본 줄은 숨김 시트 `Original_Header`(D열 Line_No 로 Header_Edit 와 연결), 빈 줄도 보존. 헤더 수정은
+  극히 예외라 기본은 Bin Code die 만 고친다.
+- 어댑터 `desktop_wafermap.py`: `wm_scan`(재귀 탐색+메타, TXT 모드는 `_Converted` 제외·Excel 모드는
+  `_Map_Edit.xlsx` 유지·`~$` 잠금 제외) · `wm_start`(파일별 결과·이미지 경로 미리 확정) ·
+  `wm_convert`(한 파일 변환, worker) · `wm_image`(화면이 그린 PNG 저장, 경로는 엔진이 정함). 결과는
+  기본 원본과 같은 폴더(또는 사용자 폴더, 하위 구조 유지) → `DesktopWaferMap.extra_roots` 로
+  `open_path` 허용. 테스트 `tests/test_wafermap.py`(21: 파싱·탐색·**왕복 바이트 동일(LF/CRLF/BOM/끝 빈 줄/
+  빈 헤더값)**·한 die 수정 반영·헤더 수정(원본·수정 값·수정 우선·빈칸이면 원본·맵 크기 보호·앞자리 0)·
+  PNG 검사·어댑터 흐름).
+
+### 메모 탭 통합 + Wafer Map 1단계 버튼 (2026-10-04, v10.2.0 이후)
+
+- 상단 탭 `특이사항`·`참고자료`·`장비 IP` 를 **`메모`** 하나로 묶고 하위 탭 3개로(`frontend/src/Memo.tsx`,
+  설정과 같은 `.subtabs`). 하위 탭마다 기존 `Documents` 화면을 `key` 로 다시 그려 편집 잠금 반납 동작은 종전 그대로.
+- Wafer Map 수정하기 1/4 단계 변환 방향 버튼: `.out-choice.wm-mode`(subgrid) 로 두 버튼이 가장 긴 글자 폭의
+  같은 너비·줄바꿈 없음(200px 고정 칸에서 두 줄로 꺾이던 것).
+
 ### Batch Report 명칭 통일 + 재설계 방향 (2026-10-04, 브랜치 `version_v10`)
 
 - **명칭**: 화면·결과·문서의 '배치 리포트/배치 레포트/batch report' 는 전부 **`Batch Report`** 로 쓴다

@@ -242,3 +242,20 @@ input.out-path{padding:9px 12px;border:1px solid var(--line);border-radius:8px}
 .criteria dt{font-weight:800}.criteria dd{margin:0;font-size:13px;line-height:1.6}
 .criteria dd small{display:block;margin-top:2px;color:var(--muted);font-family:Consolas,monospace;font-size:12px}
 @media(max-width:640px){.criteria>div{grid-template-columns:1fr;gap:2px}}
+
+/* Wafer Map 수정하기 — 1단계 변환 방향 버튼: 가장 긴 글자 폭으로 두 버튼 같은 너비, 줄바꿈 없음 */
+.out-choice.wm-mode{display:grid;grid-template-columns:max-content minmax(0,1fr)}
+.out-choice.wm-mode .out-row{grid-column:1/-1;grid-template-columns:subgrid}
+.out-choice.wm-mode .out-pick{white-space:nowrap;padding:0 22px;min-height:44px}
+@media (max-width:720px){.out-choice.wm-mode{grid-template-columns:1fr}.out-choice.wm-mode .out-pick{white-space:normal}}
+/* Wafer Map 수정하기 — 결과 맵 이미지 썸네일 + 확대 뷰어 */
+.wm-imgcell{display:flex;flex-wrap:wrap;gap:12px}
+.wm-imgcell>span{display:flex;flex-direction:column;align-items:center;gap:4px}
+.wm-thumbbtn{padding:2px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:zoom-in;line-height:0}
+.wm-thumbbtn:hover{border-color:var(--navy)}
+.wm-thumbbtn img{width:132px;height:auto;max-height:104px;object-fit:contain;display:block}
+.wm-viewer{position:fixed;inset:0;background:rgba(15,23,32,.72);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px}
+.wm-viewer-box{background:#fff;border-radius:10px;max-width:94vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 18px 48px rgba(0,0,0,.4)}
+.wm-viewer-top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.wm-viewer-top b{font-size:14px}
+.wm-viewer-box img{max-width:94vw;max-height:80vh;object-fit:contain;background:#fff}

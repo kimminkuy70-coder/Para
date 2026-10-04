@@ -188,7 +188,9 @@ try{
   await page.locator('dialog[open]').getByRole('button',{name:'Excel로 내보내기',exact:true}).click();
   assert((await page.locator('dialog[open]').getByLabel('저장된 Excel').inputValue()).includes('내보내기'));
   await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
-  await page.getByRole('button',{name:'장비 IP',exact:true}).click();
+  // 특이사항 · 참고자료 · 장비 IP 는 상단 '메모' 탭의 하위 탭(Memo.tsx).
+  await page.getByRole('button',{name:'메모',exact:true}).click();
+  await page.getByRole('tab',{name:'장비 IP',exact:true}).click();
   await page.getByRole('button',{name:'10.0.0.1',exact:true}).click();
   await page.locator('dialog textarea').fill('10.0.0.2');
   await page.locator('dialog input[type=color]').fill('#112233');
@@ -210,7 +212,7 @@ try{
   await page.locator('dialog[open]').getByRole('button',{name:'삭제',exact:true}).click();
   await page.getByRole('button',{name:'10.0.0.3',exact:true}).waitFor({state:'detached'});
   // B: 특이사항 종료 여부 toggles with one click.
-  await page.getByRole('button',{name:'특이사항',exact:true}).click();
+  await page.getByRole('tab',{name:'특이사항',exact:true}).click();
   const done=page.getByRole('checkbox',{name:'1행 종료 여부'});
   await done.waitFor();assert.equal(await done.getAttribute('aria-checked'),'false');
   await done.click();

@@ -17,6 +17,8 @@ tkvenv/
 .pi_param_manager.json
 *.editlock
 ~$*.xlsx
+# 로컬 런타임 작업 폴더(Temp/Logs/Cache/… — 저장폴더가 아닌 로컬 전용, 엔진 import 시 진단 로그가 쌓임)
+CamtekAOI/
 # Desktop migration build products (never publish caches or vendored binaries).
 frontend/node_modules/
 frontend/dist/

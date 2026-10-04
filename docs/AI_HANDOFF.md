@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — version_v11 통합 + v11.0.0 릴리즈 (2026-10-04 KST)
+
+- `version_v11` = `version_v10`(HEAD `b8e5a98`) + `claude/camtek-aoi-review-deploy-w796ec`(HEAD `07444ad`) merge. 충돌 없음.
+- 검증: `tools/check_project.py` 63개 중 test_batchreport 의 tkinter 없는 1건만 실패(기존과 동일) · test_wafermap 21 OK ·
+  `npx tsc --noEmit` · `vite build` · `tools/test_desktop_ui.mjs` 통과(메모 탭 하위 탭 이동으로 테스트 수정).
+- 릴리즈 노트 `docs/release_notes/v11.0.0.md`, 태그 `v11.0.0` push → Actions `Build Windows Desktop (Tauri)` 가 빌드·Release.
+  Windows 실기 미검증.
+- 사용자 지시: push · 릴리즈는 사용자가 말할 때만. Batch Report 프로토타입 HTML 수정은 계속 진행 중(확정 전 커밋 금지).
+
 ## 최신 재개 — 개발자 기능 켜고 끄기 안전장치 (2026-10-04 KST, `version_v10`)
 
 - 사용자 질문 "개발자 기능이 중간에 켜지거나 꺼지면?" → 종전 프로토타입은 토글이 결과 숫자를 바꿨다(끄면 사람 선택이 사라지고 켜면
