@@ -188,6 +188,11 @@ class HeaderEditTests(unittest.TestCase):
         self.assertEqual(found['WAFER'], 'W01')
         self.assertEqual(found['DEVICE'], 'DEV-A')
         self.assertEqual(found['ROWCT'], '8')
+        desc = {he.cell(r, 1).value: he.cell(r, 4).value
+                for r in range(wm.HEADER_EDIT_START, he.max_row + 1) if he.cell(r, 1).value}
+        self.assertIn('디바이스', desc['DEVICE'])          # 비고(설명) 열
+        self.assertIn('행', desc['ROWCT'])
+        self.assertTrue(he.column_dimensions['E'].hidden)  # Line_No 연결 열은 숨김
 
     def test_empty_edit_keeps_original_bytes(self):
         back = self.dir / 'out.txt'

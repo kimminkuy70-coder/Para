@@ -42,7 +42,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   `___`(웨이퍼 외곽)·맵 크기(ROWCT/COLCT)는 건드리지 않는다.
 - **헤더(머리말) 수정 시트 `Header_Edit`(2026-10-04 사용자 요청)**: TXT→Excel 때 헤더(`DEVICE`/`LOT`/
   `WAFER`/`FNLOC`/`BCEQU`/`REFPX`/`REFPY`/`DUTMS`/`XDIES`/`YDIES` 등 `key:value` 줄)를 **항목·원본 값·
-  수정 값** 3열로 펼친다. Excel→TXT 때 **수정 값이 채워진 항목만** 그 값으로, 비면 원본 그대로 변환한다
+  수정 값·비고(설명)** 4열로 펼친다(비고 = `HEADER_DESC` 의 항목 뜻, 모르는 항목은 빈칸. 연결용 Line_No 는
+  숨김 E열 `HEADER_LINE_COL`). Excel→TXT 때 **수정 값이 채워진 항목만** 그 값으로, 비면 원본 그대로 변환한다
   (`_apply_header_edit` 는 키·콜론·콜론 뒤 공백을 보존하고 값만 교체). **맵 크기 `ROWCT`/`COLCT` 는
   `HEADER_PROTECT` 로 '수정 불가' 표시 + 재조립 때 무시**(격자와 어긋나면 TXT 가 깨지므로). 바이트 보존의
   기준 원본 줄은 숨김 시트 `Original_Header`(D열 Line_No 로 Header_Edit 와 연결), 빈 줄도 보존. 헤더 수정은

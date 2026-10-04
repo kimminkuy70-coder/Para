@@ -97,6 +97,31 @@ IMAGE_KINDS = [('code', 'BinCode_Map', 'Bin Code Map'), ('meaning', 'BinMeaning_
 # 맵 격자 크기는 Map_Edit 셀 수로 정해지므로 헤더에서 바꾸면 TXT 가 깨진다 → 편집 금지.
 HEADER_PROTECT = {'ROWCT', 'COLCT'}
 HEADER_EDIT_START = 5           # Header_Edit 시트에서 항목이 시작하는 행
+HEADER_LINE_COL = 5             # Header_Edit 숨김 열(E) = Original_Header Line_No
+# 흔한 Wafer Map(SINF 계열) 헤더 항목의 뜻 — Header_Edit '비고(설명)' 열에 채운다(모르는 항목은 빈칸).
+HEADER_DESC = {
+    'DEVICE': '디바이스(제품) 이름',
+    'LOT': 'Lot 번호(ID)',
+    'WAFER': '웨이퍼 ID(슬롯/웨이퍼 식별자)',
+    'FNLOC': 'Flat/Notch 위치(각도) — 맵을 놓는 기준 방향',
+    'WF_FLAT': 'Flat/Notch 위치(각도)',
+    'ROWCT': '맵 행(Row) 개수 — 격자 세로 칸 수 (맵 크기, 수정 불가)',
+    'COLCT': '맵 열(Col) 개수 — 격자 가로 칸 수 (맵 크기, 수정 불가)',
+    'BCEQU': '양품(Pass)으로 보는 Bin Code (Bin Code EQUals good)',
+    'REFPX': '기준 die 의 X(열) 좌표 (Reference Point X)',
+    'REFPY': '기준 die 의 Y(행) 좌표 (Reference Point Y)',
+    'DUTMS': '치수 단위 (mm 등, Die Unit MeaSure)',
+    'XDIES': 'die 1개의 가로 크기 (X 방향, DUTMS 단위)',
+    'YDIES': 'die 1개의 세로 크기 (Y 방향, DUTMS 단위)',
+    'SLOT': '카세트 슬롯 번호',
+    'TITLE': '맵 제목',
+    'COMMENT': '비고/설명(장비가 남긴 메모)',
+    'PRODUCT': '제품명',
+    'STEP': '공정 단계',
+    'OPERATOR': '작업자',
+    'DATE': '생성 날짜',
+    'TIME': '생성 시각',
+}
 
 
 def _header_text(v):
@@ -225,7 +250,7 @@ def write_header_edit(wb, headers, styles):
     ws.cell(1, 1, '헤더(머리말) 수정').font = Font(bold=True, size=13, color='1F4E78')
     ws.cell(2, 1, '· [수정 값] 칸만 채우면 그 항목만 바뀝니다. 비워 두면 원본 값 그대로 TXT 로 저장됩니다.').font = Font(size=9, color='333333')
     ws.cell(3, 1, '· 맵 크기(ROWCT·COLCT)는 맵 격자로 정해지므로 수정할 수 없습니다. 그 외 헤더 변경은 극히 예외입니다.').font = Font(size=9, color='C00000')
-    for i, title in enumerate(['헤더 항목', '원본 값', '수정 값 (비우면 원본 유지)']):
+    for i, title in enumerate(['헤더 항목', '원본 값', '수정 값 (비우면 원본 유지)', '비고 (설명)']):
         c = ws.cell(4, 1 + i, title)
         c.fill = head_fill
         c.font = head_font
@@ -250,16 +275,20 @@ def write_header_edit(wb, headers, styles):
         ec.border = box
         ec.number_format = '@'
         ec.alignment = Alignment(vertical='center')
-        ws.cell(r, 4, line_no)              # Original_Header Line_No 와 연결(숨김)
+        dc = ws.cell(r, 4, HEADER_DESC.get(key.upper(), ''))
+        dc.border = box
+        dc.font = Font(size=9, color='555555')
+        dc.alignment = Alignment(vertical='center', wrap_text=True)
+        ws.cell(r, HEADER_LINE_COL, line_no)  # Original_Header Line_No 와 연결(숨김)
         if key in HEADER_PROTECT:
-            kc.fill = oc.fill = gray
+            kc.fill = oc.fill = dc.fill = gray
             ec.value = '수정 불가 (맵 크기)'
             ec.fill = gray
             ec.font = Font(size=9, italic=True, color='999999')
         r += 1
-    for col, w in zip('ABC', [18, 34, 34]):
+    for col, w in zip('ABCD', [14, 30, 30, 52]):
         ws.column_dimensions[col].width = w
-    ws.column_dimensions['D'].hidden = True
+    ws.column_dimensions['E'].hidden = True
     ws.freeze_panes = 'A5'
     return ws
 
@@ -361,7 +390,7 @@ def excel_to_txt(src, out):
         if 'Header_Edit' in wb.sheetnames:
             he = wb['Header_Edit']
             for r in range(HEADER_EDIT_START, he.max_row + 1):
-                ln, new = he.cell(r, 4).value, _header_text(he.cell(r, 3).value)
+                ln, new = he.cell(r, HEADER_LINE_COL).value, _header_text(he.cell(r, 3).value)
                 if ln is not None and new.strip():
                     edits[int(ln)] = new
 
