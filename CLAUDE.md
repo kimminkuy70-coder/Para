@@ -23,6 +23,28 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Wafer Map 수정하기 탭 추가 (2026-10-04, 브랜치 `version_v10`)
+
+- 외부 도구 'Wafer Map Converter WebView2 v6'(pywebview+Pillow+numpy+matplotlib) 이식. 상단 탭
+  `Wafer Map 수정하기`(설정과 동일 계층, KEEP — 탭 이동해도 작업 유지). 단계별 마법사 6단계
+  (변환 방향·폴더 → 파일 선택 → 저장 위치 → 실행 검토 → 처리 진행 → 완료).
+- **변환(TXT↔Excel) 로직은 원본 그대로** 옮겼다(`param_manager/wafermap.py`, openpyxl 전용).
+  **원본이 numpy+matplotlib 로 그리던 맵 이미지(BinCode_Map·BinMeaning_Map PNG)만 추가 패키지 금지
+  규칙 때문에 WebView canvas 에서 그린다**(Color·Gray 매칭과 같은 방식, `frontend/src/WaferMap.tsx`
+  `renderMap`). 엔진은 변환 후 맵 데이터(`map_payload`: rows·counts·present·colors·mean)를 돌려주고,
+  화면이 PNG 2장을 그려 `wm_image` 로 저장(`png_size` 헤더 검사). 결과 화면에 썸네일+확대 뷰어.
+- **원본 보존이 핵심**: 변환은 늘 새 파일(`_Map_Edit.xlsx`/`_Converted.txt`)을 만들고 원본 TXT 는
+  읽기만 한다. 손대지 않은 맵은 TXT→Excel→TXT 왕복 후 **바이트가 동일**하다 — BOM 은 실제 있을 때만
+  (`utf-8-sig`), 줄바꿈(CRLF/LF)·앞자리 0(텍스트 '@' 셀 + `_code` 3자리 복원)을 veryHidden
+  `_Converter_Metadata` 시트로 보존. 사람이 고치는 부분은 **Map_Edit 의 색칠된 die 셀(Bin Code)뿐**,
+  `___`(웨이퍼 외곽)·맵 크기(ROWCT/COLCT)·헤더(Original_Header)는 건드리지 않는다.
+- 어댑터 `desktop_wafermap.py`: `wm_scan`(재귀 탐색+메타, TXT 모드는 `_Converted` 제외·Excel 모드는
+  `_Map_Edit.xlsx` 유지·`~$` 잠금 제외) · `wm_start`(파일별 결과·이미지 경로 미리 확정) ·
+  `wm_convert`(한 파일 변환, worker) · `wm_image`(화면이 그린 PNG 저장, 경로는 엔진이 정함). 결과는
+  기본 원본과 같은 폴더(또는 사용자 폴더, 하위 구조 유지) → `DesktopWaferMap.extra_roots` 로
+  `open_path` 허용. 테스트 `tests/test_wafermap.py`(14: 파싱·탐색·**왕복 바이트 동일(LF/CRLF/BOM)**·
+  한 die 수정 반영·PNG 검사·어댑터 흐름).
+
 ### Batch Report 명칭 통일 + 재설계 방향 (2026-10-04, 브랜치 `version_v10`)
 
 - **명칭**: 화면·결과·문서의 '배치 리포트/배치 레포트/batch report' 는 전부 **`Batch Report`** 로 쓴다

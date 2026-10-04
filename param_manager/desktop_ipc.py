@@ -28,6 +28,7 @@ from .desktop_cmrun import DesktopCmRun
 from .desktop_formnew import DesktopFormNew
 from .desktop_appupdate import DesktopAppUpdate
 from .desktop_colorgray import DesktopColorGray
+from .desktop_wafermap import DesktopWaferMap
 from .desktop_watch import CmWatch, ParamWatch
 
 VERSION = 1
@@ -38,8 +39,8 @@ BUSY_LABEL = {'batch': 'Batch Report 분석', 'recipe': 'Recipe 값 확인', 'do
               'commonality': 'Commonality 결과', 'cmsurvey': 'Commonality 계획 확인', 'history': '레시피 날짜별 비교하기',
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
-              'watch': '자동 감시 회차', 'colorgray': 'Color·Gray 매칭'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+              'watch': '자동 감시 회차', 'colorgray': 'Color·Gray 매칭', 'wafermap': 'Wafer Map 수정하기'}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 # Background jobs that only read (local or OneDrive/equipment). Closing the app does not
 # wait for them — waiting for a slow read kept the old engine alive after the window
@@ -48,10 +49,10 @@ READ_ONLY = {"recipe_open", "recipe_delete_preview", "document_open", "form_cata
              "form_scales", "formnew_prepare", "formnew_scales", "history_files", "history_diff",
              "commonality_catalog", "commonality_compare", "cmsurvey_preflight", "cmsurvey_read_plan",
              "update_prepare", "appupdate_check", "pwatch_state", "pwatch_jobs", "cmwatch_state",
-             "cmwatch_candidates", "batch_reports", "watch_status", "cmrun_plan", "cgm_scan", "cgm_read"}
+             "cmwatch_candidates", "batch_reports", "watch_status", "cmrun_plan", "cgm_scan", "cgm_read", "wm_scan"}
 # Frequent page/scroll requests: only logged in the detailed log when slow.
 DIAG_QUIET = {"table_page", "recipe_page", "form_page", "document_page", "history_page", "commonality_page",
-              "cmrun_page", "cmwatch_page", "formnew_page", "diag_client", "open_path", "cgm_read", "cgm_put"}
+              "cmrun_page", "cmwatch_page", "formnew_page", "diag_client", "open_path", "cgm_read", "cgm_put", "wm_image"}
 WATCH_PROGRESS_SEC = 1.0  # live '진행 중' notice: at most one update per second
 TICK_SEC = 60            # scheduler: due checks (settings reads are throttled inside)
 LOCK_REFRESH_SEC = 300  # held edit/watch locks: locking.refresh rewrites only near expiry
@@ -154,6 +155,7 @@ class Session:
         self.documents = DesktopDocuments()
         self.commonality = DesktopCommonality()
         self.colorgray = DesktopColorGray(self.config)
+        self.wafermap = DesktopWaferMap(self.config)
         self.busy = {}                  # domain slot -> request id (see claim())
         self.busy_kind = {}
         self.workers = set()
@@ -269,7 +271,7 @@ class Session:
         allowed.update(watch_status=set(), pwatch_state=set(),
                        pwatch_save={'enabled','interval_hours','window_start','window_end','notify_on_change_only'},
                        pwatch_set_path={'machine','recipe','rel'}, pwatch_copy_paths={'source','targets'},
-                       pwatch_jobs={'machine','sub'}, pwatch_connections={'machines'}, diag_client={'events'}, diag_bundle=set(), cgm_scan={'root'}, cgm_start={'wafers','output'}, cgm_state=set(), cgm_read={'wafer','record','kind','offset'}, cgm_put={'wafer','record','kind','data','box'}, cgm_fail={'wafer','record','reason'}, cgm_finish={'wafer'}, cgm_reset=set(), pwatch_run=set(), cmwatch_state=set(),
+                       pwatch_jobs={'machine','sub'}, pwatch_connections={'machines'}, diag_client={'events'}, diag_bundle=set(), cgm_scan={'root'}, cgm_start={'wafers','output'}, cgm_state=set(), cgm_read={'wafer','record','kind','offset'}, cgm_put={'wafer','record','kind','data','box'}, cgm_fail={'wafer','record','reason'}, cgm_finish={'wafer'}, cgm_reset=set(), wm_scan={'root','mode'}, wm_start={'ids','output'}, wm_state=set(), wm_convert={'index'}, wm_image={'index','kind','data'}, wm_reset=set(), pwatch_run=set(), cmwatch_state=set(),
                        cmwatch_save={'enabled','interval_hours','window_start','window_end','settle_minutes','machines','plan'},
                        cmwatch_run=set(), cmwatch_candidates={'machine','device','lot'}, cmwatch_begin={'sm','title'}, cmwatch_recipes={'indexes'},
                        cmwatch_page={'snapshot','variant','query','used_only','offset','limit','zone'},
@@ -568,6 +570,21 @@ class Session:
                     self.emit(rid, 'completed', colorgray=dict(cancelling=True))
                 else:
                     self.emit(rid, 'completed', colorgray=quick[method]())
+        elif method.startswith('wm_'):
+            wm = self.wafermap
+            action = {'wm_scan': lambda: wm.scan(params), 'wm_convert': lambda: wm.convert(params)}
+            if method in action:
+                # Folder scan / one-file conversion (maybe an equipment share): worker.
+                bg(rid, 'wafermap', action[method], 'Wafer Map 변환을 완료하지 못했습니다. 폴더 연결과 저장 공간을 확인하세요.',
+                   ('wafermap', 'equipment') if method == 'wm_scan' else ('wafermap',))
+            else:
+                quick = {'wm_state': lambda: wm.view(), 'wm_start': lambda: wm.start(params),
+                         'wm_image': lambda: wm.image(params), 'wm_reset': lambda: wm.reset(params)}
+                if method == 'wm_reset' and 'wafermap' in self.busy:
+                    wm.cancel.set()      # stop a folder scan; the running step ends on its own
+                    self.emit(rid, 'completed', wafermap=dict(cancelling=True))
+                else:
+                    self.emit(rid, 'completed', wafermap=quick[method]())
         elif method == 'diag_client':
             self.emit(rid, 'completed', diag=desktop_diag.client_events(params))
         elif method == 'diag_bundle':

@@ -34,6 +34,9 @@ class DesktopOpen:
         # Output folders the user picked for Color · Gray 매칭 (checked local when chosen).
         from .desktop_colorgray import DesktopColorGray
         roots.extend(Path(p) for p in DesktopColorGray.extra_roots)
+        # Wafer Map 수정하기 results (next to the source folder, or a chosen folder).
+        from .desktop_wafermap import DesktopWaferMap
+        roots.extend(Path(p) for p in DesktopWaferMap.extra_roots)
         return roots
 
     def resolve(self, raw):
