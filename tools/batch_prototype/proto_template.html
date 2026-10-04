@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Batch Report 프로토타입</title>
+<style>
+/*%%APPCSS%%*/
+/* ---- 프로토타입 전용 (앱 styles.css 위에) ---- */
+.proto-badge{font-size:12px;font-weight:800;background:#fff7d6;color:#8a5a00;border:1px solid #f1d38a;border-radius:20px;padding:7px 12px;white-space:nowrap}
+.heading-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.logic-toggle{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#52647d;white-space:nowrap}
+.navigation button[disabled]{opacity:.45}
+.scope{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:18px;align-items:end;margin-bottom:6px}
+.scope .chips{display:flex;flex-wrap:wrap;gap:8px}
+.scope .chips label{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:#fafbfd;font-size:13px;font-weight:700;cursor:pointer}
+.scope .dates{display:flex;gap:10px}
+.scope .go{display:flex;gap:8px;align-items:center}
+.scope-status{font-size:12px;color:var(--muted);margin:10px 0 0}
+.help-btn.lg{width:34px;height:34px;font-size:15px;line-height:30px;margin-left:0;padding:0;min-height:0;border-radius:50%}
+.logic{background:#fffbea;border:1px solid #f1d38a;border-radius:10px;padding:12px 16px;margin:14px 0;font-size:12.5px;line-height:1.75;color:#5a4a1a}
+.logic b.t{display:block;color:#8a5a00;font-size:12px;letter-spacing:.3px;margin-bottom:4px}
+.logic ol{margin:0;padding-left:18px}
+body.nologic .logic{display:none}
+.tabpanel{margin-top:4px}
+.kpis.k5{grid-template-columns:repeat(5,minmax(0,1fr))}.kpis.k4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.kpis article{padding:14px 16px}.kpis strong{font-size:26px;margin:6px 0 2px}
+.filters{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin:6px 0 12px}
+.filters input[type=search]{flex:1;min-width:220px;width:auto}
+.filters select{width:auto}
+.filters label{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#52647d}
+.filters .count{margin-left:auto}
+.t-compact td{padding:7px 10px;min-width:0}.t-compact th{padding:8px 10px}
+.t-compact td.num,.t-compact th.num{text-align:right}
+tr.clickable{cursor:pointer}tr.clickable.sel td{background:#e3f6ee!important}
+.st{display:inline-block;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.st.done{background:#d6f2e6;color:#0b5e46}.st.re{background:#fdf0d5;color:#8a5a00}.st.open{background:#fde4dc;color:#a33820}
+.st.mv{background:#e5ecf6;color:#31517c}.st.dup{background:#eef1f5;color:#52647d}.st.out{background:#f1f3f6;color:#8a97a8}
+.v1{color:#0b5e46}.v2{color:#8a5a00;font-weight:700}.v3{color:#31517c;font-weight:700}.v4{color:#a33820;font-weight:700}
+.detail{margin-top:18px;border-top:3px solid var(--lime);padding-top:16px}
+.detail h3{margin:18px 0 8px;font-size:15px}
+.detail .dhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.detail .dhead h2{margin:0}
+.detail .meta{font-size:12px;color:var(--muted)}
+.job{font-family:Consolas,monospace;font-size:12px;background:#eef2f6;color:#31517c;padding:2px 8px;border-radius:6px}
+.map{border-collapse:separate;border-spacing:0;font-size:11.5px;margin:0;width:auto}
+.map th,.map td{padding:3px 8px!important;min-width:0!important;max-width:none!important;white-space:nowrap;border-bottom:1px solid #edf1f5;border-right:1px solid #edf1f5;line-height:1.5;vertical-align:middle}
+.map thead th{position:sticky;top:0;text-align:center;font-size:11px;line-height:1.3}
+.map thead th small{display:block;font-weight:400;color:#6b7c90}
+.map td.n{text-align:right}
+.c-p{background:#e8f7f0!important;color:#0b5e46}.c-e{background:#fdeae5!important;color:#a33820;font-weight:700}
+.c-c{background:#fdf3df!important;color:#8a5a00}.c-n{color:#c4cbd4;text-align:center}
+.c-pick{box-shadow:inset 0 0 0 2px #31517c}.c-drop{text-decoration:line-through;opacity:.55}
+.mapscroll{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:7px}
+.keys{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:11.5px;color:var(--muted);margin:6px 0 8px}
+.keys i{font-style:normal;padding:0 6px;border-radius:3px}
+.attempts{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.att{display:grid;grid-template-columns:40px 170px 70px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12.5px;background:#fff}
+.att:last-child{border-bottom:0}
+.att .n{font-weight:800;color:#31517c}.att .mch{font-weight:800}
+.att .fn{font-family:Consolas,monospace;font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.att .acts{display:flex;gap:6px}
+.att .acts button{min-height:30px;padding:4px 10px;font-size:12px}
+.gapline{font-size:11.5px;color:#8a5a00;background:#fffbea;padding:4px 12px 4px 62px;border-bottom:1px solid var(--line)}
+.bunchcard{border:1px solid var(--line);border-radius:10px;margin:12px 0;overflow:hidden}
+.bunchcard>.bh{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 14px;background:var(--band);font-size:12.5px;color:var(--muted)}
+.bunchcard>.bh b{color:var(--ink);font-size:13.5px}
+.bunchcard>.inner{padding:10px 14px}
+.pickrow select{width:auto;padding:3px 6px;font-size:11.5px}
+.savebar{display:flex;align-items:center;gap:10px;margin:8px 0}
+.groups{display:flex;flex-direction:column;gap:12px}
+.group{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.group>.gh{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 14px;background:var(--band)}
+.group>.gh b{font-size:14px}
+.group>.gh .meta{font-size:12px;color:var(--muted)}
+.sr{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);font-size:12px}
+.sr code{font-family:Consolas,monospace;background:#f3f6f9;border:1px solid var(--line);border-radius:6px;padding:3px 8px;overflow-wrap:anywhere}
+.sr button{min-height:28px;padding:3px 10px;font-size:12px}
+tr.outside td{color:#97a3b2}
+.selbar{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#eaf0f6;border:1px solid #d3dfeb;border-radius:9px;padding:12px 18px;margin-top:14px;z-index:2}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;border-radius:0;min-height:34px;padding:6px 14px}
+.seg button.on{background:var(--navy);color:#fff}
+.bars{display:flex;flex-direction:column;gap:6px}
+.barrow{display:grid;grid-template-columns:120px minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:12px;cursor:pointer;border-radius:6px;padding:2px 4px}
+.barrow:hover{background:#f3f7fa}.barrow.sel{background:#e3f6ee}
+.stack{display:flex;height:20px;border-radius:4px;overflow:hidden;background:#eef1f5}
+.stack span{height:100%}
+.s-valid{background:#10b981}.s-drop{background:#c2410c}.s-wait{background:#d69e2e}.s-check{background:#94a3b8}.s-other{background:#e2e8f0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin:8px 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:16px}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff;min-width:0}
+.card h3{margin:0 0 8px}
+.hbar{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 70px;gap:10px;align-items:center;font-size:12px;margin:5px 0}
+.hbar .lab{overflow-wrap:anywhere}
+.hbar .track{height:14px;background:#eef1f5;border-radius:3px;overflow:hidden}
+.hbar .track span{display:block;height:100%;background:#31517c}
+.hbar .val{text-align:right;font-variant-numeric:tabular-nums}
+.wphchart .row{display:grid;grid-template-columns:90px minmax(0,1fr) 70px;gap:10px;align-items:center;font-size:12px;margin:3px 0}
+.wphchart .track{height:14px;background:#eef1f5;border-radius:3px;position:relative}
+.wphchart .track span{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+.edit-dialog.wide{width:1100px;max-width:calc(100vw - 40px)}
+.edit-dialog.mid{width:760px}
+.dupwafer{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:8px 0}
+.dupwafer .w{font-weight:800;margin-bottom:4px}
+.dupwafer label{display:grid;grid-template-columns:20px 150px minmax(0,1fr) 150px;gap:8px;align-items:center;font-size:12px;padding:3px 0;cursor:pointer}
+.dupwafer .rec{font-size:10.5px;font-weight:800;color:#0b5e46;background:#d6f2e6;border-radius:4px;padding:0 5px;margin-left:6px}
+.crit{margin:0;display:flex;flex-direction:column;gap:8px;max-height:62vh;overflow:auto}
+.crit>div{display:grid;grid-template-columns:130px 1fr;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.crit dt{font-weight:800}.crit dd{margin:0;font-size:13px;line-height:1.6}
+.crit dd small{display:block;color:var(--muted);font-family:Consolas,monospace;font-size:12px;margin-top:2px}
+.toast2{position:fixed;right:24px;bottom:24px;background:#1f2937;color:#fff;padding:12px 16px;border-radius:10px;font-size:13px;box-shadow:var(--sh2);max-width:420px;z-index:100;opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;pointer-events:none}
+.toast2.on{opacity:1;transform:none}
+.progress2{height:4px;background:#e2e8f0;border-radius:2px;overflow:hidden;margin-top:10px}.progress2 span{display:block;height:100%;width:30%;background:var(--lime);animation:slide 1s linear infinite}
+@keyframes slide{from{margin-left:-30%}to{margin-left:100%}}
+details.more{margin-top:16px}details.more summary{cursor:pointer;font-weight:700;color:#31517c}
+@media(max-width:1000px){.scope{grid-template-columns:1fr}.two{grid-template-columns:1fr}.kpis.k5,.kpis.k4{grid-template-columns:repeat(2,minmax(0,1fr))}.att{grid-template-columns:30px 1fr;}.att .fn,.att .acts{grid-column:1/-1}}
+</style></head>
+<body>
+<div class="app">
+<header class="topbar"><a class="brand" href="#main"><span class="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span class="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
+<nav class="navigation" aria-label="주요 기능"><button disabled>설정</button><button disabled>Recipe 관리</button><button disabled>자동 감시</button><button disabled>Commonality 조사</button><button class="active" aria-current="page">Batch Report</button><button disabled>Color·Gray 매칭</button><button disabled>특이사항</button><button disabled>참고자료</button><button disabled>장비 IP</button></nav>
+<main id="main">
+<div class="page-heading"><div><p class="eyebrow">PROCESS INTELLIGENCE</p><h1>Batch Report</h1><p>장비 Report 폴더의 Batch Report를 Lot 단위로 묶어 찾고, 추적하고, 가동률과 WPH를 봅니다.</p></div>
+  <div class="heading-tools"><span class="proto-badge">프로토타입 · 보내주신 실자료 420개</span><label class="logic-toggle"><input type="checkbox" id="logicToggle" checked> 로직 설명 보기</label><span class="connection connected">엔진 연결됨(모의)</span></div></div>
+
+<div class="subtabs" role="tablist" aria-label="Batch Report 기능" id="tabs">
+  <button role="tab" data-tab="lot" class="active" aria-selected="true">① Lot 추적</button>
+  <button role="tab" data-tab="find" aria-selected="false">② Batch Report 찾기 · 취합</button>
+  <button role="tab" data-tab="util" aria-selected="false">③ 가동률 · 원인</button>
+  <button role="tab" data-tab="wph" aria-selected="false">④ WPH</button>
+</div>
+
+<!-- 공통 조사 범위 (①③④) -->
+<section class="panel" id="scopePanel">
+  <div class="section-heading"><div><span class="step">조사 범위 · ① ③ ④ 공통</span><h2>어느 호기의 어느 기간을 볼까요?</h2></div><span class="count" id="scopeCount"></span></div>
+  <div class="scope" style="margin-top:14px">
+    <div><div class="field">호기<div class="chips" id="scopeMachines"></div></div></div>
+    <div class="dates"><label class="field">시작일<input type="date" id="from"></label><label class="field">종료일<input type="date" id="to"></label></div>
+    <div class="go"><button class="primary" id="runBtn">조사 시작 →</button><button type="button" class="help-btn lg" id="critBtn" aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 조사하는지 보기">?</button></div>
+  </div>
+  <p class="scope-status" id="scopeStatus">조사를 시작하면 고른 호기의 Report 폴더에서 새로 생긴·바뀐 Batch Report만 읽고, 나머지는 로컬 캐시를 씁니다.</p>
+  <div class="progress2" id="runProgress" hidden><span></span></div>
+  <div class="logic"><b class="t">로직 · 조사 범위</b><ol>
+    <li>고른 호기의 Reports 폴더(추가 백업 폴더 포함)를 <b>읽기만</b> 합니다. 파일 이름과 수정시각·크기로 새로 생긴·바뀐 Batch Report만 다시 읽고, 나머지는 로컬 캐시(배치분석/누적)를 씁니다.</li>
+    <li>읽은 Batch Report를 <b>시도 → 묶음 → Lot</b>으로 한 번에 묶어 ① ③ ④가 같은 결과를 씁니다. 기간은 시도 시작일 기준입니다.</li>
+    <li>호기 사이에는 2초 간격으로 순서대로 읽습니다(장비 접속 매너). 연결이 안 되는 호기는 캐시만으로 보여 주고 표시합니다.</li></ol></div>
+</section>
+
+<!-- ① Lot 추적 -->
+<section class="panel tabpanel" id="tab-lot">
+  <div class="section-heading"><div><span class="step">① LOT 추적</span><h2>Lot 단위 스캔 이력</h2></div><span class="count" id="lotCount"></span></div>
+  <div class="logic"><b class="t">로직 · Lot 추적</b><ol>
+    <li>Batch Report 1장 = 스캔 시도 1번. S/M 안의 영문 3글자 = Lot 코드, 전체 Wafer ID(앞 5자)가 있으면 Lot ID로 다시 확인합니다.</li>
+    <li>같은 호기에서 12시간 이내로 이어진 시도 = <b>묶음</b>(한 번의 검사). 다른 호기는 48시간 이내 + 앞 묶음에 Pass 못 한 웨이퍼 + 같은 공정 단계(Recipe(s))일 때만 이어 <b>호기 이동</b>으로 표시합니다.</li>
+    <li>묶음 안에서 웨이퍼(슬롯)마다 결과: 한 번에 Pass · 재스캔 Pass · 중복 Pass · Pass 없음. 중복 Pass는 가장 나중 Pass를 추천하고, 사람이 바꾸면 로컬에 저장해 ② ③ ④도 같은 선택을 씁니다.</li>
+    <li>Lot을 누르면 <b>Lot 취합 → 웨이퍼 취합</b>이 먼저, 그 아래 시도 이력과 오류 지도가 나옵니다. 오류는 원문 그대로입니다.</li></ol></div>
+  <section class="kpis k5" id="lotKpis"></section>
+  <div class="filters"><input type="search" id="lotQ" placeholder="Lot 코드 · S/M · Lot ID · Job 검색" aria-label="Lot 검색">
+    <select id="lotState" aria-label="상태"><option value="">전체 상태</option></select>
+    <label><input type="checkbox" id="fSplit"> 나눠 스캔</label><label><input type="checkbox" id="fDup"> 중복 Pass</label><label><input type="checkbox" id="fMove"> 호기 이동</label><span class="count" id="lotShown"></span></div>
+  <div class="table-scroll" style="max-height:380px"><table class="t-compact"><thead><tr><th>Lot</th><th>S/M</th><th>호기</th><th class="num">묶음</th><th class="num">시도</th><th>처음 스캔</th><th>상태</th><th class="num">Pass 없는 웨이퍼</th><th>첫 오류 원문(웨이퍼 수)</th></tr></thead><tbody id="lotBody"></tbody></table></div>
+  <div id="lotDetail"></div>
+  <details class="more"><summary>오류 원문별 Lot</summary><div class="table-scroll" style="max-height:340px;margin-top:8px"><table class="t-compact"><thead><tr><th>오류 원문(첫 문구)</th><th class="num">영향 Lot</th><th class="num">웨이퍼</th><th class="num">그중 연쇄</th><th class="num">이후 Pass</th><th class="num">Pass 없음</th></tr></thead><tbody id="causeBody"></tbody></table></div></details>
+  <details class="more"><summary>점검 스캔 (Lot에서 제외)</summary><div class="table-scroll" style="max-height:260px;margin-top:8px"><table class="t-compact"><thead><tr><th>호기</th><th>S/M</th><th>시작</th><th>파일</th><th></th></tr></thead><tbody id="exclBody"></tbody></table></div></details>
+</section>
+
+<!-- ② 찾기 · 취합 -->
+<section class="panel tabpanel" id="tab-find" hidden>
+  <div class="section-heading"><div><span class="step">② 찾기 · 취합</span><h2>Batch Report 찾기 · Lot 취합</h2></div><span class="count" id="findCount"></span></div>
+  <ol class="stepper" id="findStepper"></ol>
+  <div id="findStep0">
+    <div class="scope"><div><div class="field">호기 범위<div class="chips" id="findMachines"></div></div></div>
+      <div class="dates"><label class="field">시작일<input type="date" id="ffrom"></label><label class="field">종료일<input type="date" id="fto"></label></div>
+      <div class="go"><button class="primary" id="findBtn">검색 →</button><button type="button" class="help-btn lg" data-crit aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 묶는지 보기">?</button></div></div>
+    <label class="field">Batch Report 키워드<input id="findQ" placeholder="예: BAW · NSW WBG · 0856268PD — 여러 단어는 모두 포함" value="BAW"></label>
+    <div class="logic"><b class="t">로직 · 검색</b><ol>
+      <li>고른 호기 Reports 폴더의 <b>파일 이름만</b> 봅니다(원본을 열지 않아 빠름). 키워드는 대소문자 무시, 여러 단어는 모두 포함, 기간은 파일 이름 안 날짜.</li>
+      <li>찾은 Batch Report를 <b>Lot · 묶음</b>으로 묶어 보여 줍니다. 같은 묶음인데 키워드에 안 걸린 Batch Report(S/M 꼬리가 다른 것 등)도 회색으로 함께 보여 놓칠 일이 없게 합니다.</li></ol></div>
+  </div>
+  <div id="findStep1" hidden>
+    <div class="logic"><b class="t">로직 · 고르기</b><ol>
+      <li><b>원문 보기</b> = 캐시에 읽어 둔 Batch Report의 표를 그대로 앱 안에서 보여 줍니다. <b>원본 열기</b> = 장비 Report 폴더의 .htm을 기본 브라우저로 엽니다(읽기 전용).</li>
+      <li><b>Scanresult 경로</b> = 같은 호기 루트의 <code>Scanresult*</code>(백업 포함) <code>\Job\Setup\S/M</code>. 실제 앱은 폴더 이름만 확인해 있는 곳을 보여 줍니다.</li>
+      <li>여러 Lot·묶음을 함께 골라도 됩니다. 취합은 Lot · 묶음마다 따로 합니다(WBG·CMP처럼 다른 검사를 더하지 않음).</li></ol></div>
+    <div class="groups" id="findGroups"></div>
+    <div class="selbar"><span id="selInfo">선택 0개</span><div style="display:flex;gap:8px"><button id="backSearch">◀ 검색으로</button><button class="primary" id="aggBtn" disabled>선택한 Batch Report 취합 →</button></div></div>
+  </div>
+  <div id="findStep2" hidden>
+    <div class="logic"><b class="t">로직 · 취합</b><ol>
+      <li>고른 Batch Report를 Lot · 묶음별로 모으고, 웨이퍼는 슬롯(25행이면 1행=25번, 아니면 Wafer ID)으로 맞춥니다.</li>
+      <li>같은 웨이퍼가 2장 이상에 있으면 알림 창에서 고릅니다. 추천 = 가장 나중 Pass(없으면 가장 나중 스캔). 고른 행 하나만 Scanned · Bad · Good을 더합니다.</li>
+      <li>Excel에는 Lot 취합 시트와 웨이퍼 시트(고른 Batch Report 이름·원문 포함)를 씁니다(로컬 결과 폴더).</li></ol></div>
+    <div id="aggResult"></div>
+    <div class="stepnav" style="margin-top:16px"><button class="btn" id="backPick">◀ 다시 고르기</button><span class="stepcount">3 / 3</span><button class="btn primary" id="saveXlsx">Excel로 저장</button></div>
+  </div>
+</section>
+
+<!-- ③ 가동률 · 원인 -->
+<section class="panel tabpanel" id="tab-util" hidden>
+  <div class="section-heading"><div><span class="step">③ 가동률 · 원인</span><h2>호기 가동률과 낮은 이유</h2></div><div class="seg" id="unitSeg"><button data-u="d">일</button><button data-u="w" class="on">주</button><button data-u="m">월</button></div></div>
+  <div class="logic"><b class="t">로직 · 가동률</b><ol>
+    <li>달력 시간 = <b>유효 스캔</b> + <b>버려진 스캔</b> + <b>재스캔 대기</b> + 점검 스캔 + <b>기타</b>.</li>
+    <li>시도의 Batch Time을 Dice가 있는 웨이퍼 행 수로 나눠 웨이퍼 1장 몫을 구합니다. 최종으로 고른 웨이퍼 몫 = 유효 스캔, 나머지 = 버려진 스캔(그 웨이퍼의 오류 원문으로 집계, Pass를 다시 스캔한 것은 'Pass 다시 스캔(중복)'). Dice 있는 행이 하나도 없으면 Batch Time 전부가 버려진 스캔입니다.</li>
+    <li>재스캔 대기 = 같은 묶음에서 앞 시도 끝 → 다음 시도 시작 사이 중 <b>장비가 아무것도 스캔하지 않은 시간</b>만(그 사이 다른 Lot을 스캔했으면 빼고), 앞 시도의 첫 오류 원문으로 집계.</li>
+    <li>기타 = 나머지 시간(대기 · PM · 셋업 · 전원 OFF는 Batch Report로 구분할 수 없음).</li>
+    <li>프로토타입은 시도 시작일로 나눕니다. 실제 구현은 자정을 넘긴 시간을 날마다 나눠 넣습니다(현재 M02 방식).</li></ol></div>
+  <section class="kpis k5" id="utilKpis"></section>
+  <p class="hint" style="margin:0 0 6px">※ 보내주신 자료는 거의 Job 하나(CMP2D-DT-GH10N…)의 Batch Report라서 다른 레시피를 스캔한 시간이 빠져 가동률이 낮게 나옵니다. 실제로는 호기의 Reports 폴더 전체를 조사합니다.</p>
+  <div class="legend"><span><i class="s-valid"></i>유효 스캔</span><span><i class="s-drop"></i>버려진 스캔</span><span><i class="s-wait"></i>재스캔 대기</span><span><i class="s-check"></i>점검 스캔</span><span><i class="s-other"></i>기타(구분 불가)</span><span style="margin-left:auto">행을 누르면 그 기간만 아래에 보입니다.</span></div>
+  <div class="bars" id="utilBars"></div>
+  <div class="two">
+    <div class="card"><h3 id="recTitle">레시피별 유효 스캔 점유</h3><div id="recBars"></div></div>
+    <div class="card"><h3 id="errTitle">오류 원문별 잃은 시간</h3><div class="table-scroll" style="max-height:360px"><table class="t-compact"><thead><tr><th>오류 원문</th><th class="num">버려진 스캔</th><th class="num">재스캔 대기</th><th class="num">합계</th><th class="num">Lot</th></tr></thead><tbody id="errBody"></tbody></table></div><div id="errLots"></div></div>
+  </div>
+</section>
+
+<!-- ④ WPH -->
+<section class="panel tabpanel" id="tab-wph" hidden>
+  <div class="section-heading"><div><span class="step">④ WPH</span><h2>호기 · 레시피별 처리량</h2></div><label class="field" style="min-width:320px">레시피(Job · Recipe(s))<select id="wphRecipe"></select></label></div>
+  <div class="logic"><b class="t">로직 · WPH</b><ol>
+    <li>레시피 = Batch Report 안의 <b>Job · Recipe(s)</b>(공정 단계). 장비 Job 폴더는 필요할 때 <b>폴더 이름 목록만</b> 읽어 호기별 레시피를 맞춥니다(파일은 열지 않음).</li>
+    <li><b>기준 WPH</b> = 25행이 모두 Pass인 Batch Report만: Σ웨이퍼 × 3600 ÷ ΣBatch Time (장비가 막힘없이 돌 때).</li>
+    <li><b>실효 WPH</b> = 묶음 단위: Pass 웨이퍼 수 × 3600 ÷ 그 묶음의 모든 시도 Batch Time 합(나눠 스캔·재스캔·실패 시간 포함).</li>
+    <li><b>손실률</b> = 1 − 실효 ÷ 기준. 같은 레시피를 호기끼리 나란히 비교합니다.</li></ol></div>
+  <div class="table-scroll" style="max-height:340px"><table class="t-compact"><thead><tr><th>레시피(Job · Recipe(s))</th><th>호기</th><th class="num">기준 WPH</th><th class="num">기준 표본</th><th class="num">실효 WPH</th><th class="num">묶음</th><th class="num">손실률</th><th class="num">Pass 웨이퍼</th><th class="num">스캔 시간(h)</th></tr></thead><tbody id="wphBody"></tbody></table></div>
+  <div class="two">
+    <div class="card"><h3 id="wphChartTitle">호기 비교</h3><div class="wphchart" id="wphChart"></div><div class="legend"><span><i style="background:#31517c"></i>기준 WPH</span><span><i style="background:#10b981"></i>실효 WPH</span></div></div>
+    <div class="card"><h3>손실이 큰 묶음</h3><div class="table-scroll" style="max-height:330px"><table class="t-compact"><thead><tr><th>Lot</th><th>시작</th><th>호기</th><th class="num">시도</th><th class="num">Pass</th><th class="num">시간(h)</th><th class="num">실효 WPH</th></tr></thead><tbody id="wphLoss"></tbody></table></div></div>
+  </div>
+</section>
+</main>
+<footer><span>Camtek AOI Manager</span><span>프로토타입 — 장비 접근·파일 저장 없음. 보내주신 Batch Report 420개(호기 정보 없음 → AOI-X)로 계산.</span></footer>
+</div>
+
+<dialog class="edit-dialog mid" id="critDlg" aria-labelledby="critTitle"><h3 id="critTitle">Lot 판정 기준</h3>
+  <p class="sub">한 Lot은 Batch Report 여러 장으로 나뉘고 다른 호기로 옮겨 다시 스캔되기도 합니다. 아래 기준으로 Batch Report를 묶습니다.</p>
+  <dl class="crit" id="critList"></dl><div class="dialog-actions"><button class="primary" data-close>닫기</button></div></dialog>
+<dialog class="edit-dialog wide" id="rawDlg" aria-labelledby="rawTitle"><h3 id="rawTitle"></h3><p class="sub" id="rawSub"></p><div id="rawBody"></div>
+  <div class="dialog-actions"><button id="rawOpen">원본 열기</button><button class="primary" data-close>닫기</button></div></dialog>
+<dialog class="edit-dialog mid" id="dupDlg" aria-labelledby="dupTitle"><h3 id="dupTitle">같은 웨이퍼가 여러 Batch Report에 있습니다</h3>
+  <p class="sub" id="dupSub"></p><div id="dupBody" style="max-height:56vh;overflow:auto"></div>
+  <div class="dialog-actions" style="justify-content:space-between"><div style="display:flex;gap:8px"><button id="dupLatest">모두 가장 나중 스캔</button><button id="dupRec">모두 추천(가장 나중 Pass)</button></div><div style="display:flex;gap:8px"><button data-close>취소</button><button class="primary" id="dupOk">이대로 취합</button></div></div></dialog>
+<div class="toast2" id="toast" role="status" aria-live="polite"></div>
+
+<script>window.__D=/*%%DATA%%*/null;</script>
+<script>
+(function(){
+'use strict';
+var D=window.__D,R=D.R,LOTS=D.lots;
+var V=['한 번에 Pass','재스캔 Pass','중복 Pass','Pass 없음'],VC={'한 번에 Pass':'v1','재스캔 Pass':'v2','중복 Pass':'v3','Pass 없음':'v4'};
+var ST={'한 번에 완료':'done','재스캔으로 완료':'re','Pass 못 한 웨이퍼 있음':'open'};
+var $=function(id){return document.getElementById(id);};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function num(v,d){if(v==null||v!==v)return '—';return Number(v).toLocaleString('ko-KR',{maximumFractionDigits:d==null?0:d});}
+function hrs(s){return num(s/3600,1);}
+function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('on');clearTimeout(toast.k);toast.k=setTimeout(function(){t.classList.remove('on');},3200);}
+function stPill(s){return '<span class="st '+(ST[s]||'dup')+'">'+esc(s)+'</span>';}
+document.addEventListener('click',function(e){var c=e.target.closest('[data-close]');if(c)c.closest('dialog').close();var q=e.target.closest('[data-crit]');if(q)$('critDlg').showModal();});
+$('logicToggle').addEventListener('change',function(){document.body.classList.toggle('nologic',!this.checked);});
+
+/* ---------- 원문 행 해석(엔진 lotmodel 과 같은 규칙) ---------- */
+function cols(r){if(!r._c){var h=r.h.map(function(x){return x.toLowerCase().replace(/[^a-z0-9]/g,'');});r._c={st:h.indexOf('passfail'),id:h.indexOf('waferid'),sc:h.indexOf('scanneddice'),bad:h.indexOf('baddice'),good:h.indexOf('gooddice'),y:h.indexOf('yield'),rcp:h.indexOf('recipes'),lot:h.indexOf('lot')};}return r._c;}
+function n(v){v=String(v==null?'':v).replace(/[,%]/g,'').trim();if(v===''||v==='-')return null;var x=Number(v);return isFinite(x)&&x>=0?x:null;}
+function row(i,k){var r=R[i],c=cols(r),w=r.rows[k];var sc=n(w[c.sc]),bad=n(w[c.bad]),good=n(w[c.good]);if(good==null&&sc!=null&&bad!=null)good=sc-bad;
+  var st=w[c.st]||'';return {i:i,k:k,status:st===''?'(빈 칸)':st,pass:/^pass[.!]?$/i.test(st.trim()),id:w[c.id]||'',sc:sc,bad:bad,good:good,slot:r.slot[k]};}
+function isRealId(id){return id&&!/^(slot\s*)?\d{1,2}$/i.test(String(id).trim());}
+function firstErr(i){var r=R[i],c=cols(r);for(var k=0;k<r.rows.length;k++){var s=r.rows[k][c.st]||'';if(!/^pass[.!]?$/i.test(s.trim()))return s||'(빈 칸)';}return '';}
+
+/* ---------- 공통 조사 범위 ---------- */
+var range={from:D.range[0],to:D.range[1]},machinesOn={};
+D.machines.forEach(function(m){machinesOn[m.id]=true;});
+function chips(el,state,onchange){el.innerHTML=D.machines.map(function(m){return '<label><input type="checkbox" data-m="'+esc(m.id)+'"'+(state[m.id]?' checked':'')+'> '+esc(m.id)+'</label>';}).join('')+
+  '<label style="opacity:.55" title="프로토타입 예시 — 실제로는 등록된 호기가 모두 나옵니다"><input type="checkbox" disabled> AOI-9</label><label style="opacity:.55"><input type="checkbox" disabled> AOI-12</label>';
+  el.onchange=function(e){var m=e.target.getAttribute('data-m');if(m){state[m]=e.target.checked;onchange&&onchange();}};}
+chips($('scopeMachines'),machinesOn);
+$('from').value=range.from;$('to').value=range.to;$('ffrom').value=range.from;$('fto').value=range.to;
+function inRange(s){var d=(s||'').slice(0,10);return d>=range.from&&d<=range.to;}
+$('runBtn').onclick=function(){
+  var b=this;b.disabled=true;$('runProgress').hidden=false;range.from=$('from').value||D.range[0];range.to=$('to').value||D.range[1];
+  var steps=['AOI-X: Reports 폴더 이름 확인(원본 읽기 전용)…','AOI-X: 새로 생긴·바뀐 Batch Report 0개 · 캐시 420개','시도 → 묶음 → Lot으로 묶는 중…','완료'],i=0;
+  (function next(){$('scopeStatus').textContent=steps[i];if(++i<steps.length)setTimeout(next,450);else{b.disabled=false;$('runProgress').hidden=true;
+    $('scopeStatus').textContent='조사 완료 · '+range.from+' ~ '+range.to+' · Batch Report '+R.filter(function(r){return inRange(r.s);}).length+'개 (새로 읽음 0 · 캐시 사용) · 읽기 오류 0';renderAll();toast('조사를 완료했습니다. ① ③ ④가 같은 결과를 씁니다.');}})();
+};
+$('critBtn').onclick=function(){$('critDlg').showModal();};
+$('critList').innerHTML=D.criteria.map(function(c){return '<div><dt>'+esc(c[0])+'</dt><dd>'+esc(c[1])+(c[2]?'<small>'+esc(c[2])+'</small>':'')+'</dd></div>';}).join('');
+
+/* ---------- 탭 ---------- */
+var tab='lot';
+$('tabs').onclick=function(e){var b=e.target.closest('[data-tab]');if(!b)return;tab=b.getAttribute('data-tab');
+  [].forEach.call($('tabs').children,function(x){var on=x===b;x.classList.toggle('active',on);x.setAttribute('aria-selected',on);});
+  ['lot','find','util','wph'].forEach(function(t){$('tab-'+t).hidden=t!==tab;});$('scopePanel').hidden=tab==='find';};
+function gotoLot(li){$('tabs').querySelector('[data-tab=lot]').click();$('lotQ').value=LOTS[li].label;lotLast='';drawLots();openLot(li);$('lotDetail').scrollIntoView({behavior:'smooth'});}
+
+/* ---------- 중복 선택(사람 결정) — 로컬 저장, 모든 화면 공유 ---------- */
+var choice={};   // "li|bi|k" → 묶음 안 시도 번호
+function pickOf(li,bi,w){var k=li+'|'+bi+'|'+w.k;return choice[k]!=null?choice[k]:w.pick;}
+
+/* ---------- ① Lot 추적 ---------- */
+var lotSel=null,lotLast='';
+['한 번에 완료','재스캔으로 완료','Pass 못 한 웨이퍼 있음'].forEach(function(s){var o=document.createElement('option');o.value=s;o.textContent=s;$('lotState').appendChild(o);});
+function lotVisible(l){return inRange(l.s)&&l.machines.some(function(m){return machinesOn[m];});}
+function drawLotKpis(list){var b=0,split=0,re=0,open=0,dup=0,mv=0;list.forEach(function(l){b+=l.bunches.length;split+=l.bunches.filter(function(x){return x.att.length>1;}).length;
+  if(l.state==='재스캔으로 완료')re++;if(l.open)open++;if(l.dup)dup++;if(l.moved)mv++;});
+  var k=[['Lot',list.length,'개','조사 범위 안'],['묶음(한 번의 검사)',b,'개','나눠 스캔 '+split+'개'],['재스캔으로 완료',re,'Lot','Error 뒤 다시 스캔해 Pass'],['Pass 못 한 웨이퍼 있음',open,'Lot','다른 호기로 옮겼는지 확인'],['중복 Pass',dup,'Lot','선택 확인 필요']];
+  $('lotKpis').innerHTML=k.map(function(x){return '<article><span>'+x[0]+'</span><strong>'+num(x[1])+'<small>'+x[2]+'</small></strong><p>'+x[3]+'</p></article>';}).join('');}
+function drawLots(){
+  var t=$('lotQ').value.trim().toUpperCase(),s=$('lotState').value,key=[t,s,$('fSplit').checked,$('fDup').checked,$('fMove').checked,range.from,range.to,JSON.stringify(machinesOn)].join('|');
+  if(key===lotLast)return;lotLast=key;var vis=LOTS.map(function(l,i){return [l,i];}).filter(function(x){return lotVisible(x[0]);});drawLotKpis(vis.map(function(x){return x[0];}));
+  var rows=vis.filter(function(x){var l=x[0];if(t&&(l.label+' '+l.sms.join(' ')+' '+l.lot_id+' '+l.jobs.join(' ')).toUpperCase().indexOf(t)<0)return false;
+    if(s&&l.state!==s)return false;if($('fSplit').checked&&!l.bunches.some(function(b){return b.att.length>1;}))return false;if($('fDup').checked&&!l.dup)return false;if($('fMove').checked&&!l.moved)return false;return true;});
+  $('lotShown').textContent=rows.length+' / '+vis.length+' Lot';$('lotCount').textContent=vis.length+'개 Lot';
+  $('lotBody').innerHTML=rows.map(function(x){var l=x[0],i=x[1];return '<tr class="clickable'+(lotSel===i?' sel':'')+'" data-li="'+i+'"><td><b>'+esc(l.label)+'</b></td><td>'+esc(l.sms.join(', '))+'</td><td>'+esc(l.machines.join(' → '))+'</td><td class="num">'+l.bunches.length+'</td><td class="num">'+l.n+'</td><td>'+esc(l.s)+'</td><td>'+stPill(l.state)+(l.dup?' <span class="st dup">중복 Pass</span>':'')+(l.moved?' <span class="st mv">호기 이동</span>':'')+'</td><td class="num">'+(l.open||'')+'</td><td>'+esc(l.causes.map(function(c){return c[0]+' ×'+c[1];}).join(' · '))+'</td></tr>';}).join('')||'<tr><td colspan="9">조건에 맞는 Lot이 없습니다.</td></tr>';}
+['lotQ'].forEach(function(id){$(id).addEventListener('input',drawLots);});['lotState','fSplit','fDup','fMove'].forEach(function(id){$(id).addEventListener('change',drawLots);});
+$('lotBody').addEventListener('click',function(e){var tr=e.target.closest('tr[data-li]');if(tr)openLot(+tr.getAttribute('data-li'));});
+function bunchTotals(li,b,bi){var t={sc:0,bad:0,good:0,c:{}},any=false;b.wafers.forEach(function(w){var p=pickOf(li,bi,w);var v=verdictOf(w,p);t.c[v]=(t.c[v]||0)+1;
+  if(p!=null){var cell=w.cells.filter(function(c){return c[0]===p;})[0];if(cell){var r=row(b.att[cell[0]],cell[1]);if(r.pass&&r.sc!=null){t.sc+=r.sc;t.bad+=r.bad||0;t.good+=r.good||0;any=true;}}}});
+  t.y=t.sc?t.good/t.sc*100:null;return t;}
+function verdictOf(w,p){return w.v;}
+function openLot(li){lotSel=li;lotLast='';drawLots();var l=LOTS[li];
+  var h='<div class="detail"><div class="dhead"><h2>'+esc(l.label)+'</h2>'+stPill(l.state)+(l.moved?' <span class="st mv">호기 이동</span>':'')+'<span class="job">'+esc(l.jobs.join(' / '))+'</span><span class="meta">S/M '+esc(l.sms.join(', '))+(l.lot_id?' · Lot ID '+esc(l.lot_id):'')+' · 호기 '+esc(l.machines.join(' → '))+' · 시도 '+l.n+'회</span>'+
+   '<button style="margin-left:auto" data-crit>? 판정 기준</button><button id="lotToFind">② 찾기·취합에서 열기</button></div>';
+  h+='<h3>Lot 취합 <small style="font-weight:400;color:var(--muted)">— 묶음(한 번의 검사)마다 한 줄. WBG · CMP처럼 다른 검사를 더하면 같은 웨이퍼가 두 번 들어가므로 따로 셉니다.</small></h3>';
+  h+='<div class="table-scroll" style="max-height:none"><table class="t-compact"><thead><tr><th>묶음</th><th>공정 단계</th><th>기간</th><th>호기</th><th class="num">시도</th><th class="num">웨이퍼</th>'+V.map(function(v){return '<th class="num">'+v+'</th>';}).join('')+'<th class="num">Scanned</th><th class="num">Bad</th><th class="num">Good</th><th class="num">Yield</th></tr></thead><tbody>';
+  l.bunches.forEach(function(b,bi){var t=bunchTotals(li,b,bi);h+='<tr><td><b>묶음 '+(bi+1)+'</b></td><td>'+esc(b.step)+'</td><td>'+esc(b.s)+' ~ '+esc(b.e.slice(5))+'</td><td>'+esc(b.machines.join(' → '))+(b.moved?' <span class="st mv">호기 이동</span>':'')+'</td><td class="num">'+b.att.length+'</td><td class="num">'+b.wafers.length+'</td>'+
+    V.map(function(v){return '<td class="num '+VC[v]+'">'+(t.c[v]||'')+'</td>';}).join('')+'<td class="num">'+num(t.sc)+'</td><td class="num">'+num(t.bad)+'</td><td class="num">'+num(t.good)+'</td><td class="num">'+(t.y==null?'—':num(t.y,2)+'%')+'</td></tr>';});
+  h+='</tbody></table></div>';
+  h+='<h3>웨이퍼 취합 <small style="font-weight:400;color:var(--muted)">— 슬롯마다 묶음별로 고른 Batch Report의 결과 원문과 Dice. 중복 Pass는 여기서 고르고 저장합니다.</small></h3>'+waferTable(li)+
+    '<div class="savebar"><button class="primary" id="saveChoice">선택 저장</button><span class="hint" style="margin:0">저장하면 로컬 Cache(batch_lot_choices.json)에 남고 ② 취합 · ③ 가동률 · ④ WPH도 같은 선택을 씁니다. 프로토타입은 메모리에만 저장.</span></div>';
+  h+='<h3>시도 이력 · Lot × 웨이퍼 오류 지도</h3><div class="keys"><span><i class="c-p">Pass</i></span><span><i class="c-e">오류 원문</i> 직접 오류</span><span><i class="c-c">Aborted.</i> 앞 오류 뒤 연쇄</span><span><i class="c-p c-pick">Pass</i> 중복 중 선택</span><span><i class="c-p c-drop">Pass</i> 중복 제외</span></div>';
+  l.bunches.forEach(function(b,bi){h+=bunchCard(li,b,bi);});
+  $('lotDetail').innerHTML=h+'</div>';
+  $('saveChoice').onclick=function(){toast('선택을 저장했습니다 — 다른 화면도 이 선택으로 다시 계산합니다.');};
+  $('lotToFind').onclick=function(){$('findQ').value=l.code;$('tabs').querySelector('[data-tab=find]').click();runFind();};
+  $('lotDetail').querySelectorAll('select[data-w]').forEach(function(sel){sel.onchange=function(){choice[sel.getAttribute('data-w')]=+sel.value;openLot(li);};});
+  $('lotDetail').querySelectorAll('[data-raw]').forEach(function(bt){bt.onclick=function(){showRaw(+bt.getAttribute('data-raw'));};});}
+function waferTable(li){var l=LOTS[li],slots={},keys=[];
+  l.bunches.forEach(function(b,bi){b.wafers.forEach(function(w){var k=w.slot==null?'ID '+w.id:w.slot;if(!slots[k]){slots[k]={};keys.push(k);}slots[k][bi]=w;});});
+  keys.sort(function(a,b){return (typeof b==='number'?b:-1)-(typeof a==='number'?a:-1);});
+  var h='<div class="mapscroll"><table class="map"><thead><tr><th rowspan="2">슬롯</th><th rowspan="2">Wafer ID</th>';
+  l.bunches.forEach(function(b,bi){h+='<th colspan="5">묶음 '+(bi+1)+' · '+esc(b.step)+'<small>'+esc(b.s.slice(5))+' · '+esc(b.machines.join('→'))+'</small></th>';});
+  h+='</tr><tr>';l.bunches.forEach(function(){h+='<th>결과(고른 Batch Report 원문)</th><th>고른 시도</th><th>Scanned</th><th>Bad</th><th>Good</th>';});h+='</tr></thead><tbody>';
+  keys.forEach(function(k){var rowd=slots[k],id='';Object.keys(rowd).forEach(function(bi){if(isRealId(rowd[bi].id))id=rowd[bi].id;});
+    h+='<tr><th>'+esc(k)+'</th><td>'+esc(id||rowd[Object.keys(rowd)[0]].id)+'</td>';
+    l.bunches.forEach(function(b,bi){var w=rowd[bi];if(!w){h+='<td class="c-n" colspan="5">·</td>';return;}
+      var p=pickOf(li,bi,w),cell=p==null?null:w.cells.filter(function(c){return c[0]===p;})[0],r=cell?row(b.att[cell[0]],cell[1]):row(b.att[w.cells[w.cells.length-1][0]],w.cells[w.cells.length-1][1]);
+      var passes=w.cells.filter(function(c){return row(b.att[c[0]],c[1]).pass;}),pick='';
+      if(passes.length>1){pick='<span class="pickrow"><select data-w="'+li+'|'+bi+'|'+esc(w.k)+'" aria-label="슬롯 '+esc(k)+' 고를 시도">'+passes.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===p?' selected':'')+'>#'+(c[0]+1)+' '+esc(R[b.att[c[0]]].s.slice(5))+(c[0]===w.pick?' (추천)':'')+'</option>';}).join('')+'</select></span>';}
+      else pick=p==null?'—':'#'+(p+1);
+      h+='<td class="'+VC[w.v]+'">'+esc(r.status)+(w.v!=='한 번에 Pass'?' <small>('+esc(w.v)+')</small>':'')+'</td><td>'+pick+'</td><td class="n">'+(p==null?'—':num(r.sc))+'</td><td class="n">'+(p==null?'—':num(r.bad))+'</td><td class="n">'+(p==null?'—':num(r.good))+'</td>';});
+    h+='</tr>';});
+  return h+'</tbody></table></div>';}
+function bunchCard(li,b,bi){var h='<div class="bunchcard"><div class="bh"><b>묶음 '+(bi+1)+'</b><span>'+esc(b.s)+' ~ '+esc(b.e)+'</span><span>공정 단계 '+esc(b.step)+'</span><span>'+esc(b.machines.join(' → '))+'</span><span>시도 '+b.att.length+'회 · 스캔 '+hrs(b.sec)+'h</span>'+(b.moved?'<span class="st mv">호기 이동</span>':'')+'</div><div class="inner"><div class="attempts">';
+  b.att.forEach(function(g,ai){var r=R[g],rows=r.rows.length,ps=0;for(var k=0;k<rows;k++)if(row(g,k).pass)ps++;
+    if(ai>0){var prev=R[b.att[ai-1]],gap=(new Date(r.s.replace(' ','T'))-new Date(prev.e.replace(' ','T')))/60000;h+='<div class="gapline">↓ '+(gap>=60?num(gap/60,1)+'시간':num(gap)+'분')+' 뒤 다시 스캔'+(prev.m!==r.m?' · <b>호기 이동 '+esc(prev.m)+' → '+esc(r.m)+'</b>':'')+(firstErr(b.att[ai-1])?' — 앞 시도 첫 오류: '+esc(firstErr(b.att[ai-1])):'')+'</div>';}
+    h+='<div class="att"><span class="n">#'+(ai+1)+'</span><span>'+esc(r.s)+' ~ '+esc(r.e.slice(11))+'</span><span class="mch">'+esc(r.m)+'</span><span><span class="fn">'+esc(r.f)+'</span><br><span class="meta">S/M '+esc(r.sm)+' · '+esc(r.step)+' · Pass '+ps+' / '+rows+'행</span></span><span class="acts"><button data-raw="'+g+'">원문 보기</button></span></div>';});
+  h+='</div><div class="mapscroll" style="margin-top:10px"><table class="map"><thead><tr><th>슬롯</th><th>Wafer ID</th>';
+  b.att.forEach(function(g,ai){h+='<th>#'+(ai+1)+'<small>'+esc(R[g].m)+' '+esc(R[g].s.slice(5))+'</small></th>';});h+='<th>결과</th><th>첫 오류 원문</th></tr></thead><tbody>';
+  b.wafers.forEach(function(w){var cells=b.att.map(function(){return '<td class="c-n">·</td>';}),p=pickOf(li,bi,w),passes=0;
+    w.cells.forEach(function(c){if(row(b.att[c[0]],c[1]).pass)passes++;});
+    w.cells.forEach(function(c){var r=row(b.att[c[0]],c[1]),cls;if(r.pass){cls='c-p'+(passes>1?(c[0]===p?' c-pick':' c-drop'):'');}else{var errs=0;cls=chainAt(b.att[c[0]],c[1])?'c-c':'c-e';}cells[c[0]]='<td class="'+cls+'">'+esc(r.status)+'</td>';});
+    h+='<tr><th>'+(w.slot==null?'?':w.slot)+'</th><td>'+esc(w.id)+'</td>'+cells.join('')+'<td class="'+VC[w.v]+'">'+esc(w.v)+'</td><td>'+esc(w.cause)+(w.chain?' <small>(이 오류 뒤 연쇄)</small>':'')+'</td></tr>';});
+  return h+'</tbody></table></div></div></div>';}
+function chainAt(i,k){var r=R[i],c=cols(r),seen=false;for(var j=0;j<k;j++){var s=r.rows[j][c.st]||'';if(!/^pass[.!]?$/i.test(s.trim())){seen=true;break;}}var s2=(r.rows[k][c.st]||'');return seen&&/^(aborted|skipped)/i.test(s2.trim());}
+function drawCauses(){var m={};LOTS.forEach(function(l,li){if(!lotVisible(l))return;l.bunches.forEach(function(b){b.wafers.forEach(function(w){if(!w.cause)return;var x=m[w.cause]||(m[w.cause]={lots:{},w:0,ch:0,ok:0,open:0});x.lots[li]=1;x.w++;if(w.chain)x.ch++;if(w.v==='Pass 없음')x.open++;else x.ok++;});});});
+  $('causeBody').innerHTML=Object.keys(m).map(function(k){return [k,m[k]];}).sort(function(a,b){return Object.keys(b[1].lots).length-Object.keys(a[1].lots).length;}).map(function(x){var v=x[1];return '<tr><td>'+esc(x[0])+'</td><td class="num">'+Object.keys(v.lots).length+'</td><td class="num">'+v.w+'</td><td class="num">'+v.ch+'</td><td class="num">'+v.ok+'</td><td class="num">'+v.open+'</td></tr>';}).join('');
+  $('exclBody').innerHTML=D.excluded.map(function(g){var r=R[g];return '<tr><td>'+esc(r.m)+'</td><td>'+esc(r.sm)+'</td><td>'+esc(r.s)+'</td><td>'+esc(r.f)+'</td><td><button data-raw="'+g+'" style="min-height:28px;padding:3px 10px;font-size:12px">원문 보기</button></td></tr>';}).join('');
+  $('exclBody').querySelectorAll('[data-raw]').forEach(function(bt){bt.onclick=function(){showRaw(+bt.getAttribute('data-raw'));};});}
+
+/* ---------- 원문 보기 ---------- */
+var rawCurrent=null;
+function showRaw(i){var r=R[i];rawCurrent=i;$('rawTitle').textContent=r.f;$('rawSub').textContent=r.m+' · Reports 폴더 원문 그대로(앱 캐시에 읽어 둔 표). 장비 원본은 수정하지 않습니다.';
+  var h='<div class="two" style="grid-template-columns:minmax(0,320px) minmax(0,1fr);margin-top:0"><div class="table-scroll" style="max-height:60vh"><table class="t-compact"><tbody>'+r.meta.map(function(kv){return '<tr><th style="position:static">'+esc(kv[0])+'</th><td>'+esc(kv[1])+'</td></tr>';}).join('')+'</tbody></table></div>';
+  h+='<div class="mapscroll" style="max-height:60vh"><table class="map"><thead><tr><th>#</th>'+r.h.map(function(x){return '<th>'+esc(x)+'</th>';}).join('')+'</tr></thead><tbody>'+r.rows.map(function(w,k){var st=w[cols(r).st]||'',ok=/^pass[.!]?$/i.test(st.trim());return '<tr><th>'+(k+1)+'</th>'+w.map(function(v,j){return '<td'+(j===cols(r).st?' class="'+(ok?'c-p':'c-e')+'"':'')+'>'+esc(v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div></div>';
+  $('rawBody').innerHTML=h;$('rawDlg').showModal();}
+$('rawOpen').onclick=function(){toast('앱에서는 '+(D.machines[0].root)+'\\Reports\\'+R[rawCurrent].f+' 를 기본 브라우저로 엽니다(읽기 전용).');};
+
+/* ---------- ② 찾기 · 취합 ---------- */
+var findOn={};D.machines.forEach(function(m){findOn[m.id]=true;});chips($('findMachines'),findOn);
+var fstep=0,sel={},findHits=[];
+function stepper(){var labels=['검색','Batch Report 고르기','취합 결과'];$('findStepper').innerHTML=labels.map(function(l,i){var s=i<fstep?'done':i===fstep?'now':'todo';return '<li class="st '+s+'"><button class="stbtn" '+(i<fstep?'':'disabled')+' data-fs="'+i+'"><span class="dot">'+(i<fstep?'✓':i+1)+'</span><span class="lbl">'+l+'</span></button>'+(i<2?'<span class="bar" aria-hidden="true"></span>':'')+'</li>';}).join('');
+  $('findStep0').hidden=fstep!==0;$('findStep1').hidden=fstep!==1;$('findStep2').hidden=fstep!==2;}
+$('findStepper').onclick=function(e){var b=e.target.closest('[data-fs]');if(b&&!b.disabled){fstep=+b.getAttribute('data-fs');stepper();}};
+function runFind(){var terms=$('findQ').value.trim().toLowerCase().split(/\s+/).filter(Boolean),from=$('ffrom').value||'0000',to=$('fto').value||'9999';
+  findHits=R.map(function(r,i){return i;}).filter(function(i){var r=R[i],name=r.f.toLowerCase(),d=(r.fdt||r.s).slice(0,10);return findOn[r.m]&&terms.every(function(t){return name.indexOf(t)>=0;})&&d>=from&&d<=to;});
+  sel={};fstep=1;stepper();drawGroups();$('findCount').textContent='찾은 Batch Report '+findHits.length+'개';}
+$('findBtn').onclick=runFind;$('findQ').addEventListener('keydown',function(e){if(e.key==='Enter')runFind();});
+$('backSearch').onclick=function(){fstep=0;stepper();};$('backPick').onclick=function(){fstep=1;stepper();};
+function scanresultPath(r){return D.machines.filter(function(m){return m.id===r.m;})[0].root+'\\Scanresult*\\'+r.job+'\\'+r.setup+'\\'+r.sm;}
+function drawGroups(){var groups={},order=[],hit={};findHits.forEach(function(i){hit[i]=1;var r=R[i],g=r.lot==null?'x'+i:r.lot+'|'+r.b;if(!groups[g]){groups[g]=[];order.push(g);}});
+  var h='';if(!findHits.length){$('findGroups').innerHTML='<div class="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드·기간·호기 범위를 바꿔 보세요.</p></div>';updSel();return;}
+  order.forEach(function(g){var li,bi,members;if(g[0]==='x'){members=[+g.slice(1)];}else{li=+g.split('|')[0];bi=+g.split('|')[1];members=LOTS[li].bunches[bi].att;}
+    var l=li!=null?LOTS[li]:null,b=l?l.bunches[bi]:null,sms={},paths={};members.forEach(function(i){sms[R[i].sm]=1;paths[scanresultPath(R[i])]=1;});
+    h+='<div class="group"><div class="gh"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-g="'+esc(g)+'"> <b>'+(l?esc(l.label)+' · 묶음 '+(bi+1):'점검 스캔(Lot 아님)')+'</b></label>'+(l?stPill(l.state):'<span class="st out">Lot에서 제외</span>')+
+      '<span class="meta">'+(b?esc(b.s)+' ~ '+esc(b.e.slice(5))+' · '+esc(b.step)+' · '+esc(b.machines.join(' → '))+' · Batch Report '+members.length+'개':'')+'</span>'+(l?'<button style="margin-left:auto;min-height:30px;padding:4px 10px;font-size:12px" data-golot="'+li+'">① Lot 추적에서 보기</button>':'')+'</div>';
+    Object.keys(paths).forEach(function(p){h+='<div class="sr"><span>Scanresult 경로</span><code>'+esc(p)+'</code><button data-copy="'+esc(p)+'">복사</button><span class="meta">실제 앱: Scanresult · 백업 폴더 중 있는 곳 표시</span></div>';});
+    h+='<div class="table-scroll" style="max-height:none;border:0;border-radius:0"><table class="t-compact"><thead><tr><th></th><th>#</th><th>시작 ~ 끝</th><th>호기</th><th>S/M</th><th class="num">Pass / 행</th><th>첫 오류 원문</th><th>파일 이름</th><th></th></tr></thead><tbody>';
+    members.forEach(function(i,ai){var r=R[i],ps=0;for(var k=0;k<r.rows.length;k++)if(row(i,k).pass)ps++;var out=!hit[i];
+      h+='<tr class="'+(out?'outside':'')+'"><td><input type="checkbox" data-i="'+i+'"'+(sel[i]?' checked':'')+' aria-label="'+esc(r.f)+' 선택"></td><td>'+(ai+1)+'</td><td>'+esc(r.s)+' ~ '+esc(r.e.slice(11))+'</td><td>'+esc(r.m)+'</td><td>'+esc(r.sm)+(out?' <span class="st out">키워드 밖 · 같은 묶음</span>':'')+'</td><td class="num">'+ps+' / '+r.rows.length+'</td><td>'+esc(firstErr(i))+'</td><td style="font-family:Consolas,monospace;font-size:11px">'+esc(r.f)+'</td><td style="white-space:nowrap"><button data-raw="'+i+'" style="min-height:28px;padding:3px 10px;font-size:12px">원문 보기</button> <button data-open="'+i+'" style="min-height:28px;padding:3px 10px;font-size:12px">원본 열기</button></td></tr>';});
+    h+='</tbody></table></div></div>';});
+  $('findGroups').innerHTML=h;updSel();}
+$('findGroups').addEventListener('change',function(e){var i=e.target.getAttribute('data-i'),g=e.target.getAttribute('data-g');
+  if(i!=null){if(e.target.checked)sel[i]=1;else delete sel[i];}
+  if(g!=null){var members=g[0]==='x'?[+g.slice(1)]:LOTS[+g.split('|')[0]].bunches[+g.split('|')[1]].att;members.forEach(function(m){if(e.target.checked)sel[m]=1;else delete sel[m];});
+    e.target.closest('.group').querySelectorAll('input[data-i]').forEach(function(x){x.checked=e.target.checked;});}updSel();});
+$('findGroups').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;
+  if(b.hasAttribute('data-raw'))showRaw(+b.getAttribute('data-raw'));
+  if(b.hasAttribute('data-open'))toast('앱에서는 '+D.machines[0].root+'\\Reports\\'+R[+b.getAttribute('data-open')].f+' 를 기본 브라우저로 엽니다(읽기 전용).');
+  if(b.hasAttribute('data-copy')){var p=b.getAttribute('data-copy');(navigator.clipboard?navigator.clipboard.writeText(p):Promise.reject()).then(function(){toast('경로를 복사했습니다.');},function(){toast(p);});}
+  if(b.hasAttribute('data-golot'))gotoLot(+b.getAttribute('data-golot'));});
+function updSel(){var n=Object.keys(sel).length;$('selInfo').textContent='선택 '+n+'개'+(n?' · 취합 대상 Lot·묶음 '+groupSel().length+'개':'');$('aggBtn').disabled=!n;}
+function groupSel(){var g={},o=[];Object.keys(sel).map(Number).sort(function(a,b){return R[a].s<R[b].s?-1:1;}).forEach(function(i){var r=R[i];if(r.lot==null)return;var k=r.lot+'|'+r.b;if(!g[k]){g[k]={li:r.lot,bi:r.b,att:[]};o.push(k);}g[k].att.push(i);});return o.map(function(k){return g[k];});}
+var aggGroups=[],aggChoice={};
+function keyOf(i,k,idmap){var s=R[i].slot[k];if(s!=null)return 'S'+(s<10?'0':'')+s;var id=row(i,k).id;return idmap[id]!=null?'S'+(idmap[id]<10?'0':'')+idmap[id]:'ID:'+id;}
+$('aggBtn').onclick=function(){aggGroups=groupSel().map(function(g){var idmap={};g.att.forEach(function(i){R[i].rows.forEach(function(_,k){var r=row(i,k);if(r.slot!=null&&isRealId(r.id))idmap[r.id]=r.slot;});});
+    var w={},keys=[];g.att.forEach(function(i){R[i].rows.forEach(function(_,k){var key=keyOf(i,k,idmap);if(!w[key]){w[key]=[];keys.push(key);}w[key].push(row(i,k));});});
+    keys.sort(function(a,b){return a<b?1:-1;});g.w=w;g.keys=keys;return g;});
+  if(!aggGroups.length){toast('Lot으로 묶인 Batch Report를 골라 주세요(점검 스캔은 취합하지 않습니다).');return;}
+  aggChoice={};var dups=[];aggGroups.forEach(function(g,gi){g.keys.forEach(function(k){var c=g.w[k];var rec=recIdx(c);aggChoice[gi+'|'+k]=rec;if(c.length>1)dups.push([gi,k]);});});
+  if(dups.length){
+    // 실제로 골라야 하는 것 = 같은 웨이퍼가 Pass 2번 이상. 오류 뒤 Pass 1번은 그 Pass 로 자동(접어서 보여 줌).
+    var must=dups.filter(function(d){return aggGroups[d[0]].w[d[1]].filter(function(x){return x.pass;}).length>1;}),auto=dups.filter(function(d){return must.indexOf(d)<0;});
+    function block(d){var g=aggGroups[d[0]],c=g.w[d[1]],rec=recIdx(c);return '<div class="dupwafer"><div class="w">'+esc(LOTS[g.li].label)+' · 묶음 '+(g.bi+1)+' · 슬롯 '+esc(d[1].replace(/^S0?/,''))+' · '+esc((c.filter(function(x){return isRealId(x.id);})[0]||c[0]).id)+'</div>'+
+      c.map(function(x,j){return '<label><input type="radio" name="d'+d[0]+'_'+esc(d[1])+'" value="'+j+'" data-k="'+d[0]+'|'+esc(d[1])+'"'+(j===rec?' checked':'')+'><span>'+esc(R[x.i].s)+(j===rec?'<span class="rec">추천</span>':'')+'</span><span class="'+(x.pass?'v1':'v4')+'">'+esc(x.status)+'</span><span>Scanned '+num(x.sc)+' · Bad '+num(x.bad)+'</span></label>';}).join('')+'</div>';}
+    var h='<p class="hint" style="margin:0 0 8px"><b>Pass가 2번 이상인 웨이퍼 '+must.length+'장</b>은 어느 스캔을 쓸지 골라 주세요.'+(auto.length?' 오류 뒤 다시 스캔해 Pass가 1번인 웨이퍼 '+auto.length+'장은 그 Pass로 자동 선택했습니다(펼쳐서 바꿀 수 있음).':'')+'</p>';
+    h+=must.map(block).join('')||'<div class="empty-state" style="padding:14px"><h3>직접 고를 웨이퍼가 없습니다.</h3><p>모든 중복이 "오류 뒤 Pass 1번"이라 Pass로 자동 선택했습니다.</p></div>';
+    if(auto.length)h+='<details class="more"><summary>오류 뒤 Pass 1번 — 자동 선택 '+auto.length+'장 보기</summary>'+auto.map(block).join('')+'</details>';
+    $('dupSub').textContent='같은 웨이퍼가 고른 Batch Report 2장 이상에 있습니다 — '+dups.length+'장. 추천 = 가장 나중 Pass(없으면 가장 나중 스캔).';
+    $('dupBody').innerHTML=h;$('dupDlg').showModal();}
+  else showAgg();};
+function recIdx(c){for(var j=c.length-1;j>=0;j--)if(c[j].pass)return j;return c.length-1;}
+$('dupBody').addEventListener('change',function(e){var k=e.target.getAttribute('data-k');if(k)aggChoice[k]=+e.target.value;});
+$('dupLatest').onclick=function(){$('dupBody').querySelectorAll('.dupwafer').forEach(function(d){var r=d.querySelectorAll('input');r[r.length-1].checked=true;aggChoice[r[0].getAttribute('data-k')]=r.length-1;});};
+$('dupRec').onclick=function(){$('dupBody').querySelectorAll('.dupwafer').forEach(function(d){var r=d.querySelectorAll('input'),k=r[0].getAttribute('data-k'),p=k.split('|'),c=aggGroups[+p[0]].w[p.slice(1).join('|')],j=recIdx(c);r[j].checked=true;aggChoice[k]=j;});};
+$('dupOk').onclick=function(){$('dupDlg').close();showAgg();};
+function showAgg(){var h='<h3 style="margin-top:4px">Lot 취합</h3><div class="table-scroll" style="max-height:none"><table class="t-compact"><thead><tr><th>Lot</th><th>묶음</th><th>호기</th><th class="num">고른 Batch Report</th><th class="num">웨이퍼</th><th class="num">Pass</th><th class="num">Pass 없음</th><th class="num">Scanned</th><th class="num">Bad</th><th class="num">Good</th><th class="num">Yield</th></tr></thead><tbody>',w='';
+  aggGroups.forEach(function(g,gi){var t={sc:0,bad:0,good:0,p:0,np:0},ms={};g.att.forEach(function(i){ms[R[i].m]=1;});
+    w+='<h3>웨이퍼 — '+esc(LOTS[g.li].label)+' · 묶음 '+(g.bi+1)+'</h3><div class="mapscroll"><table class="map"><thead><tr><th>슬롯</th><th>Wafer ID</th><th>고른 Batch Report</th><th>결과 원문</th><th>Scanned</th><th>Bad</th><th>Good</th><th>Yield</th></tr></thead><tbody>';
+    g.keys.forEach(function(k){var c=g.w[k],x=c[aggChoice[gi+'|'+k]];if(x.pass){t.p++;if(x.sc!=null){t.sc+=x.sc;t.bad+=x.bad||0;t.good+=x.good||0;}}else t.np++;
+      var id=(c.filter(function(y){return isRealId(y.id);})[0]||x).id;
+      w+='<tr><th>'+esc(k.replace(/^S0?/,'').replace(/^ID:/,''))+'</th><td>'+esc(id)+'</td><td style="font-family:Consolas,monospace;font-size:11px">'+esc(R[x.i].s)+' · '+esc(R[x.i].f)+(c.length>1?' <span class="st dup">'+c.length+'장 중 선택</span>':'')+'</td><td class="'+(x.pass?'c-p':'c-e')+'">'+esc(x.status)+'</td><td class="n">'+num(x.sc)+'</td><td class="n">'+num(x.bad)+'</td><td class="n">'+num(x.good)+'</td><td class="n">'+(x.sc?num(x.good/x.sc*100,1)+'%':'—')+'</td></tr>';});
+    w+='</tbody></table></div>';
+    h+='<tr><td><b>'+esc(LOTS[g.li].label)+'</b></td><td>묶음 '+(g.bi+1)+'</td><td>'+esc(Object.keys(ms).join(', '))+'</td><td class="num">'+g.att.length+'</td><td class="num">'+g.keys.length+'</td><td class="num">'+t.p+'</td><td class="num">'+t.np+'</td><td class="num">'+num(t.sc)+'</td><td class="num">'+num(t.bad)+'</td><td class="num">'+num(t.good)+'</td><td class="num">'+(t.sc?num(t.good/t.sc*100,2)+'%':'—')+'</td></tr>';});
+  $('aggResult').innerHTML=h+'</tbody></table></div>'+w;fstep=2;stepper();}
+$('saveXlsx').onclick=function(){toast('앱에서는 로컬 결과 폴더에 BatchReport_취합_{시각}.xlsx(Lot 취합 · 웨이퍼 시트)를 만들고 [열기]·[폴더에서 보기]를 보여 줍니다.');};
+
+/* ---------- ③ 가동률 · 원인 ---------- */
+var unit='w',utilSel=null;
+$('unitSeg').onclick=function(e){var b=e.target.closest('[data-u]');if(!b)return;unit=b.getAttribute('data-u');utilSel=null;[].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});drawUtil();};
+function bucket(d){var dt=new Date(d+'T00:00:00');if(unit==='d')return d;if(unit==='m')return d.slice(0,7);var w=(dt.getDay()+6)%7;dt.setDate(dt.getDate()-w);return dt.toISOString().slice(0,10)+' 주';}
+function bucketDays(key){if(unit==='d')return 1;if(unit==='m'){var y=+key.slice(0,4),m=+key.slice(5,7);return new Date(y,m,0).getDate();}return 7;}
+function drawUtil(){var by={},order=[];D.B.forEach(function(x){if(!machinesOn[x.m]||x.d<range.from||x.d>range.to)return;var k=bucket(x.d);if(!by[k]){by[k]={valid:0,dropped:0,wait:0,check:0,lots:0,rec:{},err:{},days:{}};order.push(k);}var b=by[k];
+  b.valid+=x.valid;b.dropped+=x.dropped;b.wait+=x.wait;b.check+=x.check;b.lots+=x.lots;b.days[x.d]=1;Object.keys(x.rec).forEach(function(r){b.rec[r]=(b.rec[r]||0)+x.rec[r];});
+  Object.keys(x.err).forEach(function(e){var t=b.err[e]||(b.err[e]=[0,0,{}]);t[0]+=x.err[e][0];t[1]+=x.err[e][1];x.err[e][2].forEach(function(li){t[2][li]=1;});});});
+  order.sort().reverse();var tot={cal:0,valid:0,dropped:0,wait:0,check:0};
+  var h=order.map(function(k){var b=by[k],cal=bucketDays(k)*86400,other=Math.max(0,cal-b.valid-b.dropped-b.wait-b.check);tot.cal+=cal;tot.valid+=b.valid;tot.dropped+=b.dropped;tot.wait+=b.wait;tot.check+=b.check;
+    function seg(c,v,l){return v>0?'<span class="'+c+'" style="width:'+(v/cal*100).toFixed(2)+'%" title="'+l+' '+hrs(v)+'h ('+num(v/cal*100,1)+'%)"></span>':'';}
+    return '<div class="barrow'+(utilSel===k?' sel':'')+'" data-k="'+esc(k)+'"><span>'+esc(k)+'</span><span class="stack">'+seg('s-valid',b.valid,'유효 스캔')+seg('s-drop',b.dropped,'버려진 스캔')+seg('s-wait',b.wait,'재스캔 대기')+seg('s-check',b.check,'점검 스캔')+seg('s-other',other,'기타')+'</span><span style="text-align:right">'+num(b.valid/cal*100,1)+'%</span></div>';}).join('');
+  $('utilBars').innerHTML=h||'<p class="hint">조사 범위에 Batch Report가 없습니다.</p>';
+  var k=[['달력 시간',hrs(tot.cal),'h',order.length+'개 '+({d:'일',w:'주',m:'월'})[unit]],['유효 스캔',num(tot.valid/tot.cal*100,1),'%',hrs(tot.valid)+'h · 최종 고른 웨이퍼 몫'],['버려진 스캔',hrs(tot.dropped),'h','오류·중복 웨이퍼 몫'],['재스캔 대기',hrs(tot.wait),'h','같은 묶음 시도 사이'],['기타(구분 불가)',num(Math.max(0,tot.cal-tot.valid-tot.dropped-tot.wait-tot.check)/tot.cal*100,1),'%','대기·PM·셋업·전원 OFF']];
+  $('utilKpis').innerHTML=k.map(function(x){return '<article><span>'+x[0]+'</span><strong>'+x[1]+'<small>'+x[2]+'</small></strong><p>'+x[3]+'</p></article>';}).join('');
+  var src=utilSel&&by[utilSel]?[by[utilSel]]:order.map(function(x){return by[x];}),rec={},err={};
+  src.forEach(function(b){Object.keys(b.rec).forEach(function(r){rec[r]=(rec[r]||0)+b.rec[r];});Object.keys(b.err).forEach(function(e){var t=err[e]||(err[e]=[0,0,{}]);t[0]+=b.err[e][0];t[1]+=b.err[e][1];Object.keys(b.err[e][2]).forEach(function(li){t[2][li]=1;});});});
+  var rt=Object.keys(rec).reduce(function(a,r){return a+rec[r];},0);$('recTitle').textContent='레시피(Job · Recipe(s))별 유효 스캔 점유'+(utilSel?' — '+utilSel:' — 전체 기간');
+  $('recBars').innerHTML=Object.keys(rec).sort(function(a,b){return rec[b]-rec[a];}).map(function(r){return '<div class="hbar"><span class="lab">'+esc(r)+'</span><span class="track"><span style="width:'+(rec[r]/rt*100).toFixed(1)+'%"></span></span><span class="val">'+num(rec[r]/rt*100,1)+'% · '+hrs(rec[r])+'h</span></div>';}).join('')||'<p class="hint">유효 스캔 없음</p>';
+  $('errTitle').textContent='오류 원문별 잃은 시간'+(utilSel?' — '+utilSel:' — 전체 기간');
+  $('errBody').innerHTML=Object.keys(err).sort(function(a,b){return (err[b][0]+err[b][1])-(err[a][0]+err[a][1]);}).map(function(e){var t=err[e];return '<tr class="clickable" data-e="'+esc(e)+'"><td>'+esc(e)+'</td><td class="num">'+hrs(t[0])+'h</td><td class="num">'+hrs(t[1])+'h</td><td class="num"><b>'+hrs(t[0]+t[1])+'h</b></td><td class="num">'+Object.keys(t[2]).length+'</td></tr>';}).join('')||'<tr><td colspan="5">잃은 시간 없음</td></tr>';
+  $('errBody').onclick=function(ev){var tr=ev.target.closest('tr[data-e]');if(!tr)return;var e=tr.getAttribute('data-e'),lis=Object.keys(err[e][2]).map(Number);
+    $('errLots').innerHTML='<p class="hint">'+esc(e)+' — Lot '+lis.length+'개 (누르면 ① Lot 추적으로)</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+lis.slice(0,60).map(function(li){return '<button style="min-height:28px;padding:3px 10px;font-size:12px" data-golot="'+li+'">'+esc(LOTS[li].label)+'</button>';}).join('')+'</div>';};
+  $('errLots').onclick=function(ev){var b=ev.target.closest('[data-golot]');if(b)gotoLot(+b.getAttribute('data-golot'));};}
+$('utilBars').onclick=function(e){var r=e.target.closest('[data-k]');if(!r)return;var k=r.getAttribute('data-k');utilSel=utilSel===k?null:k;$('errLots').innerHTML='';drawUtil();};
+
+/* ---------- ④ WPH ---------- */
+function drawWph(){var g={},rs={};function key(m,r){return r+'||'+m;}
+  D.C.base.forEach(function(x){if(!machinesOn[x.m]||x.d<range.from||x.d>range.to)return;var k=key(x.m,x.r),t=g[k]||(g[k]={m:x.m,r:x.r,bw:0,bs:0,bn:0,ew:0,es:0,en:0});t.bw+=x.w;t.bs+=x.s;t.bn++;rs[x.r]=1;});
+  D.C.eff.forEach(function(x){if(!machinesOn[x.m]||x.d<range.from||x.d>range.to)return;var k=key(x.m,x.r),t=g[k]||(g[k]={m:x.m,r:x.r,bw:0,bs:0,bn:0,ew:0,es:0,en:0});t.ew+=x.w;t.es+=x.s;t.en++;rs[x.r]=1;});
+  var sel=$('wphRecipe'),cur=sel.value;sel.innerHTML='<option value="">전체 레시피</option>'+Object.keys(rs).sort().map(function(r){return '<option'+(r===cur?' selected':'')+'>'+esc(r)+'</option>';}).join('');
+  var rows=Object.keys(g).map(function(k){return g[k];}).filter(function(t){return !sel.value||t.r===sel.value;}).sort(function(a,b){return b.en-a.en;});
+  $('wphBody').innerHTML=rows.map(function(t){var b=t.bs?t.bw*3600/t.bs:null,e=t.es?t.ew*3600/t.es:null;return '<tr><td>'+esc(t.r)+'</td><td>'+esc(t.m)+'</td><td class="num">'+num(b,1)+'</td><td class="num">'+t.bn+'</td><td class="num">'+num(e,1)+'</td><td class="num">'+t.en+'</td><td class="num">'+(b&&e!=null?num((1-e/b)*100,1)+'%':'—')+'</td><td class="num">'+num(t.ew)+'</td><td class="num">'+hrs(t.es)+'</td></tr>';}).join('')||'<tr><td colspan="9">조사 범위에 WPH 자료가 없습니다.</td></tr>';
+  var top=rows[0],mx=0;rows.forEach(function(t){mx=Math.max(mx,t.bs?t.bw*3600/t.bs:0,t.es?t.ew*3600/t.es:0);});
+  $('wphChartTitle').textContent='호기 비교 — '+(sel.value||'레시피를 고르면 같은 레시피 호기끼리');
+  $('wphChart').innerHTML=(sel.value?rows:rows.slice(0,6)).map(function(t){var b=t.bs?t.bw*3600/t.bs:0,e=t.es?t.ew*3600/t.es:0;return '<div style="font-size:11.5px;color:var(--muted);margin-top:6px">'+esc(t.r)+'</div><div class="row"><span>'+esc(t.m)+' 기준</span><span class="track"><span style="width:'+(b/mx*100)+'%;background:#31517c"></span></span><span>'+num(b,1)+'</span></div><div class="row"><span>'+esc(t.m)+' 실효</span><span class="track"><span style="width:'+(e/mx*100)+'%;background:#10b981"></span></span><span>'+num(e,1)+'</span></div>';}).join('')+
+    '<p class="hint">보내주신 자료는 호기 1대라 막대가 호기당 한 쌍입니다. 여러 호기를 조사하면 같은 레시피 아래 호기마다 한 쌍씩 나란히 나옵니다.</p>';
+  var bases={};rows.forEach(function(t){bases[t.r+'|'+t.m]=t.bs?t.bw*3600/t.bs:null;});
+  var loss=D.C.eff.filter(function(x){return machinesOn[x.m]&&x.d>=range.from&&x.d<=range.to&&(!sel.value||x.r===sel.value)&&x.n>1;}).map(function(x){return [x,x.w*3600/x.s];}).sort(function(a,b){return a[1]-b[1];}).slice(0,40);
+  $('wphLoss').innerHTML=loss.map(function(p){var x=p[0];return '<tr class="clickable" data-li="'+x.lot+'"><td><b>'+esc(LOTS[x.lot].label)+'</b> · 묶음 '+(x.b+1)+'</td><td>'+esc(LOTS[x.lot].bunches[x.b].s)+'</td><td>'+esc(x.m)+'</td><td class="num">'+x.n+'</td><td class="num">'+x.w+'</td><td class="num">'+hrs(x.s)+'</td><td class="num">'+num(p[1],1)+'</td></tr>';}).join('')||'<tr><td colspan="7">나눠 스캔한 묶음이 없습니다.</td></tr>';}
+$('wphRecipe').onchange=drawWph;$('wphLoss').onclick=function(e){var tr=e.target.closest('tr[data-li]');if(tr)gotoLot(+tr.getAttribute('data-li'));};
+
+function renderAll(){lotLast='';drawLots();drawCauses();drawUtil();drawWph();$('scopeCount').textContent=Object.keys(machinesOn).filter(function(m){return machinesOn[m];}).length+'개 호기 · '+range.from+' ~ '+range.to;}
+stepper();renderAll();
+var bbf=LOTS.findIndex(function(l){return l.code==='BBF';});if(bbf>=0)openLot(bbf);
+})();
+</script>
+</body></html>

@@ -34,6 +34,15 @@
   `docs/screenshots/rev1-batch.png` 갱신(? 버튼·Lot 추적 HTML). Windows 실기·빌드·배포 미수행.
 - 다음: 사용자 HTML 검토 피드백 반영 → 중복 웨이퍼 사람 선택 저장(로컬 Cache) → A(찾기·취합) · B(가동률·원인) · C(WPH).
 
+## 최신 재개 — Batch Report 피드백 1~3 반영 + 4개 기능 화면 프로토타입 (2026-10-04 KST, `version_v10`)
+
+- 피드백: ①'회복' 같은 해석어 금지 → `한 번에 Pass / 재스캔 Pass / 중복 Pass / Pass 없음`, Lot 상태 `한 번에 완료 / 재스캔으로 완료 /
+  Pass 못 한 웨이퍼 있음` ②오류는 Batch Report 원문 그대로 ③Lot 을 고르면 Lot 취합 → 웨이퍼 취합이 맨 위 ④보고서가 아니라
+  **실제 프로그램에서 4개 기능이 어떻게 동작하는지** 보고 싶다 → `tools/batch_prototype/`(생성기 + 템플릿) 신규.
+- 프로토타입은 실제 앱 `frontend/src/styles.css` 를 그대로 넣은 단일 HTML. 실자료 420개로 Chromium 에서 네 탭·대화창·필터·
+  좁은 화면까지 눌러 보고 콘솔 오류 없음 확인. 실자료·생성 HTML 은 저장소에 넣지 않음.
+- 다음: 사용자 프로토타입 피드백 → 확정된 화면을 React(`main.tsx` Batch Report 탭) + 엔진(lotmodel 기반 ②③④ 계산·선택 저장)으로 구현.
+
 ## 최신 재개 — 공유 문서 IPC 응답성 (2026-09-22 KST)
 
 - 시작 원격 HEAD `aec6d012915c413a7999c5a001274584da12ad46`. 변경 대상 소스/문서는 원격 blob과 로컬 hash 일치 확인 후 작업. git 메타데이터 없는 복구 디렉터리이므로 AGENTS의 API fast-forward 절차 사용.

@@ -257,7 +257,7 @@ def resolve(attempts, overrides=None, bunch_key=None):
         slots = [r["slot"] for _, r in items if r["slot"] is not None]
         wafers.append({"key": key, "slot": slots[0] if slots else None,
                        "wafer_id": next((r["wafer_id"] for _, r in items if is_real_id(r["wafer_id"])), items[0][1]["wafer_id"]),
-                       "cells": [{"attempt": p, "status": r["status"], "pass": r["pass"], "cause": r["cause"],
+                       "cells": [{"attempt": p, "order": r["order"], "status": r["status"], "pass": r["pass"], "cause": r["cause"],
                                   "kind": r["kind"]} for p, r in items],
                        "pick": pick[0] if pick else None, "overridden": overridden,
                        "picked_status": pick[1]["status"] if pick else "",
