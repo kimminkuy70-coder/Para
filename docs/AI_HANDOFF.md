@@ -9,7 +9,18 @@
 - 검증: `py_compile`, test_batchreport(17 중 tkinter 없는 환경 1건 기존 실패 — 변경 전과 동일), test_desktop_batch,
   test_wph 9/9, test_wph_html 5/5, test_wph_status, test_wph_settings, test_desktop_aoiroot, test_desktop_ipc 통과,
   `npx tsc --noEmit` 통과. 브라우저 UI 시험·Windows 실기·빌드·배포 미수행.
-- 다음: Batch Report 기능 4개 분리 재설계(CLAUDE.md '명칭 통일 + 재설계 방향' 절). 사용자 확인 질문 답 대기 — 미구현.
+- 다음: Batch Report 기능 4개 분리 재설계(CLAUDE.md '명칭 통일 + 재설계 방향' 절).
+
+## 최신 재개 — Batch Report M09 폐지 + Lot 모델 1단계 (2026-10-04 KST, `version_v10`)
+
+- M09(품질 이상 후보) 폐지(사용자 확정): 엔진·어댑터·웹/tkinter 입력칸·HTML 설명·테스트. 구 설정의 M09·min_baseline·
+  yield_drop 은 조용히 무시. 9지표.
+- 신규 `param_manager/lotmodel.py` + `tests/test_lotmodel.py`(14). 사용자 제공 실자료 424개(복사본 제외 420)로도 검증
+  (저장소에는 넣지 않음 — `PARA_BATCH_SAMPLE` 로 지정). 기존 Batch Report 분석 탭은 아직 lotmodel 을 쓰지 않는다.
+- 검증: test_lotmodel 14 OK, test_batchreport(tkinter 없는 1건 제외 — 기존과 동일), test_desktop_batch, test_desktop_ipc,
+  test_wph, test_wph_html, `npx tsc --noEmit`, `tools/check_project.py`(test_batchreport 의 tkinter 1건 외 통과).
+  브라우저 UI 시험·Windows 실기·빌드·배포 미수행.
+- 확인 대기: 호기 이동 판정 조건(48h + 미해결 + 같은 공정 단계). 다음: D(Lot 추적) 화면 + 사람 선택 저장(로컬 Cache).
 
 ## 최신 재개 — 공유 문서 IPC 응답성 (2026-09-22 KST)
 
