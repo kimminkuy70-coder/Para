@@ -13,7 +13,8 @@
 - Pass 가 아니면 전부 Error(빈칸 포함). 문구가 여럿이면 첫 문구가 원인.
 - 묶음: 같은 호기에서 시도 간격 12시간 이하. 다른 호기는 '호기 이동 재스캔'일 때만 이어 붙인다
   (앞 묶음에 미해결 웨이퍼가 남았고, 같은 공정 단계(Recipe(s))이며, move_gap_h 이내).
-- 중복 웨이퍼(같은 묶음에서 Pass 2회 이상)는 가장 나중 Pass 를 추천 선택, 사람이 overrides 로 바꾼다.
+- 웨이퍼 판정: 한 번에 Pass / 재스캔 Pass(Error 뒤 다시 스캔해 Pass) / 중복 Pass(Pass 2번 이상) / Pass 없음.
+- 중복 Pass 는 가장 나중 Pass 를 추천 선택, 사람이 overrides 로 바꾼다. 오류는 원문 그대로 보여 준다.
 
 입력 record 는 batchreport_store.collect 의 것과 같다: {id, machine, source_folder?, report}.
 출력은 JSON 으로 그대로 보낼 수 있는 dict/list(시각만 datetime).
@@ -44,8 +45,10 @@ CHAIN_TYPES = {"작업 중단", "검사 제외"}       # 앞 오류 뒤에 따�
 EMPTY = "상태 없음"
 UNKNOWN = "미분류"
 
-# 판정(묶음 안 웨이퍼 최종 결과)
-OK, RECOVERED, DUPLICATE, UNRESOLVED = "정상", "회복", "중복", "미해결"
+# 판정(묶음 안 웨이퍼 최종 결과) — 사용자 피드백(2026-10-04)으로 '회복' 같은 해석어 대신 일어난 일을 그대로 쓴다.
+OK, RECOVERED, DUPLICATE, UNRESOLVED = "한 번에 Pass", "재스캔 Pass", "중복 Pass", "Pass 없음"
+# Lot 상태
+LOT_DONE, LOT_RESCANNED, LOT_OPEN = "한 번에 완료", "재스캔으로 완료", "Pass 못 한 웨이퍼 있음"
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +89,7 @@ def cause_of(status):
     if is_pass(text):
         return None
     if not text:
-        return (EMPTY, "(빈 상태)")
+        return (EMPTY, "(빈 칸)")
     best = None
     for label, phrase in CAUSES:
         m = re.search(r"\b" + re.escape(phrase.rstrip(".")) + r"\b\.?", text, re.I)
@@ -157,7 +160,7 @@ def attempt(record):
     raw_rows = report.get("wafers", [])
     lots = [wph.safe_field(w, "Lot") for w in raw_rows]
     sm = sm_of(report.get("file_name", ""), job, setup, lots)
-    rows, trigger = [], None
+    rows, trigger, trigger_phrase = [], None, ""
     for index, raw in enumerate(raw_rows):
         wid = wph.safe_field(raw, "Wafer ID")
         status = wph.safe_field(raw, "Pass/Fail", "Status", "State")
@@ -166,7 +169,8 @@ def attempt(record):
         if cause:
             # 앞에 오류가 있었으면 Aborted/Skipped 는 연쇄(원인 = 그 앞 첫 오류), 아니면 그 자체가 원인(직접).
             kind = "연쇄" if cause[0] in CHAIN_TYPES and trigger else "원인"
-            trigger = trigger or cause[0]
+            if not trigger:
+                trigger, trigger_phrase = cause[0], cause[1]
         good = _number(wph.safe_field(raw, "Good Dice"))
         scanned = _number(wph.safe_field(raw, "Scanned Dice"))
         bad = _number(wph.safe_field(raw, "Bad Dice"))
@@ -177,6 +181,7 @@ def attempt(record):
                      "pass": cause is None, "cause": cause[0] if cause else "",
                      "phrase": cause[1] if cause else "", "kind": kind,
                      "trigger": trigger if kind == "연쇄" else "",
+                     "trigger_phrase": trigger_phrase if kind == "연쇄" else "",
                      "scanned": scanned, "bad": bad, "good": good,
                      "yield": _number(wph.safe_field(raw, "Yield")),
                      "recipe": wph.safe_field(raw, "Recipe(s)", "Recipe")})
@@ -255,8 +260,12 @@ def resolve(attempts, overrides=None, bunch_key=None):
                        "cells": [{"attempt": p, "status": r["status"], "pass": r["pass"], "cause": r["cause"],
                                   "kind": r["kind"]} for p, r in items],
                        "pick": pick[0] if pick else None, "overridden": overridden,
+                       "picked_status": pick[1]["status"] if pick else "",
+                       "dice": [pick[1]["scanned"], pick[1]["bad"], pick[1]["good"]] if pick else None,
                        "verdict": verdict,
-                       "cause": direct["cause"] if direct else chained["trigger"] if chained else "",
+                       # 표시는 Batch Report 원문 그대로(간소화 금지, 사용자 지시). cause_type 은 내부 분류.
+                       "cause": direct["phrase"] if direct else chained["trigger_phrase"] if chained else "",
+                       "cause_type": direct["cause"] if direct else chained["trigger"] if chained else "",
                        "chain_only": bool(chained and not direct)})
     totals["yield"] = totals["good"] / totals["scanned"] * 100 if totals["scanned"] else None
     return wafers, dict(counts), totals
@@ -367,6 +376,6 @@ def build(records, overrides=None, same_gap_h=SAME_MACHINE_GAP_H, move_gap_h=MOV
                          "unresolved": unresolved, "recovered": recovered,
                          "duplicates": sum(b["duplicates"] for b in bunches),
                          "moved": any(b["moved"] for b in bunches),
-                         "state": "미해결 있음" if unresolved else "오류 후 회복" if recovered else "정상"})
+                         "state": LOT_OPEN if unresolved else LOT_RESCANNED if recovered else LOT_DONE})
     lots.sort(key=lambda lot: (lot["start"] or datetime.max, lot["key"]))
     return {"lots": lots, "excluded": excluded}

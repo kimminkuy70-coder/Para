@@ -35,17 +35,13 @@ CRITERIA = [
      "Scan 2D Error. Aborted. → 2D Scan 오류"),
     ("연쇄", "같은 Batch Report에서 앞에 오류가 있었으면 뒤따르는 Aborted · Skipped는 연쇄로 표시합니다. "
      "원인 집계에서는 연쇄를 따로 셉니다.", ""),
-    ("웨이퍼 최종 결과", "묶음 안에서 웨이퍼마다 정상(한 번에 Pass) · 회복(Error 뒤 Pass) · 중복(Pass 2번 이상) · "
-     "미해결(Pass 없음)으로 판정합니다. 묶음이 다르면 중복이 아닙니다.", ""),
+    ("웨이퍼 결과", "묶음 안에서 웨이퍼마다 한 번에 Pass · 재스캔 Pass(Error 뒤 다시 스캔해 Pass) · 중복 Pass(Pass 2번 이상) · "
+     "Pass 없음(끝까지 Pass 못 함)으로 나눕니다. 묶음이 다르면 중복이 아닙니다.", ""),
+    ("오류 표시", "오류는 Batch Report의 Pass/Fail 원문 그대로 보여 줍니다. 묶어서 셀 때만 첫 문구를 씁니다.", "Scan 2D Error. Aborted. → 첫 문구 Scan 2D Error."),
     ("중복 선택 · Dice 합계", "중복이면 가장 나중 Pass를 추천 선택합니다. Dice 합계는 웨이퍼마다 고른 행 하나만 더합니다.", ""),
     ("한계", "Lot ID가 없는 스캔(WBG 숫자 ID)끼리는 같은 3글자를 다른 Lot이 다시 써도 구분할 수 없습니다. "
      "호기 이동은 조사에 포함된 호기의 Batch Report끼리만 이어집니다.", ""),
 ]
-
-CODE = {"맵 Import 오류": "MAP", "2D Scan 오류": "2D", "Alignment 오류": "ALN", "Wafer ID 판독 오류": "ID",
-        "검사 대상 없음": "NTS", "작업 중단": "AB", "검사 제외": "SK", "Clean Reference 오류": "CR",
-        "Focus Mapping 오류": "FM", lm.EMPTY: "—", lm.UNKNOWN: "?"}
-
 
 def _t(value):
     return value.strftime("%Y-%m-%d %H:%M") if isinstance(value, datetime) else (value or "")
@@ -55,9 +51,13 @@ def _esc(value):
     return html.escape(str(value if value is not None else ""), quote=True)
 
 
+RECOVERED, UNRESOLVED, DUPLICATE, OK = lm.RECOVERED, lm.UNRESOLVED, lm.DUPLICATE, lm.OK
+VERDICTS = (OK, RECOVERED, DUPLICATE, UNRESOLVED)
+
+
 def cause_summary(model):
-    """원인(첫 문구)별: 영향 Lot 수, 웨이퍼 수, 그 뒤 회복/미해결."""
-    rows = defaultdict(lambda: {"lots": set(), "wafers": 0, "chain": 0, RECOVERED: 0, UNRESOLVED: 0, DUPLICATE: 0})
+    """오류 첫 문구(원문)별: 영향 Lot 수, 웨이퍼 수, 그중 연쇄, 그 뒤 Pass / Pass 없음."""
+    rows = defaultdict(lambda: {"lots": set(), "wafers": 0, "chain": 0, "passed": 0, "open": 0})
     for lot in model["lots"]:
         for bunch in lot["bunches"]:
             for w in bunch["wafers"]:
@@ -67,18 +67,14 @@ def cause_summary(model):
                 item["lots"].add(lot["key"])
                 item["wafers"] += 1
                 item["chain"] += w["chain_only"]
-                if w["verdict"] in item:
-                    item[w["verdict"]] += 1
-    out = [{"cause": k, "code": CODE.get(k, "?"), "lots": len(v["lots"]), "wafers": v["wafers"], "chain": v["chain"],
-            "recovered": v[RECOVERED] + v[DUPLICATE], "unresolved": v[UNRESOLVED]} for k, v in rows.items()]
+                item["open" if w["verdict"] == UNRESOLVED else "passed"] += 1
+    out = [{"cause": k, "lots": len(v["lots"]), "wafers": v["wafers"], "chain": v["chain"],
+            "passed": v["passed"], "open": v["open"]} for k, v in rows.items()]
     return sorted(out, key=lambda r: (-r["lots"], -r["wafers"]))
 
 
-RECOVERED, UNRESOLVED, DUPLICATE = lm.RECOVERED, lm.UNRESOLVED, lm.DUPLICATE
-
-
 def to_data(model):
-    """HTML 에 넣을 JSON(시각은 문자열, 셀은 짧은 코드)."""
+    """HTML 에 넣을 JSON(시각은 문자열). 상태는 원문 그대로."""
     lots = []
     for lot in model["lots"]:
         bunches = []
@@ -88,9 +84,9 @@ def to_data(model):
                          "pass": sum(r["pass"] for r in a["rows"]), "lot_id": a["lot_id"] or ""}
                         for a in b["attempts"]]
             wafers = [{"slot": w["slot"], "id": w["wafer_id"], "pick": w["pick"], "v": w["verdict"],
-                       "cause": w["cause"] + (" (연쇄)" if w["chain_only"] else ""),
-                       "cells": [[c["attempt"], "P" if c["pass"] else CODE.get(c["cause"], "?"),
-                                  1 if c["kind"] == "연쇄" else 0, "" if c["pass"] else c["status"]] for c in w["cells"]]}
+                       "cause": w["cause"], "chain": w["chain_only"], "dice": w["dice"],
+                       "cells": [[c["attempt"], c["status"] or "(빈 칸)", 1 if c["pass"] else 0, 1 if c["kind"] == "연쇄" else 0]
+                                 for c in w["cells"]]}
                       for w in b["wafers"]]
             tot = b["totals"]
             bunches.append({"start": _t(b["start"]), "end": _t(b["end"]), "step": b["step"], "moved": b["moved"],
@@ -99,13 +95,12 @@ def to_data(model):
                             "totals": {"scanned": tot["scanned"], "bad": tot["bad"], "good": tot["good"],
                                        "yield": round(tot["yield"], 2) if tot["yield"] is not None else None,
                                        "missing": tot["missing"]}})
-        causes = Counter(w["cause"] for b in lot["bunches"] for w in b["wafers"] if w["cause"])  # 연쇄는 일으킨 원인으로
+        causes = Counter(w["cause"] for b in lot["bunches"] for w in b["wafers"] if w["cause"])
         lots.append({"key": lot["key"], "label": lot["label"], "code": lot["code"], "lot_id": lot["lot_id"] or "",
                      "sms": lot["sms"], "jobs": lot["jobs"], "machines": lot["machines"], "attempts": lot["attempts"],
                      "start": _t(lot["start"]), "end": _t(lot["end"]), "state": lot["state"],
-                     "unresolved": lot["unresolved"], "recovered": lot["recovered"], "duplicates": lot["duplicates"],
-                     "moved": lot["moved"], "causes": [CODE.get(k, "?") + " " + str(n) for k, n in causes.most_common(3)],
-                     "bunches": bunches})
+                     "unresolved": lot["unresolved"], "duplicates": lot["duplicates"], "moved": lot["moved"],
+                     "causes": [f"{k} ×{n}" for k, n in causes.most_common(3)], "bunches": bunches})
     excluded = [{"machine": a["machine"], "sm": a["sm"], "file": a["file"], "start": _t(a["start"]),
                  "rows": len(a["rows"])} for a in model["excluded"]]
     return {"lots": lots, "excluded": excluded, "causes": cause_summary(model)}
@@ -117,7 +112,7 @@ LOT_CSS = """
 .qbtn{border:1.5px solid var(--teal);color:var(--teal);background:#fff;border-radius:999px;padding:6px 14px;font:inherit;font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap}
 .qbtn:hover,.qbtn[aria-expanded=true]{background:var(--teal);color:#fff}
 .crit{display:none;margin:18px 0 4px;border:1px solid var(--line);border-radius:14px;background:var(--teal-bg);padding:14px 18px}
-.crit.on{display:block;animation:fade .2s ease}
+.crit.on{display:block}
 .crit dl{display:grid;grid-template-columns:150px 1fr;gap:8px 16px;margin:0}
 .crit dt{font-weight:800;color:var(--teal);font-size:13px}.crit dd{margin:0;font-size:13px}
 .crit dd small{display:block;color:var(--soft);font-family:Consolas,monospace;font-size:11.5px;margin-top:2px}
@@ -133,7 +128,8 @@ LOT_CSS = """
 .pill.ok{background:var(--teal-bg);color:var(--teal)}.pill.rec{background:var(--amber-bg);color:var(--amber)}
 .pill.bad{background:var(--rust-bg);color:var(--rust)}.pill.mv{background:var(--navy-bg);color:var(--navy)}
 .pill.dup{background:var(--slate-bg);color:var(--slate)}
-.modal{max-width:1120px}
+.modal{max-width:1180px}
+.mbody h4{font-size:14px;color:var(--navy);margin:18px 0 6px}
 .bunch{border:1px solid var(--line);border-radius:14px;margin:14px 0;overflow:hidden}
 .bunch>.bh{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 14px;background:var(--slate-bg);font-size:12.5px;color:var(--soft)}
 .bunch>.bh b{color:var(--ink);font-size:13.5px}
@@ -145,27 +141,27 @@ LOT_CSS = """
 .att span.dis{color:var(--faint);border-color:var(--line)}
 .mapwrap{overflow-x:auto;margin-top:10px}
 table.map{width:auto;min-width:0;border-radius:0;font-size:11.5px;margin:0}
-table.map th,table.map td{padding:2px 7px;text-align:center;border:1px solid var(--line2);font-family:Consolas,monospace;white-space:nowrap}
-table.map thead th{position:static;background:var(--navy);font-family:inherit;font-size:11px;line-height:1.3}
+table.map th,table.map td{padding:2px 7px;border:1px solid var(--line2);white-space:nowrap}
+table.map thead th{position:static;background:var(--navy);font-size:11px;line-height:1.3;text-align:center}
 table.map thead th small{display:block;font-weight:400;opacity:.8}
 table.map tbody tr:nth-child(even) td{background:transparent}
-.c-p{background:var(--teal-bg)!important;color:var(--teal)}.c-e{background:var(--rust-bg)!important;color:var(--rust);font-weight:800}
-.c-c{background:var(--amber-bg)!important;color:var(--amber)}.c-n{color:#c4cbd4}
-table.map td.cz{font-family:inherit;text-align:left}
+table.map td.n{text-align:right;font-variant-numeric:tabular-nums}
+.c-p{background:var(--teal-bg)!important;color:var(--teal)}.c-e{background:var(--rust-bg)!important;color:var(--rust);font-weight:700}
+.c-c{background:var(--amber-bg)!important;color:var(--amber)}.c-n{color:#c4cbd4;text-align:center}
 .c-pick{box-shadow:inset 0 0 0 2px var(--navy)}.c-drop{text-decoration:line-through;opacity:.55}
-.v-정상{color:var(--teal)}.v-회복{color:var(--amber);font-weight:800}.v-중복{color:var(--navy);font-weight:800}.v-미해결{color:var(--rust);font-weight:800}
-.tot{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:12.5px}.tot b{font-family:Consolas,monospace}
+.v-ok{color:var(--teal)}.v-re{color:var(--amber);font-weight:800}.v-dup{color:var(--navy);font-weight:800}.v-open{color:var(--rust);font-weight:800}
 .mkeys{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--soft);margin:8px 0}
-.mkeys i{font-style:normal;font-family:Consolas,monospace;padding:0 5px;border-radius:3px}
+.mkeys i{font-style:normal;padding:0 5px;border-radius:3px}
 @media(max-width:720px){.crit dl{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
 """
 
 LOT_JS = r"""
 (function(){
-var D=window.__LOTDATA,L=D.lots;
+var D=window.__LOTDATA,L=D.lots,V=['한 번에 Pass','재스캔 Pass','중복 Pass','Pass 없음'],VC={'한 번에 Pass':'v-ok','재스캔 Pass':'v-re','중복 Pass':'v-dup','Pass 없음':'v-open'};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function pill(l){var c=l.state==='미해결 있음'?'bad':l.state==='오류 후 회복'?'rec':'ok',h='<span class="pill '+c+'">'+esc(l.state)+'</span>';
- if(l.duplicates)h+=' <span class="pill dup">중복 '+l.duplicates+'</span>';if(l.moved)h+=' <span class="pill mv">호기 이동</span>';return h;}
+function num(v){return v==null?'—':(Math.round(v*100)/100).toLocaleString();}
+function pill(l){var c=l.state==='Pass 못 한 웨이퍼 있음'?'bad':l.state==='재스캔으로 완료'?'rec':'ok',h='<span class="pill '+c+'">'+esc(l.state)+'</span>';
+ if(l.duplicates)h+=' <span class="pill dup">중복 Pass '+l.duplicates+'</span>';if(l.moved)h+=' <span class="pill mv">호기 이동</span>';return h;}
 var q=document.getElementById('q'),st=document.getElementById('st'),mc=document.getElementById('mc'),
     fd=document.getElementById('fd'),fm=document.getElementById('fm'),fs=document.getElementById('fs'),body=document.getElementById('lotbody'),cnt=document.getElementById('cnt');
 var ms={};L.forEach(function(l){l.machines.forEach(function(m){ms[m]=1;});});
@@ -179,13 +175,37 @@ function draw(){
   if(t&&(l.label+' '+l.sms.join(' ')+' '+l.lot_id+' '+l.jobs.join(' ')).toUpperCase().indexOf(t)<0)return;
   if(st.value&&l.state!==st.value)return;if(mc.value&&l.machines.indexOf(mc.value)<0)return;
   if(fd.checked&&!l.duplicates)return;if(fm.checked&&!l.moved)return;if(fs.checked&&!l.bunches.some(function(b){return b.attempts.length>1;}))return;
-  n++;rows.push('<tr data-i="'+i+'"><td><b>'+esc(l.label)+'</b></td><td>'+esc(l.sms.join(', '))+'</td><td>'+esc(l.machines.join(', '))+
+  n++;rows.push('<tr data-i="'+i+'"><td><b>'+esc(l.label)+'</b></td><td>'+esc(l.sms.join(', '))+'</td><td>'+esc(l.machines.join(' → '))+
    '</td><td>'+l.bunches.length+'</td><td>'+l.attempts+'</td><td>'+esc(l.start)+'</td><td>'+pill(l)+'</td><td>'+(l.unresolved||'')+
    '</td><td>'+esc(l.causes.join(' · '))+'</td></tr>');});
  body.innerHTML=rows.join('')||'<tr><td colspan="9">조건에 맞는 Lot이 없습니다.</td></tr>';cnt.textContent=n+' / '+L.length+' Lot';}
 q.addEventListener('input',draw);[st,mc,fd,fm,fs].forEach(function(el){el.addEventListener('change',draw);});
 body.addEventListener('click',function(e){var tr=e.target.closest('tr[data-i]');if(tr)openLot(+tr.getAttribute('data-i'));});
 function fileUrl(a){return a.path?('file:///'+(a.path+'/'+a.file).replace(/\\/g,'/')):'';}
+// ① Lot 취합 표 — 묶음마다 한 행(공정 단계가 다른 묶음을 더하면 같은 웨이퍼가 두 번 들어가므로 따로).
+function summaryTable(l){
+ var h='<div class="tscroll"><table><thead><tr><th>묶음</th><th>공정 단계</th><th>기간</th><th>호기</th><th>시도</th><th>웨이퍼</th>'+V.map(function(v){return '<th>'+v+'</th>';}).join('')+
+  '<th>Scanned</th><th>Bad</th><th>Good</th><th>Yield</th></tr></thead><tbody>';
+ l.bunches.forEach(function(b,i){var c=b.counts,t=b.totals;
+  h+='<tr><td><b>묶음 '+(i+1)+'</b></td><td>'+esc(b.step)+'</td><td>'+esc(b.start)+' ~ '+esc(b.end.slice(5))+'</td><td>'+esc(b.machines.join(' → '))+(b.moved?' <span class="pill mv">호기 이동</span>':'')+
+   '</td><td>'+b.attempts.length+'</td><td>'+b.wafers.length+'</td>'+V.map(function(v){return '<td class="'+VC[v]+'">'+(c[v]||'')+'</td>';}).join('')+
+   '<td>'+num(t.scanned)+'</td><td>'+num(t.bad)+'</td><td>'+num(t.good)+'</td><td>'+(t.yield==null?'—':t.yield+'%')+'</td></tr>';});
+ return h+'</tbody></table></div>';}
+// ② 웨이퍼 취합 표 — 슬롯마다 묶음별 최종 결과(고른 Batch Report 의 원문)와 Dice.
+function waferTable(l){
+ var slots={},keys=[];l.bunches.forEach(function(b,bi){b.wafers.forEach(function(w){var k=w.slot==null?'ID '+w.id:w.slot;if(!slots[k]){slots[k]={};keys.push(k);}slots[k][bi]=w;});});
+ keys.sort(function(a,b){return (typeof b==='number'?b:-1)-(typeof a==='number'?a:-1);});
+ var h='<div class="mapwrap"><table class="map"><thead><tr><th rowspan="2">슬롯</th><th rowspan="2">Wafer ID</th>';
+ l.bunches.forEach(function(b,i){h+='<th colspan="5">묶음 '+(i+1)+' · '+esc(b.step)+'<small>'+esc(b.start.slice(5))+'</small></th>';});
+ h+='</tr><tr>';l.bunches.forEach(function(){h+='<th>결과</th><th>선택</th><th>Scanned</th><th>Bad</th><th>Good</th>';});h+='</tr></thead><tbody>';
+ keys.forEach(function(k){var row=slots[k],id='';l.bunches.forEach(function(b,bi){if(row[bi]&&/[A-Za-z]/.test(row[bi].id)&&!/^Slot/i.test(row[bi].id))id=row[bi].id;});
+  h+='<tr><th>'+esc(k)+'</th><td>'+esc(id||(row[0]||row[Object.keys(row)[0]]).id)+'</td>';
+  l.bunches.forEach(function(b,bi){var w=row[bi];if(!w){h+='<td class="c-n" colspan="5">·</td>';return;}
+   var picked=w.pick==null?null:w.cells.filter(function(c){return c[0]===w.pick;})[0];
+   h+='<td class="'+VC[w.v]+'">'+esc(picked?picked[1]:(w.cells[w.cells.length-1]||[])[1])+(w.v!=='한 번에 Pass'?' <small>('+esc(w.v)+')</small>':'')+'</td><td>'+(w.pick==null?'—':'#'+(w.pick+1))+'</td>'+
+    '<td class="n">'+num(w.dice&&w.dice[0])+'</td><td class="n">'+num(w.dice&&w.dice[1])+'</td><td class="n">'+num(w.dice&&w.dice[2])+'</td>';});
+  h+='</tr>';});
+ return h+'</tbody></table></div>';}
 function bunchHtml(b,bi){
  var h='<div class="bunch"><div class="bh"><b>묶음 '+(bi+1)+'</b><span>'+esc(b.start)+' ~ '+esc(b.end)+'</span><span>공정 단계 '+esc(b.step||'—')+
   '</span><span>'+esc(b.machines.join(' → '))+'</span><span>시도 '+b.attempts.length+'회 · 스캔 '+b.hours+'h</span>'+(b.moved?'<span class="pill mv">호기 이동</span>':'')+'</div><div class="inner">';
@@ -193,22 +213,19 @@ function bunchHtml(b,bi){
   h+='<div class="att"><span class="n">#'+(ai+1)+'</span><span>'+esc(a.start)+' ~ '+esc(a.end.slice(11))+'</span><b>'+esc(a.machine)+'</b><span>S/M '+esc(a.sm)+'</span><span>'+esc(a.step)+
    '</span><span>Pass '+a.pass+' / '+a.rows+'행</span><code>'+esc(a.file)+'</code>'+(u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">원문 열기</a>':'<span class="dis">원문(경로 없음)</span>')+'</div>';});
  var head='<tr><th>슬롯</th><th>Wafer ID</th>';b.attempts.forEach(function(a,ai){head+='<th>#'+(ai+1)+'<small>'+esc(a.machine)+' '+esc(a.start.slice(5))+'</small></th>';});
- head+='<th>최종</th><th>판정</th><th>원인</th></tr>';var rows='';
+ head+='<th>결과</th><th>첫 오류 원문</th></tr>';var rows='';
  b.wafers.forEach(function(w){var cells=[],k;for(k=0;k<b.attempts.length;k++)cells.push('<td class="c-n">·</td>');
-  var passes=w.cells.filter(function(c){return c[1]==='P';}).length;
-  w.cells.forEach(function(c){var cls=c[1]==='P'?'c-p':c[2]?'c-c':'c-e';if(c[1]==='P'&&passes>1)cls+=c[0]===w.pick?' c-pick':' c-drop';
-   cells[c[0]]='<td class="'+cls+'" title="'+esc(c[3]||'Pass')+'">'+esc(c[1])+'</td>';});
-  rows+='<tr><th>'+(w.slot==null?'?':w.slot)+'</th><td>'+esc(w.id)+'</td>'+cells.join('')+'<td>'+(w.pick==null?'—':'#'+(w.pick+1))+'</td><td class="v-'+esc(w.v)+'">'+esc(w.v)+'</td><td class="cz">'+esc(w.cause)+'</td></tr>';});
- h+='<div class="mapwrap"><table class="map"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div>';
- var t=b.totals,c=b.counts;
- h+='<div class="tot"><span>정상 <b>'+(c['정상']||0)+'</b></span><span>회복 <b>'+(c['회복']||0)+'</b></span><span>중복 <b>'+(c['중복']||0)+'</b></span><span>미해결 <b>'+(c['미해결']||0)+
-  '</b></span><span>Scanned <b>'+t.scanned+'</b></span><span>Bad <b>'+t.bad+'</b></span><span>Good <b>'+t.good+'</b></span><span>Yield <b>'+(t.yield==null?'—':t.yield+'%')+'</b></span>'+(t.missing?'<span>Dice 없음 '+t.missing+'장</span>':'')+'</div>';
- return h+'</div></div>';}
+  var passes=w.cells.filter(function(c){return c[2];}).length;
+  w.cells.forEach(function(c){var cls=c[2]?'c-p':c[3]?'c-c':'c-e';if(c[2]&&passes>1)cls+=c[0]===w.pick?' c-pick':' c-drop';
+   cells[c[0]]='<td class="'+cls+'">'+esc(c[1])+'</td>';});
+  rows+='<tr><th>'+(w.slot==null?'?':w.slot)+'</th><td>'+esc(w.id)+'</td>'+cells.join('')+'<td class="'+VC[w.v]+'">'+esc(w.v)+'</td><td>'+esc(w.cause)+(w.chain?' <small>(이 오류 뒤 연쇄)</small>':'')+'</td></tr>';});
+ return h+'<div class="mapwrap"><table class="map"><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div></div></div>';}
 var ovl=document.getElementById('ovl'),mt=document.getElementById('mt'),mb=document.getElementById('mb');
 function openLot(i){var l=L[i];mt.textContent=l.label+' — '+l.state;
- mb.innerHTML='<div class="job">'+esc(l.jobs.join(' / '))+'</div><div class="info">S/M '+esc(l.sms.join(', '))+(l.lot_id?' · Lot ID '+esc(l.lot_id):'')+' · 호기 '+esc(l.machines.join(', '))+' · 시도 '+l.attempts+'회</div>'+
-  '<div class="mkeys"><span><i class="c-p">P</i> Pass</span><span><i class="c-e">2D</i> 원인 오류</span><span><i class="c-c">AB</i> 연쇄(앞 오류 뒤 Aborted·Skipped)</span><span><i class="c-p c-pick">P</i> 중복 중 선택</span><span><i class="c-p c-drop">P</i> 중복 제외</span><span>MAP 맵 Import · ALN Alignment · ID Wafer ID 판독 · NTS Nothing to Scan · SK Skipped · CR Clean Reference</span></div>'+
-  l.bunches.map(bunchHtml).join('');ovl.classList.add('on');}
+ mb.innerHTML='<div class="job">'+esc(l.jobs.join(' / '))+'</div><div class="info">S/M '+esc(l.sms.join(', '))+(l.lot_id?' · Lot ID '+esc(l.lot_id):'')+' · 호기 '+esc(l.machines.join(' → '))+' · 시도 '+l.attempts+'회</div>'+
+  '<h4>Lot 취합</h4>'+summaryTable(l)+'<h4>웨이퍼 취합</h4>'+waferTable(l)+
+  '<h4>시도 이력 · Lot × 웨이퍼 오류 지도</h4><div class="mkeys"><span><i class="c-p">Pass</i></span><span><i class="c-e">오류 원문</i> 직접 오류</span><span><i class="c-c">Aborted.</i> 앞 오류 뒤 연쇄</span><span><i class="c-p c-pick">Pass</i> 중복 중 선택</span><span><i class="c-p c-drop">Pass</i> 중복 제외</span></div>'+
+  l.bunches.map(bunchHtml).join('');ovl.classList.add('on');mb.scrollTop=0;}
 document.getElementById('mx').onclick=function(){ovl.classList.remove('on');};
 ovl.addEventListener('click',function(e){if(e.target===ovl)ovl.classList.remove('on');});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')ovl.classList.remove('on');});
@@ -227,20 +244,20 @@ def build_html(model, scope="", created=None):
     kpi = [("", len(lots), "Lot"),
            ("", sum(len(l["bunches"]) for l in lots), "묶음(한 번의 검사)"),
            ("a", sum(1 for l in lots for b in l["bunches"] if len(b["attempts"]) > 1), "나눠 스캔한 묶음"),
-           ("a", sum(l["state"] == "오류 후 회복" for l in lots), "오류 후 회복 Lot"),
-           ("r", sum(l["unresolved"] > 0 for l in lots), "미해결 Lot"),
-           ("t", sum(1 for l in lots for b in l["bunches"] if any(w["v"] == DUPLICATE for w in b["wafers"])), "중복 선택 필요 묶음"),
+           ("a", sum(l["state"] == lm.LOT_RESCANNED for l in lots), "재스캔으로 완료한 Lot"),
+           ("r", sum(l["unresolved"] > 0 for l in lots), "Pass 못 한 웨이퍼가 있는 Lot"),
+           ("t", sum(1 for l in lots for b in l["bunches"] if any(w["v"] == DUPLICATE for w in b["wafers"])), "중복 Pass 묶음(선택 필요)"),
            ("t", sum(l["moved"] for l in lots), "호기 이동 Lot"),
            ("", len(data["excluded"]), "점검 스캔(제외)")]
     kpi_html = "".join(f'<div class="kpi {c}"><div class="n">{n:,}</div><div class="l">{_esc(l)}</div></div>' for c, n, l in kpi)
     crit = "".join(f"<dt>{_esc(t)}</dt><dd>{_esc(d)}{f'<small>{_esc(e)}</small>' if e else ''}</dd>" for t, d, e in CRITERIA)
     cause_rows = "".join(
-        f"<tr><td>{_esc(c['cause'])}</td><td><code>{_esc(c['code'])}</code></td><td>{c['lots']}</td><td>{c['wafers']}</td><td>{c['chain']}</td>"
-        f"<td>{c['recovered']}</td><td>{c['unresolved']}</td></tr>" for c in data["causes"]) or '<tr><td colspan="7">오류 없음</td></tr>'
+        f"<tr><td>{_esc(c['cause'])}</td><td>{c['lots']}</td><td>{c['wafers']}</td><td>{c['chain']}</td>"
+        f"<td>{c['passed']}</td><td>{c['open']}</td></tr>" for c in data["causes"]) or '<tr><td colspan="6">오류 없음</td></tr>'
     excluded = "".join(f"<tr><td>{_esc(e['machine'])}</td><td>{_esc(e['sm'])}</td><td>{_esc(e['start'])}</td><td>{e['rows']}</td>"
                        f"<td>{_esc(e['file'])}</td></tr>" for e in data["excluded"])
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/").replace("<!--", "<\\!--")
-    states = "".join(f'<option value="{s}">{s}</option>' for s in ("미해결 있음", "오류 후 회복", "정상"))
+    states = "".join(f'<option value="{s}">{s}</option>' for s in (lm.LOT_OPEN, lm.LOT_RESCANNED, lm.LOT_DONE))
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Batch Report Lot 추적</title><style>{PAGE_CSS}{LOT_CSS}</style></head><body><div class="doc">
 <div class="head"><div class="kick">AOI Batch Report · Lot 추적 · 오프라인 자동 산출</div>
@@ -249,16 +266,16 @@ def build_html(model, scope="", created=None):
 <div class="crit" id="crit"><dl>{crit}</dl></div></div>
 <div class="pad">
 <div class="kpis">{kpi_html}</div>
-<h2>Lot 목록</h2><p class="sub">행을 누르면 그 Lot의 묶음별 시도와 Lot × 웨이퍼 오류 지도를 봅니다.</p>
+<h2>Lot 목록</h2><p class="sub">행을 누르면 그 Lot의 취합 표 · 웨이퍼 표가 먼저 나오고, 아래에 시도 이력과 Lot × 웨이퍼 오류 지도가 나옵니다.</p>
 <div class="filters"><input type="search" id="q" placeholder="Lot 코드 · S/M · Lot ID · Job 검색" aria-label="Lot 검색">
 <select id="st" aria-label="상태"><option value="">전체 상태</option>{states}</select>
 <select id="mc" aria-label="호기"><option value="">전체 호기</option></select>
 <label><input type="checkbox" id="fs"> 나눠 스캔</label><label><input type="checkbox" id="fd"> 중복 있음</label>
 <label><input type="checkbox" id="fm"> 호기 이동</label><span class="count" id="cnt"></span></div>
-<div class="tscroll"><table class="lots"><thead><tr><th>Lot</th><th>S/M</th><th>호기</th><th>묶음</th><th>시도</th><th>처음 스캔</th><th>상태</th><th>미해결 웨이퍼</th><th>주요 원인(웨이퍼)</th></tr></thead>
+<div class="tscroll"><table class="lots"><thead><tr><th>Lot</th><th>S/M</th><th>호기</th><th>묶음</th><th>시도</th><th>처음 스캔</th><th>상태</th><th>Pass 없는 웨이퍼</th><th>첫 오류 원문(웨이퍼 수)</th></tr></thead>
 <tbody id="lotbody"></tbody></table></div>
-<h2>원인별 Lot</h2><p class="sub">웨이퍼마다 첫 원인으로 셉니다. 앞 오류 때문에 따라온 Aborted · Skipped(연쇄)는 그 앞 오류의 원인으로 셉니다. 회복 = 같은 묶음에서 나중에 Pass, 미해결 = 끝까지 Pass 없음.</p>
-<div class="tscroll"><table><thead><tr><th>원인</th><th>표시</th><th>영향 Lot</th><th>웨이퍼</th><th>그중 연쇄</th><th>회복</th><th>미해결</th></tr></thead><tbody>{cause_rows}</tbody></table></div>
+<h2>오류 원문별 Lot</h2><p class="sub">웨이퍼마다 Pass/Fail 원문의 첫 문구로 셉니다. 앞 오류 때문에 따라온 Aborted. · Skipped.(연쇄)는 그 앞 오류 문구로 셉니다. 이후 Pass = 같은 묶음에서 다시 스캔해 Pass, Pass 없음 = 끝까지 Pass 못 함.</p>
+<div class="tscroll"><table><thead><tr><th>오류 원문(첫 문구)</th><th>영향 Lot</th><th>웨이퍼</th><th>그중 연쇄</th><th>이후 Pass</th><th>Pass 없음</th></tr></thead><tbody>{cause_rows}</tbody></table></div>
 <h2>점검 스캔 (Lot에서 제외)</h2><p class="sub">S/M에 영문 3글자 단어가 없어 Lot으로 보지 않은 Batch Report입니다.</p>
 <div class="tscroll"><table><thead><tr><th>호기</th><th>S/M</th><th>시작</th><th>행</th><th>파일</th></tr></thead><tbody>{excluded or '<tr><td colspan="5">없음</td></tr>'}</tbody></table></div>
 <div class="foot">※ 원본 Batch Report는 읽기만 했습니다. 판정 기준은 위 [? Lot 판정 기준]에 있습니다. 중복 웨이퍼는 가장 나중 Pass를 추천 선택한 결과입니다.</div>

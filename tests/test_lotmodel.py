@@ -77,7 +77,7 @@ class Rules(unittest.TestCase):
         self.assertEqual(lm.cause_of("Failed to read wafer id. Reading error = U4R-ON9?NT. Wafer Skipped.")[0],
                          "Wafer ID 판독 오류")
         self.assertEqual(lm.cause_of("Clean Reference Error.")[0], "Clean Reference 오류")
-        self.assertEqual(lm.cause_of(""), (lm.EMPTY, "(빈 상태)"))          # 빈칸도 Error
+        self.assertEqual(lm.cause_of(""), (lm.EMPTY, "(빈 칸)"))          # 빈칸도 Error
         self.assertEqual(lm.cause_of("Laser drift")[0], lm.UNKNOWN)
 
     def test_chain_after_first_error(self):
@@ -125,7 +125,7 @@ class Bunches(unittest.TestCase):
         self.assertEqual(wbg["counts"], {lm.RECOVERED: 24, lm.DUPLICATE: 1})
         self.assertEqual(cmp_["counts"], {lm.OK: 25})          # 묶음이 다르면 중복 아님
         self.assertEqual(re_["counts"], {lm.RECOVERED: 25})    # Slot 14 ↔ SA89H14 같은 웨이퍼
-        self.assertEqual(lot["state"], "오류 후 회복")
+        self.assertEqual(lot["state"], lm.LOT_RESCANNED)
 
     def test_split_scan_totals_use_picked_rows(self):
         """NSN: 에러로 3번 나눠 스캔해 25장 완료 — 합계는 웨이퍼마다 고른 행 하나씩."""
@@ -140,20 +140,21 @@ class Bunches(unittest.TestCase):
         self.assertEqual(bunch["counts"], {lm.OK: 3, lm.RECOVERED: 22})
         self.assertEqual(bunch["totals"]["scanned"], 25 * 29)
         self.assertEqual(bunch["totals"]["bad"], 25)
-        self.assertEqual(wafer(bunch, 22)["cause"], "2D Scan 오류")
-        self.assertEqual(wafer(bunch, 20)["cause"], "Wafer ID 판독 오류")
+        self.assertEqual(wafer(bunch, 22)["cause"], "Scan 2D Error.")   # 원문 그대로
+        self.assertEqual(wafer(bunch, 20)["cause"], "Failed to read wafer id.")
+        self.assertEqual(wafer(bunch, 20)["cause_type"], "Wafer ID 판독 오류")
 
     def test_chained_wafer_cause_is_the_trigger(self):
-        """KVW: Nothing to Scan 뒤의 Skipped 는 원인 '검사 대상 없음'(연쇄)로 센다."""
+        """KVW: Nothing to Scan 뒤의 Skipped 는 원인 'Nothing to Scan.'(연쇄)로 센다 — 원문 그대로."""
         m = lm.build(records(("AOI-1", report("KVW WBG", full(["Nothing to Scan."] * 8 + ["Skipped."] * 17), "2026-07-09 17:25")),
                              ("AOI-1", report("KVW WBG", full([]), "2026-07-09 20:02"))))
         bunch = only(m, "KVW")["bunches"][0]
-        self.assertEqual((wafer(bunch, 18)["cause"], wafer(bunch, 18)["chain_only"]), ("검사 대상 없음", False))
-        self.assertEqual((wafer(bunch, 17)["cause"], wafer(bunch, 17)["chain_only"]), ("검사 대상 없음", True))
+        self.assertEqual((wafer(bunch, 18)["cause"], wafer(bunch, 18)["chain_only"]), ("Nothing to Scan.", False))
+        self.assertEqual((wafer(bunch, 17)["cause"], wafer(bunch, 17)["chain_only"]), ("Nothing to Scan.", True))
         from param_manager import lotreport
         summary = {c["cause"]: c for c in lotreport.cause_summary(m)}
-        self.assertEqual((summary["검사 대상 없음"]["wafers"], summary["검사 대상 없음"]["chain"]), (25, 17))
-        self.assertNotIn("검사 제외", summary)
+        self.assertEqual((summary["Nothing to Scan."]["wafers"], summary["Nothing to Scan."]["chain"]), (25, 17))
+        self.assertNotIn("Skipped.", summary)
 
     def test_override_changes_pick_and_totals(self):
         m = lm.build(records(("AOI-1", report("KVW WBG", full([]), "2026-07-09 20:02")),
@@ -171,7 +172,7 @@ class Bunches(unittest.TestCase):
     def test_unresolved(self):
         m = lm.build(records(("AOI-1", report("FMC-WBG", full(["Aborted."] * 25), "2026-07-03 01:58"))))
         lot = only(m, "FMC")
-        self.assertEqual((lot["unresolved"], lot["state"]), (25, "미해결 있음"))
+        self.assertEqual((lot["unresolved"], lot["state"]), (25, lm.LOT_OPEN))
         self.assertEqual(lot["bunches"][0]["totals"]["scanned"], 0)
 
 
@@ -218,7 +219,7 @@ class MachineMove(unittest.TestCase):
         self.assertTrue(bunch["moved"] and lot["moved"])
         self.assertEqual(bunch["machines"], ["AOI-9", "AOI-12"])
         self.assertEqual(bunch["counts"], {lm.RECOVERED: 25})
-        self.assertEqual(wafer(bunch, 25)["cause"], "Alignment 오류")
+        self.assertEqual(wafer(bunch, 25)["cause"], "Alignment Error.")
 
     def test_other_machine_is_new_bunch_otherwise(self):
         ok = ("AOI-9", report("LDF", full([]), "2026-07-16 08:00"))

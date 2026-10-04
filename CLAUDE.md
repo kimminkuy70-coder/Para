@@ -73,6 +73,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   `PARA_BATCH_SAMPLE=폴더` 지정 시). 실자료 420개 → Lot 251 · 묶음 340 · 점검 스캔 3 · 미해결 Lot 7.
   호기 이동 조건(48h + 미해결 + 같은 공정 단계)은 **사용자 확정**(2026-10-04).
   · 연쇄(앞 오류 뒤 Aborted/Skipped)만 있는 웨이퍼의 원인 = 그 Batch Report 의 첫 오류(`trigger`, `chain_only`).
+  · **표시 규칙(사용자 피드백 2026-10-04)**: ①해석어 금지 — 웨이퍼 결과는 `한 번에 Pass / 재스캔 Pass / 중복 Pass /
+    Pass 없음`, Lot 상태는 `한 번에 완료 / 재스캔으로 완료 / Pass 못 한 웨이퍼 있음`('회복'·'미해결' 쓰지 않음).
+    ②**오류는 Batch Report 원문 그대로**(약어·한글 분류로 바꾸지 않음; 묶어 셀 때만 첫 문구 `cause`, 내부 분류 `cause_type`).
+    ③Lot 을 고르면 **Lot 취합 표(묶음별) → 웨이퍼 취합 표**가 맨 위, 시도 이력·오류 지도는 그 아래.
 - **Lot 추적 HTML(`param_manager/lotreport.py`)**: 조사(`batchreport_service.run`)마다 `BatchReport_Lot추적.html`
   (`LOT_HTML`, 결과 `lots`) 생성 — KPI · Lot 목록(검색/상태/호기/나눠 스캔/중복/호기 이동 필터) · Lot 클릭 → 묶음별 시도
   (원문 열기 `file:///`) + **Lot × 웨이퍼 오류 지도** + Dice 합계 · 원인별 Lot(연쇄 따로) · 점검 스캔 목록. 외부 의존 없음.
