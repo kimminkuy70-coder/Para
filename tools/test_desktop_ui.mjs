@@ -87,7 +87,7 @@ try{
   await page.getByText(extra,{exact:true}).waitFor();
   // Machines are listed in name order (AOI-01 … AOI-04).
   assert.deepEqual(await page.locator('.subtab-body table').first().locator('tbody tr td:first-child').allInnerTexts(),['AOI-01','AOI-02','AOI-03','AOI-04']);
-  await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
+  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
   await page.getByLabel('AOI-04 검색어').waitFor();
   // 설정: current-settings summary and '수정' (rename + keep folder) of a Batch Report root.
   await page.getByRole('button',{name:'설정',exact:true}).click();
@@ -102,7 +102,7 @@ try{
   await page.getByText(/AOI-05 호기 루트를 수정했습니다/).waitFor();
   await page.getByRole('button',{name:'AOI-05 수정'}).waitFor();
   assert(/AOI-05/.test(await summary.innerText())&&!/AOI-04/.test(await summary.innerText()));
-  await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
+  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
   await page.getByLabel('AOI-05 검색어').waitFor();
   for(const [width,height] of [[1920,1080],[2880,1800],[1280,720],[960,640]]){
     await page.setViewportSize({width,height});
@@ -232,7 +232,7 @@ try{
   await page.getByLabel('현재 위치').waitFor();
   await page.getByRole('button',{name:'오래된 임시 폴더 정리',exact:true}).click();
   await page.getByText(/오래된 임시 폴더 \d+개 정리/).waitFor();
-  await page.getByRole('button',{name:'배치 리포트 분석',exact:true}).click();
+  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
   await page.locator('.stepper').getByRole('button',{name:/조사 대상/}).click();
   await page.getByText('+ '+archive,{exact:true}).waitFor();
   await page.getByText('자동 분석: 켜짐',{exact:false}).waitFor();

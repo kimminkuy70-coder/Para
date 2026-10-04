@@ -127,7 +127,7 @@ class BatchReportMixin:
     def _batch_options(self, targets, valid):
         saved = self._cfg.get('batch_last', {}).get('options', {})
         win = tk.Toplevel(self)
-        win.title('배치 리포트 분석 · 지표 선택')
+        win.title('Batch Report 분석 · 지표 선택')
         win.geometry('700x660')
         win.transient(self)
         win.grab_set()
@@ -191,7 +191,7 @@ class BatchReportMixin:
                 if automatic:
                     self._set_status('배치 분석 자동 갱신 실패 (설정에 사유 기록): ' + str(result))
                 else:
-                    self._err('E194', '배치 리포트 분석 실패', result)
+                    self._err('E194', 'Batch Report 분석 실패', result)
                 return
             summary = result['result']['summary']
             self._set_status(f"배치 분석 {'일부 오류' if partial else '완료'} — Report {summary['Batch(리포트) 수']}건 · Lot {summary['Lot 수']}개 / {result['outdir']}")
@@ -201,11 +201,11 @@ class BatchReportMixin:
         if automatic:
             self._run_bg(work, done)
         else:
-            self._run_busy('배치 리포트 분석 (증분 수집·분석·출력)', work, done)
+            self._run_busy('Batch Report 분석 (증분 수집·분석·출력)', work, done)
 
     def _batch_done(self, result, options):
         win = tk.Toplevel(self)
-        win.title('배치 리포트 분석 완료')
+        win.title('Batch Report 분석 완료')
         win.geometry('880x560')
         body = ttk.Frame(win, padding=16)
         body.pack(fill='both', expand=True)

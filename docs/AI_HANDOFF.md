@@ -1,5 +1,16 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Batch Report 명칭 통일 (2026-10-04 KST, 브랜치 `version_v10`)
+
+- 시작 HEAD `7b7d41e`. 브랜치 `claude/version-webview-branch-compare-gnax2c` 를 사용자 지시로 `version_v10` 으로 이름 변경(같은 커밋).
+- 사용자 지시: Batch Report 기능의 '배치 리포트/배치 레포트/batch report' 표기를 `Batch Report` 로 통일.
+  탭·진행 문구·결과 HTML/Excel 문구·WPH 문구·사용자 문서·UI 시험 스크립트 버튼 이름. 결과 파일명
+  `배치리포트분석.*` → `BatchReport_분석.*`. 로컬 폴더 `배치분석/` 은 캐시 연속성 때문에 유지.
+- 검증: `py_compile`, test_batchreport(17 중 tkinter 없는 환경 1건 기존 실패 — 변경 전과 동일), test_desktop_batch,
+  test_wph 9/9, test_wph_html 5/5, test_wph_status, test_wph_settings, test_desktop_aoiroot, test_desktop_ipc 통과,
+  `npx tsc --noEmit` 통과. 브라우저 UI 시험·Windows 실기·빌드·배포 미수행.
+- 다음: Batch Report 기능 4개 분리 재설계(CLAUDE.md '명칭 통일 + 재설계 방향' 절). 사용자 확인 질문 답 대기 — 미구현.
+
 ## 최신 재개 — 공유 문서 IPC 응답성 (2026-09-22 KST)
 
 - 시작 원격 HEAD `aec6d012915c413a7999c5a001274584da12ad46`. 변경 대상 소스/문서는 원격 blob과 로컬 hash 일치 확인 후 작업. git 메타데이터 없는 복구 디렉터리이므로 AGENTS의 API fast-forward 절차 사용.

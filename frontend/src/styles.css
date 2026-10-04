@@ -34,7 +34,7 @@ tr.muted td{color:#9aa8ba}
 .edit-dialog .sub{color:var(--muted);font-size:12px;margin:2px 0 12px;overflow-wrap:anywhere}
 @media(max-width:760px){.form-picker{grid-template-columns:1fr}.runbar .actions{width:100%;flex-direction:column}.runbar .actions .in{width:100%}}
 
-/* 배치 리포트 선택(더보기) */
+/* Batch Report 선택(더보기) */
 .report-pick{display:flex;align-items:center;gap:10px;margin-top:12px}
 .report-pick button{font-size:12px;min-height:32px;padding:6px 12px}
 .pick-count{font-size:12px;color:var(--muted);font-weight:700}

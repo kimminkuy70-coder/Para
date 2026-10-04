@@ -337,7 +337,7 @@ def build_html(computed, *, title, meta=None, sections=None, by_recipe=True) -> 
              '<meta name="viewport" content="width=device-width, initial-scale=1">',
              f"<title>{_esc(title)}</title><style>{_CSS}</style></head><body><div class='wrap'>",
              f"<h1>{_esc(title)}</h1>",
-             "<div class='sub'>Wafers Per Hour · batch report 취합 결과</div>"]
+             "<div class='sub'>Wafers Per Hour · Batch Report 취합 결과</div>"]
 
     if meta:
         parts.append("<div class='meta'>"
@@ -424,7 +424,7 @@ def build_html(computed, *, title, meta=None, sections=None, by_recipe=True) -> 
                               firstcols_left=2) + "</section>")
 
     parts.append("<footer>같은 조사 폴더의 WPH_통합.xlsx · 호기별 취합.txt 와 함께 생성. "
-                 "원본 batch report는 읽기 전용.</footer></div></body></html>")
+                 "원본 Batch Report는 읽기 전용.</footer></div></body></html>")
     return "".join(parts)
 
 

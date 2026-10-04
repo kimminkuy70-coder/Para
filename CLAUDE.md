@@ -23,6 +23,31 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 명칭 통일 + 재설계 방향 (2026-10-04, 브랜치 `version_v10`)
+
+- **명칭**: 화면·결과·문서의 '배치 리포트/배치 레포트/batch report' 는 전부 **`Batch Report`** 로 쓴다
+  (탭 `Batch Report 분석`, 결과 파일 `BatchReport_분석.html/.xlsx`). 로컬 데이터 폴더 `배치분석/`
+  (캐시·결과)은 기존 캐시를 잇기 위해 **이름을 바꾸지 않는다**.
+- **대전제(사용자 확정)**: Lot 1개 = Batch Report 1장이 아니다. 이슈로 나눠 스캔·재스캔하고, 같은 Lot 을
+  다른 호기로 옮겨 다시 돌리기도 한다. 모든 기능·지표는 **Lot 단위 추적**이 기본(웨이퍼 단위는 그 다음).
+- **오류 판정(사용자 확정)**: 웨이퍼 행 Pass/Fail 이 `Pass` 가 아니면 **전부 Error**(빈칸 포함).
+  유형은 기존 7개 + 미분류로 나눈다.
+- **기능 4개로 분리(진행 중 · 미구현)**: ①Batch Report 찾기·Lot 취합(원문·Scanresult 경로·중복 웨이퍼
+  선택·Lot Dice 합계) ②호기 가동률·원인(레시피 점유·오류) ③WPH(호기·레시피 비교, 장비 Job 폴더는 이름만)
+  ④**Lot 추적**(여러 호기 걸친 시도 이력·Lot × 웨이퍼 오류 지도·회복/미해결).
+- **실데이터(사용자 제공 424개, 1개 Job) 확인 사실** — 설계 근거:
+  · 웨이퍼 표 열 = `Lot, Wafer ID, Faults, Scanned/Bad/Good Dice, Yield, Pass/Fail, Recipe(s)`. **No(슬롯) 열 없음.**
+    Faults 는 결함 개수(숫자, `-`)이지 오류 코드가 아니다. 행 순서는 보통 슬롯 25→1.
+  · Wafer ID 형식 3가지: 숫자(`25`, WBG 스캔), `Slot 14`(ID 미판독), 전체 ID(`SF14G25-A0` — 앞 5자=실제 Lot ID,
+    다음 2자리=슬롯). 미판독 행은 Lot 칸이 `LoadPort A`.
+  · 파일명 = `{Job}_{Setup}_{S/M}_{YY-Mon-DD}_({HH.MM.SS})_BatchReport.htm`. Job/Setup 은 본문 값과 같아
+    S/M 은 그 사이 문자열(공백·`_` 포함 가능: `KDT-PR RW`, `BBF_WBG`). Lot 열 = S/M(모두 LoadPort 면 파일명만 남음).
+  · S/M 은 사람이 붙이는 꼬리가 있다(`BAW`, `BAW-RE`, `NSW WBG`, `FLS-WBG REWORK`) → 앞 토큰이 Lot 기본 이름.
+    같은 S/M 이 **다른 실제 Lot 에 재사용**되기도 한다(`BAH` = SC93F, SA78K) → 전체 Wafer ID 의 Lot ID 로 가른다.
+  · 같은 Lot 이 공정 단계별로 따로 스캔된다(`Recipe(s)` = `2D_WBG` → 며칠 뒤 `2D`). 같은 단계 재시도는 대부분
+    수 시간 이내, 재검사(-RE/-RW)는 수 주 뒤.
+  · 같은 내용의 복사본이 다른 폴더에 있을 수 있다(내용 digest 로 중복 제거 — 기존 store 동작).
+
 ### Color · Gray 매칭 탭 + v10.0.0 (2026-09-30)
 
 - 외부 도구 'AOI Color-Gray Matcher v16'(pywebview+Pillow) 이식. 상단 탭 `Color·Gray 매칭`(KEEP — 탭 이동해도 작업 유지).

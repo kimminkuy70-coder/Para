@@ -43,8 +43,8 @@ PURPOSE = {
 INTERPRET = {
     "M01": [("teal", "읽는 법", "합산 WPH는 웨이퍼를 batch time 총합으로 나눈 가중 처리량, 평균 WPH는 배치별 WPH의 산술평균입니다."),
             ("navy", "유효 스캔 = 무에러 완전 lot", "유효 스캔 수는 Wafers Scanned가 설정 매수(예: 25)와 정확히 같고 Batch Time>0 인 리포트만 셉니다. 스캔 에러가 있으면 Wafers Scanned가 그만큼 줄어 25 미만이 되므로 **에러 lot은 자동으로 빠집니다**(실데이터 158건 전부 무에러). 한 리포트=한 lot의 완전 스캔이라 사실상 '무에러 완전 lot 수'입니다.")],
-    "M02": [("navy", "용어 설명", "· 스캔 시간(h): batch report의 Batch Time(스캔 시작~끝) 합 = 이 장비가 실제로 웨이퍼를 검사한 시간. 자정을 넘긴 배치는 걸친 날짜에 나눠 담습니다. · 기간 길이(h): 보는 단위의 달력 시간(일=24h, 주=168h, 진행 중 기간은 시작~현재). · 가동률(%): 스캔 시간 ÷ 기간 길이 ×100. 100%면 그 기간 내내 쉼 없이 스캔. · 비스캔 시간(h): 기간 길이 − 스캔 시간. · Batch 수: 그 기간에 '시작한' 배치 수 — 전날 시작해 자정을 넘어온 배치의 스캔 시간도 이 날에 잡히므로, Batch 수는 적어도 스캔 시간이 클 수 있습니다(예: 하루 2배치인데 앞 배치가 밤새 돌면 가동률이 99%까지 나옵니다)."),
-            ("amber", "주의 — OEE가 아닙니다", "스캔 안 한 나머지 시간이 '대기'인지 'PM(정비)'인지 '전원 OFF'인지 '셋업'인지 batch report만으로는 구분할 수 없어, 그 전부를 비스캔으로 묶습니다. 그래서 진짜 설비효율(OEE)이 아니라 '그 기간에 몇 %를 스캔에 썼나'라는 스캔 점유율 근사치이며, 절대값보다 호기끼리·기간끼리 상대 비교에 쓰세요. (드물게 리포트의 Batch Time이 실제 경과보다 길면 가동률이 100%를 넘을 수 있고, 그 경우 기간 상태에 표시합니다.)")],
+    "M02": [("navy", "용어 설명", "· 스캔 시간(h): Batch Report의 Batch Time(스캔 시작~끝) 합 = 이 장비가 실제로 웨이퍼를 검사한 시간. 자정을 넘긴 배치는 걸친 날짜에 나눠 담습니다. · 기간 길이(h): 보는 단위의 달력 시간(일=24h, 주=168h, 진행 중 기간은 시작~현재). · 가동률(%): 스캔 시간 ÷ 기간 길이 ×100. 100%면 그 기간 내내 쉼 없이 스캔. · 비스캔 시간(h): 기간 길이 − 스캔 시간. · Batch 수: 그 기간에 '시작한' 배치 수 — 전날 시작해 자정을 넘어온 배치의 스캔 시간도 이 날에 잡히므로, Batch 수는 적어도 스캔 시간이 클 수 있습니다(예: 하루 2배치인데 앞 배치가 밤새 돌면 가동률이 99%까지 나옵니다)."),
+            ("amber", "주의 — OEE가 아닙니다", "스캔 안 한 나머지 시간이 '대기'인지 'PM(정비)'인지 '전원 OFF'인지 '셋업'인지 Batch Report만으로는 구분할 수 없어, 그 전부를 비스캔으로 묶습니다. 그래서 진짜 설비효율(OEE)이 아니라 '그 기간에 몇 %를 스캔에 썼나'라는 스캔 점유율 근사치이며, 절대값보다 호기끼리·기간끼리 상대 비교에 쓰세요. (드물게 리포트의 Batch Time이 실제 경과보다 길면 가동률이 100%를 넘을 수 있고, 그 경우 기간 상태에 표시합니다.)")],
     "M03": [("teal", "읽는 법", "한 wafer에 여러 상태가 겹칠 수 있어 유형별 합계가 전체 Report 수보다 클 수 있습니다. Lot 수는 같은 (Job/Setup, Lot)이 재스캔으로 여러 리포트가 돼도 1로 셉니다. 막대 색은 성격별 묶음입니다.")],
     "M04": [("navy", "활용", "예방형은 반자동 사전검증으로, 조치형은 Auto Setup 후보로 분기해 대응 방식을 정합니다. 아래 표는 각 성격에 어떤 Error 유형이 묶이는지입니다.")],
     "M05": [("rust", "한계", "연쇄/직접 구분은 wafer 스캔 순서 기반 추정입니다. 장비 상세 Error Log가 연동되면 수동/자동 중단을 실측으로 구분해 신뢰도가 올라갑니다.")],
@@ -53,9 +53,9 @@ INTERPRET = {
     "M08": [("amber", "주의", "임계치 후보는 정상 분포의 P95 등 통계값입니다. 인증된 Hold 기준이 아니며 사람이 확인 후 적용하세요."),
             ("teal", "읽는 법", "Recipe = Job/Setup(예: 2D@R2-…-0B/Setup1). Good Dice = Scanned − Bad. 막대는 recipe별 정상 wafer의 Scanned/Bad/Good 평균입니다.")],
     "M09": [("rust", "한계", "이상 후보는 과거 정상 대비 상대 비교입니다. 자동 Hold·제어에 직접 쓰지 않습니다.")],
-    "M10": [("teal", "읽는 법", "batch report에는 lot 기대 매수가 없어 '완주율'은 측정하지 않습니다(B안). 대신 lot마다 스캔 중 이슈가 있었는지와 재스캔(리포트≥2) 여부를 보고, 전체 lot 중 문제 lot 비중을 냅니다. 이슈 발생 Lot = 어느 리포트에서든 error/중단/skip이 있던 lot. 재스캔 Lot = 리포트가 2장 이상(중단 후 다시 스캔). 둘은 관련은 있지만 다릅니다 — 이슈인데 재스캔이 없는 lot(단발 에러)도, 이슈 표기 없이 나눠 스캔된 lot도 있습니다."),
+    "M10": [("teal", "읽는 법", "Batch Report에는 lot 기대 매수가 없어 '완주율'은 측정하지 않습니다(B안). 대신 lot마다 스캔 중 이슈가 있었는지와 재스캔(리포트≥2) 여부를 보고, 전체 lot 중 문제 lot 비중을 냅니다. 이슈 발생 Lot = 어느 리포트에서든 error/중단/skip이 있던 lot. 재스캔 Lot = 리포트가 2장 이상(중단 후 다시 스캔). 둘은 관련은 있지만 다릅니다 — 이슈인데 재스캔이 없는 lot(단발 에러)도, 이슈 표기 없이 나눠 스캔된 lot도 있습니다."),
             ("slate", "스캔 시도 1회 = ?", "'스캔 시도(리포트) 수'가 1인 문제 lot은 이 장비(현재 분석 호기)에서 한 번 스캔→에러→재스캔 기록이 없다는 뜻입니다. 그 웨이퍼는 다른 AOI로 넘어가 재검사됐을 가능성이 높습니다(이 분석은 호기 1대만 봅니다)."),
-            ("navy", "활용", "'문제 Lot 상세'의 스캔 시도 수가 크거나 포함 이슈 유형이 반복되는 lot이 자동화·개선 1순위입니다. 포함 이슈 유형은 batch report 원문 그대로이며 유형마다 한 줄로 적습니다.")],
+            ("navy", "활용", "'문제 Lot 상세'의 스캔 시도 수가 크거나 포함 이슈 유형이 반복되는 lot이 자동화·개선 1순위입니다. 포함 이슈 유형은 Batch Report 원문 그대로이며 유형마다 한 줄로 적습니다.")],
     "M11": [("navy", "활용", "새 문구가 잡히면 분류 규칙에 추가해 다음 실행부터 정상 집계되도록 하세요.")],
 }
 # Category-character grouping colours (M03/M04), abort/lot-issue colours.
@@ -430,7 +430,7 @@ def _block(t, cat2char, lot_id=None):
 
 
 def _lot_drilldown(result):
-    """Lot → 그 lot의 batch report 목록(시각·매수·이슈원문·원본 파일경로). 모달 드릴다운용."""
+    """Lot → 그 lot의 Batch Report 목록(시각·매수·이슈원문·원본 파일경로). 모달 드릴다운용."""
     issues_by_batch = defaultdict(list)
     for w in result["wafers"]:
         status = (w.get("status") or "").strip()
@@ -453,7 +453,7 @@ def _lot_drilldown(result):
 
 
 def build_html(result, collection, dashboard=False):
-    title = "스캔 가동률 대시보드" if dashboard else "배치 리포트 분석"
+    title = "스캔 가동률 대시보드" if dashboard else "Batch Report 분석"
     summary, batches = result["summary"], result["batches"]
     cat2char = _cat2char(result["tables"])
     lot_id, lot_data = _lot_drilldown(result)
@@ -474,7 +474,7 @@ def build_html(result, collection, dashboard=False):
 
     cards = [("t", f"{normal:.1f}%" if normal is not None else "—",
               f"정상 스캔 비율<br>(Pass {pass_wafers:,} / {wafer_rows:,}행)"),
-             ("", f"{lots:,}", f"분석 Lot 수<br>(batch report {reports:,}건)"),
+             ("", f"{lots:,}", f"분석 Lot 수<br>(Batch Report {reports:,}건)"),
              ("a", f"{issue_pct:.1f}%" if issue_pct is not None else "—", f"이슈 발생 Lot<br>({issue_lots:,} / {lots:,})"),
              ("r", f"{rescan_pct:.1f}%" if rescan_pct is not None else "—", f"재스캔 Lot<br>({rescan_lots:,} / {lots:,})")]
 
@@ -483,9 +483,9 @@ def build_html(result, collection, dashboard=False):
              '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;; script-src &#39;unsafe-inline&#39;; img-src data:; connect-src &#39;none&#39;">',
              '<meta http-equiv="refresh" content="1800">' if dashboard else '',
              f'<title>{title}</title><style>{PAGE_CSS}</style></head><body><div class="doc">',
-             '<div class="head"><div class="kick">AOI 배치 리포트 분석 · 오프라인 자동 산출</div>',
+             '<div class="head"><div class="kick">AOI Batch Report 분석 · 오프라인 자동 산출</div>',
              f'<h1>{title}{badge}</h1><div class="meta">',
-             f'<span><b>분석 대상</b> Lot {lots:,}개 · batch report {len(batches):,}건 · wafer {wafer_rows:,}행</span>',
+             f'<span><b>분석 대상</b> Lot {lots:,}개 · Batch Report {len(batches):,}건 · wafer {wafer_rows:,}행</span>',
              f'<span><b>기간</b> {esc(span)}</span>',
              f'<span><b>호기</b> {esc(", ".join(machines)) or "—"} ({len(machines)}대)</span>',
              '<span><b>범위</b> M01–M03 (대시보드)</span>' if dashboard else '',
@@ -526,7 +526,7 @@ def build_html(result, collection, dashboard=False):
                 parts.append(f'<div data-period="{unit}"{hidden}>' + _block(t, cat2char, lot_id) + '</div>')
             else:
                 parts.append(_block(t, cat2char, lot_id))
-        if key == "M04":  # 성격 · 설명 · 실제 error 원문 (조사한 batch report 원문 그대로)
+        if key == "M04":  # 성격 · 설명 · 실제 error 원문 (조사한 Batch Report 원문 그대로)
             char2raw = {}
             for tbl in result["tables"]:
                 if tbl["title"] == "상태 상세":
@@ -534,7 +534,7 @@ def build_html(result, collection, dashboard=False):
                         if len(row) > 8 and row[7] and row[8]:
                             char2raw.setdefault(row[7], set()).add(row[8].strip())
             if char2raw:
-                parts.append('<div class="chartbox"><div class="cap">성격별 실제 Error 원문 (조사 대상 batch report에서 나온 문구)</div>'
+                parts.append('<div class="chartbox"><div class="cap">성격별 실제 Error 원문 (조사 대상 Batch Report에서 나온 문구)</div>'
                              '<table style="margin:0"><thead><tr><th>성격</th><th>설명</th><th>포함 Error 유형 (원문)</th></tr></thead><tbody>')
                 for char in ("예방형", "조치형", "중단", "결과형", "미확인"):
                     if char in char2raw:
@@ -548,13 +548,13 @@ def build_html(result, collection, dashboard=False):
 
     parts.append(
         '<section class="metric" id="sec-help" hidden><h2>📘 데이터 가공 방법 · lot 조사 기준</h2>'
-        '<div class="sub">이 리포트가 batch report 원본을 어떻게 지표로 바꾸는지 설명합니다.</div>'
-        '<div class="note navy"><span class="t">1. 입력 — batch report</span>'
-        '장비 Report 폴더에 스캔 1회마다 쌓이는 batch report(HTML) 한 장이 기본 단위입니다. 한 장에는 그 스캔의 '
+        '<div class="sub">이 리포트가 Batch Report 원본을 어떻게 지표로 바꾸는지 설명합니다.</div>'
+        '<div class="note navy"><span class="t">1. 입력 — Batch Report</span>'
+        '장비 Report 폴더에 스캔 1회마다 쌓이는 Batch Report(HTML) 한 장이 기본 단위입니다. 한 장에는 그 스캔의 '
         'Batch Start/End·Batch Time·Job/Setup·wafer 표(각 wafer의 Lot·Wafer ID·Scanned/Bad/Good Dice·Pass/Fail)가 들어 있습니다. '
         '원본은 읽기만 하고 수정하지 않습니다.</div>'
         '<div class="note teal"><span class="t">2. lot 조사 기준 — 핵심</span>'
-        'batch report 1장 = 스캔 세션 1회이지 lot(카세트) 전체가 아닙니다. 스캔이 중단·재스캔되면 <b>한 lot이 리포트 여러 장</b>으로 '
+        'Batch Report 1장 = 스캔 세션 1회이지 lot(카세트) 전체가 아닙니다. 스캔이 중단·재스캔되면 <b>한 lot이 리포트 여러 장</b>으로 '
         '나뉩니다(실데이터 최대 9장). 그래서 <b>lot = (Job/Setup, wafer 표 Lot 열의 최빈값)</b>으로 정의하고, 같은 lot의 리포트들을 '
         '묶어서 지표를 lot 기준으로 셉니다. wafer ID를 못 읽어 Lot 칸이 \'LoadPort A\'·\'-\'·빈칸인 행은 lot 판정에서 제외합니다.</div>'
         '<div class="note slate"><span class="t">3. Recipe = Job/Setup</span>'
@@ -563,7 +563,7 @@ def build_html(result, collection, dashboard=False):
         '각 wafer의 Pass/Fail 원문을 유형으로 분류하고, 유형을 5가지 성격(예방형·조치형·중단·결과형·미확인)으로 묶습니다. '
         '한 원문이 두 성격에 걸칠 수 있습니다(예: \'Alignment Error. Aborted.\' = 조치형 + 중단). 성격별 실제 원문은 M04에서 봅니다.</div>'
         '<div class="note rust"><span class="t">5. 한계 — proxy·추정</span>'
-        '가동률(스캔시간/달력시간)·재시작 간격·Aborted 연쇄/직접 구분은 batch report에서 얻을 수 있는 근사치·추정입니다. '
+        '가동률(스캔시간/달력시간)·재시작 간격·Aborted 연쇄/직접 구분은 Batch Report에서 얻을 수 있는 근사치·추정입니다. '
         'OEE·실제 수리시간·실측 중단 구분이 아니며, 자동 설비 제어에 쓰지 않습니다. 이 분석은 <b>호기 1대</b> 기준이라, '
         '다른 AOI로 넘어간 재검사는 여기서 보이지 않습니다.</div>'
         '</section>')
@@ -576,7 +576,7 @@ def build_html(result, collection, dashboard=False):
         parts.append('<li>이번 실행에서는 읽기 오류·알림이 없습니다.</li>')
     parts.append('</ul></aside><aside><h2>지표 해석 · 한계 (전체 공통)</h2><ul>'
                  + ''.join('<li>' + esc(n) + '</li>' for n in NOTES) + '</ul></aside>')
-    parts.append('<div class="foot">※ 표에 표시된 값은 원본 batch report에서 그대로 파싱한 것이며, proxy·추정으로 표시된 지표는 상대 비교·참고용입니다. 자동 설비 제어에 사용하지 않습니다. · Lot 이름을 클릭하면 그 lot의 리포트 상세와 원문 열기가 뜹니다.</div>')
+    parts.append('<div class="foot">※ 표에 표시된 값은 원본 Batch Report에서 그대로 파싱한 것이며, proxy·추정으로 표시된 지표는 상대 비교·참고용입니다. 자동 설비 제어에 사용하지 않습니다. · Lot 이름을 클릭하면 그 lot의 리포트 상세와 원문 열기가 뜹니다.</div>')
     # 드릴다운 모달 + lot 데이터(원본 파일 경로 포함 → '원문 열기'가 실제 .htm 을 연다)
     lot_json = json.dumps(lot_data, ensure_ascii=False).replace("</", "<\\/")
     parts.append('</div>'

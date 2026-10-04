@@ -170,7 +170,7 @@ export function Settings(){
         <tr><th>동시 접속 정보</th><td><code>_세션\</code> 접속자·작업 잠금, 편집 중인 문서 옆 <code>.editlock</code></td></tr>
         <tr><th>새 버전 게시</th><td>저장 폴더 <b>옆</b>의 <code>프로그램\</code> 폴더(개발자가 게시한 설치 파일)</td></tr>
       </tbody></table>
-      <p className="hint">Commonality 조사 결과·배치 리포트 분석 결과·장비 수집 임시 파일·로그는 OneDrive 가 아니라 <b>로컬 작업 폴더</b>에 저장됩니다(대량 동기화 방지).</p>
+      <p className="hint">Commonality 조사 결과·Batch Report 분석 결과·장비 수집 임시 파일·로그는 OneDrive 가 아니라 <b>로컬 작업 폴더</b>에 저장됩니다(대량 동기화 방지).</p>
       <div className="form-filter" style={{marginTop:14}}>
         <label className="field" style={{flex:1,minWidth:280}}>OneDrive 저장폴더 경로
           <input value={saveDir} placeholder="예: C:\Users\이름\OneDrive - 회사\AOI 파라미터" maxLength={4096} onChange={e=>setSaveDir(e.target.value)}/></label>
@@ -181,7 +181,7 @@ export function Settings(){
 
     {sub==='aoi'&&<>
       <h3>AOI 장비 호기 루트 등록</h3>
-      <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 배치 리포트 분석이,
+      <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
         <b> Scanresult</b> 폴더(<code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사가 읽습니다. 장비 폴더는 읽기만 합니다.</p>
       {aois.length>0&&<table className="tbl" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th/></tr></thead>
         <tbody>{aois.map(aoiRow)}</tbody></table>}
@@ -193,7 +193,7 @@ export function Settings(){
           onClick={()=>req('config_set_aoi_root',{machine:aMachine.trim(),path:aPath.trim()},`${aMachine.trim()} 등록`,()=>{setAMachine('');setAPath('');})}>추가</button></div>
 
       <h3 style={{marginTop:24}}>호기별 추가 폴더 (백업·보관본)</h3>
-      <p className="hint">호기 루트 밖에 있는 백업·보관 폴더를 함께 읽게 합니다. <b>Batch Report</b> 는 배치 리포트 분석이 기본 Reports 와 함께 조사하고,
+      <p className="hint">호기 루트 밖에 있는 백업·보관 폴더를 함께 읽게 합니다. <b>Batch Report</b> 는 Batch Report 분석이 기본 Reports 와 함께 조사하고,
         <b> Scanresult</b> 는 Commonality 조사가 S/M 폴더를 찾을 때 함께 뒤집니다(그 아래 Scanresult* 폴더도 인식). 호기·종류당 최대 20개.</p>
       {aois.length===0?<p className="table-empty">먼저 위에서 AOI 장비 호기 루트를 등록하세요.</p>:<>
         {extraRows.length>0&&<table className="tbl" style={{marginTop:12}}><thead><tr><th>호기</th><th>종류</th><th>추가 폴더</th><th/></tr></thead><tbody>{extraRows}</tbody></table>}
@@ -209,7 +209,7 @@ export function Settings(){
 
     {sub==='auto'&&<>
       <h3>Batch Report 자동 분석</h3>
-      <p className="hint">앱이 켜져 있는 동안 마지막 조사 조건(호기·검색어·기간·지표)으로 배치 리포트 분석을 주기마다 다시 실행합니다.
+      <p className="hint">앱이 켜져 있는 동안 마지막 조사 조건(호기·검색어·기간·지표)으로 Batch Report 분석을 주기마다 다시 실행합니다.
         실행 기록은 기존 프로그램과 공유하므로 두 프로그램이 같은 주기 안에 중복 실행하지 않습니다(기존 프로그램은 항상 하루 1회).</p>
       <label className="field checkbox" style={{marginTop:10}}><input type="checkbox" disabled={busy||!st} checked={!!st?.batch_auto}
         onChange={e=>req('config_set_batch_auto',{enabled:e.target.checked},e.target.checked?'자동 분석을 켰습니다':'자동 분석을 껐습니다')}/>자동 분석 사용 (기본 꺼짐)</label>
@@ -220,7 +220,7 @@ export function Settings(){
       <table className="tbl" style={{marginTop:12}}><tbody>
         <tr><td style={{width:140,fontWeight:700}}>마지막 실행</td><td>{st?.batch?.last_run||'—'}{st?.batch?.last_result?` · ${st.batch.last_result}`:''}</td></tr>
         <tr><td style={{fontWeight:700}}>다음 실행</td><td>{st?.batch_auto?(st?.batch?.next_run||'앱을 켜 두면 곧 실행'):'꺼짐'}</td></tr></tbody></table>
-      <p className="hint">분석 조건은 [배치 리포트 분석] 탭에서 마지막으로 조사한 조건을 그대로 씁니다.</p>
+      <p className="hint">분석 조건은 [Batch Report 분석] 탭에서 마지막으로 조사한 조건을 그대로 씁니다.</p>
     </>}
 
     {sub==='local'&&<>

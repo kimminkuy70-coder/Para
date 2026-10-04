@@ -16,7 +16,7 @@ const LABEL:Record<string,string>={
   commonality_catalog:'Commonality 결과 목록 읽기',commonality_compare:'Commonality 결과 비교',commonality_export:'비교표 Excel 저장',
   cmsurvey_preflight:'Scanresult 폴더 확인',cmrun_plan:'Scanresult 에서 S/M 폴더 찾기',cmrun_copy:'S/M 폴더 안전 복사',
   cmrun_detect:'레시피 구성 확인',cmrun_parse:'Lot 설정 분석',cmrun_confirm:'조사 양식 저장',cmrun_collate:'Lot 값 조사',
-  batch_reports:'Report 목록 읽기',investigate:'배치 리포트 조사',analyze:'배치 분석',
+  batch_reports:'Report 목록 읽기',investigate:'Batch Report 조사',analyze:'Batch Report 분석',
   pwatch_state:'자동 감시 설정 읽기',pwatch_save:'자동 감시 설정 저장',pwatch_jobs:'장비 Job 폴더 읽기',pwatch_run:'파라미터 자동 감시 실행',
   cmwatch_state:'Commonality 감시 설정 읽기',cmwatch_save:'Commonality 감시 설정 저장',cmwatch_run:'Commonality 자동 감시 실행',
   cmwatch_candidates:'대표 S/M 후보 찾기',cmwatch_begin:'대표 S/M 복사',cmwatch_confirm:'감시 양식 저장',

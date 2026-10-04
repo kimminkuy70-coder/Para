@@ -1,9 +1,9 @@
-"""WPH 조사 — batch report(.htm) 취합 → WPH 분석 엑셀(헤드리스).
+"""WPH 조사 — Batch Report(.htm) 취합 → WPH 분석 엑셀(헤드리스).
 
 개요
 ----
 Camtek AOI 장비는 스캔할 때마다 Report 폴더(예: ``P:\\AOI-21\\Reports``)에
-**batch report(HTML)** 를 쌓는다. 파일명 앞부분이 recipe 이름이다.
+**Batch Report(HTML)** 를 쌓는다. 파일명 앞부분이 recipe 이름이다.
 
   ``2D@RE-GA285ABB_0859840PD-0A_Setup1_KLV_26-Sep-08_(05.06.24)_BatchReport.htm``
    └───────── recipe ──────────┘
@@ -17,7 +17,7 @@ Camtek AOI 장비는 스캔할 때마다 Report 폴더(예: ``P:\\AOI-21\\Report
    를 이식),
 3. 참조 양식(``GH100_..._WPH_...xlsx``)과 **동일한 6시트 수식 엑셀**을 만든다.
    입력(A:E)만 채우면 F:S·통계·이상치·그래프·대시보드가 **엑셀 수식**으로 자동
-   계산된다. 여기에 **batch report 생성일자(Batch End)** 열을 맨 끝(U)에 추가한다.
+   계산된다. 여기에 **Batch Report 생성일자(Batch End)** 열을 맨 끝(U)에 추가한다.
 
 안전 원칙 (반드시 준수)
 ----------------------
@@ -61,7 +61,7 @@ _MONTHS = {m: i for i, m in enumerate(
 
 
 # ===========================================================================
-#  1. HTML batch report 파서 (batch_report_to_text.py 이식)
+#  1. HTML Batch Report 파서 (batch_report_to_text.py 이식)
 # ===========================================================================
 class _TableParser(HTMLParser):
     def __init__(self) -> None:
@@ -154,7 +154,7 @@ def _table_pairs(table) -> list[tuple[str, str]]:
 
 
 def parse_report(path) -> dict:
-    """batch report 1개 → {file_name, metadata[(k,v)], wafers[dict], table_count}."""
+    """Batch Report 1개 → {file_name, metadata[(k,v)], wafers[dict], table_count}."""
     path = Path(path)
     tables = parse_tables(path)
     wafer_table = _find_wafer_table(tables)
@@ -301,7 +301,7 @@ _FNAME_DT = re.compile(
 
 
 def parse_filename_datetime(name: str):
-    """batch report **파일명**의 내장 날짜(YY-Mon-DD)를 datetime 으로.
+    """Batch Report **파일명**의 내장 날짜(YY-Mon-DD)를 datetime 으로.
 
     기간 필터는 파일을 열지 않고 이름만 보므로 빠르고 원본 무접근이다.
     못 읽으면 None(그런 파일은 기간 필터에서 제외된다).
@@ -357,7 +357,7 @@ def _matches(name: str, query: str, start=None, end=None) -> bool:
 
 
 def list_reports(folder, query: str = "", start=None, end=None) -> list[str]:
-    """폴더 바로 아래의 batch report 파일 이름 목록(정렬). 검색어·기간 조건 적용.
+    """폴더 바로 아래의 Batch Report 파일 이름 목록(정렬). 검색어·기간 조건 적용.
 
     원본을 열지 않고 **파일 이름만** 본다(빠르다·원본 무접근).
     """
@@ -572,7 +572,7 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
         ("자동 계산", "F:S 열과 통계/이상치/그래프/대시보드는 모두 일반 셀 수식입니다."),
         ("분석 조건", f"Wafers Scanned={n}, Avg Scan sec>0, Batch sec>0 인 행만 유효 {n}매 Lot."),
         ("WPH", "Actual WPH = Wafers Scanned × 3,600 ÷ Batch sec (전체 Batch Time 기준)."),
-        ("생성일자", "V열은 batch report 의 Batch End(배치 종료시각)입니다."),
+        ("생성일자", "V열은 Batch Report 의 Batch End(배치 종료시각)입니다."),
         ("호기별 요약", "06_호기별_WPH 시트에서 호기(U열)마다 유효 Lot·WPH를 따로 봅니다."),
         ("색상", "녹색=원본 입력, 파란색=수식 계산, 주황/연빨강=검토·이상 항목."),
         ("호환성", "Excel 표·동적배열·최신 통계함수를 피하고 STDEV/QUARTILE/INDEX 등만 사용."),

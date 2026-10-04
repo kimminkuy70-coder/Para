@@ -121,7 +121,7 @@ def model(report, machine, identity):
     batch["types"] = sorted({s[0] for wafer in wafers for s in wafer["states"]})
     count, denominator = batch["wafers"], len(wafers)
     batch["completion"] = count / denominator * 100 if denominator and count is not None and 0 <= count <= denominator else None
-    # Lot = 같은 카세트 스캔 단위. batch report 에는 Lot 메타가 없어 wafer 표의 Lot 열
+    # Lot = 같은 카세트 스캔 단위. Batch Report 에는 Lot 메타가 없어 wafer 표의 Lot 열
     # (LoadPort/미판독 제외) 중 최빈값을 그 리포트의 lot 으로 본다. 중단·재스캔되면
     # 같은 (Job/Setup, Lot) 이 여러 리포트로 나뉜다 → lot_key 로 묶어 지표를 lot 기준화.
     real = Counter(w["lot"] for w in wafers if not is_lot_placeholder(w["lot"]))
@@ -401,7 +401,7 @@ def compute(records, selected=None, valid_wafers=25, min_baseline=20, yield_drop
     table("M09", "품질 이상 Wafer 상세 (자동 Hold 아님)",
           ["Lot", "Job/Setup (recipe)", "Batch End", "호기", "Report", "Wafer ID", "Bad Dice", "과거 P95", "Yield (%)", "Yield 하한 (%)", "후보 근거"],
           sorted(anomalies, key=lambda a: (a[1], a[0], a[2] or datetime.max)))
-    # M10: batch report 에는 lot 기대 매수가 없어 '완주율'은 측정 불가(B안).
+    # M10: Batch Report 에는 lot 기대 매수가 없어 '완주율'은 측정 불가(B안).
     # 대신 lot 단위로 '스캔 중 이슈가 났는지'와 '재스캔(리포트>1) 여부'를 뽑아,
     # 전체 lot 중 문제 lot 비중을 본다. lot = (Job/Setup, Lot).
     lotmap = defaultdict(list)

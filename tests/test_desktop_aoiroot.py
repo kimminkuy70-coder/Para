@@ -44,7 +44,7 @@ class AoiRootTests(unittest.TestCase):
         # 기존 프로그램과 공유하는 구 키도 같은 값으로 맞춰 둔다.
         self.assertEqual(cfg["wph_report_paths"]["AOI-9"], str(self.eq / "AOI-9" / "Reports"))
         self.assertEqual(cfg["commonality_roots"]["AOI-9"], str(self.eq / "AOI-9"))
-        # 배치 리포트 분석은 등록 즉시 Reports 폴더를 쓴다(이름 순).
+        # Batch Report 분석은 등록 즉시 Reports 폴더를 쓴다(이름 순).
         desc = DesktopBatch(self.cfg).describe()
         self.assertEqual([(m["id"], m["folder"]) for m in desc["machines"]],
                          [("AOI-9", str(self.eq / "AOI-9" / "Reports")), ("AOI-10", str(self.eq / "AOI-10" / "Reports"))])

@@ -25,7 +25,7 @@ const SUBTITLE: Record<string,string> = {
   'Color·Gray 매칭':'AOI Color 이미지와 같은 위치의 Gray 스캔 이미지를 찾아 잘라 붙이고, 나란히 비교하는 Excel 을 만드세요.'
 };
 const KEEP = ['Recipe 관리','Commonality 조사','자동 감시','Color·Gray 매칭'];
-const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','배치 리포트 분석','Color·Gray 매칭','특이사항','참고자료','장비 IP'];
+const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','Batch Report 분석','Color·Gray 매칭','특이사항','참고자료','장비 IP'];
 const text = (value: unknown) => value == null ? '—' : typeof value === 'number' ? value.toLocaleString('ko-KR',{maximumFractionDigits:2}) : String(value);
 
 function Trend({rows}: {rows:(string|number|null)[][]}) {
@@ -146,7 +146,7 @@ function App(){
     }catch(e){setConnection('연결 확인 필요');setError(errorText(e));}
   }
   useEffect(()=>{void loadConfig();},[]);
-  useEffect(()=>{if(tab==='배치 리포트 분석'&&!first.current&&!busy)void loadConfig();},[tab]);
+  useEffect(()=>{if(tab==='Batch Report 분석'&&!first.current&&!busy)void loadConfig();},[tab]);
   useEffect(()=>{
     if(!table||job.current===undefined)return;
     const sequence=++pageSequence.current;
@@ -205,11 +205,11 @@ function App(){
       if(reply.event==='cancelled'){setNote('조사가 취소되었습니다. 이전에 저장된 결과는 유지됩니다.');return;}
       setResult(reply);setTable(reply.tables?.[0]);
       setNote((automatic?'자동 분석: ':'')+(reply.collection?.errors?'일부 원본을 읽지 못했습니다. 읽기 오류 표를 확인하세요.':'조사를 완료했습니다.'));
-      if(automatic)notify('배치 리포트 자동 갱신을 완료했습니다.','ok');
+      if(automatic)notify('Batch Report 자동 갱신을 완료했습니다.','ok');
     }catch(e){
       if(automatic){
         // Do not retry every minute after a failed automatic run; a manual run re-enables it.
-        autoBlocked.current=true;notify('배치 리포트 자동 갱신 실패: '+errorText(e),'error');
+        autoBlocked.current=true;notify('Batch Report 자동 갱신 실패: '+errorText(e),'error');
       }else setError(errorText(e));
       setNote('조사 완료 여부를 확인하세요. 오류 안내를 참고해 주세요.');
     }
@@ -259,7 +259,7 @@ function App(){
         :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}
       {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:['특이사항','참고자료','장비 IP'].includes(tab)?<Documents key={tab} kind={tab==='특이사항'?'special':tab==='참고자료'?'reference':'ip'}/>:<>
       <section className="panel">
-      <div className="section-heading"><div><span className="step">BATCH</span><h2>배치 리포트 분석</h2></div><span className="count">{selected.length}개 호기 · {options.metrics.length}개 지표</span></div>
+      <div className="section-heading"><div><span className="step">BATCH</span><h2>Batch Report 분석</h2></div><span className="count">{selected.length}개 호기 · {options.metrics.length}개 지표</span></div>
       <Stepper labels={['조사 대상','분석 설정','실행·결과']} current={bstep} onJump={setBstep}/>
       <div className="step-body">
       {bstep===0&&<><p className="hint">조사할 호기를 고르고 검색어·기간·리포트를 정합니다. 호기가 없으면 [설정 › AOI 장비 호기 루트]에서 호기 폴더를 등록하세요(그 아래 Reports 폴더를 읽습니다).</p>

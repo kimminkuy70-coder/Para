@@ -250,7 +250,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
         # '양식 만들기'는 최상단 탭에서 빼고 'Recipe 관리' 안의 2차 탭으로 넣는다(항목3).
         for key, label in (("param", "Recipe 관리"),
                            ("commonality", "Commonality 조사"),
-                           ("wph", "배치 리포트 분석"),
+                           ("wph", "Batch Report 분석"),
                            ("special", "특이사항"), ("reference", "참고자료"),
                            ("ip", "장비 IP")):
             b = tk.Button(self.tabbar, text=label, relief="flat", bd=0,
@@ -4550,7 +4550,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
         return card
 
     # ====================================================================
-    #  WPH 조사 — batch report 취합 → WPH 분석 엑셀
+    #  WPH 조사 — Batch Report 취합 → WPH 분석 엑셀
     # ====================================================================
     def _wph_paths(self) -> dict:
         """호기별 Report 폴더 지정 {호기: 경로}(config 저장)."""
@@ -4575,10 +4575,10 @@ class EquipApp(BatchReportMixin, tk.Tk):
         vbar.pack(side="right", fill="y")
         self._wheelify(canvas)
 
-        tk.Label(inner, text="배치 리포트 분석", bg=self.p["bg"], fg=self.p["text"],
+        tk.Label(inner, text="Batch Report 분석", bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=8, pady=(14, 2))
         tk.Label(inner,
-                 text="장비 Report 폴더에 쌓인 batch report 를 recipe 기준으로 취합해 "
+                 text="장비 Report 폴더에 쌓인 Batch Report 를 recipe 기준으로 취합해 "
                       "WPH·스캔 가동률·오류·품질 지표를 분석합니다.\n"
                       "원본 리포트는 읽기만 하며(수정·삭제 안 함), 취합 텍스트와 결과 "
                       "엑셀은 로컬 폴더에만 저장됩니다.",
@@ -4609,7 +4609,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
             "조사할 호기를 체크하고, 그 호기의 Report 폴더를 한 번 지정하세요"
             "(예: P:\\AOI-21\\Reports — 탐색기에서 미리 연결해 두어야 합니다).\n"
             "recipe 검색어를 입력하고 [검색]을 누르면 그 검색어가 **파일 이름에 포함된** "
-            "batch report 개수가 표시됩니다(여러 단어는 모두 포함). [📋 더보기]에서 "
+            "Batch Report 개수가 표시됩니다(여러 단어는 모두 포함). [📋 더보기]에서 "
             "실제 리포트 목록을 보고 조사할 것만 체크할 수 있습니다(기본 전체 선택).")
 
         tk.Label(inner, text="✅ 조사할 호기를 체크하세요 (여러 개 선택 가능)",
@@ -4756,7 +4756,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
         """호기의 Report 폴더를 지정한다(config 저장, 재그리기 없이 라벨만 갱신)."""
         d = filedialog.askdirectory(
             title=f"{machine} 의 Report 폴더 선택 "
-                  "(batch report 가 바로 들어 있는 폴더)")
+                  "(Batch Report 가 바로 들어 있는 폴더)")
         if not d:
             return
         paths = self._wph_paths()
@@ -4859,7 +4859,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
         self._run_busy(f"{machine} 리포트 검색", work, done)
 
     def _wph_more(self, machine):
-        """검색된 batch report 목록을 체크박스로 보여주고 조사 대상을 고른다.
+        """검색된 Batch Report 목록을 체크박스로 보여주고 조사 대상을 고른다.
 
         전체선택/전체해제 · ↑↓ 이동 · Enter/Space 토글 · 기본 전체 선택.
         """
@@ -4872,13 +4872,13 @@ class EquipApp(BatchReportMixin, tk.Tk):
         sel = set(row["selected"])          # 작업용 복사(확인 눌러야 반영)
 
         win = tk.Toplevel(self)
-        win.title(f"{machine} — 조사할 batch report 선택")
+        win.title(f"{machine} — 조사할 Batch Report 선택")
         win.configure(bg=self.p["bg"])
         win.transient(self)
         win.grab_set()
         self._geo(win, 900, 620)
 
-        tk.Label(win, text=f"{machine} · batch report {len(names)}개",
+        tk.Label(win, text=f"{machine} · Batch Report {len(names)}개",
                  bg=self.p["bg"], fg=self.p["text"],
                  font=self.fonts["title"]).pack(anchor="w", padx=14, pady=(12, 2))
         info = tk.Label(win, text="", bg=self.p["bg"], fg=self.p["muted"],
@@ -5043,7 +5043,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
         """엑셀 확정 후 자동으로 여는 .html 결과 구성 화면.
 
         · 각 지표(WPH·에러 ①②③·scan 상태 등)를 체크박스로 넣고/빼며 화면에 미리보기.
-        · 결과 리포트 제목(=배치레포트 이름)을 편집한다(기본 템플릿, .html 제목·파일명에 반영).
+        · 결과 리포트 제목(=Batch Report 이름)을 편집한다(기본 템플릿, .html 제목·파일명에 반영).
         · [HTML 만들기] → 완료창([📄 결과 열기]/[📂 폴더 열기]).
         """
         import datetime as _dt
@@ -5074,7 +5074,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
                  bg=self.p["bg"], fg=self.p["muted"], font=self.fonts["sub"],
                  justify="left", wraplength=980).pack(anchor="w", padx=14, pady=(0, 8))
 
-        # ── 리포트 제목(=배치레포트 이름) 편집 ─────────────────────────
+        # ── 리포트 제목(=Batch Report 이름) 편집 ─────────────────────────
         trow = tk.Frame(win, bg=self.p["bg"])
         trow.pack(fill="x", padx=14, pady=(0, 6))
         tk.Label(trow, text="결과 리포트 제목:", bg=self.p["bg"], fg=self.p["text"],

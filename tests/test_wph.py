@@ -1,4 +1,4 @@
-"""WPH 조사 테스트 — batch report 파싱·recipe 접두 검색·취합텍스트·수식 엑셀.
+"""WPH 조사 테스트 — Batch Report 파싱·recipe 접두 검색·취합텍스트·수식 엑셀.
 
 GUI/Excel 계산기는 개발환경 미지원이므로, 수식은 **문자열로** 검증한다
 (참조 양식과 동일한 수식·구조·생성일자 열·유효매수 반영).
@@ -13,7 +13,7 @@ from param_manager import wph  # noqa: E402
 
 
 def _report_html(lot, wafers, avg, batch, batch_end, recipe="2D_WBG"):
-    """batch report 1개(HTML) — 메타 테이블 + 웨이퍼 테이블."""
+    """Batch Report 1개(HTML) — 메타 테이블 + 웨이퍼 테이블."""
     wrows = "".join(
         f"<tr><td>{i}</td><td>{lot}</td><td>{i}</td><td>0</td>"
         f"<td>29</td><td>0</td><td>29</td><td>100%</td><td>Pass</td><td>{recipe}</td></tr>"

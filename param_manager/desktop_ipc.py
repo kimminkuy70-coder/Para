@@ -33,7 +33,7 @@ from .desktop_watch import CmWatch, ParamWatch
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
 MAX_PAGE = 200
-BUSY_LABEL = {'batch': '배치 리포트 분석', 'recipe': 'Recipe 값 확인', 'document': '문서', 'form': 'Recipe 양식 편집하기',
+BUSY_LABEL = {'batch': 'Batch Report 분석', 'recipe': 'Recipe 값 확인', 'document': '문서', 'form': 'Recipe 양식 편집하기',
               'formnew': '신규 Recipe 만들기',
               'commonality': 'Commonality 결과', 'cmsurvey': 'Commonality 계획 확인', 'history': '레시피 날짜별 비교하기',
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',

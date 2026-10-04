@@ -16,7 +16,7 @@ RUN_LOCK = threading.Lock()
 
 def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
     if not RUN_LOCK.acquire(blocking=False):
-        raise RuntimeError("배치 리포트 분석이 이미 실행 중입니다")
+        raise RuntimeError("Batch Report 분석이 이미 실행 중입니다")
     staging = None
     try:
         base = store.local_root(root, [t['folder'] for t in targets]) / '배치분석'
@@ -34,10 +34,10 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
         store.checkpoint(cancel)
         staging = Path(tempfile.mkdtemp(prefix='.진행중_', dir=base))
         report_html = output.build_html(result, collection)
-        output.atomic_text(staging / '배치리포트분석.html', report_html)
+        output.atomic_text(staging / 'BatchReport_분석.html', report_html)
         if progress:
             progress('분석 Excel과 기존 WPH 산출물을 만드는 중…')
-        output.write_excel(staging / '배치리포트분석.xlsx', result, collection)
+        output.write_excel(staging / 'BatchReport_분석.xlsx', result, collection)
         rows = []
         for record in collection['records']:
             row = wph.extract_row(record['report'])
@@ -66,8 +66,8 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
                 output.atomic_text(dashboard, output.build_html(result, collection, dashboard=True))
             except OSError as exc:
                 dashboard_error = str(exc)
-        return {'outdir': str(outdir), 'html': str(outdir / '배치리포트분석.html'),
-                'xlsx': str(outdir / '배치리포트분석.xlsx'),
+        return {'outdir': str(outdir), 'html': str(outdir / 'BatchReport_분석.html'),
+                'xlsx': str(outdir / 'BatchReport_분석.xlsx'),
                 'dashboard': str(dashboard) if 'M02' in options['metrics'] and not dashboard_error else '',
                 'dashboard_error': dashboard_error, 'result': result, 'collection': collection,
                 'rows': rows}

@@ -225,7 +225,7 @@ class DesktopConfig:
         return self.state()
 
     # ---- AOI 장비 호기 루트 (Batch Report + Scanresult 일원화, 2026-09) --------------
-    # 호기 폴더(예: W:\\AOI-9) 하나만 등록하면 그 아래 Reports 는 배치 리포트 분석이,
+    # 호기 폴더(예: W:\\AOI-9) 하나만 등록하면 그 아래 Reports 는 Batch Report 분석이,
     # Scanresult*(백업본 포함)는 Commonality 가 쓴다. 기존 프로그램과 설정 파일을 공유하므로
     # 구 키(wph_report_paths·commonality_roots·batch_extra_paths)도 같은 값으로 맞춰 둔다.
     def _aoi_write(self, cfg, machine, root):
@@ -246,7 +246,7 @@ class DesktopConfig:
         scans = [p.name for p in cm._find_scanresult_dirs(Path(root))]
         notes = []
         notes.append(f"Batch Report: {Path(report).name}" if report else
-                     "Reports 폴더를 찾지 못했습니다 — 배치 리포트 분석 목록에는 나오지 않습니다")
+                     "Reports 폴더를 찾지 못했습니다 — Batch Report 분석 목록에는 나오지 않습니다")
         notes.append(f"Scanresult: {', '.join(scans)}" if scans else
                      "Scanresult 폴더를 찾지 못했습니다 — Commonality 조사 전에 폴더를 확인하세요")
         return dict(self.state(), notice=f"{machine}: " + " · ".join(notes))
@@ -297,7 +297,7 @@ class DesktopConfig:
         return self.state()
 
     def set_aoi_extra(self, params):
-        """호기별 추가 폴더(백업·보관본). kind=report → 배치 리포트 분석이 함께 읽고
+        """호기별 추가 폴더(백업·보관본). kind=report → Batch Report 분석이 함께 읽고
         (구 `batch_extra_paths`), kind=scanresult → Commonality 가 함께 뒤진다."""
         if set(params) != {"machine", "kind", "paths"} or params.get("kind") not in EXTRA_KINDS \
                 or not isinstance(params["paths"], list) or len(params["paths"]) > MAX_EXTRA:
