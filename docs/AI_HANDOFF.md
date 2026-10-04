@@ -9,6 +9,7 @@
 - 검증: Chromium 시나리오 8단계(미리 보기 → 끄기 확인창 → 저장하고 끄기 후 숫자 유지 → 버리고 끄기 → 조사 중 잠금 → 찾기 직접 선택 →
   끈 뒤 경고 → 다시 취합) 통과, 기존 회귀(proto2) · test_lotmodel · test_desktop_batch 통과, test_batchreport 는 tkinter 없는 1건만 실패(기존).
 - 남은 결정: 저장된 선택은 지금 PC 로컬(Cache)이라 PC마다 다를 수 있다 — 공유 여부는 사용자 확인 필요.
+- 이어서 사용자 요청으로 개발자 기능 옆 ? 버튼 + 설명 창(`devHelpDlg`, 켜짐/꺼짐 비교표) 추가. 안내 막대 · 끄기 확인창에서도 연결.
 
 ## 최신 재개 — Batch Report 프로토타입 3차 피드백(Batch Report.md) 반영 (2026-10-04 KST, `version_v10`)
 
