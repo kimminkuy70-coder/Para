@@ -23,6 +23,18 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Lot 추적 수정 7건 + 3D 스캔 대전제 (2026-10-05, 이슈 #6, v11.2.0)
+
+- **대전제 추가(사용자 확정)**: S/M 에 단독 `3D`(`ABC-3D` · `ABC 3D` · `ABC_3D`)가 있으면 **3D 스캔**. 레시피는 2D 와 같아 Lot 이름으로만
+  구분한다. 같은 Lot 의 2D · 3D 스캔은 **서로 재스캔 · 중복 Pass 가 아니다** → `lotmodel.build` 가 종류별로 따로 묶음을 만든다
+  (`attempt.scan`, `bunch.scan`, `lot.scans`, 화면 `R.k` · `bunch.k` · `lot.scans`). 표시는 `lotmodel.step_label`(' · 3D 스캔') 한 곳.
+  Lot 창: 시간순 번호 · 문장 요약 · Batch Report 이력은 실제 시각 순('처음 3D 스캔 → 5분 뒤 2D 스캔'), 오류 지도 · wafer 취합은 2D/3D 표 분리.
+- **묶음 조건 추가(사용자 확정)**: 같은 호기 12시간 이내라도 웨이퍼 표 마지막 열 `Recipe(s)` 가 다르면 이어서 스캔이 아니다
+  (그 열이 없는 Batch Report 는 비교하지 않음 — `_split_bunches` 의 `same_step`).
+- 화면: 지표를 누르면 목록 제목 상자가 바뀜(`TITLE`) · 막대 툴팁은 `data-tipx`(색 네모 · 이름 · 값 한 열) · 주 단위 = ISO 주 `WW{n}` + 둘째 줄
+  날짜 범위(주 key 는 `YYYY-MM-DD 주` 그대로) · **모달이 열리면 뒤 화면 스크롤 잠금(프로그램 전체, styles.css 끝)** · `Lot History`
+  (종전 'Lot 이력 상세') 세 목차 상자 · Batch Report 원문 창 / Lot 창 제목에 무엇인지 설명.
+
 ### Batch Report 화면 실제 앱 반영 (2026-10-04, 브랜치 `version_v11`)
 
 - 사용자 지시("2번으로 해")로 **검토 중이던 프로토타입(`tools/batch_prototype`)을 그대로 실제 앱 `Batch Report 분석` 탭으로 옮겼다**.
@@ -927,8 +939,8 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
-python3 tests/test_batchview.py    # 11 (새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
-python3 tests/test_lotmodel.py     # 15 (연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
+python3 tests/test_batchview.py    # 12 (3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
+python3 tests/test_lotmodel.py     # 20 (3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)

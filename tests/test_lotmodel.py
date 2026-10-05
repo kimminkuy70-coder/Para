@@ -235,6 +235,55 @@ class MachineMove(unittest.TestCase):
             self.assertFalse(lot["moved"], name)
 
 
+class Scan3D(unittest.TestCase):
+    """대전제(사용자 확정 2026-10-05): S/M `ABC-3D` = 3D 스캔. 레시피가 같아도 2D 와 재스캔 · 중복이 아니다."""
+
+    def test_scan_kind(self):
+        for sm, kind in {"ABC-3D": "3D", "ABC 3D": "3D", "ABC_3d": "3D", "BAW-0911S-3D": "3D",
+                         "ABC": "2D", "ABC-3DX": "2D", "A3D": "2D", "ABC-13D": "2D"}.items():
+            self.assertEqual(lm.scan_kind(sm), kind, sm)
+
+    def test_3d_then_2d_is_two_bunches_not_duplicate(self):
+        model = lm.build(records(("AOI-1", report("ABC-3D", full([]), "2026-09-01 10:00")),
+                                 ("AOI-1", report("ABC", full([]), "2026-09-01 10:35"))))
+        lot = only(model, "ABC")                                    # 같은 Lot
+        self.assertEqual([b["scan"] for b in lot["bunches"]], ["3D", "2D"])
+        self.assertEqual(lot["scans"], ["2D", "3D"])
+        self.assertEqual(lot["duplicates"], 0)                      # 2D·3D 한 번씩 Pass = 중복 아님
+        self.assertEqual(lot["state"], lm.LOT_DONE)
+        for b in lot["bunches"]:
+            self.assertEqual(b["counts"], {lm.OK: 25})
+
+    def test_2d_rescan_after_3d_joins_2d(self):
+        model = lm.build(records(("AOI-1", report("ABC", full(["Scan 2D Error."]), "2026-09-01 10:00")),
+                                 ("AOI-1", report("ABC-3D", full([]), "2026-09-01 10:35")),
+                                 ("AOI-1", report("ABC", [("25", "Pass")], "2026-09-01 11:10"))))
+        lot = only(model, "ABC")
+        two = [b for b in lot["bunches"] if b["scan"] == "2D"]
+        self.assertEqual(len(two), 1)
+        self.assertEqual(len(two[0]["attempts"]), 2)                # 3D 가 끼어도 2D 재스캔은 이어짐
+        self.assertEqual(wafer(two[0], 25)["verdict"], lm.RECOVERED)
+        self.assertEqual(lm.step_label("2D", "3D"), "2D · 3D 스캔")
+
+
+class RecipeMatch(unittest.TestCase):
+    """같은 호기 12시간 이내라도 웨이퍼 표 Recipe(s) 가 다르면 이어서 스캔이 아니다(열이 있을 때만)."""
+
+    def test_different_recipe_same_machine_is_new_bunch(self):
+        model = lm.build(records(("AOI-1", report("ABC", full([]), "2026-09-01 10:00", recipe="2D_WBG")),
+                                 ("AOI-1", report("ABC", full([]), "2026-09-01 11:00", recipe="2D"))))
+        lot = only(model, "ABC")
+        self.assertEqual([b["step"] for b in lot["bunches"]], ["2D_WBG", "2D"])
+        self.assertEqual(lot["duplicates"], 0)
+
+    def test_missing_recipe_column_still_joins(self):
+        model = lm.build(records(("AOI-1", report("ABC", full([]), "2026-09-01 10:00", recipe="2D_WBG")),
+                                 ("AOI-1", report("ABC", full([]), "2026-09-01 11:00", recipe=""))))
+        lot = only(model, "ABC")
+        self.assertEqual(len(lot["bunches"]), 1)
+        self.assertEqual(lot["duplicates"], 25)
+
+
 @unittest.skipUnless(os.environ.get("PARA_BATCH_SAMPLE"), "PARA_BATCH_SAMPLE 폴더 없음")
 class RealSample(unittest.TestCase):
     def test_real_reports(self):

@@ -1,6 +1,6 @@
 import {useMemo,useState,type ReactNode} from 'react';
 import {Legend,Seg,useWidth,type Key} from './BatchCharts';
-import {addDays,bucket,bucketDays,dur,hrs,mins,num,pad,ts,weekday,C_OK,C_ERR,C_WAIT,type View,type Unit} from './batchData';
+import {addDays,bucket,bucketDays,dur,hrs,mins,num,pad,ts,weekday,stepLabel,C_OK,C_ERR,C_WAIT,type View,type Unit} from './batchData';
 
 /* 가동률 · 원인 탭 — 달력 시간 = 유효 스캔 + Error·중복 스캔 + 재스캔 전 대기 + 점검 스캔 + 기타.
    호기 탭(전체 호기 · 호기마다), 기간 행을 누르면 오른쪽 상세, 24시간 시간표. */
@@ -83,7 +83,7 @@ export function UtilTab({v,ids,range,openLot,showRaw}:{v:View;ids:string[];range
             data-tip={`${e}\nwafer ${t[3]}장의 몫(Batch Time ÷ Dice 있는 행 수) = ${hrs(t[0])}h\n재스캔 전 대기 ${hrs(t[1])}h (앞 Batch Report의 Error wafer 비율로 나눔)\nLot ${nl}개 — 누르면 Lot 목록`}>
             <td>{e}</td><td className="num">{t[3]}</td><td className="num">{hrs(t[0])}h</td><td className="num">{hrs(t[1])}h</td><td className="num"><b>{hrs(t[0]+t[1])}h</b></td><td className="num">{nl}</td></tr>;})}
             {!ek.length&&<tr><td colSpan={6}>잃은 시간 없음</td></tr>}</tbody></table></div>
-        {errSel&&err[errSel]&&<><p className="hint">{errSel} — Lot {Object.keys(err[errSel][2]).length}개 (누르면 Lot 이력 상세)</p>
+        {errSel&&err[errSel]&&<><p className="hint">{errSel} — Lot {Object.keys(err[errSel][2]).length}개 (누르면 Lot History)</p>
           <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>{Object.keys(err[errSel][2]).slice(0,80).map(li=><button key={li} type="button" style={{minHeight:28,padding:'3px 10px',fontSize:12}} onClick={()=>openLot(+li)}>{v.lots[+li].label}</button>)}</div></>}
       </>}</aside>
     </div>
@@ -107,11 +107,11 @@ function TimeTable({v,ids,m,dataDays,periodDays,cur,tDay,setTDay,openLot,showRaw
     svg.push(<g key={'r'+ri}><rect x={L} y={y+2} width={pw} height={RH-4} fill={ri%2?'#f8fafc':'#fff'} stroke="#e6ebf0"/><text x={L-8} y={y+RH/2+4} textAnchor="end" fontWeight={700}>{rw.label}</text></g>);
     (byMachine[rw.m]||[]).forEach(g=>{const r=R[g];if(!r.s||!r.e)return;const a=ts(r.s),b=ts(r.e);if(b<=d0||a>=d1)return;const k=kind(g),x0=X(Math.max(a,d0)-d0),x1=X(Math.min(b,d1)-d0);
       svg.push(<rect key={'b'+ri+'_'+g} className="ttb" x={x0.toFixed(1)} y={y+5} width={Math.max(2,x1-x0).toFixed(1)} height={RH-17} rx={2} fill={k[1]} data-raw={g}
-        data-tip={`${r.s.slice(11)} ~ ${r.e.slice(11)} · ${r.m} · ${k[0]}\n${r.lot!=null?'Lot '+v.lots[r.lot].label+' · ':''}S/M ${r.sm} · ${r.step}\nPass ${r.ok} / ${r.n}행${r.fe?'\n첫 Error: '+r.fe:''}\n${r.f}\n누르면 원문`}/>);
+        data-tip={`${r.s.slice(11)} ~ ${r.e.slice(11)} · ${r.m} · ${k[0]}\n${r.lot!=null?'Lot '+v.lots[r.lot].label+' · ':''}S/M ${r.sm} · ${stepLabel(r)}\nPass ${r.ok} / ${r.n}행${r.fe?'\n첫 Error: '+r.fe:''}\n${r.f}\n누르면 원문`}/>);
       if(!seen['r'+g]){seen['r'+g]=1;ev.push({t:r.s,g});}});
     v.waits.forEach((w,wi)=>{if(w.m!==rw.m)return;const a=ts(w.s),b=ts(w.e);if(b<=d0||a>=d1)return;const x0=X(Math.max(a,d0)-d0),x1=X(Math.min(b,d1)-d0);
       svg.push(<rect key={'w'+ri+'_'+wi} className="ttw" x={x0.toFixed(1)} y={y+RH-11} width={Math.max(2,x1-x0).toFixed(1)} height={5} rx={1} fill={C_WAIT} data-li={w.li}
-        data-tip={`재스캔 전 대기 · Lot ${v.lots[w.li].label}\n${w.s.slice(5)} → ${w.e.slice(5)} (${dur(mins(w.s,w.e))})\n앞 Batch Report 첫 Error: ${R[w.g].fe||'—'}\n그 사이 다른 스캔 시간은 가동률에서 뺍니다\n누르면 Lot 이력 상세`}/>);
+        data-tip={`재스캔 전 대기 · Lot ${v.lots[w.li].label}\n${w.s.slice(5)} → ${w.e.slice(5)} (${dur(mins(w.s,w.e))})\n앞 Batch Report 첫 Error: ${R[w.g].fe||'—'}\n그 사이 다른 스캔 시간은 가동률에서 뺍니다\n누르면 Lot History`}/>);
       if(!seen['w'+wi]){seen['w'+wi]=1;ev.push({t:w.s,w:wi});}});});
   ev.sort((a,b)=>a.t<b.t?-1:a.t>b.t?1:0);
   const click=(e:React.MouseEvent)=>{const t=e.target as Element,l=t.closest('[data-li]');if(l){openLot(+l.getAttribute('data-li')!);return;}const r=t.closest('[data-raw]');if(r)showRaw(+r.getAttribute('data-raw')!);};

@@ -11,8 +11,12 @@
 - 같은 코드라도 전체 Wafer ID(`SF14G25-A0`)의 Lot ID(앞 5자)가 다르면 다른 Lot. 1글자 차이는 판독 오차.
 - 슬롯: 웨이퍼 표가 25행이면 1행=25번 … 25행=1번. 아니면 Wafer ID(`Slot 14`·`14`·`SF14G14-xx`).
 - Pass 가 아니면 전부 Error(빈칸 포함). 문구가 여럿이면 첫 문구가 원인.
-- 묶음: 같은 호기에서 시도 간격 12시간 이하. 다른 호기는 '호기 이동 재스캔'일 때만 이어 붙인다
+- 묶음: 같은 호기에서 시도 간격 12시간 이하 + 같은 공정 단계(웨이퍼 표 마지막 열 Recipe(s) — 그 열이 있는
+  Batch Report 끼리만 비교, 사용자 확정 2026-10-05). 다른 호기는 '호기 이동 재스캔'일 때만 이어 붙인다
   (앞 묶음에 미해결 웨이퍼가 남았고, 같은 공정 단계(Recipe(s))이며, move_gap_h 이내).
+- 3D 스캔(대전제, 사용자 확정 2026-10-05): S/M 에 단독 `3D`(`ABC-3D`)가 있으면 3D 스캔이다. 레시피는 2D 와 같아
+  Lot 이름으로만 구분한다. 같은 Lot 의 2D · 3D 스캔은 서로 재스캔 · 중복 Pass 가 아니므로 묶음을 따로 만든다
+  (같은 wafer 를 2D · 3D 로 한 번씩 Pass 해도 중복 Pass 가 아니고, Lot · wafer 취합도 따로 센다).
 - 웨이퍼 판정: 한 번에 Pass / 재스캔 Pass(Error 뒤 다시 스캔해 Pass) / 중복 Pass(Pass 2번 이상) / Pass 없음.
 - 중복 Pass 는 가장 나중 Pass 를 추천 선택, 사람이 overrides 로 바꾼다. 오류는 원문 그대로 보여 준다.
 
@@ -31,6 +35,8 @@ SAME_MACHINE_GAP_H = 12          # 같은 호기: 이 간격 이하면 같은 �
 MOVE_GAP_H = 48                  # 다른 호기 재스캔으로 볼 최대 간격 (사용자 제안 2일)
 FULL_SLOTS = 25                  # all slot 스캔의 웨이퍼 표 행 수
 
+SCAN_3D_RE = re.compile(r"(?<![A-Za-z0-9])3D(?![A-Za-z0-9])", re.I)
+SCAN_2D, SCAN_3D = "2D", "3D"
 CODE_RE = re.compile(r"(?<![A-Za-z])([A-Za-z]{3})(?![A-Za-z])")
 FULL_ID_RE = re.compile(r"([A-Z0-9]{5})(\d{2})-[A-Z0-9]{2}")
 SLOT_RE = re.compile(r"(?:slot\s*)?(\d{1,2})", re.I)
@@ -77,6 +83,17 @@ def lot_code(sm):
     """S/M 안의 첫 단독 영문 3글자(대문자). 없으면 None → 점검 스캔."""
     m = CODE_RE.search(str(sm or ""))
     return m.group(1).upper() if m else None
+
+
+def scan_kind(sm):
+    """S/M 에 단독 `3D`(`ABC-3D` · `ABC 3D` · `ABC_3D`)가 있으면 3D 스캔, 아니면 2D 스캔."""
+    return SCAN_3D if SCAN_3D_RE.search(str(sm or "")) else SCAN_2D
+
+
+def step_label(step, scan):
+    """공정 단계 표시. 3D 스캔은 레시피가 2D 와 같아 ' · 3D 스캔' 을 붙여 구분한다(화면 · Excel · HTML 공통)."""
+    step = step or "—"
+    return f"{step} · 3D 스캔" if scan == SCAN_3D else step
 
 
 def is_pass(status):
@@ -191,7 +208,7 @@ def attempt(record):
     return {"id": record["id"], "machine": record["machine"],
             "source_folder": record.get("source_folder", ""),
             "file": report.get("file_name", ""), "job": job, "setup": setup, "job_setup": job_setup,
-            "sm": sm, "code": lot_code(sm), "lot_id": reps[0] if reps else None,
+            "sm": sm, "code": lot_code(sm), "scan": scan_kind(sm), "lot_id": reps[0] if reps else None,
             "step": step[0][0] if step else "",
             "start": wph.parse_batch_datetime(meta.get("batchstart", "")),
             "end": wph.parse_batch_datetime(meta.get("batchend", "")),
@@ -283,7 +300,7 @@ def _step(attempts):
 def _bunch(attempts, overrides, moved):
     key = attempts[0]["id"]
     wafers, counts, totals = resolve(attempts, overrides, key)
-    return {"key": key, "attempts": attempts,
+    return {"key": key, "attempts": attempts, "scan": attempts[0].get("scan", SCAN_2D),
             "machines": list(dict.fromkeys(a["machine"] for a in attempts)),
             "moved": moved, "step": _step(attempts),
             "start": min((a["start"] for a in attempts if a["start"]), default=None),
@@ -303,14 +320,15 @@ def _split_bunches(attempts, same_gap_h, move_gap_h):
             last = group[-1]
             end = max((g["end"] or g["start"] for g in group if g["end"] or g["start"]), default=None)
             gap = (a["start"] - end) if (a["start"] and end) else None
+            # 같은 공정 단계(Recipe(s) 열) — 열이 없는 Batch Report 는 비교하지 않는다.
+            step = _step(group)
+            same_step = not step or not a["step"] or step == a["step"]
             if a["machine"] == last["machine"]:
-                if gap is not None and gap <= same:
+                if gap is not None and gap <= same and same_step:
                     group.append(a)
                     continue
             elif gap is not None and gap <= move:
                 # 다른 호기: 앞 묶음에 미해결이 남았고 같은 공정 단계일 때만 '호기 이동 재스캔'.
-                step = _step(group)
-                same_step = not step or not a["step"] or step == a["step"]
                 if same_step and resolve(group)[1].get(UNRESOLVED, 0):
                     group.append(a)
                     out[-1] = (group, True)
@@ -355,10 +373,12 @@ def build(records, overrides=None, same_gap_h=SAME_MACHINE_GAP_H, move_gap_h=MOV
     for code, items in bycode.items():
         reps = _cluster([a["lot_id"] for a in items if a["lot_id"]])
         grouped = defaultdict(list)                       # lot_id → [(묶음 시도들, moved)]
-        for group, moved in _split_bunches(items, same_gap_h, move_gap_h):
-            for rep, part in _split_by_lot_id(group):
-                rep = _represent(rep, reps) if rep else (reps[0] if len(reps) == 1 else None)
-                grouped[rep].append((part, moved))
+        # 2D · 3D 스캔은 묶음을 따로 만든다(서로 재스캔 · 중복이 아니다).
+        for kind in (SCAN_2D, SCAN_3D):
+            for group, moved in _split_bunches([a for a in items if a["scan"] == kind], same_gap_h, move_gap_h):
+                for rep, part in _split_by_lot_id(group):
+                    rep = _represent(rep, reps) if rep else (reps[0] if len(reps) == 1 else None)
+                    grouped[rep].append((part, moved))
         for rep, parts in grouped.items():
             bunches = [_bunch(part, overrides, moved) for part, moved in parts]
             bunches.sort(key=lambda b: (b["start"] or datetime.max, b["key"]))
@@ -376,6 +396,7 @@ def build(records, overrides=None, same_gap_h=SAME_MACHINE_GAP_H, move_gap_h=MOV
                          "unresolved": unresolved, "recovered": recovered,
                          "duplicates": sum(b["duplicates"] for b in bunches),
                          "moved": any(b["moved"] for b in bunches),
+                         "scans": [k for k in (SCAN_2D, SCAN_3D) if any(b["scan"] == k for b in bunches)],
                          "state": LOT_OPEN if unresolved else LOT_RESCANNED if recovered else LOT_DONE})
     lots.sort(key=lambda lot: (lot["start"] or datetime.max, lot["key"]))
     return {"lots": lots, "excluded": excluded}

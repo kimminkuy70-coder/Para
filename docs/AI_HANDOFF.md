@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #6 Lot 추적 화면 수정 7건 + 3D 스캔 대전제 (2026-10-05 KST, `version_v11`, v11.2.0)
+
+- GitHub 이슈 #6(예약 작업 처리). 첨부 스크린샷 2장은 이 환경에서 내려받지 못해(세션 저장소 범위 밖 경로) 글 설명만으로 반영.
+- ①지표를 누르면 목록 위 제목 상자(`.listtitle`, 목록마다 색)가 바뀜 ②기간별 Lot Scan 막대 툴팁 = 색 네모 · 이름 · Lot 수(한 열 오른쪽
+  정렬) · 합계(`BatchCharts` `data-tipx` → `TipLayer` 가 표처럼 그림) ③주 단위 = `WW{ISO 주}` + 둘째 줄 `(MM/DD~MM/DD)`
+  (`batchData.workWeek/weekRange/periodName`, 주 key 형식은 그대로라 가동률 화면 영향 없음) ④모달이 열리면 뒤 화면 스크롤 잠금
+  (`html:has(dialog:modal)` · `.wm-viewer` — 프로그램 전체) ⑤`Lot 이력 상세` → `Lot History`, 세 목차를 경계선 상자 + 제목 박스로
+  ⑥**3D 스캔(대전제 추가)**: S/M 에 단독 `3D`(`ABC-3D`)면 3D 스캔(`lotmodel.scan_kind`), 2D · 3D 는 묶음을 따로(재스캔 · 중복 아님),
+  `step_label` 로 ' · 3D 스캔' 표시(화면 · Excel · 가동률/WPH 레시피 이름 · Lot 추적 HTML). 같은 호기 12h 묶음에도 **Recipe(s) 일치**
+  조건 추가(열이 있는 Batch Report 끼리만) ⑦Batch Report 원문 창 · Lot 창에 무엇인지 설명하는 제목.
+- Lot 창 시간순 번호(#n)는 이제 공정 단계 줄이 섞여도 실제 스캔 시각 순(`flat(l, R)`). 문장 요약 · Batch Report 이력도 시각 순
+  ('처음 3D 스캔 → 5분 뒤 2D 스캔'), 오류 지도 · wafer 취합은 2D/3D 표를 나눔(`byKind`).
+- 검토한 다른 적용처: 가동률 레시피 점유 · WPH 레시피(3D 별도 이름), Lot 목록 '3D 스캔 포함' 배지, 찾기 · 취합 그룹 이름(grpLabel),
+  Excel 공정 단계 열, `lotreport.CRITERIA`(? 판정 기준에 '3D 스캔' 항목 · Recipe(s) 일치 문구).
+- 검증: test_lotmodel 20(3D · Recipe 일치 5개 추가) · test_batchview 12 · `tools/check_project.py`(test_batchreport 의 tkinter 없는 1건만
+  실패 — 변경 전과 동일) · `npx tsc --noEmit` · `vite build` · `tools/test_desktop_ui.mjs`(목록 제목 · WW 라벨 · 표 툴팁 · 모달 스크롤 잠금 ·
+  Lot History 3상자 확인 추가) 통과. 실자료 3D Lot 으로는 확인 못 함(실자료 없음). Windows 실기 미검증.
+
 ## 최신 재개 — Batch Report 프로토타입을 실제 앱으로 (2026-10-04 KST, `version_v11`)
 
 - 사용자 지시로 검토 중이던 프로토타입 화면을 실제 앱 `Batch Report 분석` 탭에 옮김. 상세는 CLAUDE.md

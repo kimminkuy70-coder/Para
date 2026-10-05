@@ -1,6 +1,6 @@
 import {useMemo,useState} from 'react';
 import {ColChart,Scatter} from './BatchCharts';
-import {dur,hrs,num,C_OK,C_WAIT,type View} from './batchData';
+import {dur,hrs,num,stepLabel,C_OK,C_WAIT,type View} from './batchData';
 
 /* WPH 탭 — 정상 스캔 WPH(Lot 을 한 번에 25매 모두 Pass 한 Batch Report) · 실제 WPH(재스캔 포함) · 처리량 감소. */
 type T={m:string;r:string;bw:number;bs:number;bn:number;ew:number;es:number;en:number};
@@ -69,14 +69,14 @@ export function WphTab({v,ids,openLot,showRaw}:{v:View;ids:string[];openLot:(li:
             <td><button type="button" className="linklike" onClick={e=>{e.stopPropagation();openLot(c.x.lot);}}>{v.lots[c.x.lot].label}</button></td><td>{c.x.r}</td><td className="num">{dur(c.x.s/60)}</td>
             <td className="num"><b>{num(c.v,1)}</b></td><td><button type="button" style={small} onClick={e=>{e.stopPropagation();showRaw(c.x.g);}}>원문 보기</button></td></tr>;})}</tbody></table></div></>
         :<p className="hint">정상 스캔 Batch Report가 없습니다.</p>}</div>
-    <div className="chartcard"><div className="ch"><h3>Lot별 실제 WPH 추이 — {title}</h3><span className="hint">점 하나 = Lot 한 번의 스캔(공정 단계). 마우스를 올리면 자세히, 누르면 Lot 이력 상세.</span><span className="grow"/>
+    <div className="chartcard"><div className="ch"><h3>Lot별 실제 WPH 추이 — {title}</h3><span className="hint">점 하나 = Lot 한 번의 스캔(공정 단계). 마우스를 올리면 자세히, 누르면 Lot History.</span><span className="grow"/>
         <span style={{fontSize:12,color:'var(--muted)'}}><i className="lgdot" style={{background:C_OK}}/>한 번에 스캔 <i className="lgdot" style={{background:C_WAIT,marginLeft:12}}/>재스캔 포함 <i className="dash"/>정상 스캔 WPH</span></div>
       <Scatter base={line} onClick={openLot} pts={effs.map(x=>{const l=v.lots[x.lot],b=l.bunches[x.b],y=x.w*3600/x.s;
         return {t:new Date(x.d+'T12:00:00').getTime(),y,id:x.lot,c:x.n>1?C_WAIT:C_OK,
-          tip:`Lot ${l.label} · ${b.step||'—'}\n${b.s} · ${x.m}\n${x.r}\nBatch Report ${x.n}장 · 최종 Pass wafer ${x.w}장 · 쓴 시간 ${hrs(x.s)}h\n실제 WPH ${num(y,1)}\n누르면 Lot 이력 상세`};})}/></div>
-    <div className="chartcard"><div className="ch"><h3>처리량이 많이 줄어든 Lot</h3><span className="hint">재스캔이 있었던 Lot 중 실제 WPH가 낮은 순 · 누르면 Lot 이력 상세</span></div>
+          tip:`Lot ${l.label} · ${stepLabel(b)}\n${b.s} · ${x.m}\n${x.r}\nBatch Report ${x.n}장 · 최종 Pass wafer ${x.w}장 · 쓴 시간 ${hrs(x.s)}h\n실제 WPH ${num(y,1)}\n누르면 Lot History`};})}/></div>
+    <div className="chartcard"><div className="ch"><h3>처리량이 많이 줄어든 Lot</h3><span className="hint">재스캔이 있었던 Lot 중 실제 WPH가 낮은 순 · 누르면 Lot History</span></div>
       <div className="table-scroll" style={{maxHeight:330}}><table className="t-compact"><thead><tr><th>Lot</th><th>공정 단계</th><th>시작</th><th>호기</th><th className="num">Batch Report</th><th className="num">스캔에 쓴 시간(h)</th><th className="num">실제 WPH</th><th className="num">처리량 감소</th></tr></thead>
-        <tbody>{lossRows.map(([x,y])=>{const b=v.lots[x.lot].bunches[x.b];return <tr key={x.lot+'|'+x.b} className="clickable" onClick={()=>openLot(x.lot)}><td><b>{v.lots[x.lot].label}</b></td><td>{b.step}</td><td>{b.s}</td><td>{x.m}</td>
+        <tbody>{lossRows.map(([x,y])=>{const b=v.lots[x.lot].bunches[x.b];return <tr key={x.lot+'|'+x.b} className="clickable" onClick={()=>openLot(x.lot)}><td><b>{v.lots[x.lot].label}</b></td><td>{stepLabel(b)}</td><td>{b.s}</td><td>{x.m}</td>
           <td className="num">{x.n}</td><td className="num">{hrs(x.s)}</td><td className="num">{num(y,1)}</td><td className="num v4">{pct(loss(bases[x.r+'||'+x.m]??null,y))}</td></tr>;})}
           {!lossRows.length&&<tr><td colSpan={8}>재스캔한 Lot이 없습니다.</td></tr>}</tbody></table></div></div>
   </section>;

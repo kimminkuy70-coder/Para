@@ -26,8 +26,12 @@ CRITERIA = [
      "다른 Lot입니다. 1글자만 다르면 ID 판독 오차로 같은 Lot입니다.", "BAH → SC93F · SA78K 두 Lot / SH47T ≈ SA47T"),
     ("이어서 스캔", f"같은 Lot을 같은 호기에서 앞 Batch Report 끝부터 다음 시작까지 {lm.SAME_MACHINE_GAP_H}시간 이하로 "
      "다시 스캔하면 이어서 스캔한 것(재스캔 · 나눠 스캔)으로 봅니다. 공정 단계가 바뀌거나(WBG → CMP) 오래 뒤에 다시 검사하면 "
-     "같은 Lot 안에서 줄을 나눠 셉니다 — 같은 웨이퍼를 두 번 더하지 않기 위해서입니다.",
+     "같은 Lot 안에서 줄을 나눠 셉니다 — 같은 웨이퍼를 두 번 더하지 않기 위해서입니다. 웨이퍼 표 마지막 열 Recipe(s)가 "
+     "있는 Batch Report끼리는 Recipe(s)가 같아야 이어서 스캔한 것입니다(그 열이 없으면 비교하지 않음).",
      "2D_WBG 스캔 → 3일 뒤 2D 스캔 = 같은 Lot, 두 줄"),
+    ("3D 스캔", "S/M에 단독 3D가 붙은 스캔(ABC-3D)은 3D 스캔입니다. 레시피는 2D와 같아 Lot 이름으로만 구분합니다. "
+     "같은 Lot의 2D · 3D 스캔은 서로 재스캔 · 중복 Pass가 아니라 따로 셉니다 — 오류 지도 · Lot · wafer 취합도 2D와 3D를 나눠 보여 줍니다.",
+     "ABC-3D 스캔 → 5분 뒤 ABC 2D 스캔 = 같은 Lot, 3D 한 줄 · 2D 한 줄"),
     ("호기 이동", f"다른 호기의 Batch Report는 ① {lm.MOVE_GAP_H}시간 이내 ② 앞 스캔에 Pass하지 못한 웨이퍼가 남음 "
      "③ 같은 공정 단계(Recipe(s))일 때만 이어서 스캔한 것으로 봅니다. 시간만 보면 다음 공정 스캔과 구분되지 않기 때문입니다.",
      "AOI-9에서 3번 실패 → AOI-12에서 완료 = 이어서 스캔"),
@@ -38,7 +42,7 @@ CRITERIA = [
     ("연쇄", "같은 Batch Report에서 앞에 Error가 있었으면 뒤따르는 Aborted · Skipped는 연쇄로 표시하고, "
      "Error 집계에서는 그 앞 Error 문구로 셉니다.", ""),
     ("웨이퍼 결과", "이어서 스캔한 Batch Report들 안에서 웨이퍼마다 한 번에 Pass · 재스캔 Pass(Error 뒤 다시 스캔해 Pass) · "
-     "중복 Pass(Pass 2번 이상) · Pass 없음(끝까지 Pass하지 못함)으로 나눕니다. 공정 단계가 다른 스캔은 중복이 아닙니다.", ""),
+     "중복 Pass(Pass 2번 이상) · Pass 없음(끝까지 Pass하지 못함)으로 나눕니다. 공정 단계가 다른 스캔 · 2D와 3D 스캔은 중복이 아닙니다.", ""),
     ("오류 표시", "오류는 Batch Report의 Pass/Fail 원문 그대로 보여 줍니다. 모아서 셀 때만 첫 문구를 씁니다.", "Scan 2D Error. Aborted. → 첫 문구 Scan 2D Error."),
     ("중복 Pass · Dice 합계", "같은 웨이퍼가 Pass 2번 이상이면 가장 나중 Pass를 씁니다(추천, 기본). Dice 합계는 웨이퍼마다 "
      "쓴 행 하나만 더합니다. 다른 Pass로 직접 바꾸는 것은 개발자 기능이고, 저장한 선택만 결과에 쓰입니다 — 저장한 선택은 "
@@ -93,7 +97,7 @@ def to_data(model):
                                  for c in w["cells"]]}
                       for w in b["wafers"]]
             tot = b["totals"]
-            bunches.append({"start": _t(b["start"]), "end": _t(b["end"]), "step": b["step"], "moved": b["moved"],
+            bunches.append({"start": _t(b["start"]), "end": _t(b["end"]), "step": lm.step_label(b["step"], b["scan"]), "moved": b["moved"],
                             "machines": b["machines"], "hours": round(b["batch_sec"] / 3600, 2),
                             "counts": b["counts"], "attempts": attempts, "wafers": wafers,
                             "totals": {"scanned": tot["scanned"], "bad": tot["bad"], "good": tot["good"],

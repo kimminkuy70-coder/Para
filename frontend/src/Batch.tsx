@@ -280,7 +280,9 @@ export function Batch({active}:{active:boolean}){
       {!config?.lot_criteria?.length&&<p className="table-empty">엔진에서 기준을 받지 못했습니다. 엔진 연결을 확인하세요.</p>}
       <div className="dialog-actions"><button type="button" className="primary" onClick={()=>critRef.current?.close()}>닫기</button></div></dialog>
     <dialog className="edit-dialog wide" ref={rawRef} aria-labelledby="rawTitle" onClose={()=>setRaw(undefined)}>{raw&&<>
-      <h3 id="rawTitle">{raw.f}</h3><p className="sub">{raw.m} · Reports 폴더 원문 그대로(앱 캐시에 읽어 둔 표). 장비 원본은 수정하지 않습니다.</p>
+      <span className="step">Batch Report 원문 창</span><h3 id="rawTitle">Batch Report 원문 — 스캔 1번(Batch Report 1장)의 표 그대로</h3>
+      <p className="rawfile mono">{raw.f}</p>
+      <p className="sub">{raw.m} · Reports 폴더 원문 그대로(앱 캐시에 읽어 둔 표). 장비 원본은 수정하지 않습니다. 이 Lot의 다른 Batch Report까지 모아 보려면 Lot 이름을 눌러 Lot 창을 여세요.</p>
       <div className="two" style={{gridTemplateColumns:'minmax(0,330px) minmax(0,1fr)',marginTop:0}}>
         <div className="table-scroll" style={{maxHeight:'60vh'}}><table className="t-compact"><tbody>{raw.meta.map((kv,i)=><tr key={i}><th style={{position:'static'}}>{kv[0]}</th><td>{kv[1]}</td></tr>)}</tbody></table></div>
         <div className="mapscroll" style={{maxHeight:'60vh'}}><table className="map"><thead><tr><th>#</th>{raw.h.map(x=><th key={x}>{x}</th>)}</tr></thead>

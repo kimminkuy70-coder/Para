@@ -83,7 +83,7 @@ export function FindTab(p:Props){
           return <div key={k} className="group"><div className="gh"><label style={{display:'flex',gap:8,alignItems:'center'}}><input type="checkbox" checked={all} aria-label={(l?'Lot '+l.label:'점검 스캔')+' 전체 선택'}
               onChange={e=>setSel(o=>{const n={...o};mem.forEach(g=>{if(e.target.checked)n[g]=1;else delete n[g];});return n;})}/> <b>{l&&b?`Lot ${l.label} · ${grpLabel(b)}`:'점검 스캔(Lot 아님)'}</b></label>
             {l?<StPill s={l.state}/>:<span className="st out">Lot에서 제외</span>}<span className="meta">{b?`${b.s} ~ ${b.e.slice(5)} · ${b.machines.join(' → ')} · Batch Report ${mem.length}장`:''}</span>
-            {l&&<button style={{...small,marginLeft:'auto'}} onClick={()=>p.openLot(first.lot!)}>Lot 이력 상세 보기</button>}</div>
+            {l&&<button style={{...small,marginLeft:'auto'}} onClick={()=>p.openLot(first.lot!)}>Lot History 보기</button>}</div>
             {paths.map(pk=>{const s=v.scan?.[pk];const found=s?.paths||[];return <div key={pk} className="sr"><span>Scanresult 경로</span>
               {found.length?found.map(x=><Fragment key={x}><code>{x}</code><button style={small} onClick={()=>copy(x)}>복사</button></Fragment>)
                 :<><code>{s?.pattern||pk}</code><button style={small} onClick={()=>copy(s?.pattern||pk)}>복사</button><span className="meta">폴더를 찾지 못했습니다(Scanresult · 백업 폴더 확인)</span></>}</div>;})}

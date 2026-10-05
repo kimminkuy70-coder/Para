@@ -368,10 +368,10 @@ class BatchViews:
                     else:
                         t["no"] += 1
                     real = next((c["id"] for c in w["cells"] if batchview.lm.is_real_id(c["id"])), x["id"])
-                    wafer_rows.append([lot["label"], b["step"], k.replace("ID:", ""), real, x["status"],
+                    wafer_rows.append([lot["label"], batchview.step_label(b["step"], b.get("k")), k.replace("ID:", ""), real, x["status"],
                                        "Pass" if x["ok"] else "Pass 없음", R[x["g"]]["f"], R[x["g"]]["m"], R[x["g"]]["s"],
                                        x["sc"], x["bad"], x["good"], yld(x["sc"], x["good"]), source(x["g"])])
-                lot_rows.append([lot["label"], b["step"], f"{b['s']} ~ {b['e']}", " → ".join(b["machines"]), len(grp["att"]),
+                lot_rows.append([lot["label"], batchview.step_label(b["step"], b.get("k")), f"{b['s']} ~ {b['e']}", " → ".join(b["machines"]), len(grp["att"]),
                                  len(grp["keys"]), t["ok"], t["no"], t["sc"], t["bad"], t["good"], yld(t["sc"], t["good"])])
             name, title = f"BatchReport_취합_{now}.xlsx", "Batch Report 찾기 · 취합"
         elif params.get("kind") == "lot":
@@ -393,11 +393,11 @@ class BatchViews:
                         t["no"] += 1
                     last = cell or w["cells"][-1]
                     g = b["att"][last[0]]
-                    wafer_rows.append([lot["label"], b["step"], w["slot"] if w["slot"] is not None else w["id"], w["id"],
+                    wafer_rows.append([lot["label"], batchview.step_label(b["step"], b.get("k")), w["slot"] if w["slot"] is not None else w["id"], w["id"],
                                        last[1], w["v"], R[g]["f"] if cell else "", R[g]["m"] if cell else "", R[g]["s"] if cell else "",
                                        cell[4] if cell else None, cell[5] if cell else None, cell[6] if cell else None,
                                        yld(cell[4], cell[6]) if cell and cell[4] is not None else None, source(g) if cell else ""])
-                lot_rows.append([lot["label"], b["step"], f"{b['s']} ~ {b['e']}", " → ".join(b["machines"]), len(b["att"]),
+                lot_rows.append([lot["label"], batchview.step_label(b["step"], b.get("k")), f"{b['s']} ~ {b['e']}", " → ".join(b["machines"]), len(b["att"]),
                                  len(d["wafers"]), t["ok"], t["no"], t["sc"], t["bad"], t["good"], yld(t["sc"], t["good"])])
             safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in lot["label"])[:60]
             name, title = f"Lot_{safe}_취합_{now}.xlsx", f"Lot {lot['label']} 취합"

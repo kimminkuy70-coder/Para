@@ -126,15 +126,29 @@ try{
   assert.match(await kpi.nth(0).innerText(),/69/);
   assert.match(await kpi.nth(1).innerText(),/205/);
   await kpi.nth(1).click();
+  // The list title above the table names the list the clicked KPI shows.
+  await page.locator('.listtitle').filter({hasText:'Batch Report 목록'}).waitFor();
   // Batch Report list → 원문: source text is shown as text, never executed.
   await page.locator('.tabpanel tbody tr').filter({hasText:'BatchReport_000.htm'}).click();
   await page.locator('dialog[open]').getByText('<script>window.injected=true</script>',{exact:true}).first().waitFor();
+  await page.locator('dialog[open]').getByText('Batch Report 원문 — 스캔 1번(Batch Report 1장)의 표 그대로').waitFor();
+  // A modal window scrolls alone — the page behind it does not (whole program).
+  assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).overflow),'hidden');
   assert.equal(await page.evaluate(()=>window.injected),undefined);
   await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
-  // Lot window: 이력 상세 (timeline) and 취합 tabs, Excel export to the local result folder.
+  assert.notEqual(await page.evaluate(()=>getComputedStyle(document.documentElement).overflow),'hidden');
+  // Lot window: Lot History (timeline) and 취합 tabs, Excel export to the local result folder.
   await kpi.nth(0).click();
+  await page.locator('.listtitle').filter({hasText:'Lot 단위 Scan List'}).waitFor();
+  // Weekly bars: WW number on the first line, the date range on the second; tooltip rows aligned.
+  await page.locator('.chartcard').first().getByRole('button',{name:'주',exact:true}).click();
+  assert.match(await page.locator('svg[aria-label="기간별 Lot Scan 현황"] text').filter({hasText:/^WW\d+/}).first().textContent(),/^WW\d+\(\d\d\/\d\d~\d\d\/\d\d\)$/);
+  await page.locator('svg[aria-label="기간별 Lot Scan 현황"] rect.hit').first().hover();
+  await page.locator('.bv-tip.rich .tg b').first().waitFor();
   await page.locator('.tabpanel tbody tr.clickable').first().click();
   await page.locator('dialog.lotwin[open] svg[aria-label="시간순 Batch Report 요약"]').waitFor();
+  assert.equal(await page.locator('dialog.lotwin').getByRole('tab',{name:'Lot History',exact:true}).getAttribute('aria-selected'),'true');
+  assert.equal(await page.locator('dialog.lotwin .lw-sec h3.boxed').count(),3);
   await page.locator('dialog.lotwin').getByRole('tab',{name:'Lot · wafer 취합'}).click();
   await page.locator('dialog.lotwin').getByRole('button',{name:'Excel로 저장',exact:true}).click();
   assert((await page.locator('dialog.lotwin').getByLabel('저장된 Excel').inputValue()).includes('취합'));

@@ -83,6 +83,9 @@ def _stats(a):
     return s, ph, cph
 
 
+step_label = lm.step_label
+
+
 def _num(value):
     return None if value is None else (int(value) if float(value).is_integer() else round(value, 3))
 
@@ -123,13 +126,13 @@ class View:
             s, _, _ = _stats(a)
             li, bi, _ = self.place.get(g, (None, None, None))
             R.append(dict(f=a['file'], m=a['machine'], sm=a['sm'], code=a['code'] or '', job=a['job'], setup=a['setup'],
-                          step=a['step'], s=stamp(a['start']), e=stamp(a['end']), sec=a['batch_sec'] or 0,
+                          step=a['step'], k=a['scan'], s=stamp(a['start']), e=stamp(a['end']), sec=a['batch_sec'] or 0,
                           lot=li, b=bi, n=s['n'], ok=s['ok'], err=s['err'], chain=s['chain'], fe=_first_error(a)))
         lots = []
         for li, lot in enumerate(self.model['lots']):
             bunches, causes, per = [], Counter(), {}
             for b in lot['bunches']:
-                bunches.append(dict(att=[self.index[a['id']] for a in b['attempts']], step=b['step'], s=stamp(b['start']),
+                bunches.append(dict(att=[self.index[a['id']] for a in b['attempts']], step=b['step'], k=b['scan'], s=stamp(b['start']),
                                     e=stamp(b['end']), moved=b['moved'], machines=b['machines'], sec=b['batch_sec']))
                 for w in b['wafers']:
                     if not w['cause']:
@@ -143,7 +146,7 @@ class View:
             lots.append(dict(key=lot['key'], label=lot['label'], code=lot['code'], lot_id=lot['lot_id'] or '',
                              sms=lot['sms'], jobs=lot['jobs'], machines=lot['machines'], n=lot['attempts'],
                              s=stamp(lot['start']), e=stamp(lot['end']), state=lot['state'], open=lot['unresolved'],
-                             re=re_, dup=lot['duplicates'], moved=lot['moved'], saved=saved,
+                             re=re_, dup=lot['duplicates'], moved=lot['moved'], saved=saved, scans=lot['scans'],
                              multi=any(len(b['attempts']) > 1 for b in lot['bunches']),
                              causes=[[k, n] for k, n in causes.most_common(3)],
                              cz=[[k, v[0], v[1]] for k, v in per.items()], bunches=bunches))
@@ -223,7 +226,7 @@ class View:
     def _spread_attempt(days, li, a, p, picked, parts):
         sec = a['batch_sec']
         scanned = [r for r in a['rows'] if r['scanned'] is not None]
-        recipe = f"{a['job']} · {a['step']}"
+        recipe = f"{a['job']} · {step_label(a['step'], a['scan'])}"
         valid, dropped, err = 0.0, 0.0, defaultdict(lambda: [0.0, 0])
         if scanned:
             share = sec / len(scanned)
@@ -270,13 +273,13 @@ class View:
                 if len(b['attempts']) == 1:
                     a = b['attempts'][0]
                     if len(a['rows']) == FULL and all(r['pass'] for r in a['rows']) and (a['batch_sec'] or 0) > 0:
-                        base.append(dict(m=a['machine'], r=f"{a['job']} · {a['step']}", d=stamp(a['start'])[:10],
+                        base.append(dict(m=a['machine'], r=f"{a['job']} · {step_label(a['step'], a['scan'])}", d=stamp(a['start'])[:10],
                                          w=FULL, s=a['batch_sec'], g=self.index[a['id']], lot=li))
                 sec = sum(a['batch_sec'] or 0 for a in b['attempts'])
                 if sec <= 0:
                     continue
                 valid = sum(1 for w in b['wafers'] if w['pick'] is not None)
-                eff.append(dict(m=b['machines'][-1], r=f"{b['attempts'][-1]['job']} · {b['step']}",
+                eff.append(dict(m=b['machines'][-1], r=f"{b['attempts'][-1]['job']} · {step_label(b['step'], b['scan'])}",
                                 d=stamp(b['start'])[:10], w=valid, s=sec, n=len(b['attempts']), lot=li, b=bi))
         return dict(base=base, eff=eff)
 

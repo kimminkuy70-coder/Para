@@ -107,6 +107,20 @@ class ViewNumbers(unittest.TestCase):
         self.assertEqual(d2['err'][batchview.DUP][0], 600)
         self.assertTrue(saved.aggregate(p['lots'][li]['bunches'][0]['att'])[0]['w']['S25']['saved'])
 
+    def test_3d_scan_is_separate_in_payload(self):
+        """S/M ABC-3D = 3D 스캔: 같은 Lot 이지만 줄(bunch)이 따로라 중복 Scan 이 아니고, 화면 · WPH 이름에 3D 가 붙는다."""
+        view = batchview.View(records(("AOI-1", report("ABC-3D", full([]), "2026-09-01 10:00")),
+                                      ("AOI-1", report("ABC", full([]), "2026-09-01 10:35"))))
+        data = view.payload()
+        self.assertEqual(len(data["lots"]), 1)
+        lot = data["lots"][0]
+        self.assertEqual(lot["scans"], ["2D", "3D"])
+        self.assertEqual(lot["dup"], 0)
+        self.assertEqual([b["k"] for b in lot["bunches"]], ["3D", "2D"])
+        self.assertEqual([r["k"] for r in data["R"]], ["3D", "2D"])
+        self.assertEqual(sorted(x["r"] for x in data["C"]["base"]), [f"{lm.attempt(view.records[1])['job']} · 2D_WBG",
+                                                                     f"{lm.attempt(view.records[1])['job']} · 2D_WBG · 3D 스캔"])
+
     def test_day_parts(self):
         from datetime import datetime
         parts = batchview.day_parts(datetime(2026, 9, 1, 23), datetime(2026, 9, 2, 1))
