@@ -155,10 +155,36 @@ try{
   await page.locator('dialog.lotwin').getByRole('button',{name:'닫기',exact:true}).click();
   await mkdir(join(root,'docs/screenshots'),{recursive:true});
   await page.screenshot({path:join(root,'docs/screenshots/rev1-batch.png'),fullPage:true});
-  await page.getByRole('tab',{name:'가동률 · 원인',exact:true}).click();
+  // 가동률: 시간 3칸 숫자 · ? 설명 창(지금 숫자로 계산한 예) · 기간 상세 창 · 24시간 시간표 (사용자 확정 2026-10-05).
+  await page.getByRole('tab',{name:'가동률',exact:true}).click();
+  assert.equal(await page.locator('.kpis.k4 article').count(),4);
+  await page.getByRole('button',{name:'가동률 설명',exact:true}).click();
+  await page.locator('dialog.qhelp[open] ul.calc li').filter({hasText:'달력 시간'}).waitFor();
+  await page.locator('dialog.qhelp[open]').getByRole('button',{name:'닫기',exact:true}).click();
+  await page.getByRole('button',{name:'기간별',exact:true}).click();
+  await page.locator('.prow:not(.head)').first().click();
+  await page.locator('dialog.lotwin[open]').getByRole('tab',{name:'손실 이유'}).click();
+  await page.locator('dialog.lotwin[open]').getByRole('tab',{name:'24시간 시간표'}).click();
+  await page.locator('dialog.lotwin[open] svg[aria-label="24시간 시간표"]').waitFor();
+  await page.locator('dialog.lotwin[open]').getByRole('button',{name:'닫기',exact:true}).click();
+  await page.getByRole('button',{name:'24시간 시간표',exact:true}).click();
   await page.locator('svg[aria-label="24시간 시간표"]').waitFor();
-  await page.getByRole('tab',{name:'WPH',exact:true}).click();
-  await page.getByText('호기별 전체 WPH').waitFor();
+  // WPH · 생산능력: 레시피 비교(호기별로 쌓은 하루 생산능력) → 레시피 상세 창, 표에 레시피 합계 줄.
+  await page.getByRole('tab',{name:'WPH · 생산능력',exact:true}).click();
+  await page.locator('.caprow').first().waitFor();
+  await page.getByRole('button',{name:'호기 × 레시피 표',exact:true}).click();
+  await page.locator('tr.total').first().click();
+  await page.locator('dialog.lotwin[open]').getByText('정상 WPH에서 실제 WPH까지').waitFor();
+  await page.locator('dialog.lotwin[open]').getByRole('tab',{name:'1장 처리 시간'}).click();
+  await page.locator('dialog.lotwin[open]').getByRole('tab',{name:'Lot별 실제 WPH'}).click();
+  await page.locator('dialog.lotwin[open] svg[aria-label="Lot별 실제 WPH"]').waitFor();
+  await page.locator('dialog.lotwin[open]').getByRole('button',{name:'닫기',exact:true}).click();
+  // Defect 과다 판정 설명 창(기준값 · 판정 목록)은 Lot 추적 › 멈춘 이유 요약에서도 열린다.
+  await page.getByRole('tab',{name:'Lot 추적',exact:true}).click();
+  await page.getByRole('button',{name:/작업자 중단 \d+건/}).click();
+  await page.locator('.card2').getByRole('button',{name:'Defect 과다 판정 기준 · 목록 보기'}).click();
+  await page.locator('#defTitle').waitFor();
+  await page.locator('dialog[open]').filter({has:page.locator('#defTitle')}).getByRole('button',{name:'닫기',exact:true}).click();
   // Developer mode lives in 설정 › 정보; the Batch screen shows its bar while it is on.
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('tab',{name:'정보'}).click();

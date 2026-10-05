@@ -1,7 +1,7 @@
 import {Fragment,useEffect,useRef,useState,type ReactNode} from 'react';
 import {StPill} from './BatchLot';
 import {OpenPath} from './OpenPath';
-import {V,VC,DONE,RE,C_OK,C_ERR,C_CHAIN,dur,mins,hrs,num,phList,isRealId,spanLabel,grpLabel,flat,stepLabel,is3D,kindWord,
+import {V,VC,DONE,RE,C_OK,C_ERR,C_CHAIN,C_STOP,C_DEFECT,STOPK,dur,mins,hrs,num,phList,isRealId,spanLabel,grpLabel,flat,stepLabel,is3D,kindWord,
   type View,type Lot,type LotDetail,type Wafer,type Cell} from './batchData';
 
 /* Lot 창(큰 창) — 탭 ① Lot History(시간순 요약 그래프 · 문장 요약 · Batch Report 이력 · Lot × wafer 오류 지도)
@@ -71,15 +71,15 @@ function Timeline({v,li,detail}:{v:View;li:number;detail:LotDetail}){
         :nb?<text x={mid} y={y+18} textAnchor="middle" fill={l.bunches[pr.bi].k!==l.bunches[x.bi].k?'#5b3fa0':'#8a5a00'} fontWeight={l.bunches[pr.bi].k!==l.bunches[x.bi].k?700:undefined}>
           {l.bunches[pr.bi].k!==l.bunches[x.bi].k?kindWord(l.bunches[x.bi].k):l.bunches[pr.bi].step!==l.bunches[x.bi].step?'공정 바뀜':'다시 검사'}</text>:null}</g>);});
   F.forEach(x=>{const r=R[x.g],st=detail.stats[x.g]||{ph:[],cph:[]},c=cx(x.n),bw=44,h=bh*Math.max(r.n,1)/maxRows;let y=top+bh;
-    const tip=`#${x.n}  ${r.f}\n${r.s} ~ ${r.e.slice(11)} · ${r.m}\nS/M ${r.sm} · ${stepLabel(r)}\nPass ${r.ok} · Error ${r.err}${r.chain?' · 연쇄 '+r.chain:''}  (${r.n}행)`+
-      (r.err?'\nError: '+phList(st.ph):'')+(r.chain?'\n연쇄: '+phList(st.cph):'')+'\n누르면 원문';
-    const parts:[number,string][]=[[r.ok,C_OK],[r.chain,C_CHAIN],[r.err,C_ERR]];
+    const tip=`#${x.n}  ${r.f}\n${r.s} ~ ${r.e.slice(11)} · ${r.m}\nS/M ${r.sm} · ${stepLabel(r)}\nPass ${r.ok} · Error ${r.err}${r.chain?' · 연쇄 '+r.chain:''}${r.st?' · 작업자 중단 '+r.st:''}  (${r.n}행)`+
+      (r.err?'\nError: '+phList(st.ph):'')+(r.chain?'\n연쇄: '+phList(st.cph):'')+(r.st?`\n${STOPK[r.sk||'o']} · 멈출 때 Faults ${r.ff??'—'}`:'')+(r.sp?`\n스캔 안 한 슬롯 ${r.sp}`:'')+'\n누르면 원문';
+    const parts:[number,string][]=[[r.ok,C_OK],[r.chain,C_CHAIN],[r.err,C_ERR],[r.st,r.sk==='d'?C_DEFECT:C_STOP]];
     out.push(<g key={'n'+x.n} className="node" data-raw={x.g} data-tip={tip}><rect x={c-SP/2+12} y={top-20} width={SP-24} height={bh+76} fill="transparent"/>
       <text x={c} y={top-6} textAnchor="middle" fontWeight={800} fill="#1f2937" style={{fontSize:12}}>#{x.n}{has3d&&<tspan fill={is3D(r.k)?'#5b3fa0':'#31517c'}> · {r.k||'2D'}</tspan>} · {r.s.slice(5)}</text>
       <rect className="nb" x={c-bw/2} y={y-h} width={bw} height={h} rx={4} fill="#eef1f5"/>
       {parts.map(([n,col],k)=>{if(!n)return null;const hh=h*n/Math.max(r.n,1);y-=hh;return <rect key={k} x={c-bw/2} y={y.toFixed(1)} width={bw} height={hh.toFixed(1)} fill={col}/>;})}
       <text x={c} y={top+bh+18} textAnchor="middle" fontWeight={700}>{r.m}</text>
-      <text x={c} y={top+bh+35} textAnchor="middle" fill={r.err+r.chain?'#a33820':'#0b5e46'}>Pass {r.ok} / {r.n}</text></g>);});
+      <text x={c} y={top+bh+35} textAnchor="middle" fill={r.err+r.chain?'#a33820':r.st?'#4b5d7d':'#0b5e46'}>Pass {r.ok} / {r.n}</text></g>);});
   return <div className="chartscroll"><svg width={W} height={H} role="img" aria-label="시간순 Batch Report 요약">
     <defs><marker id="arr" viewBox="0 0 10 10" refX={9} refY={5} markerWidth={7} markerHeight={7} orient="auto"><path d="M0 0L10 5L0 10z" fill="#8193a8"/></marker></defs>{out}</svg></div>;
 }
@@ -88,7 +88,7 @@ function History(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|nul
   const {v,li}=p,detail=p.detail!,l=v.lots[li],R=v.R,F=flat(l,R),has3d=l.scans.includes('3D'),no:Record<string,number>={};
   F.forEach(x=>{no[x.bi+'|'+x.ai]=x.n;});
   const openW:string[]=[];detail.bunches.forEach(b=>b.wafers.forEach(w=>{if(w.v==='Pass 없음')openW.push(w.slot==null?w.id:'S'+w.slot);}));
-  let end=l.state===DONE?'결과: 한 번에 완료 — 모든 wafer가 첫 스캔에서 Pass':l.state===RE?`결과: 재스캔으로 완료 — Error 난 wafer ${l.re}장 모두 재스캔하여 Pass`
+  let end=l.state===DONE?'결과: 한 번에 완료 — 모든 wafer가 첫 스캔에서 Pass':l.state===RE?`결과: 재스캔으로 완료 — Error · 작업자 중단으로 Pass하지 못했던 wafer ${l.re}장 모두 재스캔하여 Pass`
     :`결과: Pass하지 못한 wafer ${openW.length}장(${openW.slice(0,10).join(', ')}${openW.length>10?' …':''}) — 다른 호기에서 Scan되었는지 확인 필요`;
   if(l.dup)end+=` · 같은 wafer를 Pass 후 다시 스캔한 ${l.dup}장은 가장 나중 Pass를 씀`;
   if(has3d)end+=' · 2D 스캔과 3D 스캔은 따로 셉니다(서로 재스캔 · 중복 아님)';
@@ -103,11 +103,13 @@ function History(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|nul
     return hd;};
   const click=(e:React.MouseEvent)=>{const t=(e.target as Element).closest('[data-raw]');if(t)p.showRaw(+t.getAttribute('data-raw')!);};
   return <div onClick={click}>
-    <section className="lw-sec"><h3 className="boxed">① 시간순 요약<small>Batch Report마다 막대 하나 — 초록 Pass · 주황 연쇄(앞 Error 뒤 Aborted/Skipped) · 빨강 Error. 마우스를 올리면 자세히, 누르면 원문.</small></h3>
+    <section className="lw-sec"><h3 className="boxed">① 시간순 요약<small>Batch Report마다 막대 하나 — 초록 Pass · 주황 연쇄(앞 Error 뒤 Aborted/Skipped) · 빨강 Error · 회청/보라 작업자 중단(그 외/Defect 과다). 마우스를 올리면 자세히, 누르면 원문.</small></h3>
       <div className="chart"><Timeline v={v} li={li} detail={detail}/></div>
       <ol className="story">{F.map((x,i)=>{const r=R[x.g],st=detail.stats[x.g]||{ph:[],cph:[]},bad=r.err+r.chain;
-        return <li key={x.n} className={(bad?'err':'ok')+(has3d&&is3D(r.k)?' s3':'')}><span className="when">{r.s.slice(5)}</span><span className="hd">#{x.n} {head(i)}</span>
-          {r.m} · {stepLabel(r)} · {r.n}장 스캔 → {bad?<>Pass {r.ok} · Error {bad} <span className="v4">({phList(st.ph)}{r.chain?(r.err?' · ':'')+'연쇄 '+phList(st.cph):''})</span></>:<span className="v1">모두 Pass</span>}</li>;})}
+        return <li key={x.n} className={(bad?'err':r.st?'stop':'ok')+(has3d&&is3D(r.k)?' s3':'')}><span className="when">{r.s.slice(5)}</span><span className="hd">#{x.n} {head(i)}</span>
+          {r.m} · {stepLabel(r)} · {r.n-r.sp}장 스캔 → {bad?<>Pass {r.ok} · Error {bad} <span className="v4">({phList(st.ph)}{r.chain?(r.err?' · ':'')+'연쇄 '+phList(st.cph):''})</span></>
+            :r.st?<>Pass {r.ok} 뒤 <span className={'st '+(r.sk==='d'?'sd':'so')}>{STOPK[r.sk||'o']}</span> <span className="muted">(Aborted. {r.st}장 · 멈출 때 Faults {r.ff??'—'} · Error 아님)</span></>
+            :<span className="v1">모두 Pass</span>}{r.sp?<span className="muted"> · 스캔 안 한 슬롯 {r.sp}</span>:null}</li>;})}
         <li className="end">{end}</li></ol></section>
     <section className="lw-sec"><h3 className="boxed">② Batch Report 이력<small>스캔한 시각 순서. 같은 공정 단계 줄(2D · 3D 따로)이 이어지는 동안 한 상자로 묶습니다. 원문 보기 = Batch Report 표 그대로</small></h3>
       {F.reduce<{bi:number;xs:typeof F}[]>((acc,x)=>{const last=acc[acc.length-1];if(last&&last.bi===x.bi)last.xs.push(x);else acc.push({bi:x.bi,xs:[x]});return acc;},[]).map((run,ri,runs)=>{
@@ -119,10 +121,10 @@ function History(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|nul
           {run.xs.map((x,k)=>{const r=R[x.g],prev=k>0?R[run.xs[k-1].g]:null;return <Fragment key={x.g}>
             {prev&&<div className="gapline">↓ {head(F.indexOf(x))}{prev.fe&&' — 앞 Batch Report 첫 Error: '+prev.fe}</div>}
             <div className="att"><span className="n">#{x.n}</span><span>{r.s} ~ {r.e.slice(11)}</span><span className="mch">{r.m}</span>
-              <span style={{minWidth:0}}><span className="fn" title={r.f}>{r.f}</span><span className="meta">S/M {r.sm}{has3d?' · '+kindWord(r.k):''} · Pass {r.ok} / {r.n}행{r.err+r.chain?' · Error '+(r.err+r.chain):''}</span></span>
+              <span style={{minWidth:0}}><span className="fn" title={r.f}>{r.f}</span><span className="meta">S/M {r.sm}{has3d?' · '+kindWord(r.k):''} · Pass {r.ok} / {r.n}행{r.err+r.chain?' · Error '+(r.err+r.chain):''}{r.st?' · '+STOPK[r.sk||'o']+' '+r.st:''}{r.sp?' · 스캔 안 함 '+r.sp:''}</span></span>
               <span><button type="button" data-raw={x.g}>원문 보기</button></span></div></Fragment>;})}</div></Fragment>;})}</section>
     <section className="lw-sec"><h3 className="boxed">③ Lot × wafer 오류 지도<small>칸 = 그 Batch Report의 Pass/Fail 원문 그대로{has3d?' · 2D 스캔과 3D 스캔은 표를 따로 둡니다':''}</small></h3>
-      <div className="keys"><span><i className="c-p">Pass</i></span><span><i className="c-e">Error 원문</i> 직접 Error</span><span><i className="c-c">Aborted.</i> 앞 Error 뒤 연쇄</span>
+      <div className="keys"><span><i className="c-p">Pass</i></span><span><i className="c-e">Error 원문</i> 직접 Error</span><span><i className="c-c">Aborted.</i> 앞 Error 뒤 연쇄</span><span><i className="c-s">Aborted.</i> 작업자 중단(앞 Error 없음 · Error 아님)</span>
         <span><i className="c-p c-pick">Pass</i> 같은 wafer Pass 여럿 중 쓰는 것</span><span><i className="c-p c-drop">Pass</i> 쓰지 않는 Pass</span></div>
       {byKind(l).map(({k,bis})=>{const {slots,keys}=slotRows(detail,bis),bs=bis.map(bi=>[bi,l.bunches[bi]] as const);return <Fragment key={k||'all'}><KindHead k={k}/>
       <div className="mapscroll"><table className="map"><thead><tr><th rowSpan={2}>슬롯</th><th rowSpan={2}>Wafer ID</th>
@@ -131,7 +133,7 @@ function History(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|nul
         <tbody>{keys.map(key=>{const row=slots[key];return <tr key={key}><th>{key}</th><td>{idOf(row)}</td>{bs.map(([bi,b])=>{const w=row[bi];
           if(!w)return <td key={bi} className="c-n gsep" colSpan={b.att.length+1}>·</td>;
           const pk=p.pickOf(bi,w,true),passes=w.cells.filter(c=>c[2]).length,cells:ReactNode[]=b.att.map((_,ai)=><td key={ai} className={'c-n'+(ai?'':' gsep')}>·</td>);
-          w.cells.forEach((c:Cell)=>{const cls=c[2]?'c-p'+(passes>1?(c[0]===pk?' c-pick':' c-drop'):''):c[3]?'c-c':'c-e',r=R[b.att[c[0]]];
+          w.cells.forEach((c:Cell)=>{const cls=c[2]?'c-p'+(passes>1?(c[0]===pk?' c-pick':' c-drop'):''):c[7]?'c-s':c[3]?'c-c':'c-e',r=R[b.att[c[0]]];
             cells[c[0]]=<td key={c[0]} className={cls+(c[0]?'':' gsep')} data-tip={`#${no[bi+'|'+c[0]]} ${r.s} · ${r.m}\n${c[1]}\nScanned ${num(c[4])} · Bad ${num(c[5])} · Good ${num(c[6])}`}>{c[1]}</td>;});
           return <Fragment key={bi}>{cells}<td className={VC[w.v]}>{w.v}</td></Fragment>;})}</tr>;})}</tbody></table></div></Fragment>;})}</section>
   </div>;

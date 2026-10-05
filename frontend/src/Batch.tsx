@@ -10,6 +10,7 @@ import {UtilTab} from './BatchUtil';
 import {WphTab} from './BatchWph';
 import {FindTab,type FindCond} from './BatchFind';
 import {DevHelp} from './DevHelp';
+import {Q,DefectWindow} from './BatchHelp';
 import {useDev,setDevLocked,setDevDrafts,registerDraftHandlers} from './devmode';
 import {loadView,batchCall,addDays,ymd,type View,type ViewMeta,type ViewName,type LotDetail,type Raw,type AggGroup} from './batchData';
 
@@ -34,12 +35,13 @@ export function Batch({active}:{active:boolean}){
   const [lot,setLot]=useState<{view:ViewName;li:number}>(),[detail,setDetail]=useState<LotDetail>(),[lotXlsx,setLotXlsx]=useState('');
   const [raw,setRaw]=useState<Raw>();
   const [drafts,setDrafts]=useState<Drafts>({});
-  const [help,setHelp]=useState(false);
+  const [help,setHelp]=useState(false),[defect,setDefect]=useState(false);
   const [cond,setCond]=useState<FindCond>({machines:[],query:'',start:'',end:''});
   const [fstep,setFstep]=useState(0),[finding,setFinding]=useState(false),[fprog,setFprog]=useState('');
   const job=useRef<number|undefined>(undefined),runningRef=useRef(false),restoringRef=useRef(false),autoBlocked=useRef(false),first=useRef(true);
   const critRef=useRef<HTMLDialogElement>(null),rawRef=useRef<HTMLDialogElement>(null);
 
+  useEffect(()=>{const on=()=>setDefect(true);window.addEventListener('bv:defect',on);return()=>window.removeEventListener('bv:defect',on);},[]);
   async function loadConfig(){
     try{
       await desktop.connect();
@@ -175,7 +177,7 @@ export function Batch({active}:{active:boolean}){
     setFinding(true);setFprog('');
     try{const meta=(await desktop.request('batch_find',{machines:c.machines,query:c.query.trim(),start:c.start,end:c.end},ev=>{if(ev.message)setFprog(ev.message);}).promise).batch as ViewMeta;
       const v=await loadView(meta);
-      setViews(o=>({...o,find:v||{R:[],lots:[],excluded:[],B:[],waits:[],C:{base:[],eff:[]},hits:[],range:['',''],saved:0,criteria:[]}}));
+      setViews(o=>({...o,find:v||{R:[],lots:[],excluded:[],U:[],waits:[],stops:[],N:[],L:[],X:{unit:{},faults:{},min_base:100,full:25},hits:[],range:['',''],saved:0,criteria:[]}}));
       setDrafts(d=>Object.fromEntries(Object.entries(d).filter(([k])=>!k.startsWith('find|'))));
       setFstep(1);}
     catch(e){fail(e);}finally{setFinding(false);setFprog('');}
@@ -246,12 +248,8 @@ export function Batch({active}:{active:boolean}){
         <p className="scope-status" role="status" aria-live="polite">{status}</p>
         {changed&&!running&&<p className="hint" style={{color:'#8a5a00'}}>조사 범위를 바꿨습니다 — [조사 시작]을 눌러야 아래 결과에 반영됩니다. 지금 결과는 {applied?.machines.length}대 · {applied?.start||'처음'} ~ {applied?.end||'끝'} 기준입니다.</p>}
         {running&&<div className="progress3" role="progressbar" aria-label="조사 중" aria-valuenow={pct}><span style={{width:(pct??35)+'%'}}/></div>}
-        <p className="hint">자동 분석: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › Batch Report 분석 주기 설정]에서 바꿀 수 있습니다.</p>
-        <details className="logic"><summary>로직 · 조사 범위</summary><ol>
-          <li>고른 호기의 Reports 폴더(추가 폴더 포함)를 <b>읽기만</b> 합니다. 호기 목록은 [설정 › AOI 장비 호기 루트]에 등록한 순서(이름 순, AOI-9 &lt; AOI-10)이고, 박스 크기가 고정이라 호기가 늘어도 줄 · 칸이 어긋나지 않습니다.</li>
-          <li><b>이미 읽은 Batch Report는 다시 읽지 않기</b>(기본 켜짐): 파일 이름 · 수정시각 · 크기가 지난 조사 때와 같으면 로컬 캐시(배치분석/누적)의 내용을 그대로 쓰고, 새로 생기거나 바뀐 것만 엽니다. 끄면 고른 범위를 전부 다시 엽니다(캐시가 의심될 때 · 판정 규칙이 바뀐 직후).</li>
-          <li>읽은 Batch Report를 Lot 단위로 모아 Lot 추적 · 가동률 · WPH가 같은 결과를 씁니다. 기간은 파일 이름의 스캔 날짜 기준입니다.</li>
-          <li>호기 사이에는 2초 간격으로 순서대로 읽습니다(장비 접속 매너). 연결이 안 되는 호기는 캐시만으로 보여 주고 표시합니다. 화면을 다시 열면 지난 조사 결과를 로컬 캐시만으로 먼저 보여 줍니다.</li></ol></details>
+        <p className="hint">조사 범위는 어떻게 읽나요? <Q id="scope.logic"/> · 자동 분석: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › Batch Report 분석 주기 설정]에서 바꿀 수 있습니다.</p>
+
         {v?.errors&&v.errors.length>0&&<details className="more"><summary>읽기 오류 {v.errors.length}건</summary><div className="table-scroll" style={{maxHeight:240,marginTop:8}}><table className="t-compact">
           <thead><tr><th>호기</th><th>Report</th><th>오류</th></tr></thead><tbody>{v.errors.map((e,i)=><tr key={i}><td>{e[0]}</td><td>{e[1]}</td><td>{e[2]}</td></tr>)}</tbody></table></div></details>}
         {v?.artifacts&&Object.values(v.artifacts).some(Boolean)&&<details className="more"><summary>저장된 결과 파일 (Lot 추적 HTML · Excel · HTML · 가동률 대시보드)</summary><div className="outputs">
@@ -259,13 +257,13 @@ export function Batch({active}:{active:boolean}){
           {v.artifacts.html&&<OpenPath label="HTML" path={v.artifacts.html}/>}{v.artifacts.dashboard&&<OpenPath label="가동률 대시보드" path={v.artifacts.dashboard}/>}
           {v.artifacts.outdir&&<OpenPath label="결과 폴더" path={v.artifacts.outdir} folder/>}</div></details>}
       </section>
-      <div className="pilltabs" role="tablist" aria-label="분석 화면">{([['lot','Lot 추적'],['util','가동률 · 원인'],['wph','WPH']] as const).map(([k,t])=>
+      <div className="pilltabs" role="tablist" aria-label="분석 화면">{([['lot','Lot 추적'],['util','가동률'],['wph','WPH · 생산능력']] as const).map(([k,t])=>
         <button key={k} role="tab" type="button" className={sub===k?'active':''} aria-selected={sub===k} onClick={()=>setSub(k)}>{t}</button>)}</div>
       {!v?<section className="panel"><div className="empty-state"><span className="empty-symbol" aria-hidden="true">▤</span><h3>{running?'결과를 준비하고 있습니다.':'아직 조사 결과가 없습니다.'}</h3>
           <p>위에서 호기와 기간을 고르고 [조사 시작]을 누르면 Lot 추적 · 가동률 · WPH를 볼 수 있습니다.</p></div></section>
         :sub==='lot'?<LotTab v={v} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>
         :sub==='util'?<UtilTab v={v} ids={ids} range={range} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>
-        :<WphTab v={v} ids={ids} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>}
+        :<WphTab v={v} ids={ids} range={range} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>}
     </div>
     <div hidden={main!=='find'}>
       <FindTab machines={config?.machines||[]} view={views.find} busy={finding||busy||restoring} dev={dev.on} progress={fprog} cond={cond} setCond={setCond} onFind={()=>void runFind()}
@@ -290,5 +288,6 @@ export function Batch({active}:{active:boolean}){
             return <tr key={k}><th>{k+1}</th>{w.map((x,j)=><td key={j} className={j===si?(ok?'c-p':'c-e'):undefined}>{x}</td>)}</tr>;})}</tbody></table></div></div>
       <div className="dialog-actions"><button type="button" disabled={!raw.path} onClick={()=>void openPath(raw.path)}>원본 열기</button><button type="button" className="primary" onClick={()=>rawRef.current?.close()}>닫기</button></div></>}</dialog>
     <DevHelp open={help} onClose={()=>setHelp(false)}/>
+    <DefectWindow v={v} open={defect} onClose={()=>setDefect(false)} showRaw={g=>void showRaw('scope',g)} openLot={li=>void openLot('scope',li)}/>
   </div>;
 }

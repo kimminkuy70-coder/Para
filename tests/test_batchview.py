@@ -54,28 +54,38 @@ class ViewNumbers(unittest.TestCase):
         self.assertEqual((r0['n'], r0['ok'], r0['err'], r0['fe']), (25, 24, 1, 'Scan 2D Error.'))
         self.assertEqual(self.p['range'], ['2026-09-01', '2026-09-02'])
 
-    def test_utilization_shares_waits_and_midnight(self):
-        days = {(b['d'], b['m']): b for b in self.p['B']}
-        d1 = days[('2026-09-01', 'AOI-1')]
-        # BAW 첫 스캔 50분 ÷ Dice 있는 24행(Error 행은 Dice '-') → Pass 24장 유효, Error 1장은 시간 몫 없음.
-        self.assertEqual(d1['err']['Scan 2D Error.'][3], 1)
-        # 재스캔 전 대기 = 10:50 → 11:30 (40분), 앞 Batch Report 의 Error 원문으로.
-        self.assertEqual(d1['err']['Scan 2D Error.'][1], 2400)
-        self.assertEqual(self.p['waits'][0]['s'], '2026-09-01 10:50')
-        # 자정을 넘긴 NSW 60분: 9/1 에 30분, 9/2 에 30분.
-        nsw = 'CMP2D-DT-GH10N-BIN1-H-U1_0856268PD-0A · 2D_WBG'
-        self.assertEqual(sum(b['valid'] for b in self.p['B']), 50 * 60 + 10 * 60 + 60 * 60 + 50 * 60 * 24 / 25 + 10 * 60)
-        self.assertEqual(days[('2026-09-02', 'AOI-1')]['check'], 300)
-        self.assertGreater(d1['rec'][nsw], 0)
-        # SPT: 같은 wafer Pass 두 번 → 먼저 스캔한 몫이 Error·중복 스캔(DUP)
-        d2 = days[('2026-09-02', 'AOI-1')]
-        self.assertEqual(d2['err'][batchview.DUP][0], 120)
+    def test_utilization_three_buckets_and_midnight(self):
+        """시간 3칸(사용자 확정 2026-10-05): Error · 중단 없는 Batch Report 는 Batch Time 전체가 웨이퍼 처리,
+        Error 가 있으면 Pass 장수 × 1장 처리 시간까지만 처리, 다시 스캔하기까지 대기는 조치(손실)."""
+        U = self.p['U']
+        days = {}
+        for u in U:
+            d = days.setdefault((u['d'], u['m']), dict(p=0, ck=0, du=0, e={}))
+            d['p'] += u['p']; d['ck'] += u['ck']; d['du'] += u['du']
+            for k, x in u['e'].items():
+                d['e'][k] = d['e'].get(k, 0) + x[0]
+        # 1장 처리 시간 = 정상 25매(NSW 60분 · SPT 첫 50분) Batch Time 합 ÷ 50장 = 132초.
+        self.assertEqual(round(self.view.unit(self.view.A[0])), 132)
+        # BAW 첫 스캔 50분: Pass 24장 × 132초 = 3168초 > 3000초 → 처리 3000초(남는 시간 없음).
+        # 다시 스캔하기까지 10:50 → 11:30 = 2400초는 Scan 2D Error. 조치. 자정을 넘긴 NSW 는 30분씩.
+        d1, d2 = days[('2026-09-01', 'AOI-1')], days[('2026-09-02', 'AOI-1')]
+        self.assertEqual((d1['p'], d1['e']), (3000 + 600 + 1800, {'Scan 2D Error.': 2400}))
+        self.assertEqual((d2['p'], d2['ck']), (1800 + 3000 + 600, 300))
+        # SPT 두 번째 스캔 = 이미 Pass 한 wafer 를 다시 스캔해 또 Pass → 처리 시간에 넣고 '그중 다시 스캔' 으로 표시.
+        self.assertEqual(d2['du'], 600)
+        self.assertEqual([(w['s'], w['t']) for w in self.p['waits']], [('2026-09-01 10:50', 'e')])
 
-    def test_wph_base_and_effective(self):
-        base = {self.p['R'][b['g']]['sm'] for b in self.p['C']['base']}
-        self.assertEqual(base, {'NSW'})                               # BAW·SPT 는 재스캔이 있어 정상 스캔 아님
-        baw = next(e for e in self.p['C']['eff'] if e['lot'] == self.lot('BAW'))
-        self.assertEqual((baw['w'], baw['s'], baw['n']), (25, 3600, 2))
+    def test_wph_ingredients(self):
+        U = [u for u in self.p['U'] if u['n']]
+        tot = {k: sum(u[k] for u in U) for k in ('ps', 'dn', 'n', 'ne', 'w25', 's25', 'p')}
+        self.assertEqual(tot, dict(ps=76, dn=1, n=5, ne=1, w25=50, s25=6600, p=10800))
+        loss = sum(x[0] for u in U for x in u['e'].values())
+        # 정상 WPH = 50 × 3600 ÷ 6600 ≈ 27.3, 실제 WPH = 76 × 3600 ÷ (10800 + 2400) ≈ 20.7
+        self.assertAlmostEqual(tot['w25'] * 3600 / tot['s25'], 27.27, places=2)
+        self.assertAlmostEqual(tot['ps'] * 3600 / (tot['p'] + loss), 20.73, places=2)
+        self.assertEqual(sorted(self.p['R'][x['g']]['sm'] for x in self.p['N']), ['NSW', 'SPT'])
+        baw = next(x for x in self.p['L'] if x['lot'] == self.lot('BAW'))
+        self.assertEqual((baw['ps'], baw['s'], baw['n']), (25, 3000 + 600 + 2400, 2))
 
     def test_lot_detail_raw_and_aggregate(self):
         li = self.lot('SPT')
@@ -102,9 +112,8 @@ class ViewNumbers(unittest.TestCase):
         self.assertEqual(p['saved'], 1)
         s25 = next(w for w in saved.lot(li)['bunches'][0]['wafers'] if w['k'] == 'S25')
         self.assertEqual((s25['pick'], s25['rec'], s25['ov']), (0, 1, True))
-        # 사람이 앞 스캔을 고르면 뒤 스캔 몫이 Error·중복 스캔이 된다(가동률도 같은 선택을 쓴다).
-        d2 = next(x for x in p['B'] if x['d'] == '2026-09-02')
-        self.assertEqual(d2['err'][batchview.DUP][0], 600)
+        # 가동률 · WPH 는 어느 Pass 를 쓰든 같다(다시 스캔한 것도 처리 장수에 넣으므로) — Dice 합계만 선택을 따른다.
+        self.assertEqual(p['U'], self.p['U'])
         self.assertTrue(saved.aggregate(p['lots'][li]['bunches'][0]['att'])[0]['w']['S25']['saved'])
 
     def test_3d_scan_is_separate_in_payload(self):
@@ -118,13 +127,59 @@ class ViewNumbers(unittest.TestCase):
         self.assertEqual(lot["dup"], 0)
         self.assertEqual([b["k"] for b in lot["bunches"]], ["3D", "2D"])
         self.assertEqual([r["k"] for r in data["R"]], ["3D", "2D"])
-        self.assertEqual(sorted(x["r"] for x in data["C"]["base"]), [f"{lm.attempt(view.records[1])['job']} · 2D_WBG",
-                                                                     f"{lm.attempt(view.records[1])['job']} · 2D_WBG · 3D 스캔"])
+        self.assertEqual(sorted(x["r"] for x in data["N"]), [f"{lm.attempt(view.records[1])['job']} · 2D_WBG",
+                                                             f"{lm.attempt(view.records[1])['job']} · 2D_WBG · 3D 스캔"])
 
     def test_day_parts(self):
         from datetime import datetime
         parts = batchview.day_parts(datetime(2026, 9, 1, 23), datetime(2026, 9, 2, 1))
         self.assertEqual(parts, [('2026-09-01', 0.5), ('2026-09-02', 0.5)])
+
+
+def stop_records():
+    """KVA: 정상 25매 5장(Faults 0) 뒤 — ① 10장 Pass 후 Aborted(스캔 도중 멈춘 wafer Faults 870)
+    → 10분 뒤 같은 Lot 다시 스캔 ② NMB: 3장 Pass 후 Aborted(Faults 없음) ③ LDF: 정상 wafer 가 적은 레시피(2D)에서 멈춤."""
+    items = [("AOI-1", report(code, full([]), f"2026-09-0{i + 1} 01:00", minutes=55)) for i, code in enumerate(("NSA", "NSB", "NSC", "NSD", "NSE"))]
+    kva = report("KVA-FOCUS", full(["Pass"] * 10 + ["Aborted."] * 15), "2026-09-08 09:00", minutes=30)
+    kva["wafers"][10]["Faults"] = "870"
+    nmb = report("NMB", full(["Pass"] * 3 + ["Aborted."] * 22), "2026-09-08 12:00", minutes=10)
+    ldf = report("LDF", full(["Pass"] * 2 + ["Aborted."] * 23), "2026-09-08 15:00", minutes=10, recipe="2D")
+    ldf["wafers"][1]["Faults"] = "5000"
+    items += [("AOI-1", kva), ("AOI-1", report("KVA-WBG", full([]), "2026-09-08 09:40", minutes=55)),
+              ("AOI-1", nmb), ("AOI-1", ldf)]
+    return records(*items)
+
+
+class OperatorStop(unittest.TestCase):
+    """앞 Error 없이 Aborted. 로 멈춘 Batch Report = 작업자 중단(Error 아님, 사용자 확정 2026-10-05)."""
+
+    def setUp(self):
+        self.view = batchview.View(stop_records())
+        self.p = self.view.payload()
+
+    def test_stop_is_not_error_but_time_is_lost(self):
+        R = self.p['R']
+        kva, nmb, ldf = R[5], R[7], R[8]
+        self.assertEqual((kva['o'], kva['sk'], kva['ff'], kva['fe'], kva['st']), ('s', 'd', 870, '', 15))
+        self.assertEqual((nmb['o'], nmb['sk']), ('s', 'o'))
+        # 정상 wafer 2 장뿐인 레시피(2D)는 기준 부족 → Faults 5000 이어도 그 외 중단
+        self.assertEqual((ldf['o'], ldf['sk']), ('s', 'o'))
+        self.assertEqual(self.p['X']['faults'][R[0]['r']], [0, 150])        # 정상 25매 6장(다시 스캔한 KVA-WBG 포함)
+        self.assertIsNone(self.p['X']['faults'].get(ldf['r'], [None, 0])[0])
+        stops = {self.p['R'][x['g']]['sm']: (x['k'], x['f'], x['base']) for x in self.p['stops']}
+        self.assertEqual(stops['KVA-FOCUS'], ('d', 870, 0))
+        self.assertEqual(stops['LDF'], ('o', 5000, None))
+        U = [u for u in self.p['U'] if u['d'] == '2026-09-08']
+        self.assertEqual(sum(u['ne'] for u in U), 0)                     # Error 로 세지 않는다
+        sd = sum(u['sd'][0] for u in U)
+        # KVA 30분 − 10장 × 1장 처리 시간(55분 ÷ 25 = 132초) = 480초 + 다시 스캔하기까지 10분 = 1080초
+        self.assertEqual(sd, 1800 - 10 * 132 + 600)
+        self.assertEqual(sum(u['sd'][1] for u in U), 1)
+        self.assertEqual(sum(u['so'][1] for u in U), 2)
+        self.assertEqual([w['t'] for w in self.p['waits']], ['s'])
+        lot = next(l for l in self.p['lots'] if l['code'] == 'KVA')
+        self.assertEqual((lot['cz'], lot['sz']), ([], [['d', 15, False]]))
+        self.assertEqual(lot['state'], lm.LOT_RESCANNED)
 
 
 class DesktopFlow(unittest.TestCase):

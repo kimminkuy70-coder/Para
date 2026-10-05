@@ -85,7 +85,36 @@ class Rules(unittest.TestCase):
         kinds = [r["kind"] for r in a["rows"][:4]]
         self.assertEqual(kinds, [None, "원인", "연쇄", "연쇄"])
         b = lm.attempt(records(("AOI-1", report("BAW", full(["Aborted.", "Aborted."]), "2026-05-23 10:05")))[0])
-        self.assertEqual([r["kind"] for r in b["rows"][:2]], ["원인", "연쇄"])   # 첫 Aborted 는 직접
+        # 앞 Error 없는 Aborted = 작업자 중단(Error 아님, 사용자 확정 2026-10-05)
+        self.assertEqual([r["kind"] for r in b["rows"][:2]], [lm.STOP, lm.STOP])
+        self.assertEqual((a["outcome"], b["outcome"]), (lm.ERROR, lm.STOP))
+
+    def test_operator_stop_and_unscanned_slots(self):
+        """사용자 확정 2026-10-05: 앞 Error 없는 Aborted. = 작업자 중단(Error 아님), 앞 Error 없는 Skipped. = 스캔 안 한 슬롯."""
+        # 11장 Pass → Aborted → 뒤따른 Skipped 도 중단(멈춰서 스캔 못 한 wafer). 멈출 때 Faults = 스캔 도중 멈춘 wafer 값.
+        rep = report("KVW", full(["Pass"] * 11 + ["Aborted."] + ["Skipped."] * 13), "2026-07-09 17:35")
+        rep["wafers"][11]["Faults"] = "1"
+        rep["wafers"][10]["Faults"] = "3"
+        a = lm.attempt(records(("AOI-1", rep))[0])
+        self.assertEqual((a["outcome"], a["stop_faults"]), (lm.STOP, 3))
+        self.assertEqual({r["kind"] for r in a["rows"][11:]}, {lm.STOP})
+        # 17장 Pass + Skipped 8 = 스캔 안 한 슬롯 → wafer 로 세지 않고 Batch Report 는 정상.
+        sk = lm.attempt(records(("AOI-1", report("KVW", full(["Pass"] * 17 + ["Skipped."] * 8), "2026-07-09 21:42")))[0])
+        self.assertEqual(sk["outcome"], lm.CLEAN)
+        self.assertEqual(sum(r["kind"] == lm.SKIP for r in sk["rows"]), 8)
+        lot = only(lm.build(records(("AOI-1", report("KVW", full(["Pass"] * 17 + ["Skipped."] * 8), "2026-07-09 21:42")))), "KVW")
+        self.assertEqual((lot["state"], len(lot["bunches"][0]["wafers"])), (lm.LOT_DONE, 17))
+        # Skipped 가 먼저 나오고 뒤에 진짜 Error 가 있으면: 앞 Skipped = 스캔 안 함, Error 뒤 Aborted = 연쇄.
+        mix = lm.attempt(records(("AOI-1", report("NSN", full(["Skipped.", "Pass", "Scan 2D Error.", "Aborted."]), "2026-09-01 19:41")))[0])
+        self.assertEqual([r["kind"] for r in mix["rows"][:4]], [lm.SKIP, None, "원인", "연쇄"])
+        self.assertEqual(mix["outcome"], lm.ERROR)
+        # 중단 뒤 다시 스캔해 Pass 한 wafer = 재스캔 Pass, wafer 의 원인은 원문 'Aborted.' + stop 표시(Error 집계에서 뺌).
+        model = lm.build(records(("AOI-1", report("CCH", full(["Pass"] * 5 + ["Aborted."] * 20), "2026-05-06 11:28")),
+                                 ("AOI-1", report("CCH", full([]), "2026-05-06 13:25"))))
+        cch = only(model, "CCH")
+        w = wafer(cch["bunches"][0], 1)
+        self.assertEqual((w["verdict"], w["cause"], w["stop"]), (lm.RECOVERED, "Aborted.", True))
+        self.assertEqual(cch["state"], lm.LOT_RESCANNED)
 
     def test_slot_rules(self):
         # 25행이면 Wafer ID 형식과 무관하게 1행=25번(실데이터 8,490행 전부 일치).

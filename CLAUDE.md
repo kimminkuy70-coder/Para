@@ -23,6 +23,36 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 지표 개편 — 시간 3칸 · 정상/실제 WPH · 작업자 중단 (2026-10-05, 브랜치 `version_v12`)
+
+- 사용자 지시로 `version_v11` 을 복사해 **`version_v12`** 에서 작업(push · 릴리즈는 사용자가 말할 때만). 목적: 개선 레시피(`PI Enhanced`,
+  특정 모델 호기만) 와 기존 레시피(`PI`) 의 가동률 · 처리 시간 · 생산량 비교. 레시피 = Batch Report 의 `Job · Recipe(s)`.
+- **확정 정의(사용자 확정 — 재질문 금지)**:
+  · 시간 3칸(호기마다 하루 24시간, 4조 3교대) = **웨이퍼 처리 / Error · 중단 및 조치 / 유휴**. Error · 중단 없는 Batch Report 는 Batch Time
+    전체가 처리, 있으면 `Pass 장수 × 1장 처리 시간`(Batch Time 이내)까지 처리, 나머지 + 같은 호기에서 같은 Lot 을 다시 스캔하기까지
+    장비가 아무것도 안 한 시간(묶음 안 다음 시도) = 손실. 유휴 = 나머지. 점검 스캔은 처리(그중 점검)에만, 레시피 WPH 에서는 뺌.
+  · 같은 wafer 를 다시 스캔한 것도 처리 시간 · 장수에 넣는다(투입 · 출하 정보 없음 — **한계로 화면에 명시**, 재스캔 참고 비율로 표시).
+  · 용어: 순수 스캔 = 원문 그대로 **`Avg. Scan Time`**, 로봇 이동 포함 = **1장 처리 시간**(= 정상 25매 Batch Report 의 Batch Time 합 ÷ 장수
+    합, 호기 × 레시피 → 레시피 → Error · 중단 없는 스캔 전체 순). '스캔 시간' 이라는 말은 쓰지 않는다.
+  · **정상 WPH** = 정상 25매(Error · 중단 없이 25매 모두 Pass) 장수 합 × 3600 ÷ Batch Time 합(중앙값 아님 — 실제 WPH 와 같은 꼴).
+    **실제 WPH** = Pass 장수 × 3600 ÷ (웨이퍼 처리 + Error · 중단 및 조치) = 유휴만 뺀 시간. 처리량 감소 = 1 − 실제 ÷ 정상.
+    **하루 생산능력** = 24 × 실제 WPH, 레시피 합계 = 그 레시피를 돌린 호기 합. 작업자 중단은 정상 WPH 에 넣지 않는다(실제 WPH 에만).
+  · **작업자 중단** = 앞 Error 없이 `Aborted.` 로 멈춘 Batch Report — **Error 아님**(Error 발생률 · Lot 추적 Error 요약에서 뺌), 시간은
+    손실. **Defect 과다 중단** = 멈출 때 wafer(마지막 Pass wafer 또는 Aborted. 행에 Faults 가 남은 wafer)의 Faults > 그 레시피 정상
+    wafer(Error · 중단 없는 Batch Report 의 Pass wafer) Faults 상위 1%. 정상 wafer `MIN_FAULT_BASE`(100)장 미만이면 판정 안 함(그 외).
+    **프로그램 안 설명 필수**(Defect 과다 설명 창 `DefectWindow`: 판정 · 이유 · 레시피별 기준값 · 이번 조사 판정 목록).
+  · 앞 Error 없는 `Skipped.` = **스캔 안 한 슬롯** — wafer 로 세지 않음(`lotmodel.SKIP`, resolve · 취합에서 뺌).
+  · 이 예외 둘을 빼면 'Pass 가 아니면 Error' 규칙은 그대로(`lotreport.CRITERIA` 에 반영).
+- 엔진: `lotmodel.attempt` 에 `outcome`(정상/Error/중단) · `stop_faults` · `avg_scan_sec` · 행 `faults`, wafer `stop`/`stop_attempt`.
+  `batchview` — `_bases`(1장 처리 시간 · Faults 기준) · `split` · `stop_kind` · `_metrics` → payload `U`(날짜 × 호기 × 레시피:
+  p 처리 · du 그중 다시 스캔 · ck 점검 · e Error 원문별 · sd/so 중단 · ps · dn · n · ne · w25/s25 · aw/asum) · `waits`(t=e/s) · `stops` · `N`(정상 25매)
+  · `L`(Lot 줄) · `X`(기준값). 화면이 기간 · 호기 · 레시피로 골라 더한다(`batchData.sumU/wphNormal/wphActual`).
+- 화면 원칙(사용자 지시): 숫자 4개 + 그래프 1개, 여러 항목은 탭 · 새 창, **설명은 ? 버튼**(뜻 · 식 · 지금 화면 숫자로 계산한 예 · 확인할 것 ·
+  한계 — `BatchHelp.tsx` `Q`, 문구 `metricHelp.ts`. 대소문자만 다른 파일 이름 금지 — Windows 에서 import 가 섞임). 가동률(호기별/기간별 막대 →
+  기간 상세 창: 시간 구성 · 손실 이유 · 24시간 시간표), WPH · 생산능력(레시피 비교: 레시피마다 호기별로 쌓은 하루 생산능력, 레시피를 고르면 같은
+  Job 끼리 · 호기 × 레시피 표 + 합계 줄 → 레시피 상세 창: WPH 분해 · 1장 처리 시간(Avg. Scan Time + 로봇 이동 등) · Lot별 실제 WPH).
+- 범위 밖: 기존 결과 파일(분석 HTML/Excel · 가동률 대시보드 · WPH 엑셀/HTML · tkinter)은 옛 정의 그대로(다음 단계에서 맞출지 사용자 결정).
+
 ### Lot 추적 수정 7건 + 3D 스캔 대전제 (2026-10-05, 이슈 #6, v11.2.0)
 
 - **대전제 추가(사용자 확정)**: S/M 에 단독 `3D`(`ABC-3D` · `ABC 3D` · `ABC_3D`)가 있으면 **3D 스캔**. 레시피는 2D 와 같아 Lot 이름으로만
@@ -939,8 +969,8 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
-python3 tests/test_batchview.py    # 12 (3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
-python3 tests/test_lotmodel.py     # 20 (3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
+python3 tests/test_batchview.py    # 13 (지표 개편: 시간 3칸·WPH 재료·작업자 중단/Defect 과다 · 3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
+python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯 · 3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)

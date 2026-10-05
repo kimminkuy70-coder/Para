@@ -10,7 +10,10 @@
 - Lot 코드 = S/M 안의 첫 '단독 영문 3글자'(`BAW-0911S`→BAW, `0701 N SPT …`→SPT). 없으면 점검 스캔.
 - 같은 코드라도 전체 Wafer ID(`SF14G25-A0`)의 Lot ID(앞 5자)가 다르면 다른 Lot. 1글자 차이는 판독 오차.
 - 슬롯: 웨이퍼 표가 25행이면 1행=25번 … 25행=1번. 아니면 Wafer ID(`Slot 14`·`14`·`SF14G14-xx`).
-- Pass 가 아니면 전부 Error(빈칸 포함). 문구가 여럿이면 첫 문구가 원인.
+- Pass 가 아니면 Error(빈칸 포함). 문구가 여럿이면 첫 문구가 원인. 예외 두 가지(사용자 확정 2026-10-05):
+  · 앞에 Error 없이 `Aborted.` 로 멈춘 행 = **작업자 중단**(Error 아님, kind '중단'). Defect 가 너무 많아 멈춘 것인지는
+    레시피 기준값이 필요해 batchview 가 판정한다(attempt `stop_faults` = 멈출 때 wafer 의 Faults).
+  · 앞에 Error 없이 `Skipped.` 인 행 = **스캔 안 한 슬롯**(kind '스킵') — wafer 로 세지 않는다(resolve 에서 뺀다).
 - 묶음: 같은 호기에서 시도 간격 12시간 이하 + 같은 공정 단계(웨이퍼 표 마지막 열 Recipe(s) — 그 열이 있는
   Batch Report 끼리만 비교, 사용자 확정 2026-10-05). 다른 호기는 '호기 이동 재스캔'일 때만 이어 붙인다
   (앞 묶음에 미해결 웨이퍼가 남았고, 같은 공정 단계(Recipe(s))이며, move_gap_h 이내).
@@ -48,6 +51,9 @@ CAUSES = [*wph_status.TYPES,
           ("Clean Reference 오류", "Clean Reference Error."),
           ("Focus Mapping 오류", "Focus Mapping Error.")]
 CHAIN_TYPES = {"작업 중단", "검사 제외"}       # 앞 오류 뒤에 따라붙는 Aborted / Skipped
+STOP, SKIP = "중단", "스킵"                    # 앞 Error 없는 Aborted(작업자 중단) / Skipped(스캔 안 한 슬롯)
+# Batch Report 결과(attempt outcome): 모두 Pass(스캔 안 한 슬롯 제외) / Error 있음 / 작업자 중단
+CLEAN, ERROR = "정상", "Error"
 EMPTY = "상태 없음"
 UNKNOWN = "미분류"
 
@@ -177,17 +183,25 @@ def attempt(record):
     raw_rows = report.get("wafers", [])
     lots = [wph.safe_field(w, "Lot") for w in raw_rows]
     sm = sm_of(report.get("file_name", ""), job, setup, lots)
-    rows, trigger, trigger_phrase = [], None, ""
+    statuses = [wph.safe_field(raw, "Pass/Fail", "Status", "State") for raw in raw_rows]
+    causes = [cause_of(status) for status in statuses]
+    # Aborted · Skipped 말고 진짜 Error 문구가 하나도 없으면, 앞 Error 없는 Aborted = 작업자 중단(Error 아님).
+    has_error = any(c and c[0] not in CHAIN_TYPES for c in causes)
+    rows, trigger, trigger_phrase, stopped = [], None, "", False
     for index, raw in enumerate(raw_rows):
         wid = wph.safe_field(raw, "Wafer ID")
-        status = wph.safe_field(raw, "Pass/Fail", "Status", "State")
-        cause = cause_of(status)
+        status, cause = statuses[index], causes[index]
         kind = None
         if cause:
-            # 앞에 오류가 있었으면 Aborted/Skipped 는 연쇄(원인 = 그 앞 첫 오류), 아니면 그 자체가 원인(직접).
-            kind = "연쇄" if cause[0] in CHAIN_TYPES and trigger else "원인"
-            if not trigger:
-                trigger, trigger_phrase = cause[0], cause[1]
+            if not trigger and not stopped and cause[0] == "검사 제외":
+                kind = SKIP                       # 앞 Error · 중단 없는 Skipped = 스캔 안 한 슬롯
+            elif not has_error and (stopped or cause[0] == "작업 중단"):
+                kind, stopped = STOP, True        # 작업자 중단(뒤따르는 Skipped 도 중단으로 스캔 못 한 wafer)
+            else:
+                # 앞에 오류가 있었으면 Aborted/Skipped 는 연쇄(원인 = 그 앞 첫 오류), 아니면 그 자체가 원인(직접).
+                kind = "연쇄" if cause[0] in CHAIN_TYPES and trigger else "원인"
+                if not trigger:
+                    trigger, trigger_phrase = cause[0], cause[1]
         good = _number(wph.safe_field(raw, "Good Dice"))
         scanned = _number(wph.safe_field(raw, "Scanned Dice"))
         bad = _number(wph.safe_field(raw, "Bad Dice"))
@@ -200,9 +214,11 @@ def attempt(record):
                      "trigger": trigger if kind == "연쇄" else "",
                      "trigger_phrase": trigger_phrase if kind == "연쇄" else "",
                      "scanned": scanned, "bad": bad, "good": good,
+                     "faults": _number(wph.safe_field(raw, "Faults")),
                      "yield": _number(wph.safe_field(raw, "Yield")),
                      "recipe": wph.safe_field(raw, "Recipe(s)", "Recipe")})
     ids = [r["lot_id"] for r in rows if r["lot_id"]]
+    outcome = ERROR if has_error else STOP if stopped else CLEAN
     reps = _cluster(ids)
     step = Counter(r["recipe"] for r in rows if r["recipe"]).most_common(1)
     return {"id": record["id"], "machine": record["machine"],
@@ -214,7 +230,21 @@ def attempt(record):
             "end": wph.parse_batch_datetime(meta.get("batchend", "")),
             "batch_sec": wph.hms_to_seconds(meta.get("batchtime", "")),
             "wafers_scanned": _number(meta.get("wafersscanned")),
+            "avg_scan_sec": wph.hms_to_seconds(meta.get("avgscantime", "")),
+            "outcome": outcome, "stop_faults": stop_faults(rows) if outcome == STOP else None,
             "rows": rows}
+
+
+def stop_faults(rows):
+    """멈출 때 wafer 의 Faults — 마지막 Pass wafer 와 스캔 도중 멈춘 wafer(중단 행에 Faults 가 남은 것) 중 큰 값.
+
+    웨이퍼 표 순서가 곧 스캔 순서다(25→1). 값이 하나도 없으면 None.
+    """
+    first = next((i for i, r in enumerate(rows) if r["kind"] == STOP), len(rows))
+    passed = [r["faults"] for r in rows[:first] if r["pass"]]
+    values = ([passed[-1]] if passed else []) + [r["faults"] for r in rows if r["kind"] == STOP]
+    values = [v for v in values if v is not None]
+    return max(values) if values else None
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +269,8 @@ def resolve(attempts, overrides=None, bunch_key=None):
     cells = defaultdict(list)
     for position, a in enumerate(attempts):
         for row in a["rows"]:
-            cells[_key(row, id_slots)].append((position, row))
+            if row["kind"] != SKIP:               # 스캔 안 한 슬롯은 wafer 로 세지 않는다
+                cells[_key(row, id_slots)].append((position, row))
     wafers, counts = [], Counter()
     totals = {"scanned": 0.0, "bad": 0.0, "good": 0.0, "missing": 0}
     for key in sorted(cells, key=lambda k: (not k.startswith("S"), -int(k[1:]) if k.startswith("S") else 0, k)):
@@ -271,6 +302,7 @@ def resolve(attempts, overrides=None, bunch_key=None):
         # 웨이퍼의 원인 = 직접 오류의 첫 문구. 연쇄뿐이면 그 연쇄를 일으킨 같은 Batch Report 의 첫 오류.
         direct = next((r for _, r in errors if r["kind"] == "원인"), None)
         chained = next((r for _, r in errors if r["kind"] == "연쇄"), None)
+        stopped = next((r for _, r in errors if r["kind"] == STOP), None)
         slots = [r["slot"] for _, r in items if r["slot"] is not None]
         wafers.append({"key": key, "slot": slots[0] if slots else None,
                        "wafer_id": next((r["wafer_id"] for _, r in items if is_real_id(r["wafer_id"])), items[0][1]["wafer_id"]),
@@ -281,9 +313,14 @@ def resolve(attempts, overrides=None, bunch_key=None):
                        "dice": [pick[1]["scanned"], pick[1]["bad"], pick[1]["good"]] if pick else None,
                        "verdict": verdict,
                        # 표시는 Batch Report 원문 그대로(간소화 금지, 사용자 지시). cause_type 은 내부 분류.
-                       "cause": direct["phrase"] if direct else chained["trigger_phrase"] if chained else "",
-                       "cause_type": direct["cause"] if direct else chained["trigger"] if chained else "",
-                       "chain_only": bool(chained and not direct)})
+                       "cause": direct["phrase"] if direct else chained["trigger_phrase"] if chained else
+                                stopped["phrase"] if stopped else "",
+                       "cause_type": direct["cause"] if direct else chained["trigger"] if chained else
+                                     stopped["cause"] if stopped else "",
+                       "chain_only": bool(chained and not direct),
+                       # Error 없이 작업자 중단만 있었던 wafer(cause 는 원문 'Aborted.') — Error 집계에서 뺀다.
+                       "stop": bool(stopped and not direct and not chained),
+                       "stop_attempt": next((p for p, r in errors if r["kind"] == STOP), None)})
     totals["yield"] = totals["good"] / totals["scanned"] * 100 if totals["scanned"] else None
     return wafers, dict(counts), totals
 

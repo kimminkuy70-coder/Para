@@ -37,8 +37,15 @@ CRITERIA = [
      "AOI-9에서 3번 실패 → AOI-12에서 완료 = 이어서 스캔"),
     ("슬롯", "웨이퍼 표가 25행이면 1행 = 25번 … 25행 = 1번입니다(장비가 25→1 순으로 스캔). "
      "25행이 아니면 Wafer ID로 맞춥니다.", "Slot 14 · 14 · SF14G14-A0 → 14번"),
-    ("Error 판정", "Pass/Fail 칸이 Pass가 아니면 빈칸을 포함해 전부 Error입니다. 문구가 여럿이면 첫 문구가 원인입니다.",
+    ("Error 판정", "Pass/Fail 칸이 Pass가 아니면 빈칸을 포함해 Error입니다. 문구가 여럿이면 첫 문구가 원인입니다. "
+     "예외는 아래 '작업자 중단'과 '스캔 안 한 슬롯' 두 가지입니다.",
      "Scan 2D Error. Aborted. → 2D Scan 오류"),
+    ("작업자 중단", "앞에 Error 없이 Aborted.로 멈춘 Batch Report는 작업자가 멈춘 것으로 보고 Error로 세지 않습니다(다른 Lot을 "
+     "스캔하거나 엔지니어가 쓰려고, 또는 Defect가 너무 많아 멈춤). 멈춘 시간은 가동률 · WPH에서 'Error·중단 및 조치'로 셉니다. "
+     "멈출 때 wafer의 Faults가 그 레시피 정상 wafer 상위 1% 값보다 많으면 'Defect 과다 중단', 아니면 '그 외 중단'입니다.",
+     "Pass 11장 → Aborted. (앞에 Error 없음) = 작업자 중단"),
+    ("스캔 안 한 슬롯", "앞에 Error 없이 Skipped.인 행은 스캔하지 않은 슬롯(wafer가 없거나 고르지 않음)입니다. wafer로 세지 않고 "
+     "Error도 아닙니다.", "Pass 17장 + Skipped. 8행 = 17장 스캔"),
     ("연쇄", "같은 Batch Report에서 앞에 Error가 있었으면 뒤따르는 Aborted · Skipped는 연쇄로 표시하고, "
      "Error 집계에서는 그 앞 Error 문구로 셉니다.", ""),
     ("웨이퍼 결과", "이어서 스캔한 Batch Report들 안에서 웨이퍼마다 한 번에 Pass · 재스캔 Pass(Error 뒤 다시 스캔해 Pass) · "
@@ -69,7 +76,7 @@ def cause_summary(model):
     for lot in model["lots"]:
         for bunch in lot["bunches"]:
             for w in bunch["wafers"]:
-                if not w["cause"]:
+                if not w["cause"] or w.get("stop"):        # 작업자 중단은 Error 가 아니다
                     continue
                 item = rows[w["cause"]]
                 item["lots"].add(lot["key"])
@@ -103,7 +110,7 @@ def to_data(model):
                             "totals": {"scanned": tot["scanned"], "bad": tot["bad"], "good": tot["good"],
                                        "yield": round(tot["yield"], 2) if tot["yield"] is not None else None,
                                        "missing": tot["missing"]}})
-        causes = Counter(w["cause"] for b in lot["bunches"] for w in b["wafers"] if w["cause"])
+        causes = Counter(w["cause"] for b in lot["bunches"] for w in b["wafers"] if w["cause"] and not w.get("stop"))
         lots.append({"key": lot["key"], "label": lot["label"], "code": lot["code"], "lot_id": lot["lot_id"] or "",
                      "sms": lot["sms"], "jobs": lot["jobs"], "machines": lot["machines"], "attempts": lot["attempts"],
                      "start": _t(lot["start"]), "end": _t(lot["end"]), "state": lot["state"],

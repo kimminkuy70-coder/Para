@@ -1,83 +1,159 @@
-import {useMemo,useState} from 'react';
-import {ColChart,Scatter} from './BatchCharts';
-import {dur,hrs,num,stepLabel,C_OK,C_WAIT,type View} from './batchData';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {ColChart,Scatter,Seg,type TipX} from './BatchCharts';
+import {Q} from './BatchHelp';
+import {dur,hrs,num,sumU,lossOf,wphNormal,wphActual,unitSec,avgScan,pctOf,C_OK,C_WAIT,C_ERR,C_STOP,C_DEFECT,C_IDLE,STOPK,type View,type U,type Agg} from './batchData';
 
-/* WPH 탭 — 정상 스캔 WPH(Lot 을 한 번에 25매 모두 Pass 한 Batch Report) · 실제 WPH(재스캔 포함) · 처리량 감소. */
-type T={m:string;r:string;bw:number;bs:number;bn:number;ew:number;es:number;en:number};
-const wph=(w:number,s:number)=>s>0?w*3600/s:null;
-const loss=(b:number|null,e:number|null)=>b&&e!=null?(1-e/b)*100:null;
-const pct=(x:number|null)=>x==null?'—':num(x,1)+'%';
-const small={minHeight:26,padding:'2px 9px',fontSize:12} as const;
-function tipOf(t:T,title:string){const b=wph(t.bw,t.bs),e=wph(t.ew,t.es);
-  return `${title}\n정상 스캔 WPH ${num(b,1)} — 25매 한 번에 모두 Pass한 Batch Report ${t.bn}장 · Batch Time ${hrs(t.bs)}h\n실제 WPH ${num(e,1)} — Lot ${t.en}개 · 최종 Pass wafer ${num(t.ew)}장 · 쓴 시간 ${hrs(t.es)}h\n처리량 감소 ${pct(loss(b,e))}`;}
-function Bars({t,mx}:{t:T;mx:number}){const b=wph(t.bw,t.bs)||0,e=wph(t.ew,t.es)||0;
-  return <div className="wb2" data-tip={tipOf(t,t.r?t.r+' · '+t.m:t.m)}><span style={{width:(b/mx*100).toFixed(1)+'%',background:'#31517c'}}/><span style={{width:(e/mx*100).toFixed(1)+'%',background:'#10b981'}}/></div>;}
+/* WPH · 생산능력 탭 — 정상 WPH(막힘없을 때 속도) · 실제 WPH(유휴만 뺀 시간 기준) · 하루 생산능력(24 × 실제 WPH).
+   화면은 숫자 4개 + [레시피 비교 | 호기 × 레시피 표], 자세한 것은 레시피 상세 창, 계산식은 ? 버튼(사용자 확정 2026-10-05). */
+const PAL=['#31517c','#2a9d8f','#5b8fc7','#7fbf9f','#1f6f8b','#9db7d9','#3f7a5f','#6c8ebf'];
+const jobOf=(r:string)=>r.split(' · ')[0];
+const stepOf=(r:string)=>r.slice(jobOf(r).length+3);
+const f1=(x:number|null)=>num(x,1);
+const pc=(x:number|null)=>x==null?'—':num(x,1)+'%';
+const drop=(n:number|null,a:number|null)=>n&&a!=null?(1-a/n)*100:null;
+const cap=(a:Agg)=>{const w=wphActual(a);return w==null?null:w*24;};
+type Cell={r:string;m:string;a:Agg};
 
-export function WphTab({v,ids,openLot,showRaw}:{v:View;ids:string[];openLot:(li:number)=>void;showRaw:(g:number)=>void}){
-  const [recipe,setRecipe]=useState(''),[bin,setBin]=useState<string|null>(null);
-  const {base,eff}=v.C;
-  const recipes=useMemo(()=>[...new Set([...base,...eff].map(x=>x.r))].sort(),[base,eff]);
-  const mk=(o:Record<string,T>,k:string,m:string,r:string)=>o[k]||(o[k]={m,r,bw:0,bs:0,bn:0,ew:0,es:0,en:0});
-  const mm:Record<string,T>={};ids.forEach(id=>mk(mm,id,id,''));
-  base.forEach(x=>{const t=mk(mm,x.m,x.m,'');t.bw+=x.w;t.bs+=x.s;t.bn++;});eff.forEach(x=>{const t=mk(mm,x.m,x.m,'');t.ew+=x.w;t.es+=x.s;t.en++;});
-  const mrows=ids.map(id=>mm[id]);let mx=1;mrows.forEach(t=>{mx=Math.max(mx,wph(t.bw,t.bs)||0,wph(t.ew,t.es)||0);});
-  const g:Record<string,T>={};
-  base.forEach(x=>{const t=mk(g,x.r+'||'+x.m,x.m,x.r);t.bw+=x.w;t.bs+=x.s;t.bn++;});eff.forEach(x=>{const t=mk(g,x.r+'||'+x.m,x.m,x.r);t.ew+=x.w;t.es+=x.s;t.en++;});
-  const rows=Object.values(g).filter(t=>!recipe||t.r===recipe).sort((a,b)=>b.en-a.en);let rmx=1;rows.forEach(t=>{rmx=Math.max(rmx,wph(t.bw,t.bs)||0,wph(t.ew,t.es)||0);});
-  const cl=base.filter(x=>!recipe||x.r===recipe).map(x=>({x,v:x.w*3600/x.s,bin:''}));
-  let clean=null;
-  if(cl.length){const vs=cl.map(c=>c.v).sort((a,b)=>a-b);let sw=0,ss=0;cl.forEach(c=>{sw+=c.x.w;ss+=c.x.s;});
-    const med=vs.length%2?vs[(vs.length-1)/2]:(vs[vs.length/2-1]+vs[vs.length/2])/2;
-    const lo=vs[0],hi=vs[vs.length-1],span=Math.max(hi-lo,1),step=[0.5,1,2,2.5,5,10,20].find(x=>span/x<=14)||20,st0=Math.floor(lo/step)*step,nb=Math.floor((hi-st0)/step)+1;
-    const bins=Array.from({length:nb},(_,i)=>({id:String(i),lo:st0+i*step,hi:st0+(i+1)*step,n:0}));
-    cl.forEach(c=>{const i=Math.min(nb-1,Math.floor((c.v-st0)/step));bins[i].n++;c.bin=String(i);});
-    clean={vs,sw,ss,med,bins};}
-  const curBin=clean&&bin!=null&&clean.bins[+bin]?bin:null;
-  const list=cl.filter(c=>curBin==null||c.bin===curBin).sort((a,b)=>v.R[a.x.g].s<v.R[b.x.g].s?1:-1);
-  const effs=eff.filter(x=>!recipe||x.r===recipe);
-  let line:number|null=null;if(recipe){let bw=0,bs=0;rows.forEach(t=>{bw+=t.bw;bs+=t.bs;});line=wph(bw,bs);}
-  const bases:Record<string,number|null>={};Object.entries(g).forEach(([k,t])=>{bases[k]=wph(t.bw,t.bs);});
-  const lossRows=effs.filter(x=>x.n>1).map(x=>[x,x.w*3600/x.s] as const).sort((a,b)=>a[1]-b[1]).slice(0,40);
-  const title=recipe||'전체 레시피';
-  return <section className="panel tabpanel" aria-label="WPH">
-    <div className="section-heading"><div><span className="step">WPH</span><h2>호기 · 레시피별 처리량 (Wafers Per Hour)</h2></div>
-      <label className="field" style={{minWidth:380}}>레시피(Job · Recipe(s))<select value={recipe} onChange={e=>{setRecipe(e.target.value);setBin(null);}}><option value="">전체 레시피</option>{recipes.map(r=><option key={r}>{r}</option>)}</select></label></div>
-    <div className="terms">
-      <div><b><i style={{background:'#31517c'}}/>정상 스캔 WPH</b><p>Lot을 <b>한 번에 25매 모두 Pass</b>한 Batch Report만으로 잰 속도. 장비가 막힘없이 돌 때 1시간에 몇 매를 스캔하는지.</p><code>Σ25매 × 3600 ÷ ΣBatch Time</code></div>
-      <div><b><i style={{background:'#10b981'}}/>실제 WPH (재스캔 포함)</b><p>Lot마다 최종 Pass한 wafer 수를 그 Lot에 쓴 <b>모든</b> Batch Time(Error · 재스캔 · 나눠 스캔 포함)으로 나눈 속도.</p><code>ΣPass wafer × 3600 ÷ Σ(Lot에 쓴 모든 Batch Time)</code></div>
-      <div><b><i style={{background:'#c2410c'}}/>처리량 감소</b><p>Error · 재스캔 때문에 정상 스캔보다 처리량이 몇 % 줄었는지. 0%에 가까울수록 재스캔 없이 잘 돈 것.</p><code>1 − 실제 WPH ÷ 정상 스캔 WPH</code></div></div>
-    <div className="chartcard"><div className="ch"><h3>호기별 전체 WPH <small style={{fontWeight:400,color:'var(--muted)'}}>— 레시피 통합, 호기 1대 기준</small></h3><span className="hint">행에 마우스를 올리면 자세히</span></div>
-      <div className="table-scroll" style={{maxHeight:'none'}}><table className="t-compact"><thead><tr><th>호기</th><th className="num" title="25매 한 번에 모두 Pass한 Batch Report 기준">정상 스캔 WPH</th><th className="num">정상 스캔 Batch Report</th><th className="num" title="재스캔 · Error 시간 포함">실제 WPH</th><th className="num">Lot 수</th><th className="num">처리량 감소</th><th style={{width:320}}>비교</th></tr></thead>
-        <tbody>{mrows.map(t=>{const b=wph(t.bw,t.bs),e=wph(t.ew,t.es),none=!t.bn&&!t.en;return <tr key={t.m} className={none?'outside':''} data-tip={none?t.m+'\n자료 없음':tipOf(t,t.m+' · 레시피 통합')}>
-          <td><b>{t.m}</b></td><td className="num"><b>{num(b,1)}</b></td><td className="num">{t.bn||''}</td><td className="num"><b>{num(e,1)}</b></td><td className="num">{t.en||''}</td><td className="num v4">{pct(loss(b,e))}</td>
-          <td>{none?<span style={{color:'var(--muted)'}}>자료 없음</span>:<Bars t={t} mx={mx}/>}</td></tr>;})}
-          {!mrows.length&&<tr><td colSpan={7}>호기를 고르세요.</td></tr>}</tbody></table></div></div>
-    <div className="chartcard"><div className="ch"><h3>레시피별 WPH — {title}</h3><span className="hint">행을 누르면 그 레시피만 아래에 보입니다</span></div>
-      <div className="table-scroll" style={{maxHeight:360}}><table className="t-compact"><thead><tr><th>레시피(Job · Recipe(s))</th><th>호기</th><th className="num">정상 스캔 WPH</th><th className="num">정상 스캔 Batch Report</th><th className="num">실제 WPH</th><th className="num">Lot 수</th><th className="num">처리량 감소</th><th style={{width:240}}>비교</th></tr></thead>
-        <tbody>{rows.map(t=>{const b=wph(t.bw,t.bs),e=wph(t.ew,t.es);return <tr key={t.r+'|'+t.m} className="clickable" data-tip={tipOf(t,t.r+' · '+t.m)} onClick={()=>{setRecipe(t.r);setBin(null);}}>
-          <td>{t.r}</td><td>{t.m}</td><td className="num"><b>{num(b,1)}</b></td><td className="num">{t.bn||'—'}</td><td className="num"><b>{num(e,1)}</b></td><td className="num">{t.en}</td><td className="num v4">{pct(loss(b,e))}</td><td><Bars t={t} mx={rmx}/></td></tr>;})}
-          {!rows.length&&<tr><td colSpan={8}>조사 범위에 WPH 자료가 없습니다.</td></tr>}</tbody></table></div></div>
-    <div className="chartcard"><div className="ch"><h3>정상 스캔 Batch Report의 WPH — {title}</h3><span className="hint">Error 없이 25매를 한 번에 스캔한 Lot · 막대를 누르면 그 구간만 목록에</span></div>
-      {clean?<><section className="kpis k5" style={{marginBottom:12}}>{([['정상 스캔 Batch Report',num(cl.length),'장','Error 없이 25매 한 번에'],['정상 스캔 WPH',num(clean.sw*3600/clean.ss,1),'','Σ25매 × 3600 ÷ ΣBatch Time'],
-          ['중앙값',num(clean.med,1),'WPH','Batch Report마다 WPH'],['최소 ~ 최대',num(clean.vs[0],1)+' ~ '+num(clean.vs[clean.vs.length-1],1),'','느린 · 빠른 스캔'],['평균 Batch Time',num(clean.ss/cl.length/60,1),'분','25매 기준']] as const)
-          .map(([l,val,u,s])=><article key={l}><span>{l}</span><strong>{val}<small>{u}</small></strong><p>{s}</p></article>)}</section>
-        <ColChart items={clean.bins.map(b=>({id:b.id,short:num(b.lo,1),v:{n:b.n},tip:`WPH ${num(b.lo,1)} ~ ${num(b.hi,1)}\n정상 스캔 Batch Report ${b.n}장\n누르면 이 구간만 목록에`}))}
-          keys={[{k:'n',label:'Batch Report',c:'#31517c'}]} h={200} minw={18} maxw={70} sel={curBin} label="정상 스캔 WPH 분포" onClick={id=>setBin(b=>b===id?null:id)}/>
-        <div className="chips" style={{margin:'10px 0 6px'}}>{curBin!=null&&<button type="button" className="chip" onClick={()=>setBin(null)}>WPH {num(clean.bins[+curBin].lo,1)} ~ {num(clean.bins[+curBin].hi,1)} <i aria-hidden="true">✕</i></button>}</div>
-        <div className="table-scroll" style={{maxHeight:320}}><table className="t-compact"><thead><tr><th>시작</th><th>호기</th><th>Lot</th><th>레시피(Job · Recipe(s))</th><th className="num">Batch Time</th><th className="num">WPH</th><th/></tr></thead>
-          <tbody>{list.map(c=>{const r=v.R[c.x.g];return <tr key={c.x.g} className="clickable" onClick={()=>showRaw(c.x.g)}><td>{r.s}</td><td>{r.m}</td>
-            <td><button type="button" className="linklike" onClick={e=>{e.stopPropagation();openLot(c.x.lot);}}>{v.lots[c.x.lot].label}</button></td><td>{c.x.r}</td><td className="num">{dur(c.x.s/60)}</td>
-            <td className="num"><b>{num(c.v,1)}</b></td><td><button type="button" style={small} onClick={e=>{e.stopPropagation();showRaw(c.x.g);}}>원문 보기</button></td></tr>;})}</tbody></table></div></>
-        :<p className="hint">정상 스캔 Batch Report가 없습니다.</p>}</div>
-    <div className="chartcard"><div className="ch"><h3>Lot별 실제 WPH 추이 — {title}</h3><span className="hint">점 하나 = Lot 한 번의 스캔(공정 단계). 마우스를 올리면 자세히, 누르면 Lot History.</span><span className="grow"/>
-        <span style={{fontSize:12,color:'var(--muted)'}}><i className="lgdot" style={{background:C_OK}}/>한 번에 스캔 <i className="lgdot" style={{background:C_WAIT,marginLeft:12}}/>재스캔 포함 <i className="dash"/>정상 스캔 WPH</span></div>
-      <Scatter base={line} onClick={openLot} pts={effs.map(x=>{const l=v.lots[x.lot],b=l.bunches[x.b],y=x.w*3600/x.s;
-        return {t:new Date(x.d+'T12:00:00').getTime(),y,id:x.lot,c:x.n>1?C_WAIT:C_OK,
-          tip:`Lot ${l.label} · ${stepLabel(b)}\n${b.s} · ${x.m}\n${x.r}\nBatch Report ${x.n}장 · 최종 Pass wafer ${x.w}장 · 쓴 시간 ${hrs(x.s)}h\n실제 WPH ${num(y,1)}\n누르면 Lot History`};})}/></div>
-    <div className="chartcard"><div className="ch"><h3>처리량이 많이 줄어든 Lot</h3><span className="hint">재스캔이 있었던 Lot 중 실제 WPH가 낮은 순 · 누르면 Lot History</span></div>
-      <div className="table-scroll" style={{maxHeight:330}}><table className="t-compact"><thead><tr><th>Lot</th><th>공정 단계</th><th>시작</th><th>호기</th><th className="num">Batch Report</th><th className="num">스캔에 쓴 시간(h)</th><th className="num">실제 WPH</th><th className="num">처리량 감소</th></tr></thead>
-        <tbody>{lossRows.map(([x,y])=>{const b=v.lots[x.lot].bunches[x.b];return <tr key={x.lot+'|'+x.b} className="clickable" onClick={()=>openLot(x.lot)}><td><b>{v.lots[x.lot].label}</b></td><td>{stepLabel(b)}</td><td>{b.s}</td><td>{x.m}</td>
-          <td className="num">{x.n}</td><td className="num">{hrs(x.s)}</td><td className="num">{num(y,1)}</td><td className="num v4">{pct(loss(bases[x.r+'||'+x.m]??null,y))}</td></tr>;})}
-          {!lossRows.length&&<tr><td colSpan={8}>재스캔한 Lot이 없습니다.</td></tr>}</tbody></table></div></div>
+export function WphTab({v,ids,range,openLot,showRaw}:{v:View;ids:string[];range:{from:string;to:string};openLot:(li:number)=>void;showRaw:(g:number)=>void}){
+  const [recipe,setRecipe]=useState(''),[mach,setMach]=useState(''),[tab,setTab]=useState<'cmp'|'tbl'>('cmp'),[win,setWin]=useState<{r:string;m:string}|null>(null);
+  const rows=useMemo(()=>v.U.filter(u=>ids.includes(u.m)&&u.d>=range.from&&u.d<=range.to&&(u.n||u.p)),[v,ids,range.from,range.to]);
+  const recipes=useMemo(()=>[...new Set(rows.filter(u=>u.n).map(u=>u.r))].sort(),[rows]);
+  const jobs=useMemo(()=>[...new Set(recipes.map(jobOf))],[recipes]);
+  const r0=recipes.includes(recipe)?recipe:'';
+  const shown=r0?recipes.filter(r=>jobOf(r)===jobOf(r0)):recipes;      // 레시피를 고르면 같은 Job 의 레시피끼리 비교
+  const cells=useMemo(()=>{const o:Record<string,U[]>={};rows.forEach(u=>{if(mach&&u.m!==mach)return;(o[u.r+'||'+u.m]||=[]).push(u);});
+    return Object.entries(o).map(([k,us])=>({r:k.split('||')[0],m:k.split('||')[1],a:sumU(us)}) as Cell).filter(c=>c.a.n>0);},[rows,mach]);
+  const sel=rows.filter(u=>(!r0||u.r===r0)&&(!mach||u.m===mach)),A=sumU(sel);
+  const wn=wphNormal(A),wa=wphActual(A),total=r0?cells.filter(c=>c.r===r0).reduce((s,c)=>s+(cap(c.a)||0),0):mach?cap(A):null;
+  const nMach=r0?cells.filter(c=>c.r===r0&&cap(c.a)).length:0;
+  const K:[string,string,string,string,string,string[]][]=[
+    ['wph.normal','정상 WPH',f1(wn),'',`정상 25매 Batch Report ${num(A.w25/25)}장`,wn==null?['정상 25매 Batch Report가 없습니다.']:[`${num(A.w25)}장 × 3,600 ÷ ${num(A.s25)}초(${hrs(A.s25)}시간) = ${f1(wn)}`]],
+    ['wph.actual','실제 WPH',f1(wa),'',`Pass ${num(A.ps)}장 · 유휴만 뺀 시간`,wa==null?[]:[`Pass ${num(A.ps)}장 × 3,600 ÷ (웨이퍼 처리 ${hrs(A.p)}시간 + Error · 중단 및 조치 ${hrs(lossOf(A))}시간) = ${f1(wa)}`]],
+    ['wph.drop','처리량 감소',pc(drop(wn,wa)).replace('%',''),'%','1 − 실제 ÷ 정상',wn&&wa!=null?[`1 − ${f1(wa)} ÷ ${f1(wn)} = ${pc(drop(wn,wa))}`]:[]],
+    ['wph.capacity',r0?'하루 생산능력 · 레시피 합계':'하루 생산능력',total==null?'—':num(total),total==null?'':'장/일',r0?`${nMach}대 합계`:mach?`${mach} · 레시피 통합`:'레시피 또는 호기를 고르세요',
+      total==null?[]:r0?cells.filter(c=>c.r===r0&&cap(c.a)).map(c=>`${c.m}: 24 × ${f1(wphActual(c.a))} = ${num(cap(c.a))}장`).concat([`합계 ${num(total)}장/일`]):[`24 × ${f1(wa)} = ${num(total)}장/일`]]];
+  return <section className="panel tabpanel" aria-label="WPH · 생산능력">
+    <div className="section-heading"><div><span className="step">WPH · 생산능력</span><h2>레시피가 한 시간에 몇 장, 하루에 몇 장을 처리하나</h2></div>
+      <div className="filters" style={{margin:0}}><label className="field" style={{minWidth:300}}>레시피(Job · Recipe(s))<select value={r0} onChange={e=>setRecipe(e.target.value)}><option value="">전체 레시피</option>
+          {jobs.map(j=><optgroup key={j} label={j}>{recipes.filter(r=>jobOf(r)===j).map(r=><option key={r} value={r}>{stepOf(r)}</option>)}</optgroup>)}</select></label>
+        <label className="field">호기<select value={mach} onChange={e=>setMach(e.target.value)}><option value="">전체 호기</option>{ids.map(id=><option key={id}>{id}</option>)}</select></label></div></div>
+    <section className="kpis k4">{K.map(([id,l,val,u,s,calc],i)=><article key={id} className={'kq k'+i}><span>{l}<Q id={id} calc={calc}/></span><strong>{val}<small>{u}</small></strong><p>{s}</p></article>)}</section>
+    <div className="viewbar"><Seg label="보기" value={tab} items={[['cmp','레시피 비교'],['tbl','호기 × 레시피 표']]} onChange={setTab}/><span className="grow"/>
+      <span className="hint">{r0?`${jobOf(r0)}의 레시피끼리 비교`:'레시피를 고르면 같은 Job의 레시피끼리 비교합니다'}</span></div>
+    {tab==='cmp'?<Compare cells={cells} recipes={shown} onOpen={(r,m)=>setWin({r,m})}/>
+      :<Table cells={cells} recipes={shown} onOpen={(r,m)=>setWin({r,m})}/>}
+    {win&&<RecipeWindow v={v} r={win.r} m={win.m} ids={ids} range={range} openLot={openLot} showRaw={showRaw} onClose={()=>setWin(null)}/>}
   </section>;
+}
+
+/** 레시피 비교 — 레시피마다 하루 생산능력을 호기별로 쌓은 막대(가능 호기가 적어도 합계가 큰지 한눈에). */
+function Compare({cells,recipes,onOpen}:{cells:Cell[];recipes:string[];onOpen:(r:string,m:string)=>void}){
+  const rows=recipes.map(r=>{const cs=cells.filter(c=>c.r===r&&cap(c.a)).sort((a,b)=>(cap(b.a)||0)-(cap(a.a)||0));return {r,cs,sum:cs.reduce((s,c)=>s+(cap(c.a)||0),0)};}).filter(x=>x.cs.length);
+  const mx=Math.max(1,...rows.map(x=>x.sum));
+  if(!rows.length)return <div className="chartcard"><p className="hint">조사 범위에 WPH 자료가 없습니다.</p></div>;
+  return <div className="chartcard"><div className="ch"><h3>레시피별 하루 생산능력 <small>막대 한 칸 = 호기 1대 (24 × 실제 WPH)</small></h3><Q id="wph.capacity"/><span className="grow"/>
+      <span className="hint">마우스 = 호기별 값 · 누르면 레시피 상세 창</span></div>
+    <div className="caprows">{rows.map(x=><div key={x.r} className="caprow">
+      <button type="button" className="linklike cl" title={x.r} onClick={()=>onOpen(x.r,'')}><small>{jobOf(x.r)}</small>{stepOf(x.r)}</button>
+      <span className="capbar">{x.cs.map((c,i)=>{const cp=cap(c.a)||0,w=cp/mx*100,tip:TipX={t:`${c.m} · ${stepOf(x.r)}`,rows:[[PAL[i%PAL.length],'하루 생산능력',num(cp),'장'],
+          ['transparent','실제 WPH',f1(wphActual(c.a)),''],['transparent','정상 WPH',f1(wphNormal(c.a)),''],['transparent','Batch Report',num(c.a.n),'개']],f:['누르면 이 호기의 레시피 상세 창']};
+        return <span key={c.m} style={{width:w.toFixed(2)+'%',background:PAL[i%PAL.length]}} data-tip={`${c.m}\n하루 생산능력 ${num(cp)}장`} data-tipx={JSON.stringify(tip)}
+          onClick={()=>onOpen(x.r,c.m)}>{w>6?c.m:''}</span>;})}</span>
+      <span className="capv"><b>{num(x.sum)}</b>장/일 · {x.cs.length}대</span></div>)}</div></div>;
+}
+
+/** 호기 × 레시피 표 — 레시피마다 호기별 줄 + 레시피 합계 줄. */
+function Table({cells,recipes,onOpen}:{cells:Cell[];recipes:string[];onOpen:(r:string,m:string)=>void}){
+  const row=(r:string,m:string,a:Agg,sum:number|null,key:string,total?:boolean)=>{const n=wphNormal(a),w=wphActual(a);
+    return <tr key={key} className={'clickable'+(total?' total':'')} onClick={()=>onOpen(r,total?'':m)}>
+      <td>{total?<b>{stepOf(r)}</b>:''}</td><td>{total?<b>합계 ({m})</b>:m}</td><td className="num">{unitSec(a)==null?'—':num(unitSec(a),0)+'초'}</td><td className="num">{avgScan(a)==null?'—':num(avgScan(a),0)+'초'}</td>
+      <td className="num">{f1(n)}</td><td className="num"><b>{f1(w)}</b></td><td className="num v4">{pc(drop(n,w))}</td><td className="num"><b>{sum==null?'—':num(sum)}</b></td><td className="num">{num(a.n)}</td></tr>;};
+  return <div className="chartcard"><div className="table-scroll" style={{maxHeight:560}}><table className="t-compact">
+    <thead><tr><th>레시피</th><th>호기</th><th className="num">1장 처리 시간<Q id="wph.unit"/></th><th className="num">Avg. Scan Time<Q id="wph.avgscan"/></th><th className="num">정상 WPH<Q id="wph.normal"/></th>
+      <th className="num">실제 WPH<Q id="wph.actual"/></th><th className="num">처리량 감소<Q id="wph.drop"/></th><th className="num">하루 생산능력<Q id="wph.capacity"/></th><th className="num">Batch Report</th></tr></thead>
+    <tbody>{recipes.flatMap((r,i)=>{const cs=cells.filter(c=>c.r===r);if(!cs.length)return [];const newJob=!i||jobOf(recipes[i-1])!==jobOf(r);const all=cs.reduce((acc,c)=>addAgg(acc,c.a),sumU([]));
+      const sum=cs.reduce((s,c)=>s+(cap(c.a)||0),0);
+      return [...(newJob?[<tr key={r+'h'} className="grouphead"><td colSpan={9}>{jobOf(r)}</td></tr>]:[]),row(r,`${cs.length}대`,all,sum,r+'t',true),...cs.map(c=>row(r,c.m,c.a,cap(c.a),r+c.m))];})}
+      {!recipes.length&&<tr><td colSpan={9}>조사 범위에 WPH 자료가 없습니다.</td></tr>}</tbody></table></div></div>;
+}
+function addAgg(a:Agg,b:Agg):Agg{const o={...a,err:{...a.err}};(['p','du','ck','e','sd','so','ps','dn','n','ne','nsd','nso','w25','s25','aw','asum'] as const).forEach(k=>{o[k]=a[k]+b[k];});return o;}
+
+/** 레시피 상세 창 — WPH 분해 · 1장 처리 시간 · Lot별 실제 WPH. m = '' 이면 그 레시피를 돌린 호기 전체. */
+function RecipeWindow({v,r,m,ids,range,openLot,showRaw,onClose}:{v:View;r:string;m:string;ids:string[];range:{from:string;to:string};
+  openLot:(li:number)=>void;showRaw:(g:number)=>void;onClose:()=>void}){
+  const ref=useRef<HTMLDialogElement>(null);
+  const [tab,setTab]=useState<'split'|'unit'|'lots'>('split'),[bin,setBin]=useState<string|null>(null);
+  useEffect(()=>{const d=ref.current;if(d&&!d.open)d.showModal();},[]);
+  const inR=(d:string)=>d>=range.from&&d<=range.to,okM=(x:string)=>m?x===m:ids.includes(x);
+  const us=v.U.filter(u=>u.r===r&&okM(u.m)&&inR(u.d)),A=sumU(us);
+  const wn=wphNormal(A),wa=wphActual(A),D=A.p+lossOf(A),wp=A.p?A.ps*3600/A.p:null;
+  const machines=[...new Set(us.filter(u=>u.n).map(u=>u.m))].sort();
+  // 분해: 정상 → (기타 차이) → 처리 WPH → Error · 중단 손실 → 실제
+  const steps:[string,number,string,string?][]=[];
+  if(wn!=null&&wp!=null)steps.push(['기타 차이 (25매가 아닌 Lot · 느렸던 스캔 · 다시 스캔)',wn-wp,C_IDLE]);
+  if(wp!=null&&D>0){steps.push(['Error',wp*A.e/D,C_ERR]);steps.push([STOPK.d,wp*A.sd/D,C_DEFECT,'stop.defect']);steps.push([STOPK.o,wp*A.so/D,C_STOP]);}
+  const top=Math.max(wn||0,wp||0,1);
+  const errs=Object.entries(A.err).sort((a,b)=>b[1][0]-a[1][0]),emx=errs.length?errs[0][1][0]:1;
+  // 1장 처리 시간 — 호기별
+  const perM=machines.map(x=>({m:x,a:sumU(us.filter(u=>u.m===x))}));
+  const umx=Math.max(1,...perM.map(x=>unitSec(x.a)||0));
+  // 정상 25매 Batch Report WPH 분포
+  const cl=v.N.filter(x=>x.r===r&&okM(x.m)&&inR(x.d)).map(x=>({x,w:25*3600/x.s,bin:''}));
+  let bins:{id:string;lo:number;hi:number;n:number}[]=[];
+  if(cl.length){const vs=cl.map(c=>c.w),lo=Math.min(...vs),hi=Math.max(...vs),span=Math.max(hi-lo,1),st=[0.5,1,2,2.5,5,10,20].find(s=>span/s<=14)||20,s0=Math.floor(lo/st)*st,nb=Math.floor((hi-s0)/st)+1;
+    bins=Array.from({length:nb},(_,i)=>({id:String(i),lo:s0+i*st,hi:s0+(i+1)*st,n:0}));cl.forEach(c=>{const i=Math.min(nb-1,Math.floor((c.w-s0)/st));bins[i].n++;c.bin=String(i);});}
+  const cur=bin!=null&&bins[+bin]?bin:null,list=cl.filter(c=>cur==null||c.bin===cur).sort((a,b)=>v.R[a.x.g].s<v.R[b.x.g].s?1:-1);
+  const L=v.L.filter(x=>x.r===r&&okM(x.m)&&inR(x.d));
+  const worst=L.filter(x=>x.n>1).map(x=>[x,x.ps*3600/x.s] as const).sort((a,b)=>a[1]-b[1]).slice(0,40);
+  const rate=(x:number,n:number)=>n?num(x/n*100,1)+'% ('+num(x)+' / '+num(n)+')':'—';
+  return <dialog className="lotwin" ref={ref} aria-labelledby="rwTitle" onClose={onClose}>
+    <div className="lw-head"><div><span className="step">레시피 상세 창</span><h2 id="rwTitle">{stepOf(r)} · {m||`호기 ${machines.length}대`}</h2></div>
+      <div className="lw-actions"><button type="button" className="primary" onClick={()=>ref.current?.close()}>닫기</button></div>
+      <div className="lw-meta"><span className="job">{jobOf(r)}</span><span>정상 WPH <b>{f1(wn)}</b></span><span>실제 WPH <b>{f1(wa)}</b></span><span>처리량 감소 {pc(drop(wn,wa))}</span>
+        <span>하루 생산능력 <b>{m?num(cap(A)):num(perM.reduce((s,x)=>s+(cap(x.a)||0),0))}</b>장{m?'':` (${machines.length}대 합계)`}</span><span>{range.from} ~ {range.to}</span></div></div>
+    <div className="pilltabs lw-tabs" role="tablist">{([['split','WPH 분해'],['unit','1장 처리 시간'],['lots','Lot별 실제 WPH']] as const).map(([t,l])=>
+      <button key={t} role="tab" type="button" className={tab===t?'active':''} aria-selected={tab===t} onClick={()=>setTab(t)}>{l}</button>)}</div>
+    <div className="lw-body">
+      {tab==='split'&&<><h3>정상 WPH에서 실제 WPH까지 <Q id="wph.split" calc={wp==null?[]:[`처리 WPH = ${num(A.ps)}장 × 3,600 ÷ ${hrs(A.p)}시간 = ${f1(wp)}`,...steps.map(s=>`${s[0]}: ${num(s[1],2)} WPH`),`실제 WPH = ${f1(wa)}`]}/></h3>
+        <div className="wfall">{wn!=null&&<div className="wf"><span className="lab">정상 WPH<Q id="wph.normal"/></span><span className="track"><span style={{left:0,width:(wn/top*100)+'%',background:'#31517c'}}/></span><b>{f1(wn)}</b></div>}
+          {(()=>{let at=wn??wp??0;return steps.map(([l,d,c,h])=>{const a=at,b=at-d;at=b;const lo=Math.min(a,b),w=Math.abs(d);
+            return <div key={l} className="wf" data-tip={`${l}\n${d>=0?'−':'+'}${num(Math.abs(d),2)} WPH`}><span className="lab">{l}{h&&<Q id={h}/>}</span><span className="track"><span style={{left:(lo/top*100)+'%',width:Math.max(.4,w/top*100)+'%',background:c}}/></span><b>{d>=0?'−':'+'}{Math.abs(d).toFixed(1)}</b></div>;});})()}
+          <div className="wf"><span className="lab">실제 WPH<Q id="wph.actual"/></span><span className="track"><span style={{left:0,width:((wa||0)/top*100)+'%',background:C_OK}}/></span><b>{f1(wa)}</b></div></div>
+        <div className="two"><div><h3>시간 <small>유휴는 빼고 셉니다</small></h3><table className="t-compact"><tbody>
+            <tr><td>웨이퍼 처리<Q id="util.proc"/></td><td className="num">{hrs(A.p)}h</td><td className="num">{pc(pctOf(A.p,D))}</td></tr>
+            <tr><td>Error<Q id="util.loss"/></td><td className="num">{hrs(A.e)}h</td><td className="num">{pc(pctOf(A.e,D))}</td></tr>
+            <tr><td>{STOPK.d}<Q id="stop.defect"/></td><td className="num">{hrs(A.sd)}h</td><td className="num">{pc(pctOf(A.sd,D))}</td></tr>
+            <tr><td>{STOPK.o}</td><td className="num">{hrs(A.so)}h</td><td className="num">{pc(pctOf(A.so,D))}</td></tr></tbody></table></div>
+          <div><h3>얼마나 자주</h3><table className="t-compact"><tbody>
+            <tr><td>Error 발생률<Q id="wph.errrate" calc={[`${num(A.ne)} ÷ ${num(A.n)} Batch Report`]}/></td><td className="num">{rate(A.ne,A.n)}</td></tr>
+            <tr><td>중단 발생률 · Defect 과다<Q id="wph.stoprate"/></td><td className="num">{rate(A.nsd,A.n)}</td></tr>
+            <tr><td>중단 발생률 · 그 외</td><td className="num">{rate(A.nso,A.n)}</td></tr>
+            <tr><td>재스캔 참고 비율<Q id="wph.rescan" calc={[`${num(A.dn)}장 ÷ Pass ${num(A.ps)}장`]}/></td><td className="num">{rate(A.dn,A.ps)}</td></tr></tbody></table></div></div>
+        <h3>Error 원문별 잃은 시간 <small>Batch Report 남은 시간 + 다시 스캔하기까지 조치</small></h3>
+        {errs.length?errs.map(([e,t])=><div key={e} className="hbar"><span className="lab">{e}</span><span className="track"><span style={{width:(t[0]/emx*100)+'%',background:C_ERR}}/></span><span className="val">{hrs(t[0])}h · wafer {num(t[1])}</span></div>)
+          :<p className="hint">Error로 잃은 시간이 없습니다.</p>}</>}
+      {tab==='unit'&&<><h3>1장 처리 시간 = Avg. Scan Time + 로봇 이동 · 로딩 · 얼라인 <Q id="wph.unit"/><Q id="wph.avgscan"/></h3>
+        {perM.length?<div className="caprows">{perM.map(x=>{const u=unitSec(x.a),s=avgScan(x.a);return <div key={x.m} className="caprow" data-tip={`${x.m}\n1장 처리 시간 ${u==null?'—':num(u,1)+'초'}\nAvg. Scan Time ${s==null?'—':num(s,1)+'초'}\n로봇 이동 등 ${u!=null&&s!=null?num(u-s,1)+'초':'—'}\n정상 25매 Batch Report ${num(x.a.w25/25)}장`}>
+          <span className="cl">{x.m}</span><span className="capbar">{u!=null&&s!=null?<><span style={{width:(s/umx*100)+'%',background:'#31517c'}}>Avg. Scan {num(s)}초</span><span style={{width:((u-s)/umx*100)+'%',background:'#9db7d9'}}/></>
+            :u!=null?<span style={{width:(u/umx*100)+'%',background:'#9db7d9'}}/>:null}</span><span className="capv"><b>{u==null?'—':num(u)}</b>초</span></div>;})}</div>
+          :<p className="hint">자료가 없습니다.</p>}
+        <div className="keys"><span><i style={{background:'#31517c'}}>　</i> Avg. Scan Time(순수 스캔, 원문)</span><span><i style={{background:'#9db7d9'}}>　</i> 로봇 이동 · 로딩 · 얼라인</span><span>정상 25매 Batch Report 기준</span></div>
+        <h3>정상 25매 Batch Report의 WPH 분포 <small>막대를 누르면 그 구간만 목록에 · 행을 누르면 원문</small></h3>
+        {cl.length?<><ColChart items={bins.map(b=>({id:b.id,short:num(b.lo,1),v:{n:b.n},tip:`WPH ${num(b.lo,1)} ~ ${num(b.hi,1)}\n정상 25매 Batch Report ${b.n}개\n누르면 이 구간만 목록에`}))}
+            keys={[{k:'n',label:'Batch Report',c:'#31517c'}]} h={190} minw={18} maxw={70} sel={cur} label="정상 WPH 분포" onClick={id=>setBin(b=>b===id?null:id)}/>
+          <div className="table-scroll" style={{maxHeight:300}}><table className="t-compact"><thead><tr><th>시작</th><th>호기</th><th>Lot</th><th className="num">Batch Time</th><th className="num">Avg. Scan Time</th><th className="num">WPH</th></tr></thead>
+            <tbody>{list.map(c=>{const rr=v.R[c.x.g];return <tr key={c.x.g} className="clickable" onClick={()=>showRaw(c.x.g)}><td>{rr.s}</td><td>{rr.m}</td>
+              <td><button type="button" className="linklike" onClick={e=>{e.stopPropagation();openLot(c.x.lot);}}>{v.lots[c.x.lot].label}</button></td><td className="num">{dur(c.x.s/60)}</td>
+              <td className="num">{c.x.a==null?'—':num(c.x.a)+'초'}</td><td className="num"><b>{num(c.w,1)}</b></td></tr>;})}</tbody></table></div></>
+          :<p className="hint">정상 25매 Batch Report가 없습니다.</p>}</>}
+      {tab==='lots'&&<><h3>Lot별 실제 WPH <small>점 하나 = Lot 한 번의 스캔(공정 단계) · 누르면 Lot History</small><Q id="wph.actual"/></h3>
+        <div className="keys"><span><i style={{background:C_OK}}>　</i> 한 번에 스캔</span><span><i style={{background:C_WAIT}}>　</i> 재스캔 포함</span><span>점선 = 정상 WPH</span></div>
+        <Scatter base={wn} onClick={openLot} pts={L.map(x=>{const y=x.ps*3600/x.s;return {t:new Date(x.d+'T12:00:00').getTime(),y,id:x.lot,c:x.n>1?C_WAIT:C_OK,
+          tip:`Lot ${v.lots[x.lot].label} · ${x.m}\n${x.d}\nBatch Report ${x.n}개 · Pass ${x.ps}장${x.dn?' (다시 스캔해 또 Pass '+x.dn+')':''}\n쓴 시간 ${hrs(x.s)}h (조치 대기 포함)\n실제 WPH ${num(y,1)}\n누르면 Lot History`};})}/>
+        <h3>처리량이 많이 줄어든 Lot <small>재스캔이 있었던 Lot 중 실제 WPH가 낮은 순</small></h3>
+        <div className="table-scroll" style={{maxHeight:330}}><table className="t-compact"><thead><tr><th>Lot</th><th>시작</th><th>호기</th><th className="num">Batch Report</th><th className="num">쓴 시간(h)</th><th className="num">실제 WPH</th><th className="num">처리량 감소</th></tr></thead>
+          <tbody>{worst.map(([x,y])=><tr key={x.lot+'|'+x.b} className="clickable" onClick={()=>openLot(x.lot)}><td><b>{v.lots[x.lot].label}</b></td><td>{x.d}</td><td>{x.m}</td>
+            <td className="num">{x.n}</td><td className="num">{hrs(x.s)}</td><td className="num">{num(y,1)}</td><td className="num v4">{pc(drop(wn,y))}</td></tr>)}
+            {!worst.length&&<tr><td colSpan={7}>재스캔한 Lot이 없습니다.</td></tr>}</tbody></table></div></>}
+    </div></dialog>;
 }

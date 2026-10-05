@@ -6,12 +6,16 @@ Lot 규칙은 `lotmodel` 을 그대로 쓰고, 여기서는 화면이 그릴 값
 - `View(records, overrides)` — 조사 결과 1회분. `payload()` 가 화면에 한 번에 보내는 요약
   (Batch Report 요약 · Lot 요약 · 가동률 일 단위 · 재스캔 전 대기 · WPH 재료),
   `lot(li)` · `raw(g)` 는 누를 때만 보내는 상세(전송 한도 4MB 때문에 원문 행은 요약에 넣지 않는다).
-- 가동률: Batch Time ÷ Dice 있는 행 수 = wafer 1장 몫. 최종 결과로 쓰는 wafer 몫 = 유효 스캔,
-  Error 난 wafer 와 이미 Pass 한 wafer 를 다시 스캔한 몫 = Error·중복 스캔(wafer 마다 자기 Error 원문,
-  연쇄는 앞 Error 원문). 같은 호기에서 같은 Lot 을 다시 스캔하기까지 장비가 아무것도 스캔하지 않은
-  시간 = 재스캔 전 대기(앞 Batch Report 의 Error wafer 원문 비율로 나눔). 자정을 넘긴 시간은 날마다 나눈다.
-- WPH: 정상 스캔 = Lot 을 한 번에 25매 모두 Pass 한 Batch Report, 실제 = Lot·공정 단계마다
-  최종 Pass wafer ÷ 그 Lot 에 쓴 모든 Batch Time.
+- 시간 3칸(사용자 확정 2026-10-05): 호기마다 하루 24시간 = 웨이퍼 처리 + Error·중단 및 조치 + 유휴.
+  · Error · 중단 없는 Batch Report = Batch Time 전체가 웨이퍼 처리. 그 외 = Pass 장수 × 1장 처리 시간(Batch Time 이내),
+    나머지는 Error · 중단 손실. 같은 호기에서 같은 Lot 을 다시 스캔하기까지 장비가 아무것도 스캔하지 않은 시간도 손실(조치).
+  · 1장 처리 시간 = Error · 중단 없이 25매 모두 Pass 한 Batch Report 의 Batch Time 합 ÷ 장수 합(호기 × 레시피 → 레시피).
+  · 작업자 중단(앞 Error 없는 Aborted.)은 Error 가 아니지만 시간은 손실로 센다. 멈출 때 wafer 의 Faults 가 그 레시피
+    정상 wafer Faults 상위 1% 보다 크면 Defect 과다 중단(정상 wafer MIN_FAULT_BASE 장 미만이면 판정하지 않음).
+  · 점검 스캔은 웨이퍼 처리 시간(그중 점검)에만 넣고 레시피 WPH 에서는 뺀다. 자정을 넘긴 시간은 날마다 나눈다.
+- WPH: 정상 = 정상 25매 Batch Report 장수 합 × 3600 ÷ Batch Time 합, 실제 = Pass 장수 × 3600 ÷ (웨이퍼 처리 + 손실)
+  — 유휴만 뺀 시간. 같은 wafer 를 다시 스캔해 또 Pass 한 것도 장수에 넣는다(투입 · 출하 정보가 없어 필요한 재스캔인지
+  판단 불가 — 재스캔 참고 비율로 표시).
 - 중복 Pass 는 추천(가장 나중 Pass) + **저장된 사람 선택(overrides)** 으로만 정한다. 화면의 개발자 기능
   토글은 여기에 들어오지 않는다(켜고 끄는 것만으로 숫자가 바뀌면 안 된다 — CLAUDE.md).
 
@@ -21,12 +25,14 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from datetime import datetime, time, timedelta
+from statistics import quantiles
 
 from . import lotmodel as lm, lotreport
 
 DUP = 'Pass 다시 스캔(중복)'          # 이미 Pass 한 wafer 를 다시 스캔한 몫
 SPLIT = '오류 없이 나눠 스캔'          # Error 없이 같은 Lot 을 나눠 스캔한 사이 대기
 FULL = lm.FULL_SLOTS
+MIN_FAULT_BASE = 100                   # Defect 과다 판정에 필요한 정상 wafer 최소 수(사용자 확정 2026-10-05)
 
 
 def stamp(value):
@@ -62,18 +68,36 @@ def _reason(row):
 
 
 def _first_error(a):
+    """Error 가 있는 Batch Report 의 첫 Error 원문(작업자 중단 · 스캔 안 한 슬롯은 Error 가 아니라 '')."""
+    if a.get('outcome') != lm.ERROR:
+        return ''
     for row in a['rows']:
-        if not row['pass']:
+        if not row['pass'] and row['kind'] in ('원인', '연쇄'):
             return row['status'] or '(빈 칸)'
     return ''
 
 
+def recipe_of(a):
+    """레시피 = Job · Recipe(s)(3D 스캔은 ' · 3D 스캔'). WPH · 기준값의 단위."""
+    return f"{a['job']} · {lm.step_label(a['step'], a['scan'])}"
+
+
+def is_normal(a):
+    """정상 25매 Batch Report — Error · 중단 없이 25매 모두 Pass(정상 WPH · 1장 처리 시간의 기준)."""
+    return (a['outcome'] == lm.CLEAN and len(a['rows']) == FULL and all(r['pass'] for r in a['rows'])
+            and (a['batch_sec'] or 0) > 0)
+
+
 def _stats(a):
-    s = dict(n=len(a['rows']), ok=0, err=0, chain=0)
+    s = dict(n=len(a['rows']), ok=0, err=0, chain=0, stop=0, skip=0)
     ph, cph = Counter(), Counter()
     for row in a['rows']:
         if row['pass']:
             s['ok'] += 1
+        elif row['kind'] == lm.STOP:
+            s['stop'] += 1
+        elif row['kind'] == lm.SKIP:
+            s['skip'] += 1
         elif row['kind'] == '연쇄':
             s['chain'] += 1
             cph[row['phrase'] or '(빈 칸)'] += 1
@@ -112,6 +136,7 @@ class View:
                 for p, a in enumerate(b['attempts']):
                     self.place[self.index[a['id']]] = (li, bi, p)
         self.hits = sorted(self.index[h] for h in (hits or ()) if h in self.index)
+        self._bases()
         self._payload = None
 
     # ------------------------------------------------------------------ 요약(한 번에 보냄)
@@ -125,16 +150,26 @@ class View:
         for g, (record, a) in enumerate(zip(self.records, self.A)):
             s, _, _ = _stats(a)
             li, bi, _ = self.place.get(g, (None, None, None))
+            stop = self.stop_kind(a) if a['outcome'] == lm.STOP else None
             R.append(dict(f=a['file'], m=a['machine'], sm=a['sm'], code=a['code'] or '', job=a['job'], setup=a['setup'],
                           step=a['step'], k=a['scan'], s=stamp(a['start']), e=stamp(a['end']), sec=a['batch_sec'] or 0,
-                          lot=li, b=bi, n=s['n'], ok=s['ok'], err=s['err'], chain=s['chain'], fe=_first_error(a)))
+                          lot=li, b=bi, n=s['n'], ok=s['ok'], err=s['err'], chain=s['chain'], fe=_first_error(a),
+                          st=s['stop'], sp=s['skip'], o={lm.CLEAN: 'c', lm.ERROR: 'e', lm.STOP: 's'}[a['outcome']],
+                          sk=stop[0] if stop else '', ff=_num(a['stop_faults']), r=recipe_of(a)))
         lots = []
         for li, lot in enumerate(self.model['lots']):
-            bunches, causes, per = [], Counter(), {}
+            bunches, causes, per, stops = [], Counter(), {}, {}
             for b in lot['bunches']:
                 bunches.append(dict(att=[self.index[a['id']] for a in b['attempts']], step=b['step'], k=b['scan'], s=stamp(b['start']),
                                     e=stamp(b['end']), moved=b['moved'], machines=b['machines'], sec=b['batch_sec']))
                 for w in b['wafers']:
+                    if w['stop']:
+                        # 작업자 중단은 Error 가 아니다 — 종류(Defect 과다 / 그 외)별로 따로 센다.
+                        k = self.stop_kind(b['attempts'][w['stop_attempt']])[0]
+                        t = stops.setdefault(k, [0, False])
+                        t[0] += 1
+                        t[1] = t[1] or w['verdict'] == lm.UNRESOLVED
+                        continue
                     if not w['cause']:
                         continue
                     causes[w['cause']] += 1
@@ -149,17 +184,68 @@ class View:
                              re=re_, dup=lot['duplicates'], moved=lot['moved'], saved=saved, scans=lot['scans'],
                              multi=any(len(b['attempts']) > 1 for b in lot['bunches']),
                              causes=[[k, n] for k, n in causes.most_common(3)],
-                             cz=[[k, v[0], v[1]] for k, v in per.items()], bunches=bunches))
+                             cz=[[k, v[0], v[1]] for k, v in per.items()],
+                             sz=[[k, v[0], v[1]] for k, v in stops.items()], bunches=bunches))
         starts = [r['s'] for r in R if r['s']]
-        days, waits = self._utilization()
+        U, waits, stops, N, L, X = self._metrics()
         return dict(R=R, lots=lots, excluded=[self.index[a['id']] for a in self.model['excluded']],
-                    B=days, waits=waits, C=self._wph(), hits=self.hits,
+                    U=U, waits=waits, stops=stops, N=N, L=L, X=X, hits=self.hits,
                     range=[min(starts)[:10], max(starts)[:10]] if starts else ['', ''],
                     saved=sum(lot['saved'] for lot in lots),
                     criteria=[[t, d, e] for t, d, e in lotreport.CRITERIA])
 
-    # ------------------------------------------------------------------ 가동률 · 원인
-    def _utilization(self):
+    # ------------------------------------------------------------------ 가동률 · WPH (사용자 확정 2026-10-05)
+    def _bases(self):
+        """레시피 기준값 — 1장 처리 시간(호기 × 레시피, 레시피) · Defect 과다 판정 기준(레시피별 정상 wafer Faults 상위 1%)."""
+        n25, clean, faults = defaultdict(lambda: [0, 0.0]), defaultdict(lambda: [0, 0.0]), defaultdict(list)
+        for lot in self.model['lots']:
+            for b in lot['bunches']:
+                for a in b['attempts']:
+                    if a['outcome'] != lm.CLEAN or not a['batch_sec']:
+                        continue
+                    r, npass = recipe_of(a), sum(row['pass'] for row in a['rows'])
+                    faults[r] += [row['faults'] for row in a['rows'] if row['pass'] and row['faults'] is not None]
+                    for key in ((a['machine'], r), r):
+                        if npass:
+                            clean[key][0] += npass
+                            clean[key][1] += a['batch_sec']
+                        if is_normal(a):
+                            n25[key][0] += FULL
+                            n25[key][1] += a['batch_sec']
+        self.unit_n25 = {k: s / w for k, (w, s) in n25.items() if w}
+        self.unit_clean = {k: s / w for k, (w, s) in clean.items() if w}
+        self.fault_base = {r: (quantiles(v, n=100)[98] if len(v) >= MIN_FAULT_BASE else None, len(v)) for r, v in faults.items()}
+
+    def unit(self, a):
+        """이 Batch Report 를 계산할 1장 처리 시간(초). 정상 25매(호기 × 레시피 → 레시피) → Error · 중단 없는 스캔 전체 순."""
+        r = recipe_of(a)
+        for table in (self.unit_n25, self.unit_clean):
+            for key in ((a['machine'], r), r):
+                if key in table:
+                    return table[key]
+        return None
+
+    def stop_kind(self, a):
+        """작업자 중단 Batch Report → ('d' Defect 과다 | 'o' 그 외, 기준값 또는 None(기준 wafer 부족))."""
+        base, _ = self.fault_base.get(recipe_of(a), (None, 0))
+        f = a['stop_faults']
+        return ('d' if base is not None and f is not None and f > base else 'o'), base
+
+    def split(self, a):
+        """Batch Report 1장의 Batch Time → (웨이퍼 처리 초, Error · 중단 손실 초)."""
+        sec = a['batch_sec'] or 0
+        if a['outcome'] == lm.CLEAN:
+            return float(sec), 0.0
+        npass = sum(r['pass'] for r in a['rows'])
+        t = self.unit(a)
+        if t is None:
+            # 그 레시피에 Error · 중단 없는 스캔이 하나도 없으면 Dice 있는 행 몫으로 나눈다(종전 방식).
+            dice = sum(1 for r in a['rows'] if r['scanned'] is not None)
+            t = sec / dice if dice else 0.0
+        proc = min(float(sec), npass * t)
+        return proc, sec - proc
+
+    def _metrics(self):
         busy = defaultdict(list)
         for a in self.A:
             s, e = _span(a)
@@ -178,110 +264,111 @@ class View:
             used = sum(max(0.0, (min(e0, b) - max(s0, a)).total_seconds()) for a, b in busy[machine] if a < e0 and b > s0)
             return max(0.0, (e0 - s0).total_seconds() - used)
 
-        days = defaultdict(lambda: dict(valid=0.0, dropped=0.0, wait=0.0, check=0.0, rec=defaultdict(float),
-                                        err=defaultdict(lambda: [0.0, 0.0, set(), 0])))
-        waits = []
-        for li, lot in enumerate(self.model['lots']):
+        U = defaultdict(lambda: dict(p=0.0, du=0.0, ck=0.0, e=defaultdict(lambda: [0.0, 0, set()]),
+                                     sd=[0.0, 0, set()], so=[0.0, 0, set()], ps=0, dn=0, n=0, ne=0, w25=0, s25=0.0, aw=0, asum=0.0))
+        stops, waits, N, L = [], [], [], []
+        dupn = Counter()
+        for lot in self.model['lots']:
             for b in lot['bunches']:
-                picked = {(w['pick'], c['order']) for w in b['wafers'] if w['pick'] is not None
-                          for c in w['cells'] if c['attempt'] == w['pick'] and c['pass']}
+                for w in b['wafers']:
+                    passes = [c['attempt'] for c in w['cells'] if c['pass']]
+                    for p in passes[1:]:
+                        dupn[b['attempts'][p]['id']] += 1          # 이미 Pass 한 wafer 를 다시 스캔해 또 Pass
+
+        def loss(day, a, li, sec, first):
+            """Error · 중단 손실 sec 를 그 Batch Report 의 Error 원문 비율(또는 중단 종류)로 나눠 넣는다.
+
+            first = 스캔 시작일 — 건수(중단 Batch Report 수 · Error wafer 수)는 그날 한 번만 센다.
+            """
+            u = U[(day, a['machine'], recipe_of(a))]
+            if a['outcome'] == lm.STOP:
+                t = u['sd' if self.stop_kind(a)[0] == 'd' else 'so']
+                t[0] += sec
+                t[2].add(li)
+                t[1] += first
+                return
+            bad = Counter(_reason(r) for r in a['rows'] if not r['pass'] and r['kind'] in ('원인', '연쇄'))
+            total = sum(bad.values()) or 1
+            for reason, n in bad.items():
+                t = u['e'][reason]
+                t[0] += sec * n / total
+                t[2].add(li)
+                if first:
+                    t[1] += n
+
+        for li, lot in enumerate(self.model['lots']):
+            for bi, b in enumerate(lot['bunches']):
+                bunch_sec, bunch_pass = 0.0, 0
                 for p, a in enumerate(b['attempts']):
                     start, end = _span(a)
+                    g = self.index[a['id']]
+                    npass = sum(r['pass'] for r in a['rows'])
                     if start and a['batch_sec']:
-                        self._spread_attempt(days, li, a, p, picked, day_parts(start, end))
-                    if p + 1 >= len(b['attempts']):
+                        proc, lost = self.split(a)
+                        bunch_sec += a['batch_sec']
+                        bunch_pass += npass
+                        for k, (day, frac) in enumerate(day_parts(start, end)):
+                            u = U[(day, a['machine'], recipe_of(a))]
+                            u['p'] += proc * frac
+                            if npass:
+                                u['du'] += dupn[a['id']] * proc / npass * frac
+                            if a['outcome'] != lm.CLEAN:
+                                loss(day, a, li, lost * frac, k == 0)
+                            if k == 0:
+                                u['n'] += 1
+                                u['ps'] += npass
+                                u['dn'] += dupn[a['id']]
+                                u['ne'] += a['outcome'] == lm.ERROR
+                                if is_normal(a):
+                                    u['w25'] += FULL
+                                    u['s25'] += a['batch_sec']
+                                    if a['avg_scan_sec']:
+                                        u['aw'] += FULL
+                                        u['asum'] += a['avg_scan_sec'] * FULL
+                        if is_normal(a):
+                            N.append(dict(g=g, m=a['machine'], r=recipe_of(a), d=stamp(start)[:10], s=a['batch_sec'],
+                                          a=a['avg_scan_sec'], lot=li))
+                    if a['outcome'] == lm.STOP:
+                        k, base = self.stop_kind(a)
+                        stops.append(dict(g=g, m=a['machine'], r=recipe_of(a), li=li, f=_num(a['stop_faults']), k=k,
+                                          base=None if base is None else round(base, 1), ps=npass))
+                    if p + 1 >= len(b['attempts']) or a['outcome'] == lm.CLEAN:
                         continue
                     nxt = b['attempts'][p + 1]
                     if nxt['machine'] != a['machine'] or not a['end'] or not nxt['start'] or nxt['start'] <= a['end']:
                         continue
-                    waits.append(dict(m=a['machine'], s=stamp(a['end']), e=stamp(nxt['start']), li=li,
-                                      g=self.index[a['id']]))
-                    # 재스캔 전 대기는 앞 Batch Report 의 Error 행 원문 비율로 나눈다(한 장에 Error 가 여럿이어도 구분).
-                    bad = Counter(_reason(r) for r in a['rows'] if not r['pass'])
-                    if not bad:
-                        bad = Counter({DUP if any(r['pass'] for r in nxt['rows']) else SPLIT: 1})
-                    total = sum(bad.values())
-                    for day, frac in day_parts(a['end'], nxt['start']):
+                    # Error · 중단 뒤 같은 호기에서 같은 Lot 을 다시 스캔하기까지 장비가 아무것도 스캔하지 않은 시간 = 조치.
+                    kind = 's' if a['outcome'] == lm.STOP else 'e'
+                    waits.append(dict(m=a['machine'], s=stamp(a['end']), e=stamp(nxt['start']), li=li, g=g, t=kind))
+                    for day, _ in day_parts(a['end'], nxt['start']):
                         seg_s = max(a['end'], datetime.fromisoformat(day + ' 00:00'))
                         seg_e = min(nxt['start'], datetime.fromisoformat(day + ' 00:00') + timedelta(days=1))
                         gap = idle(a['machine'], seg_s, seg_e)
-                        d = days[(day, a['machine'])]
-                        d['wait'] += gap
-                        for reason, n in bad.items():
-                            e = d['err'][reason]
-                            e[1] += gap * n / total
-                            e[2].add(li)
+                        if gap:
+                            loss(day, a, li, gap, False)
+                            bunch_sec += gap
+                if bunch_sec > 0:
+                    L.append(dict(lot=li, b=bi, m=b['machines'][-1], r=f"{b['attempts'][-1]['job']} · {step_label(b['step'], b['scan'])}",
+                                  d=stamp(b['start'])[:10], ps=bunch_pass, s=round(bunch_sec), n=len(b['attempts']),
+                                  dn=sum(dupn[a['id']] for a in b['attempts'])))
         for a in self.model['excluded']:
             start, end = _span(a)
             if start and a['batch_sec']:
                 for day, frac in day_parts(start, end):
-                    days[(day, a['machine'])]['check'] += a['batch_sec'] * frac
-        out = [dict(d=d, m=m, valid=round(v['valid']), dropped=round(v['dropped']), wait=round(v['wait']),
-                    check=round(v['check']), rec={k: round(x) for k, x in v['rec'].items()},
-                    err={k: [round(x[0]), round(x[1]), sorted(x[2]), x[3]] for k, x in v['err'].items()})
-               for (d, m), v in sorted(days.items())]
-        return out, waits
+                    U[(day, a['machine'], recipe_of(a))]['ck'] += a['batch_sec'] * frac
+        rows = []
+        for (d, m, r), u in sorted(U.items()):
+            rows.append(dict(d=d, m=m, r=r, p=round(u['p']), du=round(u['du']), ck=round(u['ck']),
+                             e={k: [round(x[0]), x[1], sorted(x[2])] for k, x in u['e'].items()},
+                             sd=[round(u['sd'][0]), u['sd'][1], sorted(u['sd'][2])],
+                             so=[round(u['so'][0]), u['so'][1], sorted(u['so'][2])],
+                             ps=u['ps'], dn=u['dn'], n=u['n'], ne=u['ne'], w25=u['w25'], s25=u['s25'],
+                             aw=u['aw'], asum=round(u['asum'])))
+        X = dict(unit={f'{k[0]}||{k[1]}' if isinstance(k, tuple) else k: round(v, 1) for k, v in self.unit_n25.items()},
+                 faults={r: [None if b is None else round(b, 1), n] for r, (b, n) in self.fault_base.items()},
+                 min_base=MIN_FAULT_BASE, full=FULL)
+        return rows, waits, stops, N, L, X
 
-    @staticmethod
-    def _spread_attempt(days, li, a, p, picked, parts):
-        sec = a['batch_sec']
-        scanned = [r for r in a['rows'] if r['scanned'] is not None]
-        recipe = f"{a['job']} · {step_label(a['step'], a['scan'])}"
-        valid, dropped, err = 0.0, 0.0, defaultdict(lambda: [0.0, 0])
-        if scanned:
-            share = sec / len(scanned)
-            for r in a['rows']:
-                has = r['scanned'] is not None
-                if has and (p, r['order']) in picked:
-                    valid += share
-                elif r['pass'] and not has:
-                    continue
-                else:
-                    # Error wafer 수는 Dice 없는 행도 센다. 시간 몫은 Dice 있는 행만.
-                    e = err[DUP if r['pass'] else _reason(r)]
-                    e[1] += 1
-                    if has:
-                        dropped += share
-                        e[0] += share
-        else:
-            # Dice 있는 행이 하나도 없으면 Batch Time 전부를 Error 행 원문 비율로 나눈다.
-            bad = Counter(_reason(r) for r in a['rows'] if not r['pass'])
-            dropped = sec
-            total = sum(bad.values())
-            for reason, n in (bad.items() if bad else [(SPLIT, 0)]):
-                e = err[reason]
-                e[0] += sec * (n / total if total else 1)
-                e[1] += n
-        for k, (day, frac) in enumerate(parts):
-            d = days[(day, a['machine'])]
-            d['valid'] += valid * frac
-            d['dropped'] += dropped * frac
-            if valid:
-                d['rec'][recipe] += valid * frac
-            for reason, (t, n) in err.items():
-                e = d['err'][reason]
-                e[0] += t * frac
-                e[2].add(li)
-                if k == 0:
-                    e[3] += n                    # wafer 수는 스캔 시작일에 한 번만
-
-    # ------------------------------------------------------------------ WPH
-    def _wph(self):
-        base, eff = [], []
-        for li, lot in enumerate(self.model['lots']):
-            for bi, b in enumerate(lot['bunches']):
-                if len(b['attempts']) == 1:
-                    a = b['attempts'][0]
-                    if len(a['rows']) == FULL and all(r['pass'] for r in a['rows']) and (a['batch_sec'] or 0) > 0:
-                        base.append(dict(m=a['machine'], r=f"{a['job']} · {step_label(a['step'], a['scan'])}", d=stamp(a['start'])[:10],
-                                         w=FULL, s=a['batch_sec'], g=self.index[a['id']], lot=li))
-                sec = sum(a['batch_sec'] or 0 for a in b['attempts'])
-                if sec <= 0:
-                    continue
-                valid = sum(1 for w in b['wafers'] if w['pick'] is not None)
-                eff.append(dict(m=b['machines'][-1], r=f"{b['attempts'][-1]['job']} · {step_label(b['step'], b['scan'])}",
-                                d=stamp(b['start'])[:10], w=valid, s=sec, n=len(b['attempts']), lot=li, b=bi))
-        return dict(base=base, eff=eff)
 
     # ------------------------------------------------------------------ 누를 때만 보내는 상세
     def lot(self, li):
@@ -296,11 +383,12 @@ class View:
                 for c in w['cells']:
                     row = b['attempts'][c['attempt']]['rows'][c['order'] - 1]
                     cells.append([c['attempt'], c['status'] or '(빈 칸)', c['pass'], c['kind'] == '연쇄',
-                                  _num(row['scanned']), _num(row['bad']), _num(row['good'])])
+                                  _num(row['scanned']), _num(row['bad']), _num(row['good']), c['kind'] == lm.STOP])
                     if c['pass']:
                         rec = c['attempt']
                 wafers.append(dict(k=w['key'], slot=w['slot'], id=w['wafer_id'], v=w['verdict'], pick=w['pick'],
-                                   rec=rec, ov=w['overridden'], cause=w['cause'], chain=w['chain_only'], cells=cells))
+                                   rec=rec, ov=w['overridden'], cause=w['cause'], chain=w['chain_only'], stop=w['stop'],
+                                   cells=cells))
             bunches.append(dict(wafers=wafers))
             for a in b['attempts']:
                 _, ph, cph = _stats(a)
@@ -352,6 +440,8 @@ class View:
             cells = defaultdict(list)
             for g in att:
                 for r in self.A[g]['rows']:
+                    if r['kind'] == lm.SKIP:
+                        continue                           # 스캔 안 한 슬롯은 wafer 가 아니다
                     cells[lm._key(r, id_slots)].append(dict(g=g, status=r['status'] or '(빈 칸)', ok=r['pass'],
                                                             id=r['wafer_id'], sc=_num(r['scanned']), bad=_num(r['bad']),
                                                             good=_num(r['good'])))

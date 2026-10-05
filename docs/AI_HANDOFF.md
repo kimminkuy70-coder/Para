@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Batch Report 지표 개편: 시간 3칸 · 정상/실제 WPH · 작업자 중단 (2026-10-05 KST, `version_v12`)
+
+- 사용자 지시로 `version_v11`(v11.2.0 포함) 을 복사해 `version_v12` 를 만들고 확정한 계획대로 수정. 상세 정의는 CLAUDE.md
+  'Batch Report 지표 개편' 절, 화면 ? 설명 문구는 `frontend/src/metricHelp.ts` 한 곳.
+- 엔진: `lotmodel` 행 판정(앞 Error 없는 Aborted. = 작업자 중단 `STOP`, 앞 Error 없는 Skipped. = 스캔 안 한 슬롯 `SKIP`, attempt
+  `outcome` · `stop_faults` · `avg_scan_sec`, 행 `faults`), `batchview._metrics`(날짜 × 호기 × 레시피 `U` · `stops` · 정상 25매 `N` ·
+  Lot 줄 `L` · 기준값 `X`). 종전 `B`(5칸 가동률) · `C`(WPH base/eff) 는 없앰.
+- 화면: 가동률(숫자 4개 + 호기별/기간별 100% 막대 + 기간 상세 창 + 24시간 시간표), WPH · 생산능력(레시피 비교 막대 · 호기 × 레시피 표
+  + 레시피 합계 · 레시피 상세 창), Lot 추적(멈춘 이유 요약 Error / 작업자 중단), Lot 창(중단 색), Defect 과다 판정 설명 창.
+  용어 카드 · 로직 상자 · Lot 추적 소개 카드는 지우고 ? 버튼(`BatchHelp.tsx` `Q`)으로 옮김.
+- 범위 밖(사용자 확인 대기 없이 계획대로 둠): 기존 결과 파일(분석 HTML/Excel · 가동률 대시보드 · WPH 엑셀/HTML)은 옛 정의 그대로.
+- 검증: test_lotmodel 21 · test_batchview 13 · 전체 Python(tkinter 없는 기존 1건만 실패) · tsc · vite build · `tools/test_desktop_ui.mjs`
+  (가동률 ? 창 · 기간 상세 창 · 레시피 상세 창 · Defect 설명 창 추가) · 실자료 420개로 브라우저 전 화면 확인(2D_WBG 정상 27.5 ·
+  1장 131초 · 실제 24.0, Defect 과다 중단 5건). Windows 실기 미검증. **push · 릴리즈는 사용자가 말할 때만.**
+
 ## 최신 재개 — Para #6 Lot 추적 화면 수정 7건 + 3D 스캔 대전제 (2026-10-05 KST, `version_v11`, v11.2.0)
 
 - GitHub 이슈 #6(예약 작업 처리). 첨부 스크린샷 2장은 이 환경에서 내려받지 못해(세션 저장소 범위 밖 경로) 글 설명만으로 반영.
