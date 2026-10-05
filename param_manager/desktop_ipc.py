@@ -702,7 +702,8 @@ class Session:
             view = None
             try:
                 progress("화면용 Lot · 가동률 · WPH 를 계산하는 중…")
-                view = self.batch.set_view("scope", collection["records"], extra=self.batch.scope_extra(prepared, output))
+                view = self.batch.set_view("scope", collection["records"], extra=self.batch.scope_extra(prepared, output),
+                                         view=output.get("view"))
             except Exception as exc:  # noqa: BLE001 - the saved outputs are still valid
                 log_failure("batch_view", exc)
             result["tables"].append(dict(key="READ", title="원본 읽기 오류", headers=["호기", "Report", "오류"],

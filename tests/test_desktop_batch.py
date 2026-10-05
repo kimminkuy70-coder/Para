@@ -98,12 +98,12 @@ class DesktopBatchTests(unittest.TestCase):
         with self.assertRaises(store.Cancelled):
             service.run(root, targets, opts, cancel=lambda:True)
         cancelled = False
-        original = service.output.write_excel
+        original = service.batchsaved.write_excel
         def write_then_cancel(*args, **kwargs):
             nonlocal cancelled
             original(*args, **kwargs)
             cancelled = True
-        with patch.object(service.output, 'write_excel', write_then_cancel):
+        with patch.object(service.batchsaved, 'write_excel', write_then_cancel):
             with self.assertRaises(store.Cancelled):
                 service.run(root, targets, opts, cancel=lambda:cancelled)
         self.assertFalse(list((root/'배치분석').glob('조사_*')))

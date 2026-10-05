@@ -1,5 +1,28 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #7 호기 색 고정 + 저장된 결과 파일 v12 리뉴얼 + 레시피 비교 '없음' 행 (2026-10-05 KST, `version_v12`, v12.0.1)
+
+- GitHub 이슈 #7(예약 작업 처리) + 처리 중 사용자 추가 요청(레시피 비교에 정상 WPH 없음 행).
+- ①**호기 색 고정**: `batchData.MACH_PAL` · `machColors(ids)`(호기 이름 정렬 순서로 색) — WPH 레시피 비교 막대가 레시피마다
+  다른 색을 쓰던 것(쌓는 순서 index)을 호기별 고정 색으로. 범례 '같은 호기 = 같은 색', 호기 × 레시피 표 호기 칸에 색 네모.
+- ②**레시피 비교 '없음' 행(사용자 추가 요청)**: 같은 Job 의 하위 레시피끼리 바꾸면 보이는 레시피 묶음이 같아 막대가 그대로라 바뀐 건지
+  헷갈림 → 고른 레시피 줄 강조(`.caprow.sel`) + 위에 '고른 레시피: … — 정상 WPH x / 정상 WPH 없음' 문장(`p.capsel`), 줄마다
+  정상 WPH 값 또는 '정상 WPH 없음', 실제 WPH 자료가 없는 레시피도 '실제 WPH 자료 없음' 행으로 남김(종전엔 행 자체를 뺐다).
+- ③**저장된 결과 파일 v12 리뉴얼(기준 = 프로그램)**: 새 `param_manager/batchsaved.py` — 앱과 같은 `batchview.View.payload()` 를
+  `batchData.ts` 와 같은 식으로 더해 `BatchReport_분석.html`(Lot 추적 · 가동률 · WPH · 생산능력 · 지표 정의 탭) ·
+  `BatchReport_분석.xlsx`(조사 정보 · 정의 / 가동률 호기별 · 일 · 주 · 월 · 날짜×호기 / 손실 이유 / WPH 호기×레시피 / 정상 25매 /
+  작업자 중단 / Lot 목록 / Batch Report 목록) · `가동률_대시보드.html`(가동률 · WPH, 30분 새로고침)을 만든다. 옛 M01~M11 출력
+  (`batchreport_output.build_html/write_excel`)은 더 이상 저장 파일에 쓰지 않는다(`batchreport.compute` 결과는 IPC `table_page` 용으로 유지).
+  Lot 추적 HTML(`lotreport.build_html(view=)`)은 같은 View 모델(저장된 사람 선택 포함) · 앱 지표 5개 · 멈춘 이유 요약(Error Lot 단위 /
+  작업자 중단 종류별) · 작업자 중단 칸 색 · 3D 표시 · '묶음/시도' → 공정 단계 · Batch Report 용어.
+- 흐름: `batchreport_service.run(overrides=)` 가 View 를 한 번 만들어 파일에 쓰고 `output['view']` 로 돌려줌 → `desktop_ipc` 가
+  `set_view(view=)` 로 재사용(종전처럼 두 번 계산하지 않음). `desktop_batch.run` 이 로컬 Cache 선택을 넘김.
+- 범위 밖(이슈가 이름을 대지 않음): `WPH_통합.xlsx/.html` · 호기별 취합 txt 는 옛 정의 그대로.
+- 검증: `tests/test_batchsaved.py` 7(앱 식과 같은 가동률 · WPH · Lot 요약, 색 표 = batchData.ts, HTML/Excel/대시보드, 정상 WPH 없음 행,
+  Lot 추적 HTML view) · test_batchreport(저장 파일 기대값 갱신, tkinter 없는 기존 1건만 실패) · test_desktop_batch(취소 패치 대상 변경) ·
+  test_desktop_ipc · test_batchview · `tools/check_project.py` · `npx tsc --noEmit` · `vite build` · `tools/test_desktop_ui.mjs`(범례 ·
+  레시피 고르면 줄 강조 + 정상 WPH 문장 확인 추가) 통과. 합성 자료로 저장 HTML 화면 확인. 실자료 · Windows 실기 미검증.
+
 ## 최신 재개 — Batch Report 지표 개편: 시간 3칸 · 정상/실제 WPH · 작업자 중단 (2026-10-05 KST, `version_v12`)
 
 - 사용자 지시로 `version_v11`(v11.2.0 포함) 을 복사해 `version_v12` 를 만들고 확정한 계획대로 수정. 상세 정의는 CLAUDE.md

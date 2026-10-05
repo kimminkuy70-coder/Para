@@ -9,13 +9,15 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from . import batchreport, batchreport_output as output, batchreport_store as store, lotmodel, lotreport, wph, wph_html
+from . import batchreport, batchreport_output as output, batchreport_store as store, batchsaved, batchview, lotreport, wph, wph_html
 
 RUN_LOCK = threading.Lock()
 LOT_HTML = 'BatchReport_Lot추적.html'
 
 
-def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
+def run(root, targets, options, progress=None, host_gap=2.0, cancel=None, overrides=None):
+    """조사 1회. 저장된 결과 파일(Lot 추적 HTML · 분석 HTML/Excel · 가동률 대시보드)은 앱 화면과 같은 `batchview.View`
+    (저장된 사람 선택 overrides 포함)로 만든다(이슈 #7 — 기준은 프로그램). 그 View 를 돌려줘 화면이 다시 계산하지 않게 한다."""
     if not RUN_LOCK.acquire(blocking=False):
         raise RuntimeError("Batch Report 분석이 이미 실행 중입니다")
     staging = None
@@ -31,16 +33,21 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
         result = batchreport.compute(collection['records'], selected=options['metrics'],
                                      valid_wafers=options['valid_wafers'])
         store.checkpoint(cancel)
-        staging = Path(tempfile.mkdtemp(prefix='.진행중_', dir=base))
-        report_html = output.build_html(result, collection)
-        output.atomic_text(staging / 'BatchReport_분석.html', report_html)
         if progress:
-            progress('Lot 추적(시도 → 묶음 → Lot)을 만드는 중…')
-        # Lot 단위 추적: 한 Lot 이 여러 Batch Report·여러 호기로 나뉘는 것을 묶는다(lotmodel).
-        output.atomic_text(staging / LOT_HTML, lotreport.build_html(lotmodel.build(collection['records']), collection['scope']))
+            progress('화면용 Lot · 가동률 · WPH 를 계산하는 중…')
+        view = batchview.View(collection['records'], overrides=overrides)
+        machines = list(dict.fromkeys(t['machine'] for t in targets))
+        saved = batchsaved.Saved(view.payload(), machines=machines, scope=collection['scope'])
+        notices = [f"{e['machine']} / {e['source_file']}: {e['error']}" for e in collection['errors']] + list(collection.get('notices', []))
+        store.checkpoint(cancel)
+        staging = Path(tempfile.mkdtemp(prefix='.진행중_', dir=base))
+        output.atomic_text(staging / 'BatchReport_분석.html', batchsaved.build_html(saved, lot_file=LOT_HTML, notices=notices))
+        if progress:
+            progress('Lot 추적 HTML 을 만드는 중…')
+        output.atomic_text(staging / LOT_HTML, lotreport.build_html(view.model, collection['scope'], view=view))
         if progress:
             progress('분석 Excel과 기존 WPH 산출물을 만드는 중…')
-        output.write_excel(staging / 'BatchReport_분석.xlsx', result, collection)
+        batchsaved.write_excel(staging / 'BatchReport_분석.xlsx', saved, notices)
         rows = []
         for record in collection['records']:
             row = wph.extract_row(record['report'])
@@ -66,14 +73,14 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None):
         dashboard_error = ''
         if 'M02' in options['metrics']:
             try:
-                output.atomic_text(dashboard, output.build_html(result, collection, dashboard=True))
+                output.atomic_text(dashboard, batchsaved.build_html(saved, dashboard=True, notices=notices))
             except OSError as exc:
                 dashboard_error = str(exc)
         return {'outdir': str(outdir), 'html': str(outdir / 'BatchReport_분석.html'), 'lots': str(outdir / LOT_HTML),
                 'xlsx': str(outdir / 'BatchReport_분석.xlsx'),
                 'dashboard': str(dashboard) if 'M02' in options['metrics'] and not dashboard_error else '',
                 'dashboard_error': dashboard_error, 'result': result, 'collection': collection,
-                'rows': rows}
+                'rows': rows, 'view': view}
     finally:
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)  # only our locally-created temp dir

@@ -172,6 +172,13 @@ try{
   // WPH · 생산능력: 레시피 비교(호기별로 쌓은 하루 생산능력) → 레시피 상세 창, 표에 레시피 합계 줄.
   await page.getByRole('tab',{name:'WPH · 생산능력',exact:true}).click();
   await page.locator('.caprow').first().waitFor();
+  // 이슈 #7: 호기 색 범례(같은 호기 = 같은 색) · 레시피를 고르면 그 줄 강조 + 정상 WPH 유무 문장(하위 레시피끼리 바꿔도 바뀐 게 보임).
+  await page.getByText('같은 호기 = 같은 색').waitFor();
+  const rsel=page.locator('select').filter({has:page.locator('optgroup')});
+  await rsel.selectOption({index:1});
+  await page.locator('.caprow.sel').waitFor();
+  assert.match(await page.locator('p.capsel').innerText(),/고른 레시피: .*(정상 WPH \d|정상 WPH 없음)/);
+  await rsel.selectOption({index:0});
   await page.getByRole('button',{name:'호기 × 레시피 표',exact:true}).click();
   await page.locator('tr.total').first().click();
   await page.locator('dialog.lotwin[open]').getByText('정상 WPH에서 실제 WPH까지').waitFor();

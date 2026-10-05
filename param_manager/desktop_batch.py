@@ -134,11 +134,13 @@ class BatchViews:
                 out[(bunch, wafer)] = value
         return out
 
-    def set_view(self, name, records, extra=None, hits=None):
-        """records → View. 저장된 사람 선택(로컬 Cache)을 늘 적용한다(개발자 기능 토글과 무관)."""
+    def set_view(self, name, records, extra=None, hits=None, view=None):
+        """records → View. 저장된 사람 선택(로컬 Cache)을 늘 적용한다(개발자 기능 토글과 무관).
+        view = 이미 같은 records · 선택으로 만든 View(조사 서비스가 저장 파일용으로 만든 것 — 다시 계산하지 않음)."""
         from . import batchview
         items = self._view_items()
-        view = batchview.View(records, overrides=self._load_choices(), hits=hits)
+        if view is None:
+            view = batchview.View(records, overrides=self._load_choices(), hits=hits)
         payload = dict(view.payload(), **(extra or {}))
         self.version += 1
         blob = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), default=str)
@@ -552,4 +554,4 @@ class DesktopBatch(BatchViews):
         # Separate migration state: never overwrite unrelated legacy configuration.
         atomicfile.write_json(cache / "rev1_batch_last.json", {
             "schema_version": 1, "last": {"targets": targets, "options": opts}})
-        return batchreport_service.run(root, targets, opts, progress=progress, cancel=cancel)
+        return batchreport_service.run(root, targets, opts, progress=progress, cancel=cancel, overrides=self._load_choices())

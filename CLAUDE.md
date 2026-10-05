@@ -51,7 +51,13 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   한계 — `BatchHelp.tsx` `Q`, 문구 `metricHelp.ts`. 대소문자만 다른 파일 이름 금지 — Windows 에서 import 가 섞임). 가동률(호기별/기간별 막대 →
   기간 상세 창: 시간 구성 · 손실 이유 · 24시간 시간표), WPH · 생산능력(레시피 비교: 레시피마다 호기별로 쌓은 하루 생산능력, 레시피를 고르면 같은
   Job 끼리 · 호기 × 레시피 표 + 합계 줄 → 레시피 상세 창: WPH 분해 · 1장 처리 시간(Avg. Scan Time + 로봇 이동 등) · Lot별 실제 WPH).
-- 범위 밖: 기존 결과 파일(분석 HTML/Excel · 가동률 대시보드 · WPH 엑셀/HTML · tkinter)은 옛 정의 그대로(다음 단계에서 맞출지 사용자 결정).
+- ~~범위 밖: 기존 결과 파일은 옛 정의 그대로~~ → **이슈 #7(v12.0.1)에서 맞춤**: 저장된 결과 파일(Lot 추적 HTML · 분석 HTML/Excel ·
+  가동률 대시보드)은 `batchsaved.py` 가 **앱과 같은 View payload · 같은 식**으로 만든다(기준은 무조건 프로그램 — 새 지표 정의 금지,
+  앱 식을 바꾸면 `batchsaved` 도 같이). `batchreport_service.run(overrides=)` 가 View 를 한 번 만들어 `output['view']` 로 화면에 넘김.
+  WPH_통합 엑셀/HTML · tkinter 는 아직 옛 정의.
+- **호기 색 고정(이슈 #7)**: 같은 호기는 어느 그래프 · 레시피에서도 같은 색 — `batchData.MACH_PAL`/`machColors`(이름 정렬 순),
+  저장 파일 `batchsaved.MACH_PAL` 도 같은 표(테스트가 고정). 레시피 비교는 고른 레시피 줄 강조 + 정상 WPH 없음 / 실제 WPH 자료 없음
+  레시피도 행으로 남긴다(하위 레시피끼리 바꿔도 바뀐 것이 보이게 — 사용자 요청).
 
 ### Lot 추적 수정 7건 + 3D 스캔 대전제 (2026-10-05, 이슈 #6, v11.2.0)
 
@@ -969,6 +975,7 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
+python3 tests/test_batchsaved.py    # 7  (저장된 결과 파일 = 앱 식: 가동률 · WPH · Lot 요약 · 호기 색 표 · HTML/Excel/대시보드 · 정상 WPH 없음 행 · Lot 추적 HTML view)
 python3 tests/test_batchview.py    # 13 (지표 개편: 시간 3칸·WPH 재료·작업자 중단/Defect 과다 · 3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
 python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯 · 3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)

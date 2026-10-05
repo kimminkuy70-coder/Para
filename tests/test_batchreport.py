@@ -232,19 +232,22 @@ class Collection(unittest.TestCase):
         lots = Path(result['lots']).read_text(encoding='utf-8')
         self.assertIn('Lot 판정 기준', lots)
         self.assertNotIn('<script>alert(1)</script>', lots)
-        self.assertIn('&lt;script&gt;', page)
+        # 저장된 결과 파일은 앱 화면(v12)과 같은 계산(이슈 #7): 탭 · 기간 단위 · 지표 정의 · 대시보드 새로고침.
         self.assertIn('2026-09-19', page)
-        self.assertIn('data-period="주"', page)
+        self.assertIn('data-period="w"', page)
+        self.assertIn('WPH · 생산능력', page)
+        self.assertIn('지표 정의', page)
         self.assertIn('content="1800"', Path(result['dashboard']).read_text())
+        self.assertIn('가동률 대시보드', Path(result['dashboard']).read_text())
+        self.assertIsNotNone(result['view'])
         from openpyxl import load_workbook
         wb = load_workbook(result['xlsx'])
-        self.assertGreater(len(wb['그래프']._charts), 0)
-        self.assertEqual(wb['Batches']['H2'].data_type, 's')
-        self.assertEqual(wb['Batches']['H2'].value, '=1+1')
-        self.assertEqual(wb['Wafers'].max_row, 3)
+        self.assertIn('WPH 호기×레시피', wb.sheetnames)
+        self.assertIn('가동률 호기별', wb.sheetnames)
+        ws = wb['Batch Report 목록']
+        self.assertEqual(ws['F3'].value, '=1+1')         # 원문은 수식이 아니라 글자
+        self.assertEqual(ws['F3'].data_type, 's')
         wb.close()
-        with zipfile.ZipFile(result['xlsx']) as archive:
-            self.assertTrue(any(n.startswith('xl/charts/chart') for n in archive.namelist()))
         self.assertTrue((Path(result['outdir']) / 'WPH_통합.xlsx').exists())
         with service.RUN_LOCK:
             with self.assertRaises(RuntimeError):

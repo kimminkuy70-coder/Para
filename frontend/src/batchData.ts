@@ -59,6 +59,10 @@ export const C_OK='#10b981',C_ERR='#c2410c',C_WAIT='#d69e2e',C_CHAIN='#f0b44c';
 /** 시간 3칸 · 작업자 중단 색 */
 export const C_PROC=C_OK,C_LOSS=C_ERR,C_IDLE='#dfe5ec',C_STOP='#7c8fb0',C_DEFECT='#9b4dca',C_CHECK='#94a3b8',C_DUP='#6ee7b7';
 export const STOPK:Record<string,string>={d:'작업자 중단 · Defect 과다',o:'작업자 중단 · 그 외'};
+/** 호기 색 — 같은 호기는 어느 그래프 · 어느 레시피에서도 같은 색(이슈 #7). 호기 이름 정렬 순서로 정하므로 레시피 · 정렬과 무관.
+    저장된 결과 파일(`batchsaved.MACH_PAL`)도 같은 표 · 같은 순서를 쓴다. */
+export const MACH_PAL=['#1f77b4','#2a9d8f','#e07b39','#7b5ea7','#3a7d44','#c44e7a','#5b8fc7','#b8860b','#17859b','#8c564b','#4c6ef5','#6b8e23','#d1495b','#31517c','#9c6ade','#00a676'];
+export function machColors(ids:string[]):Record<string,string>{const o:Record<string,string>={};[...new Set(ids)].sort().forEach((m,i)=>{o[m]=MACH_PAL[i%MACH_PAL.length];});return o;}
 
 /** U 행을 더한 값(초). 화면이 호기 · 기간 · 레시피로 골라 더한다. */
 export type Agg={p:number;du:number;ck:number;e:number;sd:number;so:number;ps:number;dn:number;n:number;ne:number;nsd:number;nso:number;
