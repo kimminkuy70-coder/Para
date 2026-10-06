@@ -63,6 +63,16 @@ class SavedNumbers(unittest.TestCase):
         page = bs.build_html(self.s, lot_file='BatchReport_Lot추적.html')
         for text in ('Lot 추적', '가동률', 'WPH · 생산능력', '지표 정의', '멈춘 이유 요약 · Error', '같은 호기 = 같은 색'):
             self.assertIn(text, page)
+        # 이슈 #12: 저장된 HTML 의 WPH 탭에도 앱과 같은 상위 레시피 필터(칩 · 전체 보기) + 숫자 4개를 다시 더할 자료.
+        import json, re
+        self.assertIn('id="jf"', page)
+        self.assertIn('class="jf-chip"', page)
+        blob = json.loads(re.search(r'<script type="application/json" id="wphjobs">(.*?)</script>', page).group(1))
+        recipes, _ = self.s.wph_cells()
+        self.assertEqual(blob['jobs'], sorted({bs._job(r) for r in recipes}))
+        self.assertEqual(sum(x['ps'] for x in blob['sum'].values()), bs.sum_u(self.s.wph_rows())['ps'])
+        for j in blob['jobs']:
+            self.assertIn(f'data-job="{j}"', page)
         dash = bs.build_html(self.s, dashboard=True)
         self.assertIn('content="1800"', dash)
         self.assertNotIn('id="sec-lot"', dash)

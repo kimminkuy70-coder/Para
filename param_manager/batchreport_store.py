@@ -62,33 +62,90 @@ def dates(target):
     return start, end
 
 
+# 같은 앱 실행 중 캐시 JSON 을 다시 읽어 해석하지 않도록 메모리에 둔다(이슈 #12).
+# 키 = 캐시 파일 경로, 값 = (mtime_ns, size, state). 디스크 파일이 바뀌면(서명 불일치) 다시 읽는다.
+_MEMO = {}
+
+
+def _load_state(cachefile):
+    try:
+        st = cachefile.stat()
+    except FileNotFoundError:
+        return {"schema": SCHEMA, "entries": {}}
+    memo = _MEMO.get(str(cachefile))
+    if memo and memo[0] == st.st_mtime_ns and memo[1] == st.st_size:
+        state = memo[2]
+    else:
+        # Corrupt/unknown cache is never silently overwritten.
+        state = json.loads(cachefile.read_text(encoding="utf-8"))
+        if state.get("schema") != SCHEMA or not isinstance(state.get("entries"), dict):
+            raise ValueError("분석 캐시 형식 확인 필요: " + str(cachefile))
+        _MEMO[str(cachefile)] = (st.st_mtime_ns, st.st_size, state)
+    # 얕은 복사: 이번 조사에서 더하는 항목이 쓰기 실패 시 메모리 사본에 남지 않게.
+    return dict(state, entries=dict(state["entries"]))
+
+
+def _save_state(cachefile, state):
+    write_json(cachefile, state)
+    st = cachefile.stat()
+    _MEMO[str(cachefile)] = (st.st_mtime_ns, st.st_size, state)
+
+
+def _scan(folder, matches):
+    """폴더 목록 1번으로 대상 파일과 그 (수정시각, 크기)를 얻는다(이슈 #12 — 파일마다 장비에 다시 묻지 않기).
+
+    Windows 의 os.scandir 는 목록에 수정시각 · 크기가 같이 와서 추가 네트워크 왕복이 없다.
+    연결(심볼릭 링크) 파일만 따로 표시해 두고, 그 파일은 예전처럼 경로를 풀어 폴더 밖인지 확인한다."""
+    out = {}
+    with os.scandir(folder) as items:
+        for entry in items:
+            name = entry.name
+            if not wph.is_report_file(name) or not matches(name):
+                continue
+            try:
+                link = entry.is_symlink()
+                if not entry.is_file():
+                    continue
+                st = entry.stat(follow_symlinks=False)
+                out[name] = (None if link else [st.st_mtime_ns, st.st_size])
+            except OSError:
+                out[name] = None                     # 아래에서 예전 방식으로 확인 · 오류 기록
+    return dict(sorted(out.items(), key=lambda kv: kv[0].lower()))
+
+
 def collect(root, targets, progress=None, host_gap=2.0, cancel=None, reuse=True):
     """reuse=False: 캐시 서명(수정시각·크기)이 같아도 고른 범위를 전부 다시 연다
-    (화면 '이미 읽은 Batch Report는 다시 읽지 않기'를 끈 경우)."""
+    (화면 '이미 읽은 Batch Report는 다시 읽지 않기'를 끈 경우).
+
+    이미 조사한 것은 그대로 두고 새 Batch Report만 빠르게 찾는다(이슈 #12, 병렬 읽기 없음 — 한 폴더씩 순서대로):
+    폴더 목록 1번으로 서명이 같은 파일은 장비에 다시 묻지 않고 캐시를 쓰며, 새로 읽은 것이 없으면 캐시 파일도
+    다시 쓰지 않는다. 호기 사이 간격(host_gap)은 앞 호기에서 Report 파일을 실제로 연 경우에만 두고,
+    같은 호기의 추가 폴더 사이에는 두지 않는다."""
     base = local_root(root, [t["folder"] for t in targets]) / "배치분석" / "누적"
     base.mkdir(parents=True, exist_ok=True)
+    base_real = base.resolve()
     records, errors, notices = [], [], []
     parsed, reused = 0, 0
     by_machine = {}
     dedup = set()
     filenames = {}
+    prev_machine, prev_opened = None, False
     for index, target in enumerate(targets):
         checkpoint(cancel)
-        if index and host_gap:
-            time.sleep(host_gap)  # sequential hosts; same security pacing as watcher
         machine, folder = target["machine"], Path(target["folder"])
+        if machine != prev_machine:
+            if index and host_gap and prev_opened:
+                time.sleep(host_gap)  # sequential hosts; same security pacing as watcher
+            prev_machine, prev_opened = machine, False
         stat = by_machine.setdefault(machine, {"parsed": 0, "reused": 0, "records": 0, "offline": False})
-        source_id = hashlib.sha256((machine + "\0" + os.path.normcase(str(folder.resolve()))).encode()).hexdigest()
+        folder_real = folder.resolve()
+        source_id = hashlib.sha256((machine + "\0" + os.path.normcase(str(folder_real))).encode()).hexdigest()
         cachefile = base / (source_id + ".json")
-        if cachefile.is_symlink() or cachefile.resolve().parent != base.resolve():
+        if cachefile.is_symlink() or cachefile.resolve().parent != base_real:
             raise ValueError("분석 캐시 연결 경로를 사용할 수 없습니다")
-        state = {"schema": SCHEMA, "entries": {}}
-        if cachefile.exists():
-            # Corrupt/unknown cache is never silently overwritten.
-            state = json.loads(cachefile.read_text(encoding="utf-8"))
-            if state.get("schema") != SCHEMA or not isinstance(state.get("entries"), dict):
-                raise ValueError("분석 캐시 형식 확인 필요: " + str(cachefile))
+        state = _load_state(cachefile)
         entries = state["entries"]
+        stat_parsed_before = stat["parsed"]
         start, end = dates(target)
         requested = target.get("names")
         if requested is not None:
@@ -100,21 +157,38 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None, reuse=True)
         def matches(name):
             return (requested is None or name in requested) and wph._matches(name, target.get("query", ""), start, end)
 
-        invalid, current = set(), []
+        invalid, listed = set(), {}
         online = folder.is_dir()
         if online:
             # Include all dates so late-arriving old files are not lost to a watermark.
-            current = [n for n in wph.list_reports(folder, target.get("query", ""), start, end) if matches(n)]
+            try:
+                listed = _scan(folder, matches)
+            except OSError as exc:
+                online = False
+                errors.append({"machine": machine, "source_file": str(folder), "error": f"목록 읽기 실패 — 저장된 자료만 표시 ({exc})"})
+                stat["offline"] = True
         else:
             errors.append({"machine": machine, "source_file": str(folder), "error": "원본 폴더 접근 불가 — 저장된 자료만 표시"})
             stat["offline"] = True
-        for n, name in enumerate(current, 1):
+        current = list(listed)
+        # 캐시와 서명이 같은 파일은 목록 정보만으로 끝(장비에 다시 묻지 않음). 진행 표시는 새로 열 파일만.
+        todo = []
+        for name, quick in listed.items():
+            saved = entries.get(name)
+            if reuse and quick is not None and saved and saved.get("signature") == quick:
+                reused += 1
+                stat["reused"] += 1
+            else:
+                todo.append(name)
+        if progress and current and not todo:
+            progress(len(current), len(current), f"{machine}: 새 Batch Report 없음 (캐시 {len(current)}개)")
+        for n, name in enumerate(todo, 1):
             checkpoint(cancel)
             if progress:
-                progress(n, len(current), f"{machine}: {name}")
+                progress(n, len(todo), f"{machine}: {name}")
             path = folder / name
             try:
-                if path.resolve().parent != folder.resolve():
+                if path.resolve().parent != folder_real:
                     raise ValueError("Report 연결 경로가 지정 폴더 밖을 가리킵니다")
                 before = path.stat()
                 signature = [before.st_mtime_ns, before.st_size]
@@ -123,6 +197,7 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None, reuse=True)
                     reused += 1
                     stat["reused"] += 1
                     continue
+                prev_opened = True
                 # Reuse the established parser exactly once per changed source.
                 report = wph.parse_report(path)
                 after = path.stat()
@@ -140,10 +215,12 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None, reuse=True)
             except Exception as exc:
                 invalid.add(name)
                 errors.append({"machine": machine, "source_file": name, "error": str(exc)})
-        state.update(machine=machine, folder=str(folder))
         checkpoint(cancel)
-        # Local writes only, old snapshot survives a failed replacement.
-        write_json(cachefile, state)
+        if stat_parsed_before != stat["parsed"] or state.get("machine") != machine or state.get("folder") != str(folder) \
+                or not cachefile.exists():
+            state.update(machine=machine, folder=str(folder))
+            # Local writes only, old snapshot survives a failed replacement.
+            _save_state(cachefile, state)
         added = _emit(records, notices, dedup, filenames, source_id, machine, folder, entries,
                       lambda name: matches(name) and name not in invalid, set(current))
         stat["records"] += added
@@ -167,7 +244,8 @@ def _emit(records, notices, dedup, filenames, source_id, machine, folder, entrie
             notices.append(f"{machine} / {name}: 같은 이름의 다른 내용 보존 — Batches 원본 폴더 열 참조")
         filenames[name_key] = entry['digest']
         records.append({"id": source_id + ":" + name, "machine": machine,
-                        "source_folder": str(folder), "report": entry["report"], "cached_only": name not in current})
+                        "source_folder": str(folder), "report": entry["report"], "cached_only": name not in current,
+                        "digest": entry["digest"]})
         added += 1
     return added
 

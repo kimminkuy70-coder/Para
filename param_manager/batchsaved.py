@@ -314,6 +314,25 @@ tr.grouphead td{background:var(--slate-bg)!important;font-weight:800;color:var(-
 .tscroll{overflow-x:auto}
 dl.defs{display:grid;grid-template-columns:170px 1fr;gap:8px 16px;margin:10px 0}
 dl.defs dt{font-weight:800;color:var(--navy);font-size:13px}dl.defs dd{margin:0;font-size:13px}
+.lv{display:inline-flex;align-items:center;flex:none;font-size:10px;font-weight:800;line-height:1;padding:3px 6px;border-radius:4px;margin-right:6px;vertical-align:1px}
+.lv.up{background:#31517c;color:#fff}.lv.dn{background:#e7eef7;color:#31517c;border:1px solid #c9d6e6}
+.jobfilter{border:1px solid var(--line);border-radius:10px;background:#fafbfd;padding:9px 12px;margin:10px 0 12px}
+.jf-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:12.5px;color:var(--navy)}
+.jf-head .grow{flex:1}.jf-head .jf-state{color:var(--faint);font-size:12px}
+.jf-head input[type=search]{width:200px;padding:5px 8px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:7px}
+.jf-head button.linklike{background:none;border:0;color:var(--navy);text-decoration:underline;cursor:pointer;font:inherit;font-size:12px;padding:0}
+.jf-head button.linklike:disabled{color:var(--faint);text-decoration:none;cursor:default}
+.jf-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-height:112px;overflow:auto}
+.jf-chip{display:inline-flex;align-items:center;gap:6px;max-width:280px;padding:5px 10px 5px 6px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:background-color .15s ease-out,border-color .15s ease-out,transform .1s ease-out}
+.jf-chip:active{transform:scale(.97)}.jf-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jf-chip small{font-weight:400;color:var(--faint);font-size:10.5px}
+.jf-chip i{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:4px;border:1.5px solid #b3c0cc;font-style:normal;font-size:10px;color:#fff}
+[data-job][hidden],#jf [hidden]{display:none!important}
+.jf-chip.on{background:#eaf1fa;border-color:#31517c}.jf-chip.on i{background:#31517c;border-color:#31517c}
+.capgrp{border-left:3px solid var(--navy);padding:4px 0 4px 10px;margin:10px 0}
+.capjob{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--navy)}.capjob small{color:var(--faint)}
+.caprow.sub .cl{padding-left:6px}
+@media(prefers-reduced-motion:reduce){.jf-chip{transition:none}}
 @media(max-width:720px){.kpis.k5{grid-template-columns:repeat(2,1fr)}.prow,.caprow,.hbar{grid-template-columns:1fr}dl.defs{grid-template-columns:1fr}}
 """
 
@@ -322,12 +341,43 @@ TAB_JS = ('function showMetric(k){document.querySelectorAll("section.metric").fo
           'function period(p){document.querySelectorAll("[data-period]").forEach(function(e){e.hidden=e.dataset.period!==p});'
           'document.querySelectorAll(".periodnav button").forEach(function(b){b.classList.toggle("on",b.dataset.p===p)});}')
 
+# 상위 레시피(Job) 필터 — 앱 WPH · 생산능력의 JobFilter(이슈 #10)와 같은 동작을 저장된 HTML 에서도(이슈 #12).
+# 여러 개 고르기 · 전체 보기 · 9개 이상이면 찾기 + 찾은 것 모두 고르기. 비면 전체.
+# 레시피 비교(막대 길이는 보이는 레시피 기준으로 다시 맞춤) · 호기 × 레시피 표 · 숫자 4개를 고른 상위 레시피로 거른다.
+JOB_JS = r"""
+(function(){var box=document.getElementById('jf');if(!box)return;
+var D=JSON.parse(document.getElementById('wphjobs').textContent),sel=[],q=document.getElementById('jfq');
+function f1(x){return x==null?'—':x.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1});}
+function n0(x){return x==null?'—':Math.round(x).toLocaleString('ko-KR');}
+function kpi(id,v,sub){var e=document.getElementById(id);if(!e)return;e.querySelector('.n').firstChild.nodeValue=v;if(sub!=null)e.querySelector('.s').textContent=sub;}
+function apply(){var all=!sel.length,on=function(j){return all||sel.indexOf(j)>=0;};
+ document.querySelectorAll('[data-job]').forEach(function(e){if(!e.classList.contains('jf-chip'))e.hidden=!on(e.dataset.job);});
+ box.querySelectorAll('.jf-chip').forEach(function(b){var o=sel.indexOf(b.dataset.job)>=0;b.classList.toggle('on',o);b.setAttribute('aria-pressed',o);b.querySelector('i').textContent=o?'✓':'';});
+ document.getElementById('jfstate').textContent=sel.length?sel.length+'개 고름 / '+D.jobs.length+'개':'전체 '+D.jobs.length+'개 (고르지 않으면 전체)';
+ document.getElementById('jfall').disabled=!sel.length;
+ var mx=1;document.querySelectorAll('.caprow[data-sum]').forEach(function(r){if(!r.closest('.capgrp').hidden)mx=Math.max(mx,+r.dataset.sum);});
+ document.querySelectorAll('.capbar>span[data-cap]').forEach(function(x){var w=+x.dataset.cap/mx*100;x.style.width=w.toFixed(2)+'%';x.textContent=w>6?x.dataset.m:'';});
+ var a={w25:0,s25:0,ps:0,d:0,rec:0},ms={};Object.keys(D.sum).forEach(function(j){if(!on(j))return;var t=D.sum[j];a.w25+=t.w25;a.s25+=t.s25;a.ps+=t.ps;a.d+=t.d;a.rec+=t.rec;t.m.forEach(function(m){ms[m]=1;});});
+ var wn=a.s25?a.w25*3600/a.s25:null,wa=a.d>0?a.ps*3600/a.d:null,dr=wn&&wa!=null?(1-wa/wn)*100:null;
+ kpi('wk-wn',f1(wn),'정상 25매 Batch Report '+n0(a.w25/25)+'장');kpi('wk-wa',f1(wa),'Pass '+n0(a.ps)+'장 · 유휴만 뺀 시간');
+ kpi('wk-dr',f1(dr),null);kpi('wk-rm',a.rec+' · '+Object.keys(ms).length,sel.length?'고른 상위 레시피 '+sel.length+'개':null);
+ var ql=q?q.value.trim().toLowerCase():'';box.querySelectorAll('.jf-chip').forEach(function(b){var j=b.dataset.job;b.hidden=!!ql&&j.toLowerCase().indexOf(ql)<0&&sel.indexOf(j)<0;});
+ var fa=document.getElementById('jffound');if(fa)fa.hidden=!ql;}
+box.addEventListener('click',function(ev){var b=ev.target.closest('button');if(!b)return;
+ if(b.classList.contains('jf-chip')){var j=b.dataset.job,i=sel.indexOf(j);if(i>=0)sel.splice(i,1);else sel.push(j);}
+ else if(b.id==='jfall'){sel=[];}
+ else if(b.id==='jffound'){box.querySelectorAll('.jf-chip').forEach(function(c){if(!c.hidden&&sel.indexOf(c.dataset.job)<0)sel.push(c.dataset.job);});}
+ apply();});
+if(q)q.addEventListener('input',apply);apply();})();
+"""
 
-def _kpis(items, cls='k4'):
+
+def _kpis(items, cls='k4', ids=()):
     out = []
-    for label, value, unit, sub, color, tone in items:
+    for i, (label, value, unit, sub, color, tone) in enumerate(items):
         sw = f'<i class="sw" style="background:{color}"></i>' if color else ''
-        out.append(f'<div class="kpi {tone}"><div class="n">{esc(value)}<span class="u">{esc(unit)}</span></div>'
+        idattr = f' id="{ids[i]}"' if i < len(ids) else ''
+        out.append(f'<div class="kpi {tone}"{idattr}><div class="n">{esc(value)}<span class="u">{esc(unit)}</span></div>'
                    f'<div class="l">{sw}{esc(label)}</div><div class="s">{esc(sub)}</div></div>')
     return f'<div class="kpis {cls}">' + ''.join(out) + '</div>'
 
@@ -404,15 +454,43 @@ def util_section(s):
     return ''.join(parts)
 
 
+def _job_filter(recipes, cells, rows_u):
+    """상위 레시피 필터 UI + 숫자 4개를 다시 더할 상위 레시피별 합(JSON). 계산식은 위 wph_normal · wph_actual 과 같다."""
+    jobs = sorted({_job(r) for r in recipes})
+    if not jobs:
+        return ''
+    by = defaultdict(list)
+    for u in rows_u:
+        by[_job(u['r'])].append(u)
+    data = {'jobs': jobs, 'sum': {}}
+    for j in sorted(set(jobs) | set(by)):           # 비교 레시피가 없는 Job 의 처리 시간도 '전체'에 넣는다(위 숫자 4개와 같게)
+        a = sum_u(by.get(j, []))
+        data['sum'][j] = {'w25': a['w25'], 's25': a['s25'], 'ps': a['ps'], 'd': a['p'] + loss_of(a),
+                          'rec': sum(1 for r in recipes if _job(r) == j),
+                          'm': sorted({m for (r, m) in cells if _job(r) == j})}
+    blob = json.dumps(data, ensure_ascii=False).replace('<', '\\u003c')
+    chips = ''.join(f'<button type="button" class="jf-chip" data-job="{esc(j)}" aria-pressed="false" title="{esc(j)}"><i aria-hidden="true"></i>'
+                    f'<span>{esc(j)}</span><small>하위 {data["sum"][j]["rec"]}</small></button>' for j in jobs)
+    find = ('<input type="search" id="jfq" placeholder="상위 레시피 찾기" aria-label="상위 레시피 찾기">'
+            '<button type="button" class="linklike" id="jffound" hidden>찾은 것 모두 고르기</button>') if len(jobs) > 8 else ''
+    return (f'<script type="application/json" id="wphjobs">{blob}</script>'
+            '<div class="jobfilter" id="jf" role="group" aria-label="상위 레시피 필터"><div class="jf-head"><span class="lv up">상위 레시피</span><b>필터</b>'
+            f'<span class="jf-state" id="jfstate">전체 {len(jobs)}개 (고르지 않으면 전체)</span><span class="grow"></span>{find}'
+            '<button type="button" class="linklike" id="jfall" disabled>전체 보기</button></div>'
+            f'<div class="jf-chips">{chips}</div></div>')
+
+
 def wph_section(s):
     recipes, cells = s.wph_cells()
-    A = sum_u(s.wph_rows())
+    rows_u = s.wph_rows()
+    A = sum_u(rows_u)
     wn, wa = wph_normal(A), wph_actual(A)
-    parts = [_kpis([
+    parts = [_job_filter(recipes, cells, rows_u), _kpis([
         ('정상 WPH', num(wn, 1), '', f'정상 25매 Batch Report {num(A["w25"] / 25)}장', '', ''),
         ('실제 WPH', num(wa, 1), '', f'Pass {num(A["ps"])}장 · 유휴만 뺀 시간', '', 't'),
         ('처리량 감소', num(drop(wn, wa), 1), '%', '1 − 실제 ÷ 정상', '', 'r'),
-        ('레시피 · 호기', f'{len(recipes)} · {len({m for _, m in cells})}', '', '하루 생산능력은 아래 레시피 비교 · 표', '', 'a')])]
+        ('레시피 · 호기', f'{len(recipes)} · {len({m for _, m in cells})}', '', '하루 생산능력은 아래 레시피 비교 · 표', '', 'a')],
+        ids=('wk-wn', 'wk-wa', 'wk-dr', 'wk-rm'))]
     col = s.colors
     rows = []
     for r in recipes:
@@ -425,49 +503,61 @@ def wph_section(s):
         rows.append((r, cs, sum(cap(a) for _, a in cs), wph_normal(tot)))
     mx = max([1] + [x[2] for x in rows])
     parts.append('<h2>레시피별 하루 생산능력</h2><div class="sub">막대 한 칸 = 호기 1대 (24 × 실제 WPH). '
-                 '<b>같은 호기는 어느 레시피에서도 같은 색</b>입니다 — 아래 범례.</div>')
+                 '<b>같은 호기는 어느 레시피에서도 같은 색</b>입니다 — 아래 범례. 상위 레시피(Job)마다 묶고, 하위 레시피(Recipe(s))는 들여 씁니다. '
+                 '상위 레시피끼리는 die 수가 달라 생산능력을 더하지 않습니다.</div>')
     if rows:
         out = []
-        for r, cs, total, wn_r in rows:
-            segs = ''.join(f'<span style="width:{cap(a) / mx * 100:.2f}%;background:{col[m]}" '
-                           f'title="{esc(f"{m} · {_step(r)}{chr(10)}하루 생산능력 {num(cap(a))}장{chr(10)}실제 WPH {num(wph_actual(a), 1)} · 정상 WPH {num(wph_normal(a), 1)}{chr(10)}Batch Report {a[chr(110)]:,}개")}">'
-                           f'{esc(m) if cap(a) / mx * 100 > 6 else ""}</span>' for m, a in cs)
-            segs = segs or '<span class="capnone">실제 WPH 자료 없음 (Pass한 Batch Report 없음)</span>'
-            capv = f'<b>{num(total)}</b>장/일 · {len(cs)}대' if cs else '—'
-            norm = '<small class="none">정상 WPH 없음</small>' if wn_r is None else f'<small>정상 WPH {num(wn_r, 1)}</small>'
-            out.append(f'<div class="caprow"><span class="cl" title="{esc(r)}"><small>{esc(_job(r))}</small>{esc(_step(r))}</span>'
-                       f'<span class="capbar">{segs}</span><span class="capv">{capv}{norm}</span></div>')
+        for j in dict.fromkeys(_job(r) for r, *_ in rows):
+            sub = [x for x in rows if _job(x[0]) == j]
+            jc = [(m, a) for (rr, m), a in cells.items() if _job(rr) == j]
+            out.append(f'<div class="capgrp" data-job="{esc(j)}" role="group" aria-label="상위 레시피 {esc(j)}">'
+                       f'<div class="capjob"><span class="lv up">상위 레시피</span><b title="{esc(j)}">{esc(j)}</b>'
+                       f'<small>하위 레시피 {len(sub)}개 · 호기 {len({m for m, _ in jc})}대 · Batch Report {sum(a["n"] for _, a in jc):,}개</small></div>')
+            for r, cs, total, wn_r in sub:
+                segs = ''.join(f'<span data-cap="{cap(a):.4f}" data-m="{esc(m)}" style="width:{cap(a) / mx * 100:.2f}%;background:{col[m]}" '
+                               f'title="{esc(f"{m} · {_step(r)}{chr(10)}하루 생산능력 {num(cap(a))}장{chr(10)}실제 WPH {num(wph_actual(a), 1)} · 정상 WPH {num(wph_normal(a), 1)}{chr(10)}Batch Report {a[chr(110)]:,}개")}">'
+                               f'{esc(m) if cap(a) / mx * 100 > 6 else ""}</span>' for m, a in cs)
+                segs = segs or '<span class="capnone">실제 WPH 자료 없음 (Pass한 Batch Report 없음)</span>'
+                capv = f'<b>{num(total)}</b>장/일 · {len(cs)}대' if cs else '—'
+                norm = '<small class="none">정상 WPH 없음</small>' if wn_r is None else f'<small>정상 WPH {num(wn_r, 1)}</small>'
+                out.append(f'<div class="caprow sub" data-sum="{total:.4f}"><span class="cl" title="{esc(r)}"><span class="lv dn">하위</span>{esc(_step(r))}</span>'
+                           f'<span class="capbar">{segs}</span><span class="capv">{capv}{norm}</span></div>')
+            out.append('</div>')
         used = sorted({m for _, cs, _, _ in rows for m, _ in cs})
         parts.append(''.join(out) + '<div class="keys">' + ''.join(f'<span><i style="background:{col[m]}"></i>{esc(m)}</span>' for m in used)
-                     + '<span>같은 호기 = 같은 색</span></div>')
+                     + '<span>같은 호기 = 같은 색</span><span><span class="lv up">상위 레시피</span> Job</span>'
+                       '<span><span class="lv dn">하위</span> Recipe(s)</span></div>')
     else:
         parts.append('<p class="info">조사 범위에 WPH 자료가 없습니다.</p>')
-    parts.append('<h2>호기 × 레시피 표</h2><div class="sub">레시피마다 합계 줄 + 호기별 줄. 앱의 [호기 × 레시피 표]와 같은 숫자입니다.</div>')
+    parts.append('<h2>호기 × 레시피 표</h2><div class="sub">상위 레시피 머리 줄 › 하위 레시피 합계 줄 › 호기별 줄. 앱의 [호기 × 레시피 표]와 같은 숫자입니다.</div>')
     body = []
     prev = None
     for r in recipes:
         cs = sorted((m, a) for (rr, m), a in cells.items() if rr == r)
         if not cs:
             continue
-        if _job(r) != prev:
-            body.append(f'<tr class="grouphead"><td colspan="9">{esc(_job(r))}</td></tr>')
-            prev = _job(r)
+        j = _job(r)
+        if j != prev:
+            body.append(f'<tr class="grouphead" data-job="{esc(j)}"><td colspan="9"><span class="lv up">상위 레시피</span>{esc(j)}</td></tr>')
+            prev = j
         allc = empty_agg()
         for _, a in cs:
             allc = add_agg(allc, a)
-        body.append(_wph_tr(_step(r), f'합계 ({len(cs)}대)', allc, sum(cap(a) or 0 for _, a in cs), True))
-        body.extend(_wph_tr('', m, a, cap(a), False, col[m]) for m, a in cs)
-    parts.append('<div class="tscroll"><table><thead><tr><th>레시피</th><th>호기</th><th class="num">1장 처리 시간</th><th class="num">Avg. Scan Time</th>'
+        body.append(_wph_tr(_step(r), f'합계 ({len(cs)}대)', allc, sum(cap(a) or 0 for _, a in cs), True, job=j))
+        body.extend(_wph_tr('', m, a, cap(a), False, col[m], job=j) for m, a in cs)
+    parts.append('<div class="tscroll"><table><thead><tr><th>레시피 (상위 › 하위)</th><th>호기</th><th class="num">1장 처리 시간</th><th class="num">Avg. Scan Time</th>'
                  '<th class="num">정상 WPH</th><th class="num">실제 WPH</th><th class="num">처리량 감소</th><th class="num">하루 생산능력</th>'
                  '<th class="num">Batch Report</th></tr></thead><tbody>'
                  + (''.join(body) or '<tr><td colspan="9">조사 범위에 WPH 자료가 없습니다.</td></tr>') + '</tbody></table></div>')
     return ''.join(parts)
 
 
-def _wph_tr(step, m, a, total, is_total, color=''):
+def _wph_tr(step, m, a, total, is_total, color='', job=None):
     n, w, u, sc = wph_normal(a), wph_actual(a), unit_sec(a), avg_scan(a)
     sw = f'<i class="msw" style="background:{color}"></i>' if color else ''
-    return (f'<tr class="{"total" if is_total else ""}"><td>{esc(step)}</td><td>{sw}{esc(m)}</td>'
+    dj = '' if job is None else f' data-job="{esc(job)}"'
+    badge = '<span class="lv dn">하위</span>' if step else ''
+    return (f'<tr class="{"total" if is_total else ""}"{dj}><td>{badge}{esc(step)}</td><td>{sw}{esc(m)}</td>'
             f'<td class="num">{"—" if u is None else num(u) + "초"}</td><td class="num">{"—" if sc is None else num(sc) + "초"}</td>'
             f'<td class="num">{num(n, 1)}</td><td class="num"><b>{num(w, 1)}</b></td><td class="num">{pc(drop(n, w))}</td>'
             f'<td class="num"><b>{num(total)}</b></td><td class="num">{a["n"]:,}</td></tr>')
@@ -537,7 +627,7 @@ def build_html(s, dashboard=False, lot_file='', notices=()):
         f'<aside><h2>읽기 오류 · 알림</h2><ul>{notes or "<li>이번 실행에서는 읽기 오류 · 알림이 없습니다.</li>"}</ul></aside>',
         '<div class="foot">※ 숫자는 프로그램의 Batch Report 분석 화면(가동률 조사 및 분석)과 같은 엔진 · 같은 식으로 만든 것입니다. '
         '원본 Batch Report는 읽기만 했습니다. 화면에서 기간 · 호기를 좁혀 보면 그 범위의 숫자가 나옵니다(이 파일은 조사 범위 전체).</div>',
-        f'</div></div><script>{TAB_JS}</script></body></html>'])
+        f'</div></div><script>{TAB_JS}{JOB_JS}</script></body></html>'])
 
 
 # ---------------------------------------------------------------------- Excel

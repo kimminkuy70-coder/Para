@@ -80,6 +80,6 @@ export const HELP:Record<string,HelpText>={
     f:['Error: wafer마다 Pass/Fail 원문의 첫 문구(앞 Error 뒤 따라온 Aborted · Skipped는 앞 Error로)','작업자 중단: 앞에 Error 없이 Aborted.로 멈춘 것 — Error가 아니라 따로 셉니다(Defect 과다 / 그 외)','재스캔하여 Pass한 Lot = 그 이유로 멈춘 wafer가 모두 나중에 Pass한 Lot'],
     check:'행을 누르면 그 이유가 있었던 Lot만 위 목록에 보입니다.'},
   'scope.logic':{t:'조사 범위',what:'고른 호기의 Reports 폴더(추가 폴더 포함)를 읽기만 합니다.',
-    f:['이미 읽은 Batch Report는 다시 읽지 않기(기본 켜짐): 파일 이름 · 수정시각 · 크기가 같으면 로컬 캐시 사용, 끄면 전부 다시 엶','읽은 Batch Report를 Lot 단위로 모아 Lot 추적 · 가동률 · WPH가 같은 결과를 씁니다. 기간은 파일 이름의 스캔 날짜 기준','호기 사이 2초 간격으로 순서대로 읽습니다(장비 접속 매너). 연결 안 되는 호기는 캐시만으로 보여 줍니다'],
+    f:['이미 읽은 Batch Report는 다시 읽지 않기(기본 켜짐): 파일 이름 · 수정시각 · 크기가 같으면 로컬 캐시 사용, 끄면 전부 다시 엶','읽은 Batch Report를 Lot 단위로 모아 Lot 추적 · 가동률 · WPH가 같은 결과를 씁니다. 기간은 파일 이름의 스캔 날짜 기준','이미 조사한 Batch Report는 그대로 두고 폴더 목록 1번으로 새 Batch Report만 찾아 더합니다. 새 것이 없으면 지난 결과 파일(HTML · Excel)을 그대로 씁니다','한 폴더씩 순서대로 읽습니다(병렬 읽기 없음). 새 Report를 연 호기 다음에만 2초 간격(장비 접속 매너). 연결 안 되는 호기는 캐시만으로 보여 줍니다'],
     check:'화면을 다시 열면 지난 조사 결과를 로컬 캐시만으로 먼저 보여 줍니다(장비 접근 없음).'},
 };

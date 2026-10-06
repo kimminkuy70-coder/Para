@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #12(#11 후속) 조사 = 이미 조사한 것은 두고 신규만 + 저장 HTML 상위 레시피 필터 (2026-10-06 KST, `version_v12`, v12.1.4)
+
+- GitHub 이슈 #12(= #11 답변에 대한 사용자 지시): "이미 조사한 건 놔두고 신규만 있는지 빠르게 검토해서 추가할 Batch Report가 있으면 추가해서
+  결과가 나오게. 병렬 읽기는 하지 마. 결과 레포트 HTML 도 똑같이 필터 기능. v12.1.4 로 릴리즈."
+- `param_manager/batchreport_store.py`: `_scan`(scandir 1번 → 이름 · 수정시각 · 크기) 로 캐시 서명 비교 — 맞는 파일은 resolve/stat 없이 캐시 사용,
+  진행 표시는 새로 열 파일만('새 Batch Report 없음 (캐시 n개)'). 새로 읽은 게 없으면 캐시 JSON 다시 쓰지 않음(`_save_state` 생략), 캐시 JSON 은
+  `_MEMO`(파일 mtime · 크기 같을 때) 재사용 + 얕은 복사. host_gap 은 앞 호기에서 Report 를 연 경우에만, 같은 호기 추가 폴더 사이엔 없음. 병렬 없음.
+  record 에 `digest` 추가(지문용).
+- `param_manager/batchreport_service.py`: `fingerprint()` + `_previous()` — 가장 최근 `조사_*` 의 `조사설정.json` 지문과 같고 HTML/Lot HTML/Excel 이
+  남아 있으면 결과 파일을 다시 만들지 않고 그 폴더 반환(`reused_output: True`, 대시보드도 그대로). 지문에 날짜 · 앱 버전 포함(날 바뀌면 다시 만듦).
+- `param_manager/batchsaved.py`: WPH 탭(분석 HTML · 대시보드)에 `_job_filter`(앱 JobFilter 와 같은 칩 · 전체 보기 · 찾기 · 찾은 것 모두 고르기) +
+  상위 레시피 묶음(`.capgrp`/`.capjob`) · '하위' 배지, 표 상위 레시피 머리 줄. `JOB_JS` 가 data-job 행을 숨기고 숫자 4개를 내장 JSON(`wphjobs`)으로
+  같은 식으로 다시 계산, 막대 길이는 보이는 레시피 기준으로 다시 맞춤. `frontend/src/metricHelp.ts` 조사 설명 문구 갱신.
+- 검증: 새 테스트 `test_batchreport.test_only_new_reports_fast_path`(캐시 미재기록 · parse 0 · 간격 없음 · 결과 폴더 재사용 · 새 Report 생기면 새 결과),
+  `test_batchsaved`(필터 · JSON 합) 추가. `tools/check_project.py`(test_batchreport 의 tkinter 없는 기존 1건만 실패) · `npx tsc --noEmit` · `vite build` 통과,
+  Chromium(Playwright)으로 저장 HTML 필터(칩 1/2개 · 전체 보기 · 찾기) 동작 확인. Windows 실기 · 장비 공유폴더 실측(속도) 미검증.
+
 ## 최신 재개 — Para #10 WPH 상위 · 하위 레시피 구분 UX + 상위 레시피 필터(여러 개) (2026-10-06 KST, `version_v12`, v12.1.3)
 
 - GitHub 이슈 #10(예약 작업 처리): WPH · 생산능력의 레시피 비교 · 호기 × 레시피 표 둘 다 상위 레시피(Job)와 하위 레시피(Recipe(s))가

@@ -23,6 +23,18 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 조사 = 이미 조사한 것은 두고 신규만 + 저장 HTML 상위 레시피 필터 (2026-10-06, 이슈 #12 · #11, v12.1.4)
+
+- `batchreport_store.collect`: 폴더 목록 1번(`_scan`, scandir 의 수정시각 · 크기)으로 캐시 서명이 같은 파일은 장비에 다시 묻지 않는다
+  (파일마다 resolve · stat 없음 — 새로 열 파일 · 연결 파일만 예전 확인). 새로 읽은 것이 없으면 캐시 JSON 을 다시 쓰지 않고, 캐시 JSON 은
+  메모리(`_MEMO`, 파일 서명이 같을 때만)에 둔다. **병렬 읽기 금지(사용자 지시)** — 한 폴더씩 순서대로. 호기 간격(host_gap 2초)은
+  앞 호기에서 Report 를 실제로 연 경우에만, 같은 호기의 추가 폴더 사이에는 없음.
+- `batchreport_service.run`: 지문(`fingerprint` = 읽은 Report 내용 해시 · 범위 · 옵션 · 사람 선택 · 오류/알림 · 날짜 · 앱 버전)이 가장 최근
+  `조사_*` 폴더의 `조사설정.json` 지문과 같으면 결과 파일(HTML · Excel)을 다시 만들지 않고 그 폴더를 돌려준다(`reused_output`).
+  화면용 View · 지표는 늘 새로 계산. '다시 읽지 않기'를 끄면 재사용도 안 함.
+- 저장된 분석 HTML/대시보드 WPH 탭: 앱 `JobFilter` 와 같은 상위 레시피 필터(칩 여러 개 · 전체 보기 · 9개 이상이면 찾기)와 상위/하위 배지 ·
+  묶음. 숫자 4개는 내장 JSON(`wphjobs`, Job 별 w25 · s25 · ps · 시간)으로 같은 식으로 다시 더하고 막대 길이는 보이는 레시피 기준.
+
 ### WPH 상위 · 하위 레시피 구분 + 상위 레시피 필터 (2026-10-06, 이슈 #10, v12.1.3)
 
 - 레시피 이름 = **상위 레시피(Job) · 하위 레시피(Recipe(s))**. WPH 레시피 비교 · 호기 × 레시피 표는 상위 레시피 묶음(배지 '상위 레시피') 아래 하위 레시피 줄
@@ -994,7 +1006,7 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
-python3 tests/test_batchsaved.py    # 7  (저장된 결과 파일 = 앱 식: 가동률 · WPH · Lot 요약 · 호기 색 표 · HTML/Excel/대시보드 · 정상 WPH 없음 행 · Lot 추적 HTML view)
+python3 tests/test_batchsaved.py    # 7  (저장된 결과 파일 = 앱 식: 가동률 · WPH · Lot 요약 · 호기 색 표 · HTML/Excel/대시보드 · 정상 WPH 없음 행 · 상위 레시피 필터 · Lot 추적 HTML view)
 python3 tests/test_batchview.py    # 13 (지표 개편: 시간 3칸·WPH 재료·작업자 중단/Defect 과다 · 3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
 python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯 · 3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)

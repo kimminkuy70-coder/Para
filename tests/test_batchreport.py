@@ -253,6 +253,38 @@ class Collection(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 service.run(self.root, [self.target], options, host_gap=0)
 
+    def test_only_new_reports_fast_path(self):
+        # 이슈 #12: 이미 조사한 것은 그대로 두고 새 Batch Report만 — 캐시 재기록 · 호기 간격 · 결과 파일 재생성 생략.
+        self.put('a.htm')
+        other = self.source.parent / 'other'
+        other.mkdir()
+        (other / 'b.htm').write_text(html_report(report('b.htm', job='B/1')), encoding='utf-8')
+        targets = [self.target, {'machine': 'AOI-2', 'folder': str(other), 'query': '', 'names': None}]
+        with patch.object(store.time, 'sleep') as sleep:
+            store.collect(self.root, targets, host_gap=2.0)
+            self.assertEqual(sleep.call_count, 1)                # 앞 호기에서 새 Report를 열었으니 간격 1번
+            sleep.reset_mock()
+            with patch.object(store, 'write_json') as write, patch.object(wph, 'parse_report') as parse:
+                again = store.collect(self.root, targets, host_gap=2.0)
+            self.assertEqual((again['parsed'], again['reused'], len(again['records'])), (0, 2, 2))
+            write.assert_not_called()                            # 바뀐 것이 없으면 캐시 파일을 다시 쓰지 않음
+            parse.assert_not_called()
+            sleep.assert_not_called()                            # 새로 연 Report가 없으면 호기 간격도 없음
+        options = {'metrics': list(br.METRICS), 'valid_wafers': 2, 'min_baseline': 2, 'yield_drop': 5}
+        first = service.run(self.root, targets, options, host_gap=0)
+        self.assertFalse(first['reused_output'])
+        with patch.object(service.batchsaved, 'write_excel') as excel:
+            second = service.run(self.root, targets, options, host_gap=0)
+        excel.assert_not_called()
+        self.assertTrue(second['reused_output'])
+        self.assertEqual(second['outdir'], first['outdir'])
+        self.assertIsNotNone(second['view'])
+        self.put('c.htm', report('c.htm', job='C/1'))           # 새 Batch Report가 생기면 그것만 읽어 새 결과
+        third = service.run(self.root, targets, options, host_gap=0)
+        self.assertFalse(third['reused_output'])
+        self.assertNotEqual(third['outdir'], first['outdir'])
+        self.assertEqual((third['collection']['parsed'], third['collection']['reused']), (1, 2))
+
     def test_atomic_cache_failure_preserves_previous_snapshot(self):
         self.put('a.htm')
         store.collect(self.root, [self.target], host_gap=0)
