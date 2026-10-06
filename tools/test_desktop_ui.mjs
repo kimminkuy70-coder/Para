@@ -203,6 +203,18 @@ try{
   await page.locator('dialog.lotwin[open]').getByRole('tab',{name:'Lot별 실제 WPH'}).click();
   await page.locator('dialog.lotwin[open] svg[aria-label="Lot별 실제 WPH"]').waitFor();
   await page.locator('dialog.lotwin[open]').getByRole('button',{name:'닫기',exact:true}).click();
+  // 이슈 #9: WPH · 생산능력 기간별 추이(일 · 주 · 월) — 단위 · 그래프 값을 바꾸고, 레시피를 고르면 기간 행이 그 기간의 레시피 상세 창을 연다.
+  await page.getByRole('button',{name:'기간별 추이',exact:true}).click();
+  const wseg=page.getByRole('group',{name:'기간 단위'});
+  await page.locator('svg[aria-label="기간별 실제 WPH"]').waitFor();
+  for(const u of ['일','월','주']){await wseg.getByRole('button',{name:u,exact:true}).click();assert.ok(await page.locator('table.wphper tbody tr').count()>0);}
+  await page.getByRole('group',{name:'그래프 값'}).getByRole('button',{name:'하루 생산능력',exact:true}).click();
+  await page.locator('svg[aria-label="기간별 하루 생산능력"]').waitFor();
+  await rsel.selectOption({index:1});
+  await page.locator('table.wphper tbody tr.clickable').first().click();
+  await page.locator('dialog.lotwin[open]').getByText('정상 WPH에서 실제 WPH까지').waitFor();
+  await page.locator('dialog.lotwin[open]').getByRole('button',{name:'닫기',exact:true}).click();
+  await rsel.selectOption({index:0});
   // Defect 과다 판정 설명 창(기준값 · 판정 목록)은 Lot 추적 › 멈춘 이유 요약에서도 열린다.
   await page.getByRole('tab',{name:'Lot 추적',exact:true}).click();
   await page.getByRole('button',{name:/작업자 중단 \d+건/}).click();

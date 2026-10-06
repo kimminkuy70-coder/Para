@@ -1,5 +1,18 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #9 WPH · 생산능력 기간별 추이(일 · 주 · 월) (2026-10-06 KST, `version_v12`, v12.1.2)
+
+- GitHub 이슈 #9(예약 작업 처리): 'Batch Report 분석 › 가동률 조사 및 분석 › WPH · 생산능력' 도 일/주/월별로 보게.
+- `frontend/src/BatchWph.tsx`: 보기 탭에 **[기간별 추이]** 추가(+ 기간 단위 세그먼트 일 · 주 · 월, 기본 주 — 가동률과 같은 `batchData.bucket` ·
+  `periodName` · `shortKey` · `weekRange`, 주 = ISO 주 WW). `Periods` = 위에서 고른 레시피 · 호기 · 조사 범위로 거른 U 행(숫자 4개와 같은 `sel`)을
+  기간마다 다시 더해 정상 WPH · 실제 WPH · 처리량 감소 · 하루 생산능력(호기마다 24 × 그 기간 실제 WPH 의 합 = `capSum`, 레시피 미선택이면 레시피 통합) ·
+  Pass 장수 · 하루 평균 Pass(Pass ÷ 범위 안 일수) · Batch Report 수. 그래프 값 세그먼트(실제/정상 WPH · 하루 생산능력 · Pass 장수) 막대 1개 + 표(최근 기간 위).
+  레시피를 고르면 기간 막대/행을 눌러 **그 기간으로 범위를 좁힌 레시피 상세 창**(`win.range`). 새 식 · 새 지표 정의 없음(기존 식을 기간별로 적용).
+  ? 설명 `metricHelp.ts` `wph.period`.
+- 범위 밖: 저장된 결과 파일(`batchsaved` 분석 HTML/Excel)의 WPH 시트는 그대로 호기 × 레시피(기간별 WPH 없음) — 필요하면 다음 이슈로.
+- 검증: `npx tsc --noEmit` · `vite build` · `tools/test_desktop_ui.mjs`(기간별 추이: 일/월/주 전환 · 그래프 값 전환 · 레시피 고른 뒤 기간 행 → 레시피 상세 창 추가) 통과,
+  `tools/check_project.py`(test_batchreport 의 tkinter 없는 기존 1건만 실패). 실자료 · Windows 실기 미검증.
+
 ## 최신 재개 — Para #8 Scanresult 백업본 포함 조사 스위치 + Lot 단위 Scan List 카드 리디자인 (2026-10-06 KST, `version_v12`, v12.0.2)
 
 - GitHub 이슈 #8(예약 작업 처리). 참고 링크(emilkowalski/skills · nextlevelbuilder/ui-ux-pro-max-skill)는 README · `emil-design-eng` 규칙만

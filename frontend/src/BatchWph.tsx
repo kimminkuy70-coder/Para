@@ -1,10 +1,11 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {ColChart,Scatter,Seg,type TipX} from './BatchCharts';
+import {ColChart,Scatter,Seg,type TipX,type ColItem} from './BatchCharts';
 import {Q} from './BatchHelp';
-import {dur,hrs,num,sumU,lossOf,wphNormal,wphActual,unitSec,avgScan,pctOf,C_OK,C_WAIT,C_ERR,C_STOP,C_DEFECT,C_IDLE,STOPK,machColors,type View,type U,type Agg} from './batchData';
+import {dur,hrs,num,sumU,lossOf,wphNormal,wphActual,unitSec,avgScan,pctOf,C_OK,C_WAIT,C_ERR,C_STOP,C_DEFECT,C_IDLE,STOPK,machColors,
+  addDays,bucket,shortKey,weekRange,periodName,type View,type U,type Agg,type Unit} from './batchData';
 
 /* WPH · 생산능력 탭 — 정상 WPH(막힘없을 때 속도) · 실제 WPH(유휴만 뺀 시간 기준) · 하루 생산능력(24 × 실제 WPH).
-   화면은 숫자 4개 + [레시피 비교 | 호기 × 레시피 표], 자세한 것은 레시피 상세 창, 계산식은 ? 버튼(사용자 확정 2026-10-05). */
+   화면은 숫자 4개 + [레시피 비교 | 호기 × 레시피 표 | 기간별 추이(일 · 주 · 월, 이슈 #9)], 자세한 것은 레시피 상세 창, 계산식은 ? 버튼(사용자 확정 2026-10-05). */
 const jobOf=(r:string)=>r.split(' · ')[0];
 const stepOf=(r:string)=>r.slice(jobOf(r).length+3);
 const f1=(x:number|null)=>num(x,1);
@@ -12,9 +13,14 @@ const pc=(x:number|null)=>x==null?'—':num(x,1)+'%';
 const drop=(n:number|null,a:number|null)=>n&&a!=null?(1-a/n)*100:null;
 const cap=(a:Agg)=>{const w=wphActual(a);return w==null?null:w*24;};
 type Cell={r:string;m:string;a:Agg};
+type Range={from:string;to:string};
+/** 호기별로 따로 24 × 실제 WPH 를 구해 더한 하루 생산능력(호기 수만큼 늘어남 — 레시피 합계와 같은 꼴). */
+const capSum=(us:U[])=>{const o:Record<string,U[]>={};us.forEach(u=>{(o[u.m]||=[]).push(u);});
+  return Object.values(o).reduce((s,x)=>s+(cap(sumU(x))||0),0);};
 
 export function WphTab({v,ids,range,openLot,showRaw}:{v:View;ids:string[];range:{from:string;to:string};openLot:(li:number)=>void;showRaw:(g:number)=>void}){
-  const [recipe,setRecipe]=useState(''),[mach,setMach]=useState(''),[tab,setTab]=useState<'cmp'|'tbl'>('cmp'),[win,setWin]=useState<{r:string;m:string}|null>(null);
+  const [recipe,setRecipe]=useState(''),[mach,setMach]=useState(''),[tab,setTab]=useState<'cmp'|'tbl'|'per'>('cmp'),[win,setWin]=useState<{r:string;m:string;range?:Range}|null>(null);
+  const [unit,setUnit]=useState<Unit>('w');
   const rows=useMemo(()=>v.U.filter(u=>ids.includes(u.m)&&u.d>=range.from&&u.d<=range.to&&(u.n||u.p)),[v,ids,range.from,range.to]);
   const recipes=useMemo(()=>[...new Set(rows.filter(u=>u.n).map(u=>u.r))].sort(),[rows]);
   const jobs=useMemo(()=>[...new Set(recipes.map(jobOf))],[recipes]);
@@ -22,7 +28,7 @@ export function WphTab({v,ids,range,openLot,showRaw}:{v:View;ids:string[];range:
   const shown=r0?recipes.filter(r=>jobOf(r)===jobOf(r0)):recipes;      // 레시피를 고르면 같은 Job 의 레시피끼리 비교
   const cells=useMemo(()=>{const o:Record<string,U[]>={};rows.forEach(u=>{if(mach&&u.m!==mach)return;(o[u.r+'||'+u.m]||=[]).push(u);});
     return Object.entries(o).map(([k,us])=>({r:k.split('||')[0],m:k.split('||')[1],a:sumU(us)}) as Cell).filter(c=>c.a.n>0);},[rows,mach]);
-  const sel=rows.filter(u=>(!r0||u.r===r0)&&(!mach||u.m===mach)),A=sumU(sel);
+  const sel=useMemo(()=>rows.filter(u=>(!r0||u.r===r0)&&(!mach||u.m===mach)),[rows,r0,mach]),A=sumU(sel);
   const wn=wphNormal(A),wa=wphActual(A),total=r0?cells.filter(c=>c.r===r0).reduce((s,c)=>s+(cap(c.a)||0),0):mach?cap(A):null;
   const col=useMemo(()=>machColors([...ids,...rows.map(u=>u.m)]),[ids,rows]);
   const nMach=r0?cells.filter(c=>c.r===r0&&cap(c.a)).length:0;
@@ -38,11 +44,14 @@ export function WphTab({v,ids,range,openLot,showRaw}:{v:View;ids:string[];range:
           {jobs.map(j=><optgroup key={j} label={j}>{recipes.filter(r=>jobOf(r)===j).map(r=><option key={r} value={r}>{stepOf(r)}</option>)}</optgroup>)}</select></label>
         <label className="field">호기<select value={mach} onChange={e=>setMach(e.target.value)}><option value="">전체 호기</option>{ids.map(id=><option key={id}>{id}</option>)}</select></label></div></div>
     <section className="kpis k4">{K.map(([id,l,val,u,s,calc],i)=><article key={id} className={'kq k'+i}><span>{l}<Q id={id} calc={calc}/></span><strong>{val}<small>{u}</small></strong><p>{s}</p></article>)}</section>
-    <div className="viewbar"><Seg label="보기" value={tab} items={[['cmp','레시피 비교'],['tbl','호기 × 레시피 표']]} onChange={setTab}/><span className="grow"/>
-      <span className="hint">{r0?`${jobOf(r0)}의 레시피끼리 비교`:'레시피를 고르면 같은 Job의 레시피끼리 비교합니다'}</span></div>
+    <div className="viewbar"><Seg label="보기" value={tab} items={[['cmp','레시피 비교'],['tbl','호기 × 레시피 표'],['per','기간별 추이']]} onChange={setTab}/>
+      {tab==='per'&&<Seg label="기간 단위" value={unit} items={[['d','일'],['w','주'],['m','월']]} onChange={setUnit}/>}<span className="grow"/>
+      <span className="hint">{tab==='per'?(r0?`${stepOf(r0)} · ${mach||'전체 호기'}`:mach?`${mach} · 레시피 통합`:'전체 레시피 · 전체 호기 (레시피를 고르면 그 레시피만)')
+        :r0?`${jobOf(r0)}의 레시피끼리 비교`:'레시피를 고르면 같은 Job의 레시피끼리 비교합니다'}</span></div>
     {tab==='cmp'?<Compare cells={cells} recipes={shown} sel={r0} col={col} onOpen={(r,m)=>setWin({r,m})}/>
-      :<Table cells={cells} recipes={shown} col={col} onOpen={(r,m)=>setWin({r,m})}/>}
-    {win&&<RecipeWindow v={v} r={win.r} m={win.m} ids={ids} range={range} openLot={openLot} showRaw={showRaw} onClose={()=>setWin(null)}/>}
+      :tab==='tbl'?<Table cells={cells} recipes={shown} col={col} onOpen={(r,m)=>setWin({r,m})}/>
+      :<Periods rows={sel} unit={unit} range={range} recipe={r0} onOpen={r0?pr=>setWin({r:r0,m:mach,range:pr}):undefined}/>}
+    {win&&<RecipeWindow v={v} r={win.r} m={win.m} ids={ids} range={win.range||range} openLot={openLot} showRaw={showRaw} onClose={()=>setWin(null)}/>}
   </section>;
 }
 
@@ -67,6 +76,40 @@ function Compare({cells,recipes,sel,col,onOpen}:{cells:Cell[];recipes:string[];s
           onClick={()=>onOpen(x.r,c.m)}>{w>6?c.m:''}</span>;})}{!x.cs.length&&<span className="capnone">실제 WPH 자료 없음 (Pass한 Batch Report 없음)</span>}</span>
       <span className="capv">{x.cs.length?<><b>{num(x.sum)}</b>장/일 · {x.cs.length}대</>:'—'}<small className={x.wn==null?'none':''}>{x.wn==null?'정상 WPH 없음':`정상 WPH ${f1(x.wn)}`}</small></span></div>)}</div>
     <div className="keys">{[...new Set(rows.flatMap(x=>x.cs.map(c=>c.m)))].sort().map(m=><span key={m}><i style={{background:col[m]}}>　</i> {m}</span>)}<span>같은 호기 = 같은 색</span></div></div>;
+}
+
+const PK=[['wa','실제 WPH','#10b981'],['wn','정상 WPH','#31517c'],['cap','하루 생산능력','#2a9d8f'],['ps','Pass 장수','#7b5ea7']] as const;
+type PKey=typeof PK[number][0];
+/** 기간별 추이(이슈 #9) — 일 · 주 · 월마다 정상 · 실제 WPH, 하루 생산능력, 실제 Pass 장수(하루 평균).
+    rows = 위에서 고른 레시피 · 호기 · 조사 범위로 이미 거른 U 행(숫자 4개와 같은 자료). 식은 숫자 4개와 같다(기간마다 다시 더할 뿐).
+    하루 생산능력 = 호기마다 24 × 그 기간 실제 WPH 의 합(레시피를 안 고르면 레시피 통합). 레시피를 고르면 기간을 눌러 그 기간의 레시피 상세 창. */
+function Periods({rows,unit,range,recipe,onOpen}:{rows:U[];unit:Unit;range:Range;recipe:string;onOpen?:(r:Range)=>void}){
+  const [met,setMet]=useState<PKey>('wa'),[pick,setPick]=useState<string|null>(null);
+  const list=useMemo(()=>{const o:Record<string,{days:string[];us:U[]}>={};
+    if(range.from&&range.to)for(let d=range.from;d<=range.to;d=addDays(d,1))(o[bucket(d,unit)]||=({days:[],us:[]})).days.push(d);
+    rows.forEach(u=>{const k=bucket(u.d,unit);(o[k]||=({days:[u.d],us:[]})).us.push(u);});
+    return Object.entries(o).sort((a,b)=>a[0]<b[0]?-1:1).map(([k,x])=>{const a=sumU(x.us),wn=wphNormal(a),wa=wphActual(a);
+      return {k,days:x.days,a,wn,wa,cap:x.us.some(u=>u.n)?capSum(x.us):null,machines:new Set(x.us.filter(u=>u.n).map(u=>u.m)).size};});},[rows,unit,range.from,range.to]);
+  const val=(x:typeof list[number])=>met==='wa'?x.wa:met==='wn'?x.wn:met==='cap'?x.cap:x.a.ps;
+  const [,label,color]=PK.find(p=>p[0]===met)!;
+  const fmt=(x:number|null)=>met==='wa'||met==='wn'?f1(x):num(x);
+  const U_={d:'일',w:'주',m:'월'}[unit],per=(x:typeof list[number])=>x.days.length?x.a.ps/x.days.length:null;
+  const open=(k:string)=>{setPick(p=>p===k?null:k);const x=list.find(y=>y.k===k);if(onOpen&&x&&x.a.n&&x.days.length)onOpen({from:x.days[0],to:x.days[x.days.length-1]});};
+  const items:ColItem[]=list.map(x=>{const tip:TipX={t:periodName(x.k,unit),rows:[[PK[0][2],'실제 WPH',f1(x.wa),''],[PK[1][2],'정상 WPH',f1(x.wn),''],
+      ['transparent','처리량 감소',pc(drop(x.wn,x.wa)),''],[PK[2][2],'하루 생산능력',x.cap==null?'—':num(x.cap),'장/일'+(x.machines>1?` · ${x.machines}대`:'')],
+      [PK[3][2],'Pass 장수',num(x.a.ps),`장 · 하루 평균 ${num(per(x))}`],['transparent','Batch Report',num(x.a.n),'개']],f:onOpen&&x.a.n?['누르면 이 기간의 레시피 상세 창']:undefined};
+    return {id:x.k,short:shortKey(x.k,unit),short2:unit==='w'?weekRange(x.k):undefined,v:{y:val(x)||0},tip:tip.t+'\n'+tip.rows.map(r=>`${r[1]} ${r[2]}${r[3]?' '+r[3]:''}`).join('\n'),tipx:tip};});
+  const has=list.some(x=>x.a.n);
+  return <div className="chartcard"><div className="ch"><h3>기간별 {label} <small>{U_} 단위 · 왼쪽이 오래된 기간</small></h3><Q id={met==='wa'?'wph.actual':met==='wn'?'wph.normal':met==='cap'?'wph.capacity':'wph.period'}/><span className="grow"/>
+      <Seg label="그래프 값" value={met} items={PK.map(p=>[p[0],p[1]] as [PKey,string])} onChange={setMet}/></div>
+    {has?<><ColChart items={items} keys={[{k:'y',label,c:color}]} h={220} minw={unit==='d'?14:26} maxw={70} sel={pick} label={`기간별 ${label}`} fy={met==='wa'||met==='wn'?(x=>num(x,1)):num} onClick={open}/>
+      <div className="table-scroll" style={{maxHeight:420}}><table className="t-compact wphper"><thead><tr><th>기간</th><th className="num">정상 WPH<Q id="wph.normal"/></th><th className="num">실제 WPH<Q id="wph.actual"/></th>
+        <th className="num">처리량 감소<Q id="wph.drop"/></th><th className="num">하루 생산능력<Q id="wph.capacity"/></th><th className="num">Pass 장수<Q id="wph.period"/></th><th className="num">하루 평균 Pass</th><th className="num">Batch Report</th></tr></thead>
+        <tbody>{[...list].reverse().map(x=><tr key={x.k} className={(onOpen&&x.a.n?'clickable':'')+(pick===x.k?' sel':'')} onClick={()=>open(x.k)}>
+          <td>{periodName(x.k,unit)}{unit==='d'?'':<small> · {x.days.length}일</small>}</td><td className="num">{f1(x.wn)}</td><td className="num"><b>{f1(x.wa)}</b></td><td className="num v4">{pc(drop(x.wn,x.wa))}</td>
+          <td className="num"><b>{x.cap==null?'—':num(x.cap)}</b>{x.machines>1&&<small> · {x.machines}대</small>}</td><td className="num">{num(x.a.ps)}</td><td className="num">{x.a.n?num(per(x)):'—'}</td><td className="num">{num(x.a.n)}</td></tr>)}</tbody></table></div>
+      <p className="hint">{recipe?'기간을 누르면 그 기간의 레시피 상세 창이 열립니다.':'레시피를 고르면 기간을 눌러 그 기간의 레시피 상세 창을 볼 수 있습니다.'} 하루 생산능력 = 호기마다 24 × 그 기간 실제 WPH 의 합{recipe?'':'(레시피 통합)'}, 하루 평균 Pass = Pass 장수 ÷ 기간 일수(조사 범위 안).</p></>
+      :<p className="hint">조사 범위에 WPH 자료가 없습니다.</p>}</div>;
 }
 
 /** 호기 × 레시피 표 — 레시피마다 호기별 줄 + 레시피 합계 줄. */
