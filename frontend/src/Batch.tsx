@@ -244,7 +244,7 @@ export function Batch({active}:{active:boolean}){
           <label className="switch" title="끄면 고른 범위의 Batch Report를 전부 다시 엽니다"><input type="checkbox" checked={reuse} disabled={running} onChange={e=>setReuse(e.target.checked)}/>
             <span><b>이미 읽은 Batch Report는 다시 읽지 않기</b><small>파일 이름 · 수정시각 · 크기가 같으면 로컬 캐시 사용 (기본 켜짐)</small></span></label>
           <div className="go">{running?<button type="button" onClick={cancel} disabled={cancelSent||job.current===undefined}>{cancelSent?'취소 요청됨':'조사 취소'}</button>
-            :<button className="primary" disabled={!config||!machines.length||restoring} onClick={start}>조사 시작 →</button>}
+            :<button className="primary" data-tour="batch:start" disabled={!config||!machines.length||restoring} onClick={start}>조사 시작 →</button>}
             <button type="button" className="help-btn lg" aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 조사하는지 보기" onClick={()=>critRef.current?.showModal()}>?</button></div></div>
         <p className="scope-status" role="status" aria-live="polite">{status}</p>
         {changed&&!running&&<p className="hint" style={{color:'#8a5a00'}}>조사 범위를 바꿨습니다 — [조사 시작]을 눌러야 아래 결과에 반영됩니다. 지금 결과는 {applied?.machines.length}대 · {applied?.start||'처음'} ~ {applied?.end||'끝'} 기준입니다.</p>}
@@ -258,7 +258,7 @@ export function Batch({active}:{active:boolean}){
           {v.artifacts.html&&<OpenPath label="HTML" path={v.artifacts.html}/>}{v.artifacts.dashboard&&<OpenPath label="가동률 대시보드" path={v.artifacts.dashboard}/>}
           {v.artifacts.outdir&&<OpenPath label="결과 폴더" path={v.artifacts.outdir} folder/>}</div></details>}
       </section>
-      <div className="pilltabs" role="tablist" aria-label="분석 화면">{([['lot','Lot 추적'],['util','가동률'],['wph','WPH · 생산능력'],['cmp','레시피 비교']] as const).map(([k,t])=>
+      <div className="pilltabs" role="tablist" aria-label="분석 화면" data-tour="batch:tabs">{([['lot','Lot 추적'],['util','가동률'],['wph','WPH · 생산능력'],['cmp','레시피 비교']] as const).map(([k,t])=>
         <button key={k} role="tab" type="button" className={sub===k?'active':''} aria-selected={sub===k} onClick={()=>setSub(k)}>{t}</button>)}</div>
       {sub==='cmp'?<CompareTab v={v} showRaw={g=>void showRaw('scope',g)}/>
         :!v?<section className="panel"><div className="empty-state"><span className="empty-symbol" aria-hidden="true">▤</span><h3>{running?'결과를 준비하고 있습니다.':'아직 조사 결과가 없습니다.'}</h3>

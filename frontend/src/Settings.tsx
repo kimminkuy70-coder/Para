@@ -9,6 +9,7 @@ import type {AppUpdate} from './desktop';
 import {useDev,setDevOn,saveDrafts,dropDrafts} from './devmode';
 import {DevHelp,DevOff} from './DevHelp';
 import {ScanBackupBar,useScanBackup} from './ScanBackup';
+import {startTour} from './Tour';
 
 type Auto={enabled:boolean;interval_hours:number;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
@@ -77,6 +78,8 @@ export function Settings(){
     catch(e){setLoadError(errorText(e));}
   }
   useEffect(()=>{void load();},[]);
+  // 튜토리얼이 설정 하위 탭을 연다(Tour.tsx).
+  useEffect(()=>{const go=(e:Event)=>setSub(subOf((e as CustomEvent<string>).detail));window.addEventListener('para:settings-sub',go);return()=>window.removeEventListener('para:settings-sub',go);},[]);
 
   async function browse(set:(v:string)=>void){
     const p=await pickFolder();
@@ -150,10 +153,12 @@ export function Settings(){
   return <section className="panel">
     <div className="section-heading"><div><span className="step">SETTINGS</span><h2>설정</h2></div>
       <button disabled={busy} onClick={load}>새로고침</button></div>
+    <div className="tour-entry" data-tour="settings:tour"><span className="tour-entry-ic" aria-hidden="true">🎓</span><div><b>튜토리얼</b><small>처음 쓰는 PC라면 초기 설정(저장 폴더 · 장비 연결)을 화면에서 따라 하세요. 안내만 하고 아무것도 바꾸지 않습니다.</small></div>
+      <span className="grow"/><button type="button" className="primary" onClick={()=>startTour('setup')}>초기 설정 튜토리얼</button><button type="button" onClick={()=>startTour('features')}>기능 둘러보기</button></div>
     <p className="hint">웹 앱과 기존 프로그램은 <b>같은 설정 파일</b>을 공유합니다. 경로는 [📁 찾기]로 고르거나 직접 붙여넣을 수 있습니다.</p>
 
     {loadError&&!st&&<LoadFailed message={loadError} onRetry={()=>void load()}/>}
-    {st&&<details className="current-settings" aria-label="현재 설정">
+    {st&&<details className="current-settings" aria-label="현재 설정" data-tour="settings:current">
       <summary><h3>현재 설정</h3><span className="hint">{st.save_dir?'저장 폴더 지정됨':'⚠ 저장 폴더 미지정'} · AOI 호기 {aois.length}대 · 자동 분석 {st.batch_auto?'켜짐':'꺼짐'}</span></summary>
       <table className="tbl"><tbody>
         <tr><th>저장 폴더</th><td>{st.save_dir?<code>{st.save_dir}</code>:<b className="warn">미지정 — [저장 폴더] 탭에서 지정하세요</b>}</td>
@@ -169,12 +174,13 @@ export function Settings(){
       </tbody></table></details>}
 
     <div className="subtabs" role="tablist">{TABS.map(([id,label])=>
-      <button key={id} role="tab" aria-selected={sub===id} className={sub===id?'active':''} onClick={()=>setSub(id)}>{label}</button>)}</div>
+      <button key={id} data-tour={'settings:tab:'+id} role="tab" aria-selected={sub===id} className={sub===id?'active':''} onClick={()=>setSub(id)}>{label}</button>)}</div>
 
     <div className="subtab-body">
     {sub==='save'&&<>
       <h3>저장 폴더 지정 <span className="hint" style={{fontWeight:400}}>— 필수</span></h3>
-      <p className="hint"><b>다른 사람과 공유하는 산출물이 OneDrive 폴더에 저장됩니다. 팀이 함께 쓰는 OneDrive 경로를 지정해 주세요.</b></p>
+      <p className="hint" data-tour="settings:onedrive"><b>다른 사람과 공유하는 산출물이 OneDrive 폴더에 저장됩니다. 팀이 함께 쓰는 OneDrive 경로를 지정해 주세요.</b><br/>
+        개발자가 보낸 OneDrive 공유 링크를 Edge 로 열고 [내 파일에 바로 가기 추가] → 파일 탐색기 › OneDrive - 회사이름 아래에 생긴 그 폴더를 고르면 됩니다.</p>
       <table className="tbl" style={{marginTop:8}}><tbody>
         <tr><th style={{width:170}}>공유 문서</th><td>장비 IP 주소 · 참고자료 · 특이사항 · 변환계수 · 장비화면이름 (.xlsx) — 처음 지정하면 장비 IP·참고자료·특이사항이 자동 생성됩니다</td></tr>
         <tr><th>Recipe 양식</th><td><code>양식\{'{레시피}'}\{'{생성시각}'}\</code> — 확정 양식 1개 + 관련파일(원본·수정본)</td></tr>
@@ -185,10 +191,10 @@ export function Settings(){
       </tbody></table>
       <p className="hint">Commonality 조사 결과·Batch Report 분석 결과·장비 수집 임시 파일·로그는 OneDrive 가 아니라 <b>로컬 작업 폴더</b>에 저장됩니다(대량 동기화 방지).</p>
       <div className="form-filter" style={{marginTop:14}}>
-        <label className="field" style={{flex:1,minWidth:280}}>OneDrive 저장폴더 경로
+        <label className="field" style={{flex:1,minWidth:280}} data-tour="settings:save-path">OneDrive 저장폴더 경로
           <input value={saveDir} placeholder="예: C:\Users\이름\OneDrive - 회사\AOI 파라미터" maxLength={4096} onChange={e=>setSaveDir(e.target.value)}/></label>
         <button onClick={()=>browse(setSaveDir)}>📁 찾기</button>
-        <button className="primary" disabled={busy||!saveDir.trim()} onClick={saveSave}>저장</button></div>
+        <button className="primary" data-tour="settings:save-btn" disabled={busy||!saveDir.trim()} onClick={saveSave}>저장</button></div>
       {st?.save_dir&&<p className="hint">현재 저장폴더: <code>{st.save_dir}</code></p>}
     </>}
 
@@ -197,9 +203,9 @@ export function Settings(){
       <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
         <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사 · 감시 · Batch Report 찾기가 읽습니다. 장비 폴더는 읽기만 합니다.</p>
       <ScanBackupBar note="Scanresult 를 찾는 모든 기능에 같이 적용됩니다."/>
-      {aois.length>0&&<table className="tbl" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th/></tr></thead>
+      {aois.length>0&&<table className="tbl" data-tour="settings:aoi-table" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th/></tr></thead>
         <tbody>{aois.map(aoiRow)}</tbody></table>}
-      <div className="form-filter" style={{marginTop:12}}>
+      <div className="form-filter" data-tour="settings:aoi-form" style={{marginTop:12}}>
         <label className="field" style={{width:150}}>호기<input value={aMachine} placeholder="AOI-9" maxLength={64} onChange={e=>setAMachine(e.target.value)}/></label>
         <label className="field" style={{flex:1,minWidth:240}}>호기 폴더<input value={aPath} placeholder="예: W:\AOI-9" maxLength={4096} onChange={e=>setAPath(e.target.value)}/></label>
         <button onClick={()=>browse(setAPath)}>📁 찾기</button>

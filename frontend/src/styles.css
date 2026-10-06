@@ -786,3 +786,30 @@ dialog::backdrop{overscroll-behavior:contain}
 .bv .cmp-detrow .val{font-size:12px;color:var(--muted);line-height:1.7}
 .bv .kpib button.k-good strong{color:#0b5e46}
 @media(max-width:1000px){.bv .cmp-grid{grid-template-columns:1fr}.bv .cmp-detrow{grid-template-columns:1fr}}
+
+/* ===== 튜토리얼(Tour.tsx) — 강조 테두리 + 화살표 말풍선 ===== */
+.tour{position:fixed;inset:0;z-index:2147482000}
+.tour-dim{position:fixed;inset:0;background:rgba(15,23,42,.55)}
+.tour-spot{position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgba(15,23,42,.55),0 0 0 3px var(--lime);pointer-events:none;transition:left .25s var(--ease),top .25s var(--ease),width .25s var(--ease),height .25s var(--ease)}
+.tour-spot::after{content:'';position:absolute;inset:-3px;border-radius:12px;border:3px solid var(--lime);animation:tour-pulse 1.4s ease-out infinite}
+@keyframes tour-pulse{from{opacity:.9;transform:scale(1)}to{opacity:0;transform:scale(1.08)}}
+.tour-bubble{position:fixed;width:min(400px,calc(100vw - 24px));background:#fff;border-radius:14px;box-shadow:var(--sh2),0 0 0 1px #0000000f;padding:16px 18px 14px;color:var(--ink);animation:sheet-in .22s var(--ease)}
+.tour-bubble::before{content:'';position:absolute;left:calc(var(--ax) - 10px);width:20px;height:20px;background:#fff;transform:rotate(45deg);box-shadow:-1px -1px 0 #0000000f}
+.tour-bubble.bottom::before{top:-9px}
+.tour-bubble.top::before{bottom:-9px;box-shadow:1px 1px 0 #0000000f}
+.tour-bubble.center::before{display:none}
+.tour-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;letter-spacing:.4px}
+.tour-kind{color:var(--acc2)}.tour-count{color:var(--faint)}
+.tour-bubble h3{margin:6px 0 6px;font-size:16px;letter-spacing:-.3px}
+.tour-body{font-size:13px;line-height:1.7;color:#3f4b5a}
+.tour-body ol{margin:6px 0;padding-left:20px}.tour-body li{margin:2px 0}
+.tour-body code{font-size:12px;background:#f1f4f7;border-radius:4px;padding:1px 6px;overflow-wrap:anywhere}
+.tour-dots{display:flex;gap:4px;margin:12px 0 10px;flex-wrap:wrap}
+.tour-dots i{width:7px;height:7px;border-radius:50%;background:#dfe5ec}.tour-dots i.done{background:#a7e0cb}.tour-dots i.on{background:var(--lime);width:18px;border-radius:4px}
+.tour-actions{display:flex;gap:8px;align-items:center}.tour-actions .grow{flex:1}
+.tour-actions button{min-height:34px;padding:6px 14px}.tour-actions button.primary{min-width:0;padding:8px 18px}
+.tour-skip{border:0!important;background:transparent!important;color:var(--muted)!important;padding:6px 4px!important}
+.tour-entry{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;background:linear-gradient(180deg,#f3fbf7,#fff);border:1px solid #cfe7dc;border-radius:12px;padding:12px 16px;margin:12px 0 4px}
+.tour-entry-ic{font-size:24px}.tour-entry b{display:block;font-size:14px}.tour-entry small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.tour-entry .grow{flex:1}
+@media(prefers-reduced-motion:reduce){.tour-spot,.tour-spot::after,.tour-bubble{transition:none;animation:none}}

@@ -79,6 +79,25 @@ try{
   assert.deepEqual(await page.getByRole('tab').allInnerTexts(),['저장 폴더','로컬 작업 폴더','AOI 장비 호기 루트','Batch Report 분석 주기 설정','정보']);
   // 현재 설정 is folded by default, above the tabs.
   assert.equal(await page.getByLabel('현재 설정').evaluate(d=>d.open),false);
+  // 튜토리얼(v12.2.6): 설정 › [초기 설정 튜토리얼] — 말풍선 · 강조 테두리, 설정 하위 탭을 스스로 열고, 아무것도 저장하지 않는다.
+  await page.getByRole('button',{name:'초기 설정 튜토리얼',exact:true}).click();
+  const tb=page.locator('.tour-bubble');
+  await tb.getByRole('heading',{name:'초기 설정 튜토리얼'}).waitFor();
+  const tourNext=async title=>{await tb.getByRole('button',{name:'다음 →'}).click();await tb.getByRole('heading',{name:title}).waitFor();};
+  await tourNext('설정 탭');await tourNext('① 저장 폴더 = 공유 OneDrive 폴더');await tourNext('먼저 OneDrive 에 공유 폴더 연결');
+  assert.equal(await page.getByRole('tab',{name:'저장 폴더'}).getAttribute('aria-selected'),'true');
+  await page.locator('.tour-spot').waitFor();
+  await tourNext('OneDrive 폴더 경로 넣기');await tourNext('[저장]');await tourNext('② 장비 연결 — AOI 장비 호기 루트');
+  await tourNext('호기 이름 + 호기 폴더 → [추가]');
+  assert.equal(await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).getAttribute('aria-selected'),'true');
+  // 말풍선과 강조가 화면 안에 있다(화살표가 가리키는 대상).
+  await page.waitForTimeout(500);   // 강조 테두리 이동 애니메이션(0.25초)이 끝난 뒤
+  const sb=await page.locator('.tour-spot').boundingBox(),bb=await tb.boundingBox(),tg=await page.locator('[data-tour="settings:aoi-form"]').boundingBox();
+  assert(sb&&tg&&Math.abs(sb.x+6-tg.x)<3&&Math.abs(sb.y+6-tg.y)<3&&Math.abs(sb.width-12-tg.width)<3,'spotlight must sit on the target '+JSON.stringify([sb,tg]));
+  assert(sb&&bb&&bb.x>=0&&bb.y>=0&&bb.x+bb.width<=1441&&bb.y+bb.height<=1001,'tour bubble off screen');
+  await page.screenshot({path:join(root,'docs/screenshots/rev1-tour.png')});
+  await page.keyboard.press('ArrowRight');await tb.getByRole('heading',{name:'등록 확인'}).waitFor();
+  await page.keyboard.press('Escape');await tb.waitFor({state:'detached'});
   await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();
   // One machine folder registers both its Reports (batch) and Scanresult (Commonality).
   await page.getByLabel('호기',{exact:true}).fill('AOI-04');await page.getByLabel('호기 폴더',{exact:true}).fill(extra);
@@ -580,6 +599,15 @@ try{
   const cgRows=await cg.getByLabel('Wafer별 결과').getByRole('row').allInnerTexts();
   assert(cgRows.slice(1).every(t=>/\t1\t2\t/.test(t)),'each wafer: 1 matched, 2 failed — '+JSON.stringify(cgRows));
   await page.screenshot({path:join(root,'docs/screenshots/rev1-colorgray.png'),fullPage:true});
+  // 기능 둘러보기: 주요 탭을 차례로 옮겨 다니며 끝까지(오류 없이) — 마지막은 설정 탭.
+  await page.getByRole('button',{name:'설정',exact:true}).click();
+  await page.getByRole('button',{name:'기능 둘러보기',exact:true}).click();
+  const fb=page.locator('.tour-bubble');
+  const total=Number((await fb.locator('.tour-count').innerText()).split('/')[1]);
+  for(let k=1;k<total;k++){await fb.getByRole('button',{name:'다음 →'}).click();await fb.locator('.tour-count').filter({hasText:new RegExp('^'+(k+1)+' /')}).waitFor();}
+  await fb.getByRole('heading',{name:'끝!'}).waitFor();
+  await fb.getByRole('button',{name:'완료',exact:true}).click();await fb.waitFor({state:'detached'});
+  assert.equal(await page.locator('.navigation button[aria-current="page"]').innerText(),'설정');
   // A7: a reloaded page re-attaches to the same engine (ids keep increasing, no 'already connected').
   await page.reload();
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
