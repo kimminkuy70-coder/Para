@@ -8,6 +8,7 @@ import {LotTab} from './BatchLot';
 import {LotWindow,type Drafts} from './BatchLotWindow';
 import {UtilTab} from './BatchUtil';
 import {WphTab} from './BatchWph';
+import {CompareTab} from './BatchCompare';
 import {FindTab,type FindCond} from './BatchFind';
 import {DevHelp} from './DevHelp';
 import {Q,DefectWindow} from './BatchHelp';
@@ -24,7 +25,7 @@ export function Batch({active}:{active:boolean}){
   const dev=useDev();
   const [config,setConfig]=useState<Configuration>();
   const [main,setMain]=useState<'analysis'|'find'>('analysis');
-  const [sub,setSub]=useState<'lot'|'util'|'wph'>('lot');
+  const [sub,setSub]=useState<'lot'|'util'|'wph'|'cmp'>('lot');
   const [machines,setMachines]=useState<string[]>([]);
   const [allDates,setAllDates]=useState(true),[from,setFrom]=useState(''),[to,setTo]=useState(''),[preset,setPreset]=useState<'30'|'90'|null>(null);
   const [reuse,setReuse]=useState(true);
@@ -257,9 +258,10 @@ export function Batch({active}:{active:boolean}){
           {v.artifacts.html&&<OpenPath label="HTML" path={v.artifacts.html}/>}{v.artifacts.dashboard&&<OpenPath label="가동률 대시보드" path={v.artifacts.dashboard}/>}
           {v.artifacts.outdir&&<OpenPath label="결과 폴더" path={v.artifacts.outdir} folder/>}</div></details>}
       </section>
-      <div className="pilltabs" role="tablist" aria-label="분석 화면">{([['lot','Lot 추적'],['util','가동률'],['wph','WPH · 생산능력']] as const).map(([k,t])=>
+      <div className="pilltabs" role="tablist" aria-label="분석 화면">{([['lot','Lot 추적'],['util','가동률'],['wph','WPH · 생산능력'],['cmp','레시피 비교']] as const).map(([k,t])=>
         <button key={k} role="tab" type="button" className={sub===k?'active':''} aria-selected={sub===k} onClick={()=>setSub(k)}>{t}</button>)}</div>
-      {!v?<section className="panel"><div className="empty-state"><span className="empty-symbol" aria-hidden="true">▤</span><h3>{running?'결과를 준비하고 있습니다.':'아직 조사 결과가 없습니다.'}</h3>
+      {sub==='cmp'?<CompareTab v={v} showRaw={g=>void showRaw('scope',g)}/>
+        :!v?<section className="panel"><div className="empty-state"><span className="empty-symbol" aria-hidden="true">▤</span><h3>{running?'결과를 준비하고 있습니다.':'아직 조사 결과가 없습니다.'}</h3>
           <p>위에서 호기와 기간을 고르고 [조사 시작]을 누르면 Lot 추적 · 가동률 · WPH를 볼 수 있습니다.</p></div></section>
         :sub==='lot'?<LotTab v={v} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>
         :sub==='util'?<UtilTab v={v} ids={ids} range={range} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>

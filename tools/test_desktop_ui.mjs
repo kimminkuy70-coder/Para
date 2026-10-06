@@ -172,6 +172,14 @@ try{
   await page.locator('dialog.lotwin').getByRole('button',{name:'닫기',exact:true}).click();
   await mkdir(join(root,'docs/screenshots'),{recursive:true});
   await page.screenshot({path:join(root,'docs/screenshots/rev1-batch.png'),fullPage:true});
+  // 이슈 #14: 레시피 비교 — 엔진이 준 레시피 목록 → A에 넣기 → B가 비어 있으면 [비교]가 잠김.
+  await page.getByRole('tab',{name:'레시피 비교',exact:true}).click();
+  await page.getByRole('button',{name:'JOB · R1 A에 넣기'}).click();
+  await page.locator('.cmp-box.a .chip').filter({hasText:'JOB · R1'}).waitFor();
+  assert(await page.getByRole('button',{name:'비교 →'}).isDisabled());
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'compare tab overflow');
+  await page.getByRole('button',{name:'비우기',exact:true}).click();
+  await page.getByRole('tab',{name:'Lot 추적',exact:true}).click();
   // 가동률: 시간 3칸 숫자 · ? 설명 창(지금 숫자로 계산한 예) · 기간 상세 창 · 24시간 시간표 (사용자 확정 2026-10-05).
   await page.getByRole('tab',{name:'가동률',exact:true}).click();
   assert.equal(await page.locator('.kpis.k4 article').count(),4);

@@ -1,5 +1,25 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #14 결과 HTML 앱 디자인 · 원문 내장 + 레시피 비교 모드 (2026-10-06 KST, `version_v12`, v12.2.5)
+
+- 이슈 #14(실자료 해석 질문) 후속 사용자 지시(세션 대화): "결과 HTML(분석 · 대시보드 · Lot 추적 · WPH)을 프로그램 화면 컨셉으로, 원문은 링크 대신
+  같은 데이터로 담아서, 레시피 비교 모드(두 그룹 이름 + 레시피 드래그) 구현, 그래프가 넘치면 가로 스크롤, v12.2.5 로 릴리즈."
+- 새 `param_manager/report_theme.py`: 앱(styles.css)과 같은 상단 바 · 제목(eyebrow · h1 · 배지 · stamp · 조사 범위 접기) · 큰 탭(metricnav → maintabs 모양) ·
+  흰 패널 · kpib 카드 · 표 · 상태 칩 · 창 테마(`THEME_CSS`, `<body class="app-rpt">` 아래만 덮어씀) + `page_top`/`page_foot`.
+  원문 창: `raw_blob(view)` = 원문 표(Batch Info · wafer 표) gzip+base64 → `RAW_JS` 가 DecompressionStream 으로 풀어 앱 원문 창과 같은 배치로 보임.
+- `batchsaved.build_html` · `lotreport.build_html` · `wph_html.build_html`: 새 머리 + THEME_CSS(계산 · 그래프 스크립트는 그대로).
+  Lot 추적: attempts 에 `g`(원문 번호) → [원문 보기](view 가 있을 때). view 없으면 예전 file:/// 링크. 실자료 20,465장에서 Lot HTML 42→46MB.
+- `batchcharts.py`: 그래프 폭 = 컨테이너 − 36px(카드 안쪽 여백), colChart 오른쪽 36px 여유(마지막 날짜 글자 잘림) + `.chartscroll` 가로 스크롤.
+- 레시피 비교: `param_manager/recipecompare.py` — 레시피 키 'Job · Recipe(s)'(최빈값), `recipes(view)`, `compare(view, spec)`:
+  속도(정상 25매 · 정상 전체 · 실제 WPH, 순수 스캔, 1장 처리), 오류(레시피 탓/작업자 중단), 같은 wafer 짝(Pass · 같은 Scanned Dice · pair_hours, B 레시피별 · 부호 검정),
+  기준 12 조합(WPH 3 × 테스트 Lot 2 × 호기 범위 2, ±2% 안은 '비슷함'), `build_html`(앱 디자인 · 쓴 Report 원문 내장). 테스트 Lot = Lot 이름(TEST · engineer · scan time …).
+  IPC `batch_compare_recipes` · `batch_compare` · `batch_compare_export`(로컬 `배치분석/비교/`). 특징은 View 에 캐시(`_cmp_features`, 실자료 2.9초).
+- 화면 `frontend/src/BatchCompare.tsx`: 분석 pilltab '레시피 비교' — 레시피 목록(검색 · 끌기 · [A]/[B]) → A/B 상자(이름 · 칩 · 기간) → 옵션(같은 호기 · 테스트 Lot 빼기 ·
+  짝 시간) → [비교] → KPI 4 · 기준 12 조합 · 속도 표 · 같은 wafer 막대(+원문) · 오류 → [HTML로 저장]. 그룹 · 옵션은 localStorage(`bv.compare.v1`).
+- 검증: `tests/test_recipecompare.py`(엔진 5 + IPC 1), test_batchsaved · test_wph_html · test_batchview, `tools/check_project.py`(test_batchreport 의 tkinter 없는 기존 1건만 실패),
+  `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(레시피 비교 탭 단계 추가) 통과, 레시피 2개 fixture 로 끌기 → 비교 → HTML 저장 → 원문 창 브라우저 확인,
+  실자료(조사 zip 20,465장)로 결과 HTML 4종 · 비교 HTML 생성 후 Chromium 확인. Windows 실기 · Edge(WebView2) 화면 미검증.
+
 ## 최신 재개 — Para #13 저장된 결과 HTML 을 앱과 같은 인터랙티브 그래프로 (2026-10-06 KST, `version_v12`, v12.1.5)
 
 - GitHub 이슈 #13: "Batch Report 분석(가동률 · Lot 추적 · WPH)에서 나오는 결과 HTML 파일들도 프로그램에서 보는 것과 똑같이 인터랙티브 그래프로. v12.1.4 로 릴리즈."

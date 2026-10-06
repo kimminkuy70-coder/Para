@@ -413,6 +413,32 @@ class BatchViews:
         return dict(path=str(path))
 
 
+    # ---- 레시피 비교 모드(이슈 #14) — 지금 조사 결과(View) 위에서 계산(장비 접근 없음)
+    def compare_recipes(self, params):
+        from . import recipecompare
+        item = self._item(params)
+        return dict(recipes=recipecompare.recipes(item["view"]))
+
+    def compare(self, params):
+        from . import recipecompare
+        item = self._item(params, ("spec",))
+        return recipecompare.compare(item["view"], params.get("spec"))
+
+    def compare_export(self, params):
+        """비교 결과 HTML(앱 디자인 · 원문 포함)을 로컬 배치분석/비교 폴더에 저장."""
+        from . import batchreport_output as output, recipecompare
+        item = self._item(params, ("spec",))
+        result = recipecompare.compare(item["view"], params.get("spec"))
+        _, _, root, _ = self.configuration()
+        folder = root / "배치분석" / "비교"
+        folder.mkdir(parents=True, exist_ok=True)
+        safe = lambda t: "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in t)[:30]
+        g = result["groups"]
+        path = folder / f"레시피비교_{safe(g['a']['name'])}_vs_{safe(g['b']['name'])}_{datetime.now():%Y%m%d_%H%M%S}.html"
+        output.atomic_text(path, recipecompare.build_html(result, item["view"]))
+        return dict(path=str(path))
+
+
 class DesktopBatch(BatchViews):
     def __init__(self, config_path=None):
         # Only tests inject config_path; IPC never accepts it.

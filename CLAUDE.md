@@ -23,6 +23,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 결과 HTML 앱 디자인 · 원문 내장 + 레시피 비교 모드 (2026-10-06, 이슈 #14, v12.2.5)
+- 결과 HTML 4종(분석 · 가동률 대시보드 · Lot 추적 · WPH 통합)은 `report_theme.THEME_CSS` + `page_top` 으로 **앱 화면과 같은 모양**(사용자 확정 시안).
+  새 결과 파일을 만들 때도 같은 머리 · 테마를 쓴다. 숫자 · 그래프 스크립트는 바꾸지 않는다.
+- 결과 파일의 Batch Report 원문은 **장비 경로 링크가 아니라 파일 안에 담는다**(gzip+base64, 다른 PC 에서도 열림). 원문 창 배치는 앱과 같게.
+- 그래프가 카드보다 넓으면 잘리지 않고 **가로 스크롤**(`.chartscroll`).
+- 레시피 비교 기준(사용자와 합의): ① 정상 WPH(25매 · 같은 호기)=주 지표 ② 실제 WPH(오류 포함)=보조 ③ 같은 wafer Bad Dice=통과 조건(리뷰 없이는 좋고 나쁨 판정 안 함)
+  ④ 기준 12 조합의 B ÷ A 방향(모두 같으면 결론이 튼튼). 그룹 = 이름 + 레시피 키 목록(끌어 넣기), 지금 조사 결과 위에서만 계산.
+
 ### 저장된 결과 HTML = 앱과 같은 인터랙티브 그래프 (2026-10-06, 이슈 #13, v12.1.5)
 
 - 새 `param_manager/batchcharts.py`: 앱 `BatchCharts.tsx`(ColChart · Legend · Seg · Scatter · rich 툴팁) 와 `BatchUtil/BatchWph/BatchLot.tsx` 그래프 부분을

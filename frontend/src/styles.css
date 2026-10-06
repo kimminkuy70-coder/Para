@@ -749,3 +749,40 @@ dialog::backdrop{overscroll-behavior:contain}
 .bv td.subr{padding-left:18px;white-space:nowrap}
 .bv td.mrow{border-left:4px solid transparent}
 @media(prefers-reduced-motion:reduce){.bv .jf-chip{transition:none}}
+
+/* ===== 레시피 비교 모드(이슈 #14) ===== */
+.bv .cmp-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:18px;margin-top:14px;align-items:start}
+.bv .cmp-list{border:1px solid var(--line);border-radius:10px;background:#fafbfd;padding:10px}
+.bv .cmp-list input[type=search]{width:100%;margin-bottom:8px}
+.bv .cmp-items{max-height:470px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:5px;padding-right:4px}
+.bv .cmp-item{display:grid;grid-template-columns:16px minmax(0,1fr) auto auto;gap:6px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 8px;cursor:grab}
+.bv .cmp-item:active{cursor:grabbing}.bv .cmp-item:hover{border-color:#b3c0cc}
+.bv .cmp-item.in-a{border-left:4px solid #31517c}.bv .cmp-item.in-b{border-left:4px solid #0d9668}
+.bv .cmp-item .grip{color:#b3c0cc;font-size:11px;letter-spacing:-2px}
+.bv .cmp-item .nm{min-width:0;font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bv .cmp-item .nm small{display:block;font-weight:400;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis}
+.bv .cmp-item button{min-height:26px;padding:2px 9px;font-size:11.5px;border-radius:6px}
+.bv .cmp-item button.on.a{background:#31517c;border-color:#31517c;color:#fff}.bv .cmp-item button.on.b{background:#0d9668;border-color:#0d9668;color:#fff}
+.bv .cmp-groups{display:flex;flex-direction:column;gap:12px}
+.bv .cmp-box{border:2px dashed #cdd7e1;border-radius:12px;padding:12px 14px;background:#fff;min-height:150px;transition:border-color .15s,background .15s}
+.bv .cmp-box.a{border-left:5px solid #31517c}.bv .cmp-box.b{border-left:5px solid #0d9668}
+.bv .cmp-box.over{border-color:var(--lime);background:#f2fbf7}
+.bv .cmp-boxhead{display:flex;align-items:center;gap:10px}.bv .cmp-boxhead input{flex:1;font-weight:800}
+.bv .cmp-keys{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;min-height:34px}
+.bv .cmp-keys .chip{white-space:normal;text-align:left}
+.bv .cmp-keys .chip button{border:0;background:#fff;border-radius:50%;width:18px;height:18px;min-height:0;padding:0;font-size:11px;line-height:18px;margin-left:2px}
+.bv .cmp-dates{display:flex;gap:10px;flex-wrap:wrap}.bv .cmp-dates .field{flex:1;min-width:140px}
+.bv .cmp-opts{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.bv .cmp-opts .grow{flex:1}.bv .cmp-opts select{width:auto}
+.bv .abchip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.bv .abchip i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.bv .abchip.a{background:#e5ecf6;color:#31517c}.bv .abchip.a i{background:#31517c}.bv .abchip.b{background:#d6f2e6;color:#0b5e46}.bv .abchip.b i{background:#0d9668}
+.bv .cmp-det{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.bv .cmp-detrow{display:grid;grid-template-columns:minmax(160px,280px) minmax(0,1fr) 230px;gap:12px;align-items:center}
+.bv .cmp-detrow .lab{font-weight:800;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bv .cmp-detrow .lab small{display:block;font-weight:400;color:var(--muted)}
+.bv .cmp-stack{display:flex;height:30px;border-radius:6px;overflow:hidden;background:#eef1f5}
+.bv .cmp-stack span{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;min-width:2px;flex-basis:0}
+.bv .cmp-stack .up{background:#b7791f}.bv .cmp-stack .eq{background:#cbd5e1;color:#1f2937}.bv .cmp-stack .dn{background:#c2410c}
+.bv .cmp-detrow .val{font-size:12px;color:var(--muted);line-height:1.7}
+.bv .kpib button.k-good strong{color:#0b5e46}
+@media(max-width:1000px){.bv .cmp-grid{grid-template-columns:1fr}.bv .cmp-detrow{grid-template-columns:1fr}}
