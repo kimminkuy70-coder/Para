@@ -196,7 +196,22 @@ try{
   await page.locator('.caprow.sel').waitFor();
   assert.match(await page.locator('p.capsel').innerText(),/고른 레시피: .*(정상 WPH \d|정상 WPH 없음)/);
   await rsel.selectOption({index:0});
+  // 이슈 #10: 상위 레시피(Job) 묶음 상자 · 하위 레시피 줄 구분 + 상위 레시피 필터(여러 개 고르기).
+  const jf=page.getByRole('group',{name:'상위 레시피 필터'});
+  const chips=jf.locator('button.jf-chip');
+  assert.ok(await chips.count()>0);
+  assert.ok(await page.locator('.capgrp .capjob .lv.up').count()>0);
+  assert.ok(await page.locator('.caprow.sub .lv.dn').count()>0);
+  const nGrp=await page.locator('.capgrp').count();
+  await chips.first().click();
+  assert.equal(await chips.first().getAttribute('aria-pressed'),'true');
+  assert.equal(await page.locator('.capgrp').count(),1);
+  if(await chips.count()>1){await chips.nth(1).click();assert.equal(await page.locator('.capgrp').count(),Math.min(2,nGrp));}
+  await jf.getByRole('button',{name:'전체 보기',exact:true}).click();
+  assert.equal(await page.locator('.capgrp').count(),nGrp);
   await page.getByRole('button',{name:'호기 × 레시피 표',exact:true}).click();
+  assert.ok(await page.locator('tr.grouphead.job .lv.up').count()>0);
+  assert.ok(await page.locator('td.subr .lv.dn').count()>0);
   await page.locator('tr.total').first().click();
   await page.locator('dialog.lotwin[open]').getByText('정상 WPH에서 실제 WPH까지').waitFor();
   await page.locator('dialog.lotwin[open]').getByRole('tab',{name:'1장 처리 시간'}).click();

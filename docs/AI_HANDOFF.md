@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #10 WPH 상위 · 하위 레시피 구분 UX + 상위 레시피 필터(여러 개) (2026-10-06 KST, `version_v12`, v12.1.3)
+
+- GitHub 이슈 #10(예약 작업 처리): WPH · 생산능력의 레시피 비교 · 호기 × 레시피 표 둘 다 상위 레시피(Job)와 하위 레시피(Recipe(s))가
+  구분되게 UX 개선 + 상위 레시피를 여러 개 고를 수 있게(필터).
+- `frontend/src/BatchWph.tsx`: ①`JobFilter`(숫자 4개 위, role=group '상위 레시피 필터') — 상위 레시피 칩(aria-pressed, 하위 레시피 수) 여러 개 토글 ·
+  '전체 보기' · 9개 이상이면 찾기 칸 + '찾은 것 모두 고르기'. 비면 전체. 고른 상위 레시피로 레시피 비교 · 표 · 숫자 4개(`sel`) · 기간별 추이를 거르고
+  하위 레시피 select 도 그 상위 레시피 것만(고른 하위 레시피가 필터 밖이면 해제). 필터가 비었을 때는 종전처럼 하위 레시피를 고르면 같은 Job 끼리 비교.
+  ②레시피 비교 = 상위 레시피마다 묶음 상자(`.capgrp`, 왼쪽 네이비 띠) + 머리 줄(`.capjob`: '상위 레시피' 배지 · Job · 하위 레시피 수 · 호기 · Batch Report)
+  + 들여 쓴 하위 레시피 줄(`.caprow.sub`, '하위' 배지 · 트리 선). 상위 레시피끼리는 die 수가 달라 생산능력을 더하지 않음(머리 줄엔 막대 없음).
+  ③호기 × 레시피 표 = 상위 레시피 머리 줄(`tr.grouphead.job`, 배지 + 요약) › 하위 레시피 합계 줄(`td.subr` '하위' 배지) › 호기 줄. 열 이름 '레시피 (상위 › 하위)'.
+  CSS 는 `styles.css` 끝 `.bv .lv/.jobfilter/.jf-*/.capgrp/.capjob`. ? 설명 `metricHelp.ts` `wph.recipe`. 계산 · 지표 정의 변경 없음.
+- 검증: `npx tsc --noEmit` · `vite build` · `tools/test_desktop_ui.mjs`(상위/하위 배지 · 칩 1개/2개 고르면 묶음 수 · 전체 보기 · 표 머리 줄 확인 추가) 통과,
+  `tools/check_project.py`(test_batchreport 의 tkinter 없는 기존 1건만 실패). 실자료 · Windows 실기 미검증.
+
 ## 최신 재개 — Para #9 WPH · 생산능력 기간별 추이(일 · 주 · 월) (2026-10-06 KST, `version_v12`, v12.1.2)
 
 - GitHub 이슈 #9(예약 작업 처리): 'Batch Report 분석 › 가동률 조사 및 분석 › WPH · 생산능력' 도 일/주/월별로 보게.

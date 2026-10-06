@@ -5,7 +5,9 @@ import {dur,hrs,num,sumU,lossOf,wphNormal,wphActual,unitSec,avgScan,pctOf,C_OK,C
   addDays,bucket,shortKey,weekRange,periodName,type View,type U,type Agg,type Unit} from './batchData';
 
 /* WPH · 생산능력 탭 — 정상 WPH(막힘없을 때 속도) · 실제 WPH(유휴만 뺀 시간 기준) · 하루 생산능력(24 × 실제 WPH).
-   화면은 숫자 4개 + [레시피 비교 | 호기 × 레시피 표 | 기간별 추이(일 · 주 · 월, 이슈 #9)], 자세한 것은 레시피 상세 창, 계산식은 ? 버튼(사용자 확정 2026-10-05). */
+   화면은 숫자 4개 + [레시피 비교 | 호기 × 레시피 표 | 기간별 추이(일 · 주 · 월, 이슈 #9)], 자세한 것은 레시피 상세 창, 계산식은 ? 버튼(사용자 확정 2026-10-05).
+   레시피 이름 = '상위 레시피(Job) · 하위 레시피(Recipe(s))'. 비교 · 표는 상위 레시피 묶음 머리 + 들여 쓴 하위 레시피 줄로 구분하고,
+   상위 레시피는 필터(여러 개 고르기)로 거른다(이슈 #10). */
 const jobOf=(r:string)=>r.split(' · ')[0];
 const stepOf=(r:string)=>r.slice(jobOf(r).length+3);
 const f1=(x:number|null)=>num(x,1);
@@ -20,15 +22,16 @@ const capSum=(us:U[])=>{const o:Record<string,U[]>={};us.forEach(u=>{(o[u.m]||=[
 
 export function WphTab({v,ids,range,openLot,showRaw}:{v:View;ids:string[];range:{from:string;to:string};openLot:(li:number)=>void;showRaw:(g:number)=>void}){
   const [recipe,setRecipe]=useState(''),[mach,setMach]=useState(''),[tab,setTab]=useState<'cmp'|'tbl'|'per'>('cmp'),[win,setWin]=useState<{r:string;m:string;range?:Range}|null>(null);
-  const [unit,setUnit]=useState<Unit>('w');
+  const [unit,setUnit]=useState<Unit>('w'),[jobSel,setJobSel]=useState<string[]>([]);
   const rows=useMemo(()=>v.U.filter(u=>ids.includes(u.m)&&u.d>=range.from&&u.d<=range.to&&(u.n||u.p)),[v,ids,range.from,range.to]);
   const recipes=useMemo(()=>[...new Set(rows.filter(u=>u.n).map(u=>u.r))].sort(),[rows]);
   const jobs=useMemo(()=>[...new Set(recipes.map(jobOf))],[recipes]);
-  const r0=recipes.includes(recipe)?recipe:'';
-  const shown=r0?recipes.filter(r=>jobOf(r)===jobOf(r0)):recipes;      // 레시피를 고르면 같은 Job 의 레시피끼리 비교
+  const js=jobSel.filter(j=>jobs.includes(j)),inJob=(r:string)=>!js.length||js.includes(jobOf(r));   // 상위 레시피 필터(비면 전체)
+  const r0=recipes.includes(recipe)&&inJob(recipe)?recipe:'';
+  const shown=js.length?recipes.filter(inJob):r0?recipes.filter(r=>jobOf(r)===jobOf(r0)):recipes;      // 필터가 없으면 하위 레시피를 고를 때 같은 Job 끼리 비교
   const cells=useMemo(()=>{const o:Record<string,U[]>={};rows.forEach(u=>{if(mach&&u.m!==mach)return;(o[u.r+'||'+u.m]||=[]).push(u);});
     return Object.entries(o).map(([k,us])=>({r:k.split('||')[0],m:k.split('||')[1],a:sumU(us)}) as Cell).filter(c=>c.a.n>0);},[rows,mach]);
-  const sel=useMemo(()=>rows.filter(u=>(!r0||u.r===r0)&&(!mach||u.m===mach)),[rows,r0,mach]),A=sumU(sel);
+  const sel=useMemo(()=>rows.filter(u=>(r0?u.r===r0:!js.length||js.includes(jobOf(u.r)))&&(!mach||u.m===mach)),[rows,r0,mach,js.join('\n')]),A=sumU(sel);
   const wn=wphNormal(A),wa=wphActual(A),total=r0?cells.filter(c=>c.r===r0).reduce((s,c)=>s+(cap(c.a)||0),0):mach?cap(A):null;
   const col=useMemo(()=>machColors([...ids,...rows.map(u=>u.m)]),[ids,rows]);
   const nMach=r0?cells.filter(c=>c.r===r0&&cap(c.a)).length:0;
@@ -40,14 +43,15 @@ export function WphTab({v,ids,range,openLot,showRaw}:{v:View;ids:string[];range:
       total==null?[]:r0?cells.filter(c=>c.r===r0&&cap(c.a)).map(c=>`${c.m}: 24 × ${f1(wphActual(c.a))} = ${num(cap(c.a))}장`).concat([`합계 ${num(total)}장/일`]):[`24 × ${f1(wa)} = ${num(total)}장/일`]]];
   return <section className="panel tabpanel" aria-label="WPH · 생산능력">
     <div className="section-heading"><div><span className="step">WPH · 생산능력</span><h2>레시피가 한 시간에 몇 장, 하루에 몇 장을 처리하나</h2></div>
-      <div className="filters" style={{margin:0}}><label className="field" style={{minWidth:300}}>레시피(Job · Recipe(s))<select value={r0} onChange={e=>setRecipe(e.target.value)}><option value="">전체 레시피</option>
-          {jobs.map(j=><optgroup key={j} label={j}>{recipes.filter(r=>jobOf(r)===j).map(r=><option key={r} value={r}>{stepOf(r)}</option>)}</optgroup>)}</select></label>
+      <div className="filters" style={{margin:0}}><label className="field" style={{minWidth:300}}>하위 레시피(Recipe(s))<select value={r0} onChange={e=>setRecipe(e.target.value)}><option value="">{js.length?`고른 상위 레시피 ${js.length}개 전체`:'전체 레시피'}</option>
+          {jobs.filter(j=>!js.length||js.includes(j)).map(j=><optgroup key={j} label={'상위 · '+j}>{recipes.filter(r=>jobOf(r)===j).map(r=><option key={r} value={r}>{stepOf(r)}</option>)}</optgroup>)}</select></label>
         <label className="field">호기<select value={mach} onChange={e=>setMach(e.target.value)}><option value="">전체 호기</option>{ids.map(id=><option key={id}>{id}</option>)}</select></label></div></div>
+    <JobFilter jobs={jobs} recipes={recipes} sel={js} onChange={setJobSel}/>
     <section className="kpis k4">{K.map(([id,l,val,u,s,calc],i)=><article key={id} className={'kq k'+i}><span>{l}<Q id={id} calc={calc}/></span><strong>{val}<small>{u}</small></strong><p>{s}</p></article>)}</section>
     <div className="viewbar"><Seg label="보기" value={tab} items={[['cmp','레시피 비교'],['tbl','호기 × 레시피 표'],['per','기간별 추이']]} onChange={setTab}/>
       {tab==='per'&&<Seg label="기간 단위" value={unit} items={[['d','일'],['w','주'],['m','월']]} onChange={setUnit}/>}<span className="grow"/>
-      <span className="hint">{tab==='per'?(r0?`${stepOf(r0)} · ${mach||'전체 호기'}`:mach?`${mach} · 레시피 통합`:'전체 레시피 · 전체 호기 (레시피를 고르면 그 레시피만)')
-        :r0?`${jobOf(r0)}의 레시피끼리 비교`:'레시피를 고르면 같은 Job의 레시피끼리 비교합니다'}</span></div>
+      <span className="hint">{tab==='per'?(r0?`${stepOf(r0)} · ${mach||'전체 호기'}`:`${js.length?`상위 레시피 ${js.length}개`:'전체 레시피'} · ${mach?mach+' · 레시피 통합':'전체 호기'}${js.length?'':' (레시피를 고르면 그 레시피만)'}`)
+        :js.length?`상위 레시피 ${js.length}개의 하위 레시피끼리 비교`:r0?`${jobOf(r0)}의 하위 레시피끼리 비교`:'상위 레시피를 고르거나 하위 레시피를 고르면 같은 상위 레시피끼리 비교합니다'}</span></div>
     {tab==='cmp'?<Compare cells={cells} recipes={shown} sel={r0} col={col} onOpen={(r,m)=>setWin({r,m})}/>
       :tab==='tbl'?<Table cells={cells} recipes={shown} col={col} onOpen={(r,m)=>setWin({r,m})}/>
       :<Periods rows={sel} unit={unit} range={range} recipe={r0} onOpen={r0?pr=>setWin({r:r0,m:mach,range:pr}):undefined}/>}
@@ -55,10 +59,30 @@ export function WphTab({v,ids,range,openLot,showRaw}:{v:View;ids:string[];range:
   </section>;
 }
 
+/** 상위 레시피(Job) 필터 — 여러 개를 골라 레시피 비교 · 표 · 숫자 4개 · 기간별 추이를 그 상위 레시피로 거른다(이슈 #10). 비면 전체. */
+function JobFilter({jobs,recipes,sel,onChange}:{jobs:string[];recipes:string[];sel:string[];onChange:(x:string[])=>void}){
+  const [q,setQ]=useState('');
+  if(!jobs.length)return null;
+  const ql=q.trim().toLowerCase(),list=jobs.filter(j=>!ql||j.toLowerCase().includes(ql)||sel.includes(j));
+  const nSub=(j:string)=>recipes.filter(r=>jobOf(r)===j).length;
+  const flip=(j:string)=>onChange(sel.includes(j)?sel.filter(x=>x!==j):[...sel,j]);
+  return <div className="jobfilter" role="group" aria-label="상위 레시피 필터">
+    <div className="jf-head"><span className="lv up">상위 레시피</span><b>필터</b><Q id="wph.recipe"/>
+      <span className="jf-state">{sel.length?`${sel.length}개 고름 / ${jobs.length}개`:`전체 ${jobs.length}개 (고르지 않으면 전체)`}</span><span className="grow"/>
+      {jobs.length>8&&<input type="search" placeholder="상위 레시피 찾기" aria-label="상위 레시피 찾기" value={q} onChange={e=>setQ(e.target.value)}/>}
+      {ql&&<button type="button" className="linklike" onClick={()=>onChange([...new Set([...sel,...list])])}>찾은 것 모두 고르기</button>}
+      <button type="button" className="linklike" disabled={!sel.length} onClick={()=>onChange([])}>전체 보기</button></div>
+    <div className="jf-chips">{list.map(j=>{const on=sel.includes(j);return <button key={j} type="button" className={'jf-chip'+(on?' on':'')} aria-pressed={on} title={j} onClick={()=>flip(j)}>
+      <i aria-hidden="true">{on?'✓':''}</i><span>{j}</span><small>하위 {nSub(j)}</small></button>;})}
+      {!list.length&&<span className="hint">찾는 상위 레시피가 없습니다.</span>}</div></div>;
+}
+
 /** 레시피 비교 — 레시피마다 하루 생산능력을 호기별로 쌓은 막대(가능 호기가 적어도 합계가 큰지 한눈에).
     호기 색은 레시피와 무관하게 고정(col, 이슈 #7) — 아래 범례로 확인.
     같은 Job 의 하위 레시피끼리 바꾸면 보이는 레시피 묶음이 같아 막대가 그대로라, 고른 레시피는 강조하고
-    WPH · 정상 WPH 가 없는 레시피도 '없음' 행으로 남긴다(사용자 요청 2026-10-05 — 바뀐 건지 헷갈리지 않게). */
+    WPH · 정상 WPH 가 없는 레시피도 '없음' 행으로 남긴다(사용자 요청 2026-10-05 — 바뀐 건지 헷갈리지 않게).
+    상위 레시피(Job)마다 묶음 상자 + 머리 줄(하위 레시피 수 · 호기 · Batch Report), 하위 레시피 줄은 들여 쓴다(이슈 #10).
+    상위 레시피끼리는 die 수가 달라 생산능력을 더하지 않는다(머리 줄엔 막대 없음). */
 function Compare({cells,recipes,sel,col,onOpen}:{cells:Cell[];recipes:string[];sel:string;col:Record<string,string>;onOpen:(r:string,m:string)=>void}){
   const rows=recipes.map(r=>{const all=cells.filter(c=>c.r===r),cs=all.filter(c=>cap(c.a)).sort((a,b)=>(cap(b.a)||0)-(cap(a.a)||0));
     return {r,cs,sum:cs.reduce((s,c)=>s+(cap(c.a)||0),0),wn:wphNormal(all.reduce((acc,c)=>addAgg(acc,c.a),sumU([])))};});
@@ -66,16 +90,20 @@ function Compare({cells,recipes,sel,col,onOpen}:{cells:Cell[];recipes:string[];s
   if(!rows.length)return <div className="chartcard"><p className="hint">조사 범위에 WPH 자료가 없습니다.</p></div>;
   return <div className="chartcard"><div className="ch"><h3>레시피별 하루 생산능력 <small>막대 한 칸 = 호기 1대 (24 × 실제 WPH)</small></h3><Q id="wph.capacity"/><span className="grow"/>
       <span className="hint">마우스 = 호기별 값 · 누르면 레시피 상세 창</span></div>
-    {cur&&<p className={'capsel'+(cur.wn==null?' none':'')}>고른 레시피: <b>{stepOf(cur.r)}</b> ({jobOf(cur.r)}) — {cur.wn==null?'정상 WPH 없음 (정상 25매 Batch Report가 없습니다)':`정상 WPH ${f1(cur.wn)}`}
+    {cur&&<p className={'capsel'+(cur.wn==null?' none':'')}>고른 레시피: <b>{stepOf(cur.r)}</b> (상위 레시피 {jobOf(cur.r)}) — {cur.wn==null?'정상 WPH 없음 (정상 25매 Batch Report가 없습니다)':`정상 WPH ${f1(cur.wn)}`}
       {!cur.cs.length&&' · 실제 WPH 자료 없음'}</p>}
-    <div className="caprows">{rows.map(x=><div key={x.r} className={'caprow'+(x.r===sel?' sel':'')}>
-      <button type="button" className="linklike cl" title={x.r} onClick={()=>onOpen(x.r,'')}><small>{jobOf(x.r)}</small>{stepOf(x.r)}</button>
+    <div className="caprows">{[...new Set(rows.map(x=>jobOf(x.r)))].map(j=>{const sub=rows.filter(x=>jobOf(x.r)===j),js=cells.filter(c=>jobOf(c.r)===j);
+      return <div key={j} className={'capgrp'+(sub.some(x=>x.r===sel)?' has':'')} role="group" aria-label={'상위 레시피 '+j}>
+      <div className="capjob"><span className="lv up">상위 레시피</span><b title={j}>{j}</b><small>하위 레시피 {sub.length}개 · 호기 {new Set(js.map(c=>c.m)).size}대 · Batch Report {num(js.reduce((s,c)=>s+c.a.n,0))}개</small></div>
+      {sub.map(x=><div key={x.r} className={'caprow sub'+(x.r===sel?' sel':'')}>
+      <button type="button" className="linklike cl" title={x.r} onClick={()=>onOpen(x.r,'')}><span className="lv dn">하위</span>{stepOf(x.r)}</button>
       <span className="capbar">{x.cs.map(c=>{const cp=cap(c.a)||0,w=cp/mx*100,tip:TipX={t:`${c.m} · ${stepOf(x.r)}`,rows:[[col[c.m],'하루 생산능력',num(cp),'장'],
           ['transparent','실제 WPH',f1(wphActual(c.a)),''],['transparent','정상 WPH',f1(wphNormal(c.a)),''],['transparent','Batch Report',num(c.a.n),'개']],f:['누르면 이 호기의 레시피 상세 창']};
         return <span key={c.m} style={{width:w.toFixed(2)+'%',background:col[c.m]}} data-tip={`${c.m}\n하루 생산능력 ${num(cp)}장`} data-tipx={JSON.stringify(tip)}
           onClick={()=>onOpen(x.r,c.m)}>{w>6?c.m:''}</span>;})}{!x.cs.length&&<span className="capnone">실제 WPH 자료 없음 (Pass한 Batch Report 없음)</span>}</span>
-      <span className="capv">{x.cs.length?<><b>{num(x.sum)}</b>장/일 · {x.cs.length}대</>:'—'}<small className={x.wn==null?'none':''}>{x.wn==null?'정상 WPH 없음':`정상 WPH ${f1(x.wn)}`}</small></span></div>)}</div>
-    <div className="keys">{[...new Set(rows.flatMap(x=>x.cs.map(c=>c.m)))].sort().map(m=><span key={m}><i style={{background:col[m]}}>　</i> {m}</span>)}<span>같은 호기 = 같은 색</span></div></div>;
+      <span className="capv">{x.cs.length?<><b>{num(x.sum)}</b>장/일 · {x.cs.length}대</>:'—'}<small className={x.wn==null?'none':''}>{x.wn==null?'정상 WPH 없음':`정상 WPH ${f1(x.wn)}`}</small></span></div>)}</div>;})}</div>
+    <div className="keys">{[...new Set(rows.flatMap(x=>x.cs.map(c=>c.m)))].sort().map(m=><span key={m}><i style={{background:col[m]}}>　</i> {m}</span>)}<span>같은 호기 = 같은 색</span>
+      <span><span className="lv up">상위 레시피</span> Job</span><span><span className="lv dn">하위</span> Recipe(s)</span></div></div>;
 }
 
 const PK=[['wa','실제 WPH','#10b981'],['wn','정상 WPH','#31517c'],['cap','하루 생산능력','#2a9d8f'],['ps','Pass 장수','#7b5ea7']] as const;
@@ -112,18 +140,21 @@ function Periods({rows,unit,range,recipe,onOpen}:{rows:U[];unit:Unit;range:Range
       :<p className="hint">조사 범위에 WPH 자료가 없습니다.</p>}</div>;
 }
 
-/** 호기 × 레시피 표 — 레시피마다 호기별 줄 + 레시피 합계 줄. */
+/** 호기 × 레시피 표 — 상위 레시피 머리 줄 › 하위 레시피 합계 줄 › 호기별 줄(들여 쓰기, 이슈 #10). */
 function Table({cells,recipes,col,onOpen}:{cells:Cell[];recipes:string[];col:Record<string,string>;onOpen:(r:string,m:string)=>void}){
   const row=(r:string,m:string,a:Agg,sum:number|null,key:string,total?:boolean)=>{const n=wphNormal(a),w=wphActual(a);
     return <tr key={key} className={'clickable'+(total?' total':'')} onClick={()=>onOpen(r,total?'':m)}>
-      <td>{total?<b>{stepOf(r)}</b>:''}</td><td>{total?<b>합계 ({m})</b>:<><i className="msw" style={{background:col[m]}}/>{m}</>}</td><td className="num">{unitSec(a)==null?'—':num(unitSec(a),0)+'초'}</td><td className="num">{avgScan(a)==null?'—':num(avgScan(a),0)+'초'}</td>
+      <td className={total?'subr':'mrow'}>{total?<><span className="lv dn">하위</span><b>{stepOf(r)}</b></>:''}</td><td>{total?<b>합계 ({m})</b>:<><i className="msw" style={{background:col[m]}}/>{m}</>}</td><td className="num">{unitSec(a)==null?'—':num(unitSec(a),0)+'초'}</td><td className="num">{avgScan(a)==null?'—':num(avgScan(a),0)+'초'}</td>
       <td className="num">{f1(n)}</td><td className="num"><b>{f1(w)}</b></td><td className="num v4">{pc(drop(n,w))}</td><td className="num"><b>{sum==null?'—':num(sum)}</b></td><td className="num">{num(a.n)}</td></tr>;};
   return <div className="chartcard"><div className="table-scroll" style={{maxHeight:560}}><table className="t-compact">
-    <thead><tr><th>레시피</th><th>호기</th><th className="num">1장 처리 시간<Q id="wph.unit"/></th><th className="num">Avg. Scan Time<Q id="wph.avgscan"/></th><th className="num">정상 WPH<Q id="wph.normal"/></th>
+    <thead><tr><th>레시피 (상위 › 하위)</th><th>호기</th><th className="num">1장 처리 시간<Q id="wph.unit"/></th><th className="num">Avg. Scan Time<Q id="wph.avgscan"/></th><th className="num">정상 WPH<Q id="wph.normal"/></th>
       <th className="num">실제 WPH<Q id="wph.actual"/></th><th className="num">처리량 감소<Q id="wph.drop"/></th><th className="num">하루 생산능력<Q id="wph.capacity"/></th><th className="num">Batch Report</th></tr></thead>
     <tbody>{recipes.flatMap((r,i)=>{const cs=cells.filter(c=>c.r===r);if(!cs.length)return [];const newJob=!i||jobOf(recipes[i-1])!==jobOf(r);const all=cs.reduce((acc,c)=>addAgg(acc,c.a),sumU([]));
       const sum=cs.reduce((s,c)=>s+(cap(c.a)||0),0);
-      return [...(newJob?[<tr key={r+'h'} className="grouphead"><td colSpan={9}>{jobOf(r)}</td></tr>]:[]),row(r,`${cs.length}대`,all,sum,r+'t',true),...cs.map(c=>row(r,c.m,c.a,cap(c.a),r+c.m))];})}
+      const jc=newJob?cells.filter(c=>jobOf(c.r)===jobOf(r)):[];
+      return [...(newJob?[<tr key={r+'h'} className="grouphead job"><td colSpan={9}><span className="lv up">상위 레시피</span><b>{jobOf(r)}</b>
+        <small>하위 레시피 {recipes.filter(x=>jobOf(x)===jobOf(r)&&cells.some(c=>c.r===x)).length}개 · 호기 {new Set(jc.map(c=>c.m)).size}대 · Batch Report {num(jc.reduce((s,c)=>s+c.a.n,0))}개</small></td></tr>]:[]),
+        row(r,`${cs.length}대`,all,sum,r+'t',true),...cs.map(c=>row(r,c.m,c.a,cap(c.a),r+c.m))];})}
       {!recipes.length&&<tr><td colSpan={9}>조사 범위에 WPH 자료가 없습니다.</td></tr>}</tbody></table></div></div>;
 }
 function addAgg(a:Agg,b:Agg):Agg{const o={...a,err:{...a.err}};(['p','du','ck','e','sd','so','ps','dn','n','ne','nsd','nso','w25','s25','aw','asum'] as const).forEach(k=>{o[k]=a[k]+b[k];});return o;}

@@ -718,3 +718,34 @@ dialog::backdrop{overscroll-behavior:contain}
 @media(max-width:1000px){.bv .ll-head{flex-wrap:wrap;align-items:flex-start}.bv .ll-search{flex:1 1 100%}.bv .lotlist .chips{margin-left:0}}
 @media(prefers-reduced-motion:reduce){.bv .ll-seg .ll-opt,.bv .ll-tg,.bv .ll-go,.bv .ll-table tbody tr.clickable{transition:none}}
 .bv .ll-table th,.bv .ll-table td{border-left:0;border-right:0}
+/* WPH 상위 · 하위 레시피 구분 + 상위 레시피 필터(이슈 #10) */
+.bv .lv{display:inline-flex;align-items:center;flex:none;font-size:10px;font-weight:800;line-height:1;padding:3px 6px;border-radius:4px;margin-right:6px;letter-spacing:.02em;vertical-align:1px}
+.bv .lv.up{background:#31517c;color:#fff}
+.bv .lv.dn{background:#e7eef7;color:#31517c;border:1px solid #c9d6e6}
+.bv .jobfilter{border:1px solid var(--line);border-radius:10px;background:#fafbfd;padding:9px 12px;margin:2px 0 12px}
+.bv .jf-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:12.5px;color:var(--navy)}
+.bv .jf-head .grow{flex:1}
+.bv .jf-head .jf-state{color:var(--muted);font-size:12px}
+.bv .jf-head input[type=search]{width:200px;padding:5px 8px;font-size:12px}
+.bv .jf-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-height:112px;overflow:auto}
+.bv .jf-chip{display:inline-flex;align-items:center;gap:6px;max-width:280px;padding:5px 10px 5px 6px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:12px;font-weight:700;cursor:pointer;transition:background-color .15s ease-out,border-color .15s ease-out,transform .1s ease-out}
+.bv .jf-chip:active{transform:scale(.97)}
+.bv .jf-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bv .jf-chip small{font-weight:400;color:var(--muted);font-size:10.5px}
+.bv .jf-chip i{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:4px;border:1.5px solid #b3c0cc;font-style:normal;font-size:10px;color:#fff}
+.bv .jf-chip:hover{border-color:#b3c0cc}
+.bv .jf-chip.on{background:#eaf1fa;border-color:#31517c}
+.bv .jf-chip.on i{background:#31517c;border-color:#31517c}
+.bv .capgrp{display:flex;flex-direction:column;gap:6px;border:1px solid #dfe6ee;border-left:4px solid #31517c;border-radius:8px;padding:8px 10px 10px;background:#fff}
+.bv .capgrp.has{background:#fbfcfe}
+.bv .capjob{display:flex;align-items:center;gap:4px;min-width:0;font-size:13px;color:var(--navy);padding-bottom:6px;border-bottom:1px dashed #dfe6ee}
+.bv .capjob b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bv .capjob small{margin-left:auto;padding-left:12px;color:var(--muted);font-size:11px;white-space:nowrap}
+.bv .caprow.sub{grid-template-columns:minmax(150px,226px) minmax(0,1fr) 150px;padding-left:14px;position:relative}
+.bv .caprow.sub::before{content:'';position:absolute;left:4px;top:-4px;bottom:50%;width:7px;border-left:1.5px solid #c9d6e6;border-bottom:1.5px solid #c9d6e6;border-bottom-left-radius:4px}
+.bv .caprow.sub .cl{display:flex;align-items:center;font-weight:700}
+.bv tr.grouphead.job td{background:#e3eaf3;color:var(--navy);font-size:12px;border-left:4px solid #31517c;padding:6px 10px}
+.bv tr.grouphead.job small{margin-left:10px;font-weight:400;color:var(--muted)}
+.bv td.subr{padding-left:18px;white-space:nowrap}
+.bv td.mrow{border-left:4px solid transparent}
+@media(prefers-reduced-motion:reduce){.bv .jf-chip{transition:none}}
