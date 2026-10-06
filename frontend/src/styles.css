@@ -638,3 +638,83 @@ dialog::backdrop{overscroll-behavior:contain}
 .bv .qhelp ul.calc li{font-family:Consolas,'Malgun Gothic',monospace;font-size:12px;color:#0b5e46;padding:2px 0}
 .bv .qhelp td{white-space:nowrap}
 .bv .qhelp li,.bv .qhelp p{white-space:normal}
+/* Scanresult 백업본 포함 조사(ScanBackup.tsx) — 모든 Scanresult 조사 화면 공통 */
+.sbk{display:flex;align-items:center;gap:12px;margin:12px 0;padding:10px 14px;border:1px solid var(--line);border-left:4px solid var(--lime);border-radius:10px;background:#f4fbf8}
+.sbk.off{border-left-color:#94a3b8;background:var(--band)}
+.sbk-dot{width:9px;height:9px;border-radius:50%;background:var(--lime);flex-shrink:0;box-shadow:0 0 0 3px #10b98126}
+.sbk.off .sbk-dot{background:#94a3b8;box-shadow:0 0 0 3px #94a3b826}
+.sbk-text{flex:1;min-width:0}.sbk-text b{display:block;font-size:13px;color:var(--navy)}
+.sbk-text small{display:block;font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5}
+.sbk-switch{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap}
+.sbk-switch input[type=checkbox]{appearance:none;-webkit-appearance:none;width:40px;height:22px;border-radius:999px;background:#cbd5e1;position:relative;transition:background .18s var(--ease);accent-color:auto}
+.sbk-switch input[type=checkbox]::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0003;transition:left .18s var(--ease)}
+.sbk-switch input[type=checkbox]:checked{background:var(--lime)}.sbk-switch input[type=checkbox]:checked::after{left:21px}
+.sbk-switch input:disabled{opacity:.5;cursor:not-allowed}
+.sbk-roots{margin:8px 0;font-size:12px}.sbk-roots summary{cursor:pointer;color:var(--navy);font-weight:700}
+.sbk-roots ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}.sbk-roots li{display:flex;align-items:center;gap:8px;min-width:0}
+.sbk-roots code{overflow-wrap:anywhere;font-size:11px}
+.sbk-kind{flex-shrink:0;font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px;background:#e9eef5;color:#465b77}
+.sbk-kind.main{background:#e7f8f1;color:#0d6b4c}
+@media(max-width:700px){.sbk{flex-wrap:wrap}}
+/* Lot 추적 '지금 보는 목록' 카드(이슈 #8) — 프로그램 테마(흰 카드 · 네이비 글자 · 라임 강조)와 같은 결.
+   테두리 대신 옅은 그림자, 눌림은 scale(.97) + ease-out, 전환은 속성을 지정(transition:all 금지). 목록마다 위 띠 색이 바뀐다. */
+.bv .lotlist{--ll:var(--lime);--ll-soft:#f2fbf7;margin:18px 0 6px;background:#fff;border-radius:14px;overflow:hidden;
+  box-shadow:0 0 0 1px rgba(30,40,80,.07),var(--sh1);border-top:3px solid var(--ll)}
+.bv .lotlist.lt-re{--ll:#e0a526;--ll-soft:#fff8e6}.bv .lotlist.lt-open{--ll:#e0704b;--ll-soft:#fff1ec}
+.bv .lotlist.lt-dup{--ll:#5b7fb0;--ll-soft:#eef3fa}.bv .lotlist.lt-reports{--ll:#7d8fa3;--ll-soft:#f5f7fa}
+.bv .ll-head{display:flex;align-items:flex-end;gap:16px;padding:16px 20px 14px;background:linear-gradient(180deg,var(--ll-soft),#fff)}
+.bv .ll-title{flex:1;min-width:0}
+.bv .ll-eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:#667990}
+.bv .lotlist .listtitle{display:flex;align-items:center;gap:10px;margin:4px 0 0;padding:0;border:0;background:none;color:var(--navy);font-size:19px;letter-spacing:-.5px}
+.bv .ll-dot{width:10px;height:10px;border-radius:50%;background:var(--ll);flex-shrink:0;box-shadow:0 0 0 4px color-mix(in srgb,var(--ll) 18%,transparent)}
+.bv .ll-count{display:flex;align-items:baseline;gap:6px;white-space:nowrap;color:var(--muted);font-size:12px;font-weight:700}
+.bv .ll-count strong{font-size:26px;letter-spacing:-1px;color:var(--navy);font-variant-numeric:tabular-nums}
+.bv .ll-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:11px 20px;background:var(--band);border-block:1px solid var(--line)}
+.bv .ll-tools select{width:auto;min-height:34px;padding:6px 10px;border-radius:8px}
+.bv .ll-search{position:relative;flex:0 1 300px;min-width:200px}
+.bv .ll-search span{position:absolute;left:11px;top:50%;transform:translateY(-52%);font-size:16px;color:var(--faint);pointer-events:none}
+.bv .ll-search input{padding:7px 12px 7px 32px;border-radius:8px;border-color:#cfd8e3;min-height:34px;transition:border-color .16s ease,box-shadow .16s ease}
+.bv .ll-search input:focus{border-color:var(--lime);box-shadow:0 0 0 3px #10b98126;outline:none}
+.bv .ll-seg{display:inline-flex;gap:2px;padding:3px;border-radius:10px;background:#e8edf2}
+.bv .ll-seg .ll-opt{display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:4px 11px;border:0;border-radius:8px;background:transparent;color:#52647d;font-size:12px;font-weight:700;
+  transition:background-color .16s ease,color .16s ease,box-shadow .16s ease,transform .16s cubic-bezier(.23,1,.32,1)}
+.bv .ll-seg .ll-opt::before{content:'';width:7px;height:7px;border-radius:50%;background:#9aa9ba}
+.bv .ll-seg .ll-opt.done::before{background:var(--ok)}.bv .ll-seg .ll-opt.re::before{background:#e0a526}.bv .ll-seg .ll-opt.open::before{background:#e0704b}
+.bv .ll-seg .ll-opt.all::before{display:none}
+.bv .ll-seg .ll-opt b{font-size:11px;font-weight:800;color:var(--faint);font-variant-numeric:tabular-nums}
+.bv .ll-seg .ll-opt:hover:not(.on){background:#f3f6f9;color:var(--navy)}
+.bv .ll-seg .ll-opt.on{background:#fff;color:var(--navy);box-shadow:0 1px 2px rgba(30,40,80,.12),0 0 0 1px rgba(30,40,80,.05)}
+.bv .ll-seg .ll-opt.on b{color:var(--navy)}
+.bv .ll-toggles{display:inline-flex;gap:6px}
+.bv .ll-tg{min-height:30px;padding:4px 12px;border-radius:999px;font-size:12px;background:#fff;color:#52647d;box-shadow:0 0 0 1px #d5dde6 inset;border:0;
+  transition:background-color .16s ease,color .16s ease,box-shadow .16s ease,transform .16s cubic-bezier(.23,1,.32,1)}
+.bv .ll-tg::before{content:'＋ ';color:var(--faint)}
+.bv .ll-tg.on{background:var(--navy);color:#fff;box-shadow:none}.bv .ll-tg.on::before{content:'✓ ';color:var(--lime)}
+.bv .ll-seg .ll-opt:active,.bv .ll-tg:active,.bv .lotlist .chip:active{transform:scale(.97)}
+.bv .lotlist .chips{margin-left:auto}
+.bv .ll-table{max-height:470px;border:0;border-radius:0}
+.bv .ll-table thead th{position:sticky;top:0;z-index:1;background:#f7f9fb;color:#5f6b7a;font-size:11.5px;font-weight:800;box-shadow:inset 0 -1px 0 var(--line)}
+.bv .ll-table tbody td{border-bottom:1px solid #eef2f6;vertical-align:middle}
+.bv .ll-table tbody tr.clickable{transition:background-color .14s ease,box-shadow .14s ease}
+.bv .ll-table tbody tr.clickable:hover,.bv .ll-table tbody tr.clickable:focus-visible{background:var(--ll-soft);box-shadow:inset 3px 0 0 var(--ll)}
+.bv .ll-table tbody tr.clickable:focus-visible{outline:2px solid #577eb0;outline-offset:-2px}
+.bv .ll-lot{display:block;color:var(--navy);font-size:13px}
+.bv .ll-sm{display:block;margin-top:2px;font-size:11px;color:var(--muted);font-family:Consolas,'D2Coding',monospace}
+.bv .ll-mach{display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap}
+.bv .ll-mach span{padding:2px 7px;border-radius:6px;background:#eef2f6;color:#3f5268;font-size:11.5px;font-weight:700}
+.bv .ll-mach i{font-style:normal;color:var(--faint);font-size:11px}
+.bv .ll-time span{display:block;font-variant-numeric:tabular-nums}.bv .ll-time small{display:block;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.bv .ll-pills{display:inline-flex;flex-wrap:wrap;gap:4px}
+.bv .ll-zero{color:#b6c1cd}
+.bv .ll-errs{display:inline-flex;gap:4px;align-items:center;max-width:340px}
+.bv .ll-err{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:6px;background:#fff1ec;color:#a33820;font-size:11.5px}
+.bv .ll-err b{font-variant-numeric:tabular-nums}
+.bv .ll-more{padding:2px 7px;border-radius:6px;background:#eef2f6;color:#52647d;font-size:11px;font-weight:800;cursor:help}
+.bv .ll-go{width:24px;color:var(--faint);font-size:18px;text-align:center;transition:transform .16s cubic-bezier(.23,1,.32,1),color .16s ease}
+.bv .ll-table tbody tr.clickable:hover .ll-go{color:var(--ll);transform:translateX(2px)}
+.bv .ll-empty td{padding:34px 12px!important;text-align:center;color:var(--muted)}
+.bv .ll-empty b{display:block;color:var(--navy);font-size:14px;margin-bottom:4px}
+.bv .ll-foot{margin:0;padding:9px 20px;font-size:12px;color:var(--muted);background:var(--band);border-top:1px solid var(--line)}
+@media(max-width:1000px){.bv .ll-head{flex-wrap:wrap;align-items:flex-start}.bv .ll-search{flex:1 1 100%}.bv .lotlist .chips{margin-left:0}}
+@media(prefers-reduced-motion:reduce){.bv .ll-seg .ll-opt,.bv .ll-tg,.bv .ll-go,.bv .ll-table tbody tr.clickable{transition:none}}
+.bv .ll-table th,.bv .ll-table td{border-left:0;border-right:0}

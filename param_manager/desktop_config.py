@@ -65,19 +65,43 @@ def aoi_view(cfg):
     return out
 
 
-def scanresult_roots_for(cfg, machine):
-    """Commonality 가 그 호기에서 뒤질 Scanresult 폴더 전부 = 호기 루트 아래 Scanresult*
-    (백업본 자동) + 사람이 추가한 Scanresult 보관 폴더(각각 아래 Scanresult* 도 인식)."""
+def scan_backup(cfg):
+    """설정 'Scanresult 백업본 포함 조사'(`scanresult_backup`, 기본 켬 = 종전 동작). 끄면 Scanresult 를
+    찾는 모든 기능(Commonality 조사 · 감시 · Batch Report 찾기의 Scanresult 경로)이 원본 'Scanresult' 만 본다."""
+    return cfg.get("scanresult_backup", True) is not False
+
+
+def scanresult_roots_info(cfg, machine, backup=None):
+    """[{path, kind}] — kind = 원본 / 백업본(이름이 Scanresult_xxx) / 추가 폴더(설정에서 추가한 보관 폴더).
+    backup=None 이면 설정값. 백업본 제외면 원본만(추가 보관 폴더도 백업이라 뺀다)."""
     from . import commonality as cm
+    backup = scan_backup(cfg) if backup is None else backup
     roots = cfg.get("commonality_roots") if isinstance(cfg.get("commonality_roots"), dict) else {}
-    out = []
+    out = {}
     if roots.get(machine):
-        out += cm.scanresult_roots(roots[machine], machine)
-    extra = (cfg.get("aoi_extra") or {}).get(machine) if isinstance(cfg.get("aoi_extra"), dict) else None
-    for p in (extra or {}).get("scanresult", []) if isinstance(extra, dict) else []:
-        if isinstance(p, str) and p.strip():
-            out += cm.scanresult_roots(p, machine)
-    return list(dict.fromkeys(out))
+        mine = cm.scanresult_roots(roots[machine], machine, backup=backup)
+        has_main = any(not cm.is_backup_scanresult(p) for p in mine)
+        for p in mine:      # 원본 이름이 없으면(Scanresult_xxx 를 직접 등록 등) 그 폴더가 원본
+            out.setdefault(p, "백업본" if has_main and cm.is_backup_scanresult(p) else "원본")
+    if backup:
+        extra = (cfg.get("aoi_extra") or {}).get(machine) if isinstance(cfg.get("aoi_extra"), dict) else None
+        for p in (extra or {}).get("scanresult", []) if isinstance(extra, dict) else []:
+            if isinstance(p, str) and p.strip():
+                for r in cm.scanresult_roots(p, machine):
+                    out.setdefault(r, "추가 폴더")
+    return [dict(path=p, kind=k) for p, k in out.items()]
+
+
+def scanresult_roots_for(cfg, machine, backup=None):
+    """Commonality 가 그 호기에서 뒤질 Scanresult 폴더 전부 = 호기 루트 아래 Scanresult*
+    (백업본 자동) + 사람이 추가한 Scanresult 보관 폴더(각각 아래 Scanresult* 도 인식).
+    설정 'Scanresult 백업본 포함 조사'를 끄면 원본 'Scanresult' 만."""
+    return [r["path"] for r in scanresult_roots_info(cfg, machine, backup)]
+
+
+def roots_report(info):
+    """화면 표시용: [{path, kind}] (Path → 글자)."""
+    return [dict(path=str(r["path"]), kind=r["kind"]) for r in info]
 
 
 class DesktopConfig:
@@ -118,7 +142,7 @@ class DesktopConfig:
                     scanresult_roots=roots if isinstance(roots, dict) else {},
                     extra_paths={m: [p for p in v if isinstance(p, str)] for m, v in extra.items()
                                  if isinstance(v, list)} if isinstance(extra, dict) else {},
-                    batch_auto=bool(cfg.get("batch_auto")),
+                    batch_auto=bool(cfg.get("batch_auto")), scan_backup=scan_backup(cfg),
                     batch=DesktopBatch(self.config_path).auto_state(cfg), batch_intervals=list(BATCH_INTERVALS),
                     # Effective local folder (config or default) + the config file itself, for the
                     # "현재 설정" summary. Pure path computation, no folder access.
@@ -182,6 +206,15 @@ class DesktopConfig:
             raise ValueError("KLA 숨김 설정을 확인하세요")
         cfg = self._read()
         cfg["hide_kla"] = params["enabled"]
+        self._write(cfg)
+        return self.state()
+
+    def set_scan_backup(self, params):
+        """Scanresult 를 찾는 모든 기능에서 백업본(Scanresult_xxx · 추가 보관 폴더)까지 볼지."""
+        if set(params) != {"enabled"} or type(params["enabled"]) is not bool:
+            raise ValueError("Scanresult 백업본 포함 설정을 확인하세요")
+        cfg = self._read()
+        cfg["scanresult_backup"] = params["enabled"]
         self._write(cfg)
         return self.state()
 

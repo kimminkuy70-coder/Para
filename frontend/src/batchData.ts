@@ -26,7 +26,7 @@ export type View={R:Rep[];lots:Lot[];excluded:number[];U:U[];waits:Wait[];stops:
   saved:number;criteria:[string,string,string][];
   scope?:{machines:string[];start:string;end:string;reuse:boolean;at:string};restored?:boolean;mstat?:Record<string,MStat>;
   collection?:{parsed:number;reused:number;errors:number;cached_only:number};errors?:[string,string,string][];artifacts?:Record<string,string>;
-  find?:{query:string;start:string;end:string;listed:number;total:number};scan?:Record<string,{paths:string[];pattern:string}>};
+  find?:{query:string;start:string;end:string;listed:number;total:number};scan?:Record<string,{paths:string[];pattern:string}>;scan_backup?:boolean};
 export type ViewMeta={view:string;version:number;size:number;saved?:number;lots?:number;reports?:number};
 /** cells = [Batch Report 위치, 원문, Pass, 연쇄, Scanned, Bad, Good, 작업자 중단] */
 export type Cell=[number,string,boolean,boolean,number|null,number|null,number|null,boolean?];

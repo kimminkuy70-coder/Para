@@ -111,7 +111,11 @@ class DesktopCmSurvey:
         mine = cm.filter_plan_for_machine(plan, machine)
         if not mine:
             raise ValueError("이 호기에 해당하는 계획 행이 없습니다. AOI호기를 확인하세요.")
-        scan_roots = cm.scanresult_roots(roots[machine], machine)
+        from .desktop_config import roots_report, scan_backup, scanresult_roots_info
+        cfg = read_json(self.config_path)
+        # 호기 루트 아래 Scanresult*(설정에 따라 백업본 포함) + 추가 Scanresult 보관 폴더 — cmrun_plan 과 같은 범위.
+        info = scanresult_roots_info(cfg, machine)
+        scan_roots = [r["path"] for r in info]
         lots = cm.resolve_plan(scan_roots, mine)
         rows = [dict(label=l.label, device=l.device, lot=l.lot, sm=l.sm,
                      exists=bool(l.exists), fail=bool(l.fail),
@@ -119,6 +123,7 @@ class DesktopCmSurvey:
                      wafer=(l.wafer_dir.name if l.wafer_dir is not None else ""),
                      reason=l.reason) for l in lots]
         return dict(machine=machine, roots=[str(r) for r in scan_roots],
+                    root_info=roots_report(info), scan_backup=scan_backup(cfg),
                     total=len(rows), found=sum(1 for r in rows if r["exists"]),
                     missing=sum(1 for r in rows if not r["exists"]), rows=rows)
 

@@ -23,6 +23,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Scanresult 백업본 포함 조사 + Lot 목록 카드 (2026-10-06, 이슈 #8, v12.0.2)
+
+- **Scanresult 를 찾는 모든 기능은 설정 하나(`scanresult_backup`, 기본 켬)를 따른다**: 원본 = 이름이 정확히 `Scanresult`, 백업본 =
+  그 밖의 `Scanresult*`(Scanresult_260402 등) + 설정의 추가 Scanresult 보관 폴더. 끄면 원본만. 경로 목록은 반드시
+  `desktop_config.scanresult_roots_info/scanresult_roots_for`(웹) 또는 `commonality.scanresult_roots(backup=)`(tkinter · 감시)로 만든다 —
+  새 Scanresult 조사 기능도 이 함수를 쓰고 화면에 `ScanBackupBar`/`ScanRoots`(ScanBackup.tsx)로 범위를 보여 준다.
+- Lot 추적 '지금 보는 목록'은 `.lotlist` 카드(목록별 띠 색 · 상태 세그먼트 · 토글). 동작 · 숫자는 바꾸지 않았다.
+
 ### Batch Report 지표 개편 — 시간 3칸 · 정상/실제 WPH · 작업자 중단 (2026-10-05, 브랜치 `version_v12`)
 
 - 사용자 지시로 `version_v11` 을 복사해 **`version_v12`** 에서 작업(push · 릴리즈는 사용자가 말할 때만). 목적: 개선 레시피(`PI Enhanced`,

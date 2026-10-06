@@ -2,6 +2,7 @@ import {Fragment,useEffect,useRef,useState} from 'react';
 import {Stepper,notify} from './ui';
 import {StPill} from './BatchLot';
 import {OpenPath} from './OpenPath';
+import {ScanBackupBar} from './ScanBackup';
 import {grpLabel,num,isRealId,type View,type AggGroup} from './batchData';
 
 /* Batch Report 찾기 · 취합 — ① 파일 이름으로 찾기 ② Lot · 공정 단계별로 고르기(Scanresult 경로 · 원문)
@@ -67,15 +68,17 @@ export function FindTab(p:Props){
           <label className="field">종료일<input type="date" aria-label="찾기 종료일" value={cond.end} onChange={e=>p.setCond({...cond,end:e.target.value})}/></label></div>
         <div className="go"><button className="primary" disabled={p.busy||!cond.query.trim()||!cond.machines.length} onClick={p.onFind}>{p.busy?'찾는 중…':'검색 →'}</button>
           <button type="button" className="help-btn lg" aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 묶는지 보기" onClick={p.onCrit}>?</button></div></div>
+      <ScanBackupBar note="찾은 Lot 의 Scanresult 경로를 보여 줄 때 적용됩니다." disabled={p.busy}/>
       {p.busy&&<p className="scope-status" role="status">{p.progress||'Reports 폴더를 확인하는 중…'}</p>}
       <details className="logic"><summary>로직 · 검색</summary><ol>
         <li>고른 호기 Reports 폴더의 <b>파일 이름만</b> 봅니다(원본을 열지 않음). 키워드는 대소문자 무시, 여러 단어는 모두 포함, 기간은 파일 이름 안 날짜.</li>
         <li>찾은 Batch Report와, 같은 호기에서 그 앞뒤 13시간 안에 스캔한 Batch Report를 읽어(이미 읽은 것은 캐시) <b>Lot · 공정 단계</b>로 모읍니다. 같은 Lot을 이어서 스캔했는데 키워드에 안 걸린 Batch Report(S/M 꼬리가 다른 것 등)도 회색으로 함께 보여 놓칠 일이 없게 합니다.</li>
         <li>호기 사이에는 2초 간격으로 순서대로 읽습니다(장비 접속 매너).</li></ol></details></>}
     {p.step===1&&v&&<>
+      <p className="hint">Scanresult 경로 검색 범위: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'원본 + 백업본'}</b> — 바꾸려면 1단계의 [백업본 포함] 스위치를 바꾸고 다시 검색하세요.</p>
       <details className="logic"><summary>로직 · 고르기</summary><ol>
         <li><b>원문 보기</b> = 캐시에 읽어 둔 Batch Report의 표를 그대로 앱 안에서 보여 줍니다. <b>원본 열기</b> = 장비 Report 폴더의 .htm을 기본 브라우저로 엽니다(읽기 전용).</li>
-        <li><b>Scanresult 경로</b> = 같은 호기 루트의 <code>Scanresult*</code>(백업 포함) <code>\Job\Setup\S/M</code>. 폴더 이름만 확인해 있는 곳을 보여 줍니다.</li>
+        <li><b>Scanresult 경로</b> = 같은 호기 루트의 <code>Scanresult*</code> <code>\Job\Setup\S/M</code>. 폴더 이름만 확인해 있는 곳을 보여 줍니다. 이번 검색: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'백업본 포함'}</b>.</li>
         <li>여러 Lot을 함께 골라도 됩니다. 취합은 Lot · 공정 단계마다 따로 합니다(WBG · CMP처럼 다른 공정 스캔을 더하지 않음).</li></ol></details>
       <div className="groups">{!order.length?<div className="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드 · 기간 · 호기 범위를 바꿔 보세요.</p></div>
         :order.map(k=>{const mem=members[k],first=v.R[mem[0]],l=first.lot!=null?v.lots[first.lot]:null,b=l?l.bunches[first.b!]:null;
@@ -86,7 +89,7 @@ export function FindTab(p:Props){
             {l&&<button style={{...small,marginLeft:'auto'}} onClick={()=>p.openLot(first.lot!)}>Lot History 보기</button>}</div>
             {paths.map(pk=>{const s=v.scan?.[pk];const found=s?.paths||[];return <div key={pk} className="sr"><span>Scanresult 경로</span>
               {found.length?found.map(x=><Fragment key={x}><code>{x}</code><button style={small} onClick={()=>copy(x)}>복사</button></Fragment>)
-                :<><code>{s?.pattern||pk}</code><button style={small} onClick={()=>copy(s?.pattern||pk)}>복사</button><span className="meta">폴더를 찾지 못했습니다(Scanresult · 백업 폴더 확인)</span></>}</div>;})}
+                :<><code>{s?.pattern||pk}</code><button style={small} onClick={()=>copy(s?.pattern||pk)}>복사</button><span className="meta">{v.scan_backup===false?'원본 Scanresult 에서 폴더를 찾지 못했습니다(백업본은 제외하고 찾음)':'폴더를 찾지 못했습니다(Scanresult · 백업 폴더 확인)'}</span></>}</div>;})}
             <div className="table-scroll" style={{maxHeight:'none',border:0,borderRadius:0}}><table className="t-compact"><thead><tr><th/><th>#</th><th>시작 ~ 끝</th><th>호기</th><th>S/M</th><th className="num">Pass / 행</th><th>첫 Error 원문</th><th>파일 이름</th><th/></tr></thead>
               <tbody>{mem.map((g,ai)=>{const r=v.R[g],out=!hits.has(g);return <tr key={g} className={out?'outside':''}><td><input type="checkbox" checked={!!sel[g]} aria-label={r.f+' 선택'}
                   onChange={e=>setSel(o=>{const n={...o};if(e.target.checked)n[g]=1;else delete n[g];return n;})}/></td><td>{ai+1}</td><td>{r.s} ~ {r.e.slice(11)}</td><td>{r.m}</td>

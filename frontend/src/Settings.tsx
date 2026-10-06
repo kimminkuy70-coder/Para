@@ -8,6 +8,7 @@ import {installUpdate,openProgramDir} from './AppUpdate';
 import type {AppUpdate} from './desktop';
 import {useDev,setDevOn,saveDrafts,dropDrafts} from './devmode';
 import {DevHelp,DevOff} from './DevHelp';
+import {ScanBackupBar,useScanBackup} from './ScanBackup';
 
 type Auto={enabled:boolean;interval_hours:number;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
@@ -22,6 +23,7 @@ const baseName=(p:string)=>p.split(/[\\/]/).filter(Boolean).pop()||p;
 const subOf=(s?:string)=>s==='report'||s==='scan'?'aoi':s||'save';
 
 export function Settings(){
+  const [scanBackup]=useScanBackup();
   // Another screen may open 설정 on a given tab with a machine to register (nav.ts).
   const [intent]=useState(()=>takeSettingsIntent());
   const [sub,setSub]=useState(subOf(intent?.sub));
@@ -131,7 +133,7 @@ export function Settings(){
       <td><code>{a.root||'—'}</code>{a.legacy&&<div className="hint">기존 설정(따로 등록) — [수정]에서 호기 폴더를 저장하면 통합됩니다.</div>}</td>
       <td className="hint" style={{whiteSpace:'nowrap'}}>
         <div>Reports: {a.report?<code>{baseName(a.report)}</code>:<b className="warn">없음</b>}</div>
-        <div>Scanresult: {a.scanresult?'자동 탐색(백업 포함)':<b className="warn">미등록</b>}</div></td>
+        <div>Scanresult: {a.scanresult?`자동 탐색(${scanBackup===false?'원본만':'백업본 포함'})`:<b className="warn">미등록</b>}</div></td>
       {actions(a.machine,()=>setEdit({kind:'aoi',machine:a.machine,newMachine:a.machine,path:a.root}),
         ()=>{if(window.confirm(`${a.machine} 호기 루트와 추가 폴더 등록을 모두 삭제할까요? (폴더 자체는 지우지 않습니다)`))
           void req('config_remove_aoi',{machine:a.machine},`${a.machine} 삭제됨`);})}</tr>;
@@ -193,7 +195,8 @@ export function Settings(){
     {sub==='aoi'&&<>
       <h3>AOI 장비 호기 루트 등록</h3>
       <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
-        <b> Scanresult</b> 폴더(<code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사가 읽습니다. 장비 폴더는 읽기만 합니다.</p>
+        <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사 · 감시 · Batch Report 찾기가 읽습니다. 장비 폴더는 읽기만 합니다.</p>
+      <ScanBackupBar note="Scanresult 를 찾는 모든 기능에 같이 적용됩니다."/>
       {aois.length>0&&<table className="tbl" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th/></tr></thead>
         <tbody>{aois.map(aoiRow)}</tbody></table>}
       <div className="form-filter" style={{marginTop:12}}>

@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #8 Scanresult 백업본 포함 조사 스위치 + Lot 단위 Scan List 카드 리디자인 (2026-10-06 KST, `version_v12`, v12.0.2)
+
+- GitHub 이슈 #8(예약 작업 처리). 참고 링크(emilkowalski/skills · nextlevelbuilder/ui-ux-pro-max-skill)는 README · `emil-design-eng` 규칙만
+  참고(눌림 scale(.97) · ease-out · 전환 속성 지정 · 테두리 대신 옅은 그림자). 외부 코드 · 의존성은 넣지 않음.
+- ①**Scanresult 백업본 포함 조사(공통 설정)**: 설정 파일 `scanresult_backup`(기본 true = 종전 동작). 원본 = 이름이 정확히
+  `Scanresult`(대소문자 · 구분자 무시), 백업본 = `Scanresult_xxx` 등 다른 Scanresult* + 설정에서 추가한 Scanresult 보관 폴더.
+  끄면 원본만(원본 이름이 없으면 이름순 첫 폴더). `commonality.scanresult_roots(backup=)` · `is_backup_scanresult`,
+  `desktop_config.scan_backup/scanresult_roots_info/scanresult_roots_for`, IPC `config_set_scan_backup{enabled}`, `config_state.scan_backup`.
+  적용처: Commonality 조사(`cmrun_plan` · `cmsurvey_preflight` — 이제 추가 보관 폴더도 같이 봄) · Commonality 감시(`cmwatcher.run_cycle(backup=)`,
+  후보 `cmwatch_candidates`) · Batch Report 찾기의 Scanresult 경로(`batch_find` → payload `scan_backup`) · tkinter(`equip_app` 3곳).
+  화면: 공통 `ScanBackup.tsx`(`ScanBackupBar` = 지금 범위 표시 + [백업본 포함] 스위치, 화면끼리 이벤트로 동기화 / `ScanRoots` = 이번에 조사한
+  폴더 목록과 원본 · 백업본 · 추가 폴더 표시) — 신규 Commonality 조사 1·2단계, 감시 호기 단계 · 대표 S/M 창, Batch Report 찾기, 설정 › AOI 장비 호기 루트.
+- ②**Lot 추적 '지금 보는 목록' 카드**(`BatchLot.tsx` `.lotlist`, CSS 는 `styles.css` 끝 `.bv .lotlist`/`.ll-*`): 동작(필터 · 정렬 · 2,000행 · Lot 창)은
+  그대로, 모양만 — 목록별 위 띠 색 · 제목 점, 오른쪽 큰 개수, 도구 줄(검색 아이콘 · 상태 세그먼트(개수 포함, 종전 select) · 재스캔/호기 이동 토글),
+  고정 머리 표 · 행 hover 강조 · 키보드 Enter 로 Lot 창, Lot · S/M 한 칸, 호기 이동 → 칩, 스캔 기간 2줄, 0 은 '—', Error 원문 칩 2개 + '+n', 빈 상태 안내.
+- 검증: 새 `tests/test_scan_backup.py` 6 · `tools/check_project.py`(test_batchreport 의 tkinter 없는 기존 1건만 실패) · `npx tsc --noEmit` ·
+  `vite build` · `tools/test_desktop_ui.mjs`(설정 스위치 끄고 켜기 · 상태 세그먼트 · 토글 · 개수 확인 추가) 통과. 실자료 · Windows 실기 미검증.
+
 ## 최신 재개 — Para #7 호기 색 고정 + 저장된 결과 파일 v12 리뉴얼 + 레시피 비교 '없음' 행 (2026-10-05 KST, `version_v12`, v12.0.1)
 
 - GitHub 이슈 #7(예약 작업 처리) + 처리 중 사용자 추가 요청(레시피 비교에 정상 WPH 없음 행).

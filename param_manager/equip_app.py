@@ -5248,7 +5248,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
             desc1 += f"\n호기 폴더: {root or '(미지정 — 지정 필요)'}"
             if root:
                 try:
-                    srs = cm.scanresult_roots(root, machine)
+                    srs = cm.scanresult_roots(root, machine, backup=self._cfg.get("scanresult_backup", True) is not False)
                     names = ", ".join(p.name for p in srs)
                     desc1 += f"\n탐색 대상 Scanresult({len(srs)}): {names}"
                 except Exception:  # noqa: BLE001
@@ -5772,7 +5772,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
 
     def _cmw_make_form(self, s, machine, device, lot, root, parent, then):
         """대표 S/M 선택 → 그 슬롯으로 양식 편집기 → 확정 양식을 대상에 묶는다."""
-        roots = cm.scanresult_roots(root, machine)
+        roots = cm.scanresult_roots(root, machine, backup=self._cfg.get("scanresult_backup", True) is not False)
 
         def work():
             return cmwatcher.sm_candidates(roots, device, lot)
@@ -6039,7 +6039,7 @@ class EquipApp(BatchReportMixin, tk.Tk):
     def _cm_scan_roots(self):
         m = self._cm["machine"]
         base = self._cm_roots().get(m, "")
-        return cm.scanresult_roots(base, m)
+        return cm.scanresult_roots(base, m, backup=self._cfg.get("scanresult_backup", True) is not False)
 
     def _cm_make_template(self):
         path = filedialog.asksaveasfilename(

@@ -102,6 +102,15 @@ try{
   await page.getByText(/AOI-05 호기 루트를 수정했습니다/).waitFor();
   await page.getByRole('button',{name:'AOI-05 수정'}).waitFor();
   assert(/AOI-05/.test(await summary.innerText())&&!/AOI-04/.test(await summary.innerText()));
+  // 이슈 #8: Scanresult 백업본 포함 조사 스위치(모든 Scanresult 조사 기능 공통 설정) — 기본 켬, 끄면 원본만.
+  const scanSwitch=page.locator('.sbk:visible').getByRole('switch',{name:'백업본 포함해서 조사'});
+  await page.locator('.sbk:visible').filter({hasText:'원본 + 백업본'}).waitFor();
+  assert(await scanSwitch.isChecked());
+  await scanSwitch.click();
+  await page.locator('.sbk.off:visible').filter({hasText:'원본만'}).waitFor();
+  assert(!(await scanSwitch.isChecked()));
+  await scanSwitch.click();
+  await page.locator('.sbk.on:visible').filter({hasText:'원본 + 백업본'}).waitFor();
   await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
   await page.getByLabel('AOI-05 선택').waitFor();
   // Batch Report 분석 (가동률 조사 및 분석 · 찾기 · 취합): fixed machine grid, no page overflow.
@@ -140,6 +149,14 @@ try{
   // Lot window: Lot History (timeline) and 취합 tabs, Excel export to the local result folder.
   await kpi.nth(0).click();
   await page.locator('.listtitle').filter({hasText:'Lot 단위 Scan List'}).waitFor();
+  // 이슈 #8: 목록 카드 — 상태 세그먼트(개수 포함) · 조건 토글 · 표시 개수.
+  const stateSeg=page.locator('.lotlist').getByRole('group',{name:'상태'});
+  await stateSeg.getByRole('button',{name:/^재스캔으로 완료/}).click();
+  assert.equal(await stateSeg.getByRole('button',{name:/^재스캔으로 완료/}).getAttribute('aria-pressed'),'true');
+  await stateSeg.getByRole('button',{name:/^전체/}).click();
+  assert.match(await page.locator('.lotlist .ll-count').innerText(),/69\s*\/\s*69 Lot/);
+  const moveTg=page.locator('.lotlist .ll-tg').filter({hasText:'호기 이동'});
+  await moveTg.click();assert.equal(await moveTg.getAttribute('aria-pressed'),'true');await moveTg.click();
   // Weekly bars: WW number on the first line, the date range on the second; tooltip rows aligned.
   await page.locator('.chartcard').first().getByRole('button',{name:'주',exact:true}).click();
   assert.match(await page.locator('svg[aria-label="기간별 Lot Scan 현황"] text').filter({hasText:/^WW\d+/}).first().textContent(),/^WW\d+\(\d\d\/\d\d~\d\d\/\d\d\)$/);

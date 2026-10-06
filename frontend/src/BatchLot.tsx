@@ -1,4 +1,4 @@
-import {useMemo,useRef,useState} from 'react';
+import {Fragment,useMemo,useRef,useState} from 'react';
 import {ColChart,Legend,Seg,type Key,type ColItem} from './BatchCharts';
 import {Q,openDefect} from './BatchHelp';
 import {bucket,shortKey,weekRange,periodName,num,stepLabel,is3D,STATES,ST,DONE,RE,OPEN,C_OK,C_ERR,C_WAIT,C_STOP,C_DEFECT,STOPK,type View,type Unit} from './batchData';
@@ -25,6 +25,7 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
   const lots=v.lots,R=v.R;
   const kpi=useMemo(()=>({re:lots.filter(l=>l.state===RE).length,open:lots.filter(l=>l.state===OPEN).length,dup:lots.filter(l=>l.dup).length}),[lots]);
   const chk=v.excluded.length;
+  const stCount=useMemo(()=>Object.fromEntries(STATES.map(x=>[x,lots.filter(l=>l.state===x).length])) as Record<string,number>,[lots]);
   const dupOnly=mode==='dup';
   const on:Mode=mode==='reports'?'reports':dupOnly?'dup':state===RE?'re':state===OPEN?'open':'lots';
   function pick(k:Mode){setMode(k);setState(k==='re'?RE:k==='open'?OPEN:'');setPeriod(null);setCause(null);setQ('');setRepQ('');setFRe(false);setFMove(false);
@@ -74,30 +75,48 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
         <Legend keys={LOTKEYS} hidden={hid} onToggle={k=>setHid(h=>({...h,[k]:!h[k]}))}/>
         <Seg label="기간 단위" value={unit} items={[['d','일'],['w','주'],['m','월']]} onChange={u=>{setUnit(u);setPeriod(null);}}/></div>
       <ColChart items={items} keys={LOTKEYS} maxw={unit==='w'?100:60} hidden={hid} sel={period} label="기간별 Lot Scan 현황" onClick={id=>{setPeriod(p=>p===id?null:id);if(!lotMode)setMode('lots');}}/></div>
-    <div className={'section-heading listhead lt-'+on}><div><span className="step">지금 보는 목록</span><h2 ref={listTop} key={on} className="listtitle">{TITLE[on]}</h2>
-      <p className="sub">{lotMode?(SUB[on]||'조사 범위 내 Scan된 Lot 전체')+' · Lot을 누르면 새 창(Lot 창)에서 Lot History'
-        :'조사 범위 내 Batch Report 전체 · 행을 누르면 Batch Report 원문 창(그 1장의 표 그대로), Lot 이름을 누르면 Lot 창(그 Lot의 모든 Batch Report를 모은 Lot History)'}</p></div>
-      <span className="count">{lotMode?`${rows.length} / ${lots.length} Lot`:`${reports.length} / ${R.length}개`}</span></div>
-    {lotMode?<div className="filters"><input type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Lot 코드 · S/M · Lot ID · Job 검색" aria-label="Lot 검색"/>
-      <select aria-label="상태" value={state} onChange={e=>setState(e.target.value)}><option value="">전체 상태</option>{STATES.map(s=><option key={s}>{s}</option>)}</select>
-      <label title="같은 Lot을 2번 이상 이어서 스캔한 Lot (Error 재스캔 · 나눠 스캔)"><input type="checkbox" checked={fRe} onChange={e=>setFRe(e.target.checked)}/> 재스캔</label>
-      <label title="다른 호기로 옮겨 이어서 스캔한 Lot"><input type="checkbox" checked={fMove} onChange={e=>setFMove(e.target.checked)}/> 호기 이동</label>
-      <span className="chips">{chips.map(([k,t,clear])=><button key={k} type="button" className="chip" onClick={clear}>{t} <i aria-hidden="true">✕</i></button>)}</span></div>
-    :<div className="filters"><input type="search" value={repQ} onChange={e=>setRepQ(e.target.value)} placeholder="파일 이름 · S/M · Lot 검색" aria-label="Batch Report 검색"/>
-      <select aria-label="결과" value={repRes} onChange={e=>setRepRes(e.target.value)}><option value="">전체 결과</option><option value="err">Error 있음</option><option value="stop">작업자 중단</option><option value="ok">모두 Pass</option></select>
-      <select aria-label="종류" value={repKind} onChange={e=>setRepKind(e.target.value)}><option value="">Lot + 점검 스캔</option><option value="lot">Lot만</option><option value="chk">점검 스캔만</option></select></div>}
-    <div className="table-scroll" style={{maxHeight:470}}><table className="t-compact">
-      {lotMode?<><thead><tr><th>Lot</th><th>S/M</th><th>호기</th><th className="num">Batch Report</th><th>처음 스캔</th><th>마지막 스캔</th><th>상태</th><th className="num">Pass하지 못한 wafer</th><th className="num">재스캔 Pass wafer</th><th className="num">중복 Scan wafer</th><th>주요 Error 원문(wafer 수)</th></tr></thead>
-        <tbody>{rows.slice(0,2000).map(([l,i])=><tr key={i} className="clickable" onClick={()=>openLot(i)}><td><b>{l.label}</b></td><td>{l.sms.join(', ')}</td><td>{l.machines.join(' → ')}</td><td className="num">{l.n}</td><td>{l.s}</td><td>{l.e}</td>
-          <td><StPill s={l.state}/>{l.moved&&<> <span className="st mv">호기 이동</span></>}{l.sz.length>0&&<> <span className={'st '+(l.sz.some(x=>x[0]==='d')?'sd':'so')} title="앞 Error 없이 Aborted.로 멈춘 스캔이 있습니다(Error 아님)">작업자 중단</span></>}{l.scans.includes('3D')&&<> <span className="st s3d" title="S/M에 3D가 붙은 3D 스캔이 있습니다 — 2D와 따로 셉니다">3D 스캔 포함</span></>}</td><td className="num v4">{l.open||''}</td><td className="num v2">{l.re||''}</td><td className="num v3">{l.dup||''}</td><td>{l.causes.map(c=>c[0]+' ×'+c[1]).join(' · ')}</td></tr>)}
-          {!rows.length&&<tr><td colSpan={11}>조건에 맞는 Lot이 없습니다.</td></tr>}</tbody></>
-      :<><thead><tr><th>시작</th><th>끝</th><th>호기</th><th>S/M</th><th title="누르면 Lot 창">Lot</th><th>공정 단계(Recipe(s))</th><th className="num">Pass / 행</th><th>첫 Error 원문 · 중단</th><th>파일 이름</th><th/></tr></thead>
-        <tbody>{reports.slice(0,2000).map(([r,i])=><tr key={i} className="clickable" onClick={()=>showRaw(i)}><td>{r.s}</td><td>{r.e.slice(11)}</td><td>{r.m}</td><td>{r.sm}</td>
-          <td>{r.lot!=null?<button type="button" className="linklike" title="Lot 창 열기 — 이 Lot의 모든 Batch Report를 모은 Lot History" onClick={e=>{e.stopPropagation();openLot(r.lot!);}}>{lots[r.lot].label}</button>:<span className="st out">점검 스캔</span>}</td>
-          <td>{stepLabel(r)}{is3D(r.k)&&<> <span className="st s3d">3D</span></>}</td><td className="num">{r.ok} / {r.n}{r.sp?<small className="muted"> (스캔 안 함 {r.sp})</small>:null}</td><td className={r.fe?'v4':''}>{r.fe||(r.o==='s'?<span className={'st '+(r.sk==='d'?'sd':'so')} title={`앞 Error 없이 Aborted. — 멈출 때 wafer Faults ${r.ff??'—'}`}>{STOPK[r.sk||'o']}</span>:'')}</td><td className="mono">{r.f}</td><td><button type="button" style={small} onClick={e=>{e.stopPropagation();showRaw(i);}}>원문 보기</button></td></tr>)}
-          {!reports.length&&<tr><td colSpan={10}>조건에 맞는 Batch Report가 없습니다.</td></tr>}</tbody></>}
-    </table></div>
-    {(lotMode?rows.length:reports.length)>2000&&<p className="hint">처음 2,000행만 보여 줍니다. 검색 · 필터로 좁혀 보세요.</p>}
+    {/* 지금 보는 목록 — 프로그램 테마(네이비 · 라임 카드)에 맞춘 카드(이슈 #8): 머리(제목 · 개수) → 도구 줄(검색 · 상태 · 조건) → 표 */}
+    <section className={'lotlist lt-'+on} aria-label="지금 보는 목록">
+      <header className="ll-head">
+        <div className="ll-title"><span className="ll-eyebrow">지금 보는 목록</span>
+          <h2 ref={listTop} key={on} className="listtitle"><i className="ll-dot" aria-hidden="true"/>{TITLE[on]}</h2>
+          <p className="sub">{lotMode?(SUB[on]||'조사 범위 내 Scan된 Lot 전체')+' · Lot을 누르면 새 창(Lot 창)에서 Lot History'
+            :'행을 누르면 Batch Report 원문 창(그 1장의 표 그대로), Lot 이름을 누르면 Lot 창(그 Lot의 모든 Batch Report를 모은 Lot History)'}</p></div>
+        <div className="ll-count" aria-live="polite"><strong>{num(lotMode?rows.length:reports.length)}</strong>
+          <span>/ {lotMode?`${num(lots.length)} Lot`:`${num(R.length)}개`}</span></div>
+      </header>
+      {lotMode?<div className="ll-tools">
+        <label className="ll-search"><span aria-hidden="true">⌕</span><input type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Lot 코드 · S/M · Lot ID · Job 검색" aria-label="Lot 검색"/></label>
+        <div className="ll-seg" role="group" aria-label="상태">{([['','전체',lots.length],...STATES.map(x=>[x,x,stCount[x]])] as [string,string,number][]).map(([k,t,n])=>
+          <button key={k||'all'} type="button" className={'ll-opt '+(k?ST[k]:'all')+(state===k?' on':'')} aria-pressed={state===k} onClick={()=>setState(k)}>{t}<b>{num(n)}</b></button>)}</div>
+        <div className="ll-toggles" role="group" aria-label="조건">
+          <button type="button" className={'ll-tg'+(fRe?' on':'')} aria-pressed={fRe} title="같은 Lot을 2번 이상 이어서 스캔한 Lot (Error 재스캔 · 나눠 스캔)" onClick={()=>setFRe(x=>!x)}>재스캔</button>
+          <button type="button" className={'ll-tg'+(fMove?' on':'')} aria-pressed={fMove} title="다른 호기로 옮겨 이어서 스캔한 Lot" onClick={()=>setFMove(x=>!x)}>호기 이동</button></div>
+        {chips.length>0&&<span className="chips">{chips.map(([k,t,clear])=><button key={k} type="button" className="chip" onClick={clear}>{t} <i aria-hidden="true">✕</i></button>)}</span>}</div>
+      :<div className="ll-tools">
+        <label className="ll-search"><span aria-hidden="true">⌕</span><input type="search" value={repQ} onChange={e=>setRepQ(e.target.value)} placeholder="파일 이름 · S/M · Lot 검색" aria-label="Batch Report 검색"/></label>
+        <select aria-label="결과" value={repRes} onChange={e=>setRepRes(e.target.value)}><option value="">전체 결과</option><option value="err">Error 있음</option><option value="stop">작업자 중단</option><option value="ok">모두 Pass</option></select>
+        <select aria-label="종류" value={repKind} onChange={e=>setRepKind(e.target.value)}><option value="">Lot + 점검 스캔</option><option value="lot">Lot만</option><option value="chk">점검 스캔만</option></select></div>}
+      <div className="table-scroll ll-table"><table className="t-compact">
+        {lotMode?<><thead><tr><th>Lot · S/M</th><th>호기</th><th className="num">Batch Report</th><th>스캔 기간</th><th>상태</th><th className="num">Pass하지 못한 wafer</th><th className="num">재스캔 Pass wafer</th><th className="num">중복 Scan wafer</th><th>주요 Error 원문(wafer 수)</th><th aria-hidden="true"/></tr></thead>
+          <tbody>{rows.slice(0,2000).map(([l,i])=><tr key={i} className="clickable" tabIndex={0} onClick={()=>openLot(i)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();openLot(i);}}}>
+            <td><b className="ll-lot">{l.label}</b><small className="ll-sm">{l.sms.join(', ')}</small></td>
+            <td><span className="ll-mach">{l.machines.map((m,j)=><Fragment key={j}>{j>0&&<i aria-hidden="true">→</i>}<span>{m}</span></Fragment>)}</span></td>
+            <td className="num">{l.n}</td>
+            <td className="ll-time"><span>{l.s}</span><small>~ {l.e}</small></td>
+            <td><span className="ll-pills"><StPill s={l.state}/>{l.moved&&<span className="st mv">호기 이동</span>}{l.sz.length>0&&<span className={'st '+(l.sz.some(x=>x[0]==='d')?'sd':'so')} title="앞 Error 없이 Aborted.로 멈춘 스캔이 있습니다(Error 아님)">작업자 중단</span>}{l.scans.includes('3D')&&<span className="st s3d" title="S/M에 3D가 붙은 3D 스캔이 있습니다 — 2D와 따로 셉니다">3D 스캔 포함</span>}</span></td>
+            <td className={'num'+(l.open?' v4':' ll-zero')}>{l.open||'—'}</td><td className={'num'+(l.re?' v2':' ll-zero')}>{l.re||'—'}</td><td className={'num'+(l.dup?' v3':' ll-zero')}>{l.dup||'—'}</td>
+            <td>{l.causes.length?<span className="ll-errs">{l.causes.slice(0,2).map(c=><span key={c[0]} className="ll-err" title={c[0]}>{c[0]} <b>×{c[1]}</b></span>)}{l.causes.length>2&&<span className="ll-more" title={l.causes.slice(2).map(c=>c[0]+' ×'+c[1]).join('\n')}>+{l.causes.length-2}</span>}</span>:<span className="ll-zero">—</span>}</td>
+            <td className="ll-go" aria-hidden="true">›</td></tr>)}
+            {!rows.length&&<tr className="ll-empty"><td colSpan={10}><b>조건에 맞는 Lot이 없습니다.</b><span>검색어나 상태 · 조건을 바꿔 보세요.</span></td></tr>}</tbody></>
+        :<><thead><tr><th>시작</th><th>끝</th><th>호기</th><th>S/M</th><th title="누르면 Lot 창">Lot</th><th>공정 단계(Recipe(s))</th><th className="num">Pass / 행</th><th>첫 Error 원문 · 중단</th><th>파일 이름</th><th/></tr></thead>
+          <tbody>{reports.slice(0,2000).map(([r,i])=><tr key={i} className="clickable" onClick={()=>showRaw(i)}><td>{r.s}</td><td>{r.e.slice(11)}</td><td>{r.m}</td><td>{r.sm}</td>
+            <td>{r.lot!=null?<button type="button" className="linklike" title="Lot 창 열기 — 이 Lot의 모든 Batch Report를 모은 Lot History" onClick={e=>{e.stopPropagation();openLot(r.lot!);}}>{lots[r.lot].label}</button>:<span className="st out">점검 스캔</span>}</td>
+            <td>{stepLabel(r)}{is3D(r.k)&&<> <span className="st s3d">3D</span></>}</td><td className="num">{r.ok} / {r.n}{r.sp?<small className="muted"> (스캔 안 함 {r.sp})</small>:null}</td><td className={r.fe?'v4':''}>{r.fe||(r.o==='s'?<span className={'st '+(r.sk==='d'?'sd':'so')} title={`앞 Error 없이 Aborted. — 멈출 때 wafer Faults ${r.ff??'—'}`}>{STOPK[r.sk||'o']}</span>:'')}</td><td className="mono">{r.f}</td><td><button type="button" style={small} onClick={e=>{e.stopPropagation();showRaw(i);}}>원문 보기</button></td></tr>)}
+            {!reports.length&&<tr className="ll-empty"><td colSpan={10}><b>조건에 맞는 Batch Report가 없습니다.</b><span>검색어나 결과 · 종류를 바꿔 보세요.</span></td></tr>}</tbody></>}
+      </table></div>
+      {(lotMode?rows.length:reports.length)>2000&&<p className="ll-foot">처음 2,000행만 보여 줍니다. 검색 · 필터로 좁혀 보세요.</p>}
+    </section>
     <section className="card2"><div className="section-heading"><div><h2>멈춘 이유 요약 <Q id="lot.reasons"/></h2><p className="sub">개수는 모두 <b>Lot</b> 기준 · 행을 누르면 그 Lot만 위 목록에</p></div><span className="grow"/>
         <Seg label="멈춘 이유" value={why} items={[['err',`Error ${causes.keys.length}종`],['stop',`작업자 중단 ${stops.m.d.n+stops.m.o.n}건`]]} onChange={setWhy}/></div>
       <div className="keys"><span><i style={{background:C_OK}}>　</i> 재스캔하여 Pass한 Lot</span><span><i style={{background:C_ERR}}>　</i> Pass하지 못한 Lot</span></div>

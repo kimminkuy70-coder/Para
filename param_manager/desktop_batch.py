@@ -309,7 +309,9 @@ class BatchViews:
                 raise ValueError("찾은 Batch Report 가 너무 많습니다. 키워드/기간을 좁히세요.")
             targets.append(dict(machine=machine, folder=folder, query="", start="", end="", names=sorted(keep), hits=hits))
         if not targets:
-            self.set_view("find", [], extra=dict(find=dict(target, listed=listed, total=0), scan={}), hits=[])
+            from .desktop_config import scan_backup
+            self.set_view("find", [], extra=dict(find=dict(target, listed=listed, total=0), scan={},
+                                                 scan_backup=scan_backup(cfg)), hits=[])
             return self.view_meta("find")
         collection = batchreport_store.collect(root, [{k: v for k, v in t.items() if k != "hits"} for t in targets],
                                                (lambda *a: progress(str(a[-1]))) if progress else None,
@@ -320,8 +322,9 @@ class BatchViews:
                 if r["machine"] == t["machine"] and r["source_folder"] == str(Path(t["folder"])) and r["report"].get("file_name") in hitset:
                     hit_ids.add(r["id"])
         scan = _scanresult_paths(cfg, collection["records"], progress, cancel)
+        from .desktop_config import scan_backup
         self.set_view("find", collection["records"], hits=hit_ids, extra=dict(
-            find=dict(target, listed=listed, total=len(hit_ids)), scan=scan,
+            find=dict(target, listed=listed, total=len(hit_ids)), scan=scan, scan_backup=scan_backup(cfg),
             errors=[[e["machine"], e["source_file"], e["error"]] for e in collection["errors"][:200]]))
         return self.view_meta("find")
 

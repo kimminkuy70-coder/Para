@@ -196,6 +196,18 @@ def _find_scanresult_dirs(parent: Path) -> list[Path]:
     return [p for p in _subdirs(Path(parent)) if _is_scanresult_name(p.name)]
 
 
+def is_backup_scanresult(path) -> bool:
+    """Scanresult* 폴더가 **백업본**인가 — 이름이 정확히 'Scanresult'(대소문자·구분자 무시)가 아니면 백업본
+    (Scanresult_260402 · SCANRESULT_BACKUP_260805 등). 원본 = 장비가 지금 쓰는 'Scanresult'."""
+    return _norm(Path(path).name) != "scanresult"
+
+
+def _main_only(dirs: list[Path]) -> list[Path]:
+    """백업본 제외 — 원본 'Scanresult' 만. 원본 이름이 없으면 이름순 첫 폴더(종전 `scanresult_root` 와 같은 기준)."""
+    main = [p for p in dirs if not is_backup_scanresult(p)]
+    return main or dirs[:1]
+
+
 def _find_scanresult_dir(parent: Path) -> Path | None:
     """parent 바로 아래 'Scanresult*' 폴더 하나(이름순 첫, 하위호환)."""
     hits = _find_scanresult_dirs(parent)
@@ -218,8 +230,9 @@ def _find_machine_dir(parent: Path, machine: str) -> Path | None:
     return None
 
 
-def scanresult_roots(root_base: str, machine: str) -> list[Path]:
+def scanresult_roots(root_base: str, machine: str, backup: bool = True) -> list[Path]:
     """호기 폴더만 지정하면 그 아래 **Scanresult 폴더 전부**(백업본 포함) 반환.
+    backup=False(설정 'Scanresult 백업본 포함 조사' 끔) → 원본 'Scanresult' 만(`_main_only`).
 
     예: W:\\AOI-9 아래 Scanresult / Scanresult_260402 / SCANRESULT_BACKUP_260805 가
     있으면 **모두** 반환해 Lot 을 여기저기서 찾는다.
@@ -231,15 +244,16 @@ def scanresult_roots(root_base: str, machine: str) -> list[Path]:
     base = Path(root_base)
     if _is_scanresult_name(base.name):        # base 가 Scanresult* 자체
         return [base]
+    pick = (lambda dirs: dirs) if backup else _main_only
     here = _find_scanresult_dirs(base)        # base 가 호기 폴더 → 바로 아래 전부
     if here:
-        return here
+        return pick(here)
     mdir = _find_machine_dir(base, machine)   # base 아래 호기 폴더(0패딩 흡수)
     if mdir is None and (base / machine).is_dir():
         mdir = base / machine
     if mdir is not None:
         sub = _find_scanresult_dirs(mdir)
-        return sub or [mdir / "Scanresult"]
+        return pick(sub) or [mdir / "Scanresult"]
     return [base / machine / "Scanresult"]
 
 

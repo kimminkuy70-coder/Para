@@ -4,6 +4,7 @@ import {notify,fail,LoadFailed,Stepper,StepNav} from './ui';
 import {RowPick} from './RowPick';
 import {OpenPath} from './OpenPath';
 import {FormEditor} from './FormEditor';
+import {ScanBackupBar,ScanRoots,type RootInfo} from './ScanBackup';
 
 type Interval={hours:number;label:string};
 type PTarget={machine:string;recipe:string;path:string};
@@ -245,6 +246,7 @@ const EMPTY_ROW:CPlan={device:'',lot:'',machines:'',note:''};
 function CmWatch({onChanged}:{onChanged:()=>void}){
   const [st,setSt]=useState<CState>(),[busy,setBusy]=useState(false),[step,setStep]=useState(0);
   const [draft,setDraft]=useState<CDraft>();
+  const [candRoots,setCandRoots]=useState<{info:RootInfo[];backup:boolean}>();
   const [target,setTarget]=useState<CTarget>(),[cands,setCands]=useState<Cand[]>(),[sm,setSm]=useState(''),[title,setTitle]=useState('');
   const [editing,setEditing]=useState<{version:string;recipe:string;index:number;total:number;used:number}>();
   // 하위 레시피 선택(중간 단계): 대표 S/M 복사 뒤 레시피가 여럿이면 조사할 것만 고른다.
@@ -276,7 +278,9 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   async function pickTarget(t:CTarget){
     // 이전 대상의 목록은 바로 지운다 — 새 목록을 찾는 동안 옛 S/M 을 고르지 못하게.
     setTarget(t);setSm('');setCands(undefined);setSubRecipes(undefined);setTitle(`${t.device}_${t.lot}`);
-    const r=await run<{candidates:Cand[]}>('cmwatch_candidates',{machine:t.machine,device:t.device,lot:t.lot});
+    setCandRoots(undefined);
+    const r=await run<{candidates:Cand[];root_info?:RootInfo[];scan_backup?:boolean}>('cmwatch_candidates',{machine:t.machine,device:t.device,lot:t.lot});
+    setCandRoots(r?{info:r.root_info||[],backup:r.scan_backup!==false}:undefined);
     setCands(r?.candidates||[]);if(r?.candidates.length)setSm(r.candidates[0].sm);
   }
   function closeTarget(){setTarget(undefined);setCands(undefined);setSm('');setSubRecipes(undefined);}
@@ -333,6 +337,7 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
     </>}
     {step===1&&<>
       <p className="hint">새 S/M 폴더를 찾을 호기를 고릅니다. 목록은 [설정 › AOI 장비 호기 루트]에 등록된 호기입니다.</p>
+      <ScanBackupBar note="감시 회차마다 그때의 설정으로 찾습니다." disabled={busy}/>
       <RowPick label="감시 호기" columns={['호기']} value={draft.machines} onChange={v=>setDraft(d=>d&&{...d,machines:v})}
         rows={st.available.map(m=>({id:m,cells:[<b key="m">{m}</b>]}))}
         empty={<p className="table-empty">[설정 › AOI 장비 호기 루트]에서 호기 폴더를 먼저 등록하세요.</p>}/>
@@ -367,6 +372,7 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
         :<p className="table-empty">저장된 계획에서 감시 호기에 해당하는 대상이 없습니다. 2·3단계를 확인하세요.</p>}
       {target&&!editing&&!subRecipes&&<div className="edit-dialog inline" role="dialog" aria-label="대표 S/M 선택">
         <h3>{target.machine} · {target.device} / {target.lot} — 대표 S/M</h3>
+        <ScanRoots info={candRoots?.info} backup={candRoots?.backup}/>
         <p className="hint">양식을 만들 기준 S/M 을 고릅니다(최근 생성순). 로컬로 안전복사한 뒤 읽으며, 하위 레시피가 여럿이면 다음 화면에서 조사할 것을 고릅니다.</p>
         {cands===undefined?<p className="hint" role="status"><span className="spinner" aria-hidden="true"/> 이 대상의 S/M 폴더를 찾는 중… (끝날 때까지 고를 수 없습니다)</p>
           :<RowPick label="대표 S/M" single columns={['S/M','생성','스캔','슬롯']} value={sm?[sm]:[]} onChange={v=>setSm(v[0]||'')}

@@ -4,6 +4,7 @@ import {Stepper,StepNav,notify,fail} from './ui';
 import {OpenPath,openPath} from './OpenPath';
 import {FormEditor} from './FormEditor';
 import {goToSettings} from './nav';
+import {ScanBackupBar,ScanRoots,type RootInfo} from './ScanBackup';
 
 type SurveyMachine={id:string;root:string};
 // '이슈 Lot' (구 'fail여부'): 이슈가 있었던 Lot — 비교표·뷰어에서 노란색으로 표시.
@@ -32,6 +33,7 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
   // [S/M] cell → which Lot folders a unit covers (shown after the safe copy).
   const [smUnit,setSmUnit]=useState<Unit>(),smDialog=useRef<HTMLDialogElement>(null);
   useEffect(()=>{if(smUnit)smDialog.current?.showModal();else smDialog.current?.close();},[smUnit]);
+  const [scanned,setScanned]=useState<{info:RootInfo[];backup:boolean}>();
   const [lots,setLots]=useState<Lot[]>([]),[picked,setPicked]=useState<Record<number,string[]>>({});
   const [units,setUnits]=useState<Unit[]>([]),[unit,setUnit]=useState(0),[staging,setStaging]=useState('');
   const [base,setBase]=useState(''),[title,setTitle]=useState(''),[scales,setScales]=useState<Scale[]>([]),[scaleEdit,setScaleEdit]=useState<Record<string,string>>({});
@@ -89,9 +91,10 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
     const plan=rows.filter(r=>complete(r)&&forMachine(r,machine))
       .map(r=>({디바이스명:r.device.trim(),공정번호:r.process.trim(),'S/M':r.sm.trim(),AOI호기:r.machine.trim()||machine,'이슈 Lot':r.issue?'Y':''}));
     setProgress('S/M 폴더 찾기를 시작합니다…');
-    const r=await call<{lots:Lot[]}>('cmrun_plan',{machine,plan},setProgress);
+    const r=await call<{lots:Lot[];root_info?:RootInfo[];scan_backup?:boolean}>('cmrun_plan',{machine,plan},setProgress);
     setProgress('');
     if(!r)return;
+    setScanned({info:r.root_info||[],backup:r.scan_backup!==false});
     setLots(r.lots);setPicked(Object.fromEntries(r.lots.filter(l=>l.exists).map(l=>[l.id,l.wafer?[l.wafer]:[]])));setStep(1);
   }
   async function copy(){
@@ -147,7 +150,8 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
     <Stepper labels={STEPS} current={step}/>
     <div className="step-body">
     {step===0&&<>
-      <p className="hint">조사할 Lot 계획을 입력하거나 엑셀로 불러오면, 고른 호기의 Scanresult(백업본 포함)에서 S/M 폴더를 찾습니다. 원본은 읽기만 합니다.</p>
+      <p className="hint">조사할 Lot 계획을 입력하거나 엑셀로 불러오면, 고른 호기의 Scanresult 에서 S/M 폴더를 찾습니다. 원본은 읽기만 합니다.</p>
+      <ScanBackupBar note="[다음]을 누를 때의 설정으로 찾습니다." disabled={busy}/>
       <div className="form-filter" style={{marginTop:12}}><label className="field">조사 호기<select value={machine} onChange={e=>setMachine(e.target.value)}>
         {machines.map(m=><option key={m.id} value={m.id}>{m.id}</option>)}</select></label>
         <button onClick={()=>goToSettings({sub:'aoi'})} title="목록에 없는 호기의 장비 폴더를 등록합니다">＋ 다른 호기 장비 폴더 등록…</button></div>
@@ -179,6 +183,7 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
       {busy&&progress&&<div className="runbar" role="status" aria-live="polite"><div><strong>S/M 폴더 찾는 중…</strong><p>{progress}</p></div></div>}
     </>}
     {step===1&&<>
+      <ScanRoots info={scanned?.info} backup={scanned?.backup}/>
       <p className="hint">조사할 S/M 폴더를 고르세요(기본: 찾은 폴더 전체). 슬롯(웨이퍼)을 여러 개 고르면 슬롯마다 따로 조사하고 열 이름 뒤에 슬롯명이 붙습니다. '수정' = Scan 일자.</p>
       <div className="table-scroll"><table><thead><tr><th>선택</th><th>S/M 폴더</th><th>디바이스</th><th>공정</th><th>슬롯</th><th>수정(Scan)</th><th>상태</th></tr></thead>
         <tbody>{lots.map(l=><tr key={l.id} className={(l.exists?'':'muted ')+(l.fail?'fail-row':'')}>

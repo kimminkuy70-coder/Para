@@ -69,10 +69,14 @@ class DesktopCmRun:
         mine = cm.filter_plan_for_machine(self.survey._validate_plan(params.get("plan")), machine)
         if not mine:
             raise ValueError("이 호기에 해당하는 계획 행이 없습니다. AOI호기를 확인하세요.")
-        from .desktop_config import scanresult_roots_for
-        # 호기 루트 아래 Scanresult*(백업 포함) + 설정에서 추가한 Scanresult 보관 폴더.
-        scan_roots = scanresult_roots_for(read_json(self.survey.config_path), machine)
-        report(f'{machine} Scanresult 폴더 {len(scan_roots)}개(백업 포함)에서 계획 {len(mine)}행의 S/M 폴더를 찾습니다…')
+        from .desktop_config import roots_report, scan_backup, scanresult_roots_info
+        # 호기 루트 아래 Scanresult* + 설정에서 추가한 Scanresult 보관 폴더(설정 '백업본 포함'을 끄면 원본만).
+        cfg = read_json(self.survey.config_path)
+        backup = scan_backup(cfg)
+        info = scanresult_roots_info(cfg, machine, backup)
+        scan_roots = [r["path"] for r in info]
+        report(f'{machine} Scanresult 폴더 {len(scan_roots)}개({"백업본 포함" if backup else "원본만 — 백업본 제외"})에서 '
+               f'계획 {len(mine)}행의 S/M 폴더를 찾습니다…')
 
         def progress(i, n, row):
             report(f"[{i}/{n}] {row.get('디바이스명', '')} / {row.get('공정번호', '')} / {row.get('S/M', '')} 찾는 중…")
@@ -81,7 +85,8 @@ class DesktopCmRun:
         if len(lots) > MAX_LOTS:
             raise ValueError("S/M 폴더가 너무 많습니다. 계획을 나눠 진행하세요.")
         self.state = dict(machine=machine, lots=lots)
-        return dict(machine=machine, roots=[str(r) for r in scan_roots], lots=[
+        return dict(machine=machine, roots=[str(r) for r in scan_roots], root_info=roots_report(info),
+                    scan_backup=backup, lots=[
             dict(id=i, label=l.label, device=l.device, lot=l.lot, sm=l.sm, exists=bool(l.exists),
                  fail=bool(l.fail), scan_time=l.scan_time, created=l.created, reason=l.reason,
                  wafers=[p.name for p in l.wafer_choices],

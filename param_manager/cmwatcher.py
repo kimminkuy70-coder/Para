@@ -661,7 +661,7 @@ def survey_items(items: list[dict], *, machine: str, form_path: str, recipe: str
 
 
 def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
-              local_root: str, coef_rows: list | None = None, progress=None) -> dict:
+              local_root: str, coef_rows: list | None = None, progress=None, backup: bool = True) -> dict:
     """감시 **1회차 전체**를 GUI 없이 돈다 — 스캔 → 계획 추가 → 자동 조사.
 
     GUI(`equip_app._cmw_cycle_work`)는 이 함수를 부르기만 한다. 오케스트레이션을
@@ -689,8 +689,10 @@ def run_cycle(settings: CmWatchSettings, state: CmWatchState, *,
         if not targets:
             continue
         # 값이 목록이면 호기 루트 + 추가 Scanresult 보관 폴더(웹 설정 'AOI 장비 호기 루트').
-        roots = list(dict.fromkeys(r for base in (root if isinstance(root, list) else [root])
-                                   for r in cm.scanresult_roots(base, m)))
+        # backup=False(웹 설정 'Scanresult 백업본 포함 조사' 끔) → 호기 루트의 원본 'Scanresult' 만(보관 폴더도 뺀다).
+        bases = root if isinstance(root, list) else [root]
+        roots = list(dict.fromkeys(r for base in (bases if backup else bases[:1])
+                                   for r in cm.scanresult_roots(base, m, backup=backup)))
         res = scan_new(roots, targets, seen_set(state, m),
                        (state.mtimes.get(m) or {}),
                        settle_minutes=settings.settle_minutes)

@@ -617,11 +617,12 @@ class CmWatch(_Base):
                          for f in cmwatcher.forms_for(s, m, dev, lot)]
                 targets.append(dict(machine=m, device=dev, lot=lot, forms=forms))
         roots = self._cfg().get("commonality_roots") or {}
+        from .desktop_config import scan_backup
         nxt = watcher.next_run_at(s, st) if st.last_run else None
         return dict(enabled=bool(s.enabled), interval_hours=s.interval_hours,
                     intervals=[dict(hours=h, label=l) for h, l in watcher.INTERVAL_CHOICES],
                     window_start=s.window_start, window_end=s.window_end, settle_minutes=s.settle_minutes,
-                    machines=list(s.machines), available=sorted(roots), plan=[
+                    machines=list(s.machines), available=sorted(roots), scan_backup=scan_backup(self._cfg()), plan=[
                         dict(device=r.get("디바이스명", ""), lot=r.get("공정번호", ""), machines=r.get("AOI호기", ""),
                              note=r.get("비고", "")) for r in rows],
                     plan_file=s.watch_plan, targets=targets, last_run=st.last_run, last_result=st.last_result,
@@ -690,8 +691,9 @@ class CmWatch(_Base):
             raise ValueError("먼저 감시할 호기와 감시 대상 계획을 지정하세요")
         save = self._cfg().get("save_dir") or ""
         try:
+            from .desktop_config import scan_backup
             res = cmwatcher.run_cycle(s, st, local_root=local, coef_rows=self._coef_rows(save) if save else [],
-                                      progress=report)
+                                      progress=report, backup=scan_backup(self._cfg()))
         except Exception as exc:  # noqa: BLE001
             st.fail_count = int(st.fail_count or 0) + 1
             st.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -715,12 +717,14 @@ class CmWatch(_Base):
         roots = self._cfg().get("commonality_roots") or {}
         if params["machine"] not in roots:
             raise ValueError("Scanresult 루트가 등록된 호기를 고르세요")
-        from .desktop_config import scanresult_roots_for
-        scan = scanresult_roots_for(self._cfg(), params["machine"])
+        from .desktop_config import roots_report, scan_backup, scanresult_roots_info
+        cfg = self._cfg()
+        info = scanresult_roots_info(cfg, params["machine"])
+        scan = [r["path"] for r in info]
         cands = cmwatcher.sm_candidates(scan, params["device"], params["lot"])
         self.building = dict(machine=params["machine"], device=params["device"], lot=params["lot"], cands=cands)
         return dict(candidates=[dict(sm=c["sm"], created=c["created"], scan=c["scan"], slots=c["slots"])
-                                for c in cands[:100]])
+                                for c in cands[:100]], root_info=roots_report(info), scan_backup=scan_backup(cfg))
 
     def begin(self, params):
         """Copy the chosen representative S/M slot locally, detect recipes, open the
