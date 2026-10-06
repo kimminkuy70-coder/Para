@@ -24,7 +24,7 @@ CHART_CSS = """
 .bv-tip.rich .tg i{display:block;width:12px;height:12px;border-radius:3px}
 .bv-tip.rich .tg b{text-align:right;font-variant-numeric:tabular-nums;min-width:28px}
 .bv-tip.rich .tg .tu{color:#cbd5e1}.bv-tip.rich .tf{margin-top:5px;color:#cbd5e1;font-size:11px;white-space:nowrap}
-.bvapp .chart{min-width:0}.bvapp .chartscroll{overflow-x:auto;overflow-y:hidden}
+.bvapp .chart{min-width:0;max-width:100%}.bvapp .chartscroll{overflow-x:auto;overflow-y:hidden;max-width:100%;padding-bottom:2px}
 .bvapp .chart svg{display:block}
 .bvapp .chart svg text{font:11px 'Malgun Gothic','맑은 고딕',sans-serif;fill:#52647d}
 .bvapp .chart svg tspan.sub2{font-size:10.5px;fill:#6b7c90}
@@ -145,7 +145,7 @@ function colChart(o){
   if(!o.items.length)return '<div class="chart"><p class="hint">조사 범위에 자료가 없습니다.</p></div>';
   var hidden=o.hidden||{},fy=o.fy||function(v){return num(v);},minw=o.minw||14,maxw=o.maxw||60,h=o.h||210;
   var two=o.items.some(function(it){return it.short2;}),pl=48,pb=two?44:28,pt=12,cnt=o.items.length,avail=Math.max(320,(o.width||900)-4);
-  var cw=Math.max(minw,Math.min(maxw,(avail-pl-8)/cnt)),W=Math.max(avail,pl+cnt*cw+8),ph=h-28-pt;
+  var cw=Math.max(minw,Math.min(maxw,(avail-pl-36)/cnt)),W=Math.max(avail,pl+cnt*cw+36),ph=h-28-pt;   // 오른쪽 36px: 마지막 날짜 글자가 잘리지 않게
   var tot=o.items.map(function(it){return o.keys.reduce(function(a,k){return a+(hidden[k[0]]?0:(it.v[k[0]]||0));},0);});
   var max=niceMax(Math.max.apply(null,tot.concat([1]))),dv=(max%4===0||max<=1)?4:5,every=Math.max(1,Math.ceil((two?92:56)/cw));
   h+=pb-28;var s='<div class="chart"><div class="chartscroll"><svg width="'+W+'" height="'+h+'" role="img" aria-label="'+esc(o.label)+'">';
@@ -182,7 +182,7 @@ function scatter(pts,base,width,act){
 var apps=[];
 function mount(el,render,onClick,onChange){var a={el:el,draw:function(){var ae=document.activeElement,id=ae&&ae.id&&el.contains(ae)?ae.id:null,pos=null;
     try{pos=id?ae.selectionStart:null;}catch(_){pos=null;}var cs=getComputedStyle(el);
-    el.innerHTML=render((el.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0))||900);
+    el.innerHTML=render(Math.max(320,(el.clientWidth-(parseFloat(cs.paddingLeft)||0)-(parseFloat(cs.paddingRight)||0)||900)-36));   // 그래프 카드 안쪽 여백만큼 줄임 — 넘치면 가로 스크롤
     if(id){var b=document.getElementById(id);if(b){b.focus();try{if(pos!=null)b.setSelectionRange(pos,pos);}catch(_){}}}}};
   el.classList.add('bvapp');el.addEventListener('click',function(e){var t=e.target.closest('[data-act]');if(t&&el.contains(t)){onClick(t.getAttribute('data-act'),t.getAttribute('data-v'),t,e);}});
   if(onChange){el.addEventListener('change',function(e){var t=e.target.closest('[data-chg]');if(t)onChange(t.getAttribute('data-chg'),t.value,t);});

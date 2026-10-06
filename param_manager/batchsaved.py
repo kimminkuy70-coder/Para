@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from . import lotmodel as lm, lotreport
 from .batchcharts import APP_JS, CHART_CSS, CORE_JS, data_script
 from .batchreport_output import PAGE_CSS, esc
+from .report_theme import THEME_CSS, page_foot, page_top
 
 MACH_PAL = ['#1f77b4', '#2a9d8f', '#e07b39', '#7b5ea7', '#3a7d44', '#c44e7a', '#5b8fc7', '#b8860b',
             '#17859b', '#8c564b', '#4c6ef5', '#6b8e23', '#d1495b', '#31517c', '#9c6ade', '#00a676']
@@ -579,27 +580,32 @@ def build_html(s, dashboard=False, lot_file='', notices=()):
     secs = ''.join(f'<section class="metric" id="sec-{k}"{"" if i == 0 else " hidden"}>{body}</section>'
                    for i, (k, _, body) in enumerate(tabs))
     basis = '추천(가장 나중 Pass)' + (f' + 저장된 사람 선택 {s.saved}건' if s.saved else '')
-    meta = (f'<span><b>기간</b> {esc(s.range[0] or "—")} ~ {esc(s.range[1] or "—")}</span>'
-            f'<span><b>호기</b> {esc(", ".join(s.ids)) or "—"} ({len(s.ids)}대)</span>'
-            f'<span><b>Lot</b> {len(s.P["lots"]):,} · <b>Batch Report</b> {len(s.P["R"]):,}</span>'
-            f'<span><b>중복 Pass 선택 기준</b> {esc(basis)}</span><span><b>생성</b> {s.created:%Y-%m-%d %H:%M}</span>')
+    top = page_top(
+        title=title, sub='Batch Report 분석 결과' if not dashboard else '가동률 대시보드',
+        eyebrow='PROCESS INTELLIGENCE · BATCH REPORT 분석',
+        desc=('Lot 추적 · 가동률 · WPH 를 앱 화면(v12)과 같은 엔진 · 같은 식으로 계산한 결과입니다.' if not dashboard else
+              '가동률 · WPH 를 앱 화면과 같은 식으로 계산한 대시보드입니다. 하루 1회 자동 분석 또는 앱에서 다시 조사하면 새로 만들어집니다.'),
+        badges=([('30분 자동 새로고침', 'connected')] if dashboard else []) + [(f'생성 {s.created:%Y-%m-%d %H:%M}', '')],
+        stamp=[('기간', f'{s.range[0] or "—"} ~ {s.range[1] or "—"}'), ('호기', f'{len(s.ids)}대 · {", ".join(s.ids) or "—"}'),
+               ('Lot', f'{len(s.P["lots"]):,}'), ('Batch Report', f'{len(s.P["R"]):,}'), ('중복 Pass 선택 기준', basis)],
+        scope=s.scope or '')
     notes = ''.join(f'<li>{esc(n)}</li>' for n in notices)
     return ''.join([
         '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
         '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;; script-src &#39;unsafe-inline&#39;; img-src data:; connect-src &#39;none&#39;">',
         '<meta http-equiv="refresh" content="1800">' if dashboard else '',
-        f'<title>{title}</title><style>{PAGE_CSS}{SAVED_CSS}{CHART_CSS}</style></head><body><div class="doc">',
-        '<div class="head"><div class="kick">Camtek AOI Manager · Batch Report 분석 · 앱 화면(v12)과 같은 계산</div>',
-        f'<h1>{title}{"<span class=draft>30분 자동 새로고침</span>" if dashboard else ""}</h1><div class="meta">{meta}</div></div>',
-        '<div class="pad">',
-        f'<div class="info">조사 범위: {esc(s.scope or "—")}</div>',
+        f'<title>{title}</title><style>{PAGE_CSS}{SAVED_CSS}{CHART_CSS}{THEME_CSS}</style></head><body class="app-rpt"><div class="doc">',
+        top, '<div class="pad">',
         '<div class="note navy"><span class="t">자동 새로고침 안내</span>이 페이지는 로컬 파일입니다. 자동 새로고침은 파일만 다시 엽니다. '
         '새 데이터는 앱에서 조사를 다시 하거나 하루 1회 자동 분석으로 생성됩니다.</div>' if dashboard else '',
         nav, secs,
         f'<aside><h2>읽기 오류 · 알림</h2><ul>{notes or "<li>이번 실행에서는 읽기 오류 · 알림이 없습니다.</li>"}</ul></aside>',
         '<div class="foot">※ 숫자는 프로그램의 Batch Report 분석 화면(가동률 조사 및 분석)과 같은 엔진 · 같은 식으로 만든 것입니다. '
         '원본 Batch Report는 읽기만 했습니다. 화면에서 기간 · 호기를 좁혀 보면 그 범위의 숫자가 나옵니다(이 파일은 조사 범위 전체).</div>',
-        f'</div></div>{data_script("bvdata", chart_data(s, lot_file))}<script>{TAB_JS}</script><script>{CORE_JS}</script><script>{APP_JS}</script></body></html>'])
+        f'</div></div>{page_foot(APP_FOOT, title)}{data_script("bvdata", chart_data(s, lot_file))}<script>{TAB_JS}</script><script>{CORE_JS}</script><script>{APP_JS}</script></body></html>'])
+
+
+APP_FOOT = 'Camtek AOI Manager · Batch Report 분석 결과 파일'
 
 
 _R_KEYS = ('f', 'm', 'sm', 'step', 'k', 's', 'e', 'sec', 'lot', 'n', 'ok', 'fe', 'o', 'sk', 'ff')
