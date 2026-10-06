@@ -14,6 +14,7 @@ from datetime import datetime
 from . import lotmodel as lm
 from .batchcharts import CHART_CSS, CORE_JS, LOTCHART_JS
 from .batchreport_output import PAGE_CSS
+from .report_theme import THEME_CSS, page_foot, page_top, raw_parts
 
 # (제목, 설명, 예) — 앱 화면 ? 버튼(desktop_batch.describe → lot_criteria)과 HTML 이 같은 문구를 쓴다.
 CRITERIA = [
@@ -89,15 +90,16 @@ def cause_summary(model):
     return sorted(out, key=lambda r: (-r["lots"], -r["wafers"]))
 
 
-def to_data(model):
-    """HTML 에 넣을 JSON(시각은 문자열). 상태는 원문 그대로."""
+def to_data(model, gindex=None):
+    """HTML 에 넣을 JSON(시각은 문자열). 상태는 원문 그대로. gindex(record id → g)를 주면 Batch Report 마다 g(원문 창 번호)."""
+    gindex = gindex or {}
     lots = []
     for lot in model["lots"]:
         bunches = []
         for b in lot["bunches"]:
             attempts = [{"machine": a["machine"], "file": a["file"], "path": a["source_folder"], "sm": a["sm"],
                          "step": lm.step_label(a["step"], a.get("scan")), "start": _t(a["start"]), "stop": a.get("outcome") == lm.STOP, "end": _t(a["end"]), "rows": len(a["rows"]),
-                         "pass": sum(r["pass"] for r in a["rows"]), "lot_id": a["lot_id"] or ""}
+                         "pass": sum(r["pass"] for r in a["rows"]), "lot_id": a["lot_id"] or "", "g": gindex.get(a.get("id"))}
                         for a in b["attempts"]]
             wafers = [{"slot": w["slot"], "id": w["wafer_id"], "pick": w["pick"], "v": w["verdict"],
                        "cause": w["cause"], "chain": w["chain_only"], "dice": w["dice"],
@@ -230,7 +232,7 @@ function bunchHtml(b,bi){
   '</span><span>'+esc(b.machines.join(' → '))+'</span><span>Batch Report '+b.attempts.length+'개 · Batch Time '+b.hours+'h</span>'+(b.moved?'<span class="pill mv">호기 이동</span>':'')+'</div><div class="inner">';
  b.attempts.forEach(function(a,ai){var u=fileUrl(a);
   h+='<div class="att"><span class="n">#'+(ai+1)+'</span><span>'+esc(a.start)+' ~ '+esc(a.end.slice(11))+'</span><b>'+esc(a.machine)+'</b><span>S/M '+esc(a.sm)+'</span><span>'+esc(a.step)+
-   '</span><span>Pass '+a.pass+' / '+a.rows+'행'+(a.stop?' · 작업자 중단':'')+'</span><code>'+esc(a.file)+'</code>'+(u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">원문 열기</a>':'<span class="dis">원문(경로 없음)</span>')+'</div>';});
+   '</span><span>Pass '+a.pass+' / '+a.rows+'행'+(a.stop?' · 작업자 중단':'')+'</span><code>'+esc(a.file)+'</code>'+(a.g!=null?'<button type="button" class="rawbtn" data-raw="'+a.g+'">원문 보기</button>':u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">원문 열기</a>':'<span class="dis">원문(경로 없음)</span>')+'</div>';});
  var head='<tr><th>슬롯</th><th>Wafer ID</th>';b.attempts.forEach(function(a,ai){head+='<th>#'+(ai+1)+'<small>'+esc(a.machine)+' '+esc(a.start.slice(5))+'</small></th>';});
  head+='<th>결과</th><th>첫 오류 원문</th></tr>';var rows='';
  b.wafers.forEach(function(w){var cells=[],k;for(k=0;k<b.attempts.length;k++)cells.push('<td class="c-n">·</td>');
@@ -264,7 +266,7 @@ def build_html(model, scope="", created=None, view=None):
     """
     if view is not None:
         model = view.model
-    data = to_data(model)
+    data = to_data(model, view.index if view is not None else None)
     lots = data["lots"]
     created = created or datetime.now()
     stop_rows = ""
@@ -299,13 +301,17 @@ def build_html(model, scope="", created=None, view=None):
                  f"<th>Pass하지 못한 Lot</th><th>wafer</th></tr></thead><tbody>{stop_rows}</tbody></table></div>") if stop_rows else ""
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/").replace("<!--", "<\\!--")
     states = "".join(f'<option value="{s}">{s}</option>' for s in (lm.LOT_OPEN, lm.LOT_RESCANNED, lm.LOT_DONE))
+    raw_html, raw_data, raw_js = raw_parts(view)
+    top = page_top(title='Batch Report Lot 추적', sub='Batch Report Lot 추적 결과', eyebrow='PROCESS INTELLIGENCE · LOT 추적',
+                   desc='Lot 이 어떻게 스캔됐고 모든 wafer 가 Pass 했는지 — 행을 누르면 Lot History, Batch Report 마다 [원문 보기].',
+                   badges=[(f'생성 {_t(created)}', '')], scope=scope or '')
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Batch Report Lot 추적</title><style>{PAGE_CSS}{LOT_CSS}{CHART_CSS}</style></head><body><div class="doc">
-<div class="head"><div class="kick">AOI Batch Report · Lot 추적 · 오프라인 자동 산출</div>
-<div class="hbar"><h1>Batch Report Lot 추적</h1><button type="button" class="qbtn" id="qb" aria-expanded="false" aria-controls="crit">? Lot 판정 기준</button></div>
-<div class="meta"><span><b>생성</b> {_esc(_t(created))}</span><span><b>조사 범위</b> {_esc(scope or '—')}</span></div>
-<div class="crit" id="crit"><dl>{crit}</dl></div></div>
+<title>Batch Report Lot 추적</title><style>{PAGE_CSS}{LOT_CSS}{CHART_CSS}{THEME_CSS}</style></head><body class="app-rpt"><div class="doc">
+{top}
 <div class="pad">
+<div style="display:flex;justify-content:flex-end;margin:-4px 0 10px"><button type="button" class="qbtn" id="qb" aria-expanded="false" aria-controls="crit">? Lot 판정 기준</button></div>
+<div class="crit" id="crit"><dl>{crit}</dl></div>
+<section class="panel">
 <div class="kpis">{kpi_html}</div>
 <div id="lotchart"></div>
 <h2>Lot 목록</h2><p class="sub">행을 누르면 Lot History — 취합 표 · wafer 표가 먼저 나오고, 아래에 Batch Report 이력과 Lot × wafer 오류 지도가 나옵니다.</p>
@@ -320,7 +326,9 @@ def build_html(model, scope="", created=None, view=None):
 <div class="tscroll"><table><thead><tr>{cause_head}</tr></thead><tbody>{cause_rows}</tbody></table></div>{stop_html}
 <h2>점검 스캔 (Lot에서 제외)</h2><p class="sub">S/M에 영문 3글자 단어가 없어 Lot으로 보지 않은 Batch Report입니다.</p>
 <div class="tscroll"><table><thead><tr><th>호기</th><th>S/M</th><th>시작</th><th>행</th><th>파일</th></tr></thead><tbody>{excluded or '<tr><td colspan="5">없음</td></tr>'}</tbody></table></div>
+</section>
 <div class="foot">※ 원본 Batch Report는 읽기만 했습니다. 판정 기준은 위 [? Lot 판정 기준]에 있습니다. 중복 wafer는 가장 나중 Pass(저장된 사람 선택이 있으면 그 선택)를 쓴 결과로, 앱 화면과 같습니다.</div>
-</div></div>
+</div></div>{page_foot('Camtek AOI Manager · Batch Report Lot 추적 결과 파일', 'Batch Report 원문 ' + ('포함' if view is not None else '링크'))}
+{raw_html}
 <div class="ovl" id="ovl" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal"><div class="mhead"><h3 id="mt"></h3><button class="x" id="mx" aria-label="닫기">×</button></div><div class="mbody" id="mb"></div></div></div>
-<script>window.__LOTDATA={payload};window.__LOTPERIOD={{unit:'w',hid:{{}},period:null}};</script><script>{CORE_JS}</script><script>{LOT_JS}</script><script>{LOTCHART_JS}</script></body></html>"""
+<script>window.__LOTDATA={payload};window.__LOTPERIOD={{unit:'w',hid:{{}},period:null}};</script><script>{CORE_JS}</script><script>{LOT_JS}</script><script>{LOTCHART_JS}</script>{raw_data}{raw_js}</body></html>"""
