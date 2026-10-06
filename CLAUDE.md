@@ -23,6 +23,19 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 저장된 결과 HTML = 앱과 같은 인터랙티브 그래프 (2026-10-06, 이슈 #13, v12.1.5)
+
+- 새 `param_manager/batchcharts.py`: 앱 `BatchCharts.tsx`(ColChart · Legend · Seg · Scatter · rich 툴팁) 와 `BatchUtil/BatchWph/BatchLot.tsx` 그래프 부분을
+  바닐라 JS 문자열(`CORE_JS` · `APP_JS` · `LOTCHART_JS`)로 옮긴 것. 외부 라이브러리 · 인터넷 없음(CSP 인라인 스크립트만). 계산식은 `batchData.ts` 그대로 —
+  **앱 그래프 · 식을 바꾸면 `batchcharts.py` 도 같이** 바꾼다.
+- 분석 HTML · 가동률 대시보드(`batchsaved.build_html`)는 `bvdata` JSON(`chart_data`: U 행 · Batch Report 요약 · 조치 대기 · 정상 25매 · Lot 스캔 · Lot [이름, 처음 스캔, 상태, 호기])을
+  내장하고, `#lotchart`(Lot 추적: 기간별 Lot Scan 현황) · `#utilapp`(가동률: 호기 탭 · 시간 구성 호기별/기간별 · 24시간 시간표 · 기간 상세 창) ·
+  `#wphapp`(WPH: 하위 레시피/호기 선택 · 상위 레시피 필터 · 레시피 비교 · 호기 × 레시피 표 · 기간별 추이 · 레시피 상세 창)을 스크립트가 그린다.
+  `#utilapp`/`#wphapp` 안의 서버 정적 HTML 은 스크립트가 꺼졌을 때의 대체 화면(#12 의 `JOB_JS` 는 `APP_JS` 로 대체되어 삭제).
+- Lot 을 누르면 같은 폴더의 Lot 추적 HTML 을 `#lot=<Lot 이름>` 으로 열어 그 Lot History 를 바로 보여 준다(대시보드는 폴더가 달라 링크 없음).
+  Batch Report 원문 열기는 저장 HTML 에 경로가 없어 지원하지 않는다(시간표 막대 = Lot History).
+- Lot 추적 HTML(`lotreport.build_html`): 목록 위 `#lotchart` — 앱처럼 기간 막대를 누르면 그 기간 Lot 만 목록에(`__LOTPERIOD` 를 `LOT_JS` draw 가 봄).
+
 ### 조사 = 이미 조사한 것은 두고 신규만 + 저장 HTML 상위 레시피 필터 (2026-10-06, 이슈 #12 · #11, v12.1.4)
 
 - `batchreport_store.collect`: 폴더 목록 1번(`_scan`, scandir 의 수정시각 · 크기)으로 캐시 서명이 같은 파일은 장비에 다시 묻지 않는다
@@ -1006,7 +1019,7 @@ python3 tests/test_history.py      # 1  (멀티시트 비교·변경내역 엑�
 python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신자동→이력 통합)
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
-python3 tests/test_batchsaved.py    # 7  (저장된 결과 파일 = 앱 식: 가동률 · WPH · Lot 요약 · 호기 색 표 · HTML/Excel/대시보드 · 정상 WPH 없음 행 · 상위 레시피 필터 · Lot 추적 HTML view)
+python3 tests/test_batchsaved.py    # 8  (저장된 결과 파일 = 앱 식: 가동률 · WPH · Lot 요약 · 호기 색 표 · HTML/Excel/대시보드 · 정상 WPH 없음 행 · 상위 레시피 필터 · Lot 추적 HTML view · 인터랙티브 그래프 자료)
 python3 tests/test_batchview.py    # 13 (지표 개편: 시간 3칸·WPH 재료·작업자 중단/Defect 과다 · 3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
 python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯 · 3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)

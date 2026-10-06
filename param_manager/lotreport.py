@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 
 from . import lotmodel as lm
+from .batchcharts import CHART_CSS, CORE_JS, LOTCHART_JS
 from .batchreport_output import PAGE_CSS
 
 # (제목, 설명, 예) — 앱 화면 ? 버튼(desktop_batch.describe → lot_criteria)과 HTML 이 같은 문구를 쓴다.
@@ -174,7 +175,7 @@ table.map td.n{text-align:right;font-variant-numeric:tabular-nums}
 
 LOT_JS = r"""
 (function(){
-var D=window.__LOTDATA,L=D.lots,V=['한 번에 Pass','재스캔 Pass','중복 Pass','Pass 없음'],VC={'한 번에 Pass':'v-ok','재스캔 Pass':'v-re','중복 Pass':'v-dup','Pass 없음':'v-open'};
+var D=window.__LOTDATA,L=D.lots,LP=window.__LOTPERIOD||{},V=['한 번에 Pass','재스캔 Pass','중복 Pass','Pass 없음'],VC={'한 번에 Pass':'v-ok','재스캔 Pass':'v-re','중복 Pass':'v-dup','Pass 없음':'v-open'};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function num(v){return v==null?'—':(Math.round(v*100)/100).toLocaleString();}
 function pill(l){var c=l.state==='Pass하지 못한 wafer 존재'?'bad':l.state==='재스캔으로 완료'?'rec':'ok',h='<span class="pill '+c+'">'+esc(l.state)+'</span>';
@@ -187,10 +188,11 @@ var last='';
 function draw(){
  var t=q.value.trim().toUpperCase(),rows=[],n=0;
  // 같은 조건이면 다시 그리지 않는다 — 검색칸 blur(change)로 표가 바뀌면 그 순간의 행 클릭이 사라진다.
- var key=[t,st.value,mc.value,fd.checked,fm.checked,fs.checked].join('|');if(key===last)return;last=key;
+ var key=[t,st.value,mc.value,fd.checked,fm.checked,fs.checked,LP.period||'',LP.unit||''].join('|');if(key===last)return;last=key;
  L.forEach(function(l,i){
   if(t&&(l.label+' '+l.sms.join(' ')+' '+l.lot_id+' '+l.jobs.join(' ')).toUpperCase().indexOf(t)<0)return;
   if(st.value&&l.state!==st.value)return;if(mc.value&&l.machines.indexOf(mc.value)<0)return;
+  if(LP.period&&window.BV&&(!l.start||BV.bucket(l.start.slice(0,10),LP.unit)!==LP.period))return;   // 기간별 Lot Scan 현황에서 고른 기간(이슈 #13)
   if(fd.checked&&!l.duplicates)return;if(fm.checked&&!l.moved)return;if(fs.checked&&!l.bunches.some(function(b){return b.attempts.length>1;}))return;
   n++;rows.push('<tr data-i="'+i+'"><td><b>'+esc(l.label)+'</b></td><td>'+esc(l.sms.join(', '))+'</td><td>'+esc(l.machines.join(' → '))+
    '</td><td>'+l.bunches.length+'</td><td>'+l.attempts+'</td><td>'+esc(l.start)+'</td><td>'+pill(l)+'</td><td>'+(l.unresolved||'')+
@@ -248,6 +250,7 @@ ovl.addEventListener('click',function(e){if(e.target===ovl)ovl.classList.remove(
 document.addEventListener('keydown',function(e){if(e.key==='Escape')ovl.classList.remove('on');});
 var qb=document.getElementById('qb'),cr=document.getElementById('crit');
 qb.onclick=function(){var on=cr.classList.toggle('on');qb.setAttribute('aria-expanded',on);};
+window.__openLot=openLot;window.__lotRedraw=draw;
 draw();
 })();
 """
@@ -297,13 +300,14 @@ def build_html(model, scope="", created=None, view=None):
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/").replace("<!--", "<\\!--")
     states = "".join(f'<option value="{s}">{s}</option>' for s in (lm.LOT_OPEN, lm.LOT_RESCANNED, lm.LOT_DONE))
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Batch Report Lot 추적</title><style>{PAGE_CSS}{LOT_CSS}</style></head><body><div class="doc">
+<title>Batch Report Lot 추적</title><style>{PAGE_CSS}{LOT_CSS}{CHART_CSS}</style></head><body><div class="doc">
 <div class="head"><div class="kick">AOI Batch Report · Lot 추적 · 오프라인 자동 산출</div>
 <div class="hbar"><h1>Batch Report Lot 추적</h1><button type="button" class="qbtn" id="qb" aria-expanded="false" aria-controls="crit">? Lot 판정 기준</button></div>
 <div class="meta"><span><b>생성</b> {_esc(_t(created))}</span><span><b>조사 범위</b> {_esc(scope or '—')}</span></div>
 <div class="crit" id="crit"><dl>{crit}</dl></div></div>
 <div class="pad">
 <div class="kpis">{kpi_html}</div>
+<div id="lotchart"></div>
 <h2>Lot 목록</h2><p class="sub">행을 누르면 Lot History — 취합 표 · wafer 표가 먼저 나오고, 아래에 Batch Report 이력과 Lot × wafer 오류 지도가 나옵니다.</p>
 <div class="filters"><input type="search" id="q" placeholder="Lot 코드 · S/M · Lot ID · Job 검색" aria-label="Lot 검색">
 <select id="st" aria-label="상태"><option value="">전체 상태</option>{states}</select>
@@ -319,4 +323,4 @@ def build_html(model, scope="", created=None, view=None):
 <div class="foot">※ 원본 Batch Report는 읽기만 했습니다. 판정 기준은 위 [? Lot 판정 기준]에 있습니다. 중복 wafer는 가장 나중 Pass(저장된 사람 선택이 있으면 그 선택)를 쓴 결과로, 앱 화면과 같습니다.</div>
 </div></div>
 <div class="ovl" id="ovl" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal"><div class="mhead"><h3 id="mt"></h3><button class="x" id="mx" aria-label="닫기">×</button></div><div class="mbody" id="mb"></div></div></div>
-<script>window.__LOTDATA={payload};</script><script>{LOT_JS}</script></body></html>"""
+<script>window.__LOTDATA={payload};window.__LOTPERIOD={{unit:'w',hid:{{}},period:null}};</script><script>{CORE_JS}</script><script>{LOT_JS}</script><script>{LOTCHART_JS}</script></body></html>"""

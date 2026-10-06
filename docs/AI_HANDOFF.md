@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #13 저장된 결과 HTML 을 앱과 같은 인터랙티브 그래프로 (2026-10-06 KST, `version_v12`, v12.1.5)
+
+- GitHub 이슈 #13: "Batch Report 분석(가동률 · Lot 추적 · WPH)에서 나오는 결과 HTML 파일들도 프로그램에서 보는 것과 똑같이 인터랙티브 그래프로. v12.1.4 로 릴리즈."
+  → v12.1.4 는 이미 #12 로 나간 태그라(태그 이동 · 덮어쓰기 금지) **v12.1.5** 로 릴리즈.
+- 새 `param_manager/batchcharts.py`(앱 그래프의 바닐라 JS 이식 · CSS), `batchsaved.py`(`chart_data` → `bvdata` JSON, `#lotchart`/`#utilapp`/`#wphapp`,
+  `JOB_JS` 삭제 — WPH 탭 전체를 `APP_JS` 가 앱처럼 그림, TAB_JS 가 탭 전환 때 `BV.rerender()`), `lotreport.py`(기간별 Lot Scan 현황 + 기간 필터 + `#lot=` 해시).
+- 그래프: Lot 기간 막대(일/주/월 · 범례 켜고 끄기 · 누르면 그 기간 Lot), 가동률(호기 탭 · KPI 4 · 시간 구성 호기별/기간별 · 24시간 시간표 ◀▶ ·
+  기간 상세 창: 시간 구성/손실 이유(누르면 Lot)/시간표), WPH(하위 레시피 · 호기 select · 상위 레시피 필터 · KPI 4 · 레시피 비교 · 표 · 기간별 추이(그래프 값 4종) ·
+  레시피 상세 창: WPH 분해/1장 처리 시간 + 정상 25매 분포/Lot별 실제 WPH 산점도). 툴팁은 앱과 같은 표 모양(rich).
+- 앱과 다른 점: 저장 HTML 에는 원문 경로가 없어 'Batch Report 원문 창'은 없음 — Lot 을 누르면 같은 폴더 Lot 추적 HTML 의 Lot History(새 탭). 대시보드는 Lot 링크 없음.
+  조사 범위 = 저장 시점 조사 범위 전체(앱처럼 기간 · 호기 범위를 다시 고르는 칸은 없음).
+- 검증: `test_batchsaved.test_interactive_chart_data_and_scripts` 추가, `tools/check_project.py`(test_batchreport 의 tkinter 없는 기존 1건만 실패),
+  Chromium(Playwright)으로 합성 자료의 분석 HTML · 대시보드 · Lot 추적 HTML 에서 막대 hover 툴팁 · 클릭 · 범례 · 일/주/월 · 기간 상세 창 · 레시피 상세 창 ·
+  시간표 · 산점도 · 상위 레시피 칩 · `#lot=` 열기 · JS 오류 없음 확인. Windows 실기 · 실자료 · 큰 자료(수천 Batch Report)에서의 파일 크기/속도 미검증.
+
 ## 최신 재개 — Para #12(#11 후속) 조사 = 이미 조사한 것은 두고 신규만 + 저장 HTML 상위 레시피 필터 (2026-10-06 KST, `version_v12`, v12.1.4)
 
 - GitHub 이슈 #12(= #11 답변에 대한 사용자 지시): "이미 조사한 건 놔두고 신규만 있는지 빠르게 검토해서 추가할 Batch Report가 있으면 추가해서

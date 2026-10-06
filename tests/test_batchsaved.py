@@ -50,6 +50,25 @@ class SavedNumbers(unittest.TestCase):
         self.assertEqual(k['중복 Scan한 wafer가 존재하는 Lot'], 1)
         self.assertEqual(self.s.causes(), [['Scan 2D Error.', 1, 1, 0, 1]])
 
+    def test_interactive_chart_data_and_scripts(self):
+        # 이슈 #13: 저장된 HTML 도 앱과 같은 인터랙티브 그래프 — 앱과 같은 U 행 · Batch Report · 조치 대기를 내장하고 스크립트가 그린다.
+        import json, re
+        page = bs.build_html(self.s, lot_file='BatchReport_Lot추적.html')
+        for anchor in ('id="lotchart"', 'id="utilapp"', 'id="wphapp"', 'var BV=', 'function colChart', 'recipeWindow', 'periodWindow'):
+            self.assertIn(anchor, page)
+        data = json.loads(re.search(r'<script type="application/json" id="bvdata">(.*?)</script>', page).group(1))
+        self.assertEqual(data['U'], self.s.U)                       # 숫자는 앱이 받는 것과 같은 U 행에서 계산
+        self.assertEqual(data['ids'], ['AOI-1'])
+        self.assertEqual(data['lotHref'], 'BatchReport_Lot추적.html')
+        self.assertEqual(len(data['R']), len(self.p['R']))
+        self.assertEqual([l[0] for l in data['lots']], [l['label'] for l in self.p['lots']])
+        self.assertNotIn('</script', re.search(r'id="bvdata">(.*?)</script>', page).group(1))
+        dash = bs.build_html(self.s, dashboard=True)
+        self.assertEqual(json.loads(re.search(r'id="bvdata">(.*?)</script>', dash).group(1))['lotHref'], '')
+        lots = lotreport.build_html(self.view.model, '테스트', view=self.view)
+        for anchor in ('id="lotchart"', '__LOTPERIOD', 'var BV=', '#lot='):
+            self.assertIn(anchor, lots)
+
     def test_machine_colors_stable_and_same_as_app_table(self):
         c1 = bs.mach_colors(['AOI-2', 'AOI-1', 'AOI-10'])
         c2 = bs.mach_colors(['AOI-10', 'AOI-2', 'AOI-1', 'AOI-1'])

@@ -16,6 +16,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from . import lotmodel as lm, lotreport
+from .batchcharts import APP_JS, CHART_CSS, CORE_JS, data_script
 from .batchreport_output import PAGE_CSS, esc
 
 MACH_PAL = ['#1f77b4', '#2a9d8f', '#e07b39', '#7b5ea7', '#3a7d44', '#c44e7a', '#5b8fc7', '#b8860b',
@@ -337,39 +338,9 @@ dl.defs dt{font-weight:800;color:var(--navy);font-size:13px}dl.defs dd{margin:0;
 """
 
 TAB_JS = ('function showMetric(k){document.querySelectorAll("section.metric").forEach(function(s){s.hidden=(s.id!=="sec-"+k)});'
-          'document.querySelectorAll(".mbtn").forEach(function(b){b.classList.toggle("on",b.dataset.sec===k)});window.scrollTo(0,0);}'
+          'document.querySelectorAll(".mbtn").forEach(function(b){b.classList.toggle("on",b.dataset.sec===k)});window.scrollTo(0,0);if(window.BV)BV.rerender();}'
           'function period(p){document.querySelectorAll("[data-period]").forEach(function(e){e.hidden=e.dataset.period!==p});'
           'document.querySelectorAll(".periodnav button").forEach(function(b){b.classList.toggle("on",b.dataset.p===p)});}')
-
-# 상위 레시피(Job) 필터 — 앱 WPH · 생산능력의 JobFilter(이슈 #10)와 같은 동작을 저장된 HTML 에서도(이슈 #12).
-# 여러 개 고르기 · 전체 보기 · 9개 이상이면 찾기 + 찾은 것 모두 고르기. 비면 전체.
-# 레시피 비교(막대 길이는 보이는 레시피 기준으로 다시 맞춤) · 호기 × 레시피 표 · 숫자 4개를 고른 상위 레시피로 거른다.
-JOB_JS = r"""
-(function(){var box=document.getElementById('jf');if(!box)return;
-var D=JSON.parse(document.getElementById('wphjobs').textContent),sel=[],q=document.getElementById('jfq');
-function f1(x){return x==null?'—':x.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1});}
-function n0(x){return x==null?'—':Math.round(x).toLocaleString('ko-KR');}
-function kpi(id,v,sub){var e=document.getElementById(id);if(!e)return;e.querySelector('.n').firstChild.nodeValue=v;if(sub!=null)e.querySelector('.s').textContent=sub;}
-function apply(){var all=!sel.length,on=function(j){return all||sel.indexOf(j)>=0;};
- document.querySelectorAll('[data-job]').forEach(function(e){if(!e.classList.contains('jf-chip'))e.hidden=!on(e.dataset.job);});
- box.querySelectorAll('.jf-chip').forEach(function(b){var o=sel.indexOf(b.dataset.job)>=0;b.classList.toggle('on',o);b.setAttribute('aria-pressed',o);b.querySelector('i').textContent=o?'✓':'';});
- document.getElementById('jfstate').textContent=sel.length?sel.length+'개 고름 / '+D.jobs.length+'개':'전체 '+D.jobs.length+'개 (고르지 않으면 전체)';
- document.getElementById('jfall').disabled=!sel.length;
- var mx=1;document.querySelectorAll('.caprow[data-sum]').forEach(function(r){if(!r.closest('.capgrp').hidden)mx=Math.max(mx,+r.dataset.sum);});
- document.querySelectorAll('.capbar>span[data-cap]').forEach(function(x){var w=+x.dataset.cap/mx*100;x.style.width=w.toFixed(2)+'%';x.textContent=w>6?x.dataset.m:'';});
- var a={w25:0,s25:0,ps:0,d:0,rec:0},ms={};Object.keys(D.sum).forEach(function(j){if(!on(j))return;var t=D.sum[j];a.w25+=t.w25;a.s25+=t.s25;a.ps+=t.ps;a.d+=t.d;a.rec+=t.rec;t.m.forEach(function(m){ms[m]=1;});});
- var wn=a.s25?a.w25*3600/a.s25:null,wa=a.d>0?a.ps*3600/a.d:null,dr=wn&&wa!=null?(1-wa/wn)*100:null;
- kpi('wk-wn',f1(wn),'정상 25매 Batch Report '+n0(a.w25/25)+'장');kpi('wk-wa',f1(wa),'Pass '+n0(a.ps)+'장 · 유휴만 뺀 시간');
- kpi('wk-dr',f1(dr),null);kpi('wk-rm',a.rec+' · '+Object.keys(ms).length,sel.length?'고른 상위 레시피 '+sel.length+'개':null);
- var ql=q?q.value.trim().toLowerCase():'';box.querySelectorAll('.jf-chip').forEach(function(b){var j=b.dataset.job;b.hidden=!!ql&&j.toLowerCase().indexOf(ql)<0&&sel.indexOf(j)<0;});
- var fa=document.getElementById('jffound');if(fa)fa.hidden=!ql;}
-box.addEventListener('click',function(ev){var b=ev.target.closest('button');if(!b)return;
- if(b.classList.contains('jf-chip')){var j=b.dataset.job,i=sel.indexOf(j);if(i>=0)sel.splice(i,1);else sel.push(j);}
- else if(b.id==='jfall'){sel=[];}
- else if(b.id==='jffound'){box.querySelectorAll('.jf-chip').forEach(function(c){if(!c.hidden&&sel.indexOf(c.dataset.job)<0)sel.push(c.dataset.job);});}
- apply();});
-if(q)q.addEventListener('input',apply);apply();})();
-"""
 
 
 def _kpis(items, cls='k4', ids=()):
@@ -403,7 +374,7 @@ TIME_KEYS = ('<div class="keys"><span><i style="background:%s"></i>웨이퍼 처
 def util_section(s):
     a = s.util_all()
     nm = max(1, len(s.ids))
-    parts = [_kpis([
+    parts = ['<div id="utilapp">', _kpis([
         ('가동률', num(pct(a['proc'], a['cal']), 1), '%', f'웨이퍼 처리 {hrs(a["proc"])}시간', C_PROC, 't'),
         ('Error · 중단 및 조치', num(pct(a['loss'], a['cal']), 1), '%',
          f'Error {hrs(a["a"]["e"])} + 작업자 중단 {hrs(a["a"]["sd"] + a["a"]["so"])}시간', C_LOSS, 'r'),
@@ -426,7 +397,8 @@ def util_section(s):
             rows.append(f'<div class="prow" title="{esc(_tip(label, c))}"><span class="pl">{esc(label)}</span>{_stack(c)}'
                         f'<span class="pv">{pc(pct(c["proc"], c["cal"]))}</span></div>')
         parts.append(''.join(rows) + '</div></div>')
-    # 시간 구성 상세 · 손실 이유
+    parts.append('</div>')
+    # 시간 구성 상세 · 손실 이유 (조사 범위 전체 요약 — 기간 · 호기별은 위 그래프의 기간 상세 창)
     A = a['a']
     det = [('웨이퍼 처리', a['proc'], C_PROC, False), ('그중 같은 wafer 다시 스캔', A['du'], C_OK, True),
            ('그중 점검 스캔', A['ck'], '#94a3b8', True), ('Error · 중단 및 조치', a['loss'], C_LOSS, False),
@@ -485,7 +457,7 @@ def wph_section(s):
     rows_u = s.wph_rows()
     A = sum_u(rows_u)
     wn, wa = wph_normal(A), wph_actual(A)
-    parts = [_job_filter(recipes, cells, rows_u), _kpis([
+    parts = ['<div id="wphapp">', _job_filter(recipes, cells, rows_u), _kpis([
         ('정상 WPH', num(wn, 1), '', f'정상 25매 Batch Report {num(A["w25"] / 25)}장', '', ''),
         ('실제 WPH', num(wa, 1), '', f'Pass {num(A["ps"])}장 · 유휴만 뺀 시간', '', 't'),
         ('처리량 감소', num(drop(wn, wa), 1), '%', '1 − 실제 ÷ 정상', '', 'r'),
@@ -548,7 +520,7 @@ def wph_section(s):
     parts.append('<div class="tscroll"><table><thead><tr><th>레시피 (상위 › 하위)</th><th>호기</th><th class="num">1장 처리 시간</th><th class="num">Avg. Scan Time</th>'
                  '<th class="num">정상 WPH</th><th class="num">실제 WPH</th><th class="num">처리량 감소</th><th class="num">하루 생산능력</th>'
                  '<th class="num">Batch Report</th></tr></thead><tbody>'
-                 + (''.join(body) or '<tr><td colspan="9">조사 범위에 WPH 자료가 없습니다.</td></tr>') + '</tbody></table></div>')
+                 + (''.join(body) or '<tr><td colspan="9">조사 범위에 WPH 자료가 없습니다.</td></tr>') + '</tbody></table></div></div>')
     return ''.join(parts)
 
 
@@ -564,7 +536,7 @@ def _wph_tr(step, m, a, total, is_total, color='', job=None):
 
 
 def lot_section(s, lot_file=''):
-    parts = [_kpis([(l, f'{n:,}', u, sub, '', tone) for l, n, u, sub, tone in s.lot_kpis()], 'k5')]
+    parts = [_kpis([(l, f'{n:,}', u, sub, '', tone) for l, n, u, sub, tone in s.lot_kpis()], 'k5'), '<div id="lotchart"></div>']
     parts.append('<h2>멈춘 이유 요약 · Error</h2><div class="sub">wafer마다 Pass/Fail 원문의 첫 문구로 셉니다(앞 Error 뒤 따라온 Aborted. · Skipped.는 그 앞 Error 문구로). '
                  'Lot 판정: 그 Error 난 wafer가 모두 Pass면 재스캔하여 Pass, 하나라도 끝내 못 하면 Pass하지 못한 Lot.</div>')
     rows = ''.join(f'<tr><td>{esc(c)}</td><td class="num">{lots:,}</td><td class="num">{ok:,}</td><td class="num">{op:,}</td><td class="num">{w:,}</td></tr>'
@@ -616,7 +588,7 @@ def build_html(s, dashboard=False, lot_file='', notices=()):
         '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
         '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;; script-src &#39;unsafe-inline&#39;; img-src data:; connect-src &#39;none&#39;">',
         '<meta http-equiv="refresh" content="1800">' if dashboard else '',
-        f'<title>{title}</title><style>{PAGE_CSS}{SAVED_CSS}</style></head><body><div class="doc">',
+        f'<title>{title}</title><style>{PAGE_CSS}{SAVED_CSS}{CHART_CSS}</style></head><body><div class="doc">',
         '<div class="head"><div class="kick">Camtek AOI Manager · Batch Report 분석 · 앱 화면(v12)과 같은 계산</div>',
         f'<h1>{title}{"<span class=draft>30분 자동 새로고침</span>" if dashboard else ""}</h1><div class="meta">{meta}</div></div>',
         '<div class="pad">',
@@ -627,7 +599,22 @@ def build_html(s, dashboard=False, lot_file='', notices=()):
         f'<aside><h2>읽기 오류 · 알림</h2><ul>{notes or "<li>이번 실행에서는 읽기 오류 · 알림이 없습니다.</li>"}</ul></aside>',
         '<div class="foot">※ 숫자는 프로그램의 Batch Report 분석 화면(가동률 조사 및 분석)과 같은 엔진 · 같은 식으로 만든 것입니다. '
         '원본 Batch Report는 읽기만 했습니다. 화면에서 기간 · 호기를 좁혀 보면 그 범위의 숫자가 나옵니다(이 파일은 조사 범위 전체).</div>',
-        f'</div></div><script>{TAB_JS}{JOB_JS}</script></body></html>'])
+        f'</div></div>{data_script("bvdata", chart_data(s, lot_file))}<script>{TAB_JS}</script><script>{CORE_JS}</script><script>{APP_JS}</script></body></html>'])
+
+
+_R_KEYS = ('f', 'm', 'sm', 'step', 'k', 's', 'e', 'sec', 'lot', 'n', 'ok', 'fe', 'o', 'sk', 'ff')
+
+
+def chart_data(s, lot_file=''):
+    """인터랙티브 그래프(`batchcharts.APP_JS`)가 쓰는 자료 — 앱이 받는 View payload 의 필요한 부분만(이슈 #13).
+
+    U(날짜 × 호기 × 레시피 시간) · Batch Report(시간표) · 조치 대기 · 정상 25매 · Lot 스캔(WPH) 은 앱과 같은 값 그대로,
+    Lot 은 [이름, 처음 스캔, 상태, 호기]만. lotHref = 같은 폴더의 Lot 추적 HTML(Lot 을 누르면 그 Lot History 를 연다, 대시보드는 없음)."""
+    P = s.P
+    return {'ids': s.ids, 'range': s.range, 'colors': s.colors, 'U': s.U, 'lotHref': lot_file,
+            'lots': [[l['label'], l['s'], l['state'], ' → '.join(l['machines'])] for l in P['lots']],
+            'R': [{k: r.get(k) for k in _R_KEYS} for r in P['R']],
+            'waits': P['waits'], 'N': P['N'], 'L': P['L']}
 
 
 # ---------------------------------------------------------------------- Excel
