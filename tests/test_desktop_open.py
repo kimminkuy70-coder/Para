@@ -42,6 +42,24 @@ class DesktopOpenTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.opener.resolve(str(link))
 
+    def test_scanresult_folder(self):
+        """#18 Batch Report 찾기 › Scanresult 경로 [폴더 열기]: 등록 호기 루트의 Scanresult* 아래 · 추가 보관 폴더 아래 폴더만."""
+        root, keep = self.tmp / "AOI-17", self.tmp / "keep"
+        job = root / "Scanresult_bak" / "JOB" / "SETUP" / "S"
+        for d in (job, root / "Reports" / "x", keep / "J", root / "Scanresult"):
+            d.mkdir(parents=True)
+        (job / "a.txt").write_text("x", encoding="utf-8")
+        cfg = json.loads(self.cfg.read_text(encoding="utf-8"))
+        cfg.update(aoi_roots={"AOI-17": str(root)}, aoi_extra={"AOI-17": {"scanresult": [str(keep)]}})
+        self.cfg.write_text(json.dumps(cfg), encoding="utf-8")
+        for ok in (job, root / "Scanresult", keep / "J"):
+            self.assertEqual(self.opener.resolve(str(ok)), ok.absolute())
+        for bad in (root, root / "Reports" / "x", keep, self.other, job / ".." / ".." / ".." / ".." / "Reports" / "x"):
+            with self.assertRaises(ValueError):
+                self.opener.resolve(str(bad))
+        with self.assertRaises(ValueError):     # 파일은 여전히 종류 검사(.txt 는 저장폴더 밖이라 거부)
+            self.opener.resolve(str(job / "a.txt"))
+
     def test_open_uses_default_handler_only(self):
         with patch("param_manager.desktop_open.os.name", "posix"), \
              patch("param_manager.desktop_open.shutil.which", return_value="/usr/bin/xdg-open"), \

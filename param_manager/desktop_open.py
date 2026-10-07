@@ -4,7 +4,9 @@
 The web UI only shows paths the engine itself returned, but it could send any
 string, so this adapter never trusts it: the path must already exist, be a
 known document type or a folder, contain no link/junction, and sit under the
-configured save folder or the local result folder. Nothing is executed except
+configured save folder or the local result folder (or, for equipment shares, is a
+Batch Report file right in a registered Reports folder / a folder inside a
+registered Scanresult folder). Nothing is executed except
 the OS default handler (`os.startfile`) or Explorer's select switch.
 """
 import os
@@ -60,6 +62,32 @@ class DesktopOpen:
                         return True
         return False
 
+    def _scan_folder(self, path):
+        """Batch Report 찾기의 Scanresult 경로 [폴더 열기] — 등록한 호기 루트 아래 `Scanresult*` 폴더 안,
+        또는 설정에서 추가한 Scanresult 보관 폴더 안의 **폴더**만. 장비 공유 경로라 resolve() 없이 글자로만 비교한다."""
+        cfg = read_json(self.config_path)
+
+        def key(p):
+            return os.path.normcase(os.path.normpath(os.path.abspath(str(p))))
+
+        def table(name):
+            v = cfg.get(name)
+            return v if isinstance(v, dict) else {}
+        target = key(path)
+        roots = [p for name in ("aoi_roots", "commonality_roots") for p in table(name).values()]
+        extra = [p for v in table("aoi_extra").values() if isinstance(v, dict)
+                 for p in (v.get("scanresult") if isinstance(v.get("scanresult"), list) else [])]
+        for folder, any_below in [(p, False) for p in roots] + [(p, True) for p in extra]:
+            if not isinstance(folder, str) or not folder.strip() or not Path(folder).is_absolute():
+                continue
+            base = key(folder)
+            if target == base or not target.startswith(base.rstrip(os.sep) + os.sep):
+                continue
+            first = target[len(base.rstrip(os.sep)) + 1:].split(os.sep)[0]
+            if any_below or Path(base).name.lower().startswith("scanresult") or first.lower().startswith("scanresult"):
+                return True
+        return False
+
     def resolve(self, raw, reveal=False):
         if not isinstance(raw, str) or not raw.strip() or len(raw) > MAX_PATH or "\0" in raw:
             raise ValueError("열 파일 경로를 확인하세요")
@@ -73,6 +101,8 @@ class DesktopOpen:
         if not path.is_file() and not path.is_dir():
             raise ValueError("파일 또는 폴더만 열 수 있습니다")
         if path.is_file() and self._report_file(path):
+            return path
+        if path.is_dir() and self._scan_folder(path):
             return path
         real = path.resolve()
         if not any(real == root.resolve() or real.is_relative_to(root.resolve()) for root in self._roots()):

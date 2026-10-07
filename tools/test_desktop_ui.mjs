@@ -88,6 +88,7 @@ try{
   assert.equal(await page.getByRole('tab',{name:'저장 폴더'}).getAttribute('aria-selected'),'true');
   await page.locator('.tour-spot').waitFor();
   await tourNext('OneDrive 폴더 경로 넣기');await tourNext('[저장]');await tourNext('② 장비 연결 — AOI 장비 호기 루트');
+  await tourNext('먼저 장비마다 IP 폴더에 1회 로그인 (가장 중요)');
   await tourNext('호기 이름 + 호기 폴더 → [추가]');
   assert.equal(await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).getAttribute('aria-selected'),'true');
   // 말풍선과 강조가 화면 안에 있다(화살표가 가리키는 대상).

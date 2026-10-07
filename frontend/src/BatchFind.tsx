@@ -1,7 +1,7 @@
 import {Fragment,useEffect,useRef,useState} from 'react';
 import {Stepper,notify} from './ui';
 import {StPill} from './BatchLot';
-import {OpenPath} from './OpenPath';
+import {OpenPath,openPath} from './OpenPath';
 import {ScanBackupBar} from './ScanBackup';
 import {grpLabel,num,isRealId,type View,type AggGroup} from './batchData';
 
@@ -78,7 +78,7 @@ export function FindTab(p:Props){
       <p className="hint">Scanresult 경로 검색 범위: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'원본 + 백업본'}</b> — 바꾸려면 1단계의 [백업본 포함] 스위치를 바꾸고 다시 검색하세요.</p>
       <details className="logic"><summary>로직 · 고르기</summary><ol>
         <li><b>원문 보기</b> = 캐시에 읽어 둔 Batch Report의 표를 그대로 앱 안에서 보여 줍니다. <b>원본 열기</b> = 장비 Report 폴더의 .htm을 기본 브라우저로 엽니다(읽기 전용).</li>
-        <li><b>Scanresult 경로</b> = 같은 호기 루트의 <code>Scanresult*</code> <code>\Job\Setup\S/M</code>. 폴더 이름만 확인해 있는 곳을 보여 줍니다. 이번 검색: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'백업본 포함'}</b>.</li>
+        <li><b>Scanresult 경로</b> = 같은 호기 루트의 <code>Scanresult*</code> <code>\Job\Setup\S/M</code>. 폴더 이름만 확인해 있는 곳을 보여 줍니다. <b>폴더 열기</b> = 그 폴더를 탐색기로 바로 엽니다(장비 폴더는 읽기만). 이번 검색: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'백업본 포함'}</b>.</li>
         <li>여러 Lot을 함께 골라도 됩니다. 취합은 Lot · 공정 단계마다 따로 합니다(WBG · CMP처럼 다른 공정 스캔을 더하지 않음).</li></ol></details>
       <div className="groups">{!order.length?<div className="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드 · 기간 · 호기 범위를 바꿔 보세요.</p></div>
         :order.map(k=>{const mem=members[k],first=v.R[mem[0]],l=first.lot!=null?v.lots[first.lot]:null,b=l?l.bunches[first.b!]:null;
@@ -88,7 +88,7 @@ export function FindTab(p:Props){
             {l?<StPill s={l.state}/>:<span className="st out">Lot에서 제외</span>}<span className="meta">{b?`${b.s} ~ ${b.e.slice(5)} · ${b.machines.join(' → ')} · Batch Report ${mem.length}장`:''}</span>
             {l&&<button style={{...small,marginLeft:'auto'}} onClick={()=>p.openLot(first.lot!)}>Lot History 보기</button>}</div>
             {paths.map(pk=>{const s=v.scan?.[pk];const found=s?.paths||[];return <div key={pk} className="sr"><span>Scanresult 경로</span>
-              {found.length?found.map(x=><Fragment key={x}><code>{x}</code><button style={small} onClick={()=>copy(x)}>복사</button></Fragment>)
+              {found.length?found.map(x=><Fragment key={x}><code>{x}</code><button style={small} onClick={()=>openPath(x)} title="탐색기에서 이 Scanresult 폴더 열기(읽기만)">폴더 열기</button><button style={small} onClick={()=>copy(x)}>복사</button></Fragment>)
                 :<><code>{s?.pattern||pk}</code><button style={small} onClick={()=>copy(s?.pattern||pk)}>복사</button><span className="meta">{v.scan_backup===false?'원본 Scanresult 에서 폴더를 찾지 못했습니다(백업본은 제외하고 찾음)':'폴더를 찾지 못했습니다(Scanresult · 백업 폴더 확인)'}</span></>}</div>;})}
             <div className="table-scroll" style={{maxHeight:'none',border:0,borderRadius:0}}><table className="t-compact"><thead><tr><th/><th>#</th><th>시작 ~ 끝</th><th>호기</th><th>S/M</th><th className="num">Pass / 행</th><th>첫 Error 원문</th><th>파일 이름</th><th/></tr></thead>
               <tbody>{mem.map((g,ai)=>{const r=v.R[g],out=!hits.has(g);return <tr key={g} className={out?'outside':''}><td><input type="checkbox" checked={!!sel[g]} aria-label={r.f+' 선택'}

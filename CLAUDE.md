@@ -38,6 +38,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 ### 튜토리얼 (2026-10-06, v12.2.6)
 - 설정 탭 맨 위 [초기 설정 튜토리얼] · [기능 둘러보기] — `Tour.tsx`(강조 테두리 + 화살표 말풍선). 새 화면 · 설정 항목을 만들면 대상에 `data-tour` 를 달고
   `SETUP`/`FEATURES` 단계를 갱신한다. 튜토리얼은 안내만 하고 아무 값도 저장하지 않는다.
+- 초기 설정의 가장 중요한 두 단계(#18) = 저장 폴더 + **장비마다 IP 폴더(`\\장비IP`)에 Windows 로 1회 로그인**(자격 증명 기억). 앱은 net use/자격증명을
+  다루지 않으므로 이 안내 단계(어느 기능이 이 연결을 쓰는지 포함)를 지우지 않는다.
 - 저장 폴더 = 개발자가 공유한 OneDrive 폴더를 [내 파일에 바로 가기 추가]로 회사 노트북 OneDrive 에 연결한 경로(업데이트도 그 옆 [프로그램] 폴더).
 
 ### 결과 HTML 앱 디자인 · 원문 내장 + 레시피 비교 모드 (2026-10-06, 이슈 #14, v12.2.5)
@@ -163,6 +165,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   수(`by_machine`)를 호기 박스에 표시. 자동 분석은 늘 reuse=True.
 - **원본 열기**: `desktop_open._report_file` — 등록한 Report 폴더·추가 폴더 **바로 아래** `*_BatchReport.htm` 만 허용, 장비 경로라
   resolve 하지 않고 글자로만 비교(끊긴 공유에서 멈추지 않게).
+- **Scanresult 폴더 열기**(#18): `desktop_open._scan_folder` — 등록 호기 루트(`aoi_roots` · `commonality_roots`) 아래 `Scanresult*` 안의 폴더,
+  또는 `aoi_extra[호기].scanresult` 보관 폴더 안의 폴더만 허용(글자 비교). 찾기 2단계 Scanresult 경로 옆 [폴더 열기].
 - **화면(`frontend/src/Batch*.tsx`, `batchData.ts`, `BatchCharts.tsx`, CSS 는 `styles.css` 끝 `.bv` 범위)**: `Batch.tsx`(조사 범위 ·
   큰 탭 2개 · 원문 창 · 판정 기준) / `BatchLot.tsx`(Lot 추적) / `BatchLotWindow.tsx`(Lot 창) / `BatchUtil.tsx`(가동률 · 24시간 시간표) /
   `BatchWph.tsx` / `BatchFind.tsx`. Batch Report 탭은 KEEP(탭을 옮겨도 결과 · Lot 창 · 저장 안 한 선택 유지). 로직 설명 상자는 접힌

@@ -1,5 +1,16 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #18 Scanresult 폴더 열기 · 튜토리얼 장비 1회 로그인 단계 (2026-10-08 KST, `version_v12`)
+
+- GitHub 이슈 #18: ① Batch Report 찾기 · 취합에서 Scanresult 경로 열기 버튼(그 폴더로 바로 이동) ② 튜토리얼에 "장비마다 IP 주소 폴더에 접속해 아이디 · 암호로 1회 연결"
+  단계 추가(어느 기능에 필요한지 설명, 저장 경로 설정과 함께 가장 중요한 단계) ③ 찾기를 더 빠르게 할 방법 — **제안만**(코드 변경 없음, 이슈 댓글에 정리).
+- ① `desktop_open._scan_folder`: 폴더이고, 등록 호기 루트(`aoi_roots` · `commonality_roots`) 바로 아래 `Scanresult*` 안이거나(루트 이름 자체가 Scanresult* 이면 그 안),
+  `aoi_extra[호기].scanresult` 보관 폴더 안이면 허용. 장비 공유라 resolve 없이 글자 비교(`_report_file` 과 같은 방식). 화면 `BatchFind.tsx` 2단계 찾은 경로마다 [폴더 열기](복사 앞).
+- ② `Tour.tsx` SETUP: '② 장비 연결' 다음에 '먼저 장비마다 IP 폴더에 1회 로그인 (가장 중요)'(메모 › 장비 IP 하위 탭 → `\\장비IP` / `\\장비IP\c$` → 아이디 · 암호 + 자격 증명 기억,
+  필요한 기능 목록). 소개 단계에 저장 폴더 · 장비 연결을 (가장 중요) 표시. 초기 설정 13단계.
+- 검증: `tests/test_desktop_open.py`(Scanresult 폴더 허용/거부 추가) · `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패) · `npx tsc --noEmit` · `vite build` ·
+  `tools/test_desktop_ui.mjs`(튜토리얼 새 단계 포함) 통과. Windows 실기(탐색기로 장비 공유 폴더 열기) 미검증.
+
 ## 최신 재개 — Para #17 Batch Report 캐시와 함께 AI 에게 줄 계산 지침 (2026-10-07 KST, `version_v12`)
 
 - GitHub 이슈 #17: "배치레포트 캐시파일과 같이 AI한테 주어야 할 지침 만들어봐. 프로그램 계산 방식을 그대로 새 AI한테 전달하고 싶어. 양이 많으면 txt 로(클로드 링크는 접속 못함)."
