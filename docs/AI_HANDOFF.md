@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #15 Batch Report 조사 실패(18대) 원인 기록 · 원문 내장 메모리 절감 (2026-10-07 KST, `version_v12`)
+
+- GitHub 이슈 #15: "진단 로그(진단로그_20261007_091634.zip) 분석해서 Batch Report 조사가 안 되는 원인 — 저장 위치나 폴더 설정이 잘못됐다고 뜸. 18대 한번에 조사."
+- 진단 로그 해석: 2026-10-07 08:17~09:14 `investigate` 4회 모두 7~15분 뒤 `error`. 화면 문장은 `investigation_failed` 의 고정 문장
+  ("폴더 접근과 로컬 저장 공간을 확인")이라 폴더 문제처럼 보였을 뿐, `desktop_ipc.Session.investigate` 가 예외를 삼키고 `log_failure` 도 안 불러
+  원인이 오류 로그 · 상세 로그 어디에도 남지 않았다. 폴더 설정 오류(ValueError)는 시작 즉시 나므로 7~15분 뒤 실패와 맞지 않는다.
+  같은 시각 엔진 메모리 사용 93%(여유 1.0GB / 15.4GB, 전날 75~79%) → 18대 수집 뒤 결과 파일 단계(v12.2.5 부터 Lot 추적 HTML 에 원문 표 전부를
+  목록 → JSON 글자 → gzip → base64 로 한꺼번에 만듦)에서 메모리 부족(MemoryError)이 가장 유력. 단정은 못 함(예외가 기록되지 않았으므로).
+- 수정: ① `investigate` 실패 시 `log_failure("investigate", exc)` 로 오류 로그에 traceback, `investigation_message(exc)` 로 원인별 문장을
+  `message` 로 보냄(MemoryError → 메모리 부족 · 호기 나눠 조사, ValueError/RuntimeError → 엔진 안내 그대로, OSError → strerror · 코드(경로 제외), 기타 → 예외 종류).
+  `record_run(False, error=…)` 에도 같은 문장. ② `report_theme.raw_blob` 를 한 장씩 JSON → `zlib.compressobj(wbits 31)` 스트리밍 압축으로 바꿔
+  전체 목록 · 전체 JSON 글자를 메모리에 두지 않음(출력은 같은 표준 gzip+base64, 브라우저 쪽 그대로).
+- 검증: `tests/test_investigate_failure.py`(gzip 왕복 · 순서 · 빈 목록 · 원인별 문장 · 경로 미포함) + `tools/check_project.py`(tkinter 없는 기존 1건만 실패).
+  18대 실자료 · Windows 메모리 상황은 미검증 — 다시 실패하면 이제 화면 문장과 오류 로그에 실제 원인이 남는다.
+
 ## 최신 재개 — 튜토리얼(초기 설정 · 기능 둘러보기) (2026-10-06 KST, `version_v12`, v12.2.6)
 
 - 사용자 지시(세션 대화): "초기 튜토리얼 — 초기 설정법(장비 연결 · 저장 폴더 · OneDrive: 개발자가 공유한 링크로 회사 노트북 OneDrive 에 연결한 폴더 경로)과

@@ -9,9 +9,9 @@ wafer 표)를 gzip + base64 로 HTML 안에 담아 두고 누를 때 풀어서 �
 from __future__ import annotations
 
 import base64
-import gzip
 import html as _html
 import json
+import zlib
 
 APP_NAME = 'Camtek AOI Manager'
 
@@ -216,13 +216,19 @@ def page_foot(left, right=''):
 
 # ---------------------------------------------------------------- Batch Report 원문 창
 def raw_blob(view):
-    """조사의 Batch Report 원문 표 전부 → gzip + base64 글자(g 순서). [파일, 호기, Batch Info [[k, v]], 머리, 행]."""
-    out = []
+    """조사의 Batch Report 원문 표 전부 → gzip + base64 글자(g 순서). [파일, 호기, Batch Info [[k, v]], 머리, 행].
+
+    한 장씩 JSON 으로 바꿔 바로 압축한다(이슈 #15): 18대처럼 원문이 많을 때 전체 목록 · 전체 JSON 글자를
+    메모리에 한꺼번에 두지 않는다. 결과는 표준 gzip(브라우저 DecompressionStream 으로 풂)."""
+    comp = zlib.compressobj(6, zlib.DEFLATED, 31)        # wbits 31 = gzip 머리(mtime 0)
+    chunks = [comp.compress(b'[')]
     for g in range(len(view.records)):
         r = view.raw(g)
-        out.append([r['f'], r['m'], r['meta'], r['h'], r['rows']])
-    data = json.dumps(out, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
-    return base64.b64encode(gzip.compress(data, compresslevel=6, mtime=0)).decode('ascii')
+        item = json.dumps([r['f'], r['m'], r['meta'], r['h'], r['rows']], ensure_ascii=False, separators=(',', ':'))
+        chunks.append(comp.compress((',' if g else '').encode('ascii') + item.encode('utf-8')))
+    chunks.append(comp.compress(b']'))
+    chunks.append(comp.flush())
+    return base64.b64encode(b''.join(chunks)).decode('ascii')
 
 
 RAW_HTML = """<div class="ovl" id="rawovl" role="dialog" aria-modal="true" aria-labelledby="rawt"><div class="modal rawwin">

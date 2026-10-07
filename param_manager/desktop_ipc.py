@@ -131,6 +131,22 @@ def failure_code(exc, request):
     return "engine_failed"
 
 
+def investigation_message(exc):
+    """Batch Report 조사 실패 → 화면 문장(원인별). 경로 · 자격 증명은 넣지 않는다."""
+    if isinstance(exc, MemoryError):
+        return ('메모리가 부족해 조사를 끝내지 못했습니다. 한 번에 조사한 호기 · 기간이 너무 많습니다. '
+                '다른 프로그램을 닫고 앱을 다시 시작하거나, 호기를 나눠(예: 9대씩) 조사하세요.')
+    if isinstance(exc, (ValueError, RuntimeError)) and str(exc):
+        return str(exc)[:300]                    # 엔진이 만든 한국어 안내(폴더 설정 · 이미 실행 중 등)
+    if isinstance(exc, OSError):
+        reason = exc.strerror or type(exc).__name__
+        code = getattr(exc, 'winerror', None) or exc.errno
+        return (f'결과 파일을 읽거나 쓰지 못했습니다({reason}{f" · 코드 {code}" if code else ""}). '
+                '로컬 작업 폴더의 디스크 공간과 접근 권한을 확인하세요.')
+    return (f'조사 중 예상하지 못한 오류({type(exc).__name__})로 끝내지 못했습니다. '
+            '설정 › 정보의 [진단 로그 묶기] 파일을 담당자에게 전달하세요.')
+
+
 class Session:
     def __init__(self, output, compute=None):
         self.output = output
@@ -734,14 +750,17 @@ class Session:
             with self.lock:
                 self.free('batch', 'equipment')
                 self.emit(rid, "cancelled")
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - reported below
+            # 원인을 오류 로그에 남기고 화면에도 원인별 문장을 보낸다(이슈 #15: 예전에는 원인이 어디에도 남지 않았다).
+            log_failure("investigate", exc)
+            message = investigation_message(exc)
             try:
-                self.batch.record_run(False, error="조사 실패")
+                self.batch.record_run(False, error=message[:200])
             except (OSError, ValueError):
                 pass
             with self.lock:
                 self.free('batch', 'equipment')
-                self.emit(rid, "error", code="investigation_failed")
+                self.emit(rid, "error", code="investigation_failed", message=message)
 
     # ---- automatic watches ------------------------------------------------------
     def watch_status(self):
