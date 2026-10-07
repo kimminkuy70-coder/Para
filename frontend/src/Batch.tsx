@@ -15,6 +15,8 @@ import {Q,DefectWindow} from './BatchHelp';
 import {useDev,setDevLocked,setDevDrafts,registerDraftHandlers} from './devmode';
 import {loadView,batchCall,addDays,ymd,type View,type ViewMeta,type ViewName,type LotDetail,type Raw,type AggGroup} from './batchData';
 
+type CacheExport={path:string;folder:string;files:number;machines:number;reports:number;size:number};
+
 /* Batch Report 분석 — 큰 탭 2개: [가동률 조사 및 분석](조사 범위 공통 · Lot 추적 · 가동률 · WPH) /
    [Batch Report 찾기 · 취합]. 사용자 검토를 마친 프로토타입(tools/batch_prototype)과 같은 화면이다.
    계산은 엔진(batchview), 화면은 받은 요약으로 그린다. Lot 상세 · 원문은 누를 때 받는다. */
@@ -35,6 +37,7 @@ export function Batch({active}:{active:boolean}){
   const [busy,setBusy]=useState(false),[restoring,setRestoring]=useState(false);
   const [lot,setLot]=useState<{view:ViewName;li:number}>(),[detail,setDetail]=useState<LotDetail>(),[lotXlsx,setLotXlsx]=useState('');
   const [raw,setRaw]=useState<Raw>();
+  const [cacheZip,setCacheZip]=useState<CacheExport>(),[exporting,setExporting]=useState(false);
   const [drafts,setDrafts]=useState<Drafts>({});
   const [help,setHelp]=useState(false),[defect,setDefect]=useState(false);
   const [cond,setCond]=useState<FindCond>({machines:[],query:'',start:'',end:''});
@@ -196,6 +199,15 @@ export function Batch({active}:{active:boolean}){
     setLot(undefined);setCond(next);setMain('find');setFstep(0);void runFind(next);
   }
 
+  // 취합 캐시(로컬 배치분석/누적 — 지금까지 조사한 모든 호기의 Batch Report) → zip 1개 (이슈 #16)
+  async function exportCache(){
+    setExporting(true);
+    try{const r=await batchCall<CacheExport>('batch_cache_export',{});setCacheZip(r);
+      notify(`Batch Report 캐시를 zip으로 내보냈습니다 — 호기 ${r.machines}대 · Batch Report ${r.reports}개.`,'ok');}
+    catch(e){fail(e);}
+    finally{setExporting(false);}
+  }
+
   // ---- 화면 ------------------------------------------------------------------------
   const v=views.scope;
   const applied=v?.scope;
@@ -257,6 +269,11 @@ export function Batch({active}:{active:boolean}){
           {v.artifacts.lots&&<OpenPath label="Lot 추적 HTML" path={v.artifacts.lots}/>}{v.artifacts.xlsx&&<OpenPath label="Excel" path={v.artifacts.xlsx}/>}
           {v.artifacts.html&&<OpenPath label="HTML" path={v.artifacts.html}/>}{v.artifacts.dashboard&&<OpenPath label="가동률 대시보드" path={v.artifacts.dashboard}/>}
           {v.artifacts.outdir&&<OpenPath label="결과 폴더" path={v.artifacts.outdir} folder/>}</div></details>}
+        <div className="cache-export" aria-label="Batch Report 캐시 내보내기">
+          <div className="toolbar"><button type="button" disabled={running||exporting||restoring} onClick={()=>void exportCache()}>{exporting?'내보내는 중…':'Batch Report 캐시 내보내기 (zip)'}</button>
+            {cacheZip&&<button type="button" onClick={()=>void openPath(cacheZip.path,true)}>폴더 열기</button>}</div>
+          <p className="hint">지금까지 조사해 로컬 캐시에 모인 모든 호기의 Batch Report 데이터를 zip 파일 하나로 내보냅니다(장비 접근 없음 · 최근 3개 보관).</p>
+          {cacheZip&&<p className="hint">내보냄: <code>{cacheZip.path}</code> — 호기 {cacheZip.machines}대 · Batch Report {cacheZip.reports}개 · {(cacheZip.size/1048576).toFixed(1)}MB</p>}</div>
       </section>
       <div className="pilltabs" role="tablist" aria-label="분석 화면" data-tour="batch:tabs">{([['lot','Lot 추적'],['util','가동률'],['wph','WPH · 생산능력'],['cmp','레시피 비교']] as const).map(([k,t])=>
         <button key={k} role="tab" type="button" className={sub===k?'active':''} aria-selected={sub===k} onClick={()=>setSub(k)}>{t}</button>)}</div>

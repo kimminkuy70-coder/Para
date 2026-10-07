@@ -23,6 +23,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 캐시 내보내기 zip (2026-10-07, 이슈 #16)
+- 화면: Batch Report 분석 › 조사 범위 패널 아래 [Batch Report 캐시 내보내기 (zip)] → 끝나면 [폴더 열기](zip 을 탐색기에서 선택) · 경로 · 호기/Report 수 · 크기.
+  화면 문구는 '내보낸다'까지만(용도 언급 금지 — 사용자 지시).
+- 엔진: `DesktopBatch.cache_export` / IPC `batch_cache_export`(params 없음, 작업 스레드 · 'batchexport' 슬롯). 로컬 `배치분석/누적/*.json`(호기 · 폴더별 원문 전부,
+  schema 1)을 한 파일씩 읽어 개수만 세고 그대로 `배치분석/내보내기/BatchReport_캐시_YYYYMMDD_HHMMSS.zip` 에 넣음(`누적/<호기>_<해시8>.json`,
+  `사람선택/batch_lot_choices.json`, `manifest.json` = 시각 · 버전 · 파일별 호기 · 원본 폴더 · Report 수). 임시 파일 → replace, 최근 3개만 보관. 장비 접근 없음.
+- `desktop_open`: `.zip` 은 reveal(폴더에서 보기)만 허용(`REVEALABLE`), 내용 열기는 계속 거부.
+
 ### 튜토리얼 (2026-10-06, v12.2.6)
 - 설정 탭 맨 위 [초기 설정 튜토리얼] · [기능 둘러보기] — `Tour.tsx`(강조 테두리 + 화살표 말풍선). 새 화면 · 설정 항목을 만들면 대상에 `data-tour` 를 달고
   `SETUP`/`FEATURES` 단계를 갱신한다. 튜토리얼은 안내만 하고 아무 값도 저장하지 않는다.

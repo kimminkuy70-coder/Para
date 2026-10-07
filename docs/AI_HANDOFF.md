@@ -1,5 +1,15 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #16 Batch Report 취합 캐시 내보내기(zip) · 폴더 열기 (2026-10-07 KST, `version_v12`)
+
+- GitHub 이슈 #16: "배치 리포트 취합한 캐시들을 export 하는 기능 — 배치레포트들의 데이터가 모두 취합된 .zip, 폴더 열기 기능도. 프로그램에서는 export 한다고만(용도 언급 금지)."
+- 엔진 `param_manager/desktop_batch.py` `cache_export` + IPC `batch_cache_export`(`desktop_ipc.py`): `배치분석/누적/*.json` 전부 → `배치분석/내보내기/BatchReport_캐시_*.zip`
+  (`누적/<호기>_<해시8>.json` · `사람선택/batch_lot_choices.json` · `manifest.json`). 캐시가 없으면 "먼저 [조사 시작]" 오류. 최근 3개 보관. 연결경로 검사에 `내보내기` 폴더 추가.
+- `desktop_open.py`: `.zip` 은 reveal 만 허용 → 캐시 zip · 진단 로그 zip 의 '폴더에서 보기'가 이제 동작(전에는 확장자 거부).
+- 화면 `frontend/src/Batch.tsx`: 조사 범위 패널 아래 [Batch Report 캐시 내보내기 (zip)] · [폴더 열기] · 결과 경로/수/크기.
+- 검증: `tests/test_cache_export.py`(빈 캐시 오류 · zip 내용/manifest · 깨진 캐시 건너뜀 · 최근 3개 · reveal 허용/열기 거부 · IPC) · test_desktop_open · test_recipecompare,
+  `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`. Windows 실기(탐색기 선택) · 실자료 대용량 zip 미검증.
+
 ## 최신 재개 — Para #15 Batch Report 조사 실패(18대) 원인 기록 · 원문 내장 메모리 절감 (2026-10-07 KST, `version_v12`)
 
 - GitHub 이슈 #15: "진단 로그(진단로그_20261007_091634.zip) 분석해서 Batch Report 조사가 안 되는 원인 — 저장 위치나 폴더 설정이 잘못됐다고 뜸. 18대 한번에 조사."

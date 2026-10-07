@@ -15,6 +15,8 @@ import subprocess
 from .desktop_batch import DesktopBatch, read_json
 
 OPENABLE = {".xlsx", ".xlsm", ".xls", ".html", ".htm", ".csv", ".txt", ".png", ".pdf", ".jpg", ".jpeg"}
+# 탐색기에서 선택만(폴더에서 보기) — 내용은 열지 않는다(진단 로그 · 캐시 내보내기 zip).
+REVEALABLE = {".zip"}
 MAX_PATH = 4096
 
 
@@ -58,7 +60,7 @@ class DesktopOpen:
                         return True
         return False
 
-    def resolve(self, raw):
+    def resolve(self, raw, reveal=False):
         if not isinstance(raw, str) or not raw.strip() or len(raw) > MAX_PATH or "\0" in raw:
             raise ValueError("열 파일 경로를 확인하세요")
         path = Path(raw).absolute()
@@ -66,7 +68,7 @@ class DesktopOpen:
             raise ValueError("파일이 없습니다. 이동되었거나 삭제되었을 수 있습니다.")
         if any(p.is_symlink() or (hasattr(p, "is_junction") and p.is_junction()) for p in (path, *path.parents)):
             raise ValueError("연결 경로는 열 수 없습니다")
-        if path.is_file() and path.suffix.lower() not in OPENABLE:
+        if path.is_file() and path.suffix.lower() not in OPENABLE and not (reveal and path.suffix.lower() in REVEALABLE):
             raise ValueError("이 종류의 파일은 열 수 없습니다")
         if not path.is_file() and not path.is_dir():
             raise ValueError("파일 또는 폴더만 열 수 있습니다")
@@ -80,8 +82,8 @@ class DesktopOpen:
     def open(self, params):
         if set(params) - {"path", "reveal"} or type(params.get("reveal", False)) is not bool:
             raise ValueError("열기 요청을 확인하세요")
-        path = self.resolve(params.get("path"))
         reveal = params.get("reveal", False)
+        path = self.resolve(params.get("path"), reveal)
         if os.name == "nt":
             if reveal and path.is_file():
                 # Fixed program + fixed switch; the path is a single argument, no shell.

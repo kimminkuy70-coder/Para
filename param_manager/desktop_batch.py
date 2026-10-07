@@ -438,6 +438,65 @@ class BatchViews:
         output.atomic_text(path, recipecompare.build_html(result, item["view"]))
         return dict(path=str(path))
 
+    def cache_export(self, params):
+        """조사로 취합한 Batch Report 캐시(배치분석/누적/*.json — 호기·폴더별 원문 전부)를 zip 1개로 내보낸다(이슈 #16).
+        장비 접근 없음. 캐시는 한 파일씩 읽어 개수만 세고 그대로 압축한다(전체를 메모리에 모으지 않음).
+        manifest.json = 내보낸 시각 · 버전 · 파일별 호기 · 원본 폴더 · Batch Report 수. 사람 선택(Cache)도 있으면 함께."""
+        import zipfile
+        from . import __version__
+        if params:
+            raise ValueError("요청을 확인하세요")
+        _, _, root, _ = self.configuration()
+        source = root / "배치분석" / "누적"
+        caches = []
+        if source.is_dir():
+            for path in sorted(source.glob("*.json")):
+                if path.is_symlink() or not path.is_file():
+                    continue
+                try:
+                    with path.open(encoding="utf-8") as stream:
+                        state = json.load(stream)
+                except (OSError, ValueError):
+                    continue
+                if state.get("schema") != batchreport_store.SCHEMA or not isinstance(state.get("entries"), dict):
+                    continue
+                caches.append((path, str(state.get("machine") or ""), str(state.get("folder") or ""), len(state["entries"])))
+                del state
+        if not caches:
+            raise ValueError("내보낼 Batch Report 캐시가 없습니다. 먼저 [조사 시작]으로 조사하세요.")
+        folder = root / "배치분석" / "내보내기"
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now()
+        target = folder / f"BatchReport_캐시_{stamp:%Y%m%d_%H%M%S}.zip"
+        safe = lambda t: "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in t)[:40] or "호기"
+        files = []
+        temporary = target.with_name("." + target.name + ".tmp")
+        try:
+            with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+                for path, machine, src, count in caches:
+                    name = f"누적/{safe(machine)}_{path.stem[:8]}.json"
+                    zf.write(path, name)
+                    files.append(dict(file=name, machine=machine, folder=src, reports=count))
+                choices = root / "Cache" / CHOICES_FILE
+                if choices.is_file() and not choices.is_symlink():
+                    zf.write(choices, "사람선택/" + CHOICES_FILE)
+                manifest = dict(schema=1, exported_at=stamp.strftime("%Y-%m-%d %H:%M:%S"), app_version=__version__,
+                                cache_schema=batchreport_store.SCHEMA, machines=len({f["machine"] for f in files}),
+                                reports=sum(f["reports"] for f in files), files=files)
+                zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=1))
+            temporary.replace(target)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        # 최근 3개만 남긴다(캐시가 크면 zip 도 크다).
+        for old in sorted(folder.glob("BatchReport_캐시_*.zip"))[:-3]:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        return dict(path=str(target), folder=str(folder), files=len(files), machines=manifest["machines"],
+                    reports=manifest["reports"], size=target.stat().st_size)
+
 
 class DesktopBatch(BatchViews):
     def __init__(self, config_path=None):
@@ -461,7 +520,8 @@ class DesktopBatch(BatchViews):
             root = batchreport_store.local_root(requested_root, paths.values())
         # Reject redirected output trees, including cache/output directory junctions.
         with desktop_diag.timed("로컬 결과 폴더 연결경로 검사", 200):
-            for path in (root, root / "Cache", root / "배치분석", root / "배치분석" / "누적", root / "배치분석" / "대시보드"):
+            for path in (root, root / "Cache", root / "배치분석", root / "배치분석" / "누적", root / "배치분석" / "대시보드",
+                         root / "배치분석" / "내보내기"):
                 for part in (path, *path.parents):
                     if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
                         raise ValueError("로컬 결과 폴더의 연결 경로는 사용할 수 없습니다")
