@@ -1,5 +1,15 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #17 Batch Report 캐시와 함께 AI 에게 줄 계산 지침 (2026-10-07 KST, `version_v12`)
+
+- GitHub 이슈 #17: "배치레포트 캐시파일과 같이 AI한테 주어야 할 지침 만들어봐. 프로그램 계산 방식을 그대로 새 AI한테 전달하고 싶어. 양이 많으면 txt 로(클로드 링크는 접속 못함)."
+- 새 문서 `docs/ai_guide/BatchReport_캐시_분석지침.txt`(코드 변경 없음): #16 zip 구조(manifest · 누적 JSON schema 1 · 사람선택), 레코드 만들기(같은 호기 digest 중복 제거 · 범위 필터),
+  공통 파싱(normalize_key · 시간/날짜/숫자), `lotmodel`(S/M · Lot 코드 · 3D · Lot ID 판독 오차 · 슬롯 · 원인/연쇄/중단/스킵 · outcome · 묶음 12h/48h · Lot · wafer 판정 · 사람 선택),
+  `batchview`(레시피 · 정상 25매 · 1장 처리 시간 · Defect 과다 기준 · split · 손실 배분 · 조치 대기 · 점검 · U 행), `batchsaved` 합산(가동률 · 정상/실제 WPH · 생산능력 · 처리량 감소),
+  Lot 추적 숫자, `recipecompare`, 옛 `batchreport.compute` M 지표, 주의 사항, 최소 Python 로더 예시.
+- **앱 계산식을 바꾸면 이 지침도 같이 고친다**(batchsaved/batchcharts 와 같은 원칙). zip 에 자동으로 넣지는 않았다(#16 '용도 언급 금지' 지시 — 넣을지는 사용자 결정).
+- 검증: 문서만 추가 — 각 정의를 `lotmodel.py` · `batchview.py` · `batchsaved.py` · `recipecompare.py` · `batchreport.py` 코드와 대조. `tools/check_project.py`(tkinter 없는 기존 1건만 실패).
+
 ## 최신 재개 — Para #16 Batch Report 취합 캐시 내보내기(zip) · 폴더 열기 (2026-10-07 KST, `version_v12`)
 
 - GitHub 이슈 #16: "배치 리포트 취합한 캐시들을 export 하는 기능 — 배치레포트들의 데이터가 모두 취합된 .zip, 폴더 열기 기능도. 프로그램에서는 export 한다고만(용도 언급 금지)."

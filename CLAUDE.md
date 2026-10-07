@@ -23,6 +23,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 캐시 분석 지침(AI 전달용, 2026-10-07, 이슈 #17)
+- `docs/ai_guide/BatchReport_캐시_분석지침.txt` = 캐시 zip 과 함께 새 AI 에게 주는 계산 방식 문서(zip 구조 · lotmodel · batchview · batchsaved · recipecompare · M 지표).
+  **앱 계산식(lotmodel/batchview/batchsaved/recipecompare)을 바꾸면 이 txt 도 같이 고친다.**
+
 ### Batch Report 캐시 내보내기 zip (2026-10-07, 이슈 #16)
 - 화면: Batch Report 분석 › 조사 범위 패널 아래 [Batch Report 캐시 내보내기 (zip)] → 끝나면 [폴더 열기](zip 을 탐색기에서 선택) · 경로 · 호기/Report 수 · 크기.
   화면 문구는 '내보낸다'까지만(용도 언급 금지 — 사용자 지시).
