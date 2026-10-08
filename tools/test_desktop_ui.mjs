@@ -481,6 +481,11 @@ try{
   await page.locator('.runbar').getByRole('button',{name:'양식 확정 ▶'}).click();
   await page.getByLabel('이전 값을 이어받은 취합 파일').waitFor();
   assert((await page.getByLabel('확정 양식').inputValue()).endsWith('.xlsx'));
+  // 이슈 #21: 확정 결과는 창으로 뜨고, 닫은 뒤에도 같은 양식을 다시 확정하지 않는다.
+  await page.locator('dialog[open]').getByRole('heading',{name:'✅ 양식 확정 완료'}).waitFor();
+  await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
+  assert.equal(await page.locator('.runbar:not([hidden] *)').getByRole('button',{name:'양식 확정 ▶'}).count(),0);
+  await page.locator('.runbar:not([hidden] *)').getByRole('button',{name:'✅ 확정 완료 · 결과 보기'}).waitFor();
   // B: 값 업데이트 — equipment collection asks for the Job folder, then variants → preview → write.
   await recipeTab('Recipe 업데이트');
   // Row lists with a real '전체 선택' checkbox; clicking a row toggles it.
@@ -542,6 +547,7 @@ try{
   await page.locator('.hint:not([hidden] *)',{hasText:'기준 호기: AOI-01'}).first().waitFor();
   await page.locator('.runbar:not([hidden] *)').getByRole('button',{name:'양식 확정 ▶'}).click();
   await page.locator('.open-path:not([hidden] *)').filter({hasText:'확정 양식'}).first().waitFor();
+  await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
   // 자동 감시: pick a Job folder on the (fake) equipment, turn the watch on, run once.
   await page.getByRole('button',{name:'자동 감시',exact:true}).click();
   const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 감시'})});

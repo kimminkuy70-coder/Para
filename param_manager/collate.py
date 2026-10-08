@@ -31,6 +31,54 @@ def _safe_sheet(name: str) -> str:
     return re.sub(r"[\\/*?:\[\]]", "_", str(name))[:31] or "Recipe"
 
 
+# 시트 이름(31자 제한)이 레시피 이름과 다를 때 **원래 레시피 이름**을 적어 두는 숨김 시트.
+# 긴 레시피 이름이 잘린 시트 이름으로 읽히면 값 확인 목록이 레시피 삭제 목록(양식 폴더
+# 이름)과 어긋나고, 재확정 · 값 이어받기 때 잘린 이름이 다른 레시피로 이월되어 시트가
+# 중복으로 쌓였다(이슈 #21). 이름이 모두 그대로면 이 시트는 만들지 않는다.
+SHEET_NAMES = "_RECIPE_NAMES"
+
+
+def _sheet_titles(recipes) -> dict:
+    """{레시피: 겹치지 않는 시트 이름(31자 이하)}. 잘린 이름이 겹치면 끝을 ~2, ~3 … 으로."""
+    out: dict = {}
+    used: set = set()
+    for recipe in recipes:
+        base = _safe_sheet(recipe)
+        title, n = base, 1
+        while title.lower() in used:
+            n += 1
+            tail = f"~{n}"
+            title = base[:31 - len(tail)] + tail
+        used.add(title.lower())
+        out[recipe] = title
+    return out
+
+
+def _sheet_name_map(wb) -> dict:
+    """숨김 시트 SHEET_NAMES → {시트 이름: 레시피 이름}. 없으면 빈 dict."""
+    if SHEET_NAMES not in wb.sheetnames:
+        return {}
+    out = {}
+    for row in wb[SHEET_NAMES].iter_rows(min_row=2, values_only=True):
+        title, name = (list(row) + [None, None])[:2]
+        if engine._s(title).strip() and engine._s(name).strip():
+            out[engine._s(title).strip()] = engine._s(name).strip()
+    return out
+
+
+def _sheet_recipe(title: str, pis: set, names: dict) -> str:
+    """시트 → 레시피 이름. 이름표(SHEET_NAMES)가 있으면 그것, 없으면(이전 취합본) 시트의
+    PI 값이 하나뿐이고 시트 이름이 그 이름을 잘라 만든 것(+ Excel 중복 번호)일 때 PI 값."""
+    if title in names:
+        return names[title]
+    if len(pis) == 1:
+        pi = next(iter(pis))
+        base = _safe_sheet(pi)
+        if pi != title and len(base) == 31 and title.startswith(base) and (title[31:] == "" or title[31:].isdigit()):
+            return pi
+    return title
+
+
 @dataclass
 class CollateRecipe:
     recipe: str
@@ -323,6 +371,7 @@ def delete_recipe(path: str, recipe: str) -> int:
     반환: 삭제한 시트 수. (시트가 0개가 되면 '취합없음' 빈 시트를 남긴다.)"""
     wb = openpyxl.load_workbook(path)
     target_title = _safe_sheet(recipe)
+    names = _sheet_name_map(wb)
     lvl = engine._s(recipe).strip().lower()
     removed = 0
     for ws in list(wb.worksheets):
@@ -335,7 +384,10 @@ def delete_recipe(path: str, recipe: str) -> int:
         pis = {engine._s(row[pi_i]).strip().lower()
                for row in ws.iter_rows(min_row=2, values_only=True)
                if row and any(v not in (None, "") for v in row)}
-        match = (ws.title == target_title) or (pis and pis <= {lvl})
+        if ws.title in names:
+            match = names[ws.title] == recipe
+        else:
+            match = (ws.title == target_title) or (pis and pis <= {lvl})
         if match:
             wb.remove(ws)
             removed += 1
@@ -355,10 +407,11 @@ def write_collation(dest_xlsx: str, results: dict[str, CollateRecipe],
     wb.remove(wb.active)
     fill = PatternFill("solid", fgColor="1F4E78")
     white = Font(color="FFFFFF", bold=True)
+    titles = _sheet_titles([r for r, res in results.items() if not res.missing_form])
     for recipe, res in results.items():
         if res.missing_form:
             continue
-        ws = wb.create_sheet(_safe_sheet(recipe))
+        ws = wb.create_sheet(titles[recipe])
         ws.append(headers)
         for rec in res.records:
             ws.append([rec.get(h) for h in headers])
@@ -369,6 +422,13 @@ def write_collation(dest_xlsx: str, results: dict[str, CollateRecipe],
         ws.freeze_panes = "A2"
     if not wb.sheetnames:
         wb.create_sheet("취합없음")
+    renamed = [(t, r) for r, t in titles.items() if t != r]
+    if renamed:
+        ns = wb.create_sheet(SHEET_NAMES)
+        ns.append(["시트", "레시피"])
+        for t, r in renamed:
+            ns.append([t, r])
+        ns.sheet_state = "hidden"
     wb.save(dest_xlsx)
     return dest_xlsx
 
@@ -378,7 +438,7 @@ def write_collation(dest_xlsx: str, results: dict[str, CollateRecipe],
 _AUX_SHEETS = {
     engine.SHEET_SUM, engine.SHEET_SNAP, engine.SHEET_LOG, engine.SHEET_SPECIAL,
     engine.SHEET_REF, engine.SHEET_RELATED, engine.SHEET_COLORS, engine.SHEET_BORDERS,
-    extract_io.SHEET_MAP, extract_io.SHEET_SUMMARY,
+    extract_io.SHEET_MAP, extract_io.SHEET_SUMMARY, SHEET_NAMES,
 }
 
 
@@ -389,6 +449,7 @@ def load_collation(path: str) -> tuple[dict[str, list[dict]], list[str]]:
     sheets: dict[str, list[dict]] = {}
     machines: list[str] = []
     meta = set(engine.META_FIELDS)
+    names = _sheet_name_map(wb)
     for ws in wb.worksheets:
         if ws.title in _AUX_SHEETS:
             continue
@@ -406,7 +467,11 @@ def load_collation(path: str) -> tuple[dict[str, list[dict]], list[str]]:
             if row is None or all(v in (None, "") for v in row):
                 continue
             rows.append({heads[i]: row[i] for i in range(len(heads)) if i < len(row)})
-        sheets[ws.title] = rows
+        # 키 = 레시피 이름(잘린 시트 이름 아님). 같은 레시피가 이미 있으면(예전 버그로 쌓인
+        # 중복 시트) 앞의 것 = 최근 취합한 것만 둔다(쓰기 순서가 이번 레시피 → 이월분).
+        name = _sheet_recipe(ws.title, {engine._s(r.get("PI")).strip() for r in rows} - {""}, names)
+        if name not in sheets:
+            sheets[name] = rows
     wb.close()
     return sheets, machines
 

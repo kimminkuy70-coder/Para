@@ -407,6 +407,57 @@ def test_update_flow_asks_before_collating():
         "commonality 도 취합보다 먼저 매칭을 물어야 한다"
     print("  collate OK: 값 업데이트·commonality 가 취합 전에 이름 매칭을 확인한다")
 
+def test_long_recipe_name_keeps_full_name():
+    """이슈 #21: 31자를 넘는 레시피 이름은 시트 이름이 잘려도 취합 목록에는 원래 이름으로,
+    재확정(이어받기)해도 잘린 이름 시트가 따로 이월 · 중복되지 않아야 한다."""
+    long_a = "2D@R2-S6WC61001-00001_0851889PD-0D"
+    long_b = "2D@R2-S6WC61001-00001_0851889PD-0E"     # 잘린 31자가 long_a 와 같음
+
+    def rec(name, v):
+        return collate.CollateRecipe(recipe=name, machines=["AOI-1"], records=[
+            {"PI": name, "Recipe": "PI", "Zone": "Z", "Alg": "S", "Parameter": "P1",
+             "비고": "", "AOI-1": v}])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        first = os.path.join(tmp, "취합1.xlsx")
+        collate.write_collation(first, {long_a: rec(long_a, "1"), long_b: rec(long_b, "2"),
+                                        "PI3": rec("PI3", "3")}, ["AOI-1"])
+        wb = openpyxl.load_workbook(first)
+        assert all(len(t) <= 31 for t in wb.sheetnames), wb.sheetnames
+        assert len(set(wb.sheetnames)) == len(wb.sheetnames)
+        assert wb[collate.SHEET_NAMES].sheet_state == "hidden"
+        wb.close()
+        sheets, _ = collate.load_collation(first)
+        assert list(sheets) == [long_a, long_b, "PI3"], list(sheets)
+        assert sheets[long_b][0]["AOI-1"] == "2"
+        # 재확정 = 이번 레시피만 새로 + 나머지는 직전본에서 이월 → 중복 없이 같은 목록.
+        carried = collate.build_collation(tmp, [long_a], [], ["AOI-1"], prev_collate_path=first)
+        assert set(carried) == {long_a, long_b, "PI3"}, list(carried)
+        second = os.path.join(tmp, "취합2.xlsx")
+        collate.write_collation(second, {k: v for k, v in carried.items() if not v.missing_form},
+                                ["AOI-1"])
+        # (양식 폴더가 없어 long_a 는 missing_form — 이월분 2개만 쓰임)
+        assert set(collate.load_collation(second)[0]) == {long_b, "PI3"}
+        # 레시피 삭제도 원래 이름으로 그 시트만 지운다.
+        assert collate.delete_recipe(first, long_b) == 1
+        assert list(collate.load_collation(first)[0]) == [long_a, "PI3"]
+
+        # 이전 버전이 만든 취합본(이름표 없음, 잘린 이름 + Excel 중복 번호)도 원래 이름 하나로.
+        old = os.path.join(tmp, "옛취합.xlsx")
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        heads = list(engine.META_FIELDS) + ["AOI-1"]
+        for title, v in ((long_a[:31], "new"), (long_a[:31] + "1", "old"), ("PI3", "3")):
+            ws = wb.create_sheet(title)
+            ws.append(heads)
+            ws.append([{"PI": long_a if title != "PI3" else "PI3", "Recipe": "PI", "Zone": "Z",
+                        "Alg": "S", "Parameter": "P1", "AOI-1": v}.get(h) for h in heads])
+        wb.save(old)
+        legacy, _ = collate.load_collation(old)
+        assert list(legacy) == [long_a, "PI3"], list(legacy)
+        assert legacy[long_a][0]["AOI-1"] == "new"
+    print("  collate OK: 긴 레시피 이름 = 원래 이름 · 재확정 중복 없음 · 옛 취합본 정리")
+
 if __name__ == "__main__":
     fails = 0
     tests = [(n, f) for n, f in list(globals().items())

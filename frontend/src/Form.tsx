@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {desktop,errorText} from './desktop';
 import {Stepper,StepNav,notify,fail,LoadFailed} from './ui';
 import {OpenPath} from './OpenPath';
@@ -110,12 +110,18 @@ export function Form({mode}:{mode:'edit'|'new'}){
     return()=>{active=false;};
   },[step,opened,machine]);
   const scaleInvalid=Object.values(scaleEdits).some(v=>!(Number(v)>0&&Number.isFinite(Number(v))));
+  // 확정 결과는 창으로 띄운다(이슈 #21 — 오른쪽 위 알림만으로는 끝났는지 알 수 없어 한 번 더 누르게 됨).
+  // 확정한 뒤에는 단계를 벗어나거나 다른 원본을 열기 전까지 다시 확정하지 않는다.
+  const resultDialog=useRef<HTMLDialogElement>(null),[showResult,setShowResult]=useState(false);
+  useEffect(()=>{if(showResult&&result)resultDialog.current?.showModal();else resultDialog.current?.close();},[showResult,result]);
+  useEffect(()=>{if(step!==CONFIRM){setResult(undefined);setShowResult(false);}},[step,CONFIRM]);
+  useEffect(()=>{setResult(undefined);setShowResult(false);},[opened?.version]);
   async function confirm(){
-    if(!opened||scaleInvalid)return;
+    if(!opened||scaleInvalid||result)return;
     setBusy(true);setResult(undefined);
     const edited=Object.fromEntries(Object.entries(scaleEdits).map(([k,v])=>[k,Number(v)]));
     try{const reply=await desktop.request(`${api}_confirm`,{snapshot:opened.version,machine:confirmMachine,scales:edited}).promise;
-      setResult(reply[api] as Confirmed);notify('양식 확정 완료','ok');}
+      setResult(reply[api] as Confirmed);setShowResult(true);notify('양식 확정 완료','ok');}
     catch(e){fail(e);}finally{setBusy(false);}
   }
 
@@ -208,7 +214,8 @@ export function Form({mode}:{mode:'edit'|'new'}){
       <h3>확정</h3>
       <div className="runbar"><div><strong>사용 {opened.used}개 항목으로 확정</strong>
         <p>확정하면 저장폴더에 새 회차의 확정 양식과 편집용 원본이 함께 저장됩니다.</p></div>
-        <div className="actions"><button className="primary" disabled={busy||opened.used===0||scaleInvalid} onClick={confirm}>양식 확정 ▶</button></div></div>
+        <div className="actions">{result?<button onClick={()=>setShowResult(true)}>✅ 확정 완료 · 결과 보기</button>
+          :<button className="primary" disabled={busy||opened.used===0||scaleInvalid} onClick={confirm}>양식 확정 ▶</button>}</div></div>
       <p className="hint">기준 호기: <b>{confirmMachine}</b> — {mode==='new'?'수집한 호기':'이 양식을 처음 만든 호기'}입니다(따로 고르지 않습니다).
         변환계수를 찾고 파일 이름({opened.recipe}_{confirmMachine}호기_참조_…)을 붙이는 데만 씁니다.</p>
       {scales.length>0&&<div className="outputs"><h3>변환계수 (LINEAR/AREA 항목)</h3>
@@ -219,17 +226,7 @@ export function Form({mode}:{mode:'edit'|'new'}){
             onChange={e=>setScaleEdits(old=>{const next={...old};if(e.target.value===String(x.coef))delete next[x.variant];else next[x.variant]=e.target.value;return next;})}/></td>
           <td className={x.source==='기본값'&&scaleEdits[x.variant]===undefined?'warn':''}>{scaleEdits[x.variant]!==undefined?'직접 입력':x.source}</td></tr>)}</tbody></table>
         {scaleInvalid&&<p role="alert">변환계수는 0보다 큰 숫자여야 합니다.</p>}</div>}
-      {result&&<div className="outputs"><h3>확정 완료 · {result.kept}개 항목 (시트 {result.sheet})</h3>
-        {result.name_note&&<p role="alert">장비화면이름 저장 참고: {result.name_note}</p>}
-        {([['final','확정 양식'],['original','편집용 원본']] as const).map(([k,label])=><OpenPath key={k} label={label} path={result[k]}/>)}
-        {result.coef.saved>0&&<p>변환계수.xlsx 반영: {result.coef.saved}건</p>}
-        {result.coef.unregistered.length>0&&<p role="alert">변환계수.xlsx 에 행이 없어 기록하지 않은 변형: {result.coef.unregistered.join(', ')} (MAG 를 알아야 새 행을 만들 수 있습니다. 파일에 직접 추가하세요.)</p>}
-        {result.coef.defaulted.length>0&&<p role="alert">계수가 없어 기본 계수로 계산한 변형: {result.coef.defaulted.join(', ')}</p>}
-        {result.coef.error&&<p role="alert">변환계수 저장 실패: {result.coef.error}</p>}
-        {result.merge&&(result.merge.collate
-          ?<><OpenPath label="이전 값을 이어받은 취합 파일" path={result.merge.collate}/>
-            <p>{result.merge.added?`새로(변경) 추가된 파라미터 ${result.merge.added}개는 값이 비어 있습니다. Recipe 업데이트로 채우세요.`:'기존 파라미터 값은 이전 취합본에서 이어받았습니다.'}</p></>
-          :result.merge.error?<p role="alert">이전 값 이어받기 실패: {result.merge.error}</p>:null)}</div>}
+      {result&&<p className="hint">확정 완료 · {result.kept}개 항목 — 같은 양식을 다시 확정하려면 항목 편집 단계로 돌아가 고친 뒤 확정하세요.</p>}
     </>}
     {step===CONFIRM&&!opened&&<p className="table-empty">먼저 원본을 열고 항목을 편집하세요.</p>}
     </div>
@@ -237,9 +234,26 @@ export function Form({mode}:{mode:'edit'|'new'}){
     <StepNav step={step} total={steps.length} onBack={()=>setStep(s=>s-1)}
       onNext={()=>{if(step===0){if(mode==='new'){if(newScales)setStep(1);}else if(recipe)open(recipe,stamp);}
         else if(mode==='new'&&step===1)void newParse('');else if(step<CONFIRM)setStep(s=>s+1);else confirm();}}
-      nextLabel={step===0?(mode==='new'?'하위 레시피 선택':'원본 열기'):step<EDIT?'파라미터 불러오기':step===EDIT?'확정 단계로':'양식 확정'}
+      nextLabel={step===0?(mode==='new'?'하위 레시피 선택':'원본 열기'):step<EDIT?'파라미터 불러오기':step===EDIT?'확정 단계로':result?'확정 완료':'양식 확정'}
       nextDisabled={(step===0&&(mode==='new'?!newScales:!recipe||listing||noCandidate))||(step>0&&step<EDIT&&(!newPick.length||newScaleBad))
-        ||(step>=EDIT&&!opened)||(step===CONFIRM&&(opened?.used===0||scaleInvalid))} busy={busy}/>
+        ||(step>=EDIT&&!opened)||(step===CONFIRM&&(opened?.used===0||scaleInvalid||!!result))} busy={busy}/>
+
+    <dialog ref={resultDialog} className="edit-dialog" aria-label="양식 확정 결과" onCancel={e=>{e.preventDefault();setShowResult(false);}}>{result&&<>
+      <h2>✅ 양식 확정 완료</h2>
+      <p><b>{opened?.recipe}</b> 양식을 {result.kept}개 항목(시트 {result.sheet})으로 저장폴더에 저장했습니다. 다시 누를 필요가 없습니다.</p>
+      {result.name_note&&<p role="alert">장비화면이름 저장 참고: {result.name_note}</p>}
+      {([['final','확정 양식'],['original','편집용 원본']] as const).map(([k,label])=><OpenPath key={k} label={label} path={result[k]}/>)}
+      {result.coef.saved>0&&<p>변환계수.xlsx 반영: {result.coef.saved}건</p>}
+      {result.coef.unregistered.length>0&&<p role="alert">변환계수.xlsx 에 행이 없어 기록하지 않은 변형: {result.coef.unregistered.join(', ')} (MAG 를 알아야 새 행을 만들 수 있습니다. 파일에 직접 추가하세요.)</p>}
+      {result.coef.defaulted.length>0&&<p role="alert">계수가 없어 기본 계수로 계산한 변형: {result.coef.defaulted.join(', ')}</p>}
+      {result.coef.error&&<p role="alert">변환계수 저장 실패: {result.coef.error}</p>}
+      {result.merge&&(result.merge.collate
+        ?<><OpenPath label="이전 값을 이어받은 취합 파일" path={result.merge.collate}/>
+          <p>{result.merge.added?`새로(변경) 추가된 파라미터 ${result.merge.added}개는 값이 비어 있습니다. Recipe 업데이트로 채우세요.`:'기존 파라미터 값은 이전 취합본에서 이어받았습니다.'}</p></>
+        :result.merge.error?<p role="alert">이전 값 이어받기 실패: {result.merge.error}</p>:null)}
+      {mode==='new'&&<p className="hint">값은 [Recipe 업데이트]에서 수집하면 채워집니다.</p>}
+      <div className="dialog-actions"><button className="primary" onClick={()=>setShowResult(false)}>닫기</button></div>
+    </>}</dialog>
 
     <QuestionDialog question={question} onAnswer={v=>{if(!question)return;const next=withAnswer(answers,question,v);setAnswers(next);setQuestion(undefined);void newCollect(next);}}
       onCancel={()=>{setQuestion(undefined);void desktop.request('formnew_cancel').promise.catch(fail);}}/>

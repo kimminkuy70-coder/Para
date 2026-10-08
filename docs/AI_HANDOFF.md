@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #21 값 확인 레시피 목록 = 삭제 목록 · 양식 확정 결과 창 (2026-10-08 KST, `version_v12`)
+
+- GitHub 이슈 #21: ① 장비 파라미터 비교(값 확인) 탭의 레시피 선택 목록이 레시피 삭제 목록과 다름 — 31자를 넘는 레시피
+  (`2D@R2-S6WC61001-00001_0851889PD-0D`)가 `…PD` · `…PD` · `…PD1` 로 보임 ② 신규 Recipe 만들기에서 [양식 확정] 뒤 결과 창이 없어 한 번 더 누르게 되고,
+  그러면 ①이 생김.
+- 원인: 취합 파일 시트 이름은 Excel 제한 31자로 잘리는데(`collate._safe_sheet`) `load_collation` 이 **시트 이름을 레시피 이름으로** 썼다.
+  재확정(값 이어받기 `_inherit_values` → `build_collation`)마다 잘린 이름이 '다른 레시피'로 이월되고 새 시트와 겹쳐 openpyxl 이 `…1` 을 붙여 중복이 쌓였다.
+- 엔진 `param_manager/collate.py`: `write_collation` = 겹치지 않는 31자 이하 시트 이름(`_sheet_titles`, 겹치면 끝 `~2`…) + 이름이 달라진 시트가 있을 때만
+  숨김 시트 `_RECIPE_NAMES`(시트 → 원래 레시피 이름, `_AUX_SHEETS` 에 포함). `load_collation` 키 = 원래 레시피 이름(`_sheet_recipe`: 이름표, 없으면
+  옛 취합본은 PI 값이 하나이고 시트 이름이 그 31자 + 중복 번호일 때 PI 값). 같은 레시피가 또 나오면 앞의 것(최근 취합분)만 둔다 → 옛 중복 시트는
+  다음 취합 때 정리됨. `delete_recipe` 도 이름표로 찾는다.
+- 화면 `frontend/src/Form.tsx`(편집 · 신규 공통): 확정이 끝나면 **'✅ 양식 확정 완료' 결과 창**(확정 양식 · 편집용 원본 · 변환계수 · 이어받기 결과 · 닫기).
+  확정 뒤에는 [양식 확정 ▶] 대신 [✅ 확정 완료 · 결과 보기] — 다른 단계로 가거나 다른 원본을 열기 전에는 다시 확정하지 않는다.
+- 검증: `tests/test_collate.py::test_long_recipe_name_keeps_full_name`(긴 이름 2개 + 잘림 겹침 · 이월 · 삭제 · 옛 취합본 정리), `tools/check_project.py`(tkinter 없는
+  test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(결과 창 · 재확정 버튼 없음 추가) 통과. Windows 실기 · 사용자의 실제
+  취합 파일은 미검증(이미 쌓인 중복 시트는 다음 Recipe 업데이트/확정 때 원래 이름 하나로 정리됨).
+
 ## 최신 재개 — Para #20 신규 Recipe 만들기에 '하위 레시피 선택' 단계 추가 (2026-10-08 KST, `version_v12`)
 
 - GitHub 이슈 #20: 신규 Recipe 만들기는 상위 레시피를 정하면 수집된 하위 레시피가 모두 선택된 채 양식 편집으로 넘어갔다. 같은 상위 레시피라도
