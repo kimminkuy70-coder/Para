@@ -530,7 +530,12 @@ try{
   await page.locator('[role=group][aria-label="수집 호기"]:not([hidden] *)').getByLabel('AOI-01 선택').check();
   await page.getByRole('button',{name:'수집 시작',exact:true}).click();
   await page.locator('dialog[open]').getByRole('button',{name:'확인하고 계속',exact:true}).click();
-  await page.getByText('변형별 변환계수',{exact:true}).waitFor();
+  // 이슈 #20: 수집 뒤 '하위 레시피 선택' 단계 — 기본은 전부 선택, 고른 것만 양식에 넣는다.
+  const subPick=page.locator('[role=group][aria-label="양식에 넣을 하위 레시피"]:not([hidden] *)');
+  await subPick.waitFor();
+  await subPick.getByLabel('양식에 넣을 하위 레시피 전체 선택').uncheck();
+  assert(await page.getByRole('button',{name:'파라미터 불러오기 ▶',exact:true}).first().isDisabled());
+  await subPick.getByLabel('양식에 넣을 하위 레시피 전체 선택').check();
   await page.getByRole('button',{name:'파라미터 불러오기 ▶',exact:true}).first().click();
   await page.locator('.count:not([hidden] *)').filter({hasText:/사용 \d+ \/ 전체 \d+/}).first().waitFor();
   await page.getByRole('button',{name:'확정 단계로 ▶',exact:true}).click();

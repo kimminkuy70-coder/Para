@@ -14,16 +14,20 @@ type Catalog={save_dir:boolean;recipes:Recipe[];machines?:string[]};
 type Opened={version:string;recipe:string;level:string;variants:string[];total:number;used:number;source:string;machine?:string};
 type Scale={variant:string;coef:number;source:string;needed:boolean};
 type NewPrep={machines:{id:string;ip:string;local:string;type:string}[];local_source:string;local_source_ok:boolean;existing:string[]};
-type NewScale={variant:string;coef:number;source:string;confidence:string;reason:string};
+type NewScale={variant:string;coef:number;source:string;confidence:string;reason:string;machines:string[]};
 type Confirmed={final:string;original:string;kept:number;total:number;sheet:string;name_note:string;
   coef:{saved:number;defaulted:string[];unregistered:string[];error:string};
   merge:{collate:string;added:number;error:string}|null};
 const STEPS=['원본 선택','항목 편집','확정'];
+// 신규는 수집 뒤 '하위 레시피 선택' 단계가 하나 더 있다(이슈 #20 — 공통된 하위 레시피만 양식에 넣기).
+const STEPS_NEW=['원본 선택','하위 레시피 선택','항목 편집','확정'];
 
 /** Recipe 양식 편집하기 (mode 'edit') / 신규 Recipe 만들기 (mode 'new'): two tabs of Recipe 관리.
  *  They use separate engine editors (form_* / formnew_*) so both can be open at once. */
 export function Form({mode}:{mode:'edit'|'new'}){
   const api=mode==='new'?'formnew':'form';
+  const steps=mode==='new'?STEPS_NEW:STEPS;
+  const EDIT=steps.length-2,CONFIRM=steps.length-1;
   const [step,setStep]=useState(0);
   const [catalog,setCatalog]=useState<Catalog>();
   const [recipe,setRecipe]=useState(''),[stamp,setStamp]=useState('');
@@ -35,6 +39,7 @@ export function Form({mode}:{mode:'edit'|'new'}){
   const [newMachines,setNewMachines]=useState<string[]>([]),[answers,setAnswers]=useState<Answers>(noAnswers()),[question,setQuestion]=useState<Question>();
   const [newScales,setNewScales]=useState<NewScale[]>(),[newScaleEdit,setNewScaleEdit]=useState<Record<string,string>>({}),[localPath,setLocalPath]=useState('');
   const [similar,setSimilar]=useState<{recipe:string;match:number;total:number}[]>([]),[baseForm,setBaseForm]=useState('');
+  const [newPick,setNewPick]=useState<string[]>([]),[newCollected,setNewCollected]=useState<string[]>([]);
   // Versions are read only for the chosen recipe (not every recipe at once — OneDrive rule).
   const [recipeVersions,setRecipeVersions]=useState<{recipe:string;versions:Version[];can_edit:boolean}>();
   useEffect(()=>{
@@ -61,20 +66,25 @@ export function Form({mode}:{mode:'edit'|'new'}){
   async function newCollect(next:Answers){
     setBusy(true);
     try{const r=(await desktop.request('formnew_collect',{recipe:newName.trim(),machines:newMachines,source:newSource,answers:next}).promise).formnew as
-        {stage:string;question?:Question;scales?:NewScale[];errors?:{machine:string;error:string}[]};
+        {stage:string;question?:Question;scales?:NewScale[];collected?:string[];errors?:{machine:string;error:string}[]};
       if(r.stage==='question'&&r.question){setQuestion(r.question);return;}
-      setNewScales(r.scales);setNewScaleEdit({});
+      setNewScales(r.scales);setNewScaleEdit({});setNewCollected(r.collected||[]);
+      setNewPick((r.scales||[]).map(x=>x.variant));if(r.scales?.length)setStep(1);
       if(r.errors?.length)notify(`수집 실패 ${r.errors.length}대: `+r.errors.map(e=>`${e.machine}(${e.error})`).join(', '),'error');}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   const newScaleValue=(x:NewScale)=>newScaleEdit[x.variant]??String(x.coef);
-  const newScaleBad=!!newScales?.some(x=>!(Number(newScaleValue(x))>0));
+  const newPicked=(newScales||[]).filter(x=>newPick.includes(x.variant));
+  const newScaleBad=newPicked.some(x=>!(Number(newScaleValue(x))>0));
+  // 모든 수집 호기에서 읽힌 하위 레시피 = 공통 하위 레시피.
+  const newCommon=(newScales||[]).filter(x=>newCollected.length>0&&newCollected.every(m=>x.machines.includes(m))).map(x=>x.variant);
   async function newParse(base=baseForm){
-    if(!newScales)return;
+    if(!newScales||!newPicked.length)return;
     setBusy(true);
-    try{const r=(await desktop.request('formnew_parse',{scales:Object.fromEntries(newScales.map(x=>[x.variant,Number(newScaleValue(x))])),base_form:base}).promise).formnew as
+    try{const r=(await desktop.request('formnew_parse',{scales:Object.fromEntries(newPicked.map(x=>[x.variant,Number(newScaleValue(x))])),base_form:base,
+        variants:newPicked.map(x=>x.variant)}).promise).formnew as
         {form:Opened;similar:{recipe:string;match:number;total:number}[];base_form:string};
-      setOpened(r.form);setSimilar(r.similar);setBaseForm(r.base_form);setResult(undefined);setStep(1);}
+      setOpened(r.form);setSimilar(r.similar);setBaseForm(r.base_form);setResult(undefined);setStep(steps.length-2);}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   async function saveLocal(path:string){
@@ -92,7 +102,7 @@ export function Form({mode}:{mode:'edit'|'new'}){
   const confirmMachine=machine.trim()||'미지정';
   // Coefficients for LINEAR/AREA items of the chosen machine (변환계수.xlsx → 원본 라벨 → 기본값).
   useEffect(()=>{
-    if(step!==2||!opened){setScales([]);return;}
+    if(step!==CONFIRM||!opened){setScales([]);return;}
     let active=true;
     desktop.request(`${api}_scales`,{snapshot:opened.version,machine:confirmMachine}).promise
       .then(r=>{if(active){setScales((r[api] as {scales:Scale[]}).scales.filter(x=>x.needed));setScaleEdits({});}})
@@ -123,7 +133,7 @@ export function Form({mode}:{mode:'edit'|'new'}){
     <div className="section-heading"><div><span className="step">{mode==='new'?'NEW RECIPE':'EDIT RECIPE'}</span>
       <h2>{mode==='new'?'신규 Recipe 만들기 — 장비·로컬에서 읽어 새 양식':'Recipe 양식 편집하기 — 저장된 원본 편집·확정'}</h2></div>
       {mode==='edit'&&<button disabled={loading||busy} onClick={loadCatalog}>목록 새로고침</button>}</div>
-    <Stepper labels={STEPS} current={step} onJump={i=>{if(i===0)setStep(0);else if(i===1&&opened)setStep(1);}}/>
+    <Stepper labels={steps} current={step} onJump={i=>{if(i===0)setStep(0);else if(mode==='new'&&i===1&&newScales)setStep(1);else if(i===EDIT&&opened)setStep(EDIT);}}/>
 
     <div className="step-body">
     {step===0&&<>
@@ -161,17 +171,30 @@ export function Form({mode}:{mode:'edit'|'new'}){
               cells:[<b key="m">{m.id}</b>,where?<code key="w">{where}</code>:<span key="w" className="warn">{newSource==='equipment'?'IP 없음':'폴더 없음'}</span>,m.type||'—']};})}
           empty={<p className="table-empty">[장비 IP] 문서에 호기가 없습니다.</p>}/>
         {newMachines.length>1&&<p className="hint">여러 호기를 고르면 항목은 모두 합쳐 만들고, 확정 양식의 기준 호기(계수·파일 이름)는 먼저 고른 {newMachines[0]} 입니다.</p>}
-        <div className="toolbar"><button className="primary" disabled={busy||!newName.trim()||!newMachines.length} onClick={()=>{const a=noAnswers();setAnswers(a);void newCollect(a);}}>{busy&&!newScales?'수집 중…':'수집 시작'}</button></div>
-        {newScales&&<div className="outputs"><h3>변형별 변환계수</h3><p className="hint">RTP.txt 로 추정한 값을 미리 채웠습니다. 확인하고 필요하면 고치세요.</p>
-          <table className="tbl"><thead><tr><th>변형</th><th>계수</th><th>출처</th><th>추정 신뢰도</th></tr></thead><tbody>{newScales.map(x=><tr key={x.variant}>
-            <td>{x.variant||'(기본)'}</td><td><input type="number" step="any" aria-label={`${x.variant||'기본'} 새 양식 계수`} value={newScaleValue(x)} onChange={e=>setNewScaleEdit(v=>({...v,[x.variant]:e.target.value}))}/></td>
-            <td className={x.source==='기본값'?'warn':''}>{newScaleEdit[x.variant]!==undefined?'직접 입력':x.source}</td><td title={x.reason}>{x.confidence||'—'}</td></tr>)}</tbody></table>
-          <div className="toolbar"><button className="primary" disabled={busy||newScaleBad} onClick={()=>void newParse('')}>파라미터 불러오기 ▶</button></div></div>}
+        <div className="toolbar"><button className="primary" disabled={busy||!newName.trim()||!newMachines.length} onClick={()=>{const a=noAnswers();setAnswers(a);void newCollect(a);}}>{busy&&!newScales?'수집 중…':'수집 시작'}</button>
+          {newScales&&<button onClick={()=>setStep(1)}>하위 레시피 선택 ▶</button>}</div>
       </>}
       </>}
     </>}
 
-    {step===1&&opened&&<>
+    {mode==='new'&&step===1&&newScales&&<>
+      <h3>{newName.trim()} · 하위 레시피 선택</h3>
+      <p className="hint">수집한 하위 레시피 {newScales.length}개 중 양식에 넣을 것을 고르세요. 같은 상위 레시피라도 호기마다 하위 레시피가 다를 수 있으니,
+        값을 비교할 <b>공통 하위 레시피</b>만 고르면 그것만 항목 편집 · 확정 · 값 확인에 나옵니다. 계수는 RTP.txt 로 추정한 값을 미리 채웠습니다. 확인하고 필요하면 고치세요.</p>
+      {newCollected.length>1&&<div className="toolbar"><button disabled={!newCommon.length} onClick={()=>setNewPick(newCommon)}>
+        모든 호기에 있는 것만 고르기 ({newCommon.length}개)</button>{!newCommon.length&&<span className="hint">고른 호기 {newCollected.length}대 모두에 있는 하위 레시피가 없습니다.</span>}</div>}
+      <RowPick label="양식에 넣을 하위 레시피" columns={['하위 레시피','읽힌 호기','변환계수','출처','추정 신뢰도']} value={newPick} onChange={setNewPick}
+        rows={newScales.map(x=>({id:x.variant,cells:[<b key="v">{x.variant||'(기본)'}</b>,
+          <span key="m" className={newCollected.length>1&&x.machines.length<newCollected.length?'warn':''}>{x.machines.join(', ')||'—'}{newCollected.length>1?` (${x.machines.length}/${newCollected.length}대)`:''}</span>,
+          <input key="c" type="number" step="any" aria-label={`${x.variant||'기본'} 새 양식 계수`} value={newScaleValue(x)} onChange={e=>setNewScaleEdit(v=>({...v,[x.variant]:e.target.value}))}/>,
+          <span key="s" className={x.source==='기본값'?'warn':''}>{newScaleEdit[x.variant]!==undefined?'직접 입력':x.source}</span>,
+          <span key="r" title={x.reason}>{x.confidence||'—'}</span>]}))}/>
+      {!newPick.length&&<p role="alert">하위 레시피를 한 개 이상 고르세요.</p>}
+      {newScaleBad&&<p role="alert">변환계수는 0보다 큰 숫자여야 합니다.</p>}
+      <div className="toolbar"><button className="primary" disabled={busy||!newPick.length||newScaleBad} onClick={()=>void newParse('')}>파라미터 불러오기 ▶</button></div>
+    </>}
+
+    {step===EDIT&&opened&&<>
       <div className="section-heading"><div><h3>{opened.recipe} · {opened.level}</h3></div>
         <span className="count">사용 {opened.used} / 전체 {opened.total}</span></div>
       {mode==='new'&&similar.length>0&&<div className="form-filter"><label className="field">기존 레시피 양식 활용(사용 항목 맞추기)<select value={baseForm} disabled={busy} onChange={e=>void newParse(e.target.value)}>
@@ -179,9 +202,9 @@ export function Form({mode}:{mode:'edit'|'new'}){
       <FormEditor version={opened.version} pageMethod={`${api}_page`} editMethod={`${api}_edit`} replyKey={api} variants={opened.variants}
         onUsed={n=>setOpened(o=>o&&o.used!==n?{...o,used:n}:o)}/>
     </>}
-    {step===1&&!opened&&<p className="table-empty">먼저 1단계에서 원본을 여세요.</p>}
+    {step===EDIT&&!opened&&<p className="table-empty">{mode==='new'?'먼저 하위 레시피를 고르고 파라미터를 불러오세요.':'먼저 1단계에서 원본을 여세요.'}</p>}
 
-    {step===2&&opened&&<>
+    {step===CONFIRM&&opened&&<>
       <h3>확정</h3>
       <div className="runbar"><div><strong>사용 {opened.used}개 항목으로 확정</strong>
         <p>확정하면 저장폴더에 새 회차의 확정 양식과 편집용 원본이 함께 저장됩니다.</p></div>
@@ -208,13 +231,15 @@ export function Form({mode}:{mode:'edit'|'new'}){
             <p>{result.merge.added?`새로(변경) 추가된 파라미터 ${result.merge.added}개는 값이 비어 있습니다. Recipe 업데이트로 채우세요.`:'기존 파라미터 값은 이전 취합본에서 이어받았습니다.'}</p></>
           :result.merge.error?<p role="alert">이전 값 이어받기 실패: {result.merge.error}</p>:null)}</div>}
     </>}
-    {step===2&&!opened&&<p className="table-empty">먼저 원본을 열고 항목을 편집하세요.</p>}
+    {step===CONFIRM&&!opened&&<p className="table-empty">먼저 원본을 열고 항목을 편집하세요.</p>}
     </div>
 
-    <StepNav step={step} total={STEPS.length} onBack={()=>setStep(s=>s-1)}
-      onNext={()=>{if(step===0){if(mode==='new'){if(newScales)void newParse('');}else if(recipe)open(recipe,stamp);}else if(step<STEPS.length-1)setStep(s=>s+1);else confirm();}}
-      nextLabel={step===0?(mode==='new'?'파라미터 불러오기':'원본 열기'):step===1?'확정 단계로':'양식 확정'}
-      nextDisabled={(step===0&&(mode==='new'?!newScales||newScaleBad:!recipe||listing||noCandidate))||(step>=1&&!opened)||(step===2&&(opened?.used===0||scaleInvalid))} busy={busy}/>
+    <StepNav step={step} total={steps.length} onBack={()=>setStep(s=>s-1)}
+      onNext={()=>{if(step===0){if(mode==='new'){if(newScales)setStep(1);}else if(recipe)open(recipe,stamp);}
+        else if(mode==='new'&&step===1)void newParse('');else if(step<CONFIRM)setStep(s=>s+1);else confirm();}}
+      nextLabel={step===0?(mode==='new'?'하위 레시피 선택':'원본 열기'):step<EDIT?'파라미터 불러오기':step===EDIT?'확정 단계로':'양식 확정'}
+      nextDisabled={(step===0&&(mode==='new'?!newScales:!recipe||listing||noCandidate))||(step>0&&step<EDIT&&(!newPick.length||newScaleBad))
+        ||(step>=EDIT&&!opened)||(step===CONFIRM&&(opened?.used===0||scaleInvalid))} busy={busy}/>
 
     <QuestionDialog question={question} onAnswer={v=>{if(!question)return;const next=withAnswer(answers,question,v);setAnswers(next);setQuestion(undefined);void newCollect(next);}}
       onCancel={()=>{setQuestion(undefined);void desktop.request('formnew_cancel').promise.catch(fail);}}/>

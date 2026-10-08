@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #20 신규 Recipe 만들기에 '하위 레시피 선택' 단계 추가 (2026-10-08 KST, `version_v12`)
+
+- GitHub 이슈 #20: 신규 Recipe 만들기는 상위 레시피를 정하면 수집된 하위 레시피가 모두 선택된 채 양식 편집으로 넘어갔다. 같은 상위 레시피라도
+  호기마다 하위 레시피가 달라 값 확인 때 **공통 하위 레시피만** 보려는 목적으로, 하위 레시피를 고르는 단계를 추가.
+- 엔진 `param_manager/desktop_formnew.py`: `collect` 의 `scales` 항목마다 `machines`(그 하위 레시피가 읽힌 호기) 추가, 수집한 하위 레시피 목록을
+  `self.variants` 에 보관. `parse` 는 선택 인자 `variants`(목록, 비거나 모르는 이름이면 거절)를 받아 고른 하위 레시피의 config 만 피벗에 넣는다
+  (없으면 종전처럼 전부). IPC 허용 키 `formnew_parse={'scales','base_form','variants'}`.
+- 화면 `frontend/src/Form.tsx`(신규 모드만): 단계 = 원본 선택 → **하위 레시피 선택** → 항목 편집 → 확정. 수집이 끝나면 2단계로 이동,
+  `RowPick`(하위 레시피 · 읽힌 호기(n/N대, 일부 호기만이면 경고색) · 변환계수 · 출처 · 추정 신뢰도), 기본 전부 선택,
+  호기를 2대 이상 수집했으면 [모든 호기에 있는 것만 고르기]. 종전 1단계의 '변형별 변환계수' 표는 이 단계로 옮김. 양식 편집하기 모드는 그대로 3단계.
+- 검증: `tests/test_desktop_formnew.py`(하위 레시피 2개 fixture → 호기 표시 · 잘못된 선택 거절 · 1개만 고르면 그것만 양식에, 2개 통과),
+  `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`
+  (신규 흐름에 하위 레시피 선택 단계 · 전부 해제 시 불러오기 비활성 추가) 통과. Windows 실기 · 실제 장비 수집은 미검증.
+
 ## 최신 재개 — Para #19 Batch Report 찾기 2단계 검색 + 조사 캐시 먼저 · 앞뒤 24시간 (2026-10-08 KST, `version_v12`)
 
 - GitHub 이슈 #19: #18 에서 제안한 찾기 속도 개선안 중 "추천 조합(A + C)으로 진행해서 릴리즈까지, 앞뒤 24시간으로 찾는 걸로 설정".

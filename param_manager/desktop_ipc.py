@@ -283,7 +283,7 @@ class Session:
                        cmrun_edit={'snapshot','row','kind','value'}, cmrun_confirm={'unit','snapshot'},
                        cmrun_collate={'unit','mapping'}, cmrun_reset=set())
         allowed.update(formnew_prepare=set(), formnew_collect={'recipe','machines','source','answers'},
-                       formnew_parse={'scales','base_form'}, formnew_cancel=set(),
+                       formnew_parse={'scales','base_form','variants'}, formnew_cancel=set(),
                        formnew_page={'snapshot','variant','query','used_only','offset','limit','zone'},
                        formnew_edit={'snapshot','row','kind','value'}, formnew_bulk={'snapshot','value','variant','query','used_only','zone'},
                        formnew_scales={'snapshot','machine'}, formnew_confirm={'snapshot','machine','scales'})

@@ -5,6 +5,10 @@ Collection reuses the value-update collector steps (Job/Setup questions, local
 temp copies only). After the user confirms per-variant coefficients the Lots
 are parsed and loaded into the shared `DesktopForm`, so the existing page /
 edit / scales / confirm protocol (and screen) finishes the form.
+
+하위 레시피 선택(이슈 #20): 수집 뒤 `collect` 가 하위 레시피(변형)마다 어느 호기에서
+읽혔는지 함께 돌려주고, `parse(variants=)` 는 고른 하위 레시피만 양식에 넣는다
+(같은 상위 레시피라도 호기마다 하위 레시피가 달라, 공통된 것만 보려는 목적).
 """
 import re
 from pathlib import Path
@@ -19,6 +23,7 @@ class DesktopFormNew:
         self.collector = DesktopUpdate(config_path)
         self.sources = None
         self.recipe = ""
+        self.variants = []
 
     @property
     def config_path(self):
@@ -49,7 +54,7 @@ class DesktopFormNew:
         if out["stage"] == "question":
             return out
         self.recipe, self.sources = recipe, out["sources"]
-        variants, dirs = [], {}
+        variants, dirs, where = [], {}, {}
         for root, kw, machine in self.sources:
             for c in ini_parser.scan_tree(root, default_level=recipe or kw, default_equipment=machine):
                 if not ini_parser.config_valid(c):
@@ -58,6 +63,9 @@ class DesktopFormNew:
                 if v not in variants:
                     variants.append(v)
                     dirs[v] = c.config_dir
+                where.setdefault(v, [])
+                if machine not in where[v]:
+                    where[v].append(machine)
         if not variants:
             raise ValueError("인식된 설정(config) 폴더가 없습니다. GlobalRTP.ini/OpticPreset.ini/Zones 구조를 확인하세요.")
         scales = []
@@ -69,17 +77,28 @@ class DesktopFormNew:
             value = (reco or {}).get("Coefficient")
             scales.append(dict(variant=v, coef=value if value is not None else ini_parser.DEFAULT_SCALE,
                                source="RTP 추정" if value is not None else "기본값",
-                               confidence=(reco or {}).get("Confidence", ""), reason=(reco or {}).get("Reason", "")))
+                               confidence=(reco or {}).get("Confidence", ""), reason=(reco or {}).get("Reason", ""),
+                               machines=where.get(v, [])))
+        self.variants = variants
         state = self.collector.state
         return dict(stage="scales", recipe=recipe, scales=scales,
                     collected=[m for m in out["machines"] if m in state["sources"]],
                     errors=[dict(machine=m, error=e) for m, e in state["errors"].items()])
 
     def parse(self, params):
-        if set(params) != {"scales", "base_form"} or not isinstance(params["scales"], dict):
+        if (not {"scales", "base_form"} <= set(params) <= {"scales", "base_form", "variants"}
+                or not isinstance(params["scales"], dict)):
             raise ValueError("변환계수를 확인하세요")
         if not self.sources:
             raise ValueError("먼저 장비 또는 로컬에서 수집하세요")
+        # 하위 레시피 선택 — 없으면(구 화면) 수집한 하위 레시피 전부.
+        picked = params.get("variants")
+        if picked is None:
+            picked = list(self.variants)
+        if (not isinstance(picked, list) or not picked
+                or any(not isinstance(v, str) or v not in self.variants for v in picked)):
+            raise ValueError("양식에 넣을 하위 레시피를 한 개 이상 고르세요")
+        picked = set(picked)
         scales = {}
         for key, value in params["scales"].items():
             if not isinstance(key, str) or type(value) not in (int, float) or not 0 < value <= 1e6:
@@ -92,7 +111,8 @@ class DesktopFormNew:
         for root, kw, machine in self.sources:
             configs += ini_parser.scan_tree(root, default_level=self.recipe or kw, default_equipment=machine,
                                             scales=scales, coef_lookup=coefstore.make_lookup(rows))
-        pivot, _machines = ini_parser.build_pivot([c for c in configs if ini_parser.config_valid(c)])
+        pivot, _machines = ini_parser.build_pivot([c for c in configs
+                                                   if ini_parser.config_valid(c) and (c.mag or "") in picked])
         if not pivot:
             raise ValueError("읽힌 파라미터가 없습니다. 수집된 설정 파일을 확인하세요.")
         from .formcache import similar_forms
@@ -123,4 +143,5 @@ class DesktopFormNew:
         if params:
             raise ValueError("요청을 확인하세요")
         self.sources = None
+        self.variants = []
         return self.collector.cancel({})

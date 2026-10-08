@@ -54,6 +54,27 @@ class FormNewTests(unittest.TestCase):
         self.assertIsNone(done["merge"])                         # brand-new recipe: nothing to inherit
         self.new.cancel({})
 
+    def test_pick_sub_recipes(self):
+        """이슈 #20: 하위 레시피를 골라 그것만 양식에 넣는다(호기별 출처 표시)."""
+        job_root = self.tmp / "eq" / "Job"
+        _mk_recipe(job_root / "R_TB500_LIVE_PI9 - Enhanced" / "6324" / "Recipes" / "PI_BUBBLE")
+        req = {"recipe": "PI9", "machines": ["AOI-01"], "source": "equipment"}
+        q = self.new.collect(req)
+        out = self.new.collect(dict(req, answers={"match": {"AOI-01": {"PI9": q["question"]["suggested"]["PI9"]}}}))
+        names = [s["variant"] for s in out["scales"]]
+        self.assertEqual(sorted(names), ["PI", "PI-bubble"])
+        self.assertTrue(all(s["machines"] == ["AOI-01"] for s in out["scales"]))
+        scales = {s["variant"]: s["coef"] for s in out["scales"]}
+        for bad in ([], ["없는것"], "PI", [1]):
+            with self.assertRaises(ValueError):
+                self.new.parse({"scales": scales, "base_form": "", "variants": bad})
+        both = self.new.parse({"scales": scales, "base_form": ""})["form"]
+        self.assertEqual(sorted(both["variants"]), ["PI", "PI-bubble"])
+        one = self.new.parse({"scales": scales, "base_form": "", "variants": ["PI"]})["form"]
+        self.assertEqual(one["variants"], ["PI"])
+        self.assertLess(one["total"], both["total"])
+        self.new.cancel({})
+
 
 if __name__ == "__main__":
     unittest.main()
