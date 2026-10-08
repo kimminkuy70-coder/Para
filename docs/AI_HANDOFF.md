@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #22 Recipe 업데이트: 장비 연결 확인 단계 · 직접 찾기 안내 · 호기 건너뛰기 (2026-10-08 KST, `version_v12`)
+
+- GitHub 이슈 #22: ① Recipe 업데이트 때 먼저 장비 연결을 확인하고 "연결된 장비가 이러한데 이것들로만 업데이트를 진행할까요?" 체크 목록 단계 추가
+  (사용자가 더 체크 · 해제 가능) ② 추천 Job 폴더 목록을 보여 주는 질문 창에 "레시피와 일치하는 이름이 없어 직접 찾아 달라"는 문구 ③ 레시피가 없는 호기를
+  위한 [이 호기 건너뛰기] 버튼.
+- 엔진: `desktop_watch.check_machine_connections`(장비 연결 탭 `ParamWatch.connections` 의 확인 로직을 함수로 뺌 — TCP 445 probe → `\\IP\c$\Job` 존재,
+  호기 사이 `PROBE_GAP_SEC`, 읽기 · 자격증명 없음). 새 `DesktopUpdate.connections{machines}` · IPC `update_connections`('update'+'equipment' 슬롯, 잠금 없음).
+  `_collect_equipment` 는 `answers.skip`(호기 목록)에 든 호기를 수집하지 않고 오류 목록에 '건너뜀 — …'으로 남긴다(취합에서는 직전 값 유지 — 종전 미수집 호기와 같음).
+- 화면 `Update.tsx`: 단계 = 대상 선택 → **장비 연결 확인**(장비 IP 수집일 때만; 로컬 복사본은 바로 수집) → 수집 → 하위 레시피 매칭 → 미리보기 → 결과.
+  연결 확인 = `RowPick`(호기 · ✅연결됨/⚠미연결 · `\\IP\c$` · 안내), 기본은 연결된 호기만 체크, [⟳ 다시 확인], [이 호기들로 수집 시작 ▶](0대면 비활성).
+  단계 번호는 상수(SELECT … RESULT). `CollectQuestion.tsx`: 안내 문구 + 추천 없는 레시피마다 '일치하는 이름이 없습니다. 직접 찾아 주세요' 경고 +
+  [Job 폴더 이름 찾기] 필터(체크된 것은 계속 보임) + 선택 prop `onSkip` 이 있으면 [이 호기 건너뛰기](지금은 Recipe 업데이트만 연결, 신규 Recipe 만들기는 그대로).
+  `Answers.skip`, `withSkip`.
+- 검증: `tests/test_desktop_update.py::test_connections_then_skip_a_machine`(연결 · 미연결 · IP 없음 · 잘못된 요청 거절 · 건너뛴 호기 제외 · 모두 건너뛰면 오류+잠금 해제),
+  `test_desktop_watch*.py`(연결 확인 리팩터 회귀), `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`,
+  `tools/test_desktop_ui.mjs`(연결 확인 단계 · 체크 해제 시 비활성 · 직접 찾기 문구 · 건너뛰기 버튼 · 이름 찾기 필터) 통과. Windows 실기 · 실제 장비망 연결 확인은 미검증.
+
 ## 최신 재개 — Para #21 값 확인 레시피 목록 = 삭제 목록 · 양식 확정 결과 창 (2026-10-08 KST, `version_v12`)
 
 - GitHub 이슈 #21: ① 장비 파라미터 비교(값 확인) 탭의 레시피 선택 목록이 레시피 삭제 목록과 다름 — 31자를 넘는 레시피

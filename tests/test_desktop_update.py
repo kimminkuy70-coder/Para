@@ -82,6 +82,41 @@ class DesktopUpdateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.update.collect(bad)
 
+    def test_connections_then_skip_a_machine(self):
+        """#22: 수집 전 연결 확인(연결된 호기만 체크용) · 질문 창의 [이 호기 건너뛰기]."""
+        missing = self.tmp / "equipment" / "AOI-03" / "Job"          # not on the network
+        rows = refdata.load_ip(refdata.ip_path(str(self.save)))
+        refdata.save_ip(refdata.ip_path(str(self.save)), [
+            {"호기": r.get("호기"), "IP": r.get("IP"), "장비종류": "Camtek"} for r in rows]
+            + [{"호기": "AOI-03", "IP": "10.0.0.3", "장비종류": "Camtek"}, {"호기": "AOI-04", "IP": "", "장비종류": "Camtek"}])
+        self.equipment["AOI-03"] = missing
+        res = self.update.connections({"machines": ["AOI-01", "AOI-03", "AOI-04", "AOI-01"]})["results"]
+        self.assertEqual([(r["machine"], r["ok"]) for r in res], [("AOI-01", True), ("AOI-03", False), ("AOI-04", False)])
+        self.assertEqual(res[0]["unc"], "\\\\10.0.0.1\\c$")
+        self.assertIn("IP 없음", res[2]["reason"])
+        self.assertIsNone(self.update.lock_root)                # checking connections takes no lock
+        for bad in ({"machines": []}, {"machines": ["AOI-99"]}, {"machines": "AOI-01"}, {}):
+            with self.assertRaises(ValueError):
+                self.update.connections(bad)
+        # AOI-01 has no matching recipe → the user skips it; AOI-02 is still asked and collected.
+        req = {"recipes": ["PI3"], "machines": ["AOI-01", "AOI-02"], "source": "equipment"}
+        q = self.update.collect(dict(req, answers={}))
+        self.assertEqual(q["question"]["machine"], "AOI-01")
+        answers = {"skip": ["AOI-01"]}
+        q = self.update.collect(dict(req, answers=answers))
+        self.assertEqual((q["question"]["kind"], q["question"]["machine"]), ("match", "AOI-02"))
+        answers["match"] = {"AOI-02": {"PI3": ["R_TB500_LIVE_PI3 - Enhanced"]}}
+        q = self.update.collect(dict(req, answers=answers))
+        answers["setup"] = {"AOI-02": {q["question"]["job"]: "6324"}}
+        out = self.update.collect(dict(req, answers=answers))
+        self.assertEqual(out["collected"], ["AOI-02"])
+        self.assertEqual([(e["machine"], e["error"].startswith("건너뜀")) for e in out["errors"]], [("AOI-01", True)])
+        # Skipping every machine leaves nothing to collect (and releases the lock).
+        self.update.cancel({})
+        with self.assertRaises(ValueError):
+            self.update.collect({"recipes": ["PI3"], "machines": ["AOI-01"], "source": "equipment", "answers": {"skip": ["AOI-01"]}})
+        self.assertIsNone(self.update.lock_root)
+
     def test_local_source_and_cancel(self):
         with self.assertRaises(ValueError):
             self.update.collect({"recipes": ["PI3"], "machines": ["AOI-01"], "source": "local"})

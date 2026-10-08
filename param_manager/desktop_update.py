@@ -29,6 +29,7 @@ from . import (coefstore, collate, collector, engine, extract_io, ini_parser, lo
                locking, refdata, watcher, workdirs)
 from .desktop_batch import DesktopBatch, read_json
 from .desktop_progress import report
+from .desktop_watch import check_machine_connections
 
 MAX_ITEMS = 500
 
@@ -161,6 +162,18 @@ class DesktopUpdate:
         atomicfile.write_json(str(self.config_path), cfg)
         return self.prepare({})
 
+    # ---- step 0b: which of the chosen machines are reachable now (#22) ---
+    def connections(self, params):
+        """Recipe 업데이트 전에 고른 호기가 지금 연결돼 있는지(\\\\IP\\c$\\Job 이 보이는지) 확인.
+        화면은 연결된 호기만 체크한 목록을 보여 주고 사용자가 더 고르거나 뺀 뒤 수집한다.
+        읽기 · 자격증명 없음(장비 연결 탭과 같은 확인)."""
+        if set(params) != {"machines"} or not isinstance(params["machines"], list) \
+                or not params["machines"] or len(params["machines"]) > MAX_ITEMS:
+            raise ValueError("확인할 호기를 고르세요")
+        save = self._cfg()["save_dir"]
+        machines = list(dict.fromkeys(params["machines"]))
+        return dict(results=check_machine_connections(self._ip_rows(save), machines, self.job_root_override))
+
     # ---- step 1: collect + parse -----------------------------------------
     def gather(self, params, allow_new=False, hold=True):
         """Validate the request and copy/locate the sources. Returns a `question`
@@ -255,10 +268,15 @@ class DesktopUpdate:
     def _collect_equipment(self, save, rows, recipes, machines, answers, state):
         match_answers = answers.get("match") if isinstance(answers.get("match"), dict) else {}
         setup_answers = answers.get("setup") if isinstance(answers.get("setup"), dict) else {}
+        skipped = answers.get("skip") if isinstance(answers.get("skip"), list) else []
         if state["staging"] is None:
             state["staging"] = localdirs.new_temp_run(str(self._local_root()), "수집")
         for m in machines:
             if m in state["sources"] or m in state["errors"]:
+                continue
+            if m in skipped:
+                # 장비에 이 레시피가 없을 때 질문 창의 [이 호기 건너뛰기] (#22).
+                state["errors"][m] = "건너뜀 — 사용자가 이 호기를 건너뛰었습니다"
                 continue
             ip = refdata.ip_for(rows, m)
             if not ip:

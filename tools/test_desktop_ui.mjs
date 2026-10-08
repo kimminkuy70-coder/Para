@@ -496,13 +496,27 @@ try{
   await upMachines.getByLabel('호기 전체 선택').check();
   await upMachines.getByLabel('호기 전체 선택').uncheck();
   await upMachines.getByLabel('AOI-01 선택').check();
-  await page.getByRole('button',{name:'수집 시작 ▶',exact:true}).click();
+  // 이슈 #22: 수집 전에 연결 확인 → 연결된 호기만 체크한 목록 → 그대로 진행.
+  await page.getByRole('button',{name:'연결 확인 ▶',exact:true}).click();
+  await page.getByText('이 장비들로만 업데이트를 진행할까요?',{exact:false}).waitFor();
+  const upConn=page.locator('[role=group][aria-label="진행할 호기"]:not([hidden] *)');
+  assert(await upConn.getByLabel('AOI-01 선택').isChecked());
+  await upConn.getByLabel('AOI-01 선택').uncheck();
+  assert(await page.getByRole('button',{name:'이 호기들로 수집 시작 ▶',exact:true}).isDisabled());
+  await upConn.getByLabel('AOI-01 선택').check();
+  await page.getByRole('button',{name:'이 호기들로 수집 시작 ▶',exact:true}).click();
   const ask=page.locator('dialog[open]');
   await ask.getByText('AOI-01 · 레시피 ↔ Job 폴더').waitFor();
   assert(await ask.locator('.pick-item').filter({hasText:'R_TB500_PI2 - Enhanced'}).locator('input').isChecked());
+  await ask.getByText('직접 찾아 고르세요',{exact:false}).waitFor();
+  await ask.getByRole('button',{name:'이 호기 건너뛰기',exact:true}).waitFor();
+  await ask.getByLabel('Job 폴더 이름 찾기').fill('Other');
+  assert.equal(await ask.locator('.pick-item').filter({hasText:'Other job'}).count(),1);
+  assert.equal(await ask.locator('.pick-item').filter({hasText:'R_TB500_PI2 - Enhanced'}).count(),1);   // 체크된 것은 계속 보임
+  await ask.getByLabel('Job 폴더 이름 찾기').fill('');
   await ask.getByRole('button',{name:'확인하고 계속',exact:true}).click();
   await page.getByText('결과 확인',{exact:true}).waitFor();
-  await page.waitForFunction(()=>[...document.querySelectorAll('.stepper:not([hidden] *) .st')].findIndex(e=>e.classList.contains('now'))>=2);
+  await page.waitForFunction(()=>[...document.querySelectorAll('.stepper:not([hidden] *) .st')].findIndex(e=>e.classList.contains('now'))>=3);
   if(await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).isVisible())await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).click();
   await page.getByRole('button',{name:'취합 저장 ▶',exact:true}).waitFor();
   const keep=page.getByLabel('그래도 포함');
@@ -511,10 +525,10 @@ try{
   // 결과 확인 stays on its own step: per-recipe table, then the file path, then [처음으로].
   await page.locator('.update-result tbody tr').filter({hasText:'PI2'}).waitFor();
   await page.getByLabel('취합 파일 경로',{exact:true}).waitFor();
-  assert.equal(await page.getByRole('button',{name:'수집 시작 ▶',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'연결 확인 ▶',exact:true}).count(),0);
   await page.screenshot({path:join(root,'docs/screenshots/rev1-update-result.png'),fullPage:true});
   await page.getByRole('button',{name:'⟲ 처음으로',exact:true}).click();
-  await page.getByRole('button',{name:'수집 시작 ▶',exact:true}).waitFor();
+  await page.getByRole('button',{name:'연결 확인 ▶',exact:true}).waitFor();
   await page.screenshot({path:join(root,'docs/screenshots/rev1-update-select.png'),fullPage:true});
   // B: 이력 — the inherited collation is a second file; row lists and Excel export.
   await recipeTab('레시피 날짜별 비교하기');

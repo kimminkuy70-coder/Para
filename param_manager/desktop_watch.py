@@ -50,6 +50,37 @@ def valid_rel(rel: str) -> str:
     return "\\".join(parts)
 
 
+def check_machine_connections(rows, machines, job_root_override=None, sleep=time.sleep):
+    """[장비 IP] 호기마다 \\\\IP\\c$\\Job 이 지금 보이는지(탐색기로 로그인해 둔 세션, 읽기 없음).
+    호기 사이 `PROBE_GAP_SEC` 간격 — 스캔처럼 몰아치지 않는다. 장비 연결 탭 · Recipe 업데이트(#22) 공용."""
+    known = refdata.machines(rows)
+    out = []
+    for i, m in enumerate(machines):
+        if m not in known:
+            raise ValueError("[장비 IP]에 등록된 호기만 확인할 수 있습니다")
+        ip = refdata.ip_for(rows, m)
+        unc = f"\\\\{ip}\\c$" if ip else ""
+        report(f"[{i + 1}/{len(machines)}] {m} 연결 확인 중…")
+        if not ip:
+            out.append(dict(machine=m, ip="", unc="", ok=False, reason="IP 없음 — [장비 IP] 문서에 IP를 적으세요"))
+            continue
+        if i and not job_root_override:
+            sleep(watcher.PROBE_GAP_SEC)
+        if job_root_override:
+            ok = Path(job_root_override(m)).is_dir()
+            reason = "" if ok else "Job 폴더가 보이지 않습니다"
+        elif not watcher.probe_host(ip):
+            ok, reason = False, "장비가 응답하지 않습니다(전원·네트워크 확인)"
+        else:
+            try:
+                ok = Path(watcher.job_path_for(ip)).exists()
+            except Exception:  # noqa: BLE001
+                ok = False
+            reason = "" if ok else "로그인이 필요합니다 — Win+R 에 주소를 붙여 넣고 로그인하세요"
+        out.append(dict(machine=m, ip=ip, unc=unc, ok=ok, reason=reason))
+    return out
+
+
 class _Base:
     def __init__(self, config_path=None):
         self.config_path = Path(config_path) if config_path else Path.home() / ".pi_param_manager.json"
@@ -280,32 +311,7 @@ class ParamWatch(_Base):
         if set(params) != {"machines"} or not isinstance(params["machines"], list) or len(params["machines"]) > 200:
             raise ValueError("확인할 호기를 고르세요")
         save = self._save_dir()
-        rows = self._ip_rows(save)
-        known = refdata.machines(rows)
-        out = []
-        for i, m in enumerate(params["machines"]):
-            if m not in known:
-                raise ValueError("[장비 IP]에 등록된 호기만 확인할 수 있습니다")
-            ip = refdata.ip_for(rows, m)
-            unc = f"\\\\{ip}\\c$" if ip else ""
-            report(f"[{i + 1}/{len(params['machines'])}] {m} 연결 확인 중…")
-            if not ip:
-                out.append(dict(machine=m, ip="", unc="", ok=False, reason="IP 없음 — [장비 IP] 문서에 IP를 적으세요"))
-                continue
-            if i and not self.job_root_override:
-                self.sleep(watcher.PROBE_GAP_SEC)
-            if self.job_root_override:
-                ok = self._job_root(m, ip).is_dir()
-                reason = "" if ok else "Job 폴더가 보이지 않습니다"
-            elif not watcher.probe_host(ip):
-                ok, reason = False, "장비가 응답하지 않습니다(전원·네트워크 확인)"
-            else:
-                try:
-                    ok = Path(watcher.job_path_for(ip)).exists()
-                except Exception:  # noqa: BLE001
-                    ok = False
-                reason = "" if ok else "로그인이 필요합니다 — Win+R 에 주소를 붙여 넣고 로그인하세요"
-            out.append(dict(machine=m, ip=ip, unc=unc, ok=ok, reason=reason))
+        out = check_machine_connections(self._ip_rows(save), params["machines"], self.job_root_override, self.sleep)
         return dict(results=out, checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     def _job_root(self, machine, ip):
