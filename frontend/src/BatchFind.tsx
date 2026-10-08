@@ -5,14 +5,19 @@ import {OpenPath,openPath} from './OpenPath';
 import {ScanBackupBar} from './ScanBackup';
 import {grpLabel,num,isRealId,type View,type AggGroup} from './batchData';
 
-/* Batch Report 찾기 · 취합 — ① 파일 이름으로 찾기 ② Lot · 공정 단계별로 고르기(Scanresult 경로 · 원문)
-   ③ 취합(같은 wafer 여러 장이면 최신 스캔 자동 = 가장 나중 Pass, 개발자 기능이면 Pass 2번 이상을 직접 고름). */
+/* Batch Report 찾기 · 취합 — ① 파일 이름으로 찾기(로컬 조사 캐시 먼저 → 장비 Reports 폴더 이름, 원문은 안 엶)
+   ② 찾은 파일 고르기 ③ 고른 것 + 같은 호기 앞뒤 24시간만 읽어 Lot · 공정 단계별로 고르기(Scanresult 경로 · 원문)
+   ④ 취합(같은 wafer 여러 장이면 최신 스캔 자동 = 가장 나중 Pass, 개발자 기능이면 Pass 2번 이상을 직접 고름). (이슈 #19) */
 const small={minHeight:28,padding:'3px 10px',fontSize:12} as const;
-export type FindCond={machines:string[];query:string;start:string;end:string};
+export type FindCond={machines:string[];query:string;start:string;end:string;cacheOnly?:boolean};
+export type FindHit={i:number;m:string;f:string;t:string;c:boolean};
+export type FindList={stage:'cache'|'equipment';query:string;start:string;end:string;hits:FindHit[];total:number;cached:number;listed:number;offline:string[];neighbor_h:number};
+const LIST_MAX=1000;
 type Props={machines:{id:string;folder:string}[];view?:View;busy:boolean;dev:boolean;progress:string;
   cond:FindCond;setCond:(c:FindCond)=>void;onFind:()=>void;aggregate:(reports:number[])=>Promise<AggGroup[]|undefined>;
   exportAgg:(reports:number[],choices:Record<string,number>,stamp:string)=>Promise<string|undefined>;
-  openLot:(li:number)=>void;showRaw:(g:number)=>void;openFile:(g:number)=>void;onCrit:()=>void;goSettings:()=>void;step:number;setStep:(n:number)=>void};
+  openLot:(li:number)=>void;showRaw:(g:number)=>void;openFile:(g:number)=>void;onCrit:()=>void;goSettings:()=>void;step:number;setStep:(n:number)=>void;
+  list?:FindList;checking:boolean;onLoad:(hits:number[])=>void};
 type Stamp={manual:number;saved:number;at:string};
 const recIdx=(c:{ok:boolean}[])=>{for(let j=c.length-1;j>=0;j--)if(c[j].ok)return j;return c.length-1;};
 
@@ -23,6 +28,11 @@ export function FindTab(p:Props){
   const [stamp,setStamp]=useState<Stamp>(),[note,setNote]=useState(''),[xlsx,setXlsx]=useState('');
   const [must,setMust]=useState<[number,string][]>([]),[auto,setAuto]=useState<[number,string][]>([]);
   const dupRef=useRef<HTMLDialogElement>(null);
+  const [pick,setPick]=useState<Record<string,1>>({});
+  const L=p.list,hk=(h:FindHit)=>h.m+'\t'+h.f,shown=L?L.hits.slice(0,LIST_MAX):[];
+  const listKey=L?[L.query,L.start,L.end].join('\n'):'';
+  useEffect(()=>{setPick({});},[listKey]);   // 새 검색이면 고른 것 비움(장비 단계가 목록을 늘릴 때는 유지)
+  const picked=L?L.hits.filter(h=>pick[hk(h)]).map(h=>h.i):[];
   useEffect(()=>{setSel({});},[v]);
   useEffect(()=>{if(must.length)dupRef.current?.showModal();},[must]);
   const hits=new Set(v?.hits||[]);
@@ -41,10 +51,10 @@ export function FindTab(p:Props){
     setNote(dups.length?`같은 wafer가 고른 Batch Report 2장 이상에 있는 ${dups.length}장은 최신 스캔으로 자동 취합했습니다(Pass가 있으면 가장 나중 Pass, 없으면 가장 나중 스캔). 그중 Pass 2번 이상 ${many.length}장.`+(p.dev?'':' 직접 고르기는 개발자 기능입니다.'):'');
     setStamp({manual:0,saved,at:new Date().toTimeString().slice(0,5)});
     if(many.length&&p.dev){setAuto(dups.filter(d=>!many.includes(d)));setMust(many);}
-    else p.setStep(2);
+    else p.setStep(3);
   }
   function confirmDup(){dupRef.current?.close();let manual=0;groups.forEach((g,gi)=>g.keys.forEach(k=>{if(g.w[k].cells.length>1&&choice[gi+'|'+k]!==g.w[k].rec)manual++;}));
-    setStamp(s=>s&&{...s,manual});setMust([]);p.setStep(2);}
+    setStamp(s=>s&&{...s,manual});setMust([]);p.setStep(3);}
   const stampText=stamp?`최신 스캔 자동(Pass가 있으면 가장 나중 Pass)${stamp.saved?` + 저장된 사람 선택 ${stamp.saved}건`:''}${stamp.manual?` + 개발자 직접 선택 ${stamp.manual}건`:''}`:'';
   const block=([gi,k]:[number,string])=>{const g=groups[gi],c=g.w[k].cells,rec=g.w[k].rec;
     return <div key={gi+'|'+k} className="dupwafer"><div className="w">Lot {v!.lots[g.li].label} · {grpLabel(v!.lots[g.li].bunches[g.bi])} · 슬롯 {k.replace(/^S0?/,'')} · {(c.find(x=>isRealId(x.id))||c[0]).id}</div>
@@ -53,7 +63,7 @@ export function FindTab(p:Props){
   const scanKey=(g:number)=>{const r=v!.R[g];return [r.m,r.job,r.setup,r.sm].join('|');};
   return <section className="panel" aria-label="Batch Report 찾기 · 취합">
     <div className="section-heading"><div><span className="step">찾기 · 취합</span><h2>Batch Report 찾기 · Lot 취합</h2></div>{v?.find&&<span className="count">찾은 Batch Report {v.find.total}개</span>}</div>
-    <Stepper labels={['검색','Batch Report 고르기','취합 결과']} current={p.step} onJump={p.setStep}/>
+    <Stepper labels={['검색','찾은 파일 고르기','Lot · Batch Report 고르기','취합 결과']} current={p.step} onJump={p.setStep}/>
     {p.step===0&&<>
       <div className="mhead"><span className="lbl">호기 범위</span><span className="count">선택 {cond.machines.length} / {p.machines.length}</span><span className="grow"/>
         <label className="tgl2"><input type="checkbox" aria-label="찾기 모든 호기" checked={!!p.machines.length&&cond.machines.length===p.machines.length}
@@ -66,15 +76,35 @@ export function FindTab(p:Props){
           onChange={e=>p.setCond({...cond,query:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'&&!p.busy)p.onFind();}}/></label>
         <div className="dates"><label className="field">시작일<input type="date" aria-label="찾기 시작일" value={cond.start} onChange={e=>p.setCond({...cond,start:e.target.value})}/></label>
           <label className="field">종료일<input type="date" aria-label="찾기 종료일" value={cond.end} onChange={e=>p.setCond({...cond,end:e.target.value})}/></label></div>
+        <label className="tgl2" title="[조사 시작]으로 이미 읽어 둔 로컬 캐시에서만 찾습니다(장비에 접속하지 않음)"><input type="checkbox" aria-label="캐시에서만 찾기" checked={!!cond.cacheOnly}
+          onChange={e=>p.setCond({...cond,cacheOnly:e.target.checked})}/> 캐시에서만 찾기</label>
         <div className="go"><button className="primary" disabled={p.busy||!cond.query.trim()||!cond.machines.length} onClick={p.onFind}>{p.busy?'찾는 중…':'검색 →'}</button>
           <button type="button" className="help-btn lg" aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 묶는지 보기" onClick={p.onCrit}>?</button></div></div>
       <ScanBackupBar note="찾은 Lot 의 Scanresult 경로를 보여 줄 때 적용됩니다." disabled={p.busy}/>
       {p.busy&&<p className="scope-status" role="status">{p.progress||'Reports 폴더를 확인하는 중…'}</p>}
       <details className="logic"><summary>로직 · 검색</summary><ol>
-        <li>고른 호기 Reports 폴더의 <b>파일 이름만</b> 봅니다(원본을 열지 않음). 키워드는 대소문자 무시, 여러 단어는 모두 포함, 기간은 파일 이름 안 날짜.</li>
-        <li>찾은 Batch Report와, 같은 호기에서 그 앞뒤 13시간 안에 스캔한 Batch Report를 읽어(이미 읽은 것은 캐시) <b>Lot · 공정 단계</b>로 모읍니다. 같은 Lot을 이어서 스캔했는데 키워드에 안 걸린 Batch Report(S/M 꼬리가 다른 것 등)도 회색으로 함께 보여 놓칠 일이 없게 합니다.</li>
+        <li><b>파일 이름만</b> 봅니다(원본을 열지 않음). 키워드는 대소문자 무시, 여러 단어는 모두 포함, 기간은 파일 이름 안 날짜.</li>
+        <li>먼저 <b>[조사 시작]으로 이미 읽어 둔 로컬 캐시</b>에서 찾아 바로 보여 주고(장비 접속 없음), 이어서 고른 호기 Reports 폴더 이름 목록에서 캐시에 없는 새 Batch Report를 더합니다. [캐시에서만 찾기]를 켜면 장비에 접속하지 않습니다.</li>
+        <li>찾은 목록에서 고른 것만 읽습니다. 고른 Batch Report와, 같은 호기에서 그 <b>앞뒤 24시간</b> 안에 스캔한 Batch Report를 함께 읽어(캐시에 있으면 장비 접속 없음) <b>Lot · 공정 단계</b>로 모읍니다. 같은 Lot을 이어서 스캔했는데 키워드에 안 걸린 Batch Report(S/M 꼬리가 다른 것 등)도 회색으로 함께 보여 놓칠 일이 없게 합니다.</li>
         <li>호기 사이에는 2초 간격으로 순서대로 읽습니다(장비 접속 매너).</li></ol></details></>}
-    {p.step===1&&v&&<>
+    {p.step===1&&<>
+      {!L?<div className="empty-state"><h3>먼저 검색하세요.</h3></div>:<>
+      <div className="mhead"><span className="lbl">찾은 Batch Report</span><span className="count">{L.total}개 · 캐시 {L.cached} · 장비 새 {L.total-L.cached}</span><span className="grow"/>
+        <button type="button" style={small} disabled={!shown.length} onClick={()=>setPick(Object.fromEntries(shown.map(h=>[hk(h),1])))}>모두 고르기</button>
+        <button type="button" style={small} disabled={!picked.length} onClick={()=>setPick({})}>모두 해제</button></div>
+      {p.checking?<p className="scope-status" role="status">{p.progress||'장비 Reports 폴더에서 캐시에 없는 새 Batch Report를 확인하는 중…'} (캐시 결과는 아래에 먼저 보입니다)</p>
+        :L.stage==='cache'?<p className="hint">로컬 조사 캐시에서만 찾았습니다(장비 접속 없음). 캐시 이후 Batch Report까지 찾으려면 [캐시에서만 찾기]를 끄고 다시 검색하세요.</p>
+        :<p className="hint">캐시 + 장비 Reports 폴더 이름에서 찾았습니다{L.offline.length?` — 연결 안 된 호기(캐시만): ${L.offline.join(', ')}`:''}. 원문은 아직 열지 않았습니다.</p>}
+      {L.total>LIST_MAX&&<p className="hint">앞(최근) {LIST_MAX}개만 보입니다. 키워드 · 기간을 좁히세요.</p>}
+      {!L.total?<div className="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드 · 기간 · 호기 범위를 바꿔 보세요.</p></div>
+        :<div className="table-scroll" style={{maxHeight:'52vh'}}><table className="t-compact" aria-label="찾은 Batch Report 목록"><thead><tr><th/><th>스캔 시각(파일 이름)</th><th>호기</th><th>파일 이름</th><th>어디서</th></tr></thead>
+          <tbody>{shown.map(h=><tr key={hk(h)}><td><input type="checkbox" checked={!!pick[hk(h)]} aria-label={h.f+' 고르기'}
+              onChange={e=>setPick(o=>{const n={...o};if(e.target.checked)n[hk(h)]=1;else delete n[hk(h)];return n;})}/></td>
+            <td>{h.t||'—'}</td><td>{h.m}</td><td className="mono">{h.f}</td><td>{h.c?<span className="st">캐시</span>:<span className="st out">장비</span>}</td></tr>)}</tbody></table></div>}
+      <div className="selbar"><span>고른 {picked.length}개{picked.length?` — 같은 호기 앞뒤 ${L.neighbor_h}시간 안의 Batch Report도 함께 읽습니다`:''}</span><div style={{display:'flex',gap:8}}>
+        <button onClick={()=>p.setStep(0)}>◀ 검색으로</button><button className="primary" disabled={!picked.length||p.busy} onClick={()=>p.onLoad(picked)}>{p.busy&&!p.checking?'읽는 중…':'고른 Batch Report 읽기 →'}</button></div></div>
+      {p.busy&&!p.checking&&p.progress&&<p className="scope-status" role="status">{p.progress}</p>}</>}</>}
+    {p.step===2&&v&&<>
       <p className="hint">Scanresult 경로 검색 범위: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'원본 + 백업본'}</b> — 바꾸려면 1단계의 [백업본 포함] 스위치를 바꾸고 다시 검색하세요.</p>
       <details className="logic"><summary>로직 · 고르기</summary><ol>
         <li><b>원문 보기</b> = 캐시에 읽어 둔 Batch Report의 표를 그대로 앱 안에서 보여 줍니다. <b>원본 열기</b> = 장비 Report 폴더의 .htm을 기본 브라우저로 엽니다(읽기 전용).</li>
@@ -96,8 +126,8 @@ export function FindTab(p:Props){
                 <td>{r.sm}{out&&<> <span className="st out">키워드 밖 · 같은 Lot 이어서 스캔</span></>}</td><td className="num">{r.ok} / {r.n}</td><td>{r.fe}</td><td className="mono">{r.f}</td>
                 <td><button style={small} onClick={()=>p.showRaw(g)}>원문 보기</button> <button style={small} onClick={()=>p.openFile(g)}>원본 열기</button></td></tr>;})}</tbody></table></div></div>;})}</div>
       <div className="selbar"><span>선택 {nSel}개{nSel?` · 취합 대상 Lot · 공정 단계 ${selGroups}개`:''}</span><div style={{display:'flex',gap:8}}>
-        <button onClick={()=>p.setStep(0)}>◀ 검색으로</button><button className="primary" disabled={!nSel||p.busy} onClick={start}>선택한 Batch Report 취합 →</button></div></div></>}
-    {p.step===2&&v&&stamp&&<>
+        <button onClick={()=>p.setStep(1)}>◀ 찾은 파일로</button><button className="primary" disabled={!nSel||p.busy} onClick={start}>선택한 Batch Report 취합 →</button></div></div></>}
+    {p.step===3&&v&&stamp&&<>
       {stamp.manual>0&&!p.dev&&<div className="alert" style={{marginBottom:12}}><span>이 결과에는 개발자 기능에서 직접 고른 선택 {stamp.manual}건이 들어 있습니다(개발자 기능은 지금 꺼짐). 다른 화면과 기준을 맞추려면 다시 취합하세요.</span>
         <button type="button" style={{fontSize:12,minHeight:30,padding:'4px 12px'}} onClick={start}>추천으로 다시 취합</button></div>}
       <div className="stamp"><span>선택 기준: <b>최신 스캔 자동</b>(Pass가 있으면 가장 나중 Pass){stamp.saved>0&&<> + <b>저장된 사람 선택 {stamp.saved}건</b></>}{stamp.manual>0&&<> + <b>개발자 직접 선택 {stamp.manual}건</b></>}</span>
@@ -118,7 +148,7 @@ export function FindTab(p:Props){
               <td className={x.ok?'c-p':'c-e'}>{x.status}</td><td className="n">{num(x.sc)}</td><td className="n">{num(x.bad)}</td><td className="n">{num(x.good)}</td><td className="n">{x.sc?num((x.good||0)/x.sc*100,1)+'%':'—'}</td>
               <td><button type="button" style={{minHeight:22,padding:'1px 8px',fontSize:11}} onClick={()=>p.showRaw(x.g)}>원문</button></td></tr>;})}</tbody></table></div></Fragment>;})}
       {xlsx&&<div className="outputs" style={{marginTop:16}}><OpenPath label="저장된 Excel" path={xlsx}/></div>}
-      <div className="stepnav" style={{marginTop:16}}><button className="btn" onClick={()=>p.setStep(1)}>◀ 다시 고르기</button><span className="stepcount">3 / 3</span>
+      <div className="stepnav" style={{marginTop:16}}><button className="btn" onClick={()=>p.setStep(2)}>◀ 다시 고르기</button><span className="stepcount">4 / 4</span>
         <button className="btn primary" disabled={p.busy} onClick={async()=>{const path=await p.exportAgg(Object.keys(sel).map(Number),choice,stampText);if(path)setXlsx(path);}}>Excel로 저장</button></div></>}
     <dialog className="edit-dialog mid" ref={dupRef} aria-labelledby="dupTitle" onClose={()=>setMust([])}>
       <h3 id="dupTitle">같은 wafer가 여러 Batch Report에 있습니다 <span className="st" style={{background:'#f3eefc',color:'#5b3f8f'}}>개발자 기능</span></h3>

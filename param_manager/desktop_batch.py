@@ -65,7 +65,9 @@ VIEW_CHUNK = 1_000_000            # 글자 수(ASCII JSON). 따옴표 이스케�
 CHOICES_FILE = "batch_lot_choices.json"
 VIEWS = ("scope", "find")
 MAX_FIND_MACHINES = 200
-NEIGHBOR_H = 13                   # 찾기: 키워드에 걸린 Batch Report 앞뒤로 같은 호기에서 이어서 스캔한 것까지
+NEIGHBOR_H = 24                   # 찾기: 고른 Batch Report 앞뒤로 같은 호기에서 이어서 스캔한 것까지(이슈 #19: 13 → 24시간)
+MAX_FIND_HITS = 20000             # 찾기 1단계 목록(파일 이름만)
+MAX_FIND_PICK = 2000              # 찾기 2단계에서 한 번에 읽을 수 있는 고른 Batch Report
 
 
 def _choice_key(bunch_key, wafer_key):
@@ -111,6 +113,31 @@ def _scanresult_paths(cfg, records, progress=None, cancel=None, limit=300):
             except OSError:
                 pass
         out[key] = dict(paths=found, pattern=pattern)
+    return out
+
+
+def _cached_names(root, folders):
+    """{(호기, 폴더): {파일 이름}} — 로컬 조사 캐시(배치분석/누적)에 이미 읽어 둔 Batch Report 이름(이슈 #19).
+
+    장비에 묻지 않는다. 캐시 파일 이름은 원본 폴더를 resolve 한 해시라 그 경로를 다시 풀면 장비 공유에 접속하게
+    되므로, `load_cached` 처럼 캐시 안에 적어 둔 (호기, 폴더) 문자열로 짝을 찾는다. 같은 실행 중에는 메모리에 둔
+    캐시(`_load_state`)를 다시 쓴다."""
+    import os
+    base = batchreport_store.local_root(root, [f for _, f in folders]) / "배치분석" / "누적"
+    want = {(m, os.path.normcase(str(Path(f)))): (m, f) for m, f in folders}
+    out = {}
+    if not base.is_dir():
+        return out
+    for cachefile in sorted(base.glob("*.json")):
+        if cachefile.is_symlink():
+            continue
+        try:
+            state = batchreport_store._load_state(cachefile)
+        except (OSError, ValueError):
+            continue
+        pair = want.get((state.get("machine"), os.path.normcase(str(state.get("folder", "")))))
+        if pair:
+            out.setdefault(pair, set()).update(state["entries"])
     return out
 
 
@@ -275,57 +302,119 @@ class BatchViews:
         batchreport_store.local_root(root, [f for _, f in folders])
         return root, folders, target, cfg
 
-    def find(self, prepared, progress=None, cancel=None, host_gap=2.0):
-        """파일 이름으로 찾고(원본을 열지 않음), 찾은 것과 같은 호기에서 앞뒤 13시간 안에 이어서 스캔한
-        Batch Report 까지 읽어(캐시 재사용) Lot 으로 모은다 — 키워드에 안 걸린 이어서 스캔도 놓치지 않게."""
-        from datetime import timedelta
+    def find(self, prepared, stage="equipment", progress=None, cancel=None, host_gap=2.0):
+        """찾기 1단계(이슈 #19): **파일 이름만** 본다 — Batch Report 원문은 열지 않는다.
+
+        ① 로컬 조사 캐시(배치분석/누적 — [조사 시작]으로 이미 읽어 둔 것)에서 먼저 찾는다(장비 접근 없음, 즉시).
+        ② stage='equipment' 면 고른 호기 Reports 폴더 이름 목록도 본다(캐시에 없는 새 Batch Report 를 더함).
+        결과 = 찾은 파일 이름 목록. 원문 읽기 · Lot 묶기 · Scanresult 확인은 사람이 고른 것만(`find_load`)."""
         import time as _time
+        if stage not in ("cache", "equipment"):
+            raise ValueError("검색 조건을 확인하세요")
         root, folders, target, cfg = prepared
         start, end = batchreport_store.dates(target)
-        targets, hit_ids, listed = [], set(), 0
-        for n, (machine, folder) in enumerate(folders):
-            batchreport_store.checkpoint(cancel)
-            if n and host_gap:
-                _time.sleep(host_gap)                 # 장비 사이 간격(접속 매너)
-            if progress:
-                progress(f"{machine}: Reports 폴더 이름 확인 중…")
-            try:
-                names = wph.list_reports(folder, "", None, None)
-            except OSError:
+        cached = _cached_names(root, folders)
+        names = {pair: dict.fromkeys(cached.get(pair, ()), True) for pair in folders}
+        listed, offline, prev = 0, [], None
+        if stage == "equipment":
+            for machine, folder in folders:
+                batchreport_store.checkpoint(cancel)
+                if prev is not None and prev != machine and host_gap:
+                    _time.sleep(host_gap)             # 장비 사이 간격(접속 매너) — 같은 호기 추가 폴더 사이는 없음
+                prev = machine
+                if progress:
+                    progress(f"{machine}: Reports 폴더 이름 확인 중…")
+                try:
+                    if not Path(folder).is_dir():
+                        raise OSError(folder)
+                    found = wph.list_reports(folder, "", None, None)
+                except OSError:
+                    offline.append(machine)
+                    continue
+                listed += len(found)
+                pool = names[(machine, folder)]
+                for x in found:
+                    pool.setdefault(x, False)
+        hits = []
+        for (machine, folder), pool in names.items():
+            for x, in_cache in pool.items():
+                if wph._matches(x, target["query"], start, end):
+                    t = wph.parse_filename_datetime(x)
+                    hits.append(dict(m=machine, folder=folder, f=x, c=in_cache,
+                                     t=t.strftime("%Y-%m-%d %H:%M:%S") if t else ""))
+        if len(hits) > MAX_FIND_HITS:
+            raise ValueError(f"찾은 Batch Report 가 {len(hits):,}개로 너무 많습니다. 키워드/기간을 좁히세요.")
+        hits.sort(key=lambda h: (h["t"], h["m"], h["f"].lower()), reverse=True)
+        self._find = dict(prepared=prepared, names=names, hits=hits, stage=stage)
+        return dict(stage=stage, query=target["query"], start=target["start"], end=target["end"],
+                    hits=[dict(i=i, m=h["m"], f=h["f"], t=h["t"], c=h["c"]) for i, h in enumerate(hits)],
+                    total=len(hits), cached=sum(1 for h in hits if h["c"]), listed=listed,
+                    offline=list(dict.fromkeys(offline)), neighbor_h=NEIGHBOR_H)
+
+    def find_load(self, params, progress=None, cancel=None, host_gap=2.0):
+        """찾기 2단계(이슈 #19): 사람이 고른 Batch Report 와, 같은 호기에서 그 앞뒤 NEIGHBOR_H(24)시간 안에
+        스캔한 Batch Report 만 읽어(캐시에 있으면 장비 접근 없음) Lot 으로 모으고 Scanresult 경로를 확인한다
+        — 키워드에 안 걸린 이어서 스캔도 놓치지 않게."""
+        import os
+        from datetime import timedelta
+        state = getattr(self, "_find", None)
+        if not isinstance(params, dict) or set(params) - {"hits"}:
+            raise ValueError("요청을 확인하세요")
+        if not state:
+            raise ValueError("먼저 [검색]을 눌러 주세요")
+        picks = params.get("hits")
+        if not isinstance(picks, list) or not 1 <= len(picks) <= MAX_FIND_PICK or any(
+                type(i) is not int or not 0 <= i < len(state["hits"]) for i in picks):
+            raise ValueError(f"읽을 Batch Report 를 1~{MAX_FIND_PICK}개 고르세요")
+        root, folders, target, cfg = state["prepared"]
+        chosen = {}
+        for i in dict.fromkeys(picks):
+            h = state["hits"][i]
+            chosen.setdefault((h["m"], h["folder"]), set()).add(h["f"])
+        gap = timedelta(hours=NEIGHBOR_H)
+        targets, live = [], set()
+        for pair in folders:
+            sel = chosen.get(pair)
+            if not sel:
                 continue
-            listed += len(names)
-            hits = [x for x in names if wph._matches(x, target["query"], start, end)]
-            if not hits:
-                continue
-            when = [wph.parse_filename_datetime(x) for x in hits]
-            stamps = [w for w in when if w]
-            gap = timedelta(hours=NEIGHBOR_H)
-            keep = set(hits)
-            for x in names:
+            stamps = [w for w in (wph.parse_filename_datetime(x) for x in sel) if w]
+            pool = state["names"][pair]
+            keep = set(sel)
+            for x in pool:
                 t = wph.parse_filename_datetime(x)
                 if t and any(abs(t - w) <= gap for w in stamps):
                     keep.add(x)
             if len(keep) > 20000:
-                raise ValueError("찾은 Batch Report 가 너무 많습니다. 키워드/기간을 좁히세요.")
-            targets.append(dict(machine=machine, folder=folder, query="", start="", end="", names=sorted(keep), hits=hits))
-        if not targets:
-            from .desktop_config import scan_backup
-            self.set_view("find", [], extra=dict(find=dict(target, listed=listed, total=0), scan={},
-                                                 scan_backup=scan_backup(cfg)), hits=[])
-            return self.view_meta("find")
-        collection = batchreport_store.collect(root, [{k: v for k, v in t.items() if k != "hits"} for t in targets],
-                                               (lambda *a: progress(str(a[-1]))) if progress else None,
-                                               host_gap=0, cancel=cancel)
-        for t in targets:
-            hitset = set(t["hits"])
-            for r in collection["records"]:
-                if r["machine"] == t["machine"] and r["source_folder"] == str(Path(t["folder"])) and r["report"].get("file_name") in hitset:
-                    hit_ids.add(r["id"])
-        scan = _scanresult_paths(cfg, collection["records"], progress, cancel)
+                raise ValueError("읽을 Batch Report 가 너무 많습니다. 고른 것을 줄이세요.")
+            if any(not pool.get(x, False) for x in keep):
+                live.add(pair[0])                 # 캐시에 없는 것이 있으면 그 호기는 장비에서 읽는다
+            targets.append(dict(machine=pair[0], folder=pair[1], query="", start="", end="", names=sorted(keep)))
+        records, errors = [], []
+        cached_targets = [t for t in targets if t["machine"] not in live]
+        live_targets = [t for t in targets if t["machine"] in live]
+        if cached_targets:
+            if progress:
+                progress("로컬 캐시에서 읽는 중…")
+            records += batchreport_store.load_cached(root, cached_targets)["records"]
+        if live_targets:
+            collection = batchreport_store.collect(root, live_targets, (lambda *a: progress(str(a[-1]))) if progress else None,
+                                                   host_gap=host_gap, cancel=cancel)
+            records += collection["records"]
+            errors = collection["errors"]
+
+        def norm(folder):
+            return os.path.normcase(str(Path(folder)))
+        wanted = {(m, norm(f), x) for (m, f), sel in chosen.items() for x in sel}
+        hit_ids = {r["id"] for r in records
+                   if (r["machine"], norm(r["source_folder"]), r["report"].get("file_name")) in wanted}
+        scan = _scanresult_paths(cfg, [r for r in records if r["id"] in hit_ids] + [r for r in records if r["id"] not in hit_ids],
+                                 progress, cancel)
         from .desktop_config import scan_backup
-        self.set_view("find", collection["records"], hits=hit_ids, extra=dict(
-            find=dict(target, listed=listed, total=len(hit_ids)), scan=scan, scan_backup=scan_backup(cfg),
-            errors=[[e["machine"], e["source_file"], e["error"]] for e in collection["errors"][:200]]))
+        self.set_view("find", records, hits=hit_ids, extra=dict(
+            find=dict(target, total=len(hit_ids), picked=len(set(picks)), reports=len(records), neighbor_h=NEIGHBOR_H,
+                      cached_only=not live_targets),
+            scan=scan, scan_backup=scan_backup(cfg),
+            errors=[[e["machine"], e["source_file"], e["error"]] for e in errors[:200]]))
         return self.view_meta("find")
 
     def aggregate(self, params):

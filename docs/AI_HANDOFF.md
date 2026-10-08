@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #19 Batch Report 찾기 2단계 검색 + 조사 캐시 먼저 · 앞뒤 24시간 (2026-10-08 KST, `version_v12`)
+
+- GitHub 이슈 #19: #18 에서 제안한 찾기 속도 개선안 중 "추천 조합(A + C)으로 진행해서 릴리즈까지, 앞뒤 24시간으로 찾는 걸로 설정".
+  A = 검색은 파일 이름 목록만 즉시 보여 주고 고른 것만 원문을 읽음, C = [조사 시작]으로 읽어 둔 로컬 캐시에서 먼저 찾고 장비에서는 캐시에 없는 것만 더함.
+- 엔진 `param_manager/desktop_batch.py`: `find(prepared, stage)` = 1단계(이름만, `stage='cache'` 는 장비 접근 없음), 새 `find_load(params)` = 2단계
+  (고른 것 + 같은 호기 앞뒤 `NEIGHBOR_H` 24시간 — 캐시에 다 있으면 `load_cached`, 아니면 그 호기만 `collect(names=)`), 새 `_cached_names`.
+  IPC `batch_find`(+`stage`) · 새 `batch_find_load{hits}`(`desktop_ipc.py`; cache 단계는 'batch' 슬롯만, 나머지는 'batch'+'equipment').
+- 화면 `frontend/src/Batch.tsx` · `BatchFind.tsx`: 검색 → 캐시 결과 즉시 표시(장비 확인 중 안내) → 장비 결과로 갱신 → [모두 고르기]/체크 → [고른 Batch Report 읽기 →]
+  → 종전 Lot 고르기 → 취합. [캐시에서만 찾기] 체크. 로직 설명 · 단계 4개로 갱신.
+- E(Scanresult 경로를 필요할 때만)는 이번 범위 아님 — 2단계에서 종전처럼 확인(고른 것 먼저).
+- 검증: `tests/test_batchview.py`(찾기 테스트를 2단계 · 캐시 단계 · 캐시만 읽기 · 잘못된 고르기 거절로 갱신, 13개 통과), `tools/check_project.py`(tkinter 없는
+  test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(찾기 단계에 목록 → 모두 고르기 → 읽기 추가) 통과.
+  Windows 실기 · 실제 장비망 속도는 미검증.
+
 ## 최신 재개 — Para #18 Scanresult 폴더 열기 · 튜토리얼 장비 1회 로그인 단계 (2026-10-08 KST, `version_v12`)
 
 - GitHub 이슈 #18: ① Batch Report 찾기 · 취합에서 Scanresult 경로 열기 버튼(그 폴더로 바로 이동) ② 튜토리얼에 "장비마다 IP 주소 폴더에 접속해 아이디 · 암호로 1회 연결"

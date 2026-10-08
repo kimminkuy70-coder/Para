@@ -274,10 +274,21 @@ class DesktopFlow(unittest.TestCase):
         self.assertEqual(p['mstat']['AOI-1']['parsed'], 6)
 
     def test_find_neighbors_aggregate_and_excel(self):
-        # 'BAW' 키워드: 같은 호기에서 앞뒤 13시간 안의 Batch Report 도 읽어 Lot 으로 모은다.
-        reply = self.call('batch_find', machines=['AOI-1'], query='BAW', start='', end='')
+        # 1단계(#19): 파일 이름 목록만 — 캐시가 비어 있으면 캐시 단계는 0개, 장비 단계에서 찾는다(원문은 아직 안 읽음).
+        listed = self.call('batch_find', machines=['AOI-1'], query='BAW', start='', end='', stage='cache')
+        self.assertEqual(listed['event'], 'completed', listed)
+        self.assertEqual(listed['batch']['total'], 0)
+        listed = self.call('batch_find', machines=['AOI-1'], query='BAW', start='', end='')['batch']
+        self.assertEqual(listed['total'], 2)
+        self.assertEqual(listed['neighbor_h'], 24)
+        self.assertFalse(any(h['c'] for h in listed['hits']))
+        self.assertEqual(listed['hits'], sorted(listed['hits'], key=lambda h: h['t'], reverse=True))   # 최근 것 먼저
+        self.assertNotIn('find', self.batch._view_items())                                              # 고르기 전에는 읽지 않음
+        # 2단계: 고른 것 + 같은 호기에서 앞뒤 24시간 안의 Batch Report 도 읽어 Lot 으로 모은다.
+        reply = self.call('batch_find_load', hits=[h['i'] for h in listed['hits']])
         self.assertEqual(reply['event'], 'completed', reply)
         p = self.view('find', reply['batch'])
+        self.assertFalse(p['find']['cached_only'])
         self.assertEqual(sorted(p['R'][g]['sm'] for g in p['hits']), ['BAW', 'BAW'])
         self.assertIn('NSW', {r['sm'] for r in p['R']})             # 키워드 밖 · 이어서 스캔 후보
         key = next(k for k in p['scan'] if k.endswith('|BAW'))
@@ -295,6 +306,16 @@ class DesktopFlow(unittest.TestCase):
         li = p['R'][p['hits'][0]]['lot']
         out = self.call('batch_export', view='find', kind='lot', lot=li, drafts={}, stamp='추천')
         self.assertTrue(Path(out['batch']['path']).name.startswith('Lot_BAW_취합_'))
+        # 이제 캐시에 있으므로 캐시 단계만으로 찾고(장비 접근 없음), 읽기도 캐시만으로 끝난다(C 안).
+        cached = self.call('batch_find', machines=['AOI-1'], query='BAW', start='', end='', stage='cache')['batch']
+        self.assertEqual((cached['total'], cached['cached'], cached['listed']), (2, 2, 0))
+        again = self.view('find', self.call('batch_find_load', hits=[cached['hits'][0]['i']])['batch'])
+        self.assertTrue(again['find']['cached_only'])
+        self.assertEqual(len(again['hits']), 1)
+        # 잘못된 고르기 · 단계는 거절.
+        self.assertEqual(self.call('batch_find_load', hits=[99])['event'], 'error')
+        self.assertEqual(self.call('batch_find_load', hits=[])['event'], 'error')
+        self.assertEqual(self.call('batch_find', machines=['AOI-1'], query='BAW', start='', end='', stage='x')['event'], 'error')
         # 빈 키워드 · 등록 안 된 호기는 거절.
         self.assertEqual(self.call('batch_find', machines=['AOI-1'], query='', start='', end='')['event'], 'error')
         self.assertEqual(self.call('batch_find', machines=['AOI-9'], query='X', start='', end='')['event'], 'error')

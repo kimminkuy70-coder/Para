@@ -23,6 +23,15 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 찾기 = 2단계 검색 + 조사 캐시 먼저 (2026-10-08, 이슈 #19 — #18 제안 A + C, 사용자 선택)
+- **1단계 `batch_find`(파일 이름만, 원문 안 엶)**: `stage='cache'` = 로컬 조사 캐시(`배치분석/누적`, [조사 시작]으로 읽어 둔 것)의 이름에서만
+  찾음(장비 접근 없음 — `_cached_names`, 캐시 안 (호기, 폴더) 문자열로 짝, `_load_state` 메모리 재사용). `stage='equipment'` = 이어서 Reports 폴더
+  이름 목록도 보고 캐시에 없는 것을 더함(호기 사이 2초). 결과 = `{hits:[{i,m,f,t,c(캐시)}], total, cached, listed, offline, neighbor_h}`, 최근 것 먼저,
+  엔진 메모리 `self._find` 에 (prepared, 폴더별 이름 풀, hits) 보관. 화면은 캐시 단계 결과를 먼저 보여 주고 장비 단계로 갱신. [캐시에서만 찾기] = 장비 단계 생략.
+- **2단계 `batch_find_load{hits:[i]}`**: 고른 것 + 같은 호기 · 같은 폴더 이름 풀에서 **앞뒤 `NEIGHBOR_H`=24시간**(종전 13) 안의 것만 읽는다.
+  모두 캐시에 있는 호기는 `load_cached`(장비 접근 없음), 하나라도 없으면 그 호기는 `collect(names=)`. 그 뒤 Scanresult 경로 · `set_view('find')` 는 종전과 같음.
+- 화면 `BatchFind.tsx` 4단계: 검색 → **찾은 파일 고르기**(목록 앞 1000개, 캐시/장비 표시) → Lot · Batch Report 고르기 → 취합 결과.
+
 ### Batch Report 캐시 분석 지침(AI 전달용, 2026-10-07, 이슈 #17)
 - `docs/ai_guide/BatchReport_캐시_분석지침.txt` = 캐시 zip 과 함께 새 AI 에게 주는 계산 방식 문서(zip 구조 · lotmodel · batchview · batchsaved · recipecompare · M 지표).
   **앱 계산식(lotmodel/batchview/batchsaved/recipecompare)을 바꾸면 이 txt 도 같이 고친다.**
@@ -159,7 +168,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   **로컬 캐시만으로** 다시 — `batchreport_store.load_cached` 가 캐시 파일 안 (호기, 폴더) 문자열로 짝을 찾음, 장비 경로 resolve 금지) ·
   `batch_view` · `batch_lot` · `batch_raw` · `batch_aggregate`(입력 스레드, 메모리) · `batch_choices`(개발자 [선택 저장] → 로컬
   `Cache/batch_lot_choices.json` `{schema:1, choices:{"묶음key\twafer key": 시도 id}}`, 추천과 같으면 지움 → 조사·찾기 결과를 다시 계산) ·
-  `batch_find`(파일 이름 검색 + 같은 호기 앞뒤 13시간 Batch Report 까지 읽어 Lot 으로 — '키워드 밖 · 같은 Lot 이어서 스캔' 표시,
+  `batch_find`(파일 이름 검색 — #19 부터 2단계: 이름 목록만 → `batch_find_load` 로 고른 것 + 같은 호기 앞뒤 24시간 Batch Report 까지 읽어 Lot 으로 — '키워드 밖 · 같은 Lot 이어서 스캔' 표시,
   Scanresult 경로는 폴더 이름만 확인) · `batch_export`(찾기·취합 / Lot 창 → `{로컬}/배치분석/취합/*.xlsx`).
 - **캐시 재사용 끄기**: 옵션 `reuse`(기본 True) → `batchreport_store.collect(reuse=False)` 면 서명이 같아도 다시 연다. 호기별 읽음/캐시
   수(`by_machine`)를 호기 박스에 표시. 자동 분석은 늘 reuse=True.

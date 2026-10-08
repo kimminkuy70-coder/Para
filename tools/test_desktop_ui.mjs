@@ -279,6 +279,11 @@ try{
   await page.getByRole('tab',{name:/Batch Report 찾기/}).click();
   await page.getByLabel('Batch Report 키워드').fill('BatchReport_00');
   await page.getByRole('button',{name:'검색 →'}).click();
+  // #19: 찾은 파일 이름 목록(원문 안 엶) → 고른 것만 읽기(앞뒤 24시간 포함).
+  await page.getByRole('table',{name:'찾은 Batch Report 목록'}).waitFor({timeout:60000});
+  await page.getByText('원문은 아직 열지 않았습니다',{exact:false}).waitFor({timeout:60000});
+  await page.getByRole('button',{name:'모두 고르기',exact:true}).click();
+  await page.getByRole('button',{name:'고른 Batch Report 읽기 →'}).click();
   await page.locator('.groups .group').first().waitFor({timeout:60000});
   await page.locator('.group .gh input[type=checkbox]').first().check();
   await page.getByRole('button',{name:'선택한 Batch Report 취합 →'}).click();

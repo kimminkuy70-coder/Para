@@ -9,7 +9,7 @@ import {LotWindow,type Drafts} from './BatchLotWindow';
 import {UtilTab} from './BatchUtil';
 import {WphTab} from './BatchWph';
 import {CompareTab} from './BatchCompare';
-import {FindTab,type FindCond} from './BatchFind';
+import {FindTab,type FindCond,type FindList} from './BatchFind';
 import {DevHelp} from './DevHelp';
 import {Q,DefectWindow} from './BatchHelp';
 import {useDev,setDevLocked,setDevDrafts,registerDraftHandlers} from './devmode';
@@ -42,6 +42,7 @@ export function Batch({active}:{active:boolean}){
   const [help,setHelp]=useState(false),[defect,setDefect]=useState(false);
   const [cond,setCond]=useState<FindCond>({machines:[],query:'',start:'',end:''});
   const [fstep,setFstep]=useState(0),[finding,setFinding]=useState(false),[fprog,setFprog]=useState('');
+  const [flist,setFlist]=useState<FindList>(),[fchecking,setFchecking]=useState(false);
   const job=useRef<number|undefined>(undefined),runningRef=useRef(false),restoringRef=useRef(false),autoBlocked=useRef(false),first=useRef(true);
   const critRef=useRef<HTMLDialogElement>(null),rawRef=useRef<HTMLDialogElement>(null);
 
@@ -175,15 +176,27 @@ export function Batch({active}:{active:boolean}){
   }
 
   // ---- 찾기 · 취합 -------------------------------------------------------------------
+  // 1단계(#19): 파일 이름만 — 로컬 조사 캐시에서 먼저(즉시) 보여 주고, 이어서 장비 Reports 폴더 이름 목록으로 새 것을 더한다.
   async function runFind(c=cond){
     if(!c.query.trim()){notify('Batch Report 키워드를 입력하세요.','error');return;}
     if(!c.machines.length){notify('찾을 호기를 하나 이상 고르세요.','error');return;}
+    const base={machines:c.machines,query:c.query.trim(),start:c.start,end:c.end};
+    setFinding(true);setFprog('로컬 조사 캐시에서 찾는 중…');
+    try{const cached=(await desktop.request('batch_find',{...base,stage:'cache'}).promise).batch as FindList;
+      setFlist(cached);setFstep(1);
+      if(!c.cacheOnly){setFchecking(true);setFprog('');
+        const full=(await desktop.request('batch_find',{...base,stage:'equipment'},ev=>{if(ev.message)setFprog(ev.message);}).promise).batch as FindList;
+        setFlist(full);}}
+    catch(e){fail(e);}finally{setFinding(false);setFchecking(false);setFprog('');}
+  }
+  // 2단계: 고른 것 + 같은 호기 앞뒤 24시간만 읽어 Lot 으로(캐시에 있으면 장비 접근 없음).
+  async function loadFind(hits:number[]){
     setFinding(true);setFprog('');
-    try{const meta=(await desktop.request('batch_find',{machines:c.machines,query:c.query.trim(),start:c.start,end:c.end},ev=>{if(ev.message)setFprog(ev.message);}).promise).batch as ViewMeta;
+    try{const meta=(await desktop.request('batch_find_load',{hits},ev=>{if(ev.message)setFprog(ev.message);}).promise).batch as ViewMeta;
       const v=await loadView(meta);
       setViews(o=>({...o,find:v||{R:[],lots:[],excluded:[],U:[],waits:[],stops:[],N:[],L:[],X:{unit:{},faults:{},min_base:100,full:25},hits:[],range:['',''],saved:0,criteria:[]}}));
       setDrafts(d=>Object.fromEntries(Object.entries(d).filter(([k])=>!k.startsWith('find|'))));
-      setFstep(1);}
+      setFstep(2);}
     catch(e){fail(e);}finally{setFinding(false);setFprog('');}
   }
   async function aggregate(reports:number[]):Promise<AggGroup[]|undefined>{
@@ -286,6 +299,7 @@ export function Batch({active}:{active:boolean}){
     </div>
     <div hidden={main!=='find'}>
       <FindTab machines={config?.machines||[]} view={views.find} busy={finding||busy||restoring} dev={dev.on} progress={fprog} cond={cond} setCond={setCond} onFind={()=>void runFind()}
+        list={flist} checking={fchecking} onLoad={hits=>void loadFind(hits)}
         aggregate={aggregate} exportAgg={exportAgg} openLot={li=>void openLot('find',li)} showRaw={g=>void showRaw('find',g)} openFile={g=>void openFile('find',g)}
         onCrit={()=>critRef.current?.showModal()} goSettings={()=>goToSettings({sub:'aoi'})} step={fstep} setStep={setFstep}/>
     </div>
