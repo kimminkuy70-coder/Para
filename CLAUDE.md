@@ -23,6 +23,11 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 값 확인 비고 = RTP.txt 설명(영문 원문 / 한글 번역) (2026-10-09, 이슈 #23)
+- 취합(`collate.collate_recipe`)이 **빈 비고만** RTP.txt 설명으로 채운다(사람이 양식에 적은 비고 우선). 설명 = `rtpnotes.note_for` — 같은 config 폴더의
+  RTP.txt `( 설명~코드 )` 를 표시명(단위 괄호 뗌) · INI↔RTP 키 쌍 · 설정키로 매칭, 한글 번역은 번들 `rtp_template.json` `desc_kr`(인터넷 번역 금지),
+  문구 `영문 / 한글`(번역 없으면 영문만). 피벗 행 `desc_en` · `note` 는 `ini_parser.build_pivot` 이 채운다. RTP.txt 는 설명 · 계수 추천용으로만 읽는다(값은 계속 ini).
+
 ### Recipe 업데이트 = 장비 연결 확인 단계 + 호기 건너뛰기 (2026-10-08, 이슈 #22)
 - 장비 IP 수집 단계 = 대상 선택 → **장비 연결 확인**(`update_connections`, 연결된 호기만 기본 체크, 사용자가 더 체크 · 해제) → 수집 → 매칭 → 미리보기 → 결과.
   로컬 복사본 수집은 연결 확인 없이 바로 수집. 연결 확인 로직은 장비 연결 탭과 공용 `desktop_watch.check_machine_connections`.
@@ -1093,6 +1098,7 @@ python3 tests/test_locking.py      # 11 (편집잠금 획득/타인읽기전용/
 python3 tests/test_watcher.py      # 29 (주기 프리셋·시작=끝 첫실행·호기별 감시 레시피·주기/시간대/backoff·찢어진읽기제외·변경보고서·무변경무알림·연결점검 타임아웃/취소·대상 장비·레시피 선택·**미선택 호기 값 유지**·수집계획 왕복·보고서목록·공유상태·Job매칭 레벨별폴백·감시폴더 지정)
 python3 tests/test_manreclassify.py # 10 (ManReClassify: index11 MaxCount·빈필드보존·0유효·Internal Bin/고객순서·줄중간';'·양식연결·commonality제외·dds수집/원본무변경)
 python3 tests/test_rtp_parser.py   # 7  (레거시 RTP 파서)
+python3 tests/test_rtpnotes.py     # 4  (RTP.txt 설명 → 비고: 영문+한글 · 단위 괄호 · Alg 구분 · 빈 비고만 채움)
 python3 tests/test_engine.py       # 12 (샘플 .xlsm 업로드 필요 — 없으면 일부 실패)
 python3 tests/test_downloader.py   # 8
 ```

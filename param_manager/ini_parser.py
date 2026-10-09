@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from . import rtp_parser
+from . import rtp_parser, rtpnotes
 
 # 변환 계수(픽셀→µ). 장비/레시피(변형)마다 다르므로 사용자가 양식 만들 때 고른다.
 # 정확값(사용자 확정): 기본형 0.8456665875666588, 다른 배율 0.7696441409644141
@@ -837,10 +837,15 @@ def build_pivot(configs: list[ParsedConfig]) -> tuple[list[dict], list[str]]:
             ent["values"][cfg.equipment] = r.value
             ent["raws"][cfg.equipment] = r.raw
             ent["mags"][cfg.equipment] = cfg.mag_value   # 장비별 MAG(계수 재적용용)
+            if not ent.get("note"):
+                # RTP.txt 설명(영문 원문 + 한글 번역) — 값 확인 비고용(이슈 #23)
+                ent["desc_en"], ent["note"] = rtpnotes.note_for(
+                    cfg.config_dir, r.zone, r.alg, r.param, r.section, r.key)
     rows = []
     for (layer, recipe, mag, zone, alg, param), ent in table.items():
         rows.append({"layer": layer, "recipe": recipe, "mag": mag, "zone": zone,
-                     "alg": alg, "param": param, "desc_en": "", "unit": ent["unit"],
+                     "alg": alg, "param": param, "desc_en": ent.get("desc_en", ""),
+                     "note": ent.get("note", ""), "unit": ent["unit"],
                      "values": ent["values"], "raws": ent["raws"], "mags": ent["mags"],
                      "use": ent["use"], "extract": ent["extract"]})
     return rows, machines

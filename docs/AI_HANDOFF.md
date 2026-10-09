@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #23 값 확인 비고 = RTP.txt 설명(영문 원문 / 한글 번역) (2026-10-09 KST, `version_v12`)
+
+- GitHub 이슈 #23: Recipe 값 확인 탭에서 파라미터를 볼 때 비고 칸에 RTP.txt 의 설명을 채우고, 번역이 가능하면 영어 원문 + 한글 번역을 같이.
+- 새 `param_manager/rtpnotes.py`(헤드리스, 원본 읽기만): config 폴더의 RTP.txt(`coef_detector.find_rtp`)를 `rtp_parser.parse_rtp` 로 읽어
+  `( 설명~코드 )` 의 설명을 색인. ini 행 매칭 = 표시명에서 끝 단위 괄호(`(µ)`·`(area, µ)`·`[µm]`)를 뗀 정규화 키 + `coef_detector.PAIR_RULES` 의 INI↔RTP 키 쌍 +
+  원래 설정키, 순서 (Zone, Alg, 이름) → (Zone, 이름) → (Alg, 이름) → 이름(설명이 하나뿐일 때). Alg 끝 버전 꼬리(GenesisV12) 무시.
+  한글 번역 = 번들 `data/rtp_template.json` 의 `desc_kr`(RTP 표시명 기준, 인터넷 번역 없음). 문구 `note_text` = `영문 / 한글`(번역 없으면 영문만).
+- `ini_parser.build_pivot` 이 피벗 행에 `desc_en` · `note` 를 채우고(종전 `desc_en` 은 늘 빈칸), `collate.collate_recipe` 가 매칭된 행의 **비고가 비어 있을 때만**
+  `note` 로 채운다(양식에 사람이 적은 비고는 유지). 그래서 **다음 Recipe 업데이트(취합)부터** 값 확인 비고 · Excel 내보내기에 보인다(기존 취합본은 그대로).
+  commonality 도 같은 `collate_recipe` 를 쓰므로 결과 비고가 채워질 수 있다(RTP.txt 가 슬롯에 있을 때).
+- 한계: 실제 장비 RTP.txt 샘플이 저장소에 없어 매칭률은 미검증(표시명이 RTP 이름과 다른 항목 — OpticPreset · GlobalRTP 일부 — 은 빈칸일 수 있음).
+  값 확인에서 비고를 고친 내용이 다음 취합 때 양식 비고로 다시 만들어지는 것은 종전과 같다.
+- 검증: `tests/test_rtpnotes.py`(4: 영문+한글 · 단위 괄호 · Alg 구분 · 번역 없으면 영문만 · RTP.txt 없음 · 빈 비고만 채움/사람 비고 유지),
+  `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패). Windows 실기 · 실제 장비 RTP.txt 미검증.
+
 ## 최신 재개 — Para #22 Recipe 업데이트: 장비 연결 확인 단계 · 직접 찾기 안내 · 호기 건너뛰기 (2026-10-08 KST, `version_v12`)
 
 - GitHub 이슈 #22: ① Recipe 업데이트 때 먼저 장비 연결을 확인하고 "연결된 장비가 이러한데 이것들로만 업데이트를 진행할까요?" 체크 목록 단계 추가

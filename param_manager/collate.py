@@ -169,6 +169,10 @@ def collate_recipe(recipe: str, form_path: str, pivot_rows: list[dict],
                 "reason": "이번 수집 장비에서 설정키를 찾지 못함"})
         else:
             res.matched_rows += 1
+            # 비고가 비어 있으면 RTP.txt 설명(영문 원문 / 한글 번역)으로 채운다(이슈 #23).
+            # 양식에 사람이 적은 비고가 있으면 그대로 둔다.
+            if engine._s(rec.get("비고")).strip() == "" and match.get("note"):
+                rec["비고"] = match["note"]
             stored_t = engine._s(meta.get("transform")).strip() or "RAW"
             pname = engine._s(pr.get("Parameter"))
             # µ(마이크로) 규칙: 이름에 µ 있으면 **항상 변환**(이름 기준). 이름과 저장된
