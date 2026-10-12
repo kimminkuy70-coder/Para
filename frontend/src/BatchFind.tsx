@@ -3,11 +3,13 @@ import {Stepper,notify} from './ui';
 import {StPill} from './BatchLot';
 import {OpenPath,openPath} from './OpenPath';
 import {ScanBackupBar} from './ScanBackup';
+import {YieldTab} from './BatchYield';
 import {grpLabel,num,isRealId,type View,type AggGroup} from './batchData';
 
 /* Batch Report 찾기 · 취합 — ① 파일 이름으로 찾기(로컬 조사 캐시 먼저 → 장비 Reports 폴더 이름, 원문은 안 엶)
    ② 찾은 파일 고르기 ③ 고른 것 + 같은 호기 앞뒤 24시간만 읽어 Lot · 공정 단계별로 고르기(Scanresult 경로 · 원문)
-   ④ 취합(같은 wafer 여러 장이면 최신 스캔 자동 = 가장 나중 Pass, 개발자 기능이면 Pass 2번 이상을 직접 고름). (이슈 #19) */
+   ④ 취합(같은 wafer 여러 장이면 최신 스캔 자동 = 가장 나중 Pass, 개발자 기능이면 Pass 2번 이상을 직접 고름). (이슈 #19)
+   취합 결과는 탭 2개: [Lot 취합 · wafer] / [Lot별 Yield](레시피 · 키워드로 거르고 Lot을 골라 합계 · 평균, 이슈 #24). */
 const small={minHeight:28,padding:'3px 10px',fontSize:12} as const;
 export type FindCond={machines:string[];query:string;start:string;end:string;cacheOnly?:boolean};
 export type FindHit={i:number;m:string;f:string;t:string;c:boolean};
@@ -29,6 +31,7 @@ export function FindTab(p:Props){
   const [must,setMust]=useState<[number,string][]>([]),[auto,setAuto]=useState<[number,string][]>([]);
   const dupRef=useRef<HTMLDialogElement>(null);
   const [pick,setPick]=useState<Record<string,1>>({});
+  const [rtab,setRtab]=useState<'agg'|'yield'>('agg');
   const L=p.list,hk=(h:FindHit)=>h.m+'\t'+h.f,shown=L?L.hits.slice(0,LIST_MAX):[];
   const listKey=L?[L.query,L.start,L.end].join('\n'):'';
   useEffect(()=>{setPick({});},[listKey]);   // 새 검색이면 고른 것 비움(장비 단계가 목록을 늘릴 때는 유지)
@@ -47,7 +50,7 @@ export function FindTab(p:Props){
     gs.forEach((g,gi)=>g.keys.forEach(k=>{ch[gi+'|'+k]=g.w[k].rec;if(g.w[k].cells.length>1)dups.push([gi,k]);}));
     const many=dups.filter(([gi,k])=>gs[gi].w[k].cells.filter(c=>c.ok).length>1);
     const saved=gs.reduce((a,g)=>a+g.keys.filter(k=>g.w[k].saved).length,0);
-    setGroups(gs);setChoice(ch);setXlsx('');
+    setGroups(gs);setChoice(ch);setXlsx('');setRtab('agg');
     setNote(dups.length?`같은 wafer가 고른 Batch Report 2장 이상에 있는 ${dups.length}장은 최신 스캔으로 자동 취합했습니다(Pass가 있으면 가장 나중 Pass, 없으면 가장 나중 스캔). 그중 Pass 2번 이상 ${many.length}장.`+(p.dev?'':' 직접 고르기는 개발자 기능입니다.'):'');
     setStamp({manual:0,saved,at:new Date().toTimeString().slice(0,5)});
     if(many.length&&p.dev){setAuto(dups.filter(d=>!many.includes(d)));setMust(many);}
@@ -57,7 +60,7 @@ export function FindTab(p:Props){
     setStamp(s=>s&&{...s,manual});setMust([]);p.setStep(3);}
   const stampText=stamp?`최신 스캔 자동(Pass가 있으면 가장 나중 Pass)${stamp.saved?` + 저장된 사람 선택 ${stamp.saved}건`:''}${stamp.manual?` + 개발자 직접 선택 ${stamp.manual}건`:''}`:'';
   const block=([gi,k]:[number,string])=>{const g=groups[gi],c=g.w[k].cells,rec=g.w[k].rec;
-    return <div key={gi+'|'+k} className="dupwafer"><div className="w">Lot {v!.lots[g.li].label} · {grpLabel(v!.lots[g.li].bunches[g.bi])} · 슬롯 {k.replace(/^S0?/,'')} · {(c.find(x=>isRealId(x.id))||c[0]).id}</div>
+    return <div key={gi+'|'+k} className="dupwafer"><div className="w">Lot {v!.lots[g.li].label} · {g.r} · 슬롯 {k.replace(/^S0?/,'')} · {(c.find(x=>isRealId(x.id))||c[0]).id}</div>
       {c.map((x,j)=><label key={j}><input type="radio" name={`d${gi}_${k}`} checked={choice[gi+'|'+k]===j} onChange={()=>setChoice(o=>({...o,[gi+'|'+k]:j}))}/>
         <span>{v!.R[x.g].s}{j===rec&&<span className="rectag">추천</span>}</span><span className={x.ok?'v1':'v4'}>{x.status}</span><span>Scanned {num(x.sc)} · Bad {num(x.bad)}</span></label>)}</div>;};
   const scanKey=(g:number)=>{const r=v!.R[g];return [r.m,r.job,r.setup,r.sm].join('|');};
@@ -133,20 +136,23 @@ export function FindTab(p:Props){
       <div className="stamp"><span>선택 기준: <b>최신 스캔 자동</b>(Pass가 있으면 가장 나중 Pass){stamp.saved>0&&<> + <b>저장된 사람 선택 {stamp.saved}건</b></>}{stamp.manual>0&&<> + <b>개발자 직접 선택 {stamp.manual}건</b></>}</span>
         <span style={{color:'var(--muted)'}}>취합 시각 {stamp.at} · Excel 첫 줄에도 같은 문구를 적습니다</span></div>
       {note&&<div className="alert" style={{marginBottom:12}}><span>{note}</span></div>}
+      <div className="pilltabs" role="tablist" aria-label="취합 결과 보기">{([['agg','Lot 취합 · wafer'],['yield','Lot별 Yield']] as const).map(([k,t])=>
+        <button key={k} role="tab" type="button" className={rtab===k?'active':''} aria-selected={rtab===k} onClick={()=>setRtab(k)}>{t}</button>)}</div>
+      {rtab==='yield'?<YieldTab v={v} groups={groups} choice={choice} openLot={p.openLot}/>:<>
       <h3 style={{marginTop:4}}>Lot 취합</h3>
-      <div className="table-scroll" style={{maxHeight:'none'}}><table className="t-compact"><thead><tr><th>Lot</th><th>공정 단계</th><th>호기</th><th className="num">고른 Batch Report</th><th className="num">wafer</th><th className="num">Pass</th><th className="num">Pass 없음</th><th className="num">Scanned</th><th className="num">Bad</th><th className="num">Good</th><th className="num">Yield</th></tr></thead>
+      <div className="table-scroll" style={{maxHeight:'none'}}><table className="t-compact"><thead><tr><th>Lot</th><th>레시피(Job · Recipe(s))</th><th>호기</th><th className="num">고른 Batch Report</th><th className="num">wafer</th><th className="num">Pass</th><th className="num">Pass 없음</th><th className="num">Scanned</th><th className="num">Bad</th><th className="num">Good</th><th className="num">Yield</th></tr></thead>
         <tbody>{groups.map((g,gi)=>{const t={sc:0,bad:0,good:0,p:0,np:0};g.keys.forEach(k=>{const x=g.w[k].cells[choice[gi+'|'+k]];if(x.ok){t.p++;if(x.sc!=null){t.sc+=x.sc;t.bad+=x.bad||0;t.good+=x.good||0;}}else t.np++;});
-          const b=v.lots[g.li].bunches[g.bi];return <tr key={gi}><td><button type="button" className="linklike" onClick={()=>p.openLot(g.li)}>{v.lots[g.li].label}</button></td><td>{grpLabel(b)}</td>
+          const b=v.lots[g.li].bunches[g.bi];return <tr key={gi}><td><button type="button" className="linklike" onClick={()=>p.openLot(g.li)}>{v.lots[g.li].label}</button></td><td>{g.r} · {b.s.slice(5,10)}</td>
             <td>{[...new Set(g.att.map(x=>v.R[x].m))].join(', ')}</td><td className="num">{g.att.length}</td><td className="num">{g.keys.length}</td><td className="num">{t.p}</td><td className="num">{t.np}</td>
             <td className="num">{num(t.sc)}</td><td className="num">{num(t.bad)}</td><td className="num">{num(t.good)}</td><td className="num">{t.sc?num(t.good/t.sc*100,2)+'%':'—'}</td></tr>;})}</tbody></table></div>
-      {groups.map((g,gi)=>{const b=v.lots[g.li].bunches[g.bi];return <Fragment key={gi}><h3>wafer — Lot {v.lots[g.li].label} · {grpLabel(b)}</h3>
+      {groups.map((g,gi)=>{const b=v.lots[g.li].bunches[g.bi];return <Fragment key={gi}><h3>wafer — Lot {v.lots[g.li].label} · {g.r} · {b.s.slice(5,10)}</h3>
         <div className="usedr"><span>고른 Batch Report</span>{g.att.map((x,n)=>{const r=v.R[x];return <button key={x} type="button" onClick={()=>p.showRaw(x)}
           data-tip={`${r.f}\nPass ${r.ok} / ${r.n}행${r.fe?'\n첫 Error: '+r.fe:''}\n누르면 원문`}>#{n+1} {r.s.slice(5)} · {r.m} 원문 보기</button>;})}</div>
         <div className="mapscroll"><table className="map"><thead><tr><th>슬롯</th><th>Wafer ID</th><th>쓰는 Batch Report</th><th>결과 원문</th><th>Scanned</th><th>Bad</th><th>Good</th><th>Yield</th><th/></tr></thead>
           <tbody>{g.keys.map(k=>{const c=g.w[k].cells,x=c[choice[gi+'|'+k]],id=(c.find(y=>isRealId(y.id))||x).id,r=v.R[x.g];
             return <tr key={k}><th>{k.replace(/^S0?/,'').replace(/^ID:/,'')}</th><td>{id}</td><td className="mono">{r.s} · {r.f}{c.length>1&&<span className="rectag" data-tip={`${c.length}장 중 ${g.w[k].saved?'저장된 사람 선택':'추천(가장 나중 Pass)'}으로 선택`}>{c.length}장 중 {g.w[k].saved?'사람 선택':'추천'}</span>}</td>
               <td className={x.ok?'c-p':'c-e'}>{x.status}</td><td className="n">{num(x.sc)}</td><td className="n">{num(x.bad)}</td><td className="n">{num(x.good)}</td><td className="n">{x.sc?num((x.good||0)/x.sc*100,1)+'%':'—'}</td>
-              <td><button type="button" style={{minHeight:22,padding:'1px 8px',fontSize:11}} onClick={()=>p.showRaw(x.g)}>원문</button></td></tr>;})}</tbody></table></div></Fragment>;})}
+              <td><button type="button" style={{minHeight:22,padding:'1px 8px',fontSize:11}} onClick={()=>p.showRaw(x.g)}>원문</button></td></tr>;})}</tbody></table></div></Fragment>;})}</>}
       {xlsx&&<div className="outputs" style={{marginTop:16}}><OpenPath label="저장된 Excel" path={xlsx}/></div>}
       <div className="stepnav" style={{marginTop:16}}><button className="btn" onClick={()=>p.setStep(2)}>◀ 다시 고르기</button><span className="stepcount">4 / 4</span>
         <button className="btn primary" disabled={p.busy} onClick={async()=>{const path=await p.exportAgg(Object.keys(sel).map(Number),choice,stampText);if(path)setXlsx(path);}}>Excel로 저장</button></div></>}

@@ -462,10 +462,10 @@ class BatchViews:
                     else:
                         t["no"] += 1
                     real = next((c["id"] for c in w["cells"] if batchview.lm.is_real_id(c["id"])), x["id"])
-                    wafer_rows.append([lot["label"], batchview.step_label(b["step"], b.get("k")), k.replace("ID:", ""), real, x["status"],
+                    wafer_rows.append([lot["label"], grp["r"], k.replace("ID:", ""), real, x["status"],
                                        "Pass" if x["ok"] else "Pass 없음", R[x["g"]]["f"], R[x["g"]]["m"], R[x["g"]]["s"],
                                        x["sc"], x["bad"], x["good"], yld(x["sc"], x["good"]), source(x["g"])])
-                lot_rows.append([lot["label"], batchview.step_label(b["step"], b.get("k")), f"{b['s']} ~ {b['e']}", " → ".join(b["machines"]), len(grp["att"]),
+                lot_rows.append([lot["label"], grp["r"], f"{b['s']} ~ {b['e']}", " → ".join(b["machines"]), len(grp["att"]),
                                  len(grp["keys"]), t["ok"], t["no"], t["sc"], t["bad"], t["good"], yld(t["sc"], t["good"])])
             name, title = f"BatchReport_취합_{now}.xlsx", "Batch Report 찾기 · 취합"
         elif params.get("kind") == "lot":

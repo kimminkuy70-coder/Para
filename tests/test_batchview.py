@@ -103,6 +103,25 @@ class ViewNumbers(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.view.aggregate([5])
 
+    def test_aggregate_splits_recipe_and_keeps_faults(self):
+        # 이슈 #24: 같은 Lot 을 PI → RDL 레시피(Job)로 이어서 스캔해도 Yield 는 레시피마다 따로. 재스캔은 하나로(최신 Pass).
+        pi, rdl = 'R_PI2_X_0856268PD-0A', 'R_RDL1_X_0856268PD-0A'
+        view = batchview.View(records(
+            ("AOI-1", report("BAW", full(["Scan 2D Error."]), "2026-09-01 10:00", minutes=50, recipe="2D", job=pi)),
+            ("AOI-1", report("BAW", [("25", "Pass")], "2026-09-01 11:30", minutes=10, recipe="2D", job=pi)),
+            ("AOI-1", report("BAW", full([]), "2026-09-01 12:00", minutes=50, recipe="2D", job=rdl)),
+        ))
+        groups = view.aggregate([0, 1, 2])
+        self.assertEqual(sorted(g['r'] for g in groups), [f'{pi} · 2D', f'{rdl} · 2D'])
+        g_pi = next(g for g in groups if g['job'] == pi)
+        self.assertEqual((len(g_pi['att']), len(g_pi['keys'])), (2, 25))
+        w = g_pi['w']['S25']
+        self.assertEqual((len(w['cells']), w['rec'], w['cells'][w['rec']]['ok']), (2, 1, True))   # 재스캔 → 가장 나중 Pass 하나
+        self.assertEqual((w['cells'][1]['fl'], w['cells'][0]['fl']), (0, None))                     # Faults(스캔된 Defect 수), '-' 는 없음
+        g_rdl = next(g for g in groups if g['job'] == rdl)
+        self.assertEqual((len(g_rdl['att']), len(g_rdl['keys'])), (1, 25))
+        self.assertTrue(all(len(g_rdl['w'][k]['cells']) == 1 for k in g_rdl['keys']))              # PI 스캔과 섞이지 않음
+
     def test_saved_choice_changes_numbers_not_toggle(self):
         li = self.lot('SPT')
         b = self.view.model['lots'][li]['bunches'][0]

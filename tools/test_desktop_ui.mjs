@@ -288,6 +288,17 @@ try{
   await page.locator('.group .gh input[type=checkbox]').first().check();
   await page.getByRole('button',{name:'선택한 Batch Report 취합 →'}).click();
   await page.locator('.stamp').filter({hasText:'최신 스캔 자동'}).waitFor();
+  // #24: Lot별 Yield 탭 — 레시피 · 키워드 필터, 전체 선택 → 선택 합계 · 평균.
+  await page.getByRole('tab',{name:'Lot별 Yield',exact:true}).click();
+  const ytable=page.getByRole('table',{name:'Lot별 Yield 표'});
+  await ytable.waitFor();
+  assert((await ytable.locator('tbody tr').count())>=1);
+  await page.getByLabel('Yield 전체 선택').check();
+  await ytable.locator('tfoot').getByText('선택 Lot 평균').waitFor();
+  await page.getByLabel('Yield 키워드 검색').fill('없는-키워드-xyz');
+  await ytable.getByText('조건에 맞는 Lot이 없습니다.').waitFor();
+  await page.getByLabel('Yield 키워드 검색').fill('');
+  await page.getByRole('tab',{name:'Lot 취합 · wafer',exact:true}).click();
   await page.getByRole('button',{name:'Excel로 저장',exact:true}).click();
   assert((await page.locator('.kept-screen:not([hidden])').getByLabel('저장된 Excel').inputValue()).includes('BatchReport_취합_'));
   await page.getByRole('tab',{name:/가동률 조사 및 분석/}).click();

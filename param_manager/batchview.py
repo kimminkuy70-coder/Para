@@ -421,6 +421,8 @@ class View:
         """고른 Batch Report 를 Lot · 공정 단계별로 모아 wafer 마다 후보 행을 만든다.
 
         추천 = 저장된 사람 선택(그 Batch Report 를 골랐을 때) → 가장 나중 Pass → 가장 나중 스캔.
+        같은 Lot · 공정 단계라도 상위 레시피(Job)가 다르면(PI → RDL 을 이어서 스캔) 따로 묶는다(이슈 #24).
+        그룹 r = 레시피 이름(Job · Recipe(s)), wafer 후보 fl = Faults(스캔된 Defect 수).
         """
         if not isinstance(reports, list) or not reports or len(reports) > 5000 or any(
                 type(g) is not int or not 0 <= g < len(self.A) for g in reports):
@@ -430,9 +432,9 @@ class View:
             if g not in self.place:
                 continue                                   # 점검 스캔은 취합하지 않는다
             li, bi, _ = self.place[g]
-            groups.setdefault((li, bi), []).append(g)
+            groups.setdefault((li, bi, self.A[g]['job']), []).append(g)
         out = []
-        for (li, bi), att in groups.items():
+        for (li, bi, job), att in groups.items():
             b = self.model['lots'][li]['bunches'][bi]
             chosen = {w['key']: b['attempts'][w['pick']]['id'] for w in b['wafers'] if w['overridden'] and w['pick'] is not None}
             id_slots = {r['wafer_id']: r['slot'] for g in att for r in self.A[g]['rows']
@@ -444,7 +446,7 @@ class View:
                         continue                           # 스캔 안 한 슬롯은 wafer 가 아니다
                     cells[lm._key(r, id_slots)].append(dict(g=g, status=r['status'] or '(빈 칸)', ok=r['pass'],
                                                             id=r['wafer_id'], sc=_num(r['scanned']), bad=_num(r['bad']),
-                                                            good=_num(r['good'])))
+                                                            good=_num(r['good']), fl=_num(r['faults'])))
             wafers = {}
             for key in sorted(cells, reverse=True):
                 c = cells[key]
@@ -452,7 +454,8 @@ class View:
                 saved = chosen.get(key)
                 hit = next((j for j, x in enumerate(c) if self.A[x['g']]['id'] == saved and x['ok']), None)
                 wafers[key] = dict(cells=c, rec=hit if hit is not None else rec, auto=rec, saved=hit is not None)
-            out.append(dict(li=li, bi=bi, att=att, keys=list(wafers), w=wafers))
+            out.append(dict(li=li, bi=bi, att=att, keys=list(wafers), w=wafers, job=job,
+                            r=f"{job} · {lm.step_label(b['step'], b.get('scan'))}"))
         if not out:
             raise ValueError('Lot 으로 모인 Batch Report 를 골라 주세요(점검 스캔은 취합하지 않습니다).')
         return out

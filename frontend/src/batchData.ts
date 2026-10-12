@@ -33,8 +33,10 @@ export type Cell=[number,string,boolean,boolean,number|null,number|null,number|n
 export type Wafer={k:string;slot:number|null;id:string;v:string;pick:number|null;rec:number|null;ov:boolean;cause:string;chain:boolean;stop?:boolean;cells:Cell[]};
 export type LotDetail={li:number;bunches:{wafers:Wafer[]}[];stats:Record<string,{ph:[string,number][];cph:[string,number][]}>};
 export type Raw={g:number;f:string;m:string;folder:string;path:string;meta:[string,string][];h:string[];rows:string[][]};
-export type AggCell={g:number;status:string;ok:boolean;id:string;sc:number|null;bad:number|null;good:number|null};
-export type AggGroup={li:number;bi:number;att:number[];keys:string[];w:Record<string,{cells:AggCell[];rec:number;auto:number;saved:boolean}>};
+/** fl = Faults(스캔된 Defect 수) */
+export type AggCell={g:number;status:string;ok:boolean;id:string;sc:number|null;bad:number|null;good:number|null;fl:number|null};
+/** 한 그룹 = Lot · 공정 단계 · 상위 레시피(Job). r = 레시피 이름(Job · Recipe(s)) — 같은 Lot 이라도 PI · RDL 은 따로(이슈 #24). */
+export type AggGroup={li:number;bi:number;att:number[];keys:string[];job:string;r:string;w:Record<string,{cells:AggCell[];rec:number;auto:number;saved:boolean}>};
 export type ViewName='scope'|'find';
 
 export async function loadView(meta:ViewMeta):Promise<View|undefined>{

@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #24 찾기 · 취합 결과에 'Lot별 Yield' 탭 (2026-10-12 KST, `version_v12`)
+
+- GitHub 이슈 #24: Batch Report 찾기 · 취합(Lot별 Dice 취합)에서 Lot당 Yield · 스캔된 Defect 수 · Good/Reject Die 를 보는 탭 + 레시피별 · 키워드 검색,
+  같은 Lot 이름이라도 레시피(PI · RDL 을 이어서 스캔)마다 따로, 여러 번 스캔은 전제대로 하나로 합침, Lot 을 골라 전체 평균(전체 선택).
+- 엔진 `param_manager/batchview.py` `View.aggregate`: 그룹 키를 (Lot, 묶음) → **(Lot, 묶음, 상위 레시피 Job)** 로. lotmodel 묶음은 Recipe(s) 열만 비교해서
+  PI · RDL Job 이 같은 `2D` 면 한 묶음이 되고 취합이 서로를 재스캔으로 보던 것을 취합 단계에서만 가른다(lotmodel · Lot 추적 판정은 그대로).
+  그룹에 `job` · `r`(= `Job · Recipe(s)`, 3D 꼬리 포함), wafer 후보에 `fl`(Faults). `desktop_batch.export(kind='agg')` 의 공정 단계 열 = `r`.
+- 화면: 새 `frontend/src/BatchYield.tsx`(`YieldTab`) — 4/4 취합 결과에 탭 [Lot 취합 · wafer | Lot별 Yield]. 한 줄 = Lot · 레시피, 숫자 = 지금 취합 선택
+  (`choice`, 기본 최신 스캔 = 가장 나중 Pass)이 Pass 인 wafer 만: Yield = Good ÷ Scanned, Defect = Faults 합(값 없는 wafer 제외), Reject = Bad.
+  레시피 칩 필터(여러 개, 비면 전체) · 키워드(Lot · 레시피 · 호기, 여러 단어 모두 포함) · 행 체크 + 머리 체크 = 보이는 행 전체 선택 → tfoot
+  `선택 합계`(Yield = 합계 Good ÷ 합계 Scanned) · `선택 Lot 평균`(Lot 단순 평균). 종전 Lot 취합 표 · wafer 제목도 `Job · Recipe(s) · 날짜` 로 표시. `AggCell.fl` · `AggGroup.job/r`.
+- Excel 내보내기는 종전 2시트 그대로(Yield 탭 전용 시트 없음 — 요청 범위 밖).
+- 검증: `tests/test_batchview.py::test_aggregate_splits_recipe_and_keeps_faults`(PI 재스캔 → 하나 · RDL 따로 · Faults), `tools/check_project.py`(tkinter 없는
+  test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(Yield 탭 · 전체 선택 → 평균 · 키워드 없음) 통과. Windows 실기 · 실제 장비 자료 미검증.
+
 ## 최신 재개 — Para #23 값 확인 비고 = RTP.txt 설명(영문 원문 / 한글 번역) (2026-10-09 KST, `version_v12`)
 
 - GitHub 이슈 #23: Recipe 값 확인 탭에서 파라미터를 볼 때 비고 칸에 RTP.txt 의 설명을 채우고, 번역이 가능하면 영어 원문 + 한글 번역을 같이.

@@ -23,6 +23,12 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 찾기 · 취합 = 레시피(Job)별 그룹 + Lot별 Yield 탭 (2026-10-12, 이슈 #24)
+- `View.aggregate` 그룹 = (Lot, 묶음, **상위 레시피 Job**) — 같은 Lot 이라도 PI → RDL 을 이어서 스캔하면 따로 취합(묶음은 Recipe(s) 만 비교하므로 취합에서 가름).
+  그룹 `r` = `Job · Recipe(s)`, wafer 후보 `fl` = Faults. 여러 번 스캔한 wafer 는 종전대로 하나(최신 스캔 = 가장 나중 Pass, 저장된 사람 선택 우선).
+- 4/4 취합 결과 탭 [Lot 취합 · wafer | **Lot별 Yield**](`BatchYield.tsx`): Lot · 레시피마다 Yield(Good ÷ Scanned) · Defect(Faults 합) · Good/Reject(Bad) Die,
+  Pass wafer 만. 레시피 칩 · 키워드 필터, 체크(머리 = 보이는 것 전체) → 선택 합계 · 선택 Lot 평균.
+
 ### 값 확인 비고 = RTP.txt 설명(영문 원문 / 한글 번역) (2026-10-09, 이슈 #23)
 - 취합(`collate.collate_recipe`)이 **빈 비고만** RTP.txt 설명으로 채운다(사람이 양식에 적은 비고 우선). 설명 = `rtpnotes.note_for` — 같은 config 폴더의
   RTP.txt `( 설명~코드 )` 를 표시명(단위 괄호 뗌) · INI↔RTP 키 쌍 · 설정키로 매칭, 한글 번역은 번들 `rtp_template.json` `desc_kr`(인터넷 번역 금지),
