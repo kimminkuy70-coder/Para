@@ -122,6 +122,20 @@ class ViewNumbers(unittest.TestCase):
         self.assertEqual((len(g_rdl['att']), len(g_rdl['keys'])), (1, 25))
         self.assertTrue(all(len(g_rdl['w'][k]['cells']) == 1 for k in g_rdl['keys']))              # PI 스캔과 섞이지 않음
 
+    def test_aggregate_merges_rescanned_bunches_to_final_wafers(self):
+        # 이슈 #26: 같은 Lot · 레시피를 며칠 뒤(다른 묶음)에 다시 스캔해도 취합은 한 그룹, wafer 25장 = 최종 선정(가장 나중 Pass) 하나씩.
+        view = batchview.View(records(
+            ("AOI-1", report("BAW", full(["Scan 2D Error."]), "2026-09-01 10:00", minutes=50, recipe="2D")),
+            ("AOI-1", report("BAW", full([]), "2026-09-03 10:00", minutes=50, recipe="2D")),
+        ))
+        self.assertEqual(len(view.model['lots'][0]['bunches']), 2)                  # lotmodel 은 12시간 넘게 떨어져 묶음 2개
+        groups = view.aggregate([0, 1])
+        self.assertEqual(len(groups), 1)
+        g = groups[0]
+        self.assertEqual((len(g['keys']), g['bis'], len(g['att'])), (25, [0, 1], 2))
+        self.assertTrue(all(g['w'][k]['cells'][g['w'][k]['rec']]['ok'] for k in g['keys']))
+        self.assertEqual((g['s'][:10], g['e'][:10], g['machines']), ('2026-09-01', '2026-09-03', ['AOI-1']))
+
     def test_saved_choice_changes_numbers_not_toggle(self):
         li = self.lot('SPT')
         b = self.view.model['lots'][li]['bunches'][0]

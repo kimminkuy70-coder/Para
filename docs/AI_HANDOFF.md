@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #26 찾기 · 취합 = 최종 선정 wafer 로만 계산 + 태그별 보기 (2026-10-12 KST, `version_v12`)
+
+- GitHub 이슈 #26: 찾기 · Lot 취합의 Yield · Good Die 등은 최종 선정된 wafer · Lot 으로만 계산해야 하는데 여러 번 스캔하면 중복 wafer 가 들어가 왜곡됨
+  (정상이면 Lot 하나 = 25 wafer) + '한 번에 완료' · 'Pass하지 못한 wafer 존재' 같은 태그별로 구분해서 보기.
+- 원인: `View.aggregate` 그룹 키가 lotmodel **묶음**(같은 호기 12시간 · 호기 이동 48시간)이었다. 같은 Lot · 레시피를 며칠 뒤(또는 다른 호기로) 다시 스캔하면
+  묶음이 둘이 되어 취합도 두 그룹 → 같은 wafer 가 두 번 들어가 Lot별 Yield 선택 합계 · 평균이 부풀었다.
+- 엔진 `param_manager/batchview.py` `aggregate`: 그룹 키 = **(Lot, 공정 단계 Recipe(s), 2D/3D, Job)** — 묶음으로 나누지 않음. wafer 마다 후보를 전부 모아
+  최종 선정(저장된 사람 선택 → 가장 나중 Pass → 가장 나중 스캔) 하나. 저장된 사람 선택은 모든 묶음에서(나중 묶음 우선). 그룹에 `bis`(들어간 묶음) · `s`/`e`(전체 기간) ·
+  `machines` 추가(`bi` = 첫 묶음, 하위호환). `desktop_batch.export(kind='agg')` 의 기간 · 호기 열도 그룹 값. lotmodel(Lot 추적 · 가동률)은 그대로.
+- 화면: `batchData.aggState`(최종 선정 기준 태그: Pass 없는 wafer → Pass하지 못한 wafer 존재, Error 뒤 Pass → 재스캔으로 완료, 그 외 한 번에 완료).
+  `BatchFind.tsx` `TagChips` — ③ Lot 고르기에 `Lot 태그별 보기`(Lot 상태, 여러 개, 비면 전체, 점검 스캔 숨김), ④ 취합 결과에 `취합 결과 태그별 보기`
+  (Lot 취합 표 · wafer 표 · Lot별 Yield 모두 거름) + 태그 칸. 그룹 이름 = `레시피 · 첫 날 ~ 끝 날`. `BatchYield.tsx` props `states` · `show`.
+- 검증: `tests/test_batchview.py::test_aggregate_merges_rescanned_bunches_to_final_wafers`(묶음 2개 → 그룹 1개 · wafer 25 · 모두 최종 Pass), `tools/check_project.py`(tkinter 없는
+  test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(③ · ④ 태그 칩 · 태그 전체) 통과. Windows 실기 · 실제 장비 자료 미검증.
+- Excel 내보내기(2시트)에 태그 열은 넣지 않음(요청 범위 밖).
+
 ## 최신 재개 — Para #25 찾기 · 취합 Lot 고르기에 키워드 검색 · 한꺼번에 고르기 (2026-10-12 KST, `version_v12`)
 
 - GitHub 이슈 #25: Batch Report 찾기 · Lot 취합에서 Lot 을 고를 때 목록이 길고 Lot 이 많아 하나씩 고르기 힘듦 → 선택 기능 + 키워드 검색.

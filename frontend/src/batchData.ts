@@ -35,8 +35,15 @@ export type LotDetail={li:number;bunches:{wafers:Wafer[]}[];stats:Record<string,
 export type Raw={g:number;f:string;m:string;folder:string;path:string;meta:[string,string][];h:string[];rows:string[][]};
 /** fl = Faults(스캔된 Defect 수) */
 export type AggCell={g:number;status:string;ok:boolean;id:string;sc:number|null;bad:number|null;good:number|null;fl:number|null};
-/** 한 그룹 = Lot · 공정 단계 · 상위 레시피(Job). r = 레시피 이름(Job · Recipe(s)) — 같은 Lot 이라도 PI · RDL 은 따로(이슈 #24). */
-export type AggGroup={li:number;bi:number;att:number[];keys:string[];job:string;r:string;w:Record<string,{cells:AggCell[];rec:number;auto:number;saved:boolean}>};
+/** r = 레시피 이름(Job · Recipe(s)) — 같은 Lot 이라도 PI · RDL 은 따로(이슈 #24). */
+/** 한 그룹 = Lot · 공정 단계 · 2D/3D · 상위 레시피(Job) — 다시 스캔한 묶음(12시간 · 호기 이동)도 한 그룹이라 wafer 는 최종 선정 하나(이슈 #26).
+    bi = 첫 묶음, bis = 들어간 묶음, s/e = 전체 기간, machines = 호기(스캔 순). */
+export type AggGroup={li:number;bi:number;bis:number[];att:number[];keys:string[];job:string;r:string;s:string;e:string;machines:string[];
+  w:Record<string,{cells:AggCell[];rec:number;auto:number;saved:boolean}>};
+/** 취합 그룹 태그 — 최종 선정(choice) 기준: Pass 못 한 wafer 가 있으면 OPEN, Error 뒤 Pass(재스캔)가 있으면 RE, 아니면 DONE(이슈 #26). */
+export function aggState(g:AggGroup,gi:number,choice:Record<string,number>){let re=false;
+  for(const k of g.keys){const c=g.w[k].cells,x=c[choice[gi+'|'+k]??g.w[k].rec];if(!x||!x.ok)return OPEN;if(c.some(y=>!y.ok))re=true;}
+  return re?RE:DONE;}
 export type ViewName='scope'|'find';
 
 export async function loadView(meta:ViewMeta):Promise<View|undefined>{

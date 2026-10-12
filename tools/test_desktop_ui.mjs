@@ -299,8 +299,15 @@ try{
   await page.locator('.groups .group').first().waitFor({timeout:60000});
   const nGroups=await page.locator('.groups .group').count();
   await page.getByLabel('Lot 목록 키워드 검색').fill('없는-키워드-xyz');
-  await page.getByText('검색에 맞는 Lot이 없습니다.').waitFor();
+  await page.getByText('검색 · 태그에 맞는 Lot이 없습니다.').waitFor();
   await page.getByLabel('Lot 목록 키워드 검색').fill('');
+  // #26: Lot 태그별 보기(③) — 고른 태그의 Lot만, '태그 전체'로 되돌림.
+  const gtags=page.getByRole('group',{name:'Lot 태그별 보기'});
+  const gchip=gtags.locator('button.jf-chip:not([disabled])').nth(1);
+  await gchip.click();assert.equal(await gchip.getAttribute('aria-pressed'),'true');
+  assert((await page.locator('.groups .group').count())>=1);
+  await gtags.getByRole('button',{name:/태그 전체/}).click();
+  assert.equal(await page.locator('.groups .group').count(),nGroups);
   await page.getByRole('button',{name:'보이는 Lot 모두 선택',exact:true}).click();
   assert.equal(await page.locator('.group .gh input[type=checkbox]:checked').count(),nGroups);
   await page.getByRole('button',{name:'모두 해제',exact:true}).click();
@@ -308,6 +315,12 @@ try{
   await page.locator('.group .gh input[type=checkbox]').first().check();
   await page.getByRole('button',{name:'선택한 Batch Report 취합 →'}).click();
   await page.locator('.stamp').filter({hasText:'최신 스캔 자동'}).waitFor();
+  // #26: 취합 결과 태그별 보기 — 최종 선정 기준 태그 칸 + 고른 태그만.
+  const rtags=page.getByRole('group',{name:'취합 결과 태그별 보기'});
+  const rchip=rtags.locator('button.jf-chip:not([disabled])').nth(1);
+  await rchip.click();assert.equal(await rchip.getAttribute('aria-pressed'),'true');
+  assert((await page.locator('.kept-screen:not([hidden]) td .st').count())>=1);
+  await rtags.getByRole('button',{name:/태그 전체/}).click();
   // #24: Lot별 Yield 탭 — 레시피 · 키워드 필터, 전체 선택 → 선택 합계 · 평균.
   await page.getByRole('tab',{name:'Lot별 Yield',exact:true}).click();
   const ytable=page.getByRole('table',{name:'Lot별 Yield 표'});

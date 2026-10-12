@@ -447,7 +447,7 @@ class BatchViews:
             if not isinstance(choices, dict) or len(choices) > 50000:
                 raise ValueError("선택을 확인하세요")
             for gi, grp in enumerate(view.aggregate(params.get("reports"))):
-                lot, b = lots[grp["li"]], lots[grp["li"]]["bunches"][grp["bi"]]
+                lot = lots[grp["li"]]
                 t = dict(sc=0, bad=0, good=0, ok=0, no=0)
                 for k in grp["keys"]:
                     w = grp["w"][k]
@@ -465,7 +465,7 @@ class BatchViews:
                     wafer_rows.append([lot["label"], grp["r"], k.replace("ID:", ""), real, x["status"],
                                        "Pass" if x["ok"] else "Pass 없음", R[x["g"]]["f"], R[x["g"]]["m"], R[x["g"]]["s"],
                                        x["sc"], x["bad"], x["good"], yld(x["sc"], x["good"]), source(x["g"])])
-                lot_rows.append([lot["label"], grp["r"], f"{b['s']} ~ {b['e']}", " → ".join(b["machines"]), len(grp["att"]),
+                lot_rows.append([lot["label"], grp["r"], f"{grp['s']} ~ {grp['e']}", " → ".join(grp["machines"]), len(grp["att"]),
                                  len(grp["keys"]), t["ok"], t["no"], t["sc"], t["bad"], t["good"], yld(t["sc"], t["good"])])
             name, title = f"BatchReport_취합_{now}.xlsx", "Batch Report 찾기 · 취합"
         elif params.get("kind") == "lot":

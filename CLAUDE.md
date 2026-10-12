@@ -23,6 +23,11 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 찾기 · 취합 = 최종 선정 wafer 만 + 태그별 보기 (2026-10-12, 이슈 #26)
+- `View.aggregate` 그룹 = (Lot, 공정 단계, 2D/3D, Job) — lotmodel 묶음(12시간 · 호기 이동)으로 **나누지 않는다**. 같은 Lot 을 며칠 뒤 다시 스캔해도 wafer 는
+  최종 선정 하나(가장 나중 Pass)라 Yield · Good Die 가 중복으로 부풀지 않는다(정상 Lot = 25 wafer). 그룹 `bis` · `s`/`e` · `machines`.
+- 태그(한 번에 완료 / 재스캔으로 완료 / Pass하지 못한 wafer 존재): ③ Lot 고르기 = Lot 상태, ④ 취합 결과 = 최종 선정 기준(`batchData.aggState`) — 칩으로 골라 보기(비면 전체).
+
 ### 찾기 · 취합 고르기 = 목록 안 키워드 검색 + 한꺼번에 고르기 (2026-10-12, 이슈 #25)
 - 2/4 찾은 파일 · 3/4 Lot 고르기 둘 다 목록 안 키워드 검색(여러 단어 모두 포함) · [보이는 것 모두 고르기/해제] · [모두 해제] · **Shift+클릭 범위**(`BatchFind.tsx` `rangeToggle`).
   검색은 보이는 것만 거르고 숨은 선택은 유지(개수 안내). Lot 선택 = 그 Lot 의 Batch Report 전부(종전 머리 체크와 같음). 화면 전용 — 엔진 변화 없음.
@@ -1089,7 +1094,7 @@ python3 tests/test_pipeline.py     # 1  (참고자료→양식→취합→최신
 python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호환·회차 레시피별 전부조사·폴더구조/양식없이 Lot계획 포함) (새 S/M 감지·자동조사: 계획 이름구분·기준선 무알림·백업본 중복무시·안정화대기·mtime건너뜀·생성일자/계획추가·로컬설정·대표S/M최신순·대상별양식·첫슬롯(빈슬롯제외)·한파일누적·양식불일치 표시유지·GUI연결·회차 헤드리스(기준선/감지+조사/양식없음/루트없음/계수)
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
 python3 tests/test_batchsaved.py    # 8  (저장된 결과 파일 = 앱 식: 가동률 · WPH · Lot 요약 · 호기 색 표 · HTML/Excel/대시보드 · 정상 WPH 없음 행 · 상위 레시피 필터 · Lot 추적 HTML view · 인터랙티브 그래프 자료)
-python3 tests/test_batchview.py    # 13 (지표 개편: 시간 3칸·WPH 재료·작업자 중단/Defect 과다 · 3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
+python3 tests/test_batchview.py    # 15 (취합 = 묶음 넘어 최종 선정 wafer · 지표 개편: 시간 3칸·WPH 재료·작업자 중단/Defect 과다 · 3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
 python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯 · 3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)

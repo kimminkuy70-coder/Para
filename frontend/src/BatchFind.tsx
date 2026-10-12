@@ -4,13 +4,14 @@ import {StPill} from './BatchLot';
 import {OpenPath,openPath} from './OpenPath';
 import {ScanBackupBar} from './ScanBackup';
 import {YieldTab} from './BatchYield';
-import {grpLabel,num,isRealId,type View,type AggGroup} from './batchData';
+import {grpLabel,num,isRealId,aggState,STATES,ST,type View,type AggGroup} from './batchData';
 
 /* Batch Report 찾기 · 취합 — ① 파일 이름으로 찾기(로컬 조사 캐시 먼저 → 장비 Reports 폴더 이름, 원문은 안 엶)
    ② 찾은 파일 고르기 ③ 고른 것 + 같은 호기 앞뒤 24시간만 읽어 Lot · 공정 단계별로 고르기(Scanresult 경로 · 원문)
    ④ 취합(같은 wafer 여러 장이면 최신 스캔 자동 = 가장 나중 Pass, 개발자 기능이면 Pass 2번 이상을 직접 고름). (이슈 #19)
    취합 결과는 탭 2개: [Lot 취합 · wafer] / [Lot별 Yield](레시피 · 키워드로 거르고 Lot을 골라 합계 · 평균, 이슈 #24).
-   ② · ③ 고르기는 목록 안 키워드 검색(여러 단어 = 모두 포함) · 보이는 것 모두 고르기/해제 · Shift+클릭 범위 고르기(이슈 #25). */
+   ② · ③ 고르기는 목록 안 키워드 검색(여러 단어 = 모두 포함) · 보이는 것 모두 고르기/해제 · Shift+클릭 범위 고르기(이슈 #25).
+   취합 그룹은 다시 스캔한 묶음까지 한 Lot으로(최종 선정 wafer만 계산) · ③ · ④ 에 태그(한 번에 완료 등)별 보기(이슈 #26). */
 const small={minHeight:28,padding:'3px 10px',fontSize:12} as const;
 export type FindCond={machines:string[];query:string;start:string;end:string;cacheOnly?:boolean};
 export type FindHit={i:number;m:string;f:string;t:string;c:boolean};
@@ -33,6 +34,14 @@ function rangeToggle<K extends string|number>(list:K[],i:number,on:boolean,shift
   set(o=>{const n={...o};for(let j=a;j<=b;j++)expand(list[j]).forEach(x=>{if(on)n[x]=1;else delete n[x];});return n;});
 }
 
+/* 태그(Lot 상태)별 보기 — 여러 개 고를 수 있고 비면 전체(이슈 #26). */
+function TagChips({label,counts,val,set}:{label:string;counts:Record<string,number>;val:string[];set:(v:string[])=>void}){
+  return <div className="jf-chips" role="group" aria-label={label} style={{marginTop:6}}>
+    <button type="button" className={'jf-chip'+(!val.length?' on':'')} aria-pressed={!val.length} onClick={()=>set([])}><i aria-hidden="true">{!val.length?'✓':''}</i><span>태그 전체</span></button>
+    {STATES.map(t=>{const on=val.includes(t);return <button key={t} type="button" className={'jf-chip'+(on?' on':'')} aria-pressed={on} disabled={!counts[t]&&!on}
+      onClick={()=>set(on?val.filter(x=>x!==t):[...val,t])}><i aria-hidden="true">{on?'✓':''}</i><span className={'st '+ST[t]}>{t}</span><small>{counts[t]||0}</small></button>;})}</div>;
+}
+
 export function FindTab(p:Props){
   const {view:v,cond}=p;
   const [sel,setSel]=useState<Record<number,1>>({});
@@ -43,13 +52,14 @@ export function FindTab(p:Props){
   const [pick,setPick]=useState<Record<string,1>>({});
   const [rtab,setRtab]=useState<'agg'|'yield'>('agg');
   const [fq,setFq]=useState(''),[gq,setGq]=useState('');   // ② 찾은 파일 · ③ Lot 목록 안 키워드(이슈 #25)
+  const [gt,setGt]=useState<string[]>([]),[rt,setRt]=useState<string[]>([]);   // ③ Lot · ④ 취합 결과 태그 보기(이슈 #26)
   const lastF=useRef<number|null>(null),lastG=useRef<number|null>(null);
   const L=p.list,hk=(h:FindHit)=>h.m+'\t'+h.f,fw=qWords(fq);
   const shown=L?(fw.length?L.hits.filter(h=>qHit([h.t,h.m,h.f,h.c?'캐시':'장비'].join(' '),fw)):L.hits).slice(0,LIST_MAX):[];
   const listKey=L?[L.query,L.start,L.end].join('\n'):'';
   useEffect(()=>{setPick({});setFq('');lastF.current=null;},[listKey]);   // 새 검색이면 고른 것 비움(장비 단계가 목록을 늘릴 때는 유지)
   const picked=L?L.hits.filter(h=>pick[hk(h)]).map(h=>h.i):[];
-  useEffect(()=>{setSel({});setGq('');lastG.current=null;},[v]);
+  useEffect(()=>{setSel({});setGq('');setGt([]);lastG.current=null;},[v]);
   useEffect(()=>{if(must.length)dupRef.current?.showModal();},[must]);
   const hits=new Set(v?.hits||[]);
   const order:string[]=[];const members:Record<string,number[]>={};
@@ -57,7 +67,12 @@ export function FindTab(p:Props){
   const gw=qWords(gq);
   const gText=(k:string)=>{const mem=members[k],f=v!.R[mem[0]];if(f.lot==null)return ['점검 스캔',f.m,f.sm,f.job,f.f].join(' ');
     const l=v!.lots[f.lot],b=l.bunches[f.b!];return [l.label,l.lot_id,grpLabel(b),b.machines.join(' '),...mem.map(g=>[v!.R[g].m,v!.R[g].sm,v!.R[g].job,v!.R[g].f].join(' '))].join(' ');};
-  const visible=gw.length?order.filter(k=>qHit(gText(k),gw)):order;
+  const gState=(k:string)=>{const f=v!.R[members[k][0]];return f.lot==null?'':v!.lots[f.lot].state;};
+  const gCounts:Record<string,number>={};order.forEach(k=>{const t=gState(k);if(t)gCounts[t]=(gCounts[t]||0)+1;});
+  const visible=order.filter(k=>(!gw.length||qHit(gText(k),gw))&&(!gt.length||gt.includes(gState(k))));
+  const rState=groups.map((g,gi)=>aggState(g,gi,choice));
+  const rCounts:Record<string,number>={};rState.forEach(t=>{rCounts[t]=(rCounts[t]||0)+1;});
+  const rShow=groups.map((_,gi)=>!rt.length||rt.includes(rState[gi]));
   const nSel=Object.keys(sel).length;
   const shownSet=new Set(shown),pickedHidden=L?L.hits.filter(h=>pick[hk(h)]&&!shownSet.has(h)).length:0;
   const selHidden=Object.keys(sel).length-visible.reduce((a,k)=>a+members[k].filter(g=>sel[g]).length,0);
@@ -69,7 +84,7 @@ export function FindTab(p:Props){
     gs.forEach((g,gi)=>g.keys.forEach(k=>{ch[gi+'|'+k]=g.w[k].rec;if(g.w[k].cells.length>1)dups.push([gi,k]);}));
     const many=dups.filter(([gi,k])=>gs[gi].w[k].cells.filter(c=>c.ok).length>1);
     const saved=gs.reduce((a,g)=>a+g.keys.filter(k=>g.w[k].saved).length,0);
-    setGroups(gs);setChoice(ch);setXlsx('');setRtab('agg');
+    setGroups(gs);setChoice(ch);setXlsx('');setRtab('agg');setRt([]);
     setNote(dups.length?`같은 wafer가 고른 Batch Report 2장 이상에 있는 ${dups.length}장은 최신 스캔으로 자동 취합했습니다(Pass가 있으면 가장 나중 Pass, 없으면 가장 나중 스캔). 그중 Pass 2번 이상 ${many.length}장.`+(p.dev?'':' 직접 고르기는 개발자 기능입니다.'):'');
     setStamp({manual:0,saved,at:new Date().toTimeString().slice(0,5)});
     if(many.length&&p.dev){setAuto(dups.filter(d=>!many.includes(d)));setMust(many);}
@@ -140,14 +155,15 @@ export function FindTab(p:Props){
         <li><b>Scanresult 경로</b> = 같은 호기 루트의 <code>Scanresult*</code> <code>\Job\Setup\S/M</code>. 폴더 이름만 확인해 있는 곳을 보여 줍니다. <b>폴더 열기</b> = 그 폴더를 탐색기로 바로 엽니다(장비 폴더는 읽기만). 이번 검색: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'백업본 포함'}</b>.</li>
         <li>여러 Lot을 함께 골라도 됩니다. 취합은 Lot · 공정 단계마다 따로 합니다(WBG · CMP처럼 다른 공정 스캔을 더하지 않음).</li></ol></details>
       {order.length>0&&<div className="jobfilter" role="group" aria-label="Lot 고르기 도구">
-        <div className="jf-head"><b>Lot 고르기</b><span className="jf-state">{gw.length?`검색에 맞는 Lot ${visible.length} / 전체 ${order.length}`:`전체 Lot ${order.length}개`}{selHidden>0?` · 검색에 안 보이는 선택 ${selHidden}개 포함`:''}</span><span className="grow"/>
+        <div className="jf-head"><b>Lot 고르기</b><span className="jf-state">{gw.length||gt.length?`검색 · 태그에 맞는 Lot ${visible.length} / 전체 ${order.length}`:`전체 Lot ${order.length}개`}{selHidden>0?` · 검색에 안 보이는 선택 ${selHidden}개 포함`:''}</span><span className="grow"/>
           <input type="search" style={{width:260}} aria-label="Lot 목록 키워드 검색" placeholder="Lot · 레시피 · 호기 · S/M · 파일 이름" value={gq} onChange={e=>{setGq(e.target.value);lastG.current=null;}}/>
           <button type="button" style={small} disabled={!visible.length} onClick={()=>setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{n[g]=1;}));return n;})}>보이는 Lot 모두 선택</button>
           <button type="button" style={small} disabled={!visible.some(k=>members[k].some(g=>sel[g]))} onClick={()=>setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{delete n[g];}));return n;})}>보이는 Lot 해제</button>
           <button type="button" style={small} disabled={!nSel} onClick={()=>setSel({})}>모두 해제</button></div>
-        <p className="hint" style={{margin:'4px 0 0'}}>여러 단어는 모두 포함하는 Lot만 보입니다. Lot 머리의 체크를 <b>Shift+클릭</b>하면 직전에 누른 Lot부터 이 Lot까지 한꺼번에 선택하거나 해제합니다.</p></div>}
+        <TagChips label="Lot 태그별 보기" counts={gCounts} val={gt} set={x=>{setGt(x);lastG.current=null;}}/>
+        <p className="hint" style={{margin:'4px 0 0'}}>태그를 고르면 그 태그의 Lot만 보입니다(여러 개 가능, 점검 스캔은 숨김). 여러 단어는 모두 포함하는 Lot만 보입니다. Lot 머리의 체크를 <b>Shift+클릭</b>하면 직전에 누른 Lot부터 이 Lot까지 한꺼번에 선택하거나 해제합니다.</p></div>}
       <div className="groups">{!order.length?<div className="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드 · 기간 · 호기 범위를 바꿔 보세요.</p></div>
-        :!visible.length?<div className="empty-state"><h3>검색에 맞는 Lot이 없습니다.</h3><p>Lot 목록 검색어를 바꾸거나 지우세요.</p></div>
+        :!visible.length?<div className="empty-state"><h3>검색 · 태그에 맞는 Lot이 없습니다.</h3><p>Lot 목록 검색어나 태그를 바꾸세요.</p></div>
         :visible.map((k,vi)=>{const mem=members[k],first=v.R[mem[0]],l=first.lot!=null?v.lots[first.lot]:null,b=l?l.bunches[first.b!]:null;
           const paths=[...new Set(mem.map(scanKey))];const all=mem.every(g=>sel[g]);
           return <div key={k} className="group"><div className="gh"><label style={{display:'flex',gap:8,alignItems:'center'}}><input type="checkbox" checked={all} aria-label={(l?'Lot '+l.label:'점검 스캔')+' 전체 선택'} onChange={()=>{}}
@@ -172,21 +188,24 @@ export function FindTab(p:Props){
       {note&&<div className="alert" style={{marginBottom:12}}><span>{note}</span></div>}
       <div className="pilltabs" role="tablist" aria-label="취합 결과 보기">{([['agg','Lot 취합 · wafer'],['yield','Lot별 Yield']] as const).map(([k,t])=>
         <button key={k} role="tab" type="button" className={rtab===k?'active':''} aria-selected={rtab===k} onClick={()=>setRtab(k)}>{t}</button>)}</div>
-      {rtab==='yield'?<YieldTab v={v} groups={groups} choice={choice} openLot={p.openLot}/>:<>
+      <div className="jobfilter" role="group" aria-label="취합 결과 태그" style={{marginBottom:10}}><div className="jf-head"><b>태그별 보기</b>
+        <span className="jf-state">{rt.length?`${rShow.filter(Boolean).length} / 전체 ${groups.length}`:`전체 ${groups.length}개`} — 태그는 이 취합의 최종 선정 wafer 기준</span></div>
+        <TagChips label="취합 결과 태그별 보기" counts={rCounts} val={rt} set={setRt}/></div>
+      {rtab==='yield'?<YieldTab v={v} groups={groups} choice={choice} openLot={p.openLot} states={rState} show={rShow}/>:<>
       <h3 style={{marginTop:4}}>Lot 취합</h3>
-      <div className="table-scroll" style={{maxHeight:'none'}}><table className="t-compact"><thead><tr><th>Lot</th><th>레시피(Job · Recipe(s))</th><th>호기</th><th className="num">고른 Batch Report</th><th className="num">wafer</th><th className="num">Pass</th><th className="num">Pass 없음</th><th className="num">Scanned</th><th className="num">Bad</th><th className="num">Good</th><th className="num">Yield</th></tr></thead>
-        <tbody>{groups.map((g,gi)=>{const t={sc:0,bad:0,good:0,p:0,np:0};g.keys.forEach(k=>{const x=g.w[k].cells[choice[gi+'|'+k]];if(x.ok){t.p++;if(x.sc!=null){t.sc+=x.sc;t.bad+=x.bad||0;t.good+=x.good||0;}}else t.np++;});
-          const b=v.lots[g.li].bunches[g.bi];return <tr key={gi}><td><button type="button" className="linklike" onClick={()=>p.openLot(g.li)}>{v.lots[g.li].label}</button></td><td>{g.r} · {b.s.slice(5,10)}</td>
-            <td>{[...new Set(g.att.map(x=>v.R[x].m))].join(', ')}</td><td className="num">{g.att.length}</td><td className="num">{g.keys.length}</td><td className="num">{t.p}</td><td className="num">{t.np}</td>
+      <div className="table-scroll" style={{maxHeight:'none'}}><table className="t-compact"><thead><tr><th>Lot</th><th>태그</th><th>레시피(Job · Recipe(s))</th><th>호기</th><th className="num">고른 Batch Report</th><th className="num">wafer</th><th className="num">Pass</th><th className="num">Pass 없음</th><th className="num">Scanned</th><th className="num">Bad</th><th className="num">Good</th><th className="num">Yield</th></tr></thead>
+        <tbody>{!rShow.some(Boolean)&&<tr><td colSpan={12} className="hint">고른 태그의 Lot이 없습니다.</td></tr>}{groups.map((g,gi)=>{if(!rShow[gi])return null;const t={sc:0,bad:0,good:0,p:0,np:0};g.keys.forEach(k=>{const x=g.w[k].cells[choice[gi+'|'+k]];if(x.ok){t.p++;if(x.sc!=null){t.sc+=x.sc;t.bad+=x.bad||0;t.good+=x.good||0;}}else t.np++;});
+          return <tr key={gi}><td><button type="button" className="linklike" onClick={()=>p.openLot(g.li)}>{v.lots[g.li].label}</button></td><td><StPill s={rState[gi]}/></td><td>{span(g)}</td>
+            <td>{g.machines.join(', ')}</td><td className="num">{g.att.length}</td><td className="num">{g.keys.length}</td><td className="num">{t.p}</td><td className="num">{t.np}</td>
             <td className="num">{num(t.sc)}</td><td className="num">{num(t.bad)}</td><td className="num">{num(t.good)}</td><td className="num">{t.sc?num(t.good/t.sc*100,2)+'%':'—'}</td></tr>;})}</tbody></table></div>
-      {groups.map((g,gi)=>{const b=v.lots[g.li].bunches[g.bi];return <Fragment key={gi}><h3>wafer — Lot {v.lots[g.li].label} · {g.r} · {b.s.slice(5,10)}</h3>
+      {groups.map((g,gi)=>!rShow[gi]?null:<Fragment key={gi}><h3>wafer — Lot {v.lots[g.li].label} · {span(g)} <StPill s={rState[gi]}/></h3>
         <div className="usedr"><span>고른 Batch Report</span>{g.att.map((x,n)=>{const r=v.R[x];return <button key={x} type="button" onClick={()=>p.showRaw(x)}
           data-tip={`${r.f}\nPass ${r.ok} / ${r.n}행${r.fe?'\n첫 Error: '+r.fe:''}\n누르면 원문`}>#{n+1} {r.s.slice(5)} · {r.m} 원문 보기</button>;})}</div>
         <div className="mapscroll"><table className="map"><thead><tr><th>슬롯</th><th>Wafer ID</th><th>쓰는 Batch Report</th><th>결과 원문</th><th>Scanned</th><th>Bad</th><th>Good</th><th>Yield</th><th/></tr></thead>
           <tbody>{g.keys.map(k=>{const c=g.w[k].cells,x=c[choice[gi+'|'+k]],id=(c.find(y=>isRealId(y.id))||x).id,r=v.R[x.g];
             return <tr key={k}><th>{k.replace(/^S0?/,'').replace(/^ID:/,'')}</th><td>{id}</td><td className="mono">{r.s} · {r.f}{c.length>1&&<span className="rectag" data-tip={`${c.length}장 중 ${g.w[k].saved?'저장된 사람 선택':'추천(가장 나중 Pass)'}으로 선택`}>{c.length}장 중 {g.w[k].saved?'사람 선택':'추천'}</span>}</td>
               <td className={x.ok?'c-p':'c-e'}>{x.status}</td><td className="n">{num(x.sc)}</td><td className="n">{num(x.bad)}</td><td className="n">{num(x.good)}</td><td className="n">{x.sc?num((x.good||0)/x.sc*100,1)+'%':'—'}</td>
-              <td><button type="button" style={{minHeight:22,padding:'1px 8px',fontSize:11}} onClick={()=>p.showRaw(x.g)}>원문</button></td></tr>;})}</tbody></table></div></Fragment>;})}</>}
+              <td><button type="button" style={{minHeight:22,padding:'1px 8px',fontSize:11}} onClick={()=>p.showRaw(x.g)}>원문</button></td></tr>;})}</tbody></table></div></Fragment>)}</>}
       {xlsx&&<div className="outputs" style={{marginTop:16}}><OpenPath label="저장된 Excel" path={xlsx}/></div>}
       <div className="stepnav" style={{marginTop:16}}><button className="btn" onClick={()=>p.setStep(2)}>◀ 다시 고르기</button><span className="stepcount">4 / 4</span>
         <button className="btn primary" disabled={p.busy} onClick={async()=>{const path=await p.exportAgg(Object.keys(sel).map(Number),choice,stampText);if(path)setXlsx(path);}}>Excel로 저장</button></div></>}
@@ -202,6 +221,9 @@ export function FindTab(p:Props){
     </dialog>
   </section>;
 }
+
+/** 취합 그룹 이름 — 레시피 · 기간(다시 스캔한 묶음이 여러 날이면 첫 날 ~ 끝 날) */
+function span(g:AggGroup){const a=g.s.slice(5,10),b=g.e.slice(5,10);return g.r+' · '+(b&&b!==a?a+' ~ '+b:a);}
 
 function copy(text:string){
   (navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>notify('경로를 복사했습니다.','ok'),()=>notify(text,'info'));
