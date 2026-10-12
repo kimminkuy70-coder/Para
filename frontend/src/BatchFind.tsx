@@ -9,7 +9,8 @@ import {grpLabel,num,isRealId,type View,type AggGroup} from './batchData';
 /* Batch Report 찾기 · 취합 — ① 파일 이름으로 찾기(로컬 조사 캐시 먼저 → 장비 Reports 폴더 이름, 원문은 안 엶)
    ② 찾은 파일 고르기 ③ 고른 것 + 같은 호기 앞뒤 24시간만 읽어 Lot · 공정 단계별로 고르기(Scanresult 경로 · 원문)
    ④ 취합(같은 wafer 여러 장이면 최신 스캔 자동 = 가장 나중 Pass, 개발자 기능이면 Pass 2번 이상을 직접 고름). (이슈 #19)
-   취합 결과는 탭 2개: [Lot 취합 · wafer] / [Lot별 Yield](레시피 · 키워드로 거르고 Lot을 골라 합계 · 평균, 이슈 #24). */
+   취합 결과는 탭 2개: [Lot 취합 · wafer] / [Lot별 Yield](레시피 · 키워드로 거르고 Lot을 골라 합계 · 평균, 이슈 #24).
+   ② · ③ 고르기는 목록 안 키워드 검색(여러 단어 = 모두 포함) · 보이는 것 모두 고르기/해제 · Shift+클릭 범위 고르기(이슈 #25). */
 const small={minHeight:28,padding:'3px 10px',fontSize:12} as const;
 export type FindCond={machines:string[];query:string;start:string;end:string;cacheOnly?:boolean};
 export type FindHit={i:number;m:string;f:string;t:string;c:boolean};
@@ -22,6 +23,15 @@ type Props={machines:{id:string;folder:string}[];view?:View;busy:boolean;dev:boo
   list?:FindList;checking:boolean;onLoad:(hits:number[])=>void};
 type Stamp={manual:number;saved:number;at:string};
 const recIdx=(c:{ok:boolean}[])=>{for(let j=c.length-1;j>=0;j--)if(c[j].ok)return j;return c.length-1;};
+const qWords=(q:string)=>q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+const qHit=(text:string,ws:string[])=>{const t=text.toLowerCase();return ws.every(w=>t.includes(w));};
+/* 체크 한 칸 바꾸기 — Shift+클릭이면 직전에 누른 칸부터 이 칸까지(보이는 목록 순서) 같은 상태로. */
+function rangeToggle<K extends string|number>(list:K[],i:number,on:boolean,shift:boolean,last:{current:number|null},
+  set:(f:(o:Record<string|number,1>)=>Record<string|number,1>)=>void,expand:(k:K)=>(string|number)[]=k=>[k]){
+  const a=shift&&last.current!=null&&last.current<list.length?Math.min(last.current,i):i,b=shift&&last.current!=null&&last.current<list.length?Math.max(last.current,i):i;
+  last.current=i;
+  set(o=>{const n={...o};for(let j=a;j<=b;j++)expand(list[j]).forEach(x=>{if(on)n[x]=1;else delete n[x];});return n;});
+}
 
 export function FindTab(p:Props){
   const {view:v,cond}=p;
@@ -32,16 +42,25 @@ export function FindTab(p:Props){
   const dupRef=useRef<HTMLDialogElement>(null);
   const [pick,setPick]=useState<Record<string,1>>({});
   const [rtab,setRtab]=useState<'agg'|'yield'>('agg');
-  const L=p.list,hk=(h:FindHit)=>h.m+'\t'+h.f,shown=L?L.hits.slice(0,LIST_MAX):[];
+  const [fq,setFq]=useState(''),[gq,setGq]=useState('');   // ② 찾은 파일 · ③ Lot 목록 안 키워드(이슈 #25)
+  const lastF=useRef<number|null>(null),lastG=useRef<number|null>(null);
+  const L=p.list,hk=(h:FindHit)=>h.m+'\t'+h.f,fw=qWords(fq);
+  const shown=L?(fw.length?L.hits.filter(h=>qHit([h.t,h.m,h.f,h.c?'캐시':'장비'].join(' '),fw)):L.hits).slice(0,LIST_MAX):[];
   const listKey=L?[L.query,L.start,L.end].join('\n'):'';
-  useEffect(()=>{setPick({});},[listKey]);   // 새 검색이면 고른 것 비움(장비 단계가 목록을 늘릴 때는 유지)
+  useEffect(()=>{setPick({});setFq('');lastF.current=null;},[listKey]);   // 새 검색이면 고른 것 비움(장비 단계가 목록을 늘릴 때는 유지)
   const picked=L?L.hits.filter(h=>pick[hk(h)]).map(h=>h.i):[];
-  useEffect(()=>{setSel({});},[v]);
+  useEffect(()=>{setSel({});setGq('');lastG.current=null;},[v]);
   useEffect(()=>{if(must.length)dupRef.current?.showModal();},[must]);
   const hits=new Set(v?.hits||[]);
   const order:string[]=[];const members:Record<string,number[]>={};
   (v?.hits||[]).forEach(g=>{const r=v!.R[g],k=r.lot==null?'x'+g:r.lot+'|'+r.b;if(!members[k]){order.push(k);members[k]=r.lot==null?[g]:v!.lots[r.lot].bunches[r.b!].att;}});
+  const gw=qWords(gq);
+  const gText=(k:string)=>{const mem=members[k],f=v!.R[mem[0]];if(f.lot==null)return ['점검 스캔',f.m,f.sm,f.job,f.f].join(' ');
+    const l=v!.lots[f.lot],b=l.bunches[f.b!];return [l.label,l.lot_id,grpLabel(b),b.machines.join(' '),...mem.map(g=>[v!.R[g].m,v!.R[g].sm,v!.R[g].job,v!.R[g].f].join(' '))].join(' ');};
+  const visible=gw.length?order.filter(k=>qHit(gText(k),gw)):order;
   const nSel=Object.keys(sel).length;
+  const shownSet=new Set(shown),pickedHidden=L?L.hits.filter(h=>pick[hk(h)]&&!shownSet.has(h)).length:0;
+  const selHidden=Object.keys(sel).length-visible.reduce((a,k)=>a+members[k].filter(g=>sel[g]).length,0);
   const selGroups=new Set(Object.keys(sel).map(Number).filter(g=>v!.R[g].lot!=null).map(g=>v!.R[g].lot+'|'+v!.R[g].b)).size;
   async function start(){
     const reports=Object.keys(sel).map(Number);
@@ -93,16 +112,23 @@ export function FindTab(p:Props){
     {p.step===1&&<>
       {!L?<div className="empty-state"><h3>먼저 검색하세요.</h3></div>:<>
       <div className="mhead"><span className="lbl">찾은 Batch Report</span><span className="count">{L.total}개 · 캐시 {L.cached} · 장비 새 {L.total-L.cached}</span><span className="grow"/>
-        <button type="button" style={small} disabled={!shown.length} onClick={()=>setPick(Object.fromEntries(shown.map(h=>[hk(h),1])))}>모두 고르기</button>
+        <input type="search" style={{width:240,padding:'5px 8px',fontSize:12}} aria-label="찾은 목록 키워드 검색" placeholder="목록 안 검색 — 호기 · 파일 이름 · 날짜" value={fq} onChange={e=>{setFq(e.target.value);lastF.current=null;}}/>
+        <button type="button" style={small} disabled={!shown.length} onClick={()=>setPick(o=>({...o,...Object.fromEntries(shown.map(h=>[hk(h),1]))}))}>보이는 것 모두 고르기</button>
+        <button type="button" style={small} disabled={!shown.some(h=>pick[hk(h)])} onClick={()=>setPick(o=>{const n={...o};shown.forEach(h=>delete n[hk(h)]);return n;})}>보이는 것 해제</button>
         <button type="button" style={small} disabled={!picked.length} onClick={()=>setPick({})}>모두 해제</button></div>
+      <p className="hint">목록 안 검색은 여러 단어를 모두 포함하는 줄만 보여 줍니다. <b>Shift+클릭</b>하면 직전에 누른 줄부터 이 줄까지 한꺼번에 고르거나 해제합니다.{fw.length?` 검색에 맞는 ${shown.length}개`:''}{pickedHidden?` · 검색에 안 보이는 고른 것 ${pickedHidden}개도 함께 읽습니다`:''}</p>
       {p.checking?<p className="scope-status" role="status">{p.progress||'장비 Reports 폴더에서 캐시에 없는 새 Batch Report를 확인하는 중…'} (캐시 결과는 아래에 먼저 보입니다)</p>
         :L.stage==='cache'?<p className="hint">로컬 조사 캐시에서만 찾았습니다(장비 접속 없음). 캐시 이후 Batch Report까지 찾으려면 [캐시에서만 찾기]를 끄고 다시 검색하세요.</p>
         :<p className="hint">캐시 + 장비 Reports 폴더 이름에서 찾았습니다{L.offline.length?` — 연결 안 된 호기(캐시만): ${L.offline.join(', ')}`:''}. 원문은 아직 열지 않았습니다.</p>}
       {L.total>LIST_MAX&&<p className="hint">앞(최근) {LIST_MAX}개만 보입니다. 키워드 · 기간을 좁히세요.</p>}
       {!L.total?<div className="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드 · 기간 · 호기 범위를 바꿔 보세요.</p></div>
-        :<div className="table-scroll" style={{maxHeight:'52vh'}}><table className="t-compact" aria-label="찾은 Batch Report 목록"><thead><tr><th/><th>스캔 시각(파일 이름)</th><th>호기</th><th>파일 이름</th><th>어디서</th></tr></thead>
-          <tbody>{shown.map(h=><tr key={hk(h)}><td><input type="checkbox" checked={!!pick[hk(h)]} aria-label={h.f+' 고르기'}
-              onChange={e=>setPick(o=>{const n={...o};if(e.target.checked)n[hk(h)]=1;else delete n[hk(h)];return n;})}/></td>
+        :<div className="table-scroll" style={{maxHeight:'52vh'}}><table className="t-compact" aria-label="찾은 Batch Report 목록"><thead><tr>
+          <th><input type="checkbox" aria-label="보이는 찾은 파일 전체 고르기" disabled={!shown.length} checked={!!shown.length&&shown.every(h=>pick[hk(h)])}
+            onChange={e=>{const on=e.target.checked;setPick(o=>{const n={...o};shown.forEach(h=>{if(on)n[hk(h)]=1;else delete n[hk(h)];});return n;});}}/></th>
+          <th>스캔 시각(파일 이름)</th><th>호기</th><th>파일 이름</th><th>어디서</th></tr></thead>
+          <tbody>{!shown.length&&<tr><td colSpan={5} className="hint">목록 안 검색에 맞는 Batch Report가 없습니다.</td></tr>}
+            {shown.map((h,i)=><tr key={hk(h)}><td><input type="checkbox" checked={!!pick[hk(h)]} aria-label={h.f+' 고르기'} onChange={()=>{}}
+              onClick={e=>rangeToggle(shown.map(hk),i,e.currentTarget.checked,e.shiftKey,lastF,setPick)}/></td>
             <td>{h.t||'—'}</td><td>{h.m}</td><td className="mono">{h.f}</td><td>{h.c?<span className="st">캐시</span>:<span className="st out">장비</span>}</td></tr>)}</tbody></table></div>}
       <div className="selbar"><span>고른 {picked.length}개{picked.length?` — 같은 호기 앞뒤 ${L.neighbor_h}시간 안의 Batch Report도 함께 읽습니다`:''}</span><div style={{display:'flex',gap:8}}>
         <button onClick={()=>p.setStep(0)}>◀ 검색으로</button><button className="primary" disabled={!picked.length||p.busy} onClick={()=>p.onLoad(picked)}>{p.busy&&!p.checking?'읽는 중…':'고른 Batch Report 읽기 →'}</button></div></div>
@@ -113,11 +139,19 @@ export function FindTab(p:Props){
         <li><b>원문 보기</b> = 캐시에 읽어 둔 Batch Report의 표를 그대로 앱 안에서 보여 줍니다. <b>원본 열기</b> = 장비 Report 폴더의 .htm을 기본 브라우저로 엽니다(읽기 전용).</li>
         <li><b>Scanresult 경로</b> = 같은 호기 루트의 <code>Scanresult*</code> <code>\Job\Setup\S/M</code>. 폴더 이름만 확인해 있는 곳을 보여 줍니다. <b>폴더 열기</b> = 그 폴더를 탐색기로 바로 엽니다(장비 폴더는 읽기만). 이번 검색: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'백업본 포함'}</b>.</li>
         <li>여러 Lot을 함께 골라도 됩니다. 취합은 Lot · 공정 단계마다 따로 합니다(WBG · CMP처럼 다른 공정 스캔을 더하지 않음).</li></ol></details>
+      {order.length>0&&<div className="jobfilter" role="group" aria-label="Lot 고르기 도구">
+        <div className="jf-head"><b>Lot 고르기</b><span className="jf-state">{gw.length?`검색에 맞는 Lot ${visible.length} / 전체 ${order.length}`:`전체 Lot ${order.length}개`}{selHidden>0?` · 검색에 안 보이는 선택 ${selHidden}개 포함`:''}</span><span className="grow"/>
+          <input type="search" style={{width:260}} aria-label="Lot 목록 키워드 검색" placeholder="Lot · 레시피 · 호기 · S/M · 파일 이름" value={gq} onChange={e=>{setGq(e.target.value);lastG.current=null;}}/>
+          <button type="button" style={small} disabled={!visible.length} onClick={()=>setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{n[g]=1;}));return n;})}>보이는 Lot 모두 선택</button>
+          <button type="button" style={small} disabled={!visible.some(k=>members[k].some(g=>sel[g]))} onClick={()=>setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{delete n[g];}));return n;})}>보이는 Lot 해제</button>
+          <button type="button" style={small} disabled={!nSel} onClick={()=>setSel({})}>모두 해제</button></div>
+        <p className="hint" style={{margin:'4px 0 0'}}>여러 단어는 모두 포함하는 Lot만 보입니다. Lot 머리의 체크를 <b>Shift+클릭</b>하면 직전에 누른 Lot부터 이 Lot까지 한꺼번에 선택하거나 해제합니다.</p></div>}
       <div className="groups">{!order.length?<div className="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드 · 기간 · 호기 범위를 바꿔 보세요.</p></div>
-        :order.map(k=>{const mem=members[k],first=v.R[mem[0]],l=first.lot!=null?v.lots[first.lot]:null,b=l?l.bunches[first.b!]:null;
+        :!visible.length?<div className="empty-state"><h3>검색에 맞는 Lot이 없습니다.</h3><p>Lot 목록 검색어를 바꾸거나 지우세요.</p></div>
+        :visible.map((k,vi)=>{const mem=members[k],first=v.R[mem[0]],l=first.lot!=null?v.lots[first.lot]:null,b=l?l.bunches[first.b!]:null;
           const paths=[...new Set(mem.map(scanKey))];const all=mem.every(g=>sel[g]);
-          return <div key={k} className="group"><div className="gh"><label style={{display:'flex',gap:8,alignItems:'center'}}><input type="checkbox" checked={all} aria-label={(l?'Lot '+l.label:'점검 스캔')+' 전체 선택'}
-              onChange={e=>setSel(o=>{const n={...o};mem.forEach(g=>{if(e.target.checked)n[g]=1;else delete n[g];});return n;})}/> <b>{l&&b?`Lot ${l.label} · ${grpLabel(b)}`:'점검 스캔(Lot 아님)'}</b></label>
+          return <div key={k} className="group"><div className="gh"><label style={{display:'flex',gap:8,alignItems:'center'}}><input type="checkbox" checked={all} aria-label={(l?'Lot '+l.label:'점검 스캔')+' 전체 선택'} onChange={()=>{}}
+              onClick={e=>rangeToggle(visible,vi,e.currentTarget.checked,e.shiftKey,lastG,setSel,x=>members[x])}/> <b>{l&&b?`Lot ${l.label} · ${grpLabel(b)}`:'점검 스캔(Lot 아님)'}</b></label>
             {l?<StPill s={l.state}/>:<span className="st out">Lot에서 제외</span>}<span className="meta">{b?`${b.s} ~ ${b.e.slice(5)} · ${b.machines.join(' → ')} · Batch Report ${mem.length}장`:''}</span>
             {l&&<button style={{...small,marginLeft:'auto'}} onClick={()=>p.openLot(first.lot!)}>Lot History 보기</button>}</div>
             {paths.map(pk=>{const s=v.scan?.[pk];const found=s?.paths||[];return <div key={pk} className="sr"><span>Scanresult 경로</span>

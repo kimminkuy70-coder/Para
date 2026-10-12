@@ -282,9 +282,29 @@ try{
   // #19: 찾은 파일 이름 목록(원문 안 엶) → 고른 것만 읽기(앞뒤 24시간 포함).
   await page.getByRole('table',{name:'찾은 Batch Report 목록'}).waitFor({timeout:60000});
   await page.getByText('원문은 아직 열지 않았습니다',{exact:false}).waitFor({timeout:60000});
-  await page.getByRole('button',{name:'모두 고르기',exact:true}).click();
+  // #25: 목록 안 키워드 검색 · 보이는 것 모두 고르기/해제 · Shift+클릭 범위.
+  const ftable=page.getByRole('table',{name:'찾은 Batch Report 목록'});
+  await page.getByLabel('찾은 목록 키워드 검색').fill('없는-키워드-xyz');
+  await ftable.getByText('목록 안 검색에 맞는 Batch Report가 없습니다.').waitFor();
+  await page.getByLabel('찾은 목록 키워드 검색').fill('');
+  const fboxes=ftable.locator('tbody input[type=checkbox]');
+  if((await fboxes.count())>=3){
+    await fboxes.nth(0).click();await fboxes.nth(2).click({modifiers:['Shift']});
+    assert(await fboxes.nth(1).isChecked());
+    await page.getByRole('button',{name:'보이는 것 해제',exact:true}).click();
+    assert(!(await fboxes.nth(1).isChecked()));
+  }
+  await page.getByRole('button',{name:'보이는 것 모두 고르기',exact:true}).click();
   await page.getByRole('button',{name:'고른 Batch Report 읽기 →'}).click();
   await page.locator('.groups .group').first().waitFor({timeout:60000});
+  const nGroups=await page.locator('.groups .group').count();
+  await page.getByLabel('Lot 목록 키워드 검색').fill('없는-키워드-xyz');
+  await page.getByText('검색에 맞는 Lot이 없습니다.').waitFor();
+  await page.getByLabel('Lot 목록 키워드 검색').fill('');
+  await page.getByRole('button',{name:'보이는 Lot 모두 선택',exact:true}).click();
+  assert.equal(await page.locator('.group .gh input[type=checkbox]:checked').count(),nGroups);
+  await page.getByRole('button',{name:'모두 해제',exact:true}).click();
+  assert.equal(await page.locator('.group .gh input[type=checkbox]:checked').count(),0);
   await page.locator('.group .gh input[type=checkbox]').first().check();
   await page.getByRole('button',{name:'선택한 Batch Report 취합 →'}).click();
   await page.locator('.stamp').filter({hasText:'최신 스캔 자동'}).waitFor();

@@ -1,5 +1,18 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #25 찾기 · 취합 Lot 고르기에 키워드 검색 · 한꺼번에 고르기 (2026-10-12 KST, `version_v12`)
+
+- GitHub 이슈 #25: Batch Report 찾기 · Lot 취합에서 Lot 을 고를 때 목록이 길고 Lot 이 많아 하나씩 고르기 힘듦 → 선택 기능 + 키워드 검색.
+- 화면만 바꿈(`frontend/src/BatchFind.tsx`, 엔진 · IPC 그대로):
+  · 2/4 찾은 파일 고르기: 목록 위 `찾은 목록 키워드 검색`(스캔 시각 · 호기 · 파일 이름 · 캐시/장비, 여러 단어 모두 포함) · [보이는 것 모두 고르기](종전 [모두 고르기]) ·
+    [보이는 것 해제] · [모두 해제] · 표 머리 체크 = 보이는 것 전체 · **Shift+클릭 = 직전에 누른 줄부터 범위**. 검색에 안 보이는 고른 것도 읽는다(개수 안내).
+  · 3/4 Lot · Batch Report 고르기: Lot 그룹 위 `Lot 고르기` 막대 — `Lot 목록 키워드 검색`(Lot · Lot ID · 공정 단계 · 날짜 · 호기 · S/M · Job · 파일 이름) ·
+    [보이는 Lot 모두 선택] · [보이는 Lot 해제] · [모두 해제] · Lot 머리 체크 Shift+클릭 범위 · `검색에 맞는 Lot n / 전체 m` · 숨은 선택 수 안내.
+    Lot 을 고르면 종전 머리 체크와 같이 그 Lot 의 Batch Report 전부(키워드 밖 · 이어서 스캔 포함)를 고른다.
+  · 범위 고르기 = 공용 `rangeToggle`(체크박스 `onClick` 의 `shiftKey`, 보이는 목록 순서). 새 검색 · 새 View 면 목록 검색어를 비운다.
+- 검증: `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(목록 검색 없음 표시 · Shift 범위 · 보이는 것 해제 · Lot 검색 없음 · 보이는 Lot 모두 선택/모두 해제) 통과,
+  `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패). Windows 실기(WebView2) · 실제 장비 자료 미검증.
+
 ## 최신 재개 — Para #24 찾기 · 취합 결과에 'Lot별 Yield' 탭 (2026-10-12 KST, `version_v12`)
 
 - GitHub 이슈 #24: Batch Report 찾기 · 취합(Lot별 Dice 취합)에서 Lot당 Yield · 스캔된 Defect 수 · Good/Reject Die 를 보는 탭 + 레시피별 · 키워드 검색,
