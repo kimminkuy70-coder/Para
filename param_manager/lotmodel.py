@@ -15,7 +15,8 @@
     레시피 기준값이 필요해 batchview 가 판정한다(attempt `stop_faults` = 멈출 때 wafer 의 Faults).
   · 앞에 Error 없이 `Skipped.` 인 행 = **스캔 안 한 슬롯**(kind '스킵') — wafer 로 세지 않는다(resolve 에서 뺀다).
 - 묶음: 같은 호기에서 시도 간격 12시간 이하 + 같은 공정 단계(웨이퍼 표 마지막 열 Recipe(s) — 그 열이 있는
-  Batch Report 끼리만 비교, 사용자 확정 2026-10-05). 다른 호기는 '호기 이동 재스캔'일 때만 이어 붙인다
+  Batch Report 끼리만 비교, 사용자 확정 2026-10-05) + 같은 레시피(Job — 이슈 #27: RDL · PI bubble 을 앞뒤로
+  스캔해도 서로 재스캔이 아니다). 다른 호기는 '호기 이동 재스캔'일 때만 이어 붙인다
   (앞 묶음에 미해결 웨이퍼가 남았고, 같은 공정 단계(Recipe(s))이며, move_gap_h 이내).
 - 3D 스캔(대전제, 사용자 확정 2026-10-05): S/M 에 단독 `3D`(`ABC-3D`)가 있으면 3D 스캔이다. 레시피는 2D 와 같아
   Lot 이름으로만 구분한다. 같은 Lot 의 2D · 3D 스캔은 서로 재스캔 · 중복 Pass 가 아니므로 묶음을 따로 만든다
@@ -334,12 +335,26 @@ def _step(attempts):
     return weight.most_common(1)[0][0] if weight else ""
 
 
+def _job(attempts):
+    """묶음의 레시피(Job) — Pass 웨이퍼가 많은 시도 기준(이슈 #27: 같은 Lot 이라도 RDL · PI bubble 처럼 레시피가 다르면 따로)."""
+    weight = Counter()
+    for a in attempts:
+        if a.get("job"):
+            weight[a["job"]] += 1 + sum(r["pass"] for r in a["rows"]) * 100
+    return weight.most_common(1)[0][0] if weight else ""
+
+
+def bunch_state(bunch):
+    """묶음(= Lot · 레시피 한 번의 검사) 상태 — Lot 상태와 같은 말."""
+    return LOT_OPEN if bunch["unresolved"] else LOT_RESCANNED if bunch["counts"].get(RECOVERED, 0) else LOT_DONE
+
+
 def _bunch(attempts, overrides, moved):
     key = attempts[0]["id"]
     wafers, counts, totals = resolve(attempts, overrides, key)
     return {"key": key, "attempts": attempts, "scan": attempts[0].get("scan", SCAN_2D),
             "machines": list(dict.fromkeys(a["machine"] for a in attempts)),
-            "moved": moved, "step": _step(attempts),
+            "moved": moved, "step": _step(attempts), "job": _job(attempts),
             "start": min((a["start"] for a in attempts if a["start"]), default=None),
             "end": max((a["end"] for a in attempts if a["end"]), default=None),
             "batch_sec": sum(a["batch_sec"] or 0 for a in attempts),
@@ -358,8 +373,9 @@ def _split_bunches(attempts, same_gap_h, move_gap_h):
             end = max((g["end"] or g["start"] for g in group if g["end"] or g["start"]), default=None)
             gap = (a["start"] - end) if (a["start"] and end) else None
             # 같은 공정 단계(Recipe(s) 열) — 열이 없는 Batch Report 는 비교하지 않는다.
-            step = _step(group)
-            same_step = not step or not a["step"] or step == a["step"]
+            # 같은 레시피(Job)여야 한다(이슈 #27) — Recipe(s) 가 같은 2D 라도 RDL · PI bubble 은 서로 재스캔이 아니다.
+            step, job = _step(group), _job(group)
+            same_step = (not step or not a["step"] or step == a["step"]) and (not job or not a.get("job") or job == a["job"])
             if a["machine"] == last["machine"]:
                 if gap is not None and gap <= same and same_step:
                     group.append(a)

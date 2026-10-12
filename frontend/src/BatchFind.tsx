@@ -4,14 +4,15 @@ import {StPill} from './BatchLot';
 import {OpenPath,openPath} from './OpenPath';
 import {ScanBackupBar} from './ScanBackup';
 import {YieldTab} from './BatchYield';
-import {grpLabel,num,isRealId,aggState,STATES,ST,type View,type AggGroup} from './batchData';
+import {grpLabel,bunchLabel,num,isRealId,aggState,STATES,ST,type View,type AggGroup} from './batchData';
 
 /* Batch Report 찾기 · 취합 — ① 파일 이름으로 찾기(로컬 조사 캐시 먼저 → 장비 Reports 폴더 이름, 원문은 안 엶)
    ② 찾은 파일 고르기 ③ 고른 것 + 같은 호기 앞뒤 24시간만 읽어 Lot · 공정 단계별로 고르기(Scanresult 경로 · 원문)
    ④ 취합(같은 wafer 여러 장이면 최신 스캔 자동 = 가장 나중 Pass, 개발자 기능이면 Pass 2번 이상을 직접 고름). (이슈 #19)
    취합 결과는 탭 2개: [Lot 취합 · wafer] / [Lot별 Yield](레시피 · 키워드로 거르고 Lot을 골라 합계 · 평균, 이슈 #24).
    ② · ③ 고르기는 목록 안 키워드 검색(여러 단어 = 모두 포함) · 보이는 것 모두 고르기/해제 · Shift+클릭 범위 고르기(이슈 #25).
-   취합 그룹은 다시 스캔한 묶음까지 한 Lot으로(최종 선정 wafer만 계산) · ③ · ④ 에 태그(한 번에 완료 등)별 보기(이슈 #26). */
+   취합 그룹은 다시 스캔한 묶음까지 한 Lot으로(최종 선정 wafer만 계산) · ③ · ④ 에 태그(한 번에 완료 등)별 보기(이슈 #26).
+   ③ 은 같은 Lot 이라도 레시피(Job · Recipe(s))마다 따로 — 앞뒤 24시간에 함께 읽힌 PI bubble 을 RDL 과 섞지 않게 레시피별 보기 · 태그도 레시피 줄 기준(이슈 #27). */
 const small={minHeight:28,padding:'3px 10px',fontSize:12} as const;
 export type FindCond={machines:string[];query:string;start:string;end:string;cacheOnly?:boolean};
 export type FindHit={i:number;m:string;f:string;t:string;c:boolean};
@@ -53,13 +54,14 @@ export function FindTab(p:Props){
   const [rtab,setRtab]=useState<'agg'|'yield'>('agg');
   const [fq,setFq]=useState(''),[gq,setGq]=useState('');   // ② 찾은 파일 · ③ Lot 목록 안 키워드(이슈 #25)
   const [gt,setGt]=useState<string[]>([]),[rt,setRt]=useState<string[]>([]);   // ③ Lot · ④ 취합 결과 태그 보기(이슈 #26)
+  const [gr,setGr]=useState<string[]>([]);   // ③ 레시피별 보기(이슈 #27)
   const lastF=useRef<number|null>(null),lastG=useRef<number|null>(null);
   const L=p.list,hk=(h:FindHit)=>h.m+'\t'+h.f,fw=qWords(fq);
   const shown=L?(fw.length?L.hits.filter(h=>qHit([h.t,h.m,h.f,h.c?'캐시':'장비'].join(' '),fw)):L.hits).slice(0,LIST_MAX):[];
   const listKey=L?[L.query,L.start,L.end].join('\n'):'';
   useEffect(()=>{setPick({});setFq('');lastF.current=null;},[listKey]);   // 새 검색이면 고른 것 비움(장비 단계가 목록을 늘릴 때는 유지)
   const picked=L?L.hits.filter(h=>pick[hk(h)]).map(h=>h.i):[];
-  useEffect(()=>{setSel({});setGq('');setGt([]);lastG.current=null;},[v]);
+  useEffect(()=>{setSel({});setGq('');setGt([]);setGr([]);lastG.current=null;},[v]);
   useEffect(()=>{if(must.length)dupRef.current?.showModal();},[must]);
   const hits=new Set(v?.hits||[]);
   const order:string[]=[];const members:Record<string,number[]>={};
@@ -67,9 +69,12 @@ export function FindTab(p:Props){
   const gw=qWords(gq);
   const gText=(k:string)=>{const mem=members[k],f=v!.R[mem[0]];if(f.lot==null)return ['점검 스캔',f.m,f.sm,f.job,f.f].join(' ');
     const l=v!.lots[f.lot],b=l.bunches[f.b!];return [l.label,l.lot_id,grpLabel(b),b.machines.join(' '),...mem.map(g=>[v!.R[g].m,v!.R[g].sm,v!.R[g].job,v!.R[g].f].join(' '))].join(' ');};
-  const gState=(k:string)=>{const f=v!.R[members[k][0]];return f.lot==null?'':v!.lots[f.lot].state;};
+  const gBunch=(k:string)=>{const f=v!.R[members[k][0]];return f.lot==null?null:v!.lots[f.lot].bunches[f.b!];};
+  const gState=(k:string)=>{const f=v!.R[members[k][0]],b=gBunch(k);return f.lot==null?'':b?.st||v!.lots[f.lot].state;};   // 레시피 줄 상태(이슈 #27)
+  const gRecipe=(k:string)=>{const b=gBunch(k);return b?bunchLabel(b):'';};
+  const gRecipes:Record<string,number>={};order.forEach(k=>{const r=gRecipe(k);if(r)gRecipes[r]=(gRecipes[r]||0)+1;});
   const gCounts:Record<string,number>={};order.forEach(k=>{const t=gState(k);if(t)gCounts[t]=(gCounts[t]||0)+1;});
-  const visible=order.filter(k=>(!gw.length||qHit(gText(k),gw))&&(!gt.length||gt.includes(gState(k))));
+  const visible=order.filter(k=>(!gw.length||qHit(gText(k),gw))&&(!gt.length||gt.includes(gState(k)))&&(!gr.length||gr.includes(gRecipe(k))));
   const rState=groups.map((g,gi)=>aggState(g,gi,choice));
   const rCounts:Record<string,number>={};rState.forEach(t=>{rCounts[t]=(rCounts[t]||0)+1;});
   const rShow=groups.map((_,gi)=>!rt.length||rt.includes(rState[gi]));
@@ -122,7 +127,7 @@ export function FindTab(p:Props){
       <details className="logic"><summary>로직 · 검색</summary><ol>
         <li><b>파일 이름만</b> 봅니다(원본을 열지 않음). 키워드는 대소문자 무시, 여러 단어는 모두 포함, 기간은 파일 이름 안 날짜.</li>
         <li>먼저 <b>[조사 시작]으로 이미 읽어 둔 로컬 캐시</b>에서 찾아 바로 보여 주고(장비 접속 없음), 이어서 고른 호기 Reports 폴더 이름 목록에서 캐시에 없는 새 Batch Report를 더합니다. [캐시에서만 찾기]를 켜면 장비에 접속하지 않습니다.</li>
-        <li>찾은 목록에서 고른 것만 읽습니다. 고른 Batch Report와, 같은 호기에서 그 <b>앞뒤 24시간</b> 안에 스캔한 Batch Report를 함께 읽어(캐시에 있으면 장비 접속 없음) <b>Lot · 공정 단계</b>로 모읍니다. 같은 Lot을 이어서 스캔했는데 키워드에 안 걸린 Batch Report(S/M 꼬리가 다른 것 등)도 회색으로 함께 보여 놓칠 일이 없게 합니다.</li>
+        <li>찾은 목록에서 고른 것만 읽습니다. 고른 Batch Report와, 같은 호기에서 그 <b>앞뒤 24시간</b> 안에 스캔한 Batch Report를 함께 읽어(캐시에 있으면 장비 접속 없음) <b>Lot · 레시피 · 공정 단계</b>로 모읍니다. 같은 Lot을 이어서 스캔했는데 키워드에 안 걸린 Batch Report(S/M 꼬리가 다른 것 등)도 회색으로 함께 보여 놓칠 일이 없게 합니다.</li>
         <li>호기 사이에는 2초 간격으로 순서대로 읽습니다(장비 접속 매너).</li></ol></details></>}
     {p.step===1&&<>
       {!L?<div className="empty-state"><h3>먼저 검색하세요.</h3></div>:<>
@@ -153,22 +158,26 @@ export function FindTab(p:Props){
       <details className="logic"><summary>로직 · 고르기</summary><ol>
         <li><b>원문 보기</b> = 캐시에 읽어 둔 Batch Report의 표를 그대로 앱 안에서 보여 줍니다. <b>원본 열기</b> = 장비 Report 폴더의 .htm을 기본 브라우저로 엽니다(읽기 전용).</li>
         <li><b>Scanresult 경로</b> = 같은 호기 루트의 <code>Scanresult*</code> <code>\Job\Setup\S/M</code>. 폴더 이름만 확인해 있는 곳을 보여 줍니다. <b>폴더 열기</b> = 그 폴더를 탐색기로 바로 엽니다(장비 폴더는 읽기만). 이번 검색: <b>{v.scan_backup===false?'원본 Scanresult 만(백업본 제외)':'백업본 포함'}</b>.</li>
-        <li>여러 Lot을 함께 골라도 됩니다. 취합은 Lot · 공정 단계마다 따로 합니다(WBG · CMP처럼 다른 공정 스캔을 더하지 않음).</li></ol></details>
+        <li>여러 Lot을 함께 골라도 됩니다. 취합은 Lot · 레시피(Job · Recipe(s)) · 공정 단계마다 따로 합니다(WBG · CMP처럼 다른 공정 스캔이나 RDL · PI bubble처럼 다른 레시피 스캔을 더하지 않음).</li></ol></details>
       {order.length>0&&<div className="jobfilter" role="group" aria-label="Lot 고르기 도구">
-        <div className="jf-head"><b>Lot 고르기</b><span className="jf-state">{gw.length||gt.length?`검색 · 태그에 맞는 Lot ${visible.length} / 전체 ${order.length}`:`전체 Lot ${order.length}개`}{selHidden>0?` · 검색에 안 보이는 선택 ${selHidden}개 포함`:''}</span><span className="grow"/>
+        <div className="jf-head"><b>Lot 고르기</b><span className="jf-state">{gw.length||gt.length||gr.length?`검색 · 레시피 · 태그에 맞는 Lot ${visible.length} / 전체 ${order.length}`:`전체 Lot ${order.length}개`}{selHidden>0?` · 검색에 안 보이는 선택 ${selHidden}개 포함`:''}</span><span className="grow"/>
           <input type="search" style={{width:260}} aria-label="Lot 목록 키워드 검색" placeholder="Lot · 레시피 · 호기 · S/M · 파일 이름" value={gq} onChange={e=>{setGq(e.target.value);lastG.current=null;}}/>
           <button type="button" style={small} disabled={!visible.length} onClick={()=>setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{n[g]=1;}));return n;})}>보이는 Lot 모두 선택</button>
           <button type="button" style={small} disabled={!visible.some(k=>members[k].some(g=>sel[g]))} onClick={()=>setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{delete n[g];}));return n;})}>보이는 Lot 해제</button>
           <button type="button" style={small} disabled={!nSel} onClick={()=>setSel({})}>모두 해제</button></div>
+        <div className="jf-chips" role="group" aria-label="Lot 레시피별 보기" style={{marginTop:6}}>
+          <button type="button" className={'jf-chip'+(!gr.length?' on':'')} aria-pressed={!gr.length} onClick={()=>{setGr([]);lastG.current=null;}}><i aria-hidden="true">{!gr.length?'✓':''}</i><span>레시피 전체</span></button>
+          {Object.keys(gRecipes).sort().map(r=>{const on=gr.includes(r);return <button key={r} type="button" className={'jf-chip'+(on?' on':'')} aria-pressed={on} title={r}
+            onClick={()=>{setGr(on?gr.filter(x=>x!==r):[...gr,r]);lastG.current=null;}}><i aria-hidden="true">{on?'✓':''}</i><span>{r}</span><small>{gRecipes[r]}</small></button>;})}</div>
         <TagChips label="Lot 태그별 보기" counts={gCounts} val={gt} set={x=>{setGt(x);lastG.current=null;}}/>
-        <p className="hint" style={{margin:'4px 0 0'}}>태그를 고르면 그 태그의 Lot만 보입니다(여러 개 가능, 점검 스캔은 숨김). 여러 단어는 모두 포함하는 Lot만 보입니다. Lot 머리의 체크를 <b>Shift+클릭</b>하면 직전에 누른 Lot부터 이 Lot까지 한꺼번에 선택하거나 해제합니다.</p></div>}
+        <p className="hint" style={{margin:'4px 0 0'}}>같은 Lot이라도 <b>레시피(Job · Recipe(s))마다 따로</b> 보입니다(앞뒤 24시간에 함께 읽힌 PI bubble 등을 RDL과 섞지 않음). 레시피를 고르면 그 레시피만 보입니다. 태그는 그 레시피 줄의 상태입니다. 태그를 고르면 그 태그의 Lot만 보입니다(여러 개 가능, 점검 스캔은 숨김). 여러 단어는 모두 포함하는 Lot만 보입니다. Lot 머리의 체크를 <b>Shift+클릭</b>하면 직전에 누른 Lot부터 이 Lot까지 한꺼번에 선택하거나 해제합니다.</p></div>}
       <div className="groups">{!order.length?<div className="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드 · 기간 · 호기 범위를 바꿔 보세요.</p></div>
         :!visible.length?<div className="empty-state"><h3>검색 · 태그에 맞는 Lot이 없습니다.</h3><p>Lot 목록 검색어나 태그를 바꾸세요.</p></div>
         :visible.map((k,vi)=>{const mem=members[k],first=v.R[mem[0]],l=first.lot!=null?v.lots[first.lot]:null,b=l?l.bunches[first.b!]:null;
           const paths=[...new Set(mem.map(scanKey))];const all=mem.every(g=>sel[g]);
           return <div key={k} className="group"><div className="gh"><label style={{display:'flex',gap:8,alignItems:'center'}}><input type="checkbox" checked={all} aria-label={(l?'Lot '+l.label:'점검 스캔')+' 전체 선택'} onChange={()=>{}}
               onClick={e=>rangeToggle(visible,vi,e.currentTarget.checked,e.shiftKey,lastG,setSel,x=>members[x])}/> <b>{l&&b?`Lot ${l.label} · ${grpLabel(b)}`:'점검 스캔(Lot 아님)'}</b></label>
-            {l?<StPill s={l.state}/>:<span className="st out">Lot에서 제외</span>}<span className="meta">{b?`${b.s} ~ ${b.e.slice(5)} · ${b.machines.join(' → ')} · Batch Report ${mem.length}장`:''}</span>
+            {l?<StPill s={b?.st||l.state}/>:<span className="st out">Lot에서 제외</span>}<span className="meta">{b?`${b.s} ~ ${b.e.slice(5)} · ${b.machines.join(' → ')} · Batch Report ${mem.length}장`:''}</span>
             {l&&<button style={{...small,marginLeft:'auto'}} onClick={()=>p.openLot(first.lot!)}>Lot History 보기</button>}</div>
             {paths.map(pk=>{const s=v.scan?.[pk];const found=s?.paths||[];return <div key={pk} className="sr"><span>Scanresult 경로</span>
               {found.length?found.map(x=><Fragment key={x}><code>{x}</code><button style={small} onClick={()=>openPath(x)} title="탐색기에서 이 Scanresult 폴더 열기(읽기만)">폴더 열기</button><button style={small} onClick={()=>copy(x)}>복사</button></Fragment>)

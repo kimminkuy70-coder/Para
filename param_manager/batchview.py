@@ -161,7 +161,9 @@ class View:
             bunches, causes, per, stops = [], Counter(), {}, {}
             for b in lot['bunches']:
                 bunches.append(dict(att=[self.index[a['id']] for a in b['attempts']], step=b['step'], k=b['scan'], s=stamp(b['start']),
-                                    e=stamp(b['end']), moved=b['moved'], machines=b['machines'], sec=b['batch_sec']))
+                                    e=stamp(b['end']), moved=b['moved'], machines=b['machines'], sec=b['batch_sec'],
+                                    job=b.get('job', ''), r=f"{b.get('job', '')} · {lm.step_label(b['step'], b['scan'])}",
+                                    st=lm.bunch_state(b)))
                 for w in b['wafers']:
                     if w['stop']:
                         # 작업자 중단은 Error 가 아니다 — 종류(Defect 과다 / 그 외)별로 따로 센다.

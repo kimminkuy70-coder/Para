@@ -308,6 +308,14 @@ try{
   assert((await page.locator('.groups .group').count())>=1);
   await gtags.getByRole('button',{name:/태그 전체/}).click();
   assert.equal(await page.locator('.groups .group').count(),nGroups);
+  // #27: Lot 레시피별 보기(③) — 레시피 하나를 고르면 그 레시피(Job · Recipe(s)) 줄만, '레시피 전체'로 되돌림.
+  const grec=page.getByRole('group',{name:'Lot 레시피별 보기'});
+  const recChip=grec.locator('button.jf-chip').nth(1),rname=await recChip.getAttribute('title');
+  await recChip.click();assert.equal(await recChip.getAttribute('aria-pressed'),'true');
+  const nRec=await page.locator('.groups .group').count();assert(nRec>=1&&nRec<=nGroups);
+  assert.equal(await page.locator('.groups .group .gh b').filter({hasText:rname}).count(),nRec);
+  await grec.getByRole('button',{name:/레시피 전체/}).click();
+  assert.equal(await page.locator('.groups .group').count(),nGroups);
   await page.getByRole('button',{name:'보이는 Lot 모두 선택',exact:true}).click();
   assert.equal(await page.locator('.group .gh input[type=checkbox]:checked').count(),nGroups);
   await page.getByRole('button',{name:'모두 해제',exact:true}).click();

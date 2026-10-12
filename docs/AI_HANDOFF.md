@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #27 찾기 · 취합 = 같은 Lot 이라도 레시피(Job)별로 따로 (2026-10-12 KST, `version_v12`)
+
+- GitHub 이슈 #27: Batch Report 찾기 · Lot 취합에서 고른 Batch Report 앞뒤 하루(24시간)를 함께 읽으니 RDL 이 아니라 PI bubble 스캔도 같은 Lot 으로
+  섞여 들어감 — Lot History 에는 여러 레시피가 섞여 있어도 레시피별로 분류해 따로 봐야 하고 한 Lot 으로 뭉뚱그리면 안 됨.
+- 원인: lotmodel 묶음은 Recipe(s) 열만 비교해서 RDL · PI bubble 의 Recipe(s) 가 둘 다 `2D` 면 한 묶음(서로 재스캔)으로 묶였다. #24 는 취합 단계에서만 Job 으로
+  갈랐기 때문에 ③ Lot 고르기 · Lot History · Lot 상태는 여전히 섞여 있었다.
+- 엔진 `param_manager/lotmodel.py` `_split_bunches`: 같은 묶음 조건에 **같은 레시피(Job)** 추가(`_job` = Pass 가중 최빈 Job, 비어 있으면 비교 안 함 — Recipe(s) 와 같은 방식).
+  호기 이동 재스캔도 같은 Job 일 때만. 묶음에 `job`, 새 `bunch_state`(Lot 상태와 같은 말을 묶음 하나에). Lot = (코드, Lot ID) 는 그대로(Lot 추적 목록 · 상태 숫자는 Lot 단위).
+- `batchview.payload` 묶음에 `job` · `r`(= `Job · Recipe(s)`, 3D 꼬리) · `st`(묶음 상태). 화면 `batchData.bunchLabel`/`grpLabel` 이 `r` 을 쓰므로 ③ 그룹 제목 ·
+  Lot History(시간순 그래프 구간 이름 · '레시피 바뀜' · Batch Report 이력 · 오류 지도 · Lot · wafer 취합 표)가 레시피 이름으로 나뉜다.
+- 화면 `BatchFind.tsx` ③: `Lot 레시피별 보기` 칩(여러 개 · 비면 전체) 추가, 태그(StPill · `Lot 태그별 보기`)는 **레시피 줄(묶음) 상태** 기준(`b.st`, 없으면 Lot 상태).
+- 영향: 이미 저장된 사람 선택(중복 Pass)은 묶음 key(묶음 첫 시도 id)가 바뀐 묶음에서는 적용되지 않을 수 있다(레시피가 섞여 있던 묶음만).
+  AI 전달용 `docs/ai_guide/BatchReport_캐시_분석지침.txt` 4-2 · 4-5 갱신.
+- 검증: `tests/test_batchview.py::test_lot_splits_bunches_by_recipe_job`(RDL 뒤 PI bubble Error → 묶음 2 · RDL 한 번에 완료 · 취합 2그룹), `tools/check_project.py`
+  (tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(③ 레시피 칩 · 레시피 전체) 통과. Windows 실기 · 실제 장비 자료 미검증.
+
 ## 최신 재개 — Para #26 찾기 · 취합 = 최종 선정 wafer 로만 계산 + 태그별 보기 (2026-10-12 KST, `version_v12`)
 
 - GitHub 이슈 #26: 찾기 · Lot 취합의 Yield · Good Die 등은 최종 선정된 wafer · Lot 으로만 계산해야 하는데 여러 번 스캔하면 중복 wafer 가 들어가 왜곡됨

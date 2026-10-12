@@ -1,7 +1,7 @@
 import {Fragment,useEffect,useRef,useState,type ReactNode} from 'react';
 import {StPill} from './BatchLot';
 import {OpenPath} from './OpenPath';
-import {V,VC,DONE,RE,C_OK,C_ERR,C_CHAIN,C_STOP,C_DEFECT,STOPK,dur,mins,hrs,num,phList,isRealId,spanLabel,grpLabel,flat,stepLabel,is3D,kindWord,
+import {V,VC,DONE,RE,C_OK,C_ERR,C_CHAIN,C_STOP,C_DEFECT,STOPK,dur,mins,hrs,num,phList,isRealId,spanLabel,grpLabel,bunchLabel,flat,stepLabel,is3D,kindWord,
   type View,type Lot,type LotDetail,type Wafer,type Cell} from './batchData';
 
 /* Lot 창(큰 창) — 탭 ① Lot History(시간순 요약 그래프 · 문장 요약 · Batch Report 이력 · Lot × wafer 오류 지도)
@@ -63,15 +63,15 @@ function Timeline({v,li,detail}:{v:View;li:number;detail:LotDetail}){
   F.forEach(x=>{const r=runs[runs.length-1];if(r&&r.bi===x.bi)r.b=x.n;else runs.push({bi:x.bi,a:x.n,b:x.n});});
   runs.forEach((r,ri)=>{const b=l.bunches[r.bi],x0=L+(r.a-1)*SP+5,x1=L+r.b*SP-5;
     out.push(<g key={'b'+ri}><rect x={x0} y={4} width={x1-x0} height={H-8} rx={12} fill={is3D(b.k)?'#f4f1fb':r.bi%2?'#f3f6fa':'#f4fbf7'} stroke={is3D(b.k)?'#d9d0f0':'#e1e7ee'}/>
-      <text x={x0+12} y={24} fontWeight={700} fill={is3D(b.k)?'#5b3fa0':'#31517c'} style={{fontSize:12.5}}>{stepLabel(b)}</text><text x={x0+12} y={41}>{spanLabel(b)}</text></g>);});
+      <text x={x0+12} y={24} fontWeight={700} fill={is3D(b.k)?'#5b3fa0':'#31517c'} style={{fontSize:12.5}}>{bunchLabel(b)}</text><text x={x0+12} y={41}>{spanLabel(b)}</text></g>);});
   F.forEach((x,i)=>{if(!i)return;const pr=F[i-1],xa=cx(pr.n)+28,xb=cx(x.n)-28,y=top+bh/2,mv=R[pr.g].m!==R[x.g].m,nb=pr.bi!==x.bi,mid=(xa+xb)/2;
     out.push(<g key={'a'+i}><line x1={xa} x2={xb} y1={y} y2={y} stroke={mv?'#31517c':'#8193a8'} strokeWidth={2} strokeDasharray={nb?'5 4':undefined} markerEnd="url(#arr)"/>
       <text x={mid} y={y-9} textAnchor="middle" fontWeight={700}>{dur(mins(R[pr.g].e,R[x.g].s))} 뒤</text>
       {mv?<text x={mid} y={y+18} textAnchor="middle" fill="#31517c" fontWeight={700}>호기 이동</text>
         :nb?<text x={mid} y={y+18} textAnchor="middle" fill={l.bunches[pr.bi].k!==l.bunches[x.bi].k?'#5b3fa0':'#8a5a00'} fontWeight={l.bunches[pr.bi].k!==l.bunches[x.bi].k?700:undefined}>
-          {l.bunches[pr.bi].k!==l.bunches[x.bi].k?kindWord(l.bunches[x.bi].k):l.bunches[pr.bi].step!==l.bunches[x.bi].step?'공정 바뀜':'다시 검사'}</text>:null}</g>);});
+          {l.bunches[pr.bi].k!==l.bunches[x.bi].k?kindWord(l.bunches[x.bi].k):(l.bunches[pr.bi].job||'')!==(l.bunches[x.bi].job||'')?'레시피 바뀜':l.bunches[pr.bi].step!==l.bunches[x.bi].step?'공정 바뀜':'다시 검사'}</text>:null}</g>);});
   F.forEach(x=>{const r=R[x.g],st=detail.stats[x.g]||{ph:[],cph:[]},c=cx(x.n),bw=44,h=bh*Math.max(r.n,1)/maxRows;let y=top+bh;
-    const tip=`#${x.n}  ${r.f}\n${r.s} ~ ${r.e.slice(11)} · ${r.m}\nS/M ${r.sm} · ${stepLabel(r)}\nPass ${r.ok} · Error ${r.err}${r.chain?' · 연쇄 '+r.chain:''}${r.st?' · 작업자 중단 '+r.st:''}  (${r.n}행)`+
+    const tip=`#${x.n}  ${r.f}\n${r.s} ~ ${r.e.slice(11)} · ${r.m}\nS/M ${r.sm} · ${r.r||stepLabel(r)}\nPass ${r.ok} · Error ${r.err}${r.chain?' · 연쇄 '+r.chain:''}${r.st?' · 작업자 중단 '+r.st:''}  (${r.n}행)`+
       (r.err?'\nError: '+phList(st.ph):'')+(r.chain?'\n연쇄: '+phList(st.cph):'')+(r.st?`\n${STOPK[r.sk||'o']} · 멈출 때 Faults ${r.ff??'—'}`:'')+(r.sp?`\n스캔 안 한 슬롯 ${r.sp}`:'')+'\n누르면 원문';
     const parts:[number,string][]=[[r.ok,C_OK],[r.chain,C_CHAIN],[r.err,C_ERR],[r.st,r.sk==='d'?C_DEFECT:C_STOP]];
     out.push(<g key={'n'+x.n} className="node" data-raw={x.g} data-tip={tip}><rect x={c-SP/2+12} y={top-20} width={SP-24} height={bh+76} fill="transparent"/>
@@ -98,7 +98,8 @@ function History(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|nul
     const pr=F[i-1],gap=dur(mins(R[pr.g].e,r.s))+' 뒤 ',a=l.bunches[pr.bi],b=l.bunches[x.bi];let hd:string;
     if(pr.bi===x.bi)hd=gap+(has3d?kw+' 다시 스캔':'다시 스캔');
     else if(a.k!==b.k)hd=gap+kw+(x.ai?' 다시 스캔':'');
-    else hd=a.step!==b.step?`${gap}공정 단계 바뀜(${a.step} → ${b.step})${has3d?' · '+kw:''}`:gap+(has3d?kw+' 다시 검사':'다시 검사');
+    else hd=(a.job||'')!==(b.job||'')?`${gap}레시피 바뀜(${bunchLabel(a)} → ${bunchLabel(b)})${has3d?' · '+kw:''}`
+      :a.step!==b.step?`${gap}공정 단계 바뀜(${a.step} → ${b.step})${has3d?' · '+kw:''}`:gap+(has3d?kw+' 다시 검사':'다시 검사');
     if(R[pr.g].m!==r.m)hd+=` · 호기 이동 ${R[pr.g].m} → ${r.m}`;
     return hd;};
   const click=(e:React.MouseEvent)=>{const t=(e.target as Element).closest('[data-raw]');if(t)p.showRaw(+t.getAttribute('data-raw')!);};
@@ -107,7 +108,7 @@ function History(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|nul
       <div className="chart"><Timeline v={v} li={li} detail={detail}/></div>
       <ol className="story">{F.map((x,i)=>{const r=R[x.g],st=detail.stats[x.g]||{ph:[],cph:[]},bad=r.err+r.chain;
         return <li key={x.n} className={(bad?'err':r.st?'stop':'ok')+(has3d&&is3D(r.k)?' s3':'')}><span className="when">{r.s.slice(5)}</span><span className="hd">#{x.n} {head(i)}</span>
-          {r.m} · {stepLabel(r)} · {r.n-r.sp}장 스캔 → {bad?<>Pass {r.ok} · Error {bad} <span className="v4">({phList(st.ph)}{r.chain?(r.err?' · ':'')+'연쇄 '+phList(st.cph):''})</span></>
+          {r.m} · {r.r||stepLabel(r)} · {r.n-r.sp}장 스캔 → {bad?<>Pass {r.ok} · Error {bad} <span className="v4">({phList(st.ph)}{r.chain?(r.err?' · ':'')+'연쇄 '+phList(st.cph):''})</span></>
             :r.st?<>Pass {r.ok} 뒤 <span className={'st '+(r.sk==='d'?'sd':'so')}>{STOPK[r.sk||'o']}</span> <span className="muted">(Aborted. {r.st}장 · 멈출 때 Faults {r.ff??'—'} · Error 아님)</span></>
             :<span className="v1">모두 Pass</span>}{r.sp?<span className="muted"> · 스캔 안 한 슬롯 {r.sp}</span>:null}</li>;})}
         <li className="end">{end}</li></ol></section>
@@ -116,7 +117,7 @@ function History(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|nul
         const b=l.bunches[run.bi],first=run.xs[0],i0=F.indexOf(first),prevRun=ri?runs[ri-1]:null;
         return <Fragment key={ri}>
           {prevRun&&<div className="gapline between">↓ {head(i0)}{R[prevRun.xs[prevRun.xs.length-1].g].fe&&b.k===l.bunches[prevRun.bi].k&&' — 앞 Batch Report 첫 Error: '+R[prevRun.xs[prevRun.xs.length-1].g].fe}</div>}
-          <div className={'bgroup'+(is3D(b.k)?' g3d':'')}><div className="bh">{has3d&&<span className={'st '+(is3D(b.k)?'s3d':'s2d')}>{kindWord(b.k)}</span>}<b>{stepLabel(b)}</b><span>{b.s} ~ {b.e}</span><span>{b.machines.join(' → ')}</span>
+          <div className={'bgroup'+(is3D(b.k)?' g3d':'')}><div className="bh">{has3d&&<span className={'st '+(is3D(b.k)?'s3d':'s2d')}>{kindWord(b.k)}</span>}<b>{bunchLabel(b)}</b><span>{b.s} ~ {b.e}</span><span>{b.machines.join(' → ')}</span>
             <span>Batch Report {b.att.length}장 · 스캔 {hrs(b.sec)}h</span>{b.moved&&<span className="st mv">호기 이동</span>}</div>
           {run.xs.map((x,k)=>{const r=R[x.g],prev=k>0?R[run.xs[k-1].g]:null;return <Fragment key={x.g}>
             {prev&&<div className="gapline">↓ {head(F.indexOf(x))}{prev.fe&&' — 앞 Batch Report 첫 Error: '+prev.fe}</div>}
@@ -128,7 +129,7 @@ function History(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|nul
         <span><i className="c-p c-pick">Pass</i> 같은 wafer Pass 여럿 중 쓰는 것</span><span><i className="c-p c-drop">Pass</i> 쓰지 않는 Pass</span></div>
       {byKind(l).map(({k,bis})=>{const {slots,keys}=slotRows(detail,bis),bs=bis.map(bi=>[bi,l.bunches[bi]] as const);return <Fragment key={k||'all'}><KindHead k={k}/>
       <div className="mapscroll"><table className="map"><thead><tr><th rowSpan={2}>슬롯</th><th rowSpan={2}>Wafer ID</th>
-        {bs.map(([bi,b])=><th key={bi} colSpan={b.att.length+1} className="gsep">{stepLabel(b)}<small>{b.s.slice(5)} · {b.machines.join('→')}</small></th>)}</tr>
+        {bs.map(([bi,b])=><th key={bi} colSpan={b.att.length+1} className="gsep">{bunchLabel(b)}<small>{b.s.slice(5)} · {b.machines.join('→')}</small></th>)}</tr>
         <tr>{bs.map(([bi,b])=><Fragment key={bi}>{b.att.map((g,ai)=><th key={g} className={ai?'':'gsep'}>#{no[bi+'|'+ai]}<small>{R[g].m} {R[g].s.slice(11)}</small></th>)}<th>결과</th></Fragment>)}</tr></thead>
         <tbody>{keys.map(key=>{const row=slots[key];return <tr key={key}><th>{key}</th><td>{idOf(row)}</td>{bs.map(([bi,b])=>{const w=row[bi];
           if(!w)return <td key={bi} className="c-n gsep" colSpan={b.att.length+1}>·</td>;
@@ -153,7 +154,7 @@ function Aggregate(p:Props&{pickOf:(bi:number,w:Wafer,preview:boolean)=>number|n
     <h3>Lot 취합<small>공정 단계마다 한 줄 — 2D_WBG · 2D처럼 다른 공정 스캔이나 2D · 3D 스캔을 더하면 같은 wafer가 두 번 들어가므로 따로 셉니다.</small></h3>
     <div className="table-scroll" style={{maxHeight:'none'}}><table className="t-compact"><thead><tr><th>공정 단계(Recipe(s))</th><th>기간</th><th>호기</th><th className="num">Batch Report</th><th className="num">wafer</th>
       {V.map(x=><th key={x} className="num">{x}</th>)}<th className="num">Scanned</th><th className="num">Bad</th><th className="num">Good</th><th className="num">Yield</th></tr></thead>
-      <tbody>{l.bunches.map((b,bi)=>{const t=totals(bi);return <tr key={bi}><td><b>{stepLabel(b)}</b>{is3D(b.k)&&<> <span className="st s3d">3D</span></>}</td><td>{b.s} ~ {b.e.slice(5)}</td><td>{b.machines.join(' → ')}{b.moved&&<> <span className="st mv">호기 이동</span></>}</td>
+      <tbody>{l.bunches.map((b,bi)=>{const t=totals(bi);return <tr key={bi}><td><b>{bunchLabel(b)}</b>{is3D(b.k)&&<> <span className="st s3d">3D</span></>}</td><td>{b.s} ~ {b.e.slice(5)}</td><td>{b.machines.join(' → ')}{b.moved&&<> <span className="st mv">호기 이동</span></>}</td>
         <td className="num">{b.att.length}</td><td className="num">{detail.bunches[bi].wafers.length}</td>{V.map(x=><td key={x} className={'num '+VC[x]}>{t.c[x]||''}</td>)}
         <td className="num">{num(t.sc)}</td><td className="num">{num(t.bad)}</td><td className="num">{num(t.good)}</td><td className="num">{t.y==null?'—':num(t.y,2)+'%'}</td></tr>;})}</tbody></table></div>
     <h3>wafer 취합<small>슬롯마다 공정 단계별로 쓰는 Batch Report의 결과 원문과 Dice. 같은 wafer Pass가 여럿이면 가장 나중 Pass(추천)를 씁니다. 2D · 3D 스캔은 표를 따로 둡니다.</small></h3>

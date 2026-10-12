@@ -164,7 +164,10 @@ batch_lot_choices.json:
 4-2. 묶음 나누기: 시도를 (start, 없으면 end) → id 순으로 정렬해 하나씩 본다.
      직전 묶음의 끝 = 그 묶음 시도들의 max(end, 없으면 start).  gap = 이번 start − 직전 묶음 끝.
      묶음의 공정 단계 = 묶음 안 시도들의 step 중 가중치 최대(가중치 = 1 + Pass 행 수 × 100).
-     same_step = 묶음 단계가 비었거나, 이번 step 이 비었거나, 둘이 같음.
+     묶음의 레시피(Job) = 묶음 안 시도들의 Job(Job/Setup 의 '/' 앞) 중 같은 가중치로 최대(이슈 #27).
+     same_step = (묶음 단계가 비었거나, 이번 step 이 비었거나, 둘이 같음)
+                 그리고 (묶음 Job 이 비었거나, 이번 Job 이 비었거나, 둘이 같음)
+                 — Recipe(s) 가 같은 2D 라도 RDL · PI bubble 처럼 Job 이 다르면 서로 재스캔이 아니다.
      - 직전 묶음의 마지막 시도와 같은 호기: gap ≤ 12h 이고 same_step → 같은 묶음.
      - 다른 호기: gap ≤ 48h 이고 same_step 이고 직전 묶음에 "Pass 없음" wafer 가 남아 있으면
        → 같은 묶음(호기 이동 재스캔, moved = 참).
@@ -176,6 +179,7 @@ batch_lot_choices.json:
      Lot 표시 이름: ID 가 여럿인 코드면 "코드 · ID", 아니면 "코드".
 4-5. Lot 상태: Pass 없음 wafer 가 있으면 "Pass하지 못한 wafer 존재",
      아니고 재스캔 Pass wafer 가 있으면 "재스캔으로 완료", 아니면 "한 번에 완료".
+     같은 규칙을 묶음 하나에 적용한 것이 묶음 상태(lotmodel.bunch_state — 찾기 · 취합 ③ 의 레시피 줄 태그).
 
 ------------------------------------------------------------------------------------------
  5. 묶음 안 wafer 최종 판정 (lotmodel.resolve)

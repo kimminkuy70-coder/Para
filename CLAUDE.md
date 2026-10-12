@@ -23,6 +23,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 찾기 · 취합 · Lot = 레시피(Job)별로 따로 (2026-10-12, 이슈 #27)
+- lotmodel 묶음 조건 = 같은 호기 12시간(호기 이동 48시간) + 같은 Recipe(s) + **같은 Job**. Recipe(s) 가 같은 `2D` 여도 RDL · PI bubble 은 서로 재스캔이 아니다.
+  Lot = (코드, Lot ID) 는 그대로, 묶음(= Lot · 레시피 줄)에 `job` · `r` · `st`(`lotmodel.bunch_state`). ③ Lot 고르기 = 레시피별 보기 칩 + 레시피 줄 태그.
+
 ### 찾기 · 취합 = 최종 선정 wafer 만 + 태그별 보기 (2026-10-12, 이슈 #26)
 - `View.aggregate` 그룹 = (Lot, 공정 단계, 2D/3D, Job) — lotmodel 묶음(12시간 · 호기 이동)으로 **나누지 않는다**. 같은 Lot 을 며칠 뒤 다시 스캔해도 wafer 는
   최종 선정 하나(가장 나중 Pass)라 Yield · Good Die 가 중복으로 부풀지 않는다(정상 Lot = 25 wafer). 그룹 `bis` · `s`/`e` · `machines`.

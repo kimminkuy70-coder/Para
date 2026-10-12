@@ -6,7 +6,7 @@ import {desktop} from './desktop';
     st = 중단 행 수, sp = 스캔 안 한 슬롯(앞 Error 없는 Skipped) 행 수, r = 레시피(Job · Recipe(s)) */
 export type Rep={f:string;m:string;sm:string;code:string;job:string;setup:string;step:string;k:string;s:string;e:string;sec:number;
   lot:number|null;b:number|null;n:number;ok:number;err:number;chain:number;fe:string;st:number;sp:number;o:'c'|'e'|'s';sk:''|'d'|'o';ff:number|null;r:string};
-export type Bunch={att:number[];step:string;k:string;s:string;e:string;moved:boolean;machines:string[];sec:number};
+export type Bunch={att:number[];step:string;k:string;s:string;e:string;moved:boolean;machines:string[];sec:number;job?:string;r?:string;st?:string};
 export type Lot={key:string;label:string;code:string;lot_id:string;sms:string[];jobs:string[];machines:string[];n:number;s:string;e:string;
   state:string;open:number;re:number;dup:number;moved:boolean;saved:number;scans:string[];multi:boolean;causes:[string,number][];cz:[string,number,boolean][];sz:['d'|'o',number,boolean][];bunches:Bunch[]};
 /** 날짜 × 호기 × 레시피 한 칸(초). p 웨이퍼 처리(du 그중 이미 Pass 한 wafer 다시 스캔) · ck 점검 스캔 ·
@@ -124,7 +124,9 @@ export function spanLabel(b:Bunch){return b.s.slice(0,10)===b.e.slice(0,10)?b.s.
 export const is3D=(k?:string)=>k==='3D';
 export const kindWord=(k?:string)=>is3D(k)?'3D 스캔':'2D 스캔';
 export const stepLabel=(b:{step:string;k?:string})=>(b.step||'—')+(is3D(b.k)?' · 3D 스캔':'');
-export const grpLabel=(b:Bunch)=>stepLabel(b)+' · '+b.s.slice(5,10);
+/** 레시피 = Job · Recipe(s) — 같은 Lot 이라도 RDL · PI bubble 처럼 레시피가 다르면 따로 묶인다(이슈 #27). */
+export const bunchLabel=(b:Bunch)=>b.r||stepLabel(b);
+export const grpLabel=(b:Bunch)=>bunchLabel(b)+' · '+b.s.slice(5,10);
 /** Lot 안 Batch Report 를 시간순 번호로 (#1, #2 …).
    R 를 주면 공정 단계 줄(2D · 3D)이 섞여도 실제 스캔 시각 순서로 번호를 매긴다. */
 export function flat(l:Lot,R?:Rep[]){const out:{g:number;bi:number;ai:number;n:number}[]=[];l.bunches.forEach((b,bi)=>b.att.forEach((g,ai)=>out.push({g,bi,ai,n:0})));

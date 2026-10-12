@@ -122,6 +122,22 @@ class ViewNumbers(unittest.TestCase):
         self.assertEqual((len(g_rdl['att']), len(g_rdl['keys'])), (1, 25))
         self.assertTrue(all(len(g_rdl['w'][k]['cells']) == 1 for k in g_rdl['keys']))              # PI 스캔과 섞이지 않음
 
+    def test_lot_splits_bunches_by_recipe_job(self):
+        # 이슈 #27: 같은 Lot 을 RDL 뒤 PI bubble 로 이어서 스캔(Recipe(s) 는 둘 다 2D)해도 묶음 · 상태 · 레시피 줄이 따로.
+        rdl, bub = 'R_RDL1_X_0856268PD-0A', 'R_PI_BUBBLE_X_0856268PD-0A'
+        view = batchview.View(records(
+            ("AOI-1", report("BAW", full([]), "2026-09-01 10:00", minutes=50, recipe="2D", job=rdl)),
+            ("AOI-1", report("BAW", full(["Scan 2D Error."]), "2026-09-01 11:30", minutes=50, recipe="2D", job=bub)),
+        ))
+        lots = view.payload()['lots']
+        self.assertEqual(len(lots), 1)
+        bs = lots[0]['bunches']
+        self.assertEqual([(b['job'], b['r'], b['st']) for b in bs],
+                         [(rdl, f'{rdl} · 2D', '한 번에 완료'), (bub, f'{bub} · 2D', 'Pass하지 못한 wafer 존재')])
+        rdl_b = view.model['lots'][0]['bunches'][0]
+        self.assertEqual(rdl_b['counts'].get('한 번에 Pass'), 25)                     # PI bubble Error 를 RDL 재스캔으로 보지 않음
+        self.assertEqual(sorted(g['job'] for g in view.aggregate([0, 1])), sorted([rdl, bub]))
+
     def test_aggregate_merges_rescanned_bunches_to_final_wafers(self):
         # 이슈 #26: 같은 Lot · 레시피를 며칠 뒤(다른 묶음)에 다시 스캔해도 취합은 한 그룹, wafer 25장 = 최종 선정(가장 나중 Pass) 하나씩.
         view = batchview.View(records(
