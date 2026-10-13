@@ -23,6 +23,13 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### CAMTEK / KLA 회사 탭 + KLA 자재 찾기 (2026-10-13, 이슈 #30)
+- 기능 탭 위에 **회사 탭**(`main.tsx` `VENDORS`): CAMTEK = 지금까지 만든 탭 전부, KLA = KLA 장비 기능(지금은 `KLA 자재 찾기`). 회사는 지금 탭에서 정해지므로
+  새 KLA 기능은 `VENDORS.KLA` 에, Camtek 기능은 `VENDORS.CAMTEK` 에 넣는다.
+- KLA 폴더 구조(사용자 제공): `{장비 폴더}\{YYYY-MM-DD}\{Lot}\{YYYY-MM-DD-HH-MM}_{슬롯}\`(Defect `.jpg`, `{Recipe}_{Lot}_{Wafer}.001` · `.pass`).
+  `desktop_kla.py` 는 **폴더 이름만** 본다(장비 읽기 전용, 파일 안 엶). 등록 = 이 PC 설정 `kla_roots`({이름: 경로}), 상위 폴더를 등록하면 한 단계 아래를 장비로.
+  [폴더 열기] 허용 = 등록한 KLA 폴더 안의 폴더만(`DesktopKla.allows`).
+
 ### Batch Report 캐시 공유 = 개발자 기능 zip 만들기 + 끌어 넣어 가져오기 (2026-10-13, 이슈 #29)
 - 화면 `Batch.tsx` 조사 범위 아래 `Batch Report 캐시 가져오기` 영역(모든 사용자): 캐시 zip 을 **창에 끌어 넣으면** 자동으로 가져온다 + [zip 찾기…].
   [🛠 개발자 기능]을 누르면 그 아래에 종전 내보내기(#16, 버튼 문구 `Batch Report 캐시 압축 파일 만들기 (zip)`)가 열린다. 가져온 호기는 조사 범위에 골라 둔다.

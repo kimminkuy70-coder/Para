@@ -822,3 +822,17 @@ dialog::backdrop{overscroll-behavior:contain}
 .bv .cache-drop-ic{font-size:22px;color:var(--acc2)}
 .bv .cache-drop .cache-export{margin-top:10px;border-top:1px solid var(--line);padding-top:4px}
 .bv .cache-drop .hint button.gear{font-size:12px;min-height:26px;padding:2px 8px}
+/* 장비 회사 탭(CAMTEK / KLA, #30) — 기능 탭 위 한 줄 */
+.vendor-tabs{display:flex;gap:6px;padding:10px 32px 0;background:var(--navy,#12244a)}
+.vendor-tabs button{border:0;border-radius:8px 8px 0 0;padding:9px 22px;font-weight:800;letter-spacing:.6px;color:#c8d3e6;background:transparent;min-height:0}
+.vendor-tabs button:hover{color:white;background:rgba(255,255,255,.08)}
+.vendor-tabs button.active{color:var(--navy,#12244a);background:white}
+@media(max-width:760px){.vendor-tabs{padding:8px 12px 0}.vendor-tabs button{padding:8px 14px}}
+/* KLA 자재 찾기 */
+.kla .kla-machines{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:10px}
+.kla .kla-machines .field.checkbox{flex-direction:row;align-items:center;gap:6px}
+.kla .kla-result{margin-top:14px}
+.kla .kla-table td{max-width:none}
+.kla .kla-row{cursor:pointer}
+.kla .kla-slot td{background:#f6f9fc;font-size:11.5px}
+.kla .kla-table code{font-size:11px;overflow-wrap:anywhere}

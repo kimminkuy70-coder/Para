@@ -35,6 +35,7 @@ const FEATURES:Step[]=[
   {target:nav('Color·Gray 매칭'),go:'Color·Gray 매칭',title:'Color·Gray 매칭',body:'Lot 폴더의 wafer 이미지로 Color · Gray 값을 맞춰 봅니다.'},
   {target:nav('Wafer Map 수정하기'),go:'Wafer Map 수정하기',title:'Wafer Map 수정하기',body:'Wafer Map 파일을 열어 값을 고치고 이미지로 확인한 뒤 저장합니다.'},
   {target:nav('메모'),go:'메모',title:'메모',body:'팀이 함께 보는 메모와 공유 문서(장비 IP · 특이사항)를 엽니다.'},
+  {target:nav('KLA 자재 찾기'),go:'KLA 자재 찾기',title:'KLA 자재 찾기',body:<>맨 위 <b>CAMTEK / KLA</b> 탭으로 장비 회사를 바꿉니다. KLA 탭에서는 KLA 장비 폴더를 등록하고 Lot 이름 키워드로 스캔 결과 폴더를 찾아 바로 엽니다.</>},
   {target:nav('설정'),go:'설정',title:'끝!',body:'튜토리얼은 언제든 [설정] › [튜토리얼]에서 다시 볼 수 있습니다.'},
 ];
 const TOURS:Record<TourKind,Step[]>={setup:SETUP,features:FEATURES};

@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #30 CAMTEK / KLA 회사 탭 + KLA 자재 찾기 (2026-10-13 KST, `version_v12`)
+
+- GitHub 이슈 #30: KLA 장비는 폴더 구조가 달라 새로 만든다. `J:\2.K2\2025-05-21\RINT63@6324\2025-05-21-09-08_16` = 장비(2.K2) \ 날짜 \ Lot \
+  `{스캔 시각}_{슬롯}`(안에 Defect `.jpg` · `{Recipe}_{Lot}_{Wafer}.001` · `.pass`). Lot 키워드로 폴더만 빠르게 훑어 경로를 알려 주고 폴더 열기.
+  탭을 CAMTEK(지금까지 만든 탭 전부) / KLA(새 기능)로 나눔.
+- 화면 `main.tsx`: 기능 탭 위 회사 탭 `.vendor-tabs`(`VENDORS` = CAMTEK 8탭 / KLA `KLA 자재 찾기`). 회사는 지금 탭에서 계산(`vendorOf`) —
+  `para:navigate`(설정으로 이동 등)·튜토리얼 이동이 회사도 함께 바꿈. 회사를 오가면 그 회사에서 마지막에 보던 탭으로. `KLA 자재 찾기`는 KEEP.
+- 새 화면 `Kla.tsx`: [KLA 장비 폴더] 등록(이름 + 경로, 이 PC 설정 `kla_roots`) · Lot 키워드(여러 단어 = 모두 포함, 대소문자 무시) · 기간 · 장비 고르기 →
+  결과 표(장비 · 날짜 · Lot · 슬롯 · 경로, [폴더 열기] · [경로 복사], 행을 누르면 슬롯 폴더 펼침) + 결과 안에서 거르기. 튜토리얼 FEATURES 단계 추가.
+- 엔진 `param_manager/desktop_kla.py` + IPC `kla_state` · `kla_set_roots{roots}` · `kla_search{query,machines,start,end}`('kla' 슬롯, 작업 스레드, READ_ONLY).
+  등록 폴더 바로 아래에 날짜 폴더(`YYYY-MM-DD`)가 없으면 한 단계 아래 폴더들을 장비 폴더로 봄(`J:\` 하나만 등록 가능). 날짜 → Lot 폴더 이름만 비교,
+  맞은 Lot 만 슬롯 폴더 목록(파일은 열지도 세지도 않음). 한도 Lot 폴더 2000(`truncated`), 슬롯 200. 못 읽은 장비는 `failed`.
+- `desktop_open`: 등록한 KLA 장비 폴더 안의 **폴더**만 열기 허용(`DesktopKla.allows`, 글자 비교). `.001`/`.pass` 파일은 열지 않음.
+- 이슈의 `.001` · `.pass` 분석은 답변만 요청 — 첨부 zip 은 이 환경에서 내려받지 못해(프록시 403) 파일 이름 · 일반 KLA 형식(KLARF) 기준으로만 답함.
+- 검증: `tests/test_kla.py`(8: 슬롯 이름 · 등록 검증 · 찾기 · 상위 폴더 등록 · 못 읽는 폴더 · 쓰기 없음 · 열기 범위 · IPC), `tools/check_project.py`
+  (tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(KLA 탭 → 등록 → 찾기 → 슬롯 펼침 → CAMTEK 복귀 ·
+  기능 둘러보기) 통과. Windows 실기 · 실제 KLA 공유 폴더 속도는 미검증.
+
 ## 최신 재개 — Para #29 Batch Report 캐시 공유: 개발자 기능 zip 만들기 + 끌어 넣어 가져오기 (2026-10-13 KST, `version_v12`)
 
 - GitHub 이슈 #29: 다른 사람도 Batch Report 캐시를 쓰게 — Batch Report 탭에 개발자 기능 버튼(누르면 로컬 캐시 zip 만들기)과, 개발자에게 받은 zip 을

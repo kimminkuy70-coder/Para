@@ -695,6 +695,29 @@ try{
   const cgRows=await cg.getByLabel('Wafer별 결과').getByRole('row').allInnerTexts();
   assert(cgRows.slice(1).every(t=>/\t1\t2\t/.test(t)),'each wafer: 1 matched, 2 failed — '+JSON.stringify(cgRows));
   await page.screenshot({path:join(root,'docs/screenshots/rev1-colorgray.png'),fullPage:true});
+  // KLA 자재 찾기(#30): 상단 회사 탭 CAMTEK / KLA. KLA 장비 폴더 등록 → Lot 키워드로 폴더 이름만 찾기.
+  const klaRoot=join(fixture,'J','2.K2');
+  for(const d of ['2025-05-21/RINT63@6324/2025-05-21-09-08_16','2025-05-21/RINT63@6324/2025-05-21-09-30_2','2025-05-22/ABC11@1111/2025-05-22-02-00_1'])
+    await mkdir(join(klaRoot,...d.split('/')),{recursive:true});
+  await page.getByRole('button',{name:'KLA',exact:true}).click();
+  assert.deepEqual(await page.locator('.navigation button').allInnerTexts(),['KLA 자재 찾기']);
+  const kla=page.locator('section.kla');
+  await kla.getByText('⚠ 등록된 폴더 없음 — 먼저 등록하세요').waitFor();
+  await kla.getByLabel('장비 이름').fill('2.K2');
+  await kla.getByLabel('장비 폴더').fill(klaRoot);
+  await kla.getByRole('button',{name:'추가',exact:true}).click();
+  await kla.getByRole('cell',{name:klaRoot,exact:true}).waitFor();
+  await kla.getByLabel(/Lot 키워드/).fill('rint63');
+  await kla.getByRole('button',{name:'찾기',exact:true}).click();
+  await kla.getByText(/Lot 폴더 1개\(Lot 1개\)/).waitFor();
+  const klaRow=kla.locator('tr.kla-row');
+  assert.equal(await klaRow.count(),1);
+  assert.match(await klaRow.innerText(),/2\.K2\t2025-05-21\tRINT63@6324\t▸ 16, 2/);
+  await klaRow.click();
+  assert.equal(await kla.locator('tr.kla-slot').count(),2);
+  assert.match(await kla.locator('tr.kla-slot').first().innerText(),/2025-05-21 09:08\t슬롯 16/);
+  await page.getByRole('button',{name:'CAMTEK',exact:true}).click();
+  assert.equal(await page.locator('.navigation button').first().innerText(),'설정');
   // 기능 둘러보기: 주요 탭을 차례로 옮겨 다니며 끝까지(오류 없이) — 마지막은 설정 탭.
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('button',{name:'기능 둘러보기',exact:true}).click();

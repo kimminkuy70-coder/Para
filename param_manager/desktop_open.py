@@ -6,7 +6,7 @@ string, so this adapter never trusts it: the path must already exist, be a
 known document type or a folder, contain no link/junction, and sit under the
 configured save folder or the local result folder (or, for equipment shares, is a
 Batch Report file right in a registered Reports folder / a folder inside a
-registered Scanresult folder). Nothing is executed except
+registered Scanresult folder / a folder inside a registered KLA equipment folder). Nothing is executed except
 the OS default handler (`os.startfile`) or Explorer's select switch.
 """
 import os
@@ -15,6 +15,7 @@ import shutil
 import subprocess
 
 from .desktop_batch import DesktopBatch, read_json
+from .desktop_kla import DesktopKla
 
 OPENABLE = {".xlsx", ".xlsm", ".xls", ".html", ".htm", ".csv", ".txt", ".png", ".pdf", ".jpg", ".jpeg"}
 # 탐색기에서 선택만(폴더에서 보기) — 내용은 열지 않는다(진단 로그 · 캐시 내보내기 zip).
@@ -104,6 +105,8 @@ class DesktopOpen:
             return path
         if path.is_dir() and self._scan_folder(path):
             return path
+        if path.is_dir() and DesktopKla(self.config_path).allows(path):
+            return path      # KLA 자재 찾기 결과 폴더(등록한 KLA 장비 폴더 안, #30)
         real = path.resolve()
         if not any(real == root.resolve() or real.is_relative_to(root.resolve()) for root in self._roots()):
             raise ValueError("저장폴더 또는 로컬 결과 폴더 안의 파일만 열 수 있습니다")

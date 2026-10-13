@@ -29,6 +29,7 @@ from .desktop_formnew import DesktopFormNew
 from .desktop_appupdate import DesktopAppUpdate
 from .desktop_colorgray import DesktopColorGray
 from .desktop_wafermap import DesktopWaferMap
+from .desktop_kla import DesktopKla
 from .desktop_watch import CmWatch, ParamWatch
 
 VERSION = 1
@@ -40,8 +41,8 @@ BUSY_LABEL = {'batch': 'Batch Report 분석', 'recipe': 'Recipe 값 확인', 'do
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 감시 회차', 'colorgray': 'Color·Gray 매칭', 'wafermap': 'Wafer Map 수정하기',
-              'batchexport': 'Batch Report Excel 저장'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "batch_restore", "batch_view", "batch_lot", "batch_raw", "batch_choices", "batch_find", "batch_find_load", "batch_aggregate", "batch_export", "batch_compare_recipes", "batch_compare", "batch_compare_export", "batch_cache_export", "batch_cache_import", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_set_scan_backup", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_connections", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+              'batchexport': 'Batch Report Excel 저장', 'kla': 'KLA 자재 찾기'}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "batch_restore", "batch_view", "batch_lot", "batch_raw", "batch_choices", "batch_find", "batch_find_load", "batch_aggregate", "batch_export", "batch_compare_recipes", "batch_compare", "batch_compare_export", "batch_cache_export", "batch_cache_import", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_set_scan_backup", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_connections", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "kla_state", "kla_set_roots", "kla_search", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 # Background jobs that only read (local or OneDrive/equipment). Closing the app does not
 # wait for them — waiting for a slow read kept the old engine alive after the window
@@ -50,7 +51,7 @@ READ_ONLY = {"recipe_open", "recipe_delete_preview", "document_open", "form_cata
              "form_scales", "formnew_prepare", "formnew_scales", "history_files", "history_diff",
              "commonality_catalog", "commonality_compare", "cmsurvey_preflight", "cmsurvey_read_plan",
              "update_prepare", "appupdate_check", "pwatch_state", "pwatch_jobs", "cmwatch_state",
-             "cmwatch_candidates", "batch_reports", "batch_restore", "watch_status", "cmrun_plan", "cgm_scan", "cgm_read", "wm_scan"}
+             "cmwatch_candidates", "batch_reports", "batch_restore", "watch_status", "cmrun_plan", "cgm_scan", "cgm_read", "wm_scan", "kla_search"}
 # Frequent page/scroll requests: only logged in the detailed log when slow.
 DIAG_QUIET = {"table_page", "batch_view", "batch_lot", "batch_raw", "recipe_page", "form_page", "document_page", "history_page", "commonality_page",
               "cmrun_page", "cmwatch_page", "formnew_page", "diag_client", "open_path", "cgm_read", "cgm_put", "wm_image"}
@@ -173,6 +174,7 @@ class Session:
         self.commonality = DesktopCommonality()
         self.colorgray = DesktopColorGray(self.config)
         self.wafermap = DesktopWaferMap(self.config)
+        self.kla = DesktopKla()
         self.busy = {}                  # domain slot -> request id (see claim())
         self.busy_kind = {}
         self.workers = set()
@@ -274,6 +276,7 @@ class Session:
                        config_remove_aoi={'machine'}, config_set_aoi_extra={'machine','kind','paths'},
                        config_set_hide_kla={'enabled'}, config_set_scan_backup={'enabled'}, config_local_state=set(), config_set_local_dir={'path'},
                        config_purge_temp=set(), config_about=set())
+        allowed.update(kla_state=set(), kla_set_roots={'roots'}, kla_search={'query', 'machines', 'start', 'end'})
         allowed.update(update_prepare=set(), update_set_local_source={'path'}, update_connections={'machines'},
                        update_collect={'recipes','machines','source','answers'}, update_preview={'mapping'},
                        update_commit={'include'}, update_cancel=set())
@@ -614,6 +617,15 @@ class Session:
             from . import localdirs
             folder = os.path.dirname(desktop_diag.path()) or localdirs.logs_dir(self.config.local_state()["root"])
             self.emit(rid, 'completed', diag=dict(path=desktop_diag.bundle(folder), log=desktop_diag.path()))
+        elif method.startswith('kla_'):
+            if method == 'kla_search':
+                # KLA 장비 공유 폴더의 이름 목록만 본다(파일은 열지 않음) — 작업 스레드.
+                bg(rid, 'kla', lambda: self.kla.search(params), 'KLA 폴더를 읽지 못했습니다. 장비 폴더 연결을 확인하세요.')
+            elif method == 'kla_set_roots':
+                self.idle('kla')
+                self.emit(rid, 'completed', kla=self.kla.set_roots(params))
+            else:
+                self.emit(rid, 'completed', kla=self.kla.state())
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))

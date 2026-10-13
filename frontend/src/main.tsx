@@ -14,21 +14,32 @@ import {ColorGray} from './ColorGray';
 import {WaferMap} from './WaferMap';
 import {Batch} from './Batch';
 import {useDev} from './devmode';
+import {Kla} from './Kla';
 
 const SUBTITLE: Record<string,string> = {
   'Batch Report 분석':'장비 Report 폴더의 Batch Report를 Lot 단위로 모아 가동률 · Lot 추적 · WPH를 보고, 필요한 Batch Report를 찾아 취합합니다.',
   'Color·Gray 매칭':'AOI Color 이미지와 같은 위치의 Gray 스캔 이미지를 찾아 잘라 붙이고, 나란히 비교하는 Excel 을 만드세요.',
   'Wafer Map 수정하기':'Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리세요.',
-  '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.'
+  '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.',
+  'KLA 자재 찾기':'KLA 장비 스캔 결과 폴더에서 Lot 이름으로 자재를 찾아 경로를 알려 주고, 바로 폴더를 엽니다.'
 };
 // Batch Report 분석 stays mounted too: its results, Lot window and unsaved developer choices
 // survive a visit to 설정 (where the developer toggle lives).
 import {TourLayer} from './Tour';
-const KEEP = ['Recipe 관리','Commonality 조사','자동 감시','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기'];
-const navigation = ['설정','Recipe 관리','자동 감시','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','메모'];
+const KEEP = ['Recipe 관리','Commonality 조사','자동 감시','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','KLA 자재 찾기'];
+// 장비 회사별 탭 묶음(#30): CAMTEK = 지금까지 만든 기능 전부, KLA = KLA 장비 전용 기능.
+const VENDORS = {CAMTEK:['설정','Recipe 관리','자동 감시','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','메모'],
+  KLA:['KLA 자재 찾기']} as const;
+type Vendor = keyof typeof VENDORS;
+const vendorOf = (tab:string):Vendor => (VENDORS.KLA as readonly string[]).includes(tab)?'KLA':'CAMTEK';
 
 function App(){
   const [tab,setTab]=useState('설정');
+  const vendor=vendorOf(tab);
+  // 회사 탭을 오가도 각 회사에서 마지막에 보던 탭으로 돌아간다.
+  const lastTab=useRef<Record<Vendor,string>>({CAMTEK:'설정',KLA:'KLA 자재 찾기'});
+  useEffect(()=>{lastTab.current[vendor]=tab;},[tab,vendor]);
+  const navigation=VENDORS[vendor];
   const [config,setConfig]=useState<Configuration>();
   const [connection,setConnection]=useState('기존 설정 연결 중');
   // While a Batch Report investigation runs the developer toggle is locked; the update waits too.
@@ -92,6 +103,8 @@ function App(){
     <ActivityPanel/>
     <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
     <UpdateBanner busy={batchRunning}/>
+    <nav className="vendor-tabs" aria-label="장비 회사">{(Object.keys(VENDORS) as Vendor[]).map(v=><button key={v} data-tour={'vendor:'+v}
+      className={vendor===v?'active':''} aria-current={vendor===v?'page':undefined} onClick={()=>setTab(lastTab.current[v])}>{v}</button>)}</nav>
     <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} data-tour={'nav:'+name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
     <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>{SUBTITLE[tab]||'장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.'}</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
         {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>
@@ -101,6 +114,7 @@ function App(){
         :name==='Batch Report 분석'?<Batch active={tab==='Batch Report 분석'}/>
         :name==='Color·Gray 매칭'?<ColorGray/>
         :name==='Wafer Map 수정하기'?<WaferMap/>
+        :name==='KLA 자재 찾기'?<Kla/>
         :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}
       {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:<Memo/>}
       </div>
