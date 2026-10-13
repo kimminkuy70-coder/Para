@@ -27,19 +27,24 @@ const SUBTITLE: Record<string,string> = {
 // survive a visit to 설정 (where the developer toggle lives).
 import {TourLayer} from './Tour';
 const KEEP = ['Recipe 관리','Commonality 조사','자동 감시','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','KLA 자재 찾기'];
-// 장비 회사별 탭 묶음(#30): CAMTEK = 지금까지 만든 기능 전부, KLA = KLA 장비 전용 기능.
-const VENDORS = {CAMTEK:['설정','Recipe 관리','자동 감시','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','메모'],
+// 맨 위 탭(#32): CAMTEK · KLA · 설정 · 메모. CAMTEK / KLA = 장비 회사별 기능 묶음(#30, 아래 기능 탭 줄),
+// 설정 · 메모 = 회사와 관계없는 공통 탭이라 회사 묶음 밖에 따로 둔다(아래 기능 탭 줄 없음).
+const VENDORS = {CAMTEK:['Recipe 관리','자동 감시','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기'],
   KLA:['KLA 자재 찾기']} as const;
 type Vendor = keyof typeof VENDORS;
-const vendorOf = (tab:string):Vendor => (VENDORS.KLA as readonly string[]).includes(tab)?'KLA':'CAMTEK';
+const COMMON = ['설정','메모'] as const;
+type Top = Vendor | typeof COMMON[number];
+const TOPS:Top[] = ['CAMTEK','KLA',...COMMON];
+const topOf = (tab:string):Top => (COMMON as readonly string[]).includes(tab)?tab as Top
+  :(VENDORS.KLA as readonly string[]).includes(tab)?'KLA':'CAMTEK';
 
 function App(){
   const [tab,setTab]=useState('설정');
-  const vendor=vendorOf(tab);
+  const top=topOf(tab);
   // 회사 탭을 오가도 각 회사에서 마지막에 보던 탭으로 돌아간다.
-  const lastTab=useRef<Record<Vendor,string>>({CAMTEK:'설정',KLA:'KLA 자재 찾기'});
-  useEffect(()=>{lastTab.current[vendor]=tab;},[tab,vendor]);
-  const navigation=VENDORS[vendor];
+  const lastTab=useRef<Record<Vendor,string>>({CAMTEK:'Recipe 관리',KLA:'KLA 자재 찾기'});
+  useEffect(()=>{if(top==='CAMTEK'||top==='KLA')lastTab.current[top]=tab;},[tab,top]);
+  const navigation:readonly string[]=top==='CAMTEK'||top==='KLA'?VENDORS[top]:[];
   const [config,setConfig]=useState<Configuration>();
   const [connection,setConnection]=useState('기존 설정 연결 중');
   // While a Batch Report investigation runs the developer toggle is locked; the update waits too.
@@ -103,9 +108,10 @@ function App(){
     <ActivityPanel/>
     <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
     <UpdateBanner busy={batchRunning}/>
-    <nav className="vendor-tabs" aria-label="장비 회사">{(Object.keys(VENDORS) as Vendor[]).map(v=><button key={v} data-tour={'vendor:'+v}
-      className={vendor===v?'active':''} aria-current={vendor===v?'page':undefined} onClick={()=>setTab(lastTab.current[v])}>{v}</button>)}</nav>
-    <nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} data-tour={'nav:'+name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>
+    <nav className="vendor-tabs" aria-label="장비 회사 · 공통">{TOPS.map(t=><button key={t} data-tour={(t in VENDORS?'vendor:':'nav:')+t}
+      className={(top===t?'active':'')+(t in VENDORS?'':' common')} aria-current={top===t?'page':undefined}
+      onClick={()=>setTab(t==='CAMTEK'||t==='KLA'?lastTab.current[t]:t)}>{t}</button>)}</nav>
+    {navigation.length>0&&<nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} data-tour={'nav:'+name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>}
     <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>{SUBTITLE[tab]||'장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.'}</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
         {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>
       <div key={screenKey} style={{display:'contents'}}>

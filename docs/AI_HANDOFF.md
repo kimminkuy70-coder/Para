@@ -1,5 +1,26 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #32 맨 위 탭 = CAMTEK · KLA · 설정 · 메모 + KLA 장비 폴더는 설정으로 + Defect 이미지 백업본 (2026-10-13 KST, `version_v12`)
+
+- GitHub 이슈 #32: CAMTEK 탭 안의 설정 · 메모를 밖으로 빼서 맨 위를 CAMTEK · KLA · 설정 · 메모 4개로. KLA 장비 폴더 등록은 설정으로 옮기고
+  설정 › AOI 장비 호기 루트를 CAMTEK · KLA 2개 하위 탭으로. KLA 에도 Camtek 'Scanresult 백업본' on/off 같은 기능을 만들되 이름 · 방식은
+  두 장비의 이미지 저장 폴더가 다르니 알맞게 골라 달라(이름은 맡김).
+- 화면 `main.tsx`: `.vendor-tabs` = `TOPS`(CAMTEK · KLA · 설정 · 메모). `VENDORS.CAMTEK` 에서 설정 · 메모를 뺐고 `COMMON` 으로. 설정 · 메모일 때는 아래
+  기능 탭 줄(`.navigation`)을 그리지 않는다. CAMTEK 의 처음 탭 = Recipe 관리(앱 시작 화면은 종전처럼 설정). 공통 탭 버튼은 `data-tour="nav:설정"` 그대로.
+- 이름 결정: **Defect 이미지 백업본** — KLA 는 Scanresult 폴더 없이 장비 폴더 아래 날짜 폴더에 Defect 이미지(.jpg) · 결과(.001 · .pass)를 바로 두므로
+  'Scanresult_xxx' 같은 자동 이름 규칙이 없다. 그래서 날짜 폴더째 옮겨 둔 백업 · 보관 폴더를 **장비마다 등록**하고(최대 20) 켜고 끈다.
+- 엔진 `desktop_kla.py`: 설정 `kla_backups`({장비: [경로]}) · `kla_backup`(기본 켬). `set_roots` 항목에 `backups`(빼면 기존 유지, 같은 경로 · 장비 폴더와 같은 경로 제거,
+  장비를 지우면 백업도 지움), 새 `set_backup{enabled}` + IPC `kla_set_backup`. `state` = `{roots:[{name,path,backups}], backup}`.
+  `search` = 켜져 있으면 원본 뒤에 백업 폴더도 같은 방식(날짜 폴더 / 한 단계 아래 장비 폴더)으로 훑고 hit 에 `backup` 표시(같은 Lot 이면 원본 먼저),
+  결과에 `backup` · `backup_folders`, 못 읽은 백업 폴더는 `failed` 에 `backup:true`. `allows`(폴더 열기)는 백업 폴더 안도 허용.
+- 화면 새 `KlaSettings.tsx`: `useKlaState`(이벤트 `para:kla-state` 로 화면끼리 공유) · `KlaBackupBar`(ScanBackupBar 와 같은 모양) · `KlaRootsSettings`
+  (장비 폴더 등록 + 백업 폴더 등록). `Settings.tsx` AOI 탭 = 하위 탭 CAMTEK / KLA(`aoiVendor`, `goToSettings({sub:'kla'})` · `para:settings-sub` 'kla' 로 KLA 를 연다),
+  현재 설정 표에 KLA 줄. `Kla.tsx` 는 등록 화면을 빼고 요약 + [⚙ 설정 › AOI 장비 호기 루트 › KLA] + 백업본 막대, 결과 행에 `백업본` 배지. 튜토리얼 단계 추가 · 문구.
+- 검증: `tests/test_kla.py`(9: 백업 등록 · 유지 · 중복 제거 · 켜고 끄기 · 백업 폴더 열기 · 못 읽는 백업 · IPC), `tools/check_project.py`(tkinter 없는 test_batchreport
+  기존 1건만 실패), `npx tsc` · `vite build`, `tools/test_desktop_ui.mjs`(맨 위 4탭 · KLA 에서 설정으로 이동 · 장비/백업 폴더 등록 · 백업본 포함/제외 찾기 · 둘러보기,
+  기능 탭은 `feature()` 가 CAMTEK 을 먼저 누름) 통과. 첫 실행 한 번은 자동 감시 '즉시 확인' 알림 대기에서 시간 초과가 났고 다시 돌리면 통과(이번 변경과 무관한 타이밍으로 보임).
+  Windows 실기 · 실제 KLA 백업 폴더 구조는 미검증.
+
 ## 최신 재개 — Para #31 Windows Defender `Trojan:Script/Wacatac.F!ml` 차단 → 업데이트 교체 스크립트 제거 (2026-10-13 KST, `version_v12`)
 
 - GitHub 이슈 #31: v12.7.16 을 받자 Defender 가 `Trojan:Script/Wacatac.F!ml` 로 막음. 원인 설명 + 버그 픽스 요청.

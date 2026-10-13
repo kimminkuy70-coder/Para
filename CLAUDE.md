@@ -23,6 +23,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 맨 위 탭 = CAMTEK · KLA · 설정 · 메모 + KLA 설정 · Defect 이미지 백업본 (2026-10-13, 이슈 #32)
+- 맨 위 탭(`main.tsx` `TOPS`) = CAMTEK · KLA(회사 묶음 — 아래 기능 탭 줄) · 설정 · 메모(`COMMON`, 회사와 무관한 공통 탭 — 기능 탭 줄 없음).
+  새 Camtek 기능은 `VENDORS.CAMTEK`, KLA 기능은 `VENDORS.KLA`, 회사와 무관한 탭만 `COMMON`.
+- KLA 장비 폴더 등록 = **설정 › AOI 장비 호기 루트 › KLA**(하위 탭 CAMTEK / KLA, `KlaSettings.tsx`). KLA 자재 찾기 화면에는 등록 화면이 없다(요약 + 설정 이동).
+- **Defect 이미지 백업본**(Camtek 'Scanresult 백업본'의 KLA 판): KLA 는 Scanresult 폴더 없이 장비 폴더 아래 날짜 폴더에 Defect 이미지 · 결과를 두므로
+  이름 규칙으로 백업을 찾지 않고 **장비마다 백업 폴더를 등록**(`kla_backups`, 구조는 원본과 같음)하고 `kla_backup`(기본 켬)으로 켜고 끈다.
+  KLA 폴더를 찾는 새 기능도 이 설정을 따른다(`DesktopKla.roots()` 의 `backups` + `backup_on`), 화면은 `KlaBackupBar` 로 범위를 보여 준다.
+
 ### CAMTEK / KLA 회사 탭 + KLA 자재 찾기 (2026-10-13, 이슈 #30)
 - 기능 탭 위에 **회사 탭**(`main.tsx` `VENDORS`): CAMTEK = 지금까지 만든 탭 전부, KLA = KLA 장비 기능(지금은 `KLA 자재 찾기`). 회사는 지금 탭에서 정해지므로
   새 KLA 기능은 `VENDORS.KLA` 에, Camtek 기능은 `VENDORS.CAMTEK` 에 넣는다.
@@ -1129,6 +1137,7 @@ python3 tests/test_batchview.py    # 15 (취합 = 묶음 넘어 최종 선정 wa
 python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯 · 3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
+python3 tests/test_kla.py         # 9  (KLA 자재 찾기: 폴더 이름만 · 상위 폴더 등록 · 열기 범위 · Defect 이미지 백업본 등록/켜고 끄기 · IPC)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_namestore.py    # 6  (체크 기억 Zone 일치 필수 포함)  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)

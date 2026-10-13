@@ -836,3 +836,9 @@ dialog::backdrop{overscroll-behavior:contain}
 .kla .kla-row{cursor:pointer}
 .kla .kla-slot td{background:#f6f9fc;font-size:11.5px}
 .kla .kla-table code{font-size:11px;overflow-wrap:anywhere}
+/* 맨 위 탭 = CAMTEK · KLA · 설정 · 메모(#32): 공통 탭(설정 · 메모)은 회사 탭과 살짝 띄운다. */
+.vendor-tabs button:not(.common)+button.common{margin-left:18px;position:relative}
+.vendor-tabs button:not(.common)+button.common::before{content:'';position:absolute;left:-10px;top:8px;bottom:8px;width:1px;background:rgba(255,255,255,.25)}
+.subtabs.vendor-sub{margin:0 0 14px}
+.kla-roots-line{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;margin:12px 0}
+.kla .sbk-kind{margin-left:6px}

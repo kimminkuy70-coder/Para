@@ -10,6 +10,7 @@ import {useDev,setDevOn,saveDrafts,dropDrafts} from './devmode';
 import {DevHelp,DevOff} from './DevHelp';
 import {ScanBackupBar,useScanBackup} from './ScanBackup';
 import {startTour} from './Tour';
+import {KlaRootsSettings,useKlaState} from './KlaSettings';
 
 type Auto={enabled:boolean;interval_hours:number;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
@@ -20,14 +21,18 @@ const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 �
 const EXTRA_LABEL:Record<ExtraKind,string>={report:'Batch Report',scanresult:'Scanresult'};
 const periodLabel=(h:number)=>h%24===0?(h===24?'하루 1회 (24시간)':h===168?'일주일 1회':`${h/24}일마다`):`${h}시간마다`;
 const baseName=(p:string)=>p.split(/[\\/]/).filter(Boolean).pop()||p;
-// 이전 화면 이름('report'·'scan')으로 들어와도 통합 탭을 연다.
-const subOf=(s?:string)=>s==='report'||s==='scan'?'aoi':s||'save';
+// 이전 화면 이름('report'·'scan')으로 들어와도 통합 탭을 연다. 'kla' = AOI 장비 호기 루트 › KLA(#32).
+const subOf=(s?:string)=>s==='report'||s==='scan'||s==='kla'?'aoi':s||'save';
+type AoiVendor='CAMTEK'|'KLA';
 
 export function Settings(){
   const [scanBackup]=useScanBackup();
   // Another screen may open 설정 on a given tab with a machine to register (nav.ts).
   const [intent]=useState(()=>takeSettingsIntent());
   const [sub,setSub]=useState(subOf(intent?.sub));
+  // AOI 장비 호기 루트 = 장비 회사별 하위 탭(#32): CAMTEK(호기 루트 · 추가 폴더) / KLA(장비 폴더 · Defect 이미지 백업본).
+  const [aoiVendor,setAoiVendor]=useState<AoiVendor>(intent?.sub==='kla'?'KLA':'CAMTEK');
+  const [kla]=useKlaState();
   const [st,setSt]=useState<State>();
   const [saveDir,setSaveDir]=useState('');
   const [busy,setBusy]=useState(false);
@@ -79,7 +84,8 @@ export function Settings(){
   }
   useEffect(()=>{void load();},[]);
   // 튜토리얼이 설정 하위 탭을 연다(Tour.tsx).
-  useEffect(()=>{const go=(e:Event)=>setSub(subOf((e as CustomEvent<string>).detail));window.addEventListener('para:settings-sub',go);return()=>window.removeEventListener('para:settings-sub',go);},[]);
+  useEffect(()=>{const go=(e:Event)=>{const d=(e as CustomEvent<string>).detail;setSub(subOf(d));
+    if(d==='kla')setAoiVendor('KLA');else if(d==='aoi')setAoiVendor('CAMTEK');};window.addEventListener('para:settings-sub',go);return()=>window.removeEventListener('para:settings-sub',go);},[]);
 
   async function browse(set:(v:string)=>void){
     const p=await pickFolder();
@@ -165,9 +171,12 @@ export function Settings(){
           <td>{st.save_dir&&<button className="linklike" onClick={()=>openPath(st.save_dir)}>폴더 열기</button>}</td></tr>
         <tr><th>로컬 작업 폴더</th><td><code>{st.local_root||st.local_dir||'—'}</code>{!st.local_dir&&<span className="hint"> (기본값)</span>}</td>
           <td>{st.local_root&&!st.local_root.startsWith('(')&&<button className="linklike" onClick={()=>openPath(st.local_root!)}>폴더 열기</button>}</td></tr>
-        <tr><th>AOI 장비 호기 루트</th><td>{aois.length?`${aois.length}개 호기 · ${aois.map(a=>a.machine).join(', ')}`:'없음'}
+        <tr><th>AOI 장비 호기 루트 · CAMTEK</th><td>{aois.length?`${aois.length}개 호기 · ${aois.map(a=>a.machine).join(', ')}`:'없음'}
           {extraCount>0&&<span className="hint"> · 추가 폴더 {extraCount}개</span>}</td>
-          <td><button className="linklike" onClick={()=>setSub('aoi')}>보기</button></td></tr>
+          <td><button className="linklike" onClick={()=>{setSub('aoi');setAoiVendor('CAMTEK');}}>보기</button></td></tr>
+        <tr><th>AOI 장비 호기 루트 · KLA</th><td>{kla?(kla.roots.length?`${kla.roots.length}개 장비 · ${kla.roots.map(r=>r.name).join(', ')}`:'없음'):'—'}
+          {kla&&kla.roots.length>0&&<span className="hint"> · Defect 이미지 백업본 {kla.backup?`포함(백업 폴더 ${kla.roots.reduce((n,r)=>n+r.backups.length,0)}개)`:'제외'}</span>}</td>
+          <td><button className="linklike" onClick={()=>{setSub('aoi');setAoiVendor('KLA');}}>보기</button></td></tr>
         <tr><th>Batch Report 자동 분석</th><td>{st.batch_auto?`켜짐 · ${periodLabel(st.batch?.interval_hours??24)}`:'꺼짐'}</td>
           <td><button className="linklike" onClick={()=>setSub('auto')}>보기</button></td></tr>
         <tr><th>설정 파일</th><td><code>{st.config_file||'—'}</code></td><td/></tr>
@@ -198,7 +207,10 @@ export function Settings(){
       {st?.save_dir&&<p className="hint">현재 저장폴더: <code>{st.save_dir}</code></p>}
     </>}
 
-    {sub==='aoi'&&<>
+    {sub==='aoi'&&<div className="subtabs vendor-sub" role="tablist" aria-label="장비 회사">{(['CAMTEK','KLA'] as AoiVendor[]).map(v=>
+      <button key={v} role="tab" data-tour={'settings:aoi:'+v} aria-selected={aoiVendor===v} className={aoiVendor===v?'active':''} onClick={()=>setAoiVendor(v)}>{v}</button>)}</div>}
+    {sub==='aoi'&&aoiVendor==='KLA'&&<KlaRootsSettings/>}
+    {sub==='aoi'&&aoiVendor==='CAMTEK'&&<>
       <h3>AOI 장비 호기 루트 등록</h3>
       <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
         <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사 · 감시 · Batch Report 찾기가 읽습니다. 장비 폴더는 읽기만 합니다.</p>

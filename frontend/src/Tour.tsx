@@ -19,6 +19,7 @@ const SETUP:Step[]=[
   {go:'설정',sub:'aoi',title:'먼저 장비마다 IP 폴더에 1회 로그인 (가장 중요)',body:<>프로그램은 장비 아이디 · 암호를 다루지 않습니다. 그래서 <b>장비마다 한 번</b> Windows 에서 직접 연결해 두어야 장비 폴더를 읽을 수 있습니다.<ol><li>장비 IP 주소는 [메모] 탭 › <b>장비 IP</b> 하위 탭(공유 문서)에 있습니다.</li><li>파일 탐색기 주소창에 <code>\\장비IP</code> 또는 <code>\\장비IP\c$</code>(Win+R 에 넣어도 됨)를 넣고 Enter.</li><li>로그인 창이 뜨면 장비 <b>아이디 · 암호</b>를 넣고 <b>[내 자격 증명 기억]</b>을 체크한 뒤 [확인].</li><li>공유 폴더가 보이면 연결 끝 — 모든 호기에 같은 방법으로 1회씩.</li></ol>이 연결이 되어 있어야 쓸 수 있는 기능: <b>Recipe 관리</b>(파라미터 읽기 · 양식 업데이트) · <b>자동 감시</b> · <b>Commonality 조사</b>(Scanresult) · <b>Batch Report 분석 · 찾기</b>(Reports · Scanresult 경로 열기) · <b>Color·Gray 매칭</b>(장비 Lot 폴더). 저장 폴더 설정과 함께 <b>가장 중요한 단계</b>입니다. PC 를 바꾸거나 암호가 바뀌면 다시 연결하세요.</>},
   {target:'[data-tour="settings:aoi-form"]',go:'설정',sub:'aoi',title:'호기 이름 + 호기 폴더 → [추가]',body:<><ol><li>먼저 <b>파일 탐색기에서 장비 폴더가 열리는지</b> 확인합니다(네트워크 드라이브 예: <code>P:\AOI-17</code>, 또는 <code>\\장비IP\공유</code>).</li><li><b>호기</b>에 이름(예: AOI-17), <b>호기 폴더</b>에 그 폴더를 넣고 [추가].</li></ol>그 아래 <b>Reports</b>(Batch Report 분석)와 <b>Scanresult</b>(Commonality)를 자동으로 찾습니다. 장비 폴더는 읽기만 합니다.</>},
   {target:'[data-tour="settings:aoi-table"]',go:'설정',sub:'aoi',title:'등록 확인',body:'등록한 호기는 이 표에 나오고 [인식된 폴더]에 Reports · Scanresult 가 보이면 연결된 것입니다. "없음 · 미등록"이면 폴더 경로나 네트워크 연결을 확인하세요.'},
+  {target:'[data-tour="settings:aoi:KLA"]',go:'설정',sub:'aoi',title:'KLA 장비 폴더 (KLA 장비를 쓸 때만)',body:<>호기 루트 위의 <b>CAMTEK / KLA</b> 탭에서 KLA 를 고르면 KLA 장비 폴더(예: <code>J:\2.K2</code>)를 등록하고, 날짜 폴더를 옮겨 둔 <b>Defect 이미지 백업본</b> 폴더를 장비마다 더해 켜고 끌 수 있습니다. KLA 자재 찾기가 이 폴더들을 씁니다.</>},
   {target:'[data-tour="settings:tab:local"]',go:'설정',sub:'local',title:'③ 로컬 작업 폴더 (선택)',body:'분석 결과 · 캐시 · 로그가 쌓이는 이 PC의 폴더입니다. 기본값을 그대로 써도 됩니다. OneDrive · 네트워크 폴더는 지정할 수 없습니다(대량 동기화 방지).'},
   {target:'[data-tour="settings:current"]',go:'설정',title:'현재 설정 한눈에 보기',body:'저장 폴더 · 로컬 작업 폴더 · 호기 수가 여기 요약됩니다. "⚠ 저장 폴더 미지정"이 없어지면 초기 설정 끝입니다.'},
   {target:'[data-tour="settings:tour"]',go:'설정',title:'초기 설정 끝',body:'수고하셨습니다! [기능 둘러보기]로 각 탭이 무엇을 하는지 볼 수 있습니다.'},
@@ -35,7 +36,7 @@ const FEATURES:Step[]=[
   {target:nav('Color·Gray 매칭'),go:'Color·Gray 매칭',title:'Color·Gray 매칭',body:'Lot 폴더의 wafer 이미지로 Color · Gray 값을 맞춰 봅니다.'},
   {target:nav('Wafer Map 수정하기'),go:'Wafer Map 수정하기',title:'Wafer Map 수정하기',body:'Wafer Map 파일을 열어 값을 고치고 이미지로 확인한 뒤 저장합니다.'},
   {target:nav('메모'),go:'메모',title:'메모',body:'팀이 함께 보는 메모와 공유 문서(장비 IP · 특이사항)를 엽니다.'},
-  {target:nav('KLA 자재 찾기'),go:'KLA 자재 찾기',title:'KLA 자재 찾기',body:<>맨 위 <b>CAMTEK / KLA</b> 탭으로 장비 회사를 바꿉니다. KLA 탭에서는 KLA 장비 폴더를 등록하고 Lot 이름 키워드로 스캔 결과 폴더를 찾아 바로 엽니다.</>},
+  {target:nav('KLA 자재 찾기'),go:'KLA 자재 찾기',title:'KLA 자재 찾기',body:<>맨 위 <b>CAMTEK · KLA · 설정 · 메모</b> 탭 중 CAMTEK / KLA 로 장비 회사를 바꿉니다. KLA 탭에서는 Lot 이름 키워드로 스캔 결과 폴더를 찾아 바로 엽니다. KLA 장비 폴더 · Defect 이미지 백업본 등록은 [설정] › AOI 장비 호기 루트 › KLA 에서 합니다.</>},
   {target:nav('설정'),go:'설정',title:'끝!',body:'튜토리얼은 언제든 [설정] › [튜토리얼]에서 다시 볼 수 있습니다.'},
 ];
 const TOURS:Record<TourKind,Step[]>={setup:SETUP,features:FEATURES};

@@ -46,15 +46,18 @@ class Kla(unittest.TestCase):
         self.assertEqual(slot_info("weird"), ("", ""))
 
     def test_roots_saved_and_validated(self):
-        self.assertEqual(self.kla.state(), {"roots": []})
+        self.assertEqual(self.kla.state(), {"roots": [], "backup": True})
         out = self.kla.set_roots({"roots": [{"name": "2.K2", "path": str(self.k2)}]})
-        self.assertEqual(out["roots"], [{"name": "2.K2", "path": str(self.k2)}])
+        self.assertEqual(out["roots"], [{"name": "2.K2", "path": str(self.k2), "backups": []}])
         cfg = json.loads(self.cfg.read_text(encoding="utf-8"))
         self.assertEqual(cfg["kla_roots"], {"2.K2": str(self.k2)})
         self.assertEqual(cfg["save_dir"], str(self.base / "save"))          # 다른 설정은 그대로
         for bad in ([{"name": "", "path": str(self.k2)}], [{"name": "a/b", "path": str(self.k2)}],
                     [{"name": "K", "path": "relative\\path"}],
-                    [{"name": "K", "path": str(self.k2)}, {"name": "K", "path": str(self.k1)}]):
+                    [{"name": "K", "path": str(self.k2)}, {"name": "K", "path": str(self.k1)}],
+                    [{"name": "K", "path": str(self.k2), "backups": ["relative"]}],
+                    [{"name": "K", "path": str(self.k2), "backups": [str(self.k1)] * 21}],
+                    [{"name": "K", "path": str(self.k2), "other": 1}]):
             with self.assertRaises(ValueError):
                 self.kla.set_roots({"roots": bad})
 
@@ -108,6 +111,46 @@ class Kla(unittest.TestCase):
         with self.assertRaises(ValueError):
             opener.resolve(str(slot / "RDL_RINT63@6324_120072022.16.001"))   # 파일(.001)은 열지 않음
 
+    def test_defect_image_backup(self):
+        """#32: 장비마다 Defect 이미지 백업 폴더(날짜 폴더째 옮겨 둔 곳)를 등록하고 켜고 끈다(기본 켬)."""
+        backup = self.base / "K" / "KLA_backup" / "2.K2"
+        make_slot(backup, "2025-04-01", "RINT63@5555", "2025-04-01-08-00_3")
+        make_slot(backup, "2025-05-21", "RINT63@6324", "2025-05-21-09-08_16")      # 원본과 같은 Lot 이 백업에도
+        out = self.kla.set_roots({"roots": [{"name": "2.K2", "path": str(self.k2), "backups": [str(backup), str(backup)]}]})
+        self.assertEqual(out["roots"][0]["backups"], [str(backup)])                  # 같은 경로는 한 번만
+        self.assertTrue(out["backup"])
+        # backups 를 빼고 다시 저장하면(장비 폴더만 고침) 백업 폴더는 그대로
+        self.assertEqual(self.kla.set_roots({"roots": [{"name": "2.K2", "path": str(self.k2)}]})["roots"][0]["backups"], [str(backup)])
+        res = self.kla.search({"query": "rint63"})
+        self.assertTrue(res["backup"])
+        self.assertEqual(res["backup_folders"], 1)
+        self.assertEqual([(h["date"], h["lot"], h["backup"]) for h in res["hits"]],
+                         [("2025-05-22", "RINT63@6324", False), ("2025-05-21", "RINT63@6324", False),
+                          ("2025-05-21", "RINT63@6324", True), ("2025-04-01", "RINT63@5555", True)])  # 같은 Lot 은 원본 먼저
+        self.assertEqual(res["machines"], ["2.K2"])
+        # 백업 폴더 안의 폴더도 열 수 있음
+        self.assertTrue(self.kla.allows(str(backup / "2025-04-01" / "RINT63@5555")))
+        # 끄면 원본만
+        self.assertFalse(self.kla.set_backup({"enabled": False})["backup"])
+        res = self.kla.search({"query": "rint63"})
+        self.assertFalse(res["backup"])
+        self.assertEqual([h["backup"] for h in res["hits"]], [False, False])
+        cfg = json.loads(self.cfg.read_text(encoding="utf-8"))
+        self.assertIs(cfg["kla_backup"], False)
+        self.assertEqual(cfg["kla_backups"], {"2.K2": [str(backup)]})
+        for bad in ({"enabled": 1}, {}, {"enabled": True, "x": 1}):
+            with self.assertRaises(ValueError):
+                self.kla.set_backup(bad)
+        # 못 읽는 백업 폴더는 failed 에 backup 표시
+        self.kla.set_backup({"enabled": True})
+        self.kla.set_roots({"roots": [{"name": "2.K2", "path": str(self.k2), "backups": [str(self.base / "gone")]}]})
+        res = self.kla.search({"query": "rint63"})
+        self.assertEqual([(f["machine"], f["backup"]) for f in res["failed"]], [("2.K2", True)])
+        self.assertEqual(len(res["hits"]), 2)
+        # 장비를 지우면 그 백업 폴더 등록도 지워짐
+        self.assertEqual(self.kla.set_roots({"roots": []}), {"roots": [], "backup": True})
+        self.assertEqual(json.loads(self.cfg.read_text(encoding="utf-8"))["kla_backups"], {})
+
     def test_ipc(self):
         self.kla.set_roots({"roots": [{"name": "2.K2", "path": str(self.k2)}]})
         output = io.BytesIO()
@@ -119,6 +162,7 @@ class Kla(unittest.TestCase):
         for worker in list(session.workers):
             worker.join(20)
         session.handle(dict(version=1, id=3, method="kla_search", params={"bad": 1}))
+        session.handle(dict(version=1, id=4, method="kla_set_backup", params={"enabled": False}))
         events = [json.loads(line) for line in output.getvalue().splitlines()]
         state = [e for e in events if e["id"] == 1][-1]
         self.assertEqual(state["kla"]["roots"][0]["name"], "2.K2")
@@ -126,6 +170,7 @@ class Kla(unittest.TestCase):
         self.assertEqual(done["event"], "completed", done)
         self.assertEqual(len(done["kla"]["hits"]), 2)
         self.assertEqual([e for e in events if e["id"] == 3][-1]["event"], "error")
+        self.assertIs([e for e in events if e["id"] == 4][-1]["kla"]["backup"], False)
 
 
 if __name__ == "__main__":

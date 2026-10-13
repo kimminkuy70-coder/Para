@@ -23,7 +23,12 @@ page.on('pageerror',e=>errors.push(e.message));
 const lines=createInterface({input:engine.stdout});
 lines.on('line',line=>{const message=JSON.parse(line);const sequence=index++;delivery=delivery.then(()=>page.evaluate(({channel,message,sequence})=>window.__callbacks[channel]({index:sequence,message}),{channel,message,sequence}));});
 // Recipe 관리 holds the recipe workflows as tabs (값 확인 · 업데이트 · 신규 · 양식 편집 · 날짜별 비교).
-async function recipeTab(name){await page.getByRole('button',{name:'Recipe 관리',exact:true}).click();await page.getByRole('tab',{name,exact:true}).click();}
+// 맨 위 탭(#32) = CAMTEK · KLA · 설정 · 메모 — 설정 · 메모에서는 기능 탭 줄이 없으므로 CAMTEK 을 먼저 누른다.
+async function feature(name){
+  if(!(await page.locator('.navigation button').allInnerTexts()).includes(name))await page.getByRole('button',{name:'CAMTEK',exact:true}).click();
+  await page.locator('.navigation').getByRole('button',{name,exact:true}).click();
+}
+async function recipeTab(name){await feature('Recipe 관리');await page.getByRole('tab',{name,exact:true}).click();}
 let stderr='',background={enabled:false,tooltip:''};engine.stderr.on('data',d=>stderr+=d);
 try{
   await page.exposeBinding('nativeInvoke',async(_,command,args)=>{
@@ -63,7 +68,7 @@ try{
   await banner.getByRole('button',{name:'이 버전 건너뛰기'}).click();
   await banner.waitFor({state:'detached'});
   // A3: a toast raised while a modal dialog is open must be the topmost element.
-  await page.getByRole('button',{name:'Recipe 관리',exact:true}).click();
+  await feature('Recipe 관리');
   await page.getByRole('button',{name:'Min Defect Bright 0 색상 변경',exact:true}).click();
   await page.locator('dialog[open] input:not([type])').fill('#12');
   await page.locator('dialog[open]').getByRole('button',{name:'저장',exact:true}).click();
@@ -108,7 +113,7 @@ try{
   await page.getByText(extra,{exact:true}).waitFor();
   // Machines are listed in name order (AOI-01 … AOI-04).
   assert.deepEqual(await page.locator('.subtab-body table').first().locator('tbody tr td:first-child').allInnerTexts(),['AOI-01','AOI-02','AOI-03','AOI-04']);
-  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
+  await feature('Batch Report 분석');
   await page.getByLabel('AOI-04 선택').waitFor();
   // 설정: current-settings summary and '수정' (rename + keep folder) of a Batch Report root.
   await page.getByRole('button',{name:'설정',exact:true}).click();
@@ -132,7 +137,7 @@ try{
   assert(!(await scanSwitch.isChecked()));
   await scanSwitch.click();
   await page.locator('.sbk.on:visible').filter({hasText:'원본 + 백업본'}).waitFor();
-  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
+  await feature('Batch Report 분석');
   await page.getByLabel('AOI-05 선택').waitFor();
   // Batch Report 분석 (가동률 조사 및 분석 · 찾기 · 취합): fixed machine grid, no page overflow.
   for(const [width,height] of [[1920,1080],[2880,1800],[1280,720],[960,640]]){
@@ -281,12 +286,12 @@ try{
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('개발자 기능',{exact:true}).check();
-  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
+  await feature('Batch Report 분석');
   await page.locator('.devbar').getByText('개발자 기능 켜짐').waitFor();
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('개발자 기능',{exact:true}).uncheck();
-  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
+  await feature('Batch Report 분석');
   await page.locator('.devbar').waitFor({state:'detached'});
   // 찾기 · 취합: file-name search → Lot groups → aggregate → Excel.
   await page.getByRole('tab',{name:/Batch Report 찾기/}).click();
@@ -356,7 +361,7 @@ try{
   await page.getByRole('button',{name:'Excel로 저장',exact:true}).click();
   assert((await page.locator('.kept-screen:not([hidden])').getByLabel('저장된 Excel').inputValue()).includes('BatchReport_취합_'));
   await page.getByRole('tab',{name:/가동률 조사 및 분석/}).click();
-  await page.getByRole('button',{name:'Recipe 관리',exact:true}).click();
+  await feature('Recipe 관리');
   // Zone → Alg title lines take two of the first 100 lines.
   await page.waitForFunction(()=>document.querySelectorAll('.comparison-row').length===98&&document.querySelectorAll('.comparison-group').length===2);
   await page.getByRole('button',{name:'Min Defect Bright 0 색상 변경',exact:true}).click();
@@ -449,11 +454,11 @@ try{
   await page.getByLabel('현재 위치').waitFor();
   await page.getByRole('button',{name:'오래된 임시 폴더 정리',exact:true}).click();
   await page.getByText(/오래된 임시 폴더 \d+개 정리/).waitFor();
-  await page.getByRole('button',{name:'Batch Report 분석',exact:true}).click();
+  await feature('Batch Report 분석');
   // The extra Report folder is part of the machine box (its tooltip lists every folder).
   await page.waitForFunction(a=>[...document.querySelectorAll('.mbox')].some(b=>(b.getAttribute('data-tip')||'').includes('+ '+a)),archive);
   await page.getByText('자동 분석: 켜짐',{exact:false}).waitFor();
-  await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
+  await feature('Commonality 조사');
   await page.locator('.cm-file input').first().check();
   await page.getByRole('button',{name:'선택 결과 비교 ▶',exact:true}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.cm-outlier').length===12);
@@ -474,7 +479,7 @@ try{
   await page.getByRole('tab',{name:'AOI 장비 호기 루트',selected:true}).waitFor();
   assert.equal(await page.getByLabel('호기',{exact:true}).inputValue(),'AOI-21');
   // Back to Commonality: the imported plan is still there (screen kept alive).
-  await page.getByRole('button',{name:'Commonality 조사',exact:true}).click();
+  await feature('Commonality 조사');
   assert.equal(await page.getByLabel('1행 디바이스명').inputValue(),'DEVA-1');
   // Row selection delete / delete all.
   await page.getByLabel('2행 선택').check();await page.getByLabel('3행 선택').check();
@@ -628,7 +633,7 @@ try{
   await page.locator('.open-path:not([hidden] *)').filter({hasText:'확정 양식'}).first().waitFor();
   await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
   // 자동 감시: pick a Job folder on the (fake) equipment, turn the watch on, run once.
-  await page.getByRole('button',{name:'자동 감시',exact:true}).click();
+  await feature('자동 감시');
   const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 감시'})});
   // 최근 알림 first, then one tab per watch; status table above the wizard.
   await page.getByRole('heading',{name:'최근 알림'}).waitFor();
@@ -673,7 +678,7 @@ try{
   await pw.getByRole('button',{name:/파라미터 자동 감시 OFF/}).waitFor();
   await page.waitForFunction(()=>true);assert.equal(background.enabled,false);
   // Color·Gray 매칭: scan a Lot folder, process both wafers (canvas crop/thumbnails), Excel per wafer.
-  await page.getByRole('button',{name:'Color·Gray 매칭',exact:true}).click();
+  await feature('Color·Gray 매칭');
   const cg=page.locator('section.panel',{has:page.getByRole('heading',{name:'Color · Gray 매칭'})});
   await cg.getByLabel('Lot 또는 Wafer 폴더').fill(join(fixture,'cglot'));
   await cg.getByRole('button',{name:'Wafer 찾기'}).click();
@@ -699,25 +704,47 @@ try{
   const klaRoot=join(fixture,'J','2.K2');
   for(const d of ['2025-05-21/RINT63@6324/2025-05-21-09-08_16','2025-05-21/RINT63@6324/2025-05-21-09-30_2','2025-05-22/ABC11@1111/2025-05-22-02-00_1'])
     await mkdir(join(klaRoot,...d.split('/')),{recursive:true});
+  // #32: 맨 위 탭 = CAMTEK · KLA · 설정 · 메모. KLA 장비 폴더는 설정 › AOI 장비 호기 루트 › KLA 에서 등록.
+  assert.deepEqual(await page.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','설정','메모']);
   await page.getByRole('button',{name:'KLA',exact:true}).click();
   assert.deepEqual(await page.locator('.navigation button').allInnerTexts(),['KLA 자재 찾기']);
   const kla=page.locator('section.kla');
-  await kla.getByText('⚠ 등록된 폴더 없음 — 먼저 등록하세요').waitFor();
-  await kla.getByLabel('장비 이름').fill('2.K2');
-  await kla.getByLabel('장비 폴더').fill(klaRoot);
-  await kla.getByRole('button',{name:'추가',exact:true}).click();
-  await kla.getByRole('cell',{name:klaRoot,exact:true}).waitFor();
+  await kla.getByText('⚠ 등록된 폴더 없음 — 설정에서 먼저 등록하세요').waitFor();
+  await kla.getByRole('button',{name:/설정 › AOI 장비 호기 루트 › KLA/}).click();
+  assert.equal(await page.locator('.navigation').count(),0);                      // 설정 = 공통 탭(아래 기능 탭 줄 없음)
+  const klaSet=page.locator('.kla-settings');
+  await klaSet.getByLabel('장비 이름').fill('2.K2');
+  await klaSet.getByLabel('장비 폴더').fill(klaRoot);
+  await klaSet.getByRole('button',{name:'추가',exact:true}).click();
+  await klaSet.getByRole('cell',{name:klaRoot,exact:true}).waitFor();
+  // Defect 이미지 백업본: 장비별 백업 폴더 등록(켜짐이 기본)
+  const klaBackup=join(fixture,'K','KLA_backup','2.K2');
+  await mkdir(join(klaBackup,'2025-04-01','RINT63@5555','2025-04-01-08-00_3'),{recursive:true});
+  await klaSet.getByLabel('백업 폴더 장비').selectOption('2.K2');
+  await klaSet.getByLabel('백업 폴더',{exact:true}).fill(klaBackup);
+  await klaSet.getByRole('button',{name:'백업 폴더 등록',exact:true}).click();
+  await klaSet.getByRole('cell',{name:klaBackup,exact:true}).waitFor();
+  assert.equal(await klaSet.getByRole('switch',{name:'Defect 이미지 백업본 포함'}).isChecked(),true);
+  await page.getByRole('button',{name:'KLA',exact:true}).click();
+  await kla.getByText(/KLA 장비 폴더 · 1개 · 2\.K2/).waitFor();
   await kla.getByLabel(/Lot 키워드/).fill('rint63');
   await kla.getByRole('button',{name:'찾기',exact:true}).click();
-  await kla.getByText(/Lot 폴더 1개\(Lot 1개\)/).waitFor();
+  await kla.getByText(/Lot 폴더 2개\(Lot 2개\)/).waitFor();
   const klaRow=kla.locator('tr.kla-row');
+  assert.equal(await klaRow.count(),2);
+  assert.match(await klaRow.nth(1).innerText(),/2\.K2\t2025-04-01\tRINT63@5555\s*백업본\t▸ 3/);
+  // 백업본 끄기 → 원본만
+  await kla.getByRole('switch',{name:'Defect 이미지 백업본 포함'}).click();        // 엔진 저장 뒤에 바뀜
+  await kla.getByText('KLA 찾기 범위 · 원본만').waitFor();
+  await kla.getByRole('button',{name:'찾기',exact:true}).click();
+  await kla.getByText(/Lot 폴더 1개\(Lot 1개\)/).waitFor();
   assert.equal(await klaRow.count(),1);
   assert.match(await klaRow.innerText(),/2\.K2\t2025-05-21\tRINT63@6324\t▸ 16, 2/);
   await klaRow.click();
   assert.equal(await kla.locator('tr.kla-slot').count(),2);
   assert.match(await kla.locator('tr.kla-slot').first().innerText(),/2025-05-21 09:08\t슬롯 16/);
   await page.getByRole('button',{name:'CAMTEK',exact:true}).click();
-  assert.equal(await page.locator('.navigation button').first().innerText(),'설정');
+  assert.equal(await page.locator('.navigation button').first().innerText(),'Recipe 관리');
   // 기능 둘러보기: 주요 탭을 차례로 옮겨 다니며 끝까지(오류 없이) — 마지막은 설정 탭.
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('button',{name:'기능 둘러보기',exact:true}).click();
@@ -726,7 +753,7 @@ try{
   for(let k=1;k<total;k++){await fb.getByRole('button',{name:'다음 →'}).click();await fb.locator('.tour-count').filter({hasText:new RegExp('^'+(k+1)+' /')}).waitFor();}
   await fb.getByRole('heading',{name:'끝!'}).waitFor();
   await fb.getByRole('button',{name:'완료',exact:true}).click();await fb.waitFor({state:'detached'});
-  assert.equal(await page.locator('.navigation button[aria-current="page"]').innerText(),'설정');
+  assert.equal(await page.locator('.vendor-tabs button[aria-current="page"]').innerText(),'설정');
   // A7: a reloaded page re-attaches to the same engine (ids keep increasing, no 'already connected').
   await page.reload();
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();

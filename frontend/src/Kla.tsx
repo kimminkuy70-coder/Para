@@ -1,50 +1,24 @@
-import {useEffect,useMemo,useState} from 'react';
-import {desktop,errorText,pickFolder} from './desktop';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {desktop,errorText} from './desktop';
 import {notify} from './ui';
 import {openPath} from './OpenPath';
+import {goToSettings} from './nav';
+import {useKlaState,KlaBackupBar} from './KlaSettings';
 
 /* KLA 자재 찾기 (이슈 #30) — KLA 장비 스캔 결과 폴더
    `{장비 폴더}\{날짜}\{Lot}\{스캔 시각}_{슬롯}\` 에서 Lot 이름 키워드로 자재를 찾는다.
    엔진(param_manager/desktop_kla.py)은 폴더 이름만 보고(파일은 열지 않음) 경로 목록을 돌려준다.
-   [폴더 열기] = 등록한 KLA 장비 폴더 안의 폴더만(desktop_open). */
+   [폴더 열기] = 등록한 KLA 장비 · 백업 폴더 안의 폴더만(desktop_open).
+   장비 폴더 등록 · Defect 이미지 백업본은 설정 › AOI 장비 호기 루트 › KLA 에서 한다(#32, KlaSettings.tsx). */
 
-type Root={name:string;path:string};
 type Slot={name:string;slot:string;time:string;path:string};
-type Hit={machine:string;date:string;lot:string;path:string;slots:Slot[];more:number};
+type Hit={machine:string;date:string;lot:string;path:string;slots:Slot[];more:number;backup?:boolean};
 type Result={query:string;start:string;end:string;hits:Hit[];truncated:boolean;max_hits:number;machines:string[];dates:number;
-  failed:{machine:string;path:string;reason:string}[]};
-
-function RootEditor({roots,onSaved}:{roots:Root[];onSaved:(r:Root[])=>void}){
-  const [name,setName]=useState('');
-  const [path,setPath]=useState('');
-  const [busy,setBusy]=useState(false);
-  async function save(next:Root[],msg:string){
-    setBusy(true);
-    try{const r=(await desktop.request('kla_set_roots',{roots:next}).promise).kla as {roots:Root[]};onSaved(r.roots);notify(msg,'ok');return true;}
-    catch(e){notify(errorText(e),'error');return false;}
-    finally{setBusy(false);}
-  }
-  async function browse(){const p=await pickFolder();if(p){setPath(p);if(!name.trim())setName(p.replace(/[\\/]+$/,'').split(/[\\/]/).pop()||'');}}
-  return <>
-    {roots.length>0&&<table className="tbl" style={{marginTop:10}}><thead><tr><th>장비</th><th>폴더</th><th/></tr></thead><tbody>
-      {roots.map(r=><tr key={r.name}><td>{r.name}</td><td><code>{r.path}</code></td>
-        <td style={{whiteSpace:'nowrap'}}><button className="linklike" onClick={()=>void openPath(r.path)}>폴더 열기</button>{' '}
-          <button className="linklike" disabled={busy} onClick={()=>void save(roots.filter(o=>o.name!==r.name),`${r.name} 삭제`)}>삭제</button></td></tr>)}
-    </tbody></table>}
-    <div className="form-filter" style={{marginTop:10}}>
-      <label className="field" style={{width:150}}>장비 이름<input value={name} placeholder="2.K2" maxLength={64} onChange={e=>setName(e.target.value)}/></label>
-      <label className="field" style={{flex:1,minWidth:240}}>장비 폴더<input value={path} placeholder="예: J:\2.K2  (또는 J:\ — 아래 장비 폴더를 모두 찾음)" maxLength={4096} onChange={e=>setPath(e.target.value)}/></label>
-      <button onClick={()=>void browse()}>📁 찾기</button>
-      <button className="primary" disabled={busy||!name.trim()||!path.trim()} onClick={async()=>{
-        const n=name.trim();
-        if(await save([...roots.filter(o=>o.name!==n),{name:n,path:path.trim()}],`${n} 등록`)){setName('');setPath('');}
-      }}>추가</button></div>
-  </>;
-}
+  failed:{machine:string;path:string;reason:string;backup?:boolean}[];backup?:boolean;backup_folders?:number};
 
 export function Kla(){
-  const [roots,setRoots]=useState<Root[]|undefined>();
-  const [loadError,setLoadError]=useState('');
+  const [kla,loadError,load]=useKlaState();
+  const roots=kla?.roots;
   const [query,setQuery]=useState('');
   const [picked,setPicked]=useState<string[]>([]);
   const [start,setStart]=useState('');
@@ -54,17 +28,14 @@ export function Kla(){
   const [result,setResult]=useState<Result>();
   const [filter,setFilter]=useState('');
   const [open,setOpen]=useState<Record<string,boolean>>({});
-  const [rootsOpen,setRootsOpen]=useState(false);   // 처음에 등록된 폴더가 없을 때만 펼쳐 둔다
-  async function load(){
-    setLoadError('');
-    try{await desktop.connect();const r=(await desktop.request('kla_state').promise).kla as {roots:Root[]};setRoots(r.roots);setPicked(r.roots.map(o=>o.name));if(!r.roots.length)setRootsOpen(true);}
-    catch(e){setLoadError(errorText(e));}
-  }
-  useEffect(()=>{void load();},[]);
-  function savedRoots(next:Root[]){
-    const old=new Set((roots||[]).map(r=>r.name));
-    setRoots(next);setPicked(p=>[...p.filter(n=>next.some(r=>r.name===n)),...next.filter(r=>!old.has(r.name)).map(r=>r.name)]);
-  }
+  // 설정에서 장비를 더하거나 빼면 찾을 장비 고르기도 따라간다(새 장비는 골라 둔다).
+  const known=useRef<string[]|undefined>(undefined);
+  useEffect(()=>{
+    if(!roots)return;
+    const now=roots.map(r=>r.name),before=known.current;
+    setPicked(p=>before===undefined?now:[...p.filter(n=>now.includes(n)),...now.filter(n=>!before.includes(n))]);
+    known.current=now;
+  },[roots]);
   async function search(){
     if(!query.trim()){notify('Lot 이름(또는 그 일부)을 입력하세요','error');return;}
     setBusy(true);setProgress('찾는 중…');setOpen({});setFilter('');
@@ -78,7 +49,7 @@ export function Kla(){
   const shown=useMemo(()=>{
     if(!result)return [];
     const words=filter.toLowerCase().split(/\s+/).filter(Boolean);
-    return words.length?result.hits.filter(h=>{const t=`${h.machine} ${h.date} ${h.lot} ${h.path}`.toLowerCase();return words.every(w=>t.includes(w));}):result.hits;
+    return words.length?result.hits.filter(h=>{const t=`${h.machine} ${h.date} ${h.lot} ${h.path}${h.backup?' 백업본':''}`.toLowerCase();return words.every(w=>t.includes(w));}):result.hits;
   },[result,filter]);
   const lots=useMemo(()=>new Set(shown.map(h=>h.lot)).size,[shown]);
   const slotCount=shown.reduce((n,h)=>n+h.slots.length,0);
@@ -90,13 +61,12 @@ export function Kla(){
       (예 <code>J:\2.K2\2025-05-21\RINT63@6324\2025-05-21-09-08_16</code> = 장비 2.K2 · Lot RINT63@6324 · 슬롯 16).
       Lot 이름 키워드를 넣으면 <b>폴더 이름만</b> 빠르게 훑어 해당 경로를 알려 줍니다. 파일은 열지 않고, 장비 폴더는 읽기만 합니다.</p>
 
-    <details className="current-settings" open={rootsOpen} onToggle={e=>setRootsOpen((e.target as HTMLDetailsElement).open)}>
-      <summary><h3>KLA 장비 폴더</h3><span className="hint">{roots===undefined?'불러오는 중…':roots.length?`${roots.length}개 · ${roots.map(r=>r.name).join(', ')}`:'⚠ 등록된 폴더 없음 — 먼저 등록하세요'}</span></summary>
-      <p className="hint">장비 폴더(바로 아래가 날짜 폴더, 예 <code>J:\2.K2</code>)를 등록하세요. 장비 폴더들을 담은 상위 폴더(예 <code>J:\</code>)를 등록하면 그 아래 장비 폴더를 모두 찾습니다.
-        이 PC 설정 파일에만 저장됩니다. 탐색기에서 먼저 그 드라이브 · 공유 폴더에 연결해 두세요.</p>
-      {loadError&&<p className="warn">{loadError} <button className="linklike" onClick={()=>void load()}>다시 시도</button></p>}
-      {roots&&<RootEditor roots={roots} onSaved={savedRoots}/>}
-    </details>
+    <div className="kla-roots-line">
+      <span><b>KLA 장비 폴더</b> · {roots===undefined?(loadError?'':'불러오는 중…'):roots.length?`${roots.length}개 · ${roots.map(r=>r.name).join(', ')}`:<b className="warn">⚠ 등록된 폴더 없음 — 설정에서 먼저 등록하세요</b>}</span>
+      <button onClick={()=>goToSettings({sub:'kla'})}>⚙ 설정 › AOI 장비 호기 루트 › KLA</button>
+    </div>
+    {loadError&&<p className="warn">{loadError} <button className="linklike" onClick={()=>void load()}>다시 시도</button></p>}
+    <KlaBackupBar note="장비 폴더 · 백업 폴더 등록은 설정 › AOI 장비 호기 루트 › KLA 에서 합니다." disabled={busy}/>
 
     <div className="form-filter" style={{marginTop:16}}>
       <label className="field" style={{flex:1,minWidth:260}}>Lot 키워드 <span className="hint" style={{margin:0}}>(여러 단어 = 모두 포함 · 대소문자 무시)</span>
@@ -119,17 +89,18 @@ export function Kla(){
     {result&&<div className="kla-result">
       <div className="form-filter" style={{alignItems:'end'}}>
         <p className="hint" style={{flex:1,margin:0}}><b>'{result.query}'</b> — Lot 폴더 {result.hits.length}개(Lot {new Set(result.hits.map(h=>h.lot)).size}개) ·
-          장비 {result.machines.length}대 · 날짜 폴더 {result.dates}개 확인{result.start||result.end?` · 기간 ${result.start||'처음'} ~ ${result.end||'끝'}`:''}</p>
-        {result.hits.length>0&&<label className="field" style={{width:260}}>결과 안에서 거르기<input value={filter} placeholder="장비 · 날짜 · Lot" onChange={e=>setFilter(e.target.value)}/></label>}
+          장비 {result.machines.length}대 · 날짜 폴더 {result.dates}개 확인{result.start||result.end?` · 기간 ${result.start||'처음'} ~ ${result.end||'끝'}`:''}
+          {' · '}{result.backup?`백업 폴더 ${result.backup_folders||0}개 포함`:'원본만(백업본 제외)'}</p>
+        {result.hits.length>0&&<label className="field" style={{width:260}}>결과 안에서 거르기<input value={filter} placeholder="장비 · 날짜 · Lot · 백업본" onChange={e=>setFilter(e.target.value)}/></label>}
       </div>
       {result.truncated&&<p className="warn">결과가 많아 앞의 {result.max_hits}개만 보여 줍니다. 키워드를 더 길게 하거나 기간을 좁혀 다시 찾으세요.</p>}
-      {result.failed.map(f=><p key={f.machine} className="warn">{f.machine}: 폴더를 읽지 못했습니다({f.reason}) — <code>{f.path}</code> 연결을 확인하세요.</p>)}
+      {result.failed.map(f=><p key={f.machine+f.path} className="warn">{f.machine}{f.backup?' 백업 폴더':''}: 폴더를 읽지 못했습니다({f.reason}) — <code>{f.path}</code> 연결을 확인하세요.</p>)}
       {shown.length>0?<>
         <p className="hint" style={{marginTop:6}}>보이는 Lot 폴더 {shown.length}개 · Lot {lots}개 · 슬롯 폴더 {slotCount}개. 행을 누르면 슬롯 폴더가 펼쳐집니다.</p>
         <div className="table-scroll"><table className="kla-table"><thead><tr><th>장비</th><th>날짜</th><th>Lot</th><th>슬롯</th><th>경로</th><th/></tr></thead><tbody>
           {shown.map(h=>{const key=h.path;const isOpen=!!open[key];return [
             <tr key={key} className="kla-row" onClick={()=>setOpen(o=>({...o,[key]:!o[key]}))}>
-              <td>{h.machine}</td><td>{h.date}</td><td><b>{h.lot}</b></td>
+              <td>{h.machine}</td><td>{h.date}</td><td><b>{h.lot}</b>{h.backup&&<span className="sbk-kind bk" title="Defect 이미지 백업 폴더에서 찾음">백업본</span>}</td>
               <td>{h.slots.length?`${isOpen?'▾':'▸'} ${h.slots.map(s=>s.slot||'?').join(', ')}${h.more?` 외 ${h.more}`:''}`:'—'}</td>
               <td><code>{h.path}</code></td>
               <td style={{whiteSpace:'nowrap'}} onClick={e=>e.stopPropagation()}>
@@ -141,7 +112,7 @@ export function Kla(){
                 <button className="linklike" onClick={()=>void copy(s.path)}>경로 복사</button></td></tr>):[])];})}
         </tbody></table></div></>
         :<div className="empty-state"><h3>{result.hits.length?'거르기에 맞는 결과가 없습니다':'맞는 Lot 폴더가 없습니다'}</h3>
-          <p>{result.hits.length?'결과 안에서 거르기 칸을 비워 보세요.':'키워드 철자 · 기간 · 등록한 장비 폴더를 확인하세요.'}</p></div>}
+          <p>{result.hits.length?'결과 안에서 거르기 칸을 비워 보세요.':'키워드 철자 · 기간 · 등록한 장비 폴더(설정)를 확인하세요.'}</p></div>}
     </div>}
   </section>;
 }
