@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from . import atomicfile, batchreport, batchreport_service, batchreport_store, localdirs, lotreport, watcher, wph
+from . import atomicfile, batchreport, batchreport_service, batchreport_store, desktop_progress, localdirs, lotreport, watcher, wph
 
 
 def read_json(path):
@@ -68,6 +68,8 @@ MAX_FIND_MACHINES = 200
 NEIGHBOR_H = 24                   # 찾기: 고른 Batch Report 앞뒤로 같은 호기에서 이어서 스캔한 것까지(이슈 #19: 13 → 24시간)
 MAX_FIND_HITS = 20000             # 찾기 1단계 목록(파일 이름만)
 MAX_FIND_PICK = 2000              # 찾기 2단계에서 한 번에 읽을 수 있는 고른 Batch Report
+CACHE_IMPORT_MAX_FILES = 5000     # 캐시 zip 가져오기(이슈 #29): zip 안 파일 수 · 풀었을 때 전체 크기 한도
+CACHE_IMPORT_MAX_TOTAL = 16 * 1024 ** 3
 
 
 def _choice_key(bunch_key, wafer_key):
@@ -585,6 +587,137 @@ class BatchViews:
                 pass
         return dict(path=str(target), folder=str(folder), files=len(files), machines=manifest["machines"],
                     reports=manifest["reports"], size=target.stat().st_size)
+
+    def cache_import(self, params):
+        """다른 PC 가 내보낸 캐시 zip(cache_export 결과)을 이 PC 로컬 캐시(배치분석/누적)에 합친다(이슈 #29).
+        장비 접근 없음, zip 은 읽기만. 호기는 이 PC 에 등록된 호기 이름으로 짝짓고, 폴더는 이 PC 의 그 호기 Report 폴더
+        (같은 경로 → 같은 마지막 폴더 이름 → 기본 폴더 순)로 옮겨 적는다 — PC 마다 드라이브 문자 · 경로가 달라도 쓰이게.
+        이미 이 PC 캐시에 있는 Batch Report(같은 파일 이름)는 그대로 두고 없는 것만 더한다. 사람 선택은 PC 마다 따로라 가져오지 않는다."""
+        import hashlib
+        import os
+        import zipfile
+        raw = params.get("path") if isinstance(params, dict) and set(params) == {"path"} else None
+        if not isinstance(raw, str) or not raw.strip() or len(raw) > 4096:
+            raise ValueError("가져올 Batch Report 캐시 zip 파일을 고르세요")
+        path = Path(raw.strip().strip('"'))
+        if not path.is_absolute() or path.suffix.lower() != ".zip":
+            raise ValueError("Batch Report 캐시 zip 파일(.zip)만 가져올 수 있습니다")
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("zip 파일을 찾을 수 없습니다: " + str(path))
+        cfg, paths, root, _ = self.configuration()
+        extra = cfg.get("batch_extra_paths") if isinstance(cfg.get("batch_extra_paths"), dict) else {}
+        mine = {}
+        for machine, main in paths.items():
+            folders = [f for f in dict.fromkeys([main, *(extra.get(machine) or [])]) if isinstance(f, str) and Path(f).is_absolute()]
+            if folders:
+                mine[machine] = folders
+        if not mine:
+            raise ValueError("이 PC 에 등록된 호기가 없습니다. 먼저 [설정 › AOI 장비 호기 루트]에 호기를 등록하세요.")
+        base = batchreport_store.local_root(root, [f for fs in mine.values() for f in fs]) / "배치분석" / "누적"
+        norm = lambda p: str(p).replace("/", "\\").rstrip("\\").lower()
+
+        def pick(machine, folder):
+            folders = mine[machine]
+            same = [f for f in folders if norm(f) == norm(folder)]
+            if same:
+                return same[0]
+            tail = [f for f in folders if norm(f).rsplit("\\", 1)[-1] == norm(folder).rsplit("\\", 1)[-1]]
+            return tail[0] if len(tail) == 1 else folders[0]
+
+        def valid(name, entry):
+            if not isinstance(name, str) or not name or len(name) > 1024 or any(c in name for c in "/\\:") \
+                    or not wph.is_report_file(name) or not isinstance(entry, dict):
+                return False
+            sig = entry.get("signature")
+            return (isinstance(sig, list) and len(sig) == 2 and all(type(v) is int for v in sig)
+                    and isinstance(entry.get("digest"), str) and isinstance(entry.get("report"), dict))
+
+        # 이 PC 에 이미 있는 캐시 파일 — 캐시 안에 적힌 (호기, 폴더) 문자열로 짝(load_cached 와 같음, 장비 경로 resolve 안 함)
+        existing = {}
+        if base.is_dir():
+            for cachefile in sorted(base.glob("*.json")):
+                if cachefile.is_symlink():
+                    continue
+                try:
+                    state = batchreport_store._load_state(cachefile)
+                except (OSError, ValueError):
+                    continue
+                existing.setdefault((state.get("machine"), os.path.normcase(str(state.get("folder", "")))), cachefile)
+        try:
+            archive = zipfile.ZipFile(path)
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise ValueError("zip 파일을 열 수 없습니다 — [Batch Report 캐시 내보내기]로 만든 zip 인지 확인하세요") from exc
+        result = dict(path=str(path), files=0, added=0, kept=0, invalid=0, machines=[], skipped=[], targets=[],
+                      exported_at="", app_version="", choices_skipped=False)
+        with archive:
+            infos = [i for i in archive.infolist() if not i.is_dir()]
+            if len(infos) > CACHE_IMPORT_MAX_FILES or sum(i.file_size for i in infos) > CACHE_IMPORT_MAX_TOTAL:
+                raise ValueError("zip 안 파일이 너무 많거나 큽니다 — Batch Report 캐시 zip 인지 확인하세요")
+            try:
+                manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+            except (KeyError, ValueError, UnicodeDecodeError) as exc:
+                raise ValueError("Batch Report 캐시 zip 이 아닙니다(manifest.json 없음)") from exc
+            if not isinstance(manifest, dict) or manifest.get("schema") != 1 or manifest.get("cache_schema") != batchreport_store.SCHEMA:
+                raise ValueError("캐시 형식(버전)이 이 프로그램과 다릅니다 — 같은 버전 프로그램에서 다시 내보낸 zip 을 넣어 주세요")
+            result.update(exported_at=str(manifest.get("exported_at") or ""), app_version=str(manifest.get("app_version") or ""),
+                          choices_skipped=any(i.filename.startswith("사람선택/") for i in infos))
+            members = [i for i in infos if i.filename.startswith("누적/") and i.filename.lower().endswith(".json")]
+            if not members:
+                raise ValueError("zip 안에 Batch Report 캐시가 없습니다")
+            targets, skipped = {}, {}
+            base.mkdir(parents=True, exist_ok=True)
+            for n, info in enumerate(members, 1):
+                desktop_progress.report(f"캐시 가져오는 중 {n}/{len(members)}")
+                try:
+                    with archive.open(info) as stream:
+                        state = json.loads(stream.read().decode("utf-8"))
+                except (OSError, ValueError, UnicodeDecodeError, zipfile.BadZipFile):
+                    result["invalid"] += 1
+                    continue
+                if not isinstance(state, dict) or state.get("schema") != batchreport_store.SCHEMA \
+                        or not isinstance(state.get("entries"), dict) or not isinstance(state.get("machine"), str):
+                    result["invalid"] += 1
+                    continue
+                machine, entries = state["machine"], state["entries"]
+                if machine not in mine:
+                    skipped[machine] = skipped.get(machine, 0) + len(entries)
+                    continue
+                result["files"] += 1
+                folder = str(Path(pick(machine, str(state.get("folder") or ""))))
+                key = (machine, os.path.normcase(folder))
+                cachefile = existing.get(key)
+                if cachefile is None:
+                    # 폴더를 resolve 하지 않은 이름(장비 접근 없음). 다음 조사(collect)가 resolve 한 이름으로 옮겨 쓴다.
+                    cachefile = base / (hashlib.sha256((machine + "\0" + os.path.normcase(folder)).encode()).hexdigest() + ".json")
+                    if cachefile.is_symlink():
+                        raise ValueError("분석 캐시 연결 경로를 사용할 수 없습니다")
+                    existing[key] = cachefile
+                local = batchreport_store._load_state(cachefile)
+                target = targets.setdefault(key, dict(machine=machine, folder=folder, added=0, kept=0))
+                added = 0
+                for name, entry in entries.items():
+                    if not valid(name, entry):
+                        result["invalid"] += 1
+                    elif name in local["entries"]:
+                        target["kept"] += 1
+                    else:
+                        local["entries"][name] = entry
+                        added += 1
+                del state, entries
+                if added or not cachefile.exists():
+                    local.update(machine=machine, folder=folder)
+                    batchreport_store._save_state(cachefile, local)
+                target["added"] += added
+        result["targets"] = list(targets.values())
+        result["added"] = sum(t["added"] for t in result["targets"])
+        result["kept"] = sum(t["kept"] for t in result["targets"])
+        result["machines"] = sorted({t["machine"] for t in result["targets"]}, key=_name_key)
+        result["skipped"] = [dict(machine=m, reports=c) for m, c in sorted(skipped.items())]
+        if not result["targets"]:
+            names = ", ".join(sorted(skipped)) or "없음"
+            raise ValueError(f"이 PC 에 등록된 호기와 같은 이름의 캐시가 없습니다(zip 안 호기: {names}). "
+                             "[설정 › AOI 장비 호기 루트]에 같은 호기 이름으로 등록한 뒤 다시 넣으세요.")
+        return result
 
 
 class DesktopBatch(BatchViews):

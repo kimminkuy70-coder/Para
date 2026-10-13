@@ -30,6 +30,7 @@ const FEATURES:Step[]=[
   {target:nav('Commonality 조사'),go:'Commonality 조사',title:'Commonality 조사',body:'Scanresult 를 모아 같은 Lot · 공정을 거친 호기 사이의 결함 공통점을 조사합니다.'},
   {target:nav('Batch Report 분석'),go:'Batch Report 분석',title:'Batch Report 분석',body:'호기와 기간을 골라 [조사 시작] — Lot 추적 · 가동률 · WPH · 레시피 비교를 봅니다. 결과는 HTML · Excel 로도 저장됩니다.'},
   {target:'[data-tour="batch:start"]',go:'Batch Report 분석',title:'[조사 시작]',body:'이미 읽은 Batch Report 는 다시 읽지 않아 두 번째부터는 빠릅니다. 설정에서 하루 1회 자동 분석도 켤 수 있습니다.'},
+  {target:'[data-tour="batch:cache-import"]',go:'Batch Report 분석',title:'Batch Report 캐시 가져오기',body:<>개발자에게 받은 캐시 zip 을 이 화면에 <b>끌어 넣으면</b> 이 PC 캐시로 불러옵니다. 그 뒤 [조사 시작] · 찾기는 장비에서 새 것만 읽어 빠릅니다. zip 만들기는 [🛠 개발자 기능].</>},
   {target:'[data-tour="batch:tabs"]',go:'Batch Report 분석',title:'Lot 추적 · 가동률 · WPH · 레시피 비교',body:<>조사가 끝나면 이 탭으로 결과를 봅니다. <b>레시피 비교</b>는 두 레시피 그룹(예: 기존 x20 ↔ 신규 x5)에 레시피를 끌어 넣어 속도 · 검출력을 같은 기준으로 비교합니다.</>},
   {target:nav('Color·Gray 매칭'),go:'Color·Gray 매칭',title:'Color·Gray 매칭',body:'Lot 폴더의 wafer 이미지로 Color · Gray 값을 맞춰 봅니다.'},
   {target:nav('Wafer Map 수정하기'),go:'Wafer Map 수정하기',title:'Wafer Map 수정하기',body:'Wafer Map 파일을 열어 값을 고치고 이미지로 확인한 뒤 저장합니다.'},

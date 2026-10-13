@@ -813,3 +813,12 @@ dialog::backdrop{overscroll-behavior:contain}
 .tour-entry-ic{font-size:24px}.tour-entry b{display:block;font-size:14px}.tour-entry small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
 .tour-entry .grow{flex:1}
 @media(prefers-reduced-motion:reduce){.tour-spot,.tour-spot::after,.tour-bubble{transition:none;animation:none}}
+/* Batch Report 캐시 가져오기(이슈 #29) — zip 끌어 넣기 영역 + 개발자 기능(내보내기) */
+.bv .cache-drop{margin-top:14px;border:1.5px dashed #b9cbd8;border-radius:10px;padding:12px 14px;background:#fafcfd;transition:border-color .18s var(--ease),background .18s var(--ease)}
+.bv .cache-drop.over{border-color:var(--lime);background:#eafaf3}
+.bv .cache-drop-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}.bv .cache-drop-head .grow{flex:1;min-width:220px}
+.bv .cache-drop-head b{display:block;font-size:13px}.bv .cache-drop-head small{display:block;font-size:12px;color:var(--muted);margin-top:2px;word-break:keep-all}
+.bv .cache-drop-head button{font-size:12px;min-height:32px;padding:6px 10px}.bv .cache-drop-head button.active{background:#eafaf3;border-color:var(--lime)}
+.bv .cache-drop-ic{font-size:22px;color:var(--acc2)}
+.bv .cache-drop .cache-export{margin-top:10px;border-top:1px solid var(--line);padding-top:4px}
+.bv .cache-drop .hint button.gear{font-size:12px;min-height:26px;padding:2px 8px}

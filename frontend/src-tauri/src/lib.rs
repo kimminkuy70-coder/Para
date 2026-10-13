@@ -40,6 +40,17 @@ fn app_exit(app: tauri::AppHandle) { app.exit(0); }
 #[derive(Default)]
 struct Background(std::sync::Mutex<bool>);
 
+/// Files dragged onto the window (issue #29: a Batch Report cache zip from a
+/// colleague). The page registers one channel; the shell forwards only the
+/// dropped paths. The Python engine validates the file and only reads it.
+#[derive(Default)]
+struct Drops(std::sync::Mutex<Option<tauri::ipc::Channel<serde_json::Value>>>);
+
+#[tauri::command]
+fn drop_connect(state: tauri::State<'_, Drops>, on_drop: tauri::ipc::Channel<serde_json::Value>) {
+    if let Ok(mut slot) = state.0.lock() { *slot = Some(on_drop); }
+}
+
 const TRAY_ID: &str = "main";
 
 #[tauri::command]
@@ -65,6 +76,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(desktop::Desktop::default())
         .manage(Background::default())
+        .manage(Drops::default())
         .setup(|app| {
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -92,6 +104,21 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(drag) = event {
+                let message = match drag {
+                    tauri::DragDropEvent::Enter { .. } => Some(serde_json::json!({"kind": "enter"})),
+                    tauri::DragDropEvent::Leave => Some(serde_json::json!({"kind": "leave"})),
+                    tauri::DragDropEvent::Drop { paths, .. } => Some(serde_json::json!({"kind": "drop",
+                        "paths": paths.iter().filter_map(|p| p.to_str().map(str::to_string)).collect::<Vec<_>>()})),
+                    _ => None,
+                };
+                if let Some(message) = message {
+                    let drops = window.app_handle().state::<Drops>();
+                    if let Ok(slot) = drops.0.lock() {
+                        if let Some(channel) = slot.as_ref() { let _ = channel.send(message); }
+                    }
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let resident = window.app_handle().state::<Background>().0.lock().map(|f| *f).unwrap_or(false);
                 if resident {
@@ -101,7 +128,7 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![app_contract_version, pick_folder, pick_file, app_exit, set_background, desktop::desktop_connect, desktop::desktop_send])
+        .invoke_handler(tauri::generate_handler![app_contract_version, pick_folder, pick_file, app_exit, set_background, drop_connect, desktop::desktop_connect, desktop::desktop_send])
         .build(tauri::generate_context!())
         .expect("failed to build Camtek AOI Manager")
         .run(|app, event| {

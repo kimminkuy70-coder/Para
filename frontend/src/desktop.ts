@@ -25,6 +25,19 @@ export async function pickFile(kind: 'excel'|'zip' = 'excel'): Promise<string|nu
   try { return (await invoke<string|null>('pick_file', {kind})) ?? null; }
   catch { return null; }
 }
+/** Files dragged onto the window (desktop shell only — the shell forwards the dropped paths, issue #29). */
+export type FileDrop = {kind: 'enter'|'leave'|'drop'; paths?: string[]};
+const dropListeners = new Set<(d: FileDrop) => void>();
+let dropLinked: Promise<void>|undefined;
+export function onFileDrop(listener: (d: FileDrop) => void): () => void {
+  dropListeners.add(listener);
+  if (isTauri() && !dropLinked) {
+    const channel = new Channel<FileDrop>();
+    channel.onmessage = d => dropListeners.forEach(l => l(d));
+    dropLinked = invoke<void>('drop_connect', {onDrop: channel}).catch(() => { dropLinked = undefined; /* older shell: [zip 찾기] only */ });
+  }
+  return () => { dropListeners.delete(listener); };
+}
 /** Quit the desktop app (used right after a self-update was staged). */
 export async function exitApp(): Promise<void> {
   if (isTauri()) await invoke('app_exit');

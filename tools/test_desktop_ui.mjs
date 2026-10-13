@@ -16,7 +16,7 @@ const python=process.env.CODEX_PRIMARY_RUNTIME_PYTHON||'python';
 execFileSync(python,[join(root,'tests/desktop_browser_fixture.py'),'init',fixture]);
 const browser=await chromium.launch({headless:true});
 const engine=spawn(python,[join(root,'tests/desktop_browser_fixture.py'),'serve',fixture],{cwd:root,stdio:['pipe','pipe','pipe']});
-let channel=0, index=0, delivery=Promise.resolve();
+let channel=0, index=0, delivery=Promise.resolve(), dropChannel=0;
 const page=await browser.newPage({viewport:{width:1440,height:1000}});
 const errors=[];
 page.on('pageerror',e=>errors.push(e.message));
@@ -29,6 +29,7 @@ try{
   await page.exposeBinding('nativeInvoke',async(_,command,args)=>{
     if(command==='set_background'){background=args;return;}   // tray residency request
     if(command==='pick_file')return join(fixture,'old_plan.xlsx');   // native Excel picker → fixture plan
+    if(command==='drop_connect'){dropChannel=Number(args.onDrop.split(':')[1]);return;}   // window file-drop channel (이슈 #29)
     if(command==='desktop_connect'){channel=Number(args.onEvent.split(':')[1]);index=0;return;}  // a new Channel counts from 0, as in Tauri
     assert.equal(command,'desktop_send');engine.stdin.write(JSON.stringify(args.request)+'\n');
   });
@@ -144,6 +145,18 @@ try{
   await page.getByRole('button',{name:'조사 시작 →'}).click();
   await page.locator('.toast').filter({hasText:'조사를 완료했습니다.'}).waitFor({timeout:60000});
   await page.locator('.scope-status').filter({hasText:'Batch Report 205개'}).waitFor();
+  // 이슈 #29: [🛠 개발자 기능] → 캐시 zip 만들기 · 그 zip 을 창에 끌어 넣으면 이 PC 캐시로 가져옴(이미 있던 것은 그대로).
+  await page.getByRole('button',{name:'🛠 개발자 기능'}).click();
+  await page.getByRole('button',{name:'Batch Report 캐시 압축 파일 만들기 (zip)'}).click();
+  const made=page.locator('.cache-export .hint').filter({hasText:'내보냄:'});
+  await made.waitFor();
+  const cacheZip=await made.locator('code').innerText();
+  assert(dropChannel,'file-drop channel not connected');
+  await page.evaluate(({channel,zip})=>{window.__callbacks[channel]({index:0,message:{kind:'enter',paths:[zip]}});
+    window.__callbacks[channel]({index:1,message:{kind:'drop',paths:[zip]}});},{channel:dropChannel,zip:cacheZip});
+  await page.locator('.toast').filter({hasText:'Batch Report 캐시를 가져왔습니다'}).waitFor();
+  await page.locator('.cache-drop [role=status]').filter({hasText:/새 Batch Report 0개 · 이미 있던 \d+개는 그대로/}).waitFor();
+  assert(!(await page.locator('.cache-drop').getAttribute('class')).includes('over'));
   // Every investigation also writes the Lot 추적 HTML; ? next to 조사 explains the Lot criteria.
   await page.getByText(/저장된 결과 파일/).click();
   assert((await page.getByLabel('Lot 추적 HTML',{exact:true}).inputValue()).endsWith('BatchReport_Lot추적.html'));

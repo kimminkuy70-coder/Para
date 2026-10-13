@@ -143,7 +143,15 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None, reuse=True)
         cachefile = base / (source_id + ".json")
         if cachefile.is_symlink() or cachefile.resolve().parent != base_real:
             raise ValueError("분석 캐시 연결 경로를 사용할 수 없습니다")
-        state = _load_state(cachefile)
+        adopted = None
+        if not cachefile.exists():
+            # 다른 PC 에서 가져온 캐시(이슈 #29)는 장비 접근 없이 만들려고 폴더를 resolve 하지 않은 이름으로 저장된다.
+            # 처음 조사할 때 그 캐시를 이어받아 resolve 한 이름으로 옮겨 쓴다(같은 이름이면 그대로).
+            plain_id = hashlib.sha256((machine + "\0" + os.path.normcase(str(folder))).encode()).hexdigest()
+            plain = base / (plain_id + ".json")
+            if plain_id != source_id and not plain.is_symlink() and plain.is_file():
+                adopted = plain
+        state = _load_state(adopted or cachefile)
         entries = state["entries"]
         stat_parsed_before = stat["parsed"]
         start, end = dates(target)
@@ -221,6 +229,12 @@ def collect(root, targets, progress=None, host_gap=2.0, cancel=None, reuse=True)
             state.update(machine=machine, folder=str(folder))
             # Local writes only, old snapshot survives a failed replacement.
             _save_state(cachefile, state)
+        if adopted is not None and cachefile.exists():
+            try:
+                adopted.unlink()
+            except OSError:
+                pass
+            _MEMO.pop(str(adopted), None)
         added = _emit(records, notices, dedup, filenames, source_id, machine, folder, entries,
                       lambda name: matches(name) and name not in invalid, set(current))
         stat["records"] += added

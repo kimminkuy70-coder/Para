@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #29 Batch Report 캐시 공유: 개발자 기능 zip 만들기 + 끌어 넣어 가져오기 (2026-10-13 KST, `version_v12`)
+
+- GitHub 이슈 #29: 다른 사람도 Batch Report 캐시를 쓰게 — Batch Report 탭에 개발자 기능 버튼(누르면 로컬 캐시 zip 만들기)과, 개발자에게 받은 zip 을
+  드래그해서 넣으면 자동으로 캐시를 불러오는 기능(장비 IP 로 다시 읽는 시간 절약 → 가동률 · Lot 찾기 단축).
+- 엔진 `param_manager/desktop_batch.py` `cache_import{path}`(+ IPC `batch_cache_import`, 'batch' 슬롯): #16 zip(manifest · `누적/*.json`)을 읽어 이 PC
+  `배치분석/누적` 에 합침 — 호기 이름으로 짝(미등록 호기는 `skipped`), 폴더는 이 PC 의 그 호기 Report 폴더로 옮겨 적음, 이미 있는 파일 이름은 이 PC 것 유지,
+  형식이 깨진 항목 · 경로 문자 든 이름은 `invalid`. 사람 선택은 가져오지 않음. 한도 `CACHE_IMPORT_MAX_FILES`/`_TOTAL`.
+- `param_manager/batchreport_store.py` `collect`: resolve 한 이름의 캐시가 없으면 resolve 하지 않은 이름(가져오기가 만든 것)을 이어받아 옮겨 씀.
+- 셸 `frontend/src-tauri/src/lib.rs`: `Drops` 상태 + 명령 `drop_connect(on_drop: Channel)` + `on_window_event` 의 `WindowEvent::DragDrop` → 채널로
+  `{kind, paths}`. **이 환경에 webkit2gtk/gtk 가 없어 `cargo check` 는 못 함** — API(tauri 2.11.6 `DragDropEvent` Enter/Over/Drop/Leave, `Channel::send`)는
+  crate 소스로 확인. 화면 `desktop.ts` `onFileDrop`, `Batch.tsx` 가져오기 영역 · [🛠 개발자 기능](내보내기 버튼이 그 안으로), `Tour.tsx` 단계, `styles.css` `.cache-drop`.
+- 검증: `tests/test_cache_export.py`(가져오기 4: 폴더 옮겨 적기 · 미등록 호기 · 깨진 항목 · 다시 넣기 유지 · collect 이어받기(장비에서 다시 열지 않음) · 잘못된 입력 ·
+  export → 다른 PC IPC import), `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`,
+  `tools/test_desktop_ui.mjs`(개발자 기능 → zip 만들기 → 끌어 넣기 채널로 가져오기) 통과. Windows 실기 끌어 넣기 · 실제 장비 캐시는 미검증.
+
 ## 최신 재개 — Para #27 찾기 · 취합 = 같은 Lot 이라도 레시피(Job)별로 따로 (2026-10-12 KST, `version_v12`)
 
 - GitHub 이슈 #27: Batch Report 찾기 · Lot 취합에서 고른 Batch Report 앞뒤 하루(24시간)를 함께 읽으니 RDL 이 아니라 PI bubble 스캔도 같은 Lot 으로

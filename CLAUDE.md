@@ -23,6 +23,18 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 캐시 공유 = 개발자 기능 zip 만들기 + 끌어 넣어 가져오기 (2026-10-13, 이슈 #29)
+- 화면 `Batch.tsx` 조사 범위 아래 `Batch Report 캐시 가져오기` 영역(모든 사용자): 캐시 zip 을 **창에 끌어 넣으면** 자동으로 가져온다 + [zip 찾기…].
+  [🛠 개발자 기능]을 누르면 그 아래에 종전 내보내기(#16, 버튼 문구 `Batch Report 캐시 압축 파일 만들기 (zip)`)가 열린다. 가져온 호기는 조사 범위에 골라 둔다.
+- 끌어 넣기: Tauri 셸이 `WindowEvent::DragDrop` 을 받아 페이지가 등록한 채널(`drop_connect`)로 `{kind: enter|leave|drop, paths}` 만 넘긴다
+  (`desktop.ts` `onFileDrop`). Batch Report 화면이 보일 때만 받고 첫 `.zip` 만 쓴다. HTML5 drop 은 경로가 없어 안내만.
+- 엔진 `DesktopBatch.cache_import{path}` / IPC `batch_cache_import`('batch' 슬롯 — 조사 · 찾기와 동시 실행 안 함). zip 은 읽기만, 장비 접근 없음.
+  manifest(schema 1, cache_schema = `batchreport_store.SCHEMA`) 확인 · 파일 수/크기 한도. **호기 이름으로 짝**(이 PC 에 없는 호기는 건너뜀 · 안내),
+  폴더는 이 PC 의 그 호기 Report 폴더로 옮겨 적음(같은 경로 → 같은 마지막 폴더 이름(하나일 때) → 기본 폴더). 같은 파일 이름이 이미 있으면 **이 PC 것 유지**,
+  없는 것만 더함. 사람 선택(`사람선택/`)은 PC 마다 따로라 가져오지 않음.
+- 새 캐시 파일 이름 = 폴더를 **resolve 하지 않은** 해시(장비 접근 없이 만들려고). `batchreport_store.collect` 는 resolve 한 이름의 캐시가 없으면 이 이름의
+  캐시를 이어받아 resolve 한 이름으로 옮겨 쓴다(서명 같으면 장비에서 다시 열지 않음). `load_cached` · 찾기 캐시 단계는 원래 (호기, 폴더) 문자열로 짝.
+
 ### 찾기 · 취합 · Lot = 레시피(Job)별로 따로 (2026-10-12, 이슈 #27)
 - lotmodel 묶음 조건 = 같은 호기 12시간(호기 이동 48시간) + 같은 Recipe(s) + **같은 Job**. Recipe(s) 가 같은 `2D` 여도 RDL · PI bubble 은 서로 재스캔이 아니다.
   Lot = (코드, Lot ID) 는 그대로, 묶음(= Lot · 레시피 줄)에 `job` · `r` · `st`(`lotmodel.bunch_state`). ③ Lot 고르기 = 레시피별 보기 칩 + 레시피 줄 태그.

@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {desktop,errorText,defaults,type Configuration,type Options,type Reply} from './desktop';
+import {desktop,errorText,defaults,pickFile,onFileDrop,type Configuration,type Options,type Reply} from './desktop';
 import {notify,fail} from './ui';
 import {OpenPath,openPath} from './OpenPath';
 import {goToSettings} from './nav';
@@ -16,6 +16,8 @@ import {useDev,setDevLocked,setDevDrafts,registerDraftHandlers} from './devmode'
 import {loadView,batchCall,addDays,ymd,type View,type ViewMeta,type ViewName,type LotDetail,type Raw,type AggGroup} from './batchData';
 
 type CacheExport={path:string;folder:string;files:number;machines:number;reports:number;size:number};
+type CacheImport={path:string;files:number;added:number;kept:number;invalid:number;machines:string[];skipped:{machine:string;reports:number}[];
+  targets:{machine:string;folder:string;added:number;kept:number}[];exported_at:string;app_version:string;choices_skipped:boolean};
 
 /* Batch Report 분석 — 큰 탭 2개: [가동률 조사 및 분석](조사 범위 공통 · Lot 추적 · 가동률 · WPH) /
    [Batch Report 찾기 · 취합]. 사용자 검토를 마친 프로토타입(tools/batch_prototype)과 같은 화면이다.
@@ -38,6 +40,7 @@ export function Batch({active}:{active:boolean}){
   const [lot,setLot]=useState<{view:ViewName;li:number}>(),[detail,setDetail]=useState<LotDetail>(),[lotXlsx,setLotXlsx]=useState('');
   const [raw,setRaw]=useState<Raw>();
   const [cacheZip,setCacheZip]=useState<CacheExport>(),[exporting,setExporting]=useState(false);
+  const [cacheIn,setCacheIn]=useState<CacheImport>(),[importing,setImporting]=useState(false),[dropOver,setDropOver]=useState(false),[devTools,setDevTools]=useState(false);
   const [drafts,setDrafts]=useState<Drafts>({});
   const [help,setHelp]=useState(false),[defect,setDefect]=useState(false);
   const [cond,setCond]=useState<FindCond>({machines:[],query:'',start:'',end:''});
@@ -220,6 +223,31 @@ export function Batch({active}:{active:boolean}){
     catch(e){fail(e);}
     finally{setExporting(false);}
   }
+  // 다른 PC(개발자)가 내보낸 캐시 zip → 이 PC 로컬 캐시에 합침(이슈 #29). 장비 접근 없음, zip 은 읽기만.
+  const importRef=useRef(false),activeRef=useRef(active);activeRef.current=active;
+  async function importCache(path:string){
+    if(importRef.current)return;
+    if(runningRef.current){notify('조사가 끝난 뒤 캐시 zip을 넣어 주세요.','error');return;}
+    importRef.current=true;setImporting(true);
+    try{const r=await batchCall<CacheImport>('batch_cache_import',{path});setCacheIn(r);
+      const known=new Set(config?.machines.map(m=>m.id));
+      setMachines(o=>[...new Set([...o,...r.machines.filter(m=>known.has(m))])]);
+      notify(`Batch Report 캐시를 가져왔습니다 — 호기 ${r.machines.length}대 · 새 Batch Report ${r.added}개${r.kept?` (이미 있던 ${r.kept}개는 그대로)`:''}.`,'ok');}
+    catch(e){fail(e);}
+    finally{importRef.current=false;setImporting(false);}
+  }
+  async function pickCacheZip(){
+    const p=await pickFile('zip');
+    if(p)void importCache(p);else notify('파일 선택이 취소되었거나 데스크톱 앱이 아닙니다.','info');
+  }
+  // 창에 끌어 넣은 파일(데스크톱 앱이 경로를 넘겨줌) — Batch Report 화면이 보일 때만 받는다.
+  useEffect(()=>onFileDrop(d=>{
+    if(!activeRef.current){setDropOver(false);return;}
+    if(d.kind!=='drop'){setDropOver(d.kind==='enter');return;}
+    setDropOver(false);
+    const zip=(d.paths||[]).find(p=>p.toLowerCase().endsWith('.zip'));
+    if(zip)void importCache(zip);else notify('Batch Report 캐시 zip 파일(.zip)만 넣을 수 있습니다.','error');
+  }),[config]);
 
   // ---- 화면 ------------------------------------------------------------------------
   const v=views.scope;
@@ -282,11 +310,23 @@ export function Batch({active}:{active:boolean}){
           {v.artifacts.lots&&<OpenPath label="Lot 추적 HTML" path={v.artifacts.lots}/>}{v.artifacts.xlsx&&<OpenPath label="Excel" path={v.artifacts.xlsx}/>}
           {v.artifacts.html&&<OpenPath label="HTML" path={v.artifacts.html}/>}{v.artifacts.dashboard&&<OpenPath label="가동률 대시보드" path={v.artifacts.dashboard}/>}
           {v.artifacts.outdir&&<OpenPath label="결과 폴더" path={v.artifacts.outdir} folder/>}</div></details>}
-        <div className="cache-export" aria-label="Batch Report 캐시 내보내기">
-          <div className="toolbar"><button type="button" disabled={running||exporting||restoring} onClick={()=>void exportCache()}>{exporting?'내보내는 중…':'Batch Report 캐시 내보내기 (zip)'}</button>
-            {cacheZip&&<button type="button" onClick={()=>void openPath(cacheZip.path,true)}>폴더 열기</button>}</div>
-          <p className="hint">지금까지 조사해 로컬 캐시에 모인 모든 호기의 Batch Report 데이터를 zip 파일 하나로 내보냅니다(장비 접근 없음 · 최근 3개 보관).</p>
-          {cacheZip&&<p className="hint">내보냄: <code>{cacheZip.path}</code> — 호기 {cacheZip.machines}대 · Batch Report {cacheZip.reports}개 · {(cacheZip.size/1048576).toFixed(1)}MB</p>}</div>
+        <div className={'cache-drop'+(dropOver?' over':'')} aria-label="Batch Report 캐시 가져오기" data-tour="batch:cache-import"
+          onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();notify('데스크톱 앱 창에 끌어 넣거나 [zip 찾기…]로 고르세요.','info');}}>
+          <div className="cache-drop-head"><span className="cache-drop-ic" aria-hidden="true">⇩</span>
+            <div className="grow"><b>Batch Report 캐시 가져오기</b><small>개발자에게 받은 캐시 zip 파일을 이 화면에 끌어 넣으면 이 PC 캐시로 자동으로 불러옵니다 — 장비에 접속해 다시 읽지 않아도 됩니다.</small></div>
+            <button type="button" disabled={running||importing||restoring} onClick={()=>void pickCacheZip()}>{importing?'가져오는 중…':'zip 찾기…'}</button>
+            <button type="button" className={devTools?'active':''} aria-expanded={devTools} onClick={()=>setDevTools(o=>!o)} title="캐시 zip 만들기(개발자용)">🛠 개발자 기능</button></div>
+          {importing&&<div className="progress3" role="progressbar" aria-label="캐시 가져오는 중"><span style={{width:'45%'}}/></div>}
+          {cacheIn&&<div className="hint" role="status">가져옴: <code>{cacheIn.path}</code>{cacheIn.exported_at?` (내보낸 시각 ${cacheIn.exported_at}${cacheIn.app_version?` · v${cacheIn.app_version}`:''})`:''} —
+            호기 {cacheIn.machines.length}대({cacheIn.machines.join(', ')}) · 새 Batch Report <b>{cacheIn.added}</b>개{cacheIn.kept?` · 이미 있던 ${cacheIn.kept}개는 그대로`:''}{cacheIn.invalid?` · 형식이 맞지 않는 ${cacheIn.invalid}개 제외`:''}.
+            {cacheIn.skipped.length>0&&<> 이 PC에 등록되지 않은 호기 {cacheIn.skipped.map(s=>`${s.machine}(${s.reports}개)`).join(', ')}는 건너뛰었습니다 — <button type="button" className="gear" onClick={()=>goToSettings({sub:'aoi'})}>⚙ AOI 장비 호기 루트 설정</button>에서 같은 이름으로 등록한 뒤 다시 넣으세요.</>}
+            <br/>이제 [조사 시작]은 가져온 캐시를 먼저 쓰고 장비에서는 새로 생긴 Batch Report만 읽으며, [Batch Report 찾기 · 취합]의 캐시 검색에도 바로 나옵니다. 가져온 호기는 조사 범위에 골라 두었습니다.
+            {cacheIn.choices_skipped&&' (중복 Pass 사람 선택은 PC마다 따로라 가져오지 않습니다.)'}</div>}
+          {devTools&&<div className="cache-export" aria-label="Batch Report 캐시 내보내기">
+            <div className="toolbar"><button type="button" disabled={running||exporting||restoring} onClick={()=>void exportCache()}>{exporting?'내보내는 중…':'Batch Report 캐시 압축 파일 만들기 (zip)'}</button>
+              {cacheZip&&<button type="button" onClick={()=>void openPath(cacheZip.path,true)}>폴더 열기</button>}</div>
+            <p className="hint">지금까지 조사해 이 PC 로컬 캐시에 모인 모든 호기의 Batch Report 데이터를 zip 파일 하나로 내보냅니다(장비 접근 없음 · 최근 3개 보관). 이 zip을 다른 사용자에게 주면 위 [Batch Report 캐시 가져오기]에 끌어 넣어 쓸 수 있습니다.</p>
+            {cacheZip&&<p className="hint">내보냄: <code>{cacheZip.path}</code> — 호기 {cacheZip.machines}대 · Batch Report {cacheZip.reports}개 · {(cacheZip.size/1048576).toFixed(1)}MB</p>}</div>}</div>
       </section>
       <div className="pilltabs" role="tablist" aria-label="분석 화면" data-tour="batch:tabs">{([['lot','Lot 추적'],['util','가동률'],['wph','WPH · 생산능력'],['cmp','레시피 비교']] as const).map(([k,t])=>
         <button key={k} role="tab" type="button" className={sub===k?'active':''} aria-selected={sub===k} onClick={()=>setSub(k)}>{t}</button>)}</div>
