@@ -10,7 +10,7 @@
 - `param_manager/batchreport_store.py` `collect`: resolve 한 이름의 캐시가 없으면 resolve 하지 않은 이름(가져오기가 만든 것)을 이어받아 옮겨 씀.
 - 셸 `frontend/src-tauri/src/lib.rs`: `Drops` 상태 + 명령 `drop_connect(on_drop: Channel)` + `on_window_event` 의 `WindowEvent::DragDrop` → 채널로
   `{kind, paths}`. **이 환경에 webkit2gtk/gtk 가 없어 `cargo check` 는 못 함** — API(tauri 2.11.6 `DragDropEvent` Enter/Over/Drop/Leave, `Channel::send`)는
-  crate 소스로 확인. 화면 `desktop.ts` `onFileDrop`, `Batch.tsx` 가져오기 영역 · [🛠 개발자 기능](내보내기 버튼이 그 안으로), `Tour.tsx` 단계, `styles.css` `.cache-drop`.
+  crate 소스로 확인. 첫 빌드(Actions run 38330654917)가 E0597(`drops` 잠금 guard 수명)로 실패 → `if let` 끝에 `;` 로 고침(v12.6.16 재빌드 필요). 화면 `desktop.ts` `onFileDrop`, `Batch.tsx` 가져오기 영역 · [🛠 개발자 기능](내보내기 버튼이 그 안으로), `Tour.tsx` 단계, `styles.css` `.cache-drop`.
 - 검증: `tests/test_cache_export.py`(가져오기 4: 폴더 옮겨 적기 · 미등록 호기 · 깨진 항목 · 다시 넣기 유지 · collect 이어받기(장비에서 다시 열지 않음) · 잘못된 입력 ·
   export → 다른 PC IPC import), `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`,
   `tools/test_desktop_ui.mjs`(개발자 기능 → zip 만들기 → 끌어 넣기 채널로 가져오기) 통과. Windows 실기 끌어 넣기 · 실제 장비 캐시는 미검증.

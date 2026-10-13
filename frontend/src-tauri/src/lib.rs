@@ -114,9 +114,10 @@ pub fn run() {
                 };
                 if let Some(message) = message {
                     let drops = window.app_handle().state::<Drops>();
+                    // `;` drops the lock guard before `drops` (E0597 otherwise).
                     if let Ok(slot) = drops.0.lock() {
                         if let Some(channel) = slot.as_ref() { let _ = channel.send(message); }
-                    }
+                    };
                 }
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
