@@ -467,6 +467,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   로컬 Temp 에서만 풀고 package-manifest 검증 후 재압축 게시). **앱이 GitHub 링크에서 직접 받지 않는다**:
   아티팩트 링크는 GitHub 로그인(토큰 보관) 필요 + 서명 없는 exe 의 인터넷 다운로드→실행 파일 교체는
   Defender 다운로더 탐지 위험(2026-08 삭제 사고와 같은 유형). 런타임 인터넷 금지 원칙 유지.
+- **웹 앱 자동 업데이트 교체 = 엔진 exe 자신(스크립트 파일 금지, 2026-10 Para #31)**: v12.7.16 까지 쓰던 숨김
+  `web_update.bat`(Temp, `ping` 대기 · `rmdir /s /q` · `start` · `del "%~f0"` 자기 삭제)이 Defender 클라우드 ML 에
+  `Trojan:Script/Wacatac.F!ml` 로 차단됐다. → `desktop_appupdate.prepare` 는 검증한 새 `sidecar\` 를 업데이트 Temp 의
+  `swapper\` 로 복사하고 `swap.json` 을 쓴다. `launch` = `swapper\Camtek_AOI_engine.exe --apply-update`
+  (`tools/desktop_engine_entry.py` 맨 앞 분기 → `param_manager/desktop_swap.py`). 경로 인자 없음 — 계획은
+  `<실행 엔진 폴더>/../swap.json` 에서만 읽고 `<install>`→`.prev`, `.new`→`<install>` 고정 형태만 허용.
+  .bat/.cmd/.ps1/.vbs 를 새로 만들어 실행하는 코드를 다시 넣지 말 것(`tests/test_desktop_appupdate.py` 가 고정).
+  exe 파일 속성에도 회사 · 설명 · 저작권 칸을 채운다(`tools/set_version.py`, `tauri.conf.json` bundle publisher/copyright).
 
 ### 최신 재개: 문서 작업 worker (2026-09-22 KST)
 

@@ -1,4 +1,4 @@
-"""Web app self-update: zip publish to the program folder, check, verified staging, swap script."""
+"""Web app self-update: zip publish to the program folder, check, verified staging, swap helper (no script)."""
 import json
 import os
 import sys
@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from param_manager import desktop_appupdate as au, desktop_package, updater
+from param_manager import desktop_appupdate as au, desktop_package, desktop_swap, updater
 
 
 def make_package(base, version, marker="a"):
@@ -74,11 +74,57 @@ class AppUpdateTests(unittest.TestCase):
         self.assertEqual(staged, install.parent / "Camtek_AOI_manager.new")
         self.assertTrue((staged / "sidecar" / "Camtek_AOI_engine.exe").is_file())
         self.assertEqual((install / "Camtek_AOI_manager.exe").read_bytes(), b"old")   # untouched until exit
-        script = Path(out["script"]).read_bytes().decode("cp949")
-        self.assertIn('move "%APP%" "%PREV%.tmp"', script)                            # rename = exit signal
-        self.assertNotIn("timeout", script.lower())
-        self.assertNotIn("tasklist", script.lower())
-        self.assertTrue(out["script"].startswith(str(self.local)))
+        # Para #31: no .bat/.cmd/.ps1 written (Defender flagged web_update.bat as Trojan:Script/Wacatac).
+        temp = Path(out["temp"])
+        self.assertTrue(str(temp).startswith(str(self.local)))
+        self.assertEqual([p for p in temp.rglob("*") if p.suffix.lower() in (".bat", ".cmd", ".ps1", ".vbs")], [])
+        helper = Path(out["helper"])
+        self.assertEqual(helper, temp / "swapper" / "Camtek_AOI_engine.exe")       # copy of the NEW engine
+        self.assertEqual(helper.read_bytes(), b"engine")
+        self.assertEqual(Path(out["plan"]), helper.parent.parent / desktop_swap.PLAN)  # where the helper looks
+        plan = desktop_swap.read_plan(out["plan"])
+        self.assertEqual((plan["install"], plan["staged"]), (install, staged))
+        with patch.object(au.subprocess, "Popen") as popen:
+            au.launch(out)
+        self.assertEqual(popen.call_args.args[0], [out["helper"], "--apply-update"])
+
+    def test_swap_helper_renames_folders_and_restarts(self):
+        apps = self.tmp / "apps"
+        install, staged, prev = apps / "App", apps / "App.new", apps / "App.prev"
+        for folder, marker in ((install, b"old"), (staged, b"new"), (prev, b"older")):
+            folder.mkdir(parents=True)
+            (folder / "Camtek_AOI_manager.exe").write_bytes(marker)
+        desktop_swap.write_plan(self.tmp, install, staged, prev, 5)
+        plan = desktop_swap.read_plan(self.tmp / desktop_swap.PLAN)
+        started = []
+        self.assertEqual(desktop_swap.swap(plan, sleep=lambda s: None, start=started.append), 0)
+        self.assertEqual((install / "Camtek_AOI_manager.exe").read_bytes(), b"new")
+        self.assertEqual((prev / "Camtek_AOI_manager.exe").read_bytes(), b"old")     # one rollback copy
+        self.assertFalse(staged.exists())
+        self.assertEqual(started, [install / "Camtek_AOI_manager.exe"])
+        # App never exits (rename keeps failing) → staged copy dropped, nothing started.
+        staged.mkdir()
+        (staged / "Camtek_AOI_manager.exe").write_bytes(b"newer")
+        plan = desktop_swap.read_plan(self.tmp / desktop_swap.PLAN)
+        started.clear()
+        with patch.object(desktop_swap.os, "rename", side_effect=OSError("busy")):
+            self.assertEqual(desktop_swap.swap(plan, sleep=lambda s: None, start=started.append), 2)
+        self.assertFalse(staged.exists())
+        self.assertEqual(started, [])
+        self.assertEqual((install / "Camtek_AOI_manager.exe").read_bytes(), b"new")
+
+    def test_swap_plan_accepts_only_the_fixed_rename_pattern(self):
+        apps = self.tmp / "apps"
+        install = apps / "App"
+        (apps / "App.new").mkdir(parents=True)
+        (apps / "App.new" / "Camtek_AOI_manager.exe").write_bytes(b"new")
+        for staged, prev in ((apps / "Other", apps / "App.prev"), (apps / "App.new", self.tmp / "elsewhere")):
+            desktop_swap.write_plan(self.tmp, install, staged, prev)
+            with self.assertRaises(ValueError):
+                desktop_swap.read_plan(self.tmp / desktop_swap.PLAN)
+        (self.tmp / desktop_swap.PLAN).write_text(json.dumps({"install": "C:/x", "staged": "", "prev": "", "wait": 1, "cmd": "x"}))
+        with self.assertRaises(ValueError):
+            desktop_swap.read_plan(self.tmp / desktop_swap.PLAN)
 
     def test_prepare_rejects_tampered_or_unsafe_zip(self):
         release = self.publish("8.1.0")

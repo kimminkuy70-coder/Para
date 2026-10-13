@@ -25,6 +25,10 @@ def main():
             assert f"filevers={version.quad(expected)}" in resource
             assert updater.exe_filename(expected) in resource
             assert f"ProductVersion', '{expected}'" in resource
+            # Para #31: 회사 · 설명 · 저작권 칸이 비지 않게(서명 없는 exe 의 Defender ML 오탐 완화).
+            for field in ('CompanyName', 'FileDescription', 'LegalCopyright'):
+                assert f"StringStruct('{field}', '" in resource, field
+            assert resource.isascii()
         for bad in ['8.0.0.0.1', '65536.0', '8.x', '']:
             try:
                 version.normalize(bad)

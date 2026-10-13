@@ -2,6 +2,12 @@
 import sys
 import time
 
+# Self-update folder swap (Para #31): a Temp copy of the new engine started with this one
+# fixed flag does the swap instead of a .bat script. No path argument (see desktop_swap).
+if __name__ == '__main__' and sys.argv[1:] == ['--apply-update']:
+    from param_manager import desktop_swap
+    raise SystemExit(desktop_swap.main())
+
 STARTED = time.perf_counter()          # before the heavy imports: start-up timing
 from param_manager import desktop_diag  # noqa: E402 - stdlib-only; must time the imports below
 desktop_diag.engine_started()

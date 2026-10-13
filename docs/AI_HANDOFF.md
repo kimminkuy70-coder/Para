@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #31 Windows Defender `Trojan:Script/Wacatac.F!ml` 차단 → 업데이트 교체 스크립트 제거 (2026-10-13 KST, `version_v12`)
+
+- GitHub 이슈 #31: v12.7.16 을 받자 Defender 가 `Trojan:Script/Wacatac.F!ml` 로 막음. 원인 설명 + 버그 픽스 요청.
+- 분석: v12.5.16 → v12.7.16 배포 zip 차이는 우리 코드 pyc 6개 + exe 버전 정보뿐(스크립트 파일 없음, PyInstaller 부트로더 동일).
+  `Script` + `!ml` = 클라우드 ML 의 스크립트 판정 → 가장 유력한 대상은 앱 안 자동 업데이트가 Temp 에 만들어 숨김 실행하던
+  `web_update.bat`(`ping` 대기 · 폴더 이동 · `rmdir /s /q` · `start` · `del "%~f0"` 자기 삭제 = 악성 배치의 전형적인 모양).
+  사용자의 Defender 보호 기록 '영향을 받는 항목' 경로로 확정 필요(이슈에 질문함).
+- 수정: `param_manager/desktop_swap.py`(새) — 폴더 교체를 엔진 exe 가 직접(`--apply-update`, 경로 인자 없음, 계획 `swap.json` 고정 형태만).
+  `desktop_appupdate.prepare` = 새 sidecar 를 Temp `swapper\` 로 복사 + `swap.json`, `launch` = 그 엔진 실행. `build_swap_script` 삭제.
+  `tools/desktop_engine_entry.py` 맨 앞에 `--apply-update` 분기. 레거시 tkinter `updater.py` 의 .bat 은 그대로(웹 앱 미사용).
+- PE 메타데이터: `tools/set_version.py` 가 CompanyName · FileDescription · LegalCopyright 를 채움(실제 회사 사칭 없이 제품 이름),
+  `tauri.conf.json` bundle `publisher` · `copyright` · `shortDescription`.
+- 주의: 이 수정은 **v12.7.17 이 설치된 뒤의 다음 업데이트부터** 적용. v12.7.16 이하에서 앱 안 업데이트로 v12.7.17 로 갈 때는 옛 .bat 이
+  쓰이므로, 이번 한 번은 zip 을 직접 받아 폴더째 교체(직접 설치) 권장.
+- 검증: `tests/test_desktop_appupdate.py`(스크립트 파일 없음 · 헬퍼 = 새 엔진 복사본 · 교체/실패 복구 · 계획 형태 검증),
+  `tests/test_build_version.py`, `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패). Windows 실기 교체 · Defender 판정은 미검증.
+
 ## 최신 재개 — Para #30 CAMTEK / KLA 회사 탭 + KLA 자재 찾기 (2026-10-13 KST, `version_v12`)
 
 - GitHub 이슈 #30: KLA 장비는 폴더 구조가 달라 새로 만든다. `J:\2.K2\2025-05-21\RINT63@6324\2025-05-21-09-08_16` = 장비(2.K2) \ 날짜 \ Lot \

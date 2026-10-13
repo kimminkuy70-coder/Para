@@ -2,7 +2,7 @@
 
 Same channel and rules as the tkinter updater (`updater.py`): the program
 folder next to the save folder, no internet, local Temp download, SHA-256
-check, a detached script that swaps after the app exits, and a way back.
+check, a detached helper that swaps after the app exits, and a way back.
 What differs is the payload — the web app is a *folder* (app exe + `sidecar\\`
 engine, hundreds of files), so:
 
@@ -13,13 +13,18 @@ engine, hundreds of files), so:
   The latest two zips stay for rollback (`KEEP_VERSIONS`).
 * **Apply = side-by-side folder swap.** The zip is copied to local Temp and
   verified, extracted next to the install folder (`<install>.new`) and checked
-  file by file against its `package-manifest.json`. A script then waits until
+  file by file against its `package-manifest.json`. A helper then waits until
   the install folder can be renamed — a folder with a running exe or engine
   inside cannot be, so a successful rename *is* the "app has exited" signal
   (the folder counterpart of the tkinter "old exe deleted" rule) — renames it to
   `<install>.prev` (one rollback copy), moves the new folder in place and starts
   it. The install path never changes, so shortcuts keep working. If anything
   fails the old folder is restored and started again.
+* **The helper is the new engine itself, not a script (Para #31).** The old
+  hidden, self-deleting `web_update.bat` was blocked by Windows Defender as
+  `Trojan:Script/Wacatac.F!ml`. `prepare` copies the verified new `sidecar\`
+  to the update's Temp folder (`swapper\`) and writes `swap.json`; `launch`
+  starts `swapper\Camtek_AOI_engine.exe --apply-update` (see `desktop_swap`).
 """
 from __future__ import annotations
 
@@ -34,16 +39,17 @@ import tempfile
 import zipfile
 from datetime import datetime
 
-from . import __version__, desktop_package, localdirs, updater
+from . import __version__, desktop_package, desktop_swap, localdirs, updater
 
 WEB_MANIFEST = "버전정보_web.json"
 ZIP_PREFIX = "Camtek_AOI_manager_web_v"
 APP_EXE = "Camtek_AOI_manager.exe"
 ENGINE_DIR = "sidecar"
 ENGINE_EXE = "Camtek_AOI_engine.exe"
+SWAPPER_DIR = "swapper"
 KEEP_VERSIONS = 2
 MAX_ZIP = 1024 * 1024 * 1024
-WAIT_SECONDS = 120
+WAIT_SECONDS = desktop_swap.WAIT_SECONDS
 
 
 # ---- where are we installed -----------------------------------------------------
@@ -228,44 +234,8 @@ def _safe_extract(zip_path: str, dest: Path) -> None:
         zf.extractall(dest)
 
 
-def build_swap_script(install: Path, staged: Path, prev: Path) -> str:
-    """Folder swap (see module doc). ASCII-only body; paths are written by
-    updater._write_bat in the system ANSI code page. No `timeout` (detached
-    runs have no console) — `ping` waits. No PID matching — the folder rename is
-    the exit signal."""
-    exe = install / APP_EXE
-    lines = [
-        "@echo off",
-        f'set "APP={install}"',
-        f'set "NEW={staged}"',
-        f'set "PREV={prev}"',
-        "set /a N=0",
-        ':wait',
-        'move "%APP%" "%PREV%.tmp" >nul 2>&1 && goto moved',
-        "set /a N+=1",
-        f"if %N% GEQ {WAIT_SECONDS} goto giveup",
-        "ping -n 2 127.0.0.1 >nul",
-        "goto wait",
-        ":moved",
-        'move "%NEW%" "%APP%" >nul 2>&1 || goto restore',
-        'if exist "%PREV%" rmdir /s /q "%PREV%"',
-        'move "%PREV%.tmp" "%PREV%" >nul 2>&1',
-        f'start "" "{exe}"',
-        "goto end",
-        ":restore",
-        'move "%PREV%.tmp" "%APP%" >nul 2>&1',
-        f'start "" "{exe}"',
-        "goto end",
-        ":giveup",
-        'rmdir /s /q "%NEW%"',
-        ":end",
-        '(goto) 2>nul & del "%~f0"',
-    ]
-    return "\n".join(lines) + "\n"
-
-
 def prepare(save_dir: str, local_root: str) -> dict:
-    """Download, verify and stage the new version, then write the swap script.
+    """Download, verify and stage the new version, then prepare the swap helper.
     Nothing in the install folder changes until the app has exited."""
     install = install_dir()
     if install is None:
@@ -301,18 +271,26 @@ def prepare(save_dir: str, local_root: str) -> dict:
         shutil.rmtree(staged, ignore_errors=True)
         localdirs.drop(temp)
         raise
-    script = os.path.join(temp, "web_update.bat")
-    updater._write_bat(script, build_swap_script(install, staged, prev))
-    return dict(version=release["version"], script=script, temp=temp, install=str(install),
-                staged=str(staged), prev=str(prev))
+    # No script file (Para #31): a copy of the verified new engine does the swap, from Temp
+    # (a copy inside `<install>.new` would keep that folder busy and block its own move).
+    helper = Path(temp) / SWAPPER_DIR
+    try:
+        shutil.copytree(staged / ENGINE_DIR, helper)
+    except Exception:
+        shutil.rmtree(staged, ignore_errors=True)
+        localdirs.drop(temp)
+        raise
+    plan = desktop_swap.write_plan(temp, install, staged, prev, WAIT_SECONDS)
+    return dict(version=release["version"], helper=str(helper / ENGINE_EXE), plan=plan, temp=temp,
+                install=str(install), staged=str(staged), prev=str(prev))
 
 
 def launch(prepared: dict) -> None:
-    """Start the swap script detached, outside the install folder, then the UI exits."""
+    """Start the swap helper detached, outside the install folder, then the UI exits."""
     flags = 0
     if os.name == "nt":
         flags = 0x00000008 | 0x00000200 | 0x08000000   # DETACHED | NEW_PROCESS_GROUP | NO_WINDOW
-    subprocess.Popen(["cmd.exe", "/c", prepared["script"]], cwd=prepared["temp"], close_fds=True,
+    subprocess.Popen([prepared["helper"], desktop_swap.FLAG], cwd=prepared["temp"], close_fds=True,
                      creationflags=flags, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL)
 

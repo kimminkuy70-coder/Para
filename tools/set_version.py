@@ -35,6 +35,12 @@ VERSION_INFO = os.path.join(ROOT, "tools", "version_info.txt")
 
 APP_NAME = "Camtek_AOI_manager"
 EXE_STEM = "Camtek_AOI_manager"
+# 파일 속성의 회사 · 설명 · 저작권(2026-10 Para #31). 서명 없는 exe 에 이 칸들이 비어 있으면
+# Windows Defender 클라우드 ML(`Trojan:Script/Wacatac.*!ml` 같은 `!ml` 판정)이 출처 불명
+# 파일로 더 의심한다. 실제 회사 이름을 사칭하지 않도록 제품 이름만 쓴다(ASCII).
+PUBLISHER = "Camtek AOI Manager"
+DESCRIPTION = "Camtek AOI Manager - AOI recipe/parameter management tool"
+COPYRIGHT = "Camtek AOI Manager internal tool"
 
 
 def current_version() -> str:
@@ -81,9 +87,11 @@ VSVersionInfo(
     mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[
     StringFileInfo([StringTable('040904B0', [
-        StringStruct('FileDescription', '{APP_NAME}'),
+        StringStruct('CompanyName', '{PUBLISHER}'),
+        StringStruct('FileDescription', '{DESCRIPTION}'),
         StringStruct('FileVersion', '{version}'),
         StringStruct('InternalName', '{EXE_STEM}'),
+        StringStruct('LegalCopyright', '{COPYRIGHT}'),
         StringStruct('OriginalFilename', '{EXE_STEM}_v{version}.exe'),
         StringStruct('ProductName', '{APP_NAME}'),
         StringStruct('ProductVersion', '{version}')])]),
