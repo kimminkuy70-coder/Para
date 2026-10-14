@@ -277,7 +277,7 @@ class TrayIcon:
         menu = user32.CreatePopupMenu()
         user32.AppendMenuW(menu, MF_STRING, ID_OPEN, "프로그램 열기")
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
-        user32.AppendMenuW(menu, MF_STRING, ID_EXIT, "자동 감시 종료")
+        user32.AppendMenuW(menu, MF_STRING, ID_EXIT, "자동 분석 및 취합 종료")
         pt = wintypes.POINT()
         user32.GetCursorPos(ctypes.byref(pt))
         # 메뉴가 바깥 클릭으로 닫히게 하려면 포그라운드로 올려야 한다(Win32 관례)

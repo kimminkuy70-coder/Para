@@ -94,7 +94,7 @@ tr.fail-row td{background:#fff7d6}tr.row-now td{background:#effaf5}
 .connection-box{display:flex;align-items:center;gap:8px}
 .update-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 24px;background:#ecfdf5;border-bottom:1px solid #a7f3d0;color:var(--ink);font-size:13px}.update-banner .changelog{margin:4px 0 0;color:var(--muted);white-space:pre-wrap}.update-banner .actions{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:1000px){.update-banner{flex-direction:column;align-items:flex-start}}
-/* 자동 감시: inline panels (not modal dialogs) and the notice list */
+/* 자동 분석 및 취합: inline panels (not modal dialogs) and the notice list */
 .edit-dialog.inline{display:block;position:static;width:auto;max-width:none;margin:16px 0;background:var(--surface,#fff)}
 button.pick-item{width:100%;background:transparent;border:0;border-bottom:1px solid #eef2f6;border-radius:0;text-align:left;cursor:pointer;min-height:0}
 button.pick-item:hover{background:#f2f6fa}
@@ -185,7 +185,7 @@ details.current-settings[open]>summary{margin-bottom:8px}
 .update-result td.hot{color:#9a3412;font-weight:700}
 .badge{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;background:#a3e635;color:#12244a;font-size:11px;font-weight:700}
 .source-choice input[type=radio]{width:16px;height:16px;margin:0;flex:none}
-/* 자동 감시: ON/OFF 스위치 · 현황표 · 최근 알림 고정 */
+/* 자동 분석 및 취합: ON/OFF 스위치 · 현황표 · 최근 알림 고정 */
 .onoff{min-width:84px;font-weight:800;letter-spacing:.06em;border-radius:999px;padding:8px 18px;border:2px solid transparent}
 .onoff.on{background:#1f9d55;color:#fff;border-color:#1f9d55}
 .onoff.off{background:#dc2626;color:#fff;border-color:#dc2626}
@@ -194,7 +194,7 @@ details.current-settings[open]>summary{margin-bottom:8px}
 .watch-status th{width:170px;text-align:left;white-space:nowrap}
 .watch-status .open-path{margin:4px 0}
 .notice-panel .notice-list{max-height:200px;overflow:auto}
-/* 자동 감시 탭: 선택된 탭은 상단 메뉴처럼 초록 */
+/* 자동 분석 및 취합 탭: 선택된 탭은 상단 메뉴처럼 초록 */
 .watch-tabs button{border-radius:8px 8px 0 0;border-bottom:3px solid transparent}
 .watch-tabs button.active{color:var(--navy);background:#eafaf3;border-bottom-color:var(--lime)}
 /* 현황 표: 테두리·배경으로 구분 */

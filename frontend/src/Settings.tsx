@@ -10,9 +10,10 @@ import {useDev,setDevOn,saveDrafts,dropDrafts} from './devmode';
 import {DevHelp,DevOff} from './DevHelp';
 import {ScanBackupBar,useScanBackup} from './ScanBackup';
 import {startTour} from './Tour';
+import {requestBatchRunNow} from './batchAuto';
 import {KlaRootsSettings,useKlaState} from './KlaSettings';
 
-type Auto={enabled:boolean;interval_hours:number;last_run:string;last_result:string;next_run:string};
+type Auto={enabled:boolean;interval_hours:number;time?:string;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
 type State={save_dir:string;local_dir:string;aoi:Aoi[];batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string};
 type ExtraKind='report'|'scanresult';
@@ -20,6 +21,9 @@ type Edit={kind:'aoi'|'extra';machine:string;newMachine:string;path:string;orig?
 const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 폴더'],['aoi','AOI 장비 호기 루트'],['auto','Batch Report 분석 주기 설정'],['about','정보']];
 const EXTRA_LABEL:Record<ExtraKind,string>={report:'Batch Report',scanresult:'Scanresult'};
 const periodLabel=(h:number)=>h%24===0?(h===24?'하루 1회 (24시간)':h===168?'일주일 1회':`${h/24}일마다`):`${h}시간마다`;
+// 하루 단위 주기의 실행 시각(#33): 시 00~23, 분 5분 단위.
+const HOURS=Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
+const MINUTES=Array.from({length:12},(_,i)=>String(i*5).padStart(2,'0'));
 const baseName=(p:string)=>p.split(/[\\/]/).filter(Boolean).pop()||p;
 // 이전 화면 이름('report'·'scan')으로 들어와도 통합 탭을 연다. 'kla' = AOI 장비 호기 루트 › KLA(#32).
 const subOf=(s?:string)=>s==='report'||s==='scan'||s==='kla'?'aoi':s||'save';
@@ -104,6 +108,10 @@ export function Settings(){
     catch(e){fail(e);}finally{setBusy(false);}
   }
 
+  // Batch Report 자동 분석 실행 시각(#33) — "HH:MM" 5분 단위, 빈 문자열 = 지정 안 함.
+  const autoTime=st?.batch?.time||'';
+  const saveTime=(time:string)=>req('config_set_batch_auto',{enabled:!!st?.batch_auto,time},time?`실행 시각을 ${time} 으로 저장했습니다`:'실행 시각 지정을 껐습니다');
+
   // '수정': one row at a time becomes editable (machine name + folder).
   const [edit,setEdit]=useState<Edit>();
   const aois=st?.aoi||[];
@@ -177,7 +185,7 @@ export function Settings(){
         <tr><th>AOI 장비 호기 루트 · KLA</th><td>{kla?(kla.roots.length?`${kla.roots.length}개 장비 · ${kla.roots.map(r=>r.name).join(', ')}`:'없음'):'—'}
           {kla&&kla.roots.length>0&&<span className="hint"> · Defect 이미지 백업본 {kla.backup?`포함(백업 폴더 ${kla.roots.reduce((n,r)=>n+r.backups.length,0)}개)`:'제외'}</span>}</td>
           <td><button className="linklike" onClick={()=>{setSub('aoi');setAoiVendor('KLA');}}>보기</button></td></tr>
-        <tr><th>Batch Report 자동 분석</th><td>{st.batch_auto?`켜짐 · ${periodLabel(st.batch?.interval_hours??24)}`:'꺼짐'}</td>
+        <tr><th>Batch Report 자동 분석</th><td>{st.batch_auto?`켜짐 · ${periodLabel(st.batch?.interval_hours??24)}${st.batch?.time&&(st.batch.interval_hours??24)%24===0?` · ${st.batch.time}`:''}`:'꺼짐'}</td>
           <td><button className="linklike" onClick={()=>setSub('auto')}>보기</button></td></tr>
         <tr><th>설정 파일</th><td><code>{st.config_file||'—'}</code></td><td/></tr>
       </tbody></table></details>}
@@ -194,7 +202,7 @@ export function Settings(){
         <tr><th style={{width:170}}>공유 문서</th><td>장비 IP 주소 · 참고자료 · 특이사항 · 변환계수 · 장비화면이름 (.xlsx) — 처음 지정하면 장비 IP·참고자료·특이사항이 자동 생성됩니다</td></tr>
         <tr><th>Recipe 양식</th><td><code>양식\{'{레시피}'}\{'{생성시각}'}\</code> — 확정 양식 1개 + 관련파일(원본·수정본)</td></tr>
         <tr><th>파라미터 값 취합</th><td><code>파라미터 값 취합\파라미터 값 취합_{'{시각}'}.xlsx</code> — Recipe 업데이트 1회당 1개</td></tr>
-        <tr><th>자동 감시</th><td><code>감시설정.json</code> · <code>자동감시\</code> 변경보고서(변경이 있을 때만)·감시로그</td></tr>
+        <tr><th>자동 분석 및 취합</th><td><code>감시설정.json</code> · <code>자동감시\</code> 변경보고서(변경이 있을 때만)·감시로그</td></tr>
         <tr><th>동시 접속 정보</th><td><code>_세션\</code> 접속자·작업 잠금, 편집 중인 문서 옆 <code>.editlock</code></td></tr>
         <tr><th>새 버전 게시</th><td>저장 폴더 <b>옆</b>의 <code>프로그램\</code> 폴더(개발자가 게시한 설치 파일)</td></tr>
       </tbody></table>
@@ -213,7 +221,7 @@ export function Settings(){
     {sub==='aoi'&&aoiVendor==='CAMTEK'&&<>
       <h3>AOI 장비 호기 루트 등록</h3>
       <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
-        <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사 · 감시 · Batch Report 찾기가 읽습니다. 장비 폴더는 읽기만 합니다.</p>
+        <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사 · 분석 및 취합 · Batch Report 찾기가 읽습니다. 장비 폴더는 읽기만 합니다.</p>
       <ScanBackupBar note="Scanresult 를 찾는 모든 기능에 같이 적용됩니다."/>
       {aois.length>0&&<table className="tbl" data-tour="settings:aoi-table" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th/></tr></thead>
         <tbody>{aois.map(aoiRow)}</tbody></table>}
@@ -248,7 +256,20 @@ export function Settings(){
       <div className="form-filter" style={{marginTop:12}}>
         <label className="field" style={{width:220}}>분석 주기<select disabled={busy||!st} value={st?.batch?.interval_hours??24}
           onChange={e=>req('config_set_batch_auto',{enabled:!!st?.batch_auto,interval_hours:Number(e.target.value)},'분석 주기를 저장했습니다')}>
-          {(st?.batch_intervals||[24]).map(h=><option key={h} value={h}>{periodLabel(h)}</option>)}</select></label></div>
+          {(st?.batch_intervals||[24]).map(h=><option key={h} value={h}>{periodLabel(h)}</option>)}</select></label>
+        {(st?.batch?.interval_hours??24)%24===0&&<>
+          <label className="field" style={{width:150}}>실행 시각 (시)<select disabled={busy||!st} value={autoTime?autoTime.slice(0,2):''}
+            onChange={e=>saveTime(e.target.value?`${e.target.value}:${autoTime?autoTime.slice(3):'00'}`:'')}>
+            <option value="">지정 안 함</option>{HOURS.map(h=><option key={h} value={h}>{h}시</option>)}</select></label>
+          <label className="field" style={{width:130}}>분 (5분 단위)<select disabled={busy||!st||!autoTime} value={autoTime?autoTime.slice(3):'00'}
+            onChange={e=>saveTime(`${autoTime.slice(0,2)}:${e.target.value}`)}>
+            {MINUTES.map(m=><option key={m} value={m}>{m}분</option>)}</select></label></>}
+        <button type="button" disabled={busy||!st} style={{alignSelf:'flex-end'}} title="자동 분석이 꺼져 있어도 지난 조사 조건으로 바로 한 번 실행합니다"
+          onClick={requestBatchRunNow}>▶ 즉시 실행</button></div>
+      {(st?.batch?.interval_hours??24)%24===0&&<p className="hint">{autoTime
+        ?`${periodLabel(st?.batch?.interval_hours??24)} · ${autoTime} 에 실행합니다(그 시각에 앱이 꺼져 있었으면 앱을 켠 뒤 곧 실행).`
+        :'실행 시각을 지정하지 않으면 마지막 실행(또는 마지막 조사) 시각부터 주기가 지나면 실행합니다.'}</p>}
+      <p className="hint">[▶ 즉시 실행]은 자동 분석을 꺼 둔 채로도 지난 조사 조건으로 지금 한 번 분석합니다(Batch Report 분석 화면으로 이동).</p>
       <table className="tbl" style={{marginTop:12}}><tbody>
         <tr><td style={{width:140,fontWeight:700}}>마지막 실행</td><td>{st?.batch?.last_run||'—'}{st?.batch?.last_result?` · ${st.batch.last_result}`:''}</td></tr>
         <tr><td style={{fontWeight:700}}>다음 실행</td><td>{st?.batch_auto?(st?.batch?.next_run||'앱을 켜 두면 곧 실행'):'꺼짐'}</td></tr></tbody></table>

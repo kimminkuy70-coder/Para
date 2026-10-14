@@ -214,11 +214,11 @@ export function Recipe(){
     </dialog>
     <dialog ref={removeDialog} className="edit-dialog" onCancel={e=>{if(saving)e.preventDefault();else setRemoving(undefined);}}>{removing&&<>
       <h2>레시피 삭제</h2>
-      <p className="warn">⚠ 모든 호기 공통으로 적용됩니다: 양식 폴더 전체와 최신 취합본의 그 레시피 시트, 자동 감시 설정의 그 레시피.</p>
+      <p className="warn">⚠ 모든 호기 공통으로 적용됩니다: 양식 폴더 전체와 최신 취합본의 그 레시피 시트, 자동 분석 및 취합 설정의 그 레시피.</p>
       <p className="hint">양식 폴더는 로컬 '삭제보관'으로 옮겨 되돌릴 수 있습니다. 과거 취합본·변환계수.xlsx 는 그대로 둡니다.</p>
       <label className="field">삭제할 레시피<select value={removing.recipe||''} disabled={saving} onChange={e=>void previewRemove(e.target.value)}><option value="">선택…</option>{removing.recipes.map(r=><option key={r}>{r}</option>)}</select></label>
       {removing.recipe&&<><p>양식 버전 {removing.versions}개 · 파일 {removing.files}개 · {((removing.bytes||0)/1024).toFixed(0)} KB{removing.latest?` · 최신 취합본 ${removing.latest}`:''}</p>
-        {!!removing.watched?.length&&<p className="warn">자동 감시에서 제외될 호기: {removing.watched.join(', ')}</p>}
+        {!!removing.watched?.length&&<p className="warn">자동 분석 및 취합에서 제외될 호기: {removing.watched.join(', ')}</p>}
         <label className="field">확인을 위해 레시피 이름 '{removing.recipe}' 입력<input value={removing.confirm} disabled={saving} onChange={e=>setRemoving(r=>r&&{...r,confirm:e.target.value})}/></label></>}
       <div className="dialog-actions"><button disabled={saving} onClick={()=>setRemoving(undefined)}>취소</button>
         <button className="primary danger" disabled={saving||!removing.recipe||removing.confirm!==removing.recipe} onClick={runRemove}>{saving?'삭제 중…':'삭제'}</button></div></>}

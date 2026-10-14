@@ -3,6 +3,7 @@ import {desktop,errorText,defaults,pickFile,onFileDrop,type Configuration,type O
 import {notify,fail} from './ui';
 import {OpenPath,openPath} from './OpenPath';
 import {goToSettings} from './nav';
+import {takeBatchRunNow} from './batchAuto';
 import {TipLayer,Seg} from './BatchCharts';
 import {LotTab} from './BatchLot';
 import {LotWindow,type Drafts} from './BatchLotWindow';
@@ -140,22 +141,38 @@ export function Batch({active}:{active:boolean}){
       if(automatic){autoBlocked.current=true;notify('Batch Report 자동 갱신 실패: '+errorText(e),'error');}else fail(e);
     }finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);}
   }
-  // 하루 1회 자동 분석(설정 › Batch Report 분석 주기 설정): 지난 조사 조건으로, 캐시는 늘 재사용.
+  // 자동 분석(설정 › Batch Report 분석 주기 설정): 지난 조사 조건으로, 캐시는 늘 재사용.
+  // 즉시 실행(#33)도 같은 조건으로 — 자동 분석이 꺼져 있어도 한 번 돈다.
+  async function runLast(now:boolean){
+    if(runningRef.current||restoringRef.current){if(now)notify('이미 조사 중입니다. 끝난 뒤 다시 누르세요.','info');return;}
+    const data=(await desktop.request('configuration').promise) as Configuration;
+    if(!now&&(!data.auto?.enabled||!data.auto.due||runningRef.current))return;
+    const ids=new Set(data.machines.map(m=>m.id)),seen=new Set<string>();
+    const payload=((data.last?.targets||[]) as Target[]).filter(t=>ids.has(t.machine)&&!seen.has(t.machine)&&seen.add(t.machine))
+      .map(({machine,query,start,end,names})=>names&&names.length?{machine,query:query||'',start:start||'',end:end||'',names}:{machine,query:query||'',start:start||'',end:end||''});
+    if(!payload.length){if(now)notify('지난 조사 조건이 없습니다. 먼저 호기 · 기간을 고르고 [조사 시작]을 한 번 누르세요.','error');return;}
+    const metrics=(data.metrics?.map(m=>m.id)||defaults.metrics) as Options['metrics'];
+    if(now){autoBlocked.current=false;notify('Batch Report 분석을 지금 실행합니다(지난 조사 조건).','info');}
+    await launch(payload,{...defaults,...data.last?.options,metrics,reuse:true},!now);
+  }
+  const runLastRef=useRef(runLast);runLastRef.current=runLast;
   useEffect(()=>{
     const timer=window.setInterval(async()=>{
       if(runningRef.current||restoringRef.current||autoBlocked.current)return;
-      try{
-        const data=(await desktop.request('configuration').promise) as Configuration;
-        if(!data.auto?.enabled||!data.auto.due||runningRef.current)return;
-        const ids=new Set(data.machines.map(m=>m.id)),seen=new Set<string>();
-        const payload=((data.last?.targets||[]) as Target[]).filter(t=>ids.has(t.machine)&&!seen.has(t.machine)&&seen.add(t.machine))
-          .map(({machine,query,start,end,names})=>names&&names.length?{machine,query:query||'',start:start||'',end:end||'',names}:{machine,query:query||'',start:start||'',end:end||''});
-        if(!payload.length)return;
-        const metrics=(data.metrics?.map(m=>m.id)||defaults.metrics) as Options['metrics'];
-        await launch(payload,{...defaults,...data.last?.options,metrics,reuse:true},true);
-      }catch{/* engine busy with another screen: try again next minute */}
+      try{await runLastRef.current(false);}catch{/* engine busy with another screen: try again next minute */}
     },60000);
     return()=>window.clearInterval(timer);
+  },[]);
+  async function runNow(){
+    // 화면을 열 때 지난 결과를 복원하는 중이면 끝날 때까지 기다렸다 실행한다.
+    for(let i=0;i<600&&restoringRef.current;i++)await new Promise(r=>window.setTimeout(r,100));
+    try{await runLastRef.current(true);}catch(e){fail(e);}
+  }
+  useEffect(()=>{
+    const go=()=>{if(takeBatchRunNow())void runNow();};
+    go();
+    window.addEventListener('para:batch-run-now',go);
+    return()=>window.removeEventListener('para:batch-run-now',go);
   },[]);
   async function cancel(){if(job.current===undefined)return;setCancelSent(true);try{await desktop.request('cancel',{job:job.current}).promise;}catch(e){fail(e);setCancelSent(false);}}
 
@@ -302,7 +319,7 @@ export function Batch({active}:{active:boolean}){
         <p className="scope-status" role="status" aria-live="polite">{status}</p>
         {changed&&!running&&<p className="hint" style={{color:'#8a5a00'}}>조사 범위를 바꿨습니다 — [조사 시작]을 눌러야 아래 결과에 반영됩니다. 지금 결과는 {applied?.machines.length}대 · {applied?.start||'처음'} ~ {applied?.end||'끝'} 기준입니다.</p>}
         {running&&<div className="progress3" role="progressbar" aria-label="조사 중" aria-valuenow={pct}><span style={{width:(pct??35)+'%'}}/></div>}
-        <p className="hint">조사 범위는 어떻게 읽나요? <Q id="scope.logic"/> · 자동 분석: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › Batch Report 분석 주기 설정]에서 바꿀 수 있습니다.</p>
+        <p className="hint">조사 범위는 어떻게 읽나요? <Q id="scope.logic"/> · 자동 분석: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › Batch Report 분석 주기 설정]에서 바꿀 수 있습니다. <button type="button" disabled={!config||running||restoring} onClick={()=>void runNow()} title="자동 분석이 꺼져 있어도 지난 조사 조건으로 바로 한 번 실행">▶ 즉시 실행</button></p>
 
         {v?.errors&&v.errors.length>0&&<details className="more"><summary>읽기 오류 {v.errors.length}건</summary><div className="table-scroll" style={{maxHeight:240,marginTop:8}}><table className="t-compact">
           <thead><tr><th>호기</th><th>Report</th><th>오류</th></tr></thead><tbody>{v.errors.map((e,i)=><tr key={i}><td>{e[0]}</td><td>{e[1]}</td><td>{e[2]}</td></tr>)}</tbody></table></div></details>}

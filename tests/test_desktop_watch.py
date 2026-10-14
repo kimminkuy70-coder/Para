@@ -227,7 +227,7 @@ class SchedulerTests(unittest.TestCase):
         frames = [json.loads(l)["notice"] for l in out.getvalue().decode().splitlines() if '"notice"' in l]
         live = [f for f in frames if f.get("live")]
         self.assertEqual([f["summary"] for f in live], ["[1/2] AOI-01 설정 파일 복사 중…"])
-        self.assertEqual(live[0]["title"], "파라미터 자동 감시 — 진행 중")
+        self.assertEqual(live[0]["title"], "파라미터 자동 분석 및 취합 — 진행 중")
         session.close()
 
 

@@ -26,10 +26,10 @@ const SUBTITLE: Record<string,string> = {
 // Batch Report 분석 stays mounted too: its results, Lot window and unsaved developer choices
 // survive a visit to 설정 (where the developer toggle lives).
 import {TourLayer} from './Tour';
-const KEEP = ['Recipe 관리','Commonality 조사','자동 감시','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','KLA 자재 찾기'];
+const KEEP = ['Recipe 관리','Commonality 조사','자동 분석 및 취합','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','KLA 자재 찾기'];
 // 맨 위 탭(#32): CAMTEK · KLA · 설정 · 메모. CAMTEK / KLA = 장비 회사별 기능 묶음(#30, 아래 기능 탭 줄),
 // 설정 · 메모 = 회사와 관계없는 공통 탭이라 회사 묶음 밖에 따로 둔다(아래 기능 탭 줄 없음).
-const VENDORS = {CAMTEK:['Recipe 관리','자동 감시','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기'],
+const VENDORS = {CAMTEK:['Recipe 관리','자동 분석 및 취합','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기'],
   KLA:['KLA 자재 찾기']} as const;
 type Vendor = keyof typeof VENDORS;
 const COMMON = ['설정','메모'] as const;
@@ -88,14 +88,14 @@ function App(){
       const w=(await desktop.request('watch_status').promise).watch as {param:boolean;commonality:boolean;notices:WatchNotice[]};
       setNotices(w.notices);
       const on=w.param||w.commonality;
-      await setBackground(on,on?`Para 자동 감시 실행 중 — 장비 ${w.param?'✓':'✗'} · Commonality ${w.commonality?'✓':'✗'}${lastNotice.current?` · 최근: ${lastNotice.current}`:''}`:'');
+      await setBackground(on,on?`Para 자동 분석 및 취합 실행 중 — 장비 ${w.param?'✓':'✗'} · Commonality ${w.commonality?'✓':'✗'}${lastNotice.current?` · 최근: ${lastNotice.current}`:''}`:'');
     }catch{/* engine not ready: the next change or reconnect syncs again */}
   }
   useEffect(()=>{
     const off=desktop.onNotice(n=>{
       setNotices(old=>mergeNotice(old,n));
       if(!n.live)lastNotice.current=n.summary;
-      // 진행 과정(시작·진행 중·변경 없음)은 [자동 감시 › 최근 알림]에만, 변경·새 S/M·실패는 팝업도.
+      // 진행 과정(시작·진행 중·변경 없음)은 [자동 분석 및 취합 › 최근 알림]에만, 변경·새 S/M·실패는 팝업도.
       if(!n.quiet)notify(`${n.title}: ${n.summary}`,n.kind.endsWith('_failed')?'error':'info');
       if(!n.live)void syncWatch();
     });

@@ -39,8 +39,8 @@ BUSY_LABEL = {'batch': 'Batch Report 분석', 'recipe': 'Recipe 값 확인', 'do
               'formnew': '신규 Recipe 만들기',
               'commonality': 'Commonality 결과', 'cmsurvey': 'Commonality 계획 확인', 'history': '레시피 날짜별 비교하기',
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
-              'pwatch': '파라미터 감시 설정', 'cmwatch': 'Commonality 감시', 'equipment': '장비(원본 폴더) 읽기',
-              'watch': '자동 감시 회차', 'colorgray': 'Color·Gray 매칭', 'wafermap': 'Wafer Map 수정하기',
+              'pwatch': '파라미터 분석 및 취합 설정', 'cmwatch': 'Commonality 분석 및 취합', 'equipment': '장비(원본 폴더) 읽기',
+              'watch': '자동 분석 및 취합 회차', 'colorgray': 'Color·Gray 매칭', 'wafermap': 'Wafer Map 수정하기',
               'batchexport': 'Batch Report Excel 저장', 'kla': 'KLA 자재 찾기'}
 METHODS = {"contract", "configuration", "batch_reports", "investigate", "batch_restore", "batch_view", "batch_lot", "batch_raw", "batch_choices", "batch_find", "batch_find_load", "batch_aggregate", "batch_export", "batch_compare_recipes", "batch_compare", "batch_compare_export", "batch_cache_export", "batch_cache_import", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_set_scan_backup", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_connections", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "kla_state", "kla_set_roots", "kla_set_backup", "kla_search", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
@@ -271,7 +271,7 @@ class Session:
         allowed.update(config_state=set(), config_set_save_dir={'path'},
                        config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
                        config_remove={'kind','machine'}, config_edit_root={'kind','machine','new_machine','path'}, open_path={'path','reveal'},
-                       config_set_batch_auto={'enabled','interval_hours'}, config_set_extra_paths={'machine','paths'},
+                       config_set_batch_auto={'enabled','interval_hours','time'}, config_set_extra_paths={'machine','paths'},
                        config_set_aoi_root={'machine','path'}, config_edit_aoi_root={'machine','new_machine','path'},
                        config_remove_aoi={'machine'}, config_set_aoi_extra={'machine','kind','paths'},
                        config_set_hide_kla={'enabled'}, config_set_scan_backup={'enabled'}, config_local_state=set(), config_set_local_dir={'path'},
@@ -545,7 +545,7 @@ class Session:
         elif method == 'watch_status':
             # Reads the watch settings in the (OneDrive) save folder: never on the input
             # thread, or a slow OneDrive read at start-up delays every other screen.
-            bg(rid, 'watch', self.watch_status, '자동 감시 상태를 읽지 못했습니다.', ('watchstatus',))
+            bg(rid, 'watch', self.watch_status, '자동 분석 및 취합 상태를 읽지 못했습니다.', ('watchstatus',))
         elif method in ('pwatch_run', 'cmwatch_run'):
             # '▶ 즉시 확인': same cycle as the scheduler, on the watch thread.
             self.idle('equipment')
@@ -558,9 +558,9 @@ class Session:
                       'pwatch_jobs': lambda: self.pwatch.jobs(params),
                       'pwatch_connections': lambda: self.pwatch.connections(params)}
             if method in ('pwatch_save', 'pwatch_set_path', 'pwatch_copy_paths') and self.watching == 'param':
-                raise ValueError('감시 회차가 끝난 뒤 설정을 바꾸세요')
+                raise ValueError('분석 및 취합 회차가 끝난 뒤 설정을 바꾸세요')
             # Shared settings / equipment folder listing: off the input thread.
-            bg(rid, 'pwatch', action[method], '자동 감시 설정을 처리하지 못했습니다. 저장폴더와 장비 연결을 확인하세요.',
+            bg(rid, 'pwatch', action[method], '자동 분석 및 취합 설정을 처리하지 못했습니다. 저장폴더와 장비 연결을 확인하세요.',
                ('pwatch', 'equipment') if method in ('pwatch_copy_paths', 'pwatch_connections') else ('pwatch',))
         elif method.startswith('cmwatch_'):
             action = {'cmwatch_state': lambda: self.cmwatch.state(params), 'cmwatch_save': lambda: self.cmwatch.save(params),
@@ -573,12 +573,12 @@ class Session:
                       'cmwatch_confirm': lambda: self.cmwatch.confirm(params),
                       'cmwatch_cancel': lambda: self.cmwatch.cancel(params)}
             if method in ('cmwatch_save', 'cmwatch_confirm') and self.watching == 'cm':
-                raise ValueError('감시 회차가 끝난 뒤 설정을 바꾸세요')
+                raise ValueError('분석 및 취합 회차가 끝난 뒤 설정을 바꾸세요')
             self.idle('cmwatch')
             if method in ('cmwatch_page', 'cmwatch_edit', 'cmwatch_bulk', 'cmwatch_cancel'):
                 self.emit(rid, 'completed', cmwatch=action[method]())
             else:
-                bg(rid, 'cmwatch', action[method], 'Commonality 감시 작업을 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.',
+                bg(rid, 'cmwatch', action[method], 'Commonality 분석 및 취합 작업을 완료하지 못했습니다. 폴더 접근과 로컬 저장 공간을 확인하세요.',
                    ('cmwatch', 'equipment') if method in ('cmwatch_candidates', 'cmwatch_begin') else ('cmwatch',))
         elif method.startswith('cgm_'):
             cg = self.colorgray
@@ -825,7 +825,7 @@ class Session:
         self.watching = kind
         watch = self.pwatch if kind == 'param' else self.cmwatch
         key = 'pwatch' if kind == 'param' else 'cmwatch'
-        label = '파라미터 자동 감시' if kind == 'param' else 'Commonality 자동 감시'
+        label = '파라미터 자동 분석 및 취합' if kind == 'param' else 'Commonality 자동 분석 및 취합'
         # Every cycle leaves a trail in 최근 알림: 시작 → 진행 중(한 줄, 계속 바뀜) → 결과.
         # quiet = list only (no pop-up); changes, new S/M and failures still pop up.
         self.notify(dict(kind=f'{key}_start', watch=key, quiet=True, title=f'{label} — 시작',
@@ -850,7 +850,7 @@ class Session:
             except Exception as exc:  # noqa: BLE001 - reported below
                 if not isinstance(exc, ValueError):
                     log_failure(f'{kind}_watch', exc)
-                value, err = None, (str(exc) if isinstance(exc, ValueError) else '감시 회차를 완료하지 못했습니다.')
+                value, err = None, (str(exc) if isinstance(exc, ValueError) else '분석 및 취합 회차를 완료하지 못했습니다.')
             finally:
                 desktop_progress.set_reporter(None)
             with self.lock:
@@ -868,11 +868,11 @@ class Session:
                                      title=f'{label} — 실패', summary=err))
                 elif kind == 'param' and value.get('has_change'):
                     self.notify(dict(kind='param_watch', watch=key, quiet=rid is not None,
-                                     title='파라미터 자동 감시 — 변경 감지',
+                                     title='파라미터 자동 분석 및 취합 — 변경 감지',
                                      summary=value['summary'], report=value.get('report', '')))
                 elif kind == 'cm' and value.get('found'):
                     self.notify(dict(kind='cm_watch', watch=key, quiet=rid is not None,
-                                     title='Commonality 자동 감시 — 새 S/M', summary=value['summary'], report=''))
+                                     title='Commonality 자동 분석 및 취합 — 새 S/M', summary=value['summary'], report=''))
                 else:
                     # Nothing new: still say the cycle ran and what it saw (list only).
                     extra = value.get('skipped') if kind == 'param' else value.get('notes')

@@ -49,9 +49,9 @@ function OnOff({on,busy,onToggle,label}:{on:boolean;busy:boolean;onToggle:()=>vo
 }
 
 /* ------------------------------------------------------------------ */
-/* 파라미터 자동 감시 (감시설정.json, 저장폴더 공유 — 한 PC만 실행)      */
+/* 파라미터 자동 분석 및 취합 (감시설정.json, 저장폴더 공유 — 한 PC만 실행)      */
 /* ------------------------------------------------------------------ */
-const P_STEPS=['주기·시간대','장비 연결 확인','감시 대상','확인·저장'];
+const P_STEPS=['주기·시간대','장비 연결 확인','분석 및 취합 대상','확인·저장'];
 type PDraft={interval_hours:number;window_start:number;window_end:number};
 type Conn={machine:string;ip:string;unc:string;ok:boolean;reason:string};
 type CopyRow={machine:string;recipe:string;source_rel:string;rel:string;status:'same'|'matched'|'missing'|'ambiguous'|'offline';note:string};
@@ -82,12 +82,12 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
     if(!st)return;
     const r=await run<PState>('pwatch_save',{enabled:!st.enabled,interval_hours:st.interval_hours,window_start:st.window_start,
       window_end:st.window_end,notify_on_change_only:st.notify_on_change_only});
-    if(r){setSt(r);onChanged();notify(r.enabled?'파라미터 자동 감시 ON':'파라미터 자동 감시 OFF',r.enabled?'ok':'info');}
+    if(r){setSt(r);onChanged();notify(r.enabled?'파라미터 자동 분석 및 취합 ON':'파라미터 자동 분석 및 취합 OFF',r.enabled?'ok':'info');}
   }
   async function saveSchedule(){
     if(!st||!draft)return;
     const r=await run<PState>('pwatch_save',{enabled:st.enabled,...draft,notify_on_change_only:st.notify_on_change_only});
-    if(r){accept(r);onChanged();notify('파라미터 자동 감시 설정을 저장했습니다.','ok');}
+    if(r){accept(r);onChanged();notify('파라미터 자동 분석 및 취합 설정을 저장했습니다.','ok');}
     return r;
   }
   async function browse(machine:string,recipes:string[],i:number,sub:string){
@@ -110,7 +110,7 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
     await browse(pick.machine,pick.recipes,next,pick.sub.split('\\').slice(0,-1).join('\\'));
   }
   async function now(){
-    setBusy(true);notify('파라미터 자동 감시를 한 번 실행합니다. 진행 과정은 위 [최근 알림]에 나옵니다.');
+    setBusy(true);notify('파라미터 자동 분석 및 취합을 한 번 실행합니다. 진행 과정은 위 [최근 알림]에 나옵니다.');
     try{
       const r=(await desktop.request('pwatch_run',{}).promise).pwatch as {summary:string;has_change:boolean;report:string;skipped:string[]};
       notify(`즉시 확인 완료 — ${r.summary}${r.skipped.length?` · 건너뜀 ${r.skipped.join(', ')}`:''}`,r.has_change?'info':'ok');
@@ -133,39 +133,39 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
   const connOf=(m:string)=>conns?.find(c=>c.machine===m);
   const parts=pick?.sub?pick.sub.split('\\'):[];
   return <section className="panel watch-panel">
-    <div className="section-heading"><div><span className="step">WATCH</span><h2>파라미터 자동 감시</h2></div>
-      <OnOff on={st.enabled} busy={busy} onToggle={toggle} label="파라미터 자동 감시"/></div>
+    <div className="section-heading"><div><span className="step">WATCH</span><h2>파라미터 자동 분석 및 취합</h2></div>
+      <OnOff on={st.enabled} busy={busy} onToggle={toggle} label="파라미터 자동 분석 및 취합"/></div>
     <p className="hint">장비의 지정 Job 폴더를 주기적으로 읽어 최신 취합과 비교합니다. <b>변경이 있을 때만</b> 저장폴더에 취합·변경보고서를 만들고 알립니다.
       한 번에 한 PC만 실행합니다.</p>
     <div className="watch-status-box"><h3>현황</h3>
-    <table className="tbl watch-status" aria-label="파라미터 자동 감시 현황"><tbody>
+    <table className="tbl watch-status" aria-label="파라미터 자동 분석 및 취합 현황"><tbody>
       <tr><th>상태</th><td><b className={st.enabled?'st-on':'st-off'}>{st.enabled?'ON':'OFF'}</b>{st.holder?` · 🔒 ${st.holder} 님 PC가 실행 중`:st.enabled&&st.owned?' · 이 PC가 실행':''}</td></tr>
       <tr><th>주기 · 시간대</th><td>{every} · {when}</td></tr>
-      <tr><th>감시 대상</th><td>{byMachine.length?byMachine.map(x=>`${x.m}(${x.rows.map(r=>r.recipe).join(', ')})`).join(' · '):'없음'}
+      <tr><th>분석 및 취합 대상</th><td>{byMachine.length?byMachine.map(x=>`${x.m}(${x.rows.map(r=>r.recipe).join(', ')})`).join(' · '):'없음'}
         {missing>0&&<b className="warn"> · 폴더 미지정 {missing}건</b>}</td></tr>
       <tr><th>장비 연결</th><td>{conns?`${conns.filter(c=>c.ok).length} / ${conns.length}대 연결됨 (${connAt} 확인)`:'아직 확인 안 함 — 마법사 2단계에서 확인'}</td></tr>
       <tr><th>마지막 실행</th><td>{st.last_run||'—'}{st.last_result?` · ${st.last_result}`:''}</td></tr>
       <tr><th>다음 실행</th><td>{st.enabled?(st.next_run||'곧 실행'):'OFF — 실행하지 않음'}{st.fail_count?<b className="warn"> · 연속 실패 {st.fail_count}회(재시도 간격 늘림)</b>:''}</td></tr>
-      <tr><th>기록</th><td>{st.log?<OpenPath label="감시 로그" path={st.log}/>:'—'}{st.reports.slice(0,3).map(r=><OpenPath key={r.path} label={r.name} path={r.path}/>)}</td></tr>
+      <tr><th>기록</th><td>{st.log?<OpenPath label="분석 및 취합 로그" path={st.log}/>:'—'}{st.reports.slice(0,3).map(r=><OpenPath key={r.path} label={r.name} path={r.path}/>)}</td></tr>
     </tbody></table></div>
 
     <h3>설정 마법사</h3>
     <Stepper labels={P_STEPS} current={step} onJump={setStep}/>
     <div className="step-body">
     {step===0&&<>
-      <p className="hint">몇 시간마다, 어느 시간대에 감시할지 정합니다. 저장은 마지막 단계에서 합니다.</p>
+      <p className="hint">몇 시간마다, 어느 시간대에 분석 및 취합할지 정합니다. 저장은 마지막 단계에서 합니다.</p>
       <Schedule interval={draft.interval_hours} intervals={st.intervals} start={draft.window_start} end={draft.window_end} disabled={busy}
         onChange={(k,v)=>setDraft(d=>d&&{...d,[k]:v})}/>
     </>}
     {step===1&&<>
       <div className="guide-box">
         <b>장비 연결은 이 PC의 Windows 탐색기 로그인으로 합니다</b> (프로그램은 비밀번호를 받지도 저장하지도 않습니다).
-        <ol><li>아래 표에서 감시할 호기의 <b>[주소 복사]</b>를 누릅니다. (예: <code>\\10.142.80.20\c$</code>)</li>
+        <ol><li>아래 표에서 분석 및 취합할 호기의 <b>[주소 복사]</b>를 누릅니다. (예: <code>\\10.142.80.20\c$</code>)</li>
           <li>키보드 <kbd>Win</kbd> + <kbd>R</kbd> → 실행 창에 <kbd>Ctrl</kbd> + <kbd>V</kbd> → <kbd>Enter</kbd>.</li>
           <li>로그인 창이 뜨면 <b>장비 계정 ID·비밀번호</b>로 로그인합니다. '내 자격 증명 기억'을 체크하면 다음에 덜 물어봅니다(회사 정책에 따라 다름).</li>
           <li>탐색기에 장비의 C 드라이브가 보이면 성공입니다. 창은 닫아도 됩니다.</li>
           <li>모두 로그인했으면 <b>[선택 호기 연결 확인]</b>을 누릅니다.</li></ol>
-        <p className="hint" style={{margin:0}}>PC를 다시 켜거나 로그아웃하면 연결이 풀릴 수 있습니다. 감시가 '연결 안 됨'으로 실패하면 이 단계를 다시 하세요.</p></div>
+        <p className="hint" style={{margin:0}}>PC를 다시 켜거나 로그아웃하면 연결이 풀릴 수 있습니다. 분석 및 취합이 '연결 안 됨'으로 실패하면 이 단계를 다시 하세요.</p></div>
       <RowPick label="연결 확인 호기" columns={['호기','탐색기 주소','','연결 상태']} value={connSel} onChange={setConnPick}
         rows={st.machines.map(m=>{const ip=ips[m];const unc=ip?`\\\\${ip}\\c$`:'';const c=connOf(m);
           return {id:m,disabled:!ip,title:ip?unc:'IP 없음',cells:[<b key="m">{m}</b>,unc?<code key="u">{unc}</code>:<span key="u" className="warn">IP 없음</span>,
@@ -181,7 +181,7 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
         <label className="field">호기<select value={addMachine} onChange={e=>setAddMachine(e.target.value)}><option value="">선택</option>{st.machines.map(m=><option key={m}>{m}</option>)}</select></label>
         <button disabled={busy||!addMachine||!addRecipes.length} onClick={()=>void browse(addMachine,addRecipes,0,'')}>📁 장비에서 폴더 고르기… ({addRecipes.length}개 레시피)</button>
       </div>
-      <div className="chip-pick" role="group" aria-label="감시할 레시피">{st.recipes.map(r=><label key={r} className={addRecipes.includes(r)?'on':''}>
+      <div className="chip-pick" role="group" aria-label="분석 및 취합할 레시피">{st.recipes.map(r=><label key={r} className={addRecipes.includes(r)?'on':''}>
         <input type="checkbox" checked={addRecipes.includes(r)} onChange={e=>setAddRecipes(x=>e.target.checked?[...x,r]:x.filter(v=>v!==r))}/>{r}</label>)}
         {!st.recipes.length&&<span className="hint">확정된 레시피 양식이 없습니다.</span>}</div>
       {pick&&<div className="folder-pick" ref={pickRef} role="dialog" aria-label="Job 폴더 선택">
@@ -196,13 +196,13 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
           <button onClick={()=>setPick(undefined)}>닫기</button></div>
         <div className="pick-list">{pick.dirs.map(d=><button key={d} className="pick-item" onClick={()=>void browse(pick.machine,pick.recipes,pick.i,pick.sub?`${pick.sub}\\${d}`:d)}>📁 {d}</button>)}
           {!pick.dirs.length&&<p className="table-empty">하위 폴더가 없습니다.</p>}</div></div>}
-      <h4>감시 대상</h4>
+      <h4>분석 및 취합 대상</h4>
       <p className="hint">'실제 Job 폴더 레시피'는 그 호기의 장비에서 직접 골라 읽어 온 <b>실제 폴더 이름</b>입니다. 호기마다 이름이 조금씩 다를 수 있어 호기별로 따로 저장합니다.</p>
       {byMachine.length?<div className="table-scroll"><table><thead><tr><th>호기</th><th>레시피</th><th>실제 Job 폴더 레시피(\Job\ 아래)</th><th></th></tr></thead>
         <tbody>{byMachine.flatMap(({m,rows})=>rows.map((t,i)=><tr key={m+t.recipe}>
           <td>{i===0?m:''}</td><td>{t.recipe}</td><td>{t.path?<code>{t.path}</code>:<b role="alert">미지정</b>}</td>
           <td><button disabled={busy} onClick={()=>void browse(m,[t.recipe],0,'')}>변경</button> <button disabled={busy} onClick={()=>void assign(m,t.recipe,'')}>빼기</button></td></tr>))}</tbody></table></div>
-        :<p className="table-empty">감시 대상이 없습니다. 호기와 레시피를 고른 뒤 장비의 Job 폴더를 지정하세요.</p>}
+        :<p className="table-empty">분석 및 취합 대상이 없습니다. 호기와 레시피를 고른 뒤 장비의 Job 폴더를 지정하세요.</p>}
       {byMachine.length>0&&<div className="guide-box">
         <b>다른 호기에 같은 레시피 폴더 적용</b>
         <p className="hint" style={{margin:'4px 0'}}>한 호기에서 지정한 레시피 폴더를 다른 호기들에도 한 번에 지정합니다. 호기마다 Job 폴더 이름이 조금씩 다를 수 있어,
@@ -221,14 +221,14 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
       </div>}
     </>}
     {step===3&&<>
-      <table className="tbl" aria-label="저장할 파라미터 감시 설정"><tbody>
+      <table className="tbl" aria-label="저장할 파라미터 분석 및 취합 설정"><tbody>
         <tr><th>주기 · 시간대</th><td>{scheduleText({...st,...draft}).join(' · ')}{dirty&&<b className="warn"> (저장 안 됨)</b>}</td></tr>
-        <tr><th>감시 대상</th><td>{st.targets.length}건{missing>0&&<b className="warn"> · 폴더 미지정 {missing}건 — 이대로 켜면 실패합니다</b>}</td></tr>
+        <tr><th>분석 및 취합 대상</th><td>{st.targets.length}건{missing>0&&<b className="warn"> · 폴더 미지정 {missing}건 — 이대로 켜면 실패합니다</b>}</td></tr>
         <tr><th>장비 연결</th><td>{conns?`${conns.filter(c=>c.ok).length} / ${conns.length}대 연결됨`:'확인 안 함'}</td></tr>
       </tbody></table>
       <div className="toolbar"><button className="primary" disabled={busy||!dirty} onClick={()=>void saveSchedule()}>설정 저장</button>
         <button disabled={busy||!st.targets.length} onClick={now}>▶ 즉시 확인</button></div>
-      <p className="hint">감시를 켜고 끄는 것은 위 <b>ON/OFF</b> 버튼입니다(마법사와 따로 동작).</p>
+      <p className="hint">분석 및 취합을 켜고 끄는 것은 위 <b>ON/OFF</b> 버튼입니다(마법사와 따로 동작).</p>
     </>}
     </div>
     {step<P_STEPS.length-1&&<StepNav step={step} total={P_STEPS.length} busy={busy} onBack={()=>setStep(s=>s-1)} onNext={()=>setStep(s=>s+1)}/>}
@@ -238,9 +238,9 @@ function ParamWatch({onChanged}:{onChanged:()=>void}){
 }
 
 /* ------------------------------------------------------------------ */
-/* Commonality 자동 감시 (로컬 설정·결과, 새 S/M 감지 → 계획 → 조사)     */
+/* Commonality 자동 분석 및 취합 (로컬 설정·결과, 새 S/M 감지 → 계획 → 조사)     */
 /* ------------------------------------------------------------------ */
-const C_STEPS=['주기·시간대','감시 호기','감시 대상 계획','대상별 감시 양식','확인'];
+const C_STEPS=['주기·시간대','분석 및 취합 호기','분석 및 취합 대상 계획','대상별 분석 및 취합 양식','확인'];
 type CDraft={interval_hours:number;window_start:number;window_end:number;settle_minutes:number;machines:string[];plan:CPlan[]};
 const EMPTY_ROW:CPlan={device:'',lot:'',machines:'',note:''};
 function CmWatch({onChanged}:{onChanged:()=>void}){
@@ -258,7 +258,7 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   const load=()=>{setLoadError('');return ask<CState>('cmwatch_state',{},'cmwatch',st?undefined:setLoadError).then(s=>s&&accept(s));};
   useEffect(()=>{void load();},[]);
   // 설정에서 호기 루트를 추가/삭제하면 이 탭으로 돌아올 때 호기 목록만 새로 받는다(편집 중인 값은 유지).
-  useEffect(()=>{const again=(e:Event)=>{if((e as CustomEvent<string>).detail!=='자동 감시')return;
+  useEffect(()=>{const again=(e:Event)=>{if((e as CustomEvent<string>).detail!=='자동 분석 및 취합')return;
     void ask<CState>('cmwatch_state',{},'cmwatch').then(s=>s&&setSt(o=>o?{...o,available:s.available}:s));};
     window.addEventListener('para:tab',again);return()=>window.removeEventListener('para:tab',again);},[]);
   async function run<T>(method:string,params:object){setBusy(true);const r=await ask<T>(method,params,'cmwatch');setBusy(false);return r;}
@@ -266,13 +266,13 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   async function toggle(){
     if(!st)return;
     const r=await run<CState>('cmwatch_save',{enabled:!st.enabled});
-    if(r){setSt(r);onChanged();notify(r.enabled?'Commonality 자동 감시 ON':'Commonality 자동 감시 OFF',r.enabled?'ok':'info');}
+    if(r){setSt(r);onChanged();notify(r.enabled?'Commonality 자동 분석 및 취합 ON':'Commonality 자동 분석 및 취합 OFF',r.enabled?'ok':'info');}
   }
   async function saveDraft(){
     if(!st||!draft)return;
     const r=await run<CState>('cmwatch_save',{enabled:st.enabled,interval_hours:draft.interval_hours,window_start:draft.window_start,
       window_end:draft.window_end,settle_minutes:draft.settle_minutes,machines:draft.machines,plan:draft.plan.filter(p=>p.device.trim()||p.lot.trim())});
-    if(r){accept(r);onChanged();notify('Commonality 감시 설정을 저장했습니다.','ok');}
+    if(r){accept(r);onChanged();notify('Commonality 분석 및 취합 설정을 저장했습니다.','ok');}
     return r;
   }
   async function pickTarget(t:CTarget){
@@ -290,10 +290,10 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
     if(r.stage==='recipes'&&r.recipes){setSubRecipes({sm:r.sm||'',recipes:r.recipes});setSubPick(r.recipes.map(x=>String(x.index)));return;}
     setSubRecipes(undefined);
     if(r.stage==='edit'&&r.form){setEditing({version:r.form.version,recipe:r.recipe||'',index:r.index||0,total:r.total||1,used:r.form.used});}
-    else if(r.stage==='done'){setEditing(undefined);closeTarget();notify(`감시 양식 ${r.forms?.length||0}개를 지정했습니다: ${(r.forms||[]).join(', ')}`,'ok');void load();}
+    else if(r.stage==='done'){setEditing(undefined);closeTarget();notify(`분석 및 취합 양식 ${r.forms?.length||0}개를 지정했습니다: ${(r.forms||[]).join(', ')}`,'ok');void load();}
   }
   async function now(){
-    setBusy(true);notify('Commonality 자동 감시를 한 번 실행합니다. 진행 과정은 위 [최근 알림]에 나옵니다.');
+    setBusy(true);notify('Commonality 자동 분석 및 취합을 한 번 실행합니다. 진행 과정은 위 [최근 알림]에 나옵니다.');
     try{const r=(await desktop.request('cmwatch_run',{}).promise).cmwatch as {summary:string;found:unknown[];notes:string[]};
       notify(`즉시 확인 완료 — ${r.summary||'새 S/M 없음'}${r.notes.length?` · ${r.notes.slice(0,3).join(' / ')}`:''}`,'ok');}
     catch(e){fail(e);}
@@ -309,27 +309,27 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   // 대상별 양식(4단계)은 저장된 호기·계획으로 계산되므로, 넘어가기 전에 저장한다.
   async function next(){if(step===2&&dirty){if(!await saveDraft())return;}setStep(s=>s+1);}
   return <section className="panel watch-panel">
-    <div className="section-heading"><div><span className="step">WATCH</span><h2>Commonality 자동 감시 (여러 호기 무인)</h2></div>
-      <OnOff on={st.enabled} busy={busy} onToggle={toggle} label="Commonality 자동 감시"/></div>
-    <p className="hint">감시 대상 (디바이스, 공정번호) 아래에 <b>새로 생긴 S/M 폴더</b>를 찾아 조사 계획에 추가하고, 감시 양식이 있으면 값 조사까지 합니다.
+    <div className="section-heading"><div><span className="step">WATCH</span><h2>Commonality 자동 분석 및 취합 (여러 호기 무인)</h2></div>
+      <OnOff on={st.enabled} busy={busy} onToggle={toggle} label="Commonality 자동 분석 및 취합"/></div>
+    <p className="hint">분석 및 취합 대상 (디바이스, 공정번호) 아래에 <b>새로 생긴 S/M 폴더</b>를 찾아 조사 계획에 추가하고, 분석 및 취합 양식이 있으면 값 조사까지 합니다.
       첫 회차는 기준선만 잡고 알리지 않습니다. 설정·계획·결과는 모두 <b>로컬</b>에 저장됩니다(OneDrive 아님).</p>
     <div className="watch-status-box"><h3>현황</h3>
-    <table className="tbl watch-status" aria-label="Commonality 자동 감시 현황"><tbody>
+    <table className="tbl watch-status" aria-label="Commonality 자동 분석 및 취합 현황"><tbody>
       <tr><th>상태</th><td><b className={st.enabled?'st-on':'st-off'}>{st.enabled?'ON':'OFF'}</b>{st.baseline?'':' · 첫 회차 전(기준선 미설정)'}</td></tr>
       <tr><th>주기 · 시간대</th><td>{every} · {when} · 안정화 대기 {st.settle_minutes}분</td></tr>
-      <tr><th>감시 호기</th><td>{st.machines.length?st.machines.join(', '):<b className="warn">없음</b>}</td></tr>
-      <tr><th>감시 대상 계획</th><td>{planRows?`${planRows}행 (${st.plan.slice(0,4).map(p=>`${p.device}/${p.lot}`).join(', ')}${planRows>4?' …':''})`:<b className="warn">없음</b>}</td></tr>
-      <tr><th>대상별 감시 양식</th><td>{st.targets.length?`${formsOk} / ${st.targets.length} 대상 지정됨`:'대상 없음'}{st.targets.length>formsOk&&<span className="hint"> · 양식 없는 대상은 계획 추가만 합니다</span>}</td></tr>
+      <tr><th>분석 및 취합 호기</th><td>{st.machines.length?st.machines.join(', '):<b className="warn">없음</b>}</td></tr>
+      <tr><th>분석 및 취합 대상 계획</th><td>{planRows?`${planRows}행 (${st.plan.slice(0,4).map(p=>`${p.device}/${p.lot}`).join(', ')}${planRows>4?' …':''})`:<b className="warn">없음</b>}</td></tr>
+      <tr><th>대상별 분석 및 취합 양식</th><td>{st.targets.length?`${formsOk} / ${st.targets.length} 대상 지정됨`:'대상 없음'}{st.targets.length>formsOk&&<span className="hint"> · 양식 없는 대상은 계획 추가만 합니다</span>}</td></tr>
       <tr><th>마지막 실행</th><td>{st.last_run||'—'}{st.last_result?` · ${st.last_result}`:''}</td></tr>
       <tr><th>다음 실행</th><td>{st.enabled?(st.next_run||'곧 실행'):'OFF — 실행하지 않음'}{st.fail_count?<b className="warn"> · 연속 실패 {st.fail_count}회</b>:''}</td></tr>
-      <tr><th>기록</th><td>{st.results&&<OpenPath label="자동감시 폴더" path={st.results} folder/>}{st.log&&<OpenPath label="감시 로그" path={st.log}/>}</td></tr>
+      <tr><th>기록</th><td>{st.results&&<OpenPath label="자동 분석 및 취합 폴더" path={st.results} folder/>}{st.log&&<OpenPath label="분석 및 취합 로그" path={st.log}/>}</td></tr>
     </tbody></table></div>
 
     <h3>설정 마법사</h3>
     <Stepper labels={C_STEPS} current={step} onJump={setStep}/>
     <div className="step-body">
     {step===0&&<>
-      <p className="hint">감시 주기·시간대와, 새 폴더가 다 채워질 때까지 기다릴 시간(안정화 대기)을 정합니다.</p>
+      <p className="hint">분석 및 취합 주기·시간대와, 새 폴더가 다 채워질 때까지 기다릴 시간(안정화 대기)을 정합니다.</p>
       <Schedule interval={draft.interval_hours} intervals={st.intervals} start={draft.window_start} end={draft.window_end} disabled={busy}
         onChange={(k,v)=>setDraft(d=>d&&{...d,[k]:v})}/>
       <div className="form-filter"><label className="field">안정화 대기(분)<input type="number" min={0} max={1440} value={draft.settle_minutes}
@@ -337,13 +337,13 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
     </>}
     {step===1&&<>
       <p className="hint">새 S/M 폴더를 찾을 호기를 고릅니다. 목록은 [설정 › AOI 장비 호기 루트]에 등록된 호기입니다.</p>
-      <ScanBackupBar note="감시 회차마다 그때의 설정으로 찾습니다." disabled={busy}/>
-      <RowPick label="감시 호기" columns={['호기']} value={draft.machines} onChange={v=>setDraft(d=>d&&{...d,machines:v})}
+      <ScanBackupBar note="분석 및 취합 회차마다 그때의 설정으로 찾습니다." disabled={busy}/>
+      <RowPick label="분석 및 취합 호기" columns={['호기']} value={draft.machines} onChange={v=>setDraft(d=>d&&{...d,machines:v})}
         rows={st.available.map(m=>({id:m,cells:[<b key="m">{m}</b>]}))}
         empty={<p className="table-empty">[설정 › AOI 장비 호기 루트]에서 호기 폴더를 먼저 등록하세요.</p>}/>
     </>}
     {step===2&&<>
-      <p className="hint">감시할 (디바이스명, 공정번호)를 적습니다. S/M 칸은 없습니다 — 그 폴더 아래 새로 생기는 S/M 전부가 대상입니다. [다음]을 누르면 저장합니다.</p>
+      <p className="hint">분석 및 취합할 (디바이스명, 공정번호)를 적습니다. S/M 칸은 없습니다 — 그 폴더 아래 새로 생기는 S/M 전부가 대상입니다. [다음]을 누르면 저장합니다.</p>
       <p className="path-sample"><code>{'{호기}'}\Scanresult\<b>{'{레시피 제목 = 디바이스명 포함}'}</b>\<b>{'{공정번호 = 레시피 제목 바로 아래 폴더}'}</b>\{'{S/M}'}\{'{슬롯}'}</code></p>
       {help&&<div className="guide-box" role="note" aria-label={help==='device'?'디바이스명 설명':'공정번호 설명'}>
         {help==='device'?<><b>디바이스명이란?</b>
@@ -364,12 +364,12 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
       <div className="toolbar"><button onClick={()=>setDraft(d=>d&&{...d,plan:[...d.plan,{...EMPTY_ROW}]})}>+ 행 추가</button></div>
     </>}
     {step===3&&<>
-      <p className="hint">대상마다 대표 S/M 으로 감시 양식을 만들면, 새 S/M 이 생길 때 값 조사까지 자동으로 합니다. 양식이 없으면 조사 계획에 추가만 합니다.</p>
+      <p className="hint">대상마다 대표 S/M 으로 분석 및 취합 양식을 만들면, 새 S/M 이 생길 때 값 조사까지 자동으로 합니다. 양식이 없으면 조사 계획에 추가만 합니다.</p>
       {st.targets.length?<div className="table-scroll"><table><thead><tr><th>호기</th><th>디바이스</th><th>공정</th><th>양식</th><th></th></tr></thead>
         <tbody>{st.targets.map(t=><tr key={t.machine+t.device+t.lot}><td>{t.machine}</td><td>{t.device}</td><td>{t.lot}</td>
           <td>{t.forms.length?t.forms.map(f=><span key={f.recipe} className={f.ok?'':'muted'}>{f.recipe} (대표 {f.sm}){f.ok?'':' — 파일 없음'} </span>):<span className="muted">양식 없음 — 계획 추가만 합니다</span>}</td>
           <td><button disabled={busy} onClick={()=>pickTarget(t)}>📋 양식 지정…</button></td></tr>)}</tbody></table></div>
-        :<p className="table-empty">저장된 계획에서 감시 호기에 해당하는 대상이 없습니다. 2·3단계를 확인하세요.</p>}
+        :<p className="table-empty">저장된 계획에서 분석 및 취합 호기에 해당하는 대상이 없습니다. 2·3단계를 확인하세요.</p>}
       {target&&!editing&&!subRecipes&&<div className="edit-dialog inline" role="dialog" aria-label="대표 S/M 선택">
         <h3>{target.machine} · {target.device} / {target.lot} — 대표 S/M</h3>
         <ScanRoots info={candRoots?.info} backup={candRoots?.backup}/>
@@ -383,28 +383,28 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
           <button className="primary" disabled={busy||cands===undefined||!sm||!title.trim()} onClick={async()=>opened(await run('cmwatch_begin',{sm,title:title.trim()}))}>복사 후 다음 ▶</button></div></div>}
       {subRecipes&&!editing&&<div className="edit-dialog inline" role="dialog" aria-label="하위 레시피 선택">
         <h3>{target?.machine} · 대표 S/M {subRecipes.sm} — 조사할 하위 레시피</h3>
-        <p className="hint">이 S/M 에는 하위 레시피가 {subRecipes.recipes.length}개 있습니다. 감시에서 조사할 것만 고르세요. 고른 레시피마다 양식을 하나씩 만듭니다(고르지 않은 레시피는 조사하지 않음).</p>
+        <p className="hint">이 S/M 에는 하위 레시피가 {subRecipes.recipes.length}개 있습니다. 분석 및 취합에서 조사할 것만 고르세요. 고른 레시피마다 양식을 하나씩 만듭니다(고르지 않은 레시피는 조사하지 않음).</p>
         <RowPick label="조사할 하위 레시피" columns={['하위 레시피','양식 이름']} value={subPick} onChange={setSubPick}
           rows={subRecipes.recipes.map(x=>({id:String(x.index),cells:[<b key="n">{x.name}</b>,x.recipe]}))}/>
         <div className="toolbar"><button onClick={async()=>{await run('cmwatch_cancel',{});closeTarget();}}>취소</button>
           <button className="primary" disabled={busy||!subPick.length} onClick={async()=>opened(await run('cmwatch_recipes',{indexes:subPick.map(Number)}))}>{subPick.length}개 양식 편집 ▶</button></div></div>}
-      {editing&&<div className="edit-dialog inline" role="dialog" aria-label="감시 양식 편집">
-        <div className="section-heading"><div><h3>{editing.recipe} 감시 양식 ({editing.index+1}/{editing.total})</h3></div><span className="count">사용 {editing.used}</span></div>
+      {editing&&<div className="edit-dialog inline" role="dialog" aria-label="분석 및 취합 양식 편집">
+        <div className="section-heading"><div><h3>{editing.recipe} 분석 및 취합 양식 ({editing.index+1}/{editing.total})</h3></div><span className="count">사용 {editing.used}</span></div>
         <FormEditor version={editing.version} pageMethod="cmwatch_page" editMethod="cmwatch_edit" replyKey="cmwatch"
           onUsed={n=>setEditing(o=>o&&o.used!==n?{...o,used:n}:o)}/>
         <div className="toolbar"><button onClick={async()=>{await run('cmwatch_cancel',{});setEditing(undefined);closeTarget();}}>취소</button>
           <button className="primary" disabled={busy||!editing.used} onClick={async()=>opened(await run('cmwatch_confirm',{snapshot:editing.version}))}>양식 확정{editing.index+1<editing.total?' · 다음 레시피 ▶':''}</button></div></div>}
     </>}
     {step===4&&<>
-      <table className="tbl" aria-label="저장할 Commonality 감시 설정"><tbody>
+      <table className="tbl" aria-label="저장할 Commonality 분석 및 취합 설정"><tbody>
         <tr><th>주기 · 시간대</th><td>{scheduleText({...st,...draft}).join(' · ')} · 안정화 대기 {draft.settle_minutes}분</td></tr>
-        <tr><th>감시 호기</th><td>{draft.machines.join(', ')||<b className="warn">없음</b>}</td></tr>
-        <tr><th>감시 대상 계획</th><td>{draft.plan.filter(p=>p.device.trim()||p.lot.trim()).length}행</td></tr>
+        <tr><th>분석 및 취합 호기</th><td>{draft.machines.join(', ')||<b className="warn">없음</b>}</td></tr>
+        <tr><th>분석 및 취합 대상 계획</th><td>{draft.plan.filter(p=>p.device.trim()||p.lot.trim()).length}행</td></tr>
         <tr><th>저장 상태</th><td>{dirty?<b className="warn">저장 안 된 변경이 있습니다</b>:'모두 저장됨'}</td></tr>
       </tbody></table>
       <div className="toolbar"><button className="primary" disabled={busy||!dirty} onClick={()=>void saveDraft()}>설정 저장</button>
         <button disabled={busy||!st.machines.length} onClick={now}>▶ 즉시 확인</button></div>
-      <p className="hint">감시를 켜고 끄는 것은 위 <b>ON/OFF</b> 버튼입니다(마법사와 따로 동작).</p>
+      <p className="hint">분석 및 취합을 켜고 끄는 것은 위 <b>ON/OFF</b> 버튼입니다(마법사와 따로 동작).</p>
     </>}
     </div>
     {step<C_STEPS.length-1&&<StepNav step={step} total={C_STEPS.length} busy={busy} onBack={()=>setStep(s=>s-1)} onNext={()=>void next()}
@@ -414,18 +414,18 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   </section>;
 }
 
-/** 자동 감시 탭: 최근 알림(맨 위 고정) + 두 감시를 탭으로. 두 탭 모두 계속 살아 있어 편집 중인 값이 유지된다. */
-const WATCH_TABS:[string,string][]=[['param','파라미터 자동 감시'],['cm','Commonality 자동 감시 (여러 호기 무인)']];
+/** 자동 분석 및 취합 탭: 최근 알림(맨 위 고정) + 두 분석 및 취합을 탭으로. 두 탭 모두 계속 살아 있어 편집 중인 값이 유지된다. */
+const WATCH_TABS:[string,string][]=[['param','파라미터 자동 분석 및 취합'],['cm','Commonality 자동 분석 및 취합 (여러 호기 무인)']];
 export function Watch({notices,onChanged}:{notices:WatchNotice[];onChanged:()=>void}){
   const [tab,setTab]=useState('param');
   return <>
     <section className="panel notice-panel"><div className="section-heading"><div><span className="step">NOTICE</span><h2>최근 알림</h2></div></div>
-      <p className="hint">감시가 켜져 있으면 창을 닫아도 알림 영역(트레이)에 남아 계속 감시합니다. 트레이 아이콘을 누르면 다시 열립니다.
+      <p className="hint">분석 및 취합이 켜져 있으면 창을 닫아도 알림 영역(트레이)에 남아 계속 분석 및 취합합니다. 트레이 아이콘을 누르면 다시 열립니다.
         회차마다 시작 → 진행 중 → 결과(변경 없음 포함)가 여기에 남습니다. 변경·새 S/M·실패만 팝업으로도 알립니다.</p>
       {notices.length?<ul className="notice-list">{[...notices].reverse().map((n,i)=><li key={i} className={(n.live?'live ':'')+(n.quiet?'quiet ':'')+(n.kind.endsWith('_failed')?'failed':'')}>
         {n.live&&<span className="spinner" aria-hidden="true"/>}<b>{n.title}</b> <small>{n.at}</small><p>{n.summary}</p>
         {n.report&&<OpenPath label="변경보고서" path={n.report}/>}</li>)}</ul>:<p className="table-empty">아직 알림이 없습니다.</p>}</section>
-    <div className="subtabs watch-tabs" role="tablist" aria-label="자동 감시 종류">{WATCH_TABS.map(([id,label])=>
+    <div className="subtabs watch-tabs" role="tablist" aria-label="자동 분석 및 취합 종류">{WATCH_TABS.map(([id,label])=>
       <button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>setTab(id)}>{label}</button>)}</div>
     <div hidden={tab!=='param'} className="kept-screen"><ParamWatch onChanged={onChanged}/></div>
     <div hidden={tab!=='cm'} className="kept-screen"><CmWatch onChanged={onChanged}/></div>

@@ -65,6 +65,28 @@ class DesktopBatchTests(unittest.TestCase):
         self.adapter.record_run(False, error='조사 실패')
         self.assertEqual(json.loads(self.config.read_text(encoding='utf-8'))['batch_schedule']['fail_count'], 1)
 
+    def test_auto_time_of_day(self):
+        """#33: 하루 단위 주기는 정한 시각(5분 단위)에 — 마지막 실행 + (주기 − 1일) 뒤 첫 HH:MM."""
+        from datetime import datetime
+        from param_manager import watcher
+        from param_manager.desktop_batch import next_batch_run, batch_time
+        st = lambda last, fails=0: watcher.WatchState(last_run=last, fail_count=fails)
+        at = datetime(2026, 10, 14, 12, 0)
+        self.assertEqual(next_batch_run(24, '09:05', st('2026-10-14 09:05:20'), at), datetime(2026, 10, 15, 9, 5))
+        self.assertEqual(next_batch_run(24, '09:05', st('2026-10-14 08:50:00'), at), datetime(2026, 10, 14, 9, 5))
+        self.assertEqual(next_batch_run(48, '09:05', st('2026-10-14 09:05:00'), at), datetime(2026, 10, 16, 9, 5))
+        self.assertEqual(next_batch_run(168, '23:55', st('2026-10-14 23:55:00'), at), datetime(2026, 10, 21, 23, 55))
+        self.assertEqual(next_batch_run(24, '09:05', st('2026-10-14 09:05:00', 1), at), datetime(2026, 10, 16, 9, 5))  # backoff ×2
+        self.assertEqual(next_batch_run(24, '', st('2026-10-14 09:05:00'), at), datetime(2026, 10, 15, 9, 5))  # 종전 = 마지막 실행 + 24h
+        self.assertEqual(next_batch_run(6, '09:05', st('2026-10-14 09:00:00'), at), datetime(2026, 10, 14, 15, 0))  # 시간 단위 주기는 시각 무시
+        self.assertEqual(next_batch_run(24, '09:05', st(''), at), at)                          # 한 번도 안 돌았으면 바로
+        for bad in ('9:05', '09:07', '24:00', 5, None):
+            self.assertEqual(batch_time({'batch_time': bad}), '')
+        self.config.write_text(json.dumps(dict(self.cfg, batch_auto=True, batch_time='09:05',
+            batch_schedule={'last_run': '2000-01-01 09:05:00', 'fail_count': 0})), encoding='utf-8')
+        auto = self.adapter.auto_state()
+        self.assertEqual((auto['time'], auto['due'], auto['next_run']), ('09:05', True, '2000-01-02 09:05'))
+
     def test_options_and_dates(self):
         for value in ({'metrics':[]}, {'valid_wafers':True}, {'valid_wafers':0}, {'by_recipe':1}):
             with self.assertRaises(ValueError): options(value)

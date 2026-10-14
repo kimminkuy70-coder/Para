@@ -81,7 +81,7 @@ pub fn run() {
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
             let open = MenuItem::with_id(app, "open", "프로그램 열기", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "자동 감시 종료(프로그램 종료)", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "자동 분석 및 취합 종료(프로그램 종료)", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
             let mut builder = TrayIconBuilder::with_id(TRAY_ID)
                 .tooltip("Camtek AOI Manager")

@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 import {desktop,errorText} from './desktop';
 import {notify} from './ui';
 
-/* Scanresult 백업본 포함 조사 — Scanresult 를 찾는 모든 기능(Commonality 조사 · 감시 · Batch Report 찾기)이 같은 설정
+/* Scanresult 백업본 포함 조사 — Scanresult 를 찾는 모든 기능(Commonality 조사 · 분석 및 취합 · Batch Report 찾기)이 같은 설정
    (`~/.pi_param_manager.json` scanresult_backup, 기본 켬)을 쓴다. 한 화면에서 바꾸면 다른 화면도 바로 따라간다. */
 export type RootInfo={path:string;kind:string};
 const EVENT='para:scan-backup';

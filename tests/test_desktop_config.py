@@ -51,6 +51,12 @@ class DesktopConfigTests(unittest.TestCase):
         self.assertTrue(self.a.set_batch_auto({"enabled": True})["batch_auto"])
         with self.assertRaises(ValueError):
             self.a.set_batch_auto({"enabled": 1})
+        # #33: 하루 단위 주기의 실행 시각(5분 단위), 빈 문자열 = 지정 안 함
+        self.assertEqual(self.a.set_batch_auto({"enabled": False, "time": "07:35"})["batch"]["time"], "07:35")
+        for bad in ("7:35", "07:33", "25:00", 735):
+            with self.assertRaises(ValueError):
+                self.a.set_batch_auto({"enabled": False, "time": bad})
+        self.assertEqual(self.a.set_batch_auto({"enabled": True, "time": ""})["batch"]["time"], "")
         archive = os.path.join(self.tmp, "archive")
         os.makedirs(archive)
         with self.assertRaises(ValueError):          # main folder must be registered first

@@ -1,5 +1,25 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #33 Batch Report 자동 분석 실행 시각(5분 단위) · 즉시 실행 + '감시' → '분석 및 취합' (2026-10-14 KST, `version_v12`)
+
+- GitHub 이슈 #33: ① 자동 분석 주기가 하루 1회 같은 하루 단위면 몇 시 몇 분(5분 단위)에 돌지 정하게 ② 자동 분석을 꺼 둔 채로도 바로 돌리는
+  즉시 실행 ③ 프로그램의 모든 '감시' 표현을 '분석 및 취합'으로(예: 자동 감시 → 자동 분석 및 취합).
+- 엔진 `desktop_batch.py`: 설정 키 `batch_time`("HH:MM", 분은 5의 배수, `BATCH_TIME`/`batch_time`), `next_batch_run` = 주기가 24의 배수이고 시각이
+  있으면 **마지막 실행 + (주기 − 1일) 뒤의 첫 HH:MM**(하루 1회 09:00 → 09:00 실행 뒤 다음 날 09:00, 08:50 에 손으로 조사했으면 그날 09:00),
+  연속 실패는 watcher backoff 배수, 한 번도 안 돌았거나 시각이 없거나 6 · 12시간 주기면 종전(`watcher.next_run_at`). `auto_state` 에 `time`, `due` 도 이 식.
+  `desktop_config.set_batch_auto{time}`(빈 문자열 = 지정 해제) + IPC 허용 키. 기존 tkinter 프로그램은 시각을 모르고 종전처럼 하루 1회(실행 기록만 공유).
+- 화면: 설정 › Batch Report 분석 주기 설정 = 하루 단위 주기일 때 `실행 시각 (시)`(지정 안 함 · 00~23) · `분 (5분 단위)` + 안내 문장 + [▶ 즉시 실행].
+  즉시 실행 = `batchAuto.ts` `requestBatchRunNow`(Batch Report 분석 탭으로 이동 + 이벤트, 아직 안 열린 화면은 `takeBatchRunNow` 로 받음) →
+  `Batch.tsx` `runLast(true)`: 자동 분석 켜짐 여부와 무관하게 지난 조사 조건(`last.targets` · options, 캐시 재사용)으로 조사, 조건이 없으면 안내.
+  Batch Report 분석 화면의 '자동 분석: 켜짐/꺼짐' 줄에도 [▶ 즉시 실행]. 자동 회차 타이머는 같은 `runLast(false)`.
+- '감시' 문구: 화면(`frontend/src/*.tsx` — 탭 이름 `자동 분석 및 취합`, KEEP · VENDORS · 튜토리얼 · 이벤트 detail 포함), 트레이 메뉴(`lib.rs`, tkinter `tray.py`),
+  엔진이 화면에 보내는 문구(`desktop_ipc` 작업 이름 · 알림 제목, `desktop_watch` · `desktop_recipe` 오류, `watcher` 연결 안내, 감시 대상 계획 템플릿 설명 행)를 바꿈.
+  **파일 · 폴더 이름은 그대로**(`감시설정.json` · `자동감시\` · `감시로그.txt` · `감시대상_Lot계획.xlsx` · `감시양식_*` · `감시조사_*` · 잠금 이름 `자동감시`) —
+  바꾸면 기존 설정 · 결과 · 다른 PC 와의 공유가 끊긴다. 레거시 tkinter `equip_app.py` 화면 문구와 코드 주석은 바꾸지 않음.
+- 검증: `tests/test_desktop_batch.py`(시각 계산 · 2일 · 일주일 · backoff · 시각 없음 · 6시간 주기 · 잘못된 값), `tests/test_desktop_config.py`(시각 저장 · 거절 · 해제),
+  `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(탭 이름 변경 반영 +
+  시각 칸 표시/숨김 · 07:35 저장 · 설정에서 즉시 실행 → Batch 화면 조사 완료) 통과. Windows 실기 · 실제 시각 도달 실행은 미검증.
+
 ## 최신 재개 — Para #32 맨 위 탭 = CAMTEK · KLA · 설정 · 메모 + KLA 장비 폴더는 설정으로 + Defect 이미지 백업본 (2026-10-13 KST, `version_v12`)
 
 - GitHub 이슈 #32: CAMTEK 탭 안의 설정 · 메모를 밖으로 빼서 맨 위를 CAMTEK · KLA · 설정 · 메모 4개로. KLA 장비 폴더 등록은 설정으로 옮기고

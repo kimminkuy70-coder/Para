@@ -1,6 +1,7 @@
 """Desktop batch adapter. UI supplies machine IDs, never filesystem paths."""
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import atomicfile, batchreport, batchreport_service, batchreport_store, desktop_progress, localdirs, lotreport, watcher, wph
@@ -51,6 +52,35 @@ BATCH_INTERVALS = (6, 12, 24, 48, 168)
 def batch_interval(cfg):
     value = cfg.get("batch_interval_hours", 24)
     return value if type(value) in (int, float) and value in BATCH_INTERVALS else 24
+
+
+# 하루 단위 주기(하루 1회 · 2일 · 일주일)의 실행 시각 "HH:MM"(5분 단위, #33). 비면 종전처럼 마지막 실행 기준.
+BATCH_TIME = re.compile(r"([01]\d|2[0-3]):[0-5][05]")
+
+
+def batch_time(cfg):
+    value = cfg.get("batch_time")
+    return value if isinstance(value, str) and BATCH_TIME.fullmatch(value) else ""
+
+
+def next_batch_run(interval_hours, time_text, state, now):
+    """다음 자동 분석 시각. 시각을 정했고 주기가 하루 단위면 그 시각에 맞춘다(#33):
+    마지막 실행 + (주기 − 1일) 뒤에 오는 첫 HH:MM. 하루 1회 09:00 이면 09:00 에 돈 다음 회차는
+    다음 날 09:00, 08:50 에 손으로 조사했으면 그날 09:00. 연속 실패면 watcher 와 같은 backoff 배수.
+    한 번도 안 돌았으면 종전처럼 바로(watcher.first_run_at)."""
+    settings = watcher.WatchSettings(enabled=True, interval_hours=interval_hours)
+    try:
+        last = datetime.strptime(state.last_run, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        last = None
+    if not time_text or interval_hours % 24 or last is None:
+        return watcher.next_run_at(settings, state, now)
+    steps = watcher.BACKOFF_STEPS
+    mult = steps[min(state.fail_count, len(steps) - 1)] if state.fail_count else 1
+    base = last + timedelta(hours=interval_hours * mult - 24)
+    hour, minute = (int(x) for x in time_text.split(":"))
+    slot = base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return slot if slot > base else slot + timedelta(days=1)
 
 
 def _name_key(text):
@@ -778,12 +808,14 @@ class DesktopBatch(BatchViews):
         the two programs never both run the same day)."""
         cfg = read_json(self.config_path) if cfg is None else cfg
         schedule = cfg.get("batch_schedule") if isinstance(cfg.get("batch_schedule"), dict) else {}
-        settings = watcher.WatchSettings(enabled=bool(cfg.get("batch_auto")), interval_hours=batch_interval(cfg))
+        enabled, hours, time_text = bool(cfg.get("batch_auto")), batch_interval(cfg), batch_time(cfg)
         state = watcher.WatchState.from_dict(schedule)
-        nxt = watcher.next_run_at(settings, state) if settings.enabled and state.last_run else None
-        return dict(enabled=settings.enabled, interval_hours=settings.interval_hours, last_run=state.last_run,
-                    last_result=state.last_result, next_run=nxt.strftime("%Y-%m-%d %H:%M") if nxt else "",
-                    due=bool(watcher.should_run(datetime.now(), settings, state)))
+        now = datetime.now()
+        nxt = next_batch_run(hours, time_text, state, now)
+        return dict(enabled=enabled, interval_hours=hours, time=time_text, last_run=state.last_run,
+                    last_result=state.last_result,
+                    next_run=nxt.strftime("%Y-%m-%d %H:%M") if enabled and state.last_run else "",
+                    due=enabled and now >= nxt)
 
     def record_run(self, ok, partial=False, error=""):
         """Record the run in `batch_schedule` with the watcher's `%Y-%m-%d %H:%M:%S`

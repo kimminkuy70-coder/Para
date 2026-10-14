@@ -50,7 +50,7 @@ export function Commonality() {
     <Stepper labels={COMPARE_STEPS} current={step} onJump={i=>setStep(i)}/>
     <div className="step-body">
     {step===0&&<>
-      <p className="hint">기존 수동 조사와 자동 감시에서 저장한 로컬 결과를 선택하세요(최근 저장한 것이 위). 원본 장비 파일은 변경하지 않습니다.</p>
+      <p className="hint">기존 수동 조사와 자동 분석 및 취합에서 저장한 로컬 결과를 선택하세요(최근 저장한 것이 위). 원본 장비 파일은 변경하지 않습니다.</p>
       <div className="cm-files">{catalog?.files.length?catalog.files.map(f=><label key={f.id} className="cm-file"><input type="checkbox" disabled={busy} checked={selected.includes(f.id)} onChange={e=>setSelected(s=>e.target.checked?[...s,f.id]:s.filter(i=>i!==f.id))}/><span>{f.name}<small>{f.modified?`${f.modified} · `:''}{f.folder}</small></span></label>):<p className="table-empty">저장된 조사 결과가 없습니다.</p>}</div>
       <p className="hint">{selected.length}개 선택</p>
     </>}

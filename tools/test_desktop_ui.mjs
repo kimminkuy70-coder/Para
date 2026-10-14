@@ -439,6 +439,21 @@ try{
   await page.getByText('자동 분석을 켰습니다').waitFor();
   await page.getByLabel('분석 주기').selectOption('12');
   await page.getByText('분석 주기를 저장했습니다').waitFor();
+  await page.getByLabel('실행 시각 (시)').waitFor({state:'detached'});   // 시간 단위 주기에는 시각 칸 없음
+  // #33: 하루 단위 주기 = 실행 시각(5분 단위) + 즉시 실행
+  await page.getByLabel('분석 주기').selectOption('24');
+  await page.getByLabel('실행 시각 (시)').selectOption('07');
+  await page.getByText('실행 시각을 07:00 으로 저장했습니다').waitFor();
+  await page.getByLabel('분 (5분 단위)').selectOption('35');
+  await page.getByText('실행 시각을 07:35 으로 저장했습니다').waitFor();
+  await page.getByText('하루 1회 (24시간) · 07:35 에 실행합니다',{exact:false}).waitFor();
+  await page.getByRole('button',{name:'▶ 즉시 실행',exact:true}).click();
+  await page.getByRole('heading',{name:'Batch Report 분석',exact:true}).waitFor();
+  await page.getByText('Batch Report 분석을 지금 실행합니다(지난 조사 조건).').waitFor();
+  await page.getByText('조사를 완료했습니다.',{exact:true}).last().waitFor({timeout:120000});
+  await page.getByRole('button',{name:'설정',exact:true}).click();
+  await page.getByRole('tab',{name:'Batch Report 분석 주기 설정'}).click();
+  await page.getByLabel('분석 주기').selectOption('12');
   await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();
   const archive=join(fixture,'archive-01');await mkdir(archive);
   await page.getByLabel('추가 폴더 호기').selectOption('AOI-01');
@@ -633,49 +648,49 @@ try{
   await page.locator('.open-path:not([hidden] *)').filter({hasText:'확정 양식'}).first().waitFor();
   await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
   // 자동 감시: pick a Job folder on the (fake) equipment, turn the watch on, run once.
-  await feature('자동 감시');
-  const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 감시'})});
+  await feature('자동 분석 및 취합');
+  const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 분석 및 취합'})});
   // 최근 알림 first, then one tab per watch; status table above the wizard.
   await page.getByRole('heading',{name:'최근 알림'}).waitFor();
-  await pw.getByLabel('파라미터 자동 감시 현황').waitFor();
+  await pw.getByLabel('파라미터 자동 분석 및 취합 현황').waitFor();
   // Selected sub-tab is highlighted green like the top tabs.
-  assert.equal(await page.getByRole('tab',{name:'파라미터 자동 감시'}).evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(234, 250, 243)');
+  assert.equal(await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합'}).evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(234, 250, 243)');
   await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ① 주기·시간대 → ② 장비 연결 확인
   const conn=pw.locator('[role=group][aria-label="연결 확인 호기"]');
   await conn.getByLabel('AOI-01 선택').check();
   await pw.getByRole('button',{name:/선택 호기 연결 확인/}).click();
   await conn.getByText('✓ 연결됨').first().waitFor();
-  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ③ 감시 대상
+  await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ③ 분석 및 취합 대상
   await pw.getByLabel('호기').selectOption('AOI-01');
-  await pw.locator('[role=group][aria-label="감시할 레시피"]').getByText('PI2',{exact:true}).click();
+  await pw.locator('[role=group][aria-label="분석 및 취합할 레시피"]').getByText('PI2',{exact:true}).click();
   await pw.getByRole('button',{name:/📁 장비에서 폴더 고르기/}).click();
   const fp=pw.getByRole('dialog',{name:'Job 폴더 선택'});
   await fp.getByRole('button',{name:'📁 R_TB500_PI2 - Enhanced'}).click();
   await fp.getByRole('button',{name:"이 폴더를 'PI2'에 지정"}).click();
   await pw.getByRole('cell',{name:'R_TB500_PI2 - Enhanced'}).waitFor();
   // ON/OFF works without finishing the wizard; OFF is red.
-  const pOff=pw.getByRole('button',{name:/파라미터 자동 감시 OFF/});
+  const pOff=pw.getByRole('button',{name:/파라미터 자동 분석 및 취합 OFF/});
   assert.equal(await pOff.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(220, 38, 38)');
   await pOff.click();
-  await pw.getByRole('button',{name:/파라미터 자동 감시 ON/}).waitFor();
-  await pw.getByLabel('파라미터 자동 감시 현황').getByText('ON',{exact:true}).waitFor();
+  await pw.getByRole('button',{name:/파라미터 자동 분석 및 취합 ON/}).waitFor();
+  await pw.getByLabel('파라미터 자동 분석 및 취합 현황').getByText('ON',{exact:true}).waitFor();
   await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ④ 확인·저장
   await pw.getByRole('button',{name:'▶ 즉시 확인'}).click();
   await page.locator('.toast').filter({hasText:/즉시 확인 완료|취합된 레시피가 없습니다/}).first().waitFor({timeout:60000});
-  await page.locator('.notice-list li').filter({hasText:'파라미터 자동 감시 — 시작'}).first().waitFor();
+  await page.locator('.notice-list li').filter({hasText:'파라미터 자동 분석 및 취합 — 시작'}).first().waitFor();
   assert(background.enabled&&background.tooltip.includes('장비 ✓'),'watch on must keep the app resident in the tray');
   await page.screenshot({path:join(root,'docs/screenshots/rev1-watch.png'),fullPage:true});
   // The Commonality watch is its own tab with its own wizard.
-  await page.getByRole('tab',{name:'Commonality 자동 감시 (여러 호기 무인)'}).click();
-  await page.getByRole('heading',{name:'Commonality 자동 감시 (여러 호기 무인)'}).waitFor();
-  const cw=page.locator('section.panel',{has:page.getByRole('heading',{name:'Commonality 자동 감시 (여러 호기 무인)'})});
-  await cw.getByLabel('Commonality 자동 감시 현황').waitFor();
+  await page.getByRole('tab',{name:'Commonality 자동 분석 및 취합 (여러 호기 무인)'}).click();
+  await page.getByRole('heading',{name:'Commonality 자동 분석 및 취합 (여러 호기 무인)'}).waitFor();
+  const cw=page.locator('section.panel',{has:page.getByRole('heading',{name:'Commonality 자동 분석 및 취합 (여러 호기 무인)'})});
+  await cw.getByLabel('Commonality 자동 분석 및 취합 현황').waitFor();
   await cw.getByRole('button',{name:'다음 ▶',exact:true}).click();
-  await cw.locator('[role=group][aria-label="감시 호기"]').waitFor();
+  await cw.locator('[role=group][aria-label="분석 및 취합 호기"]').waitFor();
   await page.screenshot({path:join(root,'docs/screenshots/rev1-watch-cm.png'),fullPage:true});
-  await page.getByRole('tab',{name:'파라미터 자동 감시'}).click();
-  await pw.getByRole('button',{name:/파라미터 자동 감시 ON/}).click();
-  await pw.getByRole('button',{name:/파라미터 자동 감시 OFF/}).waitFor();
+  await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합'}).click();
+  await pw.getByRole('button',{name:/파라미터 자동 분석 및 취합 ON/}).click();
+  await pw.getByRole('button',{name:/파라미터 자동 분석 및 취합 OFF/}).waitFor();
   await page.waitForFunction(()=>true);assert.equal(background.enabled,false);
   // Color·Gray 매칭: scan a Lot folder, process both wafers (canvas crop/thumbnails), Excel per wafer.
   await feature('Color·Gray 매칭');

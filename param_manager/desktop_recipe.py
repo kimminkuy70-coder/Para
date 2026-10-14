@@ -402,7 +402,7 @@ class DesktopRecipe:
                 watcher.save_settings(str(self.root),ws,wst)
                 watcher.append_log(str(self.root),f'레시피 삭제 — {recipe}')
             except Exception:  # noqa: BLE001
-                note=note or '자동 감시 설정 정리에 실패했습니다(삭제 자체는 완료).'
+                note=note or '자동 분석 및 취합 설정 정리에 실패했습니다(삭제 자체는 완료).'
         finally:
             for name in held:
                 locking.release_global(str(self.root),name,user)

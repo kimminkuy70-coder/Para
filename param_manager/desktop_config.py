@@ -219,14 +219,22 @@ class DesktopConfig:
         return self.state()
 
     def set_batch_auto(self, params):
-        from .desktop_batch import BATCH_INTERVALS
-        if set(params) - {"enabled", "interval_hours"} or type(params.get("enabled")) is not bool:
+        from .desktop_batch import BATCH_INTERVALS, BATCH_TIME
+        if set(params) - {"enabled", "interval_hours", "time"} or type(params.get("enabled")) is not bool:
             raise ValueError("자동 조사 설정을 확인하세요")
         cfg = self._read()
         if "interval_hours" in params:
             if type(params["interval_hours"]) not in (int, float) or params["interval_hours"] not in BATCH_INTERVALS:
                 raise ValueError("분석 주기를 목록에서 고르세요")
             cfg["batch_interval_hours"] = params["interval_hours"]
+        if "time" in params:
+            # 하루 단위 주기의 실행 시각(5분 단위 "HH:MM", #33). 빈 문자열 = 지정 안 함.
+            if not isinstance(params["time"], str) or params["time"] and not BATCH_TIME.fullmatch(params["time"]):
+                raise ValueError("실행 시각은 5분 단위(예: 09:05)로 고르세요")
+            if params["time"]:
+                cfg["batch_time"] = params["time"]
+            else:
+                cfg.pop("batch_time", None)
         cfg["batch_auto"] = params["enabled"]
         self._write(cfg)
         return self.state()

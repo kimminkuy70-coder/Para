@@ -109,7 +109,7 @@ class _Base:
     def _interval(value):
         allowed = [h for h, _ in watcher.INTERVAL_CHOICES]
         if type(value) not in (int, float) or float(value) not in allowed:
-            raise ValueError("감시 주기를 목록에서 고르세요")
+            raise ValueError("분석 및 취합 주기를 목록에서 고르세요")
         return float(value)
 
     @staticmethod
@@ -140,7 +140,7 @@ class ParamWatch(_Base):
             return True
         if silent:
             return False
-        raise ValueError(locking.holder_message(st, "자동 감시"))
+        raise ValueError(locking.holder_message(st, "자동 분석 및 취합"))
 
     def release(self):
         if self.owned:
@@ -182,7 +182,7 @@ class ParamWatch(_Base):
     def save(self, params):
         allowed = {"enabled", "interval_hours", "window_start", "window_end", "notify_on_change_only"}
         if set(params) - allowed or type(params.get("enabled")) is not bool:
-            raise ValueError("감시 설정을 확인하세요")
+            raise ValueError("분석 및 취합 설정을 확인하세요")
         save = self._save_dir()
         s, st = watcher.load_settings(save)
         s.interval_hours = self._interval(params.get("interval_hours", s.interval_hours))
@@ -194,7 +194,7 @@ class ParamWatch(_Base):
         if params["enabled"]:
             missing = self._missing_paths(s, save)
             if not watcher.machine_recipes(s):
-                raise ValueError("먼저 장비별 감시 레시피와 Job 폴더를 지정하세요")
+                raise ValueError("먼저 장비별 분석 및 취합 레시피와 Job 폴더를 지정하세요")
             if missing:
                 raise ValueError("Job 폴더가 지정되지 않은 대상이 있습니다: " + ", ".join(missing[:8]))
             self._acquire(save)            # one PC only
@@ -212,7 +212,7 @@ class ParamWatch(_Base):
     def set_path(self, params):
         """Assign (machine, recipe) → Job-relative folder ('' removes the target)."""
         if set(params) != {"machine", "recipe", "rel"}:
-            raise ValueError("감시 대상을 확인하세요")
+            raise ValueError("분석 및 취합 대상을 확인하세요")
         save = self._save_dir()
         machine, recipe = params["machine"], params["recipe"]
         if machine not in refdata.machines(self._ip_rows(save)):
@@ -390,7 +390,7 @@ class ParamWatch(_Base):
         if not changed:
             return None
         report = watcher.latest_report(save)
-        return dict(kind="param_watch", title="파라미터 자동 감시 — 변경 감지", summary=note,
+        return dict(kind="param_watch", title="파라미터 자동 분석 및 취합 — 변경 감지", summary=note,
                     report=report or "", by_other=self.owned != save)
 
     def _mark_seen(self, key, value):
@@ -404,7 +404,7 @@ class ParamWatch(_Base):
         save = self._save_dir()
         s, st = watcher.load_settings(save)
         if not self._acquire(save, silent=not manual):
-            raise ValueError("다른 PC가 자동 감시를 실행 중입니다")
+            raise ValueError("다른 PC가 자동 분석 및 취합을 실행 중입니다")
         local = self._local_root()
         try:
             res = self._cycle(save, local, s)
@@ -440,11 +440,11 @@ class ParamWatch(_Base):
         if not recipes:
             raise RuntimeError("양식이 없습니다('양식 만들기' 먼저)")
         if not mr:
-            raise RuntimeError("감시 대상 장비가 없습니다(설정에서 선택)")
+            raise RuntimeError("분석 및 취합 대상 장비가 없습니다(설정에서 선택)")
         plan = watcher.plan_from_dict(s.plan)
         need = self._missing_paths(s, save)
         if need and plan is None:
-            raise RuntimeError("다음 감시 대상의 폴더가 지정되지 않았습니다: " + ", ".join(need[:8]))
+            raise RuntimeError("다음 분석 및 취합 대상의 폴더가 지정되지 않았습니다: " + ", ".join(need[:8]))
         coef_rows = self._coef_rows(save)
         report(f"장비 {len(mr)}대 · 레시피 {len(recipes)}개 수집을 시작합니다…")
         pivot, skipped = self._collect(mr, s, plan, rows, save, local, coef_rows)
@@ -639,7 +639,7 @@ class CmWatch(_Base):
     def save(self, params):
         allowed = {"enabled", "interval_hours", "window_start", "window_end", "settle_minutes", "machines", "plan"}
         if set(params) - allowed or type(params.get("enabled")) is not bool:
-            raise ValueError("감시 설정을 확인하세요")
+            raise ValueError("분석 및 취합 설정을 확인하세요")
         local, s, st = self._load()
         roots = self._cfg().get("commonality_roots") or {}
         machines = params.get("machines", s.machines)
@@ -651,12 +651,12 @@ class CmWatch(_Base):
         plan = params.get("plan")
         if plan is not None:
             if not isinstance(plan, list) or len(plan) > 500:
-                raise ValueError("감시 대상 계획을 확인하세요")
+                raise ValueError("분석 및 취합 대상 계획을 확인하세요")
             rows = []
             for r in plan:
                 if not isinstance(r, dict) or set(r) - {"device", "lot", "machines", "note"} or any(
                         not isinstance(v, str) or len(v) > 256 for v in r.values()):
-                    raise ValueError("감시 대상 계획 행을 확인하세요")
+                    raise ValueError("분석 및 취합 대상 계획 행을 확인하세요")
                 if r.get("device", "").strip() or r.get("lot", "").strip():
                     rows.append({"디바이스명": r.get("device", "").strip(), "공정번호": r.get("lot", "").strip(),
                                  "AOI호기": r.get("machines", "").strip(), "비고": r.get("note", "").strip()})
@@ -677,7 +677,7 @@ class CmWatch(_Base):
                 if isinstance(extra.get(m), dict) else []
             s.roots[m] = [roots[m], *more] if more else roots[m]
         if params["enabled"] and not (s.machines and s.watch_plan and os.path.isfile(s.watch_plan)):
-            raise ValueError("먼저 감시할 호기와 감시 대상 계획을 지정하세요")
+            raise ValueError("먼저 분석 및 취합할 호기와 분석 및 취합 대상 계획을 지정하세요")
         s.enabled = params["enabled"]
         cmwatcher.save_settings(local, s, st)
         return self.state()
@@ -694,7 +694,7 @@ class CmWatch(_Base):
     def run(self, manual=False):
         local, s, st = self._load()
         if not (s.machines and s.watch_plan and os.path.isfile(s.watch_plan)):
-            raise ValueError("먼저 감시할 호기와 감시 대상 계획을 지정하세요")
+            raise ValueError("먼저 분석 및 취합할 호기와 분석 및 취합 대상 계획을 지정하세요")
         save = self._cfg().get("save_dir") or ""
         try:
             from .desktop_config import scan_backup
@@ -706,7 +706,7 @@ class CmWatch(_Base):
             st.last_result = f"실패: {exc}"
             cmwatcher.save_settings(local, s, st)
             cmwatcher.append_log(local, st.last_result)
-            raise ValueError(f"Commonality 감시 실패: {exc}") from exc
+            raise ValueError(f"Commonality 분석 및 취합 실패: {exc}") from exc
         if st.fail_count:
             st.fail_count = 0
             cmwatcher.save_settings(local, s, st)
@@ -719,7 +719,7 @@ class CmWatch(_Base):
     # ---- watch form (대표 S/M → per-recipe form) ------------------------------------
     def candidates(self, params):
         if set(params) != {"machine", "device", "lot"}:
-            raise ValueError("감시 대상을 확인하세요")
+            raise ValueError("분석 및 취합 대상을 확인하세요")
         roots = self._cfg().get("commonality_roots") or {}
         if params["machine"] not in roots:
             raise ValueError("Scanresult 루트가 등록된 호기를 고르세요")
@@ -796,14 +796,14 @@ class CmWatch(_Base):
                 entries = editor_model.build_entries(pivot, name_lookup=namestore.make_lookup(names),
                                                      use_lookup=namestore.make_use_lookup(names))
                 opened = self.form.load_entries(entries, level=cur["recipe"], recipe=cur["recipe"],
-                                                source=f"감시 대표 S/M {b['cand']['sm']}")
+                                                source=f"분석 및 취합 대표 S/M {b['cand']['sm']}")
                 return dict(stage="edit", form=opened, recipe=cur["recipe"], index=b["idx"], total=len(b["queue"]))
             b["idx"] += 1                          # nothing readable for this recipe: skip it
         return self._finish()
 
     def confirm(self, params):
         if set(params) != {"snapshot"} or not self.building or params["snapshot"] != self.form.version:
-            raise ValueError("감시 양식 편집 화면을 새로고침하세요")
+            raise ValueError("분석 및 취합 양식 편집 화면을 새로고침하세요")
         b = self.building
         cur = b["queue"][b["idx"]]
         from . import editor_model
@@ -823,7 +823,7 @@ class CmWatch(_Base):
                                           f"{dl.safe_name(b['device'])}_{dl.safe_name(b['lot'])}.xlsx")
         kind = "RDL_ALL" if cur["recipe"].upper().startswith("RDL") else "PI_ALL"
         extract_io.write_snapshot(form, records, machines=[], sheet_name=kind, extracts=extracts, stage="final",
-                                  level=cur["recipe"], aoi=b["machine"], source=f"commonality 감시 {cur['recipe']}",
+                                  level=cur["recipe"], aoi=b["machine"], source=f"commonality 분석 및 취합 {cur['recipe']}",
                                   user=engine.current_user(), scales=used)
         if save:
             from . import namestore
