@@ -123,7 +123,7 @@ export function WaferMap(){
             preview[img.mode]='data:image/png;base64,'+b64;
           }
           setResults(x=>[...x,{wafer:it.wafer,output:r.output,output_name:r.output_name,folder:r.folder,
-            output_type:plan.mode==='txt'?'Excel':'TXT',images:r.map.images.map(im=>({kind:im.kind,path:im.path})),preview}]);
+            output_type:plan.mode==='txt'?'Excel':'TXT',images:r.map.images.map(im=>({kind:im.mode,path:im.path})),preview}]);
           addLog(`${it.wafer} 완료 → ${r.output_name}`);
         }catch(e){addLog(`실패 ${it.wafer}: ${errorText(e)}`);setErrors(x=>[...x,{wafer:it.wafer,error:errorText(e)}]);}
         done++;setProgress(p=>({...p,done}));

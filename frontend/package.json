@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc && vite build",
+    "build:wafermap": "tsc && vite build -c vite.wafermap.config.ts",
     "tauri": "tauri"
   },
   "dependencies": {

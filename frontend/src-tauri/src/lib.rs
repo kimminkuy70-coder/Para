@@ -66,6 +66,8 @@ pub fn run() {
         .manage(desktop::Desktop::default())
         .manage(Background::default())
         .setup(|app| {
+            // Wafer Map 전용판에는 자동 감시가 없어 트레이 아이콘도 만들지 않는다(창을 닫으면 종료).
+            if cfg!(feature = "wafermap") { return Ok(()); }
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
             let open = MenuItem::with_id(app, "open", "프로그램 열기", true, None::<&str>)?;

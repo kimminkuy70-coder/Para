@@ -34,7 +34,13 @@ impl Bridge {
 /// of release builds entirely.
 fn engine_command(app: &tauri::AppHandle) -> Result<Command, String> {
     let root = app.path().resource_dir().map_err(|_| "engine_resources")?.join("sidecar");
-    let name = if cfg!(windows) { "Camtek_AOI_engine.exe" } else { "Camtek_AOI_engine" };
+    // Wafer Map 전용판(`--features wafermap`)은 자기 엔진만 실행한다 — 이름이 다른 고정 sidecar.
+    let name = match (cfg!(feature = "wafermap"), cfg!(windows)) {
+        (true, true) => "Camtek_AOI_WaferMap_engine.exe",
+        (true, false) => "Camtek_AOI_WaferMap_engine",
+        (false, true) => "Camtek_AOI_engine.exe",
+        (false, false) => "Camtek_AOI_engine",
+    };
     if let Ok(executable) = root.join(name).canonicalize() {
         let canonical_root = root.canonicalize().map_err(|_| "engine_resources")?;
         if executable.parent() != Some(canonical_root.as_path()) || !executable.is_file() {
@@ -52,7 +58,8 @@ fn engine_command(app: &tauri::AppHandle) -> Result<Command, String> {
         let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
         let python = if cfg!(windows) { "python" } else { "python3" };
         let mut command = Command::new(python);
-        command.args(["-m", "param_manager.desktop_ipc"]).current_dir(repo)
+        let module = if cfg!(feature = "wafermap") { "param_manager.wafermap_ipc" } else { "param_manager.desktop_ipc" };
+        command.args(["-m", module]).current_dir(repo)
             .env_remove("PYTHONHOME").env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
         return Ok(command);
     }

@@ -23,6 +23,27 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Wafer Map 전용판(특수 버전) — 브랜치 `version_wafermap` (2026-10-16)
+
+- 사용자 지시: 다른 기능은 배포하기 어려워 **Wafer Map 변환만** 따로 배포. 베이스(Tauri + React + Python 엔진 sidecar, 보안상 지금 구조)는
+  그대로, 릴리즈 이름도 따로(`wafermap-v{버전}`, 제목 "Camtek AOI Wafer Map v{버전}", Latest 표시는 본 앱에 남김).
+- **다른 기능 코드가 패키지에 들어가지 않게** 세 겹으로 막는다(`tests/test_wafermap_edition.py` 가 고정):
+  ①엔진 `param_manager/wafermap_ipc.py` — 요청 이름 허용 목록(contract · configuration · open_path · diag_client · wm_*)만, 나머지는
+  `invalid_request`. import 하는 프로그램 모듈은 `wafermap` · `desktop_wafermap` · `desktop_progress` · `desktop_diag` 뿐
+  ②빌드 `tools/wafermap_edition.py` — 허용 8개(`ALLOWED`) 밖의 `param_manager` 모듈 전부와 tkinter · tksheet 등을 `--exclude-module`
+  (함수 안 늦은 import: `desktop_progress` → `localdirs` → `workdirs` 때문에 필요), 빌드 뒤 `check` 로 `_internal/param_manager` 확인
+  ③화면 `frontend/wafermap/index.html` → `src/wafermap_main.tsx` → WaferMap · desktop · ui · RowPick · OpenPath 만(`npm run build:wafermap`
+  → `dist-wafermap`). Activity 패널은 다른 기능 라벨이 있어 넣지 않음.
+- 실행 파일: 본 앱 설정을 바꾸지 않고 **cargo feature `wafermap`**(엔진 `Camtek_AOI_WaferMap_engine.exe` · 개발 실행 모듈 `wafermap_ipc` ·
+  트레이 없음) + **`src-tauri/tauri.wafermap.conf.json` 덮어쓰기**(productName `Camtek_AOI_WaferMap`, identifier
+  `com.camtek.aoi.wafermap`, 창 제목). 중복 실행 뮤텍스 `Local\CamtekAOI_WaferMap_SingleInstance`(본 앱과 동시 실행 가능), 로그
+  `%LOCALAPPDATA%\CamtekAOI_WaferMap\Logs`. `set_version.py` 는 `PARA_APP_NAME`/`PARA_EXE_STEM` 로 PE 이름만 바꿈.
+- **자동 업데이트 없음**(숨김 배치 스크립트 교체 = 보안 경보 위험 제거) · 새 버전은 새 zip. 패키지에 `사용법.md`(`docs/WAFERMAP_사용법.md`:
+  고정 로컬 폴더에 풀기 · 다운로드/OneDrive 실행 금지 · 차단 해제) · `SHA256SUMS.txt`(보안 허용 목록용).
+- 이 브랜치의 `build-desktop.yml` 은 전용판 전용(dispatch: ref `version_wafermap` · version, 또는 `wafermap-v*` 태그). 화면 검사
+  `tools/test_wafermap_ui.mjs`(브라우저 + 실제 엔진, TXT→Excel→TXT 바이트 동일). 공용 `WaferMap.tsx` 결과 표 이미지 연결 버그(kind→mode)를
+  이 브랜치에서 고침 — 본 앱 브랜치에는 아직 반영 안 됨.
+
 ### Batch Report 지표 개편 — 시간 3칸 · 정상/실제 WPH · 작업자 중단 (2026-10-05, 브랜치 `version_v12`)
 
 - 사용자 지시로 `version_v11` 을 복사해 **`version_v12`** 에서 작업(push · 릴리즈는 사용자가 말할 때만). 목적: 개선 레시피(`PI Enhanced`,
@@ -971,6 +992,7 @@ python3 tests/test_cmwatcher.py    # 21 (다중레시피 양식목록/하위호�
 python3 tests/test_wph.py          # 9  (WPH: 시간→초·Batch End→생성일자·recipe 포함검색/카운트·기간필터(파일명날짜)·Job→recipe·원본 read-only 수집·취합텍스트(호기별)·investigate 한번파싱+진행콜백·6시트 수식엑셀/호기열U·생성일자V/유효매수 변경·통합 다중호기/파일명)
 python3 tests/test_batchview.py    # 13 (지표 개편: 시간 3칸·WPH 재료·작업자 중단/Defect 과다 · 3D 스캔 분리 · 새 Batch Report 화면 엔진: 가동률·자정 분할·WPH·Lot 상세·사람 선택 반영·IPC 조각 전송·캐시만 복원·reuse 끄기·찾기 이웃·Excel·원본 열기 범위)
 python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯 · 3D 스캔 · Recipe(s) 일치 · 연쇄 원인=trigger · Batch Report Lot 모델: S/M·Lot 코드·첫 문구 원인·연쇄·슬롯·12h 묶음·중복/선택·Lot ID 분리/판독오차·점검 스캔·호기 이동)
+python3 tests/test_wafermap_edition.py # 14 (Wafer Map 전용판: 엔진 import 허용 목록·빌드 제외 목록·다른 기능 요청 거절·열기 범위·Tauri 덮어쓰기·화면 import 범위·워크플로)
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)

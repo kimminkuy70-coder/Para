@@ -22,6 +22,7 @@ CamtekAOI/
 # Desktop migration build products (never publish caches or vendored binaries).
 frontend/node_modules/
 frontend/dist/
+frontend/dist-wafermap/
 frontend/src-tauri/target/
 frontend/src-tauri/gen/
 frontend/src-tauri/sidecar/*

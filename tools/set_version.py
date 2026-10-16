@@ -33,8 +33,11 @@ INIT_PY = os.path.join(ROOT, "param_manager", "__init__.py")
 # 실패한다(2026-08 실사고). 지워지지 않는 tools/ 아래에 만든다.
 VERSION_INFO = os.path.join(ROOT, "tools", "version_info.txt")
 
-APP_NAME = "Camtek_AOI_manager"
-EXE_STEM = "Camtek_AOI_manager"
+# 별도 판(예: Wafer Map 전용판)은 빌드 때 환경 변수로 이름만 바꾼다(ASCII 영숫자 · '_' 만).
+APP_NAME = os.environ.get("PARA_APP_NAME") or "Camtek_AOI_manager"
+EXE_STEM = os.environ.get("PARA_EXE_STEM") or "Camtek_AOI_manager"
+if not all(re.fullmatch(r"[A-Za-z0-9_]{1,64}", n) for n in (APP_NAME, EXE_STEM)):
+    raise SystemExit("[ERROR] PARA_APP_NAME / PARA_EXE_STEM: letters, digits and '_' only")
 
 
 def current_version() -> str:

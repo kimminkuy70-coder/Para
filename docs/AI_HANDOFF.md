@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Wafer Map 전용판(특수 버전) wafermap-v1.0.0 (2026-10-16 KST, `version_wafermap`)
+
+- 사용자 지시: "베이스는 똑같이 하고 wafer map 변환 기능만 분리해서 프로그램 … 다른 기능은 배포하기 좀 그래서 특수 버전 … 릴리즈 이름도
+  따로 … 브랜치를 새로". `version_v12` 에서 `version_wafermap` 을 만들었다. 상세는 CLAUDE.md 'Wafer Map 전용판' 절.
+- 엔진 `param_manager/wafermap_ipc.py`(Wafer Map 요청만) + 진입점 `tools/wafermap_engine_entry.py`(뮤텍스 따로) + 빌드 제외 목록
+  `tools/wafermap_edition.py`(허용 8개 밖의 param_manager 모듈 · tkinter 등 `--exclude-module`, 빌드 뒤 `check`). 화면
+  `frontend/wafermap/index.html` → `src/wafermap_main.tsx`(`npm run build:wafermap` → `dist-wafermap`). 실행 파일 = cargo feature
+  `wafermap` + `src-tauri/tauri.wafermap.conf.json` 덮어쓰기(이름 · 식별자 · 창 제목 · 엔진 이름 · 트레이 없음). 본 앱 설정은 그대로.
+- 이 브랜치의 `build-desktop.yml` 은 **전용판만** 빌드 · 릴리즈(`wafermap-v{버전}` 태그, `--latest=false`, SHA256SUMS.txt 동봉,
+  자동 업데이트 manifest 없음). 본 앱 빌드는 다른 브랜치에서.
+- 같이 고친 것: 결과 표 맵 이미지가 'Bin Meaning' 두 번 · 썸네일 없음으로 나오던 공용 `WaferMap.tsx` 버그(이미지 `kind` 대신 `mode`
+  로 연결) — **본 앱 브랜치(version_v12 등)에는 아직 그대로**.
+- 검증: `tests/test_wafermap_edition.py`(14) · test_wafermap · 전체 Python(기존 2건만 실패: tkinter · 샘플 xlsm) · 본 앱/전용판 vite build ·
+  `tools/test_wafermap_ui.mjs`(브라우저 + 실제 엔진으로 TXT→Excel→TXT 바이트 동일) · 로컬 PyInstaller(Linux) 빌드로 모듈 8개만 들어가고
+  얼린 엔진이 변환까지 도는 것 확인. Rust 변경은 이 환경에서 컴파일 못 함(GTK/WebKit 없음) — Windows CI 가 검증.
+
 ## 최신 재개 — Batch Report 지표 개편: 시간 3칸 · 정상/실제 WPH · 작업자 중단 (2026-10-05 KST, `version_v12`)
 
 - 사용자 지시로 `version_v11`(v11.2.0 포함) 을 복사해 `version_v12` 를 만들고 확정한 계획대로 수정. 상세 정의는 CLAUDE.md

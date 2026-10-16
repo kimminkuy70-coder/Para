@@ -169,8 +169,12 @@ class DesktopClient {
 }
 export const desktop = new DesktopClient();
 export const defaults: Options = {metrics:['M01','M02','M03','M04','M05','M06','M08','M10','M11'],valid_wafers:25,by_recipe:true};
+const errorOverrides: Record<string,string> = {};
+/** A separate edition (Wafer Map 전용판) words a few engine errors for its own single screen. */
+export function overrideErrorText(map: Record<string,string>) { Object.assign(errorOverrides, map); }
 export function errorText(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
+  if (errorOverrides[raw]) return errorOverrides[raw];
   return ({desktop_required:'데스크톱 앱에서 열면 기존 호기 설정을 불러올 수 있습니다.',
     engine_not_packaged:'분석 엔진이 포함되지 않은 빌드입니다. 엔진 패키징 후 이용할 수 있습니다.',
     engine_closed:'분석 엔진 연결이 종료되었습니다. 상단의 [다시 연결]을 눌러 주세요.',

@@ -8,6 +8,10 @@ edition = "2021"
 name = "camtek_aoi_manager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Wafer Map 전용판(특수 버전): `tauri build --features wafermap` — 엔진 sidecar 이름 · 트레이 없음.
+wafermap = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
