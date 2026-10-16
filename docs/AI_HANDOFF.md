@@ -10,6 +10,8 @@
   `wafermap` + `src-tauri/tauri.wafermap.conf.json` 덮어쓰기(이름 · 식별자 · 창 제목 · 엔진 이름 · 트레이 없음). 본 앱 설정은 그대로.
 - 이 브랜치의 `build-desktop.yml` 은 **전용판만** 빌드 · 릴리즈(`wafermap-v{버전}` 태그, `--latest=false`, SHA256SUMS.txt 동봉,
   자동 업데이트 manifest 없음). 본 앱 빌드는 다른 브랜치에서.
+- 사용자 추가 지시(릴리즈 전): 문구는 본 앱 이름 대신 **`Wafer Map 변환`**(화면 · 창 제목 · productName · 릴리즈 제목 · 문서), 화면 왼쪽
+  아래 **`개발: 김민규`**. 첫 빌드(run 38927562969)는 릴리즈 전에 취소하고 이 변경으로 다시 빌드.
 - 같이 고친 것: 결과 표 맵 이미지가 'Bin Meaning' 두 번 · 썸네일 없음으로 나오던 공용 `WaferMap.tsx` 버그(이미지 `kind` 대신 `mode`
   로 연결) — **본 앱 브랜치(version_v12 등)에는 아직 그대로**.
 - 검증: `tests/test_wafermap_edition.py`(14) · test_wafermap · 전체 Python(기존 2건만 실패: tkinter · 샘플 xlsm) · 본 앱/전용판 vite build ·

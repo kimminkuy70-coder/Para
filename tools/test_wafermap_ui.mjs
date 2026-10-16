@@ -53,7 +53,14 @@ try{
   });
   await page.goto('https://wafermap.test/');
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
-  assert.equal(await page.title(),'Camtek AOI Wafer Map');
+  assert.equal(await page.title(),'Wafer Map 변환');
+  // 문구는 'Wafer Map 변환' — 본 앱 이름이 화면에 없다. 개발자 표시는 창 왼쪽 아래(아래 줄 왼쪽 칸, 창 바닥에 붙음).
+  const body=await page.locator('body').innerText();
+  assert(!/Manager|Camtek AOI/.test(body),'본 앱 이름이 화면에 있음');
+  const credit=page.locator('footer span').first();
+  assert.match(await credit.innerText(),/^Wafer Map 변환 v[\d.]+ · 개발: 김민규$/);
+  const box=await credit.boundingBox(),vp=page.viewportSize();
+  assert(box.x<60&&box.y+box.height>vp.height-40,`개발자 표시 위치 ${JSON.stringify(box)}`);
   // 다른 기능의 화면 · 메뉴가 없다(탭 줄 자체가 없음).
   assert.equal(await page.locator('nav.navigation').count(),0);
   for(const other of ['Recipe 관리','Batch Report 분석','Commonality 조사','자동 감시','Color·Gray 매칭','설정'])

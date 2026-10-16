@@ -1,4 +1,4 @@
-"""Wafer Map 전용판(특수 버전) 엔진 — `Wafer Map 수정하기` 하나만 있는 stdio 프로토콜.
+"""Wafer Map 변환(전용판 · 특수 버전) 엔진 — `Wafer Map 수정하기` 하나만 있는 stdio 프로토콜.
 
 본 앱 엔진(`desktop_ipc`)과 같은 프로토콜(version 1 · 늘어나는 id · accepted/progress/completed/error)을
 쓰지만 Wafer Map 변환에 필요한 요청만 받는다. 이 모듈이 import 하는 프로그램 모듈은
@@ -27,7 +27,7 @@ from .desktop_wafermap import DesktopWaferMap
 
 VERSION = 1
 MAX_FRAME = 4 * 1024 * 1024
-PRODUCT = "Camtek AOI Wafer Map"
+PRODUCT = "Wafer Map 변환"
 APP_DIR = "CamtekAOI_WaferMap"           # %LOCALAPPDATA%\CamtekAOI_WaferMap\Logs (본 앱 폴더와 섞지 않음)
 ALLOWED = {
     "contract": set(), "configuration": set(), "open_path": {"path", "reveal"}, "diag_client": {"events"},

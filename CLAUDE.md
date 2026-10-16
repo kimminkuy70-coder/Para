@@ -26,7 +26,11 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 ### Wafer Map 전용판(특수 버전) — 브랜치 `version_wafermap` (2026-10-16)
 
 - 사용자 지시: 다른 기능은 배포하기 어려워 **Wafer Map 변환만** 따로 배포. 베이스(Tauri + React + Python 엔진 sidecar, 보안상 지금 구조)는
-  그대로, 릴리즈 이름도 따로(`wafermap-v{버전}`, 제목 "Camtek AOI Wafer Map v{버전}", Latest 표시는 본 앱에 남김).
+  그대로, 릴리즈 이름도 따로(`wafermap-v{버전}`, 제목 "Wafer Map 변환 v{버전}", Latest 표시는 본 앱에 남김).
+- **문구(사용자 지시)**: 화면 · 창 제목 · productName · 엔진 product · 사용법 · 릴리즈 노트/제목은 전부 **`Wafer Map 변환`** — 본 앱 이름
+  (Camtek AOI Manager)과 다른 기능 목록을 쓰지 않는다. 화면 왼쪽 아래(footer 왼쪽 칸, 창 바닥에 붙음)에 **`개발: 김민규`**.
+  파일 · 폴더 이름(`Camtek_AOI_WaferMap.exe` · 엔진 · 로그 폴더 · 뮤텍스)만 ASCII 그대로. 공용 `WaferMap.tsx` 는 `standalone` 이면 제목
+  'TXT ↔ Excel 변환' · '다른 탭' 안내 생략.
 - **다른 기능 코드가 패키지에 들어가지 않게** 세 겹으로 막는다(`tests/test_wafermap_edition.py` 가 고정):
   ①엔진 `param_manager/wafermap_ipc.py` — 요청 이름 허용 목록(contract · configuration · open_path · diag_client · wm_*)만, 나머지는
   `invalid_request`. import 하는 프로그램 모듈은 `wafermap` · `desktop_wafermap` · `desktop_progress` · `desktop_diag` 뿐
@@ -35,7 +39,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   ③화면 `frontend/wafermap/index.html` → `src/wafermap_main.tsx` → WaferMap · desktop · ui · RowPick · OpenPath 만(`npm run build:wafermap`
   → `dist-wafermap`). Activity 패널은 다른 기능 라벨이 있어 넣지 않음.
 - 실행 파일: 본 앱 설정을 바꾸지 않고 **cargo feature `wafermap`**(엔진 `Camtek_AOI_WaferMap_engine.exe` · 개발 실행 모듈 `wafermap_ipc` ·
-  트레이 없음) + **`src-tauri/tauri.wafermap.conf.json` 덮어쓰기**(productName `Camtek_AOI_WaferMap`, identifier
+  트레이 없음) + **`src-tauri/tauri.wafermap.conf.json` 덮어쓰기**(productName `Wafer Map 변환`, identifier
   `com.camtek.aoi.wafermap`, 창 제목). 중복 실행 뮤텍스 `Local\CamtekAOI_WaferMap_SingleInstance`(본 앱과 동시 실행 가능), 로그
   `%LOCALAPPDATA%\CamtekAOI_WaferMap\Logs`. `set_version.py` 는 `PARA_APP_NAME`/`PARA_EXE_STEM` 로 PE 이름만 바꿈.
 - **자동 업데이트 없음**(숨김 배치 스크립트 교체 = 보안 경보 위험 제거) · 새 버전은 새 zip. 패키지에 `사용법.md`(`docs/WAFERMAP_사용법.md`:

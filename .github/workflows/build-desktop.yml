@@ -1,14 +1,14 @@
 name: Build Windows Desktop (Tauri)
 
-# 브랜치 version_wafermap = **Wafer Map 전용판(특수 버전)** 빌드.
-# 본 앱(Camtek AOI Manager)과 같은 구조(Tauri 실행 파일 + Python 엔진 sidecar)지만
-# Wafer Map 변환 기능만 들어간다:
+# 브랜치 version_wafermap = **Wafer Map 변환(전용판 · 특수 버전)** 빌드.
+# 본 앱과 같은 구조(Tauri 실행 파일 + Python 엔진 sidecar)지만 Wafer Map 변환 기능만 들어간다.
+# 화면 · 창 제목 · 릴리즈 제목 등 사용자에게 보이는 이름은 'Wafer Map 변환'(파일 이름만 ASCII):
 #   - 엔진: tools/wafermap_engine_entry.py → param_manager.wafermap_ipc (Wafer Map 요청만).
 #     다른 기능 모듈은 tools/wafermap_edition.py 가 --exclude-module 로 빼고, 빌드 뒤 다시 확인한다.
 #   - 화면: frontend/wafermap/index.html → src/wafermap_main.tsx (Wafer Map 화면 하나).
 #   - 실행 파일: cargo feature `wafermap` + tauri.wafermap.conf.json (이름 · 식별자 · 엔진 이름 · 트레이 없음).
 #   - 자동 업데이트 없음(배치 스크립트로 폴더를 바꾸는 동작이 없다).
-# 릴리즈 이름은 본 앱과 섞이지 않게 `wafermap-v{버전}` 태그, 제목 "Camtek AOI Wafer Map v{버전}".
+# 릴리즈 이름은 본 앱과 섞이지 않게 `wafermap-v{버전}` 태그, 제목 "Wafer Map 변환 v{버전}".
 #
 # Two ways to trigger:
 #   - Actions tab -> this workflow -> "Run workflow" on branch version_wafermap (enter a version).
@@ -132,10 +132,12 @@ jobs:
           $ver = "${{ steps.ver.outputs.version }}"
           $out = "$($env:APP)_v$ver"
           New-Item -ItemType Directory -Force $out | Out-Null
+          # cargo output name; fall back to a product-named copy if the CLI renamed it.
           $exe = @("frontend/src-tauri/target/release/camtek-aoi-manager.exe",
-                   "frontend/src-tauri/target/release/$env:APP.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+                   "frontend/src-tauri/target/release/Wafer Map 변환.exe",
+                   "frontend/src-tauri/target/release/$env:APP.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
           if (-not $exe) { Write-Error "native exe missing; build failed"; exit 1 }
-          Copy-Item $exe "$out/$env:APP.exe"
+          Copy-Item -LiteralPath $exe "$out/$env:APP.exe"
           Copy-Item -Recurse "frontend/src-tauri/sidecar" "$out/sidecar"
           Copy-Item "docs/WAFERMAP_사용법.md" "$out/사용법.md"
           # File hashes: lets IT/security allowlist exactly these files.
@@ -169,5 +171,5 @@ jobs:
           Compress-Archive -Path "$($env:APP)_v$ver" -DestinationPath $zip -Force
           gh release view $tag 2>$null
           if ($LASTEXITCODE -eq 0) { gh release upload $tag $zip --clobber; gh release edit $tag --notes-file $notes }
-          else { gh release create $tag $zip --target "${{ github.sha }}" --title "Camtek AOI Wafer Map v$ver" --notes-file $notes --latest=false }
+          else { gh release create $tag $zip --target "${{ github.sha }}" --title "Wafer Map 변환 v$ver" --notes-file $notes --latest=false }
           if ($LASTEXITCODE -ne 0) { Write-Error "release failed"; exit 1 }

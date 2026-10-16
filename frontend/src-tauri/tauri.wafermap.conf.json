@@ -1,8 +1,8 @@
 {
-  "productName": "Camtek_AOI_WaferMap",
+  "productName": "Wafer Map 변환",
   "identifier": "com.camtek.aoi.wafermap",
   "build": {"beforeBuildCommand":"npm run build:wafermap","frontendDist":"../dist-wafermap"},
   "app": {
-    "windows": [{"label":"main","title":"Camtek AOI Wafer Map","width":1280,"height":860,"minWidth":960,"minHeight":640,"resizable":true}]
+    "windows": [{"label":"main","title":"Wafer Map 변환","width":1280,"height":860,"minWidth":960,"minHeight":640,"resizable":true}]
   }
 }

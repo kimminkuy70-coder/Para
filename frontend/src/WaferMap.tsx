@@ -71,7 +71,8 @@ function renderMap(m:MapData,mode:'code'|'meaning'):OffscreenCanvas{
   return c;
 }
 
-export function WaferMap(){
+/** standalone = Wafer Map 변환 전용 프로그램(탭 없음): 제목 · 안내 문구만 그 프로그램에 맞춘다. */
+export function WaferMap({standalone=false}:{standalone?:boolean}={}){
   const [step,setStep]=useState(0),[busy,setBusy]=useState(false);
   const [mode,setMode]=useState<'txt'|'excel'>('txt');
   const [root,setRoot]=useState(''),[scan,setScan]=useState<Scan>(),[picked,setPicked]=useState<string[]>([]);
@@ -146,7 +147,7 @@ export function WaferMap(){
   const canNext=step===0?validCount>0:step===1?picked.length>0:step===2?(out==='source'||!!custom.trim()):true;
 
   return <section className="panel">
-    <div className="section-heading"><div><span className="step">WAFER MAP</span><h2>Wafer Map 수정하기</h2></div>
+    <div className="section-heading"><div><span className="step">WAFER MAP</span><h2>{standalone?'TXT ↔ Excel 변환':'Wafer Map 수정하기'}</h2></div>
       <span className="count">{scan?`파일 ${picked.length} / ${validCount}`:'원본 읽기 전용'}</span></div>
     <p className="hint">Wafer Map TXT 를 Excel 로 펼쳐 Bin Code die 를 고치고, <b>원본 그대로</b> 다시 TXT 로 되돌립니다.
       원본 TXT 는 건드리지 않고 <code>_Map_Edit.xlsx</code> · <code>_Converted.txt</code> 와 맵 이미지(PNG) 를 새로 만듭니다.
@@ -211,7 +212,7 @@ export function WaferMap(){
     {step===4&&<>
       <p role="status" aria-live="polite"><b>{progress.text}</b></p>
       <div className="progress-bar" aria-label="처리 진행률" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{width:`${pct}%`}}/></div>
-      <p className="hint">{progress.done} / {progress.total} 파일 · {pct}% — 이 화면을 벗어나도 계속 처리합니다(다른 탭 이동 가능).</p>
+      <p className="hint">{progress.done} / {progress.total} 파일 · {pct}%{standalone?'':' — 이 화면을 벗어나도 계속 처리합니다(다른 탭 이동 가능).'}</p>
       <pre className="log-box" aria-label="처리 기록">{log.join('\n')}</pre>
       <div className="toolbar"><button className="danger" disabled={!busy} onClick={()=>{stop.current=true;notify('현재 파일까지 처리하고 멈춥니다.','info');}}>작업 취소</button></div>
     </>}

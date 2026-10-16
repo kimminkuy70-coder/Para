@@ -1,7 +1,6 @@
-# Camtek AOI Wafer Map — 사용법
+# Wafer Map 변환 — 사용법
 
-Camtek AOI Manager 의 **특수 버전**입니다. 본 프로그램과 같은 구조(실행 파일 + 변환 엔진)에서
-**Wafer Map 변환 기능 하나만** 들어 있습니다. Recipe · Batch Report · Commonality · 자동 감시 같은 다른 기능은 없습니다.
+Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리는 프로그램입니다.
 
 ## 1. 설치
 
@@ -41,10 +40,12 @@ Camtek AOI Manager 의 **특수 버전**입니다. 본 프로그램과 같은 �
 - 엔진은 `sidecar\Camtek_AOI_WaferMap_engine.exe` 입니다(`pythonw.exe` 를 따로 실행하지 않음). 결과를 [열기]할 때는
   이번 변환의 결과 폴더 안의 `.xlsx` · `.txt` · `.png` 와 폴더만 엽니다.
 - 압축을 푼 폴더의 `SHA256SUMS.txt` 에 모든 파일의 SHA-256 값이 있습니다. 보안 담당자에게 허용 목록 등록을 요청할 때 함께 전달하세요.
-- 본 프로그램(Camtek AOI Manager)과 **동시에 켜도 됩니다**(서로 다른 프로그램으로 취급).
 
 ## 4. 문제가 생기면
 
 - 화면 아래에 **오류 로그 폴더**가 보입니다(`%LOCALAPPDATA%\CamtekAOI_WaferMap\Logs`). `오류_로그.txt` · `상세_진단_로그.txt` 를 담당자에게 전달하세요.
 - '이미 켜져 있습니다' → 먼저 켜 둔 창을 쓰거나 닫은 뒤 [다시 연결].
 - 지우기: 압축을 푼 폴더를 지우고, 필요하면 `%LOCALAPPDATA%\CamtekAOI_WaferMap` 와 `%LOCALAPPDATA%\com.camtek.aoi.wafermap`(화면 캐시)도 지웁니다.
+
+---
+개발: 김민규

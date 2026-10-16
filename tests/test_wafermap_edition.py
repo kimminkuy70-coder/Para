@@ -118,7 +118,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(set(contract["methods"]), set(wafermap_ipc.METHODS))
         self.assertTrue(all(m.startswith("wm_") or m in ("contract", "configuration", "open_path", "diag_client")
                             for m in contract["methods"]))
-        self.assertEqual(config["product"], "Camtek AOI Wafer Map")
+        self.assertEqual(config["product"], "Wafer Map 변환")
         self.assertEqual(config["version"], 1, "protocol version stays 1 (app version is app_version)")
         self.assertTrue(config["local_root"].endswith("CamtekAOI_WaferMap"))
 
@@ -176,10 +176,10 @@ class BuildConfigTests(unittest.TestCase):
         base = json.loads((native / "tauri.conf.json").read_text(encoding="utf-8"))
         over = json.loads((native / "tauri.wafermap.conf.json").read_text(encoding="utf-8"))
         self.assertNotEqual(over["identifier"], base["identifier"])       # own WebView2 data · own app
-        self.assertEqual(over["productName"], "Camtek_AOI_WaferMap")
+        self.assertEqual(over["productName"], "Wafer Map 변환")
         self.assertEqual(over["build"]["frontendDist"], "../dist-wafermap")
         self.assertIn("build:wafermap", over["build"]["beforeBuildCommand"])
-        self.assertEqual(over["app"]["windows"][0]["title"], "Camtek AOI Wafer Map")
+        self.assertEqual(over["app"]["windows"][0]["title"], "Wafer Map 변환")
         self.assertIn("wafermap = []", (native / "Cargo.toml").read_text(encoding="utf-8"))
         rust = (native / "src" / "desktop.rs").read_text(encoding="utf-8")
         self.assertIn('"Camtek_AOI_WaferMap_engine.exe"', rust)
@@ -203,6 +203,21 @@ class BuildConfigTests(unittest.TestCase):
         vite = (ROOT / "frontend" / "vite.wafermap.config.ts").read_text(encoding="utf-8")
         self.assertIn("root:'wafermap'", vite)
         self.assertIn("outDir:'../dist-wafermap'", vite)
+
+    def test_user_facing_texts_say_wafer_map_and_credit_the_developer(self):
+        # 사용자 지시(2026-10-16): 프로그램 문구는 'Wafer Map 변환'(본 앱 이름을 쓰지 않음), 왼쪽 아래에 개발자 표시.
+        texts = {p: (ROOT / p).read_text(encoding="utf-8") for p in (
+            "frontend/src/wafermap_main.tsx", "frontend/wafermap/index.html", "frontend/src-tauri/tauri.wafermap.conf.json",
+            "param_manager/wafermap_ipc.py", "docs/WAFERMAP_사용법.md", "docs/release_notes/wafermap-v1.0.0.md")}
+        for path, text in texts.items():
+            self.assertNotIn("Manager", text, path)
+            self.assertNotIn("Camtek AOI", text, path)
+        self.assertIn("<title>Wafer Map 변환</title>", texts["frontend/wafermap/index.html"])
+        self.assertIn("개발: 김민규", texts["frontend/src/wafermap_main.tsx"])
+        self.assertIn("<footer><span>Wafer Map 변환", texts["frontend/src/wafermap_main.tsx"])   # footer 왼쪽 칸
+        self.assertIn("<WaferMap standalone/>", texts["frontend/src/wafermap_main.tsx"])
+        wf = (ROOT / ".github" / "workflows" / "build-desktop.yml").read_text(encoding="utf-8")
+        self.assertIn('--title "Wafer Map 변환 v$ver"', wf)
 
     def test_workflow_builds_the_edition_only(self):
         wf = (ROOT / ".github" / "workflows" / "build-desktop.yml").read_text(encoding="utf-8")
