@@ -137,6 +137,28 @@ class DesktopConfigTests(unittest.TestCase):
         self.assertEqual(st["save_dir"], "")
         self.assertEqual(st["report_paths"], {})
         self.assertEqual(st["scanresult_roots"], {})
+        self.assertEqual(st["memo_machines"], [])
+
+    def test_memo_machines_from_ip_memo(self):
+        """#35: 메모 › 장비 IP 의 호기를 설정 › AOI 장비 호기 루트에서 고를 수 있게 상태에 싣는다."""
+        self.a.set_save_dir({"path": self.save})
+        path = refdata.ip_path(self.save)
+        refdata.save_ip(path, [{"호기": "AOI-10", "IP": "10.0.0.10", "장비종류": "Camtek"},
+                               {"호기": "AOI-9", "IP": "10.0.0.9", "장비종류": ""},
+                               {"호기": "2.K2", "IP": "10.0.0.2", "장비종류": "KLA"},
+                               {"호기": "AOI-9", "IP": "10.0.0.99", "장비종류": "Camtek"}])
+        self.assertEqual(self.a.state()["memo_machines"],
+                         [{"name": "2.K2", "type": "KLA"}, {"name": "AOI-9", "type": ""},
+                          {"name": "AOI-10", "type": "Camtek"}])
+        # 메모를 고치면(파일 서명이 바뀌면) 다시 읽는다.
+        refdata.save_ip(path, [{"호기": "AOI-11", "IP": "10.0.0.11", "장비종류": "Camtek"}])
+        os.utime(path, ns=(os.stat(path).st_atime_ns, os.stat(path).st_mtime_ns + 10**9))
+        self.assertEqual(self.a.state()["memo_machines"], [{"name": "AOI-11", "type": "Camtek"}])
+        # 못 읽는 파일이어도 설정 화면은 열린다(빈 목록).
+        with open(path, "wb") as fh:
+            fh.write(b"not xlsx")
+        os.utime(path, ns=(os.stat(path).st_atime_ns, os.stat(path).st_mtime_ns + 2 * 10**9))
+        self.assertEqual(self.a.state()["memo_machines"], [])
 
 
 if __name__ == "__main__":

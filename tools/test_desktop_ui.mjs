@@ -426,6 +426,12 @@ try{
   await page.getByRole('button',{name:'2행 삭제',exact:true}).click();
   await page.locator('dialog[open]').getByRole('button',{name:'삭제',exact:true}).click();
   await page.getByRole('button',{name:'10.0.0.3',exact:true}).waitFor({state:'detached'});
+  // #35: 메모 › 장비 IP 에 적은 호기를 설정 › AOI 장비 호기 루트에서 고를 수 있다(장비종류 미지정 = CAMTEK · KLA 둘 다).
+  await page.getByRole('button',{name:'새 행 추가',exact:true}).click();
+  await page.locator('dialog[open]').getByLabel('호기',{exact:true}).fill('AOI-07');
+  await page.locator('dialog[open]').getByLabel('IP',{exact:true}).fill('10.0.0.7');
+  await page.locator('dialog[open]').getByRole('button',{name:'행 저장',exact:true}).click();
+  await page.getByRole('button',{name:'10.0.0.7',exact:true}).waitFor();
   // B: 특이사항 종료 여부 toggles with one click.
   await page.getByRole('tab',{name:'특이사항',exact:true}).click();
   const done=page.getByRole('checkbox',{name:'1행 종료 여부'});
@@ -455,6 +461,11 @@ try{
   await page.getByRole('tab',{name:'Batch Report 분석 주기 설정'}).click();
   await page.getByLabel('분석 주기').selectOption('12');
   await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();
+  const memoPick=page.getByLabel('CAMTEK 메모 장비 IP 에서 호기 고르기');
+  assert.deepEqual(await memoPick.locator('option').allInnerTexts(),['선택… (1대)','AOI-07']);   // AOI-01 은 이미 등록
+  await memoPick.selectOption('AOI-07');
+  assert.equal(await page.getByLabel('호기',{exact:true}).inputValue(),'AOI-07');
+  await page.getByLabel('호기',{exact:true}).fill('');
   const archive=join(fixture,'archive-01');await mkdir(archive);
   await page.getByLabel('추가 폴더 호기').selectOption('AOI-01');
   await page.getByLabel('추가 폴더',{exact:true}).fill(archive);
@@ -728,6 +739,8 @@ try{
   await kla.getByRole('button',{name:/설정 › AOI 장비 호기 루트 › KLA/}).click();
   assert.equal(await page.locator('.navigation').count(),0);                      // 설정 = 공통 탭(아래 기능 탭 줄 없음)
   const klaSet=page.locator('.kla-settings');
+  await klaSet.getByLabel('KLA 메모 장비 IP 에서 호기 고르기').selectOption('AOI-07');
+  assert.equal(await klaSet.getByLabel('장비 이름').inputValue(),'AOI-07');
   await klaSet.getByLabel('장비 이름').fill('2.K2');
   await klaSet.getByLabel('장비 폴더').fill(klaRoot);
   await klaSet.getByRole('button',{name:'추가',exact:true}).click();

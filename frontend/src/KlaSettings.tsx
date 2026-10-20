@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {desktop,errorText,pickFolder} from './desktop';
 import {notify} from './ui';
 import {openPath} from './OpenPath';
+import {MemoPick,type MemoMachine} from './MemoPick';
 
 /* KLA 장비 폴더 설정(이슈 #32) — 설정 › AOI 장비 호기 루트 › KLA 탭에서 등록한다(종전 #30 은 KLA 자재 찾기 화면 안).
    · KLA 장비 폴더: 이름 + 경로(바로 아래가 날짜 폴더, 또는 장비 폴더들을 담은 상위 폴더). 이 PC 설정 `kla_roots`.
@@ -68,7 +69,7 @@ export function KlaBackupBar({note,disabled}:{note?:string;disabled?:boolean}){
 }
 
 /** 설정 › AOI 장비 호기 루트 › KLA: 장비 폴더 등록 + 장비별 Defect 이미지 백업 폴더. */
-export function KlaRootsSettings(){
+export function KlaRootsSettings({memo}:{memo?:MemoMachine[]}={}){
   const [st,error,load]=useKlaState();
   const roots=st?.roots||[];
   const [busy,setBusy]=useState(false);
@@ -98,6 +99,7 @@ export function KlaRootsSettings(){
               void save(roots.filter(o=>o.name!==r.name),`${r.name} 삭제`);}}>삭제</button></td></tr>)}
     </tbody></table>:st&&<p className="table-empty">⚠ 등록된 KLA 장비 폴더가 없습니다 — 아래에서 등록하세요.</p>}
     <div className="form-filter" data-tour="settings:kla-form" style={{marginTop:10}}>
+      <MemoPick memo={memo} vendor="KLA" registered={roots.map(r=>r.name)} onPick={setName} disabled={busy}/>
       <label className="field" style={{width:150}}>장비 이름<input value={name} placeholder="2.K2" maxLength={64} onChange={e=>setName(e.target.value)}/></label>
       <label className="field" style={{flex:1,minWidth:240}}>장비 폴더<input value={path} placeholder="예: J:\2.K2  (또는 J:\ — 아래 장비 폴더를 모두 찾음)" maxLength={4096} onChange={e=>setPath(e.target.value)}/></label>
       <button onClick={()=>void browse(setPath,p=>{if(!name.trim())setName(p.replace(/[\\/]+$/,'').split(/[\\/]/).pop()||'');})}>📁 찾기</button>

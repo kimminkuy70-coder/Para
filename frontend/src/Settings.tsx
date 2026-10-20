@@ -12,10 +12,11 @@ import {ScanBackupBar,useScanBackup} from './ScanBackup';
 import {startTour} from './Tour';
 import {requestBatchRunNow} from './batchAuto';
 import {KlaRootsSettings,useKlaState} from './KlaSettings';
+import {MemoPick,type MemoMachine} from './MemoPick';
 
 type Auto={enabled:boolean;interval_hours:number;time?:string;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
-type State={save_dir:string;local_dir:string;aoi:Aoi[];batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string};
+type State={save_dir:string;local_dir:string;aoi:Aoi[];batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string;memo_machines?:MemoMachine[]};
 type ExtraKind='report'|'scanresult';
 type Edit={kind:'aoi'|'extra';machine:string;newMachine:string;path:string;orig?:string;extraKind?:ExtraKind};
 const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 폴더'],['aoi','AOI 장비 호기 루트'],['auto','Batch Report 분석 주기 설정'],['about','정보']];
@@ -217,7 +218,7 @@ export function Settings(){
 
     {sub==='aoi'&&<div className="subtabs vendor-sub" role="tablist" aria-label="장비 회사">{(['CAMTEK','KLA'] as AoiVendor[]).map(v=>
       <button key={v} role="tab" data-tour={'settings:aoi:'+v} aria-selected={aoiVendor===v} className={aoiVendor===v?'active':''} onClick={()=>setAoiVendor(v)}>{v}</button>)}</div>}
-    {sub==='aoi'&&aoiVendor==='KLA'&&<KlaRootsSettings/>}
+    {sub==='aoi'&&aoiVendor==='KLA'&&<KlaRootsSettings memo={st?.memo_machines}/>}
     {sub==='aoi'&&aoiVendor==='CAMTEK'&&<>
       <h3>AOI 장비 호기 루트 등록</h3>
       <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
@@ -226,6 +227,7 @@ export function Settings(){
       {aois.length>0&&<table className="tbl" data-tour="settings:aoi-table" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th/></tr></thead>
         <tbody>{aois.map(aoiRow)}</tbody></table>}
       <div className="form-filter" data-tour="settings:aoi-form" style={{marginTop:12}}>
+        <MemoPick memo={st?.memo_machines} vendor="CAMTEK" registered={aois.map(a=>a.machine)} onPick={setAMachine} disabled={busy}/>
         <label className="field" style={{width:150}}>호기<input value={aMachine} placeholder="AOI-9" maxLength={64} onChange={e=>setAMachine(e.target.value)}/></label>
         <label className="field" style={{flex:1,minWidth:240}}>호기 폴더<input value={aPath} placeholder="예: W:\AOI-9" maxLength={4096} onChange={e=>setAPath(e.target.value)}/></label>
         <button onClick={()=>browse(setAPath)}>📁 찾기</button>

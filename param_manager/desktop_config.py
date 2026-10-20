@@ -99,6 +99,36 @@ def scanresult_roots_for(cfg, machine, backup=None):
     return [r["path"] for r in scanresult_roots_info(cfg, machine, backup)]
 
 
+_MEMO_CACHE = {}
+
+
+def memo_machines(save_dir):
+    """메모 › 장비 IP(`장비 IP 주소.xlsx`)의 호기 목록 [{name, type}] — 설정 › AOI 장비 호기 루트에서
+    호기 이름을 타이핑하지 않고 고르게 한다(#35). 읽기만 하고, 파일 서명(수정시각 · 크기)이 같으면
+    다시 열지 않는다. 저장 폴더가 없거나 파일을 못 읽으면 빈 목록(설정 화면을 막지 않는다)."""
+    if not save_dir:
+        return []
+    path = refdata.ip_path(save_dir)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return []
+    sig = (path, st.st_mtime_ns, st.st_size)
+    if _MEMO_CACHE.get("sig") != sig:
+        try:
+            rows = refdata.load_ip(path)
+        except Exception:       # 손상 · 잠긴 파일 — 목록만 비우고 설정은 계속 쓴다
+            return []
+        out, seen = [], set()
+        for r in rows:
+            name = engine._s(r.get("호기")).strip()
+            if name and name not in seen and len(name) <= MAX_MACHINE:
+                seen.add(name)
+                out.append(dict(name=name, type=engine._s(r.get("장비종류")).strip()))
+        _MEMO_CACHE.update(sig=sig, rows=sorted(out, key=lambda r: name_key(r["name"])))
+    return [dict(r) for r in _MEMO_CACHE["rows"]]
+
+
 def roots_report(info):
     """화면 표시용: [{path, kind}] (Path → 글자)."""
     return [dict(path=str(r["path"]), kind=r["kind"]) for r in info]
@@ -143,6 +173,7 @@ class DesktopConfig:
                     extra_paths={m: [p for p in v if isinstance(p, str)] for m, v in extra.items()
                                  if isinstance(v, list)} if isinstance(extra, dict) else {},
                     batch_auto=bool(cfg.get("batch_auto")), scan_backup=scan_backup(cfg),
+                    memo_machines=memo_machines(cfg.get("save_dir") or ""),
                     batch=DesktopBatch(self.config_path).auto_state(cfg), batch_intervals=list(BATCH_INTERVALS),
                     # Effective local folder (config or default) + the config file itself, for the
                     # "현재 설정" summary. Pure path computation, no folder access.

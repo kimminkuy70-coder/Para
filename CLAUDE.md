@@ -23,6 +23,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### AOI 장비 호기 루트 등록 = 메모(장비 IP)에서 호기 고르기 (2026-10-20, 이슈 #35)
+- 설정 › AOI 장비 호기 루트(CAMTEK · KLA) 등록 줄의 `메모(장비 IP)에서 고르기`(`MemoPick.tsx`)가 이름 칸만 채운다(폴더는 사람이). 목록 = `config_state.memo_machines`
+  (`desktop_config.memo_machines` — `장비 IP 주소.xlsx` 읽기만, 서명 같으면 캐시). 회사 탭에 맞는 장비종류 → 미지정 순, 다른 회사 · 이미 등록한 호기는 뺀다.
+
 ### Batch Report 자동 분석 실행 시각 · 즉시 실행 + '감시' → '분석 및 취합' (2026-10-14, 이슈 #33)
 - 자동 분석 주기가 하루 단위(24 · 48 · 168시간)면 실행 시각 `batch_time`("HH:MM", 5분 단위)을 정할 수 있다. 다음 실행 = 마지막 실행 + (주기 − 1일) 뒤의 첫 그 시각
   (`desktop_batch.next_batch_run`). 시각이 없거나 시간 단위 주기면 종전(마지막 실행 + 주기). [▶ 즉시 실행] = 자동 분석 켜짐과 무관하게 지난 조사 조건으로 한 번(`batchAuto.ts` → `Batch.tsx runLast`).

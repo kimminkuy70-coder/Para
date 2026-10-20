@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #35 AOI 장비 호기 루트 등록 때 메모(장비 IP)의 호기를 골라 이름 채우기 (2026-10-20 KST, `version_v12`, v12.8.19)
+
+- 마지막 갱신 2026-10-20 · 기준 커밋 `1048fe8`(v12.8.18) · 이슈 Para #35 · 작업 브랜치 `version_v12` · 릴리스 v12.8.19(태그 push → `build-desktop.yml`).
+- 요청: 설정 › AOI 장비 호기 루트에 호기를 등록할 때 메모(장비 IP)에 이미 AOI 호기가 있으니 그것으로 추가하게. 호기 루트(폴더)는 사람이 지정하지만 호기 이름 타이핑이 귀찮다.
+- 엔진 `desktop_config.memo_machines(save_dir)`: `장비 IP 주소.xlsx`(refdata.load_ip)를 읽어 `[{name, type}]`(이름 순 `name_key`, 중복 · 64자 초과 제외).
+  파일 서명(경로 · mtime_ns · 크기)이 같으면 다시 열지 않음(모듈 캐시 `_MEMO_CACHE`), 없거나 못 읽으면 빈 목록. `config_state` 응답에 `memo_machines`. 쓰기 없음.
+- 화면 새 `MemoPick.tsx`: 등록 줄 맨 앞 `메모(장비 IP)에서 고르기` select — 고르면 이름 칸만 채움(폴더 · [추가]는 사람이). CAMTEK 탭 = 장비종류 Camtek → 미지정,
+  KLA 탭(`KlaRootsSettings memo=`) = 장비종류 KLA → 미지정 (optgroup). 다른 회사로 적힌 호기, 이미 등록한 호기는 뺌. 메모가 비면 안내 한 줄. 튜토리얼 문구 한 줄 추가.
+- 내 해석(확인 전): ①이름만 채우고 폴더는 사람이 지정(이슈 문장대로) ②장비종류 미지정 호기는 CAMTEK · KLA 양쪽에 다 보임 ③목록에서 고르는 방식(직접 타이핑도 그대로 됨).
+- 검증: `tests/test_desktop_config.py`(9 — memo_machines 정렬 · 중복 · 파일 바뀌면 다시 읽기 · 손상 파일 빈 목록), `tools/check_project.py`(tkinter 없는 test_batchreport
+  기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`(메모에 AOI-07 추가 → CAMTEK 목록 = AOI-07 만(AOI-01 은 등록됨) · 고르면 호기 칸 채움 ·
+  KLA 탭에서도 고름) 통과. Windows 실기는 미검증.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #35 | AOI 장비 호기 루트 등록 때 메모의 AOI 호기로 추가 | 메모(장비 IP)에서 고르기 select(CAMTEK · KLA), v12.8.19 |
+
 ## 최신 재개 — Para #33 Batch Report 자동 분석 실행 시각(5분 단위) · 즉시 실행 + '감시' → '분석 및 취합' (2026-10-14 KST, `version_v12`)
 
 - GitHub 이슈 #33: ① 자동 분석 주기가 하루 1회 같은 하루 단위면 몇 시 몇 분(5분 단위)에 돌지 정하게 ② 자동 분석을 꺼 둔 채로도 바로 돌리는
