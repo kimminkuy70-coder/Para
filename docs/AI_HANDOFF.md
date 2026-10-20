@@ -2,7 +2,10 @@
 
 ## 최신 재개 — Para #35 AOI 장비 호기 루트 등록 때 메모(장비 IP)의 호기를 골라 이름 채우기 (2026-10-20 KST, `version_v12`, v12.8.19)
 
-- 마지막 갱신 2026-10-20 · 기준 커밋 `1048fe8`(v12.8.18) · 이슈 Para #35 · 작업 브랜치 `version_v12` · 릴리스 v12.8.19(태그 push → `build-desktop.yml`).
+- 마지막 갱신 2026-10-20 · 기준 커밋 `1048fe8`(v12.8.18) · 이슈 Para #35 · 작업 브랜치 `version_v12` · 커밋 `082b014`(기능) · `be27508`(릴리즈 노트).
+- 릴리스 **v12.8.19 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.8.19 (`Camtek_AOI_manager_v12.8.19.zip`, run 39413246748 성공, 태그 = `be27508`).
+  막힌 것: 이 환경에서 `git push origin v12.8.19` 는 `send-pack: unexpected disconnect while reading sideband packet` 으로 거절,
+  REST `git/refs` 는 `HTTP 403 Write access to this GitHub API path is not permitted through this proxy` → **workflow_dispatch(ref=version_v12, version=12.8.19)로 릴리스**(run 이 태그 · Release 생성). 다음 run 도 dispatch 를 쓰면 된다.
 - 요청: 설정 › AOI 장비 호기 루트에 호기를 등록할 때 메모(장비 IP)에 이미 AOI 호기가 있으니 그것으로 추가하게. 호기 루트(폴더)는 사람이 지정하지만 호기 이름 타이핑이 귀찮다.
 - 엔진 `desktop_config.memo_machines(save_dir)`: `장비 IP 주소.xlsx`(refdata.load_ip)를 읽어 `[{name, type}]`(이름 순 `name_key`, 중복 · 64자 초과 제외).
   파일 서명(경로 · mtime_ns · 크기)이 같으면 다시 열지 않음(모듈 캐시 `_MEMO_CACHE`), 없거나 못 읽으면 빈 목록. `config_state` 응답에 `memo_machines`. 쓰기 없음.
