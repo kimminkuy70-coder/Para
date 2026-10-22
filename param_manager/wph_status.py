@@ -1,6 +1,7 @@
 """Batch Report status summaries; no additional file/network reads."""
 import re
 import math
+from copy import copy
 from collections import Counter
 
 TYPES = (
@@ -14,7 +15,22 @@ TYPES = (
 )
 
 
+# 상태 문장은 종류가 적다 — 같은 문장은 한 번만 분류한다(이슈 Para #38: 웨이퍼마다 여러 화면 · 파일에서 다시 분류해
+# 호기 10대 × Report 5천 개에서 정규식 수백만 번). 돌려줄 때는 새 list 라 호출한 쪽이 고쳐도 기억한 값은 그대로.
+_CLASSIFY_CACHE = {}
+
+
 def classify(raw):
+    key = raw if type(raw) is str else str(raw or '')
+    hit = _CLASSIFY_CACHE.get(key)
+    if hit is None:
+        hit = tuple(_classify(raw))
+        if len(_CLASSIFY_CACHE) < 20000:
+            _CLASSIFY_CACHE[key] = hit
+    return list(hit)
+
+
+def _classify(raw):
     text = re.sub(r'\s+', ' ', str(raw or '')).strip()
     if not text:
         return [('상태 확인 불가', '(빈 상태)')]
@@ -91,12 +107,18 @@ def add_sheets(wb, rows, errors):
     for error in errors:
         error_sheet.append([error.get('machine', ''), error.get('source_file', ''), error.get('error', '')])
     for sheet in (overview, report_sheet, detail_sheet, error_sheet):
+        top = None
         for row in sheet:
             for cell in row:
                 # Report names/statuses are untrusted text, never Excel formulas.
                 if isinstance(cell.value, str):
                     cell.data_type = 's'
-                cell.alignment = Alignment(vertical='top', wrap_text=True)
+                # 같은 정렬 서식은 첫 셀에서 만든 묶음을 복사(이슈 Para #38 — 셀 수십만 개에서 서식 비교가 대부분의 시간).
+                if top is None:
+                    cell.alignment = Alignment(vertical='top', wrap_text=True)
+                    top = cell._style
+                else:
+                    cell._style = copy(top)
         header_rows = [1, 9] if sheet is overview else [1]
         for r in header_rows:
             for cell in sheet[r]:

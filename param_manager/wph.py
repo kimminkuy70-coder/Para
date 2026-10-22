@@ -31,6 +31,7 @@ Camtek AOI 장비는 스캔할 때마다 Report 폴더(예: ``P:\\AOI-21\\Report
 from __future__ import annotations
 
 import html
+from copy import copy
 import os
 import re
 from datetime import datetime
@@ -128,8 +129,20 @@ def parse_tables(path) -> list[list[list[str]]]:
     return parser.tables
 
 
+_NORM_RE = re.compile(r"[^a-z0-9]")
+# 열 이름 · 메타 키는 종류가 적어 정규화 결과를 기억해 둔다(이슈 Para #38 — 호기당 Report 5천 개 × 10대를 한 번에
+# 조사하면 웨이퍼 칸마다 정규식을 다시 돌려 계산 시간의 대부분이 여기서 나갔다). 값이 끝없이 늘지 않게 상한을 둔다.
+_NORM_CACHE: dict[str, str] = {}
+
+
 def normalize_key(value: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+    text = value if type(value) is str else str(value)
+    hit = _NORM_CACHE.get(text)
+    if hit is None:
+        hit = _NORM_RE.sub("", text.lower())
+        if len(_NORM_CACHE) < 50000:
+            _NORM_CACHE[text] = hit
+    return hit
 
 
 def _find_wafer_table(tables):
@@ -183,12 +196,21 @@ def _meta_lookup(metadata) -> dict:
     return {normalize_key(k): v for k, v in metadata}
 
 
+# 열 이름 묶음 → {정규화 이름: 원래 열 이름}. 같은 Report 의 웨이퍼 행은 열 이름이 같아 한 번만 만든다(이슈 Para #38).
+_FIELD_MAPS: dict[tuple, dict] = {}
+
+
 def safe_field(row: dict, *names: str) -> str:
-    norm = {normalize_key(k): v for k, v in row.items()}
+    keys = tuple(row)
+    lookup = _FIELD_MAPS.get(keys)
+    if lookup is None:
+        lookup = {normalize_key(k): k for k in keys}   # 정규화 이름이 겹치면 뒤 열이 이김(종전과 같음)
+        if len(_FIELD_MAPS) < 5000:
+            _FIELD_MAPS[keys] = lookup
     for name in names:
-        v = norm.get(normalize_key(name))
-        if v is not None:
-            return v
+        key = lookup.get(normalize_key(name))
+        if key is not None and row[key] is not None:
+            return row[key]
     return ""
 
 
@@ -630,7 +652,12 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
         ws.cell(row=r, column=20,
                 value=(f'=IF(AND($L{r}="Y",OR($N{r}<>"정상범위",$O{r}<>"정상범위")),'
                        f'COUNT($T$1:T{r - 1})+1,"")'))
-        # 스타일/서식
+        # 스타일/서식 — 첫 행만 꾸미고 나머지 행은 그 서식 묶음을 복사한다(이슈 Para #38: Report 수만 개에서
+        # 셀마다 서식 객체를 비교하느라 Excel 만들기가 수십 초 걸렸다. 결과 서식은 같다).
+        if r > lo:
+            for col, style in row_styles.items():
+                ws.cell(row=r, column=col)._style = copy(style)
+            continue
         for col in range(1, 6):          # A:E 입력
             cc = ws.cell(row=r, column=col)
             cc.fill = in_fill
@@ -644,6 +671,7 @@ def write_wph_excel(path, rows: list[dict], *, valid_wafers: int = DEFAULT_VALID
         for col in (21, 22):                         # U:호기, V:생성일자(입력)
             ws.cell(row=r, column=col).fill = in_fill
             ws.cell(row=r, column=col).font = in_font
+        row_styles = {col: ws.cell(row=lo, column=col)._style for col in range(1, 23)}
 
     # 실제 데이터 채우기
     for i, row in enumerate(rows):

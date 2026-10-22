@@ -1,5 +1,38 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #38 Batch Report 대량 자료(호기 10대 × 호기당 5천 개) 조사 속도 (2026-10-22 KST, `version_v12`, v12.8.22)
+
+- 마지막 갱신 2026-10-22 · 기준 커밋 `03a8d90`(v12.8.21 인수인계) · 이슈 Para #38 · 작업 브랜치 `version_v12`.
+- 릴리스: v12.8.22 (결과는 아래 '릴리스 결과' 줄 — 릴리스 뒤 다음 commit 에서 채움).
+- 요청: "배치레포트가 호기 하나당 5천 개씩 있고 호기가 25대 넘게, 그중 10대 정도를 한 번에 계산한다 — 네(Claude)가 시험한 규모(#37 의 최대 4000 Report)로는 어림없다."
+- 한 일: 합성 자료 **10호기 × 5000 Report(웨이퍼 25장, 모두 5만 개 · wafer 약 120만 행)** 로 `batchreport_service.run` 전체를 단계별로 재고 병목을 고침.
+  재현 스크립트는 저장소에 넣지 않음(아래 '대량 시험 재현' 참고). 같은 PC(Linux, 4코어) 기준:
+  | 단계 | 수정 전 | 수정 후 |
+  |---|---|---|
+  | Report 읽기(로컬 디스크, 호기당 ~12초) | 145초 | 146초(그대로 — 장비 네트워크에서는 더 걸림) |
+  | 배치 분석 지표 계산(`batchreport.compute`) | 167초 | 56초 |
+  | 화면용 Lot · 가동률 · WPH(`batchview.View`) | 141초 | 38초 |
+  | HTML · 분석 Excel · WPH_통합.xlsx/html | 232초 | 96초 |
+  | 합계 | 690초 | 342초 |
+  최대 메모리(RSS)는 둘 다 약 5.0GB(줄이지 못함), 화면 전송 View JSON 24.8MB.
+- 원인과 수정(결과 동일 — 같은 자료로 수정 전 코드와 compute 표 · View payload · extract_row · wph_html 결과 hash 와 WPH_통합.xlsx 셀 값 · 서식 hash 일치 확인):
+  ① `wph.safe_field` 가 호출마다 행 전체 열 이름을 `normalize_key`(정규식)로 다시 정규화 — wafer 행마다 10번 → 수천만 번 정규식. → `normalize_key` 결과 기억(`_NORM_CACHE`, 상한 5만),
+  `safe_field` 는 열 이름 묶음(tuple) → {정규화 이름: 원래 열} 표 기억(`_FIELD_MAPS`, 상한 5천). 겹치면 뒤 열이 이기는 종전 규칙 유지.
+  ② `wph_status.classify` 를 wafer 마다 여러 곳(compute · wph_html · add_sheets)에서 다시 분류 → 상태 문장별 결과 기억(`_CLASSIFY_CACHE`, 상한 2만, 돌려줄 때 새 list).
+  ③ openpyxl 셀마다 서식 객체 대입(`WPH_통합.xlsx` 01_Raw_Data 의 수식 행 · `add_sheets` 정렬) → 첫 행/첫 셀 서식을 만든 뒤 나머지는 `cell._style = copy(...)`(openpyxl<4 내부 속성, 결과 서식 동일).
+- 시험: `tests/test_batchreport.py` 새 `LargeVolume` 2개(기억한 값이 결과를 안 바꿈 · 호출자가 고쳐도 안전 / WPH Excel 마지막 수식 행까지 첫 행 서식), `tests/test_wph.py` 9 통과,
+  `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패). Windows 실기 · 실제 장비 네트워크 읽기 · 실제 자료는 미검증.
+- 내 해석(확인 전): ①이슈는 '실제 규모로 시험하고 견디게 하라'로 봄 — 결과 · 화면은 바꾸지 않고 속도만 고침 ②25대 전부가 아니라 소유자 말대로 10대를 한 번에 기준으로 시험
+  ③메모리 5GB 는 그대로라 8GB 이하 PC 에서는 호기를 나눠 조사하라고 릴리즈 노트에 적음.
+- 남은 일(제안, 소유자 확인 전): 메모리 줄이기(compute 의 wafer dict 120만 개 · View 시도 행 · `rows` 를 동시에 들고 있음 — 단계별로 풀거나 구조 축소),
+  `WPH_통합.xlsx`(수식 엑셀, 5만 행 × 22열)를 계속 만들지 여부(M01 끄면 생략됨, 남은 출력 시간의 대부분), Report 읽기는 병렬 금지(소유자 지시)라 그대로.
+- 대량 시험 재현: 합성 Batch Report 생성기(호기 폴더 `AOI-xx/Reports/*.htm`, 웨이퍼 25장 · 상태 섞음 · 파일명 날짜 규칙) → `service.run(root, targets, {'metrics': 전부, 'valid_wafers': 25})`
+  를 progress 콜백 시각 · `resource.getrusage` 로 잼. 생성 자료 360MB · 캐시 JSON 포함 디스크 ~1GB 필요.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #38 | 호기 10대 × 호기당 Batch Report 5천 개 규모로 시험 · 견디게 | 실제 규모 합성 시험, 계산 · 파일 만들기 약 2.8배 빠르게(결과 동일), v12.8.22 |
+
 ## 최신 재개 — Para #37 Batch Report 가동률 조사 중 'too many values to unpack' 오류 수정 (2026-10-22 KST, `version_v12`, v12.8.21)
 
 - 마지막 갱신 2026-10-22 · 기준 커밋 `ea10b98`(v12.8.20 인수인계) · 이슈 Para #37 · 작업 브랜치 `version_v12` · 커밋 `c59ad0e`(수정 + 릴리즈 노트).

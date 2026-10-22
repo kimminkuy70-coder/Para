@@ -143,6 +143,42 @@ class Metrics(unittest.TestCase):
         self.assertIn('100%', day[-1])      # 기간 상태에 100% 초과 표시
 
 
+class LargeVolume(unittest.TestCase):
+    """이슈 Para #38: 호기당 Report 5천 개 × 10대 — 빠르게 하려고 기억해 둔 값이 결과를 바꾸지 않는지."""
+
+    def test_field_lookup_and_status_memo_keep_results(self):
+        self.assertEqual(wph.safe_field({'Pass/Fail': 'Pass', 'No': '3'}, 'Pass/Fail'), 'Pass')
+        self.assertEqual(wph.safe_field({'Status': 'Aborted.'}, 'Pass/Fail', 'Status'), 'Aborted.')  # 열 이름이 다른 Report
+        self.assertEqual(wph.safe_field({'Wafer-ID': 'W1', 'Wafer ID': 'W2'}, 'Wafer ID'), 'W2')   # 겹치면 뒤 열(종전과 같음)
+        self.assertEqual(wph.safe_field({'Lot': None, 'LOT': None}, 'Lot'), '')
+        self.assertEqual(wph.safe_field({}, 'Lot'), '')
+        self.assertEqual(wph.normalize_key('Wafer ID'), 'waferid')
+        self.assertEqual(wph.normalize_key(25), '25')
+        from param_manager import wph_status
+        first = wph_status.classify('Aborted. Alignment Error')
+        first.append(('x', 'y'))                                  # 호출한 쪽이 고쳐도 다음 결과는 그대로
+        self.assertEqual(wph_status.classify('Aborted. Alignment Error'),
+                         [('Alignment 오류', 'Alignment Error.'), ('작업 중단', 'Aborted.')])
+        self.assertEqual(wph_status.classify(None), [('상태 확인 불가', '(빈 상태)')])
+
+    def test_wph_excel_rows_keep_first_row_styles(self):
+        from openpyxl import load_workbook
+        rows = [{'source_file': f'r{i}.htm', 'wafers': 25, 'avg_scan_sec': 100, 'batch_sec': 3000,
+                 'batch_end': datetime(2026, 9, 19, 10, i), 'machine': 'AOI-1'} for i in range(3)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'w.xlsx'
+            wph.write_wph_excel(str(path), rows, valid_wafers=25)
+            ws = load_workbook(path)['01_Raw_Data']
+            last = wph.FIRST_DATA_ROW + wph.CAPACITY - 1
+            for col in (1, 6, 10, 21):
+                top, mid, end = ws.cell(2, col), ws.cell(3, col), ws.cell(last, col)
+                for cell in (mid, end):
+                    self.assertEqual((cell.fill.fgColor.rgb, cell.font.color.rgb if cell.font.color else None, cell.number_format),
+                                     (top.fill.fgColor.rgb, top.font.color.rgb if top.font.color else None, top.number_format))
+            self.assertEqual(ws.cell(3, 22).number_format, 'yyyy-mm-dd hh:mm:ss')
+            self.assertEqual(ws.cell(last, 7).number_format, '[h]:mm:ss')
+
+
 class Collection(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
