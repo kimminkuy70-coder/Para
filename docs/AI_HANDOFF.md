@@ -2,7 +2,10 @@
 
 ## 최신 재개 — Para #36 네트워크 드라이브(NAS)에서 AOI 호기 자동 찾기 · 한꺼번에 등록 (2026-10-22 KST, `version_v12`, v12.8.20)
 
-- 마지막 갱신 2026-10-22 · 기준 커밋 `3ec60bf`(v12.8.19 인수인계) · 이슈 Para #36 · 작업 브랜치 `version_v12` · 릴리스 v12.8.20(결과는 아래 줄 — 릴리스 뒤 갱신).
+- 마지막 갱신 2026-10-22 · 기준 커밋 `3ec60bf`(v12.8.19 인수인계) · 이슈 Para #36 · 작업 브랜치 `version_v12` · 커밋 `225c054`(기능) · `c0bf889`(릴리즈 노트).
+- 릴리스 **v12.8.20 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.8.20 (`Camtek_AOI_manager_v12.8.20.zip`, run 39700649004 성공, 태그 = `c0bf889`).
+  이번에도 `git push origin v12.8.20` = `send-pack: unexpected disconnect while reading sideband packet`, REST `git/refs` = HTTP 403(proxy) → workflow_dispatch(ref=version_v12, version=12.8.20).
+  다음 run 은 바로 dispatch 를 써도 된다. 테스트가 추적 중인 `CamtekAOI/Logs/오류_로그.txt` 를 고치므로 commit 전에 `git checkout -- CamtekAOI docs/screenshots`.
 - 요청: AOI 장비 호기 루트를 NAS 네트워크 드라이브에서 장비 하나씩 지정하는 대신, 네트워크 드라이브를 고르면 몇 호기까지 있는지 찾아 자동 지정.
   **NAS 서버에 영향 · 원본 훼손 절대 금지**, 장비 폴더는 드라이브 **바로 아래**에 있으니 더 아래로 들어가 찾지 말 것(소유자 지시).
 - 엔진 `desktop_config.scan_drive_children(drive)`: `os.scandir` 1번으로 바로 아래 폴더 이름만(이름 순 `name_key`). 휴지통 · 시스템(`$RECYCLE.BIN`,
