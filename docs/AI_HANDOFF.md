@@ -2,7 +2,10 @@
 
 ## 최신 재개 — Para #37 Batch Report 가동률 조사 중 'too many values to unpack' 오류 수정 (2026-10-22 KST, `version_v12`, v12.8.21)
 
-- 마지막 갱신 2026-10-22 · 기준 커밋 `ea10b98`(v12.8.20 인수인계) · 이슈 Para #37 · 작업 브랜치 `version_v12`.
+- 마지막 갱신 2026-10-22 · 기준 커밋 `ea10b98`(v12.8.20 인수인계) · 이슈 Para #37 · 작업 브랜치 `version_v12` · 커밋 `c59ad0e`(수정 + 릴리즈 노트).
+- 릴리스 **v12.8.21 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.8.21 (`Camtek_AOI_manager_v12.8.21.zip`, run 39771346078 성공, 태그 = `c59ad0e`).
+  이번에도 `git push origin v12.8.21` = `fatal: the remote end hung up unexpectedly`, REST `git/refs` = HTTP 403(proxy) → workflow_dispatch(ref=version_v12, version=12.8.21).
+  다음 run 은 바로 dispatch 를 써도 된다.
 - 요청: 배치레포트 분석 › 가동률 조사 및 분석에서 `too many values to unpack?` 오류, 데이터가 많아서인 것 같다 — 고쳐 달라.
 - 원인(재현함): `batchreport_service.run` 이 WPH .html(`wph_html.compute`)에 수집 오류 목록 `collection['errors']`(dict: machine · source_file · error)를
   그대로 넘겼는데, `wph_html` 은 `(파일, 사유)` 2-tuple 을 `for n, m in errors` 로 푼다 → 키 3개 dict 라 `ValueError: too many values to unpack (expected 2)`.
