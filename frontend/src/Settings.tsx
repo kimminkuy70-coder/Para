@@ -13,6 +13,7 @@ import {startTour} from './Tour';
 import {requestBatchRunNow} from './batchAuto';
 import {KlaRootsSettings,useKlaState} from './KlaSettings';
 import {MemoPick,type MemoMachine} from './MemoPick';
+import {AoiDriveScan} from './AoiDriveScan';
 
 type Auto={enabled:boolean;interval_hours:number;time?:string;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
@@ -233,6 +234,7 @@ export function Settings(){
         <button onClick={()=>browse(setAPath)}>📁 찾기</button>
         <button className="primary" disabled={busy||!aMachine.trim()||!aPath.trim()}
           onClick={()=>req('config_set_aoi_root',{machine:aMachine.trim(),path:aPath.trim()},`${aMachine.trim()} 등록`,()=>{setAMachine('');setAPath('');})}>추가</button></div>
+      <AoiDriveScan<State> disabled={busy} onState={setSt}/>
 
       <h3 style={{marginTop:24}}>호기별 추가 폴더 (백업·보관본)</h3>
       <p className="hint">호기 루트 밖에 있는 백업·보관 폴더를 함께 읽게 합니다. <b>Batch Report</b> 는 Batch Report 분석이 기본 Reports 와 함께 조사하고,

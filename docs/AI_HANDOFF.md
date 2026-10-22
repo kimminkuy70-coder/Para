@@ -1,5 +1,29 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #36 네트워크 드라이브(NAS)에서 AOI 호기 자동 찾기 · 한꺼번에 등록 (2026-10-22 KST, `version_v12`, v12.8.20)
+
+- 마지막 갱신 2026-10-22 · 기준 커밋 `3ec60bf`(v12.8.19 인수인계) · 이슈 Para #36 · 작업 브랜치 `version_v12` · 릴리스 v12.8.20(결과는 아래 줄 — 릴리스 뒤 갱신).
+- 요청: AOI 장비 호기 루트를 NAS 네트워크 드라이브에서 장비 하나씩 지정하는 대신, 네트워크 드라이브를 고르면 몇 호기까지 있는지 찾아 자동 지정.
+  **NAS 서버에 영향 · 원본 훼손 절대 금지**, 장비 폴더는 드라이브 **바로 아래**에 있으니 더 아래로 들어가 찾지 말 것(소유자 지시).
+- 엔진 `desktop_config.scan_drive_children(drive)`: `os.scandir` 1번으로 바로 아래 폴더 이름만(이름 순 `name_key`). 휴지통 · 시스템(`$RECYCLE.BIN`,
+  `System Volume Information`, `#recycle`, `@eaDir`) · `.`/`$`/`~` 로 시작하는 폴더 · 링크 폴더 제외, 500개 초과면 거절(드라이브를 잘못 고른 경우).
+  `DesktopConfig.scan_aoi_drive{path}` → `{drive, items:[{name, path, likely, registered, too_long}]}` — likely = 이름에 'AOI' 또는 메모(장비 IP) 호기 이름과 같음,
+  registered = 같은 이름 또는 같은 폴더가 이미 등록. 쓰기 없음. `add_aoi_roots{items:[{machine,path}]}` = 순서대로 `_aoi_write`(호기 폴더 바로 아래 1번 —
+  Reports · Scanresult* 이름 확인, 한 대씩 등록과 같은 깊이), 이미 등록 · 폴더 없음은 건너뛰고 notice 에 이유, 설정 파일은 마지막에 1번 저장.
+  IPC `config_scan_aoi_drive` · `config_add_aoi_roots`(작업 스레드 — 폴더를 보는 다른 config 요청과 같음).
+- 화면 새 `AoiDriveScan.tsx`: 설정 › AOI 장비 호기 루트 › CAMTEK 등록 줄 아래 `🔎 네트워크 드라이브에서 호기 자동 찾기` — 드라이브 입력/📁 찾기(고르면 바로 찾기) →
+  후보 표(체크 · 폴더 이름 = 호기 이름 · 경로 · 상태) + [AOI 로 보이는 것만 고르기] [모두 고르기] [모두 해제] [고른 n대 등록]. 기본 체크 = likely 이고 미등록.
+  튜토리얼 '호기 이름 + 호기 폴더' 단계에 한 줄 추가.
+- 내 해석(확인 전): ①폴더 이름을 그대로 호기 이름으로 씀(다르게 하려면 등록 뒤 [수정]) ②'AOI' 이름이 아니어도 목록에는 보이고 기본 체크만 안 함 ③KLA 탭은
+  종전부터 상위 폴더(예: `J:\`) 등록으로 아래 장비 폴더를 모두 찾으므로 CAMTEK 탭에만 넣음 ④여러 NAS 는 드라이브마다 한 번씩 찾아 등록.
+- 검증: `tests/test_desktop_config.py`(10 — 바로 아래만 후보 · 휴지통/숨김/파일 제외 · likely/registered · 일괄 등록 · 건너뜀 이유 · NAS 원본 파일 목록과
+  수정시각 그대로), `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패), `npx tsc --noEmit` · `vite build`, `tools/test_desktop_ui.mjs`
+  (NAS 폴더 AOI-07/AOI-08/Backup → AOI 만 미리 체크 · Backup 미체크 · 1대 등록 → 표에 반영 · 등록된 것은 체크 막힘) 통과. Windows 실기 · 실제 NAS 는 미검증.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #36 | 네트워크 드라이브 선택 → AOI 호기 자동 찾기 · 호기 루트 자동 지정 | 바로 아래 폴더만 읽는 자동 찾기 + 일괄 등록(CAMTEK), v12.8.20 |
+
 ## 최신 재개 — Para #35 AOI 장비 호기 루트 등록 때 메모(장비 IP)의 호기를 골라 이름 채우기 (2026-10-20 KST, `version_v12`, v12.8.19)
 
 - 마지막 갱신 2026-10-20 · 기준 커밋 `1048fe8`(v12.8.18) · 이슈 Para #35 · 작업 브랜치 `version_v12` · 커밋 `082b014`(기능) · `be27508`(릴리즈 노트).

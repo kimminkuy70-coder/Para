@@ -161,5 +161,46 @@ class DesktopConfigTests(unittest.TestCase):
         self.assertEqual(self.a.state()["memo_machines"], [])
 
 
+    def test_scan_aoi_drive_and_bulk_add(self):
+        """#36: 네트워크 드라이브 바로 아래 폴더를 AOI 호기 후보로 찾고 한꺼번에 등록 — 더 아래는 보지 않고 쓰지 않는다."""
+        self.a.set_save_dir({"path": self.save})
+        refdata.save_ip(refdata.ip_path(self.save), [{"호기": "K-7", "IP": "10.0.0.7", "장비종류": "Camtek"}])
+        nas = os.path.join(self.tmp, "NAS1")
+        for name in ("AOI-10", "AOI-9", "K-7", "Backup", "$RECYCLE.BIN", ".hidden"):
+            os.makedirs(os.path.join(nas, name))
+        os.makedirs(os.path.join(nas, "AOI-9", "Reports"))
+        os.makedirs(os.path.join(nas, "AOI-9", "Scanresult"))
+        os.makedirs(os.path.join(nas, "AOI-10", "deep", "AOI-99"))      # 더 아래 폴더는 후보가 아니다
+        with open(os.path.join(nas, "readme.txt"), "w") as fh:
+            fh.write("x")
+        self.a.set_aoi_root({"machine": "AOI-10", "path": os.path.join(nas, "AOI-10")})
+        before = sorted(str(p) for p in Path(nas).rglob("*"))
+        mtimes = {p: os.stat(p).st_mtime_ns for p in before}
+        res = self.a.scan_aoi_drive({"path": nas})
+        got = {i["name"]: (i["likely"], i["registered"]) for i in res["items"]}
+        self.assertEqual([i["name"] for i in res["items"]], ["AOI-9", "AOI-10", "Backup", "K-7"])
+        self.assertEqual(got, {"AOI-9": (True, False), "AOI-10": (True, True), "Backup": (False, False), "K-7": (True, False)})
+        with self.assertRaises(ValueError):
+            self.a.scan_aoi_drive({"path": os.path.join(self.tmp, "없는드라이브")})
+        st = self.a.add_aoi_roots({"items": [{"machine": "AOI-9", "path": os.path.join(nas, "AOI-9")},
+                                             {"machine": "K-7", "path": os.path.join(nas, "K-7")},
+                                             {"machine": "AOI-10", "path": os.path.join(nas, "AOI-10")},
+                                             {"machine": "AOI-5", "path": os.path.join(nas, "AOI-5")}]})
+        self.assertEqual(st["added"], ["AOI-9", "K-7"])
+        self.assertIn("AOI-10(이미 등록)", st["notice"])
+        self.assertIn("AOI-5(폴더 없음)", st["notice"])
+        self.assertIn("Reports 폴더를 찾지 못했습니다: K-7", st["notice"])
+        cfg = self._cfg()
+        self.assertEqual(cfg["aoi_roots"]["AOI-9"], os.path.join(nas, "AOI-9"))
+        self.assertEqual(cfg["wph_report_paths"]["AOI-9"], os.path.join(nas, "AOI-9", "Reports"))
+        self.assertEqual(cfg["unrelated"], "keep")
+        # NAS 원본은 그대로(새 파일 · 폴더 없음, 수정시각 그대로).
+        after = sorted(str(p) for p in Path(nas).rglob("*"))
+        self.assertEqual(before, after)
+        self.assertEqual(mtimes, {p: os.stat(p).st_mtime_ns for p in after})
+        for bad in ({"items": []}, {"items": [{"machine": "A"}]}, {"items": "x"}, {}):
+            with self.assertRaises(ValueError):
+                self.a.add_aoi_roots(bad)
+
 if __name__ == "__main__":
     unittest.main()

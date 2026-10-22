@@ -23,6 +23,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### AOI 장비 호기 루트 = 네트워크 드라이브에서 자동 찾기 · 일괄 등록 (2026-10-22, 이슈 #36)
+- 설정 › AOI 장비 호기 루트 › CAMTEK `🔎 네트워크 드라이브에서 호기 자동 찾기`(`AoiDriveScan.tsx`): NAS 드라이브를 고르면 `config_scan_aoi_drive` 가 **바로 아래 폴더 이름만**
+  (scandir 1번, 더 아래로 안 들어감, 쓰기 없음) 후보로 주고, 고른 것을 `config_add_aoi_roots` 로 한꺼번에 등록(한 대씩 등록과 같은 `_aoi_write`). NAS · 원본에 쓰는 코드를 넣지 말 것(소유자 지시).
+
 ### AOI 장비 호기 루트 등록 = 메모(장비 IP)에서 호기 고르기 (2026-10-20, 이슈 #35)
 - 설정 › AOI 장비 호기 루트(CAMTEK · KLA) 등록 줄의 `메모(장비 IP)에서 고르기`(`MemoPick.tsx`)가 이름 칸만 채운다(폴더는 사람이). 목록 = `config_state.memo_machines`
   (`desktop_config.memo_machines` — `장비 IP 주소.xlsx` 읽기만, 서명 같으면 캐시). 회사 탭에 맞는 장비종류 → 미지정 순, 다른 회사 · 이미 등록한 호기는 뺀다.

@@ -466,6 +466,20 @@ try{
   await memoPick.selectOption('AOI-07');
   assert.equal(await page.getByLabel('호기',{exact:true}).inputValue(),'AOI-07');
   await page.getByLabel('호기',{exact:true}).fill('');
+  // #36: 네트워크 드라이브 바로 아래 폴더를 AOI 호기 후보로 찾기 — 'AOI' 이름 · 메모 호기만 미리 체크, 등록된 것은 막힘.
+  const nas=join(fixture,'nas-1');
+  for(const d of ['AOI-08','AOI-07','Backup'])await mkdir(join(nas,d),{recursive:true});
+  await mkdir(join(nas,'AOI-08','Reports'));
+  await page.getByLabel('네트워크 드라이브',{exact:true}).fill(nas);
+  await page.getByRole('button',{name:'호기 찾기',exact:true}).click();
+  await page.getByLabel('AOI-08 고르기').waitFor();
+  assert.equal(await page.getByLabel('AOI-07 고르기').isChecked(),true);
+  assert.equal(await page.getByLabel('Backup 고르기').isChecked(),false);
+  await page.getByLabel('AOI-07 고르기').uncheck();
+  await page.getByRole('button',{name:'고른 1대 등록',exact:true}).click();
+  await page.getByText(/1대 등록\(AOI-08\)/).first().waitFor();
+  assert.equal(await page.getByLabel('AOI-08 고르기').isDisabled(),true);
+  await page.locator('table.tbl td',{hasText:join(nas,'AOI-08')}).first().waitFor();
   const archive=join(fixture,'archive-01');await mkdir(archive);
   await page.getByLabel('추가 폴더 호기').selectOption('AOI-01');
   await page.getByLabel('추가 폴더',{exact:true}).fill(archive);

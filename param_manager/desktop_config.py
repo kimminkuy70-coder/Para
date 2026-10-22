@@ -129,6 +129,37 @@ def memo_machines(save_dir):
     return [dict(r) for r in _MEMO_CACHE["rows"]]
 
 
+MAX_DRIVE_SCAN = 500
+_SKIP_DIRS = ("$recycle.bin", "system volume information", "#recycle", "@eadir", "recycler")
+
+
+def _looks_like_aoi(name, memo_names):
+    """폴더 이름이 AOI 호기 같은가 — 'AOI' 가 들어 있거나 메모(장비 IP)의 호기 이름과 같다."""
+    return "aoi" in name.lower() or name.strip().lower() in memo_names
+
+
+def scan_drive_children(drive):
+    """네트워크 드라이브(NAS) **바로 아래** 폴더 이름만(이름 순) — 이슈 #36.
+    목록 1번(os.scandir)만 읽고, 하위 폴더 안으로 들어가지 않으며, 아무것도 쓰지 않는다.
+    휴지통 · 시스템 · 숨김(., $ 로 시작) 폴더와 연결(링크) 폴더는 뺀다."""
+    out = []
+    with os.scandir(drive) as it:
+        for e in it:
+            name = e.name
+            low = name.lower()
+            if low in _SKIP_DIRS or name.startswith((".", "$", "~")):
+                continue
+            try:
+                if not e.is_dir(follow_symlinks=False):
+                    continue
+            except OSError:
+                continue
+            out.append(name)
+            if len(out) > MAX_DRIVE_SCAN:
+                raise ValueError(f"바로 아래 폴더가 {MAX_DRIVE_SCAN}개를 넘습니다 — 장비 폴더들이 있는 드라이브(폴더)를 골랐는지 확인하세요")
+    return sorted(out, key=name_key)
+
+
 def roots_report(info):
     """화면 표시용: [{path, kind}] (Path → 글자)."""
     return [dict(path=str(r["path"]), kind=r["kind"]) for r in info]
@@ -334,6 +365,71 @@ class DesktopConfig:
         report = self._aoi_write(cfg, machine, root)
         self._write(cfg)
         return self._aoi_result(machine, root, report)
+
+    def scan_aoi_drive(self, params):
+        """네트워크 드라이브(예: `W:\\`)를 고르면 바로 아래 폴더를 AOI 호기 후보로 돌려준다(#36).
+        읽기는 드라이브 목록 1번뿐(하위 폴더 안은 보지 않음), 설정 · 원본 어디에도 쓰지 않는다.
+        후보 = [{name, path, likely(AOI 같은 이름), registered(같은 이름 · 같은 폴더가 이미 등록됨)}]."""
+        if set(params) != {"path"}:
+            raise ValueError("네트워크 드라이브를 확인하세요")
+        drive = self._valid_dir(params["path"], "네트워크 드라이브")
+        try:
+            names = scan_drive_children(drive)
+        except OSError as exc:
+            raise ValueError(f"네트워크 드라이브 목록을 읽지 못했습니다: {exc.strerror or exc}") from None
+        cfg = self._read()
+        view = aoi_view(cfg)
+        known = {v["machine"].lower() for v in view}
+        known_roots = {os.path.normcase(os.path.normpath(v["root"])) for v in view if v["root"]}
+        memo = {m["name"].lower() for m in memo_machines(cfg.get("save_dir") or "")}
+        items = []
+        for name in names:
+            path = str(Path(drive) / name)
+            items.append(dict(name=name, path=path, likely=_looks_like_aoi(name, memo),
+                              registered=name.lower() in known or
+                              os.path.normcase(os.path.normpath(path)) in known_roots,
+                              too_long=len(name) > MAX_MACHINE))
+        return dict(drive=drive, items=items)
+
+    def add_aoi_roots(self, params):
+        """드라이브에서 찾은 호기 여러 대를 한꺼번에 등록(#36). 각 호기 폴더는 바로 아래 목록만
+        1번 보고(Reports · Scanresult* 이름 확인 — 한 대씩 등록할 때와 같음) 순서대로 처리한다.
+        이미 등록된 이름 · 폴더가 없는 항목은 건너뛰고 이유를 알린다. 설정 파일은 마지막에 한 번 쓴다."""
+        items = params.get("items") if set(params) == {"items"} else None
+        if not isinstance(items, list) or not 1 <= len(items) <= MAX_DRIVE_SCAN:
+            raise ValueError("등록할 호기를 확인하세요")
+        from . import commonality as cm
+        cfg = self._read()
+        known = {v["machine"] for v in aoi_view(cfg)}
+        added, skipped, no_report, no_scan = [], [], [], []
+        for it in items:
+            if not isinstance(it, dict) or set(it) != {"machine", "path"}:
+                raise ValueError("등록할 호기를 확인하세요")
+            machine = self._valid_machine(it["machine"])
+            if machine in known:
+                skipped.append(f"{machine}(이미 등록)")
+                continue
+            try:
+                root = self._valid_dir(it["path"], "AOI 장비 호기 루트")
+            except ValueError:
+                skipped.append(f"{machine}(폴더 없음)")
+                continue
+            if not self._aoi_write(cfg, machine, root):
+                no_report.append(machine)
+            if not cm._find_scanresult_dirs(Path(root)):
+                no_scan.append(machine)
+            known.add(machine)
+            added.append(machine)
+        if added:
+            self._write(cfg)
+        notes = [f"{len(added)}대 등록" + (f"({', '.join(added)})" if added else "")]
+        if skipped:
+            notes.append("건너뜀: " + ", ".join(skipped))
+        if no_report:
+            notes.append("Reports 폴더를 찾지 못했습니다: " + ", ".join(no_report))
+        if no_scan:
+            notes.append("Scanresult 폴더를 찾지 못했습니다: " + ", ".join(no_scan))
+        return dict(self.state(), added=added, notice=" · ".join(notes))
 
     def edit_aoi_root(self, params):
         if set(params) != {"machine", "new_machine", "path"}:
