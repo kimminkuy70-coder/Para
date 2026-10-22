@@ -3,7 +3,8 @@
 ## 최신 재개 — Para #38 Batch Report 대량 자료(호기 10대 × 호기당 5천 개) 조사 속도 (2026-10-22 KST, `version_v12`, v12.8.22)
 
 - 마지막 갱신 2026-10-22 · 기준 커밋 `03a8d90`(v12.8.21 인수인계) · 이슈 Para #38 · 작업 브랜치 `version_v12`.
-- 릴리스: v12.8.22 (결과는 아래 '릴리스 결과' 줄 — 릴리스 뒤 다음 commit 에서 채움).
+- 릴리스 **v12.8.22 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.8.22 (`Camtek_AOI_manager_v12.8.22.zip`, run 39780079043 성공, 태그 = `16cd072`).
+  지난 세 번 태그 push · REST refs 가 모두 거절돼(인수인계 지시대로) 이번에는 바로 workflow_dispatch(ref=version_v12, version=12.8.22). 커밋 `16cd072`(수정 + 시험 + 릴리즈 노트).
 - 요청: "배치레포트가 호기 하나당 5천 개씩 있고 호기가 25대 넘게, 그중 10대 정도를 한 번에 계산한다 — 네(Claude)가 시험한 규모(#37 의 최대 4000 Report)로는 어림없다."
 - 한 일: 합성 자료 **10호기 × 5000 Report(웨이퍼 25장, 모두 5만 개 · wafer 약 120만 행)** 로 `batchreport_service.run` 전체를 단계별로 재고 병목을 고침.
   재현 스크립트는 저장소에 넣지 않음(아래 '대량 시험 재현' 참고). 같은 PC(Linux, 4코어) 기준:
