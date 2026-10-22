@@ -253,6 +253,19 @@ class Collection(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 service.run(self.root, [self.target], options, host_gap=0)
 
+    def test_service_with_read_errors_finishes(self):
+        # 이슈 Para #37: 읽지 못한 Batch Report 가 하나라도 있으면 WPH .html 이 수집 오류 dict 를 (파일, 사유) 로 풀다가
+        # 'too many values to unpack' 로 조사 전체가 실패했다. 오류는 결과 파일의 파싱오류 칸에 남고 조사는 끝나야 한다.
+        self.put('a.htm')
+        (self.source / 'bad.htm').write_text('<html>incomplete', encoding='utf-8')
+        offline = dict(self.target, folder=str(self.source.parent / 'missing'))
+        options = {'metrics': list(br.METRICS), 'valid_wafers': 1}
+        result = service.run(self.root, [self.target, offline], options, host_gap=0)
+        self.assertEqual(len(result['collection']['errors']), 2)
+        page = (Path(result['outdir']) / 'WPH_통합.html').read_text(encoding='utf-8')
+        self.assertIn('AOI-1 / bad.htm', page)
+        self.assertIn('원본 폴더 접근 불가', page)
+
     def test_only_new_reports_fast_path(self):
         # 이슈 #12: 이미 조사한 것은 그대로 두고 새 Batch Report만 — 캐시 재기록 · 호기 간격 · 결과 파일 재생성 생략.
         self.put('a.htm')

@@ -104,7 +104,10 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None, overri
             output.atomic_text(staging / wph.text_filename(machine, '누적'), text)
         if 'M01' in options['metrics']:
             wph.write_wph_excel(str(staging / 'WPH_통합.xlsx'), rows, valid_wafers=options['valid_wafers'], parse_errors=collection['errors'])
-            computed = wph_html.compute(rows, collection['errors'], valid_wafers=options['valid_wafers'])
+            # wph_html 은 (파일, 사유) 쌍을 받는다 — 수집 오류 dict 를 그대로 넘기면 읽기 오류가 하나라도 있을 때
+            # 'too many values to unpack' 로 조사 전체가 실패했다(이슈 Para #37).
+            parse_errors = [(f"{e['machine']} / {e['source_file']}", e['error']) for e in collection['errors']]
+            computed = wph_html.compute(rows, parse_errors, valid_wafers=options['valid_wafers'])
             wph_html.write_html(staging / 'WPH_통합.html', computed, title='WPH 통합 결과', by_recipe=options.get('by_recipe', True))
         output.atomic_text(staging / '조사설정.json', json.dumps({'targets': targets, 'options': options, 'fingerprint': mark}, ensure_ascii=False, indent=2))
         store.checkpoint(cancel)

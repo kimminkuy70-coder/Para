@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #37 Batch Report 가동률 조사 중 'too many values to unpack' 오류 수정 (2026-10-22 KST, `version_v12`, v12.8.21)
+
+- 마지막 갱신 2026-10-22 · 기준 커밋 `ea10b98`(v12.8.20 인수인계) · 이슈 Para #37 · 작업 브랜치 `version_v12`.
+- 요청: 배치레포트 분석 › 가동률 조사 및 분석에서 `too many values to unpack?` 오류, 데이터가 많아서인 것 같다 — 고쳐 달라.
+- 원인(재현함): `batchreport_service.run` 이 WPH .html(`wph_html.compute`)에 수집 오류 목록 `collection['errors']`(dict: machine · source_file · error)를
+  그대로 넘겼는데, `wph_html` 은 `(파일, 사유)` 2-tuple 을 `for n, m in errors` 로 푼다 → 키 3개 dict 라 `ValueError: too many values to unpack (expected 2)`.
+  ValueError 는 `desktop_ipc.investigation_message` 가 원문 그대로 화면에 보여 준다. **읽기 오류(원본 폴더 접근 불가 · 읽는 중 변경됨 · Batch End/Wafer 표 누락 등)가
+  하나라도 있고 지표 M01(WPH)이 켜져 있으면** 조사 전체가 실패했다 — 데이터 양 자체가 원인은 아니고, 호기 · 파일이 많을수록 오류 파일이 섞일 확률이 커진 것.
+- 수정: 서비스가 `("{호기} / {파일}", 오류)` 쌍으로 바꿔 넘긴다(`wph_html` 의 공용 형식 — tkinter `wph.investigate` 도 같은 형식이라 그대로). `WPH_통합.xlsx`
+  (`wph_status.add_sheets`)는 원래 dict 를 받으므로 그대로. 읽기 오류는 결과의 '원본 읽기 오류' 표 · WPH 파싱오류 칸에 남고 조사는 끝까지 간다.
+- 시험: `tests/test_batchreport.py` `test_service_with_read_errors_finishes`(깨진 Report 1개 + 없는 폴더 1개 → 조사 완료 · WPH html 에 오류 표시, 수정 전에는 이 오류로 실패 확인),
+  `tools/check_project.py`(tkinter 없는 test_batchreport 기존 1건만 실패). 대량 합성 자료(최대 4000 Report · 30호기)로 View · 저장 파일 · Lot 추적 · 레시피 비교도
+  예외 없이 도는 것 확인. Windows 실기 · 실제 장비 자료는 미검증.
+- 내 해석(확인 전): 사용자의 '데이터가 많아서'는 실제로는 읽기 오류 파일이 섞인 경우로 봄. 같은 오류가 다시 나면 설정 › 정보 [진단 로그 묶기] 의 `오류_로그.txt`(WEB-investigate) 가 필요.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #37 | 가동률 조사 및 분석 'too many values to unpack' 오류 수정 | 읽기 오류가 있으면 WPH .html 이 오류 목록을 잘못 풀던 것 수정, v12.8.21 |
+
 ## 최신 재개 — Para #36 네트워크 드라이브(NAS)에서 AOI 호기 자동 찾기 · 한꺼번에 등록 (2026-10-22 KST, `version_v12`, v12.8.20)
 
 - 마지막 갱신 2026-10-22 · 기준 커밋 `3ec60bf`(v12.8.19 인수인계) · 이슈 Para #36 · 작업 브랜치 `version_v12` · 커밋 `225c054`(기능) · `c0bf889`(릴리즈 노트).
