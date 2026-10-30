@@ -24,8 +24,11 @@
   동기화 덜 된 파일 거부 · IPC) · `tests/test_desktop_config.py` 11(docs 찾기 · 종전 폴더 호환 · publish) 통과. `npx tsc --noEmit` · `vite build` 통과.
   `tools/test_desktop_ui.mjs`(NODE_PATH=전역 playwright) 연속 2회 통과 — 그 전 1회는 뒤쪽 단계에서 '버튼 비활성' 대기 시간 초과(재현 안 됨, 확인 전). Windows 실기 · 실제 OneDrive · Defender 는 미검증.
   시험 환경: 이 컨테이너에 openpyxl 이 없어 `pip install openpyxl`(개발 환경만 — 프로그램 의존성 변화 없음). UI 시험이 고친 `docs/screenshots/*` 는 commit 하지 않음.
-- 릴리스: v12.8.23 (소유자 승인: 이슈 댓글 "구현해"). 결과는 아래 줄/다음 commit 에 기록.
-- 남은 일: 실기에서 OneDrive 게시 · 불러오기 · 큰 zip(수백 MB) 동기화 시간 확인, 회사 OneDrive 용량 확인(소유자), 위 해석 ⓐ~ⓕ 확인.
+- 릴리스: v12.8.23 **아직 안 함(막힘)** — 커밋 `3078768`(수정 + 시험 + 릴리즈 노트 `docs/release_notes/v12.8.23.md`)을 push 한 뒤
+  `gh api -X POST repos/kimminkuy70-coder/Para/actions/workflows/build-desktop.yml/dispatches -f ref=version_v12 -f 'inputs[version]=12.8.23'` 가
+  Claude Code 권한 검사에서 거절됨("Create Public Surface" — 공개 릴리스 생성은 소유자 확인 필요). 다른 방법으로 우회하지 않음.
+  소유자가 Actions › build-desktop › Run workflow(branch `version_v12`, version `12.8.23`)를 누르거나 다음 session 에서 허락하면 같은 명령으로 시작.
+- 남은 일: **v12.8.23 빌드 시작(위)**, 실기에서 OneDrive 게시 · 불러오기 · 큰 zip(수백 MB) 동기화 시간 확인, 회사 OneDrive 용량 확인(소유자), 위 해석 ⓐ~ⓕ 확인.
 
 ## 최신 재개 — Para #38 Batch Report 대량 자료(호기 10대 × 호기당 5천 개) 조사 속도 (2026-10-22 KST, `version_v12`, v12.8.22)
 
