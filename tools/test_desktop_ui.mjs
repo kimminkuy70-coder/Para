@@ -82,7 +82,7 @@ try{
   const extra=join(fixture,'equipment-04');await mkdir(join(extra,'Reports'),{recursive:true});
   await page.getByRole('button',{name:'설정',exact:true}).click();
   // 설정 tabs in the requested order.
-  assert.deepEqual(await page.getByRole('tab').allInnerTexts(),['저장 폴더','로컬 작업 폴더','AOI 장비 호기 루트','Batch Report 분석 주기 설정','정보']);
+  assert.deepEqual(await page.getByRole('tab').allInnerTexts(),['저장 폴더','로컬 작업 폴더','AOI 장비 호기 루트','정보']);   // #39: 분석 주기 설정은 자동 분석 및 취합 탭으로
   // 현재 설정 is folded by default, above the tabs.
   assert.equal(await page.getByLabel('현재 설정').evaluate(d=>d.open),false);
   // 튜토리얼(v12.2.6): 설정 › [초기 설정 튜토리얼] — 말풍선 · 강조 테두리, 설정 하위 탭을 스스로 열고, 아무것도 저장하지 않는다.
@@ -150,12 +150,19 @@ try{
   await page.getByRole('button',{name:'조사 시작 →'}).click();
   await page.locator('.toast').filter({hasText:'조사를 완료했습니다.'}).waitFor({timeout:60000});
   await page.locator('.scope-status').filter({hasText:'Batch Report 205개'}).waitFor();
-  // 이슈 #29: [🛠 개발자 기능] → 캐시 zip 만들기 · 그 zip 을 창에 끌어 넣으면 이 PC 캐시로 가져옴(이미 있던 것은 그대로).
+  // 이슈 #39: [🛠 개발자 기능] → [OneDrive 에 게시](저장 폴더 옆 캐시공유/) → [OneDrive 에서 불러오기] 목록에서 골라 받기.
+  // 이슈 #29: 그 zip 을 창에 끌어 넣어도 이 PC 캐시로 가져옴(이미 있던 것은 그대로).
+  assert.equal(await page.getByRole('button',{name:'Batch Report 캐시 압축 파일 만들기 (zip)'}).count(),0);
   await page.getByRole('button',{name:'🛠 개발자 기능'}).click();
-  await page.getByRole('button',{name:'Batch Report 캐시 압축 파일 만들기 (zip)'}).click();
-  const made=page.locator('.cache-export .hint').filter({hasText:'내보냄:'});
+  await page.getByRole('button',{name:'OneDrive 에 게시',exact:true}).click();
+  const made=page.locator('.cache-export [role=status]').filter({hasText:'게시함:'});
   await made.waitFor();
   const cacheZip=await made.locator('code').innerText();
+  assert.match(cacheZip,/캐시공유[\\/]BatchReport_캐시_\d{8}_\d{6}\.zip$/);
+  await page.getByRole('button',{name:'OneDrive 에서 불러오기',exact:true}).click();
+  await page.getByLabel('OneDrive 캐시 목록').locator('tbody tr').first().waitFor();
+  await page.getByRole('button',{name:'고른 캐시 받아서 불러오기',exact:true}).click();
+  await page.locator('.cache-drop [role=status]').filter({hasText:/새 Batch Report 0개 · 이미 있던 \d+개는 그대로/}).waitFor();
   assert(dropChannel,'file-drop channel not connected');
   await page.evaluate(({channel,zip})=>{window.__callbacks[channel]({index:0,message:{kind:'enter',paths:[zip]}});
     window.__callbacks[channel]({index:1,message:{kind:'drop',paths:[zip]}});},{channel:dropChannel,zip:cacheZip});
@@ -438,9 +445,9 @@ try{
   await done.waitFor();assert.equal(await done.getAttribute('aria-checked'),'false');
   await done.click();
   await page.waitForFunction(()=>document.querySelector('[aria-label="1행 종료 여부"]')?.getAttribute('aria-checked')==='true');
-  // B: daily auto-run switch and an extra Report folder in 설정.
-  await page.getByRole('button',{name:'설정',exact:true}).click();
-  await page.getByRole('tab',{name:'Batch Report 분석 주기 설정'}).click();
+  // B: daily auto-run switch (#39: CAMTEK › 자동 분석 및 취합 › Batch Report 자동 분석) and an extra Report folder in 설정.
+  await feature('자동 분석 및 취합');
+  await page.getByRole('tab',{name:'Batch Report 자동 분석'}).click();
   await page.getByLabel('자동 분석 사용 (기본 꺼짐)').click();
   await page.getByText('자동 분석을 켰습니다').waitFor();
   await page.getByLabel('분석 주기').selectOption('12');
@@ -457,9 +464,22 @@ try{
   await page.getByRole('heading',{name:'Batch Report 분석',exact:true}).waitFor();
   await page.getByText('Batch Report 분석을 지금 실행합니다(지난 조사 조건).').waitFor();
   await page.getByText('조사를 완료했습니다.',{exact:true}).last().waitFor({timeout:120000});
+  // 설정 › 현재 설정 의 [보기] 는 자동 분석 및 취합 › Batch Report 자동 분석 탭을 연다.
   await page.getByRole('button',{name:'설정',exact:true}).click();
-  await page.getByRole('tab',{name:'Batch Report 분석 주기 설정'}).click();
+  await page.getByLabel('현재 설정').locator('summary').click();
+  await page.getByRole('button',{name:'보기',exact:true}).last().click();
+  await page.getByRole('heading',{name:'Batch Report 자동 분석',exact:true}).waitFor();
+  // #39: 자동 분석이 끝나면 OneDrive 에 캐시 zip 올리기(체크) — 즉시 실행 뒤 게시까지.
+  await page.getByLabel(/자동 분석이 끝나면 Batch Report 캐시 zip 을 OneDrive 에 올리기/).click();
+  await page.getByText('자동 분석이 끝나면 캐시 zip 을 OneDrive 에 게시합니다').waitFor();
+  await page.getByRole('button',{name:'▶ 즉시 실행',exact:true}).click();
+  await page.getByText(/자동 분석 뒤 Batch Report 캐시를 OneDrive 에 올렸습니다/).waitFor({timeout:120000});
+  await feature('자동 분석 및 취합');
+  await page.getByRole('tab',{name:'Batch Report 자동 분석'}).click();
+  await page.getByLabel(/자동 분석이 끝나면 Batch Report 캐시 zip 을 OneDrive 에 올리기/).click();
+  await page.getByText('OneDrive 게시를 껐습니다').waitFor();
   await page.getByLabel('분석 주기').selectOption('12');
+  await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();
   const memoPick=page.getByLabel('CAMTEK 메모 장비 IP 에서 호기 고르기');
   assert.deepEqual(await memoPick.locator('option').allInnerTexts(),['선택… (1대)','AOI-07']);   // AOI-01 은 이미 등록
@@ -648,7 +668,7 @@ try{
   await page.locator('.cm-file:not([hidden] *) input').nth(2).check();
   await page.getByRole('button',{name:'비교 ▶',exact:true}).click();
   await page.getByText(/값변경 \d+ · 추가행 \d+ · 삭제행 \d+/).waitFor();
-  await page.getByLabel('종류').selectOption('행 삭제');
+  await page.getByRole('combobox',{name:/^종류/}).selectOption('행 삭제');
   await page.waitForFunction(()=>document.querySelector('.table-scroll:not([hidden] *) tbody tr td:last-child')?.textContent==='행 삭제');
   await page.getByRole('button',{name:'변경내역 Excel 저장',exact:true}).click();
   assert((await page.getByLabel('저장된 변경내역').inputValue()).includes('이력비교'));
@@ -674,6 +694,12 @@ try{
   await page.locator('dialog[open]').getByRole('button',{name:'닫기',exact:true}).click();
   // 자동 감시: pick a Job folder on the (fake) equipment, turn the watch on, run once.
   await feature('자동 분석 및 취합');
+  // 탭 세 개(#39: Batch Report 자동 분석 추가) — 앞에서 Batch Report 탭을 열어 두었으므로 파라미터 탭으로.
+  assert.deepEqual(await page.getByRole('tablist',{name:'자동 분석 및 취합 종류'}).getByRole('tab').allInnerTexts(),
+    ['파라미터 자동 분석 및 취합','Commonality 자동 분석 및 취합 (여러 호기 무인)','Batch Report 자동 분석']);
+  await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합',exact:true}).click();
+  await page.mouse.move(0,0);   // hover 색이 아니라 선택 색을 본다(아래 색 확인)
+  await page.waitForFunction(()=>getComputedStyle([...document.querySelectorAll('[role=tab]')].find(t=>t.textContent==='파라미터 자동 분석 및 취합')).backgroundColor==='rgb(234, 250, 243)');
   const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 분석 및 취합'})});
   // 최근 알림 first, then one tab per watch; status table above the wizard.
   await page.getByRole('heading',{name:'최근 알림'}).waitFor();

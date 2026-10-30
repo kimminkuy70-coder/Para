@@ -821,6 +821,8 @@ dialog::backdrop{overscroll-behavior:contain}
 .bv .cache-drop-head button{font-size:12px;min-height:32px;padding:6px 10px}.bv .cache-drop-head button.active{background:#eafaf3;border-color:var(--lime)}
 .bv .cache-drop-ic{font-size:22px;color:var(--acc2)}
 .bv .cache-drop .cache-export{margin-top:10px;border-top:1px solid var(--line);padding-top:4px}
+.bv .cache-drop .cache-share{margin-top:10px;border-top:1px solid var(--line);padding-top:4px}
+.bv .cache-drop .cache-share td,.bv .cache-drop .cache-share th{white-space:nowrap}
 .bv .cache-drop .hint button.gear{font-size:12px;min-height:26px;padding:2px 8px}
 /* 장비 회사 탭(CAMTEK / KLA, #30) — 기능 탭 위 한 줄 */
 .vendor-tabs{display:flex;gap:6px;padding:10px 32px 0;background:var(--navy,#12244a)}

@@ -41,8 +41,8 @@ BUSY_LABEL = {'batch': 'Batch Report 분석', 'recipe': 'Recipe 값 확인', 'do
               'update': '레시피 업데이트', 'cmrun': 'Commonality 조사', 'appupdate': '업데이트', 'config': '설정',
               'pwatch': '파라미터 분석 및 취합 설정', 'cmwatch': 'Commonality 분석 및 취합', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 분석 및 취합 회차', 'colorgray': 'Color·Gray 매칭', 'wafermap': 'Wafer Map 수정하기',
-              'batchexport': 'Batch Report Excel 저장', 'kla': 'KLA 자재 찾기'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "batch_restore", "batch_view", "batch_lot", "batch_raw", "batch_choices", "batch_find", "batch_find_load", "batch_aggregate", "batch_export", "batch_compare_recipes", "batch_compare", "batch_compare_export", "batch_cache_export", "batch_cache_import", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_scan_aoi_drive", "config_add_aoi_roots", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_set_scan_backup", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_connections", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "kla_state", "kla_set_roots", "kla_set_backup", "kla_search", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+              'batchexport': 'Batch Report Excel 저장', 'batchshare': 'OneDrive 캐시 목록 읽기', 'kla': 'KLA 자재 찾기'}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "batch_restore", "batch_view", "batch_lot", "batch_raw", "batch_choices", "batch_find", "batch_find_load", "batch_aggregate", "batch_export", "batch_compare_recipes", "batch_compare", "batch_compare_export", "batch_cache_publish", "batch_cache_share_list", "batch_cache_share_import", "batch_cache_import", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_scan_aoi_drive", "config_add_aoi_roots", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_hide_kla", "config_set_scan_backup", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_connections", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_skip", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "kla_state", "kla_set_roots", "kla_set_backup", "kla_search", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 # Background jobs that only read (local or OneDrive/equipment). Closing the app does not
 # wait for them — waiting for a slow read kept the old engine alive after the window
@@ -245,7 +245,7 @@ class Session:
                    "batch_restore": set(), "batch_view": {"view", "version", "offset"}, "batch_lot": {"view", "lot"},
                    "batch_raw": {"view", "report"}, "batch_choices": {"view", "changes"},
                    "batch_find": {"machines", "query", "start", "end", "stage"}, "batch_find_load": {"hits"}, "batch_aggregate": {"view", "reports"},
-                   "batch_export": {"view", "kind", "reports", "choices", "lot", "drafts", "stamp"}, "batch_compare_recipes": {"view"}, "batch_compare": {"view", "spec"}, "batch_compare_export": {"view", "spec"}, "batch_cache_export": set(), "batch_cache_import": {"path"},
+                   "batch_export": {"view", "kind", "reports", "choices", "lot", "drafts", "stamp"}, "batch_compare_recipes": {"view"}, "batch_compare": {"view", "spec"}, "batch_compare_export": {"view", "spec"}, "batch_cache_publish": set(), "batch_cache_share_list": set(), "batch_cache_share_import": {"name"}, "batch_cache_import": {"path"},
                    "cancel": {"job"}, "release": {"job"},
                    "recipe_page": {"snapshot","recipe","query","offset","limit","machine_offset","machine_limit","selected_machine","zone","hide_kla",
                                    "hide_empty","group","collapsed"},
@@ -271,7 +271,7 @@ class Session:
         allowed.update(config_state=set(), config_set_save_dir={'path'},
                        config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
                        config_remove={'kind','machine'}, config_edit_root={'kind','machine','new_machine','path'}, open_path={'path','reveal'},
-                       config_set_batch_auto={'enabled','interval_hours','time'}, config_set_extra_paths={'machine','paths'},
+                       config_set_batch_auto={'enabled','interval_hours','time','publish'}, config_set_extra_paths={'machine','paths'},
                        config_set_aoi_root={'machine','path'}, config_scan_aoi_drive={'path'}, config_add_aoi_roots={'items'},
                        config_edit_aoi_root={'machine','new_machine','path'},
                        config_remove_aoi={'machine'}, config_set_aoi_extra={'machine','kind','paths'},
@@ -665,10 +665,19 @@ class Session:
         elif method == "batch_compare_export":
             bg(rid, 'batch', lambda: self.batch.compare_export(params), '비교 결과 HTML 을 저장하지 못했습니다. 로컬 작업 폴더를 확인하세요.',
                ('batchexport',))
-        elif method == "batch_cache_export":
-            # 취합 캐시(로컬 배치분석/누적) → zip. 장비 접근 없음, 큰 파일 압축이라 작업 스레드.
-            bg(rid, 'batch', lambda: self.batch.cache_export(params), '캐시를 내보내지 못했습니다. 로컬 작업 폴더와 저장 공간을 확인하세요.',
-               ('batchexport',))
+        elif method == "batch_cache_publish":
+            # 개발자(이슈 #39): 로컬 캐시 → 로컬 Temp 에서 zip → OneDrive 캐시공유/ 에 1개 복사 + 캐시정보.json. 장비 접근 없음.
+            # 조사가 캐시 파일을 쓰는 동안 압축하지 않게 'batch' 슬롯.
+            bg(rid, 'batch', lambda: self.batch.cache_publish(params), '캐시를 OneDrive 에 게시하지 못했습니다. 저장 폴더(OneDrive)와 로컬 작업 폴더 · 저장 공간을 확인하세요.',
+               ('batch',))
+        elif method == "batch_cache_share_list":
+            # 사용자: 캐시공유/ 의 캐시정보.json 만 읽는다(쓰기 없음). OneDrive 파일이라 멈출 수 있어 작업 스레드.
+            bg(rid, 'batch', lambda: self.batch.cache_share_list(params), 'OneDrive 캐시 목록을 읽지 못했습니다. 저장 폴더(OneDrive) 동기화를 확인하세요.',
+               ('batchshare',))
+        elif method == "batch_cache_share_import":
+            # 사용자: 고른 zip → 로컬 Temp 복사 · SHA-256 확인 → cache_import. OneDrive 에는 쓰지 않는다.
+            bg(rid, 'batch', lambda: self.batch.cache_share_import(params), 'OneDrive 의 캐시를 불러오지 못했습니다. 동기화가 끝났는지와 로컬 작업 폴더를 확인하세요.',
+               ('batch',))
         elif method == "batch_cache_import":
             # 다른 PC 가 내보낸 캐시 zip → 로컬 배치분석/누적에 합침(이슈 #29). 장비 접근 없음, 조사 · 찾기와 같은 'batch' 슬롯
             # (조사가 캐시 파일을 쓰는 동안 합치지 않게).

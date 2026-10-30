@@ -5,6 +5,8 @@ import {RowPick} from './RowPick';
 import {OpenPath} from './OpenPath';
 import {FormEditor} from './FormEditor';
 import {ScanBackupBar,ScanRoots,type RootInfo} from './ScanBackup';
+import {BatchAutoPanel} from './BatchAutoPanel';
+import {takeWatchTab} from './batchAuto';
 
 type Interval={hours:number;label:string};
 type PTarget={machine:string;recipe:string;path:string};
@@ -414,10 +416,12 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
   </section>;
 }
 
-/** 자동 분석 및 취합 탭: 최근 알림(맨 위 고정) + 두 분석 및 취합을 탭으로. 두 탭 모두 계속 살아 있어 편집 중인 값이 유지된다. */
-const WATCH_TABS:[string,string][]=[['param','파라미터 자동 분석 및 취합'],['cm','Commonality 자동 분석 및 취합 (여러 호기 무인)']];
+/** 자동 분석 및 취합 탭: 최근 알림(맨 위 고정) + 분석 및 취합 세 가지를 탭으로. 탭 모두 계속 살아 있어 편집 중인 값이 유지된다.
+ * Batch Report 자동 분석(#39)은 설정 탭에서 옮겨 왔다. */
+const WATCH_TABS:[string,string][]=[['param','파라미터 자동 분석 및 취합'],['cm','Commonality 자동 분석 및 취합 (여러 호기 무인)'],['batch','Batch Report 자동 분석']];
 export function Watch({notices,onChanged}:{notices:WatchNotice[];onChanged:()=>void}){
-  const [tab,setTab]=useState('param');
+  const [tab,setTab]=useState(()=>takeWatchTab()||'param');
+  useEffect(()=>{const go=()=>{const t=takeWatchTab();if(t)setTab(t);};window.addEventListener('para:watch-tab',go);return()=>window.removeEventListener('para:watch-tab',go);},[]);
   return <>
     <section className="panel notice-panel"><div className="section-heading"><div><span className="step">NOTICE</span><h2>최근 알림</h2></div></div>
       <p className="hint">분석 및 취합이 켜져 있으면 창을 닫아도 알림 영역(트레이)에 남아 계속 분석 및 취합합니다. 트레이 아이콘을 누르면 다시 열립니다.
@@ -429,5 +433,6 @@ export function Watch({notices,onChanged}:{notices:WatchNotice[];onChanged:()=>v
       <button key={id} role="tab" aria-selected={tab===id} className={tab===id?'active':''} onClick={()=>setTab(id)}>{label}</button>)}</div>
     <div hidden={tab!=='param'} className="kept-screen"><ParamWatch onChanged={onChanged}/></div>
     <div hidden={tab!=='cm'} className="kept-screen"><CmWatch onChanged={onChanged}/></div>
+    <div hidden={tab!=='batch'} className="kept-screen"><BatchAutoPanel/></div>
   </>;
 }

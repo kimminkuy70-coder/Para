@@ -19,7 +19,7 @@
 | `local_dir` | 로컬 작업 폴더 | 설정 › 로컬 작업 폴더 |
 | `wph_report_paths` / `batch_extra_paths` | 호기별 Report 폴더 / 추가 폴더 | 설정 › Batch Report 루트 |
 | `commonality_roots` | 호기별 Scanresult 루트 | 설정 › Scanresult 루트 |
-| `batch_auto` / `batch_schedule` | 배치 자동 분석 켜짐, 마지막 실행 시각 (웹 전용 주기 `batch_interval_hours`, 기존 프로그램은 항상 하루 1회) | 설정 › Batch Report 분석 주기 설정 |
+| `batch_auto` / `batch_schedule` | 배치 자동 분석 켜짐, 마지막 실행 시각 (웹 전용 주기 `batch_interval_hours`, 기존 프로그램은 항상 하루 1회) | CAMTEK › 자동 분석 및 취합 › Batch Report 자동 분석 (v12.8.23, 게시 체크 = `batch_cache_publish`) |
 | `local_root` | 값 업데이트용 '로컬 상위 폴더' | 값 업데이트 › 로컬 복사본 |
 | `hide_kla` | KLA 장비 숨기기 | Recipe 관리 |
 

@@ -10,25 +10,23 @@ import {useDev,setDevOn,saveDrafts,dropDrafts} from './devmode';
 import {DevHelp,DevOff} from './DevHelp';
 import {ScanBackupBar,useScanBackup} from './ScanBackup';
 import {startTour} from './Tour';
-import {requestBatchRunNow} from './batchAuto';
+import {openBatchAutoSettings} from './batchAuto';
+import {periodLabel} from './BatchAutoPanel';
 import {KlaRootsSettings,useKlaState} from './KlaSettings';
 import {MemoPick,type MemoMachine} from './MemoPick';
 import {AoiDriveScan} from './AoiDriveScan';
 
 type Auto={enabled:boolean;interval_hours:number;time?:string;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
-type State={save_dir:string;local_dir:string;aoi:Aoi[];batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string;memo_machines?:MemoMachine[]};
+type State={save_dir:string;share_root?:string;program_dir?:string;cache_share_dir?:string;local_dir:string;aoi:Aoi[];batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string;memo_machines?:MemoMachine[]};
 type ExtraKind='report'|'scanresult';
 type Edit={kind:'aoi'|'extra';machine:string;newMachine:string;path:string;orig?:string;extraKind?:ExtraKind};
-const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 폴더'],['aoi','AOI 장비 호기 루트'],['auto','Batch Report 분석 주기 설정'],['about','정보']];
+// Batch Report 분석 주기 설정은 CAMTEK › 자동 분석 및 취합 › [Batch Report 자동 분석] 탭으로 옮겼다(#39).
+const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 폴더'],['aoi','AOI 장비 호기 루트'],['about','정보']];
 const EXTRA_LABEL:Record<ExtraKind,string>={report:'Batch Report',scanresult:'Scanresult'};
-const periodLabel=(h:number)=>h%24===0?(h===24?'하루 1회 (24시간)':h===168?'일주일 1회':`${h/24}일마다`):`${h}시간마다`;
-// 하루 단위 주기의 실행 시각(#33): 시 00~23, 분 5분 단위.
-const HOURS=Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
-const MINUTES=Array.from({length:12},(_,i)=>String(i*5).padStart(2,'0'));
 const baseName=(p:string)=>p.split(/[\\/]/).filter(Boolean).pop()||p;
 // 이전 화면 이름('report'·'scan')으로 들어와도 통합 탭을 연다. 'kla' = AOI 장비 호기 루트 › KLA(#32).
-const subOf=(s?:string)=>s==='report'||s==='scan'||s==='kla'?'aoi':s||'save';
+const subOf=(s?:string)=>s==='report'||s==='scan'||s==='kla'?'aoi':s&&TABS.some(([id])=>id===s)?s:'save';
 type AoiVendor='CAMTEK'|'KLA';
 
 export function Settings(){
@@ -85,7 +83,7 @@ export function Settings(){
   async function load(){
     setLoadError('');
     try{await desktop.connect();const r=(await desktop.request('config_state').promise).config as State;
-      setSt(r);setSaveDir(r.save_dir||'');}
+      setSt(r);setSaveDir(r.share_root&&r.save_dir&&/[\\/]docs$/i.test(r.save_dir)?r.share_root:r.save_dir||'');}
     catch(e){setLoadError(errorText(e));}
   }
   useEffect(()=>{void load();},[]);
@@ -99,8 +97,8 @@ export function Settings(){
   }
   async function saveSave(){
     if(!saveDir.trim())return;setBusy(true);
-    try{const r=(await desktop.request('config_set_save_dir',{path:saveDir.trim()}).promise).config as {save_dir:string;created:string[]};
-      notify('저장폴더 저장 완료'+(r.created?.length?` · 초기 파일 생성: ${r.created.join(', ')}`:''),'ok');await load();}
+    try{const r=(await desktop.request('config_set_save_dir',{path:saveDir.trim()}).promise).config as {save_dir:string;chosen:string;created:string[]};
+      notify(`저장폴더 저장 완료 · 문서 폴더: ${r.save_dir}`+(r.created?.length?` · 초기 파일 생성: ${r.created.join(', ')}`:''),'ok');await load();}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   async function req(method:string,params:object,ok:string,after?:()=>void){
@@ -109,10 +107,6 @@ export function Settings(){
       notify(r.notice?`${ok} — ${r.notice}`:ok,r.notice&&/찾지 못했습니다/.test(r.notice)?'info':'ok');after&&after();}
     catch(e){fail(e);}finally{setBusy(false);}
   }
-
-  // Batch Report 자동 분석 실행 시각(#33) — "HH:MM" 5분 단위, 빈 문자열 = 지정 안 함.
-  const autoTime=st?.batch?.time||'';
-  const saveTime=(time:string)=>req('config_set_batch_auto',{enabled:!!st?.batch_auto,time},time?`실행 시각을 ${time} 으로 저장했습니다`:'실행 시각 지정을 껐습니다');
 
   // '수정': one row at a time becomes editable (machine name + folder).
   const [edit,setEdit]=useState<Edit>();
@@ -188,7 +182,7 @@ export function Settings(){
           {kla&&kla.roots.length>0&&<span className="hint"> · Defect 이미지 백업본 {kla.backup?`포함(백업 폴더 ${kla.roots.reduce((n,r)=>n+r.backups.length,0)}개)`:'제외'}</span>}</td>
           <td><button className="linklike" onClick={()=>{setSub('aoi');setAoiVendor('KLA');}}>보기</button></td></tr>
         <tr><th>Batch Report 자동 분석</th><td>{st.batch_auto?`켜짐 · ${periodLabel(st.batch?.interval_hours??24)}${st.batch?.time&&(st.batch.interval_hours??24)%24===0?` · ${st.batch.time}`:''}`:'꺼짐'}</td>
-          <td><button className="linklike" onClick={()=>setSub('auto')}>보기</button></td></tr>
+          <td><button className="linklike" onClick={openBatchAutoSettings} title="CAMTEK › 자동 분석 및 취합 › Batch Report 자동 분석">보기</button></td></tr>
         <tr><th>설정 파일</th><td><code>{st.config_file||'—'}</code></td><td/></tr>
       </tbody></table></details>}
 
@@ -198,8 +192,10 @@ export function Settings(){
     <div className="subtab-body">
     {sub==='save'&&<>
       <h3>저장 폴더 지정 <span className="hint" style={{fontWeight:400}}>— 필수</span></h3>
-      <p className="hint" data-tour="settings:onedrive"><b>다른 사람과 공유하는 산출물이 OneDrive 폴더에 저장됩니다. 팀이 함께 쓰는 OneDrive 경로를 지정해 주세요.</b><br/>
-        개발자가 보낸 OneDrive 공유 링크를 Edge 로 열고 [내 파일에 바로 가기 추가] → 파일 탐색기 › OneDrive - 회사이름 아래에 생긴 그 폴더를 고르면 됩니다.</p>
+      <p className="hint" data-tour="settings:onedrive"><b>다른 사람과 공유하는 산출물이 OneDrive 폴더에 저장됩니다. 팀이 함께 쓰는 OneDrive 공유 폴더(<code>docs</code> 의 상위 폴더)를 지정해 주세요.</b><br/>
+        개발자가 보낸 OneDrive 공유 링크를 Edge 로 열고 [내 파일에 바로 가기 추가] → 파일 탐색기 › OneDrive - 회사이름 아래에 생긴 그 폴더를 고르면 됩니다.<br/>
+        예: <code>C:\Users\이름\OneDrive - 회사\0. Camtek AOI parameter 취합\</code> 를 고르면 그 안의 <code>docs</code>(공유 문서) · <code>프로그램</code>(새 버전) · <code>캐시공유</code>(Batch Report 캐시)를 알아서 찾습니다.
+        <code>docs</code> 폴더를 직접 골라도 됩니다(예전 설정 그대로).</p>
       <table className="tbl" style={{marginTop:8}}><tbody>
         <tr><th style={{width:170}}>공유 문서</th><td>장비 IP 주소 · 참고자료 · 특이사항 · 변환계수 · 장비화면이름 (.xlsx) — 처음 지정하면 장비 IP·참고자료·특이사항이 자동 생성됩니다</td></tr>
         <tr><th>Recipe 양식</th><td><code>양식\{'{레시피}'}\{'{생성시각}'}\</code> — 확정 양식 1개 + 관련파일(원본·수정본)</td></tr>
@@ -207,14 +203,19 @@ export function Settings(){
         <tr><th>자동 분석 및 취합</th><td><code>감시설정.json</code> · <code>자동감시\</code> 변경보고서(변경이 있을 때만)·감시로그</td></tr>
         <tr><th>동시 접속 정보</th><td><code>_세션\</code> 접속자·작업 잠금, 편집 중인 문서 옆 <code>.editlock</code></td></tr>
         <tr><th>새 버전 게시</th><td>저장 폴더 <b>옆</b>의 <code>프로그램\</code> 폴더(개발자가 게시한 설치 파일)</td></tr>
+        <tr><th>Batch Report 캐시 공유</th><td>저장 폴더 <b>옆</b>의 <code>캐시공유\</code> 폴더 — 개발자가 올린 캐시 zip(최근 3개) · <code>캐시정보.json</code></td></tr>
       </tbody></table>
       <p className="hint">Commonality 조사 결과·Batch Report 분석 결과·장비 수집 임시 파일·로그는 OneDrive 가 아니라 <b>로컬 작업 폴더</b>에 저장됩니다(대량 동기화 방지).</p>
       <div className="form-filter" style={{marginTop:14}}>
-        <label className="field" style={{flex:1,minWidth:280}} data-tour="settings:save-path">OneDrive 저장폴더 경로
-          <input value={saveDir} placeholder="예: C:\Users\이름\OneDrive - 회사\AOI 파라미터" maxLength={4096} onChange={e=>setSaveDir(e.target.value)}/></label>
+        <label className="field" style={{flex:1,minWidth:280}} data-tour="settings:save-path">OneDrive 공유 폴더 경로 (docs 의 상위 폴더)
+          <input value={saveDir} placeholder="예: C:\Users\이름\OneDrive - 회사\0. Camtek AOI parameter 취합" maxLength={4096} onChange={e=>setSaveDir(e.target.value)}/></label>
         <button onClick={()=>browse(setSaveDir)}>📁 찾기</button>
         <button className="primary" data-tour="settings:save-btn" disabled={busy||!saveDir.trim()} onClick={saveSave}>저장</button></div>
-      {st?.save_dir&&<p className="hint">현재 저장폴더: <code>{st.save_dir}</code></p>}
+      <p className="hint">고른 폴더 바로 아래에 <code>docs</code> 가 있으면 그 docs 를 씁니다. 없고 고른 폴더가 새 폴더이면 그 안에 <code>docs</code> 를 만들어 씁니다.</p>
+      {st?.save_dir&&<table className="tbl" aria-label="인식한 폴더" style={{marginTop:8}}><tbody>
+        <tr><th style={{width:170}}>공유 문서 (docs)</th><td><code>{st.save_dir}</code></td></tr>
+        {st.program_dir&&<tr><th>새 버전 게시</th><td><code>{st.program_dir}</code></td></tr>}
+        {st.cache_share_dir&&<tr><th>Batch Report 캐시 공유</th><td><code>{st.cache_share_dir}</code></td></tr>}</tbody></table>}
     </>}
 
     {sub==='aoi'&&<div className="subtabs vendor-sub" role="tablist" aria-label="장비 회사">{(['CAMTEK','KLA'] as AoiVendor[]).map(v=>
@@ -249,35 +250,6 @@ export function Settings(){
           <button onClick={()=>browse(setXPath)}>📁 찾기</button>
           <button className="primary" disabled={busy||!xMachine||!xPath.trim()}
             onClick={()=>req('config_set_aoi_extra',{machine:xMachine,kind:xKind,paths:[...extrasOf(xMachine,xKind),xPath.trim()]},'추가 폴더 등록',()=>setXPath(''))}>추가 폴더 등록</button></div></>}
-    </>}
-
-    {sub==='auto'&&<>
-      <h3>Batch Report 자동 분석</h3>
-      <p className="hint">앱이 켜져 있는 동안 마지막 조사 조건(호기·검색어·기간·지표)으로 Batch Report 분석을 주기마다 다시 실행합니다.
-        실행 기록은 기존 프로그램과 공유하므로 두 프로그램이 같은 주기 안에 중복 실행하지 않습니다(기존 프로그램은 항상 하루 1회).</p>
-      <label className="field checkbox" style={{marginTop:10}}><input type="checkbox" disabled={busy||!st} checked={!!st?.batch_auto}
-        onChange={e=>req('config_set_batch_auto',{enabled:e.target.checked},e.target.checked?'자동 분석을 켰습니다':'자동 분석을 껐습니다')}/>자동 분석 사용 (기본 꺼짐)</label>
-      <div className="form-filter" style={{marginTop:12}}>
-        <label className="field" style={{width:220}}>분석 주기<select disabled={busy||!st} value={st?.batch?.interval_hours??24}
-          onChange={e=>req('config_set_batch_auto',{enabled:!!st?.batch_auto,interval_hours:Number(e.target.value)},'분석 주기를 저장했습니다')}>
-          {(st?.batch_intervals||[24]).map(h=><option key={h} value={h}>{periodLabel(h)}</option>)}</select></label>
-        {(st?.batch?.interval_hours??24)%24===0&&<>
-          <label className="field" style={{width:150}}>실행 시각 (시)<select disabled={busy||!st} value={autoTime?autoTime.slice(0,2):''}
-            onChange={e=>saveTime(e.target.value?`${e.target.value}:${autoTime?autoTime.slice(3):'00'}`:'')}>
-            <option value="">지정 안 함</option>{HOURS.map(h=><option key={h} value={h}>{h}시</option>)}</select></label>
-          <label className="field" style={{width:130}}>분 (5분 단위)<select disabled={busy||!st||!autoTime} value={autoTime?autoTime.slice(3):'00'}
-            onChange={e=>saveTime(`${autoTime.slice(0,2)}:${e.target.value}`)}>
-            {MINUTES.map(m=><option key={m} value={m}>{m}분</option>)}</select></label></>}
-        <button type="button" disabled={busy||!st} style={{alignSelf:'flex-end'}} title="자동 분석이 꺼져 있어도 지난 조사 조건으로 바로 한 번 실행합니다"
-          onClick={requestBatchRunNow}>▶ 즉시 실행</button></div>
-      {(st?.batch?.interval_hours??24)%24===0&&<p className="hint">{autoTime
-        ?`${periodLabel(st?.batch?.interval_hours??24)} · ${autoTime} 에 실행합니다(그 시각에 앱이 꺼져 있었으면 앱을 켠 뒤 곧 실행).`
-        :'실행 시각을 지정하지 않으면 마지막 실행(또는 마지막 조사) 시각부터 주기가 지나면 실행합니다.'}</p>}
-      <p className="hint">[▶ 즉시 실행]은 자동 분석을 꺼 둔 채로도 지난 조사 조건으로 지금 한 번 분석합니다(Batch Report 분석 화면으로 이동).</p>
-      <table className="tbl" style={{marginTop:12}}><tbody>
-        <tr><td style={{width:140,fontWeight:700}}>마지막 실행</td><td>{st?.batch?.last_run||'—'}{st?.batch?.last_result?` · ${st.batch.last_result}`:''}</td></tr>
-        <tr><td style={{fontWeight:700}}>다음 실행</td><td>{st?.batch_auto?(st?.batch?.next_run||'앱을 켜 두면 곧 실행'):'꺼짐'}</td></tr></tbody></table>
-      <p className="hint">분석 조건은 [Batch Report 분석] 탭에서 마지막으로 조사한 조건을 그대로 씁니다.</p>
     </>}
 
     {sub==='local'&&<>

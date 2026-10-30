@@ -18,7 +18,7 @@ from .desktop_batch import DesktopBatch, read_json
 from .desktop_kla import DesktopKla
 
 OPENABLE = {".xlsx", ".xlsm", ".xls", ".html", ".htm", ".csv", ".txt", ".png", ".pdf", ".jpg", ".jpeg"}
-# 탐색기에서 선택만(폴더에서 보기) — 내용은 열지 않는다(진단 로그 · 캐시 내보내기 zip).
+# 탐색기에서 선택만(폴더에서 보기) — 내용은 열지 않는다(진단 로그 · OneDrive 캐시 zip).
 REVEALABLE = {".zip"}
 MAX_PATH = 4096
 
@@ -32,6 +32,9 @@ class DesktopOpen:
         cfg = read_json(self.config_path)
         if cfg.get("save_dir"):
             roots.append(Path(cfg["save_dir"]).absolute())
+            # OneDrive 캐시 공유 폴더(저장 폴더 옆 캐시공유/, 이슈 #39) — 폴더 열기 · zip 선택만(zip 내용은 열지 않음).
+            from .desktop_batch import cache_share_dir
+            roots.append(Path(cache_share_dir(cfg["save_dir"])).absolute())
         try:
             roots.append(Path(DesktopBatch(self.config_path).configuration()[2]).absolute())
         except ValueError:

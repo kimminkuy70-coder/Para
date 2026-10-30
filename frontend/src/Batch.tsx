@@ -3,7 +3,7 @@ import {desktop,errorText,defaults,pickFile,onFileDrop,type Configuration,type O
 import {notify,fail} from './ui';
 import {OpenPath,openPath} from './OpenPath';
 import {goToSettings} from './nav';
-import {takeBatchRunNow} from './batchAuto';
+import {takeBatchRunNow,openBatchAutoSettings} from './batchAuto';
 import {TipLayer,Seg} from './BatchCharts';
 import {LotTab} from './BatchLot';
 import {LotWindow,type Drafts} from './BatchLotWindow';
@@ -16,8 +16,12 @@ import {Q,DefectWindow} from './BatchHelp';
 import {useDev,setDevLocked,setDevDrafts,registerDraftHandlers} from './devmode';
 import {loadView,batchCall,addDays,ymd,type View,type ViewMeta,type ViewName,type LotDetail,type Raw,type AggGroup} from './batchData';
 
-type CacheExport={path:string;folder:string;files:number;machines:number;reports:number;size:number};
-type CacheImport={path:string;files:number;added:number;kept:number;invalid:number;machines:string[];skipped:{machine:string;reports:number}[];
+// OneDrive 캐시 공유(#39): 개발자 = [OneDrive 에 게시](또는 자동 분석 뒤 자동 게시), 사용자 = [OneDrive 에서 불러오기].
+type CachePublish={name:string;path:string;folder:string;size:number;machines:string[];reports:number;kept:number;exported_at:string};
+type ShareItem={name:string;exported_at:string;app_version:string;size:number;machines:string[];reports:number;compatible:boolean;present:boolean};
+type ShareList={folder:string;exists:boolean;items:ShareItem[]};
+const mb=(n:number)=>(n/1048576).toFixed(1)+'MB';
+type CacheImport={path:string;source?:string;files:number;added:number;kept:number;invalid:number;machines:string[];skipped:{machine:string;reports:number}[];
   targets:{machine:string;folder:string;added:number;kept:number}[];exported_at:string;app_version:string;choices_skipped:boolean};
 
 /* Batch Report 분석 — 큰 탭 2개: [가동률 조사 및 분석](조사 범위 공통 · Lot 추적 · 가동률 · WPH) /
@@ -40,7 +44,8 @@ export function Batch({active}:{active:boolean}){
   const [busy,setBusy]=useState(false),[restoring,setRestoring]=useState(false);
   const [lot,setLot]=useState<{view:ViewName;li:number}>(),[detail,setDetail]=useState<LotDetail>(),[lotXlsx,setLotXlsx]=useState('');
   const [raw,setRaw]=useState<Raw>();
-  const [cacheZip,setCacheZip]=useState<CacheExport>(),[exporting,setExporting]=useState(false);
+  const [published,setPublished]=useState<CachePublish>(),[publishing,setPublishing]=useState(false);
+  const [share,setShare]=useState<ShareList>(),[sharePick,setSharePick]=useState(''),[shareLoading,setShareLoading]=useState(false);
   const [cacheIn,setCacheIn]=useState<CacheImport>(),[importing,setImporting]=useState(false),[dropOver,setDropOver]=useState(false),[devTools,setDevTools]=useState(false);
   const [drafts,setDrafts]=useState<Drafts>({});
   const [help,setHelp]=useState(false),[defect,setDefect]=useState(false);
@@ -124,7 +129,7 @@ export function Batch({active}:{active:boolean}){
     autoBlocked.current=false;
     await launch(targetsNow(),{...optionsNow(config.last?.options),reuse},false);
   }
-  async function launch(payload:Target[],opts:Options&{reuse:boolean},automatic:boolean){
+  async function launch(payload:Target[],opts:Options&{reuse:boolean},automatic:boolean,publish=false){
     runningRef.current=true;setRunning(true);setAutoRun(automatic);setCancelSent(false);setProgress(undefined);
     try{
       if(job.current!==undefined){await desktop.request('release',{job:job.current}).promise.catch(()=>undefined);job.current=undefined;}
@@ -137,11 +142,13 @@ export function Batch({active}:{active:boolean}){
       if(meta){setProgress({message:'결과를 화면으로 받는 중…'});const v=await loadView(meta);if(v)setViews(o=>({...o,scope:v}));}
       setDrafts(d=>Object.fromEntries(Object.entries(d).filter(([k])=>!k.startsWith('scope|'))));
       notify((automatic?'Batch Report 자동 갱신: ':'')+(reply.collection?.errors?'일부 원본을 읽지 못했습니다. 읽기 오류를 확인하세요.':'조사를 완료했습니다.'),reply.collection?.errors?'info':'ok');
+      // 자동 분석 › [자동 분석이 끝나면 OneDrive 에 올리기](#39): 실패해도 자동 분석은 막지 않는다(다음 회차에 다시).
+      if(publish){setProgress({message:'Batch Report 캐시를 OneDrive 에 올리는 중…'});await publishCache(true);}
     }catch(e){
       if(automatic){autoBlocked.current=true;notify('Batch Report 자동 갱신 실패: '+errorText(e),'error');}else fail(e);
     }finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);}
   }
-  // 자동 분석(설정 › Batch Report 분석 주기 설정): 지난 조사 조건으로, 캐시는 늘 재사용.
+  // 자동 분석(자동 분석 및 취합 › Batch Report 자동 분석): 지난 조사 조건으로, 캐시는 늘 재사용.
   // 즉시 실행(#33)도 같은 조건으로 — 자동 분석이 꺼져 있어도 한 번 돈다.
   async function runLast(now:boolean){
     if(runningRef.current||restoringRef.current){if(now)notify('이미 조사 중입니다. 끝난 뒤 다시 누르세요.','info');return;}
@@ -153,7 +160,7 @@ export function Batch({active}:{active:boolean}){
     if(!payload.length){if(now)notify('지난 조사 조건이 없습니다. 먼저 호기 · 기간을 고르고 [조사 시작]을 한 번 누르세요.','error');return;}
     const metrics=(data.metrics?.map(m=>m.id)||defaults.metrics) as Options['metrics'];
     if(now){autoBlocked.current=false;notify('Batch Report 분석을 지금 실행합니다(지난 조사 조건).','info');}
-    await launch(payload,{...defaults,...data.last?.options,metrics,reuse:true},!now);
+    await launch(payload,{...defaults,...data.last?.options,metrics,reuse:true},!now,!!data.auto?.publish);
   }
   const runLastRef=useRef(runLast);runLastRef.current=runLast;
   useEffect(()=>{
@@ -232,21 +239,30 @@ export function Batch({active}:{active:boolean}){
     setLot(undefined);setCond(next);setMain('find');setFstep(0);void runFind(next);
   }
 
-  // 취합 캐시(로컬 배치분석/누적 — 지금까지 조사한 모든 호기의 Batch Report) → zip 1개 (이슈 #16)
-  async function exportCache(){
-    setExporting(true);
-    try{const r=await batchCall<CacheExport>('batch_cache_export',{});setCacheZip(r);
-      notify(`Batch Report 캐시를 zip으로 내보냈습니다 — 호기 ${r.machines}대 · Batch Report ${r.reports}개.`,'ok');}
-    catch(e){fail(e);}
-    finally{setExporting(false);}
+  // 개발자(#39): 로컬 캐시(배치분석/누적) → zip 1개 → OneDrive 캐시공유/ (zip 은 로컬 임시 폴더에서 만들고 한 번만 복사).
+  async function publishCache(automatic=false){
+    setPublishing(true);
+    try{const r=await batchCall<CachePublish>('batch_cache_publish',{});setPublished(r);setShare(undefined);
+      notify(`${automatic?'자동 분석 뒤 ':''}Batch Report 캐시를 OneDrive 에 올렸습니다 — 호기 ${r.machines.length}대 · Batch Report ${r.reports}개 · ${mb(r.size)}.`,'ok');}
+    catch(e){if(automatic)notify('Batch Report 캐시 OneDrive 게시 실패: '+errorText(e),'error');else fail(e);}
+    finally{setPublishing(false);}
   }
-  // 다른 PC(개발자)가 내보낸 캐시 zip → 이 PC 로컬 캐시에 합침(이슈 #29). 장비 접근 없음, zip 은 읽기만.
+  // 사용자(#39): OneDrive 캐시공유/ 의 캐시정보.json 만 읽어 목록을 보여 준다(누를 때만, 쓰기 없음).
+  async function loadShare(){
+    setShareLoading(true);
+    try{const r=await batchCall<ShareList>('batch_cache_share_list',{});setShare(r);
+      const first=r.items.find(i=>i.present&&i.compatible);setSharePick(first?first.name:'');
+      if(!r.items.length)notify('OneDrive 에 게시된 Batch Report 캐시가 아직 없습니다.','info');}
+    catch(e){fail(e);}
+    finally{setShareLoading(false);}
+  }
+  // 다른 PC(개발자)가 게시한 캐시 zip → 이 PC 로컬 캐시에 합침(이슈 #29 · #39). 장비 접근 없음, zip 은 읽기만(풀지 않음).
   const importRef=useRef(false),activeRef=useRef(active);activeRef.current=active;
-  async function importCache(path:string){
+  async function importCache(path:string,shared?:string){
     if(importRef.current)return;
     if(runningRef.current){notify('조사가 끝난 뒤 캐시 zip을 넣어 주세요.','error');return;}
     importRef.current=true;setImporting(true);
-    try{const r=await batchCall<CacheImport>('batch_cache_import',{path});setCacheIn(r);
+    try{const r=shared?await batchCall<CacheImport>('batch_cache_share_import',{name:shared}):await batchCall<CacheImport>('batch_cache_import',{path});setCacheIn(r);
       const known=new Set(config?.machines.map(m=>m.id));
       setMachines(o=>[...new Set([...o,...r.machines.filter(m=>known.has(m))])]);
       notify(`Batch Report 캐시를 가져왔습니다 — 호기 ${r.machines.length}대 · 새 Batch Report ${r.added}개${r.kept?` (이미 있던 ${r.kept}개는 그대로)`:''}.`,'ok');}
@@ -319,7 +335,7 @@ export function Batch({active}:{active:boolean}){
         <p className="scope-status" role="status" aria-live="polite">{status}</p>
         {changed&&!running&&<p className="hint" style={{color:'#8a5a00'}}>조사 범위를 바꿨습니다 — [조사 시작]을 눌러야 아래 결과에 반영됩니다. 지금 결과는 {applied?.machines.length}대 · {applied?.start||'처음'} ~ {applied?.end||'끝'} 기준입니다.</p>}
         {running&&<div className="progress3" role="progressbar" aria-label="조사 중" aria-valuenow={pct}><span style={{width:(pct??35)+'%'}}/></div>}
-        <p className="hint">조사 범위는 어떻게 읽나요? <Q id="scope.logic"/> · 자동 분석: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — [설정 › Batch Report 분석 주기 설정]에서 바꿀 수 있습니다. <button type="button" disabled={!config||running||restoring} onClick={()=>void runNow()} title="자동 분석이 꺼져 있어도 지난 조사 조건으로 바로 한 번 실행">▶ 즉시 실행</button></p>
+        <p className="hint">조사 범위는 어떻게 읽나요? <Q id="scope.logic"/> · 자동 분석: <b>{config?.auto?.enabled?'켜짐':'꺼짐'}</b>{config?.auto?.last_run?` · 마지막 실행 ${config.auto.last_run} (${config.auto.last_result||'—'})`:''} — <button type="button" className="linklike" onClick={openBatchAutoSettings}>[자동 분석 및 취합 › Batch Report 자동 분석]</button>에서 바꿀 수 있습니다. <button type="button" disabled={!config||running||restoring} onClick={()=>void runNow()} title="자동 분석이 꺼져 있어도 지난 조사 조건으로 바로 한 번 실행">▶ 즉시 실행</button></p>
 
         {v?.errors&&v.errors.length>0&&<details className="more"><summary>읽기 오류 {v.errors.length}건</summary><div className="table-scroll" style={{maxHeight:240,marginTop:8}}><table className="t-compact">
           <thead><tr><th>호기</th><th>Report</th><th>오류</th></tr></thead><tbody>{v.errors.map((e,i)=><tr key={i}><td>{e[0]}</td><td>{e[1]}</td><td>{e[2]}</td></tr>)}</tbody></table></div></details>}
@@ -330,20 +346,34 @@ export function Batch({active}:{active:boolean}){
         <div className={'cache-drop'+(dropOver?' over':'')} aria-label="Batch Report 캐시 가져오기" data-tour="batch:cache-import"
           onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();notify('데스크톱 앱 창에 끌어 넣거나 [zip 찾기…]로 고르세요.','info');}}>
           <div className="cache-drop-head"><span className="cache-drop-ic" aria-hidden="true">⇩</span>
-            <div className="grow"><b>Batch Report 캐시 가져오기</b><small>개발자에게 받은 캐시 zip 파일을 이 화면에 끌어 넣으면 이 PC 캐시로 자동으로 불러옵니다 — 장비에 접속해 다시 읽지 않아도 됩니다.</small></div>
+            <div className="grow"><b>Batch Report 캐시 가져오기</b><small>개발자가 OneDrive 에 올린 캐시 zip 을 [OneDrive 에서 불러오기]로 고르면 이 PC 로 받아 이 PC 캐시로 불러옵니다 — 장비에 접속해 다시 읽지 않아도 됩니다. 받은 zip 파일을 이 화면에 끌어 넣어도 됩니다.</small></div>
+            <button type="button" className="primary" disabled={running||importing||restoring||shareLoading} onClick={()=>void loadShare()}>{shareLoading?'목록 읽는 중…':'OneDrive 에서 불러오기'}</button>
             <button type="button" disabled={running||importing||restoring} onClick={()=>void pickCacheZip()}>{importing?'가져오는 중…':'zip 찾기…'}</button>
-            <button type="button" className={devTools?'active':''} aria-expanded={devTools} onClick={()=>setDevTools(o=>!o)} title="캐시 zip 만들기(개발자용)">🛠 개발자 기능</button></div>
+            <button type="button" className={devTools?'active':''} aria-expanded={devTools} onClick={()=>setDevTools(o=>!o)} title="캐시 zip 을 OneDrive 에 올리기(개발자용)">🛠 개발자 기능</button></div>
+          {share&&<div className="cache-share" aria-label="OneDrive 캐시 목록">
+            <p className="hint">OneDrive 캐시 공유 폴더: <code>{share.folder}</code>{share.exists?'':' (아직 없음 — 개발자가 처음 게시하면 생깁니다)'}</p>
+            {share.items.length>0?<><div className="table-scroll" style={{maxHeight:220}}><table className="t-compact"><thead><tr><th/><th>게시 시각</th><th>호기</th><th>Batch Report</th><th>크기</th><th>프로그램</th><th>상태</th></tr></thead>
+              <tbody>{share.items.map(i=>{const ok=i.present&&i.compatible;return <tr key={i.name} className={sharePick===i.name?'row-now':''}>
+                <td><input type="radio" name="cache-share" aria-label={`${i.exported_at||i.name} 캐시 고르기`} disabled={!ok} checked={sharePick===i.name} onChange={()=>setSharePick(i.name)}/></td>
+                <td>{i.exported_at||i.name}</td><td title={i.machines.join(', ')}>{i.machines.length}대</td><td>{i.reports.toLocaleString()}개</td><td>{mb(i.size)}</td><td>{i.app_version?`v${i.app_version}`:'—'}</td>
+                <td>{!i.compatible?<b className="warn">형식이 다름</b>:i.present?'받을 수 있음':<b className="warn">동기화 대기</b>}</td></tr>;})}</tbody></table></div>
+              <div className="toolbar"><button type="button" className="primary" disabled={!sharePick||running||importing||restoring}
+                onClick={()=>void importCache('',sharePick)}>{importing?'받는 중…':'고른 캐시 받아서 불러오기'}</button>
+                <button type="button" disabled={shareLoading} onClick={()=>void loadShare()}>목록 새로고침</button></div>
+              <p className="hint">고른 zip 을 이 PC 로컬 임시 폴더로 복사하고, 게시할 때 적어 둔 크기 · SHA-256 이 같을 때만 불러옵니다(OneDrive 동기화가 덜 된 파일은 거부). OneDrive 에는 아무것도 쓰지 않습니다.</p></>
+              :<p className="table-empty">게시된 캐시가 없습니다.</p>}</div>}
           {importing&&<div className="progress3" role="progressbar" aria-label="캐시 가져오는 중"><span style={{width:'45%'}}/></div>}
-          {cacheIn&&<div className="hint" role="status">가져옴: <code>{cacheIn.path}</code>{cacheIn.exported_at?` (내보낸 시각 ${cacheIn.exported_at}${cacheIn.app_version?` · v${cacheIn.app_version}`:''})`:''} —
+          {cacheIn&&<div className="hint" role="status">가져옴: <code>{cacheIn.source||cacheIn.path}</code>{cacheIn.exported_at?` (게시 시각 ${cacheIn.exported_at}${cacheIn.app_version?` · v${cacheIn.app_version}`:''})`:''} —
             호기 {cacheIn.machines.length}대({cacheIn.machines.join(', ')}) · 새 Batch Report <b>{cacheIn.added}</b>개{cacheIn.kept?` · 이미 있던 ${cacheIn.kept}개는 그대로`:''}{cacheIn.invalid?` · 형식이 맞지 않는 ${cacheIn.invalid}개 제외`:''}.
             {cacheIn.skipped.length>0&&<> 이 PC에 등록되지 않은 호기 {cacheIn.skipped.map(s=>`${s.machine}(${s.reports}개)`).join(', ')}는 건너뛰었습니다 — <button type="button" className="gear" onClick={()=>goToSettings({sub:'aoi'})}>⚙ AOI 장비 호기 루트 설정</button>에서 같은 이름으로 등록한 뒤 다시 넣으세요.</>}
             <br/>이제 [조사 시작]은 가져온 캐시를 먼저 쓰고 장비에서는 새로 생긴 Batch Report만 읽으며, [Batch Report 찾기 · 취합]의 캐시 검색에도 바로 나옵니다. 가져온 호기는 조사 범위에 골라 두었습니다.
             {cacheIn.choices_skipped&&' (중복 Pass 사람 선택은 PC마다 따로라 가져오지 않습니다.)'}</div>}
-          {devTools&&<div className="cache-export" aria-label="Batch Report 캐시 내보내기">
-            <div className="toolbar"><button type="button" disabled={running||exporting||restoring} onClick={()=>void exportCache()}>{exporting?'내보내는 중…':'Batch Report 캐시 압축 파일 만들기 (zip)'}</button>
-              {cacheZip&&<button type="button" onClick={()=>void openPath(cacheZip.path,true)}>폴더 열기</button>}</div>
-            <p className="hint">지금까지 조사해 이 PC 로컬 캐시에 모인 모든 호기의 Batch Report 데이터를 zip 파일 하나로 내보냅니다(장비 접근 없음 · 최근 3개 보관). 이 zip을 다른 사용자에게 주면 위 [Batch Report 캐시 가져오기]에 끌어 넣어 쓸 수 있습니다.</p>
-            {cacheZip&&<p className="hint">내보냄: <code>{cacheZip.path}</code> — 호기 {cacheZip.machines}대 · Batch Report {cacheZip.reports}개 · {(cacheZip.size/1048576).toFixed(1)}MB</p>}</div>}</div>
+          {devTools&&<div className="cache-export" aria-label="Batch Report 캐시 OneDrive 게시">
+            <div className="toolbar"><button type="button" className="primary" disabled={running||publishing||restoring} onClick={()=>void publishCache()}>{publishing?'올리는 중…':'OneDrive 에 게시'}</button>
+              {published&&<button type="button" onClick={()=>void openPath(published.path,true)}>폴더 열기</button>}</div>
+            <p className="hint">지금까지 조사해 이 PC 로컬 캐시에 모인 모든 호기의 Batch Report 데이터를 zip 파일 하나로 만들어 OneDrive 캐시 공유 폴더(저장 폴더 옆 <code>캐시공유</code>)에 올립니다.
+              zip 은 이 PC 의 로컬 임시 폴더에서 만든 뒤 한 번만 복사합니다(장비 접근 없음 · 최근 3개만 보관). 자동 분석이 끝날 때마다 올리려면 <button type="button" className="linklike" onClick={openBatchAutoSettings}>[자동 분석 및 취합 › Batch Report 자동 분석]</button>에서 체크하세요.</p>
+            {published&&<p className="hint" role="status">게시함: <code>{published.path}</code> — 호기 {published.machines.length}대 · Batch Report {published.reports}개 · {mb(published.size)} (보관 {published.kept}개)</p>}</div>}</div>
       </section>
       <div className="pilltabs" role="tablist" aria-label="분석 화면" data-tour="batch:tabs">{([['lot','Lot 추적'],['util','가동률'],['wph','WPH · 생산능력'],['cmp','레시피 비교']] as const).map(([k,t])=>
         <button key={k} role="tab" type="button" className={sub===k?'active':''} aria-selected={sub===k} onClick={()=>setSub(k)}>{t}</button>)}</div>

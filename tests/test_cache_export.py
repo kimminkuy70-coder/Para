@@ -1,5 +1,7 @@
-"""Batch Report 취합 캐시 내보내기(이슈 #16): 배치분석/누적/*.json → zip 1개 + manifest, 폴더에서 보기.
-가져오기(이슈 #29): 다른 PC 의 zip → 이 PC 캐시에 합침(호기 이름으로 짝 · 이 PC 폴더로 옮겨 적음 · 있던 것 유지)."""
+"""Batch Report 취합 캐시 zip(이슈 #16 형식): 배치분석/누적/*.json → zip 1개 + manifest.
+OneDrive 게시 · 목록 · 불러오기(이슈 #39 — 종전 로컬 '내보내기'는 삭제), 가져오기(이슈 #29): 다른 PC 의 zip → 이 PC 캐시에 합침
+(호기 이름으로 짝 · 이 PC 폴더로 옮겨 적음 · 있던 것 유지)."""
+import hashlib
 import io
 import json
 import sys
@@ -10,45 +12,67 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from param_manager import batchreport_store
-from param_manager.desktop_batch import CHOICES_FILE, DesktopBatch
+from param_manager.desktop_batch import (CACHE_SHARE_DIRNAME, CACHE_SHARE_INDEX, CHOICES_FILE, DesktopBatch,
+                                         cache_share_dir)
 from param_manager.desktop_ipc import Session
 from param_manager.desktop_open import DesktopOpen
 
 
 def cache(machine, folder, n):
     return {"schema": 1, "machine": machine, "folder": folder,
-            "entries": {f"R{i}.htm": {"signature": [i, i], "report": {"rows": [i]}} for i in range(n)}}
+            "entries": {f"J_S_LOT{i}_26-Oct-0{i + 1}_(10.00.00)_BatchReport.htm": report_entry(i) for i in range(n)}}
 
 
-class CacheExport(unittest.TestCase):
+class CachePublish(unittest.TestCase):
+    """이슈 #39: 개발자 PC 가 로컬 캐시를 OneDrive 캐시공유/(저장 폴더 docs 옆)에 zip 으로 게시 → 다른 PC 가 목록에서 골라 받아 불러옴."""
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         base = Path(self.temp.name)
+        self.base = base
+        self.share = base / "OneDrive" / "0. Camtek AOI parameter 취합"
+        self.docs = self.share / "docs"
+        self.docs.mkdir(parents=True)
         self.local = base / "local"
         self.cfg = base / "config.json"
-        self.cfg.write_text(json.dumps({"local_dir": str(self.local)}), encoding="utf-8")
+        self.cfg.write_text(json.dumps({"local_dir": str(self.local), "save_dir": str(self.docs)}), encoding="utf-8")
         self.batch = DesktopBatch(self.cfg)
+        self.folder = self.share / CACHE_SHARE_DIRNAME
 
-    def write_caches(self):
-        acc = self.local / "배치분석" / "누적"
+    def write_caches(self, local=None):
+        local = local or self.local
+        acc = local / "배치분석" / "누적"
         acc.mkdir(parents=True)
         (acc / ("a" * 64 + ".json")).write_text(json.dumps(cache("M01", r"\\eq\M01\Reports", 3)), encoding="utf-8")
         (acc / ("b" * 64 + ".json")).write_text(json.dumps(cache("M02", r"\\eq\M02\Reports", 2)), encoding="utf-8")
         (acc / ("c" * 64 + ".json")).write_text("{broken", encoding="utf-8")            # 깨진 캐시는 건너뜀
-        (self.local / "Cache").mkdir()
-        (self.local / "Cache" / CHOICES_FILE).write_text(json.dumps({"schema": 1, "choices": {}}), encoding="utf-8")
+        (local / "Cache").mkdir()
+        (local / "Cache" / CHOICES_FILE).write_text(json.dumps({"schema": 1, "choices": {}}), encoding="utf-8")
 
-    def test_empty_cache_is_error(self):
+    def index(self):
+        return json.loads((self.folder / CACHE_SHARE_INDEX).read_text(encoding="utf-8"))
+
+    def test_needs_cache_and_save_dir(self):
         with self.assertRaises(ValueError):
-            self.batch.cache_export({})
-
-    def test_zip_contains_every_cache_and_manifest(self):
+            self.batch.cache_publish({})                       # 캐시 없음
+        self.assertFalse(self.folder.exists())                 # 실패하면 OneDrive 에 아무것도 만들지 않음
+        self.cfg.write_text(json.dumps({"local_dir": str(self.local)}), encoding="utf-8")
         self.write_caches()
-        out = self.batch.cache_export({})
+        for call in (lambda: self.batch.cache_publish({}), lambda: self.batch.cache_share_list({}),
+                     lambda: self.batch.cache_share_import({"name": "BatchReport_캐시_20261030_090000.zip"})):
+            with self.assertRaises(ValueError):                # 저장 폴더 미지정
+                call()
+        with self.assertRaises(ValueError):
+            DesktopBatch(self.cfg).cache_publish({"x": 1})
+
+    def test_publish_writes_one_zip_and_index_next_to_docs(self):
+        self.write_caches()
+        out = self.batch.cache_publish({})
         path = Path(out["path"])
-        self.assertTrue(path.is_file() and path.parent.name == "내보내기" and path.suffix == ".zip")
-        self.assertEqual((out["files"], out["machines"], out["reports"]), (2, 2, 5))
+        self.assertEqual(path.parent, self.folder)            # docs 옆 캐시공유/
+        self.assertEqual(sorted(p.name for p in self.folder.iterdir()), sorted([path.name, CACHE_SHARE_INDEX]))
+        self.assertEqual((out["files"], out["machines"], out["reports"]), (2, ["M01", "M02"], 5))
         with zipfile.ZipFile(path) as zf:
             names = set(zf.namelist())
             manifest = json.loads(zf.read("manifest.json"))
@@ -56,27 +80,89 @@ class CacheExport(unittest.TestCase):
             for f in manifest["files"]:
                 self.assertIn(f["file"], names)
                 self.assertEqual(len(json.loads(zf.read(f["file"]))["entries"]), f["reports"])
-        self.assertEqual({f["machine"] for f in manifest["files"]}, {"M01", "M02"})
-        self.assertEqual(manifest["reports"], 5)
-        self.assertFalse(list(path.parent.glob(".*.tmp")))
-        with self.assertRaises(ValueError):
-            self.batch.cache_export({"x": 1})
-        # 폴더 열기: zip 은 탐색기에서 선택(reveal)만 허용, 내용 열기는 계속 거부
+        item = self.index()["items"][0]
+        self.assertEqual((item["name"], item["size"], item["sha256"]),
+                         (path.name, path.stat().st_size, hashlib.sha256(path.read_bytes()).hexdigest()))
+        # 로컬 임시 zip 은 지워지고, docs 안에는 아무것도 생기지 않는다
+        self.assertFalse(any((self.local / "Temp").iterdir()) if (self.local / "Temp").exists() else False)
+        self.assertEqual(list(self.docs.iterdir()), [])
+        self.assertFalse((self.local / "배치분석" / "내보내기").exists())
+        # 폴더 열기: OneDrive 캐시 zip 은 탐색기에서 선택(reveal)만, 내용 열기는 거부
         opener = DesktopOpen(self.cfg)
         self.assertEqual(opener.resolve(str(path), reveal=True), path)
         with self.assertRaises(ValueError):
             opener.resolve(str(path))
 
-    def test_keeps_latest_three(self):
+    def test_keeps_latest_three_and_removes_only_ours(self):
         self.write_caches()
-        folder = self.local / "배치분석" / "내보내기"
-        folder.mkdir(parents=True)
-        for i in range(4):
-            (folder / f"BatchReport_캐시_2020010{i}_000000.zip").write_bytes(b"x")
-        out = self.batch.cache_export({})
-        left = sorted(p.name for p in folder.glob("BatchReport_캐시_*.zip"))
-        self.assertEqual(len(left), 3)
-        self.assertIn(Path(out["path"]).name, left)
+        self.folder.mkdir()
+        old = []
+        for i in range(3):
+            name = f"BatchReport_캐시_2020010{i}_000000.zip"
+            (self.folder / name).write_bytes(b"x")
+            old.append(dict(name=name, size=1, sha256="0" * 64, exported_at=f"2020-01-0{i}", cache_schema=1))
+        (self.folder / CACHE_SHARE_INDEX).write_text(json.dumps({"schema": 1, "items": old[::-1]}), encoding="utf-8")
+        (self.folder / "BatchReport_캐시_20191231_000000.zip").write_bytes(b"x")   # 목록에 없는 예전 게시본(중간에 멈춘 것)
+        (self.folder / "메모.txt").write_text("남의 파일", encoding="utf-8")
+        out = self.batch.cache_publish({})
+        left = sorted(p.name for p in self.folder.glob("*.zip"))
+        self.assertEqual(left, sorted([Path(out["path"]).name, old[2]["name"], old[1]["name"]]))
+        self.assertEqual([i["name"] for i in self.index()["items"]], [Path(out["path"]).name, old[2]["name"], old[1]["name"]])
+        self.assertTrue((self.folder / "메모.txt").exists())
+        self.assertEqual(out["kept"], 3)
+
+    def test_other_pc_lists_and_imports_without_writing_onedrive(self):
+        self.write_caches()
+        published = self.batch.cache_publish({})
+        # PC B: 같은 OneDrive 공유 폴더, 다른 로컬 · 같은 호기 이름
+        local_b = self.base / "local_b"
+        cfg_b = self.base / "config_b.json"
+        reports_b = self.base / "eq_b" / "M01" / "Reports"
+        reports_b.mkdir(parents=True)
+        cfg_b.write_text(json.dumps({"local_dir": str(local_b), "save_dir": str(self.docs),
+                                     "wph_report_paths": {"M01": str(reports_b)}}), encoding="utf-8")
+        pc_b = DesktopBatch(cfg_b)
+        before = {p.name: (p.stat().st_mtime_ns, p.stat().st_size) for p in self.folder.iterdir()}
+        listed = pc_b.cache_share_list({})
+        self.assertEqual(listed["folder"], str(self.folder))
+        self.assertEqual([(i["name"], i["present"], i["compatible"], i["machines"], i["reports"]) for i in listed["items"]],
+                         [(published["name"], True, True, ["M01", "M02"], 5)])
+        out = pc_b.cache_share_import({"name": published["name"]})
+        self.assertEqual((out["added"], out["machines"], out["source"]), (3, ["M01"], published["name"]))
+        self.assertEqual(out["skipped"], [{"machine": "M02", "reports": 2}])
+        self.assertEqual(len(list((local_b / "배치분석" / "누적").glob("*.json"))), 1)
+        after = {p.name: (p.stat().st_mtime_ns, p.stat().st_size) for p in self.folder.iterdir()}
+        self.assertEqual(before, after)                          # OneDrive 에는 아무것도 쓰지 않음
+        self.assertEqual(list((local_b / "Temp").iterdir()), [])   # 받은 zip 은 로컬 임시 폴더에서 지움
+        # 다시 받으면 이미 있는 것은 그대로
+        self.assertEqual(pc_b.cache_share_import({"name": published["name"]})["kept"], 3)
+
+    def test_import_rejects_partial_sync_and_unknown_names(self):
+        self.write_caches()
+        published = self.batch.cache_publish({})
+        path = Path(published["path"])
+        data = path.read_bytes()
+        path.write_bytes(data[: len(data) // 2])               # OneDrive 동기화가 덜 끝난 파일
+        with self.assertRaises(ValueError) as ctx:
+            self.batch.cache_share_import({"name": published["name"]})
+        self.assertIn("동기화", str(ctx.exception))
+        self.assertEqual(list((self.local / "Temp").iterdir()), [])
+        path.unlink()
+        self.assertFalse(self.batch.cache_share_list({})["items"][0]["present"])
+        with self.assertRaises(ValueError):
+            self.batch.cache_share_import({"name": published["name"]})
+        for params in ({}, {"name": "../x.zip"}, {"name": "BatchReport_캐시_20200101_000000.zip"},
+                       {"name": published["name"], "x": 1}, {"name": 1}):
+            with self.assertRaises(ValueError, msg=params):
+                self.batch.cache_share_import(params)
+        # 캐시정보.json 이 깨졌으면 빈 목록(예외 없음)
+        (self.folder / CACHE_SHARE_INDEX).write_text("{broken", encoding="utf-8")
+        self.assertEqual(self.batch.cache_share_list({})["items"], [])
+
+    def test_share_dir_is_sibling_of_save_dir(self):
+        self.assertEqual(Path(cache_share_dir(str(self.docs))), self.folder)
+        root = Path(self.docs.anchor)
+        self.assertEqual(Path(cache_share_dir(str(root))), root / CACHE_SHARE_DIRNAME)   # 드라이브 루트면 그 안
 
     def test_ipc(self):
         self.write_caches()
@@ -84,13 +170,23 @@ class CacheExport(unittest.TestCase):
         session = Session(output)
         session.batch = self.batch
         self.addCleanup(session.close)
-        session.handle(dict(version=1, id=1, method="batch_cache_export", params={}))
+        session.handle(dict(version=1, id=1, method="batch_cache_publish", params={}))
+        for worker in list(session.workers):
+            worker.join(20)
+        session.handle(dict(version=1, id=2, method="batch_cache_share_list", params={}))
         for worker in list(session.workers):
             worker.join(20)
         events = [json.loads(line) for line in output.getvalue().splitlines()]
         done = [e for e in events if e["id"] == 1][-1]
         self.assertEqual(done["event"], "completed", done)
         self.assertEqual(done["batch"]["reports"], 5)
+        listed = [e for e in events if e["id"] == 2][-1]
+        self.assertEqual(listed["event"], "completed", listed)
+        self.assertEqual(len(listed["batch"]["items"]), 1)
+        # 지난 버전의 내보내기 요청은 없다(#39: zip 만들기 삭제)
+        session.handle(dict(version=1, id=3, method="batch_cache_export", params={}))
+        bad = [json.loads(line) for line in output.getvalue().splitlines() if json.loads(line)["id"] == 3][-1]
+        self.assertNotEqual(bad["event"], "completed")
 
 
 def report_entry(i, mtime=1000):
@@ -189,11 +285,12 @@ class CacheImport(unittest.TestCase):
             self.batch.cache_import({"path": str(self.make_zip([self.other_pc("AOI-9", "P:\\x", ["a_BatchReport.htm"])], "other.zip"))})
 
     def test_round_trip_and_ipc(self):
-        # B 가 직접 export → 새 PC(C) 가 IPC 로 import
+        # B 가 만든 zip(게시와 같은 형식) → 새 PC(C) 가 IPC 로 import
         acc = self.local / "배치분석" / "누적"
         acc.mkdir(parents=True)
         (acc / ("a" * 64 + ".json")).write_text(json.dumps(self.other_pc("AOI-1", self.folder, ["r1_BatchReport.htm", "r2_BatchReport.htm"])), encoding="utf-8")
-        zip_path = Path(self.batch.cache_export({})["path"])
+        zip_path = self.base / "BatchReport_캐시_20261030_090000.zip"
+        self.batch._build_cache_zip(self.local, zip_path)
         other = self.base / "pc_c"
         cfg = self.base / "config_c.json"
         cfg.write_text(json.dumps({"local_dir": str(other), "wph_report_paths": {"AOI-1": str(self.real)}}), encoding="utf-8")

@@ -23,6 +23,21 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 캐시 OneDrive 공유 + 자동 분석 설정 이동 + 저장 폴더 = docs 상위 (2026-10-30, 이슈 #39, v12.8.23)
+- **캐시 공유 폴더 = 저장 폴더(docs) 옆 `캐시공유/`**(`desktop_batch.cache_share_dir`, `프로그램/` 과 같은 형제 규칙). 개발자 = Batch Report 분석 › [🛠 개발자 기능] ›
+  [OneDrive 에 게시](`batch_cache_publish`) 또는 자동 분석이 끝나면 자동 게시(체크 `batch_cache_publish`, 자동 분석 · ▶ 즉시 실행 뒤 `Batch.tsx launch(publish)`).
+  zip 은 **로컬 Temp 에서 만든 뒤 1번 복사** + `캐시정보.json`(이름 · 크기 · SHA-256 · 호기 · 수) **직접 1번 쓰기**(공유 폴더에 임시 파일 금지), 최근 `CACHE_SHARE_KEEP`=3 개만 남기고
+  우리 이름(`BatchReport_캐시_YYYYMMDD_HHMMSS.zip`)의 목록 밖 zip 은 지운다(남의 파일은 그대로).
+- 사용자 = [OneDrive 에서 불러오기](`batch_cache_share_list` — 캐시정보.json 만 읽음, 누를 때만, 쓰기 없음) → 고르기 → `batch_cache_share_import{name}`:
+  로컬 Temp 로 복사 · 크기 · SHA-256 확인(동기화 덜 된 파일 거부) → 기존 `cache_import`(#29, zip 은 풀지 않고 안의 JSON 만) → Temp 삭제. **OneDrive 에 쓰지 않는다.**
+  끌어 넣기 · [zip 찾기…] 가져오기는 그대로 둔다. **종전 로컬 [캐시 압축 파일 만들기 (zip)](`batch_cache_export`, `배치분석/내보내기/`)는 삭제**(소유자 지시) — zip 형식은 `_build_cache_zip` 이 그대로 만든다.
+- 보안 검토(소유자 요청, 2026-10-30): 새 프로세스 · 스크립트 · 인터넷 · 자격 증명 없음, zip 안은 JSON 뿐이라 Defender 오탐 유형(net use · .bat · MOTW exe)과 무관. 공유 폴더 쓰기는 게시 1회당 zip 1 + json 1.
+  이 원칙(로컬에서 만들고 1번 복사 · 받는 쪽은 쓰지 않음 · 풀지 않음 · SHA-256 확인)을 바꾸지 말 것(`tests/test_cache_export.py`).
+- **Batch Report 자동 분석 설정 = CAMTEK › 자동 분석 및 취합 › [Batch Report 자동 분석] 탭**(`BatchAutoPanel.tsx`, 설정의 'Batch Report 분석 주기 설정' 탭은 삭제).
+  다른 화면에서 이 탭을 열 때는 `batchAuto.ts openBatchAutoSettings()`. 엔진 요청은 그대로 `config_state` · `config_set_batch_auto`(+ `publish`).
+- **저장 폴더 지정 = OneDrive 공유 폴더(docs 의 상위)를 고른다**(`desktop_config.resolve_save_dir`): 바로 아래 `docs` 가 있으면 그 docs, 고른 폴더가 이미 저장 폴더(공유 문서가 있음 · 이름 docs)면
+  그대로(종전 설정 호환), 그 밖의 새 폴더면 그 안에 `docs` 를 만든다(확인 전 해석). config `save_dir` 은 **계속 docs 경로**라 다른 기능은 바뀌지 않는다. 화면 안내 = `share_paths`(공유 폴더 · 프로그램 · 캐시공유).
+
 ### Batch Report 대량 자료 = 호기 10대 × 호기당 5천 개 기준 (2026-10-22, 이슈 #38)
 - 소유자 실제 규모: 호기 25대+, 호기당 Batch Report 약 5천 개, 한 번에 10대 정도 조사(= 5만 개 · wafer ~120만 행). 성능 · 메모리 시험은 이 규모로 한다(4천 개 시험은 부족 — 소유자 지적).
 - `wph.normalize_key` · `wph.safe_field` · `wph_status.classify` 는 결과를 기억한다(순수 함수 유지 필수 — 입력 외 상태에 따라 결과가 바뀌는 코드를 넣지 말 것). 큰 openpyxl 시트는 셀마다 서식 객체를 만들지 말고 첫 셀 `_style` 을 복사.
@@ -57,8 +72,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   [폴더 열기] 허용 = 등록한 KLA 폴더 안의 폴더만(`DesktopKla.allows`).
 
 ### Batch Report 캐시 공유 = 개발자 기능 zip 만들기 + 끌어 넣어 가져오기 (2026-10-13, 이슈 #29)
-- 화면 `Batch.tsx` 조사 범위 아래 `Batch Report 캐시 가져오기` 영역(모든 사용자): 캐시 zip 을 **창에 끌어 넣으면** 자동으로 가져온다 + [zip 찾기…].
-  [🛠 개발자 기능]을 누르면 그 아래에 종전 내보내기(#16, 버튼 문구 `Batch Report 캐시 압축 파일 만들기 (zip)`)가 열린다. 가져온 호기는 조사 범위에 골라 둔다.
+- 화면 `Batch.tsx` 조사 범위 아래 `Batch Report 캐시 가져오기` 영역(모든 사용자): [OneDrive 에서 불러오기](#39) + 캐시 zip 을 **창에 끌어 넣으면** 자동으로 가져온다 + [zip 찾기…].
+  [🛠 개발자 기능]을 누르면 그 아래에 [OneDrive 에 게시](#39 — 종전 로컬 내보내기 버튼은 삭제)가 열린다. 가져온 호기는 조사 범위에 골라 둔다.
 - 끌어 넣기: Tauri 셸이 `WindowEvent::DragDrop` 을 받아 페이지가 등록한 채널(`drop_connect`)로 `{kind: enter|leave|drop, paths}` 만 넘긴다
   (`desktop.ts` `onFileDrop`). Batch Report 화면이 보일 때만 받고 첫 `.zip` 만 쓴다. HTML5 drop 은 경로가 없어 안내만.
 - 엔진 `DesktopBatch.cache_import{path}` / IPC `batch_cache_import`('batch' 슬롯 — 조사 · 찾기와 동시 실행 안 함). zip 은 읽기만, 장비 접근 없음.
@@ -121,7 +136,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - `docs/ai_guide/BatchReport_캐시_분석지침.txt` = 캐시 zip 과 함께 새 AI 에게 주는 계산 방식 문서(zip 구조 · lotmodel · batchview · batchsaved · recipecompare · M 지표).
   **앱 계산식(lotmodel/batchview/batchsaved/recipecompare)을 바꾸면 이 txt 도 같이 고친다.**
 
-### Batch Report 캐시 내보내기 zip (2026-10-07, 이슈 #16)
+### Batch Report 캐시 내보내기 zip (2026-10-07, 이슈 #16) — #39 에서 로컬 내보내기 버튼 · `batch_cache_export` 삭제, 같은 zip 을 OneDrive `캐시공유/` 에 게시
 - 화면: Batch Report 분석 › 조사 범위 패널 아래 [Batch Report 캐시 내보내기 (zip)] → 끝나면 [폴더 열기](zip 을 탐색기에서 선택) · 경로 · 호기/Report 수 · 크기.
   화면 문구는 '내보낸다'까지만(용도 언급 금지 — 사용자 지시).
 - 엔진: `DesktopBatch.cache_export` / IPC `batch_cache_export`(params 없음, 작업 스레드 · 'batchexport' 슬롯). 로컬 `배치분석/누적/*.json`(호기 · 폴더별 원문 전부,
@@ -1340,7 +1355,8 @@ python3 tests/test_downloader.py   # 8
 `파라미터 값 취합/`(수동 실행 1개, 무인은 변경 시에만 1개) ·
 `자동감시/`(변경보고서 = 변경 시에만, `감시로그.txt` 1개에 append) ·
 `_세션/`(접속자 json·전역 잠금, 300초 하트비트 + 내용 같으면 쓰기 생략) ·
-문서 옆 `.editlock`(편집 중에만) · 형제 `프로그램/`(exe 2개 + 버전정보.json).
+문서 옆 `.editlock`(편집 중에만) · 형제 `프로그램/`(exe 2개 + 버전정보.json) ·
+형제 `캐시공유/`(Batch Report 캐시 zip 최근 3개 + 캐시정보.json — 게시할 때만, 이슈 #39).
 **Commonality 산출물·WPH 조사 산출물·수집 staging·로그·캐시는 전부 로컬**(`localdirs`).
 
 ## 자동 업데이트 (2026-08 확정 A안 — OneDrive만, 인터넷 미사용)

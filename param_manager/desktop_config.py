@@ -165,6 +165,34 @@ def roots_report(info):
     return [dict(path=str(r["path"]), kind=r["kind"]) for r in info]
 
 
+SAVE_SUBDIR = "docs"     # OneDrive 공유 폴더 안의 문서 폴더(이슈 #39 — 사람은 그 위 폴더를 고른다)
+SHARED_FILES = ("장비 IP 주소.xlsx", "참고자료.xlsx", "특이사항.xlsx", "변환계수.xlsx", "장비화면이름.xlsx", "감시설정.json")
+
+
+def resolve_save_dir(chosen):
+    """고른 폴더 → 실제 저장 폴더(문서 폴더). 폴더 이름만 보고 더 아래는 훑지 않는다.
+    ① 바로 아래에 `docs` 가 있으면 그 docs ② 고른 폴더가 이미 저장 폴더(공유 문서가 있음 · 이름이 docs)면 그대로(종전 설정 호환)
+    ③ 그 밖(새 공유 폴더)이면 그 안에 `docs` 를 만들어 쓴다 — `프로그램/` · `캐시공유/` 가 docs 옆에 생기게."""
+    base = Path(chosen)
+    docs = base / SAVE_SUBDIR
+    if docs.is_dir() and not docs.is_symlink():
+        return str(docs)
+    if base.name.lower() == SAVE_SUBDIR or any((base / name).is_file() for name in SHARED_FILES):
+        return str(base)
+    if docs.is_symlink():
+        raise ValueError("저장폴더 연결 경로는 사용할 수 없습니다")
+    docs.mkdir()
+    return str(docs)
+
+
+def share_paths(save_dir):
+    """화면 안내용 경로(만들지 않음): 공유 폴더(docs 의 부모) · 프로그램 게시 폴더 · 캐시 공유 폴더."""
+    from .desktop_batch import cache_share_dir
+    from .updater import resolve_program_dir
+    program = resolve_program_dir(save_dir)
+    return dict(share_root=os.path.dirname(program), program_dir=program, cache_share_dir=cache_share_dir(save_dir))
+
+
 class DesktopConfig:
     def __init__(self, config_path=None):
         # Only tests inject config_path; IPC never accepts it.
@@ -197,7 +225,8 @@ class DesktopConfig:
         roots = cfg.get("commonality_roots")
         extra = cfg.get("batch_extra_paths")
         from .desktop_batch import BATCH_INTERVALS
-        return dict(save_dir=cfg.get("save_dir") or "", aoi=aoi_view(cfg),
+        save = cfg.get("save_dir") or ""
+        return dict(save_dir=save, aoi=aoi_view(cfg), **(share_paths(save) if save else {}),
                     local_dir=cfg.get("local_dir") or "",
                     report_paths=report if isinstance(report, dict) else {},
                     scanresult_roots=roots if isinstance(roots, dict) else {},
@@ -282,9 +311,14 @@ class DesktopConfig:
 
     def set_batch_auto(self, params):
         from .desktop_batch import BATCH_INTERVALS, BATCH_TIME
-        if set(params) - {"enabled", "interval_hours", "time"} or type(params.get("enabled")) is not bool:
+        if set(params) - {"enabled", "interval_hours", "time", "publish"} or type(params.get("enabled")) is not bool:
             raise ValueError("자동 조사 설정을 확인하세요")
         cfg = self._read()
+        if "publish" in params:
+            # 자동 분석이 끝나면 캐시 zip 을 OneDrive 캐시공유/ 에 게시(이슈 #39, 개발자 PC 용 — 기본 꺼짐).
+            if type(params["publish"]) is not bool:
+                raise ValueError("OneDrive 게시 설정을 확인하세요")
+            cfg["batch_cache_publish"] = params["publish"]
         if "interval_hours" in params:
             if type(params["interval_hours"]) not in (int, float) or params["interval_hours"] not in BATCH_INTERVALS:
                 raise ValueError("분석 주기를 목록에서 고르세요")
@@ -509,9 +543,12 @@ class DesktopConfig:
         return self.state()
 
     def set_save_dir(self, params):
+        """사람은 OneDrive 공유 폴더(`…\\0. Camtek AOI parameter 취합\\`)를 고르고, 문서는 그 안 `docs` 에 둔다(이슈 #39).
+        저장 폴더(save_dir, 다른 기능이 쓰는 값)는 그대로 docs 경로다 — `resolve_save_dir` 참고."""
         if set(params) != {"path"}:
             raise ValueError("저장폴더 경로를 확인하세요")
-        path = self._valid_dir(params["path"], "저장폴더")
+        chosen = self._valid_dir(params["path"], "저장폴더")
+        path = resolve_save_dir(chosen)
         # Create the initial reference files if missing (matches tkinter first run).
         created = []
         for getter, maker in ((refdata.ip_path, refdata.create_blank_ip),
@@ -524,7 +561,7 @@ class DesktopConfig:
         cfg = self._read()
         cfg["save_dir"] = path
         self._write(cfg)
-        return dict(save_dir=path, created=created)
+        return dict(save_dir=path, chosen=chosen, created=created, **share_paths(path))
 
     def set_report_path(self, params):
         if set(params) != {"machine", "path"}:

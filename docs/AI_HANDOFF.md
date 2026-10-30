@@ -1,19 +1,31 @@
 # AI 공통 인수인계
 
-## 최신 재개 — Para #39 Batch Report 캐시 zip 을 OneDrive 로 배포하는 안: OneDrive 보안 규칙 검토 (2026-10-30 KST, `version_v12`, 코드 변경 없음)
+## 최신 재개 — Para #39 Batch Report 캐시 OneDrive 공유 · 자동 분석 설정 이동 · 저장 폴더 = docs 상위 (2026-10-30 KST, `version_v12`, v12.8.23)
 
-- 마지막 갱신 2026-10-30 · 기준 커밋 `d6b24cb`(v12.8.22 인수인계) · 이슈 Para #39 · 작업 브랜치 `version_v12` · 프로그램 v12.8.22 그대로.
-- 요청: "개발자가 캐시 .zip 을 OneDrive 에 올리면 사용자 프로그램이 OneDrive 폴더를 읽어 최신 zip 을 로컬에 받아 기존처럼(#29 가져오기) 쓰는 방식 — 이전 OneDrive 보안 문제와 저촉되는지 검토."
-- 답(이슈 댓글에 자세히): **조건을 지키면 저촉되지 않음.** 2026-08 사고('Unusual High-Volume Directory Access')는 저장폴더 안에 파일 수백 개 생성 · 잦은 재기록이 원인.
-  이 안은 개발자가 가끔 zip 1개를 올리고 사용자는 읽기만 하므로 '회차당 결과 파일 1개' 규칙 범위. 같은 구조가 이미 자동 업데이트(`{저장폴더 부모}/프로그램/` + `버전정보.json` · SHA-256)에 있음.
-  zip 은 실행파일이 아니라 #2026-09 Defender 오탐(net use) · MOTW 문제와도 무관.
-- 지켜야 할 조건(구현할 때 그대로 적용, 소유자 확인 전): ① OneDrive 에는 zip 1개(+작은 정보 json 1개)만, 예전 것은 덮어쓰거나 지움 — 풀기 · 임시파일 · 가져오기 기록은 전부 로컬(`localdirs`, `배치분석/누적`).
-  ② 사용자 쪽은 OneDrive 에 아무것도 쓰지 않음(마지막 가져온 버전 표시는 로컬 config). ③ 폴더 감시 · 주기 polling · 하위 폴더 전체 훑기 금지 — 프로그램 시작 때 1번 또는 버튼을 누를 때만
-  정해진 폴더 하나의 정보 json 만 읽음. ④ 업데이트 빈도는 하루 · 주 단위(분 단위 금지). ⑤ 동기화 덜 된 zip 방지: 정보 json 에 크기 · SHA-256, 로컬로 복사한 뒤 검증하고 가져오기(updater 와 같은 방식).
-  ⑥ 큰 zip(대량 자료 캐시 JSON 은 수백 MB 가능)은 전원 PC 가 받으므로 회사 OneDrive 용량 · 대역폭 확인, 공유 범위는 사내 사용자만(외부 '링크가 있는 모든 사람' 금지).
-  ⑦ CLAUDE.md '저장폴더에 남는 것(전수)' 목록에 새 항목(예: `{저장폴더 부모}/캐시공유/`)을 소유자 승인으로 추가하고 `tests/test_onedrive_writes.py` 류 회귀 시험으로 고정.
-- 남은 일: 소유자에게 질문 — 이 방식으로 구현할지(구현하면 v12.8.23 릴리스), 게시 위치(`프로그램/` 옆 형제 폴더 안), 개발자 쪽 [OneDrive 에 게시] 버튼을 만들지 · 직접 복사할지.
-- 시험 · 릴리스: 코드 변경이 없어 시험 대상 없음, 릴리스 안 함(이슈 제목의 v12.8.23 은 실제 구현 때 씀).
+- 마지막 갱신 2026-10-30 · 기준 커밋 `99e85e6`(#39 검토 기록) · 이슈 Para #39 · 작업 브랜치 `version_v12`.
+- 1차 요청(이슈 본문): 개발자가 캐시 zip 을 OneDrive 에 올리고 사용자가 받아 쓰는 방식이 2026-08 OneDrive 보안 문제와 저촉되는지 검토 → 조건부 저촉 없음(댓글 `6523366005`).
+- 2차 요청(소유자 댓글 2026-10-30 13:11, 세션에서 "검토사항부터 보고"):
+  ① 설정의 Batch Report 자동 분석 탭 → CAMTEK › 자동 분석 및 취합 탭으로, 체크박스로 자동 분석이 끝나면 OneDrive 에 zip 올리기
+  ② 게시 위치 = `프로그램/` 옆 형제 `캐시공유/` ③ 저장 폴더는 docs 가 아니라 docs 상위를 골라도 알아서 인식
+  ④ 개발자 [OneDrive 에 게시] 버튼, 기존 zip 만들기 삭제, 사용자는 OneDrive 에서 불러오기(목록에서 골라 받아 로컬에서 기존처럼) ⑤ Windows Defender 등 보안 저촉 검토.
+- 한 일(코드 지도는 CLAUDE.md 맨 위 #39 절):
+  · 엔진 `desktop_batch.py`: `cache_export` 삭제 → `_build_cache_zip`(같은 zip 형식) · `cache_publish` · `cache_share_list` · `cache_share_import` · `cache_share_dir`.
+    IPC `batch_cache_publish` / `batch_cache_share_list`('batchshare' 슬롯) / `batch_cache_share_import`{name}, `batch_cache_export` 제거. `auto_state.publish`.
+  · `desktop_config.py`: `resolve_save_dir`(docs 찾기) · `share_paths`, `set_batch_auto{publish}`(config `batch_cache_publish`), state 에 `share_root` · `program_dir` · `cache_share_dir`.
+    `desktop_open`: 캐시공유 폴더 열기 · zip reveal 허용.
+  · 화면: 새 `BatchAutoPanel.tsx`(설정 탭에서 옮김 + 게시 체크), `Watch.tsx` 탭 3개, `Settings.tsx`(auto 탭 삭제 · 저장 폴더 안내/인식 폴더 표), `Batch.tsx`(OneDrive 에서 불러오기 목록 ·
+    개발자 [OneDrive 에 게시] · 자동 분석/즉시 실행 뒤 게시), `batchAuto.ts openBatchAutoSettings`, Tour · Activity 문구.
+  · 문서: CLAUDE.md, `docs/IT보안_검토자료.md` 3.4, `docs/WEB_UI_*.md`, `docs/ai_guide/BatchReport_캐시_분석지침.txt`, 릴리즈 노트 `docs/release_notes/v12.8.23.md`.
+- 보안 검토 결론(세션에서 소유자에게 보고 + 이슈 댓글): Defender 과거 사고 유형(net use 로그온 · .bat 자기 교체 · 인터넷 exe/MOTW)과 무관 — 새 프로세스 · 스크립트 · 인터넷 · 자격 증명 없음,
+  zip 은 JSON 뿐이고 풀지 않고 읽음. OneDrive 쓰기는 게시 1회당 zip 1 + json 1, 받는 PC 는 쓰기 없음, SHA-256 으로 동기화 덜 된 파일 거부. 실제 회사 PC Defender 반응은 미검증.
+- 내 해석(확인 전): ⓐ docs 가 없는 새 폴더를 고르면 그 안에 `docs` 를 만든다(그래야 `프로그램/` · `캐시공유/` 가 docs 옆에 생김) ⓑ "자동 분석이 끝나면" = 자동 회차 + ▶ 즉시 실행(수동 [조사 시작]은 게시 안 함)
+  ⓒ 게시 체크박스는 누구에게나 보이되 "개발자 PC 용" 표시 ⓓ 끌어 넣기 · [zip 찾기…] 가져오기는 남김(받은 zip 직접 넣기) ⓔ 보관 = 최근 3개 ⓕ 공유 zip 에 사람 선택 파일도 종전처럼 넣음(가져올 때는 무시).
+- 시험: `python3 tools/check_project.py` — 71개 파일 중 `test_batchreport.py`(tkinter 없음, 기존과 같음)만 실패. `tests/test_cache_export.py` 11(게시 · 보관 3개 · 다른 PC 목록/불러오기 · OneDrive 무변경 ·
+  동기화 덜 된 파일 거부 · IPC) · `tests/test_desktop_config.py` 11(docs 찾기 · 종전 폴더 호환 · publish) 통과. `npx tsc --noEmit` · `vite build` 통과.
+  `tools/test_desktop_ui.mjs`(NODE_PATH=전역 playwright) 연속 2회 통과 — 그 전 1회는 뒤쪽 단계에서 '버튼 비활성' 대기 시간 초과(재현 안 됨, 확인 전). Windows 실기 · 실제 OneDrive · Defender 는 미검증.
+  시험 환경: 이 컨테이너에 openpyxl 이 없어 `pip install openpyxl`(개발 환경만 — 프로그램 의존성 변화 없음). UI 시험이 고친 `docs/screenshots/*` 는 commit 하지 않음.
+- 릴리스: v12.8.23 (소유자 승인: 이슈 댓글 "구현해"). 결과는 아래 줄/다음 commit 에 기록.
+- 남은 일: 실기에서 OneDrive 게시 · 불러오기 · 큰 zip(수백 MB) 동기화 시간 확인, 회사 OneDrive 용량 확인(소유자), 위 해석 ⓐ~ⓕ 확인.
 
 ## 최신 재개 — Para #38 Batch Report 대량 자료(호기 10대 × 호기당 5천 개) 조사 속도 (2026-10-22 KST, `version_v12`, v12.8.22)
 

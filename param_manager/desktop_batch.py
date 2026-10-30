@@ -100,6 +100,22 @@ MAX_FIND_HITS = 20000             # 찾기 1단계 목록(파일 이름만)
 MAX_FIND_PICK = 2000              # 찾기 2단계에서 한 번에 읽을 수 있는 고른 Batch Report
 CACHE_IMPORT_MAX_FILES = 5000     # 캐시 zip 가져오기(이슈 #29): zip 안 파일 수 · 풀었을 때 전체 크기 한도
 CACHE_IMPORT_MAX_TOTAL = 16 * 1024 ** 3
+# OneDrive 캐시 공유(이슈 #39): 저장 폴더 옆(형제) `캐시공유/` 에 zip + 캐시정보.json. 게시본은 최근 3개만.
+CACHE_SHARE_DIRNAME = "캐시공유"
+CACHE_SHARE_INDEX = "캐시정보.json"
+CACHE_SHARE_KEEP = 3
+CACHE_SHARE_NAME = re.compile(r"BatchReport_캐시_\d{8}_\d{6}\.zip")
+
+
+def cache_share_dir(save_dir):
+    """캐시 공유 폴더 = 저장 폴더(docs)의 **옆** `캐시공유/` — 프로그램 게시 폴더(`프로그램/`)와 같은 규칙
+    (updater.resolve_program_dir). 부모가 없으면(드라이브 루트) 저장 폴더 안. 만들지는 않는다."""
+    import os
+    base = os.path.abspath(str(save_dir))
+    parent = os.path.dirname(base)
+    if not parent or parent == base or not os.path.isdir(parent):
+        return os.path.join(base, CACHE_SHARE_DIRNAME)
+    return os.path.join(parent, CACHE_SHARE_DIRNAME)
 
 
 def _choice_key(bunch_key, wafer_key):
@@ -559,15 +575,12 @@ class BatchViews:
         output.atomic_text(path, recipecompare.build_html(result, item["view"]))
         return dict(path=str(path))
 
-    def cache_export(self, params):
-        """조사로 취합한 Batch Report 캐시(배치분석/누적/*.json — 호기·폴더별 원문 전부)를 zip 1개로 내보낸다(이슈 #16).
+    def _build_cache_zip(self, root, target):
+        """로컬 Batch Report 캐시(배치분석/누적/*.json — 호기·폴더별 원문 전부)를 zip 1개로 만든다(이슈 #16 형식 그대로).
         장비 접근 없음. 캐시는 한 파일씩 읽어 개수만 세고 그대로 압축한다(전체를 메모리에 모으지 않음).
-        manifest.json = 내보낸 시각 · 버전 · 파일별 호기 · 원본 폴더 · Batch Report 수. 사람 선택(Cache)도 있으면 함께."""
+        manifest.json = 만든 시각 · 버전 · 파일별 호기 · 원본 폴더 · Batch Report 수. 사람 선택(Cache)도 있으면 함께."""
         import zipfile
         from . import __version__
-        if params:
-            raise ValueError("요청을 확인하세요")
-        _, _, root, _ = self.configuration()
         source = root / "배치분석" / "누적"
         caches = []
         if source.is_dir():
@@ -584,42 +597,176 @@ class BatchViews:
                 caches.append((path, str(state.get("machine") or ""), str(state.get("folder") or ""), len(state["entries"])))
                 del state
         if not caches:
-            raise ValueError("내보낼 Batch Report 캐시가 없습니다. 먼저 [조사 시작]으로 조사하세요.")
-        folder = root / "배치분석" / "내보내기"
-        folder.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now()
-        target = folder / f"BatchReport_캐시_{stamp:%Y%m%d_%H%M%S}.zip"
+            raise ValueError("게시할 Batch Report 캐시가 없습니다. 먼저 [조사 시작]으로 조사하세요.")
         safe = lambda t: "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in t)[:40] or "호기"
         files = []
-        temporary = target.with_name("." + target.name + ".tmp")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+            for n, (path, machine, src, count) in enumerate(caches, 1):
+                desktop_progress.report(f"캐시 압축 중 {n}/{len(caches)}")
+                name = f"누적/{safe(machine)}_{path.stem[:8]}.json"
+                zf.write(path, name)
+                files.append(dict(file=name, machine=machine, folder=src, reports=count))
+            choices = root / "Cache" / CHOICES_FILE
+            if choices.is_file() and not choices.is_symlink():
+                zf.write(choices, "사람선택/" + CHOICES_FILE)
+            manifest = dict(schema=1, exported_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), app_version=__version__,
+                            cache_schema=batchreport_store.SCHEMA, machines=len({f["machine"] for f in files}),
+                            reports=sum(f["reports"] for f in files), files=files)
+            zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=1))
+        return manifest
+
+    def _share(self, create=False):
+        """OneDrive 캐시 공유 폴더(저장 폴더 옆 `캐시공유/`, 이슈 #39) — 경로 계산만, create 일 때만 만든다."""
+        cfg = read_json(self.config_path)
+        save = cfg.get("save_dir")
+        if not isinstance(save, str) or not save.strip():
+            raise ValueError("저장 폴더(OneDrive)가 지정되지 않았습니다. [설정 › 저장 폴더]에서 먼저 지정하세요.")
+        folder = Path(cache_share_dir(save))
+        for part in (folder, *folder.parents):
+            if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
+                raise ValueError("캐시 공유 폴더의 연결 경로는 사용할 수 없습니다")
+        if create:
+            folder.mkdir(parents=True, exist_ok=True)
+        return folder
+
+    @staticmethod
+    def _share_index(folder):
+        """캐시정보.json(게시한 zip 목록 · 크기 · SHA-256) — 없거나 깨졌으면 빈 목록."""
+        path = folder / CACHE_SHARE_INDEX
         try:
-            with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
-                for path, machine, src, count in caches:
-                    name = f"누적/{safe(machine)}_{path.stem[:8]}.json"
-                    zf.write(path, name)
-                    files.append(dict(file=name, machine=machine, folder=src, reports=count))
-                choices = root / "Cache" / CHOICES_FILE
-                if choices.is_file() and not choices.is_symlink():
-                    zf.write(choices, "사람선택/" + CHOICES_FILE)
-                manifest = dict(schema=1, exported_at=stamp.strftime("%Y-%m-%d %H:%M:%S"), app_version=__version__,
-                                cache_schema=batchreport_store.SCHEMA, machines=len({f["machine"] for f in files}),
-                                reports=sum(f["reports"] for f in files), files=files)
-                zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=1))
-            temporary.replace(target)
-        finally:
-            if temporary.exists():
-                temporary.unlink()
-        # 최근 3개만 남긴다(캐시가 크면 zip 도 크다).
-        for old in sorted(folder.glob("BatchReport_캐시_*.zip"))[:-3]:
+            data = read_json(path)
+        except (OSError, ValueError):
+            return []
+        items = data.get("items") if data.get("schema") == 1 else None
+        if not isinstance(items, list):
+            return []
+        good = []
+        for item in items:
+            if isinstance(item, dict) and isinstance(item.get("name"), str) and CACHE_SHARE_NAME.fullmatch(item["name"]) \
+                    and type(item.get("size")) is int and isinstance(item.get("sha256"), str) and len(item["sha256"]) == 64:
+                good.append(item)
+        return good
+
+    @staticmethod
+    def _copy_hashed(src, dst, label):
+        """한 번 읽으며 복사 + SHA-256(큰 zip — 진행 MB 표시). 돌려주는 값 = (크기, sha256)."""
+        import hashlib
+        digest, size, total = hashlib.sha256(), 0, max(src.stat().st_size, 1)
+        with src.open("rb") as reader, dst.open("wb") as writer:
+            while True:
+                chunk = reader.read(4 * 1024 * 1024)
+                if not chunk:
+                    break
+                writer.write(chunk)
+                digest.update(chunk)
+                size += len(chunk)
+                desktop_progress.report(f"{label} {size / 1048576:.0f} / {total / 1048576:.0f}MB")
+        return size, digest.hexdigest()
+
+    def cache_publish(self, params):
+        """개발자: 로컬 Batch Report 캐시 → zip 1개 → OneDrive `캐시공유/`에 게시(이슈 #39).
+        zip 은 로컬 Temp 에서 만들고 다 만든 뒤 한 번만 복사한다(OneDrive 안에 임시 파일 · 압축 풀기 없음 — 2026-08 동기화 경고).
+        `캐시정보.json` 에 크기 · SHA-256 을 적어 받는 쪽이 동기화가 덜 된 파일을 거른다. zip 은 최근 CACHE_SHARE_KEEP 개만 남긴다."""
+        import os
+        import shutil
+        if params:
+            raise ValueError("요청을 확인하세요")
+        _, _, root, _ = self.configuration()
+        folder = self._share()
+        stamp = datetime.now()
+        name = f"BatchReport_캐시_{stamp:%Y%m%d_%H%M%S}.zip"
+        work = root / "Temp" / f"캐시게시_{stamp:%Y%m%d_%H%M%S_%f}"
+        try:
+            local = work / name
+            manifest = self._build_cache_zip(root, local)
+            folder.mkdir(parents=True, exist_ok=True)
+            target = folder / name
+            if target.exists():
+                raise ValueError("같은 이름의 캐시 zip 이 이미 있습니다. 잠시 뒤 다시 게시하세요.")
             try:
-                old.unlink()
+                size, sha = self._copy_hashed(local, target, "OneDrive 에 복사 중")
+            except BaseException:
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+                raise
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        machines = sorted({f["machine"] for f in manifest["files"]}, key=_name_key)
+        item = dict(name=name, exported_at=manifest["exported_at"], app_version=manifest["app_version"],
+                    cache_schema=manifest["cache_schema"], size=size, sha256=sha, machines=machines, reports=manifest["reports"])
+        items = [item] + [i for i in self._share_index(folder) if i["name"] != name]
+        keep, drop = items[:CACHE_SHARE_KEEP], items[CACHE_SHARE_KEEP:]
+        # 목록에서 빠진 예전 게시본 + 목록에 없는 우리 이름의 zip(지난 게시가 중간에 멈춘 것)은 지운다. 남의 파일은 그대로.
+        listed = {i["name"] for i in keep}
+        for path in folder.glob("BatchReport_캐시_*.zip"):
+            if CACHE_SHARE_NAME.fullmatch(path.name) and path.name not in listed and not path.is_symlink():
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        # 공유 폴더에는 임시 json 을 만들지 않는다(직접 한 번 쓰기 — 작은 파일).
+        index = folder / CACHE_SHARE_INDEX
+        if index.is_symlink():
+            raise ValueError("캐시 공유 폴더의 연결 경로는 사용할 수 없습니다")
+        index.write_text(json.dumps(dict(schema=1, items=keep), ensure_ascii=False, indent=1), encoding="utf-8")
+        return dict(item, path=str(target), folder=str(folder), kept=len(keep), removed=len(drop), files=len(manifest["files"]),
+                    machine_count=len(machines))
+
+    def cache_share_list(self, params):
+        """사용자: OneDrive `캐시공유/` 에 게시된 캐시 zip 목록 — 캐시정보.json 하나와 목록에 적힌 zip(최대 CACHE_SHARE_KEEP 개)만 본다.
+        폴더를 훑거나 주기적으로 다시 읽지 않는다(사용자가 누를 때만). 쓰기 없음."""
+        if params:
+            raise ValueError("요청을 확인하세요")
+        folder = self._share()
+        items = []
+        for item in self._share_index(folder) if folder.is_dir() else []:
+            path = folder / item["name"]
+            try:
+                present = path.is_file() and not path.is_symlink()
             except OSError:
-                pass
-        return dict(path=str(target), folder=str(folder), files=len(files), machines=manifest["machines"],
-                    reports=manifest["reports"], size=target.stat().st_size)
+                present = False
+            items.append(dict(name=item["name"], exported_at=str(item.get("exported_at") or ""),
+                              app_version=str(item.get("app_version") or ""), size=item["size"],
+                              machines=[m for m in item.get("machines") or [] if isinstance(m, str)],
+                              reports=item.get("reports") if type(item.get("reports")) is int else 0,
+                              compatible=item.get("cache_schema") == batchreport_store.SCHEMA, present=present))
+        items.sort(key=lambda i: i["name"], reverse=True)
+        return dict(folder=str(folder), exists=folder.is_dir(), items=items)
+
+    def cache_share_import(self, params):
+        """사용자: OneDrive 의 고른 캐시 zip → 로컬 Temp 로 복사 → 크기 · SHA-256 확인 → 기존 가져오기(cache_import)로 이 PC 캐시에 합침.
+        OneDrive 에는 아무것도 쓰지 않는다. zip 은 풀지 않고 안의 JSON 만 읽는다(실행 파일 · 스크립트를 만들지 않음)."""
+        import shutil
+        name = params.get("name") if isinstance(params, dict) and set(params) == {"name"} else None
+        if not isinstance(name, str) or not CACHE_SHARE_NAME.fullmatch(name):
+            raise ValueError("불러올 캐시 zip 을 목록에서 고르세요")
+        _, _, root, _ = self.configuration()
+        folder = self._share()
+        item = next((i for i in self._share_index(folder) if i["name"] == name), None)
+        if item is None:
+            raise ValueError("캐시정보.json 에 없는 zip 입니다. [OneDrive 에서 불러오기] 목록을 새로 고친 뒤 다시 고르세요.")
+        if item.get("cache_schema") != batchreport_store.SCHEMA:
+            raise ValueError("캐시 형식(버전)이 이 프로그램과 다릅니다 — 개발자에게 같은 버전 프로그램으로 다시 게시해 달라고 하세요.")
+        source = folder / name
+        if source.is_symlink() or not source.is_file():
+            raise ValueError("OneDrive 에 그 zip 이 아직 없습니다. 동기화가 끝난 뒤 다시 누르세요.")
+        work = root / "Temp" / f"캐시불러오기_{datetime.now():%Y%m%d_%H%M%S_%f}"
+        try:
+            work.mkdir(parents=True)
+            local = work / name
+            size, sha = self._copy_hashed(source, local, "OneDrive 에서 받는 중")
+            if size != item["size"] or sha != item["sha256"]:
+                raise ValueError("받은 zip 이 게시된 내용과 다릅니다(OneDrive 동기화가 아직 끝나지 않았을 수 있습니다). 잠시 뒤 다시 누르세요.")
+            result = self.cache_import({"path": str(local)})
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        return dict(result, path=str(source), source=name)
 
     def cache_import(self, params):
-        """다른 PC 가 내보낸 캐시 zip(cache_export 결과)을 이 PC 로컬 캐시(배치분석/누적)에 합친다(이슈 #29).
+        """다른 PC 가 게시한 캐시 zip(_build_cache_zip 결과)을 이 PC 로컬 캐시(배치분석/누적)에 합친다(이슈 #29).
         장비 접근 없음, zip 은 읽기만. 호기는 이 PC 에 등록된 호기 이름으로 짝짓고, 폴더는 이 PC 의 그 호기 Report 폴더
         (같은 경로 → 같은 마지막 폴더 이름 → 기본 폴더 순)로 옮겨 적는다 — PC 마다 드라이브 문자 · 경로가 달라도 쓰이게.
         이미 이 PC 캐시에 있는 Batch Report(같은 파일 이름)는 그대로 두고 없는 것만 더한다. 사람 선택은 PC 마다 따로라 가져오지 않는다."""
@@ -676,7 +823,7 @@ class BatchViews:
         try:
             archive = zipfile.ZipFile(path)
         except (OSError, zipfile.BadZipFile) as exc:
-            raise ValueError("zip 파일을 열 수 없습니다 — [Batch Report 캐시 내보내기]로 만든 zip 인지 확인하세요") from exc
+            raise ValueError("zip 파일을 열 수 없습니다 — [OneDrive 에 게시]로 만든 Batch Report 캐시 zip 인지 확인하세요") from exc
         result = dict(path=str(path), files=0, added=0, kept=0, invalid=0, machines=[], skipped=[], targets=[],
                       exported_at="", app_version="", choices_skipped=False)
         with archive:
@@ -688,7 +835,7 @@ class BatchViews:
             except (KeyError, ValueError, UnicodeDecodeError) as exc:
                 raise ValueError("Batch Report 캐시 zip 이 아닙니다(manifest.json 없음)") from exc
             if not isinstance(manifest, dict) or manifest.get("schema") != 1 or manifest.get("cache_schema") != batchreport_store.SCHEMA:
-                raise ValueError("캐시 형식(버전)이 이 프로그램과 다릅니다 — 같은 버전 프로그램에서 다시 내보낸 zip 을 넣어 주세요")
+                raise ValueError("캐시 형식(버전)이 이 프로그램과 다릅니다 — 같은 버전 프로그램에서 다시 게시한 zip 을 넣어 주세요")
             result.update(exported_at=str(manifest.get("exported_at") or ""), app_version=str(manifest.get("app_version") or ""),
                           choices_skipped=any(i.filename.startswith("사람선택/") for i in infos))
             members = [i for i in infos if i.filename.startswith("누적/") and i.filename.lower().endswith(".json")]
@@ -773,7 +920,7 @@ class DesktopBatch(BatchViews):
         # Reject redirected output trees, including cache/output directory junctions.
         with desktop_diag.timed("로컬 결과 폴더 연결경로 검사", 200):
             for path in (root, root / "Cache", root / "배치분석", root / "배치분석" / "누적", root / "배치분석" / "대시보드",
-                         root / "배치분석" / "내보내기"):
+                         root / "Temp"):
                 for part in (path, *path.parents):
                     if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
                         raise ValueError("로컬 결과 폴더의 연결 경로는 사용할 수 없습니다")
@@ -812,7 +959,9 @@ class DesktopBatch(BatchViews):
         state = watcher.WatchState.from_dict(schedule)
         now = datetime.now()
         nxt = next_batch_run(hours, time_text, state, now)
-        return dict(enabled=enabled, interval_hours=hours, time=time_text, last_run=state.last_run,
+        # publish = 자동 분석(즉시 실행 포함)이 끝나면 캐시 zip 을 OneDrive 캐시공유/ 에 게시(이슈 #39, 개발자 PC 용).
+        return dict(enabled=enabled, interval_hours=hours, time=time_text, publish=bool(cfg.get("batch_cache_publish")),
+                    last_run=state.last_run,
                     last_result=state.last_result,
                     next_run=nxt.strftime("%Y-%m-%d %H:%M") if enabled and state.last_run else "",
                     due=enabled and now >= nxt)

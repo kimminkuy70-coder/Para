@@ -57,6 +57,13 @@ class DesktopConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.a.set_batch_auto({"enabled": False, "time": bad})
         self.assertEqual(self.a.set_batch_auto({"enabled": True, "time": ""})["batch"]["time"], "")
+        # #39: 자동 분석이 끝나면 OneDrive 에 캐시 zip 올리기(기본 꺼짐)
+        self.assertFalse(self.a.state()["batch"]["publish"])
+        self.assertTrue(self.a.set_batch_auto({"enabled": True, "publish": True})["batch"]["publish"])
+        self.assertTrue(self.a.set_batch_auto({"enabled": True, "interval_hours": 24})["batch"]["publish"])   # 다른 값만 바꾸면 그대로
+        with self.assertRaises(ValueError):
+            self.a.set_batch_auto({"enabled": True, "publish": 1})
+        self.assertFalse(self.a.set_batch_auto({"enabled": True, "publish": False})["batch"]["publish"])
         archive = os.path.join(self.tmp, "archive")
         os.makedirs(archive)
         with self.assertRaises(ValueError):          # main folder must be registered first
@@ -71,20 +78,45 @@ class DesktopConfigTests(unittest.TestCase):
         self.assertEqual(self.a.set_extra_paths({"machine": "AOI-01", "paths": []})["extra_paths"], {})
 
     def test_set_save_dir_creates_initial_files_and_persists(self):
+        # #39: 새 공유 폴더(docs 없음)를 고르면 그 안에 docs 를 만들어 저장 폴더로 쓴다.
         out = self.a.set_save_dir({"path": self.save})
-        self.assertEqual(out["save_dir"], str(Path(self.save).absolute()))
+        docs = os.path.join(str(Path(self.save).absolute()), "docs")
+        self.assertEqual((out["save_dir"], out["chosen"]), (docs, str(Path(self.save).absolute())))
         # three initial reference files created
         self.assertEqual(set(out["created"]),
                          {refdata.IP_FILENAME, refdata.REF_FILENAME, refdata.SPECIAL_FILENAME})
         for name in (refdata.IP_FILENAME, refdata.REF_FILENAME, refdata.SPECIAL_FILENAME):
-            self.assertTrue(os.path.exists(os.path.join(self.save, name)))
+            self.assertTrue(os.path.exists(os.path.join(docs, name)))
+        # 프로그램 · 캐시공유 = docs 옆(고른 공유 폴더 안) — 경로만, 만들지 않음
+        self.assertEqual((out["share_root"], out["program_dir"], out["cache_share_dir"]),
+                         (str(Path(self.save).absolute()), os.path.join(str(Path(self.save).absolute()), "프로그램"),
+                          os.path.join(str(Path(self.save).absolute()), "캐시공유")))
+        self.assertFalse(os.path.exists(out["cache_share_dir"]))
         # persisted + unrelated keys preserved
         cfg = self._cfg()
-        self.assertEqual(cfg["save_dir"], str(Path(self.save).absolute()))
+        self.assertEqual(cfg["save_dir"], docs)
         self.assertEqual(cfg["unrelated"], "keep")
-        # second call does not recreate
+        self.assertEqual(self.a.state()["cache_share_dir"], out["cache_share_dir"])
+        # second call (공유 폴더 또는 docs 직접) does not recreate and keeps the same docs
         again = self.a.set_save_dir({"path": self.save})
-        self.assertEqual(again["created"], [])
+        self.assertEqual((again["created"], again["save_dir"]), ([], docs))
+        self.assertEqual(self.a.set_save_dir({"path": docs})["save_dir"], docs)
+
+    def test_set_save_dir_finds_docs_under_share_folder(self):
+        """#39: `…\\0. Camtek AOI parameter 취합\\` 를 고르면 바로 아래 docs 를 찾는다. 예전처럼 문서 폴더를 직접 골라도 그대로."""
+        share = os.path.join(self.tmp, "0. Camtek AOI parameter 취합")
+        docs = os.path.join(share, "docs")
+        os.makedirs(docs)
+        open(os.path.join(docs, refdata.IP_FILENAME), "wb").close()
+        os.makedirs(os.path.join(share, "프로그램"))
+        self.assertEqual(self.a.set_save_dir({"path": share})["save_dir"], str(Path(docs).absolute()))
+        self.assertEqual(set(os.listdir(share)), {"docs", "프로그램"})          # 공유 폴더에 새 파일 · 폴더 없음
+        # 종전: 공유 문서가 들어 있는 폴더(이름이 docs 가 아님)를 직접 고른 설정은 그 폴더 그대로
+        legacy = os.path.join(self.tmp, "AOI 파라미터")
+        os.makedirs(legacy)
+        open(os.path.join(legacy, refdata.IP_FILENAME), "wb").close()
+        self.assertEqual(self.a.set_save_dir({"path": legacy})["save_dir"], str(Path(legacy).absolute()))
+        self.assertFalse(os.path.exists(os.path.join(legacy, "docs")))
 
     def test_set_save_dir_rejects_missing_or_bad(self):
         with self.assertRaises(ValueError):
@@ -141,8 +173,7 @@ class DesktopConfigTests(unittest.TestCase):
 
     def test_memo_machines_from_ip_memo(self):
         """#35: 메모 › 장비 IP 의 호기를 설정 › AOI 장비 호기 루트에서 고를 수 있게 상태에 싣는다."""
-        self.a.set_save_dir({"path": self.save})
-        path = refdata.ip_path(self.save)
+        path = refdata.ip_path(self.a.set_save_dir({"path": self.save})["save_dir"])
         refdata.save_ip(path, [{"호기": "AOI-10", "IP": "10.0.0.10", "장비종류": "Camtek"},
                                {"호기": "AOI-9", "IP": "10.0.0.9", "장비종류": ""},
                                {"호기": "2.K2", "IP": "10.0.0.2", "장비종류": "KLA"},
@@ -163,8 +194,8 @@ class DesktopConfigTests(unittest.TestCase):
 
     def test_scan_aoi_drive_and_bulk_add(self):
         """#36: 네트워크 드라이브 바로 아래 폴더를 AOI 호기 후보로 찾고 한꺼번에 등록 — 더 아래는 보지 않고 쓰지 않는다."""
-        self.a.set_save_dir({"path": self.save})
-        refdata.save_ip(refdata.ip_path(self.save), [{"호기": "K-7", "IP": "10.0.0.7", "장비종류": "Camtek"}])
+        save = self.a.set_save_dir({"path": self.save})["save_dir"]
+        refdata.save_ip(refdata.ip_path(save), [{"호기": "K-7", "IP": "10.0.0.7", "장비종류": "Camtek"}])
         nas = os.path.join(self.tmp, "NAS1")
         for name in ("AOI-10", "AOI-9", "K-7", "Backup", "$RECYCLE.BIN", ".hidden"):
             os.makedirs(os.path.join(nas, name))
