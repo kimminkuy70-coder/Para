@@ -39,9 +39,15 @@
 - **Lot History**(Lot 칸 또는 `재리뷰 필요` 줄의 버튼): Camtek AOI Manager 의 Lot History 와 같은 꼴 —
   Layer 고르기 칩(줄에서 열면 그 Layer) · 숫자 4개(스캔 · 호기 · 호기 이동 · 기간) · ① 시간순 요약(스캔마다 한 칸: Layer · 호기 · 장비 · 시각, 칸 사이 = 간격 · 호기 이동)
   · ② 시간순 기록(앞 기록과의 간격, Layer 바뀜, 호기 이동 A → B). 호기 색은 창 안에서 같다.
-- **Camtek 기록의 스캔 장수**(소유자 지시 2026-11-06): Batch Report 마다 `N장 중 M장 Pass` 를 색 배지로 쓴다 — 모두 Pass = 청록, 일부 = 주황, 0장 = 빨강.
-  N = Batch Report wafer 표의 행 수, M = Pass/Fail 칸이 `Pass` 인 행 수. 결과 표의 호기 칸 · Lot History ① 요약 그림(`M/N Pass`) · ② 기록 · CSV(`Camtek Pass / Wafers`)에 나온다.
-  내 PC 색인은 schema 2(행 끝에 Pass 장수). 예전(schema 1) 색인이면 같은 zip 이어도 [캐시 갱신]이 다시 풀고, 그 전에는 회색 `총 N장` 으로 보인다.
+- **Camtek Pass/Fail 판정**(Para #42, 소유자 지시 2026-11-06 "기존 AOI 프로그램처럼 Pass/Fail 따져서 기록"): Camtek AOI Manager(`param_manager/lotmodel.py`)와 같은 규칙이다.
+  - wafer 행 종류: Pass / Error(빈칸 포함, 앞 Error 뒤의 Aborted · Skipped 도 Error) / 작업자 중단(앞에 Error 없는 `Aborted.` 와 그 뒤) / 스캔 안 한 슬롯(앞에 Error · 중단 없는 `Skipped.` — wafer 로 세지 않음).
+  - Batch Report 결과: `정상`(청록) · `Error`(주황, Pass 가 0장이면 빨강) · `작업자 중단`(노랑) + `Pass n · Error n · 중단 n · 스캔 안 한 슬롯 n`.
+  - Layer 의 wafer 판정: 그 Layer 의 Camtek Batch Report 를 시간순으로 모아 슬롯마다 `한 번에 Pass` / `재스캔 Pass`(Error · 중단 뒤 Pass) / `중복 Pass`(Pass 2번 이상) / `Pass 없음`.
+    Lot 상태 = `Pass하지 못한 wafer 존재`(빨강) · `재스캔으로 완료`(주황) · `한 번에 완료`(청록). 2D · 3D 스캔(S/M 에 단독 `3D`)은 따로 센다.
+  - 슬롯 = 25행 표면 행 위치(1행 = 25번), 아니면 Wafer ID(`Slot 14` · `14` · `SF14G14-A0`).
+  - 나오는 곳: 결과 표의 호기 칸(Lot 상태 한 줄 + Batch Report 마다 결과), Lot History ① 요약 그림(`22P 3E`) · ② 기록 · ③ wafer 판정 표(행 = 슬롯, 열 = 스캔, 끝 = 판정), CSV(`Camtek Batch Report Result`, `Camtek Layer Wafer Verdict`).
+- **Batch Report 보기**(Para #42): Lot History ② 기록의 Camtek Batch Report 파일 이름을 누르면, 캐시에 든 머리 정보(Batch Start · Job/Setup · Wafers Scanned …)와 wafer 표(슬롯 · Wafer ID · Pass/Fail · Scanned/Bad/Good Dice · Faults · Yield · Recipe(s) — 원문 열 그대로)를 Batch Report 꼴로 보여 준다. 원본 파일을 여는 것이 아니다.
+- 내 PC 색인은 schema 4(행 [9] = wafer 판정 칸, [10] = 머리 정보 · wafer 표). 예전(schema 1~3) 색인이면 같은 zip 이어도 [캐시 갱신]이 다시 푼다. 그 전에는 회색 `[캐시 갱신] 필요` 로 보인다.
 
 ## 4. 내 PC 캐시 폴더에 생기는 파일
 - `TB500리뷰_Camtek색인_YYYYMMDD_HHMMSS.json` · `TB500리뷰_KLA색인_YYYYMMDD_HHMMSS.json`(zip 에서 푼 검색용 자료) · `TB500리뷰_기록.json`(받은 시각 · zip 이름).

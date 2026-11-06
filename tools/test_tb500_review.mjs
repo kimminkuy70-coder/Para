@@ -60,11 +60,11 @@ assert.match(await page.locator('#cache-camtek').innerText(),/호기 2 대 · Ba
 // 다시 누르면 이미 최신
 await page.getByRole('button',{name:'캐시 갱신'}).click();
 await page.locator('#msg').filter({hasText:'Camtek 캐시: 이미 최신'}).waitFor();
-// 예전 형식(schema 1 — Pass 장수 없음) 색인은 같은 zip 이어도 다시 푼다.
-await page.evaluate(()=>{const d=window.__fs.top.local,n='TB500리뷰_Camtek색인_20261106_090000.json',j=JSON.parse(new TextDecoder().decode(d.files.get(n)));j.schema=1;j.rows.forEach(r=>r.length=8);d.files.set(n,new TextEncoder().encode(JSON.stringify(j)))});
+// 예전 형식(schema 2 — wafer 별 Pass/Fail 없음) 색인은 같은 zip 이어도 다시 푼다.
+await page.evaluate(()=>{const d=window.__fs.top.local,n='TB500리뷰_Camtek색인_20261106_090000.json',j=JSON.parse(new TextDecoder().decode(d.files.get(n)));j.schema=3;j.rows.forEach(r=>r.length=10);d.files.set(n,new TextEncoder().encode(JSON.stringify(j)))});
 await page.getByRole('button',{name:'캐시 갱신'}).click();
 await page.locator('#msg').filter({hasText:'Camtek 캐시: BatchReport_캐시_20261106_090000.zip 받음'}).waitFor();
-assert.equal(await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_Camtek색인_20261106_090000.json'))).schema),2);
+assert.equal(await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_Camtek색인_20261106_090000.json'))).schema),4);
 // 조회
 await page.locator('#lots').fill('TB500.INT1041\nTB500.INT948');
 await page.getByRole('button',{name:'조회',exact:true}).click();
@@ -79,7 +79,7 @@ assert.match(find('1. RDL4_재스캔 (#24,25)'),/재스캔\tRDL4[\s\S]*재리뷰
 assert.match(find('2. PIDS3_재리뷰'),/맵\(\.txt\) 1개/);
 assert.match(find('4. PIDS5_Skip (RDL3 재리뷰 결과 나오면 맵만 수정해 주세요)'),/PIDS5[\s\S]*\tSkip\t\t\t/);
 assert.match(find('5. RDL2'),/재리뷰 필요\tKLA\t여러 호기 2대[\s\S]*AOI-K6 · 2026-11-05 10:00[\s\S]*AOI-K2 · 2026-11-04 07:30[\s\S]*Lot History/);
-assert.match(find('7. RDL1'),/재리뷰 필요\tCamtek\t여러 호기 2대[\s\S]*AOI-22 · 2026-10-21 22:05:00 2장 중 2장 Pass[\s\S]*AOI-21 · 2026-10-20 09:10:00 25장 중 22장 Pass/);
+assert.match(find('7. RDL1'),/재리뷰 필요\tCamtek\t여러 호기 2대 재스캔으로 완료 wafer 25 · 한 번에 Pass 22 · 재스캔 Pass 3[\s\S]*AOI-22 · 2026-10-21 22:05:00 정상 Pass 3[\s\S]*AOI-21 · 2026-10-20 09:10:00 Error Pass 22 · Error 3/);
 assert.ok(!/WGB/.test(find('7. RDL1')));
 assert.match(find('메모'),/^메모\t\t\t\t\t\t경로 복사$/);                                      // Layer 모르는 폴더도 이름 그대로, 나머지는 빈칸
 assert.equal(rows.filter(r=>/TB500\.INT1041/.test(r)).length,1);
@@ -93,10 +93,38 @@ assert.equal(await body.locator('.chip.on').innerText(),'RDL1 2');
 assert.equal(await body.locator('li.hrow').count(),2);
 assert.match(await body.locator('li.gapline').innerText(),/1일 12시간 뒤 · 다시 스캔 · 호기 이동 AOI-21 → AOI-22/);
 assert.equal(await body.locator('svg rect').count(),4);
-// Camtek 기록 = 몇 장 중 몇 장 Pass(다른 색: 모두 Pass 초록 · 일부 주황)
-assert.deepEqual(await body.locator('li.hrow .scanb').allInnerTexts(),['25장 중 22장 Pass','2장 중 2장 Pass']);
+// Para #42: Camtek 기록 = Camtek AOI Manager 처럼 Batch Report 결과(정상/Error/작업자 중단) + wafer 판정
+assert.deepEqual(await body.locator('li.hrow .scanb').allInnerTexts(),['Error','정상']);
 assert.deepEqual(await body.locator('li.hrow .scanb').evaluateAll(e=>e.map(x=>x.className)),['scanb part','scanb all']);
-assert.deepEqual(await body.locator('svg text.sv-pass').allTextContents(),['22/25 Pass','2/2 Pass']);
+assert.deepEqual(await body.locator('svg text.sv-pass').allTextContents(),['22P 3E','3P']);
+const vt=body.locator('table.vtab');
+assert.equal(await vt.count(),1);
+assert.match(await body.locator('.vgrp h5').innerText(),/RDL1 재스캔으로 완료\s*wafer 25 · 한 번에 Pass 22 · 재스캔 Pass 3/);
+const vrows=await vt.locator('tbody tr').allInnerTexts();
+assert.equal(vrows.length,25);
+assert.deepEqual(vrows[0].split('\t').map(x=>x.trim()),['25','W00','Scan 2D Error. Aborted.','Pass','재스캔 Pass']);
+assert.deepEqual(vrows[3].split('\t').map(x=>x.trim()),['22','W03','Pass','','한 번에 Pass']);
+// Batch Report 이름을 누르면 실제 Batch Report 꼴로 보기(머리 정보 · 슬롯 · Scanned · Faults …)
+await body.locator('button.brlink').first().click();
+const br=page.locator('#brBody');
+assert.match(await page.locator('#brTitle').innerText(),/^TB500_RDL1-Multi_Setup1_CMS-RDL1_26-Oct-20_\(09\.10\.00\)_BatchReport\.htm$/);
+assert.match(await br.locator('.brmeta').innerText(),/Job\/Setup\s+TB500_RDL1-Multi\/Setup1[\s\S]*Wafers Scanned\s+25/);
+assert.match(await br.locator('.brhead').innerText(),/AOI-21 · 2026-10-20 09:10:00 Error\s*Pass 22 · Error 3/);
+const brh=(await br.locator('.brwafers thead th').allInnerTexts()).map(x=>x.trim());
+assert.deepEqual(brh,['슬롯','Lot','Wafer ID','Pass/Fail','Scanned Dice','Bad Dice','Good Dice','Faults','Yield','Recipe(s)']);
+const brr=await br.locator('.brwafers tbody tr').allInnerTexts();
+assert.equal(brr.length,25);
+assert.deepEqual(brr[0].split('\t').map(x=>x.trim()).slice(0,4),['25','CMS-RDL1','W00','Scan 2D Error. Aborted.']);
+assert.deepEqual(brr[3].split('\t').map(x=>x.trim()),['22','CMS-RDL1','W03','Pass','1200','13','1187','43','98.92','TB500_RDL1-Multi']);
+assert.equal(await br.locator('.brwafers td.ve').count(),3);
+await page.locator('#brClose').click();
+assert.ok(await page.locator('#dlg').evaluate(d=>d.open));
+// 순수 함수: 작업자 중단 · 스캔 안 한 슬롯 · 연쇄(lotmodel.attempt 와 같음)
+const wc=await page.evaluate(()=>{const f=window.__tb500.waferCells;return [
+  f([{'Pass/Fail':'Pass'},{'Pass/Fail':'Aborted.'},{'Pass/Fail':'Skipped.'}]).map(c=>c[2]).join(''),
+  f([{'Pass/Fail':'Skipped.'},{'Pass/Fail':'Pass'},{'Pass/Fail':'Alignment Error.'},{'Pass/Fail':'Aborted.'},{'Pass/Fail':''}]).map(c=>c[2]).join(''),
+  f([{'Pass/Fail':'Pass.','Wafer ID':'SF14G07-A0'}]).map(c=>c[0])]});
+assert.deepEqual(wc,['PAA','SPEEE',[7]]);
 await body.getByRole('button',{name:/^전체/}).click();
 const hrows=await body.locator('li.hrow').allInnerTexts();
 assert.deepEqual(hrows.map(t=>t.split('\n').map(x=>x.trim()).filter(Boolean)[3]),['PIDS3','RDL3','RDL1','RDL1','RDL2','RDL2']);

@@ -28,7 +28,9 @@ td .process{display:flex;width:auto;margin:2px 0}.st.mini{min-width:0;padding:2p
 .hw{min-width:0;font-size:12px}.hw .mono{display:block;color:var(--muted);margin-top:2px}.gapline{margin:4px 0 4px 38px;font-size:12px;color:var(--muted)}.gapline.moved{color:#1d4ed8}
 @media(max-width:900px){.hrow{grid-template-columns:28px 1fr}.hrow>*:nth-child(n+3){grid-column:2}.hkpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .scanb{display:inline-block;margin-left:4px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;vertical-align:1px}.scanb.all{background:#ccfbf1;color:#0f766e;border:1px solid #5eead4}.scanb.part{background:#ffedd5;color:#c2410c;border:1px solid #fdba74}.scanb.none{background:var(--redbg);color:var(--red);border:1px solid #fca5a5}.scanb.old{background:var(--graybg);color:var(--gray)}
-.sv-pass{font-size:10.5px;font-weight:800}.sv-pass.all{fill:#0f766e}.sv-pass.part{fill:#c2410c}.sv-pass.none{fill:#b42318}
+.sv-pass{font-size:10.5px;font-weight:800}.sv-pass.all{fill:#0f766e}.sv-pass.part{fill:#c2410c}.sv-pass.none{fill:#b42318}.sv-pass.stop{fill:#a16207}
+.scanb.stop{background:var(--amberbg);color:var(--amber);border:1px solid #fcd34d}.vsum{display:block;margin:2px 0 4px;font-size:12px;white-space:nowrap}.vsum .scanb{margin-left:0;margin-right:4px}
+.vtab{border-collapse:collapse;min-width:0;font-size:12px}.vtab th,.vtab td{border:1px solid var(--line);padding:3px 6px;text-align:center;white-space:nowrap}.vtab th{background:var(--graybg);font-size:11px}.vtab td.vp{background:#ccfbf1;color:#0f766e;font-weight:800}.vtab td.ve{background:var(--redbg);color:var(--red);max-width:160px;overflow:hidden;text-overflow:ellipsis}.vtab td.va{background:var(--amberbg);color:var(--amber)}.vtab td.vs{color:var(--muted)}.vtab td.vno{background:var(--redbg);color:var(--red);font-weight:800}.vtab td.vre{color:#c2410c;font-weight:800}.vtab td.vdup{color:#3730a3;font-weight:800}.vtab td.vok{color:#0f766e;font-weight:800}.vgrp{margin:8px 0 14px}.vgrp h5 .vsum{display:inline;margin-left:6px}.brlink{display:block;text-align:left;margin-top:2px}.brhead{margin-bottom:8px}.brmeta{margin-bottom:6px}.brmeta th{text-align:left;width:220px}.vtab td.left{text-align:left}#brTitle{font-size:14px;overflow-wrap:anywhere}.vgrp h5{margin:0 0 6px;font-size:13px}
 </style>
 </head>
 <body>
@@ -65,6 +67,7 @@ td .process{display:flex;width:auto;margin:2px 0}.st.mini{min-width:0;padding:2p
   </section>
 </div>
 <div class="devmark">Developer: 김민규</div>
+<dialog id="brDlg"><div class="modalhead"><h3 id="brTitle" class="mono">Batch Report</h3><button class="btn" id="brClose" type="button">닫기</button></div><div class="modalbody" id="brBody"></div></dialog>
 <dialog id="dlg"><div class="modalhead"><h3 id="dlgTitle">Lot History</h3><button class="btn" id="dlgClose" type="button">닫기</button></div><div class="modalbody" id="dlgBody"></div></dialog>
 <script>
 (()=>{
@@ -171,6 +174,20 @@ const lotCode=sm=>{const m=String(sm||'').match(/(?:^|[^A-Za-z])([A-Za-z]{3})(?!
 const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
 function batchStart(v){const m=String(v||'').match(/(\d{1,2})-([A-Za-z]{3})-(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*([AP]M)?/i);if(!m||!MON[m[2].toLowerCase()])return '';let h=+m[4];if(m[7]){const pm=m[7].toUpperCase()==='PM';if(h===12)h=pm?12:0;else if(pm)h+=12}const y=m[3].length===2?2000+ +m[3]:+m[3];return y+'-'+pad(MON[m[2].toLowerCase()])+'-'+pad(+m[1])+' '+pad(h)+':'+m[5]+':'+m[6]}
 function fileStart(f){const m=String(f).match(/_(\d{2})-([A-Za-z]{3})-(\d{2})_\((\d{2})\.(\d{2})\.(\d{2})\)_/);return m&&MON[m[2].toLowerCase()]?'20'+m[1]+'-'+pad(MON[m[2].toLowerCase()])+'-'+m[3]+' '+m[4]+':'+m[5]+':'+m[6]:''}
+/* wafer 판정 — Camtek AOI Manager(param_manager/lotmodel.py)와 같은 규칙 (Para #42).
+   행마다 [슬롯(모르면 null), Wafer ID, 종류, 원문]. 종류 P = Pass, E = Error(빈칸 · 연쇄 Aborted/Skipped 포함),
+   A = 작업자 중단(앞에 Error 없는 Aborted 와 그 뒤), S = 스캔 안 한 슬롯(앞에 Error · 중단 없는 Skipped — wafer 로 세지 않음). */
+const PASS_RE=/^pass[.!]?$/i;
+const PHRASES=['Wafer Map Import failed','Scan 2D Error','Alignment Error','Failed to read wafer id','Nothing to Scan','Aborted','Skipped','Clean Reference Error','Focus Mapping Error'].map(p=>[p,new RegExp('\\b'+p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b\\.?','i')]);
+function firstCause(t){let best='?',pos=1e9;for(const [p,re] of PHRASES){const m=re.exec(t);if(m&&m.index<pos){pos=m.index;best=p}}return best}
+function waferSlot(i,n,wid){if(n===25)return 25-i;const t=String(wid||'').trim();let m=t.match(/^(?:slot\s*)?(\d{1,2})$/i);if(m&&+m[1]>=1&&+m[1]<=25)return +m[1];
+ m=t.match(/^[A-Z0-9]{5}(\d{2})-[A-Z0-9]{2}$/);return m&&+m[1]>=1&&+m[1]<=25?+m[1]:null}
+function waferCells(ws){
+ const st=ws.map(w=>String(w['Pass/Fail']??w.Status??w.State??'').replace(/\s+/g,' ').trim()),cause=st.map(t=>PASS_RE.test(t)?null:t?firstCause(t):'?');
+ const chain=c=>c==='Aborted'||c==='Skipped',hasErr=cause.some(c=>c&&!chain(c));let trig=false,stopped=false;
+ return ws.map((w,i)=>{const c=cause[i],wid=String(w['Wafer ID']??'').trim();let k='P';
+  if(c){if(!trig&&!stopped&&c==='Skipped')k='S';else if(!hasErr&&(stopped||c==='Aborted')){k='A';stopped=true}else{k='E';trig=true}}
+  return [waferSlot(i,ws.length,wid),wid,k,c?(st[i]||'(빈 칸)'):'']})}
 function camtekRows(state){
  const rows=[],machine=String(state.machine||'');
  for(const [fname,entry] of Object.entries(state.entries||{})){
@@ -180,7 +197,10 @@ function camtekRows(state){
   if(pre&&fname.startsWith(pre)){const rest=fname.slice(pre.length),m=rest.match(/^(.*)_\d{2}-[A-Za-z]{3}-\d{2}_\(/);if(m)sm=m[1]}
   if(!sm){const lots=(r.wafers||[]).map(w=>String(w.Lot||w.lot||'')).filter(x=>x&&!/^loadport/i.test(x)&&x!=='-');if(lots.length)sm=lots[0]}
   const ws=r.wafers||[],pass=ws.filter(w=>/^pass[.!]?$/i.test(String(w['Pass/Fail']??w.Status??w.State??'').trim())).length;
-  rows.push([machine,job,setup,sm,lotCode(sm),batchStart(meta['batch start'])||fileStart(fname),ws.length,fname,pass])}
+  // [10] = Batch Report 보기용(Para #42): 머리 정보 쌍 · wafer 표 열 이름 · 값(원문 그대로)
+  const cols=[];ws.forEach(w=>Object.keys(w||{}).forEach(k=>{if(!cols.includes(k))cols.push(k)}));
+  const br=[(r.metadata||[]).filter(p=>Array.isArray(p)&&p.length>=2).map(p=>[String(p[0]),String(p[1])]),cols,ws.map(w=>cols.map(k=>w&&w[k]!=null?String(w[k]):''))];
+  rows.push([machine,job,setup,sm,lotCode(sm),batchStart(meta['batch start'])||fileStart(fname),ws.length,fname,pass,waferCells(ws),br])}
  return rows}
 async function newest(share,kind){
  const cfg=SHARE[kind];let info;try{info=await readJson(share,cfg.info)}catch{return null}
@@ -199,7 +219,7 @@ async function refresh(){
    if(!got){notes.push(label+': OneDrive 에 게시된 캐시가 없습니다');continue}
    if(!got.f){notes.push(label+': '+got.it.name+' 이(가) 아직 동기화되지 않았습니다');continue}
    const stampOf=SHARE[kind].name.exec(got.it.name)[1],file=PREFIX+(kind==='camtek'?'Camtek':'KLA')+'색인_'+stampOf+'.json';
-   if(old&&old[kind]&&old[kind].zip===got.it.name){try{const cur=await readJson(handles.local,file);if(kind!=='camtek'||cur.schema>=2){notes.push(label+': 이미 최신('+got.it.name+')');continue}}catch{}}
+   if(old&&old[kind]&&old[kind].zip===got.it.name){try{const cur=await readJson(handles.local,file);if(kind!=='camtek'||cur.schema>=4){notes.push(label+': 이미 최신('+got.it.name+')');continue}}catch{}}
    if(got.f.size!==got.it.size){notes.push(label+': 크기가 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');continue}
    const sha=await fileSha(got.f,label);
    if(sha!==got.it.sha256){notes.push(label+': SHA-256 이 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');continue}
@@ -208,7 +228,7 @@ async function refresh(){
     const rows=[],machines=new Set,members=entries.filter(e=>/^누적\/.+\.json$/.test(e.name));
     for(let i=0;i<members.length;i++){setMsg('Camtek 캐시 푸는 중 '+(i+1)+' / '+members.length);setBar(10+80*i/members.length);
      const st=JSON.parse(await zipText(got.f,members[i]));if(st&&st.machine)machines.add(String(st.machine));rows.push(...camtekRows(st))}
-    data={schema:2,kind:'camtek',zip:got.it.name,exported_at:got.it.exported_at||'',rows};sum={machines:machines.size,reports:rows.length}}
+    data={schema:4,kind:'camtek',zip:got.it.name,exported_at:got.it.exported_at||'',rows};sum={machines:machines.size,reports:rows.length}}
    else{
     const e=entries.find(x=>x.name==='KLA색인.json');if(!e)throw new Error('KLA 캐시 zip 안에 KLA색인.json 이 없습니다');
     setMsg('KLA 캐시 푸는 중…');const idx=JSON.parse(await zipText(got.f,e));
@@ -250,7 +270,7 @@ async function walk(h,budget,onFile){const t0=performance.now(),stack=[h];let se
 async function countTxt(h){let n=0;const done=await walk(h,{entries:5000,ms:2500},name=>{if(/\.txt$/i.test(name))n++});return done?{count:n}:{count:n,partial:true}}
 async function equipmentOf(folders){for(const [,h] of folders){let found='Unknown';await walk(h,{entries:3000,ms:2500},name=>{if(/\.(?:jpg|jpeg|png|bmp|gif|webp)$/i.test(name)){const e=classifyImage(name);if(e!=='Unknown'){found=e;return true}}});if(found!=='Unknown')return found}return 'Unknown'}
 function camtekHits(idx,sm,stage){const code=lotCode(sm);if(!code)return [];
- return idx.camtek.filter(r=>r[4]===code&&stage.keys.some(re=>re.test(r[1]))).map(r=>({machine:r[0],job:r[1],setup:r[2],sm:r[3],at:r[5],wafers:r[6],file:r[7],pass:r[8]})).sort((a,b)=>a.at<b.at?1:-1)}
+ return idx.camtek.filter(r=>r[4]===code&&stage.keys.some(re=>re.test(r[1]))).map(r=>({machine:r[0],job:r[1],setup:r[2],sm:r[3],at:r[5],wafers:r[6],file:r[7],pass:r[8],cells:r[9]||null,br:r[10]||null})).sort((a,b)=>a.at<b.at?1:-1)}
 function klaHits(idx,lot,stage){return (idx.kla.get(lot.toLowerCase())||[]).filter(k=>PROC.get(k.proc)===stage).map(k=>{const t=(k.slots.map(s=>(s.match(/^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})/)||[]).slice(1)).filter(x=>x.length).map(x=>x[0]+' '+x[1]+':'+x[2]).sort()[0])||k.day;
   return {machine:k.machine,at:t,lot:k.lot,slots:k.slots.length,path:k.path,proc:k.proc,review:k.proc===stage.rev}}).sort((a,b)=>a.at<b.at?1:-1)}
 async function findLot(lot){
@@ -301,12 +321,13 @@ const MPAL=['#2563eb','#d97706','#059669','#db2777','#7c3aed','#0891b2','#65a30d
 const LPAL=['#6d28d9','#be185d','#0369a1','#b45309','#15803d','#9333ea','#0f766e','#a16207'];
 const layerColor=k=>{const i=STAGES.findIndex(s=>s.key===k);return i<0?'#64748b':LPAL[i%LPAL.length]};
 function machColors(list){const m=new Map;[...new Set(list)].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true})).forEach((x,i)=>m.set(x,MPAL[i%MPAL.length]));return m}
-const hitsOf=S=>S.camtek.map(h=>({vendor:'Camtek',machine:h.machine,at:h.at,scan:{total:h.wafers,pass:h.pass}})).concat(S.kla.map(h=>({vendor:'KLA',machine:h.machine,at:h.at}))).sort((a,b)=>a.at<b.at?1:-1);
+const hitsOf=S=>S.camtek.map(h=>({vendor:'Camtek',machine:h.machine,at:h.at,sm:h.sm,layer:S.stage.key,src:h.file,br:h.br,scan:scanOf(h.cells,h.wafers)})).concat(S.kla.map(h=>({vendor:'KLA',machine:h.machine,at:h.at}))).sort((a,b)=>a.at<b.at?1:-1);
 function hitsHtml(r,S,ri,si){
  if(S.status!=='need')return '';
  const all=hitsOf(S);if(!all.length)return '<span class="muted small">캐시에 없음</span>';
  const ms=new Set(all.map(h=>h.machine));
- return (ms.size>1?'<span class="st skip mini">여러 호기 '+ms.size+'대</span>':'')+all.slice(0,3).map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at||'시각 모름')+(h.scan?' '+scanBadge(h.scan):'')+'</span>').join('')+
+ const vg=verdictGroups(all.filter(h=>h.vendor==='Camtek'));
+ return (ms.size>1?'<span class="st skip mini">여러 호기 '+ms.size+'대</span>':'')+vg.map(g=>verdictLine(g)).join('')+all.slice(0,3).map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at||'시각 모름')+(h.scan?' '+scanBadge(h.scan):'')+'</span>').join('')+
   '<button class="copy" data-hist="'+ri+':'+esc(S.stage.key)+'">'+(all.length>3?'외 '+(all.length-3)+'건 · ':'')+'Lot History</button>'}
 function statusHtml(S){
  if(!S.status)return '';const [t,c]=STATUS[S.status];
@@ -333,12 +354,47 @@ function render(){
 /* Lot History = 이 Lot 의 모든 스캔(Camtek: S/M 코드가 같은 Batch Report, KLA: Lot 이름@공정번호 폴더)을 시간순으로.
    Camtek AOI Manager 의 Lot History 와 같은 꼴: ① 시간순 요약(스캔마다 막대 하나, 사이 간격 · 호기 이동) ② 시간순 기록(앞 기록과의 간격 · 호기 이동). */
 function lotHistory(r){const idx=indexCache||{camtek:[],kla:new Map};const code=lotCode(r.sm),out=[];
- if(code)for(const x of idx.camtek)if(x[4]===code){const st=stageOf(x[1]);out.push({vendor:'Camtek',machine:x[0],at:x[5],layer:st?st.key:'?',what:x[1]+' / '+x[2]+' · S/M '+x[3],scan:{total:x[6],pass:x[8]},src:x[7]})}
+ if(code)for(const x of idx.camtek)if(x[4]===code){const st=stageOf(x[1]);out.push({vendor:'Camtek',machine:x[0],at:x[5],layer:st?st.key:'?',what:x[1]+' / '+x[2]+' · S/M '+x[3],sm:x[3],scan:scanOf(x[9]||null,x[6]),src:x[7],br:x[10]||null})}
  for(const k of idx.kla.get(r.lot.toLowerCase())||[]){const st=PROC.get(k.proc);const h=st?klaHits({kla:new Map([[r.lot.toLowerCase(),[k]]])},r.lot,st)[0]:null;
   out.push({vendor:'KLA',machine:k.machine,at:h?h.at:k.day,layer:st?st.key:'?',what:k.lot+' · '+(st?(k.proc===st.rev?'Review ':'AOI ')+k.proc:'공정 '+(k.proc||'?'))+' · 슬롯 '+k.slots.length+'개',src:k.path})}
  return out.sort((a,b)=>a.at<b.at?-1:a.at>b.at?1:0)}
-const scanKind=c=>c.pass>=c.total?'all':c.pass?'part':'none';
-const scanBadge=c=>{if(!c)return '';if(c.pass==null)return '<span class="scanb old" title="예전 캐시 — [캐시 갱신]을 누르면 Pass 장수가 나옵니다">총 '+c.total+'장</span>';return '<span class="scanb '+scanKind(c)+'">'+c.total+'장 중 '+c.pass+'장 Pass</span>'};
+/* Batch Report 1장의 결과(Camtek AOI Manager 와 같은 말): 정상(스캔 안 한 슬롯 빼고 모두 Pass) / Error / 작업자 중단 */
+function scanOf(cells,total){if(!cells)return {total,old:true};const n={P:0,E:0,A:0,S:0};cells.forEach(c=>n[c[2]]++);
+ return {total,n,cells,outcome:n.E?'Error':n.A?'작업자 중단':'정상'}}
+const scanKind=c=>c.outcome==='정상'?'all':c.outcome==='작업자 중단'?'stop':c.n.P?'part':'none';
+const scanBadge=c=>{if(!c)return '';if(c.old)return '<span class="scanb old" title="예전 캐시에는 wafer 별 Pass/Fail 이 없습니다">[캐시 갱신] 필요</span>';
+ return '<span class="scanb '+scanKind(c)+'">'+c.outcome+'</span> <span class="small">'+scanCount(c)+'</span>'};
+const scanCount=c=>'Pass '+c.n.P+(c.n.E?' · Error '+c.n.E:'')+(c.n.A?' · 중단 '+c.n.A:'')+(c.n.S?' · 스캔 안 한 슬롯 '+c.n.S:'');
+const svCount=c=>c.n.P+'P'+(c.n.E?' '+c.n.E+'E':'')+(c.n.A?' '+c.n.A+'중단':'');
+/* Layer 의 wafer 판정 = 그 Layer 의 Camtek Batch Report 를 시간순으로 모아 wafer(슬롯)마다(lotmodel.resolve 와 같은 규칙).
+   한 번에 Pass / 재스캔 Pass(Error · 중단 뒤 Pass) / 중복 Pass(Pass 2번 이상) / Pass 없음.
+   Lot 상태: Pass 없음이 있으면 'Pass하지 못한 wafer 존재', 재스캔 Pass 가 있으면 '재스캔으로 완료', 아니면 '한 번에 완료'.
+   2D · 3D 스캔(S/M 에 단독 3D)은 서로 재스캔이 아니라 따로 센다. */
+const VERDICTS=['한 번에 Pass','재스캔 Pass','중복 Pass','Pass 없음'];
+const scan3d=sm=>/(?:^|[^A-Za-z0-9])3D(?![A-Za-z0-9])/i.test(String(sm||''));
+function verdictGroups(scans){
+ const groups=new Map;
+ scans.filter(x=>x.scan&&!x.scan.old).sort((a,b)=>a.at<b.at?-1:a.at>b.at?1:0).forEach(x=>{const g=(x.layer||'?')+(scan3d(x.sm)?' · 3D 스캔':'');if(!groups.has(g))groups.set(g,[]);groups.get(g).push(x)});
+ return [...groups].map(([name,list])=>{
+  const idSlot=new Map;list.forEach(x=>x.scan.cells.forEach(c=>{if(c[0]!=null&&c[1]&&!/^(?:slot\s*)?\d{1,2}$/i.test(c[1]))idSlot.set(c[1],c[0])}));
+  const cells=new Map;
+  list.forEach((x,pos)=>x.scan.cells.forEach(c=>{if(c[2]==='S')return;const sl=c[0]!=null?c[0]:idSlot.get(c[1]);const key=sl!=null?'S'+pad(sl):'ID:'+c[1];
+   if(!cells.has(key))cells.set(key,{key,slot:sl,wid:c[1],items:[]});const w=cells.get(key);if(c[1]&&!/^(?:slot\s*)?\d{1,2}$/i.test(c[1]))w.wid=c[1];w.items.push({pos,k:c[2],t:c[3]})}));
+  const wafers=[...cells.values()].sort((a,b)=>(a.slot==null)-(b.slot==null)||(b.slot||0)-(a.slot||0)||a.key.localeCompare(b.key));
+  const counts={};VERDICTS.forEach(v=>counts[v]=0);
+  wafers.forEach(w=>{const p=w.items.filter(i=>i.k==='P').length,bad=w.items.some(i=>i.k!=='P');w.verdict=!p?'Pass 없음':p>1?'중복 Pass':bad?'재스캔 Pass':'한 번에 Pass';counts[w.verdict]++});
+  const state=counts['Pass 없음']?'Pass하지 못한 wafer 존재':counts['재스캔 Pass']?'재스캔으로 완료':'한 번에 완료';
+  return {name,scans:list,wafers,counts,state}})}
+const STATE_CLS={'한 번에 완료':'all','재스캔으로 완료':'part','Pass하지 못한 wafer 존재':'none'};
+const verdictLine=g=>'<span class="vsum"><span class="scanb '+STATE_CLS[g.state]+'">'+esc(g.state)+'</span> wafer '+g.wafers.length+' · '+VERDICTS.filter(v=>g.counts[v]).map(v=>v+' '+g.counts[v]).join(' · ')+'</span>';
+const verdictText=g=>g.state+' (wafer '+g.wafers.length+': '+VERDICTS.filter(v=>g.counts[v]).map(v=>v+' '+g.counts[v]).join(', ')+')';
+function verdictTable(g,num){
+ const VC={'한 번에 Pass':'vok','재스캔 Pass':'vre','중복 Pass':'vdup','Pass 없음':'vno'};
+ let h='<div class="vgrp"><h5>'+esc(g.name)+' '+verdictLine(g)+'</h5><div class="tablewrap"><table class="vtab"><thead><tr><th>슬롯</th><th>Wafer ID</th>'+
+  g.scans.map(x=>'<th title="'+esc(x.src)+'">'+(num.get(x)||'')+'. '+esc(x.machine)+'<br>'+esc(short(x.at))+'</th>').join('')+'<th>판정</th></tr></thead><tbody>';
+ g.wafers.forEach(w=>{h+='<tr><td>'+(w.slot!=null?w.slot:'?')+'</td><td class="mono">'+esc(w.wid)+'</td>'+g.scans.map((x,pos)=>{const it=w.items.filter(i=>i.pos===pos);if(!it.length)return '<td class="vs"></td>';const i=it[it.length-1];
+   return i.k==='P'?'<td class="vp">Pass</td>':'<td class="'+(i.k==='A'?'va':'ve')+'" title="'+esc(i.t)+'">'+esc(i.t)+'</td>'}).join('')+'<td class="'+VC[w.verdict]+'">'+w.verdict+'</td></tr>'});
+ return h+'</tbody></table></div></div>'}
 const toDate=s=>{const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);return m?new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0)):null};
 function dur(a,b){const A=toDate(a),B=toDate(b);if(!A||!B)return '';let m=Math.max(0,Math.round((B-A)/60000));if(m<60)return m+'분';const h=Math.floor(m/60);m%=60;if(h<24)return h+'시간'+(m?' '+m+'분':'');const d=Math.floor(h/24);return d+'일'+(h%24?' '+(h%24)+'시간':'')}
 const short=s=>String(s||'').slice(5,16);
@@ -351,7 +407,7 @@ function histSvg(rows,mc){
   g+='<g><title>'+esc((i+1)+'. '+h.at+' · '+h.machine+' · '+h.layer+' · '+h.vendor+'\n'+h.what)+'</title>'+
    '<rect x="'+(x-30)+'" y="24" width="60" height="22" rx="6" fill="'+lc+'"/><text x="'+x+'" y="39" text-anchor="middle" class="sv-lay">'+esc(h.layer)+'</text>'+
    '<rect x="'+(x-34)+'" y="50" width="68" height="58" rx="6" fill="'+mc.get(h.machine)+'" opacity=".16" stroke="'+mc.get(h.machine)+'"/>'+
-   '<text x="'+x+'" y="68" text-anchor="middle" class="sv-m" fill="'+mc.get(h.machine)+'">'+esc(h.machine)+'</text><text x="'+x+'" y="84" text-anchor="middle" class="sv-v">'+esc(h.vendor)+'</text>'+(h.scan&&h.scan.pass!=null?'<text x="'+x+'" y="100" text-anchor="middle" class="sv-pass '+scanKind(h.scan)+'">'+h.scan.pass+'/'+h.scan.total+' Pass</text>':'')+
+   '<text x="'+x+'" y="68" text-anchor="middle" class="sv-m" fill="'+mc.get(h.machine)+'">'+esc(h.machine)+'</text><text x="'+x+'" y="84" text-anchor="middle" class="sv-v">'+esc(h.vendor)+'</text>'+(h.scan&&!h.scan.old?'<text x="'+x+'" y="100" text-anchor="middle" class="sv-pass '+scanKind(h.scan)+'">'+esc(svCount(h.scan))+'</text>':'')+
    '<text x="'+x+'" y="124" text-anchor="middle" class="sv-t">'+esc(short(h.at).slice(0,5))+'</text><text x="'+x+'" y="138" text-anchor="middle" class="sv-t">'+esc(short(h.at).slice(6))+'</text>'+
    '<text x="'+x+'" y="156" text-anchor="middle" class="sv-n">'+(i+1)+'</text></g>'});
  return '<div class="svscroll"><svg width="'+W+'" height="'+H+'" role="img" aria-label="시간순 요약">'+g+'</svg></div>'}
@@ -360,7 +416,7 @@ function histList(rows,mc){let prev=null;
   if(prev){const mv=prev.machine!==h.machine;gap='<li class="gapline'+(mv?' moved':'')+'">↓ '+esc(dur(prev.at,h.at))+' 뒤'+(prev.layer!==h.layer?' · Layer 바뀜('+esc(prev.layer)+' → '+esc(h.layer)+')':' · 다시 스캔')+(mv?' · <b>호기 이동 '+esc(prev.machine)+' → '+esc(h.machine)+'</b>':'')+'</li>'}
   prev=h;
   return gap+'<li class="hrow"><span class="hn">'+(i+1)+'</span><span class="ht">'+esc(h.at||'시각 모름')+'</span><span class="mchip" style="--c:'+mc.get(h.machine)+'">'+esc(h.machine)+'</span>'+
-   '<span class="lchip" style="--c:'+layerColor(h.layer)+'">'+esc(h.layer)+'</span>'+equipBadge(h.vendor)+'<div class="hw">'+esc(h.what)+(h.scan?' '+scanBadge(h.scan):'')+'<span class="mono">'+esc(h.src)+'</span></div></li>'}).join('')+'</ol>'}
+   '<span class="lchip" style="--c:'+layerColor(h.layer)+'">'+esc(h.layer)+'</span>'+equipBadge(h.vendor)+'<div class="hw">'+esc(h.what)+(h.scan?' '+scanBadge(h.scan):'')+(h.br?'<button type="button" class="copy mono brlink" data-br="'+i+'" title="Batch Report 보기">'+esc(h.src)+'</button>':'<span class="mono">'+esc(h.src)+'</span>')+'</div></li>'}).join('')+'</ol>'}
 let histState=null;
 function openHistory(r,layer){histState={r,all:lotHistory(r),layer:layer||''};$('#dlgTitle').textContent=r.lot+' · Lot History';paintHistory();if(!$('#dlg').open)$('#dlg').showModal()}
 function paintHistory(){
@@ -373,23 +429,37 @@ function paintHistory(){
  if(!rows.length)html+='<div class="empty">캐시에서 이 Lot 의 스캔을 찾지 못했습니다.</div>';
  else html+='<h4 class="hsec">① 시간순 요약 <small>스캔마다 한 칸 — 위 = Layer, 가운데 = 호기 · 장비, 아래 = 스캔 시각. 칸 사이 = 간격 · 호기 이동.</small></h4>'+histSvg(rows,mc)+
   '<h4 class="hsec">② 시간순 기록</h4>'+histList(rows,mc);
+ const num=new Map(rows.map((h,i)=>[h,i+1])),vg=verdictGroups(rows.filter(h=>h.vendor==='Camtek'));
+ if(vg.length)html+='<h4 class="hsec">③ wafer 판정 (Camtek) <small>Camtek AOI Manager 와 같은 규칙 — 같은 Layer 의 Batch Report 를 wafer(슬롯)마다 모아 판정. 칸 번호 = ② 의 번호. 스캔 안 한 슬롯(Skipped)은 세지 않음.</small></h4>'+vg.map(g=>verdictTable(g,num)).join('');
+ else if(rows.some(h=>h.scan&&h.scan.old))html+='<div class="empty">예전 캐시라 wafer 별 Pass/Fail 이 없습니다 — [캐시 갱신]을 한 번 누르세요.</div>';
  html+='<p class="small muted">Camtek = 캐시의 Batch Report 중 S/M 코드 '+esc(lotCode(r.sm)||'?')+' 인 것 · KLA = '+esc(r.lot)+'@공정번호 폴더. 같은 S/M 코드를 다른 Lot 이 다시 쓰면 섞일 수 있습니다.</p>';
  $('#dlgBody').innerHTML=html;
- $('#dlgBody').querySelectorAll('[data-layer]').forEach(x=>x.onclick=()=>{histState.layer=x.dataset.layer;paintHistory()})}
+ $('#dlgBody').querySelectorAll('[data-layer]').forEach(x=>x.onclick=()=>{histState.layer=x.dataset.layer;paintHistory()});
+ $('#dlgBody').querySelectorAll('[data-br]').forEach(x=>x.onclick=()=>openReport(rows[+x.dataset.br]))}
+/* Batch Report 보기(Para #42): 원본 파일은 없고, 캐시에 든 머리 정보와 wafer 표를 실제 Batch Report 꼴로 다시 그린다. */
+function openReport(h){if(!h||!h.br)return;const [meta,cols,vals]=h.br,cells=waferCells(vals.map(v=>Object.fromEntries(cols.map((k,i)=>[k,v[i]])))),sc=scanOf(cells,vals.length);
+ const KC={P:'vp',E:'ve',A:'va',S:'vs'},pf=cols.findIndex(k=>/^(pass\/fail|status|state)$/i.test(k));
+ let html='<div class="brhead"><b>'+esc(h.machine)+'</b> · '+esc(h.at||'시각 모름')+' '+scanBadge(sc)+'</div>';
+ html+='<table class="vtab brmeta"><tbody>'+meta.map(p=>'<tr><th>'+esc(p[0])+'</th><td class="left">'+esc(p[1])+'</td></tr>').join('')+'</tbody></table>';
+ html+='<h4 class="hsec">Wafer 표 <small>'+vals.length+'행 · 표 위가 먼저 스캔한 wafer · 슬롯 = 25행 표면 행 위치(1행 = 25번), 아니면 Wafer ID</small></h4><div class="tablewrap"><table class="vtab brwafers"><thead><tr><th>슬롯</th>'+cols.map(k=>'<th>'+esc(k)+'</th>').join('')+'</tr></thead><tbody>'+
+  vals.map((v,i)=>'<tr><td>'+(cells[i][0]!=null?cells[i][0]:'?')+'</td>'+v.map((x,j)=>'<td'+(j===pf?' class="'+KC[cells[i][2]]+'" title="'+esc(x)+'"':'')+'>'+esc(x)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+ html+='<p class="small muted">원본 Batch Report 파일이 아니라 캐시에서 다시 그린 표입니다. 값은 원문 그대로입니다.</p>';
+ $('#brTitle').textContent=h.src;$('#brBody').innerHTML=html;$('#brDlg').showModal()}
 async function copy(t){try{await navigator.clipboard.writeText(t);setMsg('경로를 복사했습니다')}catch{setMsg('복사하지 못했습니다: '+t)}}
-$('#dlgClose').onclick=()=>$('#dlg').close();
+$('#dlgClose').onclick=()=>$('#dlg').close();$('#brClose').onclick=()=>$('#brDlg').close();
 $('#clear').onclick=()=>{$('#lots').value='';results=[];$('#tbody').innerHTML='<tr><td colspan="9" class="empty">Lot 목록을 입력하세요.</td></tr>';$('#summary').textContent='조회 전';$('#csv').disabled=true;setBar(0)};
-$('#csv').onclick=()=>{const rows=[['Input Lot','Lot Folder','S/M','Sub Folder','Layer','AOI Process','Review Process','Re-review','Map txt count','Equipment','Machine','Scan Time','Source','Camtek Pass / Wafers']];
- results.forEach(r=>{if(r.missing){rows.push([r.lot,'Lot folder not found','','','','','','','','','','','','']);return}
+$('#csv').onclick=()=>{const rows=[['Input Lot','Lot Folder','S/M','Sub Folder','Layer','AOI Process','Review Process','Re-review','Map txt count','Equipment','Machine','Scan Time','Source','Camtek Batch Report Result','Camtek Layer Wafer Verdict']];
+ results.forEach(r=>{if(r.missing){rows.push([r.lot,'Lot folder not found','','','','','','','','','','','','','']);return}
   r.subs.forEach(S=>{const st=S.stage,base=[r.lot,r.folder,r.sm,S.name,st?st.key:'',st?st.aoi+' / '+st.aoiName:'',st?st.rev+' / '+st.revName:'',S.status?STATUS[S.status][0]:'',S.txt?(S.txt.partial?'?':S.txt.count):''];
-   const hits=S.camtek.map(h=>['Camtek',h.machine,h.at,h.job+' / '+h.file,h.pass==null?'? / '+h.wafers:h.pass+' / '+h.wafers]).concat(S.kla.map(h=>['KLA',h.machine,h.at,h.path,'']));
-   if(!hits.length)rows.push(base.concat([S.status==='need'?S.equipment:'','','','','']));else hits.forEach(h=>rows.push(base.concat(h)))})});
+   const vg=S.stage&&S.camtek.length?verdictGroups(hitsOf({camtek:S.camtek,kla:[],stage:S.stage})):[],vt=vg.map(verdictText).join(' / ');
+   const hits=S.camtek.map(h=>{const c=scanOf(h.cells,h.wafers);return ['Camtek',h.machine,h.at,h.job+' / '+h.file,c.old?'캐시 갱신 필요':c.outcome+' ('+scanCount(c)+')',vt]}).concat(S.kla.map(h=>['KLA',h.machine,h.at,h.path,'','']));
+   if(!hits.length)rows.push(base.concat([S.status==='need'?S.equipment:'','','','','','']));else hits.forEach(h=>rows.push(base.concat(h)))})});
  const csv='﻿'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='TB500_Review_'+stamp(now()).slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 $('#conderUnc').value=(()=>{try{return localStorage.getItem('tb500-review-unc')||$('#conderUnc').value}catch{return $('#conderUnc').value}})();
 $('#conderUnc').onchange=()=>{try{localStorage.setItem('tb500-review-unc',$('#conderUnc').value)}catch{}};
 (async()=>{for(const k of ['share','conder','local'])handles[k]=await idbGet(k);paintSetup();paintRecord()})();
-window.__tb500={lotCode,stageOf,kindOf,batchStart,fileStart,zipEntries,zipText,camtekRows};
+window.__tb500={lotCode,stageOf,kindOf,batchStart,fileStart,zipEntries,zipText,camtekRows,waferCells};
 })();
 </script>
 </body>

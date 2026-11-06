@@ -11,21 +11,23 @@ def zbytes(files, big=False):
             zf.writestr(name, data)
     return buf.getvalue()
 
-def report(job, setup, sm, day, start, n=25, fail=0):
+def report(job, setup, sm, day, start, n=25, fail=0, ids=None):
     fname = f"{job}_{setup}_{sm}_{day}_({start.replace(':', '.')})_BatchReport.htm"
     yy, mon, d = day.split("-")
     hh = int(start[:2])
     ampm = "PM" if hh >= 12 else "AM"
     h12 = hh - 12 if hh > 12 else (12 if hh == 0 else hh)
-    meta = [["Batch Start", f"{d}-{mon}-{yy} {h12:02d}:{start[3:]} {ampm}"], ["Job/Setup", f"{job}/{setup}"], ["Wafers Scanned", str(n)]]
-    wafers = [{"Lot": sm, "Wafer ID": f"W{i:02d}", "Pass/Fail": "Scan 2D Error. Aborted." if i < fail else "Pass"} for i in range(n)]
+    meta = [["Batch Start", f"{d}-{mon}-{yy} {h12:02d}:{start[3:]} {ampm}"], ["Job/Setup", f"{job}/{setup}"], ["Wafers Scanned", str(n)], ["Batch Time", "01:10:00"]]
+    wafers = [{"Lot": sm, "Wafer ID": ids[i] if ids else f"W{i:02d}", "Pass/Fail": "Scan 2D Error. Aborted." if i < fail else "Pass",
+               "Scanned Dice": "" if i < fail else "1200", "Bad Dice": "" if i < fail else str(10 + i), "Good Dice": "" if i < fail else str(1190 - i),
+               "Faults": "" if i < fail else str(40 + i), "Yield": "" if i < fail else f"{(1190 - i) / 12:.2f}", "Recipe(s)": job} for i in range(n)]
     return fname, {"signature": [1, 1], "digest": "x" * 64, "report": {"file_name": fname, "metadata": meta, "wafers": wafers, "table_count": 2}}
 
 def camtek_zip():
     m21 = dict([report("TB500_RDL1-Multi", "Setup1", "CMS-RDL1", "26-Oct-20", "09:10:00", fail=3),
                 report("TB500_RDL3-Multi", "Setup1", "CMS", "26-Oct-18", "13:00:00"),
                 report("TB500_RDL1-Multi", "Setup1", "WGB-RDL3", "26-Oct-22", "11:23:53")])
-    m22 = dict([report("TB500_RDL1-Multi", "Setup1", "CMS RE", "26-Oct-21", "22:05:00", 2),
+    m22 = dict([report("TB500_RDL1-Multi", "Setup1", "CMS RE", "26-Oct-21", "22:05:00", 3, ids=["Slot 25", "Slot 24", "Slot 23"]),
                 report("TB500_PI4-Multi", "Setup1", "CMS", "26-Oct-15", "08:00:00")])
     files = {"누적/AOI-21_aaaaaaaa.json": json.dumps({"schema": 1, "machine": "AOI-21", "folder": "P:\\AOI-21\\Reports", "entries": m21}),
              "누적/AOI-22_bbbbbbbb.json": json.dumps({"schema": 1, "machine": "AOI-22", "folder": "P:\\AOI-22\\Reports", "entries": m22}),

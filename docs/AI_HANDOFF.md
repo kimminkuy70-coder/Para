@@ -1,5 +1,25 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #42 리뷰 HTML: Camtek Pass/Fail 을 Camtek AOI Manager 방식으로 · Batch Report 보기 (2026-11-07 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-07 · 기준 커밋 `9715c6f` · 이슈 Para #42 + 같은 run 중 세션 추가 지시 · 작업 브랜치 `version_TB500_review`(릴리스 없음 — 단일 HTML).
+- 요청: "기존 AOI 프로그램에서 하던 것처럼 Pass/Fail 따져서 기록해 — 지금은 총 ~장 이렇게만 되어 있어 무슨 말인지 모르겠다"
+  + (세션) "Camtek Batch Report 이름을 누르면 Batch Report 를 볼 수 있게 — 실제 파일은 없겠지만 slot · 스캔 수 · Faults 등 실제와 비슷하게".
+- 한 일(`TB500_Review.html`): `waferCells`(lotmodel.attempt 규칙 이식: P/E/A=작업자 중단/S=스캔 안 한 슬롯, 슬롯 = 25행 위치 또는 Wafer ID) · `scanOf`(Batch Report 결과 정상/Error/작업자 중단)
+  · `verdictGroups`(lotmodel.resolve 이식: Layer(+3D)별 슬롯마다 한 번에 Pass/재스캔 Pass/중복 Pass/Pass 없음, Lot 상태 3가지) · Lot History ③ wafer 판정 표 · `openReport`(Batch Report 보기 창 `#brDlg`).
+  색인 schema 4: 행 [9] = [슬롯, Wafer ID, 종류, 원문], [10] = [머리 정보 쌍, wafer 열 이름, 값]. 예전 색인은 [캐시 갱신]이 다시 푼다(그 전에는 회색 `[캐시 갱신] 필요`).
+  CSV 열 `Camtek Pass / Wafers` → `Camtek Batch Report Result` + `Camtek Layer Wafer Verdict`. 문서 `docs/TB500_review_사용법.md` 3절 고침.
+- "총 ~장" 원인: 소유자 PC 색인이 #41 이전(schema 1)이라 회색 `총 N장` 이 보였던 것으로 추정(확인 전). 이제 그 배지는 `[캐시 갱신] 필요` 로 바뀐다.
+- 시험: `tools/test_tb500_review.mjs`(판정 · ③ 표 · Batch Report 보기 · waferCells 순수 함수 단언 추가, 합성 자료에 Dice · Faults · Yield · Recipe(s) 열 추가) 연속 2회 통과. Python 변경 없음.
+  실행: `PARA_TEST_NODE_MODULES=/opt/node22/lib/node_modules node tools/test_tb500_review.mjs`. 실제 Edge · Conder Scan · 회사 OneDrive 는 미검증.
+- 내 해석(확인 전): ⓐ Manager 의 묶음 나누기(같은 호기 12시간 · 레시피 · 호기 이동 48시간)는 하지 않고, 같은 Lot 코드 · 같은 Layer 의 Camtek Batch Report 를 모두 한 묶음으로 판정한다(Manager 의 Lot 취합과 같은 꼴)
+  ⓑ Batch Report 결과 색: Error 인데 Pass 0장이면 빨강 ⓒ Batch Report 보기는 Lot History ② 의 파일 이름에서만 연다 ⓓ 캐시 색인 크기가 Batch Report 마다 wafer 표만큼 커진다(수천 장이면 수 MB~수십 MB, 실기 확인 전).
+- 소유자 할 일: 각 PC 에서 HTML 을 새 파일로 바꾼 뒤 [캐시 갱신]을 한 번 누르기.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #42 | Camtek 기록을 기존 AOI 프로그램처럼 Pass/Fail 판정 + Batch Report 보기(세션 추가) | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #41 후속: Lot History 의 Camtek 스캔 장수 (2026-11-06 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-06 · 기준 커밋 `b6ddff4` · Para #41 후속(소유자 세션 지시: "camtek 은 history 작성할 때 몇 장 중에 몇 장 스캔 성공했는지 적어 줘야 해, 다른 색깔로 표기").
