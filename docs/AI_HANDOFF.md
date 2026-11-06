@@ -15,9 +15,12 @@
 - 내 해석(확인 전): ⓐ Manager 의 묶음 나누기(같은 호기 12시간 · 레시피 · 호기 이동 48시간)는 하지 않고, 같은 Lot 코드 · 같은 Layer 의 Camtek Batch Report 를 모두 한 묶음으로 판정한다(Manager 의 Lot 취합과 같은 꼴)
   ⓑ Batch Report 결과 색: Error 인데 Pass 0장이면 빨강 ⓒ Batch Report 보기는 Lot History ② 의 파일 이름에서만 연다 ⓓ 캐시 색인 크기가 Batch Report 마다 wafer 표만큼 커진다(수천 장이면 수 MB~수십 MB, 실기 확인 전).
 - 소유자 할 일: 각 PC 에서 HTML 을 새 파일로 바꾼 뒤 [캐시 갱신]을 한 번 누르기.
+- 소유자 질문(세션) "캐시도 개발자가 프로그램 수정해서 업데이트해야 해?" → 답: 아니다. OneDrive 캐시 zip(`desktop_batch._build_cache_zip`)은 `배치분석/누적/*.json` 원문 그대로(머리 정보 + wafer 표 전체 열)라,
+  HTML 이 같은 zip 에서 더 꺼내 쓸 뿐이다. Camtek AOI Manager 수정 · 캐시 재게시 불필요, 각 PC 에서 [캐시 갱신] 한 번(예전 색인이면 같은 zip 도 다시 푼다).
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
+| Para #42 후속 질문 | 캐시도 개발자가 프로그램 수정해 업데이트해야 하나 | 답변(불필요, 코드 수정 없음) |
 | Para #42 | Camtek 기록을 기존 AOI 프로그램처럼 Pass/Fail 판정 + Batch Report 보기(세션 추가) | 구현 · 시험 통과(릴리스 대상 아님) |
 
 ## 최신 재개 — Para #41 후속: Lot History 의 Camtek 스캔 장수 (2026-11-06 KST, `version_TB500_review`)
