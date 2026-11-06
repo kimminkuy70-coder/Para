@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #41 리뷰 HTML: 하위 폴더마다 한 줄 · 빈칸 · Lot History 개편 (2026-11-06 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-06 · 기준 커밋 `038ec26` · 이슈 Para #41 ②(① KLA 캐시 접기 · UX 는 `version_v12` 커밋 `5285e86`, 그 브랜치 인수인계 맨 위) · 작업 브랜치 `version_TB500_review`(릴리스 없음).
+- 요청: "지금 방식이 아니라 Conder Scan 폴더에서 각 Lot 폴더 하위 폴더의 실제 폴더명 보여주고 각각에 대해 공정번호 · 재리뷰 · 호기 등을 작성하는 방식으로",
+  "조사하지 않음은 필요 없고 빈칸", "Camtek AOI Manager 처럼 Lot History 보여주게 — 지금은 가독성이 너무 별로".
+- 한 일(`TB500_Review.html`): `lookLot` 이 하위 폴더 목록 `subs`(이름순, Layer 모르는 폴더 포함)를 돌려준다. 줄 = 하위 폴더, 칸 = 폴더 이름(+재스캔/재리뷰/Skip 표시) · Layer · 공정번호 · 재리뷰 · 장비 · 호기 · 스캔 시각 · [경로 복사].
+  재리뷰 칸: 재리뷰 폴더 = `재리뷰 결과`+맵 수, 기본 · 재스캔 = Layer 판정(완료/필요/Skip), Skip 폴더 = Skip. 장비 · 호기는 `재리뷰 필요` 줄만(폴더마다 이미지로 장비 판정), 그 밖은 빈칸.
+  Lot History = `openHistory(r, layer)`/`paintHistory`: Layer 칩 필터 · 숫자 4개 · ① 시간순 요약 SVG(스캔마다 한 칸, 사이 간격 · 호기 이동) · ② 시간순 기록(간격 · Layer 바뀜 · 호기 이동 A → B). 종전 `detail`/`histTable`/`evidenceHtml` 삭제.
+  CSV 도 하위 폴더 한 줄(+ 기록마다) 형식. 문서 `docs/TB500_review_사용법.md` 3절 '결과 표' 추가.
+- 시험: `tools/test_tb500_review.mjs` 새 표 · Lot History 단언으로 바꿈, 연속 2회 통과(`TB500_SHOT=폴더` 를 주면 표 · 창 스크린샷). 실제 Edge · Conder Scan · 회사 OneDrive 는 미검증.
+- 내 해석(확인 전): 같은 Layer 의 기본 · 재스캔 폴더가 둘 다 `재리뷰 필요`면 두 줄 모두 호기를 쓴다 · Layer 모르는 폴더도 줄로 보여 준다 · 줄의 [Lot History] 는 그 Layer 로 걸러 열고 [전체] 칩으로 모두.
+- 남은 일: 소유자 실사용 피드백, 종전 해석 ⓐ~ⓖ(아래 #40 절) 확인.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #41 ② | 리뷰 HTML 하위 폴더 실제 이름마다 한 줄 · 조사하지 않음 → 빈칸 · Lot History 가독성 | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #40 TB500 리뷰 전용 HTML 구현 (2026-11-06 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-06 · 기준 커밋 `69160ca` · 이슈 Para #40(3차 — 소유자 댓글 6691832497 "답했으니 HTML 최종 완성", 세션 추가 지시 "한 Layer 를 여러 호기에서 스캔하면 더보기로 Lot History")

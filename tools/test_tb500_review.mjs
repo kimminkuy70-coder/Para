@@ -64,29 +64,41 @@ await page.locator('#msg').filter({hasText:'Camtek 캐시: 이미 최신'}).wait
 await page.locator('#lots').fill('TB500.INT1041\nTB500.INT948');
 await page.getByRole('button',{name:'조회',exact:true}).click();
 await page.locator('#msg').filter({hasText:'조회 완료'}).waitFor();
-const rows=await page.locator('#tbody tr').allInnerTexts();
-const find=k=>rows.find(r=>new RegExp('(^|\\t)'+k+'\\t').test(r))||'';
-assert.match(find('RDL4'),/재리뷰 완료[\s\S]*1-1\. RDL4_재리뷰 · 맵\(\.txt\) 2개/);
-assert.match(find('PIDS3'),/재리뷰 완료[\s\S]*맵\(\.txt\) 1개/);
-assert.match(find('PIDS5'),/Skip/);
-assert.match(find('PIDS7'),/Skip/);
-assert.match(find('RDL2'),/재리뷰 필요\tKLA\t[\s\S]*여러 호기 2대[\s\S]*AOI-K6 · 2026-11-05 10:00[\s\S]*AOI-K2 · 2026-11-04 07:30/);
-assert.match(find('RDL1'),/재리뷰 필요\tCamtek\t[\s\S]*여러 호기 2대[\s\S]*AOI-22 · 2026-10-21 22:05:00[\s\S]*AOI-21 · 2026-10-20 09:10:00/);
-assert.ok(!/WGB/.test(find('RDL1')));
-assert.match(rows[0],/976\. TB500\.INT1041 \(CMS\)[\s\S]*S\/M CMS[\s\S]*기타 폴더: 메모/);
+const rows=(await page.locator('#tbody tr').allInnerTexts()).map(t=>t.replace(/[ \n]*\t[ \n]*/g,'\t').replace(/\n+/g,' ').trim());
+// Para #41: 한 줄 = Conder Scan Lot 폴더 안의 실제 하위 폴더 하나(이름 그대로).
+const find=n=>rows.find(r=>r.includes(n+'\t')||r.includes(n+' 재리뷰\t')||r.includes(n+' 재스캔\t')||r.includes(n+' Skip\t'))||'';
+assert.ok(rows.every(r=>!/조사하지 않음/.test(r)),'조사하지 않음 문구 없음');
+assert.match(find('1-1. RDL4_재리뷰'),/RDL4\t6305 AOI 6412 2D\/RE\t재리뷰 결과 맵\(\.txt\) 2개\t\t\t경로 복사$/);
+assert.match(find('1. RDL4'),/^1\. RDL4\tRDL4\t[\s\S]*\t재리뷰 완료\t\t\t경로 복사/);
+assert.match(find('1. RDL4_재스캔 (#24,25)'),/재스캔\tRDL4[\s\S]*재리뷰 완료\t\t\t/);
+assert.match(find('2. PIDS3_재리뷰'),/맵\(\.txt\) 1개/);
+assert.match(find('4. PIDS5_Skip (RDL3 재리뷰 결과 나오면 맵만 수정해 주세요)'),/PIDS5[\s\S]*\tSkip\t\t\t/);
+assert.match(find('5. RDL2'),/재리뷰 필요\tKLA\t여러 호기 2대[\s\S]*AOI-K6 · 2026-11-05 10:00[\s\S]*AOI-K2 · 2026-11-04 07:30[\s\S]*Lot History/);
+assert.match(find('7. RDL1'),/재리뷰 필요\tCamtek\t여러 호기 2대[\s\S]*AOI-22 · 2026-10-21 22:05:00[\s\S]*AOI-21 · 2026-10-20 09:10:00/);
+assert.ok(!/WGB/.test(find('7. RDL1')));
+assert.match(find('메모'),/^메모\t\t\t\t\t\t경로 복사$/);                                      // Layer 모르는 폴더도 이름 그대로, 나머지는 빈칸
+assert.equal(rows.filter(r=>/TB500\.INT1041/.test(r)).length,1);
+assert.match(rows[0],/^TB500\.INT1041\t976\. TB500\.INT1041 \(CMS\) S\/M CMS Lot History\t1-1\. RDL4_재리뷰/);
+assert.equal(rows.length,13+1);
 assert.match(rows.at(-1),/TB500\.INT948\tConder Scan 에서 Lot 폴더를 찾지 못했습니다/);
-// 더보기 · Lot History
-await page.locator('#tbody tr').filter({hasText:'RDL1'}).first().getByRole('button',{name:'더보기 · Lot History'}).click();
-const dlg=await page.locator('#dlgBody').innerText();
-assert.match(dlg,/RDL1 스캔 기록 — 2건 · 호기 2대 \(여러 호기에서 스캔됨\)/);
-assert.match(dlg,/Lot History \(모든 Layer\) — 6건 · 호기 4대/);
-assert.match(dlg,/호기 이동/);
-const hist=await page.locator('#dlgBody table').nth(1).locator('tbody tr').allInnerTexts();
-assert.deepEqual(hist.map(t=>t.split('\t')[2]),['PIDS3','RDL3','RDL1','RDL1','RDL2','RDL2']);
+// Lot History (RDL1 줄에서 열면 RDL1 만, [전체]를 누르면 모든 Layer)
+await page.locator('#tbody tr').filter({hasText:'7. RDL1'}).getByRole('button',{name:'Lot History'}).click();
+const body=page.locator('#dlgBody');
+assert.equal(await body.locator('.chip.on').innerText(),'RDL1 2');
+assert.equal(await body.locator('li.hrow').count(),2);
+assert.match(await body.locator('li.gapline').innerText(),/1일 12시간 뒤 · 다시 스캔 · 호기 이동 AOI-21 → AOI-22/);
+assert.equal(await body.locator('svg rect').count(),4);
+await body.getByRole('button',{name:/^전체/}).click();
+const hrows=await body.locator('li.hrow').allInnerTexts();
+assert.deepEqual(hrows.map(t=>t.split('\n').map(x=>x.trim()).filter(Boolean)[3]),['PIDS3','RDL3','RDL1','RDL1','RDL2','RDL2']);
+assert.match(await body.locator('.hkpi').innerText(),/6\s*스캔\s*4\s*호기 · AOI-22, AOI-21, AOI-K2, AOI-K6\s*4\s*호기 이동/);
 await page.getByRole('button',{name:'닫기'}).click();
-await page.locator('#tbody').getByRole('button',{name:'Lot History',exact:true}).click();
+await page.locator('#tbody td.lothead').getByRole('button',{name:'Lot History'}).click();
 assert.match(await page.locator('#dlgTitle').innerText(),/TB500\.INT1041 · Lot History/);
+assert.equal(await body.locator('li.hrow').count(),6);
+if(process.env.TB500_SHOT){await page.setViewportSize({width:1400,height:1000});await page.locator('#dlg').screenshot({path:process.env.TB500_SHOT+'/hist.png'});}
 await page.getByRole('button',{name:'닫기'}).click();
+if(process.env.TB500_SHOT)await page.locator('.result').screenshot({path:process.env.TB500_SHOT+'/table.png'});
 // 원본(Conder · OneDrive)에는 아무것도 쓰지 않음
 assert.ok(!log.concat(await page.evaluate(()=>window.__fs.log)).some(l=>/conder|share/.test(l)));
 // 오래된 캐시 알림

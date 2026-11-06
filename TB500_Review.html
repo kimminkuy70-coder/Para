@@ -7,14 +7,26 @@
 <style>
 :root{--bg:#f4f7fb;--card:#fff;--line:#d8e0eb;--text:#172033;--muted:#667085;--blue:#2563eb;--green:#15803d;--greenbg:#dcfce7;--amber:#a16207;--amberbg:#fef3c7;--gray:#667085;--graybg:#eef2f6;--red:#b42318;--redbg:#fee4e2;--shadow:0 8px 24px rgba(16,24,40,.08)}
 @media(prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#172033;--line:#334155;--text:#f1f5f9;--muted:#a8b3c5;--graybg:#263246;--greenbg:#123d29;--amberbg:#4a3511;--redbg:#4b1e24;--shadow:0 8px 24px rgba(0,0,0,.24)}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:14px}.app{max-width:1500px;margin:auto;padding:22px}.head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.head h1{font-size:24px;margin:0 0 7px}.head p{margin:0;color:var(--muted)}.badge{display:inline-flex;padding:6px 10px;border-radius:999px;background:var(--greenbg);color:var(--green);font-weight:700;white-space:nowrap}.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:18px}.card h2{font-size:16px;margin:0 0 13px}.field{margin-bottom:13px}.field label{display:block;font-weight:700;margin-bottom:6px}.help{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}input,textarea,select{width:100%;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:9px;padding:10px 11px;font:inherit}textarea{min-height:188px;resize:vertical}.row{display:flex;gap:9px}.row>*{flex:1}.btns{display:flex;gap:9px;flex-wrap:wrap}.btn{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;background:#e7edf7;color:#26364f}.btn.primary{background:var(--blue);color:#fff}.btn.danger{background:var(--redbg);color:var(--red)}.btn:disabled{opacity:.45;cursor:not-allowed}.paths{display:grid;gap:8px;max-height:178px;overflow:auto}.pathitem{display:flex;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:9px}.pathitem .p{min-width:0;flex:1}.pathitem b,.pathitem small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pathitem small{color:var(--muted);margin-top:3px}.result{margin-top:16px}.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}.summary{color:var(--muted)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}table{border-collapse:separate;border-spacing:0;width:100%;min-width:1780px}th,td{padding:10px 9px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:center;vertical-align:middle}th{position:sticky;top:0;background:var(--card);z-index:2;font-size:12px}th:first-child,td:first-child{position:sticky;left:0;background:var(--card);z-index:1;text-align:left;font-weight:700}th:first-child{z-index:3}tr:last-child td{border-bottom:0}th:last-child,td:last-child{border-right:0}.state{display:inline-flex;flex-direction:column;gap:2px;min-width:78px;padding:6px 7px;border-radius:8px;font-weight:700}.state small{font-weight:500;font-size:10px;opacity:.87}.mark{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;font-size:18px;font-weight:900}.mark.o{background:var(--greenbg);color:var(--green)}.mark.x{background:var(--graybg);color:var(--gray)}.foldername{display:block;margin-top:5px;max-width:128px;font-size:10px;line-height:1.25;color:var(--muted);white-space:normal;overflow-wrap:anywhere}.cellstate{display:flex;flex-direction:column;align-items:center;min-width:110px}.done2{background:var(--greenbg);color:var(--green)}.done1{background:var(--amberbg);color:var(--amber)}.none{background:var(--graybg);color:var(--gray)}.missing{background:var(--redbg);color:var(--red)}.lotmissing{color:var(--red)}dialog{border:0;padding:0;border-radius:14px;background:var(--card);color:var(--text);width:min(900px,94vw);max-height:88vh;box-shadow:0 24px 70px rgba(0,0,0,.35)}dialog::backdrop{background:rgba(15,23,42,.6)}.modalhead{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}.modalhead h3{margin:0}.modalbody{padding:18px;overflow:auto;max-height:70vh}.detailgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.detail{border:1px solid var(--line);border-radius:10px;padding:12px}.detail h4{margin:0 0 8px}.detail p{margin:5px 0;color:var(--muted)}.slots{color:var(--red)!important;font-weight:700;word-break:break-word}.notice{padding:10px 12px;border-radius:9px;background:var(--amberbg);color:var(--amber);line-height:1.5;margin-bottom:12px}.progress{height:5px;background:var(--graybg);border-radius:99px;overflow:hidden;margin-top:10px}.bar{height:100%;width:0;background:var(--blue);transition:width .2s}.empty{text-align:center;color:var(--muted);padding:28px}.nowrap{white-space:nowrap}.folderlink{border:0;background:none;color:var(--blue);padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer;text-decoration:underline;text-underline-offset:3px}.folderrow{display:grid;grid-template-columns:minmax(210px,1fr) 112px 112px 86px minmax(245px,auto);gap:8px;align-items:center;padding:3px 0}.process{display:inline-flex;align-items:center;justify-content:center;width:106px;padding:4px 6px;border-radius:7px;font-size:10px;font-weight:800;white-space:nowrap}.process.aoi{background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd}.process.review{background:#fce7f3;color:#be185d;border:1px solid #f9a8d4}.process.na{background:var(--graybg);color:var(--gray);border:1px solid var(--line)}.foldercell{min-width:0;overflow-wrap:anywhere}.equip{display:inline-flex;align-items:center;justify-content:center;width:78px;padding:4px 7px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.2px}.equip.kla{background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd}.equip.camtek{background:#dcfce7;color:#15803d;border:1px solid #86efac}.equip.unknown{background:var(--graybg);color:var(--gray);border:1px solid var(--line)}.foldermeta{color:var(--muted);font-size:11px;white-space:nowrap}@media(max-width:900px){.folderrow{grid-template-columns:minmax(150px,1fr) 82px 82px 76px}.process{width:78px;font-size:9px}.equip{width:72px}.foldermeta{grid-column:1/-1;white-space:normal;padding-left:0}}.devmark{position:fixed;right:14px;bottom:10px;z-index:20;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--muted);font-size:11px;font-weight:700;pointer-events:none}@media(max-width:900px){.grid{grid-template-columns:1fr}.detailgrid{grid-template-columns:1fr}.head{display:block}.badge{margin-top:10px}}
-table{min-width:1500px}td.left{text-align:left}.lotcell{white-space:nowrap}.st{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}.st.done{background:var(--greenbg);color:var(--green)}.st.need{background:var(--redbg);color:var(--red)}.st.skip{background:var(--amberbg);color:var(--amber)}.st.etc{background:var(--graybg);color:var(--gray)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:14px}.app{max-width:1500px;margin:auto;padding:22px}.head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.head h1{font-size:24px;margin:0 0 7px}.head p{margin:0;color:var(--muted)}.badge{display:inline-flex;padding:6px 10px;border-radius:999px;background:var(--greenbg);color:var(--green);font-weight:700;white-space:nowrap}.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:18px}.card h2{font-size:16px;margin:0 0 13px}.field{margin-bottom:13px}.field label{display:block;font-weight:700;margin-bottom:6px}.help{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}input,textarea,select{width:100%;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:9px;padding:10px 11px;font:inherit}textarea{min-height:188px;resize:vertical}.row{display:flex;gap:9px}.row>*{flex:1}.btns{display:flex;gap:9px;flex-wrap:wrap}.btn{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;background:#e7edf7;color:#26364f}.btn.primary{background:var(--blue);color:#fff}.btn.danger{background:var(--redbg);color:var(--red)}.btn:disabled{opacity:.45;cursor:not-allowed}.paths{display:grid;gap:8px;max-height:178px;overflow:auto}.pathitem{display:flex;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:9px}.pathitem .p{min-width:0;flex:1}.pathitem b,.pathitem small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pathitem small{color:var(--muted);margin-top:3px}.result{margin-top:16px}.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}.summary{color:var(--muted)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}table{border-collapse:separate;border-spacing:0;width:100%;min-width:1780px}th,td{padding:10px 9px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:center;vertical-align:middle}th{position:sticky;top:0;background:var(--card);z-index:2;font-size:12px}th:first-child,td:first-child{position:sticky;left:0;background:var(--card);z-index:1;text-align:left;font-weight:700}th:first-child{z-index:3}tr:last-child td{border-bottom:0}th:last-child,td:last-child{border-right:0}.state{display:inline-flex;flex-direction:column;gap:2px;min-width:78px;padding:6px 7px;border-radius:8px;font-weight:700}.state small{font-weight:500;font-size:10px;opacity:.87}.mark{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;font-size:18px;font-weight:900}.mark.o{background:var(--greenbg);color:var(--green)}.mark.x{background:var(--graybg);color:var(--gray)}.foldername{display:block;margin-top:5px;max-width:128px;font-size:10px;line-height:1.25;color:var(--muted);white-space:normal;overflow-wrap:anywhere}.cellstate{display:flex;flex-direction:column;align-items:center;min-width:110px}.done2{background:var(--greenbg);color:var(--green)}.done1{background:var(--amberbg);color:var(--amber)}.none{background:var(--graybg);color:var(--gray)}.missing{background:var(--redbg);color:var(--red)}.lotmissing{color:var(--red)}dialog{border:0;padding:0;border-radius:14px;background:var(--card);color:var(--text);width:min(1100px,96vw);max-height:88vh;box-shadow:0 24px 70px rgba(0,0,0,.35)}dialog::backdrop{background:rgba(15,23,42,.6)}.modalhead{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}.modalhead h3{margin:0}.modalbody{padding:18px;overflow:auto;max-height:70vh}.detailgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.detail{border:1px solid var(--line);border-radius:10px;padding:12px}.detail h4{margin:0 0 8px}.detail p{margin:5px 0;color:var(--muted)}.slots{color:var(--red)!important;font-weight:700;word-break:break-word}.notice{padding:10px 12px;border-radius:9px;background:var(--amberbg);color:var(--amber);line-height:1.5;margin-bottom:12px}.progress{height:5px;background:var(--graybg);border-radius:99px;overflow:hidden;margin-top:10px}.bar{height:100%;width:0;background:var(--blue);transition:width .2s}.empty{text-align:center;color:var(--muted);padding:28px}.nowrap{white-space:nowrap}.folderlink{border:0;background:none;color:var(--blue);padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer;text-decoration:underline;text-underline-offset:3px}.folderrow{display:grid;grid-template-columns:minmax(210px,1fr) 112px 112px 86px minmax(245px,auto);gap:8px;align-items:center;padding:3px 0}.process{display:inline-flex;align-items:center;justify-content:center;width:106px;padding:4px 6px;border-radius:7px;font-size:10px;font-weight:800;white-space:nowrap}.process.aoi{background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd}.process.review{background:#fce7f3;color:#be185d;border:1px solid #f9a8d4}.process.na{background:var(--graybg);color:var(--gray);border:1px solid var(--line)}.foldercell{min-width:0;overflow-wrap:anywhere}.equip{display:inline-flex;align-items:center;justify-content:center;width:78px;padding:4px 7px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.2px}.equip.kla{background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd}.equip.camtek{background:#dcfce7;color:#15803d;border:1px solid #86efac}.equip.unknown{background:var(--graybg);color:var(--gray);border:1px solid var(--line)}.foldermeta{color:var(--muted);font-size:11px;white-space:nowrap}@media(max-width:900px){.folderrow{grid-template-columns:minmax(150px,1fr) 82px 82px 76px}.process{width:78px;font-size:9px}.equip{width:72px}.foldermeta{grid-column:1/-1;white-space:normal;padding-left:0}}.devmark{position:fixed;right:14px;bottom:10px;z-index:20;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--muted);font-size:11px;font-weight:700;pointer-events:none}@media(max-width:900px){.grid{grid-template-columns:1fr}.detailgrid{grid-template-columns:1fr}.head{display:block}.badge{margin-top:10px}}
+table{min-width:1180px}td.left{text-align:left}.lotcell{white-space:nowrap}.st{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}.st.done{background:var(--greenbg);color:var(--green)}.st.need{background:var(--redbg);color:var(--red)}.st.skip{background:var(--amberbg);color:var(--amber)}.st.etc{background:var(--graybg);color:var(--gray)}
 .hit{display:block;text-align:left;font-size:12px;line-height:1.45;padding:3px 0;border-bottom:1px dashed var(--line)}.hit:last-child{border-bottom:0}.hit b{font-size:13px}.muted{color:var(--muted)}.small{font-size:11px}.mono{font-family:Consolas,"D2Coding",monospace;font-size:11px;overflow-wrap:anywhere}
 .banner{display:none;padding:12px 14px;border-radius:12px;background:var(--redbg);color:var(--red);font-weight:700;margin-bottom:14px;line-height:1.5}.banner.show{display:block}.banner.ok{background:var(--greenbg);color:var(--green)}
 .setup{display:grid;gap:10px}.setrow{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px}.setrow .num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--graybg);font-weight:800}.setrow.ok .num{background:var(--greenbg);color:var(--green)}.setrow b{display:block}.setrow small{display:block;color:var(--muted);overflow-wrap:anywhere;margin-top:3px}
 .cachegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}.cachebox{border:1px solid var(--line);border-radius:10px;padding:10px}.cachebox h4{margin:0 0 6px}.cachebox p{margin:3px 0;color:var(--muted);font-size:12px}
 .layername{font-weight:800}.folders{display:block;margin-top:4px;font-size:11px;color:var(--muted);text-align:left;overflow-wrap:anywhere}.copy{border:0;background:none;color:var(--blue);cursor:pointer;font:inherit;font-size:11px;padding:0;text-decoration:underline}
 @media(max-width:900px){.cachegrid{grid-template-columns:1fr}.setrow{grid-template-columns:28px 1fr}.setrow .btn{grid-column:2}}
+.copy{white-space:nowrap}td .hit{white-space:nowrap}.lotstart>td{border-top:2px solid #94a3b8}.lothead b{display:block}.sub{display:block;margin-top:3px}.lothead .copy{margin-top:6px}.sname{font-weight:700;min-width:180px;max-width:320px;overflow-wrap:anywhere}
+.kind{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:6px;font-size:10px;font-weight:800;vertical-align:1px}.k-rescan{background:#e0e7ff;color:#3730a3}.k-rereview{background:var(--greenbg);color:var(--green)}.k-skip{background:var(--amberbg);color:var(--amber)}
+td .process{display:flex;width:auto;margin:2px 0}.st.mini{min-width:0;padding:2px 8px;font-size:11px;margin-bottom:4px}tr.rowneed td{background:color-mix(in srgb,var(--redbg) 35%,var(--card))}tr.rowneed td.lotcell,tr.rowneed td.lothead{background:var(--card)}
+.hfilter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.chip{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:999px;padding:5px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;border-left:4px solid var(--c,#94a3b8)}.chip.on{background:#1e293b;color:#fff;border-color:#1e293b}
+.hkpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}.hkpi div{border:1px solid var(--line);border-radius:10px;padding:10px 12px}.hkpi b{display:block;font-size:22px}.hkpi b.sm{font-size:14px;line-height:1.9}.hkpi span{font-size:12px;color:var(--muted)}
+.hsec{margin:14px 0 8px;font-size:14px}.hsec small{font-weight:500;color:var(--muted);font-size:11px;margin-left:6px}.svscroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;padding:6px 0;background:var(--bg)}
+.sv-gap{font-size:10px;fill:var(--muted)}.sv-mv{font-size:13px;font-weight:800;fill:#2563eb}.sv-mv.small{font-size:10px}.sv-lay{font-size:11px;font-weight:800;fill:#fff}.sv-m{font-size:11.5px;font-weight:800}.sv-v{font-size:10px;fill:var(--muted)}.sv-t{font-size:10.5px;fill:var(--text)}.sv-n{font-size:10px;fill:var(--muted)}
+.hlist{list-style:none;margin:0;padding:0}.hrow{display:grid;grid-template-columns:28px 150px auto auto auto 1fr;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.hn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--graybg);font-size:11px;font-weight:800}.ht{font-weight:700;white-space:nowrap}
+.mchip,.lchip{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}.mchip{color:var(--c);border:1.5px solid var(--c)}.lchip{background:var(--c);color:#fff}
+.hw{min-width:0;font-size:12px}.hw .mono{display:block;color:var(--muted);margin-top:2px}.gapline{margin:4px 0 4px 38px;font-size:12px;color:var(--muted)}.gapline.moved{color:#1d4ed8}
+@media(max-width:900px){.hrow{grid-template-columns:28px 1fr}.hrow>*:nth-child(n+3){grid-column:2}.hkpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -47,11 +59,11 @@ table{min-width:1500px}td.left{text-align:left}.lotcell{white-space:nowrap}.st{d
   </div>
   <section class="result card">
     <div class="toolbar"><div><h2 style="margin-bottom:3px">조회 결과</h2><div class="summary" id="summary">조회 전</div></div></div>
-    <div class="tablewrap"><table><thead><tr><th>입력 Lot</th><th>Conder Scan Lot 폴더 · S/M</th><th>Layer</th><th>AOI 공정</th><th>Review 공정</th><th>재리뷰</th><th>장비</th><th>호기 · 스캔 시각</th><th>근거 · 경로</th></tr></thead><tbody id="tbody"><tr><td colspan="9" class="empty">설정을 마치고 Lot 목록을 입력하세요.</td></tr></tbody></table></div>
+    <div class="tablewrap"><table><thead><tr><th>입력 Lot</th><th>Conder Scan Lot 폴더 · S/M</th><th>하위 폴더 (실제 이름)</th><th>Layer</th><th>공정번호 (AOI · Review)</th><th>재리뷰</th><th>장비</th><th>호기 · 스캔 시각</th><th>경로</th></tr></thead><tbody id="tbody"><tr><td colspan="9" class="empty">설정을 마치고 Lot 목록을 입력하세요.</td></tr></tbody></table></div>
   </section>
 </div>
 <div class="devmark">Developer: 김민규</div>
-<dialog id="dlg"><div class="modalhead"><h3 id="dlgTitle">자세히</h3><button class="btn" id="dlgClose" type="button">닫기</button></div><div class="modalbody" id="dlgBody"></div></dialog>
+<dialog id="dlg"><div class="modalhead"><h3 id="dlgTitle">Lot History</h3><button class="btn" id="dlgClose" type="button">닫기</button></div><div class="modalbody" id="dlgBody"></div></dialog>
 <script>
 (()=>{
 'use strict';
@@ -244,20 +256,25 @@ async function findLot(lot){
  const re=new RegExp('(?:^|[^A-Za-z0-9.])'+low.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![A-Za-z0-9])','i');
  return rootList.find(([n])=>re.test(n))||rootList.find(([n])=>n.toLowerCase().includes(low))||null}
 async function lookLot(lot,idx){
- const hit=await findLot(lot);if(!hit)return {lot,folder:'',sm:'',layers:[],missing:true};
+ const hit=await findLot(lot);if(!hit)return {lot,folder:'',sm:'',subs:[],layers:[],missing:true};
  const [folder,h]=hit,smm=folder.match(/\(([^()]*)\)\s*$/),sm=smm?smm[1].trim():'';
- const groups=new Map,etc=[];
- for(const [n,x] of await dirs(h)){const st=stageOf(n.split('(')[0])||stageOf(n);if(!st){etc.push(n);continue}if(!groups.has(st.key))groups.set(st.key,{stage:st,folders:[]});groups.get(st.key).folders.push({name:n,kind:kindOf(n),h:x})}
- const layers=[];
- for(const st of STAGES){const g=groups.get(st.key);if(!g)continue;g.folders.sort((a,b)=>a.name.localeCompare(b.name,'ko',{numeric:true}));
-  const re=g.folders.filter(f=>f.kind==='rereview'),skip=g.folders.filter(f=>f.kind==='skip'),scan=g.folders.filter(f=>f.kind==='base'||f.kind==='rescan');
-  const L={stage:st,folders:g.folders.map(f=>({name:f.name,kind:f.kind})),status:'',txt:[],equipment:'',camtek:[],kla:[]};
-  if(re.length){L.status='done';for(const f of re)L.txt.push(Object.assign({name:f.name},await countTxt(f.h)))}
-  else if(skip.length){L.status='skip'}
-  else{L.status='need';L.equipment=await equipmentOf(scan.map(f=>[f.name,f.h]));
-   if(L.equipment!=='KLA')L.camtek=camtekHits(idx,sm,st);if(L.equipment!=='Camtek')L.kla=klaHits(idx,lot,st)}
-  layers.push(L)}
- return {lot,folder,sm,layers,etc}}
+ // 하위 폴더 = 실제 이름 그대로 한 줄씩(Para #41). Layer 를 알 수 없는 폴더도 보여 준다.
+ const subs=(await dirs(h)).map(([n,x])=>({name:n,h:x,stage:stageOf(n.split('(')[0])||stageOf(n),kind:kindOf(n)}))
+  .sort((a,b)=>a.name.localeCompare(b.name,'ko',{numeric:true}));
+ const layerStatus=new Map;
+ for(const st of STAGES){const g=subs.filter(s=>s.stage===st);if(!g.length)continue;
+  layerStatus.set(st.key,g.some(s=>s.kind==='rereview')?'done':g.some(s=>s.kind==='skip')?'skip':'need')}
+ const out=[];
+ for(const s of subs){const R={name:s.name,kind:s.kind,stage:s.stage,status:'',txt:null,equipment:'',camtek:[],kla:[]};
+  if(s.stage){
+   if(s.kind==='rereview'){R.status='rereview';R.txt=await countTxt(s.h)}
+   else if(s.kind==='skip')R.status='skip';
+   else{R.status=layerStatus.get(s.stage.key);
+    if(R.status==='need'){R.equipment=await equipmentOf([[s.name,s.h]]);
+     if(R.equipment!=='KLA')R.camtek=camtekHits(idx,sm,s.stage);if(R.equipment!=='Camtek')R.kla=klaHits(idx,lot,s.stage)}}}
+  out.push(R)}
+ const layers=STAGES.filter(st=>layerStatus.has(st.key)).map(st=>({stage:st,status:layerStatus.get(st.key)}));
+ return {lot,folder,sm,subs:out,layers}}
 async function run(){
  const lots=parseLots();if(!lots.length)return setMsg('조회할 Lot 을 입력하세요.');
  if(!handles.conder)return setMsg('② Conder Scan 폴더를 먼저 연결하세요.');
@@ -266,72 +283,103 @@ async function run(){
  $('#scan').disabled=true;$('#csv').disabled=true;rootList=null;results=[];setBar(0);
  try{const idx=await loadIndex();if(!idx.camtek.length&&!idx.kla.size)setMsg('캐시가 비어 있습니다 — 재리뷰 여부만 확인합니다. [캐시 갱신]을 누르세요.');
   for(let i=0;i<lots.length;i++){setMsg((i+1)+' / '+lots.length+' 조회 중… '+lots[i]);results.push(await lookLot(lots[i],idx));setBar((i+1)/lots.length*100)}
-  render();const need=results.reduce((n,r)=>n+r.layers.filter(l=>l.status==='need').length,0);setMsg('조회 완료: Lot '+lots.length+'개 · 재리뷰 필요 Layer '+need+'개');$('#csv').disabled=false}
+  render();const need=results.reduce((n,r)=>n+(r.layers||[]).filter(l=>l.status==='need').length,0);setMsg('조회 완료: Lot '+lots.length+'개 · 재리뷰 필요 Layer '+need+'개');$('#csv').disabled=false}
  catch(e){setMsg('조회 실패: '+e.message)}
  finally{$('#scan').disabled=false}}
 $('#scan').onclick=run;
 
 /* ---------- 화면 ---------- */
 const unc=()=>$('#conderUnc').value.trim().replace(/[\\/]+$/,'');
-const STATUS={done:['재리뷰 완료','done'],need:['재리뷰 필요','need'],skip:['Skip','skip']};
-const equipBadge=e=>e?'<span class="equip '+(e==='KLA'?'kla':e==='Camtek'?'camtek':'unknown')+'">'+esc(e)+'</span>':'';
-function hitsHtml(L,limit){
- if(L.status!=='need')return '<span class="muted small">조사하지 않음</span>';
- const c=L.camtek.map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at||'시각 모름')+'<br><span class="muted">Camtek · '+esc(h.job)+' · S/M '+esc(h.sm)+' · '+h.wafers+'장</span></span>');
- const k=L.kla.map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at)+'<br><span class="muted">KLA · '+esc(h.lot)+' ('+(h.review?'Review':'AOI')+' '+esc(h.proc)+') · 슬롯 '+h.slots+'개</span></span>');
- const all=c.concat(k);if(!all.length)return '<span class="muted small">캐시에서 못 찾음</span>';
- const ms=new Set(L.camtek.map(h=>h.machine).concat(L.kla.map(h=>h.machine)));
- return (ms.size>1?'<span class="st skip" style="margin-bottom:4px">여러 호기 '+ms.size+'대</span>':'')+all.slice(0,limit).join('')+(all.length>limit?'<span class="hit muted">외 '+(all.length-limit)+'건 — 근거 칸 [자세히]</span>':'')}
-function evidenceHtml(r,L,ri,li){
- const path=unc()+'\\'+r.folder;let s='';
- if(L.status==='done')s=L.txt.map(t=>'<span class="hit">'+esc(t.name)+' · 맵(.txt) '+(t.partial?'<b>폴더가 커서 세지 않음</b>':'<b>'+t.count+'개</b>')+'<br><span class="mono">'+esc(path+'\\'+t.name)+'</span> <button class="copy" data-copy="'+esc(path+'\\'+t.name)+'">경로 복사</button></span>').join('');
- else s='<span class="folders">폴더: '+L.folders.map(f=>esc(f.name)).join(' · ')+'</span>';
- return s+(L.status==='need'?' <button class="copy" data-detail="'+ri+':'+li+'">더보기 · Lot History</button>':'')}
+// 재리뷰 칸: 재리뷰 폴더 = 맵 수, 기본 · 재스캔 폴더 = 같은 Layer 의 재리뷰 여부, Skip 폴더 = Skip. Layer 를 모르는 폴더는 빈칸.
+const STATUS={rereview:['재리뷰 결과','done'],done:['재리뷰 완료','done'],need:['재리뷰 필요','need'],skip:['Skip','skip']};
+const KIND={base:'',rescan:'재스캔',rereview:'재리뷰',skip:'Skip'};
+const equipBadge=e=>e&&e!=='Unknown'?'<span class="equip '+(e==='KLA'?'kla':'camtek')+'">'+esc(e)+'</span>':e==='Unknown'?'<span class="equip unknown">모름</span>':'';
+const MPAL=['#2563eb','#d97706','#059669','#db2777','#7c3aed','#0891b2','#65a30d','#dc2626','#475569','#c026d3'];
+const LPAL=['#6d28d9','#be185d','#0369a1','#b45309','#15803d','#9333ea','#0f766e','#a16207'];
+const layerColor=k=>{const i=STAGES.findIndex(s=>s.key===k);return i<0?'#64748b':LPAL[i%LPAL.length]};
+function machColors(list){const m=new Map;[...new Set(list)].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true})).forEach((x,i)=>m.set(x,MPAL[i%MPAL.length]));return m}
+const hitsOf=S=>S.camtek.map(h=>({vendor:'Camtek',machine:h.machine,at:h.at})).concat(S.kla.map(h=>({vendor:'KLA',machine:h.machine,at:h.at}))).sort((a,b)=>a.at<b.at?1:-1);
+function hitsHtml(r,S,ri,si){
+ if(S.status!=='need')return '';
+ const all=hitsOf(S);if(!all.length)return '<span class="muted small">캐시에 없음</span>';
+ const ms=new Set(all.map(h=>h.machine));
+ return (ms.size>1?'<span class="st skip mini">여러 호기 '+ms.size+'대</span>':'')+all.slice(0,3).map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at||'시각 모름')+'</span>').join('')+
+  '<button class="copy" data-hist="'+ri+':'+esc(S.stage.key)+'">'+(all.length>3?'외 '+(all.length-3)+'건 · ':'')+'Lot History</button>'}
+function statusHtml(S){
+ if(!S.status)return '';const [t,c]=STATUS[S.status];
+ let s='<span class="st '+c+'">'+t+'</span>';
+ if(S.status==='rereview')s+='<span class="small muted sub">맵(.txt) '+(S.txt.partial?'많음 — 세지 않음':S.txt.count+'개')+'</span>';
+ return s}
 function render(){
  const b=$('#tbody');b.innerHTML='';
  results.forEach((r,ri)=>{
-  if(r.missing){b.insertAdjacentHTML('beforeend','<tr><td>'+esc(r.lot)+'</td><td colspan="8" class="lotmissing left">Conder Scan 에서 Lot 폴더를 찾지 못했습니다</td></tr>');return}
-  const head='<b>'+esc(r.folder)+'</b><br><span class="muted small">S/M '+esc(r.sm||'없음(괄호 없음)')+'</span>';
-  if(!r.layers.length){b.insertAdjacentHTML('beforeend','<tr><td>'+esc(r.lot)+'</td><td class="left">'+head+'</td><td colspan="7" class="muted">Layer 폴더 없음'+(r.etc.length?' (기타 폴더: '+esc(r.etc.join(', '))+')':'')+'</td></tr>');return}
-  r.layers.forEach((L,li)=>{const [t,c]=STATUS[L.status];
-   b.insertAdjacentHTML('beforeend','<tr>'+(li===0?'<td rowspan="'+r.layers.length+'">'+esc(r.lot)+'</td><td rowspan="'+r.layers.length+'" class="left">'+head+(r.etc.length?'<span class="folders">기타 폴더: '+esc(r.etc.join(', '))+'</span>':'')+'<br><button class="copy" data-history="'+ri+'">Lot History</button></td>':'')+
-    '<td class="layername">'+esc(L.stage.key)+'</td><td><span class="process aoi">'+L.stage.aoi+' / '+L.stage.aoiName+'</span></td><td><span class="process review">'+L.stage.rev+' / '+L.stage.revName+'</span></td>'+
-    '<td><span class="st '+c+'">'+t+'</span></td><td>'+(L.status==='need'?equipBadge(L.equipment):'')+'</td><td class="left">'+hitsHtml(L,3)+'</td><td class="left">'+evidenceHtml(r,L,ri,li)+'</td></tr>')})});
+  if(r.missing){b.insertAdjacentHTML('beforeend','<tr class="lotstart"><td>'+esc(r.lot)+'</td><td colspan="8" class="lotmissing left">Conder Scan 에서 Lot 폴더를 찾지 못했습니다</td></tr>');return}
+  const head='<b>'+esc(r.folder)+'</b><span class="muted small sub">S/M '+esc(r.sm||'없음')+'</span><button class="copy" data-hist="'+ri+':">Lot History</button>';
+  if(!r.subs.length){b.insertAdjacentHTML('beforeend','<tr class="lotstart"><td>'+esc(r.lot)+'</td><td class="left">'+head+'</td><td colspan="7" class="muted">하위 폴더 없음</td></tr>');return}
+  r.subs.forEach((S,si)=>{const path=unc()+'\\'+r.folder+'\\'+S.name,st=S.stage;
+   b.insertAdjacentHTML('beforeend','<tr class="'+(si===0?'lotstart ':'')+(S.status==='need'?'rowneed':'')+'">'+(si===0?'<td rowspan="'+r.subs.length+'" class="lotcell">'+esc(r.lot)+'</td><td rowspan="'+r.subs.length+'" class="left lothead">'+head+'</td>':'')+
+    '<td class="left sname">'+esc(S.name)+(KIND[S.kind]&&st?' <span class="kind k-'+S.kind+'">'+KIND[S.kind]+'</span>':'')+'</td>'+
+    '<td class="layername">'+(st?esc(st.key):'')+'</td>'+
+    '<td>'+(st?'<span class="process aoi">'+st.aoi+' '+st.aoiName+'</span><span class="process review">'+st.rev+' '+st.revName+'</span>':'')+'</td>'+
+    '<td>'+statusHtml(S)+'</td><td>'+(S.status==='need'?equipBadge(S.equipment):'')+'</td><td class="left">'+hitsHtml(r,S,ri,si)+'</td>'+
+    '<td><button class="copy" data-copy="'+esc(path)+'" title="'+esc(path)+'">경로 복사</button></td></tr>')})});
  const lay=results.flatMap(r=>r.layers);
- $('#summary').textContent='Lot '+results.length+'개 · 못 찾은 Lot '+results.filter(r=>r.missing).length+'개 · Layer '+lay.length+'개(재리뷰 완료 '+lay.filter(l=>l.status==='done').length+' · 재리뷰 필요 '+lay.filter(l=>l.status==='need').length+' · Skip '+lay.filter(l=>l.status==='skip').length+') · 판정: 같은 Layer 에 이름에 "_재리뷰"가 붙은 폴더가 있으면 재리뷰 완료';
+ $('#summary').textContent='Lot '+results.length+'개 · 못 찾은 Lot '+results.filter(r=>r.missing).length+'개 · Layer '+lay.length+'개(재리뷰 완료 '+lay.filter(l=>l.status==='done').length+' · 재리뷰 필요 '+lay.filter(l=>l.status==='need').length+' · Skip '+lay.filter(l=>l.status==='skip').length+')';
  b.querySelectorAll('[data-copy]').forEach(x=>x.onclick=()=>copy(x.dataset.copy));
- b.querySelectorAll('[data-detail]').forEach(x=>x.onclick=()=>{const [ri,li]=x.dataset.detail.split(':').map(Number);detail(results[ri],results[ri].layers[li])});
- b.querySelectorAll('[data-history]').forEach(x=>x.onclick=()=>detail(results[+x.dataset.history],null))}
-/* Lot History = 이 Lot 의 모든 스캔(Camtek: S/M 코드가 같은 Batch Report, KLA: Lot 이름@공정번호 폴더)을 시간순으로. 호기가 바뀌면 표시. */
+ b.querySelectorAll('[data-hist]').forEach(x=>x.onclick=()=>{const [ri,k]=x.dataset.hist.split(':');openHistory(results[+ri],k||'')})}
+/* Lot History = 이 Lot 의 모든 스캔(Camtek: S/M 코드가 같은 Batch Report, KLA: Lot 이름@공정번호 폴더)을 시간순으로.
+   Camtek AOI Manager 의 Lot History 와 같은 꼴: ① 시간순 요약(스캔마다 막대 하나, 사이 간격 · 호기 이동) ② 시간순 기록(앞 기록과의 간격 · 호기 이동). */
 function lotHistory(r){const idx=indexCache||{camtek:[],kla:new Map};const code=lotCode(r.sm),out=[];
  if(code)for(const x of idx.camtek)if(x[4]===code){const st=stageOf(x[1]);out.push({vendor:'Camtek',machine:x[0],at:x[5],layer:st?st.key:'?',what:x[1]+' / '+x[2]+' · S/M '+x[3]+' · '+x[6]+'장',src:x[7]})}
  for(const k of idx.kla.get(r.lot.toLowerCase())||[]){const st=PROC.get(k.proc);const h=st?klaHits({kla:new Map([[r.lot.toLowerCase(),[k]]])},r.lot,st)[0]:null;
   out.push({vendor:'KLA',machine:k.machine,at:h?h.at:k.day,layer:st?st.key:'?',what:k.lot+' · '+(st?(k.proc===st.rev?'Review ':'AOI ')+k.proc:'공정 '+(k.proc||'?'))+' · 슬롯 '+k.slots.length+'개',src:k.path})}
  return out.sort((a,b)=>a.at<b.at?-1:a.at>b.at?1:0)}
-function histTable(rows,showLayer){if(!rows.length)return '<div class="empty">캐시에서 찾지 못했습니다.</div>';let prev='';
- return '<div class="tablewrap"><table style="min-width:760px"><thead><tr><th>#</th><th>스캔 시각</th>'+(showLayer?'<th>Layer</th>':'')+'<th>장비</th><th>호기</th><th>내용 · 근거</th></tr></thead><tbody>'+rows.map((h,i)=>{const moved=prev&&prev!==h.machine;prev=h.machine;
-  return '<tr><td>'+(i+1)+'</td><td class="nowrap">'+esc(h.at||'시각 모름')+'</td>'+(showLayer?'<td class="layername">'+esc(h.layer)+'</td>':'')+'<td>'+equipBadge(h.vendor)+'</td><td class="nowrap"><b>'+esc(h.machine)+'</b>'+(moved?'<br><span class="st skip">호기 이동</span>':'')+'</td><td class="left">'+esc(h.what)+'<br><span class="mono">'+esc(h.src)+'</span></td></tr>'}).join('')+'</tbody></table></div>'}
+const toDate=s=>{const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);return m?new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0)):null};
+function dur(a,b){const A=toDate(a),B=toDate(b);if(!A||!B)return '';let m=Math.max(0,Math.round((B-A)/60000));if(m<60)return m+'분';const h=Math.floor(m/60);m%=60;if(h<24)return h+'시간'+(m?' '+m+'분':'');const d=Math.floor(h/24);return d+'일'+(h%24?' '+(h%24)+'시간':'')}
+const short=s=>String(s||'').slice(5,16);
+function histSvg(rows,mc){
+ const step=128,L=24,W=Math.max(640,L*2+rows.length*step),H=150;let g='';
+ rows.forEach((h,i)=>{const x=L+i*step+step/2,lc=layerColor(h.layer);
+  if(i){const p=rows[i-1],mid=x-step/2,mv=p.machine!==h.machine;
+   g+='<text x="'+mid+'" y="14" text-anchor="middle" class="sv-gap">'+esc(dur(p.at,h.at))+'</text>';
+   if(mv)g+='<text x="'+mid+'" y="72" text-anchor="middle" class="sv-mv">⇄</text><text x="'+mid+'" y="86" text-anchor="middle" class="sv-mv small">호기 이동</text>'}
+  g+='<g><title>'+esc((i+1)+'. '+h.at+' · '+h.machine+' · '+h.layer+' · '+h.vendor+'\n'+h.what)+'</title>'+
+   '<rect x="'+(x-30)+'" y="24" width="60" height="22" rx="6" fill="'+lc+'"/><text x="'+x+'" y="39" text-anchor="middle" class="sv-lay">'+esc(h.layer)+'</text>'+
+   '<rect x="'+(x-30)+'" y="50" width="60" height="44" rx="6" fill="'+mc.get(h.machine)+'" opacity=".16" stroke="'+mc.get(h.machine)+'"/>'+
+   '<text x="'+x+'" y="68" text-anchor="middle" class="sv-m" fill="'+mc.get(h.machine)+'">'+esc(h.machine)+'</text><text x="'+x+'" y="84" text-anchor="middle" class="sv-v">'+esc(h.vendor)+'</text>'+
+   '<text x="'+x+'" y="112" text-anchor="middle" class="sv-t">'+esc(short(h.at).slice(0,5))+'</text><text x="'+x+'" y="126" text-anchor="middle" class="sv-t">'+esc(short(h.at).slice(6))+'</text>'+
+   '<text x="'+x+'" y="144" text-anchor="middle" class="sv-n">'+(i+1)+'</text></g>'});
+ return '<div class="svscroll"><svg width="'+W+'" height="'+H+'" role="img" aria-label="시간순 요약">'+g+'</svg></div>'}
+function histList(rows,mc){let prev=null;
+ return '<ol class="hlist">'+rows.map((h,i)=>{let gap='';
+  if(prev){const mv=prev.machine!==h.machine;gap='<li class="gapline'+(mv?' moved':'')+'">↓ '+esc(dur(prev.at,h.at))+' 뒤'+(prev.layer!==h.layer?' · Layer 바뀜('+esc(prev.layer)+' → '+esc(h.layer)+')':' · 다시 스캔')+(mv?' · <b>호기 이동 '+esc(prev.machine)+' → '+esc(h.machine)+'</b>':'')+'</li>'}
+  prev=h;
+  return gap+'<li class="hrow"><span class="hn">'+(i+1)+'</span><span class="ht">'+esc(h.at||'시각 모름')+'</span><span class="mchip" style="--c:'+mc.get(h.machine)+'">'+esc(h.machine)+'</span>'+
+   '<span class="lchip" style="--c:'+layerColor(h.layer)+'">'+esc(h.layer)+'</span>'+equipBadge(h.vendor)+'<div class="hw">'+esc(h.what)+'<span class="mono">'+esc(h.src)+'</span></div></li>'}).join('')+'</ol>'}
+let histState=null;
+function openHistory(r,layer){histState={r,all:lotHistory(r),layer:layer||''};$('#dlgTitle').textContent=r.lot+' · Lot History';paintHistory();if(!$('#dlg').open)$('#dlg').showModal()}
+function paintHistory(){
+ const {r,all,layer}=histState,rows=layer?all.filter(h=>h.layer===layer):all,mc=machColors(all.map(h=>h.machine));
+ const layers=[...new Set(all.map(h=>h.layer))].sort((a,b)=>STAGES.findIndex(s=>s.key===a)-STAGES.findIndex(s=>s.key===b));
+ const ms=[...new Set(rows.map(h=>h.machine))];let moves=0;rows.forEach((h,i)=>{if(i&&rows[i-1].machine!==h.machine)moves++});
+ let html='<div class="hfilter" role="group" aria-label="Layer 고르기"><button type="button" class="chip'+(layer?'':' on')+'" data-layer="">전체 '+all.length+'</button>'+
+  layers.map(k=>'<button type="button" class="chip'+(layer===k?' on':'')+'" data-layer="'+esc(k)+'" style="--c:'+layerColor(k)+'">'+esc(k)+' '+all.filter(h=>h.layer===k).length+'</button>').join('')+'</div>';
+ html+='<div class="hkpi"><div><b>'+rows.length+'</b><span>스캔</span></div><div><b>'+ms.length+'</b><span>호기 · '+esc(ms.join(', ')||'—')+'</span></div><div><b>'+moves+'</b><span>호기 이동</span></div><div><b class="sm">'+esc(rows.length?short(rows[0].at)+' ~ '+short(rows[rows.length-1].at):'—')+'</b><span>기간</span></div></div>';
+ if(!rows.length)html+='<div class="empty">캐시에서 이 Lot 의 스캔을 찾지 못했습니다.</div>';
+ else html+='<h4 class="hsec">① 시간순 요약 <small>스캔마다 한 칸 — 위 = Layer, 가운데 = 호기 · 장비, 아래 = 스캔 시각. 칸 사이 = 간격 · 호기 이동.</small></h4>'+histSvg(rows,mc)+
+  '<h4 class="hsec">② 시간순 기록</h4>'+histList(rows,mc);
+ html+='<p class="small muted">Camtek = 캐시의 Batch Report 중 S/M 코드 '+esc(lotCode(r.sm)||'?')+' 인 것 · KLA = '+esc(r.lot)+'@공정번호 폴더. 같은 S/M 코드를 다른 Lot 이 다시 쓰면 섞일 수 있습니다.</p>';
+ $('#dlgBody').innerHTML=html;
+ $('#dlgBody').querySelectorAll('[data-layer]').forEach(x=>x.onclick=()=>{histState.layer=x.dataset.layer;paintHistory()})}
 async function copy(t){try{await navigator.clipboard.writeText(t);setMsg('경로를 복사했습니다')}catch{setMsg('복사하지 못했습니다: '+t)}}
-function detail(r,L){
- const hist=lotHistory(r),ms=new Set(hist.map(h=>h.machine));
- $('#dlgTitle').textContent=r.lot+(L?' · '+L.stage.key+' 스캔 기록 · Lot History':' · Lot History');
- let html='';
- if(L){const rows=L.camtek.map(h=>({vendor:'Camtek',machine:h.machine,at:h.at,layer:L.stage.key,what:h.job+' / '+h.setup+' · S/M '+h.sm+' · '+h.wafers+'장',src:h.file}))
-   .concat(L.kla.map(h=>({vendor:'KLA',machine:h.machine,at:h.at,layer:L.stage.key,what:h.lot+' · '+(h.review?'Review ':'AOI ')+h.proc+' · 슬롯 '+h.slots+'개',src:h.path}))).sort((a,b)=>a.at<b.at?-1:1);
-  const lm=new Set(rows.map(x=>x.machine));
-  html+='<h4 style="margin:0 0 8px">'+esc(L.stage.key)+' 스캔 기록 — '+rows.length+'건 · 호기 '+lm.size+'대'+(lm.size>1?' (여러 호기에서 스캔됨)':'')+'</h4>'+
-   '<div class="notice">Camtek = 캐시의 Batch Report 중 S/M 코드 '+esc(lotCode(r.sm)||'?')+' 이고 Job 이름에 '+esc(L.stage.key)+' 가 있는 것. KLA = Lot 이름이 '+esc(r.lot)+'@공정번호('+L.stage.aoi+' 또는 '+L.stage.rev+')인 폴더. 오래된 것이 위.</div>'+histTable(rows,false)+'<br>'}
- html+='<h4 style="margin:0 0 8px">Lot History (모든 Layer) — '+hist.length+'건 · 호기 '+ms.size+'대</h4><div class="notice">이 Lot 의 캐시에 있는 모든 스캔을 시간순으로 보여 줍니다. 앞 줄과 호기가 다르면 \'호기 이동\'으로 표시합니다. 같은 S/M 코드를 다른 Lot 이 다시 쓴 경우가 섞일 수 있으니 날짜를 함께 확인하세요.</div>'+histTable(hist,true);
- $('#dlgBody').innerHTML=html;$('#dlg').showModal()}
 $('#dlgClose').onclick=()=>$('#dlg').close();
 $('#clear').onclick=()=>{$('#lots').value='';results=[];$('#tbody').innerHTML='<tr><td colspan="9" class="empty">Lot 목록을 입력하세요.</td></tr>';$('#summary').textContent='조회 전';$('#csv').disabled=true;setBar(0)};
-$('#csv').onclick=()=>{const rows=[['Input Lot','Lot Folder','S/M','Layer','AOI Process','Review Process','Re-review','Equipment','Machine','Scan Time','Source','Map txt count','Folders']];
- results.forEach(r=>{if(r.missing){rows.push([r.lot,'Lot folder not found','','','','','','','','','','',''] );return}
-  r.layers.forEach(L=>{const hits=L.camtek.map(h=>['Camtek',h.machine,h.at,h.job+' / '+h.file])
-   .concat(L.kla.map(h=>['KLA',h.machine,h.at,h.path]));const base=[r.lot,r.folder,r.sm,L.stage.key,L.stage.aoi+' / '+L.stage.aoiName,L.stage.rev+' / '+L.stage.revName,STATUS[L.status][0]];
-   const txt=L.txt.map(t=>t.partial?'?':t.count).join(' / '),folders=L.folders.map(f=>f.name).join(' | ');
-   if(!hits.length)rows.push(base.concat([L.equipment,'','','',txt,folders]));else hits.forEach(h=>rows.push(base.concat([h[0],h[1],h[2],h[3],txt,folders])))})});
- const csv='\ufeff'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
+$('#csv').onclick=()=>{const rows=[['Input Lot','Lot Folder','S/M','Sub Folder','Layer','AOI Process','Review Process','Re-review','Map txt count','Equipment','Machine','Scan Time','Source']];
+ results.forEach(r=>{if(r.missing){rows.push([r.lot,'Lot folder not found','','','','','','','','','','','']);return}
+  r.subs.forEach(S=>{const st=S.stage,base=[r.lot,r.folder,r.sm,S.name,st?st.key:'',st?st.aoi+' / '+st.aoiName:'',st?st.rev+' / '+st.revName:'',S.status?STATUS[S.status][0]:'',S.txt?(S.txt.partial?'?':S.txt.count):''];
+   const hits=S.camtek.map(h=>['Camtek',h.machine,h.at,h.job+' / '+h.file]).concat(S.kla.map(h=>['KLA',h.machine,h.at,h.path]));
+   if(!hits.length)rows.push(base.concat([S.status==='need'?S.equipment:'','','','']));else hits.forEach(h=>rows.push(base.concat(h)))})});
+ const csv='﻿'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='TB500_Review_'+stamp(now()).slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 $('#conderUnc').value=(()=>{try{return localStorage.getItem('tb500-review-unc')||$('#conderUnc').value}catch{return $('#conderUnc').value}})();
 $('#conderUnc').onchange=()=>{try{localStorage.setItem('tb500-review-unc',$('#conderUnc').value)}catch{}};
