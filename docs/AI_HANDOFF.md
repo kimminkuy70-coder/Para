@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #42 후속: 리뷰 HTML 탭(설정 · 조회) · 초록 테마 · 슬롯별 표 접기 (2026-11-07 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-07 · 기준 커밋 `41c26a9` · Para #42 후속(세션 지시): "wafer slot 별로 나오는 것은 접었다 폈다, 접는 게 기본 · 설정은 따로 탭, 설정이 1번째 탭 ·
+  지금 파란색 기반인데 내 프로그램처럼 초록색 기반으로 · 설정 설명글은 예시가 있으면 줄바꿈 · 굵은 글씨로 가독성".
+- 한 일(`TB500_Review.html`): 머리(`.topbar`, navy `#37474f`) + 탭(`.tabs`, `showTab`/`paintTabs`/`setupDone`) — [설정](폴더 연결 3개 · 캐시 · [캐시 갱신] · 안내 목록) / [조회](Lot 목록 · 결과).
+  색 토큰 `--navy`/`--acc`(#047857)/`--acc2`/`--acclt`/`--accline`(Camtek AOI Manager `styles.css` 의 slate + emerald 계열), 파란 강조(버튼 · 링크 · 진행 막대 · 호기 이동 · 칩) → 초록/navy.
+  설정 설명 = `.desc` 목록(한 줄에 한 동작, 핵심 굵게) + `.ex` 예시 상자(줄 바꿔 고정폭) + 연결 상태 배지 `.conn`(#share-text 등 — 종전처럼 설명을 덮어쓰지 않음).
+  진행 막대 · 메시지는 두 탭에 하나씩(`#bar`/`#bar2`, `#msg`/`#msg2`, `setBar`/`setMsg` 가 둘 다 씀). ③ wafer 판정 표 = `<details class="vgrp">`(기본 접힘).
+- 시험: `tools/test_tb500_review.mjs` 에 탭 순서 · 처음 탭 · 빨간 점 · 연결 배지 · 탭 전환 · 접힘 기본/펼치기 단언 추가, 연결 2회 통과.
+- 내 해석(확인 전): ⓐ 처음 여는 탭 = 설정을 다 마쳤으면 [조회], 아니면 [설정] ⓑ 접는 대상은 Lot History ③ 슬롯별 표만(Batch Report 보기 창의 wafer 표는 그 창의 본문이라 펼친 채)
+  ⓒ 장비 · Layer · 호기 색(KLA 파랑 포함)은 자료 구분용이라 테마와 별개로 유지.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #42 후속 2 | 슬롯별 표 접기(기본 접힘) · 설정 탭 분리(첫 탭) · 초록 테마 · 설정 설명 가독성 | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #42 리뷰 HTML: Camtek Pass/Fail 을 Camtek AOI Manager 방식으로 · Batch Report 보기 (2026-11-07 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-07 · 기준 커밋 `9715c6f` · 이슈 Para #42 + 같은 run 중 세션 추가 지시 · 작업 브랜치 `version_TB500_review`(릴리스 없음 — 단일 HTML).

@@ -47,9 +47,14 @@ assert.deepEqual(fn.stage,['PIDS5','PIDS3','RDL3',null]);
 assert.deepEqual(fn.start,['2026-08-30 21:41:31','2026-01-01 00:05:00','2026-10-22 11:23:53']);
 // 첫 화면 = 캐시 없음 알림
 await page.locator('#banner.show').waitFor();
+// Para #42 후속: 탭 = 설정(첫 탭) · 조회. 설정을 안 마쳤으면 설정 탭이 열리고 빨간 점이 붙는다.
+assert.deepEqual((await page.getByRole('tab').allInnerTexts()).map(t=>t.trim()),['설정','조회']);
+assert.equal(await page.locator('#tab-setup').getAttribute('aria-selected'),'true');
+assert.equal(await page.locator('#tab-setup .tdot').count(),1);
+assert.ok(await page.locator('#panel-review').isHidden());
 for(const k of ['share','conder','local'])await page.locator(`[data-pick="${k}"]`).click();
 await page.getByRole('button',{name:'캐시 갱신'}).click();
-await page.locator('#msg').filter({hasText:'KLA 캐시: KLA_캐시_20261106_090100.zip 받음'}).waitFor();
+await page.locator('#msg2').filter({hasText:'KLA 캐시: KLA_캐시_20261106_090100.zip 받음'}).waitFor();
 const log=await page.evaluate(()=>window.__fs.log);
 assert.ok(log.includes('remove TB500리뷰_Camtek색인_20200101_000000.json'),JSON.stringify(log));     // 최신 1개만
 const localNames=await page.evaluate(()=>[...window.__fs.top.local.files.keys()].sort());
@@ -59,13 +64,17 @@ assert.equal(await page.locator('#banner.show').count(),0);
 assert.match(await page.locator('#cache-camtek').innerText(),/호기 2 대 · Batch Report 5 개/);
 // 다시 누르면 이미 최신
 await page.getByRole('button',{name:'캐시 갱신'}).click();
-await page.locator('#msg').filter({hasText:'Camtek 캐시: 이미 최신'}).waitFor();
+await page.locator('#msg2').filter({hasText:'Camtek 캐시: 이미 최신'}).waitFor();
 // 예전 형식(schema 2 — wafer 별 Pass/Fail 없음) 색인은 같은 zip 이어도 다시 푼다.
 await page.evaluate(()=>{const d=window.__fs.top.local,n='TB500리뷰_Camtek색인_20261106_090000.json',j=JSON.parse(new TextDecoder().decode(d.files.get(n)));j.schema=3;j.rows.forEach(r=>r.length=10);d.files.set(n,new TextEncoder().encode(JSON.stringify(j)))});
 await page.getByRole('button',{name:'캐시 갱신'}).click();
-await page.locator('#msg').filter({hasText:'Camtek 캐시: BatchReport_캐시_20261106_090000.zip 받음'}).waitFor();
+await page.locator('#msg2').filter({hasText:'Camtek 캐시: BatchReport_캐시_20261106_090000.zip 받음'}).waitFor();
 assert.equal(await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_Camtek색인_20261106_090000.json'))).schema),4);
 // 조회
+assert.equal(await page.locator('#tab-setup .tdot').count(),0);
+assert.match(await page.locator('#share-text').innerText(),/^연결됨/);
+await page.getByRole('tab',{name:'조회'}).click();
+assert.ok(await page.locator('#panel-setup').isHidden());
 await page.locator('#lots').fill('TB500.INT1041\nTB500.INT948');
 await page.getByRole('button',{name:'조회',exact:true}).click();
 await page.locator('#msg').filter({hasText:'조회 완료'}).waitFor();
@@ -100,6 +109,9 @@ assert.deepEqual(await body.locator('svg text.sv-pass').allTextContents(),['22P 
 const vt=body.locator('table.vtab');
 assert.equal(await vt.count(),1);
 assert.match(await body.locator('.vgrp h5').innerText(),/RDL1 재스캔으로 완료\s*wafer 25 · 한 번에 Pass 22 · 재스캔 Pass 3/);
+// 슬롯별 표는 접힌 것이 기본, 누르면 펼친다
+assert.equal(await body.locator('details.vgrp').evaluate(d=>d.open),false);
+await body.locator('details.vgrp > summary').click();
 const vrows=await vt.locator('tbody tr').allInnerTexts();
 assert.equal(vrows.length,25);
 assert.deepEqual(vrows[0].split('\t').map(x=>x.trim()),['25','W00','Scan 2D Error. Aborted.','Pass','재스캔 Pass']);
