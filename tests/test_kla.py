@@ -46,7 +46,7 @@ class Kla(unittest.TestCase):
         self.assertEqual(slot_info("weird"), ("", ""))
 
     def test_roots_saved_and_validated(self):
-        self.assertEqual(self.kla.state(), {"roots": [], "backup": True})
+        self.assertEqual({k: v for k, v in self.kla.state().items() if k != "cache"}, {"roots": [], "backup": True})
         out = self.kla.set_roots({"roots": [{"name": "2.K2", "path": str(self.k2)}]})
         self.assertEqual(out["roots"], [{"name": "2.K2", "path": str(self.k2), "backups": []}])
         cfg = json.loads(self.cfg.read_text(encoding="utf-8"))
@@ -148,7 +148,7 @@ class Kla(unittest.TestCase):
         self.assertEqual([(f["machine"], f["backup"]) for f in res["failed"]], [("2.K2", True)])
         self.assertEqual(len(res["hits"]), 2)
         # 장비를 지우면 그 백업 폴더 등록도 지워짐
-        self.assertEqual(self.kla.set_roots({"roots": []}), {"roots": [], "backup": True})
+        self.assertEqual({k: v for k, v in self.kla.set_roots({"roots": []}).items() if k != "cache"}, {"roots": [], "backup": True})
         self.assertEqual(json.loads(self.cfg.read_text(encoding="utf-8"))["kla_backups"], {})
 
     def test_ipc(self):

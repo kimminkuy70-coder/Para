@@ -1,6 +1,27 @@
 # AI 공통 인수인계
 
-> 2026-11-06 Para #40: 리뷰 전용 HTML 작업은 별도 브랜치 **`version_TB500_review`** 에서 진행(계획서 `docs/TB500_review_계획.md`, 그 브랜치의 인수인계 맨 위 절). 이 브랜치(version_v12) 코드는 바뀌지 않음.
+## 최신 재개 — Para #40 KLA 자재 찾기 캐시(OneDrive 공유) + v12.9.23 (2026-11-06 KST, `version_v12`)
+
+- 마지막 갱신 2026-11-06 · 기준 커밋 `4eb61e3` · 이슈 Para #40 · 작업 브랜치 `version_v12`(리뷰 전용 HTML 계획은 `version_TB500_review` — 그 브랜치 인수인계 맨 위 절).
+- 요청(소유자 댓글 6691333700, 세션에서 "댓글 확인해"): ① "OneDrive 연결은 최초 1회 사용자가 한다 — 그러면 이슈 없나?" ② KLA 캐시 파일이 없으니 **프로그램의 KLA 자재 찾기에
+  Camtek 과 같은 캐시 기능**을 먼저 구현 ③ OneDrive 업로드 경로는 같게, **Camtek 과 KLA 가 구분되게** zip 저장 ④ **v12.9.23 으로 릴리스까지**.
+- 답 ①: 그렇다 — 리뷰 HTML 은 OneDrive 바로 가기로 동기화된 로컬 `캐시공유` 폴더를 읽으므로 인터넷 다운로드 문제가 없다. 남는 제약은 Edge 가 HTML 을 열 때마다
+  폴더 접근 허용을 한 번 클릭해야 한다는 것뿐(브라우저 보안).
+- 한 일(코드 지도는 CLAUDE.md 맨 위 #40 절): `desktop_kla.py` 캐시(갱신 · 캐시 찾기 · 게시 · 목록 · 불러오기, 모듈 함수 `clean_index` · `merge_index` · `index_summary`),
+  IPC 4개 + `kla_search.source`, `Kla.tsx` KLA 캐시 상자 · 찾을 곳 라디오, `KlaSettings.tsx` `KlaCache` · `setKlaCache`, 문서(CLAUDE.md · IT보안 3.4 · 릴리즈 노트 `docs/release_notes/v12.9.23.md`).
+- 내 해석(확인 전): ⓐ Camtek zip 이름(`BatchReport_캐시_*`)은 기존 사용자 호환 때문에 그대로 두고 KLA 만 `KLA_캐시_*` + `KLA캐시정보.json` 으로 구분 ⓑ KLA 는 자동 분석이 없어
+  게시는 개발자가 [캐시 갱신] → [OneDrive 에 게시] 두 번 누름(자동 게시 없음) ⓒ 다시 읽기 = 최근 3일 + 날짜 폴더 mtime 이 바뀐 날짜 ⓓ zip 끌어 넣기 가져오기는 KLA 에 넣지 않음(OneDrive 목록만)
+  ⓔ 캐시 결과의 [폴더 열기]는 등록한 KLA 폴더 안일 때만 열림(장비 미등록 PC 는 경로 복사).
+- 시험: `tests/test_kla_cache.py` 6 · `tests/test_kla.py` 9 통과, `tools/check_project.py` = `test_batchreport.py`(tkinter 없음, 기존과 같음)만 실패, `npx tsc --noEmit` · `vite build` 통과,
+  `tools/test_desktop_ui.mjs`(PARA_TEST_NODE_MODULES=/opt/node-tools/node_modules) 통과 — KLA 캐시 갱신 → 게시 → 불러오기 → 캐시에서 찾기 단계 추가. Windows 실기 · 실제 KLA 장비 · OneDrive 는 미검증.
+  시험 환경에서 `pip install openpyxl` 필요(개발 환경만). UI 시험이 바꾸는 `docs/screenshots/*` · `CamtekAOI/Logs/*` 는 commit 하지 않음.
+- 릴리스 v12.9.23: 아래 결과 줄 참고.
+- 남은 일: 리뷰 전용 HTML 구현(`version_TB500_review`) — 소유자 답 대기 중인 질문 3~6(재리뷰 판정 기준 등)과 OneDrive 공유 링크.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #40 (2차) | KLA 자재 찾기 캐시 + OneDrive 게시(Camtek 과 구분) + v12.9.23 릴리스 | 구현 · 시험 통과, 릴리스 결과는 위 |
+
 
 ## 최신 재개 — Para #39 Batch Report 캐시 OneDrive 공유 · 자동 분석 설정 이동 · 저장 폴더 = docs 상위 (2026-10-30 KST, `version_v12`, v12.8.23)
 

@@ -811,6 +811,19 @@ try{
   await klaRow.click();
   assert.equal(await kla.locator('tr.kla-slot').count(),2);
   assert.match(await kla.locator('tr.kla-slot').first().innerText(),/2025-05-21 09:08\t슬롯 16/);
+  // Para #40: KLA 캐시 — 개발자 기능 › 캐시 갱신 → OneDrive 게시 → 불러오기 → 찾을 곳 'KLA 캐시'로 찾기.
+  await kla.getByRole('button',{name:'🛠 개발자 기능',exact:true}).click();
+  await kla.getByRole('button',{name:'캐시 갱신 (장비 폴더 이름 읽기)',exact:true}).click();
+  await kla.getByText(/갱신함: 장비 1대 · Lot 폴더 2개/).waitFor();
+  await kla.getByRole('button',{name:'OneDrive 에 게시',exact:true}).click();
+  await kla.getByText(/게시함: .*KLA_캐시_\d{8}_\d{6}\.zip/).waitFor();
+  await kla.getByRole('button',{name:'OneDrive 에서 불러오기',exact:true}).click();
+  await kla.getByRole('button',{name:'고른 캐시 받아서 불러오기',exact:true}).click();
+  await kla.getByRole('button',{name:'캐시에서 찾기',exact:true}).click();
+  await kla.getByText(/KLA 캐시에서 찾음/).waitFor();
+  assert.equal(await klaRow.count(),1);
+  assert.match(await klaRow.innerText(),/2\.K2\t2025-05-21\tRINT63@6324\t▸ 16, 2/);
+  await kla.getByRole('radio',{name:/장비 폴더/}).check();
   await page.getByRole('button',{name:'CAMTEK',exact:true}).click();
   assert.equal(await page.locator('.navigation button').first().innerText(),'Recipe 관리');
   // 기능 둘러보기: 주요 탭을 차례로 옮겨 다니며 끝까지(오류 없이) — 마지막은 설정 탭.

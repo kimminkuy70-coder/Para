@@ -11,11 +11,15 @@ import {MemoPick,type MemoMachine} from './MemoPick';
      켜고 끈다(`kla_backup`, 기본 켬). 켜면 KLA 자재 찾기가 원본 장비 폴더와 백업 폴더를 함께 찾는다.
    저장하면 'para:kla-state' 이벤트로 KLA 자재 찾기 화면도 바로 따라간다. */
 export type KlaRoot={name:string;path:string;backups:string[]};
-export type KlaState={roots:KlaRoot[];backup:boolean};
+/** 이 PC 로컬 KLA 캐시 요약(이슈 Para #40) — 장비 폴더 이름(날짜 · Lot · 슬롯) 색인. */
+export type KlaCache={updated_at:string;machines:string[];lots:number;dates:number;first?:string;last?:string;error?:boolean};
+export type KlaState={roots:KlaRoot[];backup:boolean;cache?:KlaCache};
 const EVENT='para:kla-state';
 let cached:KlaState|undefined;
 
 function publish(s:KlaState){cached=s;window.dispatchEvent(new CustomEvent(EVENT,{detail:s}));}
+/** 캐시 갱신 · 불러오기 뒤 요약만 바꾼다. */
+export function setKlaCache(c:KlaCache){if(cached)publish({...cached,cache:c});}
 
 /** KLA 설정(장비 폴더 · 백업본 켜짐)을 읽고, 다른 화면에서 바꾸면 따라간다. */
 export function useKlaState():[KlaState|undefined,string,()=>Promise<void>]{

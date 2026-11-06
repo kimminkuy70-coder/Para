@@ -833,6 +833,9 @@ dialog::backdrop{overscroll-behavior:contain}
 /* KLA 자재 찾기 */
 .kla .kla-machines{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:10px}
 .kla .kla-machines .field.checkbox{flex-direction:row;align-items:center;gap:6px}
+.kla .kla-source{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;margin-top:14px}
+.kla .kla-source .field.checkbox{flex-direction:row;align-items:center;gap:6px}
+.kla .kla-cache{margin-top:14px}
 .kla .kla-result{margin-top:14px}
 .kla .kla-table td{max-width:none}
 .kla .kla-row{cursor:pointer}

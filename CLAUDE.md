@@ -23,6 +23,18 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### KLA 자재 찾기 캐시 = Camtek 캐시와 같은 방식, OneDrive 같은 폴더 · 다른 이름 (2026-11-06, 이슈 #40, v12.9.23)
+- 엔진 `desktop_kla.py`: `cache_build`(등록 장비 + 백업본 설정 → 날짜 · Lot · 슬롯 **폴더 이름만**, 로컬 `{로컬}/KLA캐시/KLA색인.json` schema 1
+  `{updated_at, sources:[{machine, path(장비 폴더), backup, dates:{YYYY-MM-DD:{mtime, read_at, lots:{Lot:[슬롯 폴더 이름]}}}}]}`).
+  다시 읽기 규칙 = 날짜 폴더 mtime 이 같고 오늘−`KLA_REREAD_DAYS`(3)일보다 오래된 날짜만 재사용(새 슬롯은 Lot 폴더에 생겨 날짜 폴더 mtime 이 안 바뀜).
+  읽지 못한 장비 · 불러온 장비의 예전 색인은 지우지 않는다. `search{source:'cache'}` = 색인만(결과 모양 같음, `cache_at`).
+- 게시 `cache_publish` = 로컬 Temp 에서 zip(`KLA색인.json` + `manifest.json` kind=kla) → `캐시공유/KLA_캐시_YYYYMMDD_HHMMSS.zip` 1번 복사 + `KLA캐시정보.json`(최근 3개).
+  **Camtek 의 `BatchReport_캐시_*.zip` · `캐시정보.json` 과 이름으로 구분**(소유자 지시: 경로 동일, 구분되게) — 서로의 파일을 지우거나 고치지 않는다(`tests/test_kla_cache.py`).
+  `cache_share_list`(KLA캐시정보.json 만) · `cache_share_import`(Temp 복사 · 크기 · SHA-256 확인 → `merge_index`: (장비, 폴더, 날짜) 겹치면 read_at 나중 것). OneDrive 쓰기 없음. #39 원칙 그대로.
+- IPC `kla_cache_build`('kla'+'equipment') · `kla_cache_publish` · `kla_cache_share_list`('klashare') · `kla_cache_share_import`, `kla_search` 에 `source`. `kla_state.cache` = 요약.
+- 화면 `Kla.tsx`: KLA 캐시 상자([OneDrive 에서 불러오기] · [🛠 개발자 기능] › [캐시 갱신] · [OneDrive 에 게시]) + 찾을 곳(장비 폴더 / KLA 캐시). 장비 미등록 PC 는 캐시가 있으면 기본 = 캐시.
+- 이 zip 은 리뷰 전용 HTML(브랜치 `version_TB500_review`, 계획서 `docs/TB500_review_계획.md`)이 KLA 호기를 찾는 데 쓸 예정 — 형식을 바꾸면 그쪽도 같이.
+
 ### Batch Report 캐시 OneDrive 공유 + 자동 분석 설정 이동 + 저장 폴더 = docs 상위 (2026-10-30, 이슈 #39, v12.8.23)
 - **캐시 공유 폴더 = 저장 폴더(docs) 옆 `캐시공유/`**(`desktop_batch.cache_share_dir`, `프로그램/` 과 같은 형제 규칙). 개발자 = Batch Report 분석 › [🛠 개발자 기능] ›
   [OneDrive 에 게시](`batch_cache_publish`) 또는 자동 분석이 끝나면 자동 게시(체크 `batch_cache_publish`, 자동 분석 · ▶ 즉시 실행 뒤 `Batch.tsx launch(publish)`).
@@ -1171,6 +1183,7 @@ python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_kla.py         # 9  (KLA 자재 찾기: 폴더 이름만 · 상위 폴더 등록 · 열기 범위 · Defect 이미지 백업본 등록/켜고 끄기 · IPC)
+python3 tests/test_kla_cache.py   # 6  (KLA 캐시: 갱신 · 다시 읽기 규칙 · 끊긴 장비 유지 · 캐시 찾기 · 게시/목록/불러오기 · Camtek 캐시 무변경 · 최근 3개 · 합치기 · IPC)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_namestore.py    # 6  (체크 기억 Zone 일치 필수 포함)  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)
 python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부·dest≠src)
@@ -1356,7 +1369,7 @@ python3 tests/test_downloader.py   # 8
 `자동감시/`(변경보고서 = 변경 시에만, `감시로그.txt` 1개에 append) ·
 `_세션/`(접속자 json·전역 잠금, 300초 하트비트 + 내용 같으면 쓰기 생략) ·
 문서 옆 `.editlock`(편집 중에만) · 형제 `프로그램/`(exe 2개 + 버전정보.json) ·
-형제 `캐시공유/`(Batch Report 캐시 zip 최근 3개 + 캐시정보.json — 게시할 때만, 이슈 #39).
+형제 `캐시공유/`(Batch Report 캐시 zip 최근 3개 + 캐시정보.json — 게시할 때만, 이슈 #39 · KLA 캐시 zip 최근 3개 + KLA캐시정보.json, 이슈 #40).
 **Commonality 산출물·WPH 조사 산출물·수집 staging·로그·캐시는 전부 로컬**(`localdirs`).
 
 ## 자동 업데이트 (2026-08 확정 A안 — OneDrive만, 인터넷 미사용)
