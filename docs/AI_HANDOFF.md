@@ -13,13 +13,13 @@
   "조사하지 않음" 삭제(빈칸), Lot History 를 Camtek AOI Manager 처럼(가독성). → 그 브랜치 커밋, 자세한 것은 그 브랜치 `docs/AI_HANDOFF.md` 맨 위 · `docs/TB500_review_사용법.md` 결과 표 절.
 - 내 해석(확인 전): ⓐ KLA 캐시 상자는 처음 접힘 ⓑ "쓸데없는 말" = 화면 위 긴 경로 설명 · 캐시 상자 안 설명 · 백업 바 설명을 한 줄로 줄임(기능 설명은 README/CLAUDE.md 에 남음)
   ⓒ 리뷰 HTML 의 장비 · 호기는 `재리뷰 필요` 줄(기본 · 재스캔 폴더)마다 따로 판정해 쓴다(같은 Layer 의 두 폴더면 두 줄 모두).
-- 릴리스 v12.9.24 **아직 안 함(막힘)**: 커밋 `5285e86`(수정 + 릴리즈 노트) push 뒤 `git tag v12.9.24 5285e86 && git push origin v12.9.24` 가
-  Claude Code 권한 검사에서 거절됨("Create Public Surface" — 공개 릴리스 생성은 소유자 확인 필요, #39 와 같음). 다른 방법으로 우회하지 않음.
-  소유자가 Actions › build-desktop › Run workflow(branch `version_v12`, version `12.9.24`)를 누르거나, 이슈/세션에서 직접 릴리스를 지시하면 다음 run 이 같은 명령으로 시작.
+- 릴리스 **v12.9.24 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.9.24 (`Camtek_AOI_manager_v12.9.24.zip`, workflow_dispatch run 42285151118 성공, 태그 = `aecbddc`).
+  routine run 에서는 tag push 가 권한 검사("Create Public Surface")에 막혔고, 소유자가 세션에서 "v12.9.24 릴리스까지 해"라고 지시한 뒤 시도:
+  `git push origin v12.9.24` = "remote end hung up"(거절), REST refs = HTTP 403 "Write access to this GitHub API path is not permitted through this proxy", workflow_dispatch = 성공.
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| Para #41 | KLA 캐시 접기 · KLA 화면 UX 정리(version_v12) + 리뷰 HTML 하위 폴더 표 · 빈칸 · Lot History(version_TB500_review) | 두 브랜치 구현 · 시험 통과(`5285e86` · `b6ddff4`), v12.9.24 릴리스는 권한 검사에서 막힘 |
+| Para #41 | KLA 캐시 접기 · KLA 화면 UX 정리(version_v12) + 리뷰 HTML 하위 폴더 표 · 빈칸 · Lot History(version_TB500_review) | 두 브랜치 구현 · 시험 통과(`5285e86` · `b6ddff4`), v12.9.24 릴리스 완료(소유자 지시 뒤 dispatch) |
 
 ## 최신 재개 — Para #40 KLA 자재 찾기 캐시(OneDrive 공유) + v12.9.23 (2026-11-06 KST, `version_v12`)
 
