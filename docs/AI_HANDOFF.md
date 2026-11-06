@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #41 KLA 자재 찾기 UX 정리(캐시 상자 접기) + 리뷰 HTML 하위 폴더 표 · Lot History (2026-11-06 KST, `version_v12` + `version_TB500_review`)
+
+- 마지막 갱신 2026-11-06 · 기준 커밋 `839daea`(version_v12) · `038ec26`(version_TB500_review) · 이슈 Para #41("리뷰용 프로그램 브랜치 신규 생성 2").
+- 요청 ①(version_v12): KLA 자재 찾기의 KLA 캐시 기능을 접었다 펼 수 있게, UX 정리("체크 박스 크기도 다르고 쓸데없이 줄바꿈하거나 필요할 때 줄바꿈도 안 되어 있어, 쓸데없는 말도 있고 핵심만").
+  원인: `.cache-drop*` CSS 가 `.bv`(Batch 화면) 범위라 KLA 화면에는 안 먹었고, radio 가 전역 `input{width:100%;padding}` 을 받아 커지고 라벨이 세 줄로 꺾였다.
+  한 일: `Kla.tsx` KLA 캐시 = `<details class="kla-cache">`(처음 접힘, 펼침 상태 localStorage `para.kla.cacheOpen`, 요약 줄에 캐시 상태) · 찾을 곳 radio/찾을 장비 checkbox `.kla-opt`(16px 같은 크기, nowrap)
+  · Lot 키워드 설명을 placeholder 로 · 긴 안내문 줄임 · 결과 버튼 같은 크기. CSS 는 `styles.css` 끝 `/* KLA 자재 찾기 정리(Para #41) */` 블록(`.kla` 범위). `KlaBackupBar` 문구 짧게. 기능 · IPC 변화 없음.
+  시험: `tools/test_desktop_ui.mjs` 에 "캐시 상자 처음 접힘 → summary 눌러 펼침" 추가, 통과. `npx tsc --noEmit` · `vite build` 통과. `tools/check_project.py` = `test_batchreport.py`(tkinter 없음, 기존과 같음)만 실패.
+  릴리스 노트 `docs/release_notes/v12.9.24.md`(이슈에 버전 없음 → routine 규칙대로 패치 +1, 확인 전).
+- 요청 ②(version_TB500_review): 리뷰 HTML 을 Layer 묶음이 아니라 **Conder Scan Lot 폴더의 실제 하위 폴더 이름마다 한 줄**로, 줄마다 공정번호 · 재리뷰 · 호기 등을 적는 방식,
+  "조사하지 않음" 삭제(빈칸), Lot History 를 Camtek AOI Manager 처럼(가독성). → 그 브랜치 커밋, 자세한 것은 그 브랜치 `docs/AI_HANDOFF.md` 맨 위 · `docs/TB500_review_사용법.md` 결과 표 절.
+- 내 해석(확인 전): ⓐ KLA 캐시 상자는 처음 접힘 ⓑ "쓸데없는 말" = 화면 위 긴 경로 설명 · 캐시 상자 안 설명 · 백업 바 설명을 한 줄로 줄임(기능 설명은 README/CLAUDE.md 에 남음)
+  ⓒ 리뷰 HTML 의 장비 · 호기는 `재리뷰 필요` 줄(기본 · 재스캔 폴더)마다 따로 판정해 쓴다(같은 Layer 의 두 폴더면 두 줄 모두).
+- 릴리스: 아래 이슈 이력 줄 참고(이 run 의 결과를 기록).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #41 | KLA 캐시 접기 · KLA 화면 UX 정리(version_v12) + 리뷰 HTML 하위 폴더 표 · 빈칸 · Lot History(version_TB500_review) | 두 브랜치 구현 · 시험 통과, v12.9.24 릴리스 시도(결과는 다음 갱신) |
+
 ## 최신 재개 — Para #40 KLA 자재 찾기 캐시(OneDrive 공유) + v12.9.23 (2026-11-06 KST, `version_v12`)
 
 - 마지막 갱신 2026-11-06 · 기준 커밋 `4eb61e3` · 이슈 Para #40 · 작업 브랜치 `version_v12`(리뷰 전용 HTML 계획은 `version_TB500_review` — 그 브랜치 인수인계 맨 위 절).

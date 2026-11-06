@@ -61,8 +61,7 @@ export function KlaBackupBar({note,disabled}:{note?:string;disabled?:boolean}){
     <span className="sbk-dot" aria-hidden="true"/>
     <div className="sbk-text">
       <b>KLA 찾기 범위 · {st?(on?'원본 + Defect 이미지 백업본':'원본만'):'확인 중…'}</b>
-      <small>{on===false?'장비마다 등록한 백업 폴더(Defect 이미지 · 결과 파일을 날짜 폴더째 옮겨 둔 곳)는 보지 않습니다.'
-        :`원본 장비 폴더와 장비마다 등록한 백업 폴더(${count}개)를 함께 찾습니다.`}{note?` ${note}`:''}</small>
+      <small>{on===false?'백업 폴더는 찾지 않습니다.':`원본 장비 폴더 + 백업 폴더 ${count}개를 찾습니다.`}{note?` ${note}`:''}</small>
     </div>
     <label className="sbk-switch" title="KLA 자재 찾기에 적용됩니다">
       <input type="checkbox" role="switch" aria-label="Defect 이미지 백업본 포함" checked={!!on} disabled={!st||saving||disabled}

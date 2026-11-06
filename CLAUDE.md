@@ -23,6 +23,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### KLA 자재 찾기 화면 정리 (2026-11-06, 이슈 #41, v12.9.24)
+- `Kla.tsx` KLA 캐시 상자 = `<details class="kla-cache">`(처음 접힘, localStorage `para.kla.cacheOpen`). KLA 화면 CSS 는 `.kla` 범위(styles.css 끝 #41 블록) — `.bv` 범위의 `.cache-drop*` 은 KLA 에 안 먹는다.
+  radio · checkbox 는 `.kla-opt`(16px, 전역 `input{width:100%}` 를 덮음). 화면 문구는 핵심만(소유자 지시) — 긴 설명을 다시 늘리지 말 것.
+
 ### KLA 자재 찾기 캐시 = Camtek 캐시와 같은 방식, OneDrive 같은 폴더 · 다른 이름 (2026-11-06, 이슈 #40, v12.9.23)
 - 엔진 `desktop_kla.py`: `cache_build`(등록 장비 + 백업본 설정 → 날짜 · Lot · 슬롯 **폴더 이름만**, 로컬 `{로컬}/KLA캐시/KLA색인.json` schema 1
   `{updated_at, sources:[{machine, path(장비 폴더), backup, dates:{YYYY-MM-DD:{mtime, read_at, lots:{Lot:[슬롯 폴더 이름]}}}}]}`).

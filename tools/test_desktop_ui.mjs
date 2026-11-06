@@ -812,6 +812,12 @@ try{
   assert.equal(await kla.locator('tr.kla-slot').count(),2);
   assert.match(await kla.locator('tr.kla-slot').first().innerText(),/2025-05-21 09:08\t슬롯 16/);
   // Para #40: KLA 캐시 — 개발자 기능 › 캐시 갱신 → OneDrive 게시 → 불러오기 → 찾을 곳 'KLA 캐시'로 찾기.
+  // Para #41: KLA 캐시 상자는 접었다 폈다 한다(처음엔 접힘 — 버튼이 안 보임).
+  const klaCache=kla.locator('details.kla-cache');
+  assert.equal(await klaCache.evaluate(d=>d.open),false);
+  assert.equal(await kla.getByRole('button',{name:'🛠 개발자 기능',exact:true}).isVisible(),false);
+  await klaCache.locator('summary').click();
+  assert.equal(await klaCache.evaluate(d=>d.open),true);
   await kla.getByRole('button',{name:'🛠 개발자 기능',exact:true}).click();
   await kla.getByRole('button',{name:'캐시 갱신 (장비 폴더 이름 읽기)',exact:true}).click();
   await kla.getByText(/갱신함: 장비 1대 · Lot 폴더 2개/).waitFor();

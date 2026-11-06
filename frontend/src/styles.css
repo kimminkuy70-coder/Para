@@ -847,3 +847,32 @@ dialog::backdrop{overscroll-behavior:contain}
 .subtabs.vendor-sub{margin:0 0 14px}
 .kla-roots-line{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;margin:12px 0}
 .kla .sbk-kind{margin-left:6px}
+/* KLA 자재 찾기 정리(Para #41): 캐시 상자 접기 · 같은 크기 radio/checkbox · 한 줄 라벨 */
+.kla .kla-intro{margin:6px 0 0;line-height:1.6}.kla .kla-path{display:block;font-size:11.5px;color:var(--muted)}
+.kla input[type=radio],.kla input[type=checkbox]:not([role=switch]){width:16px;height:16px;min-width:16px;padding:0;margin:0;flex:none;accent-color:#31517c;cursor:pointer}
+.kla .kla-cache{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:#fafcfd}
+.kla .kla-cache>summary{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;list-style:none;user-select:none;flex-wrap:wrap}
+.kla .kla-cache>summary::-webkit-details-marker{display:none}
+.kla .kla-cache>summary b{font-size:13px;color:var(--navy);white-space:nowrap}
+.kla .kc-chev{display:inline-block;width:14px;font-size:14px;color:var(--muted);transition:transform .15s var(--ease)}
+.kla .kla-cache[open]>summary .kc-chev{transform:rotate(90deg)}
+.kla .kc-state{font-size:12px;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kla .kc-body{padding:0 14px 12px;border-top:1px solid var(--line)}
+.kla .kc-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.kla .kc-actions button{font-size:12px;min-height:32px;padding:6px 12px;white-space:nowrap}
+.kla .kc-actions button.active{background:#eafaf3;border-color:var(--lime)}
+.kla .kc-part{margin-top:10px;padding-top:2px;border-top:1px dashed var(--line)}
+.kla .kc-line{margin:8px 0 0;font-size:12px;color:var(--muted);word-break:keep-all;overflow-wrap:anywhere}
+.kla .kc-list{margin:8px 0 0;padding-left:18px;font-size:12px;color:var(--muted);line-height:1.7}
+.kla .kc-note{margin:6px 0 0;font-size:12px;color:var(--muted)}
+.kla .kla-source,.kla .kla-machines{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin-top:14px}
+.kla .kla-lbl{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;min-width:56px}
+.kla .kla-opt{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;cursor:pointer}
+.kla .kla-opt small{font-weight:500;color:var(--muted);font-size:11.5px;margin-left:2px}
+.kla .kla-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-top:12px}
+.kla .kla-form .kla-q{flex:1 1 280px}.kla .kla-form .kla-d{flex:0 0 150px}
+.kla .kla-form>button{min-height:40px;padding:0 22px;white-space:nowrap}
+.kla .kla-sum{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px}
+.kla .kla-sumtext{flex:1 1 360px;margin:0;font-size:12.5px;color:var(--muted);word-break:keep-all}
+.kla .kla-filter{flex:0 1 260px}
+.kla .kla-acts{white-space:nowrap}.kla .kla-acts button{font-size:12px;min-height:28px;padding:3px 10px;margin-right:4px}
