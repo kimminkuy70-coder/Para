@@ -1,7 +1,7 @@
 # TB500 리뷰 전용 HTML — 검토와 계획 (Para #40, 소유자 검토 전)
 
 - 작성 2026-11-06 · 브랜치 `version_TB500_review` · 기준 커밋 `cfac6de`(소유자 업로드 `TB500_Lot_Folder_List_ImageName_Equipment.html`)
-- 상태: **계획만**. 소유자가 승인하고 아래 7절 질문에 답하면 구현을 시작한다. 코드는 아직 없다.
+- 상태(2026-11-06 갱신): **구현 완료** — `TB500_Review.html`, 사용법 · 판정 규칙 · Defender 검토는 `docs/TB500_review_사용법.md`. 7절 질문은 소유자가 모두 답함(댓글 6691333700 · 6691832497). 이 문서는 당시 계획 기록.
 
 ## 1. 원본 HTML 분석 (`TB500_Lot_Folder_List_ImageName_Equipment.html`, 26.5 KB, 외부 라이브러리 없음)
 

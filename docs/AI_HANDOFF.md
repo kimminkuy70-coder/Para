@@ -1,5 +1,30 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #40 TB500 리뷰 전용 HTML 구현 (2026-11-06 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-06 · 기준 커밋 `69160ca` · 이슈 Para #40(3차 — 소유자 댓글 6691832497 "답했으니 HTML 최종 완성", 세션 추가 지시 "한 Layer 를 여러 호기에서 스캔하면 더보기로 Lot History")
+  · 작업 브랜치 `version_TB500_review`(릴리스 없음 — 단일 HTML).
+- 결과물: `TB500_Review.html`(새 파일, 원본 `TB500_Lot_Folder_List_ImageName_Equipment.html` 그대로). 사용법 · 판정 규칙 · Defender 검토 = `docs/TB500_review_사용법.md`.
+  시험 = `tools/test_tb500_review.mjs` + 합성 자료 `tools/tb500_review_fixture.py`.
+- 소유자 확정(댓글 6691832497): ① 동기화 폴더 방식(개발자 게시 경로 = OneDrive `0. Camtek AOI parameter 취합\캐시공유`) ② KLA 캐시 = v12.9.23 로 해결
+  ③ 재리뷰 판정 = Layer 폴더가 있고 같은 Layer 에 `_재리뷰` 폴더가 없으면 재리뷰 안 됨, 재리뷰 폴더는 맵(.txt) 수 확인(오래 걸리면 경로만) — 폴더 이름은 사람이 적어 조금씩 다름
+  ④ 재리뷰 된 Layer 는 호기 · 스캔 시각 조사 안 함 ⑤ Camtek Layer = Job 이름에서 ⑥ 로컬 캐시는 최신 1개만 + 자동 삭제의 Defender 영향 검토 → 문서 5절(위험 낮음, 실기 확인 전)
+  ⑦(세션) 한 Layer 여러 호기 → '여러 호기 n대' 표시 + [더보기 · Lot History](Layer 기록 + Lot 전체 시간순, 호기 이동 표시).
+- 구조(HTML 한 파일): 폴더 연결 3개(OneDrive 캐시공유 read · Conder Scan read · 내 PC 캐시 폴더 readwrite, IndexedDB 에 기억, 쓸 때 권한 확인) →
+  [캐시 갱신] = 캐시정보.json · KLA캐시정보.json 에서 최신 zip → 크기 · SHA-256(JS 구현, 8MB 조각) 확인 → zip 은 풀지 않고 안의 JSON 만 읽어(DecompressionStream, zip64 대응)
+  `TB500리뷰_Camtek색인_*.json`(행 = [호기, Job, Setup, S/M, S/M 코드, 시작 시각, 장수, 파일명]) · `TB500리뷰_KLA색인_*.json` · `TB500리뷰_기록.json` 쓰기 → 우리 이름 규칙의 지난 색인만 삭제.
+  알림 = localStorage 의 기록으로 24시간(`STALE_HOURS`) 지나면 빨간 띠. 시험 훅 `window.__TB500_TEST__`(pick · now) — 실제 사용에는 영향 없음.
+- 내 해석(확인 전): ⓐ `Skip` 폴더만 있는 Layer = Skip(조사 안 함) ⓑ 우선순위 재리뷰 > Skip > 필요 ⓒ Layer 는 괄호 앞 이름에서 가장 앞의 Layer 표기, 괄호 안은 무시
+  ⓓ 장비를 이미지 이름으로 알면 그 장비 캐시만, 모르면 둘 다 ⓔ zip 원본은 내 PC 에 복사하지 않고 푼 색인만 저장 ⓕ 알림 기준 24시간 ⓖ S/M 코드가 다른 Lot 에 재사용되면 Lot History 에 섞일 수 있음(창에 안내).
+- 시험: `node tools/test_tb500_review.mjs` 연속 2회 통과(SHA-256 = Node crypto, 판정 규칙, 갱신 · 최신 1개 · 다른 파일 보존 · 원본 무쓰기, 여러 호기, Lot History, 24시간 알림).
+  실제 v12.9.23 코드로 만든 Camtek · KLA zip 으로도 갱신 · 조회 확인(임시 worktree, 저장소에 안 넣음). Python 코드 변경 없음 → `tests/` 는 안 돌림.
+  미검증: 실제 Edge · 회사 OneDrive · UNC Conder Scan · 수백 MB 캐시 속도 · Defender 실제 반응.
+- 남은 일: 소유자 실사용 피드백, 해석 ⓐ~ⓖ 확인.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #40 (3차) | 답변 반영해 리뷰 HTML 최종 완성 + 여러 호기 Lot History + 자동 삭제 Defender 검토 | `TB500_Review.html` · 사용법/검토 문서 · 브라우저 시험 통과 |
+
 ## 최신 재개 — Para #40 TB500 리뷰 전용 HTML 프로그램 검토 · 계획 (2026-11-06 KST, `version_TB500_review`, 계획만)
 
 - 마지막 갱신 2026-11-06 · 기준 커밋 `cfac6de`(소유자 업로드) · 이슈 Para #40 · 작업 브랜치 **`version_TB500_review`**(소유자가 이슈에서 지정해 새로 만든 브랜치 — 릴리스하지 않음).

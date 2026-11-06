@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TB500 Review</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--line:#d8e0eb;--text:#172033;--muted:#667085;--blue:#2563eb;--green:#15803d;--greenbg:#dcfce7;--amber:#a16207;--amberbg:#fef3c7;--gray:#667085;--graybg:#eef2f6;--red:#b42318;--redbg:#fee4e2;--shadow:0 8px 24px rgba(16,24,40,.08)}
+@media(prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#172033;--line:#334155;--text:#f1f5f9;--muted:#a8b3c5;--graybg:#263246;--greenbg:#123d29;--amberbg:#4a3511;--redbg:#4b1e24;--shadow:0 8px 24px rgba(0,0,0,.24)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Malgun Gothic",sans-serif;font-size:14px}.app{max-width:1500px;margin:auto;padding:22px}.head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.head h1{font-size:24px;margin:0 0 7px}.head p{margin:0;color:var(--muted)}.badge{display:inline-flex;padding:6px 10px;border-radius:999px;background:var(--greenbg);color:var(--green);font-weight:700;white-space:nowrap}.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:18px}.card h2{font-size:16px;margin:0 0 13px}.field{margin-bottom:13px}.field label{display:block;font-weight:700;margin-bottom:6px}.help{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}input,textarea,select{width:100%;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:9px;padding:10px 11px;font:inherit}textarea{min-height:188px;resize:vertical}.row{display:flex;gap:9px}.row>*{flex:1}.btns{display:flex;gap:9px;flex-wrap:wrap}.btn{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;background:#e7edf7;color:#26364f}.btn.primary{background:var(--blue);color:#fff}.btn.danger{background:var(--redbg);color:var(--red)}.btn:disabled{opacity:.45;cursor:not-allowed}.paths{display:grid;gap:8px;max-height:178px;overflow:auto}.pathitem{display:flex;gap:8px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:9px}.pathitem .p{min-width:0;flex:1}.pathitem b,.pathitem small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pathitem small{color:var(--muted);margin-top:3px}.result{margin-top:16px}.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}.summary{color:var(--muted)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}table{border-collapse:separate;border-spacing:0;width:100%;min-width:1780px}th,td{padding:10px 9px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:center;vertical-align:middle}th{position:sticky;top:0;background:var(--card);z-index:2;font-size:12px}th:first-child,td:first-child{position:sticky;left:0;background:var(--card);z-index:1;text-align:left;font-weight:700}th:first-child{z-index:3}tr:last-child td{border-bottom:0}th:last-child,td:last-child{border-right:0}.state{display:inline-flex;flex-direction:column;gap:2px;min-width:78px;padding:6px 7px;border-radius:8px;font-weight:700}.state small{font-weight:500;font-size:10px;opacity:.87}.mark{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;font-size:18px;font-weight:900}.mark.o{background:var(--greenbg);color:var(--green)}.mark.x{background:var(--graybg);color:var(--gray)}.foldername{display:block;margin-top:5px;max-width:128px;font-size:10px;line-height:1.25;color:var(--muted);white-space:normal;overflow-wrap:anywhere}.cellstate{display:flex;flex-direction:column;align-items:center;min-width:110px}.done2{background:var(--greenbg);color:var(--green)}.done1{background:var(--amberbg);color:var(--amber)}.none{background:var(--graybg);color:var(--gray)}.missing{background:var(--redbg);color:var(--red)}.lotmissing{color:var(--red)}dialog{border:0;padding:0;border-radius:14px;background:var(--card);color:var(--text);width:min(900px,94vw);max-height:88vh;box-shadow:0 24px 70px rgba(0,0,0,.35)}dialog::backdrop{background:rgba(15,23,42,.6)}.modalhead{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}.modalhead h3{margin:0}.modalbody{padding:18px;overflow:auto;max-height:70vh}.detailgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.detail{border:1px solid var(--line);border-radius:10px;padding:12px}.detail h4{margin:0 0 8px}.detail p{margin:5px 0;color:var(--muted)}.slots{color:var(--red)!important;font-weight:700;word-break:break-word}.notice{padding:10px 12px;border-radius:9px;background:var(--amberbg);color:var(--amber);line-height:1.5;margin-bottom:12px}.progress{height:5px;background:var(--graybg);border-radius:99px;overflow:hidden;margin-top:10px}.bar{height:100%;width:0;background:var(--blue);transition:width .2s}.empty{text-align:center;color:var(--muted);padding:28px}.nowrap{white-space:nowrap}.folderlink{border:0;background:none;color:var(--blue);padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer;text-decoration:underline;text-underline-offset:3px}.folderrow{display:grid;grid-template-columns:minmax(210px,1fr) 112px 112px 86px minmax(245px,auto);gap:8px;align-items:center;padding:3px 0}.process{display:inline-flex;align-items:center;justify-content:center;width:106px;padding:4px 6px;border-radius:7px;font-size:10px;font-weight:800;white-space:nowrap}.process.aoi{background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd}.process.review{background:#fce7f3;color:#be185d;border:1px solid #f9a8d4}.process.na{background:var(--graybg);color:var(--gray);border:1px solid var(--line)}.foldercell{min-width:0;overflow-wrap:anywhere}.equip{display:inline-flex;align-items:center;justify-content:center;width:78px;padding:4px 7px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.2px}.equip.kla{background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd}.equip.camtek{background:#dcfce7;color:#15803d;border:1px solid #86efac}.equip.unknown{background:var(--graybg);color:var(--gray);border:1px solid var(--line)}.foldermeta{color:var(--muted);font-size:11px;white-space:nowrap}@media(max-width:900px){.folderrow{grid-template-columns:minmax(150px,1fr) 82px 82px 76px}.process{width:78px;font-size:9px}.equip{width:72px}.foldermeta{grid-column:1/-1;white-space:normal;padding-left:0}}.devmark{position:fixed;right:14px;bottom:10px;z-index:20;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--muted);font-size:11px;font-weight:700;pointer-events:none}@media(max-width:900px){.grid{grid-template-columns:1fr}.detailgrid{grid-template-columns:1fr}.head{display:block}.badge{margin-top:10px}}
+table{min-width:1500px}td.left{text-align:left}.lotcell{white-space:nowrap}.st{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}.st.done{background:var(--greenbg);color:var(--green)}.st.need{background:var(--redbg);color:var(--red)}.st.skip{background:var(--amberbg);color:var(--amber)}.st.etc{background:var(--graybg);color:var(--gray)}
+.hit{display:block;text-align:left;font-size:12px;line-height:1.45;padding:3px 0;border-bottom:1px dashed var(--line)}.hit:last-child{border-bottom:0}.hit b{font-size:13px}.muted{color:var(--muted)}.small{font-size:11px}.mono{font-family:Consolas,"D2Coding",monospace;font-size:11px;overflow-wrap:anywhere}
+.banner{display:none;padding:12px 14px;border-radius:12px;background:var(--redbg);color:var(--red);font-weight:700;margin-bottom:14px;line-height:1.5}.banner.show{display:block}.banner.ok{background:var(--greenbg);color:var(--green)}
+.setup{display:grid;gap:10px}.setrow{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px}.setrow .num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--graybg);font-weight:800}.setrow.ok .num{background:var(--greenbg);color:var(--green)}.setrow b{display:block}.setrow small{display:block;color:var(--muted);overflow-wrap:anywhere;margin-top:3px}
+.cachegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}.cachebox{border:1px solid var(--line);border-radius:10px;padding:10px}.cachebox h4{margin:0 0 6px}.cachebox p{margin:3px 0;color:var(--muted);font-size:12px}
+.layername{font-weight:800}.folders{display:block;margin-top:4px;font-size:11px;color:var(--muted);text-align:left;overflow-wrap:anywhere}.copy{border:0;background:none;color:var(--blue);cursor:pointer;font:inherit;font-size:11px;padding:0;text-decoration:underline}
+@media(max-width:900px){.cachegrid{grid-template-columns:1fr}.setrow{grid-template-columns:28px 1fr}.setrow .btn{grid-column:2}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="head"><div><h1>TB500 Review</h1><p>Lot 이름만 넣으면 Conder Scan 의 Layer 별 재리뷰 여부를 확인하고, 재리뷰가 안 된 Layer 는 어느 장비 · 어느 호기에서 언제 스캔했는지 캐시에서 찾습니다.</p></div><span class="badge">Conder Scan READ ONLY</span></div>
+  <div class="banner" id="banner" role="status"></div>
+  <div class="grid">
+    <section class="card">
+      <h2>1. Lot 목록</h2>
+      <div class="field"><label for="lots">Excel 셀을 그대로 붙여넣기</label><textarea id="lots" placeholder="TB500.INT1041&#10;TB500.INT948"></textarea><div class="help">줄바꿈, 탭, 쉼표가 자동 분리됩니다. 중복 Lot 은 한 번만 조회합니다.</div></div>
+      <div class="btns"><button class="btn primary" id="scan" type="button">조회</button><button class="btn" id="clear" type="button">초기화</button><button class="btn" id="csv" type="button" disabled>CSV 저장</button></div>
+      <div class="progress"><div class="bar" id="bar"></div></div>
+      <div class="help" id="msg" aria-live="polite">처음 한 번 오른쪽 설정을 마치고 [캐시 갱신]을 누르세요.</div>
+    </section>
+    <section class="card">
+      <h2>2. 설정 (처음 1회)</h2>
+      <div class="setup">
+        <div class="setrow" id="row-share"><span class="num">1</span><div><b>OneDrive 캐시공유 폴더</b><small id="share-text">개발자가 공유한 OneDrive 폴더를 [내 파일에 바로 가기 추가]로 연결한 뒤, 그 안의 <code>캐시공유</code> 폴더를 고르세요. 예: C:\Users\(사번)\OneDrive - Amkor Technology\0. Camtek AOI parameter 취합\캐시공유</small></div><button class="btn" type="button" data-pick="share">폴더 연결</button></div>
+        <div class="setrow" id="row-conder"><span class="num">2</span><div><b>Conder Scan 폴더</b><small id="conder-text">Lot 폴더들이 바로 아래에 있는 폴더를 고르세요(읽기만 합니다). 네트워크 폴더가 안 보이면 Windows 에서 네트워크 드라이브로 연결한 뒤 고르세요.</small></div><button class="btn" type="button" data-pick="conder">폴더 연결</button></div>
+        <div class="field" style="margin:0"><label for="conderUnc">Conder Scan 표시 경로 (경로 복사용)</label><input id="conderUnc" value="\\k5cifsn2\k5tsvdata$\1. Conder Scan\531. NVIDIA INT\129. 4DT-TB500-H-M1"></div>
+        <div class="setrow" id="row-local"><span class="num">3</span><div><b>내 PC 캐시 폴더</b><small id="local-text">캐시를 풀어 둘 내 PC 폴더(예: 문서 아래 새 폴더 <code>TB500리뷰캐시</code>)를 고르세요. 이 프로그램이 만든 파일만 쓰고 지웁니다.</small></div><button class="btn" type="button" data-pick="local">폴더 연결</button></div>
+      </div>
+      <div class="cachegrid">
+        <div class="cachebox"><h4>Camtek 캐시 (Batch Report)</h4><p id="cache-camtek">없음</p></div>
+        <div class="cachebox"><h4>KLA 캐시 (KLA 자재 찾기)</h4><p id="cache-kla">없음</p></div>
+      </div>
+      <div class="btns"><button class="btn primary" id="refresh" type="button">캐시 갱신</button></div>
+      <div class="help">[캐시 갱신]은 동기화된 OneDrive 폴더에서 가장 최근 캐시 zip 을 읽어 내 PC 캐시 폴더에 풀어 둡니다. 크기와 SHA-256 이 게시할 때와 같을 때만 씁니다. 내 PC 캐시 폴더에는 최신 1개만 남깁니다. 권장: Microsoft Edge.</div>
+    </section>
+  </div>
+  <section class="result card">
+    <div class="toolbar"><div><h2 style="margin-bottom:3px">조회 결과</h2><div class="summary" id="summary">조회 전</div></div></div>
+    <div class="tablewrap"><table><thead><tr><th>입력 Lot</th><th>Conder Scan Lot 폴더 · S/M</th><th>Layer</th><th>AOI 공정</th><th>Review 공정</th><th>재리뷰</th><th>장비</th><th>호기 · 스캔 시각</th><th>근거 · 경로</th></tr></thead><tbody id="tbody"><tr><td colspan="9" class="empty">설정을 마치고 Lot 목록을 입력하세요.</td></tr></tbody></table></div>
+  </section>
+</div>
+<div class="devmark">Developer: 김민규</div>
+<dialog id="dlg"><div class="modalhead"><h3 id="dlgTitle">자세히</h3><button class="btn" id="dlgClose" type="button">닫기</button></div><div class="modalbody" id="dlgBody"></div></dialog>
+<script>
+(()=>{
+'use strict';
+/* TB500 Review (Para #40, 브랜치 version_TB500_review)
+   · Conder Scan 은 읽기만 한다(mode:'read'). OneDrive 캐시공유 폴더도 읽기만 한다.
+   · 쓰기 · 지우기는 사용자가 고른 '내 PC 캐시 폴더' 안의 이 프로그램 파일(TB500리뷰_*)만.
+   · 캐시 = Para 데스크톱 프로그램이 게시한 zip: Camtek BatchReport_캐시_*.zip(캐시정보.json) · KLA KLA_캐시_*.zip(KLA캐시정보.json).
+   · 인터넷 접속 없음. 외부 라이브러리 없음(zip = DecompressionStream, SHA-256 = 아래 구현). */
+const $=s=>document.querySelector(s);
+const T=window.__TB500_TEST__||null;
+const STALE_HOURS=24;
+const PREFIX='TB500리뷰_';
+const RECORD=PREFIX+'기록.json';
+const OUR_FILE=/^TB500리뷰_(Camtek|KLA)색인_\d{8}_\d{6}\.json$/;
+const SHARE={camtek:{info:'캐시정보.json',name:/^BatchReport_캐시_(\d{8}_\d{6})\.zip$/},kla:{info:'KLA캐시정보.json',name:/^KLA_캐시_(\d{8}_\d{6})\.zip$/}};
+// Layer = 원본 HTML 의 순서 · 공정번호(AOI / Review). keys = Conder 폴더 이름과 Job 이름에서 찾는 표기.
+const STAGES=[
+ {key:'RDL4',keys:[/RDL[ _.-]*4(?!\d)/i],aoi:'6305',aoiName:'AOI',rev:'6412',revName:'2D/RE'},
+ {key:'PIDS3',keys:[/PIDS[ _.-]*3(?!\d)/i,/(?:^|[^A-Z])PI[ _.-]*4(?!\d)/i],aoi:'6311',aoiName:'AOI2',rev:'6321',revName:'2D/R2'},
+ {key:'RDL3',keys:[/RDL[ _.-]*3(?!\d)/i],aoi:'6312',aoiName:'AOI3',rev:'6322',revName:'2D/R3'},
+ {key:'PIDS5',keys:[/PIDS[ _.-]*5(?!\d)/i,/(?:^|[^A-Z])PI[ _.-]*3(?!\d)/i],aoi:'6313',aoiName:'AOI4',rev:'6323',revName:'2D/R4'},
+ {key:'RDL2',keys:[/RDL[ _.-]*2(?!\d)/i],aoi:'6314',aoiName:'AOI5',rev:'6324',revName:'2D/R5'},
+ {key:'PIDS7',keys:[/PIDS[ _.-]*7(?!\d)/i,/(?:^|[^A-Z])PI[ _.-]*2(?!\d)/i],aoi:'6315',aoiName:'AOI6',rev:'6325',revName:'2D/R6'},
+ {key:'RDL1',keys:[/RDL[ _.-]*1(?!\d)/i],aoi:'6316',aoiName:'AOI7',rev:'6326',revName:'2D/R7'},
+ {key:'FS UBM',keys:[/FS[ _.-]*UBM/i,/FSUBM/i],aoi:'6317',aoiName:'AOI8',rev:'6327',revName:'2D/R8'}];
+const PROC=new Map();STAGES.forEach(s=>{PROC.set(s.aoi,s);PROC.set(s.rev,s)});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const stamp=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+const now=()=>T&&T.now?new Date(T.now):new Date();
+function setMsg(s){$('#msg').textContent=s}function setBar(n){$('#bar').style.width=Math.max(0,Math.min(100,n))+'%'}
+
+/* ---------- SHA-256 (조각씩 — 큰 zip 도 메모리에 한 번에 올리지 않음) ---------- */
+const K=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
+class Sha256{constructor(){this.h=new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);this.w=new Uint32Array(64);this.buf=new Uint8Array(64);this.n=0;this.len=0}
+ block(b,o){const w=this.w,h=this.h;for(let i=0;i<16;i++)w[i]=(b[o+i*4]<<24)|(b[o+i*4+1]<<16)|(b[o+i*4+2]<<8)|b[o+i*4+3];for(let i=16;i<64;i++){const x=w[i-15],y=w[i-2];w[i]=(((x>>>7|x<<25)^(x>>>18|x<<14)^(x>>>3))+w[i-7]+((y>>>17|y<<15)^(y>>>19|y<<13)^(y>>>10))+w[i-16])|0}
+  let a=h[0],bb=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];for(let i=0;i<64;i++){const t1=(hh+((e>>>6|e<<26)^(e>>>11|e<<21)^(e>>>25|e<<7))+((e&f)^(~e&g))+K[i]+w[i])|0,t2=(((a>>>2|a<<30)^(a>>>13|a<<19)^(a>>>22|a<<10))+((a&bb)^(a&c)^(bb&c)))|0;hh=g;g=f;f=e;e=(d+t1)|0;d=c;c=bb;bb=a;a=(t1+t2)|0}
+  h[0]+=a;h[1]+=bb;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh}
+ update(d){this.len+=d.length;let i=0;if(this.n){while(this.n<64&&i<d.length)this.buf[this.n++]=d[i++];if(this.n<64)return;this.block(this.buf,0);this.n=0}for(;i+64<=d.length;i+=64)this.block(d,i);while(i<d.length)this.buf[this.n++]=d[i++]}
+ hex(){const bits=this.len*8,tail=new Uint8Array(((this.n<56)?64:128)-this.n);tail[0]=0x80;const v=new DataView(tail.buffer);v.setUint32(tail.length-8,Math.floor(bits/4294967296));v.setUint32(tail.length-4,bits>>>0);this.update(tail);return Array.from(this.h,x=>(x>>>0).toString(16).padStart(8,'0')).join('')}}
+async function fileSha(file,label){const sh=new Sha256(),step=8*1024*1024;for(let o=0;o<file.size;o+=step){sh.update(new Uint8Array(await file.slice(o,o+step).arrayBuffer()));setMsg(label+' 확인 중 '+Math.round(Math.min(o+step,file.size)/1048576)+' / '+Math.round(file.size/1048576)+'MB')}return sh.hex()}
+window.__tb500Sha=async bytes=>{const s=new Sha256();s.update(bytes);return s.hex()};
+
+/* ---------- zip 읽기(풀지 않고 안의 JSON 만) ---------- */
+async function zipEntries(file){
+ const tailLen=Math.min(file.size,65557),tail=new DataView(await file.slice(file.size-tailLen).arrayBuffer());let p=-1;
+ for(let i=tailLen-22;i>=0;i--)if(tail.getUint32(i,true)===0x06054b50){p=i;break}
+ if(p<0)throw new Error('zip 파일이 아닙니다');
+ let count=tail.getUint16(p+10,true),cdSize=tail.getUint32(p+12,true),cdOff=tail.getUint32(p+16,true);
+ if((count===0xffff||cdSize===0xffffffff||cdOff===0xffffffff)&&p>=20&&tail.getUint32(p-20,true)===0x07064b50){
+  const z64=Number(tail.getBigUint64(p-12,true)),r=new DataView(await file.slice(z64,z64+56).arrayBuffer());
+  count=Number(r.getBigUint64(32,true));cdSize=Number(r.getBigUint64(40,true));cdOff=Number(r.getBigUint64(48,true))}
+ const cd=new DataView(await file.slice(cdOff,cdOff+cdSize).arrayBuffer()),dec=new TextDecoder('utf-8'),out=[];let o=0;
+ for(let n=0;n<count&&o+46<=cd.byteLength;n++){
+  if(cd.getUint32(o,true)!==0x02014b50)break;
+  const method=cd.getUint16(o+10,true);let comp=cd.getUint32(o+20,true),size=cd.getUint32(o+24,true);
+  const nl=cd.getUint16(o+28,true),xl=cd.getUint16(o+30,true),cl=cd.getUint16(o+32,true);let off=cd.getUint32(o+42,true);
+  const name=dec.decode(new Uint8Array(cd.buffer,cd.byteOffset+o+46,nl));
+  let x=o+46+nl;const xe=x+xl;
+  while(x+4<=xe){const id=cd.getUint16(x,true),ln=cd.getUint16(x+2,true);if(id===1){let q=x+4;if(size===0xffffffff){size=Number(cd.getBigUint64(q,true));q+=8}if(comp===0xffffffff){comp=Number(cd.getBigUint64(q,true));q+=8}if(off===0xffffffff){off=Number(cd.getBigUint64(q,true))}}x+=4+ln}
+  out.push({name,method,comp,size,off});o=xe+cl}
+ return out}
+async function zipText(file,e){
+ const h=new DataView(await file.slice(e.off,e.off+30).arrayBuffer());if(h.getUint32(0,true)!==0x04034b50)throw new Error('zip 안 파일을 읽지 못했습니다: '+e.name);
+ const start=e.off+30+h.getUint16(26,true)+h.getUint16(28,true),part=file.slice(start,start+e.comp);
+ if(e.method===0)return part.text();
+ if(e.method!==8)throw new Error('지원하지 않는 압축 방식: '+e.name);
+ return new Response(part.stream().pipeThrough(new DecompressionStream('deflate-raw'))).text()}
+
+/* ---------- 폴더 연결(기억 = IndexedDB, 권한 = 누를 때 확인) ---------- */
+const handles={share:null,conder:null,local:null};
+function idb(){return new Promise((ok,no)=>{const r=indexedDB.open('tb500-review',1);r.onupgradeneeded=()=>r.result.createObjectStore('h');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+async function idbSet(k,v){if(T)return;try{const db=await idb();await new Promise((ok,no)=>{const t=db.transaction('h','readwrite');t.objectStore('h').put(v,k);t.oncomplete=ok;t.onerror=()=>no(t.error)})}catch{}}
+async function idbGet(k){if(T)return null;try{const db=await idb();return await new Promise(ok=>{const r=db.transaction('h').objectStore('h').get(k);r.onsuccess=()=>ok(r.result||null);r.onerror=()=>ok(null)})}catch{return null}}
+const MODE={share:'read',conder:'read',local:'readwrite'};
+async function pick(kind){
+ let h;if(T&&T.pick)h=await T.pick(kind);else{if(!('showDirectoryPicker'in window)){alert('이 브라우저는 폴더 연결을 지원하지 않습니다. Microsoft Edge 로 여세요.');return}h=await window.showDirectoryPicker({id:'tb500-'+kind,mode:MODE[kind],startIn:kind==='local'?'documents':undefined})}
+ handles[kind]=h;await idbSet(kind,h);paintSetup();if(kind==='local')await loadRecord(true)}
+async function ready(kind){const h=handles[kind];if(!h)return false;if(T)return true;const o={mode:MODE[kind]};
+ try{if(await h.queryPermission(o)==='granted')return true;return await h.requestPermission(o)==='granted'}catch{return false}}
+function paintSetup(){for(const k of ['share','conder','local']){const row=$('#row-'+k);row.classList.toggle('ok',!!handles[k]);const btn=row.querySelector('button');btn.textContent=handles[k]?'다시 고르기':'폴더 연결';
+  if(handles[k]){const s=row.querySelector('small');s.dataset.orig=s.dataset.orig||s.innerHTML;s.innerHTML='연결됨: <b style="display:inline">'+esc(handles[k].name)+'</b> · '+s.dataset.orig}}}
+document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=async()=>{try{await pick(b.dataset.pick)}catch(e){if(e.name!=='AbortError')setMsg('폴더 연결 실패: '+e.message)}});
+async function dirs(h){const a=[];for await(const [n,x] of h.entries())if(x.kind==='directory')a.push([n,x]);return a}
+async function readJson(dir,name){const f=await (await dir.getFileHandle(name)).getFile();return JSON.parse(await f.text())}
+async function writeText(dir,name,text){const fh=await dir.getFileHandle(name,{create:true}),w=await fh.createWritable();await w.write(text);await w.close()}
+
+/* ---------- 기록 · 갱신 알림(내 PC 기록만 본다 — OneDrive 에 접속하지 않음) ---------- */
+let record=null;try{record=JSON.parse(localStorage.getItem('tb500-review-record')||'null')}catch{}
+function saveRecordLocal(){try{localStorage.setItem('tb500-review-record',JSON.stringify(record))}catch{}}
+function paintRecord(){
+ const box=(r,unit)=>r?`게시 ${esc(r.exported_at||'?')} · ${esc(r.zip)}<br>${unit} · 내 PC 로 받은 시각 ${esc(r.taken_at||'?')}`:'없음 — [캐시 갱신]을 누르세요';
+ $('#cache-camtek').innerHTML=box(record&&record.camtek,record&&record.camtek?`호기 ${record.camtek.machines} 대 · Batch Report ${record.camtek.reports.toLocaleString()} 개`:'');
+ $('#cache-kla').innerHTML=box(record&&record.kla,record&&record.kla?`장비 ${record.kla.machines} 대 · Lot 폴더 ${record.kla.lots.toLocaleString()} 개`:'');
+ const b=$('#banner');b.className='banner';
+ if(!record||!record.updated_at){b.textContent='캐시를 아직 받지 않았습니다. 오른쪽 설정을 마치고 [캐시 갱신]을 누르세요.';b.classList.add('show');return}
+ const age=(now()-new Date(record.updated_at.replace(' ','T')))/3600000;
+ if(!(age<STALE_HOURS)){b.textContent=`캐시를 마지막으로 받은 지 ${Math.floor(age/24)}일 ${Math.floor(age%24)}시간 지났습니다(${record.updated_at}). [캐시 갱신]을 누르세요.`;b.classList.add('show')}}
+async function loadRecord(quiet){if(!handles.local)return;try{if(!await ready('local'))return;record=await readJson(handles.local,RECORD);saveRecordLocal()}catch(e){if(!quiet)setMsg('내 PC 캐시 기록을 읽지 못했습니다: '+e.message)}paintRecord()}
+
+/* ---------- 캐시 갱신 ---------- */
+const lotCode=sm=>{const m=String(sm||'').match(/(?:^|[^A-Za-z])([A-Za-z]{3})(?![A-Za-z])/);return m?m[1].toUpperCase():''};
+const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+function batchStart(v){const m=String(v||'').match(/(\d{1,2})-([A-Za-z]{3})-(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*([AP]M)?/i);if(!m||!MON[m[2].toLowerCase()])return '';let h=+m[4];if(m[7]){const pm=m[7].toUpperCase()==='PM';if(h===12)h=pm?12:0;else if(pm)h+=12}const y=m[3].length===2?2000+ +m[3]:+m[3];return y+'-'+pad(MON[m[2].toLowerCase()])+'-'+pad(+m[1])+' '+pad(h)+':'+m[5]+':'+m[6]}
+function fileStart(f){const m=String(f).match(/_(\d{2})-([A-Za-z]{3})-(\d{2})_\((\d{2})\.(\d{2})\.(\d{2})\)_/);return m&&MON[m[2].toLowerCase()]?'20'+m[1]+'-'+pad(MON[m[2].toLowerCase()])+'-'+m[3]+' '+m[4]+':'+m[5]+':'+m[6]:''}
+function camtekRows(state){
+ const rows=[],machine=String(state.machine||'');
+ for(const [fname,entry] of Object.entries(state.entries||{})){
+  const r=entry&&entry.report;if(!r)continue;const meta={};(r.metadata||[]).forEach(p=>{if(Array.isArray(p)&&p.length>=2)meta[String(p[0]).trim().toLowerCase()]=String(p[1])});
+  const js=meta['job/setup']||'',job=js.split('/')[0].trim(),setup=js.split('/').slice(1).join('/').trim();
+  let sm='';const pre=job&&setup?job+'_'+setup+'_':'';
+  if(pre&&fname.startsWith(pre)){const rest=fname.slice(pre.length),m=rest.match(/^(.*)_\d{2}-[A-Za-z]{3}-\d{2}_\(/);if(m)sm=m[1]}
+  if(!sm){const lots=(r.wafers||[]).map(w=>String(w.Lot||w.lot||'')).filter(x=>x&&!/^loadport/i.test(x)&&x!=='-');if(lots.length)sm=lots[0]}
+  rows.push([machine,job,setup,sm,lotCode(sm),batchStart(meta['batch start'])||fileStart(fname),(r.wafers||[]).length,fname])}
+ return rows}
+async function newest(share,kind){
+ const cfg=SHARE[kind];let info;try{info=await readJson(share,cfg.info)}catch{return null}
+ const items=(info&&info.schema===1&&Array.isArray(info.items)?info.items:[]).filter(i=>i&&cfg.name.test(i.name||'')).sort((a,b)=>a.name<b.name?1:-1);
+ for(const it of items){try{const f=await (await share.getFileHandle(it.name)).getFile();return {it,f}}catch{}}
+ return items.length?{it:items[0],f:null}:null}
+async function refresh(){
+ if(!handles.share||!handles.local){setMsg('먼저 ① OneDrive 캐시공유 폴더와 ③ 내 PC 캐시 폴더를 연결하세요.');return}
+ if(!await ready('share')||!await ready('local')){setMsg('폴더 접근을 허용해야 캐시를 갱신할 수 있습니다.');return}
+ const btn=$('#refresh');btn.disabled=true;setBar(5);
+ try{
+  let old=null;try{old=await readJson(handles.local,RECORD)}catch{}
+  const next={schema:1,updated_at:'',camtek:old&&old.camtek||null,kla:old&&old.kla||null},notes=[];
+  for(const kind of ['camtek','kla']){
+   const label=kind==='camtek'?'Camtek 캐시':'KLA 캐시',got=await newest(handles.share,kind);
+   if(!got){notes.push(label+': OneDrive 에 게시된 캐시가 없습니다');continue}
+   if(!got.f){notes.push(label+': '+got.it.name+' 이(가) 아직 동기화되지 않았습니다');continue}
+   const stampOf=SHARE[kind].name.exec(got.it.name)[1],file=PREFIX+(kind==='camtek'?'Camtek':'KLA')+'색인_'+stampOf+'.json';
+   if(old&&old[kind]&&old[kind].zip===got.it.name){try{await handles.local.getFileHandle(file);notes.push(label+': 이미 최신('+got.it.name+')');continue}catch{}}
+   if(got.f.size!==got.it.size){notes.push(label+': 크기가 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');continue}
+   const sha=await fileSha(got.f,label);
+   if(sha!==got.it.sha256){notes.push(label+': SHA-256 이 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');continue}
+   const entries=await zipEntries(got.f);let data,sum;
+   if(kind==='camtek'){
+    const rows=[],machines=new Set,members=entries.filter(e=>/^누적\/.+\.json$/.test(e.name));
+    for(let i=0;i<members.length;i++){setMsg('Camtek 캐시 푸는 중 '+(i+1)+' / '+members.length);setBar(10+80*i/members.length);
+     const st=JSON.parse(await zipText(got.f,members[i]));if(st&&st.machine)machines.add(String(st.machine));rows.push(...camtekRows(st))}
+    data={schema:1,kind:'camtek',zip:got.it.name,exported_at:got.it.exported_at||'',rows};sum={machines:machines.size,reports:rows.length}}
+   else{
+    const e=entries.find(x=>x.name==='KLA색인.json');if(!e)throw new Error('KLA 캐시 zip 안에 KLA색인.json 이 없습니다');
+    setMsg('KLA 캐시 푸는 중…');const idx=JSON.parse(await zipText(got.f,e));
+    const sources=(idx&&Array.isArray(idx.sources)?idx.sources:[]);
+    data={schema:1,kind:'kla',zip:got.it.name,exported_at:got.it.exported_at||'',updated_at:idx.updated_at||'',sources};
+    sum={machines:new Set(sources.map(s=>s.machine)).size,lots:sources.reduce((n,s)=>n+Object.values(s.dates||{}).reduce((m,d)=>m+Object.keys(d.lots||{}).length,0),0)}}
+   await writeText(handles.local,file,JSON.stringify(data));
+   next[kind]=Object.assign({zip:got.it.name,file,exported_at:got.it.exported_at||'',taken_at:stamp(now())},sum);
+   notes.push(label+': '+got.it.name+' 받음')}
+  next.updated_at=stamp(now());
+  await writeText(handles.local,RECORD,JSON.stringify(next,null,1));
+  // 최신 1개만: 이 프로그램이 만든 색인 파일(이름 규칙이 맞는 것)만 지운다. 다른 파일은 건드리지 않는다.
+  const keep=new Set([next.camtek&&next.camtek.file,next.kla&&next.kla.file].filter(Boolean));let removed=0;
+  for await(const [n,x] of handles.local.entries())if(x.kind==='file'&&OUR_FILE.test(n)&&!keep.has(n)){try{await handles.local.removeEntry(n);removed++}catch{}}
+  record=next;saveRecordLocal();indexCache=null;paintRecord();
+  setMsg(notes.join(' / ')+(removed?' / 지난 캐시 '+removed+'개 정리':''));setBar(100)}
+ catch(e){setMsg('캐시 갱신 실패: '+e.message)}
+ finally{btn.disabled=false}}
+$('#refresh').onclick=refresh;
+
+/* ---------- 조회 ---------- */
+let indexCache=null,results=[],rootList=null;
+async function loadIndex(){
+ if(indexCache)return indexCache;const out={camtek:[],kla:new Map,klaAt:'',camtekAt:''};
+ let rec=null;try{rec=await readJson(handles.local,RECORD)}catch{}
+ if(rec&&rec.camtek){try{const d=await readJson(handles.local,rec.camtek.file);out.camtek=d.rows||[];out.camtekAt=d.exported_at||''}catch{}}
+ if(rec&&rec.kla){try{const d=await readJson(handles.local,rec.kla.file);out.klaAt=d.updated_at||d.exported_at||'';
+  for(const s of d.sources||[])for(const [day,e] of Object.entries(s.dates||{}))for(const [lot,slots] of Object.entries(e.lots||{})){
+   const at=lot.indexOf('@');if(at<1)continue;const base=lot.slice(0,at).toLowerCase(),proc=(lot.slice(at+1).match(/^\d{4}/)||[''])[0];
+   if(!out.kla.has(base))out.kla.set(base,[]);out.kla.get(base).push({machine:s.machine,day,lot,proc,slots:slots||[],path:String(s.path||'').replace(/[\\/]+$/,'')+'\\'+day+'\\'+lot})}}catch{}}
+ if(rec){record=rec;saveRecordLocal();paintRecord()}
+ indexCache=out;return out}
+const parseLots=()=>[...new Set($('#lots').value.split(/[\n\r\t,;]+/).map(x=>x.trim()).filter(Boolean))];
+function stageOf(text){let best=null,pos=1e9;for(const s of STAGES)for(const re of s.keys){const m=re.exec(text);if(m&&m.index<pos){pos=m.index;best=s}}return best}
+function kindOf(name){const head=name.split('(')[0];if(/재리뷰/.test(head))return 'rereview';if(/skip/i.test(head))return 'skip';if(/재스캔/.test(head))return 'rescan';return 'base'}
+function classifyImage(fileName){const base=String(fileName||'').replace(/\.[^.]+$/,'').trim();if(/^TB500_/i.test(base)||/\s-\sMulti_/i.test(base))return 'Camtek';if(/^[A-Z0-9]+(?:_\d+){4,}$/i.test(base))return 'KLA';return 'Unknown'}
+async function walk(h,budget,onFile){const t0=performance.now(),stack=[h];let seen=0;
+ while(stack.length){const d=stack.pop();for await(const [n,x] of d.entries()){if(++seen>budget.entries||performance.now()-t0>budget.ms)return false;if(x.kind==='directory')stack.push(x);else if(onFile(n)===true)return true}}return true}
+async function countTxt(h){let n=0;const done=await walk(h,{entries:5000,ms:2500},name=>{if(/\.txt$/i.test(name))n++});return done?{count:n}:{count:n,partial:true}}
+async function equipmentOf(folders){for(const [,h] of folders){let found='Unknown';await walk(h,{entries:3000,ms:2500},name=>{if(/\.(?:jpg|jpeg|png|bmp|gif|webp)$/i.test(name)){const e=classifyImage(name);if(e!=='Unknown'){found=e;return true}}});if(found!=='Unknown')return found}return 'Unknown'}
+function camtekHits(idx,sm,stage){const code=lotCode(sm);if(!code)return [];
+ return idx.camtek.filter(r=>r[4]===code&&stage.keys.some(re=>re.test(r[1]))).map(r=>({machine:r[0],job:r[1],setup:r[2],sm:r[3],at:r[5],wafers:r[6],file:r[7]})).sort((a,b)=>a.at<b.at?1:-1)}
+function klaHits(idx,lot,stage){return (idx.kla.get(lot.toLowerCase())||[]).filter(k=>PROC.get(k.proc)===stage).map(k=>{const t=(k.slots.map(s=>(s.match(/^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})/)||[]).slice(1)).filter(x=>x.length).map(x=>x[0]+' '+x[1]+':'+x[2]).sort()[0])||k.day;
+  return {machine:k.machine,at:t,lot:k.lot,slots:k.slots.length,path:k.path,proc:k.proc,review:k.proc===stage.rev}}).sort((a,b)=>a.at<b.at?1:-1)}
+async function findLot(lot){
+ if(!rootList)rootList=await dirs(handles.conder);const low=lot.toLowerCase();
+ const exact=rootList.find(([n])=>n.toLowerCase()===low);if(exact)return exact;
+ const re=new RegExp('(?:^|[^A-Za-z0-9.])'+low.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![A-Za-z0-9])','i');
+ return rootList.find(([n])=>re.test(n))||rootList.find(([n])=>n.toLowerCase().includes(low))||null}
+async function lookLot(lot,idx){
+ const hit=await findLot(lot);if(!hit)return {lot,folder:'',sm:'',layers:[],missing:true};
+ const [folder,h]=hit,smm=folder.match(/\(([^()]*)\)\s*$/),sm=smm?smm[1].trim():'';
+ const groups=new Map,etc=[];
+ for(const [n,x] of await dirs(h)){const st=stageOf(n.split('(')[0])||stageOf(n);if(!st){etc.push(n);continue}if(!groups.has(st.key))groups.set(st.key,{stage:st,folders:[]});groups.get(st.key).folders.push({name:n,kind:kindOf(n),h:x})}
+ const layers=[];
+ for(const st of STAGES){const g=groups.get(st.key);if(!g)continue;g.folders.sort((a,b)=>a.name.localeCompare(b.name,'ko',{numeric:true}));
+  const re=g.folders.filter(f=>f.kind==='rereview'),skip=g.folders.filter(f=>f.kind==='skip'),scan=g.folders.filter(f=>f.kind==='base'||f.kind==='rescan');
+  const L={stage:st,folders:g.folders.map(f=>({name:f.name,kind:f.kind})),status:'',txt:[],equipment:'',camtek:[],kla:[]};
+  if(re.length){L.status='done';for(const f of re)L.txt.push(Object.assign({name:f.name},await countTxt(f.h)))}
+  else if(skip.length){L.status='skip'}
+  else{L.status='need';L.equipment=await equipmentOf(scan.map(f=>[f.name,f.h]));
+   if(L.equipment!=='KLA')L.camtek=camtekHits(idx,sm,st);if(L.equipment!=='Camtek')L.kla=klaHits(idx,lot,st)}
+  layers.push(L)}
+ return {lot,folder,sm,layers,etc}}
+async function run(){
+ const lots=parseLots();if(!lots.length)return setMsg('조회할 Lot 을 입력하세요.');
+ if(!handles.conder)return setMsg('② Conder Scan 폴더를 먼저 연결하세요.');
+ if(!handles.local)return setMsg('③ 내 PC 캐시 폴더를 먼저 연결하세요.');
+ if(!await ready('conder')||!await ready('local'))return setMsg('폴더 접근을 허용해야 조회할 수 있습니다.');
+ $('#scan').disabled=true;$('#csv').disabled=true;rootList=null;results=[];setBar(0);
+ try{const idx=await loadIndex();if(!idx.camtek.length&&!idx.kla.size)setMsg('캐시가 비어 있습니다 — 재리뷰 여부만 확인합니다. [캐시 갱신]을 누르세요.');
+  for(let i=0;i<lots.length;i++){setMsg((i+1)+' / '+lots.length+' 조회 중… '+lots[i]);results.push(await lookLot(lots[i],idx));setBar((i+1)/lots.length*100)}
+  render();const need=results.reduce((n,r)=>n+r.layers.filter(l=>l.status==='need').length,0);setMsg('조회 완료: Lot '+lots.length+'개 · 재리뷰 필요 Layer '+need+'개');$('#csv').disabled=false}
+ catch(e){setMsg('조회 실패: '+e.message)}
+ finally{$('#scan').disabled=false}}
+$('#scan').onclick=run;
+
+/* ---------- 화면 ---------- */
+const unc=()=>$('#conderUnc').value.trim().replace(/[\\/]+$/,'');
+const STATUS={done:['재리뷰 완료','done'],need:['재리뷰 필요','need'],skip:['Skip','skip']};
+const equipBadge=e=>e?'<span class="equip '+(e==='KLA'?'kla':e==='Camtek'?'camtek':'unknown')+'">'+esc(e)+'</span>':'';
+function hitsHtml(L,limit){
+ if(L.status!=='need')return '<span class="muted small">조사하지 않음</span>';
+ const c=L.camtek.map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at||'시각 모름')+'<br><span class="muted">Camtek · '+esc(h.job)+' · S/M '+esc(h.sm)+' · '+h.wafers+'장</span></span>');
+ const k=L.kla.map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at)+'<br><span class="muted">KLA · '+esc(h.lot)+' ('+(h.review?'Review':'AOI')+' '+esc(h.proc)+') · 슬롯 '+h.slots+'개</span></span>');
+ const all=c.concat(k);if(!all.length)return '<span class="muted small">캐시에서 못 찾음</span>';
+ const ms=new Set(L.camtek.map(h=>h.machine).concat(L.kla.map(h=>h.machine)));
+ return (ms.size>1?'<span class="st skip" style="margin-bottom:4px">여러 호기 '+ms.size+'대</span>':'')+all.slice(0,limit).join('')+(all.length>limit?'<span class="hit muted">외 '+(all.length-limit)+'건 — 근거 칸 [자세히]</span>':'')}
+function evidenceHtml(r,L,ri,li){
+ const path=unc()+'\\'+r.folder;let s='';
+ if(L.status==='done')s=L.txt.map(t=>'<span class="hit">'+esc(t.name)+' · 맵(.txt) '+(t.partial?'<b>폴더가 커서 세지 않음</b>':'<b>'+t.count+'개</b>')+'<br><span class="mono">'+esc(path+'\\'+t.name)+'</span> <button class="copy" data-copy="'+esc(path+'\\'+t.name)+'">경로 복사</button></span>').join('');
+ else s='<span class="folders">폴더: '+L.folders.map(f=>esc(f.name)).join(' · ')+'</span>';
+ return s+(L.status==='need'?' <button class="copy" data-detail="'+ri+':'+li+'">더보기 · Lot History</button>':'')}
+function render(){
+ const b=$('#tbody');b.innerHTML='';
+ results.forEach((r,ri)=>{
+  if(r.missing){b.insertAdjacentHTML('beforeend','<tr><td>'+esc(r.lot)+'</td><td colspan="8" class="lotmissing left">Conder Scan 에서 Lot 폴더를 찾지 못했습니다</td></tr>');return}
+  const head='<b>'+esc(r.folder)+'</b><br><span class="muted small">S/M '+esc(r.sm||'없음(괄호 없음)')+'</span>';
+  if(!r.layers.length){b.insertAdjacentHTML('beforeend','<tr><td>'+esc(r.lot)+'</td><td class="left">'+head+'</td><td colspan="7" class="muted">Layer 폴더 없음'+(r.etc.length?' (기타 폴더: '+esc(r.etc.join(', '))+')':'')+'</td></tr>');return}
+  r.layers.forEach((L,li)=>{const [t,c]=STATUS[L.status];
+   b.insertAdjacentHTML('beforeend','<tr>'+(li===0?'<td rowspan="'+r.layers.length+'">'+esc(r.lot)+'</td><td rowspan="'+r.layers.length+'" class="left">'+head+(r.etc.length?'<span class="folders">기타 폴더: '+esc(r.etc.join(', '))+'</span>':'')+'<br><button class="copy" data-history="'+ri+'">Lot History</button></td>':'')+
+    '<td class="layername">'+esc(L.stage.key)+'</td><td><span class="process aoi">'+L.stage.aoi+' / '+L.stage.aoiName+'</span></td><td><span class="process review">'+L.stage.rev+' / '+L.stage.revName+'</span></td>'+
+    '<td><span class="st '+c+'">'+t+'</span></td><td>'+(L.status==='need'?equipBadge(L.equipment):'')+'</td><td class="left">'+hitsHtml(L,3)+'</td><td class="left">'+evidenceHtml(r,L,ri,li)+'</td></tr>')})});
+ const lay=results.flatMap(r=>r.layers);
+ $('#summary').textContent='Lot '+results.length+'개 · 못 찾은 Lot '+results.filter(r=>r.missing).length+'개 · Layer '+lay.length+'개(재리뷰 완료 '+lay.filter(l=>l.status==='done').length+' · 재리뷰 필요 '+lay.filter(l=>l.status==='need').length+' · Skip '+lay.filter(l=>l.status==='skip').length+') · 판정: 같은 Layer 에 이름에 "_재리뷰"가 붙은 폴더가 있으면 재리뷰 완료';
+ b.querySelectorAll('[data-copy]').forEach(x=>x.onclick=()=>copy(x.dataset.copy));
+ b.querySelectorAll('[data-detail]').forEach(x=>x.onclick=()=>{const [ri,li]=x.dataset.detail.split(':').map(Number);detail(results[ri],results[ri].layers[li])});
+ b.querySelectorAll('[data-history]').forEach(x=>x.onclick=()=>detail(results[+x.dataset.history],null))}
+/* Lot History = 이 Lot 의 모든 스캔(Camtek: S/M 코드가 같은 Batch Report, KLA: Lot 이름@공정번호 폴더)을 시간순으로. 호기가 바뀌면 표시. */
+function lotHistory(r){const idx=indexCache||{camtek:[],kla:new Map};const code=lotCode(r.sm),out=[];
+ if(code)for(const x of idx.camtek)if(x[4]===code){const st=stageOf(x[1]);out.push({vendor:'Camtek',machine:x[0],at:x[5],layer:st?st.key:'?',what:x[1]+' / '+x[2]+' · S/M '+x[3]+' · '+x[6]+'장',src:x[7]})}
+ for(const k of idx.kla.get(r.lot.toLowerCase())||[]){const st=PROC.get(k.proc);const h=st?klaHits({kla:new Map([[r.lot.toLowerCase(),[k]]])},r.lot,st)[0]:null;
+  out.push({vendor:'KLA',machine:k.machine,at:h?h.at:k.day,layer:st?st.key:'?',what:k.lot+' · '+(st?(k.proc===st.rev?'Review ':'AOI ')+k.proc:'공정 '+(k.proc||'?'))+' · 슬롯 '+k.slots.length+'개',src:k.path})}
+ return out.sort((a,b)=>a.at<b.at?-1:a.at>b.at?1:0)}
+function histTable(rows,showLayer){if(!rows.length)return '<div class="empty">캐시에서 찾지 못했습니다.</div>';let prev='';
+ return '<div class="tablewrap"><table style="min-width:760px"><thead><tr><th>#</th><th>스캔 시각</th>'+(showLayer?'<th>Layer</th>':'')+'<th>장비</th><th>호기</th><th>내용 · 근거</th></tr></thead><tbody>'+rows.map((h,i)=>{const moved=prev&&prev!==h.machine;prev=h.machine;
+  return '<tr><td>'+(i+1)+'</td><td class="nowrap">'+esc(h.at||'시각 모름')+'</td>'+(showLayer?'<td class="layername">'+esc(h.layer)+'</td>':'')+'<td>'+equipBadge(h.vendor)+'</td><td class="nowrap"><b>'+esc(h.machine)+'</b>'+(moved?'<br><span class="st skip">호기 이동</span>':'')+'</td><td class="left">'+esc(h.what)+'<br><span class="mono">'+esc(h.src)+'</span></td></tr>'}).join('')+'</tbody></table></div>'}
+async function copy(t){try{await navigator.clipboard.writeText(t);setMsg('경로를 복사했습니다')}catch{setMsg('복사하지 못했습니다: '+t)}}
+function detail(r,L){
+ const hist=lotHistory(r),ms=new Set(hist.map(h=>h.machine));
+ $('#dlgTitle').textContent=r.lot+(L?' · '+L.stage.key+' 스캔 기록 · Lot History':' · Lot History');
+ let html='';
+ if(L){const rows=L.camtek.map(h=>({vendor:'Camtek',machine:h.machine,at:h.at,layer:L.stage.key,what:h.job+' / '+h.setup+' · S/M '+h.sm+' · '+h.wafers+'장',src:h.file}))
+   .concat(L.kla.map(h=>({vendor:'KLA',machine:h.machine,at:h.at,layer:L.stage.key,what:h.lot+' · '+(h.review?'Review ':'AOI ')+h.proc+' · 슬롯 '+h.slots+'개',src:h.path}))).sort((a,b)=>a.at<b.at?-1:1);
+  const lm=new Set(rows.map(x=>x.machine));
+  html+='<h4 style="margin:0 0 8px">'+esc(L.stage.key)+' 스캔 기록 — '+rows.length+'건 · 호기 '+lm.size+'대'+(lm.size>1?' (여러 호기에서 스캔됨)':'')+'</h4>'+
+   '<div class="notice">Camtek = 캐시의 Batch Report 중 S/M 코드 '+esc(lotCode(r.sm)||'?')+' 이고 Job 이름에 '+esc(L.stage.key)+' 가 있는 것. KLA = Lot 이름이 '+esc(r.lot)+'@공정번호('+L.stage.aoi+' 또는 '+L.stage.rev+')인 폴더. 오래된 것이 위.</div>'+histTable(rows,false)+'<br>'}
+ html+='<h4 style="margin:0 0 8px">Lot History (모든 Layer) — '+hist.length+'건 · 호기 '+ms.size+'대</h4><div class="notice">이 Lot 의 캐시에 있는 모든 스캔을 시간순으로 보여 줍니다. 앞 줄과 호기가 다르면 \'호기 이동\'으로 표시합니다. 같은 S/M 코드를 다른 Lot 이 다시 쓴 경우가 섞일 수 있으니 날짜를 함께 확인하세요.</div>'+histTable(hist,true);
+ $('#dlgBody').innerHTML=html;$('#dlg').showModal()}
+$('#dlgClose').onclick=()=>$('#dlg').close();
+$('#clear').onclick=()=>{$('#lots').value='';results=[];$('#tbody').innerHTML='<tr><td colspan="9" class="empty">Lot 목록을 입력하세요.</td></tr>';$('#summary').textContent='조회 전';$('#csv').disabled=true;setBar(0)};
+$('#csv').onclick=()=>{const rows=[['Input Lot','Lot Folder','S/M','Layer','AOI Process','Review Process','Re-review','Equipment','Machine','Scan Time','Source','Map txt count','Folders']];
+ results.forEach(r=>{if(r.missing){rows.push([r.lot,'Lot folder not found','','','','','','','','','','',''] );return}
+  r.layers.forEach(L=>{const hits=L.camtek.map(h=>['Camtek',h.machine,h.at,h.job+' / '+h.file])
+   .concat(L.kla.map(h=>['KLA',h.machine,h.at,h.path]));const base=[r.lot,r.folder,r.sm,L.stage.key,L.stage.aoi+' / '+L.stage.aoiName,L.stage.rev+' / '+L.stage.revName,STATUS[L.status][0]];
+   const txt=L.txt.map(t=>t.partial?'?':t.count).join(' / '),folders=L.folders.map(f=>f.name).join(' | ');
+   if(!hits.length)rows.push(base.concat([L.equipment,'','','',txt,folders]));else hits.forEach(h=>rows.push(base.concat([h[0],h[1],h[2],h[3],txt,folders])))})});
+ const csv='\ufeff'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
+ a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='TB500_Review_'+stamp(now()).slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
+$('#conderUnc').value=(()=>{try{return localStorage.getItem('tb500-review-unc')||$('#conderUnc').value}catch{return $('#conderUnc').value}})();
+$('#conderUnc').onchange=()=>{try{localStorage.setItem('tb500-review-unc',$('#conderUnc').value)}catch{}};
+(async()=>{for(const k of ['share','conder','local'])handles[k]=await idbGet(k);paintSetup();paintRecord()})();
+window.__tb500={lotCode,stageOf,kindOf,batchStart,fileStart,zipEntries,zipText,camtekRows};
+})();
+</script>
+</body>
+</html>
