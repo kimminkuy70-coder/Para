@@ -9,14 +9,17 @@
   "HTML 로 구현 가능한지 검토하고 계획 검토받아" → 이번 run 은 **계획서만**: `docs/TB500_review_계획.md`. 코드 없음, 원본 HTML 그대로.
 - 결론(계획서 2절): HTML 로 가능(File System Access 읽기 전용 · `DecompressionStream` zip 풀기 · 로컬 캐시 폴더에만 쓰기 · 로컬 기록 기반 알림). 불가 2가지 —
   ⓐ OneDrive 링크에서 자동 다운로드(CORS · 로그인) → OneDrive 바로 가기 동기화 폴더를 읽거나 수동 다운로드 후 끌어 넣기 ⓑ KLA 자료가 OneDrive 캐시에 없음 → 개발자 PC 프로그램이 KLA 폴더 이름 색인도 게시해야 함.
-- 소유자에게 물은 것(이슈 댓글, 답 대기): ① OneDrive 공유 링크(저장소 어디에도 없음 — Claude 는 모름) ② KLA 색인 게시 기능을 version_v12 에 추가해도 되는지 ③ 재리뷰 판정 기준
-  ④ 재리뷰 된 Layer 도 호기 표시? ⑤ Layer 토큰을 Job · S/M 꼬리 어디서 보는지 ⑥ 로컬 캐시 폴더 기본 위치 · 보관 개수.
+- 소유자 답(2026-11-06 댓글 6691333700): ① OneDrive 연결은 사용자가 최초 1회 함(→ 동기화 폴더 방식 확정, 문제 없음. 공유 링크 자체는 아직 안 받음 — 링크는 안내용이라 구현은 링크 없이 시작 가능)
+  ② **KLA 캐시를 먼저 데스크톱 프로그램(version_v12)에 Camtek 과 같게 구현**, OneDrive 경로 동일 · Camtek/KLA 구분 → `version_v12` 커밋 `7194ead`, v12.9.23 릴리스
+  (KLA zip = `캐시공유/KLA_캐시_YYYYMMDD_HHMMSS.zip` 안 `KLA색인.json` schema 1, 목록 `KLA캐시정보.json` — 형식은 version_v12 CLAUDE.md 맨 위 #40 절). 리뷰 HTML 은 이 zip 을 읽는다.
+- 아직 답 대기: ③ 재리뷰 판정 기준 ④ 재리뷰 된 Layer 도 호기 표시? ⑤ Layer 토큰을 Job · S/M 꼬리 어디서 보는지 ⑥ 로컬 캐시 폴더 기본 위치 · 보관 개수.
 - 내 해석(확인 전): 기대 Layer 8개 중 Conder Scan 에 폴더가 없는 Layer = 재리뷰 안 됨 · 새 파일 이름 `TB500_Review.html` · 갱신 알림 기준 1일 · Camtek 매칭은 S/M Lot 코드(첫 단독 영문 3글자) 일치 + Layer 토큰이 Job 또는 S/M 꼬리에 있음.
 - 시험: 코드 변경 없음(문서만) — 시험 안 돌림. 남은 일: 소유자 답 받은 뒤 구현(합성 폴더 · 합성 zip 으로 Playwright 시험), 실기(UNC · 회사 OneDrive · Edge)는 Linux 에서 검증 불가.
 - `version_v12` 상태는 아래 #39 절 그대로(v12.8.23 빌드 시작 막힘).
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
+| Para #40 (2차) | KLA 캐시를 version_v12 에 먼저 구현 + v12.9.23 | version_v12 `7194ead`(이 브랜치 아님) |
 | Para #40 | TB500 리뷰 전용 HTML(재리뷰 여부 · 장비 · 호기 · 스캔 시각, OneDrive 캐시) 구현 가능성 검토 · 계획 | 계획서 `docs/TB500_review_계획.md`(version_TB500_review), 질문 6개 답 대기 |
 
 ## 최신 재개 — Para #39 Batch Report 캐시 OneDrive 공유 · 자동 분석 설정 이동 · 저장 폴더 = docs 상위 (2026-10-30 KST, `version_v12`, v12.8.23)
