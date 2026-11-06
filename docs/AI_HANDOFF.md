@@ -15,12 +15,13 @@
 - 시험: `tests/test_kla_cache.py` 6 · `tests/test_kla.py` 9 통과, `tools/check_project.py` = `test_batchreport.py`(tkinter 없음, 기존과 같음)만 실패, `npx tsc --noEmit` · `vite build` 통과,
   `tools/test_desktop_ui.mjs`(PARA_TEST_NODE_MODULES=/opt/node-tools/node_modules) 통과 — KLA 캐시 갱신 → 게시 → 불러오기 → 캐시에서 찾기 단계 추가. Windows 실기 · 실제 KLA 장비 · OneDrive 는 미검증.
   시험 환경에서 `pip install openpyxl` 필요(개발 환경만). UI 시험이 바꾸는 `docs/screenshots/*` · `CamtekAOI/Logs/*` 는 commit 하지 않음.
-- 릴리스 v12.9.23: 아래 결과 줄 참고.
+- 릴리스 **v12.9.23 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.9.23 (`Camtek_AOI_manager_v12.9.23.zip`, workflow_dispatch run 42265406882 성공, 태그 = `7194ead`).
+  소유자가 이슈 댓글과 세션에서 직접 릴리스를 지시해 dispatch 가 이번에는 막히지 않음.
 - 남은 일: 리뷰 전용 HTML 구현(`version_TB500_review`) — 소유자 답 대기 중인 질문 3~6(재리뷰 판정 기준 등)과 OneDrive 공유 링크.
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| Para #40 (2차) | KLA 자재 찾기 캐시 + OneDrive 게시(Camtek 과 구분) + v12.9.23 릴리스 | 구현 · 시험 통과, 릴리스 결과는 위 |
+| Para #40 (2차) | KLA 자재 찾기 캐시 + OneDrive 게시(Camtek 과 구분) + v12.9.23 릴리스 | 구현 · 시험 통과, v12.9.23 릴리스 완료 |
 
 
 ## 최신 재개 — Para #39 Batch Report 캐시 OneDrive 공유 · 자동 분석 설정 이동 · 저장 폴더 = docs 상위 (2026-10-30 KST, `version_v12`, v12.8.23)
