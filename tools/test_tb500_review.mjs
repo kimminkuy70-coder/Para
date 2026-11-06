@@ -75,9 +75,21 @@ assert.equal(await page.locator('#tab-setup .tdot').count(),0);
 assert.match(await page.locator('#share-text').innerText(),/^연결됨/);
 await page.getByRole('tab',{name:'조회'}).click();
 assert.ok(await page.locator('#panel-setup').isHidden());
+// 머리 = 제목만, CSV 버튼 없음(Para #42 후속)
+assert.equal((await page.locator('header.topbar').innerText()).trim(),'TB500 Review');
+assert.equal(await page.locator('#csv').count(),0);
+assert.ok(await page.locator('#stop').isDisabled());
+// 중단: 조회를 누르자마자 [중단] → 아무 Lot 도 조회하지 않고 멈춘다
+await page.locator('#lots').fill('TB500.INT1041\nTB500.INT948');
+await page.evaluate(()=>{document.querySelector('#scan').click();document.querySelector('#stop').click()});
+await page.locator('#msg').filter({hasText:'조회를 중단했습니다: Lot 2개 중 0개까지'}).waitFor();
+assert.ok(await page.locator('#stop').isDisabled());
+assert.ok(!(await page.locator('#scan').isDisabled()));
 await page.locator('#lots').fill('TB500.INT1041\nTB500.INT948');
 await page.getByRole('button',{name:'조회',exact:true}).click();
+assert.ok(!(await page.locator('#stop').isDisabled()));
 await page.locator('#msg').filter({hasText:'조회 완료'}).waitFor();
+assert.ok(await page.locator('#stop').isDisabled());
 const rows=(await page.locator('#tbody tr').allInnerTexts()).map(t=>t.replace(/[ \n]*\t[ \n]*/g,'\t').replace(/\n+/g,' ').trim());
 // Para #41: 한 줄 = Conder Scan Lot 폴더 안의 실제 하위 폴더 하나(이름 그대로).
 const find=n=>rows.find(r=>r.includes(n+'\t')||r.includes(n+' 재리뷰\t')||r.includes(n+' 재스캔\t')||r.includes(n+' Skip\t'))||'';

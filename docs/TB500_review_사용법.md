@@ -8,6 +8,9 @@
 - HTML 을 열 때 폴더 3개가 모두 연결되어 있고 캐시도 받았으면 [조회] 탭을, 아니면 [설정] 탭을 엽니다. 설정을 마치지 않았으면 [설정] 탭에 빨간 점이 붙습니다.
 - 색은 Camtek AOI Manager 와 같은 계열입니다(머리 = slate navy `#37474f`, 강조 = 초록 `#047857`). 장비(KLA 파랑 · Camtek 초록) · Layer · 호기 색은 자료 구분용이라 그대로 둡니다.
 - Lot History ③ wafer 판정의 **슬롯별 표는 접혀 있는 것이 기본**입니다. 제목 줄(Lot 상태 · 판정 개수)을 누르면 펼칩니다.
+- 머리에는 제목 `TB500 Review` 만 둡니다(설명 문구 · 배지 삭제, 소유자 지시 2026-11-07).
+- [조회] 탭 버튼 = [조회] · [초기화] · **[중단]**. CSV 저장 버튼은 삭제했습니다(소유자 지시).
+- **[중단]**: 조회 중에만 누를 수 있습니다. 지금 읽는 폴더가 끝나면 멈춥니다. 하던 Lot 은 버리고, 끝난 Lot 만 표에 보입니다. 아무것도 쓰거나 지우지 않습니다.
 
 ## 1. 처음 설정 (1회)
 1. 개발자가 공유한 OneDrive 폴더를 [내 파일에 바로 가기 추가]로 연결하십시오.
@@ -51,7 +54,7 @@
   - Layer 의 wafer 판정: 그 Layer 의 Camtek Batch Report 를 시간순으로 모아 슬롯마다 `한 번에 Pass` / `재스캔 Pass`(Error · 중단 뒤 Pass) / `중복 Pass`(Pass 2번 이상) / `Pass 없음`.
     Lot 상태 = `Pass하지 못한 wafer 존재`(빨강) · `재스캔으로 완료`(주황) · `한 번에 완료`(청록). 2D · 3D 스캔(S/M 에 단독 `3D`)은 따로 센다.
   - 슬롯 = 25행 표면 행 위치(1행 = 25번), 아니면 Wafer ID(`Slot 14` · `14` · `SF14G14-A0`).
-  - 나오는 곳: 결과 표의 호기 칸(Lot 상태 한 줄 + Batch Report 마다 결과), Lot History ① 요약 그림(`22P 3E`) · ② 기록 · ③ wafer 판정 표(행 = 슬롯, 열 = 스캔, 끝 = 판정), CSV(`Camtek Batch Report Result`, `Camtek Layer Wafer Verdict`).
+  - 나오는 곳: 결과 표의 호기 칸(Lot 상태 한 줄 + Batch Report 마다 결과), Lot History ① 요약 그림(`22P 3E`) · ② 기록 · ③ wafer 판정 표(행 = 슬롯, 열 = 스캔, 끝 = 판정).
 - **Batch Report 보기**(Para #42): Lot History ② 기록의 Camtek Batch Report 파일 이름을 누르면, 캐시에 든 머리 정보(Batch Start · Job/Setup · Wafers Scanned …)와 wafer 표(슬롯 · Wafer ID · Pass/Fail · Scanned/Bad/Good Dice · Faults · Yield · Recipe(s) — 원문 열 그대로)를 Batch Report 꼴로 보여 준다. 원본 파일을 여는 것이 아니다.
 - 내 PC 색인은 schema 4(행 [9] = wafer 판정 칸, [10] = 머리 정보 · wafer 표). 예전(schema 1~3) 색인이면 같은 zip 이어도 [캐시 갱신]이 다시 푼다. 그 전에는 회색 `[캐시 갱신] 필요` 로 보인다.
 

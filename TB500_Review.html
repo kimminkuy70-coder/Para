@@ -31,7 +31,7 @@ td .process{display:flex;width:auto;margin:2px 0}.st.mini{min-width:0;padding:2p
 .sv-pass{font-size:10.5px;font-weight:800}.sv-pass.all{fill:#0f766e}.sv-pass.part{fill:#c2410c}.sv-pass.none{fill:#b42318}.sv-pass.stop{fill:#a16207}
 .scanb.stop{background:var(--amberbg);color:var(--amber);border:1px solid #fcd34d}.vsum{display:block;margin:2px 0 4px;font-size:12px;white-space:nowrap}.vsum .scanb{margin-left:0;margin-right:4px}
 .vtab{border-collapse:collapse;min-width:0;font-size:12px}.vtab th,.vtab td{border:1px solid var(--line);padding:3px 6px;text-align:center;white-space:nowrap}.vtab th{background:var(--graybg);font-size:11px}.vtab td.vp{background:#ccfbf1;color:#0f766e;font-weight:800}.vtab td.ve{background:var(--redbg);color:var(--red);max-width:160px;overflow:hidden;text-overflow:ellipsis}.vtab td.va{background:var(--amberbg);color:var(--amber)}.vtab td.vs{color:var(--muted)}.vtab td.vno{background:var(--redbg);color:var(--red);font-weight:800}.vtab td.vre{color:#c2410c;font-weight:800}.vtab td.vdup{color:#075985;font-weight:800}.vtab td.vok{color:#0f766e;font-weight:800}.vgrp{margin:8px 0 14px}.vgrp h5 .vsum{display:inline;margin-left:6px}.brlink{display:block;text-align:left;margin-top:2px}.brhead{margin-bottom:8px}.brmeta{margin-bottom:6px}.brmeta th{text-align:left;width:220px}.vtab td.left{text-align:left}#brTitle{font-size:14px;overflow-wrap:anywhere}.vgrp h5{margin:0 0 6px;font-size:13px}
-.topbar{background:var(--navy);color:#fff;border-radius:14px 14px 0 0;padding:18px 22px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.topbar h1{font-size:22px;margin:0 0 6px}.topbar p{margin:0;color:#cfd8dc;font-size:13px;line-height:1.5}.topbar .badge{background:var(--acclt);color:var(--acc2)}
+.topbar{background:var(--navy);color:#fff;border-radius:14px 14px 0 0;padding:18px 22px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.topbar h1{font-size:22px;margin:0}.topbar p{margin:0;color:#cfd8dc;font-size:13px;line-height:1.5}.topbar .badge{background:var(--acclt);color:var(--acc2)}
 .tabs{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;padding:0 14px;margin-bottom:16px}.tabs button{border:0;background:none;color:var(--muted);font:inherit;font-weight:800;padding:13px 16px;border-bottom:3px solid transparent;cursor:pointer}.tabs button[aria-selected="true"]{color:var(--acc);border-bottom-color:var(--acc)}.tabs button .tdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-left:6px;vertical-align:1px}
 .panel[hidden]{display:none}.sgrid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}@media(max-width:1000px){.sgrid{grid-template-columns:1fr}}
 .desc{margin:6px 0 0;padding:0;list-style:none;font-size:12.5px;color:var(--muted);line-height:1.65}.desc li{position:relative;padding-left:12px}.desc li::before{content:"";position:absolute;left:2px;top:.72em;width:4px;height:4px;border-radius:50%;background:var(--muted)}.desc b,.help b,.helplist b{color:var(--text);display:inline}
@@ -43,7 +43,7 @@ details.vgrp>summary{cursor:pointer;list-style:none;display:flex;align-items:cen
 </head>
 <body>
 <div class="app">
-  <header class="topbar"><div><h1>TB500 Review</h1><p>Lot 이름을 넣으면 Conder Scan 의 Layer 별 재리뷰 여부를 확인합니다.<br>재리뷰가 안 된 Layer 는 어느 장비 · 어느 호기에서 언제 스캔했는지 캐시에서 찾습니다.</p></div><span class="badge">Conder Scan READ ONLY</span></header>
+  <header class="topbar"><h1>TB500 Review</h1></header>
   <nav class="tabs" role="tablist" aria-label="화면">
     <button type="button" role="tab" id="tab-setup" aria-controls="panel-setup" aria-selected="false">설정</button>
     <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false">조회</button>
@@ -92,7 +92,7 @@ details.vgrp>summary{cursor:pointer;list-style:none;display:flex;align-items:cen
       <h2>Lot 목록</h2>
       <div class="field"><label for="lots">Excel 셀을 그대로 붙여넣기</label><textarea id="lots" placeholder="TB500.INT1041&#10;TB500.INT948"></textarea>
         <ul class="desc"><li>줄바꿈, 탭, 쉼표로 <b>자동으로 나눕니다</b>.</li><li>같은 Lot 은 <b>한 번만</b> 조회합니다.</li></ul></div>
-      <div class="btns"><button class="btn primary" id="scan" type="button">조회</button><button class="btn" id="clear" type="button">초기화</button><button class="btn" id="csv" type="button" disabled>CSV 저장</button></div>
+      <div class="btns"><button class="btn primary" id="scan" type="button">조회</button><button class="btn" id="clear" type="button">초기화</button><button class="btn danger" id="stop" type="button" disabled>중단</button></div>
       <div class="progress"><div class="bar" id="bar"></div></div>
       <div class="help" id="msg" aria-live="polite">처음 한 번 [설정] 탭에서 폴더를 연결하고 [캐시 갱신]을 누르십시오.</div>
     </section>
@@ -307,8 +307,9 @@ const parseLots=()=>[...new Set($('#lots').value.split(/[\n\r\t,;]+/).map(x=>x.t
 function stageOf(text){let best=null,pos=1e9;for(const s of STAGES)for(const re of s.keys){const m=re.exec(text);if(m&&m.index<pos){pos=m.index;best=s}}return best}
 function kindOf(name){const head=name.split('(')[0];if(/재리뷰/.test(head))return 'rereview';if(/skip/i.test(head))return 'skip';if(/재스캔/.test(head))return 'rescan';return 'base'}
 function classifyImage(fileName){const base=String(fileName||'').replace(/\.[^.]+$/,'').trim();if(/^TB500_/i.test(base)||/\s-\sMulti_/i.test(base))return 'Camtek';if(/^[A-Z0-9]+(?:_\d+){4,}$/i.test(base))return 'KLA';return 'Unknown'}
+let stopReq=false;const STOPPED=new Error('중단');
 async function walk(h,budget,onFile){const t0=performance.now(),stack=[h];let seen=0;
- while(stack.length){const d=stack.pop();for await(const [n,x] of d.entries()){if(++seen>budget.entries||performance.now()-t0>budget.ms)return false;if(x.kind==='directory')stack.push(x);else if(onFile(n)===true)return true}}return true}
+ while(stack.length){if(stopReq)throw STOPPED;const d=stack.pop();for await(const [n,x] of d.entries()){if(++seen>budget.entries||performance.now()-t0>budget.ms)return false;if(x.kind==='directory')stack.push(x);else if(onFile(n)===true)return true}}return true}
 async function countTxt(h){let n=0;const done=await walk(h,{entries:5000,ms:2500},name=>{if(/\.txt$/i.test(name))n++});return done?{count:n}:{count:n,partial:true}}
 async function equipmentOf(folders){for(const [,h] of folders){let found='Unknown';await walk(h,{entries:3000,ms:2500},name=>{if(/\.(?:jpg|jpeg|png|bmp|gif|webp)$/i.test(name)){const e=classifyImage(name);if(e!=='Unknown'){found=e;return true}}});if(found!=='Unknown')return found}return 'Unknown'}
 function camtekHits(idx,sm,stage){const code=lotCode(sm);if(!code)return [];
@@ -330,7 +331,7 @@ async function lookLot(lot,idx){
  for(const st of STAGES){const g=subs.filter(s=>s.stage===st);if(!g.length)continue;
   layerStatus.set(st.key,g.some(s=>s.kind==='rereview')?'done':g.some(s=>s.kind==='skip')?'skip':'need')}
  const out=[];
- for(const s of subs){const R={name:s.name,kind:s.kind,stage:s.stage,status:'',txt:null,equipment:'',camtek:[],kla:[]};
+ for(const s of subs){if(stopReq)throw STOPPED;const R={name:s.name,kind:s.kind,stage:s.stage,status:'',txt:null,equipment:'',camtek:[],kla:[]};
   if(s.stage){
    if(s.kind==='rereview'){R.status='rereview';R.txt=await countTxt(s.h)}
    else if(s.kind==='skip')R.status='skip';
@@ -342,16 +343,18 @@ async function lookLot(lot,idx){
  return {lot,folder,sm,subs:out,layers}}
 async function run(){
  const lots=parseLots();if(!lots.length)return setMsg('조회할 Lot 을 입력하세요.');
- if(!handles.conder)return setMsg('② Conder Scan 폴더를 먼저 연결하세요.');
- if(!handles.local)return setMsg('③ 내 PC 캐시 폴더를 먼저 연결하세요.');
- if(!await ready('conder')||!await ready('local'))return setMsg('폴더 접근을 허용해야 조회할 수 있습니다.');
- $('#scan').disabled=true;$('#csv').disabled=true;rootList=null;results=[];setBar(0);
- try{const idx=await loadIndex();if(!idx.camtek.length&&!idx.kla.size)setMsg('캐시가 비어 있습니다 — 재리뷰 여부만 확인합니다. [캐시 갱신]을 누르세요.');
-  for(let i=0;i<lots.length;i++){setMsg((i+1)+' / '+lots.length+' 조회 중… '+lots[i]);results.push(await lookLot(lots[i],idx));setBar((i+1)/lots.length*100)}
-  render();const need=results.reduce((n,r)=>n+(r.layers||[]).filter(l=>l.status==='need').length,0);setMsg('조회 완료: Lot '+lots.length+'개 · 재리뷰 필요 Layer '+need+'개');$('#csv').disabled=false}
- catch(e){setMsg('조회 실패: '+e.message)}
- finally{$('#scan').disabled=false}}
+ if(!handles.conder)return setMsg('[설정] 탭에서 ② Conder Scan 폴더를 먼저 연결하십시오.');
+ if(!handles.local)return setMsg('[설정] 탭에서 ③ 내 PC 캐시 폴더를 먼저 연결하십시오.');
+ $('#scan').disabled=true;$('#stop').disabled=false;stopReq=false;rootList=null;results=[];setBar(0);
+ try{if(!await ready('conder')||!await ready('local')){setMsg('폴더 접근을 허용해야 조회할 수 있습니다.');return}
+  if(stopReq)throw STOPPED;const idx=await loadIndex();if(!idx.camtek.length&&!idx.kla.size)setMsg('캐시가 비어 있습니다 — 재리뷰 여부만 확인합니다. [캐시 갱신]을 누르세요.');
+  for(let i=0;i<lots.length;i++){setMsg((i+1)+' / '+lots.length+' 조회 중… '+lots[i]);if(stopReq)throw STOPPED;results.push(await lookLot(lots[i],idx));setBar((i+1)/lots.length*100)}
+  render();const need=results.reduce((n,r)=>n+(r.layers||[]).filter(l=>l.status==='need').length,0);setMsg('조회 완료: Lot '+lots.length+'개 · 재리뷰 필요 Layer '+need+'개')}
+ catch(e){if(e===STOPPED){render();setMsg('조회를 중단했습니다: Lot '+lots.length+'개 중 '+results.length+'개까지 조회 · 끝난 Lot 만 표에 보입니다.')}else setMsg('조회 실패: '+e.message)}
+ finally{$('#scan').disabled=false;$('#stop').disabled=true;stopReq=false}}
 $('#scan').onclick=run;
+// 중단(Para #42 후속): 다음 폴더를 읽기 전에 멈춘다. 하던 Lot 은 버리고, 끝난 Lot 만 표에 남긴다. 아무것도 쓰거나 지우지 않는다.
+$('#stop').onclick=()=>{stopReq=true;$('#stop').disabled=true;setMsg('중단하는 중… (지금 읽는 폴더가 끝나면 멈춥니다)')};
 
 /* ---------- 화면 ---------- */
 const unc=()=>$('#conderUnc').value.trim().replace(/[\\/]+$/,'');
@@ -429,7 +432,6 @@ function verdictGroups(scans){
   return {name,scans:list,wafers,counts,state}})}
 const STATE_CLS={'한 번에 완료':'all','재스캔으로 완료':'part','Pass하지 못한 wafer 존재':'none'};
 const verdictLine=g=>'<span class="vsum"><span class="scanb '+STATE_CLS[g.state]+'">'+esc(g.state)+'</span> wafer '+g.wafers.length+' · '+VERDICTS.filter(v=>g.counts[v]).map(v=>v+' '+g.counts[v]).join(' · ')+'</span>';
-const verdictText=g=>g.state+' (wafer '+g.wafers.length+': '+VERDICTS.filter(v=>g.counts[v]).map(v=>v+' '+g.counts[v]).join(', ')+')';
 function verdictTable(g,num){
  const VC={'한 번에 Pass':'vok','재스캔 Pass':'vre','중복 Pass':'vdup','Pass 없음':'vno'};
  let h='<details class="vgrp"><summary><h5>'+esc(g.name)+' '+verdictLine(g)+'</h5><span class="more">슬롯별 표</span></summary><div class="tablewrap"><table class="vtab"><thead><tr><th>슬롯</th><th>Wafer ID</th>'+
@@ -489,15 +491,7 @@ function openReport(h){if(!h||!h.br)return;const [meta,cols,vals]=h.br,cells=waf
  $('#brTitle').textContent=h.src;$('#brBody').innerHTML=html;$('#brDlg').showModal()}
 async function copy(t){try{await navigator.clipboard.writeText(t);setMsg('경로를 복사했습니다')}catch{setMsg('복사하지 못했습니다: '+t)}}
 $('#dlgClose').onclick=()=>$('#dlg').close();$('#brClose').onclick=()=>$('#brDlg').close();
-$('#clear').onclick=()=>{$('#lots').value='';results=[];$('#tbody').innerHTML='<tr><td colspan="9" class="empty">Lot 목록을 입력하세요.</td></tr>';$('#summary').textContent='조회 전';$('#csv').disabled=true;setBar(0)};
-$('#csv').onclick=()=>{const rows=[['Input Lot','Lot Folder','S/M','Sub Folder','Layer','AOI Process','Review Process','Re-review','Map txt count','Equipment','Machine','Scan Time','Source','Camtek Batch Report Result','Camtek Layer Wafer Verdict']];
- results.forEach(r=>{if(r.missing){rows.push([r.lot,'Lot folder not found','','','','','','','','','','','','','']);return}
-  r.subs.forEach(S=>{const st=S.stage,base=[r.lot,r.folder,r.sm,S.name,st?st.key:'',st?st.aoi+' / '+st.aoiName:'',st?st.rev+' / '+st.revName:'',S.status?STATUS[S.status][0]:'',S.txt?(S.txt.partial?'?':S.txt.count):''];
-   const vg=S.stage&&S.camtek.length?verdictGroups(hitsOf({camtek:S.camtek,kla:[],stage:S.stage})):[],vt=vg.map(verdictText).join(' / ');
-   const hits=S.camtek.map(h=>{const c=scanOf(h.cells,h.wafers);return ['Camtek',h.machine,h.at,h.job+' / '+h.file,c.old?'캐시 갱신 필요':c.outcome+' ('+scanCount(c)+')',vt]}).concat(S.kla.map(h=>['KLA',h.machine,h.at,h.path,'','']));
-   if(!hits.length)rows.push(base.concat([S.status==='need'?S.equipment:'','','','','','']));else hits.forEach(h=>rows.push(base.concat(h)))})});
- const csv='﻿'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
- a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='TB500_Review_'+stamp(now()).slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
+$('#clear').onclick=()=>{$('#lots').value='';results=[];$('#tbody').innerHTML='<tr><td colspan="9" class="empty">Lot 목록을 입력하세요.</td></tr>';$('#summary').textContent='조회 전';setBar(0)};
 $('#conderUnc').value=(()=>{try{return localStorage.getItem('tb500-review-unc')||$('#conderUnc').value}catch{return $('#conderUnc').value}})();
 $('#conderUnc').onchange=()=>{try{localStorage.setItem('tb500-review-unc',$('#conderUnc').value)}catch{}};
 (async()=>{for(const k of ['share','conder','local'])handles[k]=await idbGet(k);paintSetup();paintRecord();showTab(setupDone()?'review':'setup')})();
