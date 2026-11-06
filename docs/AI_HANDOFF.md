@@ -1,5 +1,7 @@
 # AI 공통 인수인계
 
+> 2026-11-06 Para #40: 리뷰 전용 HTML 작업은 별도 브랜치 **`version_TB500_review`** 에서 진행(계획서 `docs/TB500_review_계획.md`, 그 브랜치의 인수인계 맨 위 절). 이 브랜치(version_v12) 코드는 바뀌지 않음.
+
 ## 최신 재개 — Para #39 Batch Report 캐시 OneDrive 공유 · 자동 분석 설정 이동 · 저장 폴더 = docs 상위 (2026-10-30 KST, `version_v12`, v12.8.23)
 
 - 마지막 갱신 2026-10-30 · 기준 커밋 `99e85e6`(#39 검토 기록) · 이슈 Para #39 · 작업 브랜치 `version_v12`.
