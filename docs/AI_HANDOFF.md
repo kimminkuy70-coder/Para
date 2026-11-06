@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #40 TB500 리뷰 전용 HTML 프로그램 검토 · 계획 (2026-11-06 KST, `version_TB500_review`, 계획만)
+
+- 마지막 갱신 2026-11-06 · 기준 커밋 `cfac6de`(소유자 업로드) · 이슈 Para #40 · 작업 브랜치 **`version_TB500_review`**(소유자가 이슈에서 지정해 새로 만든 브랜치 — 릴리스하지 않음).
+- 요청: 소유자가 올린 `TB500_Lot_Folder_List_ImageName_Equipment.html`(Conder Scan Lot 폴더 → Layer 목록 · 공정 · 장비 판정, 읽기 전용)과 기존 프로그램(Batch Report 캐시 · KLA 자재 찾기)을 써서
+  리뷰 전용 HTML 을 만들기 — Lot 입력만으로 Layer 별 재리뷰 여부, 재리뷰 안 된 Layer 의 장비 · 호기 · 스캔 시각. 사용자는 장비 대신 개발자가 매일 OneDrive 에 올리는 캐시를 받아 씀,
+  갱신 알림은 OneDrive 접속 없이 로컬 기록으로. Camtek = Lot 폴더명 괄호 안 S/M + Batch Report 파일명의 Layer, KLA = Lot 이름 + 공정번호(`@6326`). **원본 파일 절대 훼손 금지**. UX 는 소유자 프로그램 개념.
+  "HTML 로 구현 가능한지 검토하고 계획 검토받아" → 이번 run 은 **계획서만**: `docs/TB500_review_계획.md`. 코드 없음, 원본 HTML 그대로.
+- 결론(계획서 2절): HTML 로 가능(File System Access 읽기 전용 · `DecompressionStream` zip 풀기 · 로컬 캐시 폴더에만 쓰기 · 로컬 기록 기반 알림). 불가 2가지 —
+  ⓐ OneDrive 링크에서 자동 다운로드(CORS · 로그인) → OneDrive 바로 가기 동기화 폴더를 읽거나 수동 다운로드 후 끌어 넣기 ⓑ KLA 자료가 OneDrive 캐시에 없음 → 개발자 PC 프로그램이 KLA 폴더 이름 색인도 게시해야 함.
+- 소유자에게 물은 것(이슈 댓글, 답 대기): ① OneDrive 공유 링크(저장소 어디에도 없음 — Claude 는 모름) ② KLA 색인 게시 기능을 version_v12 에 추가해도 되는지 ③ 재리뷰 판정 기준
+  ④ 재리뷰 된 Layer 도 호기 표시? ⑤ Layer 토큰을 Job · S/M 꼬리 어디서 보는지 ⑥ 로컬 캐시 폴더 기본 위치 · 보관 개수.
+- 내 해석(확인 전): 기대 Layer 8개 중 Conder Scan 에 폴더가 없는 Layer = 재리뷰 안 됨 · 새 파일 이름 `TB500_Review.html` · 갱신 알림 기준 1일 · Camtek 매칭은 S/M Lot 코드(첫 단독 영문 3글자) 일치 + Layer 토큰이 Job 또는 S/M 꼬리에 있음.
+- 시험: 코드 변경 없음(문서만) — 시험 안 돌림. 남은 일: 소유자 답 받은 뒤 구현(합성 폴더 · 합성 zip 으로 Playwright 시험), 실기(UNC · 회사 OneDrive · Edge)는 Linux 에서 검증 불가.
+- `version_v12` 상태는 아래 #39 절 그대로(v12.8.23 빌드 시작 막힘).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #40 | TB500 리뷰 전용 HTML(재리뷰 여부 · 장비 · 호기 · 스캔 시각, OneDrive 캐시) 구현 가능성 검토 · 계획 | 계획서 `docs/TB500_review_계획.md`(version_TB500_review), 질문 6개 답 대기 |
+
 ## 최신 재개 — Para #39 Batch Report 캐시 OneDrive 공유 · 자동 분석 설정 이동 · 저장 폴더 = docs 상위 (2026-10-30 KST, `version_v12`, v12.8.23)
 
 - 마지막 갱신 2026-10-30 · 기준 커밋 `99e85e6`(#39 검토 기록) · 이슈 Para #39 · 작업 브랜치 `version_v12`.
