@@ -1,5 +1,18 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #41 후속: Lot History 의 Camtek 스캔 장수 (2026-11-06 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-06 · 기준 커밋 `b6ddff4` · Para #41 후속(소유자 세션 지시: "camtek 은 history 작성할 때 몇 장 중에 몇 장 스캔 성공했는지 적어 줘야 해, 다른 색깔로 표기").
+- 한 일(`TB500_Review.html`): Camtek 색인 행에 [8] = Pass 장수(Pass/Fail 칸이 `Pass`), 색인 schema 2. `scanBadge` = `N장 중 M장 Pass`(청록 모두 · 주황 일부 · 빨강 0 · 회색 예전 캐시),
+  Lot History ② 기록 · ① 요약 그림(`M/N Pass`) · 결과 표 호기 칸 · CSV 열 `Camtek Pass / Wafers`. schema 1 색인은 같은 zip 이어도 [캐시 갱신]이 다시 푼다.
+  시험 자료에 일부 실패한 Batch Report(25장 중 3장 Error) 추가, `tools/test_tb500_review.mjs` 에 장수 · 색 · 예전 색인 다시 풀기 단언 추가 — 연속 2회 통과.
+- 내 해석(확인 전): N = wafer 표 행 수 전체(앞 Error 없는 Skipped 슬롯도 포함), M = 값이 정확히 `Pass`(대소문자 무시, 끝 `.`/`!` 허용 — lotmodel.PASS_RE 와 같음).
+- 소유자 할 일: 각 PC 에서 HTML 을 새 파일로 바꾼 뒤 [캐시 갱신]을 한 번 눌러야 장수가 나온다.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #41 후속 | Camtek Lot History 에 몇 장 중 몇 장 Pass, 다른 색 | 구현 · 시험 통과 |
+
 ## 최신 재개 — Para #41 리뷰 HTML: 하위 폴더마다 한 줄 · 빈칸 · Lot History 개편 (2026-11-06 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-06 · 기준 커밋 `038ec26` · 이슈 Para #41 ②(① KLA 캐시 접기 · UX 는 `version_v12` 커밋 `5285e86`, 그 브랜치 인수인계 맨 위) · 작업 브랜치 `version_TB500_review`(릴리스 없음).

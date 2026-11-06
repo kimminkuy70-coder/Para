@@ -27,6 +27,8 @@ td .process{display:flex;width:auto;margin:2px 0}.st.mini{min-width:0;padding:2p
 .mchip,.lchip{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}.mchip{color:var(--c);border:1.5px solid var(--c)}.lchip{background:var(--c);color:#fff}
 .hw{min-width:0;font-size:12px}.hw .mono{display:block;color:var(--muted);margin-top:2px}.gapline{margin:4px 0 4px 38px;font-size:12px;color:var(--muted)}.gapline.moved{color:#1d4ed8}
 @media(max-width:900px){.hrow{grid-template-columns:28px 1fr}.hrow>*:nth-child(n+3){grid-column:2}.hkpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.scanb{display:inline-block;margin-left:4px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;vertical-align:1px}.scanb.all{background:#ccfbf1;color:#0f766e;border:1px solid #5eead4}.scanb.part{background:#ffedd5;color:#c2410c;border:1px solid #fdba74}.scanb.none{background:var(--redbg);color:var(--red);border:1px solid #fca5a5}.scanb.old{background:var(--graybg);color:var(--gray)}
+.sv-pass{font-size:10.5px;font-weight:800}.sv-pass.all{fill:#0f766e}.sv-pass.part{fill:#c2410c}.sv-pass.none{fill:#b42318}
 </style>
 </head>
 <body>
@@ -177,7 +179,8 @@ function camtekRows(state){
   let sm='';const pre=job&&setup?job+'_'+setup+'_':'';
   if(pre&&fname.startsWith(pre)){const rest=fname.slice(pre.length),m=rest.match(/^(.*)_\d{2}-[A-Za-z]{3}-\d{2}_\(/);if(m)sm=m[1]}
   if(!sm){const lots=(r.wafers||[]).map(w=>String(w.Lot||w.lot||'')).filter(x=>x&&!/^loadport/i.test(x)&&x!=='-');if(lots.length)sm=lots[0]}
-  rows.push([machine,job,setup,sm,lotCode(sm),batchStart(meta['batch start'])||fileStart(fname),(r.wafers||[]).length,fname])}
+  const ws=r.wafers||[],pass=ws.filter(w=>/^pass[.!]?$/i.test(String(w['Pass/Fail']??w.Status??w.State??'').trim())).length;
+  rows.push([machine,job,setup,sm,lotCode(sm),batchStart(meta['batch start'])||fileStart(fname),ws.length,fname,pass])}
  return rows}
 async function newest(share,kind){
  const cfg=SHARE[kind];let info;try{info=await readJson(share,cfg.info)}catch{return null}
@@ -196,7 +199,7 @@ async function refresh(){
    if(!got){notes.push(label+': OneDrive 에 게시된 캐시가 없습니다');continue}
    if(!got.f){notes.push(label+': '+got.it.name+' 이(가) 아직 동기화되지 않았습니다');continue}
    const stampOf=SHARE[kind].name.exec(got.it.name)[1],file=PREFIX+(kind==='camtek'?'Camtek':'KLA')+'색인_'+stampOf+'.json';
-   if(old&&old[kind]&&old[kind].zip===got.it.name){try{await handles.local.getFileHandle(file);notes.push(label+': 이미 최신('+got.it.name+')');continue}catch{}}
+   if(old&&old[kind]&&old[kind].zip===got.it.name){try{const cur=await readJson(handles.local,file);if(kind!=='camtek'||cur.schema>=2){notes.push(label+': 이미 최신('+got.it.name+')');continue}}catch{}}
    if(got.f.size!==got.it.size){notes.push(label+': 크기가 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');continue}
    const sha=await fileSha(got.f,label);
    if(sha!==got.it.sha256){notes.push(label+': SHA-256 이 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');continue}
@@ -205,7 +208,7 @@ async function refresh(){
     const rows=[],machines=new Set,members=entries.filter(e=>/^누적\/.+\.json$/.test(e.name));
     for(let i=0;i<members.length;i++){setMsg('Camtek 캐시 푸는 중 '+(i+1)+' / '+members.length);setBar(10+80*i/members.length);
      const st=JSON.parse(await zipText(got.f,members[i]));if(st&&st.machine)machines.add(String(st.machine));rows.push(...camtekRows(st))}
-    data={schema:1,kind:'camtek',zip:got.it.name,exported_at:got.it.exported_at||'',rows};sum={machines:machines.size,reports:rows.length}}
+    data={schema:2,kind:'camtek',zip:got.it.name,exported_at:got.it.exported_at||'',rows};sum={machines:machines.size,reports:rows.length}}
    else{
     const e=entries.find(x=>x.name==='KLA색인.json');if(!e)throw new Error('KLA 캐시 zip 안에 KLA색인.json 이 없습니다');
     setMsg('KLA 캐시 푸는 중…');const idx=JSON.parse(await zipText(got.f,e));
@@ -247,7 +250,7 @@ async function walk(h,budget,onFile){const t0=performance.now(),stack=[h];let se
 async function countTxt(h){let n=0;const done=await walk(h,{entries:5000,ms:2500},name=>{if(/\.txt$/i.test(name))n++});return done?{count:n}:{count:n,partial:true}}
 async function equipmentOf(folders){for(const [,h] of folders){let found='Unknown';await walk(h,{entries:3000,ms:2500},name=>{if(/\.(?:jpg|jpeg|png|bmp|gif|webp)$/i.test(name)){const e=classifyImage(name);if(e!=='Unknown'){found=e;return true}}});if(found!=='Unknown')return found}return 'Unknown'}
 function camtekHits(idx,sm,stage){const code=lotCode(sm);if(!code)return [];
- return idx.camtek.filter(r=>r[4]===code&&stage.keys.some(re=>re.test(r[1]))).map(r=>({machine:r[0],job:r[1],setup:r[2],sm:r[3],at:r[5],wafers:r[6],file:r[7]})).sort((a,b)=>a.at<b.at?1:-1)}
+ return idx.camtek.filter(r=>r[4]===code&&stage.keys.some(re=>re.test(r[1]))).map(r=>({machine:r[0],job:r[1],setup:r[2],sm:r[3],at:r[5],wafers:r[6],file:r[7],pass:r[8]})).sort((a,b)=>a.at<b.at?1:-1)}
 function klaHits(idx,lot,stage){return (idx.kla.get(lot.toLowerCase())||[]).filter(k=>PROC.get(k.proc)===stage).map(k=>{const t=(k.slots.map(s=>(s.match(/^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})/)||[]).slice(1)).filter(x=>x.length).map(x=>x[0]+' '+x[1]+':'+x[2]).sort()[0])||k.day;
   return {machine:k.machine,at:t,lot:k.lot,slots:k.slots.length,path:k.path,proc:k.proc,review:k.proc===stage.rev}}).sort((a,b)=>a.at<b.at?1:-1)}
 async function findLot(lot){
@@ -298,12 +301,12 @@ const MPAL=['#2563eb','#d97706','#059669','#db2777','#7c3aed','#0891b2','#65a30d
 const LPAL=['#6d28d9','#be185d','#0369a1','#b45309','#15803d','#9333ea','#0f766e','#a16207'];
 const layerColor=k=>{const i=STAGES.findIndex(s=>s.key===k);return i<0?'#64748b':LPAL[i%LPAL.length]};
 function machColors(list){const m=new Map;[...new Set(list)].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true})).forEach((x,i)=>m.set(x,MPAL[i%MPAL.length]));return m}
-const hitsOf=S=>S.camtek.map(h=>({vendor:'Camtek',machine:h.machine,at:h.at})).concat(S.kla.map(h=>({vendor:'KLA',machine:h.machine,at:h.at}))).sort((a,b)=>a.at<b.at?1:-1);
+const hitsOf=S=>S.camtek.map(h=>({vendor:'Camtek',machine:h.machine,at:h.at,scan:{total:h.wafers,pass:h.pass}})).concat(S.kla.map(h=>({vendor:'KLA',machine:h.machine,at:h.at}))).sort((a,b)=>a.at<b.at?1:-1);
 function hitsHtml(r,S,ri,si){
  if(S.status!=='need')return '';
  const all=hitsOf(S);if(!all.length)return '<span class="muted small">캐시에 없음</span>';
  const ms=new Set(all.map(h=>h.machine));
- return (ms.size>1?'<span class="st skip mini">여러 호기 '+ms.size+'대</span>':'')+all.slice(0,3).map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at||'시각 모름')+'</span>').join('')+
+ return (ms.size>1?'<span class="st skip mini">여러 호기 '+ms.size+'대</span>':'')+all.slice(0,3).map(h=>'<span class="hit"><b>'+esc(h.machine)+'</b> · '+esc(h.at||'시각 모름')+(h.scan?' '+scanBadge(h.scan):'')+'</span>').join('')+
   '<button class="copy" data-hist="'+ri+':'+esc(S.stage.key)+'">'+(all.length>3?'외 '+(all.length-3)+'건 · ':'')+'Lot History</button>'}
 function statusHtml(S){
  if(!S.status)return '';const [t,c]=STATUS[S.status];
@@ -330,32 +333,34 @@ function render(){
 /* Lot History = 이 Lot 의 모든 스캔(Camtek: S/M 코드가 같은 Batch Report, KLA: Lot 이름@공정번호 폴더)을 시간순으로.
    Camtek AOI Manager 의 Lot History 와 같은 꼴: ① 시간순 요약(스캔마다 막대 하나, 사이 간격 · 호기 이동) ② 시간순 기록(앞 기록과의 간격 · 호기 이동). */
 function lotHistory(r){const idx=indexCache||{camtek:[],kla:new Map};const code=lotCode(r.sm),out=[];
- if(code)for(const x of idx.camtek)if(x[4]===code){const st=stageOf(x[1]);out.push({vendor:'Camtek',machine:x[0],at:x[5],layer:st?st.key:'?',what:x[1]+' / '+x[2]+' · S/M '+x[3]+' · '+x[6]+'장',src:x[7]})}
+ if(code)for(const x of idx.camtek)if(x[4]===code){const st=stageOf(x[1]);out.push({vendor:'Camtek',machine:x[0],at:x[5],layer:st?st.key:'?',what:x[1]+' / '+x[2]+' · S/M '+x[3],scan:{total:x[6],pass:x[8]},src:x[7]})}
  for(const k of idx.kla.get(r.lot.toLowerCase())||[]){const st=PROC.get(k.proc);const h=st?klaHits({kla:new Map([[r.lot.toLowerCase(),[k]]])},r.lot,st)[0]:null;
   out.push({vendor:'KLA',machine:k.machine,at:h?h.at:k.day,layer:st?st.key:'?',what:k.lot+' · '+(st?(k.proc===st.rev?'Review ':'AOI ')+k.proc:'공정 '+(k.proc||'?'))+' · 슬롯 '+k.slots.length+'개',src:k.path})}
  return out.sort((a,b)=>a.at<b.at?-1:a.at>b.at?1:0)}
+const scanKind=c=>c.pass>=c.total?'all':c.pass?'part':'none';
+const scanBadge=c=>{if(!c)return '';if(c.pass==null)return '<span class="scanb old" title="예전 캐시 — [캐시 갱신]을 누르면 Pass 장수가 나옵니다">총 '+c.total+'장</span>';return '<span class="scanb '+scanKind(c)+'">'+c.total+'장 중 '+c.pass+'장 Pass</span>'};
 const toDate=s=>{const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);return m?new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0)):null};
 function dur(a,b){const A=toDate(a),B=toDate(b);if(!A||!B)return '';let m=Math.max(0,Math.round((B-A)/60000));if(m<60)return m+'분';const h=Math.floor(m/60);m%=60;if(h<24)return h+'시간'+(m?' '+m+'분':'');const d=Math.floor(h/24);return d+'일'+(h%24?' '+(h%24)+'시간':'')}
 const short=s=>String(s||'').slice(5,16);
 function histSvg(rows,mc){
- const step=128,L=24,W=Math.max(640,L*2+rows.length*step),H=150;let g='';
+ const step=128,L=24,W=Math.max(640,L*2+rows.length*step),H=164;let g='';
  rows.forEach((h,i)=>{const x=L+i*step+step/2,lc=layerColor(h.layer);
   if(i){const p=rows[i-1],mid=x-step/2,mv=p.machine!==h.machine;
    g+='<text x="'+mid+'" y="14" text-anchor="middle" class="sv-gap">'+esc(dur(p.at,h.at))+'</text>';
    if(mv)g+='<text x="'+mid+'" y="72" text-anchor="middle" class="sv-mv">⇄</text><text x="'+mid+'" y="86" text-anchor="middle" class="sv-mv small">호기 이동</text>'}
   g+='<g><title>'+esc((i+1)+'. '+h.at+' · '+h.machine+' · '+h.layer+' · '+h.vendor+'\n'+h.what)+'</title>'+
    '<rect x="'+(x-30)+'" y="24" width="60" height="22" rx="6" fill="'+lc+'"/><text x="'+x+'" y="39" text-anchor="middle" class="sv-lay">'+esc(h.layer)+'</text>'+
-   '<rect x="'+(x-30)+'" y="50" width="60" height="44" rx="6" fill="'+mc.get(h.machine)+'" opacity=".16" stroke="'+mc.get(h.machine)+'"/>'+
-   '<text x="'+x+'" y="68" text-anchor="middle" class="sv-m" fill="'+mc.get(h.machine)+'">'+esc(h.machine)+'</text><text x="'+x+'" y="84" text-anchor="middle" class="sv-v">'+esc(h.vendor)+'</text>'+
-   '<text x="'+x+'" y="112" text-anchor="middle" class="sv-t">'+esc(short(h.at).slice(0,5))+'</text><text x="'+x+'" y="126" text-anchor="middle" class="sv-t">'+esc(short(h.at).slice(6))+'</text>'+
-   '<text x="'+x+'" y="144" text-anchor="middle" class="sv-n">'+(i+1)+'</text></g>'});
+   '<rect x="'+(x-34)+'" y="50" width="68" height="58" rx="6" fill="'+mc.get(h.machine)+'" opacity=".16" stroke="'+mc.get(h.machine)+'"/>'+
+   '<text x="'+x+'" y="68" text-anchor="middle" class="sv-m" fill="'+mc.get(h.machine)+'">'+esc(h.machine)+'</text><text x="'+x+'" y="84" text-anchor="middle" class="sv-v">'+esc(h.vendor)+'</text>'+(h.scan&&h.scan.pass!=null?'<text x="'+x+'" y="100" text-anchor="middle" class="sv-pass '+scanKind(h.scan)+'">'+h.scan.pass+'/'+h.scan.total+' Pass</text>':'')+
+   '<text x="'+x+'" y="124" text-anchor="middle" class="sv-t">'+esc(short(h.at).slice(0,5))+'</text><text x="'+x+'" y="138" text-anchor="middle" class="sv-t">'+esc(short(h.at).slice(6))+'</text>'+
+   '<text x="'+x+'" y="156" text-anchor="middle" class="sv-n">'+(i+1)+'</text></g>'});
  return '<div class="svscroll"><svg width="'+W+'" height="'+H+'" role="img" aria-label="시간순 요약">'+g+'</svg></div>'}
 function histList(rows,mc){let prev=null;
  return '<ol class="hlist">'+rows.map((h,i)=>{let gap='';
   if(prev){const mv=prev.machine!==h.machine;gap='<li class="gapline'+(mv?' moved':'')+'">↓ '+esc(dur(prev.at,h.at))+' 뒤'+(prev.layer!==h.layer?' · Layer 바뀜('+esc(prev.layer)+' → '+esc(h.layer)+')':' · 다시 스캔')+(mv?' · <b>호기 이동 '+esc(prev.machine)+' → '+esc(h.machine)+'</b>':'')+'</li>'}
   prev=h;
   return gap+'<li class="hrow"><span class="hn">'+(i+1)+'</span><span class="ht">'+esc(h.at||'시각 모름')+'</span><span class="mchip" style="--c:'+mc.get(h.machine)+'">'+esc(h.machine)+'</span>'+
-   '<span class="lchip" style="--c:'+layerColor(h.layer)+'">'+esc(h.layer)+'</span>'+equipBadge(h.vendor)+'<div class="hw">'+esc(h.what)+'<span class="mono">'+esc(h.src)+'</span></div></li>'}).join('')+'</ol>'}
+   '<span class="lchip" style="--c:'+layerColor(h.layer)+'">'+esc(h.layer)+'</span>'+equipBadge(h.vendor)+'<div class="hw">'+esc(h.what)+(h.scan?' '+scanBadge(h.scan):'')+'<span class="mono">'+esc(h.src)+'</span></div></li>'}).join('')+'</ol>'}
 let histState=null;
 function openHistory(r,layer){histState={r,all:lotHistory(r),layer:layer||''};$('#dlgTitle').textContent=r.lot+' · Lot History';paintHistory();if(!$('#dlg').open)$('#dlg').showModal()}
 function paintHistory(){
@@ -374,11 +379,11 @@ function paintHistory(){
 async function copy(t){try{await navigator.clipboard.writeText(t);setMsg('경로를 복사했습니다')}catch{setMsg('복사하지 못했습니다: '+t)}}
 $('#dlgClose').onclick=()=>$('#dlg').close();
 $('#clear').onclick=()=>{$('#lots').value='';results=[];$('#tbody').innerHTML='<tr><td colspan="9" class="empty">Lot 목록을 입력하세요.</td></tr>';$('#summary').textContent='조회 전';$('#csv').disabled=true;setBar(0)};
-$('#csv').onclick=()=>{const rows=[['Input Lot','Lot Folder','S/M','Sub Folder','Layer','AOI Process','Review Process','Re-review','Map txt count','Equipment','Machine','Scan Time','Source']];
- results.forEach(r=>{if(r.missing){rows.push([r.lot,'Lot folder not found','','','','','','','','','','','']);return}
+$('#csv').onclick=()=>{const rows=[['Input Lot','Lot Folder','S/M','Sub Folder','Layer','AOI Process','Review Process','Re-review','Map txt count','Equipment','Machine','Scan Time','Source','Camtek Pass / Wafers']];
+ results.forEach(r=>{if(r.missing){rows.push([r.lot,'Lot folder not found','','','','','','','','','','','','']);return}
   r.subs.forEach(S=>{const st=S.stage,base=[r.lot,r.folder,r.sm,S.name,st?st.key:'',st?st.aoi+' / '+st.aoiName:'',st?st.rev+' / '+st.revName:'',S.status?STATUS[S.status][0]:'',S.txt?(S.txt.partial?'?':S.txt.count):''];
-   const hits=S.camtek.map(h=>['Camtek',h.machine,h.at,h.job+' / '+h.file]).concat(S.kla.map(h=>['KLA',h.machine,h.at,h.path]));
-   if(!hits.length)rows.push(base.concat([S.status==='need'?S.equipment:'','','','']));else hits.forEach(h=>rows.push(base.concat(h)))})});
+   const hits=S.camtek.map(h=>['Camtek',h.machine,h.at,h.job+' / '+h.file,h.pass==null?'? / '+h.wafers:h.pass+' / '+h.wafers]).concat(S.kla.map(h=>['KLA',h.machine,h.at,h.path,'']));
+   if(!hits.length)rows.push(base.concat([S.status==='need'?S.equipment:'','','','','']));else hits.forEach(h=>rows.push(base.concat(h)))})});
  const csv='﻿'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n'),a=document.createElement('a');
  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='TB500_Review_'+stamp(now()).slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
 $('#conderUnc').value=(()=>{try{return localStorage.getItem('tb500-review-unc')||$('#conderUnc').value}catch{return $('#conderUnc').value}})();

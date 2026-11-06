@@ -39,6 +39,9 @@
 - **Lot History**(Lot 칸 또는 `재리뷰 필요` 줄의 버튼): Camtek AOI Manager 의 Lot History 와 같은 꼴 —
   Layer 고르기 칩(줄에서 열면 그 Layer) · 숫자 4개(스캔 · 호기 · 호기 이동 · 기간) · ① 시간순 요약(스캔마다 한 칸: Layer · 호기 · 장비 · 시각, 칸 사이 = 간격 · 호기 이동)
   · ② 시간순 기록(앞 기록과의 간격, Layer 바뀜, 호기 이동 A → B). 호기 색은 창 안에서 같다.
+- **Camtek 기록의 스캔 장수**(소유자 지시 2026-11-06): Batch Report 마다 `N장 중 M장 Pass` 를 색 배지로 쓴다 — 모두 Pass = 청록, 일부 = 주황, 0장 = 빨강.
+  N = Batch Report wafer 표의 행 수, M = Pass/Fail 칸이 `Pass` 인 행 수. 결과 표의 호기 칸 · Lot History ① 요약 그림(`M/N Pass`) · ② 기록 · CSV(`Camtek Pass / Wafers`)에 나온다.
+  내 PC 색인은 schema 2(행 끝에 Pass 장수). 예전(schema 1) 색인이면 같은 zip 이어도 [캐시 갱신]이 다시 풀고, 그 전에는 회색 `총 N장` 으로 보인다.
 
 ## 4. 내 PC 캐시 폴더에 생기는 파일
 - `TB500리뷰_Camtek색인_YYYYMMDD_HHMMSS.json` · `TB500리뷰_KLA색인_YYYYMMDD_HHMMSS.json`(zip 에서 푼 검색용 자료) · `TB500리뷰_기록.json`(받은 시각 · zip 이름).

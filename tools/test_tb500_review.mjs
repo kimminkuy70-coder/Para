@@ -60,6 +60,11 @@ assert.match(await page.locator('#cache-camtek').innerText(),/호기 2 대 · Ba
 // 다시 누르면 이미 최신
 await page.getByRole('button',{name:'캐시 갱신'}).click();
 await page.locator('#msg').filter({hasText:'Camtek 캐시: 이미 최신'}).waitFor();
+// 예전 형식(schema 1 — Pass 장수 없음) 색인은 같은 zip 이어도 다시 푼다.
+await page.evaluate(()=>{const d=window.__fs.top.local,n='TB500리뷰_Camtek색인_20261106_090000.json',j=JSON.parse(new TextDecoder().decode(d.files.get(n)));j.schema=1;j.rows.forEach(r=>r.length=8);d.files.set(n,new TextEncoder().encode(JSON.stringify(j)))});
+await page.getByRole('button',{name:'캐시 갱신'}).click();
+await page.locator('#msg').filter({hasText:'Camtek 캐시: BatchReport_캐시_20261106_090000.zip 받음'}).waitFor();
+assert.equal(await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_Camtek색인_20261106_090000.json'))).schema),2);
 // 조회
 await page.locator('#lots').fill('TB500.INT1041\nTB500.INT948');
 await page.getByRole('button',{name:'조회',exact:true}).click();
@@ -74,7 +79,7 @@ assert.match(find('1. RDL4_재스캔 (#24,25)'),/재스캔\tRDL4[\s\S]*재리뷰
 assert.match(find('2. PIDS3_재리뷰'),/맵\(\.txt\) 1개/);
 assert.match(find('4. PIDS5_Skip (RDL3 재리뷰 결과 나오면 맵만 수정해 주세요)'),/PIDS5[\s\S]*\tSkip\t\t\t/);
 assert.match(find('5. RDL2'),/재리뷰 필요\tKLA\t여러 호기 2대[\s\S]*AOI-K6 · 2026-11-05 10:00[\s\S]*AOI-K2 · 2026-11-04 07:30[\s\S]*Lot History/);
-assert.match(find('7. RDL1'),/재리뷰 필요\tCamtek\t여러 호기 2대[\s\S]*AOI-22 · 2026-10-21 22:05:00[\s\S]*AOI-21 · 2026-10-20 09:10:00/);
+assert.match(find('7. RDL1'),/재리뷰 필요\tCamtek\t여러 호기 2대[\s\S]*AOI-22 · 2026-10-21 22:05:00 2장 중 2장 Pass[\s\S]*AOI-21 · 2026-10-20 09:10:00 25장 중 22장 Pass/);
 assert.ok(!/WGB/.test(find('7. RDL1')));
 assert.match(find('메모'),/^메모\t\t\t\t\t\t경로 복사$/);                                      // Layer 모르는 폴더도 이름 그대로, 나머지는 빈칸
 assert.equal(rows.filter(r=>/TB500\.INT1041/.test(r)).length,1);
@@ -88,6 +93,10 @@ assert.equal(await body.locator('.chip.on').innerText(),'RDL1 2');
 assert.equal(await body.locator('li.hrow').count(),2);
 assert.match(await body.locator('li.gapline').innerText(),/1일 12시간 뒤 · 다시 스캔 · 호기 이동 AOI-21 → AOI-22/);
 assert.equal(await body.locator('svg rect').count(),4);
+// Camtek 기록 = 몇 장 중 몇 장 Pass(다른 색: 모두 Pass 초록 · 일부 주황)
+assert.deepEqual(await body.locator('li.hrow .scanb').allInnerTexts(),['25장 중 22장 Pass','2장 중 2장 Pass']);
+assert.deepEqual(await body.locator('li.hrow .scanb').evaluateAll(e=>e.map(x=>x.className)),['scanb part','scanb all']);
+assert.deepEqual(await body.locator('svg text.sv-pass').allTextContents(),['22/25 Pass','2/2 Pass']);
 await body.getByRole('button',{name:/^전체/}).click();
 const hrows=await body.locator('li.hrow').allInnerTexts();
 assert.deepEqual(hrows.map(t=>t.split('\n').map(x=>x.trim()).filter(Boolean)[3]),['PIDS3','RDL3','RDL1','RDL1','RDL2','RDL2']);
