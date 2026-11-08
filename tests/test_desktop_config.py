@@ -64,6 +64,22 @@ class DesktopConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.a.set_batch_auto({"enabled": True, "publish": 1})
         self.assertFalse(self.a.set_batch_auto({"enabled": True, "publish": False})["batch"]["publish"])
+        # Para #43: 켜거나 주기 · 시각을 바꾸면 batch_schedule_set(다음 실행을 셀 기준) — 게시 · KLA 체크만 바꾸면 그대로.
+        self.a.set_batch_auto({"enabled": False})
+        cfg = self._cfg(); cfg.pop("batch_schedule_set", None)
+        with open(self.cfg, "w", encoding="utf-8") as f:
+            json.dump(dict(cfg, batch_schedule={"last_run": "2000-01-01 09:05:00", "fail_count": 3}), f)
+        st = self.a.set_batch_auto({"enabled": True, "time": "07:35"})
+        stamp = self._cfg()["batch_schedule_set"]
+        self.assertTrue(st["batch"]["next_run"].endswith("07:35"))
+        self.assertGreater(st["batch"]["next_run"], "2026-01-01")              # 예전 마지막 실행 + backoff 가 아니라 지금부터
+        self.a.set_batch_auto({"enabled": True, "kla": True, "kla_publish": True})
+        self.assertEqual(self._cfg()["batch_schedule_set"], stamp)
+        self.assertEqual((self.a.state()["batch"]["kla"], self.a.state()["batch"]["kla_publish"]), (True, True))
+        for bad in ({"enabled": True, "kla": 1}, {"enabled": True, "kla_publish": "y"}):
+            with self.assertRaises(ValueError):
+                self.a.set_batch_auto(bad)
+        self.assertFalse(self.a.set_batch_auto({"enabled": True, "kla": False})["batch"]["kla"])
         archive = os.path.join(self.tmp, "archive")
         os.makedirs(archive)
         with self.assertRaises(ValueError):          # main folder must be registered first

@@ -76,7 +76,18 @@ class DesktopBatchTests(unittest.TestCase):
         self.assertEqual(next_batch_run(24, '09:05', st('2026-10-14 08:50:00'), at), datetime(2026, 10, 14, 9, 5))
         self.assertEqual(next_batch_run(48, '09:05', st('2026-10-14 09:05:00'), at), datetime(2026, 10, 16, 9, 5))
         self.assertEqual(next_batch_run(168, '23:55', st('2026-10-14 23:55:00'), at), datetime(2026, 10, 21, 23, 55))
-        self.assertEqual(next_batch_run(24, '09:05', st('2026-10-14 09:05:00', 1), at), datetime(2026, 10, 16, 9, 5))  # backoff ×2
+        # Para #43: 하루 단위 주기에는 연속 실패 backoff 를 곱하지 않는다(하루 1회가 8일 뒤로 밀리던 것).
+        self.assertEqual(next_batch_run(24, '09:05', st('2026-10-14 09:05:00', 3), at), datetime(2026, 10, 15, 9, 5))
+        self.assertEqual(next_batch_run(6, '', st('2026-10-14 09:00:00', 1), at), datetime(2026, 10, 14, 21, 0))  # 시간 단위는 backoff ×2 유지
+        # Para #43: 켜거나 주기 · 시각을 바꾼 시각(since)이 마지막 실행보다 나중이면 그때부터 — 일주일 주기여도 오늘/내일 그 시각.
+        self.assertEqual(next_batch_run(168, '09:05', st('2026-10-07 09:05:00'), at, '2026-10-14 08:00:00'), datetime(2026, 10, 14, 9, 5))
+        self.assertEqual(next_batch_run(168, '09:05', st('2026-10-07 09:05:00'), at, '2026-10-14 10:00:00'), datetime(2026, 10, 15, 9, 5))
+        self.assertEqual(next_batch_run(24, '09:05', st('2026-10-13 09:05:00', 3), at, '2026-10-14 10:00:00'), datetime(2026, 10, 15, 9, 5))
+        self.assertEqual(next_batch_run(24, '', st('2026-10-14 09:05:00'), at, '2026-10-14 11:00:00'), datetime(2026, 10, 14, 11, 0))  # 시각 없음 = 바로
+        self.assertEqual(next_batch_run(24, '09:05', st(''), at, '2026-10-14 10:00:00'), datetime(2026, 10, 15, 9, 5))   # 처음 켜도 그 시각
+        # 설정을 바꾼 뒤 한 번 돌았으면 종전 규칙(마지막 실행 기준)
+        self.assertEqual(next_batch_run(168, '09:05', st('2026-10-14 09:05:00'), at, '2026-10-14 08:00:00'), datetime(2026, 10, 21, 9, 5))
+        self.assertEqual(next_batch_run(24, '09:05', st('2026-10-14 09:05:00'), at, 'garbage'), datetime(2026, 10, 15, 9, 5))
         self.assertEqual(next_batch_run(24, '', st('2026-10-14 09:05:00'), at), datetime(2026, 10, 15, 9, 5))  # 종전 = 마지막 실행 + 24h
         self.assertEqual(next_batch_run(6, '09:05', st('2026-10-14 09:00:00'), at), datetime(2026, 10, 14, 15, 0))  # 시간 단위 주기는 시각 무시
         self.assertEqual(next_batch_run(24, '09:05', st(''), at), at)                          # 한 번도 안 돌았으면 바로

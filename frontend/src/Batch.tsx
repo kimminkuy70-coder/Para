@@ -12,6 +12,7 @@ import {WphTab} from './BatchWph';
 import {CompareTab} from './BatchCompare';
 import {FindTab,type FindCond,type FindList} from './BatchFind';
 import {DevHelp} from './DevHelp';
+import {setKlaCache,type KlaCache} from './KlaSettings';
 import {Q,DefectWindow} from './BatchHelp';
 import {useDev,setDevLocked,setDevDrafts,registerDraftHandlers} from './devmode';
 import {loadView,batchCall,addDays,ymd,type View,type ViewMeta,type ViewName,type LotDetail,type Raw,type AggGroup} from './batchData';
@@ -129,7 +130,28 @@ export function Batch({active}:{active:boolean}){
     autoBlocked.current=false;
     await launch(targetsNow(),{...optionsNow(config.last?.options),reuse},false);
   }
-  async function launch(payload:Target[],opts:Options&{reuse:boolean},automatic:boolean,publish=false){
+  // 자동 분석 › [KLA] 탭(Para #43): KLA 캐시 갱신(+ 게시). 실패해도 Batch Report 결과는 그대로 두고 알리기만 한다.
+  async function klaAuto(publish:boolean,record:boolean){
+    setProgress({message:'KLA 캐시를 갱신하는 중…(장비 폴더 이름만 읽음)'});
+    try{
+      const r=(await desktop.request('kla_cache_build',record?{record:true}:{},(v:Reply)=>{if(v.message)setProgress({message:'KLA 캐시: '+v.message});}).promise).kla as KlaCache&{failed?:{machine:string}[]};
+      setKlaCache(r);
+      notify(`KLA 캐시 자동 갱신: 장비 ${r.machines.length}대 · Lot 폴더 ${r.lots.toLocaleString()}개${r.failed?.length?` · 읽지 못한 장비 ${r.failed.map(f=>f.machine).join(', ')}`:''}`,r.failed?.length?'info':'ok');
+      if(publish){
+        setProgress({message:'KLA 캐시를 OneDrive 에 올리는 중…'});
+        try{const p=(await desktop.request('kla_cache_publish',{}).promise).kla as {size:number};notify(`자동 분석 뒤 KLA 캐시를 OneDrive 에 올렸습니다 — ${mb(p.size)}.`,'ok');}
+        catch(e){notify('KLA 캐시 OneDrive 게시 실패: '+errorText(e),'error');}
+      }
+      return true;
+    }catch(e){notify('KLA 캐시 자동 갱신 실패: '+errorText(e),'error');return false;}
+  }
+  // Camtek 지난 조사 조건이 없고 KLA 만 자동 분석에 넣은 경우(엔진이 실행 기록을 남겨 매분 다시 돌지 않는다).
+  async function launchKlaOnly(automatic:boolean,publish:boolean){
+    runningRef.current=true;setRunning(true);setAutoRun(automatic);setProgress(undefined);
+    try{if(!await klaAuto(publish,true)&&automatic)autoBlocked.current=true;}
+    finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);}
+  }
+  async function launch(payload:Target[],opts:Options&{reuse:boolean},automatic:boolean,publish=false,kla?:{publish:boolean}){
     runningRef.current=true;setRunning(true);setAutoRun(automatic);setCancelSent(false);setProgress(undefined);
     try{
       if(job.current!==undefined){await desktop.request('release',{job:job.current}).promise.catch(()=>undefined);job.current=undefined;}
@@ -144,6 +166,7 @@ export function Batch({active}:{active:boolean}){
       notify((automatic?'Batch Report 자동 갱신: ':'')+(reply.collection?.errors?'일부 원본을 읽지 못했습니다. 읽기 오류를 확인하세요.':'조사를 완료했습니다.'),reply.collection?.errors?'info':'ok');
       // 자동 분석 › [자동 분석이 끝나면 OneDrive 에 올리기](#39): 실패해도 자동 분석은 막지 않는다(다음 회차에 다시).
       if(publish){setProgress({message:'Batch Report 캐시를 OneDrive 에 올리는 중…'});await publishCache(true);}
+      if(kla)await klaAuto(kla.publish,false);
     }catch(e){
       if(automatic){autoBlocked.current=true;notify('Batch Report 자동 갱신 실패: '+errorText(e),'error');}else fail(e);
     }finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);}
@@ -157,10 +180,13 @@ export function Batch({active}:{active:boolean}){
     const ids=new Set(data.machines.map(m=>m.id)),seen=new Set<string>();
     const payload=((data.last?.targets||[]) as Target[]).filter(t=>ids.has(t.machine)&&!seen.has(t.machine)&&seen.add(t.machine))
       .map(({machine,query,start,end,names})=>names&&names.length?{machine,query:query||'',start:start||'',end:end||'',names}:{machine,query:query||'',start:start||'',end:end||''});
-    if(!payload.length){if(now)notify('지난 조사 조건이 없습니다. 먼저 호기 · 기간을 고르고 [조사 시작]을 한 번 누르세요.','error');return;}
+    const kla=data.auto?.kla?{publish:!!data.auto.kla_publish}:undefined;
+    if(!payload.length){
+      if(kla){if(now){autoBlocked.current=false;notify('Camtek 지난 조사 조건이 없어 KLA 캐시만 갱신합니다.','info');}await launchKlaOnly(!now,kla.publish);return;}
+      if(now)notify('지난 조사 조건이 없습니다. 먼저 호기 · 기간을 고르고 [조사 시작]을 한 번 누르세요.','error');return;}
     const metrics=(data.metrics?.map(m=>m.id)||defaults.metrics) as Options['metrics'];
-    if(now){autoBlocked.current=false;notify('Batch Report 분석을 지금 실행합니다(지난 조사 조건).','info');}
-    await launch(payload,{...defaults,...data.last?.options,metrics,reuse:true},!now,!!data.auto?.publish);
+    if(now){autoBlocked.current=false;notify(`Batch Report 분석${kla?'과 KLA 캐시 갱신':''}을 지금 실행합니다(지난 조사 조건).`,'info');}
+    await launch(payload,{...defaults,...data.last?.options,metrics,reuse:true},!now,!!data.auto?.publish,kla);
   }
   const runLastRef=useRef(runLast);runLastRef.current=runLast;
   useEffect(()=>{

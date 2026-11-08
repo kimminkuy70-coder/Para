@@ -212,6 +212,25 @@ class Session:
             if rid not in self.busy.values():
                 method_of.pop(rid, None)     # background jobs drop their own entry
 
+    def _kla_cache_build(self, record=False):
+        """KLA 캐시 갱신. record=True 면 결과를 Batch Report 자동 분석 실행 기록(batch_schedule)에도 남긴다
+        (Para #43 — Camtek 조건 없이 KLA 만 자동 분석한 회차가 매분 다시 돌지 않게)."""
+        try:
+            result = self.kla.cache_build({})
+        except Exception as exc:
+            if record:
+                try:
+                    self.batch.record_run(False, error=("KLA 캐시: " + str(exc))[:200])
+                except (OSError, ValueError):
+                    pass
+            raise
+        if record:
+            try:
+                self.batch.record_run(True, partial=bool(result.get("failed")))
+            except (OSError, ValueError):
+                pass  # schedule bookkeeping never hides a finished build
+        return result
+
     def _handle(self, request):
         request_id = None
         try:
@@ -271,14 +290,14 @@ class Session:
         allowed.update(config_state=set(), config_set_save_dir={'path'},
                        config_set_report_path={'machine','path'}, config_set_scanresult_root={'machine','path'},
                        config_remove={'kind','machine'}, config_edit_root={'kind','machine','new_machine','path'}, open_path={'path','reveal'},
-                       config_set_batch_auto={'enabled','interval_hours','time','publish'}, config_set_extra_paths={'machine','paths'},
+                       config_set_batch_auto={'enabled','interval_hours','time','publish','kla','kla_publish'}, config_set_extra_paths={'machine','paths'},
                        config_set_aoi_root={'machine','path'}, config_scan_aoi_drive={'path'}, config_add_aoi_roots={'items'},
                        config_edit_aoi_root={'machine','new_machine','path'},
                        config_remove_aoi={'machine'}, config_set_aoi_extra={'machine','kind','paths'},
                        config_set_hide_kla={'enabled'}, config_set_scan_backup={'enabled'}, config_local_state=set(), config_set_local_dir={'path'},
                        config_purge_temp=set(), config_about=set())
         allowed.update(kla_state=set(), kla_set_roots={'roots'}, kla_set_backup={'enabled'}, kla_search={'query', 'machines', 'start', 'end', 'source'},
-                       kla_cache_build=set(), kla_cache_publish=set(), kla_cache_share_list=set(), kla_cache_share_import={'name'})
+                       kla_cache_build={'record'}, kla_cache_publish=set(), kla_cache_share_list=set(), kla_cache_share_import={'name'})
         allowed.update(update_prepare=set(), update_set_local_source={'path'}, update_connections={'machines'},
                        update_collect={'recipes','machines','source','answers'}, update_preview={'mapping'},
                        update_commit={'include'}, update_cancel=set())
@@ -628,7 +647,11 @@ class Session:
                 bg(rid, 'kla', lambda: self.kla.search(params), 'KLA 폴더를 읽지 못했습니다. 장비 폴더 연결을 확인하세요.')
             elif method == 'kla_cache_build':
                 # 개발자(Para #40): 장비 폴더 이름만 읽어 로컬 KLA 색인 갱신 — 장비를 읽으므로 'equipment' 도 잡는다.
-                bg(rid, 'kla', lambda: self.kla.cache_build(params), 'KLA 캐시를 만들지 못했습니다. 장비 폴더 연결과 로컬 작업 폴더를 확인하세요.',
+                # record=True(Para #43): Camtek 지난 조사 조건 없이 KLA 만 자동 분석한 회차 — Batch Report 자동 분석 실행 기록에 남긴다.
+                record = params.get('record', False)
+                if type(record) is not bool:
+                    raise ValueError('요청을 확인하세요')
+                bg(rid, 'kla', lambda: self._kla_cache_build(record), 'KLA 캐시를 만들지 못했습니다. 장비 폴더 연결과 로컬 작업 폴더를 확인하세요.',
                    ('kla', 'equipment'))
             elif method == 'kla_cache_publish':
                 # 개발자: 로컬 KLA 색인 → 로컬 Temp zip → OneDrive 캐시공유/ 1번 복사 + KLA캐시정보.json. 장비 접근 없음.

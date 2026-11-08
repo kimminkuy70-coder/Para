@@ -23,6 +23,15 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 자동 분석 KLA 탭 · 다음 실행 기준 · KLA 찾기 = Batch 찾기 모양 (2026-11-09, 이슈 #43, v12.9.25)
+- `BatchAutoPanel.tsx` 안 탭 [CAMTEK · Batch Report] / [KLA · KLA 캐시](주기 · 시각 · 켜기는 공통). config `kla_auto` · `kla_cache_publish`(`config_set_batch_auto{kla, kla_publish}`,
+  `auto_state.kla/kla_publish`). 실행 = `Batch.tsx launch(…, kla)` 가 Batch Report 뒤 `klaAuto`(kla_cache_build → kla_cache_publish), Camtek 지난 조건이 없으면 `launchKlaOnly`
+  → `kla_cache_build{record:true}`(엔진 `Session._kla_cache_build` 가 `batch.record_run` — 안 남기면 매분 다시 돈다).
+- **다음 실행 기준**: 켜거나 주기 · 시각을 바꾸면 `batch_schedule_set`(지금 시각) — `next_batch_run(since=)` 은 since 가 마지막 실행보다 나중이면 since 뒤 첫 HH:MM(시각 없으면 바로).
+  하루 단위 주기에는 backoff 를 곱하지 않는다(일부 오류가 이어지면 하루 1회가 8일 뒤로 밀렸다). 게시 · KLA 체크만 바꾸면 since 를 고치지 않는다.
+- `Kla.tsx` 찾기 = `<div className="bv kla-find">` 안에 Batch 찾기와 같은 `mhead` · `mgrid compact` · `mbox` · `scope-row` · `tgl2` · `go`(CSS 는 `.bv` 것을 그대로 씀).
+  [찾을 곳] radio 대신 `KLA 캐시에서만 찾기` 체크(`cacheOnly`, 정하지 않았으면 장비 미등록 + 캐시 있음일 때 켬). 캐시 모드의 장비 격자 = `cache.machines`(엔진 `kla_search{source:'cache', machines}`).
+
 ### KLA 자재 찾기 화면 정리 (2026-11-06, 이슈 #41, v12.9.24)
 - `Kla.tsx` KLA 캐시 상자 = `<details class="kla-cache">`(처음 접힘, localStorage `para.kla.cacheOpen`). KLA 화면 CSS 는 `.kla` 범위(styles.css 끝 #41 블록) — `.bv` 범위의 `.cache-drop*` 은 KLA 에 안 먹는다.
   radio · checkbox 는 `.kla-opt`(16px, 전역 `input{width:100%}` 를 덮음). 화면 문구는 핵심만(소유자 지시) — 긴 설명을 다시 늘리지 말 것.

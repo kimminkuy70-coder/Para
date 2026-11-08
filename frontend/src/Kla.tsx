@@ -38,8 +38,10 @@ export function Kla(){
   const [filter,setFilter]=useState('');
   const [open,setOpen]=useState<Record<string,boolean>>({});
   const cache=kla?.cache;
-  const [source,setSource]=useState<Source>();
-  const src:Source=source??((!roots?.length&&cache?.lots)?'cache':'equipment');
+  // [KLA 캐시에서만 찾기](Para #43, Batch Report 찾기 · 취합의 [캐시에서만 찾기]와 같은 모양). 정하지 않았으면 장비 미등록 PC 에서 캐시가 있을 때 켬.
+  const [cacheOnly,setCacheOnly]=useState<boolean>();
+  const src:Source=(cacheOnly??(!roots?.length&&!!cache?.lots))&&!!cache?.lots?'cache':'equipment';
+  const [cachePicked,setCachePicked]=useState<string[]>();
   const [share,setShare]=useState<ShareList>();
   const [sharePick,setSharePick]=useState('');
   const [cacheBusy,setCacheBusy]=useState('');
@@ -69,7 +71,7 @@ export function Kla(){
   }
   async function importShare(){
     const r=await klaCall<KlaCache&{source:string}>('kla_cache_share_import',{name:sharePick},'import');
-    if(r){setKlaCache(r);setSource('cache');notify(`KLA 캐시를 불러왔습니다 — 장비 ${r.machines.length}대 · Lot 폴더 ${r.lots}개. 찾을 곳이 'KLA 캐시'로 바뀌었습니다.`,'ok');}
+    if(r){setKlaCache(r);setCacheOnly(true);setCachePicked(undefined);notify(`KLA 캐시를 불러왔습니다 — 장비 ${r.machines.length}대 · Lot 폴더 ${r.lots}개. [KLA 캐시에서만 찾기]를 켰습니다.`,'ok');}
   }
   // 설정에서 장비를 더하거나 빼면 찾을 장비 고르기도 따라간다(새 장비는 골라 둔다).
   const known=useRef<string[]|undefined>(undefined);
@@ -79,11 +81,16 @@ export function Kla(){
     setPicked(p=>before===undefined?now:[...p.filter(n=>now.includes(n)),...now.filter(n=>!before.includes(n))]);
     known.current=now;
   },[roots]);
+  // 찾을 장비 격자: 장비 폴더 = 등록한 장비, KLA 캐시 = 캐시에 든 장비(이 PC 에 등록 안 된 장비도).
+  const list=src==='cache'?(cache?.machines||[]):(roots||[]).map(r=>r.name);
+  const chosen=src==='cache'?(cachePicked??list).filter(n=>list.includes(n)):picked;
+  const setChosen=(next:string[])=>src==='cache'?setCachePicked(next):setPicked(next);
+  const folderOf=(name:string)=>roots?.find(r=>r.name===name||name.startsWith(r.name+' › '))?.path||'';
   async function search(){
     if(!query.trim()){notify('Lot 이름(또는 그 일부)을 입력하세요','error');return;}
     setBusy(true);setProgress('찾는 중…');setOpen({});setFilter('');
     try{
-      const params:Record<string,unknown>=src==='cache'?{query:query.trim(),start,end,source:'cache'}:{query:query.trim(),machines:picked,start,end,source:'equipment'};
+      const params:Record<string,unknown>=src==='cache'?{query:query.trim(),machines:chosen,start,end,source:'cache'}:{query:query.trim(),machines:picked,start,end,source:'equipment'};
       const r=(await desktop.request('kla_search',params,v=>{if(v.message)setProgress(v.message);}).promise).kla as Result;
       setResult(r);
       notify(r.hits.length?`Lot 폴더 ${r.hits.length}개를 찾았습니다`:'맞는 Lot 폴더가 없습니다',r.hits.length?'ok':'info');
@@ -104,12 +111,7 @@ export function Kla(){
     <p className="hint kla-intro">Lot 키워드로 KLA 장비의 Lot · 슬롯 폴더 경로를 찾습니다. 폴더 이름만 읽습니다.
       <span className="kla-path">구조 <code>{'{장비}\\{날짜}\\{Lot}\\{스캔 시각}_{슬롯}'}</code></span></p>
 
-    <div className="kla-roots-line">
-      <span><b>KLA 장비 폴더</b> · {roots===undefined?(loadError?'':'불러오는 중…'):roots.length?`${roots.length}개 · ${roots.map(r=>r.name).join(', ')}`:<b className="warn">⚠ 등록된 폴더 없음 — 설정에서 먼저 등록하세요</b>}</span>
-      <button onClick={()=>goToSettings({sub:'kla'})}>⚙ 설정 › AOI 장비 호기 루트 › KLA</button>
-    </div>
     {loadError&&<p className="warn">{loadError} <button className="linklike" onClick={()=>void load()}>다시 시도</button></p>}
-    <KlaBackupBar disabled={busy}/>
 
     <details className="kla-cache" open={cacheOpen} onToggle={e=>setCacheOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary aria-label="KLA 캐시 접기/펼치기"><span className="kc-chev" aria-hidden="true">▸</span><b>KLA 캐시</b>
@@ -145,28 +147,26 @@ export function Kla(){
       </div>
     </details>
 
-    <div className="kla-source" role="radiogroup" aria-label="찾을 곳">
-      <span className="kla-lbl">찾을 곳</span>
-      <label className="kla-opt"><input type="radio" name="kla-src" checked={src==='equipment'} onChange={()=>setSource('equipment')}/>장비 폴더</label>
-      <label className="kla-opt"><input type="radio" name="kla-src" checked={src==='cache'} disabled={!cache?.lots} onChange={()=>setSource('cache')}/>KLA 캐시{cache?.lots?<small>{cache.updated_at||'시각 모름'}</small>:<small>없음</small>}</label>
+    <div className="bv kla-find">
+      <div className="mhead"><span className="lbl">{src==='cache'?'KLA 캐시 장비':'장비 범위'}</span><span className="count">선택 {chosen.length} / {list.length}</span><span className="grow"/>
+        <label className="tgl2"><input type="checkbox" aria-label="찾기 모든 장비" disabled={!list.length} checked={!!list.length&&chosen.length===list.length}
+          onChange={e=>setChosen(e.target.checked?list:[])}/> 모든 장비</label>
+        <button type="button" className="gear" onClick={()=>goToSettings({sub:'kla'})}>⚙ 설정 › AOI 장비 호기 루트 › KLA</button></div>
+      {list.length?<div className="mgrid compact" role="group" aria-label="찾을 장비">{list.map(n=>{const on=chosen.includes(n),folder=folderOf(n);
+        return <label key={n} className={'mbox'+(on?' on':'')} data-tip={folder?n+'\n'+folder:n}><input type="checkbox" checked={on} aria-label={n+' 찾기'}
+          onChange={e=>setChosen(e.target.checked?[...chosen,n]:chosen.filter(x=>x!==n))}/><span className="mn">{n}</span><span className="ms">{folder||'KLA 캐시'}</span></label>;})}</div>
+        :roots===undefined?(loadError?null:<p className="hint">불러오는 중…</p>)
+        :<p className="warn">{src==='cache'?'KLA 캐시에 장비가 없습니다.':'⚠ 등록된 KLA 장비 폴더가 없습니다 — 설정에서 등록하거나, 아래 [KLA 캐시]에서 OneDrive 캐시를 불러오세요.'}</p>}
+      <div className="scope-row"><label className="field" style={{flex:1,minWidth:320}}>Lot 키워드<input value={query} maxLength={200} placeholder="예: RINT63 6324 — 여러 단어는 모두 포함"
+          onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!busy)void search();}}/></label>
+        <div className="dates"><label className="field" title="비우면 처음부터">시작일<input type="date" aria-label="KLA 찾기 시작일" value={start} onChange={e=>setStart(e.target.value)}/></label>
+          <label className="field" title="비우면 끝까지">종료일<input type="date" aria-label="KLA 찾기 종료일" value={end} onChange={e=>setEnd(e.target.value)}/></label></div>
+        <label className="tgl2" title={cache?.lots?`로컬 KLA 캐시(${cache.updated_at||'시각 모름'} 갱신)에서만 찾습니다(장비에 접속하지 않음)`:'이 PC 에 KLA 캐시가 없습니다 — 아래 [KLA 캐시]에서 불러오세요'}>
+          <input type="checkbox" aria-label="KLA 캐시에서만 찾기" disabled={!cache?.lots} checked={src==='cache'} onChange={e=>setCacheOnly(e.target.checked)}/> KLA 캐시에서만 찾기</label>
+        <div className="go"><button className="primary" disabled={busy||!!cacheBusy||!query.trim()||!chosen.length} onClick={()=>void search()}>{busy?'찾는 중…':'검색 →'}</button></div></div>
+      <p className="hint">{src==='cache'?`KLA 캐시(${cache?.updated_at||'시각 모름'} 기준)에서만 찾습니다 — 장비에 접속하지 않습니다.`:'장비 폴더 이름만 읽습니다(파일은 열지 않음).'} 기간을 비우면 모든 날짜를 찾습니다.</p>
+      {src==='equipment'&&<KlaBackupBar disabled={busy}/>}
     </div>
-    {src==='equipment'&&roots&&roots.length>1&&<div className="kla-machines" role="group" aria-label="찾을 장비">
-      <span className="kla-lbl">찾을 장비</span>
-      {roots.map(r=><label key={r.name} className="kla-opt"><input type="checkbox" checked={picked.includes(r.name)}
-        onChange={e=>setPicked(p=>e.target.checked?[...p,r.name]:p.filter(n=>n!==r.name))}/>{r.name}</label>)}
-      <button className="linklike" onClick={()=>setPicked(roots.map(r=>r.name))}>모두</button>
-      <button className="linklike" onClick={()=>setPicked([])}>해제</button>
-    </div>}
-
-    <div className="kla-form">
-      <label className="field kla-q">Lot 키워드
-        <input value={query} placeholder="예: RINT63 6324 (여러 단어 = 모두 포함)" maxLength={200} onChange={e=>setQuery(e.target.value)}
-          onKeyDown={e=>{if(e.key==='Enter'&&!busy)void search();}}/></label>
-      <label className="field kla-d" title="비우면 처음부터">시작 날짜<input type="date" value={start} onChange={e=>setStart(e.target.value)}/></label>
-      <label className="field kla-d" title="비우면 끝까지">끝 날짜<input type="date" value={end} onChange={e=>setEnd(e.target.value)}/></label>
-      <button className="primary" disabled={busy||!!cacheBusy||!query.trim()||(src==='cache'?!cache?.lots:(!roots?.length||!picked.length))} onClick={()=>void search()}>{busy?'찾는 중…':src==='cache'?'캐시에서 찾기':'찾기'}</button>
-    </div>
-    <p className="kc-note">기간을 비우면 모든 날짜를 찾습니다.</p>
     {busy&&<p className="kc-note"><span className="spinner" aria-hidden="true"/> {progress}</p>}
 
     {result&&<div className="kla-result">

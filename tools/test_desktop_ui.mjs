@@ -460,6 +460,11 @@ try{
   await page.getByLabel('분 (5분 단위)').selectOption('35');
   await page.getByText('실행 시각을 07:35 으로 저장했습니다').waitFor();
   await page.getByText('하루 1회 (24시간) · 07:35 에 실행합니다',{exact:false}).waitFor();
+  // Para #43: 켜거나 시각을 바꾸면 그때부터 센다 — 다음 실행 = 오늘 또는 내일 07:35(예전 마지막 실행 + 주기 · backoff 아님).
+  {const p=n=>String(n).padStart(2,'0'),day=d=>`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} 07:35`;
+    const now=new Date(),tomorrow=new Date(now.getTime()+86400000);
+    const next=(await page.getByRole('row',{name:/다음 실행/}).innerText()).replace(/^다음 실행\s*/,'').trim();
+    assert.ok([day(now),day(tomorrow)].includes(next),'다음 실행 '+next);}
   await page.getByRole('button',{name:'▶ 즉시 실행',exact:true}).click();
   await page.getByRole('heading',{name:'Batch Report 분석',exact:true}).waitFor();
   await page.getByText('Batch Report 분석을 지금 실행합니다(지난 조사 조건).').waitFor();
@@ -775,7 +780,7 @@ try{
   await page.getByRole('button',{name:'KLA',exact:true}).click();
   assert.deepEqual(await page.locator('.navigation button').allInnerTexts(),['KLA 자재 찾기']);
   const kla=page.locator('section.kla');
-  await kla.getByText('⚠ 등록된 폴더 없음 — 설정에서 먼저 등록하세요').waitFor();
+  await kla.getByText(/⚠ 등록된 KLA 장비 폴더가 없습니다/).waitFor();
   await kla.getByRole('button',{name:/설정 › AOI 장비 호기 루트 › KLA/}).click();
   assert.equal(await page.locator('.navigation').count(),0);                      // 설정 = 공통 탭(아래 기능 탭 줄 없음)
   const klaSet=page.locator('.kla-settings');
@@ -794,9 +799,12 @@ try{
   await klaSet.getByRole('cell',{name:klaBackup,exact:true}).waitFor();
   assert.equal(await klaSet.getByRole('switch',{name:'Defect 이미지 백업본 포함'}).isChecked(),true);
   await page.getByRole('button',{name:'KLA',exact:true}).click();
-  await kla.getByText(/KLA 장비 폴더 · 1개 · 2\.K2/).waitFor();
+  // Para #43: 찾기 화면 = Batch Report 찾기 · 취합과 같은 모양(장비 상자 격자 · 모든 장비 · 캐시에서만 찾기 체크).
+  await kla.getByRole('checkbox',{name:'2.K2 찾기'}).waitFor();
+  assert.equal(await kla.getByRole('checkbox',{name:'찾기 모든 장비'}).isChecked(),true);
+  assert.equal(await kla.getByRole('checkbox',{name:'KLA 캐시에서만 찾기'}).isDisabled(),true);   // 캐시가 아직 없음
   await kla.getByLabel(/Lot 키워드/).fill('rint63');
-  await kla.getByRole('button',{name:'찾기',exact:true}).click();
+  await kla.getByRole('button',{name:'검색 →',exact:true}).click();
   await kla.getByText(/Lot 폴더 2개\(Lot 2개\)/).waitFor();
   const klaRow=kla.locator('tr.kla-row');
   assert.equal(await klaRow.count(),2);
@@ -804,7 +812,7 @@ try{
   // 백업본 끄기 → 원본만
   await kla.getByRole('switch',{name:'Defect 이미지 백업본 포함'}).click();        // 엔진 저장 뒤에 바뀜
   await kla.getByText('KLA 찾기 범위 · 원본만').waitFor();
-  await kla.getByRole('button',{name:'찾기',exact:true}).click();
+  await kla.getByRole('button',{name:'검색 →',exact:true}).click();
   await kla.getByText(/Lot 폴더 1개\(Lot 1개\)/).waitFor();
   assert.equal(await klaRow.count(),1);
   assert.match(await klaRow.innerText(),/2\.K2\t2025-05-21\tRINT63@6324\t▸ 16, 2/);
@@ -825,11 +833,27 @@ try{
   await kla.getByText(/게시함: .*KLA_캐시_\d{8}_\d{6}\.zip/).waitFor();
   await kla.getByRole('button',{name:'OneDrive 에서 불러오기',exact:true}).click();
   await kla.getByRole('button',{name:'고른 캐시 받아서 불러오기',exact:true}).click();
-  await kla.getByRole('button',{name:'캐시에서 찾기',exact:true}).click();
+  await page.getByText(/\[KLA 캐시에서만 찾기\]를 켰습니다/).waitFor();
+  assert.equal(await kla.getByRole('checkbox',{name:'KLA 캐시에서만 찾기'}).isChecked(),true);    // 불러오면 켜짐
+  await kla.getByRole('button',{name:'검색 →',exact:true}).click();
   await kla.getByText(/KLA 캐시에서 찾음/).waitFor();
   assert.equal(await klaRow.count(),1);
   assert.match(await klaRow.innerText(),/2\.K2\t2025-05-21\tRINT63@6324\t▸ 16, 2/);
-  await kla.getByRole('radio',{name:/장비 폴더/}).check();
+  await kla.getByRole('checkbox',{name:'KLA 캐시에서만 찾기'}).uncheck();
+  // Para #43: 자동 분석 › [KLA] 탭 — 자동 분석(▶ 즉시 실행)에 KLA 캐시 갱신을 넣는다.
+  await page.getByRole('button',{name:'CAMTEK',exact:true}).click();
+  await feature('자동 분석 및 취합');
+  await page.getByRole('tab',{name:'Batch Report 자동 분석'}).click();
+  await page.getByRole('tab',{name:/^KLA · KLA 캐시/}).click();
+  await page.getByLabel('자동 분석에 KLA 캐시 갱신 넣기').click();
+  await page.getByText('자동 분석에 KLA 캐시 갱신을 넣었습니다').waitFor();
+  await page.getByRole('button',{name:'▶ 즉시 실행',exact:true}).click();
+  await page.getByText(/KLA 캐시 자동 갱신: 장비 1대/).waitFor({timeout:120000});
+  await feature('자동 분석 및 취합');
+  await page.getByRole('tab',{name:/^KLA · KLA 캐시/}).click();
+  await page.getByLabel('자동 분석에 KLA 캐시 갱신 넣기').click();
+  await page.getByText('자동 분석에서 KLA 캐시 갱신을 뺐습니다').waitFor();
+  await page.getByRole('tab',{name:/^CAMTEK · Batch Report/}).click();
   await page.getByRole('button',{name:'CAMTEK',exact:true}).click();
   assert.equal(await page.locator('.navigation button').first().innerText(),'Recipe 관리');
   // 기능 둘러보기: 주요 탭을 차례로 옮겨 다니며 끝까지(오류 없이) — 마지막은 설정 탭.

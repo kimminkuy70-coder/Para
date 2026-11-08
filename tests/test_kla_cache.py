@@ -186,6 +186,20 @@ class KlaCache(unittest.TestCase):
         self.assertEqual(len(last[3]["kla"]["items"]), 1)
         self.assertEqual(len(last[4]["kla"]["hits"]), 1)
         self.assertEqual(last[5]["event"], "error")
+        # Para #43: KLA 만 자동 분석한 회차(record=True)는 Batch Report 자동 분석 실행 기록에 남긴다.
+        calls = []
+
+        class FakeBatch:
+            def record_run(self, ok, partial=False, error=""):
+                calls.append((ok, partial))
+        session.batch = FakeBatch()
+        run(6, "kla_cache_build", {"record": True})
+        run(7, "kla_cache_build", {"record": 1})
+        run(8, "kla_cache_build", {})
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        last = {i: [e for e in events if e["id"] == i][-1] for i in range(6, 9)}
+        self.assertEqual((last[6]["event"], last[7]["event"], last[8]["event"]), ("completed", "error", "completed"))
+        self.assertEqual(calls, [(True, False)])
 
 
 if __name__ == "__main__":

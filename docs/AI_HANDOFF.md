@@ -1,5 +1,27 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #43 자동 분석 KLA 탭 · 다음 실행 날짜 · KLA 찾기 UX (2026-11-09 KST, `version_v12`, v12.9.25)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `2afd3ea` · 이슈 Para #43("v12.9.25 업데이트 사항") · 작업 브랜치 `version_v12`.
+- 요청: ① Batch Report 자동 분석에 KLA 탭을 추가해 자동 분석에 포함 ② 오늘 자동 분석을 설정했는데 다음 실행이 11월 14일로 나옴 — 수정
+  ③ KLA 자재 찾기에 Batch Report 찾기 · 취합을 참고해 "KLA 캐시에서만 찾기" 체크 상자, Batch 찾기 화면과 UX 일관성.
+- 원인 ②: `next_batch_run` 이 예전 마지막 실행(`batch_schedule.last_run`, tkinter 와 공유) 기준이라 오늘 켜도 마지막 실행 + 주기였고, 하루 단위 주기에도 연속 실패 backoff(×2 · 4 · 8)를 곱해
+  '일부 오류'가 이어지면 하루 1회가 8일 뒤로 밀렸다. 소유자 config 를 못 봐서 둘 중 어느 쪽이었는지는 확인 전(둘 다 고침).
+- 한 일(코드 지도는 CLAUDE.md 맨 위 #43 절): `desktop_batch.next_batch_run(since=)` · `auto_state`(kla · kla_publish · since 가 있으면 next_run 표시), `desktop_config.set_batch_auto`
+  (kla · kla_publish · `batch_schedule_set`), IPC `config_set_batch_auto` 허용 키 · `kla_cache_build{record}` · `Session._kla_cache_build`, `BatchAutoPanel.tsx` 탭, `Batch.tsx klaAuto/launchKlaOnly`,
+  `Kla.tsx` 찾기 영역 교체(장비 격자 · 모든 장비 · KLA 캐시에서만 찾기 · 검색 →). 릴리스 노트 `docs/release_notes/v12.9.25.md`.
+- 내 해석(확인 전): ⓐ "KLA 탭" = Batch Report 자동 분석 패널 안의 회사 탭(주기 · 시각 · 켜기는 공통, 별도 주기 없음) ⓑ KLA 자동 = 캐시 갱신(+ 선택 시 OneDrive 게시) — KLA 는 분석이 없어 캐시 갱신이 자동 작업
+  ⓒ Camtek 지난 조건이 없으면 KLA 만 돌고 실행 기록을 남김 ⓓ 다음 실행 = 켜거나 주기 · 시각을 바꾼 시각부터(그 뒤 첫 실행 시각) ⓔ 하루 단위 주기는 backoff 없음
+  ⓕ KLA 캐시 상자는 #41 대로 찾기 영역 위에 둠(Batch 찾기 화면에는 없는 상자) ⓖ 자동 분석은 종전처럼 [Batch Report 분석] 화면을 한 번 연 뒤부터 돈다(화면 안내만 추가, 동작 변화 없음).
+- 시험: `tests/test_desktop_batch.py`(since · backoff) · `tests/test_desktop_config.py`(batch_schedule_set · kla 키) · `tests/test_kla_cache.py`(record IPC) · `tests/test_kla.py` 통과,
+  `tools/check_project.py` = `test_batchreport.py`(tkinter 없음, 기존과 같음)만 실패, `npx tsc --noEmit` · `vite build` 통과, `tools/test_desktop_ui.mjs`(PARA_TEST_NODE_MODULES=/opt/node-tools/node_modules)
+  통과 — 다음 실행 = 오늘/내일 07:35 확인, KLA 탭 체크 → ▶ 즉시 실행 → KLA 캐시 자동 갱신, KLA 찾기 새 화면. Windows 실기 · 실제 KLA 장비 · OneDrive 는 미검증.
+- 릴리스: v12.9.25(이슈 제목의 버전) — 결과는 아래 줄/이슈 댓글.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #43 | 자동 분석 KLA 탭 · 다음 실행 11/14 수정 · KLA 캐시에서만 찾기 체크 + Batch 찾기 UX 일관성 | 구현 · 시험 통과, v12.9.25 릴리스(결과는 이슈 댓글) |
+
 ## 최신 재개 — Para #41 KLA 자재 찾기 UX 정리(캐시 상자 접기) + 리뷰 HTML 하위 폴더 표 · Lot History (2026-11-06 KST, `version_v12` + `version_TB500_review`)
 
 - 마지막 갱신 2026-11-06 · 기준 커밋 `5285e86`(version_v12) · `b6ddff4`(version_TB500_review) · 이슈 Para #41("리뷰용 프로그램 브랜치 신규 생성 2").

@@ -10,6 +10,7 @@ initial reference files if they are missing, like the tkinter first run.
 import os
 import re
 from pathlib import Path
+from datetime import datetime
 
 from . import __version__, atomicfile, engine, localdirs, refdata
 from .desktop_batch import DesktopBatch, read_json
@@ -311,9 +312,16 @@ class DesktopConfig:
 
     def set_batch_auto(self, params):
         from .desktop_batch import BATCH_INTERVALS, BATCH_TIME
-        if set(params) - {"enabled", "interval_hours", "time", "publish"} or type(params.get("enabled")) is not bool:
+        if set(params) - {"enabled", "interval_hours", "time", "publish", "kla", "kla_publish"} or type(params.get("enabled")) is not bool:
             raise ValueError("자동 조사 설정을 확인하세요")
         cfg = self._read()
+        before = (bool(cfg.get("batch_auto")), cfg.get("batch_interval_hours"), cfg.get("batch_time"))
+        for key, name, label in (("kla", "kla_auto", "KLA 캐시 갱신"), ("kla_publish", "kla_cache_publish", "KLA OneDrive 게시")):
+            # 자동 분석 › [KLA] 탭(Para #43): 같은 회차에 KLA 캐시 갱신 · 끝나면 KLA 캐시 zip 게시.
+            if key in params:
+                if type(params[key]) is not bool:
+                    raise ValueError(f"{label} 설정을 확인하세요")
+                cfg[name] = params[key]
         if "publish" in params:
             # 자동 분석이 끝나면 캐시 zip 을 OneDrive 캐시공유/ 에 게시(이슈 #39, 개발자 PC 용 — 기본 꺼짐).
             if type(params["publish"]) is not bool:
@@ -332,6 +340,11 @@ class DesktopConfig:
             else:
                 cfg.pop("batch_time", None)
         cfg["batch_auto"] = params["enabled"]
+        # 켜거나 주기 · 시각을 바꾼 시각(Para #43): 다음 실행을 예전 마지막 실행이 아니라 이때부터 센다
+        # (desktop_batch.next_batch_run since). 게시 체크 · KLA 체크만 바꾼 것은 일정과 무관해 그대로 둔다.
+        after = (bool(cfg["batch_auto"]), cfg.get("batch_interval_hours"), cfg.get("batch_time"))
+        if cfg["batch_auto"] and after != before:
+            cfg["batch_schedule_set"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self._write(cfg)
         return self.state()
 

@@ -63,17 +63,35 @@ def batch_time(cfg):
     return value if isinstance(value, str) and BATCH_TIME.fullmatch(value) else ""
 
 
-def next_batch_run(interval_hours, time_text, state, now):
+def next_batch_run(interval_hours, time_text, state, now, since=None):
     """다음 자동 분석 시각. 시각을 정했고 주기가 하루 단위면 그 시각에 맞춘다(#33):
     마지막 실행 + (주기 − 1일) 뒤에 오는 첫 HH:MM. 하루 1회 09:00 이면 09:00 에 돈 다음 회차는
-    다음 날 09:00, 08:50 에 손으로 조사했으면 그날 09:00. 연속 실패면 watcher 와 같은 backoff 배수.
-    한 번도 안 돌았으면 종전처럼 바로(watcher.first_run_at)."""
+    다음 날 09:00, 08:50 에 손으로 조사했으면 그날 09:00. 한 번도 안 돌았으면 종전처럼 바로(watcher.first_run_at).
+
+    since = 사람이 자동 분석을 켜거나 주기 · 시각을 바꾼 시각(config `batch_schedule_set`, Para #43).
+    마지막 실행보다 나중이면 마지막 실행이 아니라 그때부터 센다 — 시각을 정했으면 그 뒤 첫 HH:MM,
+    정하지 않았으면 바로. (종전: 오늘 켰는데 예전 마지막 실행 + 일주일 · backoff 로 며칠 뒤가 나왔다.)
+    연속 실패 backoff 는 시간 단위 주기(6 · 12시간)에만 쓴다 — 하루 단위 주기에 곱하면 하루 1회가
+    8일 뒤로 밀린다(Para #43)."""
     settings = watcher.WatchSettings(enabled=True, interval_hours=interval_hours)
     try:
         last = datetime.strptime(state.last_run, "%Y-%m-%d %H:%M:%S")
     except (TypeError, ValueError):
         last = None
-    if not time_text or interval_hours % 24 or last is None:
+    try:
+        since = datetime.strptime(since, "%Y-%m-%d %H:%M:%S") if since else None
+    except (TypeError, ValueError):
+        since = None
+    daily_slot = bool(time_text) and not interval_hours % 24
+    if since is not None and (last is None or since > last):
+        if not daily_slot:
+            return since
+        hour, minute = (int(x) for x in time_text.split(":"))
+        slot = since.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        return slot if slot >= since else slot + timedelta(days=1)
+    if interval_hours >= 24 and state.fail_count:
+        state = watcher.WatchState.from_dict(dict(state.to_dict(), fail_count=0))
+    if not daily_slot or last is None:
         return watcher.next_run_at(settings, state, now)
     steps = watcher.BACKOFF_STEPS
     mult = steps[min(state.fail_count, len(steps) - 1)] if state.fail_count else 1
@@ -958,12 +976,15 @@ class DesktopBatch(BatchViews):
         enabled, hours, time_text = bool(cfg.get("batch_auto")), batch_interval(cfg), batch_time(cfg)
         state = watcher.WatchState.from_dict(schedule)
         now = datetime.now()
-        nxt = next_batch_run(hours, time_text, state, now)
+        since = cfg.get("batch_schedule_set") if isinstance(cfg.get("batch_schedule_set"), str) else ""
+        nxt = next_batch_run(hours, time_text, state, now, since)
         # publish = 자동 분석(즉시 실행 포함)이 끝나면 캐시 zip 을 OneDrive 캐시공유/ 에 게시(이슈 #39, 개발자 PC 용).
+        # kla / kla_publish = 같은 회차에 KLA 캐시 갱신 · OneDrive 게시도 한다(Para #43, [KLA] 탭).
         return dict(enabled=enabled, interval_hours=hours, time=time_text, publish=bool(cfg.get("batch_cache_publish")),
+                    kla=bool(cfg.get("kla_auto")), kla_publish=bool(cfg.get("kla_cache_publish")),
                     last_run=state.last_run,
                     last_result=state.last_result,
-                    next_run=nxt.strftime("%Y-%m-%d %H:%M") if enabled and state.last_run else "",
+                    next_run=nxt.strftime("%Y-%m-%d %H:%M") if enabled and (state.last_run or since) else "",
                     due=enabled and now >= nxt)
 
     def record_run(self, ok, partial=False, error=""):
