@@ -86,6 +86,8 @@ details summary{cursor:pointer;color:var(--acc)}
 .drop{border:2px dashed var(--line);border-radius:10px;padding:14px;text-align:center}
 .pairtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .pairtabs button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
+.viewtabs{display:inline-flex;gap:4px;flex-wrap:wrap;margin-right:8px}.viewtabs button{padding:3px 10px}
+.viewtabs button[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700}
 .rvlow{display:grid;grid-template-columns:minmax(260px,420px) 1fr;gap:8px;margin-top:8px}
 #rvMap{width:100%;height:360px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:block}
 @media (max-width:900px){.wrap{flex-direction:column}nav{width:auto;border-right:0;border-bottom:1px solid var(--line)}.review,.rvlow{grid-template-columns:1fr}}
@@ -139,7 +141,7 @@ details summary{cursor:pointer;color:var(--acc)}
 <section class="step" id="step2">
   <h2>Step 2 · 비교 조건 설정</h2>
   <div class="card">
-    <p class="muted">등록한 리스트를 Contrast AVG 오름차순으로 놓고 <b>모든 쌍</b>을 비교합니다(리스트 3개 = 3쌍). 쌍마다 앞 리스트에만 있는 Defect = 뒤 리스트에서 없어진 Defect 입니다.</p>
+    <p class="muted">등록한 리스트를 Contrast AVG 오름차순으로 놓고 <b>모든 쌍</b>을 비교합니다(리스트 3개 = 3쌍). 쌍 A → B 마다 A ∖ B(A 에만 있는 Defect) = B 에서 없어진 Defect 입니다. 보기 = A ∪ B · A(전체) · B(전체) · A ∖ B · A ∩ B · B ∖ A.</p>
     <div class="row">
       <label>동일 좌표 허용오차 <input type="number" id="tol" value="2" min="0" step="0.5"> µm</label>
     </div>
@@ -163,9 +165,9 @@ details summary{cursor:pointer;color:var(--acc)}
     <div id="cmpMsg"></div>
   </div>
   <div class="card">
-    <h3>쌍별 비교 <span class="muted">(A → B: A 에만 있는 Defect = B 에서 없어진 Defect)</span></h3>
+    <h3>쌍별 비교 <span class="muted">(A → B: A ∖ B = B 에서 없어진 Defect)</span></h3>
     <div class="tblwrap" style="max-height:none"><table id="pairTbl"><thead><tr>
-      <th>쌍 (A → B)</th><th class="num">A Defect</th><th class="num">B Defect</th><th class="num">둘 다</th><th class="num">A 에만 (B 에서 없어짐)</th><th class="num">B 에만</th><th class="num">없어진 비율</th><th></th>
+      <th>쌍 (A → B)</th><th class="num">A (전체)</th><th class="num">B (전체)</th><th class="num">A ∩ B</th><th class="num">A ∖ B (B 에서 없어짐)</th><th class="num">B ∖ A</th><th class="num">없어진 비율</th><th></th>
     </tr></thead><tbody></tbody></table></div>
   </div>
 </section>
@@ -180,7 +182,7 @@ details summary{cursor:pointer;color:var(--acc)}
   </div>
   <div class="card">
     <div class="row"><h3 style="margin:0">상세 표</h3>
-      <label>구분 <select id="fltSt"><option value="">전체</option></select></label>
+      <label>보기 <select id="fltSt"><option value="all">전체</option></select></label>
       <button id="csvBtn">CSV 내보내기</button></div>
     <div class="tblwrap"><table id="detTbl"><thead><tr>
       <th>구분</th><th class="num">ID</th><th class="num">Wafer X</th><th class="num">Wafer Y</th><th>Die</th><th class="num">Area(µm²)</th><th class="num">Width</th><th class="num">Length</th><th>Box W×H</th><th class="num">Contrast</th><th>Step</th><th>호기</th>
@@ -474,7 +476,13 @@ $('#dirInput').onchange=async e=>{const fs=[...e.target.files];e.target.value=''
 // ════════════════════════════════════════════════════════════════════════
 function pts(s,o){return s.defects.map(d=>{const X=o.coord==='actual'?d.ActualX:d.x,Y=o.coord==='actual'?d.ActualY:d.y;d.X=X;d.Y=Y;return d}).filter(d=>isFinite(d.X)&&isFinite(d.Y))}
 /** 쌍마다 이름 표기(Para #50 후속): 유지 · 소거 · 신규 대신 리스트(Step) 이름 */
-function stLabel(st,c){c=c||S.cmp;const a=stepName(c.A),b=stepName(c.B);return st==='keep'?`${a} · ${b} 둘 다`:st==='gone'?`${a}에만`:`${b}에만`}
+function stLabel(st,c){c=c||S.cmp;const a=stepName(c.A),b=stepName(c.B);return st==='keep'?`${a} ∩ ${b}`:st==='gone'?`${a} ∖ ${b}`:`${b} ∖ ${a}`}
+/** 보기 5가지(집합 기호, 소유자 지시) + 합집합. 값 = 그 집합에 드는 내부 상태들. */
+const VIEWS=[['all',['gone','keep','new']],['A',['gone','keep']],['B',['keep','new']],['gone',['gone']],['keep',['keep']],['new',['new']]];
+function viewLabel(v,c){c=c||S.cmp;const a=stepName(c.A),b=stepName(c.B);
+  return {all:`${a} ∪ ${b}`,A:`${a} (전체)`,B:`${b} (전체)`}[v]||stLabel(v,c)}
+const viewSet=v=>new Set((VIEWS.find(x=>x[0]===v)||VIEWS[0])[1]);
+let mapView='all';
 /** 등록한 리스트를 Contrast AVG 오름차순으로 놓고 모든 쌍(i<j)을 비교한다. 3개 → 3쌍. */
 function runCompare(){
   const o=opts(),msg=[];
@@ -495,18 +503,18 @@ function selectPair(i){
   S.rows=[...c.keep.map(k=>({st:'keep',d:k.a,b:k.b,dist:k.d})),...c.gone.map(d=>({st:'gone',d})),...c.added.map(d=>({st:'new',d}))];
   S.page=0;S.rv=0;S.rvList=S.rows.filter(x=>x.st==='gone');
   $$('.pairtabs').forEach(t=>t.innerHTML=S.pairs.map((p,j)=>`<button role="tab" data-pair="${j}" aria-pressed="${j===S.pi}">${esc(stepName(p.A))} → ${esc(stepName(p.B))} · 없어짐 ${p.gone.length}</button>`).join(''));
-  const f=$('#fltSt'),fv=f.value;f.innerHTML='<option value="">전체</option>'+['gone','keep','new'].map(st=>`<option value="${st}">${esc(stLabel(st))}</option>`).join('');f.value=fv;
+  const f=$('#fltSt'),fv=f.value||'all';f.innerHTML=VIEWS.map(([v])=>`<option value="${v}">${esc(viewLabel(v))}</option>`).join('');f.value=fv;
   const lg=['gone','keep','new'].map(st=>`<span><i style="background:var(${COL[st]})"></i>${esc(stLabel(st))}</span>`).join('');
-  const on=new Set($$('#legend .showSt').filter(x=>x.checked).map(x=>x.value));const all=!$$('#legend .showSt').length;
-  $('#legend').innerHTML=lg+['gone','keep','new'].map(st=>`<label><input type="checkbox" class="showSt" value="${st}"${all||on.has(st)?' checked':''}>${esc(stLabel(st))}</label>`).join('')+'<span class="muted">점 위에 마우스: 상세 · 점 클릭: 새 창 확대 · 테두리 = wafer map 직사각형(좌측 하단 0,0)</span>';
-  $$('#legend .showSt').forEach(x=>x.onchange=drawMap);
+  $('#legend').innerHTML=`<span class="viewtabs" role="group" aria-label="보기">${VIEWS.map(([v])=>`<button data-view="${v}" aria-pressed="${v===mapView}">${esc(viewLabel(v))}</button>`).join('')}</span>`+lg
+    +'<span class="muted">점 위에 마우스: 상세 · 점 클릭: 새 창 확대 · 점선 = wafer map 직사각형(좌측 하단 0,0) · 굵은 칸 = 완전한 Die</span>';
+  $$('#legend [data-view]').forEach(b=>b.onclick=()=>{mapView=b.dataset.view;$$('#legend [data-view]').forEach(x=>x.setAttribute('aria-pressed',x===b));drawMap()});
   $('#rvLegend').innerHTML=lg+'<span class="muted">깜빡이는 점 = 보고 있는 Defect · 점 클릭 = 그 Defect 로 이동</span>';
   renderKpis();renderTable();drawMap();renderReview();
 }
 document.addEventListener('click',e=>{const b=e.target.closest('[data-pair]');if(b&&S.pairs.length){selectPair(+b.dataset.pair);if(b.closest('#pairTbl'))go(3)}});
 $('#runBtn').onclick=()=>{if(runCompare())go(3)};
 function renderKpis(){const c=S.cmp,n=c.keep.length+c.gone.length,a=stepName(c.A),b=stepName(c.B);
-  $('#kpis').innerHTML=[[`${a} Defect`,`${n}`,'',`Contrast AVG ${c.A.contrast??'?'}`],[`${b} Defect`,`${c.keep.length+c.added.length}`,'',`Contrast AVG ${c.B.contrast??'?'}`],[stLabel('keep'),c.keep.length,'keep'],[stLabel('gone'),c.gone.length,'gone',`${b} 에서 없어짐`],[stLabel('new'),c.added.length,'new'],
+  $('#kpis').innerHTML=[[viewLabel('A'),`${n}`,'',`Contrast AVG ${c.A.contrast??'?'}`],[viewLabel('B'),`${c.keep.length+c.added.length}`,'',`Contrast AVG ${c.B.contrast??'?'}`],[stLabel('keep'),c.keep.length,'keep','둘 다 있음'],[stLabel('gone'),c.gone.length,'gone',`${b} 에서 없어짐`],[stLabel('new'),c.added.length,'new',`${b} 에서 새로 생김`],
     ['감소율',n?(100*(n-(c.keep.length+c.added.length))/n).toFixed(1)+'%':'-','',`없어진 비율 ${n?(100*c.gone.length/n).toFixed(1):'-'}%`]]
     .map(([t,v,k,s])=>`<div class="kpi ${k}"><span class="muted">${esc(t)}</span><b>${esc(v)}</b><span class="muted">${esc(s||'')}</span></div>`).join('')}
 
@@ -516,7 +524,7 @@ function renderKpis(){const c=S.cmp,n=c.keep.length+c.gone.length,a=stepName(c.A
 function info(r){const d=r.d,s=d.scan,o=S.cmp.o,die=dieOf(d.X,d.Y,s.product),px2=o.pix*o.pix;
   return {st:stLabel(r.st),id:d.id,X:d.X,Y:d.Y,die:die?`(${die.col}, ${die.row})${die.valid?'':' 범위 밖'}`:'계산 불가',dieXY:die?`${die.dx.toFixed(0)}, ${die.dy.toFixed(0)}`:'',
     area:d.area*px2,width:d.BlobBreadth,length:d.BlobLength,box:`${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,contrast:d.Contrast,cmpContrast:r.b?r.b.Contrast:null,step:stepName(s),tool:s.tool,dieWarn:die&&!die.valid}}
-function filtered(){const f=$('#fltSt').value;return f?S.rows.filter(r=>r.st===f):S.rows}
+function filtered(){const f=viewSet($('#fltSt').value||'all');return S.rows.filter(r=>f.has(r.st))}
 function renderTable(){const rows=filtered(),P=200,pages=Math.max(1,Math.ceil(rows.length/P));S.page=Math.min(S.page,pages-1);
   $('#detTbl tbody').innerHTML=rows.slice(S.page*P,S.page*P+P).map((r,k)=>{const x=info(r);return `<tr data-k="${S.page*P+k}"><td><span class="st ${r.st}">${x.st}</span></td><td class="num">${x.id}</td><td class="num">${f1(x.X)}</td><td class="num">${f1(x.Y)}</td>
     <td${x.dieWarn?' style="color:var(--err)"':''}>${x.die}</td><td class="num">${f2(x.area)}</td><td class="num">${f1(x.width)}</td><td class="num">${f1(x.length)}</td><td>${x.box}</td><td class="num">${f2(x.contrast)}${x.cmpContrast!=null?' → '+f2(x.cmpContrast):''}</td><td>${esc(x.step)}</td><td>${esc(x.tool)}</td></tr>`}).join('');
@@ -578,7 +586,7 @@ function measureGL(img,cx,cy,bw,bh,ring){
 // 10. Wafer Map (Canvas, requestAnimationFrame)
 // ════════════════════════════════════════════════════════════════════════
 const COL={keep:'--keep',gone:'--gone',new:'--new'};let mapGeo=null,rafId=0;
-function drawMap(){cancelAnimationFrame(rafId);rafId=requestAnimationFrame(()=>{mapGeo=paintMap($('#map'),{show:new Set($$('#legend .showSt').filter(i=>i.checked).map(i=>i.value))})})}
+function drawMap(){cancelAnimationFrame(rafId);rafId=requestAnimationFrame(()=>{mapGeo=paintMap($('#map'),{show:viewSet(mapView)})})}
 /** wafer map 직사각형(소유자 설명: map 을 꽉 채우는 가상의 직사각형, 좌측 하단 = 0,0). ProductInfo 의 Die 격자 → 없으면 Defect 범위. */
 function waferRect(){
   const c=S.cmp,p=c.A.product||c.B.product;let a=0,b=0,lo=0,hi=0;
@@ -595,13 +603,19 @@ function paintMap(cv,opt){
   const css=getComputedStyle(document.documentElement),cl=n=>css.getPropertyValue(n).trim();
   const R=waferRect(),pad=24,w=R.x1-R.x0,h=R.y1-R.y0,k=Math.min((r.width-2*pad)/w,(r.height-2*pad)/h),ox=(r.width-w*k)/2,oy=(r.height-h*k)/2;
   const PX=v=>ox+(v-R.x0)*k,PY=v=>oy+h*k-(v-R.y0)*k;
-  // Die 격자(너무 촘촘하면 생략)
-  if(R.p&&R.p.cols<=200&&R.p.rows<=200&&R.p.pitchX*k>=3){x.strokeStyle=cl('--line');x.lineWidth=.5;x.beginPath();
-    for(let i=0;i<=R.p.cols;i++){const X=PX(R.p.offX+i*R.p.pitchX);x.moveTo(X,PY(R.p.offY));x.lineTo(X,PY(R.p.offY+R.p.rows*R.p.pitchY))}
-    for(let j=0;j<=R.p.rows;j++){const Y=PY(R.p.offY+j*R.p.pitchY);x.moveTo(PX(R.p.offX),Y);x.lineTo(PX(R.p.offX+R.p.cols*R.p.pitchX),Y)}x.stroke()}
-  // wafer 원(직사각형에 내접) · 직사각형 · 원점
-  x.fillStyle=cl('--chip');x.globalAlpha=.55;x.beginPath();x.ellipse(PX((R.x0+R.x1)/2),PY((R.y0+R.y1)/2),w*k/2,h*k/2,0,0,7);x.fill();x.globalAlpha=1;
-  x.strokeStyle=cl('--sub');x.lineWidth=1.2;x.stroke();
+  // wafer 원(직사각형에 내접)
+  const ecx=(R.x0+R.x1)/2,ecy=(R.y0+R.y1)/2,erx=w/2,ery=h/2,inW=(X,Y)=>((X-ecx)/erx)**2+((Y-ecy)/ery)**2<=1;
+  x.fillStyle=cl('--chip');x.globalAlpha=.55;x.beginPath();x.ellipse(PX(ecx),PY(ecy),erx*k,ery*k,0,0,7);x.fill();x.globalAlpha=1;
+  // Die 격자(너무 촘촘하면 생략): 모든 칸 경계를 또렷하게, 네 모서리가 모두 wafer 안인 완전한 Die 는 굵게
+  const G=R.p;if(G&&G.cols<=200&&G.rows<=200&&G.pitchX*k>=3){
+    x.strokeStyle=cl('--sub');x.globalAlpha=.55;x.lineWidth=.8;x.beginPath();
+    for(let i=0;i<=G.cols;i++){const X=PX(G.offX+i*G.pitchX);x.moveTo(X,PY(G.offY));x.lineTo(X,PY(G.offY+G.rows*G.pitchY))}
+    for(let j=0;j<=G.rows;j++){const Y=PY(G.offY+j*G.pitchY);x.moveTo(PX(G.offX),Y);x.lineTo(PX(G.offX+G.cols*G.pitchX),Y)}x.stroke();x.globalAlpha=1;
+    x.strokeStyle=cl('--ink');x.lineWidth=Math.max(1.6,Math.min(2.4,G.pitchX*k/12));x.beginPath();let full=0;
+    for(let i=0;i<G.cols;i++)for(let j=0;j<G.rows;j++){const X0=G.offX+i*G.pitchX,Y0=G.offY+j*G.pitchY,X1=X0+G.pitchX,Y1=Y0+G.pitchY;
+      if(inW(X0,Y0)&&inW(X1,Y0)&&inW(X0,Y1)&&inW(X1,Y1)){full++;x.rect(PX(X0),PY(Y1),G.pitchX*k,G.pitchY*k)}}
+    x.stroke();S.fullDies=full}
+  x.strokeStyle=cl('--sub');x.lineWidth=1.2;x.beginPath();x.ellipse(PX(ecx),PY(ecy),erx*k,ery*k,0,0,7);x.stroke();
   x.setLineDash([5,4]);x.strokeRect(PX(R.x0),PY(R.y1),w*k,h*k);x.setLineDash([]);
   x.fillStyle=cl('--sub');x.font='11px sans-serif';x.fillText('(0,0)',PX(R.x0)+3,PY(R.y0)-4);
   const P=[],show=opt.show||new Set(['keep','new','gone']);
@@ -709,7 +723,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={selectPair,stLabel,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={selectPair,stLabel,viewLabel,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

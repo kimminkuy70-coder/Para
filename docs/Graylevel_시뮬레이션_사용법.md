@@ -25,9 +25,9 @@
 | Surface.flt | 152 byte 고정 레코드, little-endian, 이슈 본문 필드 표 그대로(`FLT_FIELDS`). `Surface.flt.md` 에 같은 이름 필드가 있으면 그 offset · 형식을 쓰고 경고. byteLength 가 152 로 나누어떨어지지 않으면 오류 |
 | Area(µm²) | area(pixel) × PixelSize² (기본 0.7708). 예: 82 → 48.72 |
 | 동일 Defect | Wafer x/y(또는 ActualX/Y 선택) 거리 ≤ 허용오차. 격자 최근접 검색 + 거리순 greedy 1:1 (중복 매칭 없음) |
-| 구분(이름 표기) | 쌍 A → B 마다 `A에만` · `A · B 둘 다` · `B에만` — 리스트(Step) 이름으로 표기(유지 · 소거 · 신규 라는 말은 쓰지 않음, 소유자 지시). A 에만 = B 에서 없어진 Defect |
+| 구분(집합 기호) | 쌍 A → B 마다 `A ∖ B`(A 에만 = B 에서 없어진 Defect) · `A ∩ B`(둘 다) · `B ∖ A`(B 에만). 리스트(Step) 이름으로 표기(유지 · 소거 · 신규 라는 말은 쓰지 않음, 소유자 지시). 보기 = `A ∪ B`(모두) · `A (전체)` · `B (전체)` · `A ∖ B` · `A ∩ B` · `B ∖ A` — Wafer map 단추와 상세 표 [보기] 가 같음 |
 | 쌍 | 리스트를 Contrast AVG 오름차순(빈 값은 등록 순서로 뒤)으로 놓고 i<j 모든 쌍. 쌍별 표 = A · B Defect 수, 둘 다, A 에만, B 에만, 없어진 비율(A 에만 ÷ A) |
-| Wafer map | 좌표 기준 = wafer map 을 꽉 채우는 가상의 직사각형의 좌측 하단 (0,0)(소유자 설명). 직사각형 = ProductInfo Die 격자(OffX + Cols×PitchX, OffY + Rows×PitchY)와 Defect 범위를 덮는 영역, wafer 원 = 직사각형에 내접. X 오른쪽 · Y 위쪽 |
+| Wafer map | 좌표 기준 = wafer map 을 꽉 채우는 가상의 직사각형의 좌측 하단 (0,0)(소유자 설명). 직사각형 = ProductInfo Die 격자(OffX + Cols×PitchX, OffY + Rows×PitchY)와 Defect 범위를 덮는 영역, wafer 원 = 직사각형에 내접. X 오른쪽 · Y 위쪽. Die 격자 = 모든 칸 경계를 또렷하게, **네 모서리가 모두 wafer 원 안인 완전한 Die 는 굵게** |
 | Die | `ix=floor((X−OffX)/PitchX)`, `DieCol=(Cols−2)−ix`, `DieRow=(Rows−2)−iy`, Die 내부 = 나머지. 값은 폴더마다 `ProductInfo.ini` 에서 읽음. 없으면 "계산 불가", Cols/Rows 밖이면 "범위 밖"(빨강) |
 | Gray 위치 | **Para 'Color · Gray 매칭'(`param_manager/colorgray.py`)과 같은 모델**: `frameToChuckPlane(.<레시피>).ini` 의 `Scan_X/Scan_Y` 역행렬로 `p = M⁻¹·(결함 − 프레임 좌표 − offset)`, 3168×1024 안에 들고 가장자리에서 가장 먼 프레임. 레시피 번호(.t.<n>)가 맞는 프레임 먼저 |
 | Gray 간단 모델 | `frameToChuckPlane` 이 없을 때만: `(결함 − 프레임 좌표) / PixelSize`. "보정 필요" 표시. 두 모델 모두 X/Y 반전 · X/Y Offset 을 Step 2 에서 조정 |

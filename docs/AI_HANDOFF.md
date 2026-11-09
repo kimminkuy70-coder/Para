@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #50 후속 2 Contrast Wizard: 집합 기호 표기 · 보기 5가지 · Die 격자 (2026-11-09 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `843a5b3` · 이슈 Para #50 후속 2(소유자 세션 지시) · 작업 브랜치 **`version_graylevel_simulation`**.
+- 요청: ① 그리드 경계를 명확히, 완전한 Die 크기인 칸은 더 굵게 ② `CA20에만` · `CA20 · CA27 둘 다` · `CA27에만` 을 수학 집합 기호로 ③ CA20 · CA27 전체 2가지를 더해 5가지로 표시.
+- 한 일(`AOI_Contrast_Wizard.html`): ① 격자 선을 `--sub` 색 · 0.8px 로 진하게, 네 모서리가 모두 wafer 원 안인 Die 는 `--ink` 색 굵은 선(`S.fullDies` = 개수)
+  ② `stLabel` = `A ∖ B` · `A ∩ B` · `B ∖ A` ③ `VIEWS` = `A ∪ B`(모두) + `A (전체)` · `B (전체)` · `A ∖ B` · `A ∩ B` · `B ∖ A` — Wafer map 위 보기 단추(`#legend [data-view]`, 한 번에 하나)와 상세 표 [보기] 선택이 같은 목록.
+  KPI 6칸 = A(전체) · B(전체) · A ∩ B · A ∖ B · B ∖ A · 감소율, Step 2 쌍별 표 머리도 같은 기호.
+- 내 해석(확인 전): ⓐ 차집합 기호는 `∖`(U+2216) ⓑ '5가지' = A 전체 · B 전체 · A ∖ B · A ∩ B · B ∖ A, 여기에 기본 보기 `A ∪ B` 를 하나 더 둠
+  ⓒ 종전 체크박스(여러 개 동시 켜기)는 보기 단추(하나 선택)로 바꿈 ⓓ "완전한 Die" = 네 모서리가 모두 wafer 원(직사각형 내접) 안.
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(기호 표기 · 보기 단추 6개 · 표 필터 A 4행 / B 3행 / 전체 5행 · 완전한 Die 수). 실제 결과 폴더 · Edge 실기 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML).
+- 남은 일: 해석 ⓐ~ⓓ 확인, 실제 결과 폴더로 확인, #50 의 남은 일(좌표 Overlay 10개 · ProductInfo 키 이름).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #50 후속 2 | 그리드 경계 · 완전한 Die 굵게 · 집합 기호 · 보기 5가지 | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #50 후속 Contrast Wizard: 리스트 이름 표기 · 모든 쌍 비교 · Wafer map · 리뷰 위치 깜빡임 · 새 창 사진 크기 (2026-11-09 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `be922f9` · 이슈 Para #50 후속(소유자가 세션에서 지시, 이슈 댓글 아님) · 작업 브랜치 **`version_graylevel_simulation`**.

@@ -28,6 +28,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   `colorgray` 의 좌표 식을 바꾸면 HTML 의 `locateGray` 도 같이. 사용법 · 계산 규칙 `docs/Graylevel_시뮬레이션_사용법.md`, 시험 `node tools/test_contrast_wizard.mjs`.
 - 후속(소유자 세션 지시, 2026-11-09): **유지 · 소거 · 신규 표기 삭제 → 리스트 이름**(`stLabel` — `A에만` · `A · B 둘 다` · `B에만`), **모든 쌍 비교**(`runCompare` → `S.pairs`, `selectPair`, Step 3 · 4 `.pairtabs`, Step 2 `#pairTbl`),
   Wafer map = `paintMap(cv, {show, hl, on})` 공용(점선 직사각형 좌측 하단 (0,0) · wafer 원 · Die 격자), Step 4 `#rvMap` = 전체 Defect + 보고 있는 Defect 0.45초 깜빡임, 새 창 사진 = 창 크기 맞춤(누르면 원래 크기).
+  · 2차(같은 날): 표기 = **집합 기호**(`A ∖ B` · `A ∩ B` · `B ∖ A`), 보기 5가지 + 합집합(`VIEWS` · `viewLabel` · `viewSet`, 지도 `#legend [data-view]` · 표 `#fltSt` 공용), Die 격자 경계 진하게 + **완전한 Die(네 모서리가 wafer 원 안) 굵게**(`S.fullDies`).
 
 ### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)
 - 증상: v12.9.28 에서 폴더는 찾는데 Color 사진이 전부 매칭 실패. 실자료를 못 봐서 원인은 확인 전 — 원 v16 이 가정한 형식과 다를 수 있는 곳을 모두 너그럽게 함:

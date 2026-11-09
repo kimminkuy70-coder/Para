@@ -57,7 +57,16 @@ assert.deepEqual(kp,['4','3','2','2','1','25.0%']);
 // 쌍별 비교(리스트 2개 = 1쌍), 이름 표기(유지 · 소거 · 신규 없음)
 assert.equal(await page.locator('#pairTbl tbody tr').count(),1);
 assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','4','3','2','2','1','50.0%','보기']);
-assert.deepEqual(await page.locator('#kpis .kpi .muted:first-child').allInnerTexts(),['CA20 Defect','CA27 Defect','CA20 · CA27 둘 다','CA20에만','CA27에만','감소율']);
+assert.deepEqual(await page.locator('#kpis .kpi .muted:first-child').allInnerTexts(),['CA20 (전체)','CA27 (전체)','CA20 ∩ CA27','CA20 ∖ CA27','CA27 ∖ CA20','감소율']);
+// 보기 6개(합집합 + 5가지) · 표 필터 · 완전한 Die
+assert.deepEqual(await page.locator('#legend [data-view]').allInnerTexts(),['CA20 ∪ CA27','CA20 (전체)','CA27 (전체)','CA20 ∖ CA27','CA20 ∩ CA27','CA27 ∖ CA20']);
+await page.locator('#fltSt').selectOption('A');assert.equal(await page.locator('#detTbl tbody tr').count(),4);
+await page.locator('#fltSt').selectOption('B');assert.equal(await page.locator('#detTbl tbody tr').count(),3);
+await page.locator('#fltSt').selectOption('all');assert.equal(await page.locator('#detTbl tbody tr').count(),5);
+await page.locator('#legend [data-view="gone"]').click();await page.waitForTimeout(100);
+assert.equal(await page.evaluate(()=>document.querySelectorAll('#legend [aria-pressed="true"]').length),1);
+await page.locator('#legend [data-view="all"]').click();await page.waitForTimeout(100);
+const fd=await page.evaluate(()=>window.__cw.state.fullDies);assert.ok(fd>0&&fd<90,'완전한 Die '+fd);
 assert.ok(!/유지|소거|신규/.test(await page.locator('main').innerText()));
 // Wafer map 이 그려진다(직사각형 · wafer 원 · 점)
 const painted=await page.evaluate(()=>{const c=document.querySelector('#map'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n});
@@ -68,15 +77,15 @@ const r1=t.find(x=>/\|1\|200498\.0/.test(x));assert.ok(r1,t.join('\n'));assert.m
 // CSV
 const csv=await page.evaluate(()=>window.__cw.csvText());
 assert.ok(csv.startsWith('﻿구분,ID'));
-assert.match(csv,/CA20에만,3,103,5000\.00,5000\.00.*C2\.c\.1\.jpeg,Index 3 \(id\),,,,좌표 변환 보정 필요/);
-assert.match(csv,/CA20에만,4,104,.*,,연결 실패,/);
-assert.match(csv,/CA27에만,9,109,.*,,연결 실패,/);
-assert.match(csv,/CA20 · CA27 둘 다,2,102,1100\.00,200\.00.*C1\.c\.1\.jpeg,좌표\(0\.0 µm\),F1\.t\.1\.jpeg,1100\.0,200\.0,transform/);
+assert.match(csv,/CA20 ∖ CA27,3,103,5000\.00,5000\.00.*C2\.c\.1\.jpeg,Index 3 \(id\),,,,좌표 변환 보정 필요/);
+assert.match(csv,/CA20 ∖ CA27,4,104,.*,,연결 실패,/);
+assert.match(csv,/CA27 ∖ CA20,9,109,.*,,연결 실패,/);
+assert.match(csv,/CA20 ∩ CA27,2,102,1100\.00,200\.00.*C1\.c\.1\.jpeg,좌표\(0\.0 µm\),F1\.t\.1\.jpeg,1100\.0,200\.0,transform/);
 // 지도 hover → 툴팁 + 그림
 await page.locator('#map').hover({position:{x:5,y:5}});
 // 리뷰: 없어진 Defect 2개, 키 이동, Gray crop / 범위 밖 문구, 위치 지도 깜빡임
 await page.locator('nav button[data-step="4"]').click();
-await page.locator('#rvCount').filter({hasText:'CA27 에서 없어진 Defect (CA20에만) 2개'}).waitFor();
+await page.locator('#rvCount').filter({hasText:'CA27 에서 없어진 Defect (CA20 ∖ CA27) 2개'}).waitFor();
 const rv=await page.evaluate(async()=>{const S=window.__cw.state;const a=S.rvGeo&&S.rvGeo.length;const c=document.querySelector('#rvMap');
   const seen=new Set();for(let i=0;i<8;i++){seen.add(c.toDataURL());await new Promise(r=>setTimeout(r,200))}return {a,changed:seen.size>1,n:seen.size,w:c.width,on:document.querySelector('#step4').classList.contains('on'),hl:!!S.rvList[S.rv]}});
 assert.equal(rv.a,5);assert.ok(rv.changed,'보고 있는 점이 깜빡여야 함 '+JSON.stringify(rv));
