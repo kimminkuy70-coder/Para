@@ -10,12 +10,12 @@
 - 진단: 그래도 실패하면 진행 기록에 `진단:` 줄(이유별 수 · 변환 파일 · 프레임 수/레시피 · 가장 가까운 프레임 좌표). 좌표가 범위(3168×1024) 밖이면 변환 · 좌표 기준 문제 — 그 줄을 받아 다시 고친다.
 - 시험: `test_colorgray.py` 9개 통과(새 `test_match_robust_formats` 는 고치기 전 실패 확인), `tools/check_project.py` = `test_batchreport.py`(tkinter 없음) · `test_kla_cache.py`(날짜 의존) 만 실패(종전과 같음),
   `npx tsc --noEmit` · `vite build` · `tools/test_desktop_ui.mjs`(passed) 통과. 주의: UI 시험은 `docs/screenshots/*.png` 와 `CamtekAOI/Logs/` 를 고치므로 commit 전에 되돌린다. Windows 실기 · 실제 장비 폴더는 미검증.
-- 릴리스 v12.9.29: 소유자 지시("릴리즈까지해"). 결과는 아래 표.
+- 릴리스 **v12.9.29 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.9.29 (`Camtek_AOI_manager_v12.9.29.zip`, workflow_dispatch run 42580379240 성공, 태그 = `29de591`). 소유자 지시("릴리즈까지해").
 - 남은 일: 실기에서 같은 폴더로 다시 확인(실패하면 진단 줄 받기), routine 릴리스 방식(#48 절 ⓐ~ⓒ) 소유자 결정, `test_kla_cache.py` 날짜 의존 고치기.
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| Para #49 후속 | 폴더는 찾는데 전부 매칭 실패 — 고치고 릴리스 | 구현 · 시험 통과, v12.9.29 릴리스 시작 |
+| Para #49 후속 | 폴더는 찾는데 전부 매칭 실패 — 고치고 릴리스 | 구현 · 시험 통과(`29de591`), v12.9.29 릴리스 완료(dispatch) |
 
 ## 최신 재개 — Para #49 Color · Gray 매칭 frameToChuckPlane.ini 찾기 (2026-11-09 KST, `version_v12`, v12.9.28)
 
