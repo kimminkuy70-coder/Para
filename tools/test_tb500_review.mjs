@@ -55,7 +55,18 @@ assert.deepEqual((await page.getByRole('tab').allInnerTexts()).map(t=>t.trim()),
 assert.equal(await page.locator('#tab-setup').getAttribute('aria-selected'),'true');
 assert.equal(await page.locator('#tab-setup .tdot').count(),1);
 assert.ok(await page.locator('#panel-review').isHidden());
+// 소유자 요청 2026-11-09: OneDrive 바로 가기 그림 안내 — 연결 전에는 펼침, 단계 1~5, 그림 2장(빨간 상자 ①~④), 그림을 누르면 크게 보기, 연결 뒤에는 접힘.
+assert.equal(await page.locator('#odGuide').getAttribute('open'),'');
+assert.equal(await page.locator('#odGuide .gsteps > li').count(),5);
+assert.equal(await page.locator('#odGuide .gimg img').count(),2);
+assert.ok(await page.locator('#odGuide .gimg img').first().evaluate(i=>i.complete&&i.naturalWidth>1000));
+await page.locator('#odGuide .gimg').nth(1).click();
+assert.ok(await page.locator('#imgDlg').evaluate(d=>d.open));
+if(process.env.TB500_SHOT)await page.screenshot({path:process.env.TB500_SHOT+'/imgdlg.png'});
+await page.locator('#imgClose').click();
+assert.ok(!(await page.locator('#imgDlg').evaluate(d=>d.open)));
 for(const k of ['share','conder','local'])await page.locator(`[data-pick="${k}"]`).click();
+assert.equal(await page.locator('#odGuide').getAttribute('open'),null);   // 연결 뒤에는 접힘
 await page.getByRole('button',{name:'캐시 갱신'}).click();
 await page.locator('#msg2').filter({hasText:'KLA 캐시: KLA_캐시_20261106_090100.zip 받음'}).waitFor();
 const log=await page.evaluate(()=>window.__fs.log);
