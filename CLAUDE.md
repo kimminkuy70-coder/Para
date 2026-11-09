@@ -31,7 +31,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   · 2차(같은 날): 표기 = **집합 기호**(`A ∖ B` · `A ∩ B` · `B ∖ A`), 보기 5가지 + 합집합(`VIEWS` · `viewLabel` · `viewSet`, 지도 `#legend [data-view]` · 표 `#fltSt` 공용), Die 격자 경계 진하게 + **완전한 Die(네 모서리가 wafer 원 안) 굵게**(`S.fullDies`).
   · #51(같은 날): Wafer Map 파일(`parseWaferMap` — RowData, `___` = wafer 밖) 자동 찾기(`buildScan` → `s.waferMap`) · 직접 고르기(`#mapBtn` → `setWaferMap` → `S.userMap`), `dieCells`/`waferGeom` = 실제 Die 만 · 원 = Die 감싸는 원. 파일이 없으면 ProductInfo (Cols−1)×(Rows−1). 종전 `waferRect` 는 (0,0)과 Defect 범위까지 넣은 큰 직사각형 + Cols×Rows 전부라 die 가 많고 wafer 가 컸다.
   · #51 후속(소유자 "맵 파일 없이도"): `dieCells` = ProductInfo (Cols−1)×(Rows−1) 격자 + 격자 가운데 중심 · 지름(`#waferD`, 기본 300 mm) − Edge(`#edgeEx`) 원 안의 완전한 칸 = Die(예시 맵 30개 재현). 맵 파일은 비교만(`S.mapCheck`, 칸 (r,c) ↔ DieCol=c+mx). `S.dieSet` → 상세 표 'wafer 밖 칸'.
-  · #52(같은 날): Defect 가 wafer 원을 벗어나 오른쪽 위로 밀려 보임 → `centerFit`(순수 함수, `__cw`) = 격자 가운데에서 반 칸 단위 ±10칸 중 Defect 가 가장 많이 원 안에 드는 중심(동점: 같은 짝수/홀수 → 완전한 Die 안 수 → 가까운 것). Step 2 `#wcMode`(자동 / 격자 가운데), `S.center`, 결과는 `c.fit` 캐시. `dieCells` 는 원을 덮는 칸 전부, 맵 비교는 Die 묶음 왼쪽 위 맞춤.
+  · #52(같은 날, 소유자 확정): **Die 좌표 = 좌측 하단 (0,0) 에서 오른쪽 · 위쪽으로 1씩**(`dieOf`: Col=floor((X−OffX)/PitchX), Row=floor((Y−OffY)/PitchY), 종전 DieCol=(Cols−2)−ix 폐기). `dieCells` = 격자 가운데 기준 칸 짝수/홀수 → 완전한 Die 들의 좌측 하단이 (0,0) 이 되게 wafer 중심 이동(예시 맵 중심 3.5·PitchX, 3·PitchY), 맵 비교 Col=c · Row=(ROWCT−1)−r, Notch 각 = FNLOC 그대로. Defect 로 중심 자동 맞춤(첫 수정)은 폐기.
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.
 
 ### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)

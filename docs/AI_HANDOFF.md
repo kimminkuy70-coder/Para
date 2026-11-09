@@ -1,6 +1,22 @@
 # AI 공통 인수인계
 
-## 최신 재개 — Para #52 Contrast Wizard Defect 가 wafer map 을 벗어나 오른쪽 위로 밀림 → wafer 중심 자동 맞춤 (2026-11-09 KST, `version_graylevel_simulation`)
+## 최신 재개 — Para #52 후속 Die 좌표 = 좌측 하단 (0,0), 오른쪽 · 위쪽 증가 (2026-11-09 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `91f425a` · 이슈 Para #52 후속(소유자 세션 지시: "원래 다이 위치에서 너가 인식하는게 다른거 같은데 좌측하단 0,0에서 x,y그래프처럼 위쪽, 오른쪽 방향으로 1씩 증가한게 다이 좌표랑 동일해 다시 계산해봐") · 작업 브랜치 **`version_graylevel_simulation`**.
+- **소유자 확정**: Die 좌표 = 좌측 하단 (0,0) 에서 x, y 그래프처럼 오른쪽 · 위쪽으로 1씩 증가. → `dieOf`: Col=floor((X−OffX)/PitchX), Row=floor((Y−OffY)/PitchY). **#50 문서 식 DieCol=(Cols−2)−ix, DieRow=(Rows−2)−iy 는 폐기**(재도입 금지).
+- 원인: #51 후속부터 wafer 중심을 ProductInfo 격자 (Cols−1)×(Rows−1) 가운데(4.5·PitchX, 4·PitchY)에 두어 Die 칸이 실제보다 X · Y 로 1칸씩 오른쪽 위에 그려졌고, '(0,0)' 글자도 실제로는 (PitchX, PitchY) 자리에 있었다. Die 번호도 좌우 · 상하가 뒤집혀 있었다.
+- 한 일(`AOI_Contrast_Wizard.html`): `fullCells`/`dieCells` = 격자 가운데 기준으로 칸 짝수/홀수(예시 맵 7×6 · Die 30)를 정한 뒤 완전한 Die 들의 좌측 하단이 (0,0) 이 되게 wafer 중심을 옮김(예시 맵 = (3.5·PitchX, 3·PitchY) = 130372, 134717 µm).
+  맵 파일 비교 = 맵 칸 (r, c) ↔ Col c, Row (ROWCT−1)−r. 화면이 맵 파일과 같은 방향이 되어 Notch 각 = FNLOC 그대로(종전 360−FNLOC). 첫 수정(`centerFit` · Step 2 [Wafer 중심] 자동)은 소유자가 아니라고 해서 **삭제**. `#mapSt` = Col/Row 범위 · 중심 좌표 · 원 밖 Defect 수.
+- 내 해석(확인 전): ⓐ wafer 중심 = 완전한 Die 들의 좌측 하단이 (0,0) 이 되는 위치(예시 맵에서는 맵 격자 가운데와 같음) ⓑ 칸 짝수/홀수는 종전처럼 ProductInfo (Cols−1)×(Rows−1) 가운데 기준 ⓒ #50 검증 예(200498, 279473)는 이제 Die (5, 6) = 예시 맵 위쪽 밖 칸 — #50 예시 데이터가 #51 맵과 다른 제품일 수 있음.
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(Die 30 · Row 0 = Col 2~4 · Col 0~6 × Row 0~5 · 중심 130372, 134717 · 맵 30/30 일치 · Notch 90 = 오른쪽). 화면 캡처로 (0,0) 이 점선 좌측 하단에 있음을 봄. 실제 결과 폴더 · Edge 실기 미검증. Python 시험은 이 환경에 openpyxl 이 없어 못 돌림(Python 변경 없음).
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML).
+- 남은 일: 해석 ⓐ~ⓒ 확인, 실제 폴더에서 Defect 가 Die 위에 놓이는지(상태 문구 '원 밖 Defect' 수).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #52 후속 | Die 좌표 = 좌측 하단 (0,0), 오른쪽 · 위쪽 1씩 — 다시 계산 | Die 식 · wafer 중심 · 맵 비교 · Notch 방향 수정, 첫 수정(중심 자동 맞춤) 삭제, 시험 통과(릴리스 대상 아님) |
+
+## (대체됨 — 위 #52 후속 참고) Para #52 Contrast Wizard Defect 가 wafer map 을 벗어나 오른쪽 위로 밀림 → wafer 중심 자동 맞춤 (2026-11-09 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `bd3af07` · 이슈 Para #52("Graylevel 시뮬레이션 브랜치 신규생성 3", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**.
 - 요청: defect 좌표 또는 Die 계산이 틀려 defect 가 wafer map 밖에 찍힘, 전체가 오른쪽 위로 밀린 느낌 — 수정.
