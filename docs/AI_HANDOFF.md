@@ -1,5 +1,28 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #50 Graylevel 시뮬레이션 브랜치 + AOI Contrast AVG 단계별 비교 HTML (2026-11-09 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `3a132bb`(version_v12) · 이슈 Para #50("Graylevel 시뮬레이션 브랜치 신규생성") · 작업 브랜치 **`version_graylevel_simulation`**(이번에 `version_v12` 에서 새로 만듦).
+- 요청: 새 브랜치를 만들고, Gray color 매칭 기능을 활용해 이슈 본문 사양(목적 · 입력 폴더 · Surface.flt 152 byte · 동일 Defect 비교 · 필수 UI 10개 · 이미지 연결 · Contrast 표시 · Die 좌표 · 성능/안전 · 검증 기준)의
+  단일 HTML `AOI_Contrast_Wizard.html` 을 만든다. "defect 위치는 Gray color 매칭 기능이 더 정확하니 감안".
+- 한 일: 저장소 맨 위 `AOI_Contrast_Wizard.html`(외부 의존 0, 한국어, 밝은/어두운 테마), 사용법 · 계산 규칙 · 확인 전 목록 `docs/Graylevel_시뮬레이션_사용법.md`,
+  합성 자료 `tools/contrast_wizard_fixture.py` + 자동 시험 `tools/test_contrast_wizard.mjs`. Para 앱 코드(`param_manager/`, `frontend/`)는 바꾸지 않았다.
+- 코드 지도(HTML 안 번호 절): 1 파서(`parseFlt` · `parseMd` · `fltLayout` · `parseColors` · `parseFrames` · `parseTransform` · `parseProduct` · `dieOf` · `surfaceCount`)
+  2 `matchSets`(격자 최근접 + 거리순 greedy 1:1) 3 `locateGray`(= `colorgray.choose_frame`, 없으면 간단 모델) · `linkColor`/`indexRule` 5 폴더 등록 `addEntries`/`buildScan`
+  7 비교 `runCompare` 8 표 · CSV 9 LRU 캐시 · `grayCrop` · `measureGL` 10 Wafer Map 11 리뷰. 시험 훅 `window.__cw`.
+- 내 해석(확인 전): ⓐ Gray 위치 = Para Color · Gray 매칭과 같은 `frameToChuckPlane` 역변환 모델(Surface.flt x/y = FaultX/FaultY 좌표계라고 가정), 없을 때만 간단 모델
+  ⓑ Color 인덱스 규칙은 Defect 마다가 아니라 스캔마다 하나(남의 이미지를 붙이지 않게) ⓒ `s_FrameData.dat` 는 표시만 ⓓ 좌표 모델 "확인됨" = 리뷰 맞음 10개 + 벗어남 0개
+  ⓔ 브랜치 이름 `version_graylevel_simulation` ⓕ Contrast AVG 를 폴더 이름(CA27 등)에서 미리 채움. 자세한 목록은 사용법 문서 4절.
+- 시험: `node tools/test_contrast_wizard.mjs`(PARA_TEST_NODE_MODULES 없으면 /opt/node-tools/node_modules) 3회 연속 통과 — Die 검증 예(200498, 279473 → Col 3 Row 1, 내부 14253/10038),
+  Area 82 → 48.72, 1:1 매칭, Record Size 오류, ScanLog 교차 검증 경고, KPI · 전체 단계 표, CSV, 리뷰 J/K/↑↓/Enter/O, 범위 밖 문구, Gray Crop · GL, 네트워크 요청 0건.
+  `tools/check_project.py` = `test_batchreport.py`(tkinter 없음) · `test_kla_cache.py`(날짜 의존) 만 실패(종전과 같음, 이번 변경과 무관). 실제 장비 결과 폴더 · Edge 실기는 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML — #40~#47 TB500 리뷰 HTML 과 같게 처리).
+- 남은 일: 실제 결과 폴더로 좌표 Overlay 10개 검토(벗어나면 Offset/반전 값 또는 좌표계 정보 받기), ProductInfo.ini 실제 키 이름 확인, 해석 ⓐ~ⓕ 확인.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #50 | Graylevel 시뮬레이션 브랜치 생성 + AOI Contrast AVG 단계별 비교 HTML | 브랜치 생성 · HTML 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #49 후속 Color · Gray 매칭 전부 실패 대책 (2026-11-09 KST, `version_v12`, v12.9.29)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `1b79350` · 이슈 Para #49 후속(소유자가 세션에서 "폴더 인식까지는 했는데 전부 매칭 실패래. 버그 픽스하고 릴리즈까지해") · 작업 브랜치 `version_v12`.

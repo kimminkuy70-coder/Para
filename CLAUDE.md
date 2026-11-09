@@ -23,6 +23,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Graylevel 시뮬레이션 HTML = AOI Contrast AVG 단계별 비교 (2026-11-09, 이슈 #50, 브랜치 `version_graylevel_simulation`)
+- 저장소 맨 위 `AOI_Contrast_Wizard.html`(단일 HTML, 외부 의존 · 네트워크 없음). Gray Crop 좌표는 **`colorgray.py` 와 같은 모델**(frameToChuckPlane 역변환, 3168×1024, 가장자리에서 먼 프레임) —
+  `colorgray` 의 좌표 식을 바꾸면 HTML 의 `locateGray` 도 같이. 사용법 · 계산 규칙 `docs/Graylevel_시뮬레이션_사용법.md`, 시험 `node tools/test_contrast_wizard.mjs`.
+
 ### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)
 - 증상: v12.9.28 에서 폴더는 찾는데 Color 사진이 전부 매칭 실패. 실자료를 못 봐서 원인은 확인 전 — 원 v16 이 가정한 형식과 다를 수 있는 곳을 모두 너그럽게 함:
   `_inside(wafer, name, names)` = 목록의 전체 경로 · 다른 대소문자 → 폴더 안 같은 이름(폴더 밖 경로는 계속 거부) · `parse_frames` 구분자 `, ; 탭` ·

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AOI Contrast Wizard</title>
+<!--
+  AOI Contrast AVG 단계별 비교 (Graylevel 시뮬레이션) — Para #50, 브랜치 version_graylevel_simulation
+  · 단일 HTML. 외부 CDN · 프레임워크 · 서버 없음. 네트워크 요청 없음. Chromium 계열(Edge/Chrome)에서 로컬 실행.
+  · 원본 폴더는 <input webkitdirectory> 로 읽기만 한다. 쓰기 API 를 쓰지 않는다.
+  · Gray Crop 좌표는 Para 앱 'Color · Gray 매칭'(param_manager/colorgray.py)과 같은 모델:
+      frameToChuckPlane(.<레시피>).ini 의 Scan_X/Scan_Y 행렬 M, offset o
+      Gray 픽셀 p = M⁻¹ · (결함 좌표 − 프레임 좌표(ScanResultImageList) − o)
+      프레임 크기 3168×1024 안에 들고, 가장자리에서 가장 먼 프레임을 고른다.
+    frameToChuckPlane 이 없으면 간단 모델(픽셀 크기 · 축 방향 · Offset 사용자 조정)로 대신하고 '보정 필요'로 표시한다.
+-->
+<style>
+:root{--bg:#f5f7fb;--panel:#fff;--ink:#14213d;--sub:#56627a;--line:#d8deea;--navy:#1b345f;--acc:#2f6fed;
+  --keep:#0fa3a3;--gone:#e5383b;--new:#d4a106;--warn:#9a5b00;--warnbg:#fff4dc;--errbg:#fde8e8;--err:#b3261e;--okbg:#e5f6ee;--ok:#11713d;--chip:#eef2f9}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1523;--panel:#18202f;--ink:#e6ebf5;--sub:#9fabc2;--line:#2c3850;--navy:#2a4a80;--acc:#7aa5ff;
+  --keep:#34d1d1;--gone:#ff6b6e;--new:#ffd23f;--warn:#ffc46b;--warnbg:#3a2c10;--errbg:#3e1a1a;--err:#ff9a92;--okbg:#123222;--ok:#7be0a6;--chip:#222c40}}
+:root[data-theme="dark"]{--bg:#0f1523;--panel:#18202f;--ink:#e6ebf5;--sub:#9fabc2;--line:#2c3850;--navy:#2a4a80;--acc:#7aa5ff;
+  --keep:#34d1d1;--gone:#ff6b6e;--new:#ffd23f;--warn:#ffc46b;--warnbg:#3a2c10;--errbg:#3e1a1a;--err:#ff9a92;--okbg:#123222;--ok:#7be0a6;--chip:#222c40}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Segoe UI","Malgun Gothic",system-ui,sans-serif}
+header{background:var(--navy);color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header h1{font-size:17px;margin:0}
+header .lim{background:#ffd23f;color:#3a2c00;border-radius:6px;padding:2px 8px;font-weight:600;font-size:13px}
+header .sp{flex:1}
+header button{background:transparent;color:#fff;border:1px solid #ffffff80}
+.wrap{display:flex;min-height:calc(100vh - 50px)}
+nav{width:210px;flex:none;background:var(--panel);border-right:1px solid var(--line);padding:12px 8px}
+nav button{display:block;width:100%;text-align:left;margin:0 0 6px;background:transparent;border:1px solid transparent;color:var(--ink);padding:8px 10px;border-radius:8px}
+nav button[aria-current="step"]{background:var(--chip);border-color:var(--line);font-weight:700}
+nav button .n{display:inline-block;width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;text-align:center;line-height:22px;font-size:12px;margin-right:6px}
+nav .help{margin-top:16px;font-size:12px;color:var(--sub);border-top:1px solid var(--line);padding-top:10px}
+nav .help code{display:block;background:var(--chip);color:var(--ink);padding:4px 6px;border-radius:4px;margin:4px 0;font-size:12px;white-space:normal}
+main{flex:1;min-width:0;padding:16px}
+section.step{display:none}section.step.on{display:block}
+h2{font-size:16px;margin:0 0 10px}
+h3{font-size:14px;margin:14px 0 6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:5px 12px}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+:root[data-theme="dark"] button.pri{color:#0f1523}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.pri{color:#0f1523}}
+button:disabled{opacity:.5;cursor:default}
+input,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+input[type=number]{width:90px}
+table{border-collapse:collapse;width:100%}
+th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;white-space:nowrap;font-size:13px}
+th{background:var(--chip);position:sticky;top:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.msg{border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px}
+.msg.warn{background:var(--warnbg);color:var(--warn)}.msg.err{background:var(--errbg);color:var(--err)}.msg.ok{background:var(--okbg);color:var(--ok)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.row label{display:inline-flex;gap:4px;align-items:center}
+.muted{color:var(--sub);font-size:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.kpi b{display:block;font-size:22px}
+.kpi.keep b{color:var(--keep)}.kpi.gone b{color:var(--gone)}.kpi.new b{color:var(--new)}
+.st{display:inline-block;padding:0 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff}
+.st.keep{background:var(--keep)}.st.gone{background:var(--gone)}.st.new{background:var(--new);color:#2b2200}
+.mapbox{position:relative}
+#map{width:100%;height:560px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:block}
+.legend span{margin-right:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;box-shadow:0 6px 20px #0004;display:none;max-width:560px;font-size:12px}
+#tip .imgs{display:flex;gap:6px;margin-top:6px}
+#tip img,#tip canvas{width:200px;height:150px;object-fit:contain;background:#000;border-radius:4px}
+.tblwrap{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.pager{display:flex;gap:8px;align-items:center;margin:6px 0}
+.review{display:grid;grid-template-columns:340px 1fr;gap:12px}
+#rvList{height:560px;overflow:auto;border:1px solid var(--line);border-radius:8px;position:relative;background:var(--panel);outline:none}
+#rvList:focus{border-color:var(--acc)}
+#rvList .it{position:absolute;left:0;right:0;height:30px;padding:4px 8px;border-bottom:1px solid var(--line);cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rvList .it.sel{background:var(--chip);font-weight:700;border-left:4px solid var(--gone)}
+.rvimgs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rvimgs figure{margin:0;background:#000;border-radius:8px;min-height:300px;display:flex;align-items:center;justify-content:center;position:relative}
+.rvimgs figure img,.rvimgs figure canvas{max-width:100%;max-height:420px}
+.rvimgs figcaption{position:absolute;left:6px;top:4px;color:#fff;font-size:12px;background:#0009;padding:1px 6px;border-radius:4px}
+.ph{color:#ffd2d2;padding:20px;text-align:center;font-size:13px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13px}
+.kv dt{color:var(--sub)}.kv dd{margin:0}
+details summary{cursor:pointer;color:var(--acc)}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:14px;text-align:center}
+@media (max-width:900px){.wrap{flex-direction:column}nav{width:auto;border-right:0;border-bottom:1px solid var(--line)}.review{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>AOI Contrast AVG 단계별 비교</h1>
+  <span class="lim">간단 버전: Reference 이미지 없음, 좌표 모델 보정 필요 가능</span>
+  <span class="sp"></span>
+  <span class="muted" style="color:#dfe6f5">로컬 전용 · 서버 업로드 없음 · 원본 읽기 전용</span>
+  <button id="themeBtn" title="밝은/어두운 화면 바꾸기">화면 테마</button>
+</header>
+<div class="wrap">
+<nav aria-label="마법사 단계">
+  <button data-step="1" aria-current="step"><span class="n">1</span>스캔 결과 등록</button>
+  <button data-step="2"><span class="n">2</span>비교 조건 설정</button>
+  <button data-step="3"><span class="n">3</span>Wafer Map 분석</button>
+  <button data-step="4"><span class="n">4</span>소거 Defect 리뷰</button>
+  <div class="help">
+    <b>Contrast 도움말</b>
+    <code>Bright: ContrastActual = DefectGLavg − ReferenceGLavg</code>
+    <code>DefectGLavg = ReferenceGLavg + ContrastActual</code>
+    설정 Threshold(Contrast AVG)는 통과 기준입니다. Surface.flt 의 Contrast 는 Defect 별 실제 결과값입니다. 둘은 다릅니다.<br><br>
+    Reference 이미지가 없습니다. 주변부 Median 은 <b>Local Reference 추정치</b>일 뿐 Genesis Reference 와 같지 않습니다.
+    8-bit JPEG GL 은 표시용 변환일 수 있어 원시 검출 GL 이 아닙니다.
+  </div>
+</nav>
+<main>
+<!-- ───────────── Step 1 ───────────── -->
+<section class="step on" id="step1">
+  <h2>Step 1 · 스캔 결과 등록</h2>
+  <div class="card">
+    <div class="drop">
+      <p>압축을 푼 결과 폴더를 고르십시오. <span class="muted">(상위 폴더를 고르면 안의 Surface.flt 폴더를 모두 등록합니다)</span></p>
+      <input type="file" id="dirInput" webkitdirectory multiple hidden>
+      <button class="pri" id="addBtn">결과 폴더 추가</button>
+      <p class="muted">파일은 이 PC 브라우저 안에서만 읽습니다. 원본은 고치지 않습니다.</p>
+    </div>
+    <div id="loadMsg"></div>
+  </div>
+  <div class="card">
+    <h3>등록된 스캔 <span class="muted">(Contrast AVG 를 입력하십시오. 비교는 Contrast AVG 오름차순입니다)</span></h3>
+    <div class="tblwrap" style="max-height:none"><table id="scanTbl"><thead><tr>
+      <th>Step 이름</th><th>Contrast AVG</th><th>검사 호기</th><th>폴더</th><th class="num">Defect 수</th><th class="num">이미지 수</th><th>점검</th><th></th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="row"><button class="pri" id="to2">다음: 비교 조건 →</button></div>
+  </div>
+</section>
+<!-- ───────────── Step 2 ───────────── -->
+<section class="step" id="step2">
+  <h2>Step 2 · 비교 조건 설정</h2>
+  <div class="card">
+    <div class="row">
+      <label>기준 Step <select id="baseSel"></select></label>
+      <label>비교 Step <select id="cmpSel"></select></label>
+      <label>동일 좌표 허용오차 <input type="number" id="tol" value="2" min="0" step="0.5"> µm</label>
+    </div>
+    <div class="row">
+      <label>결함 좌표 <select id="coordSrc"><option value="xy">x / y</option><option value="actual">ActualX / ActualY</option></select></label>
+      <label>Pixel Size <input type="number" id="pix" value="0.7708" step="0.0001"> µm/pixel</label>
+      <label>Color 연결 허용오차 <input type="number" id="ctol" value="5" min="0" step="1"> µm</label>
+    </div>
+    <h3>Gray Crop 좌표 보정</h3>
+    <div class="row">
+      <label><input type="checkbox" id="flipX"> X 반전</label>
+      <label><input type="checkbox" id="flipY"> Y 반전</label>
+      <label>X Offset <input type="number" id="offX" value="0" step="1"> px</label>
+      <label>Y Offset <input type="number" id="offY" value="0" step="1"> px</label>
+      <label>Crop 크기 <input type="number" id="cropSz" value="160" min="32" step="16"> px</label>
+      <label>Ring 폭 <input type="number" id="ringW" value="6" min="1" step="1"> px</label>
+    </div>
+    <p class="muted">frameToChuckPlane.ini 가 있으면 Para 'Color · Gray 매칭'과 같은 변환으로 Gray 프레임과 픽셀을 찾습니다.
+      없으면 간단 모델(ScanResultImageList 좌표 = 프레임 좌상단, Pixel Size)로 계산하므로 Offset · 반전 보정이 필요할 수 있습니다.</p>
+    <div class="row"><button class="pri" id="runBtn">비교 실행 →</button></div>
+    <div id="cmpMsg"></div>
+  </div>
+  <div class="card">
+    <h3>전체 단계 비교 <span class="muted">(최초 Step 대비 누적 소거, 인접 Step 대비 신규 소거)</span></h3>
+    <div class="tblwrap" style="max-height:none"><table id="allTbl"><thead><tr>
+      <th>Step</th><th class="num">Contrast AVG</th><th>호기</th><th class="num">Defect</th><th class="num">최초 대비 유지</th><th class="num">최초 대비 누적 소거</th><th class="num">인접 대비 소거</th><th class="num">인접 대비 신규</th><th class="num">최초 대비 감소율</th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+<!-- ───────────── Step 3 ───────────── -->
+<section class="step" id="step3">
+  <h2>Step 3 · Wafer Map 분석</h2>
+  <div class="cards" id="kpis"></div>
+  <div class="card">
+    <div class="row legend"><span><i style="background:var(--keep)"></i>유지</span><span><i style="background:var(--gone)"></i>소거</span><span><i style="background:var(--new)"></i>신규</span>
+      <label><input type="checkbox" class="showSt" value="keep" checked>유지</label><label><input type="checkbox" class="showSt" value="gone" checked>소거</label><label><input type="checkbox" class="showSt" value="new" checked>신규</label>
+      <span class="muted">점 위에 마우스: 상세 · 점 클릭: 새 창 확대</span></div>
+    <div class="mapbox"><canvas id="map"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="row"><h3 style="margin:0">상세 표</h3>
+      <label>상태 <select id="fltSt"><option value="">전체</option><option value="keep">유지</option><option value="gone">소거</option><option value="new">신규</option></select></label>
+      <button id="csvBtn">CSV 내보내기</button></div>
+    <div class="tblwrap"><table id="detTbl"><thead><tr>
+      <th>상태</th><th class="num">ID</th><th class="num">Wafer X</th><th class="num">Wafer Y</th><th>Die</th><th class="num">Area(µm²)</th><th class="num">Width</th><th class="num">Length</th><th>Box W×H</th><th class="num">Contrast</th><th>Step</th><th>호기</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="pager"><button id="pgPrev">◀</button><span id="pgInfo"></span><button id="pgNext">▶</button><span class="muted">한 쪽 200행까지 표시합니다(전체는 CSV).</span></div>
+  </div>
+</section>
+<!-- ───────────── Step 4 ───────────── -->
+<section class="step" id="step4">
+  <h2>Step 4 · 소거 Defect 리뷰</h2>
+  <div class="review">
+    <div>
+      <div class="muted" id="rvCount"></div>
+      <div id="rvList" tabindex="0" aria-label="소거 Defect 목록 (↑↓ 또는 J/K 이동, Enter 새 창)"></div>
+      <p class="muted">↑ ↓ 또는 J K 로 이동합니다. Enter 로 새 창을 엽니다. O = 위치 맞음, X = 벗어남.</p>
+    </div>
+    <div>
+      <div class="rvimgs">
+        <figure id="rvColor"><figcaption>Color</figcaption></figure>
+        <figure id="rvGray"><figcaption>Gray Crop</figcaption></figure>
+      </div>
+      <div class="card" style="margin-top:8px">
+        <div class="row"><button id="okBtn">위치 맞음 (O)</button><button id="ngBtn">벗어남 (X)</button><span id="modelSt" class="muted"></span></div>
+        <dl class="kv" id="rvInfo"></dl>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+</div>
+<div id="tip"></div>
+<script>
+'use strict';
+// ════════════════════════════════════════════════════════════════════════
+// 1. 파서 (순수 함수 — window.__cw 로 시험에서 부른다)
+// ════════════════════════════════════════════════════════════════════════
+const REC = 152;   // Surface.flt 고정 레코드 크기(byte), little-endian
+/** 기본 필드 정의 [이름, 형식, offset]. Surface.flt.md 에 같은 이름이 있으면 그 offset 을 쓴다. */
+const FLT_FIELDS = [
+  ['reclassify','int16',0],['orgReclassify','int16',2],['Type','int32',4],
+  ['x','float64',8],['y','float64',16],['ActualX','float64',24],['ActualY','float64',32],
+  ['id','int32',40],['resultID','int32',44],['frameIdx','int32',48],['xInFrame','float32',52],['yInFrame','float32',56],
+  ['waferRegion','uint8',60],['zone','uint8',61],['recipe','uint8',62],
+  ['BoxWidth','float64',64],['BoxHeight','float64',72],['area','float64',80],
+  ['BlobBreadth','float64',88],['BlobLength','float64',96],['BlobFeretMax','float64',104],['BlobFeretMaxAngle','float64',112],['BlobFeretMin','float64',120],
+  ['particlesNum','int32',128],['particlesArea','int32',132],['Contrast','float64',136],['taskID','int32',144]];
+const TYPE_SIZE = {int8:1,uint8:1,byte:1,char:1,bool:1,int16:2,uint16:2,short:2,ushort:2,int32:4,uint32:4,int:4,uint:4,long:4,float32:4,float:4,single:4,float64:8,double:8,int64:8,uint64:8};
+function normType(t){t=String(t||'').toLowerCase().replace(/^system\./,'');
+  return {byte:'uint8',char:'int8',bool:'uint8',short:'int16',ushort:'uint16',int:'int32',uint:'uint32',long:'int32',float:'float32',single:'float32',double:'float64'}[t]||t}
+function readField(dv,o,t){switch(t){
+  case 'int8':return dv.getInt8(o);case 'uint8':return dv.getUint8(o);case 'int16':return dv.getInt16(o,true);case 'uint16':return dv.getUint16(o,true);
+  case 'int32':return dv.getInt32(o,true);case 'uint32':return dv.getUint32(o,true);case 'float32':return dv.getFloat32(o,true);case 'float64':return dv.getFloat64(o,true);
+  case 'int64':return Number(dv.getBigInt64(o,true));case 'uint64':return Number(dv.getBigUint64(o,true));default:return null}}
+
+/** *.md 필드 정의 XML 을 너그럽게 읽는다. name/type(/offset/size) 속성 또는 같은 이름의 자식 요소를 찾는다.
+ *  offset 이 없으면 형식 크기를 차례로 더한다. 반환 {fields:[{name,type,offset}], recordSize} 또는 null. */
+function parseMd(text){
+  let doc;try{doc=new DOMParser().parseFromString(text,'application/xml')}catch(e){return null}
+  if(!doc||doc.getElementsByTagName('parsererror').length)return null;
+  const get=(el,k)=>{for(const a of el.attributes||[])if(a.name.toLowerCase()===k)return a.value;
+    for(const c of el.children||[])if(c.tagName.toLowerCase()===k&&!c.children.length)return c.textContent.trim();return null};
+  const fields=[];let cur=0,recordSize=null;
+  for(const el of doc.getElementsByTagName('*')){
+    const rs=get(el,'recordsize')||get(el,'recsize')||get(el,'size_of_record');if(rs&&recordSize==null&&!get(el,'type'))recordSize=+rs||null;
+    const name=get(el,'name'),type=normType(get(el,'type')||get(el,'datatype'));
+    if(!name||!TYPE_SIZE[type])continue;
+    const off=get(el,'offset');const o=off!=null&&off!==''?+off:cur;
+    fields.push({name,type,offset:o});cur=o+TYPE_SIZE[type]}
+  if(!fields.length)return null;
+  return {fields,recordSize:recordSize||cur};
+}
+/** 기본 정의에 .md 의 offset/형식을 이름(대소문자 무시)으로 덮어쓴다. 다르면 경고를 돌려준다. */
+function fltLayout(md){
+  const lay=FLT_FIELDS.map(([n,t,o])=>({name:n,type:t,offset:o}));const warns=[];
+  if(!md)return {lay,warns};
+  const by=new Map(md.fields.map(f=>[f.name.toLowerCase(),f]));
+  for(const f of lay){const m=by.get(f.name.toLowerCase());if(!m)continue;
+    if(m.offset!==f.offset||m.type!==f.type){warns.push(`${f.name}: 기본 ${f.type}@${f.offset} → md ${m.type}@${m.offset}`);f.offset=m.offset;f.type=m.type}}
+  if(md.recordSize&&md.recordSize!==REC)warns.push(`md 레코드 크기 ${md.recordSize} byte (기대 ${REC})`);
+  return {lay,warns};
+}
+/** Surface.flt → Defect 배열. 152 로 나누어떨어지지 않으면 ok=false. */
+function parseFlt(buf,lay){
+  lay=lay||fltLayout(null).lay;
+  const n=Math.floor(buf.byteLength/REC),rem=buf.byteLength%REC,dv=new DataView(buf),out=[];
+  for(let i=0;i<n;i++){const d={i};for(const f of lay)if(f.offset+TYPE_SIZE[f.type]<=REC)d[f.name]=readField(dv,i*REC+f.offset,f.type);out.push(d)}
+  return {defects:out,ok:rem===0&&buf.byteLength>0,rem,bytes:buf.byteLength};
+}
+/** [section] key=value INI → [{name, kv:{소문자키:값}}] */
+function parseIni(text){
+  const out=[];let cur=null;
+  for(const raw of String(text).split(/\r?\n/)){const line=raw.trim();if(!line||line[0]===';'||line[0]==='#')continue;
+    if(line[0]==='['&&line.endsWith(']')){cur={name:line.slice(1,-1).trim(),kv:{}};out.push(cur);continue}
+    const k=line.indexOf('=');if(k<0)continue;if(!cur){cur={name:'',kv:{}};out.push(cur)}
+    cur.kv[line.slice(0,k).trim().toLowerCase().replace(/[^a-z0-9]/g,'')]=line.slice(k+1).trim()}
+  return out;
+}
+const pick=(kv,keys)=>{for(const k of keys){const v=kv[k];if(v!=null&&v!=='')return v}return null};
+const num=v=>{if(v==null||v==='')return null;const n=parseFloat(v);return isFinite(n)?n:null};
+/** ColorImageGrabingInfo.ini → Color 항목. 키 이름 변형을 받는다. */
+function parseColors(text){
+  return parseIni(text).filter(s=>s.name||Object.keys(s.kv).length).map(s=>{const kv=s.kv;
+    return {file:pick(kv,['filename','imagename','file','name','image'])||s.name,
+      index:num(pick(kv,['index','defectindex','defectidx','faultindex','defectid','id'])),
+      x:num(pick(kv,['faultx','x','defectx','posx'])),y:num(pick(kv,['faulty','y','defecty','posy'])),
+      recipe:num(pick(kv,['recipenumber','recipe'])),
+      w:num(pick(kv,['imagesizex'])),h:num(pick(kv,['imagesizey'])),psx:num(pick(kv,['pixelsizex'])),psy:num(pick(kv,['pixelsizey'])),section:s.name}})
+    .filter(c=>c.file);
+}
+/** ScanResultImageList.txt → [{file,x,y,recipe}] (colorgray.parse_frames 와 같음) */
+function parseFrames(text){
+  const out=[];
+  for(const raw of String(text).split(/\r?\n/)){const p=raw.trim().split(/[,;\t]/).map(s=>s.trim());
+    if(p.length<3||p[0].startsWith('Version='))continue;const x=parseFloat(p[1]),y=parseFloat(p[2]);if(!isFinite(x)||!isFinite(y))continue;
+    const m=/\.t\.(\d+)\.jpe?g$/i.exec(p[0]);out.push({file:p[0].replace(/^"|"$/g,''),x,y,recipe:m?+m[1]:null})}
+  return out;
+}
+/** frameToChuckPlane.ini → {inv, off} (colorgray.parse_transform 와 같음: Scan_X = a b ox, Scan_Y = c d oy) */
+function parseTransform(text){
+  const d={};
+  for(const raw of String(text).split(/\r?\n/)){if(raw.trimStart().startsWith('['))continue;const line=raw.split(';')[0].trim();const k=line.indexOf('=');if(k<0)continue;
+    const nums=line.slice(k+1).trim().split(/[\s,]+/).filter(Boolean).map(Number);if(nums.some(n=>!isFinite(n)))continue;
+    const key=line.slice(0,k).toLowerCase().replace(/[^a-z0-9]/g,'');if(!(key in d))d[key]=nums}
+  const sx=d.scanx,sy=d.scany;if(!sx||!sy||sx.length<3||sy.length<3)throw new Error('Scan_X · Scan_Y(숫자 3개) 줄이 없습니다');
+  const a=sx[0],b=sx[1],c=sy[0],e=sy[1],det=a*e-b*c;if(!det)throw new Error('변환 행렬을 풀 수 없습니다');
+  return {inv:[[e/det,-b/det],[-c/det,a/det]],off:[sx[2],sy[2]]};
+}
+/** ProductInfo.ini → Die 계산 메타데이터. 없으면 null. */
+function parseProduct(text){
+  const kv={};for(const s of parseIni(text))Object.assign(kv,s.kv);
+  const px=num(pick(kv,['customerdiepitchx','diepitchx','pitchx'])),py=num(pick(kv,['customerdiepitchy','diepitchy','pitchy']));
+  const cols=num(pick(kv,['cols','columns','diecols','numcols'])),rows=num(pick(kv,['rows','dierows','numrows']));
+  if(!px||!py||!cols||!rows)return null;
+  return {pitchX:px,pitchY:py,cols,rows,offX:num(pick(kv,['customerdieoffsetx','offsetx','dieoffsetx','mapshiftx']))||0,offY:num(pick(kv,['customerdieoffsety','offsety','dieoffsety','mapshifty']))||0};
+}
+/** Die 좌표(이 데이터셋에서 검증된 식): ix=floor((X−OffX)/PitchX), DieCol=(Cols−2)−ix, DieRow=(Rows−2)−iy */
+function dieOf(x,y,p){
+  if(!p||x==null||y==null)return null;
+  const ix=Math.floor((x-p.offX)/p.pitchX),iy=Math.floor((y-p.offY)/p.pitchY);
+  const col=(p.cols-2)-ix,row=(p.rows-2)-iy;
+  return {col,row,dx:x-p.offX-ix*p.pitchX,dy:y-p.offY-iy*p.pitchY,valid:col>=0&&col<p.cols&&row>=0&&row<p.rows};
+}
+/** ScanLog / ProductionInfo 글에서 Surface defect 수를 찾는다(교차 검증, 참고). */
+function surfaceCount(text){const m=/surface[^\r\n\d]{0,40}?(\d+)/i.exec(text);return m?+m[1]:null}
+
+// ════════════════════════════════════════════════════════════════════════
+// 2. 동일 Defect 1:1 매칭 — 격자(셀 = 허용오차) 최근접 검색 + 거리순 greedy, 중복 매칭 없음
+// ════════════════════════════════════════════════════════════════════════
+function matchSets(A,B,tol){
+  const cell=Math.max(tol,1e-6),grid=new Map(),key=(i,j)=>i+','+j;
+  B.forEach((b,k)=>{const g=key(Math.floor(b.X/cell),Math.floor(b.Y/cell));(grid.get(g)||grid.set(g,[]).get(g)).push(k)});
+  const pairs=[];
+  A.forEach((a,i)=>{const ci=Math.floor(a.X/cell),cj=Math.floor(a.Y/cell);
+    for(let di=-1;di<=1;di++)for(let dj=-1;dj<=1;dj++){const l=grid.get(key(ci+di,cj+dj));if(!l)continue;
+      for(const k of l){const d=Math.hypot(a.X-B[k].X,a.Y-B[k].Y);if(d<=tol)pairs.push([d,i,k])}}});
+  pairs.sort((p,q)=>p[0]-q[0]);
+  const ua=new Uint8Array(A.length),ub=new Uint8Array(B.length),keep=[];
+  for(const [d,i,k] of pairs){if(ua[i]||ub[k])continue;ua[i]=ub[k]=1;keep.push({a:A[i],b:B[k],d})}
+  return {keep,gone:A.filter((_,i)=>!ua[i]),added:B.filter((_,k)=>!ub[k])};
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 3. Gray 프레임 · 픽셀 찾기 (colorgray.choose_frame 와 같은 모델)
+// ════════════════════════════════════════════════════════════════════════
+const GW=3168,GH=1024;   // Gray 프레임 크기(px). 실제 이미지 크기가 다르면 비율로 맞춘다.
+/** 결함 좌표 → {frame, px, py, model, n} 또는 {reason}. model: 'transform'(Color·Gray 매칭 변환) | 'simple'(보정 필요). */
+function locateGray(X,Y,recipe,scan,opt){
+  const fr=scan.frames;if(!fr.length)return {reason:'ScanResultImageList 없음'};
+  const same=fr.filter(f=>f.recipe===recipe);const pool=same.length?same:(fr.filter(f=>f.recipe==null).length?fr.filter(f=>f.recipe==null):fr);
+  const tf=scan.transforms.size?(scan.transforms.get(recipe)||scan.transforms.get(null)||[...scan.transforms.values()][0]):null;
+  let best=null,n=0;
+  for(const f of pool){let px,py;
+    if(tf){const tx=X-f.x-tf.off[0],ty=Y-f.y-tf.off[1];px=tf.inv[0][0]*tx+tf.inv[0][1]*ty;py=tf.inv[1][0]*tx+tf.inv[1][1]*ty}
+    else{px=(X-f.x)/opt.pix;py=(Y-f.y)/opt.pix}
+    if(opt.flipX)px=GW-px;if(opt.flipY)py=GH-py;px+=opt.offX;py+=opt.offY;
+    if(px>=0&&px<GW&&py>=0&&py<GH){n++;const m=Math.min(px,GW-px,py,GH-py);if(!best||m>best.m)best={m,frame:f,px,py}}}
+  if(!best)return {reason:'좌표 변환 보정 필요',model:tf?'transform':'simple'};
+  return {frame:best.frame,px:best.px,py:best.py,n,model:tf?'transform':'simple'};
+}
+/** Defect ↔ Color 이미지 연결: ① Fault 좌표 최근접(허용오차) ② id/resultID/Index 의 0/1-based 후보(좌표가 있으면 검증). */
+function linkColor(d,scan,ctol){
+  const cs=scan.colors;if(!cs.length)return null;
+  let best=null;for(const c of cs){if(c.x==null||c.y==null)continue;const dd=Math.hypot(c.x-d.X,c.y-d.Y);if(dd<=ctol&&(!best||dd<best.dd))best={c,dd}}
+  if(best)return {c:best.c,how:`좌표(${best.dd.toFixed(1)} µm)`};
+  const rule=indexRule(scan,ctol);if(!rule)return null;
+  const c=scan.colorByIndex.get(rule.f(d));if(!c)return null;
+  if(c.x!=null&&c.y!=null&&Math.hypot(c.x-d.X,c.y-d.Y)>Math.max(ctol*10,50))return null;   // 좌표가 있으면 검증
+  return {c,how:`Index ${rule.f(d)} (${rule.name}${rule.ok?'':' · 좌표 없음 · 확인 전'})`};
+  return null;
+}
+
+/** 인덱스 규칙(0/1-based, id · resultID · 기록 순서)은 스캔마다 하나로 정한다 — Defect 마다 후보를 바꾸면 남의 이미지를 붙일 수 있다.
+ *  좌표가 있는 Color 항목으로 검증된 수가 가장 많은 규칙(같으면 앞 규칙), 검증이 하나도 없으면 맞는 Index 수가 가장 많은 규칙(확인 전). */
+const INDEX_RULES=[['id',d=>d.id],['id−1',d=>d.id-1],['id+1',d=>d.id+1],['resultID',d=>d.resultID],['resultID−1',d=>d.resultID-1],['resultID+1',d=>d.resultID+1],['기록 순서(0)',d=>d.i],['기록 순서(1)',d=>d.i+1]];
+function indexRule(scan,ctol){
+  const k='rule|'+ctol+'|'+(scan.defects[0]&&scan.defects[0].X);if(scan._rule&&scan._rule.k===k)return scan._rule.v;
+  let best=null;
+  if(scan.colorByIndex.size)for(const [name,f] of INDEX_RULES){let ok=0,hit=0;
+    for(const d of scan.defects){const c=scan.colorByIndex.get(f(d));if(!c)continue;hit++;if(c.x!=null&&c.y!=null&&Math.hypot(c.x-d.X,c.y-d.Y)<=Math.max(ctol,1))ok++}
+    if(hit&&(!best||ok>best.ok||(ok===best.ok&&!ok&&hit>best.hit)))best={name,f,ok,hit}}   // 같은 검증 수면 앞 규칙(id) 우선
+  scan._rule={k,v:best};return best;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 4. 상태
+// ════════════════════════════════════════════════════════════════════════
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const f1=v=>v==null||!isFinite(v)?'':(+v).toFixed(1),f2=v=>v==null||!isFinite(v)?'':(+v).toFixed(2);
+const S={scans:[],rows:[],page:0,rv:0,rvList:[],overlay:{}};let scanSeq=0;
+function opts(){return{tol:+$('#tol').value||0,pix:+$('#pix').value||0.7708,ctol:+$('#ctol').value||0,coord:$('#coordSrc').value,
+  flipX:$('#flipX').checked,flipY:$('#flipY').checked,offX:+$('#offX').value||0,offY:+$('#offY').value||0,crop:Math.max(32,+$('#cropSz').value||160),ring:Math.max(1,+$('#ringW').value||6)}}
+function sortedScans(){return [...S.scans].sort((a,b)=>(a.contrast??Infinity)-(b.contrast??Infinity)||a.seq-b.seq)}
+const stepName=s=>s.step||s.name;
+
+// ════════════════════════════════════════════════════════════════════════
+// 5. 폴더 등록 — entries = [{path, file}] (path = 폴더 기준 상대 경로, '/' 구분)
+// ════════════════════════════════════════════════════════════════════════
+const baseName=p=>p.split(/[\\/]/).pop();
+const lower=s=>s.toLowerCase();
+async function addEntries(entries){
+  const msg=[];
+  const roots=entries.filter(e=>lower(baseName(e.path))==='surface.flt').map(e=>e.path.slice(0,e.path.length-baseName(e.path).length));
+  if(!roots.length){showLoad([['err','고른 폴더에 Surface.flt 가 없습니다. 압축을 푼 결과 폴더를 고르십시오.']]);return}
+  roots.sort((a,b)=>b.length-a.length);   // 깊은 폴더부터: 안쪽 결과 폴더의 파일을 바깥 폴더가 가져가지 않게
+  const taken=new Set();
+  const made=[];
+  for(const r of roots){
+    const own=entries.filter(e=>e.path.startsWith(r)&&!taken.has(e));own.forEach(e=>taken.add(e));
+    try{made.push(await buildScan(r.replace(/\/$/,'')||'(선택 폴더)',own))}catch(e){msg.push(['err',`${r}: ${e.message}`])}}
+  made.reverse().forEach(s=>{S.scans.push(s);msg.push([s.errors.length?'err':(s.warns.length?'warn':'ok'),`${s.name}: Defect ${s.defects.length}개, 이미지 ${s.images}개 등록${s.errors.length?' — '+s.errors.join(' / '):''}`])});
+  showLoad(msg);renderScans();
+}
+function showLoad(list){$('#loadMsg').innerHTML=list.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('')}
+async function buildScan(name,own){
+  const files=new Map();for(const e of own){const k=lower(baseName(e.path));if(!files.has(k))files.set(k,e.file)}
+  const get=n=>files.get(lower(n));const text=async n=>{const f=get(n);return f?await f.text():null};
+  const s={id:++scanSeq,seq:scanSeq,name,files,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,defects:[],colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images:0};
+  s.images=own.filter(e=>/\.(jpe?g|png|bmp)$/i.test(e.path)).length;
+  // Contrast AVG 추정(폴더 이름의 'CA27', 'Contrast27', 'AVG27') — 사용자가 고친다
+  const m=/(?:contrast|avg|ca)[ _-]?(\d+(?:\.\d+)?)/i.exec(baseName(name));if(m)s.contrast=+m[1];
+  const mdText=await text('Surface.flt.md');const md=mdText?parseMd(mdText):null;
+  if(mdText&&!md)s.warns.push('Surface.flt.md 를 읽지 못해 기본 필드 정의를 씁니다');
+  const {lay,warns}=fltLayout(md);warns.forEach(w=>s.warns.push('md: '+w));
+  const buf=await get('Surface.flt').arrayBuffer();const r=parseFlt(buf,lay);
+  if(!r.bytes)s.errors.push('빈 결과(Surface.flt 0 byte)');
+  else if(!r.ok)s.errors.push(`잘못된 Record Size: ${r.bytes} byte 는 ${REC} 로 나누어떨어지지 않음(나머지 ${r.rem})`);
+  s.defects=r.defects.map(d=>({...d,scan:s}));
+  if(s.defects.length&&s.defects.every(d=>!d.frameIdx&&!d.xInFrame&&!d.yInFrame))s.warns.push('frameIdx/xInFrame/yInFrame 이 모두 0 — Wafer 좌표로 Gray 위치를 계산합니다');
+  const ci=await text('ColorImageGrabingInfo.ini');if(ci){s.colors=parseColors(ci);for(const c of s.colors)if(c.index!=null&&!s.colorByIndex.has(c.index))s.colorByIndex.set(c.index,c)}else s.warns.push('ColorImageGrabingInfo.ini 없음 — Color 이미지 연결 불가');
+  const fl=await text('ScanResultImageList.txt');if(fl)s.frames=parseFrames(fl);else s.warns.push('ScanResultImageList.txt 없음 — Gray Crop 불가');
+  for(const [k] of files){const t=/^frametochuckplane(?:\.(.+))?\.ini$/.exec(k);if(!t)continue;
+    try{s.transforms.set(t[1]&&/^\d+$/.test(t[1])?+t[1]:null,parseTransform(await files.get(k).text()))}catch(e){s.warns.push(k+': '+e.message)}}
+  if(!s.transforms.size&&s.frames.length)s.warns.push('frameToChuckPlane.ini 없음 — 간단 좌표 모델(보정 필요)');
+  if(get('s_FrameData.dat'))s.frameData=`s_FrameData.dat ${get('s_FrameData.dat').size} byte${get('s_FrameData.dat.md')?' + .md':''} (참고용, 좌표 계산에는 frameToChuckPlane 사용)`;
+  const pi=await text('ProductInfo.ini');if(pi){s.product=parseProduct(pi);if(!s.product)s.warns.push('ProductInfo.ini 에 Die Pitch/Cols/Rows 없음 — Die 계산 불가')}else s.warns.push('ProductInfo.ini 없음 — Die 계산 불가');
+  for(const [k,f] of files)if(/^(scanlog|productioninfo).*\.(txt|log|ini|csv|xml)$/i.test(k)){const c=surfaceCount(await f.text());if(c!=null){s.crossCount={file:k,count:c};
+    if(c!==s.defects.length)s.warns.push(`${k} 의 Surface defect 수 ${c} ≠ 파싱 ${s.defects.length}`);break}}
+  return s;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 6. Step 1 표
+// ════════════════════════════════════════════════════════════════════════
+function renderScans(){
+  const tb=$('#scanTbl tbody');
+  tb.innerHTML=sortedScans().map(s=>`<tr data-id="${s.id}">
+    <td><input data-k="step" value="${esc(s.step)}" style="width:140px"></td>
+    <td><input data-k="contrast" type="number" step="0.1" value="${s.contrast??''}" placeholder="필수"></td>
+    <td><input data-k="tool" value="${esc(s.tool)}" placeholder="예: AOI-3" style="width:90px"></td>
+    <td title="${esc(s.name)}">${esc(s.name)}</td><td class="num">${s.defects.length}</td><td class="num">${s.images}</td>
+    <td><details><summary>${s.errors.length?'⛔ 오류':s.warns.length?`⚠ ${s.warns.length}건`:'✔ 정상'}</summary>
+      <div class="muted" style="white-space:normal;max-width:420px">${[...s.errors,...s.warns].map(esc).join('<br>')||'문제 없음'}
+      <br>Color ${s.colors.length} · Gray 프레임 ${s.frames.length} · 변환 ${s.transforms.size?'frameToChuckPlane':'없음'} · Die ${s.product?`${s.product.cols}×${s.product.rows}`:'계산 불가'}
+      ${s.crossCount?`<br>교차 검증: ${esc(s.crossCount.file)} = ${s.crossCount.count}`:''}${s.frameData?'<br>'+esc(s.frameData):''}</div></details></td>
+    <td><button data-del="${s.id}">삭제</button></td></tr>`).join('')||'<tr><td colspan="8" class="muted">아직 없습니다.</td></tr>';
+  fillSelects();
+}
+$('#scanTbl').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)return;const s=S.scans.find(x=>x.id==e.target.closest('tr').dataset.id);
+  s[k]=k==='contrast'?(e.target.value===''?null:+e.target.value):e.target.value;if(k==='contrast')renderScans();else fillSelects()});
+$('#scanTbl').addEventListener('click',e=>{const id=e.target.dataset.del;if(!id)return;S.scans=S.scans.filter(s=>s.id!=id);renderScans()});
+$('#addBtn').onclick=()=>$('#dirInput').click();
+$('#dirInput').onchange=async e=>{const fs=[...e.target.files];e.target.value='';showLoad([['warn',`파일 ${fs.length}개 읽는 중…`]]);
+  await addEntries(fs.map(f=>({path:f.webkitRelativePath||f.name,file:f})))};
+function fillSelects(){const ss=sortedScans(),o=ss.map(s=>`<option value="${s.id}">${esc(stepName(s))} (CA ${s.contrast??'?'}${s.tool?' · '+esc(s.tool):''})</option>`).join('');
+  const b=$('#baseSel').value,c=$('#cmpSel').value;$('#baseSel').innerHTML=o;$('#cmpSel').innerHTML=o;
+  if(ss.length){$('#baseSel').value=ss.some(s=>s.id==b)?b:ss[0].id;$('#cmpSel').value=ss.some(s=>s.id==c)?c:ss[Math.min(1,ss.length-1)].id}}
+
+// ════════════════════════════════════════════════════════════════════════
+// 7. 비교
+// ════════════════════════════════════════════════════════════════════════
+function pts(s,o){return s.defects.map(d=>{const X=o.coord==='actual'?d.ActualX:d.x,Y=o.coord==='actual'?d.ActualY:d.y;d.X=X;d.Y=Y;return d}).filter(d=>isFinite(d.X)&&isFinite(d.Y))}
+function runCompare(){
+  const o=opts(),msg=[];
+  if(S.scans.length<2){$('#cmpMsg').innerHTML='<div class="msg err">스캔 결과를 2개 이상 등록하십시오.</div>';return false}
+  if(S.scans.some(s=>s.contrast==null))msg.push(['warn','Contrast AVG 가 빈 Step 이 있습니다. 정렬은 입력한 순서로 맨 뒤에 둡니다.']);
+  const A=S.scans.find(s=>s.id==$('#baseSel').value),B=S.scans.find(s=>s.id==$('#cmpSel').value);
+  if(A===B){$('#cmpMsg').innerHTML='<div class="msg err">기준 Step 과 비교 Step 이 같습니다.</div>';return false}
+  if(A.contrast!=null&&B.contrast!=null&&B.contrast<A.contrast)msg.push(['warn','비교 Step 의 Contrast AVG 가 기준보다 작습니다. "소거" = 기준에만 있음, "신규" = 비교에만 있음 으로 계산합니다.']);
+  const r=matchSets(pts(A,o),pts(B,o),o.tol);
+  S.cmp={A,B,o,...r};
+  S.rows=[...r.keep.map(k=>({st:'keep',d:k.a,b:k.b,dist:k.d})),...r.gone.map(d=>({st:'gone',d})),...r.added.map(d=>({st:'new',d}))];
+  S.page=0;S.rv=0;S.rvList=S.rows.filter(x=>x.st==='gone');
+  // 전체 단계: 최초 대비 누적, 인접 대비
+  const ss=sortedScans();const tb=$('#allTbl tbody');const first=ss[0],P0=pts(first,o);
+  tb.innerHTML=ss.map((s,k)=>{if(!k)return `<tr><td>${esc(stepName(s))} (최초)</td><td class="num">${s.contrast??''}</td><td>${esc(s.tool)}</td><td class="num">${s.defects.length}</td><td colspan="5" class="muted">기준</td></tr>`;
+    const c0=matchSets(P0,pts(s,o),o.tol),c1=matchSets(pts(ss[k-1],o),pts(s,o),o.tol);
+    return `<tr><td>${esc(stepName(s))}</td><td class="num">${s.contrast??''}</td><td>${esc(s.tool)}</td><td class="num">${s.defects.length}</td><td class="num">${c0.keep.length}</td><td class="num">${c0.gone.length}</td><td class="num">${c1.gone.length}</td><td class="num">${c1.added.length}</td><td class="num">${P0.length?(100*c0.gone.length/P0.length).toFixed(1)+'%':''}</td></tr>`}).join('');
+  msg.push(['ok',`${stepName(A)} → ${stepName(B)}: 유지 ${r.keep.length}, 소거 ${r.gone.length}, 신규 ${r.added.length} (허용오차 ${o.tol} µm)`]);
+  $('#cmpMsg').innerHTML=msg.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('');
+  renderKpis();renderTable();drawMap();renderReview();return true;
+}
+$('#runBtn').onclick=()=>{if(runCompare())go(3)};
+function renderKpis(){const c=S.cmp,n=c.keep.length+c.gone.length;
+  $('#kpis').innerHTML=[['기준 Defect',`${n}`,'',stepName(c.A)],['비교 Defect',`${c.keep.length+c.added.length}`,'',stepName(c.B)],['유지',c.keep.length,'keep'],['소거',c.gone.length,'gone'],['신규',c.added.length,'new'],
+    ['감소율',n?(100*(n-(c.keep.length+c.added.length))/n).toFixed(1)+'%':'-','',`소거율 ${n?(100*c.gone.length/n).toFixed(1):'-'}%`]]
+    .map(([t,v,k,s])=>`<div class="kpi ${k}"><span class="muted">${esc(t)}</span><b>${esc(v)}</b><span class="muted">${esc(s||'')}</span></div>`).join('')}
+
+// ════════════════════════════════════════════════════════════════════════
+// 8. 상세 표 · CSV
+// ════════════════════════════════════════════════════════════════════════
+const STN={keep:'유지',gone:'소거',new:'신규'};
+function info(r){const d=r.d,s=d.scan,o=S.cmp.o,die=dieOf(d.X,d.Y,s.product),px2=o.pix*o.pix;
+  return {st:STN[r.st],id:d.id,X:d.X,Y:d.Y,die:die?`(${die.col}, ${die.row})${die.valid?'':' 범위 밖'}`:'계산 불가',dieXY:die?`${die.dx.toFixed(0)}, ${die.dy.toFixed(0)}`:'',
+    area:d.area*px2,width:d.BlobBreadth,length:d.BlobLength,box:`${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,contrast:d.Contrast,cmpContrast:r.b?r.b.Contrast:null,step:stepName(s),tool:s.tool,dieWarn:die&&!die.valid}}
+function filtered(){const f=$('#fltSt').value;return f?S.rows.filter(r=>r.st===f):S.rows}
+function renderTable(){const rows=filtered(),P=200,pages=Math.max(1,Math.ceil(rows.length/P));S.page=Math.min(S.page,pages-1);
+  $('#detTbl tbody').innerHTML=rows.slice(S.page*P,S.page*P+P).map((r,k)=>{const x=info(r);return `<tr data-k="${S.page*P+k}"><td><span class="st ${r.st}">${x.st}</span></td><td class="num">${x.id}</td><td class="num">${f1(x.X)}</td><td class="num">${f1(x.Y)}</td>
+    <td${x.dieWarn?' style="color:var(--err)"':''}>${x.die}</td><td class="num">${f2(x.area)}</td><td class="num">${f1(x.width)}</td><td class="num">${f1(x.length)}</td><td>${x.box}</td><td class="num">${f2(x.contrast)}${x.cmpContrast!=null?' → '+f2(x.cmpContrast):''}</td><td>${esc(x.step)}</td><td>${esc(x.tool)}</td></tr>`}).join('');
+  $('#pgInfo').textContent=`${S.page+1} / ${pages} 쪽 (${rows.length}행)`}
+$('#fltSt').onchange=()=>{S.page=0;renderTable()};$('#pgPrev').onclick=()=>{S.page=Math.max(0,S.page-1);renderTable()};$('#pgNext').onclick=()=>{S.page++;renderTable()};
+$('#detTbl').addEventListener('click',e=>{const tr=e.target.closest('tr[data-k]');if(tr)openWindow(filtered()[+tr.dataset.k])});
+function csvText(){const q=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  const head=['상태','ID','resultID','WaferX','WaferY','Die','DieX','DieY','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','비교Contrast','Step','ContrastAVG','호기','Color이미지','Color연결','Gray프레임','GrayPX','GrayPY','Gray모델','ROI_mean','ROI_median','ROI_max','Ring_median','ROI_local_delta','위치확인'];
+  const lines=[head];
+  for(const r of S.rows){const x=info(r),d=r.d,g=grayOf(d),c=linkColor(d,d.scan,S.cmp.o.ctol),gl=d.gl||{};
+    lines.push([x.st,d.id,d.resultID,f2(x.X),f2(x.Y),x.die,...(x.dieXY?x.dieXY.split(', '):['','']),f2(x.area),d.area,f2(x.width),f2(x.length),f2(d.BoxWidth),f2(d.BoxHeight),f2(d.Contrast),f2(x.cmpContrast),x.step,d.scan.contrast,x.tool,
+      c?c.c.file:'',c?c.how:'연결 실패',g.frame?g.frame.file:'',g.frame?f1(g.px):'',g.frame?f1(g.py):'',g.frame?g.model:g.reason,f2(gl.mean),f2(gl.median),gl.max??'',f2(gl.ring),f2(gl.delta),S.overlay[key(d)]||''])}
+  return '﻿'+lines.map(l=>l.map(q).join(',')).join('\r\n')}
+$('#csvBtn').onclick=()=>{if(!S.cmp)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvText()],{type:'text/csv'}));
+  a.download=`Contrast_비교_${stepName(S.cmp.A)}_vs_${stepName(S.cmp.B)}.csv`.replace(/[\\/:*?"<>|]/g,'_');a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
+
+// ════════════════════════════════════════════════════════════════════════
+// 9. 이미지 캐시(LRU) · Gray Crop · GL 측정
+// ════════════════════════════════════════════════════════════════════════
+const key=d=>d.scan.id+':'+d.i;
+class LRU{constructor(n,drop){this.n=n;this.m=new Map;this.drop=drop}
+  get(k){if(!this.m.has(k))return undefined;const v=this.m.get(k);this.m.delete(k);this.m.set(k,v);return v}
+  set(k,v){this.m.delete(k);this.m.set(k,v);while(this.m.size>this.n){const [k0,v0]=this.m.entries().next().value;this.m.delete(k0);this.drop(v0)}}}
+const urlCache=new LRU(80,p=>p.then(u=>u&&URL.revokeObjectURL(u)));                  // Color: object URL → 버리면 revokeObjectURL
+const bmpCache=new LRU(16,p=>p.then(b=>b&&b.close&&b.close()).catch(()=>{}));          // Gray 프레임: ImageBitmap → 버리면 close
+function fileIn(scan,name){if(!name)return null;return scan.files.get(lower(baseName(String(name).replace(/^"|"$/g,''))))||null}
+function colorUrl(d){const c=linkColor(d,d.scan,S.cmp.o.ctol);if(!c)return Promise.resolve(null);const f=fileIn(d.scan,c.c.file);if(!f)return Promise.resolve(null);
+  const k=d.scan.id+'|'+lower(f.name);let p=urlCache.get(k);if(!p){p=Promise.resolve(URL.createObjectURL(f));urlCache.set(k,p)}return p}
+function grayBmp(scan,frame){const f=fileIn(scan,frame.file);if(!f)return Promise.resolve(null);const k=scan.id+'|'+lower(f.name);let p=bmpCache.get(k);
+  if(!p){p=createImageBitmap(f).catch(()=>null);bmpCache.set(k,p)}return p}
+const grayMemo=new Map();   // 보정 값이 바뀌면 비운다
+function grayOf(d){const o=S.cmp.o,k=key(d)+'|'+[o.coord,o.pix,o.flipX,o.flipY,o.offX,o.offY].join();let g=grayMemo.get(k);if(!g){g=locateGray(d.X,d.Y,d.recipe,d.scan,o);grayMemo.set(k,g)}return g}
+/** Gray Crop 캔버스(가운데 = 결함, 빨간 박스 = BoxWidth×BoxHeight) + GL 측정. 범위 밖이면 이유 글을 돌려준다. */
+async function grayCrop(d,size){
+  const g=grayOf(d);if(!g.frame)return {reason:g.reason};
+  const bmp=await grayBmp(d.scan,g.frame);if(!bmp)return {reason:`Gray 이미지 없음: ${g.frame.file}`};
+  const o=S.cmp.o,sx=bmp.width/GW,sy=bmp.height/GH,cx=g.px*sx,cy=g.py*sy;
+  if(cx<0||cy<0||cx>=bmp.width||cy>=bmp.height)return {reason:'좌표 변환 보정 필요'};
+  const c=o.crop,cv=document.createElement('canvas');cv.width=cv.height=size||320;const x=cv.getContext('2d',{willReadFrequently:true});
+  x.fillStyle='#000';x.fillRect(0,0,cv.width,cv.height);x.imageSmoothingEnabled=false;
+  const sc=cv.width/c;x.drawImage(bmp,cx-c/2,cy-c/2,c,c,0,0,cv.width,cv.height);
+  // GL 측정: 원 해상도 crop 에서(표시 배율 없이)
+  const raw=document.createElement('canvas');raw.width=raw.height=c;const rx=raw.getContext('2d',{willReadFrequently:true});rx.drawImage(bmp,cx-c/2,cy-c/2,c,c,0,0,c,c);
+  const bw=Math.max(1,(d.BoxWidth||4)*sx),bh=Math.max(1,(d.BoxHeight||4)*sy);d.gl=measureGL(rx.getImageData(0,0,c,c),c/2,c/2,bw,bh,o.ring);
+  x.strokeStyle='#ff2d2d';x.lineWidth=2;x.strokeRect(cv.width/2-bw*sc/2,cv.height/2-bh*sc/2,bw*sc,bh*sc);
+  return {canvas:cv,g};
+}
+/** ROI mean/median/max, 주변 ring median, ROI−ring delta. 장비 Contrast 와 같다고 보지 않는다(Local Reference 추정). */
+function measureGL(img,cx,cy,bw,bh,ring){
+  const roi=[],rg=[],W=img.width,H=img.height,p=img.data;
+  const x0=cx-bw/2,x1=cx+bw/2,y0=cy-bh/2,y1=cy+bh/2;
+  for(let y=Math.max(0,Math.floor(y0-ring));y<Math.min(H,Math.ceil(y1+ring));y++)for(let x=Math.max(0,Math.floor(x0-ring));x<Math.min(W,Math.ceil(x1+ring));x++){
+    const k=(y*W+x)*4,v=Math.round(.299*p[k]+.587*p[k+1]+.114*p[k+2]),inR=x+.5>=x0&&x+.5<=x1&&y+.5>=y0&&y+.5<=y1;(inR?roi:rg).push(v)}
+  const med=a=>{if(!a.length)return null;const s=[...a].sort((u,v)=>u-v),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
+  const mean=roi.length?roi.reduce((u,v)=>u+v,0)/roi.length:null,ringMed=med(rg);
+  return {mean,median:med(roi),max:roi.length?Math.max(...roi):null,ring:ringMed,delta:mean!=null&&ringMed!=null?mean-ringMed:null,n:roi.length}}
+
+// ════════════════════════════════════════════════════════════════════════
+// 10. Wafer Map (Canvas, requestAnimationFrame)
+// ════════════════════════════════════════════════════════════════════════
+const COL={keep:'--keep',gone:'--gone',new:'--new'};let mapGeo=null,rafId=0;
+function drawMap(){cancelAnimationFrame(rafId);rafId=requestAnimationFrame(paintMap)}
+function paintMap(){
+  const cv=$('#map'),r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;cv.width=Math.max(1,r.width*dpr);cv.height=Math.max(1,r.height*dpr);
+  const x=cv.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,r.width,r.height);if(!S.rows.length){mapGeo=null;return}
+  let a=Infinity,b=-Infinity,c=Infinity,d=-Infinity;for(const q of S.rows){a=Math.min(a,q.d.X);b=Math.max(b,q.d.X);c=Math.min(c,q.d.Y);d=Math.max(d,q.d.Y)}
+  const pad=20,w=Math.max(b-a,1),h=Math.max(d-c,1),k=Math.min((r.width-2*pad)/w,(r.height-2*pad)/h),ox=(r.width-w*k)/2,oy=(r.height-h*k)/2;
+  const css=getComputedStyle(document.documentElement),show=new Set($$('.showSt').filter(i=>i.checked).map(i=>i.value));
+  x.strokeStyle=css.getPropertyValue('--line');x.strokeRect(ox-6,oy-6,w*k+12,h*k+12);
+  const P=[];for(const st of ['keep','new','gone']){if(!show.has(st))continue;x.fillStyle=css.getPropertyValue(COL[st]).trim();
+    for(const q of S.rows){if(q.st!==st)continue;const X=ox+(q.d.X-a)*k,Y=oy+h*k-(q.d.Y-c)*k;P.push([X,Y,q]);x.beginPath();x.arc(X,Y,st==='gone'?3.5:2.8,0,7);x.fill()}}
+  mapGeo=P;
+}
+addEventListener('resize',()=>S.rows.length&&drawMap());$$('.showSt').forEach(i=>i.onchange=drawMap);
+function hit(e){if(!mapGeo)return null;const r=$('#map').getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=null,bd=64;
+  for(const [X,Y,q] of mapGeo){const dd=(X-mx)**2+(Y-my)**2;if(dd<=bd){bd=dd;best=q}}return best}
+let tipFor=null;
+$('#map').addEventListener('mousemove',e=>{const q=hit(e),tip=$('#tip');if(!q){tip.style.display='none';tipFor=null;return}
+  tip.style.display='block';tip.style.left=Math.min(e.clientX+16,innerWidth-580)+'px';tip.style.top=Math.min(e.clientY+16,innerHeight-300)+'px';
+  if(tipFor===q)return;tipFor=q;const x=info(q);
+  tip.innerHTML=`<span class="st ${q.st}">${x.st}</span> <b>ID ${x.id}</b> · ${esc(x.step)} · 호기 ${esc(x.tool||'-')}<br>
+    Wafer X/Y ${f1(x.X)}, ${f1(x.Y)} µm · Die ${x.die}${x.dieXY?` (내부 ${x.dieXY})`:''}<br>Area ${f2(x.area)} µm² · Box ${x.box} px · Contrast(실제) ${f2(x.contrast)}${x.cmpContrast!=null?' → '+f2(x.cmpContrast):''}
+    <div class="imgs"><img alt="Color"><canvas width="200" height="150"></canvas></div>`;
+  colorUrl(q.d).then(u=>{if(tipFor!==q)return;const im=tip.querySelector('img');if(u)im.src=u;else im.alt='Color 없음'});
+  grayCrop(q.d,300).then(r=>{if(tipFor!==q)return;const cv=tip.querySelector('canvas');if(r.canvas){cv.replaceWith(r.canvas);r.canvas.style.cssText='width:200px;height:150px;object-fit:contain'}
+    else{const g=cv.getContext('2d');g.fillStyle='#000';g.fillRect(0,0,200,150);g.fillStyle='#ffd2d2';g.font='13px sans-serif';g.fillText(r.reason,8,78)}})});
+$('#map').addEventListener('mouseleave',()=>{$('#tip').style.display='none';tipFor=null});
+$('#map').addEventListener('click',e=>{const q=hit(e);if(q)openWindow(q)});
+
+/** 새 창: Color 원본 + 전체 Gray 프레임(빨간 박스) */
+async function openWindow(q){
+  const w=window.open('','_blank','width=1400,height=900');if(!w)return alert('팝업이 막혔습니다. 이 파일의 팝업을 허용하십시오.');
+  const x=info(q),doc=w.document;doc.title=`Defect ${x.id} · ${x.step}`;
+  doc.body.style.cssText='margin:0;background:#111;color:#eee;font:13px "Segoe UI","Malgun Gothic",sans-serif';
+  const h=doc.createElement('div');h.style.padding='8px';h.textContent=`[${x.st}] ID ${x.id} · ${x.step} · 호기 ${x.tool||'-'} · Wafer ${f1(x.X)}, ${f1(x.Y)} µm · Die ${x.die} · Area ${f2(x.area)} µm² · Contrast ${f2(x.contrast)}`;doc.body.append(h);
+  const u=await colorUrl(q.d);if(u){const im=doc.createElement('img');im.src=u;im.style.cssText='max-width:100%;display:block;margin:4px 0';doc.body.append(im)}
+  else{const p=doc.createElement('p');p.textContent='Color 이미지 연결 실패';doc.body.append(p)}
+  const g=grayOf(q.d);if(!g.frame){const p=doc.createElement('p');p.textContent='Gray: '+g.reason;doc.body.append(p);return}
+  const bmp=await grayBmp(q.d.scan,g.frame);if(!bmp){const p=doc.createElement('p');p.textContent='Gray 이미지 없음: '+g.frame.file;doc.body.append(p);return}
+  const cv=doc.createElement('canvas');cv.width=bmp.width;cv.height=bmp.height;cv.style.cssText='max-width:100%;display:block';const c=cv.getContext('2d');c.drawImage(bmp,0,0);
+  const sx=bmp.width/GW,sy=bmp.height/GH,bw=Math.max(6,(q.d.BoxWidth||4)*sx),bh=Math.max(6,(q.d.BoxHeight||4)*sy);c.strokeStyle='#ff2d2d';c.lineWidth=2;c.strokeRect(g.px*sx-bw/2-4,g.py*sy-bh/2-4,bw+8,bh+8);
+  const p=doc.createElement('p');p.textContent=`Gray 프레임 ${g.frame.file} · 픽셀 ${f1(g.px)}, ${f1(g.py)} · 모델 ${g.model==='transform'?'frameToChuckPlane':'간단(보정 필요)'}`;doc.body.append(cv,p);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 11. 소거 Defect 리뷰 (가상 스크롤, 앞뒤 8개 미리 로딩)
+// ════════════════════════════════════════════════════════════════════════
+const RH=30;
+function renderReview(){const L=S.rvList,box=$('#rvList');$('#rvCount').textContent=`소거 Defect ${L.length}개`;box.innerHTML=`<div style="height:${L.length*RH}px"></div>`;paintList();showRv();modelState()}
+function paintList(){const box=$('#rvList'),L=S.rvList,top=box.scrollTop,h=box.clientHeight||560,s=Math.max(0,Math.floor(top/RH)-5),e=Math.min(L.length,Math.ceil((top+h)/RH)+5);
+  box.querySelectorAll('.it').forEach(n=>n.remove());
+  for(let k=s;k<e;k++){const d=L[k].d,n=document.createElement('div');n.className='it'+(k===S.rv?' sel':'');n.style.top=k*RH+'px';n.dataset.k=k;
+    const ov=S.overlay[key(d)];n.textContent=`${k+1}. ID ${d.id} · (${f1(d.X)}, ${f1(d.Y)}) · C ${f2(d.Contrast)}${ov?' · '+ov:''}`;box.append(n)}}
+$('#rvList').addEventListener('scroll',paintList);
+$('#rvList').addEventListener('click',e=>{const n=e.target.closest('.it');if(n){S.rv=+n.dataset.k;showRv()}});
+let rvToken=0;
+async function showRv(){
+  const L=S.rvList;if(!L.length){$('#rvColor').innerHTML='<figcaption>Color</figcaption><div class="ph">소거 Defect 가 없습니다</div>';$('#rvGray').innerHTML='<figcaption>Gray Crop</figcaption>';$('#rvInfo').innerHTML='';return}
+  S.rv=Math.max(0,Math.min(L.length-1,S.rv));const q=L[S.rv],tk=++rvToken,box=$('#rvList');
+  if(S.rv*RH<box.scrollTop)box.scrollTop=S.rv*RH;else if((S.rv+1)*RH>box.scrollTop+box.clientHeight)box.scrollTop=(S.rv+1)*RH-box.clientHeight;paintList();
+  const x=info(q),c=linkColor(q.d,q.d.scan,S.cmp.o.ctol),g=grayOf(q.d);
+  const fill=()=>{const gl=q.d.gl;$('#rvInfo').innerHTML=[['상태',x.st],['ID / resultID',`${x.id} / ${q.d.resultID}`],['Step · 호기',`${x.step} · CA ${q.d.scan.contrast??'?'} · ${x.tool||'-'}`],['Wafer X/Y',`${f1(x.X)}, ${f1(x.Y)} µm`],['Die',x.die+(x.dieXY?` · 내부 ${x.dieXY} µm`:'')],
+    ['Area',`${f2(x.area)} µm² (${q.d.area} px)`],['Width / Length',`${f1(x.width)} / ${f1(x.length)}`],['Box W×H',x.box+' px'],['Contrast(실제)',f2(x.contrast)],
+    ['Color',c?`${c.c.file} · ${c.how}`:'연결 실패'],['Gray',g.frame?`${g.frame.file} · (${f1(g.px)}, ${f1(g.py)}) · ${g.model==='transform'?'frameToChuckPlane':'간단 모델(보정 필요)'}`:g.reason],
+    ['GL(Local 추정)',gl?`ROI mean ${f1(gl.mean)} · median ${f1(gl.median)} · max ${gl.max} · ring median ${f1(gl.ring)} · ROI−local ${f1(gl.delta)}`:'-']]
+    .map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')};fill();
+  const cf=$('#rvColor');cf.innerHTML='<figcaption>Color</figcaption>';const u=await colorUrl(q.d);if(tk!==rvToken)return;
+  if(u){const im=new Image();im.src=u;im.alt='Color';cf.append(im)}else cf.insertAdjacentHTML('beforeend','<div class="ph">Color 이미지 연결 실패</div>');
+  const gf=$('#rvGray');gf.innerHTML='<figcaption>Gray Crop</figcaption>';const r=await grayCrop(q.d,420);if(tk!==rvToken)return;
+  if(r.canvas)gf.append(r.canvas);else gf.insertAdjacentHTML('beforeend',`<div class="ph">${esc(r.reason)}</div>`);fill();
+  // 앞뒤 8개 미리 로딩(LRU 가 넘치는 것을 정리)
+  for(let k=1;k<=8;k++)for(const j of [S.rv+k,S.rv-k]){const n=L[j];if(!n)continue;colorUrl(n.d);const gg=grayOf(n.d);if(gg.frame&&k<=4)grayBmp(n.d.scan,gg.frame)}
+}
+function modelState(){const v=Object.values(S.overlay),ok=v.filter(x=>x==='맞음').length,ng=v.filter(x=>x==='벗어남').length;
+  $('#modelSt').textContent=`좌표 모델: ${ok>=10&&!ng?'확인됨':'미확정'} (맞음 ${ok}/10, 벗어남 ${ng})${ng?' — 벗어난 샘플이 있어 확정하지 않습니다. Step 2 에서 보정하십시오':''}`}
+function mark(v){const q=S.rvList[S.rv];if(!q)return;S.overlay[key(q.d)]=v;modelState();paintList()}
+$('#okBtn').onclick=()=>mark('맞음');$('#ngBtn').onclick=()=>mark('벗어남');
+document.addEventListener('keydown',e=>{if(!$('#step4').classList.contains('on')||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
+  const k=e.key.toLowerCase();
+  if(k==='arrowdown'||k==='j'){S.rv++;showRv();e.preventDefault()}else if(k==='arrowup'||k==='k'){S.rv--;showRv();e.preventDefault()}
+  else if(k==='enter'){const q=S.rvList[S.rv];if(q)openWindow(q);e.preventDefault()}else if(k==='o')mark('맞음');else if(k==='x')mark('벗어남')});
+
+// ════════════════════════════════════════════════════════════════════════
+// 12. 마법사 이동 · 테마
+// ════════════════════════════════════════════════════════════════════════
+function go(n){if(n>=3&&!S.cmp&&!runCompare())n=2;$$('section.step').forEach(s=>s.classList.toggle('on',s.id==='step'+n));
+  $$('nav button[data-step]').forEach(b=>b.toggleAttribute('aria-current',b.dataset.step==n)&&b.setAttribute('aria-current','step'));
+  if(n==3)drawMap();if(n==4){showRv();$('#rvList').focus()}}
+$$('nav button[data-step]').forEach(b=>b.onclick=()=>go(+b.dataset.step));$('#to2').onclick=()=>go(2);
+['#tol','#coordSrc','#pix','#ctol','#flipX','#flipY','#offX','#offY','#cropSz','#ringW'].forEach(s=>$(s).addEventListener('change',()=>{grayMemo.clear();if(S.cmp)runCompare()}));
+$('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;
+  r.dataset.theme=dark?'light':'dark';try{localStorage.setItem('cw.theme',r.dataset.theme)}catch(e){}drawMap()};
+try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
+renderScans();
+// 시험용(Playwright): 순수 함수와 파일 주입
+window.__cw={parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+</script>
+</body>
+</html>
