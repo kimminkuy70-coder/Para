@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #51 Contrast Wizard Wafer map 의 Die 가 많고 wafer 가 큼 → Wafer Map 파일 기준 (2026-11-09 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `8cf1f7c` · 이슈 Para #51("Graylevel 시뮬레이션 브랜치 신규생성 2") · 작업 브랜치 **`version_graylevel_simulation`**.
+- 요청: wafer map 의 die 수가 기존보다 많고 wafer 면적이 훨씬 커 보임 — 수정. 댓글로 실제 맵 파일 예시(DEVICE/LOT/WAFER/FNLOC:180/ROWCT:6/COLCT:7 … RowData 6줄, `___` = 밖)를 줌.
+  소유자가 세션에서 "댓글 추가로 남겼어 반영해서 수정해"라고 지시. 같은 때 routine run 도 #51 을 접수했다(09:20, 중복 주의).
+- 원인: 종전 `waferRect` 가 ① (0,0) 원점과 Defect 범위까지 직사각형에 넣고 ② ProductInfo Cols×Rows 칸을 전부 Die 로 그리고 ③ 그 큰 직사각형에 내접한 원을 wafer 로 그렸다 → Die 가 많고 wafer 가 컸다. 실제 Die 배치(맵 파일)는 읽지 않았다.
+- 한 일(`AOI_Contrast_Wizard.html`): `parseWaferMap`(RowData · 머리 줄), 결과 폴더에서 RowData 줄이 있는 글 파일 자동 찾기, Step 2 [Wafer Map 파일 고르기] · 상태 문구(`#mapSt`, ProductInfo 크기와 다르면 알림),
+  `dieCells`/`waferGeom`: 맵 파일이 있으면 `___` 아닌 칸만 Die(굵게, 코드 ≠ 000 은 옅은 노랑), 원 = Die 를 모두 감싸는 원. 없으면 ProductInfo (Cols−1)×(Rows−1) 격자 + 내접 원. 화면 범위 = 직사각형 ∪ 원 ∪ Defect.
+- 내 해석(확인 전): ⓐ 맵 칸 (r, c) → 격자 ix=(COLCT−1)−c, iy=(ROWCT−1)−r — #50 에서 검증된 Die 식(DieCol=(Cols−2)−ix)의 역이라 **좌우가 맵 파일 글자 순서와 반대로 보인다**(FNLOC 180 과 맞는다고 봄). 반대면 한 줄로 바꿀 수 있음
+  ⓑ ProductInfo 의 실제 Die 격자 = (Cols−1)×(Rows−1) ⓒ wafer 원 = 맵 Die 를 모두 감싸는 가장 작은 중심원 ⓓ 맵 파일 = 이름과 무관하게 RowData 줄이 있는 4MB 이하 글 파일(.ini/.md/.xml/이미지 제외).
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(예시 맵: 6×7 · Die 30 · FNLOC 180, 맵 적용 후 그린 Die 30 · 굵은 Die 30, 맵 없을 때 ≤ (Cols−1)×(Rows−1)). 실제 결과 폴더 · Edge 실기 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML).
+- 남은 일: 해석 ⓐ~ⓓ 확인(특히 좌우 방향), 실제 결과 폴더에 맵 파일이 들어 있는지 · 파일 이름, #50 의 남은 일.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #51 | wafer map die 가 많고 wafer 가 큼 + 실제 맵 파일 예시 | Wafer Map 파일 기준으로 Die · 원 그리기, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #50 후속 2 Contrast Wizard: 집합 기호 표기 · 보기 5가지 · Die 격자 (2026-11-09 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `843a5b3` · 이슈 Para #50 후속 2(소유자 세션 지시) · 작업 브랜치 **`version_graylevel_simulation`**.

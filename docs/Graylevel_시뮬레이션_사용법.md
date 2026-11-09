@@ -27,7 +27,7 @@
 | 동일 Defect | Wafer x/y(또는 ActualX/Y 선택) 거리 ≤ 허용오차. 격자 최근접 검색 + 거리순 greedy 1:1 (중복 매칭 없음) |
 | 구분(집합 기호) | 쌍 A → B 마다 `A ∖ B`(A 에만 = B 에서 없어진 Defect) · `A ∩ B`(둘 다) · `B ∖ A`(B 에만). 리스트(Step) 이름으로 표기(유지 · 소거 · 신규 라는 말은 쓰지 않음, 소유자 지시). 보기 = `A ∪ B`(모두) · `A (전체)` · `B (전체)` · `A ∖ B` · `A ∩ B` · `B ∖ A` — Wafer map 단추와 상세 표 [보기] 가 같음 |
 | 쌍 | 리스트를 Contrast AVG 오름차순(빈 값은 등록 순서로 뒤)으로 놓고 i<j 모든 쌍. 쌍별 표 = A · B Defect 수, 둘 다, A 에만, B 에만, 없어진 비율(A 에만 ÷ A) |
-| Wafer map | 좌표 기준 = wafer map 을 꽉 채우는 가상의 직사각형의 좌측 하단 (0,0)(소유자 설명). 직사각형 = ProductInfo Die 격자(OffX + Cols×PitchX, OffY + Rows×PitchY)와 Defect 범위를 덮는 영역, wafer 원 = 직사각형에 내접. X 오른쪽 · Y 위쪽. Die 격자 = 모든 칸 경계를 또렷하게, **네 모서리가 모두 wafer 원 안인 완전한 Die 는 굵게** |
+| Wafer map | **Wafer Map 파일**(RowData 줄 — 결과 폴더에서 자동으로 찾거나 Step 2 [Wafer Map 파일 고르기])이 있으면 `___` 이 아닌 칸만 Die 로 그리고(굵게), 코드가 000 이 아닌 Die 는 옅은 노랑. 파일 칸 (r, c) → 격자 ix=(COLCT−1)−c, iy=(ROWCT−1)−r(Die 식의 역, 파일 맨 위 줄 = wafer 위쪽). wafer 원 = 실제 Die 를 모두 감싸는 원. 파일이 없으면 ProductInfo 격자 (Cols−1)×(Rows−1) + 직사각형 내접 원, 네 모서리가 원 안인 Die 만 굵게. 점선 = Die 격자 직사각형(좌측 하단 = OffX, OffY, 소유자 설명 (0,0)). X 오른쪽 · Y 위쪽 |
 | Die | `ix=floor((X−OffX)/PitchX)`, `DieCol=(Cols−2)−ix`, `DieRow=(Rows−2)−iy`, Die 내부 = 나머지. 값은 폴더마다 `ProductInfo.ini` 에서 읽음. 없으면 "계산 불가", Cols/Rows 밖이면 "범위 밖"(빨강) |
 | Gray 위치 | **Para 'Color · Gray 매칭'(`param_manager/colorgray.py`)과 같은 모델**: `frameToChuckPlane(.<레시피>).ini` 의 `Scan_X/Scan_Y` 역행렬로 `p = M⁻¹·(결함 − 프레임 좌표 − offset)`, 3168×1024 안에 들고 가장자리에서 가장 먼 프레임. 레시피 번호(.t.<n>)가 맞는 프레임 먼저 |
 | Gray 간단 모델 | `frameToChuckPlane` 이 없을 때만: `(결함 − 프레임 좌표) / PixelSize`. "보정 필요" 표시. 두 모델 모두 X/Y 반전 · X/Y Offset 을 Step 2 에서 조정 |
