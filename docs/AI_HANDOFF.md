@@ -17,14 +17,13 @@
   `tools/check_project.py` = `test_batchreport.py`(tkinter 없음, 기존과 같음) · `test_kla_cache.py` 실패.
   `test_kla_cache.py::test_build_and_search_cache` 는 이번 변경 전에도 실패 — 시험 자료 날짜 2026-11-05 를 '최근 3일'로 가정해 오늘(11-09)부터 깨지는 날짜 의존 시험(고치지 않음, 남은 일).
   UI 시험은 `python`(=/usr/local/bin/python)에 openpyxl 이 있어야 함(`python -m pip install openpyxl`, 개발 환경만). Windows 실기는 미검증.
-- 릴리스 **v12.9.26 시작 못 함**: 코드 커밋 `412adab` 은 `version_v12` 에 push 했으나 routine run 의 `git tag v12.9.26 412adab && git push origin v12.9.26` 이
-  Claude Code 권한 검사("Create Public Surface")에 거절됨(#40 · #41 · #43 과 같음). 거절을 피하려고 REST refs · workflow_dispatch 는 시도하지 않음.
-  소유자가 세션에서 "릴리스까지 해"라고 지시하거나 Actions › build-desktop.yml › Run workflow(ref `version_v12`, version `12.9.26`)로 직접 시작하면 됨.
-- 남은 일: v12.9.26 릴리스 시작(소유자), 해석 ⓐ~ⓔ 확인, `test_kla_cache.py` 날짜 의존 고치기(오늘 기준 날짜로 만들기).
+- 릴리스 **v12.9.26 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.9.26 (`Camtek_AOI_manager_v12.9.26.zip`, workflow_dispatch run 42556763024 성공, 태그 = `8361374`).
+  routine run 에서는 `git push origin v12.9.26` 이 권한 검사("Create Public Surface")에 거절됨. 소유자가 세션에서 "릴리스까지 해"라고 지시한 뒤 dispatch 로 시작.
+- 남은 일: 해석 ⓐ~ⓔ 확인, `test_kla_cache.py` 날짜 의존 고치기(오늘 기준 날짜로 만들기).
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| Para #44 | Lot 고르기 레시피 탭 · 전체 선택(시간순) · Lot History 1장 스캔 wafer 슬롯 맞춤 · Lot 박스 제목 색 | 구현 · 시험 통과(`412adab`), v12.9.26 릴리스는 tag push 가 권한 검사에 막혀 시작 못 함(소유자 조치 필요) |
+| Para #44 | Lot 고르기 레시피 탭 · 전체 선택(시간순) · Lot History 1장 스캔 wafer 슬롯 맞춤 · Lot 박스 제목 색 | 구현 · 시험 통과(`412adab`), v12.9.26 릴리스 완료(소유자 지시 뒤 dispatch) |
 
 ## 최신 재개 — Para #43 자동 분석 KLA 탭 · 다음 실행 날짜 · KLA 찾기 UX (2026-11-09 KST, `version_v12`, v12.9.25)
 
