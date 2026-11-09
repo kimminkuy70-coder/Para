@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #45 리뷰 HTML: FS UBM Layer 를 Job 이름의 'FS' 로도 찾기 (2026-11-09 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `c669489` · 이슈 Para #45("리뷰용 프로그램 브랜치 신규 생성 4") · 작업 브랜치 `version_TB500_review`(이슈 제목 연속성으로 판단, 릴리스 없음 — 단일 HTML).
+- 요청: "FS UBM layer 가 검색이 안 된다. 검색어를 FS 로 하면 된다, 다른 건 바뀔 수 있으니 제일 확실한 게 FS" + Batch Report 예시 2개
+  (`R_TB500 LIVE_FS_6324_LSD-FS-DIA_..._BatchReport.htm`, `R_TB500 LIVE_FS_6324_LSD-FS_..._BatchReport.htm`, 호기 AOI-3).
+- 원인: Camtek 호기 찾기(`camtekHits`)는 Job 이름에 Layer 표기(`STAGES[].keys`)가 있어야 하는데, FS UBM 의 표기는 `FS UBM`/`FSUBM` 뿐이라 UBM 이 없는 Job 이 안 걸렸다.
+- 한 일(`TB500_Review.html`): FS UBM keys 에 `/(?:^|[^A-Z])FS(?![A-Z])/i`(앞뒤가 영문자가 아닌 FS 낱말) 추가. 같은 keys 를 쓰는 `stageOf`(Conder 하위 폴더 Layer)에도 적용된다.
+  `docs/TB500_review_사용법.md` 2절 Layer 설명에 한 줄 추가.
+- 시험: `tools/test_tb500_review.mjs` 에 stageOf 단언(예시 Job 2개 · `FSUBM` → FS UBM, `FSX_RDL1` · `CFS_RDL2` · PI3 Job 은 FS UBM 아님) 추가, 통과.
+  `python tools/check_project.py` 는 이 환경에 `openpyxl` 등이 없어 Python 시험 import 실패(이번 변경과 무관, Python 안 고침). 실제 Edge · Conder Scan · 회사 OneDrive 는 미검증.
+- 내 해석(확인 전): ⓐ `LSD-FS-DIA`(DIA 붙은 Job)도 FS UBM 으로 보고 다른 FS Job 과 한 묶음으로 Pass/Fail 판정한다 ⓑ Job 이름의 숫자 `6324`(표상 RDL2 Review 공정번호)는 Layer 판정에 쓰지 않는다
+  ⓒ HTML 만 바꿨으므로 [캐시 갱신] 없이 새 HTML 로 바꾸기만 하면 된다(색인 행에 Job 이름이 이미 있음).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #45 | FS UBM Layer 가 Camtek 호기 검색이 안 됨 → 'FS' 로 찾기 | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #42 후속 3: 리뷰 HTML [중단] 버튼 · CSV 삭제 · 머리 제목만 (2026-11-07 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-07 · 기준 커밋 `52fc652` · Para #42 후속(세션 지시): "조회할 때 실수해서 중단해야 할 때도 있어 중단 버튼, .csv 저장 버튼은 삭제, 맨 위 상단 문구도 지우고 제목만".

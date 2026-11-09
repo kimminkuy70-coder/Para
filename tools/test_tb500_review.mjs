@@ -40,10 +40,13 @@ const fn=await page.evaluate(()=>{const t=window.__tb500;return{
   code:[t.lotCode('CMS-RDL1'),t.lotCode('0701 N SPT X'),t.lotCode('FOCUS'),t.lotCode('BBF_WBG')],
   kinds:['1-1. RDL4_재리뷰','1. RDL4_재스캔 (#24,25)','4. PIDS5_Skip (RDL3 재리뷰 결과 나오면 맵만 수정해 주세요)','3. RDL3 (#23X)'].map(t.kindOf),
   stage:[t.stageOf('4. PIDS5_Skip ').key,t.stageOf('TB500_PI4-Multi').key,t.stageOf('TB500_RDL3-Multi').key,t.stageOf('RDL12')],
+  fs:['R_TB500 LIVE_FS_6324_LSD-FS','R_TB500 LIVE_FS_6324_LSD-FS-DIA','8. FS UBM','TB500_FSUBM-Multi','FSX_RDL1','R_TB500_LIVE_PI3 - Enhanced','CFS_RDL2'].map(x=>(t.stageOf(x)||{}).key||null),
   start:[t.batchStart('30-Aug-26 09:41:31 PM'),t.batchStart('01-Jan-26 12:05:00 AM'),t.fileStart('J_S_SM_26-Oct-22_(11.23.53)_BatchReport.htm')]}});
 assert.deepEqual(fn.code,['CMS','SPT','','BBF']);
 assert.deepEqual(fn.kinds,['rereview','rescan','skip','base']);
 assert.deepEqual(fn.stage,['PIDS5','PIDS3','RDL3',null]);
+// Para #45: Job 이름에 UBM 이 없어도 'FS' 낱말이면 FS UBM. FS 가 다른 낱말의 일부면 아님.
+assert.deepEqual(fn.fs,['FS UBM','FS UBM','FS UBM','FS UBM','RDL1','PIDS5','RDL2']);
 assert.deepEqual(fn.start,['2026-08-30 21:41:31','2026-01-01 00:05:00','2026-10-22 11:23:53']);
 // 첫 화면 = 캐시 없음 알림
 await page.locator('#banner.show').waitFor();

@@ -28,7 +28,7 @@
 
 ## 3. 판정 규칙 (소유자 답변 2026-11-06 댓글 6691832497)
 - Lot 폴더 = Conder Scan 바로 아래에서 Lot 이름이 들어 있는 폴더(예 `976. TB500.INT1041 (CMS)`). 괄호 안 = S/M.
-- Layer = 폴더 이름(괄호 앞)에서 가장 앞에 나오는 Layer 표기(RDL4 · PIDS3(PI4) · RDL3 · PIDS5(PI3) · RDL2 · PIDS7(PI2) · RDL1 · FS UBM).
+- Layer = 폴더 이름(괄호 앞)에서 가장 앞에 나오는 Layer 표기(RDL4 · PIDS3(PI4) · RDL3 · PIDS5(PI3) · RDL2 · PIDS7(PI2) · RDL1 · FS UBM). FS UBM 은 `FS UBM`/`FSUBM` 말고도 앞뒤가 영문자가 아닌 `FS` 낱말이면 FS UBM 으로 봅니다(Para #45 — Camtek Job 이름에 UBM 이 없는 경우, 예 `R_TB500 LIVE_FS_6324_LSD-FS`).
   예 `4. PIDS5_Skip (RDL3 재리뷰 결과 …)` = PIDS5 (괄호 안 RDL3 는 보지 않음).
 - 폴더 종류(괄호 앞 이름): `재리뷰` 포함 = 재리뷰 폴더, `Skip` = Skip, `재스캔` = 재스캔, 그 밖 = 기본 폴더.
 - **재리뷰 완료** = 같은 Layer 에 `_재리뷰` 폴더가 있다. 그 폴더 안 맵(.txt) 수를 세고 경로를 보여 준다(파일 5천 개 또는 2.5초가 넘으면 세지 않고 경로만). 호기 · 스캔 시각은 조사하지 않는다.

@@ -121,6 +121,7 @@ const RECORD=PREFIX+'기록.json';
 const OUR_FILE=/^TB500리뷰_(Camtek|KLA)색인_\d{8}_\d{6}\.json$/;
 const SHARE={camtek:{info:'캐시정보.json',name:/^BatchReport_캐시_(\d{8}_\d{6})\.zip$/},kla:{info:'KLA캐시정보.json',name:/^KLA_캐시_(\d{8}_\d{6})\.zip$/}};
 // Layer = 원본 HTML 의 순서 · 공정번호(AOI / Review). keys = Conder 폴더 이름과 Job 이름에서 찾는 표기.
+// FS UBM: Camtek Job 이름에 UBM 이 없을 수 있어(예: R_TB500 LIVE_FS_6324_LSD-FS) 앞뒤가 영문자가 아닌 'FS' 낱말로도 찾는다(Para #45).
 const STAGES=[
  {key:'RDL4',keys:[/RDL[ _.-]*4(?!\d)/i],aoi:'6305',aoiName:'AOI',rev:'6412',revName:'2D/RE'},
  {key:'PIDS3',keys:[/PIDS[ _.-]*3(?!\d)/i,/(?:^|[^A-Z])PI[ _.-]*4(?!\d)/i],aoi:'6311',aoiName:'AOI2',rev:'6321',revName:'2D/R2'},
@@ -129,7 +130,7 @@ const STAGES=[
  {key:'RDL2',keys:[/RDL[ _.-]*2(?!\d)/i],aoi:'6314',aoiName:'AOI5',rev:'6324',revName:'2D/R5'},
  {key:'PIDS7',keys:[/PIDS[ _.-]*7(?!\d)/i,/(?:^|[^A-Z])PI[ _.-]*2(?!\d)/i],aoi:'6315',aoiName:'AOI6',rev:'6325',revName:'2D/R6'},
  {key:'RDL1',keys:[/RDL[ _.-]*1(?!\d)/i],aoi:'6316',aoiName:'AOI7',rev:'6326',revName:'2D/R7'},
- {key:'FS UBM',keys:[/FS[ _.-]*UBM/i,/FSUBM/i],aoi:'6317',aoiName:'AOI8',rev:'6327',revName:'2D/R8'}];
+ {key:'FS UBM',keys:[/FS[ _.-]*UBM/i,/FSUBM/i,/(?:^|[^A-Z])FS(?![A-Z])/i],aoi:'6317',aoiName:'AOI8',rev:'6327',revName:'2D/R8'}];
 const PROC=new Map();STAGES.forEach(s=>{PROC.set(s.aoi,s);PROC.set(s.rev,s)});
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pad=n=>String(n).padStart(2,'0');
