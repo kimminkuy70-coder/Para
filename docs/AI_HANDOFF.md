@@ -11,12 +11,13 @@
 - 내 해석(확인 전): 예전 번호 형식도 계속 받는다(둘 다 있으면 `frameToChuckPlane.ini` 우선).
 - 시험: `python -m unittest tests.test_colorgray` 8개 통과(고치기 전 새 시험 실패 확인), `tools/check_project.py` = `test_batchreport.py`(tkinter 없음) · `test_kla_cache.py`(날짜 의존) 만 실패(종전과 같음).
   frontend 는 문자열 2곳만 바뀌어 빌드 생략. Windows 실기 · 실제 장비 폴더는 미검증.
-- 릴리스 v12.9.28: 소유자가 세션에서 "작업 완료되면 릴리즈까지해"라고 지시(2026-11-09). 결과는 아래 표 · 이슈 댓글.
+- 릴리스 **v12.9.28 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.9.28 (`Camtek_AOI_manager_v12.9.28.zip`, workflow_dispatch run 42576525466 성공, 태그 = `b28435d`).
+  소유자가 세션에서 "작업 완료되면 릴리즈까지해"라고 지시(2026-11-09). `git push origin v12.9.28` 은 "remote end hung up" 으로 실패, dispatch 로 시작.
 - 남은 일: 실기에서 같은 폴더로 다시 확인, routine 릴리스 방식(#48 절 ⓐ~ⓒ) 소유자 결정, `test_kla_cache.py` 날짜 의존 고치기.
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| Para #49 | Color · Gray 매칭이 frameToChuckPlane.ini 를 못 찾음 — 그 파일로 진행되게 | 구현 · 시험 통과, v12.9.28 릴리스 시작 |
+| Para #49 | Color · Gray 매칭이 frameToChuckPlane.ini 를 못 찾음 — 그 파일로 진행되게 | 구현 · 시험 통과(`b28435d`), v12.9.28 릴리스 완료(dispatch) |
 
 ## 최신 재개 — Para #48 Color · Gray 매칭 Wafer 폴더 찾기(네트워크 드라이브) (2026-11-09 KST, `version_v12`, v12.9.27)
 
