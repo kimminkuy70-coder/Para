@@ -69,7 +69,7 @@ await page.locator('#legend [data-view="all"]').click();await page.waitForTimeou
 const fd=await page.evaluate(()=>window.__cw.state.fullDies);
 // Para #51 후속: 맵 파일 없이 ProductInfo(Pitch 37249×44905.8, Cols 10, Rows 9) + 300 mm 원으로 소유자 예시 맵과 같은 Die 30개
 assert.equal(fd,30,'계산 Die '+fd);
-assert.match(await page.locator('#mapSt').innerText(),/계산 Die 30개 \(Col 0~6 × Row 0~5, 좌측 하단 \(0,0\), 지름 300 mm, wafer 중심 130372, 134717 µm\)/);
+assert.match(await page.locator('#mapSt').innerText(),/계산 Die 30개 \(Col 0~6 × Row 0~5, 좌측 하단 \(0,0\), 지름 300 mm, wafer 중심 130372, 134717 µm · 추정\(중심 정보 없음 · 확인 필요\)\)/);   // 합성 ProductInfo 에 CenterX/Y 없음 → 종전 추정
 // Notch: 맵 파일이 없으면 기본 아래(180)
 assert.deepEqual(await page.evaluate(()=>[window.__cw.state.notchDeg,window.__cw.state.notchSrc]),[180,'기본값']);assert.match(await page.locator('#mapSt').innerText(),/Notch 아래 \(기본값\)/);
 // Para #51: Wafer Map 파일(소유자 예시)이 있으면 '___' 아닌 칸만 Die 로 그린다(종전: ProductInfo Cols×Rows 전부 → die 가 많았다)
@@ -109,6 +109,20 @@ assert.match(csv,/CA20 ∖ CA27,3,103,5000\.00,5000\.00.*C2\.c\.1\.jpeg,Index 3 
 assert.match(csv,/CA20 ∖ CA27,4,104,.*,,연결 실패,/);
 assert.match(csv,/CA27 ∖ CA20,9,109,.*,,연결 실패,/);
 assert.match(csv,/CA20 ∩ CA27,2,102,1100\.00,200\.00.*C1\.c\.1\.jpeg,좌표\(0\.0 µm\),F1\.t\.1\.jpeg,1100\.0,200\.0,transform/);
+// Para #53: 실제 결과 폴더 형식 — ProductInfo CenterX/CenterY 가 있으면 그 중심을 쓴다(실제 자료: (5.5·PitchX, 5·PitchY), 맨 왼쪽 아래 Die = 장비 Col 2 · Row 2).
+// 종전 추정 중심(3.5·PitchX, 3·PitchY)은 Defect 를 2칸씩 오른쪽 위로 밀었다. s_DieLocation(Die 중심) 30개와 계산 Die 가 같아야 한다.
+const r53=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=44905.8;
+  const rowsSpec=[[2,[4,5,6]],[3,[3,4,5,6,7]],[4,[2,3,4,5,6,7,8]],[5,[2,3,4,5,6,7,8]],[6,[3,4,5,6,7]],[7,[4,5,6]]];
+  const loc=[];for(const [r,cs] of rowsSpec)for(const cc of cs)loc.push({x:(cc+.5)*PX,y:(r+.5)*PY,sx:PX,sy:PY});
+  const saved=S.scans.map(s=>[s.product,s.dieLoc]);
+  for(const s of S.scans){s.product={...s.product,centerX:5.5*PX,centerY:5*PY,centerSrc:'ProductInfo'};s.dieLoc=loc}
+  const D53=c.dieCells();const out={fd:D53.calc,base:S.dieBase,loc:S.dieLocCheck,src:S.center.src,cx:Math.round(S.center.cx)};
+  // 실제 자료 첫 Defect 와 같은 꼴: Wafer (203335, 203642) = 장비 Col 5, Row 4 → 화면 Die (3, 2)
+  const d=c.dieOf(203335,203642,{pitchX:PX,pitchY:PY,offX:0,offY:0});out.eq=[d.col,d.row];out.rel=[d.col-S.dieBase.c,d.row-S.dieBase.r];out.inSet=S.dieSet.has(d.col+','+d.row);
+  out.dl=c.parseDieLoc(new Uint8Array(256).buffer,null).length;
+  S.scans.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});c.dieCells();return out});
+assert.equal(r53.fd,30);assert.deepEqual(r53.base,{c:2,r:2});assert.equal(r53.loc.ok,true);assert.equal(r53.loc.n,30);assert.equal(r53.src,'ProductInfo');assert.equal(r53.cx,204870);
+assert.deepEqual(r53.eq,[5,4]);assert.deepEqual(r53.rel,[3,2]);assert.equal(r53.inSet,true);assert.equal(r53.dl,2);
 // 지도 hover → 툴팁 + 그림
 await page.locator('#map').hover({position:{x:5,y:5}});
 // 리뷰: 없어진 Defect 2개, 키 이동, Gray crop / 범위 밖 문구, 위치 지도 깜빡임

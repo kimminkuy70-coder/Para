@@ -1,5 +1,30 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #53 실제 결과 폴더(사진 제외.zip) 분석 · wafer 중심 = ProductInfo CenterX/Y (2026-11-10 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `01177fa`(소유자 zip 업로드) · 이슈 Para #53("Graylevel 시뮬레이션 브랜치 신규생성 4", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**.
+- 요청: 브랜치의 `사진 제외.zip` 을 풀어 모든 파일 분석, defect 좌표 · wafer map 관련 정보 수집 후 다시 검토, 오류 원인 보고와 수정.
+- 분석(zip 은 소유자가 올린 그대로 둠, 고객 값은 이 문서에 적지 않음 — 좌표 모델 값만):
+  ⓐ `s_DieLocation.dat`(128 byte × 30) = 스캔한 Die 중심 Wafer 좌표 → Die 30개 = 장비 Col 2~8 · Row 2~7, 아래 줄부터 3·5·7·7·5·3.
+  ⓑ ProductInfo `[Geometric] CenterX/CenterY` (Params_WaferInfo `Center_X/Y` 도 같음) = (5.5·PitchX, 5·PitchY). 이 중심 + 300 mm 원 + '네 모서리 안' 규칙 = s_DieLocation 30개와 정확히 같다.
+  ⓒ ColorImageGrabingInfo 353개의 `Col/Row` = floor(FaultX/PitchX), floor(FaultY/PitchY) 353/353 → #52 Die 식은 맞다. FaultX/Y = Surface.flt x/y(거리 0), `Index` = Surface.flt 기록 순서(0부터).
+  ⓓ ScanResultImageList 좌표 = s_FrameData WaferPos = 프레임 **가운데**(frameToChuckPlane offset −1219.4/−394.2 = 3168×1024 절반 × 0.7698). 353개 모두 프레임 안 → 기존 `locateGray` 모델과 맞음(사진이 없어 Crop 화면은 미확인).
+  ⓔ Surface.flt `id` 전부 1, `frameIdx/xInFrame/yInFrame` 전부 0. Surface.flt.md 형식은 `Vartype` 숫자. ScanLog.ini `SurfaceDefects=353`.
+- **오류 원인**: #52 후속이 wafer 중심을 '맨 왼쪽 아래 Die = Wafer (0,0)' 로 **추정**해 (3.5·PitchX, 3·PitchY) 에 두었다. 실제는 (5.5·PitchX, 5·PitchY) → Die 칸과 원이 2칸씩 왼쪽 아래로 그려져 Defect 가 오른쪽 위로 밀려 보였고 353개 중 120개가 원 밖. (Die 번호 식은 맞았음.)
+- 한 일(`AOI_Contrast_Wizard.html`): `parseProduct` centerX/centerY · Params_WaferInfo 폴백, `parseDieLoc`, `dieCells` 중심 = ProductInfo → s_DieLocation 가운데 → 종전 추정(출처를 `#mapSt` 에 표시), s_DieLocation 비교(일치 ✔/다름 ⚠),
+  Color Col/Row 와 Die 번호 검증(`s.dieCheck`), 화면 Die 번호 = 맨 왼쪽 아래 Die (0,0)(`S.dieBase`, 장비 Col/Row 병기), 맵 파일 비교도 이 기준, `S.dieSet` 키 = 장비 Col/Row.
+  md `Vartype` 숫자 형식 · `<RecordSize Size>` 읽기, id 가 고유하지 않으면 ID = 기록 순서(`d.no`), `surfaceCount` 는 `SurfaceDefects=` 먼저 · ScanLog 먼저.
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(합성 자료에 #53 형식 검사 추가: 중심 ProductInfo · base (2,2) · s_DieLocation 30 일치 · (203335, 203642) = 장비 (5,4) = 화면 (3,2)).
+  실제 폴더(저장소 밖 scratch, 같은 폴더를 두 스캔으로)로 확인: '계산 Die 30 · 중심 204849, 224520 · s_DieLocation 일치 ✔ · Color Col/Row 353/353 · Defect 353개 모두 원 안', 수정 전 HTML 은 '120/353 원 밖'. 경고는 frameIdx 0 · id 고유 아님 두 줄만.
+  Python 은 바꾸지 않음. 실제 사진 · Edge 실기 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML, #50~#52 와 같음).
+- 내 해석(확인 전): ⓐ 화면 Die 번호는 소유자 #52 지시대로 맨 왼쪽 아래 Die = (0,0) 으로 다시 세고 장비 Col/Row 를 함께 적음(장비 번호를 그대로 쓰길 원하면 `S.dieBase` 를 0 으로) ⓑ Notch: 이 자료의 `Flat Pos=3`/`NotchPosition=3` 뜻을 몰라 쓰지 않음(기본 아래 그대로) ⓒ Pitch 는 CustomerDiePitch(37249) 그대로 — 실제 step(XDieIndex 37247.7)과 1.3 µm 차이, Die 번호 결과는 같음.
+- 남은 일: 해석 ⓐ~ⓒ 확인, 실제 사진이 있는 폴더로 Gray Crop · Color 연결 확인. 참고: `사진 제외.zip` 은 실제 장비 결과(고객 자료)가 저장소에 올라간 것 — 지울지는 소유자 판단.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #53 | zip 실제 결과 폴더 분석 · wafer map/defect 좌표 재검토 · 오류 원인 보고 · 수정 | 원인 = wafer 중심 추정 2칸 어긋남 → ProductInfo CenterX/Y 사용, s_DieLocation · Color Col/Row 검증 추가, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #52 후속 Die 좌표 = 좌측 하단 (0,0), 오른쪽 · 위쪽 증가 (2026-11-09 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `91f425a` · 이슈 Para #52 후속(소유자 세션 지시: "원래 다이 위치에서 너가 인식하는게 다른거 같은데 좌측하단 0,0에서 x,y그래프처럼 위쪽, 오른쪽 방향으로 1씩 증가한게 다이 좌표랑 동일해 다시 계산해봐") · 작업 브랜치 **`version_graylevel_simulation`**.

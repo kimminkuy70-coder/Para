@@ -154,7 +154,7 @@ details summary{cursor:pointer;color:var(--acc)}
       <label>Wafer 지름 <input type="number" id="waferD" value="300" min="1" step="1"> mm</label>
       <label>Edge 제외 <input type="number" id="edgeEx" value="0" min="0" step="0.5"> mm</label>
       <label>Notch <select id="notch"><option value="auto">자동 (맵 FNLOC · ProductInfo · 없으면 아래)</option><option value="180">아래 (180°)</option><option value="0">위 (0°)</option><option value="90">오른쪽 (90°)</option><option value="270">왼쪽 (270°)</option></select></label>
-      <span class="muted">Die 좌표 = 좌측 하단 (0,0) 에서 오른쪽 · 위쪽으로 1씩 커지는 x, y 그래프(Col = floor(X/PitchX), Row = floor(Y/PitchY)). Die = 네 모서리가 모두 wafer 원 안인 칸, 그 Die 들의 좌측 하단 = (0,0). 맵 파일이 없어도 됩니다.</span></div>
+      <span class="muted">Die 좌표 = 좌측 하단 (0,0) 에서 오른쪽 · 위쪽으로 1씩 커지는 x, y 그래프(Col = floor(X/PitchX), Row = floor(Y/PitchY)). Die = 네 모서리가 모두 wafer 원 안인 칸, 그 Die 들의 좌측 하단 = (0,0). wafer 중심은 ProductInfo CenterX/CenterY(장비 기록)를 씁니다. 맵 파일이 없어도 됩니다.</span></div>
     <div class="row"><b>Wafer Map 파일 (선택, 비교용)</b> <input type="file" id="mapInput" hidden><button id="mapBtn">Wafer Map 파일 고르기</button>
       <span id="mapSt" class="muted">결과 폴더 안에 RowData 줄이 있는 파일이 있으면 자동으로 계산 결과와 비교합니다.</span></div>
     <h3>Gray Crop 좌표 보정</h3>
@@ -243,6 +243,8 @@ const FLT_FIELDS = [
   ['particlesNum','int32',128],['particlesArea','int32',132],['Contrast','float64',136],['taskID','int32',144]];
 const TYPE_SIZE = {int8:1,uint8:1,byte:1,char:1,bool:1,int16:2,uint16:2,short:2,ushort:2,int32:4,uint32:4,int:4,uint:4,long:4,float32:4,float:4,single:4,float64:8,double:8,int64:8,uint64:8};
 function normType(t){t=String(t||'').toLowerCase().replace(/^system\./,'');
+  // Para #53: 실제 .md 는 Vartype 숫자(VARIANT 코드)를 쓴다: 2 int16 · 3 int32 · 4 float32 · 5 float64 · 16 int8 · 17 uint8 · 18 uint16 · 19 uint32 · 20 int64 · 21 uint64
+  const vt={2:'int16',3:'int32',4:'float32',5:'float64',16:'int8',17:'uint8',18:'uint16',19:'uint32',20:'int64',21:'uint64',22:'int32',23:'uint32'};if(/^\d+$/.test(t))return vt[t]||t;
   return {byte:'uint8',char:'int8',bool:'uint8',short:'int16',ushort:'uint16',int:'int32',uint:'uint32',long:'int32',float:'float32',single:'float32',double:'float64'}[t]||t}
 function readField(dv,o,t){switch(t){
   case 'int8':return dv.getInt8(o);case 'uint8':return dv.getUint8(o);case 'int16':return dv.getInt16(o,true);case 'uint16':return dv.getUint16(o,true);
@@ -258,8 +260,8 @@ function parseMd(text){
     for(const c of el.children||[])if(c.tagName.toLowerCase()===k&&!c.children.length)return c.textContent.trim();return null};
   const fields=[];let cur=0,recordSize=null;
   for(const el of doc.getElementsByTagName('*')){
-    const rs=get(el,'recordsize')||get(el,'recsize')||get(el,'size_of_record');if(rs&&recordSize==null&&!get(el,'type'))recordSize=+rs||null;
-    const name=get(el,'name'),type=normType(get(el,'type')||get(el,'datatype'));
+    const rs=get(el,'recordsize')||get(el,'recsize')||get(el,'size_of_record')||(el.tagName.toLowerCase()==='recordsize'?get(el,'size'):null);if(rs&&recordSize==null&&!get(el,'type'))recordSize=+rs||null;
+    const name=get(el,'name'),type=normType(get(el,'type')||get(el,'datatype')||get(el,'vartype'));
     if(!name||!TYPE_SIZE[type])continue;
     const off=get(el,'offset');const o=off!=null&&off!==''?+off:cur;
     fields.push({name,type,offset:o});cur=o+TYPE_SIZE[type]}
@@ -300,7 +302,7 @@ function parseColors(text){
     return {file:pick(kv,['filename','imagename','file','name','image'])||s.name,
       index:num(pick(kv,['index','defectindex','defectidx','faultindex','defectid','id'])),
       x:num(pick(kv,['faultx','x','defectx','posx'])),y:num(pick(kv,['faulty','y','defecty','posy'])),
-      recipe:num(pick(kv,['recipenumber','recipe'])),
+      recipe:num(pick(kv,['recipenumber','recipe'])),col:num(pick(kv,['col','diecol'])),row:num(pick(kv,['row','dierow'])),
       w:num(pick(kv,['imagesizex'])),h:num(pick(kv,['imagesizey'])),psx:num(pick(kv,['pixelsizex'])),psy:num(pick(kv,['pixelsizey'])),section:s.name}})
     .filter(c=>c.file);
 }
@@ -333,7 +335,9 @@ function parseProduct(text){
   return {pitchX:px,pitchY:py,cols,rows,offX:num(pick(kv,['customerdieoffsetx','offsetx','dieoffsetx','mapshiftx']))||0,offY:num(pick(kv,['customerdieoffsety','offsety','dieoffsety','mapshifty']))||0,
     waferD:um(num(pick(kv,['waferdiameter','wafersize','wafersizemm','diameter','substratediameter','wafer']))),
     edge:(()=>{const v=num(pick(kv,['edgeexclusion','edgeexclusionmm','edgeexclude','edgeexcl']));return v==null?null:v<=20?v*1000:v})(),
-    notch:num(pick(kv,['fnloc','notch','notchangle','notchlocation','notchdirection','flatangle','flatlocation']))};
+    notch:num(pick(kv,['fnloc','notch','notchangle','notchlocation','notchdirection','flatangle','flatlocation'])),
+    // Para #53: 실제 wafer 중심(장비 [Geometric] CenterX/CenterY, µm, Die 좌표와 같은 Wafer 좌표계). 없으면 null → s_DieLocation · 추정
+    centerX:num(pick(kv,['centerx','wafercenterx'])),centerY:num(pick(kv,['centery','wafercentery']))};
 }
 /** Wafer Map 파일(소유자 예시: DEVICE/LOT/WAFER/FNLOC/ROWCT/COLCT/REFPX/REFPY + RowData 줄) → {rows, cols, cells[r][c] = 코드 | null('___' = wafer 밖), head}.
  *  RowData 첫 줄 = 파일 맨 위 줄. RowData 가 없으면 null. */
@@ -354,8 +358,21 @@ function dieOf(x,y,p){
   const ix=Math.floor((x-p.offX)/p.pitchX),iy=Math.floor((y-p.offY)/p.pitchY);
   return {col:ix,row:iy,dx:x-p.offX-ix*p.pitchX,dy:y-p.offY-iy*p.pitchY,valid:ix>=0&&iy>=0};
 }
+/** s_DieLocation.dat(+ .md) → 스캔한 Die 의 중심 좌표 [{x, y, sx, sy}] (Para #53: 실제 결과 폴더에서 확인 — 128 byte 레코드,
+ *  x/y = Die 중심 Wafer 좌표 µm, DieSizeX/Y = Die 크기). 없거나 크기가 맞지 않으면 null. */
+function parseDieLoc(buf,mdText){
+  let rec=128,off={x:8,y:16,sx:116,sy:120};
+  const m=mdText&&/RecordSize\s+Size="(\d+)"/.exec(mdText);if(m)rec=+m[1];
+  if(mdText)for(const [k,n] of [['x','x'],['y','y'],['sx','DieSizeX'],['sy','DieSizeY']]){const r=new RegExp('Name="'+n+'"[^>]*Offset="(\\d+)"').exec(mdText);if(r)off[k]=+r[1]}
+  if(!buf||!buf.byteLength||buf.byteLength%rec)return null;
+  const dv=new DataView(buf),out=[];
+  for(let i=0;i<buf.byteLength/rec;i++){const o=i*rec;out.push({x:dv.getFloat64(o+off.x,true),y:dv.getFloat64(o+off.y,true),
+    sx:off.sx+4<=rec?dv.getFloat32(o+off.sx,true):null,sy:off.sy+4<=rec?dv.getFloat32(o+off.sy,true):null})}
+  return out.filter(d=>isFinite(d.x)&&isFinite(d.y));
+}
 /** ScanLog / ProductionInfo 글에서 Surface defect 수를 찾는다(교차 검증, 참고). */
-function surfaceCount(text){const m=/surface[^\r\n\d]{0,40}?(\d+)/i.exec(text);return m?+m[1]:null}
+function surfaceCount(text){const k=/^\s*SurfaceDefects\s*=\s*(\d+)/im.exec(text);if(k)return +k[1];   // Para #53: ScanLog.ini [2D] SurfaceDefects=
+  const m=/surface[^\r\n\d]{0,40}?(\d+)/i.exec(text);return m?+m[1]:null}
 
 // ════════════════════════════════════════════════════════════════════════
 // 2. 동일 Defect 1:1 매칭 — 격자(셀 = 허용오차) 최근접 검색 + 거리순 greedy, 중복 매칭 없음
@@ -473,7 +490,20 @@ async function buildScan(name,own){
   for(const [k,f] of files){if(/\.(jpe?g|png|bmp|flt|dat|md|ini|xml)$/i.test(k)||f.size>4e6)continue;const t=await f.text();if(!/^\s*RowData\s*:/mi.test(t))continue;
     const m=parseWaferMap(t);if(m){s.waferMap={...m,file:k};if(m.rowct&&m.rowct!==m.rows||m.colct&&m.colct!==m.cols)s.warns.push(`${k}: ROWCT/COLCT(${m.rowct}×${m.colct}) ≠ RowData(${m.rows}×${m.cols})`);break}}
   const pi=await text('ProductInfo.ini');if(pi){s.product=parseProduct(pi);if(!s.product)s.warns.push('ProductInfo.ini 에 Die Pitch/Cols/Rows 없음 — Die 계산 불가')}else s.warns.push('ProductInfo.ini 없음 — Die 계산 불가');
-  for(const [k,f] of files)if(/^(scanlog|productioninfo).*\.(txt|log|ini|csv|xml)$/i.test(k)){const c=surfaceCount(await f.text());if(c!=null){s.crossCount={file:k,count:c};
+  // Para #53: ProductInfo 에 중심이 없으면 Params_WaferInfo.ini [Geometric] Center_X/Center_Y
+  if(s.product&&s.product.centerX==null){const w=await text('Params_WaferInfo.ini');if(w){const q=parseProduct(w+'\nCustomerDiePitch_X=1\nCustomerDiePitch_Y=1\nCols=1\nRows=1');if(q&&q.centerX!=null){s.product.centerX=q.centerX;s.product.centerY=q.centerY;s.product.centerSrc='Params_WaferInfo'}}}
+  if(s.product&&s.product.centerX!=null&&!s.product.centerSrc)s.product.centerSrc='ProductInfo';
+  // Para #53: 스캔한 Die 목록(s_DieLocation.dat) — wafer map 검증용
+  if(get('s_DieLocation.dat'))s.dieLoc=parseDieLoc(await get('s_DieLocation.dat').arrayBuffer(),await text('s_DieLocation.dat.md'));
+  // Para #53: id 가 모두 같으면(실제 자료는 전부 1) 화면 ID = 기록 순서(0부터, ColorImageGrabingInfo Index 와 같음)
+  const ids=new Set(s.defects.map(d=>d.id));s.idByOrder=s.defects.length>1&&ids.size<s.defects.length;
+  for(const d of s.defects)d.no=s.idByOrder?d.i:d.id;
+  if(s.idByOrder)s.warns.push(`Surface.flt 의 id 가 고유하지 않음(${ids.size}종) — 표의 ID 는 기록 순서(0부터, Color Index 와 같음)`);
+  // Para #53: Die 번호 검증 — Color 이미지의 장비 Col/Row 와 Fault 좌표로 계산한 Col/Row 비교
+  if(s.product){let n=0,bad=0;for(const c of s.colors){if(c.col==null||c.row==null||c.x==null||c.y==null)continue;const d=dieOf(c.x,c.y,s.product);n++;if(d.col!==c.col||d.row!==c.row)bad++}
+    s.dieCheck=n?{n,bad}:null;if(bad)s.warns.push(`Die 번호 검증: Color 이미지 Col/Row 와 계산이 ${bad}/${n}개 다름 — Die Pitch · Offset 확인 필요`)}
+  // ScanLog 먼저(Para #53)
+  for(const [k,f] of [...files].sort((a,b)=>/^scanlog/.test(b[0])-/^scanlog/.test(a[0])))if(/^(scanlog|productioninfo).*\.(txt|log|ini|csv|xml)$/i.test(k)){const c=surfaceCount(await f.text());if(c!=null){s.crossCount={file:k,count:c};
     if(c!==s.defects.length)s.warns.push(`${k} 의 Surface defect 수 ${c} ≠ 파싱 ${s.defects.length}`);break}}
   return s;
 }
@@ -545,7 +575,9 @@ $('#runBtn').onclick=()=>{if(runCompare())go(3)};
 function mapStatus(){const c=S.cmp;if(!c){$('#mapSt').textContent='';return}const D=dieCells(),k=S.mapCheck;
   if(!D){$('#mapSt').textContent='ProductInfo.ini 가 없어 Die 를 계산할 수 없습니다(Defect 범위로만 그립니다).';return}
   const C=S.center;
-  let t=`계산 Die ${D.calc}개 (Col 0~${C.cols-1} × Row 0~${C.rows-1}, 좌측 하단 (0,0), 지름 ${D.rad*2/1000} mm${D.rin<D.rad?`, Edge 제외 ${(D.rad-D.rin)/1000} mm`:''}, wafer 중심 ${Math.round(C.cx)}, ${Math.round(C.cy)} µm)`;
+  let t=`계산 Die ${D.calc}개 (Col 0~${C.cols-1} × Row 0~${C.rows-1}, 좌측 하단 (0,0)${C.base.c||C.base.r?` = 장비 Col ${C.base.c}, Row ${C.base.r}`:''}, 지름 ${D.rad*2/1000} mm${D.rin<D.rad?`, Edge 제외 ${(D.rad-D.rin)/1000} mm`:''}, wafer 중심 ${Math.round(C.cx)}, ${Math.round(C.cy)} µm · ${C.src})`;
+  const L=S.dieLocCheck;if(L)t+=L.ok?` · s_DieLocation Die ${L.n}개와 일치 ✔`:` · ⚠ s_DieLocation Die ${L.n}개와 다름: 계산에만 ${L.onlyCalc} · 파일에만 ${L.onlyLoc}`;
+  const V=[c.A,c.B].map(x=>x.dieCheck).find(Boolean);if(V)t+=V.bad?` · ⚠ Die 번호가 Color 이미지 Col/Row 와 ${V.bad}/${V.n}개 다름`:` · Die 번호 = Color 이미지 Col/Row (${V.n}/${V.n} 일치)`;
   t+=C.out?` · ⚠ Defect ${C.out}/${C.n}개가 wafer 원 밖`:` · Defect ${C.n}개 모두 원 안`;
   if(k)t+=k.size?` · 맵 ${k.file} 에 Die 가 없거나 계산 Die 가 없어 비교 못 함`
     :k.ok?` · 맵 ${k.file} Die ${k.map}개와 일치 ✔`:` · 맵 ${k.file} Die ${k.map}개와 다름: 계산에만 ${k.onlyCalc} · 맵에만 ${k.onlyMap} (지름 · Edge 제외를 확인하십시오)`;
@@ -564,8 +596,10 @@ function renderKpis(){const c=S.cmp,n=c.keep.length+c.gone.length,a=stepName(c.A
 // 8. 상세 표 · CSV
 // ════════════════════════════════════════════════════════════════════════
 function info(r){const d=r.d,s=d.scan,o=S.cmp.o,die=dieOf(d.X,d.Y,s.product),px2=o.pix*o.pix;
-  const off=die&&die.valid&&S.dieSet&&!S.dieSet.has(die.col+','+die.row);
-  return {st:stLabel(r.st),id:d.id,X:d.X,Y:d.Y,die:die?`(${die.col}, ${die.row})${die.valid?(off?' · wafer 밖 칸':''):' 범위 밖'}`:'계산 불가',dieXY:die?`${die.dx.toFixed(0)}, ${die.dy.toFixed(0)}`:'',
+  const off=die&&die.valid&&S.dieSet&&!S.dieSet.has(die.col+','+die.row),b=S.dieBase||{c:0,r:0};
+  // 화면 Die = 맨 왼쪽 아래 Die 가 (0,0). 장비 Col/Row 와 다르면 함께 적는다(Para #53).
+  const eq=die&&(b.c||b.r)?` · 장비 Col ${die.col}, Row ${die.row}`:'';
+  return {st:stLabel(r.st),id:d.no??d.id,X:d.X,Y:d.Y,die:die?`(${die.col-b.c}, ${die.row-b.r})${eq}${die.valid?(off?' · wafer 밖 칸':''):' 범위 밖'}`:'계산 불가',dieXY:die?`${die.dx.toFixed(0)}, ${die.dy.toFixed(0)}`:'',
     area:d.area*px2,width:d.BlobBreadth,length:d.BlobLength,box:`${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,contrast:d.Contrast,cmpContrast:r.b?r.b.Contrast:null,step:stepName(s),tool:s.tool,dieWarn:die&&(!die.valid||off)}}
 function filtered(){const f=viewSet($('#fltSt').value||'all');return S.rows.filter(r=>f.has(r.st))}
 function renderTable(){const rows=filtered(),P=200,pages=Math.max(1,Math.ceil(rows.length/P));S.page=Math.min(S.page,pages-1);
@@ -578,7 +612,7 @@ function csvText(){const q=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?
   const head=['구분','ID','resultID','WaferX','WaferY','Die','DieX','DieY','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','비교Contrast','Step','ContrastAVG','호기','Color이미지','Color연결','Gray프레임','GrayPX','GrayPY','Gray모델','ROI_mean','ROI_median','ROI_max','Ring_median','ROI_local_delta','위치확인'];
   const lines=[head];
   for(const r of S.rows){const x=info(r),d=r.d,g=grayOf(d),c=linkColor(d,d.scan,S.cmp.o.ctol),gl=d.gl||{};
-    lines.push([x.st,d.id,d.resultID,f2(x.X),f2(x.Y),x.die,...(x.dieXY?x.dieXY.split(', '):['','']),f2(x.area),d.area,f2(x.width),f2(x.length),f2(d.BoxWidth),f2(d.BoxHeight),f2(d.Contrast),f2(x.cmpContrast),x.step,d.scan.contrast,x.tool,
+    lines.push([x.st,x.id,d.resultID,f2(x.X),f2(x.Y),x.die,...(x.dieXY?x.dieXY.split(', '):['','']),f2(x.area),d.area,f2(x.width),f2(x.length),f2(d.BoxWidth),f2(d.BoxHeight),f2(d.Contrast),f2(x.cmpContrast),x.step,d.scan.contrast,x.tool,
       c?c.c.file:'',c?c.how:'연결 실패',g.frame?g.frame.file:'',g.frame?f1(g.px):'',g.frame?f1(g.py):'',g.frame?g.model:g.reason,f2(gl.mean),f2(gl.median),gl.max??'',f2(gl.ring),f2(gl.delta),S.overlay[key(d)]||''])}
   return '﻿'+lines.map(l=>l.map(q).join(',')).join('\r\n')}
 $('#csvBtn').onclick=()=>{if(!S.cmp)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvText()],{type:'text/csv'}));
@@ -642,7 +676,8 @@ function activeMap(){const c=S.cmp;return S.userMap||(c&&(c.A.waferMap||c.B.wafe
  *  Die 좌표 = 좌측 하단 (0,0) 에서 오른쪽 · 위쪽으로 1씩(dieOf). 화면도 X 오른쪽 · Y 위쪽이라 맵 파일과 좌우 · 상하가 같다.
  *  ① 칸 짝수/홀수 = ProductInfo 격자 (Cols−1)×(Rows−1) 가운데에 원 중심을 둘 때와 같게(소유자 예시 맵 7×6 · Die 30 재현)
  *  ② 반지름 = Wafer 지름/2 − Edge 제외, Die = 네 모서리가 모두 원 안인 칸
- *  ③ 그 Die 들의 좌측 하단 = (0,0)(= OffX, OffY) 이 되게 원 중심을 놓는다 → 예시 맵에서 중심 = (3.5·PitchX, 3·PitchY).
+ *  ③ 원 중심 = ProductInfo CenterX/CenterY(Para #53, 실제 폴더로 확인) → s_DieLocation 가운데 → (둘 다 없을 때만) 그 Die 들의 좌측 하단 = Wafer (0,0) 이 되는 추정 위치.
+ *  화면 Die 번호는 맨 왼쪽 아래 Die 를 (0,0) 으로 다시 센다(장비 Col/Row − base).
  *  #51 후속 ~ #52 첫 수정까지는 원 중심을 격자 가운데(4.5·PitchX, 4·PitchY)에 두어 Die 가 실제보다 1칸씩 오른쪽 위에 그려졌고
  *  '(0,0)' 글자도 실제로는 (PitchX, PitchY) 자리에 있었다.
  *  Wafer Map 파일이 있으면 비교만 한다: 맵 칸 (r, c) ↔ Col = c, Row = (ROWCT−1) − r(맵 맨 아래 줄 = Row 0). */
@@ -656,23 +691,37 @@ function fullCells(p,cx,cy,rad,rin){
 function dieCells(){
   const c=S.cmp,p=c.A.product||c.B.product;if(!p)return null;
   const o=c.o||opts(),rad=o.waferD/2,rin=Math.max(0,rad-o.edge);
-  // ① 격자 가운데 기준으로 Die 를 구하고 ③ 그 Die 들의 좌측 하단이 (0,0) 이 되게 옮긴다(옮기는 양은 칸 단위라 모양은 같다)
-  const nx0=Math.max(1,p.cols-1),ny0=Math.max(1,p.rows-1);
-  let cx=p.offX+nx0*p.pitchX/2,cy=p.offY+ny0*p.pitchY/2;
-  const F0=fullCells(p,cx,cy,rad,rin).dies.filter(d=>d.full);
-  if(F0.length){cx-=Math.min(...F0.map(d=>d.ix))*p.pitchX;cy-=Math.min(...F0.map(d=>d.iy))*p.pitchY}
+  // Para #53: wafer 중심 = 장비가 기록한 실제 중심(ProductInfo/Params_WaferInfo CenterX/Y) → 없으면 s_DieLocation Die 묶음 가운데 → 없으면 종전 추정.
+  //  실제 결과 폴더(소유자 #53 zip): 중심 (204849, 224520) µm = (5.5·PitchX, 5·PitchY), 맨 왼쪽 아래 Die = 장비 Col 2 · Row 2.
+  //  종전(#52 후속)은 중심을 '맨 왼쪽 아래 Die = Wafer (0,0)' 이 되게 (3.5·PitchX, 3·PitchY) 로 추정해 Defect 가 2칸씩 오른쪽 위로 밀려 보였다.
+  const pc=[c.A.product,c.B.product].find(q=>q&&q.centerX!=null&&q.centerY!=null),DL=c.A.dieLoc||c.B.dieLoc;
+  let cx,cy,csrc;
+  if(pc){cx=pc.centerX;cy=pc.centerY;csrc=pc.centerSrc||'ProductInfo'}
+  else if(DL&&DL.length){const xs=DL.map(d=>d.x),ys=DL.map(d=>d.y);cx=(Math.min(...xs)+Math.max(...xs))/2;cy=(Math.min(...ys)+Math.max(...ys))/2;csrc='s_DieLocation 가운데'}
+  else{// 종전 추정: ① 격자 가운데 기준으로 Die 를 구하고 ③ 그 Die 들의 좌측 하단이 Wafer (0,0) 이 되게 옮긴다 — 실제 자료와 다를 수 있음(확인 필요)
+    const nx0=Math.max(1,p.cols-1),ny0=Math.max(1,p.rows-1);cx=p.offX+nx0*p.pitchX/2;cy=p.offY+ny0*p.pitchY/2;
+    const F0=fullCells(p,cx,cy,rad,rin).dies.filter(d=>d.full);
+    if(F0.length){cx-=Math.min(...F0.map(d=>d.ix))*p.pitchX;cy-=Math.min(...F0.map(d=>d.iy))*p.pitchY}csrc='추정(중심 정보 없음 · 확인 필요)'}
   const G=fullCells(p,cx,cy,rad,rin),dies=G.dies,F=dies.filter(d=>d.full),calc=F.length;
+  // 화면 Die 번호 = 맨 왼쪽 아래 Die 가 (0,0)(소유자 #52 지시). 장비 Col/Row(= dieOf, ColorImageGrabingInfo Col/Row) 는 base 만큼 크다.
+  const base=F.length?{c:Math.min(...F.map(d=>d.ix)),r:Math.min(...F.map(d=>d.iy))}:{c:0,r:0};
+  for(const d of dies){d.col=d.ix-base.c;d.row=d.iy-base.r}
+  S.dieBase=base;
+  // s_DieLocation(스캔한 Die) 과 계산 Die 비교
+  let dl=null;if(DL&&DL.length){const calcSet=new Set(F.map(d=>d.ix+','+d.iy)),ls=new Set(DL.map(d=>{const q=dieOf(d.x,d.y,p);return q.col+','+q.row}));
+    let both=0;for(const k of ls)if(calcSet.has(k))both++;dl={n:ls.size,both,onlyCalc:calcSet.size-both,onlyLoc:ls.size-both,ok:both===ls.size&&both===calcSet.size}}
+  S.dieLocCheck=dl;
   const nx=G.ix1-G.ix0+1,ny=G.iy1-G.iy0+1,gx0=p.offX+G.ix0*p.pitchX,gy0=p.offY+G.iy0*p.pitchY,gx1=gx0+nx*p.pitchX,gy1=gy0+ny*p.pitchY;
   const dc=F.length?{cols:Math.max(...F.map(d=>d.col))+1,rows:Math.max(...F.map(d=>d.row))+1}:{cols:0,rows:0};
   const pts=new Set(S.rows.map(q=>q.d));let outC=0;for(const d of pts)if(Math.hypot(d.X-cx,d.Y-cy)>rin)outC++;
-  S.center={cx,cy,n:pts.size,out:outC,cols:dc.cols,rows:dc.rows};
+  S.center={cx,cy,n:pts.size,out:outC,cols:dc.cols,rows:dc.rows,src:csrc,base};
   // 맵 파일 비교(+ Bin 코드)
   const M=activeMap();let cmp=null;
   if(M){const R=M.rowct||M.rows,inMap=new Map();
     for(let r=0;r<M.rows;r++)for(let cc=0;cc<M.cols;cc++){const v=(M.cells[r]||[])[cc];if(v!=null)inMap.set(cc+','+(R-1-r),v)}
     let both=0,onlyCalc=0;for(const d of dies){const v=inMap.get(d.col+','+d.row);if(v!=null)d.code=v;if(d.full){if(v!=null)both++;else onlyCalc++}}
     cmp={calc,map:M.dies,both,onlyCalc,onlyMap:M.dies-both,file:M.file,ok:both===M.dies&&!onlyCalc}}
-  S.dieSet=new Set(F.map(d=>d.col+','+d.row));S.mapCheck=cmp;
+  S.dieSet=new Set(F.map(d=>d.ix+','+d.iy));S.mapCheck=cmp;   // 키 = 장비 Col/Row(dieOf)
   return {dies,p,from:'calc',nx,ny,gx0,gy0,gx1,gy1,cx,cy,rad,rin,calc};
 }
 function waferGeom(){
@@ -785,7 +834,7 @@ function renderReview(){const L=S.rvList,box=$('#rvList'),c=S.cmp;$('#rvCount').
 function paintList(){const box=$('#rvList'),L=S.rvList,top=box.scrollTop,h=box.clientHeight||560,s=Math.max(0,Math.floor(top/RH)-5),e=Math.min(L.length,Math.ceil((top+h)/RH)+5);
   box.querySelectorAll('.it').forEach(n=>n.remove());
   for(let k=s;k<e;k++){const d=L[k].d,n=document.createElement('div');n.className='it'+(k===S.rv?' sel':'');n.style.top=k*RH+'px';n.dataset.k=k;
-    const ov=S.overlay[key(d)];n.textContent=`${k+1}. ID ${d.id} · (${f1(d.X)}, ${f1(d.Y)}) · C ${f2(d.Contrast)}${ov?' · '+ov:''}`;box.append(n)}}
+    const ov=S.overlay[key(d)];n.textContent=`${k+1}. ID ${d.no??d.id} · (${f1(d.X)}, ${f1(d.Y)}) · C ${f2(d.Contrast)}${ov?' · '+ov:''}`;box.append(n)}}
 $('#rvList').addEventListener('scroll',paintList);
 $('#rvList').addEventListener('click',e=>{const n=e.target.closest('.it');if(n){S.rv=+n.dataset.k;showRv()}});
 let rvToken=0;
@@ -834,7 +883,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>
