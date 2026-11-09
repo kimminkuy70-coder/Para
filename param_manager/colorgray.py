@@ -8,7 +8,7 @@ module does everything else:
 
 * find wafer folders under a Lot/Wafer folder (`discover`),
 * parse `ColorImageGrabingInfo.ini`, `ScanResultImageList.txt` and
-  `frameToChuckPlane.*.ini`, pick the gray frame that contains each color fault
+  `frameToChuckPlane.ini`, pick the gray frame that contains each color fault
   (`plan_wafer` / `choose_frame`) and the crop size (`crop_size`),
 * write the comparison workbook with the thumbnails the UI produced
   (`build_workbook` — JPEG bytes embedded without Pillow via `JpegImage`).
@@ -32,7 +32,9 @@ SKIP = {RESULT_FOLDER.lower(), CROPS, THUMBS, "_metadata", "$recycle.bin", "syst
 
 # ---------------------------------------------------------------- discovery
 WAFER_FILES = ("ColorImageGrabingInfo.ini", "ScanResultImageList.txt")
-TRANSFORM_RE = re.compile(r"^frametochuckplane\..+\.ini$", re.I)
+TRANSFORM_NAME = "frameToChuckPlane.ini"
+# 실제 장비 폴더의 이름은 frameToChuckPlane.ini (Para #49). 예전 판의 frameToChuckPlane.<번호>.ini 도 받는다.
+TRANSFORM_RE = re.compile(r"^frametochuckplane(\..+)?\.ini$", re.I)
 LONG_PATH = 240                 # Windows MAX_PATH(260) 가까이면 \\?\ 확장 경로로 연다
 
 
@@ -72,6 +74,9 @@ def file_names(p) -> dict:
 
 def transform_file(p: Path, names: dict | None = None):
     names = file_names(p) if names is None else names
+    exact = names.get(TRANSFORM_NAME.lower())
+    if exact:                       # frameToChuckPlane.ini 가 있으면 그것을 쓴다(Para #49)
+        return Path(p) / exact
     hits = sorted(real for low, real in names.items() if TRANSFORM_RE.match(low))
     return Path(p) / hits[0] if hits else None
 
@@ -87,7 +92,7 @@ def missing_files(p: Path, names: dict | None = None) -> list:
     names = file_names(p) if names is None else names
     out = [n for n in WAFER_FILES if n.lower() not in names]
     if transform_file(p, names) is None:
-        out.append("frameToChuckPlane.*.ini")
+        out.append(TRANSFORM_NAME)
     return out
 
 

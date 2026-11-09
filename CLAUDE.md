@@ -23,10 +23,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Color · Gray 매칭 변환 파일 = `frameToChuckPlane.ini` (2026-11-09, 이슈 #49, v12.9.28)
+- 실제 장비 폴더의 변환 파일 이름은 `frameToChuckPlane.ini`. 종전 정규식 `^frametochuckplane\..+\.ini$` 는 가운데 `.<번호>` 가 있어야 맞아서 이 파일을 놓쳤다(원 v16 프로그램 이식 때의 이름 가정).
+- `colorgray.TRANSFORM_NAME = "frameToChuckPlane.ini"` 를 먼저 찾고(대소문자 무시), 없으면 `TRANSFORM_RE = ^frametochuckplane(\..+)?\.ini$` 로 예전 이름도 받는다. `missing_files` · 화면 문구도 `frameToChuckPlane.ini`.
+
 ### Color · Gray 매칭 Wafer 폴더 찾기 = 폴더 목록 1번 · 긴 경로 · 링크 폴더 (2026-11-09, 이슈 #48, v12.9.27)
 - 증상: 네트워크 드라이브의 폴더에 세 파일이 있는데 "Wafer 폴더를 찾지 못했습니다". 소유자 PC 를 못 봐서 원인은 확정 못 함(확인 전) — 가능성 셋을 모두 고침:
   ① 260자 안팎의 긴 경로에서 파일마다 `Path.exists()`(stat)가 '경로 없음'으로 실패 ② NAS 의 대소문자 다른 이름 ③ DFS · NAS 링크 폴더가 reparse point 라 `is_dir(follow_symlinks=False)` 에서 빠짐.
-- `colorgray.file_names`(scandir 1번 → {소문자: 실제 이름}) · `missing_files` · `wafer_file` · `transform_file(p, names)`(정규식 `frameToChuckPlane.*.ini`, 대소문자 무시) · `long_path`(Windows 에서 240자 이상이면 확장 경로 접두).
+- `colorgray.file_names`(scandir 1번 → {소문자: 실제 이름}) · `missing_files` · `wafer_file` · `transform_file(p, names)`(#49 부터 `frameToChuckPlane.ini` 먼저, 대소문자 무시) · `long_path`(Windows 에서 240자 이상이면 확장 경로 접두).
   원본 열기(`_text`, `cgm_read`)도 `long_path` 를 쓴다. `child_dirs` 는 링크를 따라간다(고리는 `seen` · `max_depth` 가 막음). 못 찾으면 `cgm_scan` 응답 `diagnosis`(없는 파일 · 파일/폴더 수 · 경로 길이)를 화면 알림에 붙인다.
 
 ### Lot 고르기 = 레시피 탭 · Lot History 슬롯 = Lot 전체 Wafer ID 짝 (2026-11-09, 이슈 #44, v12.9.26)

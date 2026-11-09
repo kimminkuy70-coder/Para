@@ -69,7 +69,7 @@ export function ColorGray(){
       setPicked(r.wafers.map(w=>rel(w.path)));
       if(r.wafers.length){notify(`Wafer ${r.wafers.length}개를 찾았습니다.${r.wafers.length>=r.limit?` (최대 ${r.limit}개까지 찾습니다)`:''}`,'ok');setStep(1);}
       else{const d=r.diagnosis;
-        notify('Wafer 폴더를 찾지 못했습니다. ColorImageGrabingInfo.ini · ScanResultImageList.txt · frameToChuckPlane.*.ini 가 있는 폴더를 찾습니다.'
+        notify('Wafer 폴더를 찾지 못했습니다. ColorImageGrabingInfo.ini · ScanResultImageList.txt · frameToChuckPlane.ini 가 있는 폴더를 찾습니다.'
           +(d?` 고른 폴더 바로 아래: 파일 ${d.files}개 · 폴더 ${d.folders}개${d.missing.length?` · 없는 파일 ${d.missing.join(', ')}`:''} (경로 ${d.path_len}자).`:''),'error');}
     }catch(e){fail(e);}finally{setBusy(false);}
   }
@@ -136,7 +136,7 @@ export function ColorGray(){
     <div className="step-body">
     {step===0&&<>
       <p className="hint">Lot 폴더(여러 Wafer) 또는 Wafer 폴더 하나를 고르세요. 장비 공유 폴더는 탐색기(Win+R → <code>\\IP\c$</code>)로 먼저 연결해야 보입니다.
-        Wafer 폴더 = <code>ColorImageGrabingInfo.ini</code> · <code>ScanResultImageList.txt</code> · <code>frameToChuckPlane.*.ini</code> 가 있는 폴더(하위 5단계까지, 최대 25개).</p>
+        Wafer 폴더 = <code>ColorImageGrabingInfo.ini</code> · <code>ScanResultImageList.txt</code> · <code>frameToChuckPlane.ini</code> 가 있는 폴더(하위 5단계까지, 최대 25개).</p>
       <div className="form-filter">
         <label className="field" style={{flex:1}}>Lot / Wafer 폴더<input aria-label="Lot 또는 Wafer 폴더" value={root} onChange={e=>setRoot(e.target.value)} placeholder="예: W:\AOI-9\Scanresult\2D@DEVICE\6412\LOT01"/></label>
         <button disabled={busy} onClick={()=>void browse(setRoot)}>📁 찾아보기…</button>

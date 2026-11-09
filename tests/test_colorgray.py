@@ -129,7 +129,7 @@ class ColorGrayTests(unittest.TestCase):
         w = make_wafer(self.base / "NAS", "W09")
         for old, new in (("ColorImageGrabingInfo.ini", "COLORIMAGEGRABINGINFO.INI"),
                          ("ScanResultImageList.txt", "scanresultimagelist.txt"),
-                         ("frameToChuckPlane.1.ini", "FrameToChuckPlane.1.INI")):
+                         ("frameToChuckPlane.ini", "FRAMETOCHUCKPLANE.INI")):
             (w / old).rename(w / new)
         self.assertTrue(cg.is_wafer(w))
         records, failures, total = cg.plan_wafer(w)
@@ -145,10 +145,25 @@ class ColorGrayTests(unittest.TestCase):
         bad = self.base / "BAD"
         bad.mkdir()
         (bad / "ColorImageGrabingInfo.ini").write_text("", encoding="utf-8")
-        self.assertEqual(cg.missing_files(bad), ["ScanResultImageList.txt", "frameToChuckPlane.*.ini"])
+        self.assertEqual(cg.missing_files(bad), ["ScanResultImageList.txt", "frameToChuckPlane.ini"])
         r = DesktopColorGray(_Config(str(self.base / "out"))).scan({"root": str(bad)})
         self.assertEqual(r["wafers"], [])
-        self.assertEqual(r["diagnosis"]["missing"], ["ScanResultImageList.txt", "frameToChuckPlane.*.ini"])
+        self.assertEqual(r["diagnosis"]["missing"], ["ScanResultImageList.txt", "frameToChuckPlane.ini"])
+
+    def test_transform_file_name(self):
+        """Para #49: 장비 폴더의 frameToChuckPlane.ini 를 찾는다(예전 .<번호>.ini 도 받음, .ini 가 먼저)."""
+        w = make_wafer(self.base / "T49", "W49")
+        self.assertEqual(cg.transform_file(w).name, "frameToChuckPlane.ini")
+        self.assertTrue(cg.is_wafer(w))
+        (w / "frameToChuckPlane.0.ini").write_text("Scan_X=2 0 0\nScan_Y=0 2 0\n", encoding="utf-8")
+        self.assertEqual(cg.transform_file(w).name, "frameToChuckPlane.ini")
+        (w / "frameToChuckPlane.ini").unlink()
+        self.assertEqual(cg.transform_file(w).name, "frameToChuckPlane.0.ini")
+        self.assertTrue(cg.is_wafer(w))
+        (w / "frameToChuckPlane.0.ini").unlink()
+        (w / "frameToChuckPlaneX.ini").write_text("", encoding="utf-8")
+        self.assertIsNone(cg.transform_file(w))
+        self.assertEqual(cg.missing_files(w), ["frameToChuckPlane.ini"])
 
     def test_long_path_prefix(self):
         """Para #48: 260자에 가까운 Windows 경로는 \\?\ 확장 경로로 연다."""

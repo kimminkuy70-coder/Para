@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #49 Color · Gray 매칭 frameToChuckPlane.ini 찾기 (2026-11-09 KST, `version_v12`, v12.9.28)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `f9befd0` · 이슈 Para #49("v12.9.28 업데이트 사항") · 작업 브랜치 `version_v12`.
+- 요청: `frameToChuckPlane.ini` 가 폴더에 있는데 못 찾는다, 설명은 왜 `frameToChuckPlane.*.ini` 인가 — `frameToChuckPlane.ini` 를 찾아 그것으로 진행되게 수정.
+- 원인: `colorgray.TRANSFORM_RE = ^frametochuckplane\..+\.ini$` 가 이름 가운데 `.<무엇>` 을 요구해 `frameToChuckPlane.ini` 는 맞지 않았다(원 v16 프로그램 이식 때부터의 이름 가정, #48 의 네트워크 드라이브 수정과 별개).
+  #48 에서 소유자가 겪은 "Wafer 폴더를 찾지 못했습니다"도 이것이 원인이었을 가능성이 큼(확인 전).
+- 한 일: `TRANSFORM_NAME = "frameToChuckPlane.ini"` 를 먼저 찾고, 없으면 예전 `frameToChuckPlane.<번호>.ini` 도 받음(정규식 `^frametochuckplane(\..+)?\.ini$`). `missing_files` · `ColorGray.tsx` 안내 문구를 `frameToChuckPlane.ini` 로.
+  시험 자료(`tests/colorgray_fixture.py`)를 실제 이름으로 바꾸고 `test_transform_file_name` 추가. 릴리스 노트 `docs/release_notes/v12.9.28.md`.
+- 내 해석(확인 전): 예전 번호 형식도 계속 받는다(둘 다 있으면 `frameToChuckPlane.ini` 우선).
+- 시험: `python -m unittest tests.test_colorgray` 8개 통과(고치기 전 새 시험 실패 확인), `tools/check_project.py` = `test_batchreport.py`(tkinter 없음) · `test_kla_cache.py`(날짜 의존) 만 실패(종전과 같음).
+  frontend 는 문자열 2곳만 바뀌어 빌드 생략. Windows 실기 · 실제 장비 폴더는 미검증.
+- 릴리스 v12.9.28: 소유자가 세션에서 "작업 완료되면 릴리즈까지해"라고 지시(2026-11-09). 결과는 아래 표 · 이슈 댓글.
+- 남은 일: 실기에서 같은 폴더로 다시 확인, routine 릴리스 방식(#48 절 ⓐ~ⓒ) 소유자 결정, `test_kla_cache.py` 날짜 의존 고치기.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #49 | Color · Gray 매칭이 frameToChuckPlane.ini 를 못 찾음 — 그 파일로 진행되게 | 구현 · 시험 통과, v12.9.28 릴리스 시작 |
+
 ## 최신 재개 — Para #48 Color · Gray 매칭 Wafer 폴더 찾기(네트워크 드라이브) (2026-11-09 KST, `version_v12`, v12.9.27)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `9197b55` · 이슈 Para #48("v12.9.27 업데이트 사항") · 작업 브랜치 `version_v12`.

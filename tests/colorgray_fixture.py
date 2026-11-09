@@ -21,5 +21,5 @@ def make_wafer(folder, name="W01"):
         "[C2.jpg]\nFaultX=90000\nFaultY=90000\nRecipeNumber=1\n"
         "[C3.jpg]\nFaultX=1100\nFaultY=210\nRecipeNumber=1\n", encoding="utf-8")
     (w / "ScanResultImageList.txt").write_text("Version=1\nF1.t.1.jpg,0,0\nF2.t.1.jpg,1000,0\n", encoding="utf-8")
-    (w / "frameToChuckPlane.1.ini").write_text("Scan_X=1 0 0\nScan_Y=0 1 0\n", encoding="utf-8")
+    (w / "frameToChuckPlane.ini").write_text("Scan_X=1 0 0\nScan_Y=0 1 0\n", encoding="utf-8")
     return w
