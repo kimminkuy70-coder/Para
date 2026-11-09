@@ -2,7 +2,7 @@
 
 ## 최신 재개 — Para #43 자동 분석 KLA 탭 · 다음 실행 날짜 · KLA 찾기 UX (2026-11-09 KST, `version_v12`, v12.9.25)
 
-- 마지막 갱신 2026-11-09 · 기준 커밋 `2afd3ea` · 이슈 Para #43("v12.9.25 업데이트 사항") · 작업 브랜치 `version_v12`.
+- 마지막 갱신 2026-11-09 · 기준 커밋 `cb82288` · 이슈 Para #43("v12.9.25 업데이트 사항") · 작업 브랜치 `version_v12`.
 - 요청: ① Batch Report 자동 분석에 KLA 탭을 추가해 자동 분석에 포함 ② 오늘 자동 분석을 설정했는데 다음 실행이 11월 14일로 나옴 — 수정
   ③ KLA 자재 찾기에 Batch Report 찾기 · 취합을 참고해 "KLA 캐시에서만 찾기" 체크 상자, Batch 찾기 화면과 UX 일관성.
 - 원인 ②: `next_batch_run` 이 예전 마지막 실행(`batch_schedule.last_run`, tkinter 와 공유) 기준이라 오늘 켜도 마지막 실행 + 주기였고, 하루 단위 주기에도 연속 실패 backoff(×2 · 4 · 8)를 곱해
@@ -16,14 +16,13 @@
 - 시험: `tests/test_desktop_batch.py`(since · backoff) · `tests/test_desktop_config.py`(batch_schedule_set · kla 키) · `tests/test_kla_cache.py`(record IPC) · `tests/test_kla.py` 통과,
   `tools/check_project.py` = `test_batchreport.py`(tkinter 없음, 기존과 같음)만 실패, `npx tsc --noEmit` · `vite build` 통과, `tools/test_desktop_ui.mjs`(PARA_TEST_NODE_MODULES=/opt/node-tools/node_modules)
   통과 — 다음 실행 = 오늘/내일 07:35 확인, KLA 탭 체크 → ▶ 즉시 실행 → KLA 캐시 자동 갱신, KLA 찾기 새 화면. Windows 실기 · 실제 KLA 장비 · OneDrive 는 미검증.
-- 릴리스: v12.9.25 **아직 안 됨(막힘)** — 커밋 `ebc2aa8`(수정 + 시험 + 릴리즈 노트)은 push 함. routine run 에서 `git push origin v12.9.25` = "send-pack: unexpected disconnect … the remote end hung up"(거절),
-  `gh api repos/kimminkuy70-coder/Para/git/refs` = Claude Code 권한 검사 거절(auto mode classifier). 우회하지 않음(workflow_dispatch 도 시도 안 함 — #39 · #41 에서 같은 검사로 막힘).
-  소유자가 Actions › build-desktop › Run workflow(branch `version_v12`, version `12.9.25`)를 누르거나, 세션에서 릴리스를 지시하면 dispatch 로 시작.
-- 남은 일: **v12.9.25 빌드 시작(위)**, 실기에서 다음 실행 날짜 · KLA 자동 갱신 확인, 해석 ⓐ~ⓖ 확인.
+- 릴리스 **v12.9.25 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.9.25 (`Camtek_AOI_manager_v12.9.25.zip`, workflow_dispatch run 42537754983 성공, 태그 = `cb82288`).
+  routine run 에서는 `git push origin v12.9.25` = "remote end hung up", REST refs = 권한 검사 거절. 소유자가 세션에서 "릴리스까지 해"라고 지시한 뒤 dispatch 로 시작.
+- 남은 일: 실기에서 다음 실행 날짜 · KLA 자동 갱신 확인, 해석 ⓐ~ⓖ 확인.
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| Para #43 | 자동 분석 KLA 탭 · 다음 실행 11/14 수정 · KLA 캐시에서만 찾기 체크 + Batch 찾기 UX 일관성 | 구현 · 시험 통과(`ebc2aa8`), v12.9.25 릴리스 시작은 권한 검사에서 막힘 — 소유자 실행 필요 |
+| Para #43 | 자동 분석 KLA 탭 · 다음 실행 11/14 수정 · KLA 캐시에서만 찾기 체크 + Batch 찾기 UX 일관성 | 구현 · 시험 통과(`ebc2aa8`), v12.9.25 릴리스 완료(소유자 지시 뒤 dispatch) |
 
 ## 최신 재개 — Para #41 KLA 자재 찾기 UX 정리(캐시 상자 접기) + 리뷰 HTML 하위 폴더 표 · Lot History (2026-11-06 KST, `version_v12` + `version_TB500_review`)
 
