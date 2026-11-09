@@ -71,6 +71,8 @@ const fd=await page.evaluate(()=>window.__cw.state.fullDies);
 assert.equal(fd,30,'계산 Die '+fd);
 assert.match(await page.locator('#mapSt').innerText(),/계산 Die 30개 \(격자 8×9, 지름 300 mm\)/);
 assert.ok(await page.evaluate(()=>window.__cw.state.dieSet.has('3,1')),'#50 검증 예 Die (3, 1) 은 wafer 안');
+// Notch: 맵 파일이 없으면 기본 아래(180)
+assert.deepEqual(await page.evaluate(()=>[window.__cw.state.notchDeg,window.__cw.state.notchSrc]),[180,'기본값']);assert.match(await page.locator('#mapSt').innerText(),/Notch 아래 \(기본값\)/);
 // Para #51: Wafer Map 파일(소유자 예시)이 있으면 '___' 아닌 칸만 Die 로 그린다(종전: ProductInfo Cols×Rows 전부 → die 가 많았다)
 const MAP='DEVICE:4DT-TB500-H-M1\nLOT:TB500.INT025@6322\nWAFER:00RW8126XYC1\nFNLOC:180\nROWCT:6\nCOLCT:7\nBCEQU:000\nREFPX:1\nREFPY:1\nDUTMS:mm\nXDIES:\nYDIES:\n'
   +['___ ___ 023 000 023 ___ ___','___ 000 023 000 000 000 ___','000 000 000 000 023 000 000','000 023 000 023 023 000 023','___ 000 000 000 000 000 ___','___ ___ 000 000 000 ___ ___'].map(r=>'RowData:'+r).join('\n')+'\n';
@@ -79,6 +81,12 @@ assert.deepEqual(wm,{rows:6,cols:7,dies:30,fn:'180',ok:true});
 await page.waitForTimeout(150);
 assert.deepEqual(await page.evaluate(()=>{const S=window.__cw.state;return [S.mapFrom,S.mapDies,S.fullDies,S.mapCheck.ok,S.mapCheck.both]}),['calc',30,30,true,30]);
 assert.match(await page.locator('#mapSt').innerText(),/맵 map\.txt Die 30개와 일치 ✔/);
+assert.match(await page.locator('#mapSt').innerText(),/Notch 아래 \(맵 FNLOC:180\)/);
+// Notch 를 직접 고르면(오른쪽 90) 다시 그린다 → 자동으로 되돌리기
+await page.evaluate(()=>{const e=document.querySelector('#notch');e.value='90';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(150);
+assert.equal(await page.evaluate(()=>window.__cw.state.notchDeg),90);assert.match(await page.locator('#mapSt').innerText(),/Notch 오른쪽 \(직접 고름\)/);
+await page.evaluate(()=>{const e=document.querySelector('#notch');e.value='auto';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(150);
+assert.equal(await page.evaluate(()=>window.__cw.state.notchDeg),180);
 // 지름을 줄이면 Die 가 줄고 맵과 다르다고 알린다 → 되돌리기
 await page.evaluate(()=>{const e=document.querySelector('#waferD');e.value='280';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(200);
 assert.ok(await page.evaluate(()=>window.__cw.state.fullDies)<30);assert.match(await page.locator('#mapSt').innerText(),/다름: 계산에만 0 · 맵에만 \d+/);

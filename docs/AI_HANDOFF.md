@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #51 후속 Wafer map Notch 표시 (2026-11-09 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `801e4b9` · 이슈 Para #51 후속(소유자 세션 지시 "웨이퍼맵에 노치도 표기해줘") · 작업 브랜치 **`version_graylevel_simulation`**.
+- 한 일(`AOI_Contrast_Wizard.html`): Step 2 [Notch] 선택(자동 / 아래 / 위 / 오른쪽 / 왼쪽). 자동 = Wafer Map 파일 `FNLOC` → ProductInfo(`FNLOC`·`Notch`·`NotchAngle`·`NotchLocation`·`FlatAngle` 등) → 180(아래).
+  Step 3 지도 · Step 4 `#rvMap` 둘 다 wafer 원 가장자리에 V 홈 + 'Notch' 글자(`paintMap`), `#mapSt` 에 "Notch 아래 (맵 FNLOC:180)" 처럼 방향과 출처.
+- 내 해석(확인 전): ⓐ FNLOC 각도 = 0 위 · 90 오른쪽 · 180 아래 · 270 왼쪽(맵 파일 기준, 시계 방향) ⓑ 화면은 맵 파일과 좌우가 반대(DieCol=(Cols−2)−ix)라 화면 각 = 360 − FNLOC(위 · 아래는 같음, 좌우만 바뀜)
+  ⓒ 맵 파일 · ProductInfo 에 값이 없으면 아래(소유자 예시 맵 FNLOC:180).
+- 시험: `node tools/test_contrast_wizard.mjs` 연속 통과(기본 180 · 맵 FNLOC 적용 · 직접 90 → 다시 자동). 실제 결과 폴더 · Edge 실기 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML).
+- 남은 일: 해석 ⓐ~ⓒ 확인(특히 좌우 반전), 아래 #51 후속의 남은 일.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #51 후속 | Wafer map 에 Notch 표기 | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #51 후속 Wafer map 을 맵 파일 없이 계산 (2026-11-09 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `bb6da2c` · 이슈 Para #51 후속(소유자 세션 지시 "다시 분석해봐 웨이퍼 맵파일 없이도 해당 결과가 나오게끔 로직 구현해") · 작업 브랜치 **`version_graylevel_simulation`**.

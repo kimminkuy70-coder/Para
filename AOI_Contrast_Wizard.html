@@ -153,6 +153,7 @@ details summary{cursor:pointer;color:var(--acc)}
     <div class="row"><b>Wafer map 계산</b>
       <label>Wafer 지름 <input type="number" id="waferD" value="300" min="1" step="1"> mm</label>
       <label>Edge 제외 <input type="number" id="edgeEx" value="0" min="0" step="0.5"> mm</label>
+      <label>Notch <select id="notch"><option value="auto">자동 (맵 FNLOC · ProductInfo · 없으면 아래)</option><option value="180">아래 (180°)</option><option value="0">위 (0°)</option><option value="90">오른쪽 (90°)</option><option value="270">왼쪽 (270°)</option></select></label>
       <span class="muted">Die = ProductInfo 격자 (Cols−1)×(Rows−1) 중 네 모서리가 모두 wafer 원(격자 가운데 중심) 안인 칸. 맵 파일이 없어도 됩니다.</span></div>
     <div class="row"><b>Wafer Map 파일 (선택, 비교용)</b> <input type="file" id="mapInput" hidden><button id="mapBtn">Wafer Map 파일 고르기</button>
       <span id="mapSt" class="muted">결과 폴더 안에 RowData 줄이 있는 파일이 있으면 자동으로 계산 결과와 비교합니다.</span></div>
@@ -331,7 +332,8 @@ function parseProduct(text){
   const um=v=>v==null?null:v<=20?v*25400:v<=1000?v*1000:v;
   return {pitchX:px,pitchY:py,cols,rows,offX:num(pick(kv,['customerdieoffsetx','offsetx','dieoffsetx','mapshiftx']))||0,offY:num(pick(kv,['customerdieoffsety','offsety','dieoffsety','mapshifty']))||0,
     waferD:um(num(pick(kv,['waferdiameter','wafersize','wafersizemm','diameter','substratediameter','wafer']))),
-    edge:(()=>{const v=num(pick(kv,['edgeexclusion','edgeexclusionmm','edgeexclude','edgeexcl']));return v==null?null:v<=20?v*1000:v})()};
+    edge:(()=>{const v=num(pick(kv,['edgeexclusion','edgeexclusionmm','edgeexclude','edgeexcl']));return v==null?null:v<=20?v*1000:v})(),
+    notch:num(pick(kv,['fnloc','notch','notchangle','notchlocation','notchdirection','flatangle','flatlocation']))};
 }
 /** Wafer Map 파일(소유자 예시: DEVICE/LOT/WAFER/FNLOC/ROWCT/COLCT/REFPX/REFPY + RowData 줄) → {rows, cols, cells[r][c] = 코드 | null('___' = wafer 밖), head}.
  *  RowData 첫 줄 = 파일 맨 위 줄. RowData 가 없으면 null. */
@@ -544,6 +546,7 @@ function mapStatus(){const c=S.cmp;if(!c){$('#mapSt').textContent='';return}cons
   let t=`계산 Die ${D.calc}개 (격자 ${D.ny}×${D.nx}, 지름 ${D.rad*2/1000} mm${D.rin<D.rad?`, Edge 제외 ${(D.rad-D.rin)/1000} mm`:''})`;
   if(k)t+=k.size?` · 맵 ${k.file} 크기(${activeMap().rows}×${activeMap().cols})가 격자와 맞지 않아 비교 못 함`
     :k.ok?` · 맵 ${k.file} Die ${k.map}개와 일치 ✔`:` · 맵 ${k.file} Die ${k.map}개와 다름: 계산에만 ${k.onlyCalc} · 맵에만 ${k.onlyMap} (지름 · Edge 제외를 확인하십시오)`;
+  const N=notchInfo();t+=` · Notch ${({0:'위',90:'오른쪽',180:'아래',270:'왼쪽'})[N.deg]??N.deg+'°'} (${N.src})`;
   $('#mapSt').textContent=t}
 function setWaferMap(text,name){const m=parseWaferMap(text);if(!m)return false;S.userMap={...m,file:name||'Wafer Map'};if(S.cmp){mapStatus();drawMap();paintRvMap()}return true}
 $('#mapBtn').onclick=()=>$('#mapInput').click();
@@ -625,6 +628,12 @@ function measureGL(img,cx,cy,bw,bh,ring){
 const COL={keep:'--keep',gone:'--gone',new:'--new'};let mapGeo=null,rafId=0;
 function drawMap(){cancelAnimationFrame(rafId);rafId=requestAnimationFrame(()=>{mapGeo=paintMap($('#map'),{show:viewSet(mapView)})})}
 /** 쓸 Wafer Map: 직접 고른 파일 → 비교 쌍 A · B 폴더에서 찾은 파일. */
+/** Notch 방향(Wafer Map 파일 FNLOC 와 같은 뜻: 0 = 위, 90 = 오른쪽, 180 = 아래, 270 = 왼쪽 — 파일 기준).
+ *  자동 = 맵 파일 FNLOC → ProductInfo → 180(아래). 반환 {deg(파일 기준), src}. */
+function notchInfo(){const v=$('#notch').value;if(v!=='auto')return {deg:+v,src:'직접 고름'};
+  const m=activeMap(),f=m&&m.head&&num(m.head.FNLOC);if(f!=null)return {deg:((f%360)+360)%360,src:`맵 FNLOC:${m.head.FNLOC}`};
+  const c=S.cmp,pr=c&&[c.A.product,c.B.product].find(x=>x&&x.notch!=null);if(pr)return {deg:((pr.notch%360)+360)%360,src:'ProductInfo'};
+  return {deg:180,src:'기본값'}}
 function activeMap(){const c=S.cmp;return S.userMap||(c&&(c.A.waferMap||c.B.waferMap))||null}
 /** Wafer map 계산(Para #51 후속 — 맵 파일 없이). 소유자 예시 맵(7×6, Die 30)을 #50 ProductInfo(Pitch 37249×44905.8, Cols 10, Rows 9)로 그대로 재현하는 규칙:
  *  ① Die 격자 = Die 식(DieCol=(Cols−2)−ix, DieRow=(Rows−2)−iy)이 0 이상을 내는 ix 0..Cols−2, iy 0..Rows−2 = (Cols−1)×(Rows−1) 칸
@@ -691,6 +700,15 @@ function paintMap(cv,opt){
     if(S.mapCheck&&!S.mapCheck.ok&&!S.mapCheck.size){x.setLineDash([3,3]);x.lineWidth=1.5;
       for(const d of D.dies){const inM=d.code!=null;if(d.full===inM)continue;x.strokeStyle=d.full?cl('--gone'):cl('--new');x.strokeRect(PX(d.x0)+2,PY(d.y0+p.pitchY)+2,pw-4,ph-4)}x.setLineDash([])}}
   x.strokeStyle=cl('--sub');x.lineWidth=1.2;x.beginPath();x.arc(PX(R.cx),PY(R.cy),R.rad*k,0,7);x.stroke();
+  // Notch: 맵 파일 열(DieCol) 방향이 화면 X 와 반대라(DieCol=(Cols−2)−ix) 좌우만 뒤집어 그린다(위 · 아래는 같음)
+  if(R.D){const N=notchInfo(),a=((360-N.deg)%360)*Math.PI/180,ux=Math.sin(a),uy=-Math.cos(a),Rp=R.rad*k,cx=PX(R.cx),cy=PY(R.cy);
+    const ex=cx+Rp*ux,ey=cy+Rp*uy,d=Math.max(8,Math.min(16,Rp*.06)),w=d*.75;
+    x.beginPath();x.moveTo(ex+w*uy+1.5*ux,ey-w*ux+1.5*uy);x.lineTo(cx+(Rp-d)*ux,cy+(Rp-d)*uy);x.lineTo(ex-w*uy+1.5*ux,ey+w*ux+1.5*uy);x.closePath();
+    x.fillStyle=cl('--panel');x.fill();x.strokeStyle=cl('--ink');x.lineWidth=1.4;x.beginPath();
+    x.moveTo(ex+w*uy,ey-w*ux);x.lineTo(cx+(Rp-d)*ux,cy+(Rp-d)*uy);x.lineTo(ex-w*uy,ey+w*ux);x.stroke();
+    x.fillStyle=cl('--ink');x.font='bold 11px sans-serif';x.textAlign='center';x.textBaseline='middle';
+    x.fillText('Notch',cx+(Rp+12)*ux,cy+(Rp+12)*uy);x.textAlign='start';x.textBaseline='alphabetic';
+    S.notchDeg=N.deg;S.notchSrc=N.src}
   x.setLineDash([5,4]);x.strokeRect(PX(R.x0),PY(R.y1),(R.x1-R.x0)*k,(R.y1-R.y0)*k);x.setLineDash([]);
   x.fillStyle=cl('--sub');x.font='11px sans-serif';x.fillText(R.D?'(0,0)':`(${Math.round(R.x0)}, ${Math.round(R.y0)})`,PX(R.x0)+3,PY(R.y0)-4);
   S.mapFrom=D?'calc':'none';
@@ -793,6 +811,7 @@ function go(n){if(n>=3&&!S.cmp&&!runCompare())n=2;$$('section.step').forEach(s=>
   $$('nav button[data-step]').forEach(b=>b.toggleAttribute('aria-current',b.dataset.step==n)&&b.setAttribute('aria-current','step'));
   if(n==3)drawMap();if(n==4){showRv();paintRvMap();$('#rvList').focus()}}
 $$('nav button[data-step]').forEach(b=>b.onclick=()=>go(+b.dataset.step));$('#to2').onclick=()=>go(2);
+$('#notch').addEventListener('change',()=>{if(S.cmp){mapStatus();drawMap();paintRvMap()}});
 ['#waferD','#edgeEx','#tol','#coordSrc','#pix','#ctol','#flipX','#flipY','#offX','#offY','#cropSz','#ringW'].forEach(s=>$(s).addEventListener('change',()=>{grayMemo.clear();if(S.cmp)runCompare()}));
 $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;
   r.dataset.theme=dark?'light':'dark';try{localStorage.setItem('cw.theme',r.dataset.theme)}catch(e){}drawMap()};
