@@ -1,5 +1,16 @@
 # AI 공통 인수인계
 
+## 안내 — Para #50 Graylevel 시뮬레이션 HTML 은 별도 브랜치 (2026-11-09 KST)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `3a132bb` · 이슈 Para #50. 이 브랜치(`version_v12`)의 코드는 바꾸지 않았다.
+- 새 브랜치 **`version_graylevel_simulation`**(`3a132bb` 에서 만듦, 커밋 `be922f9`)에 `AOI_Contrast_Wizard.html`(AOI Contrast AVG 단계별 비교, 단일 HTML)을 만들었다.
+  Gray Crop 좌표는 `param_manager/colorgray.py` 와 같은 frameToChuckPlane 모델 — **colorgray 좌표 식을 바꾸면 그 브랜치 HTML 의 `locateGray` 도 같이**.
+  자세한 상태 · 남은 일은 그 브랜치의 `docs/AI_HANDOFF.md` 맨 위 절. 릴리스 없음.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #50 | Graylevel 시뮬레이션 브랜치 + HTML | `version_graylevel_simulation` 에 구현(`be922f9`), version_v12 무변경 |
+
 ## 최신 재개 — Para #49 후속 Color · Gray 매칭 전부 실패 대책 (2026-11-09 KST, `version_v12`, v12.9.29)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `1b79350` · 이슈 Para #49 후속(소유자가 세션에서 "폴더 인식까지는 했는데 전부 매칭 실패래. 버그 픽스하고 릴리즈까지해") · 작업 브랜치 `version_v12`.
