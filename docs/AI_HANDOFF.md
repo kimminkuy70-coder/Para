@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #49 후속 Color · Gray 매칭 전부 실패 대책 (2026-11-09 KST, `version_v12`, v12.9.29)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `1b79350` · 이슈 Para #49 후속(소유자가 세션에서 "폴더 인식까지는 했는데 전부 매칭 실패래. 버그 픽스하고 릴리즈까지해") · 작업 브랜치 `version_v12`.
+- 원인 분석: 실제 장비 폴더 · 파일 내용을 못 봐서 **확정 못 함(확인 전)**. 원 v16 은 `frameToChuckPlane.<번호>.ini` · Gray 이름 `.t.<번호>.jpg` · 목록에 상대 이름 · `Scan_X=` 키를 가정했다.
+  번호 없는 `frameToChuckPlane.ini` 를 쓰는 장비는 이 가정이 다를 수 있다. 전부 실패가 나오는 길 셋을 모두 막음:
+  ① Gray 이름에 레시피 번호가 없으면 `recipe=None` 이라 모든 Color 가 "매칭되는 Gray 프레임 없음" ② 목록에 장비 전체 경로가 있으면 `_inside` 가 거부해 "Color 또는 Gray 파일 없음"
+  ③ 변환 키 · 구분자 변형. 코드 지도는 CLAUDE.md 맨 위 #49 후속 절.
+- 진단: 그래도 실패하면 진행 기록에 `진단:` 줄(이유별 수 · 변환 파일 · 프레임 수/레시피 · 가장 가까운 프레임 좌표). 좌표가 범위(3168×1024) 밖이면 변환 · 좌표 기준 문제 — 그 줄을 받아 다시 고친다.
+- 시험: `test_colorgray.py` 9개 통과(새 `test_match_robust_formats` 는 고치기 전 실패 확인), `tools/check_project.py` = `test_batchreport.py`(tkinter 없음) · `test_kla_cache.py`(날짜 의존) 만 실패(종전과 같음),
+  `npx tsc --noEmit` · `vite build` · `tools/test_desktop_ui.mjs`(passed) 통과. 주의: UI 시험은 `docs/screenshots/*.png` 와 `CamtekAOI/Logs/` 를 고치므로 commit 전에 되돌린다. Windows 실기 · 실제 장비 폴더는 미검증.
+- 릴리스 v12.9.29: 소유자 지시("릴리즈까지해"). 결과는 아래 표.
+- 남은 일: 실기에서 같은 폴더로 다시 확인(실패하면 진단 줄 받기), routine 릴리스 방식(#48 절 ⓐ~ⓒ) 소유자 결정, `test_kla_cache.py` 날짜 의존 고치기.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #49 후속 | 폴더는 찾는데 전부 매칭 실패 — 고치고 릴리스 | 구현 · 시험 통과, v12.9.29 릴리스 시작 |
+
 ## 최신 재개 — Para #49 Color · Gray 매칭 frameToChuckPlane.ini 찾기 (2026-11-09 KST, `version_v12`, v12.9.28)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `f9befd0` · 이슈 Para #49("v12.9.28 업데이트 사항") · 작업 브랜치 `version_v12`.

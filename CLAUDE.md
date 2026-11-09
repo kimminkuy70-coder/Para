@@ -23,6 +23,13 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)
+- 증상: v12.9.28 에서 폴더는 찾는데 Color 사진이 전부 매칭 실패. 실자료를 못 봐서 원인은 확인 전 — 원 v16 이 가정한 형식과 다를 수 있는 곳을 모두 너그럽게 함:
+  `_inside(wafer, name, names)` = 목록의 전체 경로 · 다른 대소문자 → 폴더 안 같은 이름(폴더 밖 경로는 계속 거부) · `parse_frames` 구분자 `, ; 탭` ·
+  `choose_frame` = 프레임 이름에 `.t.<번호>` 가 없거나 그 레시피 프레임이 없으면 전체 프레임에서 · `parse_transform` 키 정규화(`scanx`/`scany`, 쉼표 허용, `;` 주석, 없으면 ValueError) ·
+  `transform_files`/`transform_for` = 레시피 번호 파일 → 공통 `.ini` → 첫 파일.
+- `colorgray.diagnose(wafer, failures)` → `cgm_start` wafer `diagnosis`(이유별 수 · 변환 파일 · 프레임 수/레시피 · 가장 가까운 프레임의 Gray 픽셀 좌표) → `ColorGray.tsx` 진행 기록 '진단' 줄.
+
 ### Color · Gray 매칭 변환 파일 = `frameToChuckPlane.ini` (2026-11-09, 이슈 #49, v12.9.28)
 - 실제 장비 폴더의 변환 파일 이름은 `frameToChuckPlane.ini`. 종전 정규식 `^frametochuckplane\..+\.ini$` 는 가운데 `.<번호>` 가 있어야 맞아서 이 파일을 놓쳤다(원 v16 프로그램 이식 때의 이름 가정).
 - `colorgray.TRANSFORM_NAME = "frameToChuckPlane.ini"` 를 먼저 찾고(대소문자 무시), 없으면 `TRANSFORM_RE = ^frametochuckplane(\..+)?\.ini$` 로 예전 이름도 받는다. `missing_files` · 화면 문구도 `frameToChuckPlane.ini`.

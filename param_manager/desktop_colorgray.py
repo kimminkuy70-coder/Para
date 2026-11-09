@@ -125,8 +125,14 @@ class DesktopColorGray:
             for r in records:
                 r["outputs"] = {k: str(result / v) for k, v in colorgray.output_names(r["index"], r["color_file"]).items()}
                 r["done"] = set()
+            diag = None
+            if failures:
+                try:
+                    diag = colorgray.diagnose(path, failures, records)
+                except (OSError, ValueError, KeyError, IndexError):
+                    diag = None
             wafers.append(dict(name=name, path=path, result=result, records=records, failures=failures,
-                               colors=total, finished=None))
+                               colors=total, finished=None, diagnosis=diag))
         self.job = dict(output=output, wafers=wafers)
         return self.view()
 
@@ -137,6 +143,7 @@ class DesktopColorGray:
         return dict(job=dict(
             output=str(job["output"]),
             wafers=[dict(name=w["name"], colors=w["colors"], failed=len(w["failures"]), finished=w["finished"],
+                         diagnosis=w.get("diagnosis"),
                          records=[dict(color=r["color_file"], gray=r["gray_file"], px=r["pixel_x"], py=r["pixel_y"],
                                        gw=colorgray.GW, gh=colorgray.GH, crop_w=r["crop_w"], crop_h=r["crop_h"],
                                        out_w=r["out_w"], out_h=r["out_h"]) for r in w["records"]])

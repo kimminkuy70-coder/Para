@@ -72,6 +72,29 @@ def file_names(p) -> dict:
         return {}
 
 
+def transform_files(p: Path, names: dict | None = None) -> dict:
+    """{레시피 번호 또는 None: 변환 파일} (Para #49).
+
+    `frameToChuckPlane.ini` = 모든 레시피 공통(None), `frameToChuckPlane.<번호>.ini` = 그 레시피."""
+    names = file_names(p) if names is None else names
+    out = {}
+    for low, real in sorted(names.items()):
+        if not TRANSFORM_RE.match(low):
+            continue
+        mid = low[len("frametochuckplane"):-len(".ini")].strip(".")
+        out[int(mid) if mid.isdigit() else (None if not mid else mid)] = Path(p) / real
+    return out
+
+
+def transform_for(files: dict, recipe):
+    """그 레시피의 변환 파일: 번호가 맞는 것 → 공통(.ini) → 첫 번째."""
+    if recipe in files:
+        return files[recipe]
+    if None in files:
+        return files[None]
+    return files[sorted(files, key=str)[0]] if files else None
+
+
 def transform_file(p: Path, names: dict | None = None):
     names = file_names(p) if names is None else names
     exact = names.get(TRANSFORM_NAME.lower())
@@ -174,7 +197,7 @@ def parse_colors(path):
 def parse_frames(path):
     rows = []
     for raw in _text(path).splitlines():
-        parts = raw.strip().split(",")
+        parts = [x.strip() for x in re.split(r"[,;\t]", raw.strip())]
         if len(parts) < 3 or parts[0].startswith("Version="):
             continue
         try:
@@ -189,13 +212,18 @@ def parse_frames(path):
 def parse_transform(path):
     data = {}
     for raw in _text(path).splitlines():
-        if "=" in raw:
-            key, value = raw.split("=", 1)
+        line = raw.split(";", 1)[0].strip() if not raw.lstrip().startswith("[") else ""
+        if "=" in line:
+            key, value = line.split("=", 1)
             try:
-                data[key.strip()] = [float(x) for x in value.split()]
+                nums = [float(x) for x in re.split(r"[\s,]+", value.strip()) if x]
             except ValueError:
-                pass
-    sx, sy = data["Scan_X"], data["Scan_Y"]
+                continue
+            # 키 이름 대소문자 · '_' 무시(Scan_X · SCAN_X · ScanX, Para #49)
+            data.setdefault(re.sub(r"[^a-z0-9]", "", key.lower()), nums)
+    sx, sy = data.get("scanx"), data.get("scany")
+    if not sx or not sy or len(sx) < 3 or len(sy) < 3:
+        raise ValueError(f"{Path(path).name} 에 Scan_X · Scan_Y(숫자 3개) 줄이 없습니다")
     m = ((sx[0], sx[1]), (sy[0], sy[1]))
     offset = (sx[2], sy[2])
     det = m[0][0] * m[1][1] - m[0][1] * m[1][0]
@@ -213,11 +241,12 @@ def choose_frame(color, frames, inverse, offset):
     """Gray frame whose image contains the fault, preferring the one where it lies
     farthest from the frame edge. Returns (frame, px, py, candidate_count)."""
     fx, fy = fault_xy(color)
-    recipe = int(color.get("RecipeNumber", "1"))
+    recipe = int(float(color.get("RecipeNumber", "1") or 1))
+    # 프레임 이름에 레시피 번호(.t.<번호>.jpg)가 없거나 그 번호의 프레임이 없으면 모든 프레임에서 찾는다(Para #49)
+    same = [f for f in frames if f["recipe"] == recipe]
+    pool = same if same else [f for f in frames if f["recipe"] is None] or frames
     candidates = []
-    for frame in frames:
-        if frame["recipe"] != recipe:
-            continue
+    for frame in pool:
         tx, ty = fx - frame["x"] - offset[0], fy - frame["y"] - offset[1]
         px = inverse[0][0] * tx + inverse[0][1] * ty
         py = inverse[1][0] * tx + inverse[1][1] * ty
@@ -240,8 +269,17 @@ def crop_size(color):
     return crop_w, crop_h, out_w, out_h
 
 
-def _inside(wafer: Path, name: str):
-    """A file named inside the wafer's list files; never outside the wafer folder."""
+def _inside(wafer: Path, name: str, names: dict | None = None):
+    """A file named inside the wafer's list files; never outside the wafer folder.
+
+    목록에 장비의 전체 경로(`D:\\...\\x.t.1.jpg`)나 다른 대소문자가 적혀 있으면
+    wafer 폴더 안의 같은 이름 파일을 쓴다(Para #49)."""
+    name = (name or "").strip().strip('"')
+    base = re.split(r"[\\/]", name)[-1]
+    if names is not None and (re.search(r"^[A-Za-z]:|^[\\/]|[\\/]", name)) and base.lower() in names:
+        return wafer / names[base.lower()]
+    if names is not None and name.lower() in names:
+        return wafer / names[name.lower()]
     path = (wafer / name)
     try:
         if os.path.commonpath([os.path.abspath(path), os.path.abspath(wafer)]) != os.path.abspath(wafer):
@@ -257,17 +295,32 @@ def plan_wafer(wafer):
     names = file_names(wafer)
     colors = parse_colors(wafer_file(wafer, WAFER_FILES[0], names))
     frames = parse_frames(wafer_file(wafer, WAFER_FILES[1], names))
-    inverse, offset = parse_transform(transform_file(wafer, names))
+    tfiles = transform_files(wafer, names)
+    if not tfiles:
+        raise ValueError(f"{TRANSFORM_NAME} 이 없습니다")
+    parsed = {}
+
+    def transform(recipe):
+        f = transform_for(tfiles, recipe)
+        if f not in parsed:
+            parsed[f] = parse_transform(f)
+        return parsed[f]
+
     records, failures = [], []
     for index, color in enumerate(colors, 1):
+        try:
+            recipe = int(float(color.get("RecipeNumber", "1") or 1))
+        except (TypeError, ValueError):
+            recipe = 1
+        inverse, offset = transform(recipe)     # 변환 파일 오류는 한 번에 알린다(Color 마다 숨기지 않음)
         try:
             frame, px, py, count = choose_frame(color, frames, inverse, offset)
             fx, fy = fault_xy(color)
         except (TypeError, ValueError):
             failures.append((color.get("file", ""), "좌표 값을 읽을 수 없음"))
             continue
-        color_path = _inside(wafer, color["file"])
-        gray_path = _inside(wafer, frame["file"]) if frame else None
+        color_path = _inside(wafer, color["file"], names)
+        gray_path = _inside(wafer, frame["file"], names) if frame else None
         if not frame:
             failures.append((color["file"], "매칭되는 Gray 프레임 없음"))
             continue
@@ -280,6 +333,53 @@ def plan_wafer(wafer):
                             fault_x=fx, fault_y=fy, pixel_x=px, pixel_y=py, candidate_count=count,
                             crop_w=crop_w, crop_h=crop_h, out_w=out_w, out_h=out_h))
     return records, failures, len(colors)
+
+
+def diagnose(wafer, failures, records=()) -> dict:
+    """매칭이 안 될 때 화면에 보일 요약(Para #49): 실패 이유별 수 · 파일 수 · 첫 실패의 좌표."""
+    wafer = Path(wafer)
+    names = file_names(wafer)
+    reasons = {}
+    for _, why in failures:
+        reasons[why] = reasons.get(why, 0) + 1
+    out = dict(reasons=reasons, transform=[p.name for p in transform_files(wafer, names).values()])
+    try:
+        colors = parse_colors(wafer_file(wafer, WAFER_FILES[0], names))
+        frames = parse_frames(wafer_file(wafer, WAFER_FILES[1], names))
+    except OSError:
+        return out
+    out["colors"] = len(colors)
+    out["frames"] = len(frames)
+    out["frame_recipes"] = sorted({str(f["recipe"]) for f in frames})
+    out["color_recipes"] = sorted({str(c.get("RecipeNumber", "1")) for c in colors})
+    out["jpg_files"] = sum(1 for n in names if n.endswith((".jpg", ".jpeg")))
+    if frames:
+        out["frame_example"] = frames[0]["file"]
+    if colors:
+        out["color_example"] = colors[0].get("file", "")
+    # 프레임이 없다고 한 첫 Color: 가장 가까운 프레임에서 계산한 Gray 픽셀 좌표
+    bad = {f for f, why in failures if why == "매칭되는 Gray 프레임 없음"}
+    for c in colors:
+        if c.get("file") not in bad:
+            continue
+        try:
+            tf = transform_files(wafer, names)
+            inverse, offset = parse_transform(transform_for(tf, int(float(c.get("RecipeNumber", "1") or 1))))
+            fx, fy = fault_xy(c)
+        except (TypeError, ValueError, OSError):
+            break
+        best = None
+        for fr in frames:
+            tx, ty = fx - fr["x"] - offset[0], fy - fr["y"] - offset[1]
+            px = inverse[0][0] * tx + inverse[0][1] * ty
+            py = inverse[1][0] * tx + inverse[1][1] * ty
+            d = max(0, -px, px - GW) + max(0, -py, py - GH)
+            if best is None or d < best[0]:
+                best = (d, fr["file"], round(px, 1), round(py, 1))
+        if best:
+            out["nearest"] = dict(color=c.get("file"), fault=[fx, fy], frame=best[1], px=best[2], py=best[3], gw=GW, gh=GH)
+        break
+    return out
 
 
 # ---------------------------------------------------------------- outputs

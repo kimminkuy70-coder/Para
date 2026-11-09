@@ -165,6 +165,32 @@ class ColorGrayTests(unittest.TestCase):
         self.assertIsNone(cg.transform_file(w))
         self.assertEqual(cg.missing_files(w), ["frameToChuckPlane.ini"])
 
+    def test_match_robust_formats(self):
+        """Para #49: 폴더는 찾는데 전부 매칭 실패하던 경우 — 목록의 전체 경로 · 레시피 번호 없는 프레임 이름 ·
+        변환 파일 키/구분자 변형 · 레시피별 변환 파일."""
+        w = make_wafer(self.base / "R49", "W50")
+        # 장비의 전체 경로 · 대소문자 다른 이름 · 이름에 .t.<번호> 없음 · ; 구분
+        (w / "F1.t.1.jpg").rename(w / "F1.jpg")
+        (w / "F2.t.1.jpg").rename(w / "F2.jpg")
+        (w / "ScanResultImageList.txt").write_text(
+            "Version=1\nD:\\Scanresult\\Job\\f1.JPG;0;0\nD:\\Scanresult\\Job\\F2.jpg;1000;0\n", encoding="utf-8")
+        (w / "frameToChuckPlane.ini").write_text("[Transform]\nSCAN_X = 1, 0, 0\nscan_y=0 1 0\n", encoding="utf-8")
+        records, failures, total = cg.plan_wafer(w)
+        self.assertEqual((total, len(records)), (3, 1))   # C3.jpg 는 fixture 에 없음
+        self.assertEqual({Path(r["gray_path"]).name for r in records}, {"F1.jpg"})   # 목록의 D:\\…\\f1.JPG → 폴더의 F1.jpg
+        # 레시피별 변환 파일이 있으면 그 레시피 것을 쓴다(공통 .ini 보다 먼저)
+        (w / "frameToChuckPlane.1.ini").write_text("Scan_X=1 0 100000\nScan_Y=0 1 0\n", encoding="utf-8")
+        records, failures, total = cg.plan_wafer(w)
+        self.assertEqual(len(records), 0)
+        d = cg.diagnose(w, failures)
+        self.assertEqual(d["reasons"], {"매칭되는 Gray 프레임 없음": 3})
+        self.assertEqual(d["frames"], 2)
+        self.assertIn("nearest", d)
+        # 변환 줄이 없으면 이유를 알려 준다
+        (w / "frameToChuckPlane.1.ini").write_text("Foo=1\n", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            cg.plan_wafer(w)
+
     def test_long_path_prefix(self):
         """Para #48: 260자에 가까운 Windows 경로는 \\?\ 확장 경로로 연다."""
         import os
