@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #52 Contrast Wizard Defect 가 wafer map 을 벗어나 오른쪽 위로 밀림 → wafer 중심 자동 맞춤 (2026-11-09 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `bd3af07` · 이슈 Para #52("Graylevel 시뮬레이션 브랜치 신규생성 3", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**.
+- 요청: defect 좌표 또는 Die 계산이 틀려 defect 가 wafer map 밖에 찍힘, 전체가 오른쪽 위로 밀린 느낌 — 수정.
+- 원인(내 판단, 확인 전): Die 번호 식(ix=floor(X/PitchX), DieCol=(Cols−2)−ix)은 #50 검증 예와 맞으므로 그대로 두었다. 틀린 것은 **wafer 원의 중심을 ProductInfo 격자 (Cols−1)×(Rows−1) 의 가운데로 고정한 가정**(#51 후속)이다 —
+  그 가정은 예시 맵 모양(Die 30)만 맞췄고 Defect 좌표로는 확인하지 않았다. 실제 자료의 중심이 다르면 Defect 가 한쪽으로 밀려 원 밖에 찍힌다. 실제 결과 폴더는 못 봤다.
+- 한 일(`AOI_Contrast_Wizard.html`): `centerFit(p, base, rin, pts)`(순수 함수, `window.__cw`) — 격자 가운데에서 반 칸(PitchX/2 · PitchY/2) 단위 ±10칸 후보 중 Defect 가 가장 많이 원 안에 드는 중심
+  (동점: 기준과 같은 칸 짝수/홀수 = 예시 맵 모양 유지 → 완전한 Die 칸 안 Defect 수 → 기준에서 가까운 것). Step 2 [Wafer 중심] `#wcMode` 자동(기본) / 격자 가운데. 결과 `S.center`, 쌍마다 `c.fit` 캐시.
+  `dieCells` = 원을 덮는 Die 칸 전부(격자 밖도), 맵 파일 비교 = 맵 Die 묶음 왼쪽 위 ↔ 계산 Die 묶음 최소 DieCol · DieRow. `#mapSt` 에 옮긴 칸 수 · 중심 좌표 · 원 밖 Defect 수(⚠).
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(centerFit: 그대로 0,0 · 오른쪽 위 1칸 → 반 칸 2,2 · 왼쪽 아래 → −4,−2, 모두 원 안 / 격자 가운데 모드 = 종전 167621, 179623 · Die 30 · Die (3,1) / 맵 비교 30/30 일치).
+  `tools/check_project.py` 의 Python 시험은 이 환경에 openpyxl 이 없어 대부분 실패(HTML 변경과 무관, 이번에 바꾼 Python 없음). 실제 결과 폴더 · Edge 실기 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML, #50 · #51 과 같음).
+- 남은 일(소유자 확인): ⓐ 실제 폴더에서 Step 2 상태 문구의 '원 밖 Defect' 가 0 인지, 지도에서 Defect 가 Die 위에 놓이는지 ⓑ 여전히 밀리면 상태 문구(옮긴 칸 수 · 중심 좌표)와 Defect 몇 개의 Wafer X/Y 를 이슈에 남겨 달라 — 그러면 좌표 축 방향(Y 아래쪽 증가 등)을 다시 본다
+  ⓒ 반 칸 단위로만 옮기는 것(Die 격자에 맞춤)이 맞는지.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #52 | defect 가 wafer map 밖 · 오른쪽 위로 밀림 | wafer 중심을 Defect 위치로 자동 맞춤(반 칸 단위), 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #51 후속 Wafer map Notch 표시 (2026-11-09 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `801e4b9` · 이슈 Para #51 후속(소유자 세션 지시 "웨이퍼맵에 노치도 표기해줘") · 작업 브랜치 **`version_graylevel_simulation`**.

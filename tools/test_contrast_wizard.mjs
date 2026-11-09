@@ -69,8 +69,7 @@ await page.locator('#legend [data-view="all"]').click();await page.waitForTimeou
 const fd=await page.evaluate(()=>window.__cw.state.fullDies);
 // Para #51 후속: 맵 파일 없이 ProductInfo(Pitch 37249×44905.8, Cols 10, Rows 9) + 300 mm 원으로 소유자 예시 맵과 같은 Die 30개
 assert.equal(fd,30,'계산 Die '+fd);
-assert.match(await page.locator('#mapSt').innerText(),/계산 Die 30개 \(격자 8×9, 지름 300 mm\)/);
-assert.ok(await page.evaluate(()=>window.__cw.state.dieSet.has('3,1')),'#50 검증 예 Die (3, 1) 은 wafer 안');
+assert.match(await page.locator('#mapSt').innerText(),/계산 Die 30개 \(지름 300 mm\) · 중심 자동 .* Defect 1\/5개가 wafer 원 밖/);
 // Notch: 맵 파일이 없으면 기본 아래(180)
 assert.deepEqual(await page.evaluate(()=>[window.__cw.state.notchDeg,window.__cw.state.notchSrc]),[180,'기본값']);assert.match(await page.locator('#mapSt').innerText(),/Notch 아래 \(기본값\)/);
 // Para #51: Wafer Map 파일(소유자 예시)이 있으면 '___' 아닌 칸만 Die 로 그린다(종전: ProductInfo Cols×Rows 전부 → die 가 많았다)
@@ -92,6 +91,19 @@ await page.evaluate(()=>{const e=document.querySelector('#waferD');e.value='280'
 assert.ok(await page.evaluate(()=>window.__cw.state.fullDies)<30);assert.match(await page.locator('#mapSt').innerText(),/다름: 계산에만 0 · 맵에만 \d+/);
 await page.evaluate(()=>{const e=document.querySelector('#waferD');e.value='300';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(200);
 assert.equal(await page.evaluate(()=>window.__cw.state.fullDies),30);
+// Para #52: Defect 가 wafer 원을 벗어나 오른쪽 위로 밀려 보임 → 중심을 Defect 위치로 맞춘다(반 칸 단위, 기준 = 격자 가운데)
+const cf=await page.evaluate(()=>{const p={pitchX:37249,pitchY:44905.8,cols:10,rows:9,offX:0,offY:0},bx=4.5*37249,by=4*44905.8;
+  const ring=(cx,cy,r)=>Array.from({length:72},(_,k)=>[cx+r*Math.cos(k*Math.PI/36),cy+r*Math.sin(k*Math.PI/36)]);
+  const f=(dx,dy)=>{const v=window.__cw.centerFit(p,[bx,by],150000,ring(bx+dx*37249,by+dy*44905.8,140000).concat([[bx+dx*37249,by+dy*44905.8]]));return [v.i,v.j,v.inC,v.n]};
+  return {same:f(0,0),up:f(1,1),down:f(-2,-1)}});
+assert.deepEqual(cf.same,[0,0,73,73]);   // 이미 맞으면 그대로
+assert.deepEqual(cf.up,[2,2,73,73]);     // 오른쪽 위로 1칸씩 = 반 칸 2개씩
+assert.deepEqual(cf.down,[-4,-2,73,73]);
+assert.match(await page.locator('#mapSt').innerText(),/중심 자동/);
+await page.evaluate(()=>{const e=document.querySelector('#wcMode');e.value='grid';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(200);
+assert.match(await page.locator('#mapSt').innerText(),/중심 격자 가운데 = 167621, 179623 µm/);assert.equal(await page.evaluate(()=>window.__cw.state.fullDies),30);
+assert.ok(await page.evaluate(()=>window.__cw.state.dieSet.has('3,1')),'#50 검증 예 Die (3, 1) 은 wafer 안');   // 합성 자료는 원점 근처 Defect 가 있어 자동 중심은 다른 곳
+await page.evaluate(()=>{const e=document.querySelector('#wcMode');e.value='auto';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(200);
 assert.ok(!/유지|소거|신규/.test(await page.locator('main').innerText()));
 // Wafer map 이 그려진다(직사각형 · wafer 원 · 점)
 const painted=await page.evaluate(()=>{const c=document.querySelector('#map'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n});
