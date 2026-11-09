@@ -262,11 +262,21 @@ def _key(row, id_slots):
     return f"S{slot:02d}" if slot is not None else "ID:" + row["wafer_id"]
 
 
-def resolve(attempts, overrides=None, bunch_key=None):
-    """묶음 안 웨이퍼별 결과. overrides = {(bunch_key, wafer_key): attempt_id} 로 사람 선택 반영."""
+def id_slot_map(attempts):
+    """Wafer ID → 슬롯. 슬롯을 아는 행(25행 표 · Slot N · 전체 ID)에서만 모은다."""
+    return {r["wafer_id"]: r["slot"] for a in attempts for r in a["rows"]
+            if r["slot"] is not None and is_real_id(r["wafer_id"])}
+
+
+def resolve(attempts, overrides=None, bunch_key=None, lot_slots=None):
+    """묶음 안 웨이퍼별 결과. overrides = {(bunch_key, wafer_key): attempt_id} 로 사람 선택 반영.
+
+    lot_slots = 같은 Lot 의 다른 묶음에서 본 Wafer ID → 슬롯(이슈 Para #44). 1장만 스캔해 슬롯을 모르는
+    Batch Report(예: `S3LQR044XMD2` 1행)도 다른 스캔에서 그 ID 가 2번 슬롯이면 2번 슬롯 행으로 맞춘다.
+    이 묶음 안에서 본 슬롯이 우선.
+    """
     overrides = overrides or {}
-    id_slots = {r["wafer_id"]: r["slot"] for a in attempts for r in a["rows"]
-                if r["slot"] is not None and is_real_id(r["wafer_id"])}
+    id_slots = {**(lot_slots or {}), **id_slot_map(attempts)}
     cells = defaultdict(list)
     for position, a in enumerate(attempts):
         for row in a["rows"]:
@@ -305,7 +315,7 @@ def resolve(attempts, overrides=None, bunch_key=None):
         chained = next((r for _, r in errors if r["kind"] == "연쇄"), None)
         stopped = next((r for _, r in errors if r["kind"] == STOP), None)
         slots = [r["slot"] for _, r in items if r["slot"] is not None]
-        wafers.append({"key": key, "slot": slots[0] if slots else None,
+        wafers.append({"key": key, "slot": slots[0] if slots else int(key[1:]) if key.startswith("S") else None,
                        "wafer_id": next((r["wafer_id"] for _, r in items if is_real_id(r["wafer_id"])), items[0][1]["wafer_id"]),
                        "cells": [{"attempt": p, "order": r["order"], "status": r["status"], "pass": r["pass"], "cause": r["cause"],
                                   "kind": r["kind"]} for p, r in items],
@@ -349,9 +359,9 @@ def bunch_state(bunch):
     return LOT_OPEN if bunch["unresolved"] else LOT_RESCANNED if bunch["counts"].get(RECOVERED, 0) else LOT_DONE
 
 
-def _bunch(attempts, overrides, moved):
+def _bunch(attempts, overrides, moved, lot_slots=None):
     key = attempts[0]["id"]
-    wafers, counts, totals = resolve(attempts, overrides, key)
+    wafers, counts, totals = resolve(attempts, overrides, key, lot_slots)
     return {"key": key, "attempts": attempts, "scan": attempts[0].get("scan", SCAN_2D),
             "machines": list(dict.fromkeys(a["machine"] for a in attempts)),
             "moved": moved, "step": _step(attempts), "job": _job(attempts),
@@ -433,7 +443,8 @@ def build(records, overrides=None, same_gap_h=SAME_MACHINE_GAP_H, move_gap_h=MOV
                     rep = _represent(rep, reps) if rep else (reps[0] if len(reps) == 1 else None)
                     grouped[rep].append((part, moved))
         for rep, parts in grouped.items():
-            bunches = [_bunch(part, overrides, moved) for part, moved in parts]
+            lot_slots = id_slot_map([a for part, _ in parts for a in part])   # Lot 전체에서 Wafer ID → 슬롯(#44)
+            bunches = [_bunch(part, overrides, moved, lot_slots) for part, moved in parts]
             bunches.sort(key=lambda b: (b["start"] or datetime.max, b["key"]))
             all_attempts = [a for b in bunches for a in b["attempts"]]
             unresolved = sum(b["unresolved"] for b in bunches)

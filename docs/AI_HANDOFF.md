@@ -1,5 +1,29 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #44 Lot 고르기 레시피 탭 · Lot History 슬롯 맞춤 · Lot 박스 머리 색 (2026-11-09 KST, `version_v12`, v12.9.26)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `77aa9f6` · 이슈 Para #44("v12.9.26 업데이트 사항") · 작업 브랜치 `version_v12`.
+- 요청: ① Batch Report 찾기 · Lot 취합 검색 결과에서 같은 레시피끼리 한 탭으로 묶어 전체 선택 가능하게(시간순 유지)
+  ② Lot History 에서 1장만 스캔한 Batch Report 의 wafer(`S3LQR044XMD2`)가 다른 스캔에서는 2번 슬롯인데 독립된 행으로 나옴 — wafer ID 로 행 맞추기
+  ③ Lot 고르기의 Lot 박스 제목을 다른 색으로(가독성).
+- 원인 ②: 25행이 아닌 표는 Wafer ID 로 슬롯을 찾는데, 이 ID 형식(`S3LQR044XMD2`)은 전체 ID 정규식(`SF14G25-A0`)에 안 맞고, ID → 슬롯 짝은 **같은 묶음 안에서만** 찾았다.
+  며칠 뒤 따로 스캔한 1장은 다른 묶음이라 `ID:S3LQR044XMD2` key 로 남았다.
+- 한 일(코드 지도는 CLAUDE.md 맨 위 #44 절): `lotmodel.id_slot_map` · `resolve(lot_slots=)` · `build`(Lot 전체 짝), `BatchFind.tsx` 레시피 탭 · 탭 전체 선택 · 시간순 정렬,
+  styles.css 끝 #44 블록, `docs/ai_guide/BatchReport_캐시_분석지침.txt` wafer key 규칙, 릴리스 노트 `docs/release_notes/v12.9.26.md`.
+- 내 해석(확인 전): ⓐ "한 탭" = 레시피 칩을 탭(한 번에 레시피 하나 + [전체])으로 바꾸고 탭 옆에 탭 전체 선택 체크 ⓑ 시간순 = Lot 줄의 첫 Batch Report 시작 시각
+  ⓒ ② 는 Lot History 화면만이 아니라 엔진 key 를 고쳐 Lot · wafer 취합 · 찾기 취합에도 같이 적용 ⓓ 종전 `ID:` key 로 저장된 사람 선택은 이 wafer 에 더는 적용 안 됨(드문 경우)
+  ⓔ 제목 색 = 앱 기본 navy 바탕 · 흰 글자 · 왼쪽 강조색 띠.
+- 시험: `tests/test_lotmodel.py`(새 시험 — 고치기 전 실패 확인) 통과, `tools/test_desktop_ui.mjs` 레시피 탭 · 탭 전체 선택 · 시간순 확인으로 바꿔 통과, `npx tsc --noEmit` · `vite build` 통과,
+  `tools/check_project.py` = `test_batchreport.py`(tkinter 없음, 기존과 같음) · `test_kla_cache.py` 실패.
+  `test_kla_cache.py::test_build_and_search_cache` 는 이번 변경 전에도 실패 — 시험 자료 날짜 2026-11-05 를 '최근 3일'로 가정해 오늘(11-09)부터 깨지는 날짜 의존 시험(고치지 않음, 남은 일).
+  UI 시험은 `python`(=/usr/local/bin/python)에 openpyxl 이 있어야 함(`python -m pip install openpyxl`, 개발 환경만). Windows 실기는 미검증.
+- 릴리스: 아래 이슈 이력 줄 참고.
+- 남은 일: 해석 ⓐ~ⓔ 확인, `test_kla_cache.py` 날짜 의존 고치기(오늘 기준 날짜로 만들기).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #44 | Lot 고르기 레시피 탭 · 전체 선택(시간순) · Lot History 1장 스캔 wafer 슬롯 맞춤 · Lot 박스 제목 색 | 구현 · 시험 통과, v12.9.26 릴리스 시도(결과는 다음 갱신) |
+
 ## 최신 재개 — Para #43 자동 분석 KLA 탭 · 다음 실행 날짜 · KLA 찾기 UX (2026-11-09 KST, `version_v12`, v12.9.25)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `cb82288` · 이슈 Para #43("v12.9.25 업데이트 사항") · 작업 브랜치 `version_v12`.

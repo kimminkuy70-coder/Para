@@ -876,3 +876,14 @@ dialog::backdrop{overscroll-behavior:contain}
 .kla .kla-sumtext{flex:1 1 360px;margin:0;font-size:12.5px;color:var(--muted);word-break:keep-all}
 .kla .kla-filter{flex:0 1 260px}
 .kla .kla-acts{white-space:nowrap}.kla .kla-acts button{font-size:12px;min-height:28px;padding:3px 10px;margin-right:4px}
+
+/* Batch Report 찾기 · Lot 고르기 — 레시피 탭 + Lot 박스 머리 색(이슈 Para #44) */
+.bv .jobfilter .jf-rtabs{display:flex;flex-wrap:wrap;margin:8px 0 6px;border-radius:12px}
+.bv .jobfilter .jf-rtabs button{padding:6px 14px;font-size:12.5px;font-weight:700;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bv .jobfilter .jf-rtabs small{font-weight:400;color:var(--muted);margin-left:4px}
+.bv .jobfilter .jf-taball{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;margin:0 0 4px}
+.bv .groups .group{border-color:#c9d4e2}
+.bv .groups .group>.gh{background:var(--navy);color:#fff;border-left:5px solid var(--lime)}
+.bv .groups .group>.gh b{color:#fff}
+.bv .groups .group>.gh .meta{color:#d6e0ec}
+.bv .groups .group>.gh input[type=checkbox]{accent-color:var(--lime)}

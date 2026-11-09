@@ -313,6 +313,17 @@ class RecipeMatch(unittest.TestCase):
         self.assertEqual(lot["duplicates"], 25)
 
 
+    def test_single_wafer_scan_joins_slot_by_id_across_bunches(self):
+        """이슈 Para #44: 1장만 스캔한 Batch Report 의 Wafer ID 를 다른 스캔의 슬롯 행에 맞춘다."""
+        ids = [f"S3LQR044XM{c}{slot}" for slot, c in zip(range(25, 0, -1), "ABCDEFGHIJKLMNOPQRSTUVWXY")]
+        two = ids[23]                                   # 25→1 순서에서 24번째 행 = 슬롯 2
+        model = lm.build(records(("AOI-1", report("QRS", list(zip(ids, ["Pass"] * 25)), "2026-10-01 08:00", recipe="2D")),
+                                 ("AOI-1", report("QRS-RE", [(two, "Pass")], "2026-10-05 08:00", recipe="2D"))))
+        lot = only(model, "QRS")
+        self.assertEqual(len(lot["bunches"]), 2)
+        single = lot["bunches"][1]["wafers"]
+        self.assertEqual([(w["key"], w["slot"], w["wafer_id"]) for w in single], [("S02", 2, two)])
+
 @unittest.skipUnless(os.environ.get("PARA_BATCH_SAMPLE"), "PARA_BATCH_SAMPLE 폴더 없음")
 class RealSample(unittest.TestCase):
     def test_real_reports(self):

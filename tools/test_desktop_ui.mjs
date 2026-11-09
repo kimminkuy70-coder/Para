@@ -333,13 +333,20 @@ try{
   assert((await page.locator('.groups .group').count())>=1);
   await gtags.getByRole('button',{name:/태그 전체/}).click();
   assert.equal(await page.locator('.groups .group').count(),nGroups);
-  // #27: Lot 레시피별 보기(③) — 레시피 하나를 고르면 그 레시피(Job · Recipe(s)) 줄만, '레시피 전체'로 되돌림.
-  const grec=page.getByRole('group',{name:'Lot 레시피별 보기'});
-  const recChip=grec.locator('button.jf-chip').nth(1),rname=await recChip.getAttribute('title');
-  await recChip.click();assert.equal(await recChip.getAttribute('aria-pressed'),'true');
+  // #27 · #44: Lot 레시피 탭(③) — 레시피 탭을 누르면 그 레시피(Job · Recipe(s)) 줄만 시간순, 탭 전체 선택, '전체' 탭으로 되돌림.
+  const grec=page.getByRole('tablist',{name:'Lot 레시피 탭'});
+  const recTab=grec.getByRole('tab').nth(1),rname=await recTab.getAttribute('title');
+  await recTab.click();assert.equal(await recTab.getAttribute('aria-selected'),'true');
   const nRec=await page.locator('.groups .group').count();assert(nRec>=1&&nRec<=nGroups);
   assert.equal(await page.locator('.groups .group .gh b').filter({hasText:rname}).count(),nRec);
-  await grec.getByRole('button',{name:/레시피 전체/}).click();
+  const tabAll=page.getByLabel('이 탭 Lot 전체 선택');
+  await tabAll.check();
+  assert.equal(await page.locator('.group .gh input[type=checkbox]:checked').count(),nRec);
+  await tabAll.uncheck();
+  assert.equal(await page.locator('.group .gh input[type=checkbox]:checked').count(),0);
+  const starts=await page.locator('.groups .group .gh .meta').allTextContents();
+  assert.deepEqual([...starts].sort(),starts,'레시피 탭 안 Lot 은 시간순');
+  await grec.getByRole('tab',{name:/^전체/}).click();
   assert.equal(await page.locator('.groups .group').count(),nGroups);
   await page.getByRole('button',{name:'보이는 Lot 모두 선택',exact:true}).click();
   assert.equal(await page.locator('.group .gh input[type=checkbox]:checked').count(),nGroups);

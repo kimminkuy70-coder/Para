@@ -74,7 +74,11 @@ export function FindTab(p:Props){
   const gRecipe=(k:string)=>{const b=gBunch(k);return b?bunchLabel(b):'';};
   const gRecipes:Record<string,number>={};order.forEach(k=>{const r=gRecipe(k);if(r)gRecipes[r]=(gRecipes[r]||0)+1;});
   const gCounts:Record<string,number>={};order.forEach(k=>{const t=gState(k);if(t)gCounts[t]=(gCounts[t]||0)+1;});
+  // 시간순(그 Lot · 레시피 줄의 첫 Batch Report 시작 시각) — 레시피 탭으로 나눠도 순서 유지(이슈 Para #44)
+  const gStart=(k:string)=>members[k].reduce((m,g)=>{const t=v!.R[g].s||'';return !m||t&&t<m?t:m;},'');
+  order.sort((a,b)=>gStart(a).localeCompare(gStart(b)));
   const visible=order.filter(k=>(!gw.length||qHit(gText(k),gw))&&(!gt.length||gt.includes(gState(k)))&&(!gr.length||gr.includes(gRecipe(k))));
+  const tabAll=!!visible.length&&visible.every(k=>members[k].every(g=>sel[g]));
   const rState=groups.map((g,gi)=>aggState(g,gi,choice));
   const rCounts:Record<string,number>={};rState.forEach(t=>{rCounts[t]=(rCounts[t]||0)+1;});
   const rShow=groups.map((_,gi)=>!rt.length||rt.includes(rState[gi]));
@@ -165,12 +169,16 @@ export function FindTab(p:Props){
           <button type="button" style={small} disabled={!visible.length} onClick={()=>setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{n[g]=1;}));return n;})}>보이는 Lot 모두 선택</button>
           <button type="button" style={small} disabled={!visible.some(k=>members[k].some(g=>sel[g]))} onClick={()=>setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{delete n[g];}));return n;})}>보이는 Lot 해제</button>
           <button type="button" style={small} disabled={!nSel} onClick={()=>setSel({})}>모두 해제</button></div>
-        <div className="jf-chips" role="group" aria-label="Lot 레시피별 보기" style={{marginTop:6}}>
-          <button type="button" className={'jf-chip'+(!gr.length?' on':'')} aria-pressed={!gr.length} onClick={()=>{setGr([]);lastG.current=null;}}><i aria-hidden="true">{!gr.length?'✓':''}</i><span>레시피 전체</span></button>
-          {Object.keys(gRecipes).sort().map(r=>{const on=gr.includes(r);return <button key={r} type="button" className={'jf-chip'+(on?' on':'')} aria-pressed={on} title={r}
-            onClick={()=>{setGr(on?gr.filter(x=>x!==r):[...gr,r]);lastG.current=null;}}><i aria-hidden="true">{on?'✓':''}</i><span>{r}</span><small>{gRecipes[r]}</small></button>;})}</div>
+        {/* 레시피 탭 — 같은 레시피(Job · Recipe(s)) Lot 을 한 탭에 모아 한 번에 전체 선택(이슈 Para #44) */}
+        <div className="pilltabs jf-rtabs" role="tablist" aria-label="Lot 레시피 탭">
+          <button type="button" role="tab" className={!gr.length?'active':''} aria-selected={!gr.length} onClick={()=>{setGr([]);lastG.current=null;}}>전체 <small>{order.length}</small></button>
+          {Object.keys(gRecipes).sort().map(r=>{const on=gr.length===1&&gr[0]===r;return <button key={r} type="button" role="tab" className={on?'active':''} aria-selected={on} title={r}
+            onClick={()=>{setGr([r]);lastG.current=null;}}>{r} <small>{gRecipes[r]}</small></button>;})}</div>
+        <label className="tgl2 jf-taball"><input type="checkbox" aria-label="이 탭 Lot 전체 선택" disabled={!visible.length} checked={tabAll}
+          onChange={e=>{const on=e.target.checked;setSel(o=>{const n={...o};visible.forEach(k=>members[k].forEach(g=>{if(on)n[g]=1;else delete n[g];}));return n;});}}/>
+          {' '}{gr.length?`이 레시피 탭 Lot 전체 선택 (${visible.length}개)`:`이 탭 Lot 전체 선택 (${visible.length}개)`}</label>
         <TagChips label="Lot 태그별 보기" counts={gCounts} val={gt} set={x=>{setGt(x);lastG.current=null;}}/>
-        <p className="hint" style={{margin:'4px 0 0'}}>같은 Lot이라도 <b>레시피(Job · Recipe(s))마다 따로</b> 보입니다(앞뒤 24시간에 함께 읽힌 PI bubble 등을 RDL과 섞지 않음). 레시피를 고르면 그 레시피만 보입니다. 태그는 그 레시피 줄의 상태입니다. 태그를 고르면 그 태그의 Lot만 보입니다(여러 개 가능, 점검 스캔은 숨김). 여러 단어는 모두 포함하는 Lot만 보입니다. Lot 머리의 체크를 <b>Shift+클릭</b>하면 직전에 누른 Lot부터 이 Lot까지 한꺼번에 선택하거나 해제합니다.</p></div>}
+        <p className="hint" style={{margin:'4px 0 0'}}>같은 Lot이라도 <b>레시피(Job · Recipe(s))마다 따로</b> 보입니다(앞뒤 24시간에 함께 읽힌 PI bubble 등을 RDL과 섞지 않음). 레시피 탭을 누르면 그 레시피 Lot 만 시간순으로 보이고, [이 레시피 탭 Lot 전체 선택]으로 한 번에 고릅니다. 태그는 그 레시피 줄의 상태입니다. 태그를 고르면 그 태그의 Lot만 보입니다(여러 개 가능, 점검 스캔은 숨김). 여러 단어는 모두 포함하는 Lot만 보입니다. Lot 머리의 체크를 <b>Shift+클릭</b>하면 직전에 누른 Lot부터 이 Lot까지 한꺼번에 선택하거나 해제합니다.</p></div>}
       <div className="groups">{!order.length?<div className="empty-state"><h3>찾은 Batch Report가 없습니다.</h3><p>키워드 · 기간 · 호기 범위를 바꿔 보세요.</p></div>
         :!visible.length?<div className="empty-state"><h3>검색 · 태그에 맞는 Lot이 없습니다.</h3><p>Lot 목록 검색어나 태그를 바꾸세요.</p></div>
         :visible.map((k,vi)=>{const mem=members[k],first=v.R[mem[0]],l=first.lot!=null?v.lots[first.lot]:null,b=l?l.bunches[first.b!]:null;

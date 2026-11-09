@@ -23,6 +23,12 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Lot 고르기 = 레시피 탭 · Lot History 슬롯 = Lot 전체 Wafer ID 짝 (2026-11-09, 이슈 #44, v12.9.26)
+- `BatchFind.tsx` ③ Lot 고르기: 레시피 칩(여러 개) 대신 **레시피 탭**(`role=tablist` "Lot 레시피 탭", [전체] + 레시피마다, `gr` = [] 또는 [레시피 하나]) +
+  `이 탭 Lot 전체 선택` 체크(보이는 Lot 전부). Lot 줄 `order` 는 첫 Batch Report 시작 시각(`R.s`) 순으로 정렬. Lot 박스 머리 `.bv .groups .group>.gh` = `var(--navy)` 바탕 · 흰 글자(styles.css 끝 #44 블록).
+- `lotmodel.resolve(lot_slots=)`: 슬롯을 모르는 행(25행이 아닌 표의 실제 Wafer ID, 예 1장 스캔)은 묶음 안 → **같은 Lot 의 다른 묶음**(`build` 가 `id_slot_map` 으로 모음) 순으로
+  Wafer ID → 슬롯을 찾아 `S02` key 로 둔다(wafer `slot` 도 key 에서). 그래서 Lot 창 오류 지도 · wafer 취합 · 찾기 취합에서 같은 슬롯 행에 맞춰진다. 종전 `ID:<id>` key 로 저장된 사람 선택은 그 wafer 에 더는 맞지 않는다(확인 전).
+
 ### 자동 분석 KLA 탭 · 다음 실행 기준 · KLA 찾기 = Batch 찾기 모양 (2026-11-09, 이슈 #43, v12.9.25)
 - `BatchAutoPanel.tsx` 안 탭 [CAMTEK · Batch Report] / [KLA · KLA 캐시](주기 · 시각 · 켜기는 공통). config `kla_auto` · `kla_cache_publish`(`config_set_batch_auto{kla, kla_publish}`,
   `auto_state.kla/kla_publish`). 실행 = `Batch.tsx launch(…, kla)` 가 Batch Report 뒤 `klaAuto`(kla_cache_build → kla_cache_publish), Camtek 지난 조건이 없으면 `launchKlaOnly`
