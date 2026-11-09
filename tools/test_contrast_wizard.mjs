@@ -69,7 +69,7 @@ await page.locator('#legend [data-view="all"]').click();await page.waitForTimeou
 const fd=await page.evaluate(()=>window.__cw.state.fullDies);
 // Para #51 후속: 맵 파일 없이 ProductInfo(Pitch 37249×44905.8, Cols 10, Rows 9) + 300 mm 원으로 소유자 예시 맵과 같은 Die 30개
 assert.equal(fd,30,'계산 Die '+fd);
-assert.match(await page.locator('#mapSt').innerText(),/계산 Die 30개 \(Col 0~6 × Row 0~5, 좌측 하단 \(0,0\), 지름 300 mm, wafer 중심 130372, 134717 µm · 추정\(중심 정보 없음 · 확인 필요\)\)/);   // 합성 ProductInfo 에 CenterX/Y 없음 → 종전 추정
+assert.match(await page.locator('#mapSt').innerText(),/Die 30개 \[기준 계산\(네 모서리가 원 안 · 확인 필요\)\] \(Col 0~6 × Row 0~5, 좌측 하단 \(0,0\), 지름 300 mm, wafer 중심 130372, 134717 µm · 추정\(중심 정보 없음 · 확인 필요\)\)/);   // 합성 ProductInfo 에 CenterX/Y 없음 → 종전 추정
 // Notch: 맵 파일이 없으면 기본 아래(180)
 assert.deepEqual(await page.evaluate(()=>[window.__cw.state.notchDeg,window.__cw.state.notchSrc]),[180,'기본값']);assert.match(await page.locator('#mapSt').innerText(),/Notch 아래 \(기본값\)/);
 // Para #51: Wafer Map 파일(소유자 예시)이 있으면 '___' 아닌 칸만 Die 로 그린다(종전: ProductInfo Cols×Rows 전부 → die 가 많았다)
@@ -78,17 +78,17 @@ const MAP='DEVICE:4DT-TB500-H-M1\nLOT:TB500.INT025@6322\nWAFER:00RW8126XYC1\nFNL
 const wm=await page.evaluate(m=>{const c=window.__cw,p=c.parseWaferMap(m);return {rows:p.rows,cols:p.cols,dies:p.dies,fn:p.head.FNLOC,ok:c.setWaferMap(m,'map.txt')}},MAP);
 assert.deepEqual(wm,{rows:6,cols:7,dies:30,fn:'180',ok:true});
 await page.waitForTimeout(150);
-assert.deepEqual(await page.evaluate(()=>{const S=window.__cw.state;return [S.mapFrom,S.mapDies,S.fullDies,S.mapCheck.ok,S.mapCheck.both]}),['calc',30,30,true,30]);
-assert.match(await page.locator('#mapSt').innerText(),/맵 map\.txt Die 30개와 일치 ✔/);
+assert.deepEqual(await page.evaluate(()=>{const S=window.__cw.state;return [S.mapFrom,S.mapDies,S.fullDies,S.mapCheck.ok,S.mapCheck.both]}),['map',30,30,true,30]);
+assert.match(await page.locator('#mapSt').innerText(),/Die 30개 \[기준 Wafer Map 파일\].*맵 map\.txt Die 30개 = 계산 일치 ✔/);
 assert.match(await page.locator('#mapSt').innerText(),/Notch 아래 \(맵 FNLOC:180\)/);
 // Notch 를 직접 고르면(오른쪽 90) 다시 그린다 → 자동으로 되돌리기
 await page.evaluate(()=>{const e=document.querySelector('#notch');e.value='90';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(150);
 assert.equal(await page.evaluate(()=>window.__cw.state.notchDeg),90);assert.match(await page.locator('#mapSt').innerText(),/Notch 오른쪽 \(직접 고름\)/);
 await page.evaluate(()=>{const e=document.querySelector('#notch');e.value='auto';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(150);
 assert.equal(await page.evaluate(()=>window.__cw.state.notchDeg),180);
-// 지름을 줄이면 Die 가 줄고 맵과 다르다고 알린다 → 되돌리기
+// 지름을 줄여도 맵 파일이 있으면 맵 기준으로 그린다(어떤 자재에도 맞게) — 계산과 다르다고만 알린다 → 되돌리기
 await page.evaluate(()=>{const e=document.querySelector('#waferD');e.value='280';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(200);
-assert.ok(await page.evaluate(()=>window.__cw.state.fullDies)<30);assert.match(await page.locator('#mapSt').innerText(),/다름: 계산에만 0 · 맵에만 \d+/);
+assert.equal(await page.evaluate(()=>window.__cw.state.fullDies),30);assert.match(await page.locator('#mapSt').innerText(),/맵 map\.txt Die 30개와 계산 다름: 계산에만 0 · 맵에만 \d+ \(그리기는 맵 기준\)/);
 await page.evaluate(()=>{const e=document.querySelector('#waferD');e.value='300';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(200);
 assert.equal(await page.evaluate(()=>window.__cw.state.fullDies),30);
 // Para #52(소유자 확정): Die 좌표 = 좌측 하단 (0,0) 에서 오른쪽 · 위쪽으로 1씩. 맨 아래 줄(Row 0) = Col 2~4, 가운데 줄 = Col 0~6
@@ -123,6 +123,15 @@ const r53=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=449
   S.scans.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});c.dieCells();return out});
 assert.equal(r53.fd,30);assert.deepEqual(r53.base,{c:2,r:2});assert.equal(r53.loc.ok,true);assert.equal(r53.loc.n,30);assert.equal(r53.src,'ProductInfo');assert.equal(r53.cx,204870);
 assert.deepEqual(r53.eq,[5,4]);assert.deepEqual(r53.rel,[3,2]);assert.equal(r53.inSet,true);assert.equal(r53.dl,2);
+// 어떤 자재에도 맞게: s_DieLocation(실제 스캔 Die)이 있으면 계산 규칙과 달라도 그 Die 로 그린다(맨 위 줄 가운데 Die 를 뺀 29개)
+const pr=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=44905.8;
+  const rowsSpec=[[2,[4,5,6]],[3,[3,4,5,6,7]],[4,[2,3,4,5,6,7,8]],[5,[2,3,4,5,6,7,8]],[6,[3,4,5,6,7]],[7,[4,6]]];
+  const loc=[];for(const [r,cs] of rowsSpec)for(const cc of cs)loc.push({x:(cc+.5)*PX,y:(r+.5)*PY,sx:PX,sy:PY});
+  const saved=S.scans.map(s=>[s.product,s.dieLoc]),um=S.userMap;S.userMap=null;
+  for(const s of S.scans){s.product={...s.product,centerX:5.5*PX,centerY:5*PY,centerSrc:'ProductInfo'};s.dieLoc=loc}
+  const D=c.dieCells();const out={n:D.calc,from:D.from,src:S.dieSrc,miss:S.dieSet.has('5,7'),loc:S.dieLocCheck.ok,onlyCalc:S.dieLocCheck.onlyCalc};
+  S.scans.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});S.userMap=um;c.dieCells();return out});
+assert.deepEqual(pr,{n:29,from:'dieloc',src:'s_DieLocation(실제 스캔 Die)',miss:false,loc:false,onlyCalc:1});
 // 지도 hover → 툴팁 + 그림
 await page.locator('#map').hover({position:{x:5,y:5}});
 // 리뷰: 없어진 Defect 2개, 키 이동, Gray crop / 범위 밖 문구, 위치 지도 깜빡임

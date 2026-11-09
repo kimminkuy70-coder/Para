@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #52 후속 2 Wafer map Die 판정을 어떤 자재에도 맞게 (2026-11-10 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `96cdbe1`(#53) · 이슈 Para #52 후속(소유자 세션 질문 "웨이퍼 맵이 다른 어떤 자재가 들어와도 가능하게끔 로직 짠거야?" → 답: 아니다(예시 맵 하나에 맞춘 계산) → 지시 "수정해") · 작업 브랜치 **`version_graylevel_simulation`**.
+- 문제: 그리는 Die 를 늘 계산(네 모서리가 300 mm 원 안)으로 정했다. 같은 Pitch 라도 중심이 칸 가운데/경계 어디냐에 따라 26 · 28 · 30 · 31개가 되고, 걸친 Die 를 넣는 제품 · Edge 제외가 다른 제품은 틀린다. 맵 파일 · s_DieLocation 은 비교만 했다.
+- 한 일(`AOI_Contrast_Wizard.html` `dieCells`): 그리는 Die = ① s_DieLocation(장비가 실제 스캔한 Die) → ② Wafer Map 파일 RowData(맵 Die 묶음 왼쪽 아래 = 기준 Die 묶음 왼쪽 아래) → ③ 계산('확인 필요').
+  계산 결과는 `d.calc` 로 남겨 ①② 와 비교만(`S.dieLocCheck`, `S.mapCheck.vs`). `S.dieSrc` · `D.from`(`dieloc`/`map`/`calc`) · `#mapSt` 맨 앞 `[기준 …]`. 원 밖 · 격자 밖 칸도 `cell()` 로 추가. wafer 중심 순서는 #53 그대로.
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(맵 있으면 지름 280 mm 여도 맵 30개로 그림 · 계산과 다름 알림, s_DieLocation 29개면 29개로 그림 · 계산과 1개 다름, 맵/계산 일치 30/30). 실제 다른 제품 자료 · Edge 실기 미검증. Python 변경 없음.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML).
+- 내 해석(확인 전): ⓐ s_DieLocation 이 맵 파일보다 우선(장비가 실제 스캔한 Die) ⓑ 맵 파일만 있을 때 맵 칸 위치 = 계산 Die 묶음 왼쪽 아래에 맞춤(맵 자체에는 Wafer 좌표가 없음).
+- 남은 일: 다른 제품 2~3개의 ProductInfo.ini · 맵 파일 · s_DieLocation 으로 확인(소유자에게 요청함), #53 남은 일.
+- 소유자 질문 답: `∖` = 집합 차집합 기호, `A ∖ B` = A 에만 있고 B 에는 없는 Defect(쌍 A → B 에서 B 에서 없어진 Defect).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #52 후속 2 | 웨이퍼 맵이 어떤 자재에도 맞게 + `∖` 뜻 | 그리는 Die = s_DieLocation → 맵 파일 → 계산 순으로 수정, 시험 통과(릴리스 대상 아님) · `∖` = 차집합 |
+
 ## 최신 재개 — Para #53 실제 결과 폴더(사진 제외.zip) 분석 · wafer 중심 = ProductInfo CenterX/Y (2026-11-10 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `01177fa`(소유자 zip 업로드) · 이슈 Para #53("Graylevel 시뮬레이션 브랜치 신규생성 4", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**.
