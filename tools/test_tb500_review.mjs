@@ -107,11 +107,17 @@ assert.match(find('7. RDL1'),/재리뷰 필요\tCamtek\t여러 호기 2대 재�
 assert.ok(!/WGB/.test(find('7. RDL1')));
 assert.match(find('메모'),/^메모\t\t\t\t\t\t경로 복사$/);                                      // Layer 모르는 폴더도 이름 그대로, 나머지는 빈칸
 assert.equal(rows.filter(r=>/TB500\.INT1041/.test(r)).length,1);
-assert.match(rows[0],/^TB500\.INT1041\t976\. TB500\.INT1041 \(CMS\) S\/M CMS Lot History\t1-1\. RDL4_재리뷰/);
-// Para #46: ★ 로 시작하는 폴더 = 리뷰 · 재리뷰 대상 아님 → Lot 의 맨 아래 줄, 이름만, 나머지 칸(경로 복사 포함) 빈칸. 이름에 재리뷰가 있어도 RDL2 판정을 바꾸지 않는다.
+assert.match(rows[0],/^TB500\.INT1041\t976\. TB500\.INT1041 \(CMS\) S\/M CMS Lot History\t★ 5\. RDL2_재리뷰 \(참고용\)$/);  // 이름 순이라 ★ 폴더가 첫 줄(#47 — #46 이전 순서)
+assert.match(rows[1],/^1-1\. RDL4_재리뷰[ \t]/);
+// Para #46: ★ 로 시작하는 폴더 = 리뷰 · 재리뷰 대상 아님 → 이름만, 나머지 칸(경로 복사 포함) 빈칸. 이름에 재리뷰가 있어도 RDL2 판정을 바꾸지 않는다.
 assert.match(find('5. RDL2'),/^5\. RDL2\tRDL2\t[\s\S]*재리뷰 필요/);
 assert.equal(rows.length,14+1);
-assert.equal(rows[13],'★ 5. RDL2_재리뷰 (참고용)');                         // 뒤 칸이 모두 비어 이름만 남는다
+
+// Para #47: 폴더 순서는 #46 이전과 같다 = 하위 폴더 이름 순(ko, numeric). ★ 폴더를 맨 아래로 옮기지 않는다.
+const subName=(r,i)=>(i===0?r.split('\t')[2]:r.split('\t')[0]).replace(/ (재리뷰|재스캔|Skip)$/,'');  // 종류 배지 글자는 뺀다
+const lotRows=rows.slice(0,14).map(subName);
+assert.deepEqual(lotRows,[...lotRows].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true})),'폴더 순서 = 이름 순');
+assert.ok(!rows.slice(1).some(r=>r.startsWith('★')),'★ 폴더를 맨 아래로 옮기지 않음');
 assert.match(rows.at(-1),/TB500\.INT948\tConder Scan 에서 Lot 폴더를 찾지 못했습니다/);
 // Lot History (RDL1 줄에서 열면 RDL1 만, [전체]를 누르면 모든 Layer)
 await page.locator('#tbody tr').filter({hasText:'7. RDL1'}).getByRole('button',{name:'Lot History'}).click();

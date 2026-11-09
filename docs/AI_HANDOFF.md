@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #47 리뷰 HTML: 폴더 순서를 #46 이전(이름 순)으로 되돌림 (2026-11-09 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `8fae88b` · 이슈 Para #47("리뷰용 프로그램 브랜치 신규 생성 6") · 작업 브랜치 `version_TB500_review`(릴리스 없음 — 단일 HTML, #40~#46 과 같음).
+- 요청: "폴더 순서는 왜 바꿨어 폴더 순서는 이전껄로 돌려놔". #46 에서 내가 정한 해석 ⓐ(★ 폴더를 Lot 의 맨 아래로)가 원인.
+- 한 일(`TB500_Review.html` `lookLot`): 정렬을 #46 이전과 같은 `name.localeCompare(…,'ko',{numeric:true})` 하나로 되돌림. ★ 폴더도 이름 순 제자리에 나온다
+  (합성 자료에서는 ★ 가 숫자보다 앞이라 Lot 의 첫 줄). ★ 폴더의 나머지 동작(이름만 · 칸 비움 · Layer 판정 제외 · 폴더 안 안 읽음)은 #46 그대로.
+  `docs/TB500_review_사용법.md` 2절 문구 수정.
+- **소유자 결정**: 리뷰 HTML 의 폴더 줄 순서는 이름 순(종전)을 바꾸지 않는다. 순서를 바꾸는 해석을 새로 넣지 말 것. (#46 해석 ⓐ 폐기, ⓑ~ⓓ 는 여전히 확인 전)
+- 시험: `tools/test_tb500_review.mjs` — 첫 줄이 ★ 폴더, 그 Lot 의 줄 순서 = 이름 순, ★ 줄이 맨 아래로 가지 않음 단언. 연속 2회 통과
+  (`PARA_TEST_NODE_MODULES=/opt/node22/lib/node_modules node tools/test_tb500_review.mjs`). `python tools/check_project.py` = `test_batchreport.py` 하나만 실패
+  (이 환경에 tkinter 없음 — 변경 전에도 같은 실패, 이번 변경과 무관). check_project 가 tracked `CamtekAOI/Logs/오류_로그.txt` 를 고치므로 commit 전에 `git checkout -- CamtekAOI/`.
+  실제 Edge · Conder Scan 은 미검증.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #47 | 폴더 순서를 이전(이름 순)으로 되돌림 | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #46 리뷰 HTML: ★ 로 시작하는 하위 폴더는 리뷰 · 재리뷰 대상 아님 (2026-11-09 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `25ff229` · 이슈 Para #46("리뷰용 프로그램 브랜치 신규 생성 5") · 작업 브랜치 `version_TB500_review`(#40~#45 와 같은 제목 연속, 릴리스 없음 — 단일 HTML).
