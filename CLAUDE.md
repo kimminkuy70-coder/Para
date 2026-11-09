@@ -23,6 +23,12 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Color · Gray 매칭 Wafer 폴더 찾기 = 폴더 목록 1번 · 긴 경로 · 링크 폴더 (2026-11-09, 이슈 #48, v12.9.27)
+- 증상: 네트워크 드라이브의 폴더에 세 파일이 있는데 "Wafer 폴더를 찾지 못했습니다". 소유자 PC 를 못 봐서 원인은 확정 못 함(확인 전) — 가능성 셋을 모두 고침:
+  ① 260자 안팎의 긴 경로에서 파일마다 `Path.exists()`(stat)가 '경로 없음'으로 실패 ② NAS 의 대소문자 다른 이름 ③ DFS · NAS 링크 폴더가 reparse point 라 `is_dir(follow_symlinks=False)` 에서 빠짐.
+- `colorgray.file_names`(scandir 1번 → {소문자: 실제 이름}) · `missing_files` · `wafer_file` · `transform_file(p, names)`(정규식 `frameToChuckPlane.*.ini`, 대소문자 무시) · `long_path`(Windows 에서 240자 이상이면 확장 경로 접두).
+  원본 열기(`_text`, `cgm_read`)도 `long_path` 를 쓴다. `child_dirs` 는 링크를 따라간다(고리는 `seen` · `max_depth` 가 막음). 못 찾으면 `cgm_scan` 응답 `diagnosis`(없는 파일 · 파일/폴더 수 · 경로 길이)를 화면 알림에 붙인다.
+
 ### Lot 고르기 = 레시피 탭 · Lot History 슬롯 = Lot 전체 Wafer ID 짝 (2026-11-09, 이슈 #44, v12.9.26)
 - `BatchFind.tsx` ③ Lot 고르기: 레시피 칩(여러 개) 대신 **레시피 탭**(`role=tablist` "Lot 레시피 탭", [전체] + 레시피마다, `gr` = [] 또는 [레시피 하나]) +
   `이 탭 Lot 전체 선택` 체크(보이는 Lot 전부). Lot 줄 `order` 는 첫 Batch Report 시작 시각(`R.s`) 순으로 정렬. Lot 박스 머리 `.bv .groups .group>.gh` = `var(--navy)` 바탕 · 흰 글자(styles.css 끝 #44 블록).

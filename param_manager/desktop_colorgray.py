@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import os
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -65,8 +66,8 @@ class DesktopColorGray:
         root = params.get("root")
         if set(params) != {"root"} or not isinstance(root, str) or not root.strip() or len(root) > 1024:
             raise ValueError("Lot 또는 Wafer 폴더를 입력하세요")
-        path = Path(root.strip())
-        if not path.is_dir():
+        path = Path(root.strip().strip('"').strip())
+        if not os.path.isdir(colorgray.long_path(path)):
             raise ValueError("폴더를 찾을 수 없습니다. 장비 공유는 탐색기로 먼저 연결하세요.")
         self.cancel.clear()
 
@@ -75,8 +76,14 @@ class DesktopColorGray:
                 desktop_progress.report(f"하위 폴더 검색 중 — 확인 {scanned} · Wafer {found} · 대기 {queued}  ({current.name})")
         wafers = colorgray.discover(path, progress, self.cancel)
         self.root, self.wafers = path, [str(w) for w in wafers]
-        return dict(root=str(path), wafers=[dict(name=Path(w).name, path=w) for w in self.wafers],
-                    limit=colorgray.MAX_WAFERS, default_output=str(self._default_output(path)))
+        out = dict(root=str(path), wafers=[dict(name=Path(w).name, path=w) for w in self.wafers],
+                   limit=colorgray.MAX_WAFERS, default_output=str(self._default_output(path)))
+        if not wafers:
+            # 못 찾았을 때: 고른 폴더 바로 아래에서 무엇이 없었는지 알려 준다(Para #48)
+            names = colorgray.file_names(path)
+            out["diagnosis"] = dict(missing=colorgray.missing_files(path, names), files=len(names),
+                                    folders=len(colorgray.child_dirs(path)), path_len=len(str(path)))
+        return out
 
     def _default_output(self, source: Path):
         return self._local_root() / "ColorGray매칭" / (source.name or "Lot")
@@ -145,12 +152,12 @@ class DesktopColorGray:
             raise ValueError("읽을 위치를 확인하세요")
         _, rec = self._record(params)
         path = Path(rec["color_path" if params["kind"] == "color" else "gray_path"])
-        size = path.stat().st_size
+        size = os.stat(colorgray.long_path(path)).st_size
         if size > MAX_SOURCE:
             raise ValueError(f"이미지가 너무 큽니다({size / 1048576:.1f} MB > 5 MB): {path.name}")
         if offset > size:
             raise ValueError("읽을 위치를 확인하세요")
-        with path.open("rb") as fh:
+        with open(colorgray.long_path(path), "rb") as fh:
             fh.seek(offset)
             piece = fh.read(CHUNK)
         end = offset + len(piece)

@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #48 Color · Gray 매칭 Wafer 폴더 찾기(네트워크 드라이브) (2026-11-09 KST, `version_v12`, v12.9.27)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `9197b55` · 이슈 Para #48("v12.9.27 업데이트 사항") · 작업 브랜치 `version_v12`.
+- 요청: Color · Gray 매칭에서 세 파일이 다 있는 폴더인데 "Wafer 폴더를 찾지 못했습니다" — 네트워크 드라이브 때문인지 원인 분석 · 수정 · v12.9.27 릴리스.
+- 원인 분석: 종전 `is_wafer` 는 파일마다 `Path.exists()` · `glob` 로 물었고 하위 폴더는 `is_dir(follow_symlinks=False)` 로만 골랐다. 네트워크 드라이브에서 실패할 수 있는 길 셋:
+  ① 경로가 260자 안팎이면 Windows 가 stat 을 '경로 없음'으로 거절(→ exists False) ② NAS 의 대소문자 다른 파일 이름 ③ DFS · NAS 링크 폴더 = reparse point → 하위 폴더에서 빠짐.
+  소유자 실제 경로 · 폴더를 못 봐서 어느 것인지는 **확인 전**. 셋 다 고치고, 그래도 못 찾으면 화면에 진단(없는 파일 · 파일/폴더 수 · 경로 길이)을 보이게 함.
+- 한 일(코드 지도는 CLAUDE.md 맨 위 #48 절): `colorgray.file_names` · `missing_files` · `wafer_file` · `long_path` · `transform_file(p, names)` · `child_dirs`(링크 따라감),
+  `desktop_colorgray.scan`(따옴표 제거 · `diagnosis`) · `read`(long_path), `ColorGray.tsx` 알림 문구. 릴리스 노트 `docs/release_notes/v12.9.27.md`.
+- 시험: `tests/test_colorgray.py` 에 대소문자 · 링크 폴더 · 진단 · long_path 시험 추가(6개 통과), `tools/check_project.py` = `test_batchreport.py`(tkinter 없음) · `test_kla_cache.py`(날짜 의존, #44 부터) 만 실패(종전과 같음),
+  `npx tsc --noEmit` · `vite build` 통과. Windows 실기 · 실제 네트워크 드라이브 · 260자 넘는 경로는 미검증.
+- 릴리스 v12.9.27: 이 commit 뒤 시도 — 결과는 아래 줄/다음 commit 에 기록.
+- 남은 일: 실기에서 같은 폴더로 다시 확인(안 되면 알림의 진단 문구를 이슈에 붙여 달라고 요청), `test_kla_cache.py` 날짜 의존 고치기.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #48 | Color · Gray 매칭 Wafer 폴더 찾기 실패(네트워크 드라이브) 원인 분석 · 수정 · v12.9.27 | 구현 · 시험 통과, 릴리스 결과는 아래 기록 |
+
 ## 최신 재개 — Para #44 Lot 고르기 레시피 탭 · Lot History 슬롯 맞춤 · Lot 박스 머리 색 (2026-11-09 KST, `version_v12`, v12.9.26)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `77aa9f6` · 이슈 Para #44("v12.9.26 업데이트 사항") · 작업 브랜치 `version_v12`.

@@ -124,5 +124,42 @@ class ColorGrayTests(unittest.TestCase):
         s.close()
 
 
+    def test_discover_network_like_folders(self):
+        """Para #48: 이름 대소문자가 다른 파일(NAS) · 폴더 링크(DFS 처럼 reparse point) · 진단."""
+        w = make_wafer(self.base / "NAS", "W09")
+        for old, new in (("ColorImageGrabingInfo.ini", "COLORIMAGEGRABINGINFO.INI"),
+                         ("ScanResultImageList.txt", "scanresultimagelist.txt"),
+                         ("frameToChuckPlane.1.ini", "FrameToChuckPlane.1.INI")):
+            (w / old).rename(w / new)
+        self.assertTrue(cg.is_wafer(w))
+        records, failures, total = cg.plan_wafer(w)
+        self.assertEqual((total, len(records)), (3, 1))
+        link = self.base / "LINKLOT"
+        link.mkdir()
+        try:
+            (link / "Slot01").symlink_to(self.lot / "Slot01", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlink 불가")
+        self.assertEqual([p.name for p in cg.discover(link)], ["W01"])
+        # 못 찾으면 무엇이 없는지 알려 준다
+        bad = self.base / "BAD"
+        bad.mkdir()
+        (bad / "ColorImageGrabingInfo.ini").write_text("", encoding="utf-8")
+        self.assertEqual(cg.missing_files(bad), ["ScanResultImageList.txt", "frameToChuckPlane.*.ini"])
+        r = DesktopColorGray(_Config(str(self.base / "out"))).scan({"root": str(bad)})
+        self.assertEqual(r["wafers"], [])
+        self.assertEqual(r["diagnosis"]["missing"], ["ScanResultImageList.txt", "frameToChuckPlane.*.ini"])
+
+    def test_long_path_prefix(self):
+        """Para #48: 260자에 가까운 Windows 경로는 \\?\ 확장 경로로 연다."""
+        import os
+        if os.name == "nt":
+            self.assertTrue(cg.long_path("W:\\" + "a" * 300).startswith("\\\\?\\W:"))
+            self.assertTrue(cg.long_path("\\\\nas\\s\\" + "a" * 300).startswith("\\\\?\\UNC\\nas"))
+        else:
+            self.assertEqual(cg.long_path("/x/" + "a" * 300), "/x/" + "a" * 300)
+        self.assertEqual(cg.long_path("W:\\short"), "W:\\short")
+
+
 if __name__ == "__main__":
     unittest.main()

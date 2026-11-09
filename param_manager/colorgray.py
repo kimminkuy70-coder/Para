@@ -31,22 +31,84 @@ SKIP = {RESULT_FOLDER.lower(), CROPS, THUMBS, "_metadata", "$recycle.bin", "syst
 
 
 # ---------------------------------------------------------------- discovery
-def transform_file(p: Path):
-    files = sorted(Path(p).glob("frameToChuckPlane.*.ini"))
-    return files[0] if files else None
+WAFER_FILES = ("ColorImageGrabingInfo.ini", "ScanResultImageList.txt")
+TRANSFORM_RE = re.compile(r"^frametochuckplane\..+\.ini$", re.I)
+LONG_PATH = 240                 # Windows MAX_PATH(260) 가까이면 \\?\ 확장 경로로 연다
+
+
+def long_path(p) -> str:
+    """Path string usable for long Windows paths (Para #48).
+
+    네트워크 드라이브 · UNC 의 깊은 Scanresult 경로는 260자를 넘기 쉽다. 그러면
+    Windows 가 stat/open 을 '경로 없음'으로 거절해 파일이 있어도 없다고 판단했다.
+    길면 확장 경로(드라이브 · UNC 형식)로 바꾼다(Windows 만, 짧으면 그대로)."""
+    s = str(p)
+    if os.name != "nt" or len(s) < LONG_PATH or s.startswith("\\\\?\\"):
+        return s
+    s = os.path.abspath(s)
+    if s.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + s[2:]
+    return "\\\\?\\" + s
+
+
+def file_names(p) -> dict:
+    """{소문자 이름: 실제 이름} of the files directly in p (one directory listing).
+
+    파일마다 전체 경로로 묻지 않고 폴더 목록 1번으로 본다 — 긴 경로 · 대소문자가 다른
+    이름(NAS) · 네트워크 드라이브에서도 같은 결과(Para #48)."""
+    try:
+        with os.scandir(long_path(p)) as entries:
+            names = {}
+            for e in entries:
+                try:
+                    if e.is_file():
+                        names[e.name.lower()] = e.name
+                except OSError:
+                    continue
+            return names
+    except OSError:
+        return {}
+
+
+def transform_file(p: Path, names: dict | None = None):
+    names = file_names(p) if names is None else names
+    hits = sorted(real for low, real in names.items() if TRANSFORM_RE.match(low))
+    return Path(p) / hits[0] if hits else None
+
+
+def wafer_file(p: Path, name: str, names: dict | None = None) -> Path:
+    """The real file for one of the fixed names (case as on disk)."""
+    names = file_names(p) if names is None else names
+    return Path(p) / names.get(name.lower(), name)
+
+
+def missing_files(p: Path, names: dict | None = None) -> list:
+    """Which of the three wafer files are not directly in p (화면 안내용)."""
+    names = file_names(p) if names is None else names
+    out = [n for n in WAFER_FILES if n.lower() not in names]
+    if transform_file(p, names) is None:
+        out.append("frameToChuckPlane.*.ini")
+    return out
 
 
 def is_wafer(p: Path) -> bool:
-    p = Path(p)
-    return ((p / "ColorImageGrabingInfo.ini").exists() and (p / "ScanResultImageList.txt").exists()
-            and transform_file(p) is not None)
+    return not missing_files(Path(p))
 
 
 def child_dirs(p: Path):
     try:
-        with os.scandir(p) as entries:
-            return sorted((Path(e.path) for e in entries if e.is_dir(follow_symlinks=False)),
-                          key=lambda x: x.name.lower())
+        with os.scandir(long_path(p)) as entries:
+            out = []
+            for e in entries:
+                try:
+                    # follow_symlinks 기본(True): 네트워크 드라이브(DFS · NAS)의 폴더는
+                    # reparse point 로 보여 follow_symlinks=False 면 빠졌다(Para #48).
+                    # 고리는 discover 의 seen · max_depth 가 막는다.
+                    if e.is_dir():
+                        out.append(Path(p) / e.name)
+                except OSError:
+                    continue
+            return sorted(out, key=lambda x: x.name.lower())
     except OSError:
         return []
 
@@ -84,7 +146,8 @@ def discover(root, callback=None, cancel=None, max_depth=5):
 
 # ---------------------------------------------------------------- parsing
 def _text(path: Path) -> str:
-    return Path(path).read_text(encoding="utf-8-sig", errors="replace")
+    with open(long_path(path), encoding="utf-8-sig", errors="replace") as fh:
+        return fh.read()
 
 
 def parse_colors(path):
@@ -186,9 +249,10 @@ def _inside(wafer: Path, name: str):
 def plan_wafer(wafer):
     """Match every color image of one wafer. Returns (records, failures)."""
     wafer = Path(wafer)
-    colors = parse_colors(wafer / "ColorImageGrabingInfo.ini")
-    frames = parse_frames(wafer / "ScanResultImageList.txt")
-    inverse, offset = parse_transform(transform_file(wafer))
+    names = file_names(wafer)
+    colors = parse_colors(wafer_file(wafer, WAFER_FILES[0], names))
+    frames = parse_frames(wafer_file(wafer, WAFER_FILES[1], names))
+    inverse, offset = parse_transform(transform_file(wafer, names))
     records, failures = [], []
     for index, color in enumerate(colors, 1):
         try:
@@ -202,7 +266,7 @@ def plan_wafer(wafer):
         if not frame:
             failures.append((color["file"], "매칭되는 Gray 프레임 없음"))
             continue
-        if color_path is None or not color_path.exists() or gray_path is None or not gray_path.exists():
+        if color_path is None or not os.path.exists(long_path(color_path)) or gray_path is None or not os.path.exists(long_path(gray_path)):
             failures.append((color["file"], "Color 또는 Gray 파일 없음"))
             continue
         crop_w, crop_h, out_w, out_h = crop_size(color)

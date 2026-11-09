@@ -64,11 +64,13 @@ export function ColorGray(){
   async function scan(){
     if(!root.trim())return notify('Lot 또는 Wafer 폴더를 입력하세요.','error');
     setBusy(true);setWafers(undefined);setPicked([]);
-    try{const r=(await desktop.request('cgm_scan',{root:root.trim()}).promise).colorgray as {wafers:Wafer[];default_output:string;limit:number};
+    try{const r=(await desktop.request('cgm_scan',{root:root.trim()}).promise).colorgray as {wafers:Wafer[];default_output:string;limit:number;diagnosis?:{missing:string[];files:number;folders:number;path_len:number}};
       setWafers(r.wafers);setDefaultOut(r.default_output);
       setPicked(r.wafers.map(w=>rel(w.path)));
       if(r.wafers.length){notify(`Wafer ${r.wafers.length}개를 찾았습니다.${r.wafers.length>=r.limit?` (최대 ${r.limit}개까지 찾습니다)`:''}`,'ok');setStep(1);}
-      else notify('Wafer 폴더를 찾지 못했습니다. ColorImageGrabingInfo.ini · ScanResultImageList.txt · frameToChuckPlane.*.ini 가 있는 폴더를 찾습니다.','error');
+      else{const d=r.diagnosis;
+        notify('Wafer 폴더를 찾지 못했습니다. ColorImageGrabingInfo.ini · ScanResultImageList.txt · frameToChuckPlane.*.ini 가 있는 폴더를 찾습니다.'
+          +(d?` 고른 폴더 바로 아래: 파일 ${d.files}개 · 폴더 ${d.folders}개${d.missing.length?` · 없는 파일 ${d.missing.join(', ')}`:''} (경로 ${d.path_len}자).`:''),'error');}
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function browse(set:(p:string)=>void){const p=await pickFolder();if(p)set(p);}
