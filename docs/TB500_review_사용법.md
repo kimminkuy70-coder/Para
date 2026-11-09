@@ -14,9 +14,9 @@
 
 ## 1. 처음 설정 (1회)
 1. 개발자가 공유한 OneDrive 폴더를 [내 파일에 바로 가기 추가]로 연결하십시오.
-   [설정] 탭 ① 아래 **그림 안내**(연결 전에는 펼쳐져 있음, 그림을 누르면 크게 보임)를 따라 하십시오: 공유 링크를 Edge 로 엶 → 폴더 이름 `0. Camtek AOI parameter 취합` 확인 → [내 파일에 바로 가기 추가] → 메뉴에서 [내 파일] → 몇 분 뒤 파일 탐색기 `OneDrive - Amkor Technology` 아래에 폴더가 생김.
+   [설정] 탭 ① 아래 **그림 안내**(연결 전에는 펼쳐져 있음, 그림을 누르면 크게 보임)를 따라 하십시오: 공유 링크를 Edge 로 엶 → 폴더 이름 `0. Camtek AOI parameter 취합` 확인 → [내 파일에 바로 가기 추가] → 메뉴에서 **[바로 가기]** → 몇 분 기다림 → [폴더 연결] 창에서 `OneDrive - Amkor Technology` → `바로 가기` → `0. Camtek AOI parameter 취합` → `캐시공유` 선택 → [폴더 선택].
 2. [설정] 탭의 ① [폴더 연결]을 누르고 동기화된 `캐시공유` 폴더를 고르십시오.
-   (예: `C:\Users\(사번)\OneDrive - Amkor Technology\0. Camtek AOI parameter 취합\캐시공유`)
+   (예: `C:\Users\(사번)\OneDrive - Amkor Technology\바로 가기\0. Camtek AOI parameter 취합\캐시공유`)
 3. ② [폴더 연결]을 누르고 Conder Scan 폴더(Lot 폴더들이 바로 아래에 있는 폴더)를 고르십시오. 표시 경로 칸에 UNC 경로를 적으십시오(경로 복사용).
 4. ③ [폴더 연결]을 누르고 내 PC 캐시 폴더(예: 문서 아래 새 폴더 `TB500리뷰캐시`)를 고르십시오.
 5. [캐시 갱신]을 누르십시오.
