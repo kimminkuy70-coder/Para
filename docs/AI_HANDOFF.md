@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #50 후속 Contrast Wizard: 리스트 이름 표기 · 모든 쌍 비교 · Wafer map · 리뷰 위치 깜빡임 · 새 창 사진 크기 (2026-11-09 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `be922f9` · 이슈 Para #50 후속(소유자가 세션에서 지시, 이슈 댓글 아님) · 작업 브랜치 **`version_graylevel_simulation`**.
+- 요청 5건: ① 새 창에서 사진이 너무 커서 한 번에 안 보임 ② Wafer map 이 안 그려져 있음 ③ 유지 · 소거 · 신규 분류 삭제, 추가한 리스트 이름으로 표기
+  ④ 쌍으로 매칭해 없어진 Defect 분석(3개 올리면 3쌍) ⑤ 소거 Defect 리뷰에서 보고 있는 사진의 wafer map 위치 표시(전체 Defect + 보고 있는 것 깜빡임).
+- 한 일(`AOI_Contrast_Wizard.html`): ① `openWindow` = Color · Gray 를 나란히, `max-height: 100vh−110px` 로 창에 맞춤, 누르면 원래 크기 ↔ 맞춤
+  ② `paintMap` = 점선 직사각형(좌측 하단 0,0 표시) · 내접 wafer 원 · ProductInfo Die 격자(200×200 이하) · 점. 종전에는 점만 있고 wafer 모양이 없었다
+  ③ `stLabel` 로 `A에만` / `A · B 둘 다` / `B에만`(KPI · 범례 · 필터 · 표 · CSV · 툴팁 · 새 창) ④ `S.pairs` = Contrast AVG 오름차순 i<j 모든 쌍, Step 2 `#pairTbl`(보기 단추), Step 3 · 4 쌍 단추
+  ⑤ Step 4 `#rvMap` 0.45초 깜빡임, 점 클릭 = 그 Defect 로 이동(없어진 Defect 가 아니면 새 창). 사용법 문서 1 · 2 · 4절 갱신.
+- 내 해석(확인 전): ⓐ "없어진 Defect" = 쌍 A → B(A 의 Contrast AVG 가 낮음)에서 A 에만 있는 것 ⓑ 쌍 순서 = Contrast AVG 오름차순 ⓒ "Wafer map 이 안 그려져 있음" = wafer 모양(원 · 격자) 없이 점만 있던 것
+  ⓓ wafer 원 = 직사각형 내접 ⓔ 종전 '전체 단계 비교' 표(최초 · 인접 대비)는 쌍별 표로 대체해 없앰.
+- 시험: `node tools/test_contrast_wizard.mjs` 5회 연속 통과(이름 표기 · 1쌍/3쌍 · 지도 픽셀 · 리뷰 지도 점 5개 + 깜빡임(1.6초 동안 그림이 바뀜) · 새 창 사진이 창 높이 안). Python 코드는 바꾸지 않음. 실제 결과 폴더 · Edge 실기 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML).
+- 남은 일: 실제 결과 폴더로 확인(지도 방향 · 직사각형 크기), 해석 ⓐ~ⓔ 확인, #50 의 남은 일(좌표 Overlay 10개 · ProductInfo 키 이름).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #50 후속 | 새 창 사진 크기 · Wafer map · 리스트 이름 표기 · 모든 쌍 비교 · 리뷰 위치 깜빡임 | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #50 Graylevel 시뮬레이션 브랜치 + AOI Contrast AVG 단계별 비교 HTML (2026-11-09 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `3a132bb`(version_v12) · 이슈 Para #50("Graylevel 시뮬레이션 브랜치 신규생성") · 작업 브랜치 **`version_graylevel_simulation`**(이번에 `version_v12` 에서 새로 만듦).

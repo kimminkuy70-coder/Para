@@ -54,23 +54,32 @@ await page.locator('#runBtn').click();
 await page.locator('#step3.on').waitFor();
 const kp=await page.locator('#kpis .kpi b').allInnerTexts();
 assert.deepEqual(kp,['4','3','2','2','1','25.0%']);
-assert.equal(await page.locator('#allTbl tbody tr').count(),2);
-assert.deepEqual(await page.locator('#allTbl tbody tr').nth(1).locator('td').allInnerTexts(),['CA27','27','','3','2','2','2','1','50.0%']);
+// 쌍별 비교(리스트 2개 = 1쌍), 이름 표기(유지 · 소거 · 신규 없음)
+assert.equal(await page.locator('#pairTbl tbody tr').count(),1);
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','4','3','2','2','1','50.0%','보기']);
+assert.deepEqual(await page.locator('#kpis .kpi .muted:first-child').allInnerTexts(),['CA20 Defect','CA27 Defect','CA20 · CA27 둘 다','CA20에만','CA27에만','감소율']);
+assert.ok(!/유지|소거|신규/.test(await page.locator('main').innerText()));
+// Wafer map 이 그려진다(직사각형 · wafer 원 · 점)
+const painted=await page.evaluate(()=>{const c=document.querySelector('#map'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n});
+assert.ok(painted>2000,'map pixels '+painted);
 // 표: Die · Area · Contrast
 const t=await page.locator('#detTbl tbody tr').evaluateAll(trs=>trs.map(tr=>[...tr.cells].map(c=>c.innerText).join('|')));
 const r1=t.find(x=>/\|1\|200498\.0/.test(x));assert.ok(r1,t.join('\n'));assert.match(r1,/\(3, 1\)/);assert.match(r1,/48\.72/);assert.match(r1,/34\.45/);
 // CSV
 const csv=await page.evaluate(()=>window.__cw.csvText());
-assert.ok(csv.startsWith('﻿상태,ID'));
-assert.match(csv,/소거,3,103,5000\.00,5000\.00.*C2\.c\.1\.jpeg,Index 3 \(id\),,,,좌표 변환 보정 필요/);
-assert.match(csv,/소거,4,104,.*,,연결 실패,/);
-assert.match(csv,/신규,9,109,.*,,연결 실패,/);
-assert.match(csv,/유지,2,102,1100\.00,200\.00.*C1\.c\.1\.jpeg,좌표\(0\.0 µm\),F1\.t\.1\.jpeg,1100\.0,200\.0,transform/);
+assert.ok(csv.startsWith('﻿구분,ID'));
+assert.match(csv,/CA20에만,3,103,5000\.00,5000\.00.*C2\.c\.1\.jpeg,Index 3 \(id\),,,,좌표 변환 보정 필요/);
+assert.match(csv,/CA20에만,4,104,.*,,연결 실패,/);
+assert.match(csv,/CA27에만,9,109,.*,,연결 실패,/);
+assert.match(csv,/CA20 · CA27 둘 다,2,102,1100\.00,200\.00.*C1\.c\.1\.jpeg,좌표\(0\.0 µm\),F1\.t\.1\.jpeg,1100\.0,200\.0,transform/);
 // 지도 hover → 툴팁 + 그림
 await page.locator('#map').hover({position:{x:5,y:5}});
-// 리뷰: 소거 2개, 키 이동, Gray crop / 범위 밖 문구
+// 리뷰: 없어진 Defect 2개, 키 이동, Gray crop / 범위 밖 문구, 위치 지도 깜빡임
 await page.locator('nav button[data-step="4"]').click();
-await page.locator('#rvCount').filter({hasText:'소거 Defect 2개'}).waitFor();
+await page.locator('#rvCount').filter({hasText:'CA27 에서 없어진 Defect (CA20에만) 2개'}).waitFor();
+const rv=await page.evaluate(async()=>{const S=window.__cw.state;const a=S.rvGeo&&S.rvGeo.length;const c=document.querySelector('#rvMap');
+  const seen=new Set();for(let i=0;i<8;i++){seen.add(c.toDataURL());await new Promise(r=>setTimeout(r,200))}return {a,changed:seen.size>1,n:seen.size,w:c.width,on:document.querySelector('#step4').classList.contains('on'),hl:!!S.rvList[S.rv]}});
+assert.equal(rv.a,5);assert.ok(rv.changed,'보고 있는 점이 깜빡여야 함 '+JSON.stringify(rv));
 const first=await page.locator('#rvList .it.sel').innerText();
 await page.keyboard.press('j');
 const second=await page.locator('#rvList .it.sel').innerText();
@@ -90,6 +99,18 @@ await page.keyboard.press('o');assert.match(await page.locator('#modelSt').inner
 const [pop]=await Promise.all([page.waitForEvent('popup'),page.keyboard.press('Enter')]);
 await pop.waitForFunction(()=>document.querySelector('canvas'));
 assert.match(await pop.locator('body').innerText(),/ID 2/);
+// 새 창 사진은 창 높이 안에 맞춘다
+const fit=await pop.evaluate(()=>{const c=document.querySelector('figure canvas');return {h:c.getBoundingClientRect().height,vh:innerHeight}});
+assert.ok(fit.h<=fit.vh,JSON.stringify(fit));
+await pop.close();
+// 리스트 3개 → 3쌍
+await page.evaluate(()=>{const S=window.__cw.state,b=S.scans.find(s=>s.name==='Lot/CA27');const c={...b,id:99,seq:99,name:'Lot/CA30',step:'CA30',contrast:30,_rule:null};
+  c.defects=b.defects.slice(1).map(d=>({...d,scan:c}));S.scans.push(c)});
+await page.locator('nav button[data-step="2"]').click();await page.locator('#runBtn').click();await page.locator('#step3.on').waitFor();
+assert.equal(await page.locator('#pairTbl tbody tr').count(),3);
+assert.deepEqual(await page.locator('#step3 .pairtabs button').allInnerTexts(),['CA20 → CA27 · 없어짐 2','CA20 → CA30 · 없어짐 3','CA27 → CA30 · 없어짐 1']);
+await page.locator('#step3 .pairtabs button').nth(2).click();
+assert.deepEqual(await page.locator('#kpis .kpi b').allInnerTexts(),['3','2','2','1','0','33.3%']);
 assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 await browser.close();
 console.log('test_contrast_wizard: passed');
