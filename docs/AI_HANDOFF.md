@@ -11,12 +11,14 @@
   `desktop_colorgray.scan`(따옴표 제거 · `diagnosis`) · `read`(long_path), `ColorGray.tsx` 알림 문구. 릴리스 노트 `docs/release_notes/v12.9.27.md`.
 - 시험: `tests/test_colorgray.py` 에 대소문자 · 링크 폴더 · 진단 · long_path 시험 추가(6개 통과), `tools/check_project.py` = `test_batchreport.py`(tkinter 없음) · `test_kla_cache.py`(날짜 의존, #44 부터) 만 실패(종전과 같음),
   `npx tsc --noEmit` · `vite build` 통과. Windows 실기 · 실제 네트워크 드라이브 · 260자 넘는 경로는 미검증.
-- 릴리스 v12.9.27: 이 commit 뒤 시도 — 결과는 아래 줄/다음 commit 에 기록.
-- 남은 일: 실기에서 같은 폴더로 다시 확인(안 되면 알림의 진단 문구를 이슈에 붙여 달라고 요청), `test_kla_cache.py` 날짜 의존 고치기.
+- 릴리스 **v12.9.27 시작 못 함**: 기능 commit `98aaefb` push 는 됨. routine run 에서 `git tag v12.9.27 98aaefb && git push origin v12.9.27` 이 권한 검사
+  ("Permission ... denied by the Claude Code auto mode classifier. Reason: [Create Public Surface]")에 거절됨(#41 · #43 · #44 와 같음). 원격 tag 없음(404).
+  REST refs · workflow_dispatch 는 같은 권한 검사를 우회하는 것이라 시도하지 않음. 소유자가 직접 시작하거나 세션에서 "릴리스까지 해"라고 지시하면 dispatch(`ref=version_v12`, `version=12.9.27`)로 시작.
+- 남은 일: v12.9.27 릴리스 시작(소유자), 실기에서 같은 폴더로 다시 확인(안 되면 알림의 진단 문구를 이슈에 붙여 달라고 요청), `test_kla_cache.py` 날짜 의존 고치기.
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| Para #48 | Color · Gray 매칭 Wafer 폴더 찾기 실패(네트워크 드라이브) 원인 분석 · 수정 · v12.9.27 | 구현 · 시험 통과, 릴리스 결과는 아래 기록 |
+| Para #48 | Color · Gray 매칭 Wafer 폴더 찾기 실패(네트워크 드라이브) 원인 분석 · 수정 · v12.9.27 | 구현 · 시험 통과(`98aaefb`), v12.9.27 릴리스는 권한 검사로 시작 못 함(확인 필요) |
 
 ## 최신 재개 — Para #44 Lot 고르기 레시피 탭 · Lot History 슬롯 맞춤 · Lot 박스 머리 색 (2026-11-09 KST, `version_v12`, v12.9.26)
 
