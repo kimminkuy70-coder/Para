@@ -179,11 +179,22 @@ class ColorGrayTests(unittest.TestCase):
         self.assertEqual((total, len(records)), (3, 1))   # C3.jpg 는 fixture 에 없음
         self.assertEqual({Path(r["gray_path"]).name for r in records}, {"F1.jpg"})   # 목록의 D:\\…\\f1.JPG → 폴더의 F1.jpg
         # 레시피별 변환 파일이 있으면 그 레시피 것을 쓴다(공통 .ini 보다 먼저)
+        # 프레임은 chuck 좌표(원점 이동 100000), Fault 는 wafer map 직사각형 좌측 하단 (0,0) 기준(소유자 설명)
         (w / "frameToChuckPlane.1.ini").write_text("Scan_X=1 0 100000\nScan_Y=0 1 0\n", encoding="utf-8")
+        records, failures, total = cg.plan_wafer(w)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["coord"], "좌측 하단 원점")
+        self.assertAlmostEqual(records[0]["pixel_x"], 1100)
+        # 좌측 하단 원점 + Y 반전(map 은 위로 +, 장비는 아래로 +): 직사각형 (x0, y0, x1, y1)
+        self.assertEqual(cg.map_xy(2, 10, 30, (100, 200, 1100, 1200)), (110, 1170))
+        self.assertEqual(cg.map_xy(1, 10, 30, (100, 200, 1100, 1200)), (110, 230))
+        # 어떤 해석으로도 안 맞으면 진단
+        (w / "ColorImageGrabingInfo.ini").write_text(
+            "[C1.jpg]\nFaultX=900000\nFaultY=900000\nRecipeNumber=1\n", encoding="utf-8")
         records, failures, total = cg.plan_wafer(w)
         self.assertEqual(len(records), 0)
         d = cg.diagnose(w, failures)
-        self.assertEqual(d["reasons"], {"매칭되는 Gray 프레임 없음": 3})
+        self.assertEqual(d["reasons"], {"매칭되는 Gray 프레임 없음": 1})
         self.assertEqual(d["frames"], 2)
         self.assertIn("nearest", d)
         # 변환 줄이 없으면 이유를 알려 준다

@@ -237,10 +237,48 @@ def fault_xy(color):
     return float(color.get("FaultX", color.get("X"))), float(color.get("FaultY", color.get("Y")))
 
 
-def choose_frame(color, frames, inverse, offset):
+# Fault 좌표 해석(Para #49 후속). 소유자 설명: wafer map 을 꽉 채우는 가상의 직사각형을 그리면
+# 그 좌측 하단이 (0,0) 이다. Gray 프레임 위치(ScanResultImageList)는 장비 chuck 좌표일 수 있어,
+# 그대로 맞지 않으면 프레임들이 덮는 직사각형(= wafer map 직사각형)의 좌측 하단을 원점으로 옮겨 본다.
+COORD_MODES = ("그대로", "좌측 하단 원점", "좌측 하단 원점 · Y 반전", "Y 반전")
+
+
+def _forward(inverse):
+    (a, b), (c, d) = inverse
+    det = a * d - b * c
+    return ((d / det, -b / det), (-c / det, a / det))
+
+
+def frames_rect(frames, transform_of):
+    """프레임들이 덮는 직사각형 (x0, y0, x1, y1) — chuck 좌표. transform_of(recipe) → (inverse, offset)."""
+    xs, ys = [], []
+    for f in frames:
+        try:
+            inverse, offset = transform_of(f["recipe"] if f["recipe"] is not None else 1)
+            m = _forward(inverse)
+        except (ValueError, ZeroDivisionError, OSError):
+            continue
+        for px, py in ((0, 0), (GW, 0), (0, GH), (GW, GH)):
+            xs.append(f["x"] + offset[0] + m[0][0] * px + m[0][1] * py)
+            ys.append(f["y"] + offset[1] + m[1][0] * px + m[1][1] * py)
+    return (min(xs), min(ys), max(xs), max(ys)) if xs else None
+
+
+def map_xy(mode, fx, fy, rect):
+    if mode == 0 or rect is None:
+        return fx, fy
+    x0, y0, x1, y1 = rect
+    if mode == 1:
+        return x0 + fx, y0 + fy
+    if mode == 2:
+        return x0 + fx, y1 - fy
+    return fx, y0 + y1 - fy
+
+
+def choose_frame(color, frames, inverse, offset, xy=None):
     """Gray frame whose image contains the fault, preferring the one where it lies
     farthest from the frame edge. Returns (frame, px, py, candidate_count)."""
-    fx, fy = fault_xy(color)
+    fx, fy = xy if xy is not None else fault_xy(color)
     recipe = int(float(color.get("RecipeNumber", "1") or 1))
     # 프레임 이름에 레시피 번호(.t.<번호>.jpg)가 없거나 그 번호의 프레임이 없으면 모든 프레임에서 찾는다(Para #49)
     same = [f for f in frames if f["recipe"] == recipe]
@@ -306,19 +344,43 @@ def plan_wafer(wafer):
             parsed[f] = parse_transform(f)
         return parsed[f]
 
+    def recipe_of(color):
+        try:
+            return int(float(color.get("RecipeNumber", "1") or 1))
+        except (TypeError, ValueError):
+            return 1
+
+    for color in colors:
+        transform(recipe_of(color))             # 변환 파일 오류는 한 번에 알린다(Color 마다 숨기지 않음)
+    rect = frames_rect(frames, transform)
+
+    def match(mode):
+        out = []
+        for color in colors:
+            inverse, offset = transform(recipe_of(color))
+            try:
+                fx, fy = fault_xy(color)
+                out.append(choose_frame(color, frames, inverse, offset, map_xy(mode, fx, fy, rect)) + ((fx, fy),))
+            except (TypeError, ValueError):
+                out.append(None)
+        return out
+
+    # 그대로 → 다 맞으면 끝. 못 맞는 것이 있으면 좌측 하단 원점 해석들을 시험해 가장 많이 맞는 것을 쓴다.
+    mode, best = 0, match(0)
+    hits = sum(1 for m in best if m and m[0])
+    if rect is not None and hits < sum(1 for m in best if m):
+        for alt in range(1, len(COORD_MODES)):
+            trial = match(alt)
+            n = sum(1 for m in trial if m and m[0])
+            if n > hits:
+                mode, best, hits = alt, trial, n
+
     records, failures = [], []
-    for index, color in enumerate(colors, 1):
-        try:
-            recipe = int(float(color.get("RecipeNumber", "1") or 1))
-        except (TypeError, ValueError):
-            recipe = 1
-        inverse, offset = transform(recipe)     # 변환 파일 오류는 한 번에 알린다(Color 마다 숨기지 않음)
-        try:
-            frame, px, py, count = choose_frame(color, frames, inverse, offset)
-            fx, fy = fault_xy(color)
-        except (TypeError, ValueError):
+    for index, (color, m) in enumerate(zip(colors, best), 1):
+        if m is None:
             failures.append((color.get("file", ""), "좌표 값을 읽을 수 없음"))
             continue
+        frame, px, py, count, (fx, fy) = m
         color_path = _inside(wafer, color["file"], names)
         gray_path = _inside(wafer, frame["file"], names) if frame else None
         if not frame:
@@ -331,7 +393,8 @@ def plan_wafer(wafer):
         records.append(dict(index=index, color_file=color["file"], gray_file=frame["file"],
                             color_path=str(color_path), gray_path=str(gray_path),
                             fault_x=fx, fault_y=fy, pixel_x=px, pixel_y=py, candidate_count=count,
-                            crop_w=crop_w, crop_h=crop_h, out_w=out_w, out_h=out_h))
+                            crop_w=crop_w, crop_h=crop_h, out_w=out_w, out_h=out_h, coord=COORD_MODES[mode]))
+    plan_wafer.last_coord = COORD_MODES[mode]
     return records, failures, len(colors)
 
 

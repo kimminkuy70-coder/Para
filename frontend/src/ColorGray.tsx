@@ -10,11 +10,12 @@ import {OpenPath} from './OpenPath';
 
 type Wafer={name:string;path:string};
 type Rec={color:string;gray:string;px:number;py:number;gw:number;gh:number;crop_w:number;crop_h:number;out_w:number;out_h:number};
-type Diag={reasons?:Record<string,number>;transform?:string[];colors?:number;frames?:number;jpg_files?:number;frame_recipes?:string[];color_recipes?:string[];frame_example?:string;color_example?:string;
+type Diag={coord?:string|null;reasons?:Record<string,number>;transform?:string[];colors?:number;frames?:number;jpg_files?:number;frame_recipes?:string[];color_recipes?:string[];frame_example?:string;color_example?:string;
   nearest?:{color:string;fault:number[];frame:string;px:number;py:number;gw:number;gh:number}};
-type JobWafer={name:string;colors:number;failed:number;records:Rec[];finished?:Finished|null;diagnosis?:Diag|null};
+type JobWafer={name:string;colors:number;failed:number;records:Rec[];finished?:Finished|null;diagnosis?:Diag|null;coord?:string|null};
 /** 매칭 실패 진단 문구(Para #49) — 이 줄을 이슈에 붙이면 원인을 찾을 수 있다. */
 const diagText=(d:Diag)=>[
+  d.coord&&`좌표 기준 ${d.coord}`,
   d.reasons&&Object.entries(d.reasons).map(([k,v])=>`${k} ${v}장`).join(' · '),
   `변환 파일 ${(d.transform||[]).join(', ')||'없음'}`,
   `Gray 프레임 목록 ${d.frames??'?'}줄 (레시피 ${(d.frame_recipes||[]).join(',')}) · Color 레시피 ${(d.color_recipes||[]).join(',')} · 폴더 jpg ${d.jpg_files??'?'}개`,
@@ -98,6 +99,7 @@ export function ColorGray(){
     try{
       for(let wi=0;wi<plan.wafers.length;wi++){
         const w=plan.wafers[wi];addLog(`${w.name}: Color ${w.colors}장 중 매칭 ${w.records.length}장${w.failed?` · 매칭 실패 ${w.failed}장`:''}`);
+        if(w.coord&&w.coord!=='그대로')addLog(`${w.name}: Fault 좌표를 wafer map 직사각형의 좌측 하단 (0,0) 기준(${w.coord})으로 맞췄습니다.`);
         if(w.failed&&w.diagnosis)addLog(`${w.name} 진단: ${diagText(w.diagnosis)}`);
         let grayName='',gray:ImageBitmap|undefined;
         for(let ri=0;ri<w.records.length;ri++){

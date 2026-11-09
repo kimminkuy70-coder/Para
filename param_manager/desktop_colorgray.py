@@ -131,8 +131,11 @@ class DesktopColorGray:
                     diag = colorgray.diagnose(path, failures, records)
                 except (OSError, ValueError, KeyError, IndexError):
                     diag = None
+            coord = getattr(colorgray.plan_wafer, "last_coord", None) if total else None
+            if diag is not None:
+                diag["coord"] = coord
             wafers.append(dict(name=name, path=path, result=result, records=records, failures=failures,
-                               colors=total, finished=None, diagnosis=diag))
+                               colors=total, finished=None, diagnosis=diag, coord=coord))
         self.job = dict(output=output, wafers=wafers)
         return self.view()
 
@@ -143,7 +146,7 @@ class DesktopColorGray:
         return dict(job=dict(
             output=str(job["output"]),
             wafers=[dict(name=w["name"], colors=w["colors"], failed=len(w["failures"]), finished=w["finished"],
-                         diagnosis=w.get("diagnosis"),
+                         diagnosis=w.get("diagnosis"), coord=w.get("coord"),
                          records=[dict(color=r["color_file"], gray=r["gray_file"], px=r["pixel_x"], py=r["pixel_y"],
                                        gw=colorgray.GW, gh=colorgray.GH, crop_w=r["crop_w"], crop_h=r["crop_h"],
                                        out_w=r["out_w"], out_h=r["out_h"]) for r in w["records"]])

@@ -23,6 +23,11 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Color · Gray 매칭 좌표 기준 = wafer map 직사각형 좌측 하단 (0,0) (2026-11-09, 이슈 #49 후속 2, v12.9.30)
+- 소유자 설명: "wafer map 에서 모서리 쪽에 가상의 직사각형으로 map 을 꽉 채웠을 때 좌측 하단부터 0,0". Fault 좌표가 이 기준이고 Gray 프레임 위치는 장비 chuck 좌표일 수 있다(확인 전).
+- `plan_wafer`: `COORD_MODES` = 그대로 / 좌측 하단 원점 / 좌측 하단 원점 · Y 반전 / Y 반전. 그대로로 다 맞으면 끝, 아니면 `frames_rect`(프레임 네 모서리를 변환 정방향(`_forward`)으로 chuck 좌표에 놓은 직사각형)로
+  `map_xy` 를 시험해 가장 많이 맞는 것(동점이면 앞 것). record `coord` · `plan_wafer.last_coord` → `cgm_start` wafer `coord` · `diagnosis.coord` → 진행 기록.
+
 ### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)
 - 증상: v12.9.28 에서 폴더는 찾는데 Color 사진이 전부 매칭 실패. 실자료를 못 봐서 원인은 확인 전 — 원 v16 이 가정한 형식과 다를 수 있는 곳을 모두 너그럽게 함:
   `_inside(wafer, name, names)` = 목록의 전체 경로 · 다른 대소문자 → 폴더 안 같은 이름(폴더 밖 경로는 계속 거부) · `parse_frames` 구분자 `, ; 탭` ·
