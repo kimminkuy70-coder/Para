@@ -108,7 +108,10 @@ assert.ok(!/WGB/.test(find('7. RDL1')));
 assert.match(find('메모'),/^메모\t\t\t\t\t\t경로 복사$/);                                      // Layer 모르는 폴더도 이름 그대로, 나머지는 빈칸
 assert.equal(rows.filter(r=>/TB500\.INT1041/.test(r)).length,1);
 assert.match(rows[0],/^TB500\.INT1041\t976\. TB500\.INT1041 \(CMS\) S\/M CMS Lot History\t1-1\. RDL4_재리뷰/);
-assert.equal(rows.length,13+1);
+// Para #46: ★ 로 시작하는 폴더 = 리뷰 · 재리뷰 대상 아님 → Lot 의 맨 아래 줄, 이름만, 나머지 칸(경로 복사 포함) 빈칸. 이름에 재리뷰가 있어도 RDL2 판정을 바꾸지 않는다.
+assert.match(find('5. RDL2'),/^5\. RDL2\tRDL2\t[\s\S]*재리뷰 필요/);
+assert.equal(rows.length,14+1);
+assert.equal(rows[13],'★ 5. RDL2_재리뷰 (참고용)');                         // 뒤 칸이 모두 비어 이름만 남는다
 assert.match(rows.at(-1),/TB500\.INT948\tConder Scan 에서 Lot 폴더를 찾지 못했습니다/);
 // Lot History (RDL1 줄에서 열면 RDL1 만, [전체]를 누르면 모든 Layer)
 await page.locator('#tbody tr').filter({hasText:'7. RDL1'}).getByRole('button',{name:'Lot History'}).click();

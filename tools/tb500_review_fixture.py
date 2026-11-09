@@ -61,7 +61,7 @@ def main():
               "2. PIDS3": ["TB500_b.jpg"], "2. PIDS3_재리뷰": ["s/m1.txt"], "3-1. RDL3_재리뷰": ["m.txt"], "3. RDL3 (#23X)": ["TB500_c.jpg"],
               "3. RDL3_재스캔 All": ["q.txt"], "4. PIDS5_Skip (RDL3 재리뷰 결과 나오면 맵만 수정해 주세요)": ["k.txt"],
               "5. RDL2": ["sub/ABC123_1_2_3_4.jpg"], "6. PIDS7_Skip (RDL2 재리뷰 결과 나오면 맵만 수정해 주세요)": ["k.txt"],
-              "7. RDL1": ["TB500_RDL1 - Multi_x.jpg"], "메모": ["note.txt"]}
+              "7. RDL1": ["TB500_RDL1 - Multi_x.jpg"], "메모": ["note.txt"], "★ 5. RDL2_재리뷰 (참고용)": ["r1.txt", "TB500_s.jpg"]}
     for folder, files in layers.items():
         for f in files:
             out[lot + folder + "/" + f] = b"x"

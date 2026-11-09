@@ -306,6 +306,7 @@ async function loadIndex(){
  indexCache=out;return out}
 const parseLots=()=>[...new Set($('#lots').value.split(/[\n\r\t,;]+/).map(x=>x.trim()).filter(Boolean))];
 function stageOf(text){let best=null,pos=1e9;for(const s of STAGES)for(const re of s.keys){const m=re.exec(text);if(m&&m.index<pos){pos=m.index;best=s}}return best}
+const isStar=name=>/^\s*★/.test(name);
 function kindOf(name){const head=name.split('(')[0];if(/재리뷰/.test(head))return 'rereview';if(/skip/i.test(head))return 'skip';if(/재스캔/.test(head))return 'rescan';return 'base'}
 function classifyImage(fileName){const base=String(fileName||'').replace(/\.[^.]+$/,'').trim();if(/^TB500_/i.test(base)||/\s-\sMulti_/i.test(base))return 'Camtek';if(/^[A-Z0-9]+(?:_\d+){4,}$/i.test(base))return 'KLA';return 'Unknown'}
 let stopReq=false;const STOPPED=new Error('중단');
@@ -326,13 +327,14 @@ async function lookLot(lot,idx){
  const hit=await findLot(lot);if(!hit)return {lot,folder:'',sm:'',subs:[],layers:[],missing:true};
  const [folder,h]=hit,smm=folder.match(/\(([^()]*)\)\s*$/),sm=smm?smm[1].trim():'';
  // 하위 폴더 = 실제 이름 그대로 한 줄씩(Para #41). Layer 를 알 수 없는 폴더도 보여 준다.
- const subs=(await dirs(h)).map(([n,x])=>({name:n,h:x,stage:stageOf(n.split('(')[0])||stageOf(n),kind:kindOf(n)}))
-  .sort((a,b)=>a.name.localeCompare(b.name,'ko',{numeric:true}));
+ // ★ 로 시작하는 폴더(Para #46) = 리뷰 · 재리뷰 대상 아님: 이름만 보이고 Layer · 재리뷰 · 장비 · 호기 · 경로는 비운다(조사도 안 함).
+ const subs=(await dirs(h)).map(([n,x])=>isStar(n)?{name:n,h:x,stage:null,kind:'base',star:true}:{name:n,h:x,stage:stageOf(n.split('(')[0])||stageOf(n),kind:kindOf(n)})
+  .sort((a,b)=>(!!a.star-!!b.star)||a.name.localeCompare(b.name,'ko',{numeric:true}));  // ★ 폴더는 맨 아래
  const layerStatus=new Map;
  for(const st of STAGES){const g=subs.filter(s=>s.stage===st);if(!g.length)continue;
   layerStatus.set(st.key,g.some(s=>s.kind==='rereview')?'done':g.some(s=>s.kind==='skip')?'skip':'need')}
  const out=[];
- for(const s of subs){if(stopReq)throw STOPPED;const R={name:s.name,kind:s.kind,stage:s.stage,status:'',txt:null,equipment:'',camtek:[],kla:[]};
+ for(const s of subs){if(stopReq)throw STOPPED;const R={name:s.name,kind:s.kind,stage:s.stage,star:!!s.star,status:'',txt:null,equipment:'',camtek:[],kla:[]};
   if(s.stage){
    if(s.kind==='rereview'){R.status='rereview';R.txt=await countTxt(s.h)}
    else if(s.kind==='skip')R.status='skip';
@@ -392,7 +394,7 @@ function render(){
     '<td class="layername">'+(st?esc(st.key):'')+'</td>'+
     '<td>'+(st?'<span class="process aoi">'+st.aoi+' '+st.aoiName+'</span><span class="process review">'+st.rev+' '+st.revName+'</span>':'')+'</td>'+
     '<td>'+statusHtml(S)+'</td><td>'+(S.status==='need'?equipBadge(S.equipment):'')+'</td><td class="left">'+hitsHtml(r,S,ri,si)+'</td>'+
-    '<td><button class="copy" data-copy="'+esc(path)+'" title="'+esc(path)+'">경로 복사</button></td></tr>')})});
+    '<td>'+(S.star?'':'<button class="copy" data-copy="'+esc(path)+'" title="'+esc(path)+'">경로 복사</button>')+'</td></tr>')})});
  const lay=results.flatMap(r=>r.layers);
  $('#summary').textContent='Lot '+results.length+'개 · 못 찾은 Lot '+results.filter(r=>r.missing).length+'개 · Layer '+lay.length+'개(재리뷰 완료 '+lay.filter(l=>l.status==='done').length+' · 재리뷰 필요 '+lay.filter(l=>l.status==='need').length+' · Skip '+lay.filter(l=>l.status==='skip').length+')';
  b.querySelectorAll('[data-copy]').forEach(x=>x.onclick=()=>copy(x.dataset.copy));
