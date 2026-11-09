@@ -30,6 +30,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   Wafer map = `paintMap(cv, {show, hl, on})` 공용(점선 직사각형 좌측 하단 (0,0) · wafer 원 · Die 격자), Step 4 `#rvMap` = 전체 Defect + 보고 있는 Defect 0.45초 깜빡임, 새 창 사진 = 창 크기 맞춤(누르면 원래 크기).
   · 2차(같은 날): 표기 = **집합 기호**(`A ∖ B` · `A ∩ B` · `B ∖ A`), 보기 5가지 + 합집합(`VIEWS` · `viewLabel` · `viewSet`, 지도 `#legend [data-view]` · 표 `#fltSt` 공용), Die 격자 경계 진하게 + **완전한 Die(네 모서리가 wafer 원 안) 굵게**(`S.fullDies`).
   · #51(같은 날): Wafer Map 파일(`parseWaferMap` — RowData, `___` = wafer 밖) 자동 찾기(`buildScan` → `s.waferMap`) · 직접 고르기(`#mapBtn` → `setWaferMap` → `S.userMap`), `dieCells`/`waferGeom` = 실제 Die 만 · 원 = Die 감싸는 원. 파일이 없으면 ProductInfo (Cols−1)×(Rows−1). 종전 `waferRect` 는 (0,0)과 Defect 범위까지 넣은 큰 직사각형 + Cols×Rows 전부라 die 가 많고 wafer 가 컸다.
+  · #51 후속(소유자 "맵 파일 없이도"): `dieCells` = ProductInfo (Cols−1)×(Rows−1) 격자 + 격자 가운데 중심 · 지름(`#waferD`, 기본 300 mm) − Edge(`#edgeEx`) 원 안의 완전한 칸 = Die(예시 맵 30개 재현). 맵 파일은 비교만(`S.mapCheck`, 칸 (r,c) ↔ DieCol=c+mx). `S.dieSet` → 상세 표 'wafer 밖 칸'.
 
 ### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)
 - 증상: v12.9.28 에서 폴더는 찾는데 Color 사진이 전부 매칭 실패. 실자료를 못 봐서 원인은 확인 전 — 원 v16 이 가정한 형식과 다를 수 있는 곳을 모두 너그럽게 함:

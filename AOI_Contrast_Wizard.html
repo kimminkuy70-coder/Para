@@ -150,8 +150,12 @@ details summary{cursor:pointer;color:var(--acc)}
       <label>Pixel Size <input type="number" id="pix" value="0.7708" step="0.0001"> µm/pixel</label>
       <label>Color 연결 허용오차 <input type="number" id="ctol" value="5" min="0" step="1"> µm</label>
     </div>
-    <div class="row"><b>Wafer Map 파일</b> <input type="file" id="mapInput" hidden><button id="mapBtn">Wafer Map 파일 고르기</button>
-      <span id="mapSt" class="muted">결과 폴더 안에 RowData 줄이 있는 파일이 있으면 자동으로 씁니다.</span></div>
+    <div class="row"><b>Wafer map 계산</b>
+      <label>Wafer 지름 <input type="number" id="waferD" value="300" min="1" step="1"> mm</label>
+      <label>Edge 제외 <input type="number" id="edgeEx" value="0" min="0" step="0.5"> mm</label>
+      <span class="muted">Die = ProductInfo 격자 (Cols−1)×(Rows−1) 중 네 모서리가 모두 wafer 원(격자 가운데 중심) 안인 칸. 맵 파일이 없어도 됩니다.</span></div>
+    <div class="row"><b>Wafer Map 파일 (선택, 비교용)</b> <input type="file" id="mapInput" hidden><button id="mapBtn">Wafer Map 파일 고르기</button>
+      <span id="mapSt" class="muted">결과 폴더 안에 RowData 줄이 있는 파일이 있으면 자동으로 계산 결과와 비교합니다.</span></div>
     <h3>Gray Crop 좌표 보정</h3>
     <div class="row">
       <label><input type="checkbox" id="flipX"> X 반전</label>
@@ -323,7 +327,11 @@ function parseProduct(text){
   const px=num(pick(kv,['customerdiepitchx','diepitchx','pitchx'])),py=num(pick(kv,['customerdiepitchy','diepitchy','pitchy']));
   const cols=num(pick(kv,['cols','columns','diecols','numcols'])),rows=num(pick(kv,['rows','dierows','numrows']));
   if(!px||!py||!cols||!rows)return null;
-  return {pitchX:px,pitchY:py,cols,rows,offX:num(pick(kv,['customerdieoffsetx','offsetx','dieoffsetx','mapshiftx']))||0,offY:num(pick(kv,['customerdieoffsety','offsety','dieoffsety','mapshifty']))||0};
+  // 길이 단위 추정: ≤ 20 = inch, ≤ 1000 = mm, 그 위 = µm → µm
+  const um=v=>v==null?null:v<=20?v*25400:v<=1000?v*1000:v;
+  return {pitchX:px,pitchY:py,cols,rows,offX:num(pick(kv,['customerdieoffsetx','offsetx','dieoffsetx','mapshiftx']))||0,offY:num(pick(kv,['customerdieoffsety','offsety','dieoffsety','mapshifty']))||0,
+    waferD:um(num(pick(kv,['waferdiameter','wafersize','wafersizemm','diameter','substratediameter','wafer']))),
+    edge:(()=>{const v=num(pick(kv,['edgeexclusion','edgeexclusionmm','edgeexclude','edgeexcl']));return v==null?null:v<=20?v*1000:v})()};
 }
 /** Wafer Map 파일(소유자 예시: DEVICE/LOT/WAFER/FNLOC/ROWCT/COLCT/REFPX/REFPY + RowData 줄) → {rows, cols, cells[r][c] = 코드 | null('___' = wafer 밖), head}.
  *  RowData 첫 줄 = 파일 맨 위 줄. RowData 가 없으면 null. */
@@ -412,7 +420,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const f1=v=>v==null||!isFinite(v)?'':(+v).toFixed(1),f2=v=>v==null||!isFinite(v)?'':(+v).toFixed(2);
 const S={scans:[],rows:[],page:0,rv:0,rvList:[],overlay:{},pairs:[],pi:0};let scanSeq=0;
 function opts(){return{tol:+$('#tol').value||0,pix:+$('#pix').value||0.7708,ctol:+$('#ctol').value||0,coord:$('#coordSrc').value,
-  flipX:$('#flipX').checked,flipY:$('#flipY').checked,offX:+$('#offX').value||0,offY:+$('#offY').value||0,crop:Math.max(32,+$('#cropSz').value||160),ring:Math.max(1,+$('#ringW').value||6)}}
+  flipX:$('#flipX').checked,flipY:$('#flipY').checked,offX:+$('#offX').value||0,offY:+$('#offY').value||0,crop:Math.max(32,+$('#cropSz').value||160),ring:Math.max(1,+$('#ringW').value||6),waferD:Math.max(1,+$('#waferD').value||300)*1000,edge:Math.max(0,+$('#edgeEx').value||0)*1000}}
 function sortedScans(){return [...S.scans].sort((a,b)=>(a.contrast??Infinity)-(b.contrast??Infinity)||a.seq-b.seq)}
 const stepName=s=>s.step||s.name;
 
@@ -433,6 +441,8 @@ async function addEntries(entries){
     try{made.push(await buildScan(r.replace(/\/$/,'')||'(선택 폴더)',own))}catch(e){msg.push(['err',`${r}: ${e.message}`])}}
   made.reverse().forEach(s=>{S.scans.push(s);msg.push([s.errors.length?'err':(s.warns.length?'warn':'ok'),`${s.name}: Defect ${s.defects.length}개, 이미지 ${s.images}개 등록${s.errors.length?' — '+s.errors.join(' / '):''}`])});
   showLoad(msg);renderScans();
+  const pr=S.scans.map(x=>x.product).find(x=>x&&(x.waferD||x.edge!=null));
+  if(pr){if(pr.waferD&&!$('#waferD').dataset.user)$('#waferD').value=pr.waferD/1000;if(pr.edge!=null&&!$('#edgeEx').dataset.user)$('#edgeEx').value=pr.edge/1000}
 }
 function showLoad(list){$('#loadMsg').innerHTML=list.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('')}
 async function buildScan(name,own){
@@ -525,14 +535,19 @@ function selectPair(i){
     +'<span class="muted">점 위에 마우스: 상세 · 점 클릭: 새 창 확대 · 점선 = wafer map 직사각형(좌측 하단 0,0) · 굵은 칸 = 완전한 Die</span>';
   $$('#legend [data-view]').forEach(b=>b.onclick=()=>{mapView=b.dataset.view;$$('#legend [data-view]').forEach(x=>x.setAttribute('aria-pressed',x===b));drawMap()});
   $('#rvLegend').innerHTML=lg+'<span class="muted">깜빡이는 점 = 보고 있는 Defect · 점 클릭 = 그 Defect 로 이동</span>';
-  renderKpis();renderTable();drawMap();renderReview();mapStatus();
+  dieCells();renderKpis();renderTable();drawMap();renderReview();mapStatus();
 }
 document.addEventListener('click',e=>{const b=e.target.closest('[data-pair]');if(b&&S.pairs.length){selectPair(+b.dataset.pair);if(b.closest('#pairTbl'))go(3)}});
 $('#runBtn').onclick=()=>{if(runCompare())go(3)};
-function mapStatus(){const M=activeMap(),c=S.cmp,p=c&&(c.A.product||c.B.product),bad=M&&p&&(p.cols-1!==M.cols||p.rows-1!==M.rows);$('#mapSt').textContent=M?`쓰는 Wafer Map: ${M.file} · ${M.rows}×${M.cols} · Die ${M.dies}개${S.userMap?' (직접 고름)':' (결과 폴더에서 찾음)'}${bad?` · ProductInfo 격자 ${p.rows-1}×${p.cols-1} 와 크기가 다름(위치 확인 필요)`:''}`
-  :'Wafer Map 파일 없음 — ProductInfo 격자로 그립니다(실제 Die 와 다를 수 있음). RowData 줄이 있는 파일을 고르십시오.'}
-function setWaferMap(text,name){const m=parseWaferMap(text);if(!m)return false;S.userMap={...m,file:name||'Wafer Map'};mapStatus();if(S.cmp){drawMap();paintRvMap()}return true}
+function mapStatus(){const c=S.cmp;if(!c){$('#mapSt').textContent='';return}const D=dieCells(),k=S.mapCheck;
+  if(!D){$('#mapSt').textContent='ProductInfo.ini 가 없어 Die 를 계산할 수 없습니다(Defect 범위로만 그립니다).';return}
+  let t=`계산 Die ${D.calc}개 (격자 ${D.ny}×${D.nx}, 지름 ${D.rad*2/1000} mm${D.rin<D.rad?`, Edge 제외 ${(D.rad-D.rin)/1000} mm`:''})`;
+  if(k)t+=k.size?` · 맵 ${k.file} 크기(${activeMap().rows}×${activeMap().cols})가 격자와 맞지 않아 비교 못 함`
+    :k.ok?` · 맵 ${k.file} Die ${k.map}개와 일치 ✔`:` · 맵 ${k.file} Die ${k.map}개와 다름: 계산에만 ${k.onlyCalc} · 맵에만 ${k.onlyMap} (지름 · Edge 제외를 확인하십시오)`;
+  $('#mapSt').textContent=t}
+function setWaferMap(text,name){const m=parseWaferMap(text);if(!m)return false;S.userMap={...m,file:name||'Wafer Map'};if(S.cmp){mapStatus();drawMap();paintRvMap()}return true}
 $('#mapBtn').onclick=()=>$('#mapInput').click();
+['#waferD','#edgeEx'].forEach(q=>$(q).addEventListener('input',e=>e.target.dataset.user=1));
 $('#mapInput').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;if(!setWaferMap(await f.text(),f.name))$('#mapSt').textContent=`${f.name}: RowData 줄이 없습니다.`};
 function renderKpis(){const c=S.cmp,n=c.keep.length+c.gone.length,a=stepName(c.A),b=stepName(c.B);
   $('#kpis').innerHTML=[[viewLabel('A'),`${n}`,'',`Contrast AVG ${c.A.contrast??'?'}`],[viewLabel('B'),`${c.keep.length+c.added.length}`,'',`Contrast AVG ${c.B.contrast??'?'}`],[stLabel('keep'),c.keep.length,'keep','둘 다 있음'],[stLabel('gone'),c.gone.length,'gone',`${b} 에서 없어짐`],[stLabel('new'),c.added.length,'new',`${b} 에서 새로 생김`],
@@ -543,8 +558,9 @@ function renderKpis(){const c=S.cmp,n=c.keep.length+c.gone.length,a=stepName(c.A
 // 8. 상세 표 · CSV
 // ════════════════════════════════════════════════════════════════════════
 function info(r){const d=r.d,s=d.scan,o=S.cmp.o,die=dieOf(d.X,d.Y,s.product),px2=o.pix*o.pix;
-  return {st:stLabel(r.st),id:d.id,X:d.X,Y:d.Y,die:die?`(${die.col}, ${die.row})${die.valid?'':' 범위 밖'}`:'계산 불가',dieXY:die?`${die.dx.toFixed(0)}, ${die.dy.toFixed(0)}`:'',
-    area:d.area*px2,width:d.BlobBreadth,length:d.BlobLength,box:`${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,contrast:d.Contrast,cmpContrast:r.b?r.b.Contrast:null,step:stepName(s),tool:s.tool,dieWarn:die&&!die.valid}}
+  const off=die&&die.valid&&S.dieSet&&!S.dieSet.has(die.col+','+die.row);
+  return {st:stLabel(r.st),id:d.id,X:d.X,Y:d.Y,die:die?`(${die.col}, ${die.row})${die.valid?(off?' · wafer 밖 칸':''):' 범위 밖'}`:'계산 불가',dieXY:die?`${die.dx.toFixed(0)}, ${die.dy.toFixed(0)}`:'',
+    area:d.area*px2,width:d.BlobBreadth,length:d.BlobLength,box:`${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,contrast:d.Contrast,cmpContrast:r.b?r.b.Contrast:null,step:stepName(s),tool:s.tool,dieWarn:die&&(!die.valid||off)}}
 function filtered(){const f=viewSet($('#fltSt').value||'all');return S.rows.filter(r=>f.has(r.st))}
 function renderTable(){const rows=filtered(),P=200,pages=Math.max(1,Math.ceil(rows.length/P));S.page=Math.min(S.page,pages-1);
   $('#detTbl tbody').innerHTML=rows.slice(S.page*P,S.page*P+P).map((r,k)=>{const x=info(r);return `<tr data-k="${S.page*P+k}"><td><span class="st ${r.st}">${x.st}</span></td><td class="num">${x.id}</td><td class="num">${f1(x.X)}</td><td class="num">${f1(x.Y)}</td>
@@ -610,31 +626,40 @@ const COL={keep:'--keep',gone:'--gone',new:'--new'};let mapGeo=null,rafId=0;
 function drawMap(){cancelAnimationFrame(rafId);rafId=requestAnimationFrame(()=>{mapGeo=paintMap($('#map'),{show:viewSet(mapView)})})}
 /** 쓸 Wafer Map: 직접 고른 파일 → 비교 쌍 A · B 폴더에서 찾은 파일. */
 function activeMap(){const c=S.cmp;return S.userMap||(c&&(c.A.waferMap||c.B.waferMap))||null}
-/** 실제 Die 목록(chuck 좌표 사각형). Wafer Map 파일이 있으면 '___' 아닌 칸만(소유자 지적 #51: 종전에는 ProductInfo Cols×Rows 를 전부 그려 die 가 많았다).
- *  파일 칸 (r, c) ↔ 격자 (ix, iy): Die 식 DieCol=(Cols−2)−ix, DieRow=(Rows−2)−iy 의 역 — ix=(COLCT−1)−c, iy=(ROWCT−1)−r.
- *  파일이 없으면 ProductInfo 격자 (Cols−1)×(Rows−1)(Die 식이 0 이상으로 내는 칸). */
+/** Wafer map 계산(Para #51 후속 — 맵 파일 없이). 소유자 예시 맵(7×6, Die 30)을 #50 ProductInfo(Pitch 37249×44905.8, Cols 10, Rows 9)로 그대로 재현하는 규칙:
+ *  ① Die 격자 = Die 식(DieCol=(Cols−2)−ix, DieRow=(Rows−2)−iy)이 0 이상을 내는 ix 0..Cols−2, iy 0..Rows−2 = (Cols−1)×(Rows−1) 칸
+ *  ② wafer 중심 = 그 격자의 가운데, 반지름 = Wafer 지름/2 − Edge 제외(기본 300 mm, 0 mm)
+ *  ③ Die = 네 모서리가 모두 원 안인 칸.
+ *  Wafer Map 파일이 있으면 비교만 한다: 맵 칸 (r, c) ↔ DieCol = c + mx, DieRow = r + my (mx = ((Cols−1)−COLCT)/2, 가운데 맞춤). */
 function dieCells(){
-  const c=S.cmp,p=c.A.product||c.B.product,M=activeMap();if(!p)return null;
-  const out=[];
-  if(M){for(let r=0;r<M.rows;r++)for(let cc=0;cc<M.cols;cc++){const v=(M.cells[r]||[])[cc];if(v==null)continue;
-      const ix=(M.cols-1)-cc,iy=(M.rows-1)-r;out.push({x0:p.offX+ix*p.pitchX,y0:p.offY+iy*p.pitchY,code:v,r,c:cc})}
-    return {dies:out,p,from:'map',nx:M.cols,ny:M.rows}}
-  const nx=Math.max(1,p.cols-1),ny=Math.max(1,p.rows-1);
-  for(let ix=0;ix<nx;ix++)for(let iy=0;iy<ny;iy++)out.push({x0:p.offX+ix*p.pitchX,y0:p.offY+iy*p.pitchY,code:null});
-  return {dies:out,p,from:'product',nx,ny};
+  const c=S.cmp,p=c.A.product||c.B.product;if(!p)return null;
+  const o=c.o||opts(),nx=Math.max(1,p.cols-1),ny=Math.max(1,p.rows-1);
+  const gx0=p.offX,gy0=p.offY,gx1=gx0+nx*p.pitchX,gy1=gy0+ny*p.pitchY,cx=(gx0+gx1)/2,cy=(gy0+gy1)/2,rad=o.waferD/2,rin=Math.max(0,rad-o.edge);
+  const inW=(X,Y)=>Math.hypot(X-cx,Y-cy)<=rin+1e-6,dies=[];
+  for(let ix=0;ix<nx;ix++)for(let iy=0;iy<ny;iy++){const x0=gx0+ix*p.pitchX,y0=gy0+iy*p.pitchY;
+    dies.push({ix,iy,x0,y0,col:(p.cols-2)-ix,row:(p.rows-2)-iy,full:inW(x0,y0)&&inW(x0+p.pitchX,y0)&&inW(x0,y0+p.pitchY)&&inW(x0+p.pitchX,y0+p.pitchY),code:null})}
+  const calc=dies.filter(d=>d.full).length;
+  // 맵 파일 비교(+ Bin 코드)
+  const M=activeMap();let cmp=null;
+  if(M){const mx=(nx-M.cols)/2,my=(ny-M.rows)/2;
+    if(Number.isInteger(mx)&&Number.isInteger(my)&&mx>=0&&my>=0){const inMap=new Map();
+      for(let r=0;r<M.rows;r++)for(let cc=0;cc<M.cols;cc++){const v=(M.cells[r]||[])[cc];if(v!=null)inMap.set((cc+mx)+','+(r+my),v)}
+      let both=0,onlyCalc=0;for(const d of dies){const v=inMap.get(d.col+','+d.row);if(v!=null)d.code=v;if(d.full){if(v!=null)both++;else onlyCalc++}}
+      cmp={calc,map:M.dies,both,onlyCalc,onlyMap:M.dies-both,file:M.file,ok:both===M.dies&&!onlyCalc}}
+    else cmp={calc,map:M.dies,file:M.file,ok:false,size:true}}
+  S.dieSet=new Set(dies.filter(d=>d.full).map(d=>d.col+','+d.row));S.mapCheck=cmp;
+  return {dies,p,from:'calc',nx,ny,gx0,gy0,gx1,gy1,cx,cy,rad,rin,calc};
 }
-/** wafer map 직사각형(소유자 설명: map 을 꽉 채우는 가상의 직사각형, 좌측 하단 = 0,0) = Die 격자 범위.
- *  wafer 원 = 실제 Die(Wafer Map 파일) 를 모두 감싸는 가장 작은 중심원, 파일이 없으면 직사각형에 내접. */
 function waferGeom(){
-  const D=dieCells();let x0,y0,x1,y1,cx,cy,rad,full=null;
-  if(D&&D.dies.length){const p=D.p;x0=p.offX;y0=p.offY;x1=x0+D.nx*p.pitchX;y1=y0+D.ny*p.pitchY;
-    if(D.from==='map'){let a=Infinity,b=-Infinity,lo=Infinity,hi=-Infinity;for(const d of D.dies){a=Math.min(a,d.x0);b=Math.max(b,d.x0+p.pitchX);lo=Math.min(lo,d.y0);hi=Math.max(hi,d.y0+p.pitchY)}
-      cx=(a+b)/2;cy=(lo+hi)/2;rad=0;for(const d of D.dies)for(const [X,Y] of [[d.x0,d.y0],[d.x0+p.pitchX,d.y0],[d.x0,d.y0+p.pitchY],[d.x0+p.pitchX,d.y0+p.pitchY]])rad=Math.max(rad,Math.hypot(X-cx,Y-cy))}
-    else{cx=(x0+x1)/2;cy=(y0+y1)/2;rad=Math.min(x1-x0,y1-y0)/2}}
-  else{x0=Infinity;y0=Infinity;x1=-Infinity;y1=-Infinity;for(const q of S.rows){x0=Math.min(x0,q.d.X);y0=Math.min(y0,q.d.Y);x1=Math.max(x1,q.d.X);y1=Math.max(y1,q.d.Y)}
+  const D=dieCells();let x0,y0,x1,y1,cx,cy,rad;
+  if(D){cx=D.cx;cy=D.cy;rad=D.rad;const F=D.dies.filter(d=>d.full),p=D.p;
+    // 점선 직사각형 = 실제 Die 를 꽉 채우는 직사각형(소유자 설명: 그 좌측 하단 = (0,0)). Die 가 없으면 격자 전체
+    if(F.length){x0=Math.min(...F.map(d=>d.x0));y0=Math.min(...F.map(d=>d.y0));x1=Math.max(...F.map(d=>d.x0))+p.pitchX;y1=Math.max(...F.map(d=>d.y0))+p.pitchY}
+    else{x0=D.gx0;y0=D.gy0;x1=D.gx1;y1=D.gy1}}
+  else{S.dieSet=null;S.mapCheck=null;x0=Infinity;y0=Infinity;x1=-Infinity;y1=-Infinity;for(const q of S.rows){x0=Math.min(x0,q.d.X);y0=Math.min(y0,q.d.Y);x1=Math.max(x1,q.d.X);y1=Math.max(y1,q.d.Y)}
     if(!isFinite(x0)){x0=y0=0;x1=y1=1}cx=(x0+x1)/2;cy=(y0+y1)/2;rad=Math.max(x1-x0,y1-y0,1)/2}
-  // 화면 범위 = 직사각형 ∪ 원 ∪ Defect 점(밖에 있는 점도 보이게)
-  let vx0=Math.min(x0,cx-rad),vy0=Math.min(y0,cy-rad),vx1=Math.max(x1,cx+rad),vy1=Math.max(y1,cy+rad);
+  // 화면 범위 = 원 ∪ Defect 점(밖에 있는 점도 보이게) — 격자 바깥 칸까지 넓히지 않는다(wafer 가 작아 보이지 않게)
+  let vx0=cx-rad,vy0=cy-rad,vx1=cx+rad,vy1=cy+rad;
   for(const q of S.rows){vx0=Math.min(vx0,q.d.X);vy0=Math.min(vy0,q.d.Y);vx1=Math.max(vx1,q.d.X);vy1=Math.max(vy1,q.d.Y)}
   return {D,x0,y0,x1,y1,cx,cy,rad,vx0,vy0,vx1:Math.max(vx1,vx0+1),vy1:Math.max(vy1,vy0+1)};
 }
@@ -650,22 +675,25 @@ function paintMap(cv,opt){
   // wafer 원
   x.fillStyle=cl('--chip');x.globalAlpha=.55;x.beginPath();x.arc(PX(R.cx),PY(R.cy),R.rad*k,0,7);x.fill();x.globalAlpha=1;
   // Die: 격자 칸 경계(옅게) + 실제 Die / 완전한 Die(굵게)
-  const D=R.D;S.fullDies=0;S.mapDies=0;
-  if(D&&D.dies.length&&D.p.pitchX*k>=3){const p=D.p,pw=p.pitchX*k,ph=p.pitchY*k;
+  const D=R.D;S.fullDies=0;S.mapDies=S.mapCheck?S.mapCheck.map:0;
+  if(D&&D.p.pitchX*k>=3){const p=D.p,pw=p.pitchX*k,ph=p.pitchY*k;
+    // 격자 칸 경계(옅게, 원 안쪽만 보이게)
+    x.save();x.beginPath();x.arc(PX(R.cx),PY(R.cy),R.rad*k,0,7);x.clip();
     x.strokeStyle=cl('--sub');x.globalAlpha=.45;x.lineWidth=.8;x.beginPath();
-    for(let i=0;i<=D.nx;i++){const X=PX(p.offX+i*p.pitchX);x.moveTo(X,PY(R.y0));x.lineTo(X,PY(R.y1))}
-    for(let j=0;j<=D.ny;j++){const Y=PY(p.offY+j*p.pitchY);x.moveTo(PX(R.x0),Y);x.lineTo(PX(R.x1),Y)}x.stroke();x.globalAlpha=1;
-    const inW=(X,Y)=>Math.hypot(X-R.cx,Y-R.cy)<=R.rad+1e-6;let full=0;
-    for(const d of D.dies){const isFull=D.from==='map'||[[d.x0,d.y0],[d.x0+p.pitchX,d.y0],[d.x0,d.y0+p.pitchY],[d.x0+p.pitchX,d.y0+p.pitchY]].every(([X,Y])=>inW(X,Y));
-      if(!isFull)continue;full++;if(d.code&&!/^0+$/.test(d.code)){x.fillStyle=cl('--warnbg');x.fillRect(PX(d.x0),PY(d.y0+p.pitchY),pw,ph)}}
+    for(let i=0;i<=D.nx;i++){const X=PX(D.gx0+i*p.pitchX);x.moveTo(X,PY(D.gy0));x.lineTo(X,PY(D.gy1))}
+    for(let j=0;j<=D.ny;j++){const Y=PY(D.gy0+j*p.pitchY);x.moveTo(PX(D.gx0),Y);x.lineTo(PX(D.gx1),Y)}x.stroke();x.restore();
+    // 완전한 Die: Bin 코드 ≠ 000(맵 파일이 있을 때) 옅은 노랑 + 굵은 테두리
+    for(const d of D.dies)if(d.full&&d.code&&!/^0+$/.test(d.code)){x.fillStyle=cl('--warnbg');x.fillRect(PX(d.x0),PY(d.y0+p.pitchY),pw,ph)}
     x.strokeStyle=cl('--ink');x.lineWidth=Math.max(1.6,Math.min(2.4,pw/12));x.beginPath();
-    for(const d of D.dies){const isFull=D.from==='map'||[[d.x0,d.y0],[d.x0+p.pitchX,d.y0],[d.x0,d.y0+p.pitchY],[d.x0+p.pitchX,d.y0+p.pitchY]].every(([X,Y])=>inW(X,Y));
-      if(isFull)x.rect(PX(d.x0),PY(d.y0+p.pitchY),pw,ph)}
-    x.stroke();S.fullDies=full;S.mapDies=D.from==='map'?D.dies.length:0}
+    for(const d of D.dies)if(d.full)x.rect(PX(d.x0),PY(d.y0+p.pitchY),pw,ph);
+    x.stroke();S.fullDies=D.calc;
+    // 맵 파일과 다른 칸(있으면): 계산에만 = 빨간 점선, 맵에만 = 주황 점선
+    if(S.mapCheck&&!S.mapCheck.ok&&!S.mapCheck.size){x.setLineDash([3,3]);x.lineWidth=1.5;
+      for(const d of D.dies){const inM=d.code!=null;if(d.full===inM)continue;x.strokeStyle=d.full?cl('--gone'):cl('--new');x.strokeRect(PX(d.x0)+2,PY(d.y0+p.pitchY)+2,pw-4,ph-4)}x.setLineDash([])}}
   x.strokeStyle=cl('--sub');x.lineWidth=1.2;x.beginPath();x.arc(PX(R.cx),PY(R.cy),R.rad*k,0,7);x.stroke();
   x.setLineDash([5,4]);x.strokeRect(PX(R.x0),PY(R.y1),(R.x1-R.x0)*k,(R.y1-R.y0)*k);x.setLineDash([]);
-  x.fillStyle=cl('--sub');x.font='11px sans-serif';x.fillText(Math.abs(R.x0)<1&&Math.abs(R.y0)<1?'(0,0)':`(${Math.round(R.x0)}, ${Math.round(R.y0)})`,PX(R.x0)+3,PY(R.y0)-4);
-  S.mapFrom=D?D.from:'none';
+  x.fillStyle=cl('--sub');x.font='11px sans-serif';x.fillText(R.D?'(0,0)':`(${Math.round(R.x0)}, ${Math.round(R.y0)})`,PX(R.x0)+3,PY(R.y0)-4);
+  S.mapFrom=D?'calc':'none';
   const P=[],show=opt.show||new Set(['keep','new','gone']);
   for(const st of ['keep','new','gone']){if(!show.has(st))continue;x.fillStyle=cl(COL[st]);
     for(const q of S.rows){if(q.st!==st)continue;const X=PX(q.d.X),Y=PY(q.d.Y);P.push([X,Y,q]);x.beginPath();x.arc(X,Y,st==='gone'?3.5:2.8,0,7);x.fill()}}
@@ -765,7 +793,7 @@ function go(n){if(n>=3&&!S.cmp&&!runCompare())n=2;$$('section.step').forEach(s=>
   $$('nav button[data-step]').forEach(b=>b.toggleAttribute('aria-current',b.dataset.step==n)&&b.setAttribute('aria-current','step'));
   if(n==3)drawMap();if(n==4){showRv();paintRvMap();$('#rvList').focus()}}
 $$('nav button[data-step]').forEach(b=>b.onclick=()=>go(+b.dataset.step));$('#to2').onclick=()=>go(2);
-['#tol','#coordSrc','#pix','#ctol','#flipX','#flipY','#offX','#offY','#cropSz','#ringW'].forEach(s=>$(s).addEventListener('change',()=>{grayMemo.clear();if(S.cmp)runCompare()}));
+['#waferD','#edgeEx','#tol','#coordSrc','#pix','#ctol','#flipX','#flipY','#offX','#offY','#cropSz','#ringW'].forEach(s=>$(s).addEventListener('change',()=>{grayMemo.clear();if(S.cmp)runCompare()}));
 $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;
   r.dataset.theme=dark?'light':'dark';try{localStorage.setItem('cw.theme',r.dataset.theme)}catch(e){}drawMap()};
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}

@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #51 후속 Wafer map 을 맵 파일 없이 계산 (2026-11-09 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-09 · 기준 커밋 `bb6da2c` · 이슈 Para #51 후속(소유자 세션 지시 "다시 분석해봐 웨이퍼 맵파일 없이도 해당 결과가 나오게끔 로직 구현해") · 작업 브랜치 **`version_graylevel_simulation`**.
+- 분석: #50 이슈의 ProductInfo(Pitch 37249 × 44905.8 µm, Cols 10, Rows 9, Offset 0)와 #51 예시 맵(TB500, 7×6, Die 30)을 맞춰 봄.
+  Die 식 DieCol=(Cols−2)−ix 가 0 이상인 칸 = 9×8 격자, 예시 맵 = 그 안쪽(테두리 1칸 뺀) 7×6. 격자 가운데(4.5·pitchX, 4·pitchY)를 중심으로 지름 300 mm 원 안에 네 모서리가 다 드는 칸을 세면
+  줄마다 3·5·7·7·5·3 = 30 → 예시 맵과 같다(맨 윗줄 바깥 모서리 145.8 mm < 150 mm, 그 옆 칸 163.8 mm). #50 검증 예 Die (3,1) 도 맵 맨 윗줄 칸 2 와 맞다.
+  종전 원인: wafer 반지름을 실제 300 mm 가 아니라 격자 크기(9×37249, 8×44905.8)로 잡아 원이 컸다.
+- 한 일(`AOI_Contrast_Wizard.html`): `dieCells`(위 규칙, `full` 표시) · `waferGeom`(원 = 격자 가운데 · 지름/2, 점선 = 실제 Die 를 꽉 채우는 직사각형, 좌측 하단 (0,0)), Step 2 `Wafer 지름`(기본 300 mm) · `Edge 제외`(0 mm) 입력 —
+  ProductInfo 에 `WaferDiameter`/`WaferSize`/`EdgeExclusion` 이 있으면 자동 채움(≤20 inch, ≤1000 mm, 그 위 µm). 맵 파일은 비교만(`S.mapCheck` — 일치 ✔ / 계산에만 · 맵에만 수, 다른 칸 점선), Bin ≠ 000 옅은 노랑. 상세 표 Die 칸 'wafer 밖 칸'.
+- 내 해석(확인 전): ⓐ wafer 지름 300 mm(12 inch) ⓑ Edge 제외 0 mm(예시 맵은 0~4 mm 사이면 같은 결과) ⓒ wafer 중심 = (Cols−1)×(Rows−1) 격자 가운데 — 다른 제품(MapShift · Mirror)에서 다르면 알려 달라 ⓓ 맵 칸 ↔ Die 번호 = 가운데 맞춤(mx = ((Cols−1)−COLCT)/2).
+- 시험: `node tools/test_contrast_wizard.mjs` 3회+ 통과(맵 없이 계산 Die 30 · 상태 문구 · Die (3,1) 안 · 맵 넣으면 일치 30/30 · 지름 280 mm 면 줄고 '다름' · 300 으로 되돌리면 30). 실제 결과 폴더 · Edge 실기 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML).
+- 남은 일: 해석 ⓐ~ⓓ 확인, 다른 제품 ProductInfo 로 확인.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #51 후속 | 맵 파일 없이도 같은 wafer map 이 나오게 | ProductInfo + 300 mm 원 계산으로 예시 맵 30 Die 재현, 맵 파일은 비교용(시험 통과, 릴리스 대상 아님) |
+
 ## 최신 재개 — Para #51 Contrast Wizard Wafer map 의 Die 가 많고 wafer 가 큼 → Wafer Map 파일 기준 (2026-11-09 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `8cf1f7c` · 이슈 Para #51("Graylevel 시뮬레이션 브랜치 신규생성 2") · 작업 브랜치 **`version_graylevel_simulation`**.

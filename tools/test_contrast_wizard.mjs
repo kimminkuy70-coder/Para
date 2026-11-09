@@ -66,16 +66,24 @@ await page.locator('#fltSt').selectOption('all');assert.equal(await page.locator
 await page.locator('#legend [data-view="gone"]').click();await page.waitForTimeout(100);
 assert.equal(await page.evaluate(()=>document.querySelectorAll('#legend [aria-pressed="true"]').length),1);
 await page.locator('#legend [data-view="all"]').click();await page.waitForTimeout(100);
-const fd=await page.evaluate(()=>window.__cw.state.fullDies);assert.ok(fd>0&&fd<90,'완전한 Die '+fd);
+const fd=await page.evaluate(()=>window.__cw.state.fullDies);
+// Para #51 후속: 맵 파일 없이 ProductInfo(Pitch 37249×44905.8, Cols 10, Rows 9) + 300 mm 원으로 소유자 예시 맵과 같은 Die 30개
+assert.equal(fd,30,'계산 Die '+fd);
+assert.match(await page.locator('#mapSt').innerText(),/계산 Die 30개 \(격자 8×9, 지름 300 mm\)/);
+assert.ok(await page.evaluate(()=>window.__cw.state.dieSet.has('3,1')),'#50 검증 예 Die (3, 1) 은 wafer 안');
 // Para #51: Wafer Map 파일(소유자 예시)이 있으면 '___' 아닌 칸만 Die 로 그린다(종전: ProductInfo Cols×Rows 전부 → die 가 많았다)
 const MAP='DEVICE:4DT-TB500-H-M1\nLOT:TB500.INT025@6322\nWAFER:00RW8126XYC1\nFNLOC:180\nROWCT:6\nCOLCT:7\nBCEQU:000\nREFPX:1\nREFPY:1\nDUTMS:mm\nXDIES:\nYDIES:\n'
   +['___ ___ 023 000 023 ___ ___','___ 000 023 000 000 000 ___','000 000 000 000 023 000 000','000 023 000 023 023 000 023','___ 000 000 000 000 000 ___','___ ___ 000 000 000 ___ ___'].map(r=>'RowData:'+r).join('\n')+'\n';
-assert.ok(fd<=72,'Map 파일 없음 = ProductInfo (Cols−1)×(Rows−1) 안: '+fd);
 const wm=await page.evaluate(m=>{const c=window.__cw,p=c.parseWaferMap(m);return {rows:p.rows,cols:p.cols,dies:p.dies,fn:p.head.FNLOC,ok:c.setWaferMap(m,'map.txt')}},MAP);
 assert.deepEqual(wm,{rows:6,cols:7,dies:30,fn:'180',ok:true});
 await page.waitForTimeout(150);
-assert.deepEqual(await page.evaluate(()=>{const S=window.__cw.state;return [S.mapFrom,S.mapDies,S.fullDies]}),['map',30,30]);
-assert.match(await page.locator('#mapSt').innerText(),/map\.txt · 6×7 · Die 30개 \(직접 고름\)/);
+assert.deepEqual(await page.evaluate(()=>{const S=window.__cw.state;return [S.mapFrom,S.mapDies,S.fullDies,S.mapCheck.ok,S.mapCheck.both]}),['calc',30,30,true,30]);
+assert.match(await page.locator('#mapSt').innerText(),/맵 map\.txt Die 30개와 일치 ✔/);
+// 지름을 줄이면 Die 가 줄고 맵과 다르다고 알린다 → 되돌리기
+await page.evaluate(()=>{const e=document.querySelector('#waferD');e.value='280';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(200);
+assert.ok(await page.evaluate(()=>window.__cw.state.fullDies)<30);assert.match(await page.locator('#mapSt').innerText(),/다름: 계산에만 0 · 맵에만 \d+/);
+await page.evaluate(()=>{const e=document.querySelector('#waferD');e.value='300';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(200);
+assert.equal(await page.evaluate(()=>window.__cw.state.fullDies),30);
 assert.ok(!/유지|소거|신규/.test(await page.locator('main').innerText()));
 // Wafer map 이 그려진다(직사각형 · wafer 원 · 점)
 const painted=await page.evaluate(()=>{const c=document.querySelector('#map'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n});
