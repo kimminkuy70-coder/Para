@@ -35,6 +35,48 @@ function Invoke-Scan([string]$path) {
   return [pscustomobject]@{ Code = $code; Text = ($out | Out-String) }
 }
 
+# The path a browser uses for a finished download (IAttachmentExecute::Save -> antivirus "downloaded file" scan).
+# Works on a copy, because a blocked file is deleted by this call.
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+[ComImport, Guid("73db1241-1e85-4581-8e4f-a81e1d0f8c57"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IAttachmentExecute {
+  [PreserveSig] int SetClientTitle([MarshalAs(UnmanagedType.LPWStr)] string t);
+  [PreserveSig] int SetClientGuid(ref Guid g);
+  [PreserveSig] int SetLocalPath([MarshalAs(UnmanagedType.LPWStr)] string p);
+  [PreserveSig] int SetFileName([MarshalAs(UnmanagedType.LPWStr)] string n);
+  [PreserveSig] int SetSource([MarshalAs(UnmanagedType.LPWStr)] string s);
+  [PreserveSig] int SetReferrer([MarshalAs(UnmanagedType.LPWStr)] string r);
+  [PreserveSig] int CheckPolicy();
+  [PreserveSig] int Prompt(IntPtr hwnd, int prompt, out int action);
+  [PreserveSig] int Save();
+}
+public static class DownloadScan {
+  public static string Run(string path, string url) {
+    var t = Type.GetTypeFromCLSID(new Guid("4125dd96-e03a-4103-8f70-e0597d803b9c"));
+    var a = (IAttachmentExecute)Activator.CreateInstance(t);
+    var g = new Guid("2676A9A2-D919-4FEE-9187-152100393AB2");
+    a.SetClientGuid(ref g);
+    a.SetLocalPath(path);
+    a.SetSource(url);
+    a.SetReferrer("https://github.com/");
+    int hr = a.Save();
+    Marshal.ReleaseComObject(a);
+    return "0x" + hr.ToString("X8");
+  }
+}
+"@
+function Invoke-DownloadScan([string]$path, [string]$url) {
+  $copy = Join-Path (Split-Path $path) ("dl_" + (Split-Path $path -Leaf))
+  Copy-Item $path $copy -Force
+  try { $hr = [DownloadScan]::Run($copy, $url) } catch { $hr = "error: $($_.Exception.Message)" }
+  Start-Sleep -Seconds 2
+  $left = Test-Path $copy
+  if ($left) { Remove-Item $copy -Force -ErrorAction SilentlyContinue }
+  return [pscustomobject]@{ Result = $hr; Kept = $left }
+}
+
 # Self check: the scanner must detect the standard harmless antivirus test file, otherwise "clean" means nothing.
 $probe = Join-Path $env:RUNNER_TEMP "scanner_selfcheck"
 if (-not $env:RUNNER_TEMP) { $probe = Join-Path $env:TEMP "scanner_selfcheck" }
@@ -44,6 +86,9 @@ try { [IO.File]::WriteAllText($testFile, ('X5O!P%@AP[4\PZX54(P^)7CC)7}$' + 'EICA
 $sc = Invoke-Scan $probe
 Write-Host "=== Scanner self check exit code $($sc.Code) (2 = works)"
 if ($sc.Code -ne 2) { Write-Host $sc.Text; Write-Host "SELF CHECK FAILED - Defender is not really scanning on this runner"; if ($FailOnThreat) { exit 1 } }
+try { [IO.File]::WriteAllText($testFile, ('X5O!P%@AP[4\PZX54(P^)7CC)7}$' + 'EICAR-STANDARD-ANTIVIRUS-' + 'TEST-FILE!$H+H*')) } catch {}
+$d0 = Invoke-DownloadScan $testFile "https://example.com/selfcheck.txt"
+Write-Host "=== Download-path self check: result $($d0.Result), file kept = $($d0.Kept) (blocked = non-zero result or file not kept)"
 Remove-Item -Recurse -Force $probe -ErrorAction SilentlyContinue
 
 $found = $false
@@ -53,6 +98,9 @@ foreach ($zip in Get-ChildItem $root -Filter *.zip | Sort-Object Name) {
   Write-Host "=================== $($zip.Name)"
   # Mark of the Web, as a browser download from GitHub would have.
   Set-Content -Path $zip.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3`r`nReferrerUrl=https://github.com/`r`nHostUrl=https://github.com/"
+  $d = Invoke-DownloadScan $zip.FullName ("https://github.com/kimminkuy70-coder/Para/releases/download/" + $zip.Name)
+  Write-Host "download-path scan: result $($d.Result), file kept = $($d.Kept)"
+  if ($d.Result -ne "0x00000000" -or -not $d.Kept) { $found = $true }
   $r = Invoke-Scan $zip.FullName
   Write-Host "zip scan exit code $($r.Code) (0 = clean, 2 = threat)"
   Write-Host $r.Text
