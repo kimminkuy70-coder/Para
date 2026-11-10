@@ -421,14 +421,28 @@ await page.locator('#b5show').selectOption('ok');assert.equal(await page.locator
 // 사진 새 창(큰 화면 · 사진만): 줄 더블 클릭 → Color · Gray Crop(Color 크기) · Gray 프레임, 새 창 ↓ = 목록도 이동, 목록 ↓ = 새 창도 바뀜
 const [pw]=await Promise.all([page.waitForEvent('popup'),page.locator('#b5list .br').nth(0).dblclick()]);
 await pw.locator('#ff canvas').waitFor();
-const pw1=await pw.evaluate(()=>({hd:document.getElementById('hd').textContent,cap:[...document.querySelectorAll('figcaption')].map(f=>f.textContent),
+const pw1=await pw.evaluate(()=>({hd:document.getElementById('hd').textContent,cap:[...document.querySelectorAll('figcaption')].map(f=>f.textContent),tip:[...document.querySelectorAll('figcaption')].map(f=>f.title),
   c:!!document.querySelector('#fc canvas'),x:[document.querySelector('#fx canvas').width,document.querySelector('#fx canvas').height],tables:document.querySelectorAll('table,dl,input,button').length}));
-assert.match(pw1.hd,/^1 \/ 2 · LOT_CA\d+ · W01 · ID \d+ · Contrast /);assert.deepEqual(pw1.cap,['Color','Gray Crop (Color 시야)','Gray 프레임 (빨간 + = Defect · 노란 상자 = Crop 범위)']);
+assert.match(pw1.hd,/^1 \/ 2 · LOT_CA\d+ · W01 · ID \d+ · Contrast /);
+// 사진 파일명(소유자 "사진 파일명도 같이 보이게") — 칸 제목에, 마우스를 올리면 경로
+assert.deepEqual(pw1.cap,['Color · C1.c.1.jpeg','Gray Crop (Color 시야) · F1.t.1.jpeg','Gray 프레임 · F1.t.1.jpeg · 픽셀 (1100.0, 200.0) · 빨간 + = Defect · 노란 상자 = Crop 범위']);
+assert.ok(/^RCP\/SETUP1\/LOT_CA\d+\/W01\/C1\.c\.1\.jpeg$/.test(pw1.tip[0])&&/\/W01\/F1\.t\.1\.jpeg$/.test(pw1.tip[1]),pw1.tip.join());
 assert.equal(pw1.c,true);assert.deepEqual(pw1.x,[1380,1036]);assert.equal(pw1.tables,0);   // 사진만(표 · 단추 없음)
+// 큰 화면에서 방향키(소유자 "방향키로 다음 목록"): ↓ → = 다음, ↑ ← = 이전, 끝에서는 멈춤, Home · End — 목록도 같이 움직임
 await pw.keyboard.press('ArrowDown');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();
 assert.equal(await page.evaluate(()=>window.__cw.PW.V.sel),1);
-await page.locator('#b5list').focus();await page.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();
-await pw.close();await page.locator('#b5list').focus();await page.keyboard.press('ArrowDown');   // 닫힌 새 창은 따라가지 않음(오류 없음)
+await pw.keyboard.press('ArrowRight');await pw.waitForTimeout(150);assert.match(await pw.locator('#hd').innerText(),/^2 \/ 2/);   // 마지막에서 멈춤
+await pw.keyboard.press('ArrowLeft');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();assert.equal(await page.evaluate(()=>window.__cw.PW.V.sel),0);
+await pw.keyboard.press('ArrowRight');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();
+await pw.keyboard.press('Home');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();await pw.keyboard.press('End');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();
+await pw.locator('#fx canvas').click();await pw.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();   // 사진을 눌러 원래 크기로 봐도 키는 그대로
+await page.locator('#b5list').focus();await page.keyboard.press('ArrowRight');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();   // 목록 → 도 새 창을 바꿈
+await page.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();
+// 새 창을 새로 고침(F5) → 빈 창은 다른 출처라 손댈 수 없음 → 다음 이동 때 닫고 새 창으로 다시 그림
+await pw.reload();const [pw2]=await Promise.all([page.waitForEvent('popup'),(async()=>{await page.locator('#b5list').focus();await page.keyboard.press('ArrowDown')})()]);
+await pw2.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();await pw2.locator('#fx canvas').waitFor();assert.equal(pw.isClosed(),true);
+await pw2.keyboard.press('ArrowUp');await pw2.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();
+await pw2.close();await page.locator('#b5list').focus();await page.keyboard.press('ArrowDown');   // 닫힌 새 창은 따라가지 않음(오류 없음)
 // 5-3: 짝 완료 2개 — Color 원본 + Gray Crop(Color 시야 = 838×629 → 1380×1036) · 진행 기록 · 경로 · GL
 await page.locator('#toB3').click();await page.locator('#c5Color canvas').waitFor();await page.locator('#c5Gray canvas').waitFor();
 await page.locator('#c5St',{hasText:'이 Defect 끝'}).waitFor();
@@ -437,8 +451,11 @@ assert.match(st5,/✔ Color 이미지 읽기 · 디코딩: C1\.c\.1\.jpeg/);asse
 assert.match(st5,/✔ Crop\(Color 시야\) · GL 계산 — 픽셀 \(1100\.0, 200\.0\) · Crop 838×629 → 1380×1036/);
 const in5=await page.locator('#c5Info').innerText();assert.match(in5,/Gray 경로\s*RCP\/SETUP1\/LOT_CA\d+\/W01\/F1\.t\.1\.jpeg/);assert.match(in5,/ROI mean/);
 assert.match(in5,/Gray\s*F1\.t\.1\.jpeg · \(1100\.0, 200\.0\) · 후보 2 · 좌표 기준 그대로 · frameToChuckPlane/);
+assert.deepEqual(await page.locator('#c5one figcaption').allInnerTexts(),['Color 원본 · C1.c.1.jpeg','Gray Crop (Color 시야) · F1.t.1.jpeg']);   // 사진 파일명
 assert.equal(await page.locator('#c5list .br').count(),2);
-await page.locator('#c5list').focus();await page.keyboard.press('ArrowDown');await page.locator('#c5Info',{hasText:'2 / 2'}).waitFor();
+await page.locator('#c5list').focus();await page.keyboard.press('ArrowRight');await page.locator('#c5Info',{hasText:'2 / 2'}).waitFor();   // ← → 도 이전 · 다음
+await page.keyboard.press('ArrowLeft');await page.locator('#c5Info',{hasText:'1 / 2'}).waitFor();
+await page.keyboard.press('ArrowDown');await page.locator('#c5Info',{hasText:'2 / 2'}).waitFor();
 const [w5]=await Promise.all([page.waitForEvent('popup'),page.locator('#c5list .br').nth(0).dblclick()]);
 await w5.locator('#fx canvas').waitFor();assert.match(await w5.locator('#hd').innerText(),/^1 \/ 2 · /);await w5.close();
 await page.locator('#b5okOnly').uncheck();assert.equal(await page.locator('#c5list .br').count(),7);
@@ -447,6 +464,7 @@ await page.evaluate(()=>window.__cw.THUMB.clear());await page.locator('#b5prep')
 await page.waitForFunction(()=>document.getElementById('busy').hidden&&window.__cw.THUMB.size===7);
 await page.locator('[data-v5="grid"]').click();await page.locator('#c5gst',{hasText:'준비돼 있습니다'}).waitFor();
 assert.equal(await page.locator('#c5grid .g5').count(),7);assert.equal(await page.locator('#c5grid .g5.st-ok img').count(),4);
+assert.deepEqual(await page.locator('#c5grid .g5.st-ok .gn').first().locator('span').allInnerTexts(),['C1.c.1.jpeg','F1.t.1.jpeg']);   // 격자 카드에도 사진 파일명
 await page.locator('#c5grid .g5').first().click();assert.equal(await page.locator('#c5one').isHidden(),false);
 // 많은 Defect: 합성 30만 개(Slot 3개)도 열 배열로 바로 필터 · 정렬(표는 보이는 줄만 그림) — 매칭 파일이 없는 Slot 은 '매칭 파일 없음'
 await page.locator('[data-b5="1"]').click();

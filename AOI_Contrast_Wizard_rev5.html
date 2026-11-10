@@ -149,6 +149,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 .g5 .gi>div::before{content:attr(data-l);position:absolute;left:4px;top:2px;font-size:10px;color:#fff;background:#0009;padding:0 4px;border-radius:3px}
 .g5 .gi img{max-width:100%;max-height:100%}.g5 .gi .ph{padding:4px}
 .g5 .ge{font-size:11px;color:var(--err);padding:2px 6px}.g5 .gm{font-size:11px;color:var(--sub);padding:2px 6px}
+.g5 .gn{display:grid;grid-template-columns:1fr 1fr;gap:2px;font-size:11px;color:var(--sub)}.g5 .gn span{padding:1px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 로딩창: 단계 목록 · 심장 박동(경과 · 마지막 진행) */
 .busy ol{list-style:none;padding:0;margin:0 0 8px;font-size:13px}.busy ol li{padding:1px 0;color:var(--sub)}.busy ol li.on{color:var(--ink);font-weight:700}.busy ol li.ok{color:var(--ok)}
 .busy .sub.warn{color:var(--warn);font-weight:600}
@@ -322,7 +323,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
     </div>
     <div class="row"><label>보기 <select id="b5show"><option value="">전체</option><option value="ok">짝 완료</option><option value="color">Color 만</option><option value="gray">Gray 만</option><option value="none">둘 다 없음</option><option value="skip">확인 안 함</option></select></label>
       <button id="b5win" disabled>⧉ 사진 새 창 (큰 화면 · 사진만)</button>
-      <span class="muted">줄 더블 클릭 · Enter = 사진 새 창 — 새 창은 이 목록에서 고른 줄을 따라갑니다(↑↓ 로 옮기면 새 창도 바뀜).</span></div>
+      <span class="muted">줄 더블 클릭 · Enter = 사진 새 창 — 새 창은 이 목록에서 고른 줄을 따라갑니다(↑↓ ←→ 로 옮기면 새 창도 바뀜). 새 창에서도 방향키로 다음 · 이전.</span></div>
     <div id="b5list" class="biglist" tabindex="0" aria-label="결과 목록"></div>
     <div class="row"><button id="toB1">← 5-1 필터 고치기</button><button class="pri" id="toB3" disabled>다음: 사진 정밀 조사 →</button></div>
   </div>
@@ -335,7 +336,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
     </div>
     <div id="c5one" class="big2">
       <div><div id="c5list" class="biglist" tabindex="0" aria-label="조사할 Defect 목록"></div>
-        <p class="muted">↑ ↓ / J K 이동 · 더블 클릭 · Enter 또는 사진 누르기 = 사진 새 창(큰 화면 · 사진만: Color · Gray Crop · Gray 프레임)</p></div>
+        <p class="muted">↑ ↓ ← → / J K 이동 · 더블 클릭 · Enter 또는 사진 누르기 = 사진 새 창(큰 화면 · 사진만: Color · Gray Crop · Gray 프레임)</p></div>
       <div><div class="row" style="margin-top:0"><button id="c5up">◀ 이전</button><button id="c5down">다음 ▶</button><button id="c5win">⧉ 새 창으로 크게 보기</button></div>
         <div class="rvimgs"><figure id="c5Color"><figcaption>Color 원본</figcaption></figure><figure id="c5Gray"><figcaption>Gray Crop (Color 시야)</figcaption></figure></div>
         <div class="stl" id="c5St" aria-live="polite"></div>
@@ -1812,7 +1813,7 @@ function vtGo(V,k,quiet){if(!V.n)return;k=Math.max(0,Math.min(V.n-1,k));const ch
   if(box.scrollTop===top&&box.querySelector(`.br[data-k="${k}"]`))box.querySelectorAll('.br').forEach(el=>el.classList.toggle('sel',+el.dataset.k===k));else vtPaint(V);
   if(ch&&!quiet&&V.o.onSel)V.o.onSel(k)}
 function vtKey(V,e){if(!V||/INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName))return;const k=e.key.toLowerCase();if(!V.n)return;
-  const page=Math.max(1,Math.floor((V.box.clientHeight-BHH)/BRH)-1),mv={arrowdown:1,j:1,arrowup:-1,k:-1,pagedown:page,pageup:-page}[k];
+  const page=Math.max(1,Math.floor((V.box.clientHeight-BHH)/BRH)-1),mv={arrowdown:1,arrowright:1,j:1,arrowup:-1,arrowleft:-1,k:-1,pagedown:page,pageup:-page}[k];   // rev5: ←→ 도 이전 · 다음(소유자)
   if(mv){vtGo(V,V.sel+mv);e.preventDefault()}else if(k==='home'||k==='end'){vtGo(V,k==='home'?0:V.n-1);e.preventDefault()}
   else if(k==='enter'&&V.o.onEnter){V.o.onEnter(V.sel);e.preventDefault()}}
 const sortClick=k=>{const [sk,sd]=BIG.sort?BIG.sort.split('-'):['',''];return k+'-'+(k===sk?(sd==='d'?'a':'d'):(/^[cawl]$/.test(k)?'d':'a'))};
@@ -1957,7 +1958,8 @@ function cgGL(k,gray,d){const sx=gray.width/CG.GW,sy=gray.height/CG.GH,bw=Math.m
   return measureGL(k.raw.getContext('2d',{willReadFrequently:true}).getImageData(0,0,k.raw.width,k.raw.height),k.cx,k.cy,bw,bh,S.o.ring)}
 function photoWin(V,items){if(!V||!items||!items.length)return;let w=PW.w;
   if(!w||w.closed){w=window.open('','cw_photo','width=1600,height=1000');if(!w)return alert('팝업이 막혔습니다. 이 파일의 팝업을 허용하십시오.');PW.w=w;photoWinInit(w)}
-  PW.V=V;PW.items=items;try{w.focus()}catch(e){}photoWinShow()}
+  PW.V=V;PW.items=items;try{w.focus();w.document.body.focus()}catch(e){}photoWinShow()}
+/** 새 창 화면 · 키(소유자 "큰 화면으로 볼 때 방향키로 다음 목록" — ↑↓ ←→ · PageUp/PageDown · Home/End · J/K, 꾹 누르면 계속 넘어감). 사진을 눌러 원래 크기로 봐도 키는 그대로. */
 function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray';
   doc.head.insertAdjacentHTML('beforeend',`<meta charset="utf-8"><style>html,body{height:100%;margin:0}body{background:#0b0b0b;color:#ccc;font:12px "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
     .hd{flex:none;padding:3px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hd i{color:#888;font-style:normal}
@@ -1965,17 +1967,32 @@ function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray'
     figure{margin:0;min-width:0;min-height:0;background:#000;border-radius:6px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
     figure.wide{grid-column:1 / span 2}
     figure>canvas{max-width:100%;max-height:100%;cursor:zoom-in}figure.full{overflow:auto;align-items:flex-start;justify-content:flex-start}figure.full>canvas{max-width:none;max-height:none;cursor:zoom-out}
-    figcaption{position:absolute;left:6px;top:4px;background:#000b;color:#eee;padding:1px 6px;border-radius:4px;z-index:1}.ms{color:#ff9a92;padding:10px}</style>`);
+    figcaption{position:absolute;left:6px;top:4px;max-width:calc(100% - 24px);background:#000c;color:#eee;padding:2px 8px;border-radius:4px;z-index:1;font-size:13px;overflow-wrap:anywhere;user-select:text}
+    figcaption b{color:#fff;font-weight:700}figcaption i{color:#aaa;font-style:normal}.ms{color:#ff9a92;padding:10px}</style>`);
+  doc.body.tabIndex=-1;
   doc.body.innerHTML=`<div class="hd" id="hd"></div><div class="pv"><figure id="fc"><figcaption>Color</figcaption></figure><figure id="fx"><figcaption>Gray Crop (Color 시야)</figcaption></figure>`
-    +`<figure id="ff" class="wide"><figcaption>Gray 프레임 (빨간 + = Defect · 노란 상자 = Crop 범위)</figcaption></figure></div>`;
-  doc.addEventListener('keydown',e=>{const V=PW.V;if(!V||!V.n)return;const k=e.key,mv={ArrowDown:1,ArrowRight:1,PageDown:1,j:1,ArrowUp:-1,ArrowLeft:-1,PageUp:-1,k:-1}[k];
-    if(mv){vtGo(V,V.sel+mv);e.preventDefault()}else if(k==='Home'||k==='End'){vtGo(V,k==='Home'?0:V.n-1);e.preventDefault()}})}
+    +`<figure id="ff" class="wide"><figcaption>Gray 프레임</figcaption></figure></div>`;
+  doc.addEventListener('keydown',e=>{const V=PW.V;if(!V||!V.n||e.ctrlKey||e.altKey||e.metaKey)return;const k=e.key.length===1?e.key.toLowerCase():e.key,
+      mv={ArrowDown:1,ArrowRight:1,PageDown:1,j:1,ArrowUp:-1,ArrowLeft:-1,PageUp:-1,k:-1}[k];
+    if(mv){vtGo(V,Math.max(0,Math.min(V.n-1,V.sel+mv)));e.preventDefault()}else if(k==='Home'||k==='End'){vtGo(V,k==='Home'?0:V.n-1);e.preventDefault()}});
+  try{doc.body.focus()}catch(e){}}
 function photoWinFollow(V){if(PW.w&&!PW.w.closed&&PW.V===V)photoWinShow()}
-async function photoWinShow(){const w=PW.w;if(!w||w.closed)return;const doc=w.document,V=PW.V,p=PW.items[V.sel],tk=++PW.tok,$w=id=>doc.getElementById(id);
+/** 새 창 문서(손댈 수 없으면 null — 새 창을 새로 고침(F5)하면 빈 창이 다른 출처가 된다). */
+function pwDoc(w){try{const d=w.document;d.getElementById('fc');return d}catch(e){return null}}
+async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w);
+  if(!doc){try{w.close()}catch(e){}PW.w=null;w=window.open('','cw_photo_'+Date.now(),'width=1600,height=1000');if(!w)return;PW.w=w;photoWinInit(w);doc=w.document;try{w.focus()}catch(e){}}   // 닫고 새 창
+  const V=PW.V,p=PW.items[V.sel],tk=++PW.tok,$w=id=>doc.getElementById(id);
+  if(!$w('fc'))photoWinInit(w);   // 같은 출처로 새로 고쳐졌으면 다시 만든다
   const fc=$w('fc'),fx=$w('fx'),ff=$w('ff');for(const f of [fc,fx,ff])[...f.children].forEach(e=>{if(e.tagName!=='FIGCAPTION')e.remove()});
-  if(!p){$w('hd').textContent='보여 줄 Defect 가 없습니다';return}
+  const cap=(f,h,title)=>{const c=f.querySelector('figcaption');c.innerHTML=h;c.title=title||''};
+  if(!p){$w('hd').textContent='보여 줄 Defect 가 없습니다';cap(fc,'Color');cap(fx,'Gray Crop (Color 시야)');cap(ff,'Gray 프레임');return}
   const s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),ms=(f,t)=>f.insertAdjacentHTML('beforeend',`<p class="ms">${esc(t)}</p>`),zoom=el=>{el.onclick=()=>el.parentNode.classList.toggle('full')};
   $w('hd').innerHTML=`${V.sel+1} / ${V.n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · Contrast ${f2(C.c[i])} <i>(↑↓ ←→ 이전 · 다음 · 사진 누르기 = 원래 크기)</i>`;
+  // 사진 파일명(소유자 "사진 파일명도 같이 보이게") — 칸 제목에, 마우스를 올리면 경로
+  const cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'';
+  cap(fc,`Color · <b>${esc(cn||'없음')}</b>`,cn?dir+cn:'');
+  cap(fx,`Gray Crop (Color 시야) · <b>${esc(gn||'없음')}</b>`,gn?dir+gn:'');
+  cap(ff,`Gray 프레임 · <b>${esc(gn||'없음')}</b>${r.hit?` · 픽셀 (${f1(r.hit.px)}, ${f1(r.hit.py)})`:''} <i>· 빨간 + = Defect · 노란 상자 = Crop 범위</i>`,gn?dir+gn:'');
   const draw=b=>{const cv=doc.createElement('canvas');cv.width=b.width;cv.height=b.height;cv.getContext('2d').drawImage(b,0,0);zoom(cv);return cv};
   const cb=r.c?await cgBitmap(s,r.c.file):null;if(tk!==PW.tok)return;
   if(cb)fc.append(draw(cb));else ms(fc,r.c?`Color 파일 없음: ${cleanName(r.c.file)}`:(p.cerr||r.why||'Color 항목 없음'));
@@ -2009,6 +2026,8 @@ async function c5Show(){
   cf.innerHTML='<figcaption>Color 원본</figcaption>';gf.innerHTML='<figcaption>Gray Crop (Color 시야)</figcaption>';
   if(!p){cf.insertAdjacentHTML('beforeend','<div class="ph">보여 줄 Defect 가 없습니다</div>');$('#c5Info').innerHTML='';st.innerHTML='';return}
   const s=p.s,log=stLog(st,tk),r=p.r||cgOf(s,p.i),d=bigDef(s,p.i),x=info({d,raw:true,label:s.lotPath});d.gl=p.gl||null;
+  const cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'';   // 사진 파일명(소유자) — 칸 제목에
+  cf.querySelector('figcaption').textContent=`Color 원본 · ${cn||'없음'}`;gf.querySelector('figcaption').textContent=`Gray Crop (Color 시야) · ${gn||'없음'}`;
   const ct=r.c?`${cleanName(r.c.file)} · ${CG_HOW[r.how]}`:(p.cerr||r.why||'Color 항목 없음');
   const gt=r.hit?`${cleanName(r.hit.frame.file)} · (${f1(r.hit.px)}, ${f1(r.hit.py)}) · 후보 ${r.hit.n} · 좌표 기준 ${CG.MODES[s.cg.plan.mode]}${r.from==='defect'?' · Defect 좌표':''} · frameToChuckPlane`:(p.gerr||`Gray: ${r.why}`);
   const fill=()=>{$('#c5Info').innerHTML=kvHtml([['상태',ST5[p.st]],['순서',`${VC.sel+1} / ${C5.items.length}`],['Lot 폴더',s.lotPath],...infoRows(d,x,ct,gt),['Color 경로',p.c?p.c.path:'-'],['Gray 경로',p.g?p.g.path:'-']])};fill();
@@ -2036,9 +2055,10 @@ async function prepThumb(p,note){
     if(b){const k=cgCropCanvas(b,r.hit,r.crop||cgCropSize({}));gl=p.gl=cgGL(k,b,d);g=small(k.canvas).toDataURL('image/jpeg',0.92)}else err.push('Gray 파일 없음')}
   else err.push(p.gerr||'Gray 위치 없음');
   t={c,g,gl,err};THUMB.set(p.k,t);return t}
-function c5Card(p,k){const t=THUMB.get(p.k),s=p.s,C=s.cols,i=p.i;
+function c5Card(p,k){const t=THUMB.get(p.k),s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'';
   return `<div class="g5 st-${p.st}" data-k="${k}" title="눌러서 크게 보기"><div class="gh">${k+1}. ${esc(s.lotName)} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · C ${f2(C.c[i])}</div>
-    <div class="gi"><div data-l="Color">${t?(t.c?`<img src="${t.c}" alt="Color">`:'<span class="ph">Color 없음</span>'):'<span class="ph">⏳</span>'}</div><div data-l="Gray Crop">${t?(t.g?`<img src="${t.g}" alt="Gray Crop">`:'<span class="ph">Gray 없음</span>'):'<span class="ph">⏳</span>'}</div></div>
+    <div class="gi"><div data-l="Color" title="${esc(cn)}">${t?(t.c?`<img src="${t.c}" alt="Color">`:'<span class="ph">Color 없음</span>'):'<span class="ph">⏳</span>'}</div><div data-l="Gray Crop" title="${esc(gn)}">${t?(t.g?`<img src="${t.g}" alt="Gray Crop">`:'<span class="ph">Gray 없음</span>'):'<span class="ph">⏳</span>'}</div></div>
+    <div class="gn"><span title="${esc(cn)}">${esc(cn||'-')}</span><span title="${esc(gn)}">${esc(gn||'-')}</span></div>
     ${t&&t.err.length?`<div class="ge">${esc(t.err.join(' · '))}</div>`:''}${t&&t.gl?`<div class="gm">ROI−local ${f1(t.gl.delta)} · ROI mean ${f1(t.gl.mean)}</div>`:''}</div>`}
 function c5Grid(){const n=C5.items.length,pages=Math.max(1,Math.ceil(n/G5));C5.page=Math.max(0,Math.min(C5.page,pages-1));const a=C5.page*G5,b=Math.min(n,a+G5);
   $('#c5pg').textContent=`${C5.page+1} / ${pages} 쪽 (${n?a+1:0} ~ ${b} / ${n})`;
