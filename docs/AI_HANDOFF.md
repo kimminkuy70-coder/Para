@@ -19,6 +19,10 @@
 - 실행기 확인: CI `run.exe` SHA-256 `518518C0…` ≠ PyInstaller 6.22.3 공식 휠 · sdist 의 기본 `run.exe` `581EA23E…` → 새로 컴파일된 실행기. 릴리스 zip 의 엔진 exe 는 v12.9.30 과 155,740 byte 다름(종전 16 byte).
   주의: pip 로그의 "Building wheel … finished" 는 0.05초로 찍혔지만 해시로 컴파일 사용을 확인함. Defender 판정 자체는 확인 불가(소유자 확인 필요).
 
+- **후속(2026-11-10, 소유자)**: v12.9.31 도 막힘. v12.9.29 는 지금도 받아짐. 위협 이름 = `Trojan:Win32/Wacatac.B!ml`(ML · PE 판정). → 실행기(bootloader) 추정은 **틀림**.
+  비교: 엔진 exe 는 30 = 29 + 16 byte(버전) 인데 30 이 막힘, 31 은 엔진을 크게 바꿨는데도 막힘 → 엔진 아님. 앱 exe(`Camtek_AOI_manager.exe`, Tauri)는 rustc · tauri 2.11.6 · 크기 같고
+  **차이가 `.rdata`(6.0~8.6 MB, 내장 frontend 자산 압축본)에만** 몰림, 30 ↔ 31 은 30 byte(버전)만 다름 → **가장 유력: 앱 exe 에 묶인 v12.9.30 frontend 변경(#54 · #49)이 ML 판정 경계를 넘김**(확인 전).
+  남은 일: 소유자에게 보호 기록 '영향을 받는 항목'(zip 안 파일 경로) 요청함, Microsoft 오탐 신고 권장. 받으면 그 파일만 조치.
 ## 최신 재개 — Para #54 Batch Report 자동 분석(CAMTEK · KLA)이 예약 시각에 안 돎 (2026-11-10 KST, `version_v12`, v12.9.30)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `bb18249` · 이슈 Para #54("v12.9.30 업데이트 사항": 자동 감시(배치레포트 자동분석 Camtek, KLA)가 시간에 맞춰 전혀 안 됨 — 고치고 릴리스) · 작업 브랜치 `version_v12`.
