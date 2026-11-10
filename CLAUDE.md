@@ -31,6 +31,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 
 ### 설치 zip 이 Windows Defender 에 막힘 → PyInstaller 실행기를 소스에서 빌드 (2026-11-10, 소유자 세션 지시, v12.9.31)
 - v12.9.30 zip 다운로드가 Defender 에 막힘(소유자). v12.9.29 와 비교하면 엔진 exe 는 버전 정보 16 byte 만 다르고 Tauri exe · 우리 pyc 5개만 바뀜 → 코드가 아니라 **PyInstaller 기본(prebuilt) 실행기**의 평판 기반 ML 오탐으로 판단(확인 전 — 위협 이름 · 경로는 소유자에게 요청).
+- **v12.9.31 도 막힘(위협 `Trojan:Win32/Wacatac.B!ml`), v12.9.29 는 받아짐** → 엔진(실행기) 추정은 틀림. 앱 exe 는 `.rdata` 의 brotli 압축 frontend 자산만 달랐다.
+  v12.9.32: `frontend/src-tauri/Cargo.toml` tauri `default-features = false` + 기본값에서 **`compression` 만 뺌**(자산을 압축 없이 넣음, Cargo.lock 에서 brotli 빠짐). 기본 기능 목록을 바꿀 때 이 줄도 같이 볼 것. 효과는 확인 전.
 - `build-desktop.yml`: `PYINSTALLER_COMPILE_BOOTLOADER=1` + `pip install --no-binary pyinstaller` 로 실행기를 runner 에서 컴파일, 다음 단계가 `run.exe` SHA-256 을 로그에 남긴다. **prebuilt 휠로 되돌리지 말 것.** `--debug noarchive` 는 그대로.
 
 ### Batch Report 자동 분석이 예약 시각에 안 돌던 것 (2026-11-10, 이슈 #54, v12.9.30)

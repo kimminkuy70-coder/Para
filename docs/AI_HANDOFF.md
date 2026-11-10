@@ -43,6 +43,7 @@
   비교: 엔진 exe 는 30 = 29 + 16 byte(버전) 인데 30 이 막힘, 31 은 엔진을 크게 바꿨는데도 막힘 → 엔진 아님. 앱 exe(`Camtek_AOI_manager.exe`, Tauri)는 rustc · tauri 2.11.6 · 크기 같고
   **차이가 `.rdata`(6.0~8.6 MB, 내장 frontend 자산 압축본)에만** 몰림, 30 ↔ 31 은 30 byte(버전)만 다름 → **가장 유력: 앱 exe 에 묶인 v12.9.30 frontend 변경(#54 · #49)이 ML 판정 경계를 넘김**(확인 전).
   남은 일: 소유자에게 보호 기록 '영향을 받는 항목'(zip 안 파일 경로) 요청함, Microsoft 오탐 신고 권장. 받으면 그 파일만 조치.
+- **v12.9.32(소유자 "릴리즈해")**: 앱 exe 대상 조치 — tauri `compression` 기능 끔(`Cargo.toml`, lock 은 brotli 3개 제거만). 노트 `docs/release_notes/v12.9.32.md`. 결과는 아래 줄.
 ## 최신 재개 — Para #54 Batch Report 자동 분석(CAMTEK · KLA)이 예약 시각에 안 돎 (2026-11-10 KST, `version_v12`, v12.9.30)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `bb18249` · 이슈 Para #54("v12.9.30 업데이트 사항": 자동 감시(배치레포트 자동분석 Camtek, KLA)가 시간에 맞춰 전혀 안 됨 — 고치고 릴리스) · 작업 브랜치 `version_v12`.
