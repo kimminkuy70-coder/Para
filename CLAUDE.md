@@ -37,6 +37,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   · #55(2026-11-10): **Step 3 = 스캔 결과 = 집합, 벤다이어그램**(`buildVenn` — Contrast AVG 순으로 차례 matchSets → 묶음 `mask`, `S.venn{scans, cl, counts, sel, regs, shown}`, `drawVenn` = 픽셀 타원 판정 · `VENN_SHAPES` 4개까지, `regLabel` 집합 기호, `#regTbl` 영역 표, `refresh3`).
     Step 3 · 4 공용 **리뷰 패널** `makePanel(pre)`(`PANELS.p3/p4`: wafer map 깜빡임 · `popMap` 새 창 = 그 창 canvas 에 직접 그려 실시간 연동 · 가상 목록 · 더블 클릭/Enter 새 창 · Color/Gray · 여러 스캔 사진 고르기). `paintMap(cv,{pts,hl,on})` 은 점 목록을 받는다(종전 `show` 보기 · `#map` · `drawMap` 삭제).
     wafer map 맥락(`dieCells`/`activeMap`/`notchInfo`/`waferGeom`) = 쌍이 아니라 등록 스캔 전체(`S.cmpScans`, `S.allPts`, `S.o`). Step 4 = 간략 wafer map 2개(`paintEsc`) + 같은 패널(`refresh4`), 쌍별 KPI · 표 · CSV 는 Step 3 맨 아래 접힌 상자.
+  · #56(2026-11-10): 차집합 기호 = **`-`**(종전 `∖`, `stLabel` · `regLabel`), **영역 클릭 = 더하기/빼기**(`pickRegion(m)`, Ctrl 없음), **모든 순서쌍**(`runCompare` i ≠ j, 3개 → 6쌍), Step 4 이름 = **Escape Defect 리뷰**,
+    새 창 = 왼쪽 side + 오른쪽 wafer map(`makePanel` 옵션 `side.mount` — Step 3 `mountVennSide`(`drawVennOn(cv)` → `S.venn.popGeo`), Step 4 `mountEscSide`(`paintEsc` 가 새 창에도), `sidePaint` 는 자료 · 선택이 바뀔 때만).
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.
 
 ### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)

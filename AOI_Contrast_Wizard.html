@@ -112,7 +112,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <button data-step="1" aria-current="step"><span class="n">1</span>스캔 결과 등록</button>
   <button data-step="2"><span class="n">2</span>비교 조건 설정</button>
   <button data-step="3"><span class="n">3</span>Wafer Map 분석</button>
-  <button data-step="4"><span class="n">4</span>없어진 Defect 리뷰</button>
+  <button data-step="4"><span class="n">4</span>Escape Defect 리뷰</button>
   <div class="help">
     <b>Contrast 도움말</b>
     <code>Bright: ContrastActual = DefectGLavg − ReferenceGLavg</code>
@@ -147,7 +147,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 <section class="step" id="step2">
   <h2>Step 2 · 비교 조건 설정</h2>
   <div class="card">
-    <p class="muted">등록한 리스트를 Contrast AVG 오름차순으로 놓고 <b>모든 쌍</b>을 비교합니다(리스트 3개 = 3쌍). 쌍 A → B 마다 A ∖ B(A 에만 있는 Defect) = B 에서 없어진 Defect 입니다. 보기 = A ∪ B · A(전체) · B(전체) · A ∖ B · A ∩ B · B ∖ A.</p>
+    <p class="muted">등록한 리스트를 Contrast AVG 오름차순으로 놓고 <b>모든 순서쌍</b>을 비교합니다(리스트 3개 = 3×2 = 6쌍, CA20 → CA27 과 CA27 → CA20 을 따로). 쌍 A → B 마다 A - B(A 에만 있는 Defect) = B 에서 없어진 Defect 입니다. 보기 = A ∪ B · A(전체) · B(전체) · A - B · A ∩ B · B - A.</p>
     <div class="row">
       <label>동일 좌표 허용오차 <input type="number" id="tol" value="2" min="0" step="0.5"> µm</label>
     </div>
@@ -178,9 +178,9 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
     <div id="cmpMsg"></div>
   </div>
   <div class="card">
-    <h3>쌍별 비교 <span class="muted">(A → B: A ∖ B = B 에서 없어진 Defect)</span></h3>
+    <h3>쌍별 비교 <span class="muted">(A → B: A - B = B 에서 없어진 Defect)</span></h3>
     <div class="tblwrap" style="max-height:none"><table id="pairTbl"><thead><tr>
-      <th>쌍 (A → B)</th><th class="num">A (전체)</th><th class="num">B (전체)</th><th class="num">A ∩ B</th><th class="num">A ∖ B (B 에서 없어짐)</th><th class="num">B ∖ A</th><th class="num">없어진 비율</th><th></th>
+      <th>쌍 (A → B)</th><th class="num">A (전체)</th><th class="num">B (전체)</th><th class="num">A ∩ B</th><th class="num">A - B (B 에서 없어짐)</th><th class="num">B - A</th><th class="num">없어진 비율</th><th></th>
     </tr></thead><tbody></tbody></table></div>
   </div>
 </section>
@@ -194,7 +194,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   </div>
   <div class="vgrid" id="vennArea" hidden>
     <div class="card" style="margin:0">
-      <div class="row"><h3 style="margin:0">벤다이어그램</h3><span class="muted">영역 클릭 = 그 영역만 보기 · Ctrl+클릭 = 여러 영역 · 빈 곳 클릭 = 고른 집합 전체</span></div>
+      <div class="row"><h3 style="margin:0">벤다이어그램</h3><span class="muted">영역 클릭 = 더하기 · 고른 영역 다시 클릭 = 빼기 · 빈 곳 클릭 = 고른 집합 전체</span></div>
       <canvas id="venn" aria-label="스캔 결과 벤다이어그램"></canvas>
       <div id="regTbl" class="tblwrap" style="max-height:230px;margin-top:6px"></div>
     </div>
@@ -214,7 +214,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 </section>
 <!-- ───────────── Step 4 ───────────── -->
 <section class="step" id="step4">
-  <h2>Step 4 · 없어진 Defect 리뷰 (A → B 에서 Escape 된 Defect)</h2>
+  <h2>Step 4 · Escape Defect 리뷰 (A → B 에서 Escape 된 Defect)</h2>
   <div class="pairtabs" role="tablist" aria-label="비교 쌍"></div>
   <div class="vgrid">
     <div class="card" style="margin:0">
@@ -538,13 +538,13 @@ $('#dirInput').onchange=async e=>{const fs=[...e.target.files];e.target.value=''
 // ════════════════════════════════════════════════════════════════════════
 function pts(s,o){return s.defects.map(d=>{const X=o.coord==='actual'?d.ActualX:d.x,Y=o.coord==='actual'?d.ActualY:d.y;d.X=X;d.Y=Y;return d}).filter(d=>isFinite(d.X)&&isFinite(d.Y))}
 /** 쌍마다 이름 표기(Para #50 후속): 유지 · 소거 · 신규 대신 리스트(Step) 이름 */
-function stLabel(st,c){c=c||S.cmp;const a=stepName(c.A),b=stepName(c.B);return st==='keep'?`${a} ∩ ${b}`:st==='gone'?`${a} ∖ ${b}`:`${b} ∖ ${a}`}
+function stLabel(st,c){c=c||S.cmp;const a=stepName(c.A),b=stepName(c.B);return st==='keep'?`${a} ∩ ${b}`:st==='gone'?`${a} - ${b}`:`${b} - ${a}`}
 /** 보기 5가지(집합 기호, 소유자 지시) + 합집합. 값 = 그 집합에 드는 내부 상태들. */
 const VIEWS=[['all',['gone','keep','new']],['A',['gone','keep']],['B',['keep','new']],['gone',['gone']],['keep',['keep']],['new',['new']]];
 function viewLabel(v,c){c=c||S.cmp;const a=stepName(c.A),b=stepName(c.B);
   return {all:`${a} ∪ ${b}`,A:`${a} (전체)`,B:`${b} (전체)`}[v]||stLabel(v,c)}
 const viewSet=v=>new Set((VIEWS.find(x=>x[0]===v)||VIEWS[0])[1]);
-/** 등록한 리스트를 Contrast AVG 오름차순으로 놓고 모든 쌍(i<j)을 비교한다. 3개 → 3쌍. */
+/** 등록한 리스트를 Contrast AVG 오름차순으로 놓고 모든 순서쌍(i ≠ j)을 비교한다. 3개 → 6쌍(Para #56). */
 function runCompare(){
   const o=opts(),msg=[];
   if(S.scans.length<2){$('#cmpMsg').innerHTML='<div class="msg err">스캔 결과를 2개 이상 등록하십시오.</div>';return false}
@@ -552,7 +552,8 @@ function runCompare(){
   const ss=sortedScans(),P=new Map(ss.map(s=>[s,pts(s,o)])),prev=S.pairs[S.pi];
   // Para #55: wafer map · 벤다이어그램은 쌍이 아니라 등록한 스캔 전체로 그린다(같은 wafer)
   S.o=o;S.cmpScans=ss;S.allPts=[...P.values()].flat();S.venn=buildVenn(ss,P,o,S.venn);
-  S.pairs=[];for(let i=0;i<ss.length;i++)for(let j=i+1;j<ss.length;j++){const A=ss[i],B=ss[j];S.pairs.push({A,B,o,...matchSets(P.get(A),P.get(B),o.tol)})}
+  // Para #56: 모든 순서쌍 A → B (i ≠ j). 3개 → 3×2 = 6쌍
+  S.pairs=[];for(let i=0;i<ss.length;i++)for(let j=0;j<ss.length;j++){if(i===j)continue;const A=ss[i],B=ss[j];S.pairs.push({A,B,o,...matchSets(P.get(A),P.get(B),o.tol)})}
   const k=prev?S.pairs.findIndex(c=>c.A===prev.A&&c.B===prev.B):-1;
   $('#pairTbl tbody').innerHTML=S.pairs.map((c,i)=>{const n=c.keep.length+c.gone.length;
     return `<tr><td><b>${esc(stepName(c.A))} → ${esc(stepName(c.B))}</b></td><td class="num">${n}</td><td class="num">${c.keep.length+c.added.length}</td><td class="num">${c.keep.length}</td>
@@ -853,6 +854,15 @@ async function openWindow(q){
 //     항목 = {d(사진 · 정보에 쓰는 Defect), X, Y, c(점 색), label(구분), tag(목록 글), members([Defect] — 여러 스캔에 있는 같은 Defect)}
 // ════════════════════════════════════════════════════════════════════════
 const RH=30,PANELS={};let blinkOn=true;
+/** Step 3 새 창 왼쪽 = 벤다이어그램(클릭 = 영역 더하기/빼기, 빈 곳 = 고른 집합 전체). */
+function mountVennSide(P,box){const doc=box.ownerDocument;box.innerHTML='<div class="cap">벤다이어그램 · 영역 클릭 = 더하기 · 다시 클릭 = 빼기 · 빈 곳 = 고른 집합 전체</div><canvas aria-label="벤다이어그램" style="cursor:pointer"></canvas>';
+  const cv=box.querySelector('canvas');P.pop.vcv=cv;const at=e=>{const r=cv.getBoundingClientRect(),G=S.venn&&S.venn.popGeo;return G?vennMaskAt((e.clientX-r.left)*G.dpr,(e.clientY-r.top)*G.dpr,G):0};
+  cv.addEventListener('click',e=>{if(S.venn&&S.venn.popGeo)pickRegion(at(e))});
+  cv.addEventListener('mousemove',e=>{const m=at(e);cv.title=m?`${regLabel(m)} · Defect ${S.venn.counts.get(m)||0}개`:'빈 곳 클릭 = 고른 집합 전체'})}
+/** Step 4 새 창 왼쪽 = A → B 간략 지도 2개(점 클릭 = 그 Defect). */
+function mountEscSide(P,box){box.innerHTML='<div class="cap" data-k="a"></div><canvas aria-label="A 간략 지도"></canvas><div class="cap" data-k="b"></div><canvas aria-label="B 간략 지도"></canvas>';
+  const cs=box.querySelectorAll('canvas');P.pop.es=[...cs];P.pop.esCap=[...box.querySelectorAll('.cap')];
+  P.pop.es.forEach((cv,i)=>cv.addEventListener('click',e=>{const it=hit(e,P.pop.esGeo&&P.pop.esGeo[i],cv);if(it)panelPick(P,it)}))}
 function makePanel(pre,mapHost,lowHost,o){
   mapHost.innerHTML=`<div class="card" style="margin:0;height:100%"><div class="row"><h3 style="margin:0">Wafer map</h3>
     <label><input type="checkbox" id="${pre}All" checked> ${esc(o.allLabel)}</label>
@@ -900,12 +910,17 @@ function popMap(P){
   const css=getComputedStyle(document.documentElement),cl=n=>css.getPropertyValue(n).trim(),doc=w.document;doc.title='Wafer map · '+P.title;
   doc.head.innerHTML=`<meta charset="utf-8"><style>html,body{height:100%;margin:0}body{background:${cl('--bg')};color:${cl('--ink')};font:13px "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
     .hd{padding:6px 10px;flex:none}canvas{flex:1;min-height:0;width:100%;display:block;background:${cl('--panel')}}</style>`;
-  doc.body.innerHTML='<div class="hd"></div><canvas aria-label="Wafer map"></canvas>';
-  P.pop={w,cv:doc.querySelector('canvas'),hd:doc.querySelector('.hd')};
-  w.addEventListener('resize',()=>paintPanel(P));
+  // Para #56: 새 창 = 왼쪽 벤다이어그램(Step 3) 또는 A → B 간략 지도 2개(Step 4) + 오른쪽 wafer map. 둘 다 이 화면과 실시간 연동.
+  doc.head.insertAdjacentHTML('beforeend','<style>.bd{flex:1;min-height:0;display:flex;gap:8px;padding:0 8px 8px}.sd{flex:0 0 38%;min-width:0;display:flex;flex-direction:column;gap:6px}.sd canvas{flex:1;min-height:0;border:1px solid '+cl('--line')+';border-radius:8px}.sd .cap{flex:none;font-size:12px;color:'+cl('--sub')+'}.mp{flex:1;min-width:0;display:flex}.mp canvas{border:1px solid '+cl('--line')+';border-radius:8px}</style>');
+  doc.body.innerHTML='<div class="hd"></div><div class="bd">'+(P.o.side?'<div class="sd"></div>':'')+'<div class="mp"><canvas aria-label="Wafer map"></canvas></div></div>';
+  P.pop={w,cv:doc.querySelector('.mp canvas'),hd:doc.querySelector('.hd')};
+  if(P.o.side)P.o.side.mount(P,doc.querySelector('.sd'));
+  w.addEventListener('resize',()=>{paintPanel(P);sidePaint(P)});
   P.pop.cv.addEventListener('click',e=>{const q=hit(e,P.popGeo,P.pop.cv);if(q)panelPick(P,q)});
   w.addEventListener('keydown',e=>panelKey(P,e));
-  setTimeout(()=>paintPanel(P),50)}
+  setTimeout(()=>{paintPanel(P);sidePaint(P)},50)}
+/** 새 창 왼쪽(벤다이어그램 · 간략 지도) 다시 그리기 — 깜빡일 때마다가 아니라 자료 · 선택이 바뀔 때만 */
+function sidePaint(P){if(!P.pop||P.pop.w.closed)return;if(P===P3)drawVenn();else if(P===P4)paintEsc()}
 function panelPick(P,q){const k=P.items.indexOf(q);if(k>=0){P.sel=k;showPanel(P);return}if(P.o.pickOther&&P.o.pickOther(q))return;if(q.d)openWindow(q)}
 function panelKey(P,e){if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;const k=e.key.toLowerCase();
   if(k==='arrowdown'||k==='j'){P.sel++;showPanel(P);e.preventDefault()}else if(k==='arrowup'||k==='k'){P.sel--;showPanel(P);e.preventDefault()}
@@ -913,7 +928,7 @@ function panelKey(P,e){if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;
 async function showPanel(P){
   const L=P.items;
   if(!L.length){paintPanel(P);P.el('Color').innerHTML=`<figcaption>Color</figcaption><div class="ph">${esc(P.o.empty)}</div>`;P.el('Gray').innerHTML='<figcaption>Gray Crop</figcaption>';P.el('Info').innerHTML='';P.el('Mem').innerHTML='';return}
-  P.sel=Math.max(0,Math.min(L.length-1,P.sel));const q=L[P.sel],tk=++P.tok,box=P.el('List');
+  P.sel=Math.max(0,Math.min(L.length-1,P.sel));const q=L[P.sel],tk=++P.tok,box=P.el('List');if(P.o.onShow)P.o.onShow();
   if(P.sel*RH<box.scrollTop)box.scrollTop=P.sel*RH;else if((P.sel+1)*RH>box.scrollTop+box.clientHeight)box.scrollTop=(P.sel+1)*RH-box.clientHeight;paintPanelList(P);blinkOn=true;paintPanel(P);
   P.el('Mem').innerHTML=q.members&&q.members.length>1?'<span class="muted">사진 · 정보 스캔:</span>'+q.members.map((m,i)=>`<button data-mem="${i}" aria-pressed="${m===q.d}">${esc(stepName(m.scan))}</button>`).join(''):'';
   const x=info(q),c=linkColor(q.d,q.d.scan,S.o.ctol),g=grayOf(q.d);
@@ -958,21 +973,22 @@ const REG_PAL=['#2f6fed','#e5383b','#0fa3a3','#d4a106','#8e44ad','#e67e22','#2e9
 const regColor=m=>REG_PAL[(m-1)%REG_PAL.length];
 const selMask=()=>[...S.venn.sel].reduce((a,k)=>a|1<<k,0);
 const related=m=>(m&selMask())!==0;
-/** 영역 이름(집합 기호): 들어 있는 스캔 ∩ … ∖ 들어 있지 않은 스캔. 예) CA20 ∩ CA27 ∖ CA30 */
+/** 영역 이름(집합 기호): 들어 있는 스캔 ∩ … - 들어 있지 않은 스캔. 예) CA20 ∩ CA27 - CA30 */
 function regLabel(m){const V=S.venn,n=k=>stepName(V.scans[k]),ins=[],outs=[];V.scans.forEach((_,k)=>(m>>k&1?ins:outs).push(n(k)));
-  return ins.join(' ∩ ')+(outs.length?' ∖ '+(outs.length>1?'('+outs.join(' ∪ ')+')':outs[0]):'')}
+  return ins.join(' ∩ ')+(outs.length?' - '+(outs.length>1?'('+outs.join(' ∪ ')+')':outs[0]):'')}
 // 벤다이어그램 모양(단위 좌표, [cx, cy, rx, ry, 회전]). 4개 = 타원 4개(15개 영역이 모두 생기게 수치로 찾은 배치). 5개 이상은 그림 대신 영역 표.
 const VENN_SHAPES={1:[[0,0,.7,.7,0]],2:[[-.38,0,.62,.62,0],[.38,0,.62,.62,0]],3:[[-.34,.2,.58,.58,0],[.34,.2,.58,.58,0],[0,-.38,.58,.58,0]],
   4:[[-.006,-.177,1.091,.571,.506],[-.362,.077,1.091,.571,.506],[.362,.077,1.091,.571,-.506],[.006,-.177,1.091,.571,-.506]]};
 function inEll(e,x,y){const c=Math.cos(e.r),s=Math.sin(e.r),dx=x-e.cx,dy=y-e.cy,u=dx*c+dy*s,v=-dx*s+dy*c;return (u/e.rx)**2+(v/e.ry)**2<=1}
-function vennMaskAt(x,y){const G=S.venn&&S.venn.geo;if(!G)return 0;let m=0;G.E.forEach((e,k)=>{if(inEll(e,x,y))m|=1<<k});return m}
-function drawVenn(){const V=S.venn,cv=$('#venn');if(!V)return;const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;if(r.width<2)return;
+function vennMaskAt(x,y,G){G=G||(S.venn&&S.venn.geo);if(!G)return 0;let m=0;G.E.forEach((e,k)=>{if(inEll(e,x,y))m|=1<<k});return m}
+/** 벤다이어그램을 cv 에 그리고 클릭 판정용 geo 를 돌려준다(Para #56: 이 화면 + wafer map 새 창 둘 다). */
+function drawVennOn(cv){const V=S.venn;if(!V||!cv)return null;const r=cv.getBoundingClientRect(),dpr=(cv.ownerDocument.defaultView||window).devicePixelRatio||1;if(r.width<2)return null;
   const W=Math.round(r.width*dpr),H=Math.round(r.height*dpr);cv.width=W;cv.height=H;const x=cv.getContext('2d');x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,W,H);
   const css=getComputedStyle(document.documentElement),cl=n=>css.getPropertyValue(n).trim(),N=V.scans.length,sh=VENN_SHAPES[N];
-  if(!sh){V.geo=null;x.fillStyle=cl('--sub');x.font=`${13*dpr}px sans-serif`;x.fillText(`스캔 ${N}개 — 벤다이어그램은 4개까지 그립니다. 아래 영역 표에서 고르십시오.`,12*dpr,26*dpr);return}
+  if(!sh){x.fillStyle=cl('--sub');x.font=`${13*dpr}px sans-serif`;x.fillText(`스캔 ${N}개 — 벤다이어그램은 4개까지 그립니다. 영역 표에서 고르십시오.`,12*dpr,26*dpr);return null}
   let bx0=Infinity,by0=Infinity,bx1=-Infinity,by1=-Infinity;for(const [cx,cy,rx,ry] of sh){const e=Math.max(rx,ry);bx0=Math.min(bx0,cx-e);bx1=Math.max(bx1,cx+e);by0=Math.min(by0,cy-e);by1=Math.max(by1,cy+e)}
   const pad=30*dpr,k=Math.min((W-2*pad)/(bx1-bx0),(H-2*pad)/(by1-by0)),ox=W/2-(bx0+bx1)/2*k,oy=H/2+(by0+by1)/2*k;
-  const E=sh.map(([cx,cy,rx,ry,rot])=>({cx:ox+cx*k,cy:oy-cy*k,rx:rx*k,ry:ry*k,r:-rot}));V.geo={E,dpr};
+  const E=sh.map(([cx,cy,rx,ry,rot])=>({cx:ox+cx*k,cy:oy-cy*k,rx:rx*k,ry:ry*k,r:-rot})),geo={E,dpr};
   // 영역 칠하기: 픽셀마다 어느 타원 안인지(mask) → 색. 고른 영역이 있으면 그 영역은 진하게, 관련 영역은 옅게.
   const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)),rgba=new Map(),sm=selMask(),gray=[150,160,175];
   for(let m=1;m<1<<N;m++){const rel=(m&sm)!==0,on=V.regs.size?V.regs.has(m):rel;rgba.set(m,rel?[...hex(regColor(m)),on?220:80]:[...gray,28])}
@@ -983,17 +999,18 @@ function drawVenn(){const V=S.venn,cv=$('#venn');if(!V)return;const r=cv.getBoun
   // 경계선: 고른 집합 = 진하게, 나머지 = 옅은 회색
   E.forEach((e,i)=>{const on=V.sel.has(i);x.beginPath();x.ellipse(e.cx,e.cy,e.rx,e.ry,e.r,0,7);x.strokeStyle=on?cl('--ink'):cl('--sub');x.globalAlpha=on?1:.45;x.lineWidth=(on?2:1)*dpr;x.stroke();x.globalAlpha=1});
   // 영역마다 Defect 수(영역 무게중심에 가장 가까운 그 영역 안 점)
-  x.textAlign='center';x.textBaseline='middle';V.lab=new Map();
+  x.textAlign='center';x.textBaseline='middle';
   for(const [m,a] of acc){const gx=a.sx/a.n,gy=a.sy/a.n;let bx=a.p[0],by=a.p[1],bd=Infinity;for(let i=0;i<a.p.length;i+=2){const d=(a.p[i]-gx)**2+(a.p[i+1]-gy)**2;if(d<bd){bd=d;bx=a.p[i];by=a.p[i+1]}}
-    V.lab.set(m,[bx/dpr,by/dpr]);const n=V.counts.get(m)||0,rel=(m&sm)!==0;x.font=`${(rel?'bold ':'')}${13*dpr}px sans-serif`;x.fillStyle=rel?cl('--ink'):cl('--sub');x.fillText(String(n),bx,by)}
+    const n=V.counts.get(m)||0,rel=(m&sm)!==0;x.font=`${(rel?'bold ':'')}${13*dpr}px sans-serif`;x.fillStyle=rel?cl('--ink'):cl('--sub');x.fillText(String(n),bx,by)}
   // 집합 이름: 타원 바깥쪽(전체 가운데에서 먼 쪽)
   const gcx=E.reduce((a,e)=>a+e.cx,0)/N,gcy=E.reduce((a,e)=>a+e.cy,0)/N;
   E.forEach((e,i)=>{let dx=e.cx-gcx,dy=e.cy-gcy;const L=Math.hypot(dx,dy);if(L<1e-6){dx=N===4?(i<2?-1:1):0;dy=-1}else{dx/=L;dy/=L}
     const R=Math.max(e.rx,e.ry)*(N===4?.78:.92),tx=Math.min(W-40*dpr,Math.max(40*dpr,e.cx+dx*R)),ty=Math.min(H-10*dpr,Math.max(10*dpr,e.cy+dy*R+(N===4?0:-6*dpr)));
     const t=`${stepName(V.scans[i])} (${V.scans[i].contrast??'?'})`;x.font=`bold ${12*dpr}px sans-serif`;const w=x.measureText(t).width+10*dpr;
     x.fillStyle=cl('--panel');x.globalAlpha=.9;x.fillRect(tx-w/2,ty-9*dpr,w,18*dpr);x.globalAlpha=1;x.fillStyle=V.sel.has(i)?cl('--ink'):cl('--sub');x.fillText(t,tx,ty)});
-  x.textAlign='start';x.textBaseline='alphabetic';
+  x.textAlign='start';x.textBaseline='alphabetic';return geo;
 }
+function drawVenn(){const V=S.venn;if(!V)return;V.geo=drawVennOn($('#venn'));const pp=P3.pop;if(pp&&!pp.w.closed&&pp.vcv)V.popGeo=drawVennOn(pp.vcv)}
 function renderSetPick(){const V=S.venn;if(!V)return;
   $('#setPick').innerHTML=V.scans.map((s,k)=>`<label><input type="checkbox" data-set="${k}"${V.sel.has(k)?' checked':''}> ${esc(stepName(s))} <span class="muted">CA ${s.contrast??'?'} · ${s.defects.length}</span></label>`).join('')}
 $('#setPick').addEventListener('change',e=>{const k=e.target.dataset.set;if(k==null)return;const V=S.venn;e.target.checked?V.sel.add(+k):V.sel.delete(+k);
@@ -1004,9 +1021,10 @@ function renderRegTbl(){const V=S.venn,N=V.scans.length,ms=[...V.counts.keys()].
     ms.map(m=>{const rel=related(m);return `<tr data-reg="${m}" class="${V.regs.has(m)?'on':''}"${rel?'':' style="opacity:.55"'}><td><i class="chip" style="background:${rel?regColor(m):'#b8bfcc'}"></i>${esc(regLabel(m))}</td>`+
       V.scans.map((_,k)=>`<td>${m>>k&1?'●':'○'}</td>`).join('')+`<td class="num">${V.counts.get(m)}</td></tr>`}).join('')+'</tbody></table>'}
 const bits=m=>{let n=0;for(;m;m&=m-1)n++;return n};
-function pickRegion(m,add){const V=S.venn;if(!m){V.regs=new Set()}else if(add){V.regs.has(m)?V.regs.delete(m):V.regs.add(m)}else V.regs=V.regs.size===1&&V.regs.has(m)?new Set():new Set([m]);refresh3()}
-$('#regTbl').addEventListener('click',e=>{const tr=e.target.closest('tr[data-reg]');if(tr)pickRegion(+tr.dataset.reg,e.ctrlKey||e.metaKey)});
-$('#venn').addEventListener('click',e=>{if(!S.venn||!S.venn.geo)return;const r=e.currentTarget.getBoundingClientRect(),d=S.venn.geo.dpr;pickRegion(vennMaskAt((e.clientX-r.left)*d,(e.clientY-r.top)*d),e.ctrlKey||e.metaKey)});
+/** Para #56: 영역 클릭 = 더하기, 이미 고른 영역 클릭 = 빼기(Ctrl 없이), 빈 곳(m=0) = 고른 집합 전체로 돌아가기. */
+function pickRegion(m){const V=S.venn;if(!m)V.regs=new Set();else V.regs.has(m)?V.regs.delete(m):V.regs.add(m);refresh3()}
+$('#regTbl').addEventListener('click',e=>{const tr=e.target.closest('tr[data-reg]');if(tr)pickRegion(+tr.dataset.reg)});
+$('#venn').addEventListener('click',e=>{if(!S.venn||!S.venn.geo)return;const r=e.currentTarget.getBoundingClientRect(),d=S.venn.geo.dpr;pickRegion(vennMaskAt((e.clientX-r.left)*d,(e.clientY-r.top)*d))});
 $('#venn').addEventListener('mousemove',e=>{if(!S.venn||!S.venn.geo)return;const r=e.currentTarget.getBoundingClientRect(),d=S.venn.geo.dpr,m=vennMaskAt((e.clientX-r.left)*d,(e.clientY-r.top)*d);
   e.currentTarget.title=m?`${regLabel(m)} · Defect ${S.venn.counts.get(m)||0}개`:'빈 곳 클릭 = 고른 집합 전체'});
 /** Step 3 다시 그리기: 벤다이어그램 · 영역 표 · wafer map · 목록. 목록 = 고른 영역(없으면 고른 집합과 관련된 모든 영역). */
@@ -1023,12 +1041,13 @@ function refresh3(){const V=S.venn;if(!V||!V.shown)return;$('#vennArea').hidden=
     '<span><i style="background:#9aa3b2"></i>고른 집합과 관계없는 영역</span><span class="muted">깜빡이는 점 = 보고 있는 Defect · 점 클릭 = 그 Defect(다른 영역이면 그 영역으로)</span>';
   setPanel(P3,items,bg,`${what} · Defect ${items.length}개`,true);mapStatus()}
 const P3=makePanel('p3',$('#p3map'),$('#p3low'),{step:3,allLabel:'다른 영역 Defect 도 표시',empty:'이 영역에 Defect 가 없습니다',
-  pickOther:q=>{if(q.mask==null)return false;S.venn.regs=new Set([q.mask]);refresh3();const k=P3.items.indexOf(q);if(k>=0){P3.sel=k;showPanel(P3)}return true}});
+  side:{mount:mountVennSide},
+  pickOther:q=>{if(q.mask==null)return false;const V=S.venn;if(!V.regs.size)V.regs=new Set([...V.counts.keys()].filter(related));V.regs.add(q.mask);refresh3();const k=P3.items.indexOf(q);if(k>=0){P3.sel=k;showPanel(P3)}return true}});
 
 // ════════════════════════════════════════════════════════════════════════
 // 13. Step 4 — A → B 에서 Escape 된(없어진) Defect: 간략 wafer map 2개 + Step 3 과 같은 리뷰 패널
 // ════════════════════════════════════════════════════════════════════════
-const P4=makePanel('p4',$('#p4map'),$('#p4low'),{step:4,mark:true,allLabel:'A ∪ B 의 다른 Defect 도 표시',empty:'없어진 Defect 가 없습니다'});
+const P4=makePanel('p4',$('#p4map'),$('#p4low'),{step:4,mark:true,allLabel:'A ∪ B 의 다른 Defect 도 표시',empty:'Escape Defect 가 없습니다',side:{mount:mountEscSide},onShow:()=>paintEsc()});
 function refresh4(){const c=S.cmp;if(!c)return;const a=stepName(c.A),b=stepName(c.B);
   const items=c._items||(c._items=c.gone.map(d=>({d,X:d.X,Y:d.Y,c:'--gone',label:stLabel('gone',c)})));
   const bg=[...c.keep.map(k=>({X:k.a.X,Y:k.a.Y,c:'--keep',r:2.6,q:{d:k.a,b:k.b,label:stLabel('keep',c)}})),...c.added.map(d=>({X:d.X,Y:d.Y,c:'--new',r:2.6,q:{d,label:stLabel('new',c)}}))];
@@ -1036,12 +1055,13 @@ function refresh4(){const c=S.cmp;if(!c)return;const a=stepName(c.A),b=stepName(
   $('#p4Lg').innerHTML=['gone','keep','new'].map(st=>`<span><i style="background:var(${COL[st]})"></i>${esc(stLabel(st,c))}</span>`).join('')+'<span class="muted">깜빡이는 점 = 보고 있는 Defect · 점 클릭 = 그 Defect 로 이동</span>';
   $('#esAt').textContent=`A = ${a} (전체 ${c.keep.length+c.gone.length}) · 빨강 = B 에서 없어진 ${c.gone.length}개`;
   $('#esBt').textContent=`B = ${b} (전체 ${c.keep.length+c.added.length}) · 빨간 원 = 없어진 자리`;
-  setPanel(P4,items,bg,`${b} 에서 없어진 Defect (${stLabel('gone',c)}) ${items.length}개`,true);modelState();paintEsc()}
+  setPanel(P4,items,bg,`${a} → ${b} Escape Defect (${stLabel('gone',c)}) ${items.length}개`,true);modelState();paintEsc()}
 /** 간략 그림: A = A 의 Defect(회색) + 없어진 것(빨강 점), B = B 의 Defect(회색) + 없어진 자리(빨간 원). 점을 누르면 그 Defect 로 간다. */
-function paintEsc(){const c=S.cmp;if(!c||!$('#step4').classList.contains('on'))return;const g='#9aa3b2',hl=P4.items[P4.sel];
+function paintEsc(){const c=S.cmp,pp=P4.pop&&!P4.pop.w.closed?P4.pop:null;if(!c||(!$('#step4').classList.contains('on')&&!pp))return;const g='#9aa3b2',hl=P4.items[P4.sel];
   const A=[...c.keep.map(k=>({X:k.a.X,Y:k.a.Y,c:g,r:1.8})),...P4.items.map(it=>({X:it.X,Y:it.Y,c:'--gone',r:3,q:it}))];
   const B=[...c.keep.map(k=>({X:k.b.X,Y:k.b.Y,c:g,r:1.8})),...c.added.map(d=>({X:d.X,Y:d.Y,c:g,r:1.8})),...P4.items.map(it=>({X:it.X,Y:it.Y,c:'--gone',r:3.4,ring:true,q:it}))];
-  S.esGeo=[paintMap($('#esA'),{pts:A,hl,on:true}),paintMap($('#esB'),{pts:B,hl,on:true})]}
+  if($('#step4').classList.contains('on'))S.esGeo=[paintMap($('#esA'),{pts:A,hl,on:true}),paintMap($('#esB'),{pts:B,hl,on:true})];
+  if(pp&&pp.es){pp.esGeo=[paintMap(pp.es[0],{pts:A,hl,on:true}),paintMap(pp.es[1],{pts:B,hl,on:true})];pp.esCap[0].textContent=$('#esAt').textContent;pp.esCap[1].textContent=$('#esBt').textContent}}
 ['#esA','#esB'].forEach((q,i)=>$(q).addEventListener('click',e=>{const it=hit(e,S.esGeo&&S.esGeo[i],$(q));if(it)panelPick(P4,it)}));
 function repaintAll(){if(!S.cmp)return;Object.values(PANELS).forEach(paintPanel);if($('#step3').classList.contains('on'))drawVenn();paintEsc()}
 

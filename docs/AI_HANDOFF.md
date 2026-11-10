@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #56 새 창 = 벤다이어그램 + wafer map · 영역 더하기/빼기 · 차집합 `-` · Escape Defect 리뷰 · 모든 순서쌍 (2026-11-10 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `af6e9a0`(#55) · 이슈 Para #56("Graylevel 시뮬레이션 브랜치 신규생성 6", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**(#50~#55 연속).
+- 요청: ① 새 창에서 wafer map 과 벤다이어그램을 같이 보고 연동 ② 영역 클릭 = 더하기, 다시 클릭 = 빼기(여러 영역 동시에) ③ 차집합 기호 = `-` ④ '없어진 Defect 리뷰' → 'Escape Defect 리뷰' ⑤ A → B 를 모든 경우의 수(3개 → 3×2 = 6쌍)로.
+- 한 일(`AOI_Contrast_Wizard.html`): ① `popMap` 새 창 = 왼쪽 side + 오른쪽 wafer map. `makePanel` 옵션 `side.mount` — Step 3 `mountVennSide`(`drawVenn` 을 `drawVennOn(cv)` 로 나눠 이 화면 `S.venn.geo` + 새 창 `S.venn.popGeo`, 새 창 클릭 → `pickRegion`), Step 4 `mountEscSide`(간략 지도 2개, `paintEsc` 가 새 창에도 · 패널 `onShow` 로 선택 바뀔 때 다시 그림). 벤다이어그램은 깜빡임마다가 아니라 자료 · 선택이 바뀔 때만 다시 그림(`sidePaint`).
+  ② `pickRegion(m)` = 토글(Ctrl 없음), 빈 곳 = 고른 집합 전체. 지도에서 다른 영역 점 클릭 = 그 영역을 더함(아무 영역도 안 골랐으면 관련 영역 전체 + 그 영역). ③ 화면 · 도움말 · 사용법의 `∖` → `-`(`stLabel`, `regLabel` = `CA20 ∩ CA27 - CA30`). ④ 메뉴 · Step 4 제목 · 목록 글(`A → B Escape Defect (A - B) n개`). ⑤ `runCompare` 순서쌍 i ≠ j(A 순서 → B 순서: CA20→CA27, CA20→CA30, CA27→CA20 …), Step 2 표 · 쌍 단추 6개.
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(영역 더하기/빼기, 새 창 벤다이어그램 그림 · 새 창 클릭 → 이 화면 반영 · 이 화면 클릭 → 새 창 글 반영, Step 4 새 창 간략 지도 2개, 2개 = 순서쌍 2 · 3개 = 6, `CA27 → CA20` 값). `tools/check_project.py` 는 이 환경에 openpyxl 이 없어 Python 시험 실패(Python 변경 없음, #55 와 같음). Windows Edge 실기 · 두 모니터 · 실제 사진 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML, #50~#55 와 같음).
+- 내 해석(확인 전): ⓐ 새 창 연동은 Step 3(벤다이어그램)을 뜻한다고 보고, Step 4 새 창에도 같은 모양으로 간략 지도 2개를 넣음 ⓑ 차집합 `-` 는 화면 글 전체(쌍 표기 · 영역 이름 · CSV 구분 열)에 적용 ⓒ 순서쌍 나열 순서 = A(Contrast AVG 오름차순) → B ⓓ Step 2 표 · 쌍 단추의 '없어짐' 글은 그대로 둠(이슈가 'Defect 리뷰' 문구만 지정).
+- 남은 일: ⓐ~ⓓ 확인, #55 해석 ⓐ~ⓔ · "이런 오류" 증상 · #53 남은 일 그대로.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #56 | 새 창 벤다이어그램 + wafer map 연동 · 영역 더하기/빼기 · 차집합 `-` · Escape Defect 리뷰 · 모든 순서쌍 | 구현, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #55 Step 3 벤다이어그램 · wafer map 새 창 · Step 4 재구성 (2026-11-10 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `8449520`(#52 후속 2) · 이슈 Para #55("Graylevel 시뮬레이션 브랜치 신규생성 5", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**(이슈 제목이 #50~#53 연속이라 이 브랜치로 봄).
