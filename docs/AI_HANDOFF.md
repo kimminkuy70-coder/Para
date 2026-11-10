@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #59 폴더 업로드 진행 로딩창 (몇 개 중 몇 개) (2026-11-10 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `2802a33`(#57) · 이슈 Para #59("Graylevel 시뮬레이션 브랜치 신규생성 8", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**(#50~#57 연속).
+- 요청: 폴더를 올릴 때 얼마나 로딩되었는지 로딩창을 띄우고, 몇 개 중 몇 개가 올라갔는지 실시간으로 보여 줌.
+- 한 일(`AOI_Contrast_Wizard.html`): 화면 가운데 모달 `#busy` + `busy(p)`(null = 닫기). `addEntries` 가 Slot 폴더(= Surface.flt 폴더)를 얕은 순서로 하나씩 읽으며 `Slot 폴더 k / N` · 진행 막대 · `파일 x / M개 (%)`(처리한 Slot 의 파일 수 누적) · `읽는 중: <폴더>` 를 갱신, Slot 마다 `nextPaint`(setTimeout 0)로 화면을 그리게 함, `finally` 로 닫음(Surface.flt 없음 · 오류도 닫힘).
+  [Lot 폴더 추가]를 누르면 '폴더 고르는 중'(막대 왕복, [닫기] 단추, input `cancel` 이벤트로도 닫힘) → `change` 가 오면 '파일 n개 · Slot 폴더 찾는 중' → 위 진행. Slot 처리 순서를 얕은 순으로 바꿨지만 파일을 나누는 규칙(깊은 폴더 먼저)과 결과 순서는 그대로(종전 `made.reverse()` 와 같은 결과).
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(새 시험: 등록 중 `0 / 3` · `2 / 3` · `3 / 3 Slot 폴더` + `파일 n / n개 (100%)` 를 MutationObserver 로 확인, 끝나면 닫힘). 로딩창 화면 캡처 확인(scratch). `tools/check_project.py` 는 이 환경에 openpyxl 이 없어 Python 시험 실패(Python 변경 없음, #55~#57 과 같음). Windows Edge 실기 · 큰 실제 폴더 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML, #50~#57 과 같음).
+- 내 해석(확인 전): ⓐ '몇 개' = Slot 폴더 개수(주 표시) + 파일 개수(보조 줄) ⓑ 브라우저가 폴더 파일 목록을 만드는 단계(고른 직후)는 브라우저가 개수를 알려 주지 않아 '고르는 중'만 표시 ⓒ 취소 단추는 넣지 않음(읽기만 하고 Slot 마다 빠름).
+- 남은 일: ⓐ~ⓒ 확인, #57 해석 ⓐ~ⓔ · #56 · #55 · #53 남은 일 그대로.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #59 | 폴더 업로드 로딩창 · 몇 개 중 몇 개 실시간 | 구현, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #57 Lot 폴더 · Slot 폴더 인식 + 보기 단위(Lot 별 / Slot 별) + wafer map · 원 · Notch 맞춤 (2026-11-10 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `ac04576`(#56) · 이슈 Para #57("Graylevel 시뮬레이션 브랜치 신규생성 7", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**(#50~#56 연속).

@@ -36,7 +36,16 @@ assert.deepEqual(fn.frames,[{file:'A.t.2.jpeg',x:5,y:6,recipe:2}]);
 assert.equal(fn.count,123);
 assert.equal(fn.gl.mean,200);assert.equal(fn.gl.ring,100);assert.equal(fn.gl.delta,100);
 // 폴더 등록
-await page.evaluate(fx=>{const f=JSON.parse(fx);return window.__cw.addEntries(Object.entries(f).map(([p,b])=>({path:p,file:new File([Uint8Array.from(atob(b),c=>c.charCodeAt(0))],p.split('/').pop())})))},fixture);
+// Para #59: 등록 중 로딩창이 'Slot 폴더 k / N' · '파일 x / M' 을 실시간으로 보여 주고, 끝나면 닫힌다
+const prog=await page.evaluate(async fx=>{const f=JSON.parse(fx),seen=[],el=document.getElementById('busy');
+  const ob=new MutationObserver(()=>{if(!el.hidden)seen.push(document.getElementById('busyN').textContent+' | '+document.getElementById('busyF').textContent)});
+  ob.observe(el,{subtree:true,childList:true,characterData:true,attributes:true});
+  await window.__cw.addEntries(Object.entries(f).map(([p,b])=>({path:p,file:new File([Uint8Array.from(atob(b),c=>c.charCodeAt(0))],p.split('/').pop())})));
+  await new Promise(r=>setTimeout(r,0));ob.disconnect();return {seen,hidden:el.hidden,n:Object.keys(f).length}},fixture);
+assert.ok(prog.hidden,'로딩창이 끝나고 닫혀야 함');
+assert.ok(prog.seen.some(t=>/^0 \/ 3 Slot 폴더/.test(t)),prog.seen.join('\n'));
+assert.ok(prog.seen.some(t=>/^2 \/ 3 Slot 폴더/.test(t)),prog.seen.join('\n'));
+assert.ok(prog.seen.some(t=>t.startsWith('3 / 3 Slot 폴더')&&t.includes(`파일 ${prog.n} / ${prog.n}개 (100%)`)),prog.seen.join('\n'));
 const rows=await page.locator('#scanTbl tbody tr').allInnerTexts();
 assert.equal(rows.length,2,rows.join('\n'));   // Para #57: 줄 = Lot(CA20/LOTA · CA27/LOTA)
 const msgs=await page.locator('#loadMsg .msg').allInnerTexts();

@@ -54,6 +54,18 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .msg{border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px}
 .msg.warn{background:var(--warnbg);color:var(--warn)}.msg.err{background:var(--errbg);color:var(--err)}.msg.ok{background:var(--okbg);color:var(--ok)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0}
+/* Para #59: 폴더 등록 진행 로딩창 */
+.busy{position:fixed;inset:0;z-index:50;background:rgba(10,16,30,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.busy[hidden]{display:none}
+.busy .bx{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.3);padding:18px 22px;width:min(460px,100%)}
+.busy h3{margin:0 0 10px;font-size:16px}
+.busy .cnt{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0}
+.busy .bar{height:10px;border-radius:5px;background:var(--chip);overflow:hidden;margin:8px 0}
+.busy .bar>i{display:block;height:100%;width:0;background:var(--acc);transition:width .15s}
+.busy .bar.ind>i{width:30%;animation:busyind 1.2s linear infinite}
+@keyframes busyind{from{margin-left:-30%}to{margin-left:100%}}
+.busy .sub{font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums;word-break:break-all}
+.busy .act{text-align:right;margin-top:10px}
 .row label{display:inline-flex;gap:4px;align-items:center}
 .muted{color:var(--sub);font-size:12px}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
@@ -233,6 +245,14 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 </main>
 </div>
 <div id="tip"></div>
+<div class="busy" id="busy" hidden role="dialog" aria-modal="true" aria-labelledby="busyT"><div class="bx">
+  <h3 id="busyT">폴더 등록 중</h3>
+  <div class="cnt" id="busyN">0 / 0</div>
+  <div class="bar" id="busyBar"><i></i></div>
+  <div class="sub" id="busyF"></div>
+  <div class="sub" id="busyD"></div>
+  <div class="act"><button id="busyX" hidden>닫기</button></div>
+</div></div>
 <script>
 'use strict';
 // ════════════════════════════════════════════════════════════════════════
@@ -468,17 +488,33 @@ const lower=s=>s.toLowerCase();
  *  Contrast AVG · Step 이름 = Lot 폴더 이름 → 그 위 폴더들 → Slot 폴더 이름 순으로 'CA27' 같은 이름을 찾는다. */
 const CA_RE=/(?:contrast|avg|ca)[ _-]?(\d+(?:\.\d+)?)/i;
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
+/** Para #59: 폴더 등록 진행 로딩창. p = {title, done, total, files, fileTotal, detail, indet, close}. null 이면 닫는다. */
+function busy(p){const el=$('#busy');if(!el)return;if(!p){el.hidden=true;return}
+  el.hidden=false;$('#busyT').textContent=p.title||'폴더 등록 중';
+  const ind=!!p.indet||!p.total;$('#busyBar').classList.toggle('ind',ind);
+  $('#busyN').textContent=ind?(p.count??'…'):`${p.done} / ${p.total} ${p.unit||''}`.trim();
+  $('#busyBar').firstElementChild.style.width=ind?'':`${Math.round(100*p.done/p.total)}%`;
+  $('#busyF').textContent=p.fileTotal?`파일 ${p.files} / ${p.fileTotal}개 (${Math.round(100*p.files/p.fileTotal)}%)`:(p.files||'');
+  $('#busyD').textContent=p.detail||'';$('#busyX').hidden=!p.close}
+const nextPaint=()=>new Promise(r=>setTimeout(r,0));
 async function addEntries(entries){
   const msg=[];
   const roots=entries.filter(e=>lower(baseName(e.path))==='surface.flt').map(e=>e.path.slice(0,e.path.length-baseName(e.path).length));
-  if(!roots.length){showLoad([['err','고른 폴더에 Surface.flt 가 없습니다. Lot 폴더(안에 Wafer Slot 폴더)를 고르십시오.']]);return}
+  if(!roots.length){busy(null);showLoad([['err','고른 폴더에 Surface.flt 가 없습니다. Lot 폴더(안에 Wafer Slot 폴더)를 고르십시오.']]);return}
   roots.sort((a,b)=>b.length-a.length);   // 깊은 폴더부터: 안쪽 결과 폴더의 파일을 바깥 폴더가 가져가지 않게
   const taken=new Set();
   const made=[];
-  for(const r of roots){
-    const own=entries.filter(e=>e.path.startsWith(r)&&!taken.has(e));own.forEach(e=>taken.add(e));
-    try{made.push(await buildScan(r.replace(/\/$/,'')||'(선택 폴더)',own))}catch(e){msg.push(['err',`${r}: ${e.message}`])}}
-  made.reverse();
+  // Para #59: Slot 폴더 k / N 개, 파일 x / M 개를 실시간으로 보여 준다(얕은 폴더 순 = 화면에 보이는 순서)
+  const order=[...roots].reverse(),total=order.length,fileTotal=entries.length,t0=Date.now();let done=0,files=0;
+  const owns=new Map();for(const r of roots){const own=entries.filter(e=>e.path.startsWith(r)&&!taken.has(e));own.forEach(e=>taken.add(e));owns.set(r,own)}
+  const tick=(r)=>busy({title:'폴더 등록 중',done,total,unit:'Slot 폴더',files,fileTotal,detail:r?`읽는 중: ${r.replace(/\/$/,'')}`:`경과 ${((Date.now()-t0)/1000).toFixed(1)}초`});
+  try{
+    for(const r of order){tick(r);await nextPaint();
+      const own=owns.get(r);
+      try{made.push(await buildScan(r.replace(/\/$/,'')||'(선택 폴더)',own))}catch(e){msg.push(['err',`${r}: ${e.message}`])}
+      done++;files+=own.length;tick(null)}
+    files=fileTotal;tick(null);await nextPaint();
+  }finally{busy(null)}
   const known=new Map(S.scans.map(w=>[w.lotPath,w])),newLots=new Map();
   for(const w of made){const segs=w.name.split('/').filter(Boolean),slot=segs[segs.length-1]||w.name,lotSegs=segs.length>1?segs.slice(0,-1):segs;
     w.lotPath=lotSegs.join('/')||w.name;w.lotName=lotSegs[lotSegs.length-1]||w.name;w.slotName=slot;w.slot=lower(slot.trim());
@@ -585,8 +621,12 @@ $('#scanTbl').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)ret
   for(const w of S.scans)if(w.lotPath===path)w[k]=v;renderScans()});
 $('#scanTbl').addEventListener('click',e=>{const id=e.target.dataset.del;if(id==null)return;S.scans=S.scans.filter(w=>w.lotPath!==id);renderScans()});
 $$('#unit,#unit3').forEach(el=>el.addEventListener('change',e=>setUnit(e.target.value)));
-$('#addBtn').onclick=()=>$('#dirInput').click();
-$('#dirInput').onchange=async e=>{const fs=[...e.target.files];e.target.value='';showLoad([['warn',`파일 ${fs.length}개 읽는 중…`]]);
+// Para #59: 폴더를 고른 뒤 브라우저가 파일 목록을 만드는 동안은 개수를 알 수 없어 '목록 만드는 중' 만 보이고(닫기 가능), 목록이 오면 Slot 폴더 · 파일 개수로 바뀐다.
+$('#addBtn').onclick=()=>{busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다. 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true});$('#dirInput').click()};
+$('#busyX').onclick=()=>busy(null);
+$('#dirInput').addEventListener('cancel',()=>busy(null));
+$('#dirInput').onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length){busy(null);return}
+  showLoad([['warn',`파일 ${fs.length}개 읽는 중…`]]);busy({title:'폴더 등록 중',indet:true,count:`파일 ${fs.length}개`,files:'Slot 폴더(Surface.flt) 찾는 중…'});await nextPaint();
   await addEntries(fs.map(f=>({path:f.webkitRelativePath||f.name,file:f})))};
 // ════════════════════════════════════════════════════════════════════════
 // 7. 비교
@@ -1144,7 +1184,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>
