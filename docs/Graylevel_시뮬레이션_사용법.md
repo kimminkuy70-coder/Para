@@ -63,6 +63,11 @@
     - **로딩창**(모든 긴 작업): 단계 목록(✔ 끝 · ▶ 지금) · 개수(k / N) · 진행 막대 · 지금 읽는 폴더/파일 · `경과 · 마지막 진행 n초 전 · 속도 · 남은 시간`. '마지막 진행'이 3초를 넘으면 노란 글 '응답을 기다리는 중'(네트워크 드라이브 · 큰 파일), 브라우저 계산으로 화면이 멈췄으면 '화면이 n초 멈췄었음'. [중지] = 지금 파일까지 끝내고 멈춤(5-2 는 남은 것 '확인 안 함').
     - 이름으로 바로 못 찾은 파일(예: 사진이 Slot 하위 폴더에 있음)만 그 Slot 파일 목록을 한 번 만들어 찾습니다(로딩창에 개수). Edge/Chrome 이 아니면 폴더 고르기(webkitdirectory)로 바뀌어 느립니다(사진 내용은 읽지 않음).
     - 시험 = 가짜 폴더 Lot 40 × Slot 25(Slot 마다 사진 3,000장, 호출마다 8 ms 지연): 5-1 약 14초(Slot 안 목록 0번), 짝짓기 1,000개 약 20초. 합성 30만 Defect 필터 + 정렬 약 0.03초. 실제 큰 폴더 · 네트워크 드라이브로는 확인 전.
+    - **Color 연결(2026-11-10, 소유자 확정 "Color 이미지 정보는 어떤 경우에도 있다 · 사진은 모두 Slot 폴더 안")**: 스캔(Slot)마다 기준을 한 번 정한 뒤 Defect 마다
+      ① 좌표(Color FaultX/FaultY ↔ Defect x/y 또는 ActualX/Y 중 더 잘 맞는 쪽, 스캔 전체에서 **일정한 어긋남을 찾아 보정**) 허용오차 안 → ② 번호(Color Index = Defect 번호 규칙 — 기록 순서 · id · resultID 중 Defect 마다 값이 다른 규칙만) →
+      ③ 가장 가까운 Color 중 Defect 가 그 Color 사진 범위(ImageSize × PixelSize) 안에 드는 것('확인 필요'). `ColorImageGrabingInfo.ini` 가 없거나 항목이 없으면 Slot 폴더의 Color 사진 이름(`X.Y.c.번호.jpeg`, 앞 두 숫자 = 좌표)으로 연결합니다.
+      ini · txt 는 UTF-8 · UTF-16 · EUC-KR 을 알아서 읽습니다. 5-2 결과에 'Color 연결 방법'(좌표 · 어긋남 보정 좌표 · 번호 · 가장 가까운 것 개수)과 좌표가 그대로 맞지 않은 Slot 의 기준(어긋남 · 규칙)을 보여 주고, 못 붙이면 이유(가장 가까운 Color 와의 거리)를 적습니다.
+      실제 결과 폴더(`사진 제외.zip`, 353개)로 확인: 그대로 · 100 µm 어긋남 · 어긋남 + Index 없음 · ±8 µm 흔들림 · ini 없음 · UTF-16 ini 모두 353/353 맞는 Color(종전은 어긋남이면 0, UTF-16 이면 'Color 파일 없음' 353).
 
 **폴더 인식(2026-11-10)**: Step 1 · Step 5 모두 **고른 폴더 바로 아래 폴더 = Lot**, Surface.flt 가 있는 폴더 = Wafer Slot(이름 = 그 폴더 이름)입니다. Slot 이 Lot 안 몇 단계 아래에 있어도(예: `고른 폴더/Contrast Avg24/Job/Setup/SM/Wafer/Surface.flt`) 그 Lot 으로 묶습니다.
 - Lot 폴더 하나를 고르면(`Lot/Wafer/Surface.flt`) 고른 폴더 = Lot, Slot 폴더를 고르면 Slot 1개짜리 Lot.

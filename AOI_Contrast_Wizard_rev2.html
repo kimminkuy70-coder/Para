@@ -440,6 +440,17 @@ function parseIni(text){
 }
 const pick=(kv,keys)=>{for(const k of keys){const v=kv[k];if(v!=null&&v!=='')return v}return null};
 const num=v=>{if(v==null||v==='')return null;const n=parseFloat(v);return isFinite(n)?n:null};
+/** 글 파일 읽기(rev2, 2026-11-10): UTF-8(BOM 있어도) · UTF-16 LE/BE(BOM 또는 한 칸 걸러 0 인 모양) · 그 밖이면 EUC-KR(CP949).
+ *  장비 ini 가 UTF-16 으로 저장돼 있으면 종전(File.text() = UTF-8 로만)에는 파일 이름 사이에 보이지 않는 글자가 끼어 'Color 파일 없음'이 났다. */
+async function readText(f){const b=new Uint8Array(await f.arrayBuffer()),dec=(e,x)=>new TextDecoder(e).decode(x).replace(/\0/g,'');
+  if(b[0]===0xFF&&b[1]===0xFE)return dec('utf-16le',b);if(b[0]===0xFE&&b[1]===0xFF)return dec('utf-16be',b);
+  if(b[0]===0xEF&&b[1]===0xBB&&b[2]===0xBF)return dec('utf-8',b);
+  const n=Math.min(b.length,512);let z0=0,z1=0;for(let i=0;i<n;i++)if(!b[i])(i&1?z1++:z0++);
+  if(z1>n/5&&z0<n/20)return dec('utf-16le',b);if(z0>n/5&&z1<n/20)return dec('utf-16be',b);
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(b)}catch(e){try{return dec('euc-kr',b)}catch(x){return dec('utf-8',b)}}}
+/** Color 사진 이름 = '{X}.{Y}.c.{번호}.jpeg'(실제 결과 폴더: 앞 두 숫자 = FaultX · FaultY 를 정수로, 2 µm 안). ColorImageGrabingInfo.ini 가 없거나 못 읽을 때 이 좌표로 연결한다. */
+const CNAME_RE=/^(-?\d+(?:\.\d+)?)\.(-?\d+(?:\.\d+)?)\.c\.[^\\/]*\.(?:jpe?g|png|bmp)$/i;
+function colorsFromNames(names){const out=[];for(const n of names){const m=CNAME_RE.exec(n);if(m)out.push({file:n,x:+m[1]+.5,y:+m[2]+.5,index:null,fromName:true})}return out}
 /** ColorImageGrabingInfo.ini → Color 항목. 키 이름 변형을 받는다. */
 function parseColors(text){
   return parseIni(text).filter(s=>s.name||Object.keys(s.kv).length).map(s=>{const kv=s.kv;
@@ -559,32 +570,74 @@ function locateGray(X,Y,recipe,scan,opt){
   if(!best)return {reason:'좌표 변환 보정 필요',model:tf?'transform':'simple'};
   return {frame:best.frame,px:best.px,py:best.py,n,model:tf?'transform':'simple'};
 }
-/** Defect ↔ Color 이미지 연결: ① Fault 좌표 최근접(허용오차) ② id/resultID/Index 의 0/1-based 후보(좌표가 있으면 검증). */
-function linkColor(d,scan,ctol){
-  const cs=scan.colors;if(!cs.length)return null;
-  let best=null;for(const c of cs){if(c.x==null||c.y==null)continue;const dd=Math.hypot(c.x-d.X,c.y-d.Y);if(dd<=ctol&&(!best||dd<best.dd))best={c,dd}}
-  if(best)return {c:best.c,how:`좌표(${best.dd.toFixed(1)} µm)`};
-  const rule=indexRule(scan,ctol);if(!rule)return null;
-  const c=scan.colorByIndex.get(rule.f(d));if(!c)return null;
-  if(c.x!=null&&c.y!=null&&Math.hypot(c.x-d.X,c.y-d.Y)>Math.max(ctol*10,50))return null;   // 좌표가 있으면 검증
-  return {c,how:`Index ${rule.f(d)} (${rule.name}${rule.ok?'':' · 좌표 없음 · 확인 전'})`};
-  return null;
-}
-
-/** 인덱스 규칙(0/1-based, id · resultID · 기록 순서)은 스캔마다 하나로 정한다 — Defect 마다 후보를 바꾸면 남의 이미지를 붙일 수 있다.
- *  좌표가 있는 Color 항목으로 검증된 수가 가장 많은 규칙(같으면 앞 규칙), 검증이 하나도 없으면 맞는 Index 수가 가장 많은 규칙(확인 전). */
+/** Color 연결(rev2, 소유자 확정 2026-11-10: "Contrast 가 있는 Defect 는 좌표가 있고 Color 이미지 정보는 어떤 경우에도 있다 · 사진은 모두 Slot 폴더 안").
+ *  스캔마다 colorModel 로 한 번 기준을 정한다 → Defect 마다
+ *   ① 좌표: Color FaultX/FaultY 와 Defect 좌표(x/y 또는 ActualX/ActualY 중 더 잘 맞는 쪽 + 스캔 전체에서 일정한 어긋남을 보정)가 허용오차 안
+ *   ② 번호: Color Index = Defect 번호 규칙(기록 순서 · id · resultID 중 Defect 마다 값이 다른 1:1 규칙만, 좌표가 있으면 보정 좌표와 맞는 수가 가장 많은 규칙)
+ *   ③ 가장 가까운 Color 중 Defect 위치가 그 Color 사진 범위(ImageSize × PixelSize) 안에 드는 것('확인 필요')
+ *  종전: ①은 보정 없이 5 µm, ②는 좌표가 50 µm 넘게 다르면 버리고, id 가 전부 1 이어도 'id' 규칙을 먼저 골라 —
+ *  Color 좌표가 Defect 좌표와 일정하게 어긋난 자료에서 Gray 는 찾는데 Color 는 전부 못 찾았다(실제 결과 폴더를 100 µm 밀어 재현). */
 const INDEX_RULES=[['id',d=>d.id],['id−1',d=>d.id-1],['id+1',d=>d.id+1],['resultID',d=>d.resultID],['resultID−1',d=>d.resultID-1],['resultID+1',d=>d.resultID+1],['기록 순서(0)',d=>d.i],['기록 순서(1)',d=>d.i+1]];
-function indexRule(scan,ctol){
-  // Step 5 정보만 등록한 스캔(light)은 Defect 객체가 없다 → 열 배열에서 잠깐 만든다
-  const act=scan.light&&S.o.coord==='actual',C=scan.cols;
-  const k='rule|'+ctol+'|'+(scan.light?(act?'a':'x'):(scan.defects[0]&&scan.defects[0].X));if(scan._rule&&scan._rule.k===k)return scan._rule.v;
-  const defs=scan.light?Array.from({length:C.n},(_,i)=>({i,id:C.id[i],resultID:C.rid[i],X:act?C.ax[i]:C.x[i],Y:act?C.ay[i]:C.y[i]})):scan.defects;
-  let best=null;
-  if(scan.colorByIndex.size)for(const [name,f] of INDEX_RULES){let ok=0,hit=0;
-    for(const d of defs){const c=scan.colorByIndex.get(f(d));if(!c)continue;hit++;if(c.x!=null&&c.y!=null&&Math.hypot(c.x-d.X,c.y-d.Y)<=Math.max(ctol,1))ok++}
-    if(hit&&(!best||ok>best.ok||(ok===best.ok&&!ok&&hit>best.hit)))best={name,f,ok,hit}}   // 같은 검증 수면 앞 규칙(id) 우선
-  scan._rule={k,v:best};return best;
-}
+/** 가장 가까운 점 찾기(격자). 점이 묶음 밖 멀리 있으면 전부 훑는다. */
+function makeCGrid(cs){let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;for(const c of cs){x0=Math.min(x0,c.x);x1=Math.max(x1,c.x);y0=Math.min(y0,c.y);y1=Math.max(y1,c.y)}
+  const G=Math.max(20,Math.sqrt(Math.max(1,(x1-x0)*(y1-y0))/cs.length)*1.5),m=new Map(),K=(i,j)=>i+','+j;
+  for(const c of cs){const k=K(Math.floor(c.x/G),Math.floor(c.y/G));(m.get(k)||m.set(k,[]).get(k)).push(c)}
+  const brute=(x,y)=>{let b=null,bd=Infinity;for(const c of cs){const d=Math.hypot(c.x-x,c.y-y);if(d<bd){bd=d;b=c}}return b?{c:b,dd:bd}:null};
+  return {nearest(x,y){if(!isFinite(x)||!isFinite(y))return null;if(x<x0-4*G||x>x1+4*G||y<y0-4*G||y>y1+4*G)return brute(x,y);
+    const ci=Math.floor(x/G),cj=Math.floor(y/G),R=Math.ceil(Math.max(x1-x0,y1-y0)/G)+6;let b=null,bd=Infinity;
+    const cell=(i,j)=>{const l=m.get(K(i,j));if(l)for(const c of l){const d=Math.hypot(c.x-x,c.y-y);if(d<bd){bd=d;b=c}}};
+    for(let r=0;r<=R;r++){if(b&&(r-1)*G>bd)break;if(!r){cell(ci,cj);continue}
+      for(let i=ci-r;i<=ci+r;i++){cell(i,cj-r);cell(i,cj+r)}for(let j=cj-r+1;j<=cj+r-1;j++){cell(ci-r,j);cell(ci+r,j)}}
+    return b?{c:b,dd:bd}:null}}}
+const median=a=>{if(!a.length)return 0;const s=[...a].sort((p,q)=>p-q),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
+/** 스캔마다 Color 연결 기준: 좌표 기준(x/y 또는 ActualX/Y) · 일정한 어긋남(dx, dy = Color − Defect) · 번호 규칙. scan._cm 에 기억(Color 수 · 허용오차가 같을 때). */
+function colorModel(scan,ctol){
+  const key=ctol+'|'+scan.colors.length;if(scan._cm&&scan._cm.key===key)return scan._cm;
+  const tol=Math.max(ctol,1),C=scan.cols;
+  const defs=scan.defects?scan.defects.map(d=>({i:d.i,id:d.id,resultID:d.resultID,x:d.x??d.X,y:d.y??d.Y,ax:d.ActualX??d.x??d.X,ay:d.ActualY??d.y??d.Y}))
+    :Array.from({length:C.n},(_,i)=>({i,id:C.id[i],resultID:C.rid[i],x:C.x[i],y:C.y[i],ax:C.ax[i],ay:C.ay[i]}));
+  const n=defs.length,cs=scan.colors.filter(c=>c.x!=null&&c.y!=null&&isFinite(c.x)&&isFinite(c.y)),grid=cs.length?makeCGrid(cs):null;
+  const P=(d,b)=>b==='act'?[d.ax,d.ay]:[d.x,d.y],bases=['xy'];if(defs.some(d=>Math.abs(d.ax-d.x)>1e-6||Math.abs(d.ay-d.y)>1e-6))bases.push('act');
+  const count=(b,dx,dy)=>{if(!grid)return 0;let k=0;for(const d of defs){const [x,y]=P(d,b),r=grid.nearest(x+dx,y+dy);if(r&&r.dd<=tol)k++}return k};
+  const M={key,basis:'xy',dx:0,dy:0,kind:'coord',direct:0,grid,n,colors:scan.colors.length,named:scan.colors.some(c=>c.fromName)};
+  for(const b of bases){const k=count(b,0,0);if(k>M.direct){M.basis=b;M.direct=k}}
+  // 번호 규칙 후보: Defect 마다 값이 다르고(1:1) 절반 넘게 Color Index 가 있는 규칙만(예: id 가 전부 1 이면 'id' 는 빠짐)
+  const all=[];if(scan.colorByIndex.size)for(const [name,f] of INDEX_RULES){const vals=defs.map(f);if(new Set(vals).size<n)continue;
+    const mapped=defs.filter(d=>scan.colorByIndex.has(f(d)));if(mapped.length)all.push({name,f,mapped})}
+  const rules=all.filter(r=>r.mapped.length>=Math.max(1,n*.5));   // 어긋남 추정 · 좌표 없는 Color 에는 절반 넘게 이어지는 규칙만
+  // 좌표로 절반도 안 맞으면: 일정한 어긋남 찾기 — ⓐ 번호 규칙 짝의 어긋남이 고르면 그것 ⓑ 없으면 좌표 차이 투표
+  if(grid&&M.direct<n*.5){let best=null;
+    for(const r of rules)for(const b of bases){const offs=[];for(const d of r.mapped){const c=scan.colorByIndex.get(r.f(d));if(c.x==null||c.y==null)continue;const [x,y]=P(d,b);offs.push([c.x-x,c.y-y])}
+      if(offs.length<2)continue;const med=[median(offs.map(o=>o[0])),median(offs.map(o=>o[1]))],ok=offs.filter(o=>Math.hypot(o[0]-med[0],o[1]-med[1])<=Math.max(tol,2)).length;
+      if(ok>=Math.max(2,offs.length*.8)&&(!best||ok>best.ok))best={b,med,ok}}
+    if(!best){const step=Math.max(1,Math.floor(n/200)),cstep=Math.max(1,Math.floor(cs.length/4000)),Bin=Math.max(tol,2)*2,votes=new Map();let ns=0;
+      for(const b of bases)for(let i=0;i<n;i+=step){ns++;const [x,y]=P(defs[i],b);for(let j=0;j<cs.length;j+=cstep){const ox=cs[j].x-x,oy=cs[j].y-y,k=b+'|'+Math.round(ox/Bin)+','+Math.round(oy/Bin);let v=votes.get(k);if(!v)votes.set(k,v={b,n:0,ox:[],oy:[]});v.n++;if(v.ox.length<500){v.ox.push(ox);v.oy.push(oy)}}}
+      let top=null;for(const v of votes.values())if(!top||v.n>top.n)top=v;
+      if(top&&top.n>=Math.max(3,ns/bases.length*.3))best={b:top.b,med:[median(top.ox),median(top.oy)],ok:top.n}}
+    if(best){const k=count(best.b,best.med[0],best.med[1]);if(k>M.direct)Object.assign(M,{basis:best.b,dx:best.med[0],dy:best.med[1],kind:'offset',direct:k})}}
+  // 번호 규칙 고르기: (보정한) 좌표와 맞는 수가 가장 많은 규칙. Color 에 좌표가 하나도 없으면 맞는 Index 수(같으면 '기록 순서' 먼저 — 실제 결과 폴더는 Index = Surface.flt 기록 순서)
+  let rule=null;
+  for(const r of grid?all:rules){let sc=0;if(grid){for(const d of r.mapped){const c=scan.colorByIndex.get(r.f(d));if(c.x==null||c.y==null)continue;const [x,y]=P(d,M.basis);if(Math.hypot(c.x-x-M.dx,c.y-y-M.dy)<=Math.max(tol,2))sc++}}
+    else sc=r.mapped.length+(r.name.startsWith('기록')?.5:0);if(sc>0&&(!rule||sc>rule.sc))rule={...r,sc}}   // 같으면 앞 규칙(종전과 같음)
+  M.rule=rule;scan._cm=M;
+  scan.colorNote=`Color ${scan.colors.length}개${M.named?'(사진 이름의 좌표)':''} · 좌표 ${M.basis==='act'?'ActualX/Y':'x/y'}${M.kind==='offset'?` · 일정한 어긋남 ${Math.round(M.dx)}, ${Math.round(M.dy)} µm 보정`:''} · 좌표로 맞음 ${M.direct}/${n}${rule?` · 번호 규칙 ${rule.name}`:''}`;
+  return M}
+/** Color 사진 범위(µm, 반 폭 · 반 높이) — ImageSize × PixelSize, 없으면 실제 폴더 값(1380×1036 × 0.462 µm). */
+const cHalf=c=>[(c.w||1380)*(c.psx||0.4624)/2,(c.h||1036)*(c.psy||0.4622)/2];
+function linkColor(d,scan,ctol){
+  const cs=scan.colors;if(!cs.length)return null;const M=colorModel(scan,ctol),tol=Math.max(ctol,1);
+  const bx=M.basis==='act'?(d.ActualX??d.X):(d.x??d.X),by=M.basis==='act'?(d.ActualY??d.Y):(d.y??d.Y),X=bx+M.dx,Y=by+M.dy;
+  const sh=(M.kind==='offset'?` · 어긋남 ${Math.round(M.dx)}, ${Math.round(M.dy)} µm 보정`:'')+(M.basis==='act'?' · ActualX/Y':'')+(M.named?' · 사진 이름의 좌표':'');
+  const nb=M.grid?M.grid.nearest(X,Y):null;
+  if(nb&&nb.dd<=tol)return {c:nb.c,how:`좌표(${nb.dd.toFixed(1)} µm${sh})`,dd:nb.dd};
+  if(M.rule){const k=M.rule.f(d),c=scan.colorByIndex.get(k);if(c){const dd=c.x!=null&&c.y!=null?Math.hypot(c.x-X,c.y-Y):null;
+    return {c,how:`Index ${k} (${M.rule.name}${dd!=null?` · 좌표 차 ${dd.toFixed(1)} µm`:' · 좌표 없음'}${sh})`,dd}}}
+  if(nb){const [hw,hh]=cHalf(nb.c);if(Math.abs(nb.c.x-X)<=hw&&Math.abs(nb.c.y-Y)<=hh)return {c:nb.c,how:`가장 가까운 Color(${nb.dd.toFixed(1)} µm, 사진 범위 안 · 확인 필요${sh})`,dd:nb.dd,far:true}}
+  return null}
+/** Color 를 못 붙인 이유(화면 · CSV). */
+function colorWhy(d,scan,ctol){if(!scan.colors.length)return 'ColorImageGrabingInfo.ini 도, Slot 폴더의 Color 사진 이름(X.Y.c.….jpeg)도 없음';
+  const M=colorModel(scan,ctol),bx=M.basis==='act'?(d.ActualX??d.X):(d.x??d.X),by=M.basis==='act'?(d.ActualY??d.Y):(d.y??d.Y),nb=M.grid?M.grid.nearest(bx+M.dx,by+M.dy):null;
+  return nb?`가장 가까운 Color ${cleanName(nb.c.file)} 도 ${nb.dd.toFixed(0)} µm 떨어져 사진 범위 밖 (${scan.colorNote})`:`Color 항목 ${scan.colors.length}개에 좌표 · 맞는 번호가 없음`}
 
 // ════════════════════════════════════════════════════════════════════════
 // 4. 상태
@@ -714,7 +767,7 @@ function compareViews(msg){const u=S.unit||'lot',L=lotsOf();S.lotViews=S.lotView
 function showLoad(list){$('#loadMsg').innerHTML=list.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('')}
 async function buildScan(name,own){
   const files=new Map();for(const e of own){const k=lower(baseName(e.path));if(!files.has(k))files.set(k,e.file)}
-  const get=n=>files.get(lower(n));const text=async n=>{const f=get(n);return f?await f.text():null};
+  const get=n=>files.get(lower(n));const text=async n=>{const f=get(n);return f?await readText(f):null};
   const s={id:++scanSeq,seq:scanSeq,name,files,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,defects:[],colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images:0};
   s.images=own.filter(e=>/\.(jpe?g|png|bmp)$/i.test(e.path)).length;
   // Contrast AVG 추정(폴더 이름의 'CA27', 'Contrast27', 'AVG27') — 사용자가 고친다
@@ -727,14 +780,15 @@ async function buildScan(name,own){
   else if(!r.ok)s.errors.push(`잘못된 Record Size: ${r.bytes} byte 는 ${REC} 로 나누어떨어지지 않음(나머지 ${r.rem})`);
   s.defects=r.defects.map(d=>({...d,scan:s}));
   if(s.defects.length&&s.defects.every(d=>!d.frameIdx&&!d.xInFrame&&!d.yInFrame))s.warns.push('frameIdx/xInFrame/yInFrame 이 모두 0 — Wafer 좌표로 Gray 위치를 계산합니다');
-  const ci=await text('ColorImageGrabingInfo.ini');if(ci){s.colors=parseColors(ci);for(const c of s.colors)if(c.index!=null&&!s.colorByIndex.has(c.index))s.colorByIndex.set(c.index,c)}else s.warns.push('ColorImageGrabingInfo.ini 없음 — Color 이미지 연결 불가');
+  const ci=await text('ColorImageGrabingInfo.ini');if(ci){s.colors=parseColors(ci);for(const c of s.colors)if(c.index!=null&&!s.colorByIndex.has(c.index))s.colorByIndex.set(c.index,c)}else s.warns.push('ColorImageGrabingInfo.ini 없음');
+  if(!s.colors.length){s.colors=colorsFromNames([...files.values()].map(f=>f.name));if(s.colors.length)s.warns.push(`Color 항목이 없어 Slot 폴더의 Color 사진 ${s.colors.length}장 이름(X.Y.c.….jpeg)의 좌표로 연결합니다`);else s.warns.push('Color 이미지 정보 없음(ini · 사진 이름 둘 다) — Color 연결 불가')}
   const fl=await text('ScanResultImageList.txt');if(fl)s.frames=parseFrames(fl);else s.warns.push('ScanResultImageList.txt 없음 — Gray Crop 불가');
   for(const [k] of files){const t=/^frametochuckplane(?:\.(.+))?\.ini$/.exec(k);if(!t)continue;
-    try{s.transforms.set(t[1]&&/^\d+$/.test(t[1])?+t[1]:null,parseTransform(await files.get(k).text()))}catch(e){s.warns.push(k+': '+e.message)}}
+    try{s.transforms.set(t[1]&&/^\d+$/.test(t[1])?+t[1]:null,parseTransform(await readText(files.get(k))))}catch(e){s.warns.push(k+': '+e.message)}}
   if(!s.transforms.size&&s.frames.length)s.warns.push('frameToChuckPlane.ini 없음 — 간단 좌표 모델(보정 필요)');
   if(get('s_FrameData.dat'))s.frameData=`s_FrameData.dat ${get('s_FrameData.dat').size} byte${get('s_FrameData.dat.md')?' + .md':''} (참고용, 좌표 계산에는 frameToChuckPlane 사용)`;
   // Wafer Map 파일: 이름과 무관하게 'RowData:' 줄이 있는 작은 글 파일(이미지 · flt · dat 제외)
-  for(const [k,f] of files){if(/\.(jpe?g|png|bmp|flt|dat|md|ini|xml)$/i.test(k)||f.size>4e6)continue;const t=await f.text();if(!/^\s*RowData\s*:/mi.test(t))continue;
+  for(const [k,f] of files){if(/\.(jpe?g|png|bmp|flt|dat|md|ini|xml)$/i.test(k)||f.size>4e6)continue;const t=await readText(f);if(!/^\s*RowData\s*:/mi.test(t))continue;
     const m=parseWaferMap(t);if(m){s.waferMap={...m,file:k};if(m.rowct&&m.rowct!==m.rows||m.colct&&m.colct!==m.cols)s.warns.push(`${k}: ROWCT/COLCT(${m.rowct}×${m.colct}) ≠ RowData(${m.rows}×${m.cols})`);break}}
   const pi=await text('ProductInfo.ini');if(pi){s.product=parseProduct(pi);if(!s.product)s.warns.push('ProductInfo.ini 에 Die Pitch/Cols/Rows 없음 — Die 계산 불가')}else s.warns.push('ProductInfo.ini 없음 — Die 계산 불가');
   // Para #53: ProductInfo 에 중심이 없으면 Params_WaferInfo.ini [Geometric] Center_X/Center_Y
@@ -750,7 +804,7 @@ async function buildScan(name,own){
   if(s.product){let n=0,bad=0;for(const c of s.colors){if(c.col==null||c.row==null||c.x==null||c.y==null)continue;const d=dieOf(c.x,c.y,s.product);n++;if(d.col!==c.col||d.row!==c.row)bad++}
     s.dieCheck=n?{n,bad}:null;if(bad)s.warns.push(`Die 번호 검증: Color 이미지 Col/Row 와 계산이 ${bad}/${n}개 다름 — Die Pitch · Offset 확인 필요`)}
   // ScanLog 먼저(Para #53)
-  for(const [k,f] of [...files].sort((a,b)=>/^scanlog/.test(b[0])-/^scanlog/.test(a[0])))if(/^(scanlog|productioninfo).*\.(txt|log|ini|csv|xml)$/i.test(k)){const c=surfaceCount(await f.text());if(c!=null){s.crossCount={file:k,count:c};
+  for(const [k,f] of [...files].sort((a,b)=>/^scanlog/.test(b[0])-/^scanlog/.test(a[0])))if(/^(scanlog|productioninfo).*\.(txt|log|ini|csv|xml)$/i.test(k)){const c=surfaceCount(await readText(f));if(c!=null){s.crossCount={file:k,count:c};
     if(c!==s.defects.length)s.warns.push(`${k} 의 Surface defect 수 ${c} ≠ 파싱 ${s.defects.length}`);break}}
   return s;
 }
@@ -840,7 +894,7 @@ function mapStatus(){const c=S.cmp,sc=S.cmpScans||[];if(!c){$('#mapSt').textCont
 function setWaferMap(text,name){const m=parseWaferMap(text);if(!m)return false;S.userMap={...m,file:name||'Wafer Map'};if(S.cmp){mapStatus();repaintAll()}return true}
 $('#mapBtn').onclick=()=>$('#mapInput').click();
 ['#waferD','#edgeEx'].forEach(q=>$(q).addEventListener('input',e=>e.target.dataset.user=1));
-$('#mapInput').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;if(!setWaferMap(await f.text(),f.name))$('#mapSt').textContent=`${f.name}: RowData 줄이 없습니다.`};
+$('#mapInput').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;if(!setWaferMap(await readText(f),f.name))$('#mapSt').textContent=`${f.name}: RowData 줄이 없습니다.`};
 function renderKpis(){const c=S.cmp,n=c.keep.length+c.gone.length,a=stepName(c.A),b=stepName(c.B);
   $('#kpis').innerHTML=[[viewLabel('A'),`${n}`,'',`Contrast AVG ${c.A.contrast??'?'}`],[viewLabel('B'),`${c.keep.length+c.added.length}`,'',`Contrast AVG ${c.B.contrast??'?'}`],[stLabel('keep'),c.keep.length,'keep','둘 다 있음'],[stLabel('gone'),c.gone.length,'gone',`${b} 에서 없어짐`],[stLabel('new'),c.added.length,'new',`${b} 에서 새로 생김`],
     ['감소율',n?(100*(n-(c.keep.length+c.added.length))/n).toFixed(1)+'%':'-','',`없어진 비율 ${n?(100*c.gone.length/n).toFixed(1):'-'}%`]]
@@ -906,14 +960,17 @@ function slotIndex(s){return s.idxP||(s.idxP=(async()=>{const m=new Map();let n=
 /** Step 5 정보만 등록한 스캔(light): 사진을 처음 다룰 때 그 Slot 의 사진 목록(ColorImageGrabingInfo · ScanResultImageList · frameToChuckPlane)을 읽는다. 그 밖의 스캔은 이미 읽었다. */
 const READY=Promise.resolve();
 function ensureImg(s){if(!s.light)return READY;return s.imgP||(s.imgP=(async()=>{
-  const text=async n=>{const f=await fileFind(s,n,true);return f?(await f.get()).text():null},note=t=>FS.note&&FS.note(`사진 목록 읽는 중: ${s.name} / ${t}`);
-  note('ColorImageGrabingInfo.ini');const ci=await text('ColorImageGrabingInfo.ini');if(ci){s.colors=parseColors(ci);for(const c of s.colors)if(c.index!=null&&!s.colorByIndex.has(c.index))s.colorByIndex.set(c.index,c)}else s.warns.push('ColorImageGrabingInfo.ini 없음 — Color 이미지 연결 불가');
+  const text=async n=>{const f=await fileFind(s,n,true);return f?readText(await f.get()):null},note=t=>FS.note&&FS.note(`사진 목록 읽는 중: ${s.name} / ${t}`);
+  note('ColorImageGrabingInfo.ini');const ci=await text('ColorImageGrabingInfo.ini');if(ci){s.colors=parseColors(ci);for(const c of s.colors)if(c.index!=null&&!s.colorByIndex.has(c.index))s.colorByIndex.set(c.index,c)}else s.warns.push('ColorImageGrabingInfo.ini 없음');
+  // ini 가 없거나 항목이 없으면 Slot 폴더(사진은 모두 Slot 폴더 안 — 소유자 확정)의 Color 사진 이름 좌표로
+  if(!s.colors.length){note('Color 사진 이름 모으기');const names=s.files.size?[...s.files.values()].map(f=>f.name):[...(await slotIndex(s)).values()].map(e=>e.h.name);
+    s.colors=colorsFromNames(names);if(s.colors.length)s.warns.push(`Color 항목이 없어 Slot 폴더의 Color 사진 ${s.colors.length}장 이름(X.Y.c.….jpeg)의 좌표로 연결합니다`);else s.warns.push('Color 이미지 정보 없음(ini · 사진 이름 둘 다) — Color 연결 불가')}
   note('ScanResultImageList.txt');const fl=await text('ScanResultImageList.txt');if(fl)s.frames=parseFrames(fl);else s.warns.push('ScanResultImageList.txt 없음 — Gray Crop 불가');
   note('frameToChuckPlane.ini');let names=[...s.files.keys()].filter(k=>TF_RE.test(k));
   if(!names.length&&s.dirs.length){const recs=new Set();for(const f of s.frames)if(f.recipe!=null)recs.add(f.recipe);if(s.cols)for(const r of new Set(s.cols.rec))recs.add(r);
     for(const n of ['frameToChuckPlane.ini',...[...recs].map(r=>`frameToChuckPlane.${r}.ini`)])if(await fileFind(s,n,true))names.push(lower(n));
     if(!names.length&&s.frames.length)names=[...(await slotIndex(s)).keys()].filter(k=>TF_RE.test(k))}
-  for(const k of names){const m=TF_RE.exec(k);try{s.transforms.set(m[1]&&/^\d+$/.test(m[1])?+m[1]:null,parseTransform(await (await (await fileFind(s,k)).get()).text()))}catch(e){s.warns.push(k+': '+e.message)}}
+  for(const k of names){const m=TF_RE.exec(k);try{s.transforms.set(m[1]&&/^\d+$/.test(m[1])?+m[1]:null,parseTransform(await readText(await (await fileFind(s,k)).get())))}catch(e){s.warns.push(k+': '+e.message)}}
   if(!s.transforms.size&&s.frames.length)s.warns.push('frameToChuckPlane.ini 없음 — 간단 좌표 모델(보정 필요)');
 })().catch(e=>{s.warns.push('사진 목록 읽기 실패: '+e.message)}))}
 function colorUrl(d){return ensureImg(d.scan).then(()=>{const c=linkColor(d,d.scan,S.o.ctol);if(!c)return null;
@@ -1436,7 +1493,7 @@ function newLight(name){return {id:++scanSeq,seq:scanSeq,name,light:true,files:n
 /** 위쪽 폴더(Lot · Setup · 레시피)에서 파일 하나 찾기 — 폴더 · 이름마다 한 번만 묻는다. */
 const dirMemo=new WeakMap();
 function dirFile(h,name){let m=dirMemo.get(h);if(!m)dirMemo.set(h,m=new Map());const k=lower(name);if(!m.has(k))m.set(k,h.getFileHandle(name).then(x=>x,()=>null));return m.get(k)}
-async function chainText(s,name){for(const h of s.chain){const f=await dirFile(h,name);if(f)return (await f.getFile()).text()}return null}
+async function chainText(s,name){for(const h of s.chain){const f=await dirFile(h,name);if(f)return readText(await f.getFile())}return null}
 /** Surface.flt(+ .md) · ProductInfo.ini 만 읽어 열 배열로. md · ProductInfo 는 있을 때만(Slot → 위쪽 폴더 순). */
 async function finishLight(s,mdText,buf,piText){
   const md=mdText?parseMd(mdText):null;if(mdText&&!md)s.warns.push('Surface.flt.md 를 읽지 못해 기본 필드 정의를 씁니다');
@@ -1450,11 +1507,11 @@ async function finishLight(s,mdText,buf,piText){
 async function readLight(sl){const s=newLight(sl.path.replace(/\/$/,''));s.dirs=[sl.h];s.chain=sl.chain;
   const md=await fileFind(s,'Surface.flt.md',true),f=await sl.flt.getFile(),buf=await f.arrayBuffer();
   const pi=await fileFind(s,'ProductInfo.ini',true);
-  return finishLight(s,md?await (await md.get()).text():null,buf,pi?await (await pi.get()).text():await chainText(s,'ProductInfo.ini'))}
+  return finishLight(s,md?await readText(await md.get()):null,buf,pi?await readText(await pi.get()):await chainText(s,'ProductInfo.ini'))}
 /** <input webkitdirectory> 로 고른 경우(폴더 핸들을 못 쓰는 브라우저): 브라우저가 만든 파일 목록에서. */
 async function buildLight(name,own){const s=newLight(name);s.paths=new Map();
   for(const e of own.files){const k=lower(baseName(e.path));if(/\.(jpe?g|png|bmp)$/.test(k))s.images++;if(!s.files.has(k)){s.files.set(k,e.file||e.handle);s.paths.set(k,e.path)}}
-  const text=async n=>{const f=await fileFind(s,n,true);return f?(await f.get()).text():null};
+  const text=async n=>{const f=await fileFind(s,n,true);return f?readText(await f.get()):null};
   const flt=await fileFind(s,'Surface.flt',true);
   return finishLight(s,await text('Surface.flt.md'),await (await flt.get()).arrayBuffer(),await text('ProductInfo.ini'))}
 /** 읽은 Slot 들을 목록에 넣는다(같은 Slot 폴더를 다시 고르면 바꿔 넣음). 이름 = unitOfPath / planUnits. */
@@ -1604,7 +1661,7 @@ async function b5Pair(save){
   BIG.stop=false;S.o=opts();grayMemo.clear();THUMB.clear();const par=+$('#bigPar').value||4,t0=performance.now(),N=V.m,cancel=()=>{BIG.stop=true};
   const items=new Array(N);for(let k=0;k<N;k++){const j=V.ord[k];items[k]={k,s:V.src[V.gs[j]],i:V.gi[j],st:'skip',c:null,g:null,cerr:'중지로 확인 안 함',gerr:''}}
   const bySlot=new Map();for(const p of items){(bySlot.get(p.s)||bySlot.set(p.s,[]).get(p.s)).push(p)}
-  const slots=[...bySlot.keys()],cnt={ok:0,color:0,gray:0,none:0};let ds=0,di=0,cur='',step=0;
+  const slots=[...bySlot.keys()],cnt={ok:0,color:0,gray:0,none:0},hows={'좌표':0,'어긋남 보정 좌표':0,'번호(Index)':0,'가장 가까운 Color(확인 필요)':0};let ds=0,di=0,cur='',step=0;
   const show=()=>busy({title:'5-2 사진 짝짓기',steps:STEPS_B,step,done:di,total:N,unit:'Defect',files:`Slot ${ds} / ${slots.length} 끝 · 짝 완료 ${cnt.ok} · Color 만 ${cnt.color} · Gray 만 ${cnt.gray} · 둘 다 없음 ${cnt.none}`,detail:cur,cancel});
   const pr=throttle(show,80);busy({title:'5-2 사진 짝짓기',steps:STEPS_B,step:0,done:0,total:N,unit:'Defect',files:`Slot ${slots.length}개`,detail:'',cancel,reset:true});
   FS.note=t=>{cur=t;pr()};
@@ -1615,7 +1672,7 @@ async function b5Pair(save){
         const d=bigDef(s,p.i),c=linkColor(d,s,S.o.ctol),g=locateGray(d.X,d.Y,d.recipe,s,S.o);
         cur=`파일 확인: ${s.name} · ID ${d.no}`;
         const cf=c?await fileFind(s,c.c.file):null,gf=g.frame?await fileFind(s,g.frame.file):null;
-        p.c=c&&cf?{file:cf.name,path:cf.path,how:c.how}:null;p.cerr=!c?'Color 연결 실패(ColorImageGrabingInfo 에 맞는 항목 없음)':!cf?`Color 파일 없음: ${cleanName(c.c.file)}`:'';
+        p.c=c&&cf?{file:cf.name,path:cf.path,how:c.how}:null;p.cerr=!c?`Color 연결 실패: ${colorWhy(d,s,S.o.ctol)}`:!cf?`Color 파일 없음: ${cleanName(c.c.file)}`:'';if(c)hows[/^좌표/.test(c.how)?(/보정/.test(c.how)?'어긋남 보정 좌표':'좌표'):/^Index/.test(c.how)?'번호(Index)':'가장 가까운 Color(확인 필요)']++;
         p.g=g.frame&&gf?{file:gf.name,path:gf.path,px:g.px,py:g.py,model:g.model}:null;p.gerr=!g.frame?`Gray: ${g.reason}`:!gf?`Gray 파일 없음: ${cleanName(g.frame.file)}`:'';
         p.st=p.c&&p.g?'ok':p.c?'color':p.g?'gray':'none';cnt[p.st]++;di++;pr()}
       ds++;pr()});
@@ -1623,6 +1680,10 @@ async function b5Pair(save){
     BIG.pairs=items;BIG.stale=false;BIG.pairOpt=pairKey(S.o);
     const sec=((performance.now()-t0)/1000).toFixed(1),skip=N-di;
     $('#b5pairSt').innerHTML=`<div class="msg ${skip?'warn':'ok'}">${esc(`Defect ${N.toLocaleString()}개 짝짓기 끝 (${sec}초): 짝 완료 ${cnt.ok} · Color 만 ${cnt.color} · Gray 만 ${cnt.gray} · 둘 다 없음 ${cnt.none}`+(skip?` · 중지로 확인 안 함 ${skip}`:''))}</div>`;
+    const hw=Object.entries(hows).filter(([,v])=>v).map(([k,v])=>`${k} ${v.toLocaleString()}`).join(' · ');
+    if(hw)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg ${hows['가장 가까운 Color(확인 필요)']?'warn':'ok'}">${esc('Color 연결 방법: '+hw)}</div>`);
+    const notes=slots.filter(s=>s.colorNote&&(s._cm&&(s._cm.kind!=='coord'||s._cm.named||s._cm.direct<s._cm.n))).map(s=>`${s.slotName||s.name}: ${s.colorNote}`);
+    if(notes.length)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg warn">${esc('Color 기준(좌표가 그대로 맞지 않은 Slot): '+notes.slice(0,6).join(' / ')+(notes.length>6?' …':''))}</div>`);
     b5Refresh();b5tabs();
     if(save&&!skip){const r=await saveCsv(pairCsv(),csvName(),false,save.h);$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg ok">CSV ${esc(r)}</div>`)}
     else if(save&&skip)$('#b5pairSt').insertAdjacentHTML('beforeend','<div class="msg warn">중지해서 CSV 를 자동 저장하지 않았습니다. 지금까지 결과를 저장하려면 [CSV 저장]을 누르십시오.</div>');
@@ -1792,7 +1853,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

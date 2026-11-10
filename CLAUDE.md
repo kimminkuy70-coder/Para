@@ -59,6 +59,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     5-1 `bigPickHandle` → `walkFast`(폴더마다 `getFileHandle('Surface.flt')`, Slot 안 목록 안 만듦, `pool` 동시 `#bigPar`) → `readLight`(Surface.flt + .md + ProductInfo(Slot → 위 폴더 `chainText`)) → `bigBuild`/`VA`.
     5-2 `b5Start`(누른 직후 `pickSave`) → `b5Pair`(`ensureImg` · `linkColor` · `locateGray` + `fileFind` 파일 확인, 픽셀 안 읽음, `BIG.pairs.st`) → `pairCsv`(경로 + `#bigBase`) · `saveCsv`(file:// 에서 a[download] 이름이 'download' 로 바뀌어 저장 위치 고르기 우선).
     5-3 `c5Show`(`stLog` 진행 기록) · `c5Grid`/`prepThumb`/`c5PrepAll`. 가상 표 `makeVT`(선택만 바뀌면 줄을 다시 만들지 않음 — 다시 만들면 dblclick 이 안 옴). 로딩창 `busy` = steps · cancel · `#busyH`(경과 · 마지막 진행 · 속도 · 남은 시간 · 화면 멈춤), `FS.note`.
+    rev2 **Color 연결**(소유자 확정 "Color 정보는 어떤 경우에도 있다 · 사진은 모두 Slot 폴더 안"): `colorModel(scan, ctol)`(스캔마다 기억 `scan._cm` — 좌표 기준 x/y · ActualX/Y, 일정한 어긋남 dx/dy = 번호 규칙 짝의 중앙값 또는 좌표 차 투표, 1:1 번호 규칙만(`id` 전부 1 이면 제외), `scan.colorNote`)
+    → `linkColor` = ① 보정 좌표 허용오차 ② 번호 ③ 가장 가까운 것 중 사진 범위(`cHalf`) 안('확인 필요'), 못 붙이면 `colorWhy`. ini 없으면 `colorsFromNames`(Slot 폴더 `X.Y.c.….jpeg`), 글 읽기 = `readText`(UTF-8 · UTF-16 · EUC-KR). 종전 `indexRule` 삭제.
+    실제 결과 폴더 = 브랜치 `version_graylevel_simulation` 의 `사진 제외.zip`(Slot 1개, 353 Defect = Color 353, FaultX/Y = Surface x/y, Index = 기록 순서, id 전부 1, resultID = 원본(354) 번호라 못 씀).
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.

@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Contrast Wizard rev2: Gray 는 찾는데 Color 를 못 찾던 문제 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 소유자: "흑백은 있는데 컬러를 못 찾는 게 이해가 안 된다. Color 만 없는 경우는 없다. Contrast 가 있으면 좌표가 있고 그걸로 컬러를 찾게. 먼저 조사부터 보고." → 보고 후 "모든 사진 경로는 슬롯 폴더 안에 있어".
+- 조사: `version_graylevel_simulation` 의 `사진 제외.zip` — 353 Defect = Color 353, 좌표 0 µm 일치, Index = 기록 순서. 원래 · rev1 · rev2 모두 이 자료 그대로면 353/353(실패 재현 안 됨).
+  실패를 만든 조건: Color 좌표가 일정하게 어긋남(세 파일 모두 Color 0 · Gray 353) · ini 가 UTF-16(rev1 · rev2 'Color 파일 없음' 353).
+- 한 일(rev2 만 — 원래 파일 · rev1 은 다른 세션 소관이라 안 건드림): `colorModel`/`linkColor`/`colorWhy`/`colorsFromNames`/`readText`. 위 조건 + Index 없음 · 흔들림 · ini 없음 모두 353/353 맞는 Color.
+- 시험: `node tools/test_contrast_wizard_rev2.mjs` 통과(Color 연결 조건 5가지 + 글 인코딩).
+- 남은 일: 소유자가 본 화면(파일 · 문구)은 아직 못 받음 — 소유자 PC 에서 rev2 5-2 의 'Color 연결 방법' 줄로 확인. 원래 파일 · rev1 에도 넣을지 결정.
+
 ## 최신 재개 — Contrast Wizard rev2: Step 5 3단계 새 파일 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 이슈 없음(소유자 세션 대화). 파일 `AOI_Contrast_Wizard_rev2.html` + `tools/test_contrast_wizard_rev2.mjs` 만 새로 추가 — 원래 파일 · rev1 은 손대지 않음.

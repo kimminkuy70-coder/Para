@@ -49,6 +49,33 @@ assert.equal(pu.sum,"폴더 'RCP' → Lot 2개(LOTA, LOTB)");
 assert.deepEqual(pu.lot.map(x=>x.slice(0,2)),[['LOT','W01'],['LOT','W02']]);
 assert.deepEqual(pu.slot.map(x=>x.slice(0,2)),[['W07','W07']]);
 assert.deepEqual(pu.ca.map(x=>x.slice(0,2)),[['RUN/CA20','CA20'],['RUN/CA27','CA27']]);
+// Color 연결(2026-11-10 소유자 "Color 이미지 정보는 어떤 경우에도 있다 · 사진은 모두 Slot 폴더 안"): Gray 는 찾는데 Color 를 못 찾던 조건들 —
+//  실제 결과 폴더(사진 제외.zip)를 본뜬 합성: id 전부 1, Color Index = 기록 순서. ① 좌표 그대로 ② 100 µm 어긋남 ③ 어긋남 + Index 없음 ④ 어긋남 + 항목마다 ±8 µm 흔들림 ⑤ 사진 이름만(ini 없음)
+const ck=await page.evaluate(async()=>{const c=window.__cw,N=120;let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  const D=Array.from({length:N},(_,i)=>[100000+((i*9973)%60000)+rnd()*500,120000+((i*7919)%50000)+rnd()*500]);
+  const scan=(colors)=>{const s={id:900+N*Math.random(),colors,colorByIndex:new Map(),defects:[]};for(const x of colors)if(x.index!=null&&!s.colorByIndex.has(x.index))s.colorByIndex.set(x.index,x);
+    s.defects=D.map((p,i)=>({i,id:1,resultID:134217728+i*2,x:p[0],y:p[1],ActualX:p[0],ActualY:p[1],X:p[0],Y:p[1],scan:s}));return s};
+  const col=(f)=>D.map((p,i)=>({file:`c${i}.jpeg`,...f(p,i),w:1380,h:1036,psx:.4624,psy:.4622}));
+  const run=s=>{let right=0,none=0;const how={};for(const d of s.defects){const r=c.linkColor(d,s,5);if(!r){none++;continue}if(r.c.file===`c${d.i}.jpeg`)right++;const h=r.how.replace(/[-\d.]+/g,'#');how[h]=(how[h]||0)+1}return {right,none,how}};
+  const out={};
+  out.same=run(scan(col((p,i)=>({x:p[0],y:p[1],index:i}))));
+  out.off=run(scan(col((p,i)=>({x:p[0]+100,y:p[1],index:i}))));
+  out.offNoIdx=run(scan(col((p,i)=>({x:p[0]+100,y:p[1]-40,index:null}))));
+  out.jitter=run(scan(col((p,i)=>({x:p[0]+100+(rnd()-.5)*16,y:p[1]+(rnd()-.5)*16,index:null}))));
+  const named=c.colorsFromNames(D.map((p,i)=>`${Math.floor(p[0])}.${Math.floor(p[1])}.c.${-1000-i}.jpeg`).concat(['-56211.70388.t.jpeg','x.jpeg']));
+  const sn=scan(named);out.named={n:named.length,...(()=>{let right=0;for(const d of sn.defects){const r=c.linkColor(d,sn,5);if(r&&r.c.file.endsWith(`.c.${-1000-d.i}.jpeg`))right++}return {right}})()};
+  const far=scan([{file:'z.jpeg',x:0,y:0,index:null}]);out.far=[c.linkColor(far.defects[0],far,5),c.colorWhy(far.defects[0],far,5)];
+  // UTF-16(BOM) · UTF-16(BOM 없음) · UTF-8 BOM · EUC-KR ini 도 같은 글로 읽음
+  const txt='[203335.203642.c.-1448302202.jpeg]\r\nFaultX=203335.06\r\nIndex=0\r\n',u16=new Uint8Array(txt.length*2);for(let i=0;i<txt.length;i++)u16[i*2]=txt.charCodeAt(i);
+  out.text=[await c.readText(new Blob([new Uint8Array([0xFF,0xFE]),u16])),await c.readText(new Blob([u16])),await c.readText(new Blob([new Uint8Array([0xEF,0xBB,0xBF]),new TextEncoder().encode(txt)]))].map(s=>s===txt);
+  out.parsed=c.parseColors(await c.readText(new Blob([new Uint8Array([0xFF,0xFE]),u16])))[0];
+  return out});
+for(const k of ['same','off','offNoIdx','jitter'])assert.deepEqual([ck[k].right,ck[k].none],[120,0],k+' '+JSON.stringify(ck[k]));
+assert.deepEqual(Object.keys(ck.same.how),['좌표(# µm)']);
+assert.ok(Object.keys(ck.off.how).every(h=>/어긋남 #, # µm 보정/.test(h)),JSON.stringify(ck.off.how));
+assert.deepEqual(ck.named,{n:120,right:120});
+assert.equal(ck.far[0],null);assert.match(ck.far[1],/가장 가까운 Color z\.jpeg 도 \d+ µm 떨어져 사진 범위 밖/);
+assert.deepEqual(ck.text,[true,true,true]);assert.deepEqual([ck.parsed.file,ck.parsed.x,ck.parsed.index],['203335.203642.c.-1448302202.jpeg',203335.06,0]);
 // 폴더 등록
 // Para #59: 등록 중 로딩창이 'Slot 폴더 k / N' · '파일 x / M' 을 실시간으로 보여 주고, 끝나면 닫힌다
 const prog=await page.evaluate(async fx=>{const f=JSON.parse(fx),seen=[],el=document.getElementById('busy');
@@ -172,7 +199,7 @@ const r1=t.find(x=>/\|1\|200498\.0/.test(x));assert.ok(r1,t.join('\n'));assert.m
 // CSV
 const csv=await page.evaluate(()=>window.__cw.csvText());
 assert.ok(csv.startsWith('﻿구분,ID'));
-assert.match(csv,/CA20 - CA27,3,103,5000\.00,5000\.00.*C2\.c\.1\.jpeg,Index 3 \(id\),,,,좌표 변환 보정 필요/);
+assert.match(csv,/CA20 - CA27,3,103,5000\.00,5000\.00.*C2\.c\.1\.jpeg,Index 3 \(id · 좌표 없음\),,,,좌표 변환 보정 필요/);
 assert.match(csv,/CA20 - CA27,4,104,.*,,연결 실패,/);
 assert.match(csv,/CA27 - CA20,9,109,.*,,연결 실패,/);
 assert.match(csv,/CA20 ∩ CA27,2,102,1100\.00,200\.00.*C1\.c\.1\.jpeg,좌표\(0\.0 µm\),F1\.t\.1\.jpeg,1100\.0,200\.0,transform/);
@@ -360,7 +387,7 @@ const csv5=sv.saved.text;
 assert.equal(csv5.trim().split('\r\n').length,8);
 assert.ok(csv5.includes('Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA20\\W01\\C1.c.1.jpeg'),csv5);
 assert.ok(csv5.includes('Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA20\\W01\\F1.t.1.jpeg,1100.0,200.0,frameToChuckPlane'),csv5);
-assert.match(csv5,/Color 만 \(Gray 없음\),LOT_CA20,RCP\/SETUP1\/LOT_CA20,W01,3,.*C2\.c\.1\.jpeg.*Index 3 \(id\).*Gray: 좌표 변환 보정 필요/);
+assert.match(csv5,/Color 만 \(Gray 없음\),LOT_CA20,RCP\/SETUP1\/LOT_CA20,W01,3,.*C2\.c\.1\.jpeg.*Index 3 \(id · 좌표 없음\).*Gray: 좌표 변환 보정 필요/);
 assert.deepEqual(await page.locator('#b5sum .kpi b').allInnerTexts(),['2','1','0','4']);   // 짝 완료 · Color 만 · Gray 만 · 둘 다 없음
 assert.match(await page.locator('#b5pairSt').innerText(),/Defect 7개 짝짓기 끝[\s\S]*CSV 저장: Defect_짝_RCP_/);
 const rd1=await page.evaluate(rd0=>window.__fsLog.reads.slice(rd0),rd0);
