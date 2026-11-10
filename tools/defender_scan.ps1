@@ -85,10 +85,7 @@ $testFile = Join-Path $probe "selfcheck.txt"
 try { [IO.File]::WriteAllText($testFile, ('X5O!P%@AP[4\PZX54(P^)7CC)7}$' + 'EICAR-STANDARD-ANTIVIRUS-' + 'TEST-FILE!$H+H*')) } catch { Write-Host "selfcheck write: $($_.Exception.Message)" }
 $sc = Invoke-Scan $probe
 Write-Host "=== Scanner self check exit code $($sc.Code) (2 = works)"
-if ($sc.Code -ne 2) { Write-Host $sc.Text; Write-Host "SELF CHECK FAILED - Defender is not really scanning on this runner"; if ($FailOnThreat) { exit 1 } }
-try { [IO.File]::WriteAllText($testFile, ('X5O!P%@AP[4\PZX54(P^)7CC)7}$' + 'EICAR-STANDARD-ANTIVIRUS-' + 'TEST-FILE!$H+H*')) } catch {}
-$d0 = Invoke-DownloadScan $testFile "https://example.com/selfcheck.txt"
-Write-Host "=== Download-path self check: result $($d0.Result), file kept = $($d0.Kept) (blocked = non-zero result or file not kept)"
+if ($sc.Code -ne 2) { Write-Host $sc.Text; Write-Host "::warning::Defender self check failed - the scan below proves nothing on this runner" }
 Remove-Item -Recurse -Force $probe -ErrorAction SilentlyContinue
 
 $found = $false

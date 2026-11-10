@@ -47,3 +47,11 @@ jobs:
       - name: Scan again with cloud block level High (stricter than an ordinary PC)
         shell: pwsh
         run: ./tools/defender_scan.ps1 -Folder scan -Deep -CloudBlockLevel High
+
+      - name: Scan again with cloud block level HighPlus
+        shell: pwsh
+        run: ./tools/defender_scan.ps1 -Folder scan -Deep -CloudBlockLevel HighPlus
+
+      - name: Scan again with cloud block level ZeroTolerance (blocks every unknown program)
+        shell: pwsh
+        run: ./tools/defender_scan.ps1 -Folder scan -Deep -CloudBlockLevel ZeroTolerance
