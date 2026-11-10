@@ -8,6 +8,7 @@
 - 한 일: `fastWalk` — 폴더마다 `getFileHandle('Surface.flt')` 로 먼저 묻고, 있으면 Slot(그 안은 나열 안 함, Surface.flt(+ .md) 만), 없으면 그 폴더 이름 목록(사진 제외)만 보고 내려감. Slot 안의 나머지는 3단계 `fullScan` 이 결정한 Slot 만 나열(`LAZY` · `s.lazy`). Lot 표 이미지 수 = '안 셈'.
 - 시험: `node tools/test_contrast_wizard_rev1.mjs` 3회 연속 통과(1단계 = Slot 마다 Surface.flt(+ .md) 4개만, Slot 폴더 이름 목록 안 나열, 3단계 결정한 Slot 의 Color · Gray 목록 정상). 실제 네트워크 드라이브 속도는 미측정(이 환경에 없음).
 - 한계: 예전 폴더 고르기 창(webkitdirectory, showDirectoryPicker 가 없는 브라우저)은 브라우저가 모든 파일 목록을 만들어 빨라지지 않음.
+- 질문 답(소유자 "처음에 경로 지정해 주는데 브라우저가 왜 모르나"): 브라우저 보안 규칙 — showDirectoryPicker · webkitdirectory 는 고른 폴더의 **이름**(예 `BIG`)과 그 아래 상대 경로만 주고 `D:\...` 같은 PC 전체 경로는 주지 않는다(File System Access API · File 객체에 절대 경로 없음, 끌어 넣기도 같음). HTML 로는 얻을 방법이 없어 PC 경로를 한 번 적게 함(localStorage 기억). 데스크톱 앱(Tauri 셸)으로 옮기면 경로를 알 수 있음. 폴더를 고를 때 PC 경로 칸을 바로 띄우는 개선은 제안만 함(확인 전).
 - 내 해석(확인 전): Slot 폴더 = Surface.flt 가 바로 들어 있는 폴더(종전과 같음), Slot 폴더 안 하위 폴더에는 다른 Slot 이 없다고 봄.
 
 | 이슈 | 요청 | 결과 |
