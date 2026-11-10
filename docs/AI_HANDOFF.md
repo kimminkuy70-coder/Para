@@ -42,6 +42,10 @@
 - 소유자 질문(2026-11-10) "WebSocket 대신 SSE 로 한 것 보안 괜찮나?" → 답만(코드 변경 없음): SSE 는 일반 HTTP GET 이라 브라우저 CORS 규칙을 그대로 받음(다른 사이트가 스트림을 못 읽음, 우리는 CORS 헤더를 안 보냄) —
   WebSocket 은 CORS 를 안 받아 서버가 Origin 을 직접 막아야 하는 '교차 사이트 WebSocket 탈취' 위험이 있어 오히려 SSE 가 단순 · 안전. 남은 약점 = 이벤트 스트림 토큰이 주소(`?t=`)에 실림(EventSource 는 헤더를 못 붙임) · server.json 에 토큰(같은 사용자만 읽음) · 루프백 HTTP 평문.
   보강안(소유자 선택 대기): 토큰을 HttpOnly · SameSite=Strict 쿠키로 옮겨 주소에서 없애기, `Sec-Fetch-Site: same-origin` 검사 추가.
+- 소유자: "그 보안 이슈는 related-AOI-program 에 있을 것" → 그 저장소 전 브랜치 문서 · 이슈 #1~#38 · 댓글을 찾았으나 '파이썬 숨김 실행' 연락 기록은 없음. 관련 기록 = #15 · #17(PyInstaller exe 가 Defender 트로이 목마로 삭제 · 실행 중 종료)
+  → #18(v10: python.org 서명 Python 동봉 + .vbs 가 `pythonw.exe -E -s app.py` 실행, exe 없음) — v13 과 같은 방식. 연락 원문은 여전히 소유자에게 요청 중.
+- 소유자 재질문 "SSE 가 **회사 보안(규정)** 에 저촉되지 않나?" → 답: SSE · WebSocket 은 둘 다 127.0.0.1 루프백 통신이라 규정상 차이 없음. v12(Tauri, stdio 파이프 = 포트 없음) 대비 v13 은 **루프백 포트를 하나 연다**는 점이 새로 생김
+  (외부 접속 · 인터넷 전송 없음, 방화벽 창 없음, Teams · VS Code 등도 쓰는 방식). 회사가 '듣는 포트 금지'면 대안 = related-AOI-program 처럼 pywebview(WebView2 를 Python 안에, 포트 없음 — 회사에서 이미 쓰는 방식). IT 에 `IT보안_검토자료.md` v13 절로 확인 권장.
 - **남은 일(7단계, 소유자 실기)**: 회사 PC 에서 ① 설치 zip 받기(Defender) ② Win+R 첫 실행 · 바로가기 ③ 고르기 창 · 끌어 넣기 · 트레이 ④ 다음 릴리스로 [지금 업데이트](GitHub 접속 · 회사 프록시). Windows 부분은 이 환경에서 확인 못 함.
 - 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ ~~6~~ → 7 소유자 실기 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
