@@ -34,6 +34,8 @@
   시험 정리: `test_kla_cache` 날짜 고정(2026-11-05)이 3일 지나 실패하던 것 → 오늘 날짜 기준, `test_engine` 샘플(.xlsm, 저장소 밖) 없으면 건너뜀(`PARA_ENGINE_SAMPLE`). 이제 Python 시험 실패 0.
   보안 문서: `IT보안_검토자료.md` 맨 위 v13 절, `보안_라이선스_검토.md` 머리 정정. 릴리스 노트 `docs/release_notes/v13.0.0.md`.
   화면 통합 시험(`tools/test_desktop_ui.mjs`)은 이 세션에서 **원인 모를 실패 2번**(출력 못 남김) 뒤 연속 3번 통과 — 다시 나면 출력을 저장해 볼 것.
+- **v13.0.0 릴리스 완료**(2026-11-10, CI run 42855698361, 커밋 `1494bc8`): https://github.com/kimminkuy70-coder/Para/releases/tag/v13.0.0 · 자산 `Camtek_AOI_manager_v13.0.0_install.zip`(약 12.5MB).
+  CI: Python 시험 · dist 일치 · python.exe/pythonw.exe/python311.dll PSF 서명 Valid · embeddable 로 엔진 import 성공 · **runner Defender(서명 1.463.227.0): zip · 푼 폴더 모두 위협 없음**. (첫 run 은 runner 콘솔 cp1252 에서 한글 파일 이름 print 실패 → 자산 이름 ASCII `_install.zip` + `PYTHONUTF8`.)
 - **남은 일(7단계, 소유자 실기)**: 회사 PC 에서 ① 설치 zip 받기(Defender) ② Win+R 첫 실행 · 바로가기 ③ 고르기 창 · 끌어 넣기 · 트레이 ④ 다음 릴리스로 [지금 업데이트](GitHub 접속 · 회사 프록시). Windows 부분은 이 환경에서 확인 못 함.
 - 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ ~~6~~ → 7 소유자 실기 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
