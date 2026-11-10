@@ -1,0 +1,45 @@
+name: Defender scan of release zips (diagnosis)
+
+# Scans published release zips with the Windows Defender that ships on the
+# GitHub Windows runner, to find WHICH file inside a zip is detected
+# (Para: v12.9.30+ zips blocked as Wacatac ...!ml while v12.9.29 downloads).
+# Read-only: downloads release assets, scans, prints the verdicts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Space separated versions, e.g. 12.9.29 12.9.30"
+        required: true
+        default: "12.9.29 12.9.30 12.9.31 12.9.32"
+  push:
+    paths:
+      - ".github/workflows/defender-scan.yml"
+      - "tools/defender_scan.ps1"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release zips
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $versions = "${{ github.event.inputs.versions }}"
+          if (-not $versions) { $versions = "12.9.29 12.9.30 12.9.31 12.9.32" }
+          New-Item -ItemType Directory -Force scan | Out-Null
+          foreach ($v in $versions.Split(" ", [StringSplitOptions]::RemoveEmptyEntries)) {
+            gh release download "v$v" --repo "${{ github.repository }}" --pattern "*.zip" --dir scan
+          }
+          Get-ChildItem scan | Format-Table Name, Length
+
+      - name: Scan
+        shell: pwsh
+        run: ./tools/defender_scan.ps1 -Folder scan
