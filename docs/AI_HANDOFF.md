@@ -9,7 +9,8 @@
 - 후속 지시 "이전 보안 이슈 다시 검토, 저촉 점검" → 계획서 11절: 과거 사고(Anaconda 경고 · net use 로 exe 삭제 · OneDrive 대량 접근 경고) + #31/#58 Trojan:Script + 런타임 인터넷 금지 원칙 기준 점검. 저촉 = OneDrive 안 설치 · pycache · .bat 5개/배포 zip 범위 · GitHub 다운로드. 제안 = 업데이트 기본 통로를 OneDrive 소스 zip(exe 없음)으로, 설치 위치 고정 · OneDrive 안 실행 거부, 127.0.0.1 만, Edge remote-debugging 금지.
 - **소유자 확정(2026-11-10)**: 업데이트 = GitHub 메인, 이때만 인터넷 다운로드 허용(원칙 예외) → 계획서 4-1절(범위: 이 저장소 하나 · 확인 + 소스 zip 만 · TLS 검증 필수 · 토큰 없음 · 실행 파일 들어 있으면 거부 · 받기는 버튼 때만). 저장소 공개 필요 여부 질문 → 토큰 없이 받으려면 공개 필요, 지금 이미 공개(GitHub API `private=false`). OneDrive 는 보조.
 - 후속 질문 "OneDrive 로 하면 업데이트가 어떻게 되나?" → 답만(코드 변경 없음): 개발자가 릴리스마다 소스 zip(실행 파일 없음)을 앱 [게시] 로 `프로그램/` 에 올리고 `버전정보.json`(버전 · 크기 · SHA-256) 기록 → 사용자 앱은 그 json 만 읽어 확인 → [업데이트] 때 로컬 Temp 복사 · SHA-256 확인 → `app.new` → 다음 실행 때 교체. v12 와 같고 내용만 exe → 소스. 장점 = 인터넷 불필요, 단점 = 게시가 사람 손(Actions 는 OneDrive 에 못 씀) · 동기화 지연. 계획 4-1 의 보조 통로가 이것.
-- 남은 일: 9절 질문 + 10절 A/B/C 선택 답을 받은 뒤 `version_v13` 생성 · 구현.
+- **소유자 답(2026-11-10)**: GitHub 메인 · OneDrive 보조 / 회사 PC 에서 GitHub 열림 / Edge 앱 창 OK / 릴리스 태그만 + 버튼 적용 OK + **켤 때마다 새 판 알림 창** 추가 요청 / tkinter v13 에서 삭제 · v12 보존 OK. Python 동봉(안 C)만 최종 답 대기. 검토 결과 → 계획서 12절(GitHub API 시간당 60회 제한 → tags.atom 으로 확인).
+- 남은 일: 안 C(Python 동봉) 확인 + 구현 시작 지시를 받은 뒤 `version_v13` 생성 · 구현.
 
 ## 최신 재개 — V13 계획(git clone 설치 · 업데이트, 자체 exe 없음, tkinter 제거) 검토 대기 (2026-11-10 KST, `version_v12`)
 
