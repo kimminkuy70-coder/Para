@@ -444,6 +444,8 @@ const s1=await page.evaluate(async fx=>{const f=JSON.parse(fx),listed=[],fh=(nam
   const mk=name=>({kind:'directory',name,kids:new Map(),async *entries(){listed.push(this.name);yield* this.kids},async getFileHandle(n){const h=[...this.kids.values()].find(k=>k.kind==='file'&&k.name.toLowerCase()===n.toLowerCase());if(!h)throw new Error('NotFound');return h}});
   const root=mk('S1');for(const [p,b] of Object.entries(f)){if(!p.startsWith('CA20/LOTA/W01/'))continue;const segs=p.replace('CA20/LOTA','CA41/LOTQ').split('/');let d=root;
     for(const s of segs.slice(0,-1)){if(!d.kids.has(s))d.kids.set(s,mk(s));d=d.kids.get(s)}d.kids.set(segs.at(-1),fh(segs.at(-1),b))}
+  // Lot ~ Slot 사이 폴더(LOTQ)에 다른 wafer 의 목록 · 변환 파일이 있어도 Slot 자기 파일을 써야 한다(소유자 '좌표가 하나도 안 맞아')
+  const mid=root.kids.get('CA41').kids.get('LOTQ');for(const [n,t] of [['ColorImageGrabingInfo.ini','[X.c.9.jpeg]\nFaultX=999999\nFaultY=999999\nIndex=0\n'],['ScanResultImageList.txt','Version=1\nZ.t.9.jpeg,900000,900000\n'],['frameToChuckPlane.ini','Scan_X=9 0 0\nScan_Y=0 9 0\n']])mid.kids.set(n,fh(n,btoa(t)));
   window.showDirectoryPicker=async()=>root;const c=window.__cw,n0=c.state.scans.length;
   document.getElementById('addBtn').click();for(let i=0;i<100&&c.state.scans.length===n0;i++)await new Promise(r=>setTimeout(r,50));
   const w=c.state.scans.at(-1),img=await c.fileGet(w,'C1.c.1.jpeg');

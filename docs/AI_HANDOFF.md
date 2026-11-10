@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #61 후속 7: rev1 3단계 좌표 · 사진 안 맞던 원인 수정(Slot 자기 .ini 먼저) (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `b23aff0` · 이슈 Para #61(소유자 세션 대화) · 파일 `AOI_Contrast_Wizard_rev1.html` 만.
+- 소유자: "기존 방식대로 — 리스트가 결정되면 1, 2, 3, 4 처럼 컬러 이미지 · 흑백 이미지가 나오게. 지금 안 된다." / "좌표 보정이고 뭐고 하나도 안 맞아."
+- 원인(찾음): 빠른 폴더 열기(`fastWalk`)는 Slot 폴더 안을 나중에 나열하는데, `fullScan` 이 Lot ~ Slot 사이 폴더(S/M 폴더 등)의 같이 쓰는 파일을 **먼저** 넣고 Slot 자기 파일은 같은 이름이면 버렸다. 사이 폴더에 다른 wafer 의 ColorImageGrabingInfo · ScanResultImageList · frameToChuckPlane · ProductInfo 가 있으면 모든 Defect 가 남의 목록 · 변환으로 계산돼 Color/Gray 연결 · 좌표가 어긋남. Step 1 ~ 4(예전 webkitdirectory)는 Slot 자기 파일이 먼저라 맞았다. 저장소 zip 은 사이 폴더가 없어 재현되지 않았던 것.
+- 한 일: `fullScan` 순서 = Slot 자기 파일(사진 포함, `walkAll` → File) 먼저 → 사이 폴더 파일. 결정한 Slot 은 사진까지 File 목록에 넣어 Step 1 ~ 4 와 같은 방식으로 사진을 찾음(볼 때 폴더에서 다시 찾지 않음). 리뷰 패널의 'Color 이미지 연결 실패' 대신 이유(`colorWhy` · `fileWhy`). Step 1 빠른 열기(`unitScan`)도 같은 길이라 함께 고쳐짐.
+- 시험: `node tools/test_contrast_wizard_rev1.mjs` 3회 연속 통과. 새 시험 = 사이 폴더에 가짜 ColorImageGrabingInfo(1항목) · ScanResultImageList(1프레임) · frameToChuckPlane 을 두고 Slot 것(2 · 2)을 쓰는지 — 고치기 전 코드로 돌리면 `[1, 1, 1, 4]` 로 실패하는 것 확인.
+- 릴리스: 없음.
+- 남은 일: 소유자 PC 에서 3단계 사진 · 좌표 확인.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #61 후속 7 | 3단계 사진 · 좌표가 안 맞음 | 원인 = 사이 폴더 .ini 우선 → Slot 자기 파일 먼저로 수정, 시험 통과 |
+
 ## 최신 재개 — Para #61 후속 6: rev1 3단계 Slot 별 취합 결과 표(.ini · 이미지 연결 · 사진 파일 확인) (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `00f6118` · 이슈 Para #61(소유자 세션 대화) · 파일 `AOI_Contrast_Wizard_rev1.html` 만.
