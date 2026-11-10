@@ -374,7 +374,7 @@ export function Batch({active}:{active:boolean}){
           {v.artifacts.html&&<OpenPath label="HTML" path={v.artifacts.html}/>}{v.artifacts.dashboard&&<OpenPath label="가동률 대시보드" path={v.artifacts.dashboard}/>}
           {v.artifacts.outdir&&<OpenPath label="결과 폴더" path={v.artifacts.outdir} folder/>}</div></details>}
         <div className={'cache-drop'+(dropOver?' over':'')} aria-label="Batch Report 캐시 가져오기" data-tour="batch:cache-import"
-          onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();notify('데스크톱 앱 창에 끌어 넣거나 [zip 찾기…]로 고르세요.','info');}}>
+          onDragOver={e=>e.preventDefault()}>
           <div className="cache-drop-head"><span className="cache-drop-ic" aria-hidden="true">⇩</span>
             <div className="grow"><b>Batch Report 캐시 가져오기</b><small>개발자가 OneDrive 에 올린 캐시 zip 을 [OneDrive 에서 불러오기]로 고르면 이 PC 로 받아 이 PC 캐시로 불러옵니다 — 장비에 접속해 다시 읽지 않아도 됩니다. 받은 zip 파일을 이 화면에 끌어 넣어도 됩니다.</small></div>
             <button type="button" className="primary" disabled={running||importing||restoring||shareLoading} onClick={()=>void loadShare()}>{shareLoading?'목록 읽는 중…':'OneDrive 에서 불러오기'}</button>

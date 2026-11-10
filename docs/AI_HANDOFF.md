@@ -7,7 +7,12 @@
 - 1단계 결과: tkinter 판 · .bat 5개 · run.py · requirements-build · `frontend/src-tauri` · tools/build_desktop · desktop_bundle · desktop_inventory · build-desktop.yml 삭제, requirements = openpyxl 만.
   시험: GUI 소스를 검사하던 시험 함수만 삭제, net use · 자격 증명 · 장비 간격 시험은 웹 엔진(param_manager 전체 · desktop_watch)을 보도록 옮김.
   남은 실패 2개는 v12 에도 있던 것: `test_engine.py`(샘플 .xlsm 없음) · `test_kla_cache.py` 1건.
-- 다음 단계(계획 7절): 2 로컬 서버 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
+- **2단계 끝**: `param_manager/webserver.py`(stdlib 만) = 127.0.0.1 로컬 서버. 화면→엔진 `POST /api/send`, 엔진→화면 `GET /api/events`(SSE — 계획의 WebSocket 대신 같은 역할의 표준 방식),
+  `POST /api/native`(pick_folder · pick_file · set_background · app_exit), `POST /api/upload`(끌어 넣은 zip → 로컬 Temp, 경로를 화면에 돌려줌). 토큰(실행마다) · Host · Origin · json 만 검사.
+  창이 닫히고 트레이 상주가 아니면 20초 뒤 종료. 엔진은 v12 의 `desktop_boot` · `desktop_ipc.serve` 그대로(`webserver.run_engine`).
+  `frontend/src/desktop.ts` = Tauri 대신 fetch · EventSource(토큰은 `?t=` → sessionStorage, 주소에서 지움), package.json 에서 Tauri 삭제.
+  시험: `tests/test_webserver.py`(9) + `tools/test_desktop_ui.mjs` 가 **진짜 로컬 서버**로 전 화면 통과(`PARA_TEST_NODE_MODULES=/opt/node-tools/node_modules CODEX_PRIMARY_RUNTIME_PYTHON=python3 node tools/test_desktop_ui.mjs`, fixture `web` 모드).
+- 다음 단계(계획 7절): ~~2 로컬 서버~~ + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
 
 ## 최신 재개 — 회사에서 잘 되는 다른 프로그램의 업데이트 방식 분석 → V13 계획 10절 (2026-11-10 KST, `version_v12`)

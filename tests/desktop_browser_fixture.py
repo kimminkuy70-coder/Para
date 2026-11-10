@@ -108,4 +108,23 @@ else:
             self.cmwatch.form.config_path = config
             self.kla.config_path = config
     desktop_ipc.Session = FixtureSession
-    desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)
+    if sys.argv[1] == 'web':
+        # v13: the real local web server (param_manager/webserver.py). Native dialogs are
+        # answered with fixture paths; native calls are echoed on stdout for the harness.
+        from param_manager import webserver
+
+        class FixtureNatives(webserver.Natives):
+            def call(self, command, args):
+                result = super().call(command, args)
+                print(json.dumps({'native': command, 'args': args}, ensure_ascii=False), flush=True)
+                return result
+
+            def pick_file(self, args):
+                return str(Path(sys.argv[2])/'old_plan.xlsx')
+
+        server = webserver.WebServer(upload_dir=Path(sys.argv[2])/'local'/'Temp'/'upload',
+                                     natives_factory=FixtureNatives).start()
+        print(json.dumps({'url': server.url}), flush=True)
+        webserver.run_engine(server, lambda: desktop_ipc)
+    else:
+        desktop_ipc.serve(sys.stdin.buffer, sys.stdout.buffer)

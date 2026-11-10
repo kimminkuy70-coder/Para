@@ -1,5 +1,6 @@
-// No HTTP server. All document requests are fulfilled from the built files.
-// Native Tauri is substituted by a channel adapter to the real Python process.
+// v13: drives the real local web server (param_manager/webserver.py) on 127.0.0.1 with the
+// built screen (frontend/dist) and the real Python engine. Native dialogs are answered by the
+// fixture; native calls are echoed on the engine's stdout. Any other origin is refused.
 import {createRequire} from 'node:module';
 import {mkdtemp, readFile, rm, mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -15,13 +16,16 @@ const fixture=await mkdtemp(join(tmpdir(),'para-ui-'));
 const python=process.env.CODEX_PRIMARY_RUNTIME_PYTHON||'python';
 execFileSync(python,[join(root,'tests/desktop_browser_fixture.py'),'init',fixture]);
 const browser=await chromium.launch({headless:true});
-const engine=spawn(python,[join(root,'tests/desktop_browser_fixture.py'),'serve',fixture],{cwd:root,stdio:['pipe','pipe','pipe']});
-let channel=0, index=0, delivery=Promise.resolve(), dropChannel=0;
+const engine=spawn(python,[join(root,'tests/desktop_browser_fixture.py'),'web',fixture],{cwd:root,stdio:['pipe','pipe','pipe']});
+let delivery=Promise.resolve();
 const page=await browser.newPage({viewport:{width:1440,height:1000}});
 const errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 const lines=createInterface({input:engine.stdout});
-lines.on('line',line=>{const message=JSON.parse(line);const sequence=index++;delivery=delivery.then(()=>page.evaluate(({channel,message,sequence})=>window.__callbacks[channel]({index:sequence,message}),{channel,message,sequence}));});
+let appUrl;const urlReady=new Promise(res=>{lines.on('line',line=>{const m=JSON.parse(line);
+  if(m.url){appUrl=m.url;res();}
+  else if(m.native==='set_background')background=m.args;   // tray residency request
+});});
 // Recipe 관리 holds the recipe workflows as tabs (값 확인 · 업데이트 · 신규 · 양식 편집 · 날짜별 비교).
 // 맨 위 탭(#32) = CAMTEK · KLA · 설정 · 메모 — 설정 · 메모에서는 기능 탭 줄이 없으므로 CAMTEK 을 먼저 누른다.
 async function feature(name){
@@ -31,31 +35,18 @@ async function feature(name){
 async function recipeTab(name){await feature('Recipe 관리');await page.getByRole('tab',{name,exact:true}).click();}
 let stderr='',background={enabled:false,tooltip:''};engine.stderr.on('data',d=>stderr+=d);
 try{
-  await page.exposeBinding('nativeInvoke',async(_,command,args)=>{
-    if(command==='set_background'){background=args;return;}   // tray residency request
-    if(command==='pick_file')return join(fixture,'old_plan.xlsx');   // native Excel picker → fixture plan
-    if(command==='drop_connect'){dropChannel=Number(args.onDrop.split(':')[1]);return;}   // window file-drop channel (이슈 #29)
-    if(command==='desktop_connect'){channel=Number(args.onEvent.split(':')[1]);index=0;return;}  // a new Channel counts from 0, as in Tauri
-    assert.equal(command,'desktop_send');engine.stdin.write(JSON.stringify(args.request)+'\n');
-  });
-  await page.addInitScript(()=>{
-    window.isTauri=true;window.__callbacks={};let next=0;
-    window.__TAURI_INTERNALS__={transformCallback:fn=>{const id=++next;window.__callbacks[id]=fn;return id;},
-      unregisterCallback:id=>delete window.__callbacks[id],
-      invoke:(command,args)=>window.nativeInvoke(command,JSON.parse(JSON.stringify(args)))};
-  });
+  await Promise.race([urlReady,new Promise((_,rej)=>setTimeout(()=>rej(new Error('web server did not start: '+stderr)),30000))]);
+  const appOrigin=new URL(appUrl).origin;
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());
-    assert.equal(url.origin,'https://para.test','External request must never occur');
-    const relative=url.pathname==='/'?'index.html':url.pathname.slice(1);
-    if(relative==='qa-font.otf'&&process.env.PARA_TEST_FONT_PATH){
+    if(url.pathname==='/qa-font.otf'&&process.env.PARA_TEST_FONT_PATH){
       await route.fulfill({body:await readFile(process.env.PARA_TEST_FONT_PATH),contentType:'font/otf'});return;
     }
-    const file=resolve(root,'frontend/dist',relative);
-    assert(file.startsWith(resolve(root,'frontend/dist')+'/'));
-    await route.fulfill({body:await readFile(file),contentType:({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(file)]||'application/octet-stream'});
+    assert.equal(url.origin,appOrigin,'External request must never occur');
+    await route.continue();
   });
-  await page.goto('https://para.test/');
+  await page.goto(appUrl);
+  assert.equal(new URL(page.url()).search,'','token must be removed from the address');
   if(process.env.PARA_TEST_FONT_PATH){
     await page.addStyleTag({content:"@font-face{font-family:'Malgun Gothic';src:url('/qa-font.otf')}"});
     await page.evaluate(()=>document.fonts.ready);
@@ -163,9 +154,11 @@ try{
   await page.getByLabel('OneDrive 캐시 목록').locator('tbody tr').first().waitFor();
   await page.getByRole('button',{name:'고른 캐시 받아서 불러오기',exact:true}).click();
   await page.locator('.cache-drop [role=status]').filter({hasText:/새 Batch Report 0개 · 이미 있던 \d+개는 그대로/}).waitFor();
-  assert(dropChannel,'file-drop channel not connected');
-  await page.evaluate(({channel,zip})=>{window.__callbacks[channel]({index:0,message:{kind:'enter',paths:[zip]}});
-    window.__callbacks[channel]({index:1,message:{kind:'drop',paths:[zip]}});},{channel:dropChannel,zip:cacheZip});
+  // A browser drop gives the file contents: the page uploads them to the engine (local Temp).
+  await page.evaluate(({name,b64})=>{const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],name));
+    window.dispatchEvent(new DragEvent('dragenter',{dataTransfer:dt,bubbles:true,cancelable:true}));
+    window.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}));},
+    {name:cacheZip.split(/[\\/]/).pop(),b64:(await readFile(cacheZip)).toString('base64')});
   await page.locator('.toast').filter({hasText:'Batch Report 캐시를 가져왔습니다'}).waitFor();
   await page.locator('.cache-drop [role=status]').filter({hasText:/새 Batch Report 0개 · 이미 있던 \d+개는 그대로/}).waitFor();
   assert(!(await page.locator('.cache-drop').getAttribute('class')).includes('over'));
@@ -885,9 +878,9 @@ try{
   await page.locator('.cm-file input').first().waitFor();
   assert.deepEqual(errors,[]);
   assert.equal(stderr,'');
-  console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,lots:69,scriptEscaped:true,serverPortsOpened:0}));
+  console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,lots:69,scriptEscaped:true,localServer:'127.0.0.1'}));
 }finally{
-  lines.close();engine.stdin.end();
-  await new Promise(resolve=>engine.exitCode!==null?resolve():engine.once('exit',resolve));
+  lines.close();engine.kill();
+  await new Promise(resolve=>engine.exitCode!==null||engine.signalCode!==null?resolve():engine.once('exit',resolve));
   await delivery.catch(()=>{});await browser.close();await rm(fixture,{recursive:true,force:true});
 }
