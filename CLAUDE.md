@@ -23,6 +23,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 설치 zip 이 Windows Defender 에 막힘 → PyInstaller 실행기를 소스에서 빌드 (2026-11-10, 소유자 세션 지시, v12.9.31)
+- v12.9.30 zip 다운로드가 Defender 에 막힘(소유자). v12.9.29 와 비교하면 엔진 exe 는 버전 정보 16 byte 만 다르고 Tauri exe · 우리 pyc 5개만 바뀜 → 코드가 아니라 **PyInstaller 기본(prebuilt) 실행기**의 평판 기반 ML 오탐으로 판단(확인 전 — 위협 이름 · 경로는 소유자에게 요청).
+- `build-desktop.yml`: `PYINSTALLER_COMPILE_BOOTLOADER=1` + `pip install --no-binary pyinstaller` 로 실행기를 runner 에서 컴파일, 다음 단계가 `run.exe` SHA-256 을 로그에 남긴다. **prebuilt 휠로 되돌리지 말 것.** `--debug noarchive` 는 그대로.
+
 ### Batch Report 자동 분석이 예약 시각에 안 돌던 것 (2026-11-10, 이슈 #54, v12.9.30)
 - 자동 분석(CAMTEK Batch Report · KLA 캐시)의 1분 타이머는 `Batch.tsx` 안에 있다. `main.tsx` 는 KEEP 화면을 **처음 방문해야** 만들었으므로 그 탭을 안 열면 영영 안 돌았다.
   → `main.tsx mountBatch()`: `configuration.auto.enabled` 면 시작 때 · 1분 확인 · `para:batch-auto-changed`(BatchAutoPanel 저장 뒤) 때 `Batch Report 분석` 을 숨긴 채 만든다. 타이머를 다른 곳으로 옮기지 말 것.

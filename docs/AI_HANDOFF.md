@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — 설치 zip 이 Windows Defender 에 막힘 → v12.9.31 (2026-11-10 KST, `version_v12`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `81c02ea` · 이슈 없음(소유자 세션 지시 "바이러스 감지되서 다운 자체가 안돼 window defender 자체에서 막나봐 버그 수정하고 31로 릴리즈해") · 작업 브랜치 `version_v12`.
+- 조사: v12.9.30 zip 다운로드 0회(v12.9.29 는 4회). 두 zip 내용 비교 = `Camtek_AOI_manager.exe`(Tauri, 재빌드) · `sidecar/Camtek_AOI_engine.exe`(**16 byte = 버전 정보만** 다름) · `package-manifest.json` · 우리 pyc 5개(#54 · #49 코드).
+  스크립트 · 새 실행 파일 없음. 엔진 exe = PyInstaller **prebuilt 실행기**(400 KB, 서명 없음) — Defender 클라우드 ML(`Wacatac!ml` 류)이 평판으로 잡는 대표 유형이라 이것으로 판단(확인 전).
+- 수정: `.github/workflows/build-desktop.yml` 에서 PyInstaller 실행기를 소스에서 컴파일(`PYINSTALLER_COMPILE_BOOTLOADER=1`, `--no-binary pyinstaller`) + 실행기 SHA-256 로그 단계. 앱 코드 변경 없음. 릴리스 노트 `docs/release_notes/v12.9.31.md`.
+  (routine 규칙상 workflow 는 이슈 요청 없이는 안 고치지만, 소유자가 세션에서 직접 버그 수정 · 릴리스를 지시함.)
+- 시험: `tests/test_desktop_diag.py`(noarchive 고정) · `test_desktop_appupdate.py` · `test_build_version.py` 통과, workflow YAML 문법 확인. Windows 빌드 결과 · Defender 판정은 이 환경에서 확인 불가.
+- 남은 일: 소유자 PC 에서 v12.9.31 zip 이 받아지는지, 막히면 Defender 보호 기록의 위협 이름 · 영향 받은 파일 경로 받기(그 경우 Microsoft 오탐 신고 https://www.microsoft.com/wdsi/filesubmission 또는 코드 서명 검토).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| (세션) Defender 차단 | v12.9.30 zip 이 Defender 에 막힘 — 수정 · v12.9.31 릴리스 | PyInstaller 실행기 소스 빌드로 변경, v12.9.31 릴리스(결과는 아래 줄에 기록) |
+
 ## 최신 재개 — Para #54 Batch Report 자동 분석(CAMTEK · KLA)이 예약 시각에 안 돎 (2026-11-10 KST, `version_v12`, v12.9.30)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `bb18249` · 이슈 Para #54("v12.9.30 업데이트 사항": 자동 감시(배치레포트 자동분석 Camtek, KLA)가 시간에 맞춰 전혀 안 됨 — 고치고 릴리스) · 작업 브랜치 `version_v12`.

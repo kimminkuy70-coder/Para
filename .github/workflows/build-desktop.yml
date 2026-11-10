@@ -77,10 +77,26 @@ jobs:
           $j.version = "${{ steps.ver.outputs.version }}"
           $j | ConvertTo-Json -Depth 20 | Set-Content $p -Encoding utf8
 
-      - name: Install Python deps + PyInstaller
+      # PyInstaller bootloader is compiled from source here (Para v12.9.31). The
+      # prebuilt bootloader shipped in the PyInstaller wheel is shared by countless
+      # unsigned programs, so Windows Defender's cloud ML flags it (Wacatac!ml) and
+      # blocked the v12.9.30 zip download even though only 16 bytes (version info)
+      # differed from v12.9.29. A locally compiled bootloader is a different binary.
+      - name: Install Python deps + PyInstaller (bootloader built from source)
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-build.txt
+          python -m pip install --upgrade pip wheel setuptools
+          pip install -r requirements.txt
+          pip install --no-binary pyinstaller --no-cache-dir -r requirements-build.txt
+
+      - name: Show bootloader in use (must be the compiled one)
+        shell: pwsh
+        run: |
+          $bl = python -c "import os, PyInstaller; print(os.path.join(os.path.dirname(PyInstaller.__file__), 'bootloader', 'Windows-64bit-intel', 'run.exe'))"
+          if (-not (Test-Path $bl)) { Write-Error "bootloader missing: $bl"; exit 1 }
+          Get-FileHash $bl -Algorithm SHA256 | Format-List
+          python -m PyInstaller --version
 
       # --debug noarchive: modules as separate .pyc files under _internal/ instead of
       # an archive inside the exe. PyInstaller re-opens its archive file for every
