@@ -375,20 +375,29 @@ await page.locator('#p5List .it',{hasText:'1100.0'}).first().click();
 await page.locator('#p5Color img').waitFor();await page.locator('#p5Gray canvas').waitFor();
 const bi=await page.locator('#p5Info').innerText();
 assert.match(bi,/구분\s*CA20 · W01/);assert.match(bi,/Contrast\(실제\)\s*34\.45/);assert.match(bi,/Color\s*C1\.c\.1\.jpeg · 좌표\(0\.0 µm\)/);assert.match(bi,/Gray\s*F1\.t\.1\.jpeg · \(1100\.0, 200\.0\) · frameToChuckPlane/);assert.match(bi,/ROI mean/);assert.match(bi,/Die\s*장비 Col 0, Row 0/);
-// 사진 경로 열기(소유자 지시): PC 경로를 적지 않으면 사진의 고른 폴더 안 경로만, 적으면 사진 파일의 PC 경로 · 사진 열기 · 사진 폴더 열기
+// 사진 경로 열기(소유자 지시): PC 경로가 없으면 사진의 고른 폴더 안 경로만, 적으면 사진 파일의 PC 경로 · 사진 열기 · 사진 폴더 열기
 await page.locator('#bigPath code').nth(1).waitFor();
 assert.match(await page.locator('#bigPath').innerText(),/Color 사진: BIG\/CA20\/LOTB\/W01\/C1\.c\.1\.jpeg\nGray 사진: BIG\/CA20\/LOTB\/W01\/F1\.t\.1\.jpeg/);
-assert.equal(await page.locator('#bigDir').count(),0);   // Slot 폴더 단추 대신 사진 경로 단추
+assert.equal(await page.locator('#bigDir').count(),0);assert.match(await page.locator('#bigPath').innerText(),/PC 경로가 없습니다 — \[PC 경로 바꾸기\]/);   // Slot 폴더 단추 대신 사진 경로 단추
 await page.evaluate(()=>{window.__wo=window.open;window.__opened=[];window.open=u=>{window.__opened.push(u);return null}});
 await page.locator('#bigImgC').click();await page.locator('#bigPath',{hasText:'를 복사했습니다'}).waitFor();
 assert.match(await page.locator('#bigPath').innerText(),/Color 사진 고른 폴더 안 경로 BIG\/CA20\/LOTB\/W01\/C1\.c\.1\.jpeg 를 복사했습니다/);
-await page.locator('#bigBase').fill('D:\\AOI\\BIG');await page.locator('#bigBase').dispatchEvent('change');await page.locator('#bigPath a').first().waitFor();
+assert.match(await page.locator('#bigPath').innerText(),/\[PC 경로 바꾸기\]로 고른 폴더\('BIG'\)의 PC 경로를 입력하십시오/);
+// 폴더의 PC 경로는 필수(소유자 지시 "입력 안 하면 다음으로 못 넘어가게"): 비거나 틀리면 [확인] 이 안 눌림, 취소 = null
+const ab0=page.evaluate(()=>window.__cw.askBase('X1'));await page.locator('#baseDlg').waitFor();await page.locator('#baseNo').click();assert.equal(await ab0,null);assert.ok(await page.locator('#baseDlg').isHidden());
+await page.locator('#bigBaseEdit').click();await page.locator('#baseDlg').waitFor();
+assert.match(await page.locator('#baseQ').innerText(),/'BIG' 의 PC 전체 경로[\s\S]*입력하지 않으면 다음 단계로 넘어갈 수 없습니다/);
+assert.ok(await page.locator('#baseOk').isDisabled());
+await page.locator('#baseIn').fill('AOI\\BIG');assert.ok(await page.locator('#baseOk').isDisabled());assert.match(await page.locator('#baseErr').innerText(),/전체 경로/);
+await page.locator('#baseIn').fill('D:\\AOI\\OTHER');assert.ok(await page.locator('#baseOk').isDisabled());assert.match(await page.locator('#baseErr').innerText(),/마지막 폴더가 고른 폴더 이름 'BIG'/);
+await page.locator('#baseIn').fill('D:\\AOI\\BIG\\');assert.ok(await page.locator('#baseOk').isEnabled());await page.locator('#baseOk').click();
+assert.ok(await page.locator('#baseDlg').isHidden());assert.equal(await page.evaluate(()=>window.__cw.BASES.BIG),'D:\\AOI\\BIG');
+await page.locator('#bigPath a').first().waitFor();assert.match(await page.locator('#bigBaseShow').innerText(),/고른 폴더 'BIG' = D:\\AOI\\BIG/);
 assert.match(await page.locator('#bigPath').innerText(),/Color 사진: D:\\AOI\\BIG\\CA20\\LOTB\\W01\\C1\.c\.1\.jpeg · 사진 열기 · 사진 폴더 열기\nGray 사진: D:\\AOI\\BIG\\CA20\\LOTB\\W01\\F1\.t\.1\.jpeg · 사진 열기 · 사진 폴더 열기/);
 assert.deepEqual(await page.locator('#bigPath a').evaluateAll(a=>a.map(x=>x.getAttribute('href'))),['file:///D:/AOI/BIG/CA20/LOTB/W01/C1.c.1.jpeg','file:///D:/AOI/BIG/CA20/LOTB/W01','file:///D:/AOI/BIG/CA20/LOTB/W01/F1.t.1.jpeg','file:///D:/AOI/BIG/CA20/LOTB/W01']);
 await page.locator('#bigImgG').click();await page.locator('#bigPath',{hasText:'탐색기'}).waitFor();   // Linux 에는 D: 가 없어 실제로 열지 않고 주소만 확인
 assert.match(await page.locator('#bigPath').innerText(),/Gray 사진: D:\\AOI\\BIG\\CA20\\LOTB\\W01\\F1\.t\.1\.jpeg 경로를 복사했습니다/);
 assert.deepEqual(await page.evaluate(()=>{const u=window.__opened;window.open=window.__wo;return u}),['file:///D:/AOI/BIG/CA20/LOTB/W01/F1.t.1.jpeg']);
-await page.locator('#bigBase').fill('');await page.locator('#bigBase').dispatchEvent('change');
 // 사진 파일 이름의 대소문자가 목록과 달라도(.JPEG) 찾는다
 const ci=await page.evaluate(async()=>{const c=window.__cw,f=new File(['x'],'Q.c.1.JPEG');
   const d={kind:'directory',name:'W',async *entries(){yield ['Q.c.1.JPEG',{kind:'file',name:'Q.c.1.JPEG',getFile:async()=>f}]},async getFileHandle(n){if(n!=='Q.c.1.JPEG')throw new Error('NotFound');return {getFile:async()=>f}}};
@@ -401,6 +410,19 @@ await bw.waitForLoadState();assert.match(await bw.locator('.hd').innerText(),/ID
 // 2단계로 돌아가기 → 리스트 다시 보임
 await page.locator('#bigBack').click();assert.ok(await page.locator('#bigRes').isHidden());assert.ok(await page.locator('#bigPick').isVisible());
 await page.locator('#bigLot').selectOption('');await page.locator('#bigFlt [data-f="clear"]').click();await page.waitForTimeout(350);
+// [Lot 폴더 추가] = 폴더를 고르자마자 PC 경로 입력 창(필수). 취소하면 등록하지 않음, 맞는 경로를 넣어야 등록
+await page.evaluate(fx=>{const f=JSON.parse(fx),fh=(name,b64)=>({kind:'file',name,getFile:async()=>new File([Uint8Array.from(atob(b64),ch=>ch.charCodeAt(0))],name)});
+  const mk=name=>({kind:'directory',name,kids:new Map(),async *entries(){yield* this.kids},async getFileHandle(n){const h=[...this.kids.values()].find(k=>k.kind==='file'&&k.name.toLowerCase()===n.toLowerCase());if(!h)throw new Error('NotFound');return h}});
+  const root=mk('PICK');for(const [p,b] of Object.entries(f)){if(!p.startsWith('CA20/LOTA/W01/'))continue;const segs=p.replace('CA20/LOTA','CA31/LOTP').split('/');let d=root;
+    for(const s of segs.slice(0,-1)){if(!d.kids.has(s))d.kids.set(s,mk(s));d=d.kids.get(s)}d.kids.set(segs.at(-1),fh(segs.at(-1),b))}
+  window.showDirectoryPicker=async()=>root},fixture);
+const nScan=await page.evaluate(()=>window.__cw.BIG.scans.length);
+await page.locator('#bigAdd').click();await page.locator('#baseDlg').waitFor();assert.match(await page.locator('#baseQ').innerText(),/'PICK'/);assert.ok(await page.locator('#baseOk').isDisabled());
+await page.locator('#baseNo').click();await page.locator('#bigMsg',{hasText:'등록하지 않았습니다'}).waitFor();assert.equal(await page.evaluate(()=>window.__cw.BIG.scans.length),nScan);
+await page.locator('#bigAdd').click();await page.locator('#baseDlg').waitFor();await page.locator('#baseIn').fill('\\\\nas01\\aoi\\PICK');await page.locator('#baseIn').press('Enter');
+await page.locator('#bigMsg',{hasText:'Slot 1개'}).waitFor();assert.equal(await page.evaluate(()=>window.__cw.BIG.scans.length),nScan+1);
+assert.equal(await page.evaluate(()=>window.__cw.pcPath('PICK/CA31/LOTP/W01/C1.c.1.jpeg').pc),'\\\\nas01\\aoi\\PICK\\CA31\\LOTP\\W01\\C1.c.1.jpeg');
+await page.evaluate(()=>{const c=window.__cw;c.BIG.scans=c.BIG.scans.filter(s=>!/^PICK/.test(s.name));c.bigRefresh()});await page.locator('#bigLot').selectOption('');await page.waitForTimeout(100);
 // CSV = 지금 목록 전부(필터 · 정렬 그대로)
 const bc=await page.evaluate(()=>window.__cw.bigCsv().join(''));assert.match(bc,/^﻿순서,Lot폴더,Step,ContrastAVG,Slot,ID,resultID,WaferX,/);assert.equal(bc.trim().split('\r\n').length,8);
 // 많은 Defect: 합성 30만 개(Slot 3개)도 열 배열로 바로 필터 · 정렬(표는 보이는 줄만 그림)
