@@ -53,6 +53,11 @@
 - 소유자 지적 "아까 보낸 파일(AOI Recipe Verification, 회사에서 문제없음)도 같은 방식 아닌가" → 맞음: `run_aoi.bat` → `start "" python\pythonw.exe app\main.py`(동봉 Python · 콘솔 없음 · 설치 폴더) + 바로가기(.lnk) + GitHub zip 업데이트.
   즉 'pythonw 가 사용자 폴더의 .py 실행' 자체는 회사에서 문제없이 쓰이는 중 → 앞 권고(배포 보류) 완화. #18 과 회사 OK 프로그램의 차이 = .vbs(wscript → python) · pywebview/pythonnet(.NET 을 Python 에 올림) → #18 경고 원인 후보(확인 전), 둘 다 v13 에 없음.
   v13 에만 있는 것 = 127.0.0.1 포트 · Edge 실행(그 프로그램은 PyQt6 자체 창). 실기에서 처음 확인할 부분.
+- **보안 연락 원문 확인(2026-11-10, 소유자 제공)**: 회사 SOC(Microsoft Defender/Sentinel) 경고 **"ASIM - Anomalous Windowless Python Execution"** — related-AOI-program **Sorter v10(#18)** 실행 건.
+  탐지 내용(개인 정보 빼고): 대상 `runtime\pythonw.exe -E -s ...\app_files\app.py`(위치 = **Downloads** 아래 압축 푼 폴더), 부모 = **`WScript.exe ...\AOI_Photo_Sorter_v10.vbs`**. VirusTotal 악성 이력 없음 · 차단이 아닌 **소명 요청**(업무 목적 확인).
+  해석: 규칙 이름의 핵심 = **Windowless(pythonw.exe)** + Anomalous(스크립트 호스트 부모 · Downloads 같은 비표준 위치 · 회사에서 드문 실행). v13 은 WScript · Downloads 는 없지만 **pythonw.exe 를 쓰므로 같은 규칙에 걸릴 수 있음**.
+  제안(소유자 답 대기): v13 실행을 `pythonw.exe` → **`python.exe` + 최소화된 콘솔 창**(바로가기 '최소화' 실행, 창 제목 '엔진 — 닫지 마세요')으로 바꿔 'Windowless' 자체를 없앰. 업데이트 뒤 재시작도 DETACHED(창 없음) 대신 새 콘솔 · 최소화.
+  콘솔을 숨기는 코드(ShowWindow 숨김)는 '탐지 회피'로 보이므로 쓰지 않음. 설치 안내 Win+R 줄도 python.exe 로. 함께 SOC 에 v13 사전 소명 · 예외 요청 권장.
 - **남은 일(7단계, 소유자 실기)**: 회사 PC 에서 ① 설치 zip 받기(Defender) ② Win+R 첫 실행 · 바로가기 ③ 고르기 창 · 끌어 넣기 · 트레이 ④ 다음 릴리스로 [지금 업데이트](GitHub 접속 · 회사 프록시). Windows 부분은 이 환경에서 확인 못 함.
 - 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ ~~6~~ → 7 소유자 실기 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
