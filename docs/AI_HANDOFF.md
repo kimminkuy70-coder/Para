@@ -46,6 +46,10 @@
   → #18(v10: python.org 서명 Python 동봉 + .vbs 가 `pythonw.exe -E -s app.py` 실행, exe 없음) — v13 과 같은 방식. 연락 원문은 여전히 소유자에게 요청 중.
 - 소유자 재질문 "SSE 가 **회사 보안(규정)** 에 저촉되지 않나?" → 답: SSE · WebSocket 은 둘 다 127.0.0.1 루프백 통신이라 규정상 차이 없음. v12(Tauri, stdio 파이프 = 포트 없음) 대비 v13 은 **루프백 포트를 하나 연다**는 점이 새로 생김
   (외부 접속 · 인터넷 전송 없음, 방화벽 창 없음, Teams · VS Code 등도 쓰는 방식). 회사가 '듣는 포트 금지'면 대안 = related-AOI-program 처럼 pywebview(WebView2 를 Python 안에, 포트 없음 — 회사에서 이미 쓰는 방식). IT 에 `IT보안_검토자료.md` v13 절로 확인 권장.
+- 소유자 질문 "이슈 18(related-AOI-program)과 같은 방식인데 문제 아니냐" → 확인: Sorter v10(#18, 10-15, 서명 Python 동봉 + .vbs → `pythonw.exe -E -s app.py` + pywebview/pythonnet) 뒤 같은 날 '브라우저만' 시험 페이지,
+  10-18 Python/.exe 판 전부 삭제 · HTML 판만 남김(이유는 기록 없음 — '숨김 실행' 연락이 이 때문이었을 가능성, 확인 전). v13 과 공통 = **콘솔 없는 pythonw 가 사용자 폴더의 .py 실행**(같은 경고가 날 수 있음).
+  v13 에 없는 것 = .vbs(wscript → python), pythonnet(.NET CLR 를 Python 에 올림). v13 에만 있는 것 = 127.0.0.1 포트 · Edge 실행 · GitHub 받기.
+  권고: 연락 내용 확인 전에는 v13 을 다른 사람에게 배포하지 않기(소유자 PC 시험만). 선택지 = IT 사전 승인 / 콘솔 창을 보이게(python.exe, '숨김' 아님) / HTML 전용(기능 축소). 소유자 답 대기.
 - **남은 일(7단계, 소유자 실기)**: 회사 PC 에서 ① 설치 zip 받기(Defender) ② Win+R 첫 실행 · 바로가기 ③ 고르기 창 · 끌어 넣기 · 트레이 ④ 다음 릴리스로 [지금 업데이트](GitHub 접속 · 회사 프록시). Windows 부분은 이 환경에서 확인 못 함.
 - 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ ~~6~~ → 7 소유자 실기 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
