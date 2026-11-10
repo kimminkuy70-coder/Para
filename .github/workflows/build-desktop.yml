@@ -151,6 +151,19 @@ jobs:
           path: Camtek_AOI_manager_v${{ steps.ver.outputs.version }}/
           retention-days: 30
 
+      # Defender check of the exact zip that is released (Para v12.9.33). The runner
+      # excludes its drives from Defender, so tools/defender_scan.ps1 lifts that, updates
+      # the definitions, and scans the zip (browser download path + archive + every
+      # extracted file). A detection stops the release; the log names the file.
+      - name: Zip package + Windows Defender scan (release stops on a detection)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          New-Item -ItemType Directory -Force relzip | Out-Null
+          Compress-Archive -Path "Camtek_AOI_manager_v$ver" -DestinationPath "relzip/Camtek_AOI_manager_v$ver.zip" -Force
+          Get-FileHash "relzip/Camtek_AOI_manager_v$ver.zip" -Algorithm SHA256 | Format-List
+          ./tools/defender_scan.ps1 -Folder relzip -Deep -FailOnThreat
+
       # Release page with a short change summary. Notes come from
       # docs/release_notes/v{version}.md (skipped when that file is absent).
       # A tag created with GITHUB_TOKEN does not re-trigger this workflow.
@@ -162,8 +175,8 @@ jobs:
           $ver = "${{ steps.ver.outputs.version }}"
           $notes = "docs/release_notes/v$ver.md"
           if (-not (Test-Path $notes)) { Write-Host "no $notes - release skipped"; exit 0 }
-          $zip = "Camtek_AOI_manager_v$ver.zip"
-          Compress-Archive -Path "Camtek_AOI_manager_v$ver" -DestinationPath $zip -Force
+          $zip = "relzip/Camtek_AOI_manager_v$ver.zip"
+          if (-not (Test-Path $zip)) { Write-Error "scanned zip missing"; exit 1 }
           gh release view "v$ver" 2>$null
           if ($LASTEXITCODE -eq 0) { gh release upload "v$ver" $zip --clobber; gh release edit "v$ver" --notes-file $notes }
           else { gh release create "v$ver" $zip --target "${{ github.sha }}" --title "Camtek AOI Manager v$ver" --notes-file $notes }

@@ -105,6 +105,16 @@ class BootTests(unittest.TestCase):
         self.assertIn("--debug noarchive", (root / ".github/workflows/build-desktop.yml").read_text(encoding="utf-8"))
         self.assertIn("'--debug','noarchive'", (root / "tools/build_desktop.py").read_text(encoding="utf-8"))
 
+    def test_release_zip_is_scanned_with_defender(self):
+        # 릴리스하는 zip 은 올리기 전에 Windows Defender 로 검사한다(v12.9.33).
+        root = Path(__file__).resolve().parents[1]
+        wf = (root / ".github/workflows/build-desktop.yml").read_text(encoding="utf-8")
+        self.assertIn("defender_scan.ps1 -Folder relzip -Deep -FailOnThreat", wf)
+        self.assertLess(wf.index("defender_scan.ps1"), wf.index("gh release create"))
+        ps = (root / "tools/defender_scan.ps1").read_text(encoding="utf-8")
+        self.assertIn("Remove-MpPreference -ExclusionPath", ps)
+        self.assertIn("-DisableRemediation", ps)
+
 
 if __name__ == "__main__":
     unittest.main()
