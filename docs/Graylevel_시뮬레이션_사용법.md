@@ -50,6 +50,20 @@
     - 사진 찾기: 이름의 대소문자가 달라도(`.JPEG`) 찾고, 한 번 실패한 사진을 다시 시도합니다.
     - [← 2단계 리스트로 돌아가기] 로 리스트를 다시 고를 수 있습니다. 한 번 읽은 Slot 은 다시 읽지 않습니다.
 
+12. **rev2 판**(`AOI_Contrast_Wizard_rev2.html`, 2026-11-10 소유자 세션 지시 "새 파일로 따로"): 원래 파일 · rev1 과 별개인 세 번째 파일입니다. 시험 `node tools/test_contrast_wizard_rev2.mjs`.
+    - **폴더 인식**: 구조 = 레시피 / Setup / Lot / Slot(최대 25). **Surface.flt 가 있는 폴더 = Slot, 그 바로 위 폴더 = Lot** — 레시피 · Setup · Lot 어느 폴더를 골라도 같은 Lot(Step 1 도 같음). 위쪽 폴더(Lot · Setup · 레시피)의 파일(사진 제외)은 그 아래 Slot 이 같이 쓰고, 같은 이름이면 Slot 것을 씁니다.
+    - **5-1 Contrast 모으기 · 걸러내기**: [레시피 폴더 고르기](Edge/Chrome 읽기 전용 폴더 창) → 폴더만 훑어 Slot 을 찾고(폴더마다 Surface.flt 를 이름으로 바로 확인, **Slot 안 사진 목록은 만들지 않음**) Slot 마다 `Surface.flt`(+ `.md`) · `ProductInfo.ini` 만 읽습니다. [동시에 읽을 폴더] 1 · 2 · 4(기본) · 8. 여러 레시피 폴더를 차례로 더할 수 있습니다.
+      목록 = Lot · Slot · Contrast(실제) · Area · Width · Length 필터 + 정렬(열 제목 클릭, 기본 Contrast 큰 순). [목록 CSV] = 사진 정보 없는 목록.
+    - **5-2 사진 짝짓기 · CSV 저장**: [다음]을 누르면 CSV 저장 위치를 먼저 고르고(고르기 창은 누른 직후에만 열 수 있음, 취소해도 짝짓기는 함) 지금 목록(필터 · 정렬 그대로)의 Defect 마다 Color 이미지(ColorImageGrabingInfo 좌표 → 번호 규칙)와 Gray 프레임 + 픽셀 좌표(ScanResultImageList · frameToChuckPlane)를 짝짓고 파일이 실제로 있는지 확인합니다(사진 픽셀은 읽지 않음).
+      상태 = 짝 완료 / Color 만 / Gray 만 / 둘 다 없음(이유 함께). CSV 열 = 순서 · 상태 · Lot · Slot · ID · Contrast · Area · Width · Length · Box · Wafer X/Y · Die · Color 이미지 · **Color 경로** · Color 연결 · Gray 프레임 · **Gray 경로** · Gray 픽셀(3168×1024 기준) · 모델 · 이유.
+      브라우저는 전체 경로를 알려 주지 않아 경로는 고른 폴더 이름부터 적힙니다 — [원본 폴더 경로]에 상위 폴더(예 `Y:\AOI-16\Scanresult`)를 적으면 앞에 붙입니다(이 PC 에 기억, 선택).
+    - **5-3 사진 정밀 조사**: 짝지은 Defect 만(기본 '짝 완료만', 짝 완료가 없으면 자동으로 끔). [하나씩 크게] = 목록 + Color 원본 + Gray Crop(빨간 박스 = Box W×H, GL 측정) + **진행 기록**(사진 목록 확인 → Color 찾기 · 읽기 · 디코딩 → Gray 프레임 찾기 · 읽기 · 디코딩 → 크롭 · GL, 단계마다 걸린 시간) + 정보, 다음 3개 미리 읽기.
+      더블 클릭 · Enter · 사진 누르기 = 새 창(Color 원본 + Gray 프레임 전체). [격자로 여러 개] = 한 쪽 48개 카드(Color · Gray Crop, ROI−local). [이 목록 사진 모두 미리 준비] = 같은 Gray 프레임끼리 묶어 한 번만 디코딩(로딩창 · 중지).
+      Crop 크기 · Ring 폭 · Offset · 반전은 Step 2 와 같은 값(어느 쪽에서 고쳐도 같이 바뀜). 짝짓기에 영향을 주는 값이 바뀌면 '5-2 다시 하기' 안내.
+    - **로딩창**(모든 긴 작업): 단계 목록(✔ 끝 · ▶ 지금) · 개수(k / N) · 진행 막대 · 지금 읽는 폴더/파일 · `경과 · 마지막 진행 n초 전 · 속도 · 남은 시간`. '마지막 진행'이 3초를 넘으면 노란 글 '응답을 기다리는 중'(네트워크 드라이브 · 큰 파일), 브라우저 계산으로 화면이 멈췄으면 '화면이 n초 멈췄었음'. [중지] = 지금 파일까지 끝내고 멈춤(5-2 는 남은 것 '확인 안 함').
+    - 이름으로 바로 못 찾은 파일(예: 사진이 Slot 하위 폴더에 있음)만 그 Slot 파일 목록을 한 번 만들어 찾습니다(로딩창에 개수). Edge/Chrome 이 아니면 폴더 고르기(webkitdirectory)로 바뀌어 느립니다(사진 내용은 읽지 않음).
+    - 시험 = 가짜 폴더 Lot 40 × Slot 25(Slot 마다 사진 3,000장, 호출마다 8 ms 지연): 5-1 약 14초(Slot 안 목록 0번), 짝짓기 1,000개 약 20초. 합성 30만 Defect 필터 + 정렬 약 0.03초. 실제 큰 폴더 · 네트워크 드라이브로는 확인 전.
+
 **폴더 인식(2026-11-10)**: Step 1 · Step 5 모두 **고른 폴더 바로 아래 폴더 = Lot**, Surface.flt 가 있는 폴더 = Wafer Slot(이름 = 그 폴더 이름)입니다. Slot 이 Lot 안 몇 단계 아래에 있어도(예: `고른 폴더/Contrast Avg24/Job/Setup/SM/Wafer/Surface.flt`) 그 Lot 으로 묶습니다.
 - Lot 폴더 하나를 고르면(`Lot/Wafer/Surface.flt`) 고른 폴더 = Lot, Slot 폴더를 고르면 Slot 1개짜리 Lot.
 - 고른 폴더 바로 아래 폴더마다 Surface.flt 가 바로 있고 폴더 이름마다 다른 CA 번호(`CA20`, `CA27` …)가 있으면 그 폴더들을 Lot 으로 봅니다.

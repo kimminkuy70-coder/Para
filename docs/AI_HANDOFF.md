@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Contrast Wizard rev2: Step 5 3단계 새 파일 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 이슈 없음(소유자 세션 대화). 파일 `AOI_Contrast_Wizard_rev2.html` + `tools/test_contrast_wizard_rev2.mjs` 만 새로 추가 — 원래 파일 · rev1 은 손대지 않음.
+- 소유자: "레시피 폴더 아래 Setup1, 그 아래 Lot, 그 안에 최대 25 Slot. Contrast 만 빠르게 뽑아 필터로 줄이고 → 다음 단계에서 Color · 흑백 이미지 짝지어 경로 CSV 저장 → 다음 단계에서 정확히 크롭해 띄워. 로딩을 세세하게(렉인지 알 수 있게). 5모드 3단계는 싹 다시."
+  같은 브랜치에 #61 세션의 rev1 이 먼저 올라와 있어 물어봄 → 소유자 "새 파일로 따로 올리기".
+- 한 일: rev2 = 5-1(폴더만 훑고 Slot 안 목록 안 만듦 · Surface.flt 만) → 5-2(짝짓기 + 파일 확인 + 경로 CSV, 저장 위치 먼저 고르기) → 5-3(하나씩 크게 + 진행 기록 · 격자 · 모두 미리 준비), 로딩창 심장 박동(경과 · 마지막 진행 · 속도 · 남은 시간 · 화면 멈춤 · 중지). 폴더 규칙 = Slot 바로 위 = Lot.
+- 시험: `node tools/test_contrast_wizard_rev2.mjs` 통과(원래 · rev1 시험도 통과). 가짜 큰 폴더(Lot 40 × Slot 25, 사진 3,000장/Slot, 8 ms 지연) 5-1 14초.
+- 남은 일: 소유자 PC(실제 네트워크 드라이브)에서 rev1 · rev2 중 무엇을 쓸지 결정.
+
 ## 최신 재개 — Para #61 후속 7: rev1 3단계 좌표 · 사진 안 맞던 원인 수정(Slot 자기 .ini 먼저) (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `b23aff0` · 이슈 Para #61(소유자 세션 대화) · 파일 `AOI_Contrast_Wizard_rev1.html` 만.
