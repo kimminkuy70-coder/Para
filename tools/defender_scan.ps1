@@ -4,7 +4,8 @@
 param(
   [Parameter(Mandatory = $true)][string]$Folder,
   [switch]$FailOnThreat,
-  [switch]$Deep          # also scan every extracted file one by one when a zip is detected
+  [switch]$Deep,         # also scan every extracted file one by one when a zip is detected
+  [string]$CloudBlockLevel = ""   # e.g. High - diagnosis only (stricter than an ordinary PC)
 )
 $ErrorActionPreference = "Continue"
 $mp = Join-Path $env:ProgramFiles "Windows Defender\MpCmdRun.exe"
@@ -17,6 +18,11 @@ Get-Service WinDefend -ErrorAction SilentlyContinue | Format-List Name, Status, 
 try { Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction Stop } catch { Write-Host "realtime: $($_.Exception.Message)" }
 try { Set-MpPreference -MAPSReporting Advanced -SubmitSamplesConsent NeverSend -ErrorAction Stop } catch { Write-Host "cloud: $($_.Exception.Message)" }
 try { Set-MpPreference -DisableArchiveScanning $false -DisableScriptScanning $false -DisableIOAVProtection $false -ErrorAction Stop } catch { Write-Host "prefs: $($_.Exception.Message)" }
+# GitHub runners exclude whole drives (C:\, D:\) from Defender - a scan there finds nothing at all.
+try { (Get-MpPreference).ExclusionPath | Where-Object { $_ } | ForEach-Object { Remove-MpPreference -ExclusionPath $_ -ErrorAction Stop } } catch { Write-Host "exclusions: $($_.Exception.Message)" }
+try { (Get-MpPreference).ExclusionProcess | Where-Object { $_ } | ForEach-Object { Remove-MpPreference -ExclusionProcess $_ -ErrorAction Stop } } catch {}
+try { (Get-MpPreference).ExclusionExtension | Where-Object { $_ } | ForEach-Object { Remove-MpPreference -ExclusionExtension $_ -ErrorAction Stop } } catch {}
+if ($CloudBlockLevel) { try { Set-MpPreference -CloudBlockLevel $CloudBlockLevel -CloudExtendedTimeout 50 -ErrorAction Stop } catch { Write-Host "cloud level: $($_.Exception.Message)" } }
 & $mp -SignatureUpdate | Out-Host
 try {
   Get-MpComputerStatus | Format-List AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, IoavProtectionEnabled, AMProductVersion, AMEngineVersion, AntivirusSignatureVersion, AntivirusSignatureLastUpdated
@@ -28,6 +34,17 @@ function Invoke-Scan([string]$path) {
   $code = $LASTEXITCODE
   return [pscustomobject]@{ Code = $code; Text = ($out | Out-String) }
 }
+
+# Self check: the scanner must detect the standard harmless antivirus test file, otherwise "clean" means nothing.
+$probe = Join-Path $env:RUNNER_TEMP "scanner_selfcheck"
+if (-not $env:RUNNER_TEMP) { $probe = Join-Path $env:TEMP "scanner_selfcheck" }
+New-Item -ItemType Directory -Force $probe | Out-Null
+$testFile = Join-Path $probe "selfcheck.txt"
+try { [IO.File]::WriteAllText($testFile, ('X5O!P%@AP[4\PZX54(P^)7CC)7}$' + 'EICAR-STANDARD-ANTIVIRUS-' + 'TEST-FILE!$H+H*')) } catch { Write-Host "selfcheck write: $($_.Exception.Message)" }
+$sc = Invoke-Scan $probe
+Write-Host "=== Scanner self check exit code $($sc.Code) (2 = works)"
+if ($sc.Code -ne 2) { Write-Host $sc.Text; Write-Host "SELF CHECK FAILED - Defender is not really scanning on this runner"; if ($FailOnThreat) { exit 1 } }
+Remove-Item -Recurse -Force $probe -ErrorAction SilentlyContinue
 
 $found = $false
 $root = (Resolve-Path $Folder).Path
