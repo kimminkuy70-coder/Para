@@ -12,7 +12,12 @@
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| (세션) Defender 차단 | v12.9.30 zip 이 Defender 에 막힘 — 수정 · v12.9.31 릴리스 | PyInstaller 실행기 소스 빌드로 변경, v12.9.31 릴리스(결과는 아래 줄에 기록) |
+| (세션) Defender 차단 | v12.9.30 zip 이 Defender 에 막힘 — 수정 · v12.9.31 릴리스 | PyInstaller 실행기 소스 빌드로 변경(`4879765`), v12.9.31 릴리스 완료 |
+
+- 릴리스 **v12.9.31 완료**: https://github.com/kimminkuy70-coder/Para/releases/tag/v12.9.31 (`Camtek_AOI_manager_v12.9.31.zip`, workflow_dispatch run 42729693500 성공, 태그 = `4879765`).
+  태그 push 는 이번에도 `send-pack: unexpected disconnect` 로 실패 → dispatch 로 시작(v12.9.30 과 같음).
+- 실행기 확인: CI `run.exe` SHA-256 `518518C0…` ≠ PyInstaller 6.22.3 공식 휠 · sdist 의 기본 `run.exe` `581EA23E…` → 새로 컴파일된 실행기. 릴리스 zip 의 엔진 exe 는 v12.9.30 과 155,740 byte 다름(종전 16 byte).
+  주의: pip 로그의 "Building wheel … finished" 는 0.05초로 찍혔지만 해시로 컴파일 사용을 확인함. Defender 판정 자체는 확인 불가(소유자 확인 필요).
 
 ## 최신 재개 — Para #54 Batch Report 자동 분석(CAMTEK · KLA)이 예약 시각에 안 돎 (2026-11-10 KST, `version_v12`, v12.9.30)
 
