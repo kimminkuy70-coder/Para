@@ -49,7 +49,7 @@ from . import refresh as refresh_mod
 from . import rtp_parser as rtp
 from . import tray
 from . import __version__
-from . import updater
+from . import updater, updater_bat
 from . import watcher
 from . import workdirs
 from . import wph
@@ -7983,11 +7983,11 @@ class EquipApp(BatchReportMixin, tk.Tk):
                 self._set_status("수집 작업이 끝난 뒤 업데이트를 다시 실행해 주세요.")
                 return
             current = updater.current_exe_path()
-            backup = updater.backup_path_for(self.local_dir, current)
+            backup = updater_bat.backup_path_for(self.local_dir, current)
             # 파일명에 버전이 들어가므로 업데이트하면 로컬 exe 이름도 바뀐다.
-            target = updater.local_target_path(current, release)
+            target = updater_bat.local_target_path(current, release)
             try:
-                script = updater.build_swap_script(self.local_dir, os.getpid(),
+                script = updater_bat.build_swap_script(self.local_dir, os.getpid(),
                                                    current, local_exe, backup,
                                                    target_exe=target)
             except Exception as e:  # noqa: BLE001

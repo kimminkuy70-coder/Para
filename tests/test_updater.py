@@ -11,7 +11,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from param_manager import localdirs, updater as U  # noqa: E402
+from param_manager import localdirs, updater as U, updater_bat as UB  # noqa: E402
 
 PASS = FAIL = 0
 
@@ -261,7 +261,7 @@ def _commands(body):
 def test_swap_script_contains_required_steps():
     """실제 실행은 Windows 필요 — 생성된 스크립트에 필수 단계가 있는지만 확인."""
     with tempfile.TemporaryDirectory() as local:
-        script = U.build_swap_script(
+        script = UB.build_swap_script(
             local, pid=12345,
             current_exe=r"C:\Apps\Para\Camtek_AOI_manager_v3.0.0.exe",
             new_exe=r"C:\Users\a\AppData\Local\CamtekAOI\Temp\update_x\Camtek_AOI_manager_v3.1.0.exe",
@@ -288,7 +288,7 @@ def test_swap_script_avoids_console_and_locale_traps():
     """
     import re
     with tempfile.TemporaryDirectory() as local:
-        script = U.build_swap_script(
+        script = UB.build_swap_script(
             local, pid=12345, current_exe=r"C:\A\a_v3.0.0.exe",
             new_exe=os.path.join(local, "n.exe"),
             backup_path=os.path.join(local, "b_prev.exe"),
@@ -311,7 +311,7 @@ def test_swap_script_is_cp949_and_keeps_korean_paths():
     한글 경로가 깨져 엉뚱한 파일을 건드린다(되돌릴 수 없는 파일 조작이라 치명적)."""
     with tempfile.TemporaryDirectory() as local:
         cur = r"C:\Users\홍길동\바탕 화면\Camtek_AOI_manager_v3.0.0.exe"
-        script = U.build_swap_script(
+        script = UB.build_swap_script(
             local, pid=1, current_exe=cur,
             new_exe=os.path.join(local, "n.exe"),
             backup_path=os.path.join(local, "b_prev.exe"),
@@ -337,7 +337,7 @@ def test_swap_waits_on_old_exe_not_new_name():
     → 대기는 반드시 **구 exe 삭제 성공** 여부로 판정한다(실행 중이면 못 지움).
     """
     with tempfile.TemporaryDirectory() as local:
-        script = U.build_swap_script(
+        script = UB.build_swap_script(
             local, pid=1, current_exe=r"C:\A\a_v3.0.0.exe",
             new_exe=os.path.join(local, "n.exe"),
             backup_path=os.path.join(local, "b_prev.exe"),
@@ -361,7 +361,7 @@ def test_local_target_uses_new_version_name():
     """업데이트하면 로컬 exe 이름도 새 버전으로 바뀐다(같은 폴더)."""
     rel = U.ReleaseInfo("3.1.0", U.exe_filename("3.1.0"), "ab" * 32, 10)
     cur = os.path.join("folder", "Camtek_AOI_manager_v3.0.0.exe")
-    target = U.local_target_path(cur, rel)
+    target = UB.local_target_path(cur, rel)
     assert os.path.dirname(target) == os.path.dirname(os.path.abspath(cur))
     assert os.path.basename(target) == "Camtek_AOI_manager_v3.1.0.exe"
     print("  업데이트 후 로컬 파일명도 새 버전 OK")
@@ -370,7 +370,7 @@ def test_local_target_uses_new_version_name():
 def test_backup_name_is_ascii():
     """백업 경로는 배치스크립트에 들어가므로 ASCII 여야 안전하다."""
     with tempfile.TemporaryDirectory() as local:
-        p = U.backup_path_for(local, os.path.join("x",
+        p = UB.backup_path_for(local, os.path.join("x",
                                                   "Camtek_AOI_manager_v3.0.0.exe"))
         assert os.path.basename(p).isascii(), p
         assert os.path.basename(p).endswith("_prev.exe"), p

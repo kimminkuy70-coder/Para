@@ -1,9 +1,9 @@
 """Folder swap for the web app self-update, done by the engine exe itself (Para #31).
 
-Until v12.7.16 the swap was a hidden, self-deleting `web_update.bat` in Temp
-(`ping` as a sleep, `rmdir /s /q`, `start`, `del "%~f0"`). Windows Defender's
-cloud ML flagged exactly that shape as `Trojan:Script/Wacatac.F!ml` and blocked
-the update. Now no script file is written at all: `desktop_appupdate.prepare`
+Until v12.7.16 the swap was a hidden, self-deleting batch file in Temp.
+Windows Defender's cloud ML flagged that shape as `Trojan:Script/Wacatac.F!ml`
+and blocked the update. Do not quote batch commands in this module's text
+either: its .pyc ships in the release zip (Para #58, tests/test_sidecar_no_scripts.py). Now no script file is written at all: `desktop_appupdate.prepare`
 copies the *new* engine folder to the update's Temp folder and writes
 `swap.json` next to it; `launch` starts that copy as
 `Camtek_AOI_engine.exe --apply-update`, and this module does what the script did.

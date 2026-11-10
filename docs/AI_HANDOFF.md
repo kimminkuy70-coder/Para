@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #58 v12.9.31 zip 도 `Trojan:Script/Wacatac.F!ml` → 엔진에서 배치 스크립트 문구 제거, v12.9.32 (2026-11-10 KST, `version_v12`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `ecb81de` · 이슈 Para #58("v12.9.32 업데이트 사항": Defender 탐지 기록 `Trojan:Script/Wacatac.F!ml`, file = `Camtek_AOI_manager_v12.9.31.zip`, "이거 참고해서 수정해") · 작업 브랜치 `version_v12`.
+- 조사: 위협 이름이 **Script** 판정(앞 절에서 들은 `Win32/…B!ml` 와 다름). 릴리스 zip 3개(29 · 30 · 31)를 받아 비교 — 스크립트 파일은 없음. 엔진 pyc 의 문자열을 찾으니
+  `updater.pyc` = tkinter 판 교체 .bat 전체 문구(`@echo off` · `ping -n` · `start ""` · `del "%~f0"` · `cmd.exe`), `desktop_swap.pyc` = docstring 의 `rmdir /s /q` · `del "%~f0"`.
+  #31 때 같은 위협 이름으로 막힌 `web_update.bat` 과 같은 모양 → **가장 유력한 원인(확인 전)**. v12.9.29 에도 같은 문구가 있었으므로 ML 점수 경계에서 30 의 변경과 합쳐 넘은 것으로 추정.
+- 수정(`updater_bat.py` 새 파일, 코드 지도는 CLAUDE.md 맨 위 #58 절): .bat 생성 4개 함수를 tkinter 전용 모듈로 옮김(엔진 import 경로에서 빠짐), `desktop_swap` docstring 에서 명령 문구 제거,
+  `tests/test_sidecar_no_scripts.py`(AST 로 엔진 진입점 import 를 따라감 — 결과 70개 = v12.9.31 zip 의 param_manager pyc 목록과 정확히 같음 확인). 고치기 전 코드에서 이 시험이 실패함을 확인.
+  `equip_app` · `tests/test_updater.py` · `tests/test_review_regressions.py` 는 `updater_bat` 를 부름. workflow 는 안 고침.
+- 시험: `tools/check_project.py` = 종전 2개(`test_batchreport.py` tkinter 없음 · `test_kla_cache.py` 날짜 의존)만 실패, 새 시험 · `test_updater.py` 28 · `test_desktop_appupdate.py` 통과. frontend 무변경. Windows Defender 판정은 이 환경에서 확인 불가.
+  (이 환경에는 openpyxl 이 없어 `python -m pip install openpyxl tksheet` 뒤에 돌림.)
+- 남은 일: 소유자 PC 에서 v12.9.32 zip 이 받아지는지. 막히면 보호 기록 '영향을 받는 항목'(zip 안 경로) 받기 + Microsoft 오탐 신고 / 코드 서명 검토(소유자 결정 필요).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #58 | v12.9.31 zip 이 `Trojan:Script/Wacatac.F!ml` 로 막힘 — 참고해서 수정 | 엔진 zip 에서 배치 스크립트 문구 제거 · 시험 통과, v12.9.32 릴리스(결과는 아래 줄) |
+
 ## 최신 재개 — 설치 zip 이 Windows Defender 에 막힘 → v12.9.31 (2026-11-10 KST, `version_v12`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `81c02ea` · 이슈 없음(소유자 세션 지시 "바이러스 감지되서 다운 자체가 안돼 window defender 자체에서 막나봐 버그 수정하고 31로 릴리즈해") · 작업 브랜치 `version_v12`.

@@ -23,6 +23,12 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 설치 zip 이 `Trojan:Script/Wacatac.F!ml` 로 막힘 → 엔진에 배치 스크립트 문구를 넣지 않음 (2026-11-10, 이슈 #58, v12.9.32)
+- v12.9.31 도 막힘, 위협 이름 = `Trojan:Script/Wacatac.F!ml`(스크립트 판정 · 파일 = zip). zip 에 스크립트 파일은 없지만 엔진 `_internal/param_manager/updater.pyc` 에 tkinter 판 교체 .bat 문구
+  (`@echo off` · `ping -n` · `start ""` · `del "%~f0"`)가 문자열 상수로, `desktop_swap.pyc` docstring 에 같은 명령이 들어 있었다(#31 에서 막힌 `web_update.bat` 모양). → 가장 유력한 원인(확인 전 — v12.9.29 에도 있었음, ML 점수 경계 추정).
+- `updater.py` 의 `_write_bat` · `local_target_path` · `build_swap_script` · `backup_path_for` 를 **`updater_bat.py`(tkinter `equip_app` 전용)** 로 옮김. 엔진(`desktop_appupdate`)은 `updater` 만 import.
+  **엔진 진입점에서 닿는 모듈에 배치 · 스크립트 명령 문구(docstring 포함)를 넣지 말 것** — `tests/test_sidecar_no_scripts.py`(AST 로 진입점 import 를 따라가 zip 의 param_manager pyc 목록과 같은 70개를 검사).
+
 ### 설치 zip 이 Windows Defender 에 막힘 → PyInstaller 실행기를 소스에서 빌드 (2026-11-10, 소유자 세션 지시, v12.9.31)
 - v12.9.30 zip 다운로드가 Defender 에 막힘(소유자). v12.9.29 와 비교하면 엔진 exe 는 버전 정보 16 byte 만 다르고 Tauri exe · 우리 pyc 5개만 바뀜 → 코드가 아니라 **PyInstaller 기본(prebuilt) 실행기**의 평판 기반 ML 오탐으로 판단(확인 전 — 위협 이름 · 경로는 소유자에게 요청).
 - `build-desktop.yml`: `PYINSTALLER_COMPILE_BOOTLOADER=1` + `pip install --no-binary pyinstaller` 로 실행기를 runner 에서 컴파일, 다음 단계가 `run.exe` SHA-256 을 로그에 남긴다. **prebuilt 휠로 되돌리지 말 것.** `--debug noarchive` 는 그대로.
@@ -1241,6 +1247,7 @@ python3 tests/test_collector_safety.py # 3 (원본 read-only 보호·UNC 거부�
 python3 tests/test_editor_model.py # 12 (편집기 GUI비의존: 사용규칙·격자계층·확정레코드·표시값 무예외·실파서왕복)
 python3 tests/test_errlog.py       # 5  (오류 코드+traceback 로그·사용자 메시지·쓰기불가 방어)
 python3 tests/test_updater.py      # 28 (버전비교·버전파일명·구버전정리·구매니페스트호환·동기화중단검증·로컬다운로드·교체스크립트 함정회피/cp949·롤백용 2개유지·게시폴더 형제위치/구위치이관·onedir감지·버전동일판정)
+python3 tests/test_sidecar_no_scripts.py # 3 (엔진 zip 에 묶이는 모듈에 배치 · 스크립트 명령 문구 없음 · updater_bat 미포함, #58)
 python3 tests/test_localdirs.py    # 9  (로컬 임시/로그 폴더·OneDrive 판정·Temp밖 삭제거부·정리)
 python3 tests/test_recipe_delete.py # 8 (레시피 삭제 범위 고정: 미리보기·로컬보관 이동/되돌리기·저장폴더 백업 거부·최신취합만·감시설정 정리·되돌리기 안내)
 python3 tests/test_onedrive_writes.py # 5 (저장폴더 쓰기 최소화: 폴더 지연생성·잠금 재기록 없음·수집 staging 로컬·무변경 시 취합 미생성)

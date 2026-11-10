@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from param_manager import atomicfile, cmwatcher, errlog, updater, watcher, wph
+from param_manager import atomicfile, cmwatcher, errlog, updater, updater_bat, watcher, wph
 import openpyxl
 
 
@@ -134,15 +134,15 @@ class ReviewTests(unittest.TestCase):
     def test_batch_encoding_and_backup_order(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / 'swap.bat'
-            updater._write_bat(str(p), '@echo off\r\nrem 한글\n')
+            updater_bat._write_bat(str(p), '@echo off\r\nrem 한글\n')
             self.assertNotIn(b'\r\r\n', p.read_bytes())
             self.assertIn('한글', p.read_bytes().decode('cp949'))
             p.unlink()
             if os.name != 'nt':
                 with self.assertRaises(UnicodeEncodeError):
-                    updater._write_bat(str(p), 'echo \U0001f600')
+                    updater_bat._write_bat(str(p), 'echo \U0001f600')
                 self.assertFalse(p.exists())
-            script = updater.build_swap_script(d, 123, r'C:\100%\old.exe', r'C:\new.exe', r'C:\backup.exe')
+            script = updater_bat.build_swap_script(d, 123, r'C:\100%\old.exe', r'C:\new.exe', r'C:\backup.exe')
             text = Path(script).read_bytes().decode('cp949')
             self.assertIn('100%%', text)
             self.assertLess(text.index('fc /b'), text.index('del /q'))
