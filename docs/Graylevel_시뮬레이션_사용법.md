@@ -85,6 +85,18 @@
     - 5-2 진행 = ① 리스트의 Slot 읽기 · 5-1 값 비교(Slot k / N) → ② Defect 짝짓기(Defect k / N) → ③ 결과.
     - 시험: 실제 결과 폴더 + md 위치(Slot · Lot 폴더) × 배치(기본 · x/y 바꿈) 4가지 모두 5-1 값 · Die · Color · Gray 353/353 이 Step 1 과 같음, Color 연결 변형 6가지 · ini 를 Lot 폴더에 둔 경우 353/353.
       가짜 큰 폴더(Lot 40 × Slot 25, Slot 마다 사진 3,000장): md 가 Slot 안이면 5-1 약 14초 · 5-2 약 30초(rev3 과 같음), md 가 모든 Slot 에서 Lot 폴더에 있으면 5-1 약 25초. 실제 큰 폴더 · 네트워크 드라이브로는 확인 전.
+15. **rev5 판**(`AOI_Contrast_Wizard_rev5.html`, 2026-11-10 소유자 세션 지시 "프로그램에 있는 기능을 최우선으로 · 설정은 아예 없애 · 결과물은 목록으로, 새 창에서 큰 화면으로 사진들만", 시험 `node tools/test_contrast_wizard_rev5.mjs`): rev4 + 아래. rev4 이하는 그대로입니다.
+    - **Color · Gray 매칭 = Para 프로그램 'Color · Gray 매칭'(`param_manager/colorgray.py`)과 같은 계산**: 5-1 에서 Slot 마다 매칭 파일 3개(ColorImageGrabingInfo.ini · ScanResultImageList.txt · frameToChuckPlane.ini)를 이름으로 바로 읽어(폴더 목록은 만들지 않음) Color 항목마다 Gray 프레임 · 픽셀을 구합니다. 사진은 읽지 않습니다.
+      매칭 폴더 = 세 파일이 바로 안에 있는 폴더(Slot 바로 안 → 없으면 Slot 하위 폴더 중 세 파일이 다 있는 첫 폴더. Surface.flt 가 있는 하위 폴더는 다른 Slot 이라 빌려 쓰지 않음). 위쪽 폴더(Lot · Setup)의 세 파일은 쓰지 않습니다(프로그램과 같음).
+      좌표 기준(그대로 → 맞지 않으면 프레임 직사각형의 좌측 하단 원점 해석 중 가장 많이 맞는 것)도 프로그램과 같습니다. Defect → Color 항목 = Index(기록 순서) + 좌표 5 µm 확인, 아니면 5 µm 안 가장 가까운 Color. Color 항목이 없는 Defect 는 Defect 좌표로 Gray 만 찾습니다.
+      5-1 목록에 **'Color · Gray 매칭'** 칸(Color · Gray / Color 만 / Gray 만 / 짝 없음 / 매칭 파일 없음)이 생겼습니다.
+    - **5-2 = 결과 목록 · 사진 새 창 · CSV**: 사진 파일이 매칭 폴더에 있는지 이름 목록으로만 확인합니다(다른 파일은 열지 않음). rev3 · rev4 는 Slot · 위쪽 폴더의 사진 아닌 파일을 전부 열어, 하나만 열기에 실패해도 그 아래 Slot 이 모두 0 이 됐습니다(재현: Slot 안 파일 1개 → 그 Slot 0/353, Setup 폴더 파일 1개 → 모든 Slot 0).
+      줄 더블 클릭 · Enter · [⧉ 사진 새 창] = **사진 새 창**(큰 화면, 사진만): 위 = Color 원본 | Gray Crop(Color 시야), 아래 = Gray 프레임 전체(빨간 + = Defect, 노란 상자 = Crop 범위). 새 창은 목록에서 고른 줄을 따라가고, 새 창에서 ↑↓ ←→ 로 옮기면 목록도 같이 움직입니다. 사진을 누르면 원래 크기 ↔ 창 맞춤.
+      CSV 열 추가: FaultX · FaultY · 후보프레임 · Gray계산(Color 좌표 / Defect 좌표) · 좌표기준 · CropW · CropH · 매칭폴더.
+    - **5-3 Gray Crop = 프로그램과 같음**: Color 시야(ImageSize × PixelSize ÷ 0.769644 µm, 실제 자료 829×622 px)만큼 Defect 가운데로 잘라 Color 크기(1380×1036)로 늘린 흑백입니다. GL 은 그 Crop 의 원래 해상도에서 Box W×H · Ring 폭으로 잽니다.
+    - **설정 없앰**: 결함 좌표 · Pixel Size · Color 연결 허용오차 · X/Y 반전 · X/Y Offset 칸을 없앴습니다(종전 기본값 x/y · 0.7708 · 5 µm · 반전 없음 · 0 으로 고정, Step 3 · 4 도 같음). Crop 크기 · Ring 폭(Step 3 · 4 GL)은 남겼습니다.
+    - **Slot 찾기**: Surface.flt 가 있는 폴더에 ColorImageGrabingInfo.ini 가 바로 없으면 그 아래 폴더도 봅니다(Lot 폴더에 Surface.flt 가 있어도 실제 Slot 이 빠지지 않음 — Step 1 과 같음). Surface.flt.md 찾기 순서는 rev4 와 같고, rev4 의 '5-1 값 ↔ Step 1 값' 안전장치는 없앴습니다(그 확인이 Slot 전체를 다시 읽는 과정).
+    - 시험: 실제 결과 폴더(`사진 제외.zip`) Defect 353개 모두 Color · Gray 프레임 · 픽셀 · 후보 수가 이 브랜치의 `colorgray.py` 와 같음 — 그대로 · 관계없는 파일 열기 실패(Slot 안 · Setup 폴더) · Lot 폴더 Surface.flt · 좌측 하단 원점 좌표 4가지. 실제 사진 · 네트워크 드라이브 속도는 확인 전.
 
 **폴더 인식(2026-11-10)**: Step 1 · Step 5 모두 **고른 폴더 바로 아래 폴더 = Lot**, Surface.flt 가 있는 폴더 = Wafer Slot(이름 = 그 폴더 이름)입니다. Slot 이 Lot 안 몇 단계 아래에 있어도(예: `고른 폴더/Contrast Avg24/Job/Setup/SM/Wafer/Surface.flt`) 그 Lot 으로 묶습니다.
 - Lot 폴더 하나를 고르면(`Lot/Wafer/Surface.flt`) 고른 폴더 = Lot, Slot 폴더를 고르면 Slot 1개짜리 Lot.

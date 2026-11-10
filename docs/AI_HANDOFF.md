@@ -1,5 +1,18 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 소유자(세션 대화, 지시는 세션 `ccr-1bb2ad9c-1u5hdy`): "프로그램의 Color gray 매칭 기능 뜯어봐 · 최신 rev html 5-2 · 5-3 에 적용 가능한지 · 지금 html 은 왜 안 되는지" → "설정은 아예 없애" · "1 ~ 4 는 되는데 5 만 안 돼, 로직이 다른지" ·
+  "5-1 이 Surface.flt 만 조사해 데이터가 부족할 수 있는지" → "프로그램 기능을 최우선으로, 결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
+- 조사: 매칭 수식은 rev4 Step 5 = Step 1 ~ 4 = colorgray.py(실제 zip 353/353, 픽셀 차 1e-9). Step 5 만의 차이 = 5-2 `fullLoad` 가 Slot(하위 4단계) · 위쪽 폴더의 사진 아닌 파일을 전부 `getFile` —
+  하나만 실패해도 그 Slot(위쪽 폴더 파일이면 그 아래 모든 Slot)이 0 이 되고 이유는 'ColorImageGrabingInfo.ini 도 … 없음'으로 나옴(재현). `walkFast` 는 Surface.flt 폴더에서 멈춰 Lot 폴더에 Surface.flt 가 있으면 실제 Slot 이 빠짐(재현).
+  회사 PC 에서 실제로 실패한 파일은 확인 전(후보: 260자 넘는 경로 — 실제 Slot 에 `FocusMapping/Model_<GUID>/FocusModel.ini` · 결과 이동 중 사라진 파일 · 권한).
+  5-1 이 Surface.flt 에서 모으는 값은 매칭에 충분, 빈틈 = 5-1 이 매칭 파일 3개를 안 봄. 실제 zip: Color Index = 최종 Surface.flt 기록 순서(353/353), Surface_ORIG.flt 순서와는 2/353.
+- 한 일: 새 파일 `AOI_Contrast_Wizard_rev5.html` + `tools/test_contrast_wizard_rev5.mjs`(rev4 이하 무변경). 내용 = CLAUDE.md rev5 줄 · 사용법 15번.
+- 시험: rev5 시험 3번 연속 통과(Step 1 ~ 4 = rev4 시험 그대로 + Step 5 새 시험: 순수 함수 = colorgray.py · 합성 폴더 흐름 · 사진 새 창 따라가기 · 5-3 · 30만 Defect · 중지 · 실제 zip 4가지 조건 353/353 = colorgray.py · md 위치 3가지).
+  원래 · rev1 ~ rev4 시험도 통과. 위치를 알 수 있는 격자 그림을 Gray 사진으로 넣어 Crop 가운데 값 = Defect 위치 기대값 확인(191 = 191, 23 = 23).
+- 남은 일: 소유자 PC(실제 사진 · 네트워크 드라이브)에서 rev5 5-1 → 5-2 → 사진 새 창 확인. 속도(5-1 이 Slot 마다 파일 2 ~ 3개를 더 읽음, 5-2 는 매칭 폴더 이름 목록 한 번)는 확인 전. colorgray.py 를 바꾸면 rev5 `15-0` 구역도 같이.
+
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 소유자: "5-1 에서 추후 사진 매칭을 위해 필요한 정보가 부족한지 조사" → 보고 후 "rev4 로 새 파일 만들어서 둘 다 적용해".
