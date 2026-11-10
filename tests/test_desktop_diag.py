@@ -95,9 +95,8 @@ class BootTests(unittest.TestCase):
             boot.load_with_progress(lambda: (_ for _ in ()).throw(ImportError("x")), frames, io.BytesIO())
 
     def test_entry_frame_limit_matches_ipc(self):
-        from param_manager import desktop_ipc
-        src = (Path(__file__).resolve().parents[1] / "tools" / "desktop_engine_entry.py").read_text(encoding="utf-8")
-        self.assertIn(f"MAX_FRAME = 4 * 1024 * 1024", src)
+        from param_manager import desktop_ipc, webserver
+        self.assertEqual(webserver.MAX_FRAME, desktop_ipc.MAX_FRAME)
         self.assertEqual(desktop_ipc.MAX_FRAME, 4 * 1024 * 1024)
 
 if __name__ == "__main__":

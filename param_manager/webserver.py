@@ -56,6 +56,7 @@ class Bridge:
         self.closed = threading.Event()
         self.last_seen = time.monotonic()
         self.ever_connected = False
+        self.on_unheard = None             # (message) -> None: a line no open page received (tray balloon)
 
     # engine input (desktop_boot.FrameQueue reads this like stdin)
     def readline(self, _limit=-1) -> bytes:
@@ -74,9 +75,15 @@ class Bridge:
             *lines, self._buf = self._buf.split(b"\n")
             subs = list(self._subs)
         for line in lines:
-            if line.strip():
-                for q in subs:
-                    q.put(line)
+            if not line.strip():
+                continue
+            for q in subs:
+                q.put(line)
+            if not subs and self.on_unheard is not None:
+                try:
+                    self.on_unheard(json.loads(line))
+                except Exception:  # noqa: BLE001 - a balloon must never break the engine
+                    pass
         return len(data)
 
     def flush(self):

@@ -12,7 +12,14 @@
   창이 닫히고 트레이 상주가 아니면 20초 뒤 종료. 엔진은 v12 의 `desktop_boot` · `desktop_ipc.serve` 그대로(`webserver.run_engine`).
   `frontend/src/desktop.ts` = Tauri 대신 fetch · EventSource(토큰은 `?t=` → sessionStorage, 주소에서 지움), package.json 에서 Tauri 삭제.
   시험: `tests/test_webserver.py`(9) + `tools/test_desktop_ui.mjs` 가 **진짜 로컬 서버**로 전 화면 통과(`PARA_TEST_NODE_MODULES=/opt/node-tools/node_modules CODEX_PRIMARY_RUNTIME_PYTHON=python3 node tools/test_desktop_ui.mjs`, fixture `web` 모드).
-- 다음 단계(계획 7절): ~~2 로컬 서버~~ + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
+- **3 · 4단계 끝**: `param_manager/winnative.py` = Windows 폴더/파일 고르기(IFileOpenDialog, ctypes) · Edge 앱 창(`--app` + 전용 프로필 `%LOCALAPPDATA%\CamtekAOI\EdgeProfile`, 디버깅 포트 스위치 금지)
+  · 트레이(기존 `tray.py` 재사용, 창 없을 때 감시 알림 = 풍선). 비Windows 는 조용히 no-op. **Windows 실기 확인 전**.
+  시작 = 저장소 맨 위 `Camtek_AOI_manager.pyw`(설치형: `<home>/python` · `<home>/app` · 업데이트 `app.new` 를 모듈 읽기 전에 교체, 소스형: git clone 그대로 실행, `sys.dont_write_bytecode`)
+  → `param_manager/launcher.py`(중복 실행이면 기존 창 다시 열기 · `server.json` · OneDrive 안이면 실행 거부 · `PARA_APP_HOME` → 로컬 폴더 = `%LOCALAPPDATA%\CamtekAOI`).
+  `vendor/` = openpyxl 3.1.5 + et_xmlfile 2.0.0(MIT, 휠 그대로). `frontend/dist` 를 저장소에 커밋(.gitignore 수정).
+  배포 파일 목록 = `param_manager/deploy.py` 한 곳(릴리스 zip · 업데이트 · 시험 공용), `tests/test_deploy_files.py` 가 실행 파일 · 배치 문구를 배포 파일 전체에서 검사(종전 test_sidecar_no_scripts 대체).
+  시험 추가: test_launcher(8). 리눅스에서 시작 파일 → 서버 → 화면 연결 → 종료까지 확인.
+- 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
 
 ## 최신 재개 — 회사에서 잘 되는 다른 프로그램의 업데이트 방식 분석 → V13 계획 10절 (2026-11-10 KST, `version_v12`)

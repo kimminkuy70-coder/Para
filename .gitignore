@@ -3,10 +3,10 @@ __pycache__/
 *.pyc
 *.pyo
 
-# PyInstaller 빌드 산출물
+# 빌드 산출물 (v13: frontend/dist 는 배포 파일이라 저장소에 둔다)
 build/
 dist/
-*.spec
+!frontend/dist/
 
 # 가상환경
 .venv/
@@ -21,8 +21,3 @@ tkvenv/
 CamtekAOI/
 # Desktop migration build products (never publish caches or vendored binaries).
 frontend/node_modules/
-frontend/dist/
-frontend/src-tauri/target/
-frontend/src-tauri/gen/
-frontend/src-tauri/sidecar/*
-!frontend/src-tauri/sidecar/README.txt

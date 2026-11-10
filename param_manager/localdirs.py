@@ -79,6 +79,8 @@ def default_root() -> str:
     대상이 되어 대량 동기화 사고가 그대로 재발한다. 그런 경우에는 안전한
     `%LOCALAPPDATA%` 로 자동 대체한다(첫 실행 안내에서 바꿀 수 있다).
     """
+    if os.environ.get("PARA_APP_HOME"):         # v13 installed copy (launcher sets this):
+        return appdata_root()                    # the install folder is replaced by updates
     here = program_root()
     if is_under_onedrive(here):
         return appdata_root()
