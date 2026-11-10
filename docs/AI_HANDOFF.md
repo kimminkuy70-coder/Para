@@ -9,7 +9,9 @@
 - 소유자에게 안내한 해결: ① Microsoft 오탐 신고(관리자 권한 불필요, 그 파일 해시가 전 세계에서 풀림) ② 코드 서명(Azure Trusted Signing 등, 지속 해결, 비용) ③ 회사 IT 예외 등록. Defender 회피용 꼼수(암호 zip 등)는 권하지 않음.
 - 남은 일: 소유자 결정(신고 결과 · 서명 도입 여부). 서명을 쓰면 `build-desktop.yml` 에 서명 단계 추가 필요.
 - 후속 질문(소유자): `window_defender` 브랜치의 GitHub 'Download ZIP'(소스 코드)은 받아짐 → 그걸로 릴리스 파일을 만들 수 있나? 답: 아니다. 소스 zip 에는 실행 파일(exe · dll · pyc)이 없어 막히지 않는 것이고,
-  릴리스 파일은 그 소스를 빌드해 exe 를 넣은 것이라 같은 판정을 받는다. 참고: `window_defender`(다른 세션, v12.9.33, runner Defender 실측 = 29~32 모두 위협 없음)는 아직 `version_v12` 에 안 합쳐짐.
+  릴리스 파일은 그 소스를 빌드해 exe 를 넣은 것이라 같은 판정을 받는다.
+- 후속 질문(소유자): "build.bat 하면 되는 거 아님?" 답: `build.bat`(→ `build_exe.bat`) 은 **옛 tkinter 프로그램**(`run.py` → `equip_app`, onefile exe)을 만든다 — 지금 쓰는 웹 UI 앱(Tauri, Batch Report 분석 · KLA · Color·Gray · 자동 분석)이 아니다.
+  웹 UI 를 PC 에서 빌드하려면 `tools/build_desktop.py`(Python + Node + Rust MSVC + WebView2 SDK, 보통 관리자 권한 필요). PC 에서 만든 파일은 '인터넷에서 받은 파일' 표시가 없어 다운로드 차단은 피하지만, 실행할 때 Defender 검사는 그대로 받음(서명 없음). 참고: `window_defender`(다른 세션, v12.9.33, runner Defender 실측 = 29~32 모두 위협 없음)는 아직 `version_v12` 에 안 합쳐짐.
 
 ## 최신 재개 — Para #58 v12.9.31 zip 도 `Trojan:Script/Wacatac.F!ml` → 엔진에서 배치 스크립트 문구 제거, v12.9.32 (2026-11-10 KST, `version_v12`)
 
