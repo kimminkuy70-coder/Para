@@ -7,6 +7,7 @@
 - 소유자에게 제안한 선택지(답 대기): 안 A = 지금 계획(Git 설치 + 태그 checkout) / 안 B = Git 없이 태그 zip 다운로드 + app.new 교체 / 안 C = B + python.org embeddable Python 동봉. 그 프로그램의 'SSL 검증 끄고 재시도'는 가져오지 않는다.
 - 후속 질문 "Python 이 없는 PC 에서도 되나?" → 된다고 답함: 그 프로그램은 Python 을 묶음에 넣거나(전체 · lite) 작은 exe 가 받아 옴(온라인). Para 는 openpyxl 만 vendor 하면 pip 불필요 → 첫 설치 zip 에 python.org embeddable 동봉(안 C), 업데이트는 소스만. 계획서 10-1절.
 - 후속 지시 "이전 보안 이슈 다시 검토, 저촉 점검" → 계획서 11절: 과거 사고(Anaconda 경고 · net use 로 exe 삭제 · OneDrive 대량 접근 경고) + #31/#58 Trojan:Script + 런타임 인터넷 금지 원칙 기준 점검. 저촉 = OneDrive 안 설치 · pycache · .bat 5개/배포 zip 범위 · GitHub 다운로드. 제안 = 업데이트 기본 통로를 OneDrive 소스 zip(exe 없음)으로, 설치 위치 고정 · OneDrive 안 실행 거부, 127.0.0.1 만, Edge remote-debugging 금지.
+- **소유자 확정(2026-11-10)**: 업데이트 = GitHub 메인, 이때만 인터넷 다운로드 허용(원칙 예외) → 계획서 4-1절(범위: 이 저장소 하나 · 확인 + 소스 zip 만 · TLS 검증 필수 · 토큰 없음 · 실행 파일 들어 있으면 거부 · 받기는 버튼 때만). 저장소 공개 필요 여부 질문 → 토큰 없이 받으려면 공개 필요, 지금 이미 공개(GitHub API `private=false`). OneDrive 는 보조.
 - 남은 일: 9절 질문 + 10절 A/B/C 선택 답을 받은 뒤 `version_v13` 생성 · 구현.
 
 ## 최신 재개 — V13 계획(git clone 설치 · 업데이트, 자체 exe 없음, tkinter 제거) 검토 대기 (2026-11-10 KST, `version_v12`)
