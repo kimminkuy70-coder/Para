@@ -23,6 +23,12 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### Batch Report 자동 분석이 예약 시각에 안 돌던 것 (2026-11-10, 이슈 #54, v12.9.30)
+- 자동 분석(CAMTEK Batch Report · KLA 캐시)의 1분 타이머는 `Batch.tsx` 안에 있다. `main.tsx` 는 KEEP 화면을 **처음 방문해야** 만들었으므로 그 탭을 안 열면 영영 안 돌았다.
+  → `main.tsx mountBatch()`: `configuration.auto.enabled` 면 시작 때 · 1분 확인 · `para:batch-auto-changed`(BatchAutoPanel 저장 뒤) 때 `Batch Report 분석` 을 숨긴 채 만든다. 타이머를 다른 곳으로 옮기지 말 것.
+- 자동 실행이 실패하면 `autoBlocked` 가 영구 true 였다 → 이제 시각(ms): `AUTO_RETRY_MS`(30분) 뒤 다시. 엔진은 실패도 `record_run` 하므로 하루 단위 주기는 다음 예약 시각까지 기다린다.
+- 트레이 상주 = 파라미터 · Commonality · **Batch 자동 분석**(`watch_status.batch` = `DesktopBatch.auto_enabled()`). 툴팁 `· Batch Report ✓/✗`.
+
 ### Color · Gray 매칭 좌표 기준 = wafer map 직사각형 좌측 하단 (0,0) (2026-11-09, 이슈 #49 후속 2, v12.9.30)
 - 소유자 설명: "wafer map 에서 모서리 쪽에 가상의 직사각형으로 map 을 꽉 채웠을 때 좌측 하단부터 0,0". Fault 좌표가 이 기준이고 Gray 프레임 위치는 장비 chuck 좌표일 수 있다(확인 전).
 - `plan_wafer`: `COORD_MODES` = 그대로 / 좌측 하단 원점 / 좌측 하단 원점 · Y 반전 / Y 반전. 그대로로 다 맞으면 끝, 아니면 `frames_rect`(프레임 네 모서리를 변환 정방향(`_forward`)으로 chuck 좌표에 놓은 직사각형)로

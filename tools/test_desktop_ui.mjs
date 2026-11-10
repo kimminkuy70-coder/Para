@@ -457,6 +457,10 @@ try{
   await page.getByRole('tab',{name:'Batch Report 자동 분석'}).click();
   await page.getByLabel('자동 분석 사용 (기본 꺼짐)').click();
   await page.getByText('자동 분석을 켰습니다').waitFor();
+  // Para #54: Batch Report 자동 분석만 켜도 창을 닫으면 트레이에 남는다(예약 시각에 돌려면 앱이 살아 있어야 함).
+  await page.waitForFunction(()=>true);
+  for(let i=0;i<50&&!background.enabled;i++)await page.waitForTimeout(100);
+  assert(background.enabled&&background.tooltip.includes('Batch Report ✓'),'batch auto must keep the app resident: '+background.tooltip);
   await page.getByLabel('분석 주기').selectOption('12');
   await page.getByText('분석 주기를 저장했습니다').waitFor();
   await page.getByLabel('실행 시각 (시)').waitFor({state:'detached'});   // 시간 단위 주기에는 시각 칸 없음
@@ -754,7 +758,9 @@ try{
   await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합'}).click();
   await pw.getByRole('button',{name:/파라미터 자동 분석 및 취합 ON/}).click();
   await pw.getByRole('button',{name:/파라미터 자동 분석 및 취합 OFF/}).waitFor();
-  await page.waitForFunction(()=>true);assert.equal(background.enabled,false);
+  // Para #54: 앞에서 켠 Batch Report 자동 분석이 남아 있으므로 파라미터 감시를 꺼도 트레이 상주는 유지된다.
+  await page.waitForFunction(()=>true);assert.equal(background.enabled,true);
+  assert(background.tooltip.includes('장비 ✗')&&background.tooltip.includes('Batch Report ✓'),'batch auto keeps the app resident: '+background.tooltip);
   // Color·Gray 매칭: scan a Lot folder, process both wafers (canvas crop/thumbnails), Excel per wafer.
   await feature('Color·Gray 매칭');
   const cg=page.locator('section.panel',{has:page.getByRole('heading',{name:'Color · Gray 매칭'})});

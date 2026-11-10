@@ -21,6 +21,8 @@ import {loadView,batchCall,addDays,ymd,type View,type ViewMeta,type ViewName,typ
 type CachePublish={name:string;path:string;folder:string;size:number;machines:string[];reports:number;kept:number;exported_at:string};
 type ShareItem={name:string;exported_at:string;app_version:string;size:number;machines:string[];reports:number;compatible:boolean;present:boolean};
 type ShareList={folder:string;exists:boolean;items:ShareItem[]};
+// 자동 분석 실패 뒤 다시 시도하기까지(Para #54).
+const AUTO_RETRY_MS=30*60*1000;
 const mb=(n:number)=>(n/1048576).toFixed(1)+'MB';
 type CacheImport={path:string;source?:string;files:number;added:number;kept:number;invalid:number;machines:string[];skipped:{machine:string;reports:number}[];
   targets:{machine:string;folder:string;added:number;kept:number}[];exported_at:string;app_version:string;choices_skipped:boolean};
@@ -53,7 +55,7 @@ export function Batch({active}:{active:boolean}){
   const [cond,setCond]=useState<FindCond>({machines:[],query:'',start:'',end:''});
   const [fstep,setFstep]=useState(0),[finding,setFinding]=useState(false),[fprog,setFprog]=useState('');
   const [flist,setFlist]=useState<FindList>(),[fchecking,setFchecking]=useState(false);
-  const job=useRef<number|undefined>(undefined),runningRef=useRef(false),restoringRef=useRef(false),autoBlocked=useRef(false),first=useRef(true);
+  const job=useRef<number|undefined>(undefined),runningRef=useRef(false),restoringRef=useRef(false),autoBlocked=useRef(0),first=useRef(true);
   const critRef=useRef<HTMLDialogElement>(null),rawRef=useRef<HTMLDialogElement>(null);
 
   useEffect(()=>{const on=()=>setDefect(true);window.addEventListener('bv:defect',on);return()=>window.removeEventListener('bv:defect',on);},[]);
@@ -127,7 +129,7 @@ export function Batch({active}:{active:boolean}){
     if(runningRef.current||!config||restoring)return;
     if(!machines.length){notify('조사할 호기를 하나 이상 고르세요.','error');return;}
     if(!allDates&&from&&to&&from>to){notify('시작일은 종료일보다 늦을 수 없습니다.','error');return;}
-    autoBlocked.current=false;
+    autoBlocked.current=0;
     await launch(targetsNow(),{...optionsNow(config.last?.options),reuse},false);
   }
   // 자동 분석 › [KLA] 탭(Para #43): KLA 캐시 갱신(+ 게시). 실패해도 Batch Report 결과는 그대로 두고 알리기만 한다.
@@ -148,7 +150,7 @@ export function Batch({active}:{active:boolean}){
   // Camtek 지난 조사 조건이 없고 KLA 만 자동 분석에 넣은 경우(엔진이 실행 기록을 남겨 매분 다시 돌지 않는다).
   async function launchKlaOnly(automatic:boolean,publish:boolean){
     runningRef.current=true;setRunning(true);setAutoRun(automatic);setProgress(undefined);
-    try{if(!await klaAuto(publish,true)&&automatic)autoBlocked.current=true;}
+    try{if(!await klaAuto(publish,true)&&automatic)autoBlocked.current=Date.now()+AUTO_RETRY_MS;}
     finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);}
   }
   async function launch(payload:Target[],opts:Options&{reuse:boolean},automatic:boolean,publish=false,kla?:{publish:boolean}){
@@ -168,10 +170,12 @@ export function Batch({active}:{active:boolean}){
       if(publish){setProgress({message:'Batch Report 캐시를 OneDrive 에 올리는 중…'});await publishCache(true);}
       if(kla)await klaAuto(kla.publish,false);
     }catch(e){
-      if(automatic){autoBlocked.current=true;notify('Batch Report 자동 갱신 실패: '+errorText(e),'error');}else fail(e);
+      if(automatic){autoBlocked.current=Date.now()+AUTO_RETRY_MS;notify('Batch Report 자동 갱신 실패: '+errorText(e),'error');}else fail(e);
     }finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);}
   }
   // 자동 분석(자동 분석 및 취합 › Batch Report 자동 분석): 지난 조사 조건으로, 캐시는 늘 재사용.
+  // 실패하면 AUTO_RETRY_MS 동안만 쉰다(Para #54: 종전에는 한 번 실패하면 앱을 다시 켜기 전까지 자동 분석이 영영 멈췄다).
+  // 엔진이 실패도 실행 기록으로 남기므로 하루 단위 주기는 다음 예약 시각까지 기다린다.
   // 즉시 실행(#33)도 같은 조건으로 — 자동 분석이 꺼져 있어도 한 번 돈다.
   async function runLast(now:boolean){
     if(runningRef.current||restoringRef.current){if(now)notify('이미 조사 중입니다. 끝난 뒤 다시 누르세요.','info');return;}
@@ -182,16 +186,16 @@ export function Batch({active}:{active:boolean}){
       .map(({machine,query,start,end,names})=>names&&names.length?{machine,query:query||'',start:start||'',end:end||'',names}:{machine,query:query||'',start:start||'',end:end||''});
     const kla=data.auto?.kla?{publish:!!data.auto.kla_publish}:undefined;
     if(!payload.length){
-      if(kla){if(now){autoBlocked.current=false;notify('Camtek 지난 조사 조건이 없어 KLA 캐시만 갱신합니다.','info');}await launchKlaOnly(!now,kla.publish);return;}
+      if(kla){if(now){autoBlocked.current=0;notify('Camtek 지난 조사 조건이 없어 KLA 캐시만 갱신합니다.','info');}await launchKlaOnly(!now,kla.publish);return;}
       if(now)notify('지난 조사 조건이 없습니다. 먼저 호기 · 기간을 고르고 [조사 시작]을 한 번 누르세요.','error');return;}
     const metrics=(data.metrics?.map(m=>m.id)||defaults.metrics) as Options['metrics'];
-    if(now){autoBlocked.current=false;notify(`Batch Report 분석${kla?'과 KLA 캐시 갱신':''}을 지금 실행합니다(지난 조사 조건).`,'info');}
+    if(now){autoBlocked.current=0;notify(`Batch Report 분석${kla?'과 KLA 캐시 갱신':''}을 지금 실행합니다(지난 조사 조건).`,'info');}
     await launch(payload,{...defaults,...data.last?.options,metrics,reuse:true},!now,!!data.auto?.publish,kla);
   }
   const runLastRef=useRef(runLast);runLastRef.current=runLast;
   useEffect(()=>{
     const timer=window.setInterval(async()=>{
-      if(runningRef.current||restoringRef.current||autoBlocked.current)return;
+      if(runningRef.current||restoringRef.current||Date.now()<autoBlocked.current)return;
       try{await runLastRef.current(false);}catch{/* engine busy with another screen: try again next minute */}
     },60000);
     return()=>window.clearInterval(timer);

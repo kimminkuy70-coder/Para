@@ -856,7 +856,12 @@ class Session:
             c_on = bool(self.cmwatch._load()[1].enabled)
         except Exception:  # noqa: BLE001
             c_on = False
-        return dict(param=p_on, param_owned=bool(self.pwatch.owned), commonality=c_on,
+        try:
+            # Batch Report 자동 분석(CAMTEK · KLA)도 켜져 있으면 창을 닫아도 트레이에 남아야 예약 시각에 돈다(Para #54).
+            b_on = bool(self.batch.auto_enabled())
+        except Exception:  # noqa: BLE001 - no config yet
+            b_on = False
+        return dict(param=p_on, param_owned=bool(self.pwatch.owned), commonality=c_on, batch=b_on,
                     busy=self.watching or "", notices=list(self.notices[-20:]))
 
     def notify(self, notice):

@@ -25,7 +25,8 @@ export function BatchAutoPanel(){
   useEffect(()=>{void load();},[]);
   async function save(params:object,ok:string){
     setBusy(true);
-    try{setSt((await desktop.request('config_set_batch_auto',{enabled:!!st?.batch_auto,...params}).promise).config as State);notify(ok,'ok');}
+    try{setSt((await desktop.request('config_set_batch_auto',{enabled:!!st?.batch_auto,...params}).promise).config as State);notify(ok,'ok');
+      window.dispatchEvent(new Event('para:batch-auto-changed'));}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   // Batch Report 자동 분석 실행 시각(#33) — "HH:MM" 5분 단위, 빈 문자열 = 지정 안 함.

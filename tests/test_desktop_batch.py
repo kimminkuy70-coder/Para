@@ -65,6 +65,20 @@ class DesktopBatchTests(unittest.TestCase):
         self.adapter.record_run(False, error='조사 실패')
         self.assertEqual(json.loads(self.config.read_text(encoding='utf-8'))['batch_schedule']['fail_count'], 1)
 
+    def test_auto_enabled_keeps_tray(self):
+        """#54: Batch Report 자동 분석만 켜도 watch_status 가 batch=True — 창을 닫아도 트레이에 남아 예약 시각에 돈다."""
+        self.assertFalse(self.adapter.auto_enabled())
+        self.config.write_text(json.dumps(dict(self.cfg, batch_auto=True)), encoding='utf-8')
+        self.assertTrue(self.adapter.auto_enabled())
+        session = Session.__new__(Session)
+        session.batch = self.adapter
+        session.pwatch = type('P', (), {'owned': False, 'state_cached_enabled': lambda self: False})()
+        session.cmwatch = type('C', (), {'_load': lambda self: (None, type('S', (), {'enabled': False})())})()
+        session.watching, session.notices = '', []
+        self.assertTrue(session.watch_status()['batch'])
+        self.config.write_text(json.dumps(self.cfg), encoding='utf-8')
+        self.assertFalse(session.watch_status()['batch'])
+
     def test_auto_time_of_day(self):
         """#33: 하루 단위 주기는 정한 시각(5분 단위)에 — 마지막 실행 + (주기 − 1일) 뒤 첫 HH:MM."""
         from datetime import datetime

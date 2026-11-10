@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #54 Batch Report 자동 분석(CAMTEK · KLA)이 예약 시각에 안 돎 (2026-11-10 KST, `version_v12`, v12.9.30)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `018023f` · 이슈 Para #54("v12.9.30 업데이트 사항": 자동 감시(배치레포트 자동분석 Camtek, KLA)가 시간에 맞춰 전혀 안 됨 — 고치고 릴리스) · 작업 브랜치 `version_v12`.
+- 원인 3가지(코드로 확인):
+  ① 자동 분석 1분 타이머가 `Batch.tsx` 안에 있는데, `main.tsx` 는 KEEP 화면을 **처음 방문해야** 만든다 → 앱을 켜고 Batch Report 분석 탭을 안 열면 영영 안 돎(가장 유력).
+  ② 자동 실행이 한 번 실패하면 `autoBlocked=true` 가 앱 재시작까지 유지 → 이후 전부 건너뜀.
+  ③ 트레이 상주 판단(`watch_status`)이 파라미터 · Commonality 감시만 봄 → Batch 자동 분석만 켠 PC 는 창을 닫으면 앱이 종료.
+- 한 일(코드 지도는 CLAUDE.md 맨 위 #54 절): `main.tsx mountBatch`(auto.enabled 면 숨긴 채 Batch 화면 생성, 1분 확인 + `para:batch-auto-changed`), `Batch.tsx AUTO_RETRY_MS`(30분 뒤 재시도),
+  `DesktopBatch.auto_enabled` → `watch_status.batch` → 트레이 상주 · 툴팁 `Batch Report ✓`. 릴리스 노트 `docs/release_notes/v12.9.30.md` 에 #54 절 추가(#49 후속 2 와 같은 버전).
+- 내 해석(확인 전): 실패 뒤 재시도 간격 30분. 자동 분석이 켜진 PC 는 시작 때 지난 조사 결과 복원(로컬 캐시만, 탭을 연 것과 같음)이 일어남.
+- 시험: `tests/test_desktop_batch.py` 10개 통과(새 `test_auto_enabled_keeps_tray`), `tools/check_project.py` = 종전 2개(`test_batchreport.py` tkinter 없음 · `test_kla_cache.py` 날짜 의존)만 실패,
+  `npx tsc --noEmit` · `vite build` 통과, `tools/test_desktop_ui.mjs` passed(트레이 상주 기대값을 새 동작으로 고침). Windows 실기 · 숨긴 WebView2 의 타이머 동작은 미검증.
+- 릴리스 v12.9.30: 진행 결과는 아래 줄(이 commit 다음에 기록).
+- 남은 일: 실기에서 앱을 켜 두고(탭을 열지 않고) 예약 시각에 도는지 확인, routine 릴리스 방식(#48 절 ⓐ~ⓒ) 소유자 결정, `test_kla_cache.py` 날짜 의존 고치기.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #54 | 자동 분석(Camtek · KLA)이 예약 시각에 안 돎 — 고치고 릴리스 | 원인 3가지 수정 · 시험 통과, v12.9.30 릴리스(결과는 아래 기록) |
+
 ## 최신 재개 — Para #49 후속 2 Color · Gray 매칭 좌표 기준 = 좌측 하단 (0,0) (2026-11-09 KST, `version_v12`, v12.9.30)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `07f1f3e` · 이슈 Para #49 후속 2(소유자가 세션에서 "추가로 wafer map 에서 모서리쪽에 가상의 직사각형으로 map 꽉 채웠을 때 좌측하단부터 0,0 이야 참고해서 수정해") · 작업 브랜치 `version_v12`.

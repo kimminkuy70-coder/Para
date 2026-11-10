@@ -60,6 +60,7 @@ function App(){
       const data=(await desktop.request('configuration').promise) as Configuration;
       if(!Array.isArray(data.machines))throw new Error('configuration_failed');
       setConfig(data);setConnection('로컬 엔진 연결됨');
+      if(data.auto?.enabled)mountBatch();
     }catch(e){setConnection('연결 확인 필요');notify(errorText(e),'error');}
   }
   useEffect(()=>{void loadConfig();},[]);
@@ -77,6 +78,22 @@ function App(){
   // is handed back when you leave them.
   const [visited,setVisited]=useState<string[]>([]);
   useEffect(()=>{if(KEEP.includes(tab))setVisited(v=>v.includes(tab)?v:[...v,tab]);},[tab]);
+  // Batch Report 자동 분석(CAMTEK · KLA)의 1분 타이머는 Batch Report 화면 안에 있다. 종전에는 그 탭을 한 번 열어야만
+  // 화면이 만들어져, 앱을 켜 두기만 하면 예약 시각이 지나도 돌지 않았다(Para #54). 자동 분석이 켜져 있으면 숨긴 채로 미리 만든다.
+  const batchMounted=useRef(false);
+  function mountBatch(){batchMounted.current=true;setVisited(v=>v.includes('Batch Report 분석')?v:[...v,'Batch Report 분석']);}
+  useEffect(()=>{
+    const check=async()=>{
+      if(batchMounted.current||desktop.closed)return;
+      try{const d=(await desktop.request('configuration').promise) as Configuration;if(d.auto?.enabled)mountBatch();}
+      catch{/* 엔진이 다른 작업 중: 다음 분에 다시 */}
+    };
+    const timer=window.setInterval(()=>void check(),60000);
+    const on=()=>{void check();void syncWatch();};
+    window.addEventListener('para:batch-auto-changed',on);
+    return()=>{window.clearInterval(timer);window.removeEventListener('para:batch-auto-changed',on);};
+  },[]);
+  useEffect(()=>{if(visited.includes('Batch Report 분석'))batchMounted.current=true;},[visited]);
   useEffect(()=>{window.dispatchEvent(new CustomEvent('para:tab',{detail:tab}));},[tab]);
   // Automatic watches run in the engine; the app shows their notices and keeps
   // itself resident in the tray (hide on close) while any watch is on.
@@ -85,10 +102,11 @@ function App(){
   async function syncWatch(){
     try{
       await desktop.connect();
-      const w=(await desktop.request('watch_status').promise).watch as {param:boolean;commonality:boolean;notices:WatchNotice[]};
+      const w=(await desktop.request('watch_status').promise).watch as {param:boolean;commonality:boolean;batch?:boolean;notices:WatchNotice[]};
       setNotices(w.notices);
-      const on=w.param||w.commonality;
-      await setBackground(on,on?`Para 자동 분석 및 취합 실행 중 — 장비 ${w.param?'✓':'✗'} · Commonality ${w.commonality?'✓':'✗'}${lastNotice.current?` · 최근: ${lastNotice.current}`:''}`:'');
+      // Batch Report 자동 분석(CAMTEK · KLA)도 창을 닫으면 트레이에 남아야 예약 시각에 돈다(Para #54).
+      const on=w.param||w.commonality||!!w.batch;
+      await setBackground(on,on?`Para 자동 분석 및 취합 실행 중 — 장비 ${w.param?'✓':'✗'} · Commonality ${w.commonality?'✓':'✗'} · Batch Report ${w.batch?'✓':'✗'}${lastNotice.current?` · 최근: ${lastNotice.current}`:''}`:'');
     }catch{/* engine not ready: the next change or reconnect syncs again */}
   }
   useEffect(()=>{

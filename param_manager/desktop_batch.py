@@ -968,6 +968,10 @@ class DesktopBatch(BatchViews):
                     # Lot 판정 기준 — 화면 ? 버튼과 Lot 추적 HTML 이 같은 문구(엔진 한 곳)를 쓴다.
                     lot_criteria=[dict(title=t, text=d, example=e) for t, d, e in lotreport.CRITERIA])
 
+    def auto_enabled(self):
+        """자동 분석이 켜져 있는가(설정만 읽음 — 장비 접근 없음). 트레이 상주 판단용(Para #54)."""
+        return bool(read_json(self.config_path).get("batch_auto"))
+
     def auto_state(self, cfg=None):
         """Daily automatic re-run (tkinter `batch_auto`/`batch_schedule`, shared keys so
         the two programs never both run the same day)."""
