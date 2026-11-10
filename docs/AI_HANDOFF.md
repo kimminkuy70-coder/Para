@@ -11,6 +11,7 @@
 - 시험 중 본 것(확인 전): 시험에서 [📂 폴더 경로 열기] 직후 원인 모를 `bigRefresh`(목록 다시 그림, 고른 줄이 첫 줄로) 가 한 번 일어남 — 이벤트 · 타이머 추적으로 출처를 찾지 못함. 실제 화면에서 고른 줄이 갑자기 첫 줄로 돌아가면 알려 달라고 함.
 - 릴리스: 없음(리뷰용 브랜치의 단일 HTML, 이슈가 지정한 브랜치라 release 대상 아님).
 - 내 해석(확인 전): ⓐ '5번 모드' = Step 5 대용량 Defect 조회 ⓑ 1단계에서 ProductInfo 도 읽지 않음(Contrast 만) ⓒ '폴더 경로 열기' = 탐색기를 직접 띄울 수 없어 경로 복사 + file:/// 새 탭 ⓓ #60 긴급 모드(다른 브랜치)는 이 브랜치에 가져오지 않음.
+- 질문 답(2026-11-10, #61 후속 대화): 정보 표의 값별 출처 파일 = Surface.flt(+ .md: ID · resultID · Wafer X/Y · Area px · Width · Length · Box · Contrast) · 폴더 이름(Step · CA · Slot) · ProductInfo.ini(Die) · ColorImageGrabingInfo.ini + `*.c.*.jpeg`(Color) · ScanResultImageList.txt + frameToChuckPlane.ini + `*.t.*.jpeg`(Gray · GL). Area µm² 의 Pixel Size 는 파일이 아니라 화면 설정(기본 0.7708). 호기는 어떤 파일에서도 읽지 않음(늘 '-').
 - 남은 일: 소유자 PC 에서 사진이 나오는지 확인(안 나오면 사진 칸에 나온 이유 글을 알려 달라고 함), ⓐ~ⓓ 확인, 두 브랜치(`ccr-…` · `version_graylevel_simulation`) 합칠지.
 
 | 이슈 | 요청 | 결과 |
