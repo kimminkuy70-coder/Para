@@ -28,7 +28,7 @@
   시험: `tests/test_appupdate.py`(12). 리눅스 리허설(설치형 폴더 + 진짜 시작 파일 + OneDrive 13.9.9 → 버튼 → 교체 · 재시작 · 창 재연결) 통과.
   **확인 못 한 것**: 이 작업 환경은 github.com 웹이 403(네트워크 정책)이라 실제 releases.atom 읽기는 회사 PC 에서 처음 확인. 회사 프록시가 PAC 파일이면 urllib 이 못 쓸 수 있음(그때는 OneDrive 보조 통로).
 - **6단계 — CI · 설치 zip · 릴리스**: `.github/workflows/v13.yml`(version_v13 push 마다): ubuntu 시험(`PYTHONPATH=vendor`) + `frontend/dist` 재빌드 일치 확인 → windows: python.org embeddable 3.11.9 받기 · `python.exe`/`pythonw.exe`/`python311.dll` **PSF 서명 확인**
-  · embeddable 로 엔진 import 확인 · `tools/build_install.py` → `Camtek_AOI_manager_v{버전}_설치.zip`(python/ · app/ · 시작 파일 · 설치_안내.txt) · **Defender 검사(위협이면 실패)** · artifact
+  · embeddable 로 엔진 import 확인 · `tools/build_install.py` → `Camtek_AOI_manager_v{버전}_install.zip`(python/ · app/ · 시작 파일 · 설치_안내.txt) · **Defender 검사(위협이면 실패)** · artifact
   · `docs/release_notes/v{버전}.md` 가 있고 그 릴리스가 없을 때만 GitHub Release(태그는 워크플로가 만듦 — 이 환경의 tag push 는 실패했었음). 스캔은 workflow 안에 직접(.ps1 파일 안 둠).
   첫 실행 = Win+R 한 줄(설치_안내 · `docs/설치_v13.md`), 그 뒤 프로그램이 바탕화면 바로가기를 IShellLinkW 로 만듦(zip 에 .lnk 를 넣지 않음 — .lnk 동봉은 공격 모양이라).
   시험 정리: `test_kla_cache` 날짜 고정(2026-11-05)이 3일 지나 실패하던 것 → 오늘 날짜 기준, `test_engine` 샘플(.xlsm, 저장소 밖) 없으면 건너뜀(`PARA_ENGINE_SAMPLE`). 이제 Python 시험 실패 0.

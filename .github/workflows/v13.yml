@@ -16,6 +16,7 @@ permissions:
 
 env:
   PY_EMBED_VERSION: "3.11.9"
+  PYTHONUTF8: "1"          # Korean text on the Windows runner console (cp1252 otherwise)
 
 jobs:
   test:

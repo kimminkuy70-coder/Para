@@ -2,7 +2,7 @@
 
     python tools/build_install.py --python-dir <unpacked python.org embeddable> --out <folder>
 
-Result: <out>/Camtek_AOI_manager_v<ver>_설치.zip, laid out as the install folder
+Result: <out>/Camtek_AOI_manager_v<ver>_install.zip, laid out as the install folder
 (%LOCALAPPDATA%\\CamtekAOI\\app):
 
     python/                      python.org Windows embeddable package, unchanged (PSF-signed exe/dll)
@@ -58,7 +58,7 @@ def build(python_dir: Path, out: Path) -> Path:
     if bad:
         raise SystemExit(f"executable/script files in the program: {bad}")
     out.mkdir(parents=True, exist_ok=True)
-    target = out / f"Camtek_AOI_manager_v{ver}_설치.zip"
+    target = out / f"Camtek_AOI_manager_v{ver}_install.zip"
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for f in sorted(python_dir.rglob("*")):
             if f.is_file():
