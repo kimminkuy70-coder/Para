@@ -52,20 +52,54 @@ await page.locator('nav button[data-step="2"]').click();
 await page.locator('#tol').fill('2');
 await page.locator('#runBtn').click();
 await page.locator('#step3.on').waitFor();
+await page.locator('#step3 details summary').click();   // Para #55: 쌍별 상세 표 · CSV 는 접힌 상자 안
 const kp=await page.locator('#kpis .kpi b').allInnerTexts();
 assert.deepEqual(kp,['4','3','2','2','1','25.0%']);
 // 쌍별 비교(리스트 2개 = 1쌍), 이름 표기(유지 · 소거 · 신규 없음)
 assert.equal(await page.locator('#pairTbl tbody tr').count(),1);
 assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','4','3','2','2','1','50.0%','보기']);
 assert.deepEqual(await page.locator('#kpis .kpi .muted:first-child').allInnerTexts(),['CA20 (전체)','CA27 (전체)','CA20 ∩ CA27','CA20 ∖ CA27','CA27 ∖ CA20','감소율']);
-// 보기 6개(합집합 + 5가지) · 표 필터 · 완전한 Die
-assert.deepEqual(await page.locator('#legend [data-view]').allInnerTexts(),['CA20 ∪ CA27','CA20 (전체)','CA27 (전체)','CA20 ∖ CA27','CA20 ∩ CA27','CA27 ∖ CA20']);
+// 표 필터 6가지(합집합 + 5가지)
+assert.deepEqual(await page.locator('#fltSt option').allInnerTexts(),['CA20 ∪ CA27','CA20 (전체)','CA27 (전체)','CA20 ∖ CA27','CA20 ∩ CA27','CA27 ∖ CA20']);
 await page.locator('#fltSt').selectOption('A');assert.equal(await page.locator('#detTbl tbody tr').count(),4);
 await page.locator('#fltSt').selectOption('B');assert.equal(await page.locator('#detTbl tbody tr').count(),3);
 await page.locator('#fltSt').selectOption('all');assert.equal(await page.locator('#detTbl tbody tr').count(),5);
-await page.locator('#legend [data-view="gone"]').click();await page.waitForTimeout(100);
-assert.equal(await page.evaluate(()=>document.querySelectorAll('#legend [aria-pressed="true"]').length),1);
-await page.locator('#legend [data-view="all"]').click();await page.waitForTimeout(100);
+// Para #55: Step 3 = 집합 고르기 → [결과] → 벤다이어그램(모든 스캔) + wafer map + 목록 · 사진
+assert.equal(await page.locator('#vennArea').isHidden(),true);
+assert.deepEqual(await page.locator('#setPick input:checked').count(),2);
+await page.locator('#vennBtn').click();await page.locator('#vennArea').waitFor();await page.waitForTimeout(150);
+const v1=await page.evaluate(()=>{const c=window.__cw,V=c.state.venn;return {n:V.cl.length,counts:[...V.counts].sort((a,b)=>a[0]-b[0]),lab:[1,2,3].map(c.regLabel),items:c.PANELS.p3.items.length,
+  rows:[...document.querySelectorAll('#regTbl tbody tr')].map(r=>r.innerText.replace(/\s+/g,' ').trim()),painted:(()=>{const cv=document.querySelector('#venn'),d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;let k=0;for(let i=3;i<d.length;i+=4)if(d[i])k++;return k})()}});
+assert.equal(v1.n,5);assert.deepEqual(v1.counts,[[1,2],[2,1],[3,2]]);   // CA20 에만 2 · CA27 에만 1 · 둘 다 2 (= 쌍 비교와 같음)
+assert.deepEqual(v1.lab,['CA20 ∖ CA27','CA27 ∖ CA20','CA20 ∩ CA27']);
+assert.equal(v1.items,5);assert.ok(v1.painted>5000,'venn pixels '+v1.painted);assert.equal(v1.rows.length,3);
+assert.match(await page.locator('#p3Cnt').innerText(),/고른 집합 전체\(CA20 ∪ CA27\) · Defect 5개/);
+// 영역 표 클릭 = 그 영역만 · 벤다이어그램 클릭(가운데 = 두 원 겹침) = 그 영역
+await page.locator('#regTbl tr[data-reg="1"]').click();
+assert.match(await page.locator('#p3Cnt').innerText(),/CA20 ∖ CA27 · Defect 2개/);
+const vb=await page.locator('#venn').boundingBox();await page.mouse.click(vb.x+vb.width/2,vb.y+vb.height/2);
+assert.match(await page.locator('#p3Cnt').innerText(),/CA20 ∩ CA27 · Defect 2개/);
+await page.locator('#venn').click({position:{x:4,y:4}});   // 빈 곳 = 고른 집합 전체
+assert.match(await page.locator('#p3Cnt').innerText(),/Defect 5개/);
+// 집합 하나만 고르면(결과 뒤에는 바로 반영) 그 집합과 관련된 영역만 색 · 목록
+await page.locator('#setPick input[data-set="1"]').uncheck();
+assert.match(await page.locator('#p3Cnt').innerText(),/고른 집합 전체\(CA20\) · Defect 4개/);
+assert.equal(await page.evaluate(()=>window.__cw.PANELS.p3.bg.length),1);   // CA27 에만 있는 1개 = 회색 배경 점
+await page.locator('#setPick input[data-set="1"]').check();
+// 목록 j/k 이동 · 지도 깜빡임
+await page.locator('#p3List').focus();const s3a=await page.locator('#p3List .it.sel').innerText();await page.keyboard.press('j');assert.notEqual(await page.locator('#p3List .it.sel').innerText(),s3a);await page.keyboard.press('k');
+const bl=await page.evaluate(async()=>{const c=document.querySelector('#p3Map'),seen=new Set();for(let i=0;i<8;i++){seen.add(c.toDataURL());await new Promise(r=>setTimeout(r,200))}return seen.size});
+assert.ok(bl>1,'Step 3 wafer map 깜빡임');
+// wafer map 새 창 = 실시간 연동(목록을 옮기면 새 창 글 · 그림도 바뀐다)
+const [mp]=await Promise.all([page.waitForEvent('popup'),page.locator('#p3Pop').click()]);
+await mp.waitForFunction(()=>{const c=document.querySelector('canvas');return c&&c.width>100});
+const h1=await mp.locator('.hd').innerText();await page.keyboard.press('j');await page.waitForTimeout(100);
+const h2=await mp.locator('.hd').innerText();assert.notEqual(h1,h2);assert.match(h2,/보고 있는 Defect/);
+const pp=await mp.evaluate(()=>{const c=document.querySelector('canvas'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let k=0;for(let i=3;i<d.length;i+=4)if(d[i])k++;return k});assert.ok(pp>2000,'popup map '+pp);
+await mp.close();await page.keyboard.press('k');
+// 목록 더블 클릭 = 새 창(큰 화면)
+const [big]=await Promise.all([page.waitForEvent('popup'),page.locator('#p3List .it.sel').dblclick()]);
+await big.waitForFunction(()=>document.querySelector('.pane'));assert.match(await big.locator('.hd').innerText(),/ID \d/);await big.close();
 const fd=await page.evaluate(()=>window.__cw.state.fullDies);
 // Para #51 후속: 맵 파일 없이 ProductInfo(Pitch 37249×44905.8, Cols 10, Rows 9) + 300 mm 원으로 소유자 예시 맵과 같은 Die 30개
 assert.equal(fd,30,'계산 Die '+fd);
@@ -97,7 +131,7 @@ assert.deepEqual(await page.evaluate(()=>{const D=window.__cw.state.dieSet;retur
 const d52=await page.evaluate(()=>window.__cw.dieOf(200498,279473,{pitchX:37249,pitchY:44905.8,offX:0,offY:0}));assert.deepEqual([d52.col,d52.row],[5,6]);
 assert.ok(!/유지|소거|신규/.test(await page.locator('main').innerText()));
 // Wafer map 이 그려진다(직사각형 · wafer 원 · 점)
-const painted=await page.evaluate(()=>{const c=document.querySelector('#map'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n});
+const painted=await page.evaluate(()=>{const c=document.querySelector('#p3Map'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i])n++;return n});
 assert.ok(painted>2000,'map pixels '+painted);
 // 표: Die · Area · Contrast
 const t=await page.locator('#detTbl tbody tr').evaluateAll(trs=>trs.map(tr=>[...tr.cells].map(c=>c.innerText).join('|')));
@@ -133,26 +167,27 @@ const pr=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=4490
   S.scans.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});S.userMap=um;c.dieCells();return out});
 assert.deepEqual(pr,{n:29,from:'dieloc',src:'s_DieLocation(실제 스캔 Die)',miss:false,loc:false,onlyCalc:1});
 // 지도 hover → 툴팁 + 그림
-await page.locator('#map').hover({position:{x:5,y:5}});
+await page.locator('#p3Map').hover({position:{x:5,y:5}});
 // 리뷰: 없어진 Defect 2개, 키 이동, Gray crop / 범위 밖 문구, 위치 지도 깜빡임
 await page.locator('nav button[data-step="4"]').click();
-await page.locator('#rvCount').filter({hasText:'CA27 에서 없어진 Defect (CA20 ∖ CA27) 2개'}).waitFor();
-const rv=await page.evaluate(async()=>{const S=window.__cw.state;const a=S.rvGeo&&S.rvGeo.length;const c=document.querySelector('#rvMap');
-  const seen=new Set();for(let i=0;i<8;i++){seen.add(c.toDataURL());await new Promise(r=>setTimeout(r,200))}return {a,changed:seen.size>1,n:seen.size,w:c.width,on:document.querySelector('#step4').classList.contains('on'),hl:!!S.rvList[S.rv]}});
-assert.equal(rv.a,5);assert.ok(rv.changed,'보고 있는 점이 깜빡여야 함 '+JSON.stringify(rv));
-const first=await page.locator('#rvList .it.sel').innerText();
+await page.locator('#p4Cnt').filter({hasText:'CA27 에서 없어진 Defect (CA20 ∖ CA27) 2개'}).waitFor();
+const rv=await page.evaluate(async()=>{const P=window.__cw.PANELS.p4;const a=P.geo&&P.geo.length;const c=document.querySelector('#p4Map');
+  const seen=new Set();for(let i=0;i<8;i++){seen.add(c.toDataURL());await new Promise(r=>setTimeout(r,200))}return {a,changed:seen.size>1,n:seen.size,w:c.width,es:window.__cw.state.esGeo.map(g=>g&&g.length)}});
+assert.equal(rv.a,5);assert.deepEqual(rv.es,[4,5]);   // 간략 그림: A = 유지 2 + 없어짐 2, B = 유지 2 + 신규 1 + 없어진 자리 2
+assert.match(await page.locator('#esAt').innerText(),/A = CA20 \(전체 4\) · 빨강 = B 에서 없어진 2개/);assert.ok(rv.changed,'보고 있는 점이 깜빡여야 함 '+JSON.stringify(rv));
+const first=await page.locator('#p4List .it.sel').innerText();
 await page.keyboard.press('j');
-const second=await page.locator('#rvList .it.sel').innerText();
+const second=await page.locator('#p4List .it.sel').innerText();
 assert.notEqual(first,second);
-await page.keyboard.press('k');assert.equal(await page.locator('#rvList .it.sel').innerText(),first);
+await page.keyboard.press('k');assert.equal(await page.locator('#p4List .it.sel').innerText(),first);
 // id 3 = 범위 밖 → 문구
-const k3=await page.evaluate(()=>window.__cw.state.rvList.findIndex(r=>r.d.id===3));
+const k3=await page.evaluate(()=>window.__cw.PANELS.p4.items.findIndex(r=>r.d.id===3));
 for(let i=0;i<k3;i++)await page.keyboard.press('ArrowDown');
-await page.locator('#rvGray .ph').filter({hasText:'좌표 변환 보정 필요'}).waitFor();
-await page.locator('#rvColor img').waitFor();
+await page.locator('#p4Gray .ph').filter({hasText:'좌표 변환 보정 필요'}).waitFor();
+await page.locator('#p4Color img').waitFor();
 // 유지 defect 의 Gray crop 은 캔버스로 그려진다
-const crop=await page.evaluate(async()=>{const S=window.__cw.state;S.rvList=S.rows.filter(r=>r.d.id===2&&r.st==='keep');S.rv=0;window.__cw.go(4);
-  await new Promise(r=>setTimeout(r,400));return {c:!!document.querySelector('#rvGray canvas'),gl:S.rvList[0].d.gl}});
+const crop=await page.evaluate(async()=>{const c=window.__cw,S=c.state,P=c.PANELS.p4,r=S.rows.find(r=>r.d.id===2&&r.st==='keep');c.setPanel(P,[{d:r.d,X:r.d.X,Y:r.d.Y,c:'--keep',label:'keep'}],[],'test');
+  await new Promise(r=>setTimeout(r,400));return {c:!!document.querySelector('#p4Gray canvas'),gl:r.d.gl}});
 assert.ok(crop.c);assert.ok(crop.gl&&crop.gl.n>0);
 await page.keyboard.press('o');assert.match(await page.locator('#modelSt').innerText(),/미확정 \(맞음 1\/10/);
 // Enter = 새 창
@@ -169,6 +204,9 @@ await page.evaluate(()=>{const S=window.__cw.state,b=S.scans.find(s=>s.name==='L
 await page.locator('nav button[data-step="2"]').click();await page.locator('#runBtn').click();await page.locator('#step3.on').waitFor();
 assert.equal(await page.locator('#pairTbl tbody tr').count(),3);
 assert.deepEqual(await page.locator('#step3 .pairtabs button').allInnerTexts(),['CA20 → CA27 · 없어짐 2','CA20 → CA30 · 없어짐 3','CA27 → CA30 · 없어짐 1']);
+// 스캔 3개 = 원 3개 벤다이어그램(7영역 중 Defect 있는 영역), 집합 선택은 다시 비교해도 유지
+const v3=await page.evaluate(()=>{const c=window.__cw,V=c.state.venn;return {n:V.scans.length,shown:V.shown,sel:V.sel.size,sum:[...V.counts.values()].reduce((a,b)=>a+b,0),cl:V.cl.length,lab:c.regLabel(3),geo:V.geo&&V.geo.E.length}});
+assert.deepEqual(v3,{n:3,shown:true,sel:2,sum:v3.cl,cl:v3.cl,lab:'CA20 ∩ CA27 ∖ CA30',geo:3});
 await page.locator('#step3 .pairtabs button').nth(2).click();
 assert.deepEqual(await page.locator('#kpis .kpi b').allInnerTexts(),['3','2','2','1','0','33.3%']);
 assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);

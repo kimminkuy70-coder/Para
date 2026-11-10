@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #55 Step 3 벤다이어그램 · wafer map 새 창 · Step 4 재구성 (2026-11-10 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `8449520`(#52 후속 2) · 이슈 Para #55("Graylevel 시뮬레이션 브랜치 신규생성 5", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**(이슈 제목이 #50~#53 연속이라 이 브랜치로 봄).
+- 요청: ① Step 3 = 스캔 결과마다 집합, 벤다이어그램(집합 1개~스캔 수 선택 → [결과]) ② 영역 클릭 → wafer map, 영역마다 다른 색, '전체 영역 Defect 표시' 체크 ③ wafer map 아래 영역 목록 + 오른쪽 사진(4번처럼), 더블 클릭 = 큰 새 창 ④ 즉시 다른 영역 · 집합 고르기, 벤다이어그램은 늘 모든 스캔 · 고른 집합 관련 영역만 색 · 나머지 회색 경계 ⑤ 보고 있는 좌표 깜빡임 · wafer map 새 창(실시간 연동, 다른 모니터용) ⑥ Step 4 필요 여부 판단 — 남기면 Step 3 과 같은 구성 + A→B Escape Defect 간략 wafer map 2개 ⑦ 사진 제외.zip 다시 분석 · 좌표 재검토 · "이런 오류" 원인 보고.
+- 한 일(`AOI_Contrast_Wizard.html`): `buildVenn`(Contrast AVG 순 차례 1:1 매칭 → 묶음 mask) · `drawVenn`(픽셀 타원 판정, 1~3개 원, 4개 = 수치로 찾은 타원 배치(15영역 모두), 5개 이상 = 영역 표만) · `#regTbl` · `refresh3`. 공용 패널 `makePanel`(p3/p4): 깜빡임, `popMap` 새 창(이 창이 그 창 canvas 에 직접 그림, 그 창 클릭 · 키도 반영), 목록 더블 클릭/Enter = `openWindow`, 여러 스캔에 있는 Defect 사진 스캔 고르기.
+  `paintMap` = 점 목록(`pts`) 방식, 지도 맥락 = 등록 스캔 전체(`S.cmpScans` · `S.allPts` · `S.o`). Step 4 = `paintEsc` 간략 2개 + 패널(O/X 유지). 쌍별 KPI · 상세 표 · CSV = Step 3 맨 아래 접힌 상자. `[hidden]{display:none!important}` 추가.
+- 좌표 재검토(zip, 저장소 밖 scratch 에 풀어 같은 폴더 3벌로): `Die 30 [기준 s_DieLocation] · 중심 204849, 224520 µm · ProductInfo · s_DieLocation 일치 ✔ · Color Col/Row 353/353 · Defect 870개 모두 원 안` — #53 결과 그대로(새 오류 없음). 벤다이어그램 영역 수도 넣은 부분집합과 정확히 같음(24 · 94 · 47 · 188 = 353).
+  이슈 본문의 "왜 이런 오류가 발생했는지"는 #53 본문과 같은 글이고 새 증상 · 사진이 없어 새 오류를 찾지 못함 → 완료 댓글에서 증상을 알려 달라고 물음.
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(벤다이어그램 영역 수 = 쌍 비교, 영역 표 · 벤다이어그램 클릭, 집합 체크 즉시 반영, 깜빡임, 새 창 wafer map 연동, 더블 클릭 새 창, Step 4 간략 지도 2개, 스캔 3개 = 원 3개 · 선택 유지). `tools/check_project.py` 는 이 환경에 openpyxl 이 없어 Python 시험 실패(Python 변경 없음). Windows Edge 실기 · 실제 사진 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML, #50~#53 와 같음).
+- 내 해석(확인 전): ⓐ Step 4 는 남김 — 스캔 3개 이상이면 A ∖ B 가 여러 영역으로 나뉘고 O/X 위치 확인은 Step 4 에만 있음 ⓑ '관련 영역' = 고른 집합이 하나라도 들어 있는 영역 ⓒ 같은 Defect 묶음 위치 = 처음 나온(가장 낮은 CA) 스캔 좌표 ⓓ 5개 이상은 벤다이어그램 대신 영역 표 ⓔ 쌍별 상세 표 · CSV 는 지우지 않고 접힌 상자로.
+- 남은 일: ⓐ~ⓔ 확인, "이런 오류" 의 실제 증상(화면 · 문구) 받기, #53 남은 일(Notch `Flat Pos=3` 뜻, 사진 있는 폴더로 Gray Crop 확인, `사진 제외.zip` 삭제 여부).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #55 | Step 3 벤다이어그램 · 영역별 wafer map · 목록/사진 · 깜빡임 · wafer map 새 창 실시간 · Step 4 재구성 · zip 재검토 | 구현, 시험 통과(릴리스 대상 아님) · 좌표 재검토 결과 #53 그대로 · 오류 증상은 질문 |
+
 ## 최신 재개 — Para #52 후속 2 Wafer map Die 판정을 어떤 자재에도 맞게 (2026-11-10 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `96cdbe1`(#53) · 이슈 Para #52 후속(소유자 세션 질문 "웨이퍼 맵이 다른 어떤 자재가 들어와도 가능하게끔 로직 짠거야?" → 답: 아니다(예시 맵 하나에 맞춘 계산) → 지시 "수정해") · 작업 브랜치 **`version_graylevel_simulation`**.
