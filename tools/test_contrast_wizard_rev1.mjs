@@ -374,14 +374,19 @@ await page.locator('#p5List .it',{hasText:'1100.0'}).first().click();
 await page.locator('#p5Color img').waitFor();await page.locator('#p5Gray canvas').waitFor();
 const bi=await page.locator('#p5Info').innerText();
 assert.match(bi,/구분\s*CA20 · W01/);assert.match(bi,/Contrast\(실제\)\s*34\.45/);assert.match(bi,/Color\s*C1\.c\.1\.jpeg · 좌표\(0\.0 µm\)/);assert.match(bi,/Gray\s*F1\.t\.1\.jpeg · \(1100\.0, 200\.0\) · frameToChuckPlane/);assert.match(bi,/ROI mean/);assert.match(bi,/Die\s*장비 Col 0, Row 0/);
-// 폴더 경로 열기: PC 경로를 적지 않으면 고른 폴더 안 경로만, 적으면 Slot 폴더 · 사진 파일 주소
-assert.match(await page.locator('#bigPath').innerText(),/Slot 폴더: BIG\/CA20\/LOTB\/W01/);
+// 사진 경로 열기(소유자 지시): PC 경로를 적지 않으면 사진의 고른 폴더 안 경로만, 적으면 사진 파일의 PC 경로 · 사진 열기 · 사진 폴더 열기
+await page.locator('#bigPath code').nth(1).waitFor();
+assert.match(await page.locator('#bigPath').innerText(),/Color 사진: BIG\/CA20\/LOTB\/W01\/C1\.c\.1\.jpeg\nGray 사진: BIG\/CA20\/LOTB\/W01\/F1\.t\.1\.jpeg/);
+assert.equal(await page.locator('#bigDir').count(),0);   // Slot 폴더 단추 대신 사진 경로 단추
+await page.evaluate(()=>{window.__wo=window.open;window.__opened=[];window.open=u=>{window.__opened.push(u);return null}});
+await page.locator('#bigImgC').click();await page.locator('#bigPath',{hasText:'를 복사했습니다'}).waitFor();
+assert.match(await page.locator('#bigPath').innerText(),/Color 사진 고른 폴더 안 경로 BIG\/CA20\/LOTB\/W01\/C1\.c\.1\.jpeg 를 복사했습니다/);
 await page.locator('#bigBase').fill('D:\\AOI\\BIG');await page.locator('#bigBase').dispatchEvent('change');await page.locator('#bigPath a').first().waitFor();
-const sp=await page.evaluate(()=>{const c=window.__cw,s=c.BIG.scans[0];return [c.slotPath(s),c.slotPath(s,'C1.c.1.jpeg').url]});
-assert.equal(sp[0].pc,'D:\\AOI\\BIG\\CA20\\LOTB\\W01');assert.equal(sp[1],'file:///D:/AOI/BIG/CA20/LOTB/W01/C1.c.1.jpeg');
-assert.match(await page.locator('#bigPath').innerText(),/D:\\AOI\\BIG\\CA20\\LOTB\\W01 · Color 파일 열기 · Gray 파일 열기/);
-await page.evaluate(()=>{window.__wo=window.open;window.open=u=>{window.__opened=u;return null}});await page.locator('#bigDir').click();await page.locator('#bigPath',{hasText:'탐색기'}).waitFor();   // Linux 에는 D: 가 없어 실제로 열지 않고 주소만 확인
-assert.equal(await page.evaluate(()=>{const u=window.__opened;window.open=window.__wo;return u}),'file:///D:/AOI/BIG/CA20/LOTB/W01');
+assert.match(await page.locator('#bigPath').innerText(),/Color 사진: D:\\AOI\\BIG\\CA20\\LOTB\\W01\\C1\.c\.1\.jpeg · 사진 열기 · 사진 폴더 열기\nGray 사진: D:\\AOI\\BIG\\CA20\\LOTB\\W01\\F1\.t\.1\.jpeg · 사진 열기 · 사진 폴더 열기/);
+assert.deepEqual(await page.locator('#bigPath a').evaluateAll(a=>a.map(x=>x.getAttribute('href'))),['file:///D:/AOI/BIG/CA20/LOTB/W01/C1.c.1.jpeg','file:///D:/AOI/BIG/CA20/LOTB/W01','file:///D:/AOI/BIG/CA20/LOTB/W01/F1.t.1.jpeg','file:///D:/AOI/BIG/CA20/LOTB/W01']);
+await page.locator('#bigImgG').click();await page.locator('#bigPath',{hasText:'탐색기'}).waitFor();   // Linux 에는 D: 가 없어 실제로 열지 않고 주소만 확인
+assert.match(await page.locator('#bigPath').innerText(),/Gray 사진: D:\\AOI\\BIG\\CA20\\LOTB\\W01\\F1\.t\.1\.jpeg 경로를 복사했습니다/);
+assert.deepEqual(await page.evaluate(()=>{const u=window.__opened;window.open=window.__wo;return u}),['file:///D:/AOI/BIG/CA20/LOTB/W01/F1.t.1.jpeg']);
 await page.locator('#bigBase').fill('');await page.locator('#bigBase').dispatchEvent('change');
 // 사진 파일 이름의 대소문자가 목록과 달라도(.JPEG) 찾는다
 const ci=await page.evaluate(async()=>{const c=window.__cw,f=new File(['x'],'Q.c.1.JPEG');

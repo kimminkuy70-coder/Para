@@ -287,7 +287,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <div id="bigRes" hidden>
     <div class="card" style="margin-top:12px"><h3 class="s3h">3단계 · 결정한 리스트 취합 결과 — wafer map · Defect 좌표 · Color · Gray</h3>
       <div class="row"><span id="bigResSum" class="muted"></span><button id="bigBack">← 2단계 리스트로 돌아가기</button></div>
-      <div class="row"><button id="bigDir" title="보고 있는 Defect 의 Slot 폴더 경로를 복사하고 새 탭으로 엽니다">📂 폴더 경로 열기</button>
+      <div class="row"><button id="bigImgC" title="보고 있는 Defect 의 Color 사진 파일 경로를 복사하고 새 탭으로 엽니다">📷 Color 사진 경로 열기</button><button id="bigImgG" title="보고 있는 Defect 의 Gray 사진 파일 경로를 복사하고 새 탭으로 엽니다">📷 Gray 사진 경로 열기</button>
         <label>고른 폴더의 PC 경로 <input id="bigBase" placeholder="예: D:\AOI\Result" style="width:220px"></label></div>
       <div class="muted" id="bigPath"></div></div>
     <div id="p5map"></div><div id="p5low"></div>
@@ -585,6 +585,7 @@ function planUnits(entries,dirs){
   const memo=new Map(),owner=d=>{if(memo.has(d))return memo.get(d);let x=d,r=null;for(;;){if(U.has(x)){r=U.get(x);break}if(!x)break;x=x.replace(/[^/]*\/$/,'')}memo.set(d,r);return r};
   const under=new Map(),below=D=>{let l=under.get(D);if(!l)under.set(D,l=units.filter(u=>u.dir.startsWith(D)&&D.startsWith(u.lotDir)));return l};
   for(const e of entries){const D=dirOf(e.path),u=owner(D);if(u){u.own.push(e);continue}if(/\.(jpe?g|png|bmp)$/i.test(e.path))continue;for(const v of below(D))v.shared.push(e)}
+  for(const d of dirs||[])if(d.handle&&typeof d.handle==='object')DIRPATH.set(d.handle,d.path);
   for(const d of dirs||[]){const u=owner(d.path);if(u){u.dirs.push(d.handle);u.images+=d.images||0;continue}for(const v of below(d.path))v.xdirs.push(d.handle)}   // 사이 폴더 = 그 Slot 에 없을 때만 찾는다(Para #61)
   for(const u of units)u.files=u.own.concat(u.shared);
   units.sort((a,b)=>natCmp(a.lotPath,b.lotPath)||natCmp(a.slotName,b.slotName));
@@ -648,9 +649,9 @@ function compareViews(msg){const u=S.unit||'lot',L=lotsOf();S.lotViews=S.lotView
   return out}
 function showLoad(list){$('#loadMsg').innerHTML=list.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('')}
 async function buildScan(name,own){
-  const files=new Map();for(const e of own){const k=lower(baseName(e.path));if(!files.has(k))files.set(k,e.file)}
+  const files=new Map(),paths=new Map();for(const e of own){const k=lower(baseName(e.path));if(!files.has(k)){files.set(k,e.file);paths.set(k,e.path)}}
   const get=n=>files.get(lower(n));const text=async n=>{const f=get(n);return f?await f.text():null};
-  const s={id:++scanSeq,seq:scanSeq,name,files,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,defects:[],colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images:0};
+  const s={id:++scanSeq,seq:scanSeq,name,files,paths,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,defects:[],colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images:0};
   s.images=own.filter(e=>/\.(jpe?g|png|bmp)$/i.test(e.path)).length;
   // Contrast AVG 추정(폴더 이름의 'CA27', 'Contrast27', 'AVG27') — 사용자가 고친다
   const m=/(?:contrast|avg|ca)[ _-]?(\d+(?:\.\d+)?)/i.exec(baseName(name));if(m)s.contrast=+m[1];
@@ -822,11 +823,15 @@ const bmpCache=new LRU(16,p=>p.then(b=>b&&b.close&&b.close()).catch(()=>{}));   
 const cleanName=n=>baseName(String(n).replace(/^"|"$/g,''));
 /** 스캔 폴더의 파일을 이름으로 찾는다. scan.files 값 = File 또는 FileSystemFileHandle(Step 5 빠른 등록).
  *  Step 5 빠른 등록은 사진을 목록에 넣지 않는다 → 그 Slot 의 폴더 핸들(scan.dirs)에서 이름으로 그때 찾는다(읽기만). */
-async function fileGet(scan,name){if(!name)return null;const b=cleanName(name),k=lower(b),h=scan.files.get(k);if(h)return h.getFile?h.getFile():h;
+/** 폴더 핸들 → 고른 폴더부터의 경로('BIG/CA20/W01/', planUnits 가 넣음). 사진을 찾은 곳을 scan.where(소문자 이름 → 경로)에 남겨 '사진 경로 열기'가 쓴다. */
+const DIRPATH=new WeakMap();
+const putWhere=(scan,k,p)=>{if(p)(scan.where||(scan.where=new Map())).set(k,p)};
+async function fileGet(scan,name){if(!name)return null;const b=cleanName(name),k=lower(b),h=scan.files.get(k);
+  if(h){putWhere(scan,k,(scan.paths&&scan.paths.get(k))||h.webkitRelativePath||null);return h.getFile?h.getFile():h}
   const ds=(scan.dirs||[]).concat(scan.xdirs||[]);
-  for(const d of ds){try{return await (await d.getFileHandle(b)).getFile()}catch(e){}}
+  for(const d of ds){try{const f=await (await d.getFileHandle(b)).getFile();putWhere(scan,k,DIRPATH.has(d)?DIRPATH.get(d)+f.name:null);return f}catch(e){}}
   // Para #61: 이름의 대소문자가 다르면(예: .JPEG) getFileHandle 이 못 찾는다 → 그 폴더 이름 목록(한 번만 만든다)에서 대소문자 무시로 찾는다
-  for(const d of ds){try{const ix=await dirIndex(scan,d),f=ix.get(k);if(f)return await f.getFile()}catch(e){scan.fileErr=(scan.fileErr||{});scan.fileErr[k]=e.message}}
+  for(const d of ds){try{const ix=await dirIndex(scan,d),f=ix.get(k);if(f){const F=await f.getFile();putWhere(scan,k,DIRPATH.has(d)?DIRPATH.get(d)+F.name:null);return F}}catch(e){scan.fileErr=(scan.fileErr||{});scan.fileErr[k]=e.message}}
   return null}
 async function dirIndex(scan,d){const M=scan.dirIx||(scan.dirIx=new Map());let p=M.get(d);
   if(!p){p=(async()=>{const m=new Map();for await(const [n,c] of d.entries())if(c.kind==='file'&&!m.has(lower(n)))m.set(lower(n),c);return m})();M.set(d,p);p.catch(()=>M.delete(d))}return p}
@@ -1340,8 +1345,8 @@ async function walkDir(h,path,acc){let img=0;
 /** 1단계(Para #61): Surface.flt(+ .md) → 열 배열. 그 밖의 파일(ProductInfo 포함)은 열지 않는다. own = {files:[{path, file|handle}], dirs:[폴더 핸들], images} */
 async function buildLight(name,own){
   const files=new Map();let images=own.images||0;
-  for(const e of own.files){const k=lower(baseName(e.path));if(/\.(jpe?g|png|bmp)$/.test(k))images++;if(!files.has(k))files.set(k,e.file||e.handle)}
-  const s={id:++scanSeq,seq:scanSeq,name,files,dirs:own.dirs,light:true,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images};
+  const paths=new Map();for(const e of own.files){const k=lower(baseName(e.path));if(/\.(jpe?g|png|bmp)$/.test(k))images++;if(!files.has(k)){files.set(k,e.file||e.handle);paths.set(k,e.path)}}
+  const s={id:++scanSeq,seq:scanSeq,name,files,paths,dirs:own.dirs,light:true,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images};
   const text=async n=>{const f=await fileGet(s,n);return f?f.text():null};
   const mdText=files.has('surface.flt.md')?await text('Surface.flt.md'):null,md=mdText?parseMd(mdText):null;
   if(mdText&&!md)s.warns.push('Surface.flt.md 를 읽지 못해 기본 필드 정의를 씁니다');
@@ -1420,11 +1425,11 @@ function bigPaint(){
 function bigShow(){const V=BIG.view;if(!V||!V.m)return;BIG.sel=Math.max(0,Math.min(Math.min(V.m,BIG_MAX)-1,BIG.sel));const box=$('#bigList'),vh=box.clientHeight-BHH;
   if(BIG.sel*BRH<box.scrollTop)box.scrollTop=BIG.sel*BRH;else if((BIG.sel+1)*BRH>box.scrollTop+vh)box.scrollTop=(BIG.sel+1)*BRH-vh;bigPaint()}
 function colorWhy(s){if(!s.colors.length)return 'ColorImageGrabingInfo.ini 없음 또는 항목 0개';return `이 Defect 와 맞는 Color 항목 없음(허용 오차 ${S.o.ctol} µm, 항목 ${s.colors.length}개)`}
-function fileWhy(s,name){const k=lower(cleanName(name)),e=s.fileErr&&s.fileErr[k];return e?`파일 읽기 오류: ${cleanName(name)} (${e}) — [📂 폴더 경로 열기]로 직접 여십시오`:`파일을 찾지 못함: ${cleanName(name)} (Slot 폴더 ${s.name}) — [📂 폴더 경로 열기]로 확인하십시오`}
+function fileWhy(s,name){const k=lower(cleanName(name)),e=s.fileErr&&s.fileErr[k];return e?`파일 읽기 오류: ${cleanName(name)} (${e}) — [📷 사진 경로 열기]의 경로로 직접 여십시오`:`파일을 찾지 못함: ${cleanName(name)} (Slot 폴더 ${s.name}) — Slot 폴더를 확인하십시오`}
 // ── 3단계(rev1): 결정한 리스트의 Slot 만 Step 1 과 같은 방식(buildScan)으로 다시 읽어 wafer map · Color · Gray 를 취합한다 ──
 /** 정보만 등록한 Slot(light) → 전체 정보 스캔. 사진 파일은 목록에 넣지 않고 볼 때 폴더 핸들에서 찾는다(fileGet). 한 번 만든 것은 다시 쓴다. */
 async function fullScan(s){if(!s.light)return s;if(s.full)return s.full;
-  const own=[];for(const [k,h] of s.files)own.push({path:k,file:h.getFile?await h.getFile():h});
+  const own=[];for(const [k,h] of s.files)own.push({path:(s.paths&&s.paths.get(k))||k,file:h.getFile?await h.getFile():h});
   const f=await buildScan(s.name,own);f.dirs=s.dirs;f.xdirs=s.xdirs;f.images=s.images;
   for(const k of ['lotPath','lotName','slotName','slot','step','contrast','tool'])f[k]=s[k];
   if(f.defects.length!==s.cols.n)f.warns.push(`다시 읽은 Defect 수 ${f.defects.length} ≠ 리스트 ${s.cols.n}`);
@@ -1462,24 +1467,37 @@ function bigResShow(){const R=BIG.res;if(!R)return;$('#bigPick').hidden=true;$('
   P5.el('Lg').innerHTML=R.lots.map((lp,i)=>`<span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${P5_COLORS[i%P5_COLORS.length]}"></i> ${esc(lp)}</span>`).join(' ');
   setPanel(P5,R.items,[],`결정한 리스트 ${R.items.length.toLocaleString()}개 (Contrast 리스트 순서)`);
   setTimeout(()=>paintPanel(P5),30)}
-function p5Show(){const q=P5&&P5.items[P5.sel];if(!q)return;const s=q.d.scan,c=linkColor(q.d,s,S.o.ctol),g=grayOf(q.d);bigPathShow(s,{c:c&&c.c.file,g:g.frame&&g.frame.file})}
-// ── 폴더 경로 열기(Para #61): 브라우저는 고른 폴더의 PC 경로를 알 수 없다 → 소유자가 한 번 적은 'PC 경로' + 고른 폴더 안 경로로 만든다.
+function p5Show(){const q=P5&&P5.items[P5.sel];if(q)imgPathShow(q)}
+// ── 사진 경로 열기(Para #61 후속, 소유자 "경로 여는 거는 사진 경로 여는 버튼"): 브라우저는 고른 폴더의 PC 경로를 알 수 없다
+//    → 소유자가 한 번 적은 'PC 경로' + 사진을 실제로 찾은 곳(고른 폴더부터의 경로, fileGet 이 scan.where 에 남김)으로 사진 파일의 PC 경로를 만든다.
 const BASE_KEY='cw.bigBase';try{$('#bigBase').value=localStorage.getItem(BASE_KEY)||''}catch(e){}
 $('#bigBase').addEventListener('change',()=>{try{localStorage.setItem(BASE_KEY,$('#bigBase').value.trim())}catch(e){}if(P5&&!$('#bigRes').hidden)p5Show()});
-/** 스캔 폴더의 경로: rel = 고른 폴더부터('BIG/CA20/W01'), pc = PC 경로(적었을 때, 'D:\\X\\BIG\\CA20\\W01'), url = file:/// 주소 */
-function slotPath(s,file){const rel=String(s.name||'').replace(/\\/g,'/').replace(/\/$/,''),parts=rel.split('/').filter(Boolean);
+/** rel = 고른 폴더부터의 경로('BIG/CA20/W01/C1.c.1.jpeg') → pc = PC 경로(적었을 때), url = file:/// 주소 */
+function pcPath(rel){rel=String(rel||'').replace(/\\/g,'/').replace(/\/$/,'');const parts=rel.split('/').filter(Boolean);
   const base=($('#bigBase').value||'').trim().replace(/[\\/]+$/,'');if(!base)return {rel,pc:null,url:null};
-  const sub=parts.slice(1).concat(file?[cleanName(file)]:[]),pc=[base,...sub].join('\\');
+  const pc=[base,...parts.slice(1)].join('\\');
   return {rel,pc,url:'file:///'+pc.replace(/\\/g,'/').split('/').map((x,i)=>i===0&&/^[a-z]:$/i.test(x)?x:encodeURIComponent(x)).join('/').replace(/^file:\/\/\/\/\//,'file://')}}
-function bigPathShow(s,f){const p=slotPath(s),el=$('#bigPath');
-  let h=`Slot 폴더: <code>${esc(p.pc||p.rel)}</code>`+(p.pc?'':' <span class="muted">(PC 경로를 적으면 폴더를 열 수 있습니다 — 고른 폴더 \''+esc(p.rel.split('/')[0]||'')+'\' 의 경로)</span>');
-  if(p.pc&&f)for(const [t,n] of [['Color 파일',f.c],['Gray 파일',f.g]])if(n){const q=slotPath(s,n);h+=` · <a href="${esc(q.url)}" target="_blank" rel="noopener" title="${esc(q.pc)}">${t} 열기</a>`}
-  el.innerHTML=h}
+const slotPath=(s,file)=>pcPath(String(s.name||'').replace(/\\/g,'/').replace(/\/$/,'')+(file?'/'+cleanName(file):''));
+/** 보고 있는 Defect 의 Color · Gray 사진: {kind, name, rel(찾은 곳) 또는 why(못 찾은 이유)} */
+async function imgOf(q,kind){const d=q.d,s=d.scan;let name=null,why='';
+  if(kind==='c'){const c=linkColor(d,s,S.o.ctol);if(c)name=c.c.file;else why='Color 연결 실패: '+colorWhy(s)}
+  else{const g=grayOf(d);if(g.frame)name=g.frame.file;else why='Gray: '+g.reason}
+  if(!name)return {kind,why};const k=lower(cleanName(name));
+  if(!(s.where&&s.where.has(k))){const f=await fileGet(s,name).catch(()=>null);if(!f)return {kind,name:cleanName(name),why:fileWhy(s,name)}}
+  return {kind,name:cleanName(name),rel:s.where&&s.where.get(k)||slotPath(s,name).rel}}
+async function imgPathShow(q){const tk=(imgPathShow.t=(imgPathShow.t||0)+1),r=await Promise.all([imgOf(q,'c'),imgOf(q,'g')]);if(tk!==imgPathShow.t)return;
+  const el=$('#bigPath');let need=false;
+  el.innerHTML=r.map(x=>{const t=x.kind==='c'?'Color 사진':'Gray 사진';if(!x.rel)return `${t}: <span class="muted">${esc(x.why||'없음')}</span>`;const p=pcPath(x.rel);if(!p.pc)need=true;
+    return `${t}: <code>${esc(p.pc||p.rel)}</code>`+(p.pc?` · <a href="${esc(p.url)}" target="_blank" rel="noopener">사진 열기</a> · <a href="${esc(pcPath(x.rel.replace(/[^/]*$/,'')).url)}" target="_blank" rel="noopener">사진 폴더 열기</a>`:'')}).join('<br>')
+    +(need?`<br><span class="muted">PC 경로 칸에 고른 폴더 '${esc((r.find(x=>x.rel)||{rel:''}).rel.split('/')[0])}' 의 PC 경로를 한 번 적으면 사진을 바로 열 수 있습니다.</span>`:'')}
 async function copyText(t){try{await Promise.race([navigator.clipboard.writeText(t),new Promise((_,j)=>setTimeout(()=>j(new Error('timeout')),600))]);return true}catch(e){const a=document.createElement('textarea');a.value=t;document.body.append(a);a.select();let ok=false;try{ok=document.execCommand('copy')}catch(e2){}a.remove();return ok}}
-async function bigDirOpen(){const q=P5&&!$('#bigRes').hidden?P5.items[P5.sel]:null;let s;if(q)s=q.d.scan;else{const V=BIG.view;if(!V||!V.m)return;s=bigAt(BIG.sel).s}const p=slotPath(s);
-  if(!p.pc){const ok=await copyText(p.rel);$('#bigPath').innerHTML=`고른 폴더 안 경로 <code>${esc(p.rel)}</code> ${ok?'를 복사했습니다':''}. 폴더를 바로 열려면 오른쪽 칸에 <b>고른 폴더('${esc(p.rel.split('/')[0]||'')}')의 PC 경로</b>(예: D:\\AOI\\${esc(p.rel.split('/')[0]||'')})를 한 번 적으십시오.`;$('#bigBase').focus();return}
+/** [📷 Color/Gray 사진 경로 열기]: 사진 파일의 PC 경로를 복사하고 새 탭으로 연다(PC 경로를 안 적었으면 고른 폴더 안 경로만 복사). */
+async function bigImgOpen(kind){const q=P5&&!$('#bigRes').hidden?P5.items[P5.sel]:null;if(!q)return;const x=await imgOf(q,kind),t=kind==='c'?'Color 사진':'Gray 사진',el=$('#bigPath');
+  if(!x.rel){el.innerHTML=`${t}: ${esc(x.why||'없음')}`;return}
+  const p=pcPath(x.rel);
+  if(!p.pc){const ok=await copyText(p.rel);el.innerHTML=`${t} 고른 폴더 안 경로 <code>${esc(p.rel)}</code> ${ok?'를 복사했습니다':''}. 사진을 바로 열려면 오른쪽 칸에 <b>고른 폴더('${esc(p.rel.split('/')[0]||'')}')의 PC 경로</b>(예: D:\\AOI\\${esc(p.rel.split('/')[0]||'')})를 한 번 적으십시오.`;$('#bigBase').focus();return}
   const ok=await copyText(p.pc);window.open(p.url,'_blank');
-  $('#bigPath').innerHTML=`<code>${esc(p.pc)}</code> ${ok?'경로를 복사했습니다':''} · 새 탭이 열리지 않으면 탐색기(Win + E) 주소창(Ctrl + L)에 붙여 넣으십시오(Ctrl + V).`}
+  el.innerHTML=`${t}: <code>${esc(p.pc)}</code> ${ok?'경로를 복사했습니다':''} · 새 탭이 열리지 않으면 탐색기(Win + E) 주소창(Ctrl + L)에 붙여 넣으십시오(Ctrl + V).`}
 function bigKey(e){if(/INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName))return;const k=e.key.toLowerCase(),V=BIG.view;if(!V||!V.m)return;
   const page=Math.max(1,Math.floor(($('#bigList').clientHeight-BHH)/BRH)-1),mv={arrowdown:1,j:1,arrowup:-1,k:-1,pagedown:page,pageup:-page}[k];
   if(mv){BIG.sel+=mv;bigShow();e.preventDefault()}else if(k==='home'||k==='end'){BIG.sel=k==='home'?0:V.m;bigShow();e.preventDefault()}}
@@ -1497,7 +1515,7 @@ $('#bigList').addEventListener('scroll',bigPaint);
 $('#bigList').addEventListener('click',e=>{const h=e.target.closest('[data-sort]');
   if(h){const k=h.dataset.sort,[sk,sd]=BIG.sort?BIG.sort.split('-'):['',''];BIG.sort=k+'-'+(k===sk?(sd==='d'?'a':'d'):(/^[cawl]$/.test(k)?'d':'a'));bigRefresh();return}
   const n=e.target.closest('.br');if(n&&+n.dataset.k!==BIG.sel){BIG.sel=+n.dataset.k;bigShow()}});
-$('#bigDecide').onclick=bigDecide;$('#bigDir').onclick=bigDirOpen;
+$('#bigDecide').onclick=bigDecide;$('#bigImgC').onclick=()=>bigImgOpen('c');$('#bigImgG').onclick=()=>bigImgOpen('g');
 $('#bigBack').onclick=()=>{$('#bigRes').hidden=true;$('#bigPick').hidden=false;$('#bigFlt').hidden=false;bigPaint();$('#bigList').focus()};
 $('#bigS1').addEventListener('change',()=>{bigLots();bigRefresh()});
 $('#bigTbl').addEventListener('click',e=>{const p=e.target.dataset.bigdel;if(p==null)return;BIG.scans=BIG.scans.filter(w=>w.lotPath!==p);bigLots();bigRefresh()});
@@ -1529,7 +1547,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={planUnits,BIG,slotPath,bigShow,bigDecide,fullScan,withCtx,get P5(){return P5},fileGet,ensureImg,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={planUnits,BIG,slotPath,pcPath,imgOf,bigShow,bigDecide,fullScan,withCtx,get P5(){return P5},fileGet,ensureImg,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>
