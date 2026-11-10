@@ -5,16 +5,14 @@ import os
 import sys
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from param_manager import desktop_config as dc, desktop_appupdate as au, updater
+from param_manager import desktop_config as dc
 from param_manager.desktop_batch import DesktopBatch
 from param_manager.desktop_cmrun import DesktopCmRun
 from test_commonality import _make_wafer
-from test_desktop_appupdate import make_package
 
 DEV = "2D@R2-DEVA-1_0855360PD-0A"
 
@@ -107,48 +105,6 @@ class AoiRootTests(unittest.TestCase):
         with um.patch("os.scandir", side_effect=AssertionError("listed")):
             view = dc.aoi_view(self.raw())
         self.assertEqual(view[0]["root"], "\\\\10.0.0.1\\c$\\AOI-1")
-
-
-class ZipPublishTests(unittest.TestCase):
-    def test_actions_artifact_zip_is_published_and_extracted_only_locally(self):
-        tmp = Path(tempfile.mkdtemp(prefix="rev1-zippub-"))
-        save = tmp / "OneDrive" / "docs"
-        save.mkdir(parents=True)
-        cfg = tmp / "c.json"
-        cfg.write_text(json.dumps({"save_dir": str(save), "local_dir": str(tmp / "local")}), encoding="utf-8")
-        pkg = make_package(tmp, "8.4.0")
-        artifact = tmp / "Downloads" / "Camtek_AOI_manager_v8.4.0.zip"
-        artifact.parent.mkdir()
-        with zipfile.ZipFile(artifact, "w") as zf:          # upload-artifact: 패키지 내용이 zip 최상위
-            for f in pkg.rglob("*"):
-                if f.is_file():
-                    zf.write(f, f.relative_to(pkg).as_posix())
-        adapter = au.DesktopAppUpdate(cfg)
-        r = adapter.publish({"path": str(artifact), "notes": "zip"})
-        self.assertEqual(r["version"], "8.4.0")
-        self.assertTrue(os.path.isfile(os.path.join(updater.program_dir(str(save)), au.zip_name("8.4.0"))))
-        # 압축 해제는 로컬 Temp 에서만, 끝나면 지운다(OneDrive 에 풀지 않음).
-        temp = tmp / "local" / "CamtekAOI" / "Temp"
-        self.assertFalse(any(temp.glob("*webpackage*")) if temp.exists() else False)
-        self.assertEqual(sorted(p.name for p in Path(updater.program_dir(str(save))).iterdir()),
-                         sorted([au.zip_name("8.4.0"), au.WEB_MANIFEST]))
-        # 한 단계 폴더로 감싼 zip 도 받는다.
-        nested = tmp / "nested.zip"
-        with zipfile.ZipFile(nested, "w") as zf:
-            inner = make_package(tmp, "8.5.0")
-            for f in inner.rglob("*"):
-                if f.is_file():
-                    zf.write(f, "pkg/" + f.relative_to(inner).as_posix())
-        self.assertEqual(adapter.publish({"path": str(nested), "notes": ""})["version"], "8.5.0")
-        bad = tmp / "bad.zip"
-        with zipfile.ZipFile(bad, "w") as zf:
-            zf.writestr("readme.txt", "no manifest")
-        with self.assertRaises(ValueError):
-            adapter.publish({"path": str(bad), "notes": ""})
-        broken = tmp / "broken.zip"
-        broken.write_bytes(b"PK\x03\x04 not really")
-        with self.assertRaises(ValueError):
-            adapter.publish({"path": str(broken), "notes": ""})
 
 
 if __name__ == "__main__":

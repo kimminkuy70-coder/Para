@@ -1,364 +1,371 @@
-"""Web app (Tauri + sidecar) self-update through the shared OneDrive folder.
+"""v13 program update: GitHub release tag (main) · OneDrive `프로그램/` folder (backup).
 
-Same channel and rules as the tkinter updater (`updater.py`): the program
-folder next to the save folder, no internet, local Temp download, SHA-256
-check, a detached helper that swaps after the app exits, and a way back.
-What differs is the payload — the web app is a *folder* (app exe + `sidecar\\`
-engine, hundreds of files), so:
+Owner decision 2026-11-10 (docs/V13_계획.md 4-1, 12): the only internet access the program
+makes is here — checking for a new release and downloading its source zip from
+github.com/kimminkuy70-coder/Para — and only:
+  * one repository, release tags `v13.x.y` only (no branch tips, no pre-release suffixes)
+  * TLS certificate checked (Windows certificate store via the ssl default context); never disabled
+  * no token, no account, no personal data in the request (public repository)
+  * redirects only to github.com / codeload.github.com
+  * the download is applied only when a person presses [지금 업데이트]
+  * a downloaded tree holding any executable or script file is refused (`deploy.forbidden`)
+The OneDrive route keeps the v12 rules: copy to local Temp once, check size + SHA-256, never
+write to OneDrive on the receiving PC.
 
-* **Publish = one zip file** (`Camtek_AOI_manager_web_v{ver}.zip`) plus its own
-  manifest `버전정보_web.json`. Unzipped folders on OneDrive would be exactly the
-  mass-sync pattern that triggered the 2026-08 security alert, and a separate
-  manifest keeps tkinter installations from treating the zip as their update.
-  The latest two zips stay for rollback (`KEEP_VERSIONS`).
-* **Apply = side-by-side folder swap.** The zip is copied to local Temp and
-  verified, extracted next to the install folder (`<install>.new`) and checked
-  file by file against its `package-manifest.json`. A helper then waits until
-  the install folder can be renamed — a folder with a running exe or engine
-  inside cannot be, so a successful rename *is* the "app has exited" signal
-  (the folder counterpart of the tkinter "old exe deleted" rule) — renames it to
-  `<install>.prev` (one rollback copy), moves the new folder in place and starts
-  it. The install path never changes, so shortcuts keep working. If anything
-  fails the old folder is restored and started again.
-* **The helper is the new engine itself, not a script (Para #31).** The old
-  hidden, self-deleting `web_update.bat` was blocked by Windows Defender as
-  `Trojan:Script/Wacatac.F!ml`. `prepare` copies the verified new `sidecar\`
-  to the update's Temp folder (`swapper\`) and writes `swap.json`; `launch`
-  starts `swapper\Camtek_AOI_engine.exe --apply-update` (see `desktop_swap`).
+Apply = copy the deploy files (`deploy.files`) of the new tree into `<home>/app.new`
+(built as `app.new.part`, renamed when complete). The start file swaps it in before any
+module loads; the launcher restarts on the same address so the open window reconnects.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
-import subprocess
-import sys
+import ssl
 import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
-from datetime import datetime
+from html.parser import HTMLParser
+from pathlib import Path
 
-from . import __version__, desktop_package, desktop_swap, localdirs, updater
+from . import __version__, deploy, localdirs
+from .desktop_batch import read_json
 
-WEB_MANIFEST = "버전정보_web.json"
-ZIP_PREFIX = "Camtek_AOI_manager_web_v"
-APP_EXE = "Camtek_AOI_manager.exe"
-ENGINE_DIR = "sidecar"
-ENGINE_EXE = "Camtek_AOI_engine.exe"
-SWAPPER_DIR = "swapper"
+REPO = "kimminkuy70-coder/Para"
+FEED = f"https://github.com/{REPO}/releases.atom"
+TAG_ZIP = "https://github.com/" + REPO + "/archive/refs/tags/{tag}.zip"
+ALLOWED_HOSTS = {"github.com", "codeload.github.com"}
+TAG_RE = re.compile(r"^v(13\.\d+\.\d+)$")
+USER_AGENT = "Para-Updater"                     # generic; nothing about the user or PC
+CHECK_TIMEOUT, DOWNLOAD_TIMEOUT = 15, 120
+MAX_ZIP = 300 * 1024 * 1024
+MAX_FILES = 30000
+PROGRAM_DIRNAME = "프로그램"
+MANIFEST = "버전정보_v13.json"                   # v12 uses 버전정보_web.json — separate names
+ZIP_PREFIX = "Camtek_AOI_manager_v"
+ZIP_SUFFIX = "_source.zip"
 KEEP_VERSIONS = 2
-MAX_ZIP = 1024 * 1024 * 1024
-WAIT_SECONDS = desktop_swap.WAIT_SECONDS
 
 
-# ---- where are we installed -----------------------------------------------------
-def install_dir() -> Path | None:
-    """`<install>` when running as the packaged engine `<install>\\sidecar\\engine.exe`."""
-    if not getattr(sys, "frozen", False):
-        return None
-    exe = Path(sys.executable).resolve()
-    if exe.parent.name.lower() != ENGINE_DIR or not (exe.parent.parent / APP_EXE).is_file():
-        return None
-    return exe.parent.parent
+# ---------------------------------------------------------------- versions / places
+def parse_version(text) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", str(text or ""))[:4]) or (0,)
 
 
-def default_local_root() -> str:
-    """Local work folder when the config has none. The tkinter default ('next to
-    the program') would be *inside* the web install folder, which an update
-    renames and later deletes — so the packaged engine uses %LOCALAPPDATA%."""
-    return localdirs.appdata_root() if install_dir() else localdirs.default_root()
+def is_newer(remote, local) -> bool:
+    r, l = parse_version(remote), parse_version(local)
+    n = max(len(r), len(l))
+    return r + (0,) * (n - len(r)) > l + (0,) * (n - len(l))
+
+
+def app_home() -> Path | None:
+    """Install folder (set by the start file); None when run from a source copy."""
+    home = os.environ.get("PARA_APP_HOME")
+    return Path(home) if home else None
 
 
 def inside_install(path) -> bool:
-    root = install_dir()
-    if root is None:
+    home = app_home()
+    if home is None:
         return False
-    p = Path(path).resolve()
-    return p == root or root in p.parents
+    p, h = Path(path).absolute(), home.absolute()
+    return p == h or h in p.parents
 
 
-# ---- publish (developer) -----------------------------------------------------------
-def zip_name(version: str) -> str:
-    return f"{ZIP_PREFIX}{version}.zip"
+def program_dir(save_dir: str) -> str:
+    """OneDrive publish folder: next to the save folder (docs), not inside it. Not created."""
+    base = os.path.abspath(str(save_dir or "."))
+    parent = os.path.dirname(base)
+    if not parent or parent == base or not os.path.isdir(parent):
+        return os.path.join(base, PROGRAM_DIRNAME)
+    return os.path.join(parent, PROGRAM_DIRNAME)
 
 
+# ---------------------------------------------------------------- GitHub
+class _Redirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        host = urllib.parse.urlsplit(newurl).hostname or ""
+        if urllib.parse.urlsplit(newurl).scheme != "https" or host not in ALLOWED_HOSTS:
+            raise urllib.error.URLError(f"redirect to {host} refused")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _opener():
+    ctx = ssl.create_default_context()          # verifies; on Windows loads the system store
+    return urllib.request.build_opener(urllib.request.ProxyHandler(), urllib.request.HTTPSHandler(context=ctx), _Redirects())
+
+
+def _get(url: str, timeout: float, limit: int, sink=None) -> bytes:
+    host = urllib.parse.urlsplit(url).hostname or ""
+    if not url.startswith("https://") or host not in ALLOWED_HOSTS:
+        raise ValueError(f"허용하지 않은 주소: {host}")
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with _opener().open(req, timeout=timeout) as r:
+        if sink is None:
+            data = r.read(limit + 1)
+            if len(data) > limit:
+                raise ValueError("응답이 너무 큽니다")
+            return data
+        total = 0
+        while True:
+            chunk = r.read(1 << 20)
+            if not chunk:
+                return b""
+            total += len(chunk)
+            if total > limit:
+                raise ValueError("파일이 너무 큽니다")
+            sink.write(chunk)
+
+
+class _Text(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.parts = []
+
+    def handle_data(self, data):
+        self.parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in ("p", "li", "h1", "h2", "h3", "br", "ul"):
+            self.parts.append("\n")
+
+
+def html_text(fragment: str, limit: int = 4000) -> str:
+    t = _Text()
+    t.feed(fragment or "")
+    text = re.sub(r"\n{3,}", "\n\n", "".join(t.parts)).strip()
+    return text[:limit]
+
+
+def parse_feed(xml_bytes: bytes) -> list[dict]:
+    """Release entries `[{tag, version, notes, at}]`, only plain `v13.x.y` tags, newest version first."""
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    root = ET.fromstring(xml_bytes)
+    out = []
+    for e in root.findall("a:entry", ns):
+        link = e.find("a:link", ns)
+        href = link.get("href", "") if link is not None else ""
+        tag = urllib.parse.unquote(href.rstrip("/").rsplit("/", 1)[-1])
+        m = TAG_RE.match(tag)
+        if not m:
+            continue
+        content = e.findtext("a:content", default="", namespaces=ns)
+        out.append(dict(tag=tag, version=m.group(1), notes=html_text(content),
+                        at=(e.findtext("a:updated", default="", namespaces=ns) or "")[:16].replace("T", " ")))
+    return sorted(out, key=lambda r: parse_version(r["version"]), reverse=True)
+
+
+def latest_github(fetch=None) -> dict | None:
+    data = (fetch or (lambda: _get(FEED, CHECK_TIMEOUT, 2 * 1024 * 1024)))()
+    entries = parse_feed(data)
+    return dict(entries[0], source="github") if entries else None
+
+
+# ---------------------------------------------------------------- OneDrive
 def manifest_path(save_dir: str) -> str:
-    return os.path.join(updater.active_program_dir(save_dir), WEB_MANIFEST)
+    return os.path.join(program_dir(save_dir), MANIFEST)
 
 
-def read_manifest(save_dir: str) -> dict | None:
-    try:
-        with open(manifest_path(save_dir), encoding="utf-8") as fh:
-            data = json.load(fh)
-    except Exception:  # noqa: BLE001 - a missing/broken manifest just means "no update"
+def latest_onedrive(save_dir: str) -> dict | None:
+    if not save_dir:
         return None
+    data = read_json(Path(manifest_path(save_dir)))
     if not isinstance(data, dict):
         return None
-    ver, name = str(data.get("version") or ""), str(data.get("filename") or "")
-    try:
-        size = int(data.get("size") or 0)
-    except (TypeError, ValueError):
+    m = re.fullmatch(r"13\.\d+\.\d+", str(data.get("version", "")))
+    name = str(data.get("file", ""))
+    if not m or not re.fullmatch(re.escape(ZIP_PREFIX) + r"13\.\d+\.\d+" + re.escape(ZIP_SUFFIX), name):
         return None
-    if (updater.parse_version(ver) == (0,) or name != zip_name(ver) or size <= 0
-            or not re.fullmatch(r"[0-9a-f]{64}", str(data.get("sha256") or ""))):
-        return None
-    return data
+    return dict(tag="v" + data["version"], version=data["version"], notes=str(data.get("notes", ""))[:4000],
+                at=str(data.get("published_at", "")), source="onedrive", file=name,
+                size=int(data.get("size", 0) or 0), sha256=str(data.get("sha256", "")))
 
 
-def _package_root(extracted: Path) -> Path:
-    """압축을 푼 폴더에서 package-manifest.json 이 있는 패키지 폴더(최상위 또는 두 단계 아래)."""
-    for depth in range(3):
-        hits = sorted(p.parent for p in extracted.glob("/".join(["*"] * depth + [desktop_package.MANIFEST])))
-        if len(hits) == 1:
-            return hits[0]
-        if len(hits) > 1:
-            raise ValueError("zip 안에 패키지가 여러 개 있습니다. GitHub Actions 에서 받은 zip 하나만 고르세요")
-    raise ValueError("zip 안에 package-manifest.json 이 없습니다. GitHub Actions 빌드 아티팩트 zip 인지 확인하세요")
+# ---------------------------------------------------------------- unpack + check a source zip
+def _safe_extract(zip_path: Path, dest: Path) -> None:
+    with zipfile.ZipFile(zip_path) as z:
+        infos = z.infolist()
+        if len(infos) > MAX_FILES or sum(i.file_size for i in infos) > 4 * MAX_ZIP:
+            raise ValueError("압축 파일이 너무 큽니다")
+        base = dest.resolve()
+        for i in infos:
+            target = (dest / i.filename).resolve()
+            if i.filename.startswith(("/", "\\")) or ".." in Path(i.filename).parts or base not in (target, *target.parents):
+                raise ValueError("압축 파일 안 경로가 올바르지 않습니다")
+        z.extractall(dest)
 
 
-def publish(save_dir: str, package: str, local_root: str, changelog: str = "", user: str = "") -> dict:
-    """Publish a built package: the **GitHub Actions artifact .zip as downloaded**
-    (extracted in local Temp only — never on OneDrive) or an already extracted
-    package folder. It is re-zipped into the program folder and the web manifest
-    is updated last.
-
-    The app itself never downloads from GitHub (2026-09 review): artifact links need
-    a signed-in GitHub account (the program would have to keep a token), and an
-    unsigned exe that fetches a zip from the internet and then swaps executables
-    matches downloader/dropper heuristics — the same risk class as the 2026-08
-    Defender deletion. The developer downloads the zip in a browser and uploads it."""
-    if not save_dir:
-        raise ValueError("먼저 저장폴더를 지정하세요")
-    src = Path(package)
-    if src.is_file() and src.suffix.lower() == ".zip":
-        if src.stat().st_size > MAX_ZIP:
-            raise ValueError("패키지 zip 이 너무 큽니다")
-        work = localdirs.new_temp_run(localdirs.ensure(local_root), "webpackage")
-        try:
-            try:
-                _safe_extract(str(src), Path(work))
-            except zipfile.BadZipFile as exc:
-                raise ValueError("zip 파일을 열 수 없습니다. 다운로드가 끝났는지 확인하세요") from exc
-            return _publish_folder(save_dir, _package_root(Path(work)), local_root, changelog, user)
-        finally:
-            localdirs.drop(work)
-    if not src.is_dir():
-        raise ValueError("게시할 패키지 zip 파일 또는 폴더를 찾을 수 없습니다")
-    return _publish_folder(save_dir, src, local_root, changelog, user)
+def tree_root(extracted: Path) -> Path:
+    for cand in (extracted, *sorted(p for p in extracted.iterdir() if p.is_dir())):
+        if (cand / "param_manager" / "launcher.py").is_file():
+            return cand
+    raise ValueError("Para 프로그램 파일이 아닙니다(param_manager/launcher.py 없음)")
 
 
-def _publish_folder(save_dir: str, root: Path, local_root: str, changelog: str, user: str) -> dict:
-    info = desktop_package.verify(root)          # all files present, unchanged, versioned
-    version = info["version"]
-    folder = updater.program_dir(save_dir)
-    dest = os.path.join(folder, zip_name(version))
-    ours = (root / desktop_package.MANIFEST).read_bytes()
-    if os.path.exists(dest):
-        # Zips are not byte-reproducible; the package manifest (all file hashes) is.
-        with zipfile.ZipFile(dest) as old:
-            try:
-                theirs = old.read(desktop_package.MANIFEST)
-            except KeyError:
-                theirs = b""
-        if theirs != ours:
-            raise ValueError("같은 버전의 다른 패키지가 이미 게시되어 있습니다. 버전을 올려 다시 빌드하세요.")
-    else:
-        local = localdirs.new_temp_run(localdirs.ensure(local_root), "webpublish")
-        try:
-            built = os.path.join(local, zip_name(version))
-            with zipfile.ZipFile(built, "w", zipfile.ZIP_DEFLATED) as zf:
-                for file in sorted(root.rglob("*")):
-                    if file.is_file():
-                        zf.write(file, file.relative_to(root).as_posix())
-            # One file event on OneDrive (no .tmp beside it). The manifest is written
-            # after this copy, and clients verify size + SHA-256 before using it.
-            shutil.copy2(built, dest)
-        finally:
-            localdirs.drop(local)
-    release = dict(version=version, filename=zip_name(version), sha256=updater.file_sha256(dest),
-                   size=os.path.getsize(dest), changelog=changelog or "",
-                   published_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), published_by=user or "",
-                   kind="web")
-    with open(os.path.join(folder, WEB_MANIFEST), "w", encoding="utf-8") as fh:
-        json.dump(release, fh, ensure_ascii=False, indent=2)
-    prune(folder, keep=release["filename"])
-    return release
+def tree_version(root: Path) -> str:
+    text = (root / "param_manager" / "__init__.py").read_text(encoding="utf-8")
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.M)
+    if not m:
+        raise ValueError("버전 정보를 찾지 못했습니다")
+    return m.group(1)
 
 
-def prune(folder: str, keep: str) -> list[str]:
-    """Keep the newest KEEP_VERSIONS web zips (by version number, not file time)."""
-    zips = [n for n in os.listdir(folder) if n.startswith(ZIP_PREFIX) and n.endswith(".zip")]
-    zips.sort(key=lambda n: updater.parse_version(n[len(ZIP_PREFIX):-4]), reverse=True)
-    removed = []
-    for name in zips[KEEP_VERSIONS:]:
-        if name == keep:
-            continue
-        try:
-            os.remove(os.path.join(folder, name))
-            removed.append(name)
-        except OSError:
-            pass
-    return removed
+def check_tree(root: Path, version: str) -> list[str]:
+    files = deploy.files(root)
+    bad = deploy.forbidden(files)
+    if bad:
+        raise ValueError("실행 파일이나 스크립트가 들어 있어 적용하지 않습니다: " + ", ".join(bad[:5]))
+    for need in ("Camtek_AOI_manager.pyw", "frontend/dist/index.html", "param_manager/desktop_ipc.py"):
+        if need not in files:
+            raise ValueError(f"필요한 파일이 없습니다: {need}")
+    if tree_version(root) != version:
+        raise ValueError(f"태그({version})와 프로그램 버전({tree_version(root)})이 다릅니다")
+    return files
 
 
-# ---- check ---------------------------------------------------------------------------
-def check(save_dir: str, cfg: dict) -> dict:
-    current = __version__
-    release = read_manifest(save_dir) if save_dir else None
-    applied = str(cfg.get("web_update_applied_version") or "")
-    return dict(current=current, installed=install_dir() is not None,
-                available=(release or {}).get("version", ""),
-                newer=bool(release and updater.is_newer(release["version"], current)),
-                changelog=(release or {}).get("changelog", ""),
-                published_at=(release or {}).get("published_at", ""),
-                skipped=bool(release and cfg.get("web_update_skip_version") == release["version"]),
-                # The last update was started but this is still the old version.
-                failed=bool(applied and updater.same_version(applied, (release or {}).get("version", ""))
-                            and not updater.same_version(applied, current)),
-                program_dir=updater.active_program_dir(save_dir) if save_dir else "")
+def stage(root: Path, files: list[str], home: Path) -> Path:
+    """Copy the deploy files to <home>/app.new (via .part, renamed when complete)."""
+    part, ready = home / "app.new.part", home / "app.new"
+    for p in (part, ready):
+        shutil.rmtree(p, ignore_errors=True)
+    for rel in files:
+        dst = part / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(root / rel, dst)
+    os.replace(part, ready)
+    return ready
 
 
-# ---- apply -----------------------------------------------------------------------------
-def _safe_extract(zip_path: str, dest: Path) -> None:
-    with zipfile.ZipFile(zip_path) as zf:
-        total = 0
-        for member in zf.infolist():
-            name = member.filename
-            target = (dest / name).resolve()
-            if name.startswith(("/", "\\")) or ":" in name or not (target == dest.resolve() or dest.resolve() in target.parents):
-                raise ValueError("업데이트 패키지에 허용되지 않는 경로가 있습니다")
-            total += member.file_size
-            if total > 4 * MAX_ZIP:
-                raise ValueError("업데이트 패키지가 너무 큽니다")
-        zf.extractall(dest)
+def sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
-def prepare(save_dir: str, local_root: str) -> dict:
-    """Download, verify and stage the new version, then prepare the swap helper.
-    Nothing in the install folder changes until the app has exited."""
-    install = install_dir()
-    if install is None:
-        raise ValueError("개발 실행에서는 자동 업데이트를 할 수 없습니다. 설치된 앱에서 실행하세요.")
-    if localdirs.is_under_onedrive(str(install)):
-        raise ValueError("앱이 OneDrive 폴더 안에 설치되어 있어 자동 업데이트를 할 수 없습니다. "
-                         "사용 설명서대로 로컬 폴더로 옮긴 뒤 다시 시도하세요.")
-    release = read_manifest(save_dir)
-    if not release or not updater.is_newer(release["version"], __version__):
-        raise ValueError("설치할 새 버전이 없습니다")
-    source = os.path.join(updater.active_program_dir(save_dir), release["filename"])
-    if not os.path.isfile(source):
-        raise ValueError("게시된 업데이트 파일이 없습니다. OneDrive 동기화가 끝났는지 확인하세요.")
-    if release["size"] > MAX_ZIP:
-        raise ValueError("업데이트 파일이 너무 큽니다")
-    temp = localdirs.new_temp_run(localdirs.ensure(local_root), "webupdate")
-    local_zip = os.path.join(temp, release["filename"])
-    shutil.copy2(source, local_zip)
-    if os.path.getsize(local_zip) != release["size"] or updater.file_sha256(local_zip) != release["sha256"]:
-        localdirs.drop(temp)
-        raise ValueError("받은 파일이 게시본과 다릅니다(OneDrive 동기화 중일 수 있음). 잠시 후 다시 시도하세요.")
-    staged = install.parent / f"{install.name}.new"
-    prev = install.parent / f"{install.name}.prev"
-    if staged.exists():
-        shutil.rmtree(staged)
-    staged.mkdir()
-    try:
-        _safe_extract(local_zip, staged)
-        info = desktop_package.verify(staged)     # every file present and unchanged
-        if not updater.same_version(info["version"], release["version"]):
-            raise ValueError("패키지 버전이 게시 정보와 다릅니다")
-    except Exception:
-        shutil.rmtree(staged, ignore_errors=True)
-        localdirs.drop(temp)
-        raise
-    # No script file (Para #31): a copy of the verified new engine does the swap, from Temp
-    # (a copy inside `<install>.new` would keep that folder busy and block its own move).
-    helper = Path(temp) / SWAPPER_DIR
-    try:
-        shutil.copytree(staged / ENGINE_DIR, helper)
-    except Exception:
-        shutil.rmtree(staged, ignore_errors=True)
-        localdirs.drop(temp)
-        raise
-    plan = desktop_swap.write_plan(temp, install, staged, prev, WAIT_SECONDS)
-    return dict(version=release["version"], helper=str(helper / ENGINE_EXE), plan=plan, temp=temp,
-                install=str(install), staged=str(staged), prev=str(prev))
-
-
-def launch(prepared: dict) -> None:
-    """Start the swap helper detached, outside the install folder, then the UI exits."""
-    flags = 0
-    if os.name == "nt":
-        flags = 0x00000008 | 0x00000200 | 0x08000000   # DETACHED | NEW_PROCESS_GROUP | NO_WINDOW
-    subprocess.Popen([prepared["helper"], desktop_swap.FLAG], cwd=prepared["temp"], close_fds=True,
-                     creationflags=flags, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL)
-
-
+# ---------------------------------------------------------------- engine adapter
 class DesktopAppUpdate:
-    """IPC adapter. Paths come from the shared config only; the publish source is
-    a folder the user picked with the native chooser (same trust model as setup)."""
-
     def __init__(self, config_path=None):
         self.config_path = Path(config_path) if config_path else Path.home() / ".pi_param_manager.json"
+        self.fetch_feed = None          # tests inject (no network)
+        self.download = None            # tests inject: (tag, Path) -> None
+        self.last = None
 
     def _cfg(self):
-        from .desktop_batch import read_json
         return read_json(self.config_path)
 
     def _local_root(self):
-        from .desktop_batch import DesktopBatch
-        return str(DesktopBatch(self.config_path).configuration()[2])
+        return str(self._cfg().get("local_dir") or localdirs.default_root())
 
-    def _write_cfg(self, **changes):
-        from . import atomicfile
-        cfg = self._cfg()
-        cfg.update(changes)
-        atomicfile.write_json(str(self.config_path), cfg)
+    def check(self, params=None):
+        """Newest release from GitHub; if GitHub cannot be reached, the OneDrive folder."""
+        save_dir = str(self._cfg().get("save_dir") or "")
+        found, error = None, ""
+        try:
+            found = latest_github(self.fetch_feed)
+        except Exception as exc:  # noqa: BLE001 - offline / blocked: fall back quietly
+            error = f"GitHub 확인 실패: {type(exc).__name__}"
+        if found is None:
+            try:
+                found = latest_onedrive(save_dir)
+            except Exception:  # noqa: BLE001
+                found = None
+        self.last = found
+        newer = bool(found and is_newer(found["version"], __version__))
+        return dict(current=__version__, installed=app_home() is not None, available=(found or {}).get("version", ""),
+                    newer=newer, changelog=(found or {}).get("notes", ""), published_at=(found or {}).get("at", ""),
+                    source=(found or {}).get("source", ""), error=error,
+                    program_dir=program_dir(save_dir) if save_dir else "")
 
-    def check(self, params):
-        if params:
-            raise ValueError("요청을 확인하세요")
-        cfg = self._cfg()
-        out = check(cfg.get("save_dir") or "", cfg)
-        if out["failed"]:
-            self._write_cfg(web_update_applied_version="")   # report once
-        return out
+    def _fetch_zip(self, info: dict, work: Path) -> Path:
+        dest = work / "source.zip"
+        if info["source"] == "github":
+            if self.download:
+                self.download(info["tag"], dest)
+            else:
+                with open(dest, "wb") as fh:
+                    _get(TAG_ZIP.format(tag=urllib.parse.quote(info["tag"])), DOWNLOAD_TIMEOUT, MAX_ZIP, sink=fh)
+            return dest
+        src = Path(program_dir(str(self._cfg().get("save_dir") or ""))) / info["file"]
+        if not src.is_file() or src.stat().st_size != info["size"]:
+            raise ValueError("OneDrive 의 파일이 아직 다 내려받아지지 않았습니다. 잠시 뒤 다시 하십시오")
+        shutil.copyfile(src, dest)                           # one copy to local Temp
+        if sha256(dest) != info["sha256"]:
+            raise ValueError("파일 확인(SHA-256)이 맞지 않습니다. 동기화가 끝난 뒤 다시 하십시오")
+        return dest
 
-    def skip(self, params):
-        if set(params) != {"version"} or not isinstance(params["version"], str) or len(params["version"]) > 32:
-            raise ValueError("버전을 확인하세요")
-        self._write_cfg(web_update_skip_version=params["version"])
-        return dict(skipped=params["version"])
-
-    def apply(self, params):
-        if params:
-            raise ValueError("요청을 확인하세요")
-        cfg = self._cfg()
-        prepared = prepare(cfg.get("save_dir") or "", self._local_root())
-        self._write_cfg(web_update_applied_version=prepared["version"])
-        launch(prepared)
-        return dict(version=prepared["version"], restart=True)
+    def apply(self, params=None):
+        home = app_home()
+        if home is None:
+            raise ValueError("소스 폴더에서 실행 중이라 자동 업데이트를 하지 않습니다(git 으로 받으십시오)")
+        info = self.last or (self.check() and self.last)
+        if not info or not is_newer(info["version"], __version__):
+            raise ValueError("새 버전이 없습니다")
+        work = Path(localdirs.new_temp_run(self._local_root(), "업데이트"))
+        try:
+            zip_path = self._fetch_zip(info, work)
+            _safe_extract(zip_path, work / "x")
+            root = tree_root(work / "x")
+            stage(root, check_tree(root, info["version"]), home)
+        finally:
+            localdirs.drop(str(work))
+        return dict(version=info["version"], source=info["source"], restart=True)
 
     def publish(self, params):
-        if set(params) - {"path", "notes"} or not isinstance(params.get("path"), str) \
-                or not isinstance(params.get("notes", ""), str) or len(params.get("notes", "")) > 4000:
-            raise ValueError("게시할 패키지(zip 또는 폴더)와 변경 내용을 확인하세요")
-        from . import engine
-        cfg = self._cfg()
-        return publish(cfg.get("save_dir") or "", params["path"], self._local_root(),
-                       params.get("notes", ""), engine.current_user())
+        """Developer: put a source zip (GitHub 'Source code (zip)' of a v13 tag) in OneDrive 프로그램/."""
+        save_dir = str(self._cfg().get("save_dir") or "")
+        if not save_dir:
+            raise ValueError("저장 폴더를 먼저 정하십시오")
+        src = Path(str(params.get("path", "")))
+        if src.suffix.lower() != ".zip" or not src.is_file():
+            raise ValueError("v13 소스 zip 파일을 고르십시오")
+        work = Path(localdirs.new_temp_run(self._local_root(), "게시"))
+        try:
+            local = work / "in.zip"
+            shutil.copyfile(src, local)
+            _safe_extract(local, work / "x")
+            root = tree_root(work / "x")
+            version = tree_version(root)
+            if not re.fullmatch(r"13\.\d+\.\d+", version):
+                raise ValueError(f"v13 프로그램이 아닙니다(버전 {version})")
+            check_tree(root, version)
+            name = f"{ZIP_PREFIX}{version}{ZIP_SUFFIX}"
+            folder = Path(program_dir(save_dir))
+            folder.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(local, folder / name)            # one copy into OneDrive
+            manifest = dict(version=version, file=name, size=local.stat().st_size, sha256=sha256(local),
+                            notes=str(params.get("notes", ""))[:4000], published_at=time.strftime("%Y-%m-%d %H:%M"))
+            # one direct write (no temp file inside the shared folder — OneDrive rule)
+            (folder / MANIFEST).write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+            prune(folder, name)
+            return dict(manifest, program_dir=str(folder))
+        finally:
+            localdirs.drop(str(work))
 
-    def open_dir(self, params):
-        """Open the program (publish) folder for the manual '직접 설치' path."""
-        if params:
-            raise ValueError("요청을 확인하세요")
-        save = self._cfg().get("save_dir") or ""
-        if not save:
-            raise ValueError("먼저 저장폴더를 지정하세요")
-        folder = updater.active_program_dir(save)
-        if not os.path.isdir(folder):
-            raise ValueError("아직 게시된 버전이 없습니다")
-        if os.name == "nt":
-            os.startfile(folder)  # noqa: S606 - Windows only
-        return dict(opened=folder)
+    def open_dir(self, params=None):
+        save_dir = str(self._cfg().get("save_dir") or "")
+        folder = program_dir(save_dir)
+        if os.name == "nt" and os.path.isdir(folder):
+            os.startfile(folder)  # noqa: S606 - our publish folder only
+        return dict(program_dir=folder)
+
+
+def prune(folder: Path, keep: str) -> list[str]:
+    """Keep the newest KEEP_VERSIONS of our zips (by version); never touch other files."""
+    pat = re.compile(re.escape(ZIP_PREFIX) + r"(13\.\d+\.\d+)" + re.escape(ZIP_SUFFIX))
+    ours = sorted((p for p in folder.iterdir() if pat.fullmatch(p.name)),
+                  key=lambda p: parse_version(pat.fullmatch(p.name).group(1)), reverse=True)
+    removed = []
+    for p in ours[KEEP_VERSIONS:]:
+        if p.name != keep:
+            p.unlink(missing_ok=True)
+            removed.append(p.name)
+    return removed
+

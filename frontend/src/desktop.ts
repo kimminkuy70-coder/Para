@@ -76,6 +76,23 @@ export async function exitApp(): Promise<void> {
   if (isDesktop()) { try { await native('app_exit'); } catch { /* already closing */ } }
   try { window.close(); } catch { /* not script-opened */ }
 }
+/** After an update was staged: quit the engine (it restarts itself on the same address) and
+ * reload this window once the new engine answers. The old server must go away first. */
+export async function restartForUpdate(): Promise<void> {
+  if (!isDesktop()) return;
+  const boot = async (): Promise<string> => {
+    try { const r = await fetch('/api/ping', {cache: 'no-store'}); return r.ok ? String((await r.json()).boot || '') : ''; }
+    catch { return ''; }
+  };
+  const before = await boot();
+  try { await native('app_exit', {restart: true}); } catch { /* already closing */ }
+  for (let i = 0; i < 240; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    const now = await boot();
+    if (now && now !== before) { location.reload(); return; }   // the new program answers
+  }
+  alert('새 버전이 다시 시작되지 않았습니다. 바탕화면 바로가기로 프로그램을 다시 실행해 주십시오.');
+}
 /** Pushed by the engine's watch scheduler (id null, event 'notice'). */
 export type WatchNotice = {kind: string; title: string; summary: string; report?: string; at?: string; by_other?: boolean;
   /** which watch ('pwatch'|'cmwatch'); quiet = list only (no pop-up); live = the one '진행 중' line, replaced by the next notice */
@@ -90,7 +107,7 @@ export async function setBackground(enabled: boolean, tooltip: string): Promise<
   if (isDesktop()) { try { await native('set_background', {enabled, tooltip}); } catch { /* engine closing */ } }
 }
 export type AppUpdate = {current: string; installed: boolean; available: string; newer: boolean; changelog: string;
-  published_at: string; skipped: boolean; failed: boolean; program_dir: string};
+  published_at: string; source: string; error: string; program_dir: string};
 /** One request (or the engine start) in flight, for the progress panel. */
 export type Activity = {id: number; method: string; started: number; message: string};
 type Pending = {resolve: (v: Reply) => void; reject: (e: Error) => void; progress?: (v: Reply) => void};

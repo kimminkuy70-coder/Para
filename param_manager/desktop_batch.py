@@ -127,7 +127,7 @@ CACHE_SHARE_NAME = re.compile(r"BatchReport_캐시_\d{8}_\d{6}\.zip")
 
 def cache_share_dir(save_dir):
     """캐시 공유 폴더 = 저장 폴더(docs)의 **옆** `캐시공유/` — 프로그램 게시 폴더(`프로그램/`)와 같은 규칙
-    (updater.resolve_program_dir). 부모가 없으면(드라이브 루트) 저장 폴더 안. 만들지는 않는다."""
+    (desktop_appupdate.program_dir). 부모가 없으면(드라이브 루트) 저장 폴더 안. 만들지는 않는다."""
     import os
     base = os.path.abspath(str(save_dir))
     parent = os.path.dirname(base)
@@ -927,9 +927,9 @@ class DesktopBatch(BatchViews):
         paths = cfg.get("wph_report_paths") or {}
         if not isinstance(paths, dict):
             raise ValueError("기존 Report 폴더 설정을 확인하세요")
-        from .desktop_appupdate import default_local_root
-        # Packaged web app: never default into the install folder (an update replaces it).
-        requested_root = Path(cfg.get("local_dir") or default_local_root()).absolute()
+        from . import localdirs
+        # Installed v13: default = %LOCALAPPDATA%\\CamtekAOI, never the install folder (updates replace it).
+        requested_root = Path(cfg.get("local_dir") or localdirs.default_root()).absolute()
         for part in (requested_root, *requested_root.parents):
             if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
                 raise ValueError("로컬 결과 폴더의 연결 경로는 사용할 수 없습니다")

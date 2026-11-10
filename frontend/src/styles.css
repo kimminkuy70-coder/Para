@@ -92,8 +92,9 @@ button.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 .slot-picks{display:flex;flex-wrap:wrap;gap:8px}.slot-picks label{display:flex;align-items:center;gap:4px;font-size:12px}
 tr.fail-row td{background:#fff7d6}tr.row-now td{background:#effaf5}
 .connection-box{display:flex;align-items:center;gap:8px}
-.update-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 24px;background:#ecfdf5;border-bottom:1px solid #a7f3d0;color:var(--ink);font-size:13px}.update-banner .changelog{margin:4px 0 0;color:var(--muted);white-space:pre-wrap}.update-banner .actions{display:flex;gap:8px;flex-wrap:wrap}
-@media(max-width:1000px){.update-banner{flex-direction:column;align-items:flex-start}}
+dialog.update-banner{width:min(560px,calc(100vw - 32px));padding:20px 24px;border:1px solid #a7f3d0;border-radius:12px;color:var(--ink);font-size:13px}
+dialog.update-banner h3{margin:0 0 6px}dialog.update-banner .changelog{max-height:40vh;overflow:auto;margin:8px 0;padding:10px;background:#f6f8fa;border-radius:8px;color:var(--ink);white-space:pre-wrap;font:inherit}
+dialog.update-banner .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 /* 자동 분석 및 취합: inline panels (not modal dialogs) and the notice list */
 .edit-dialog.inline{display:block;position:static;width:auto;max-width:none;margin:16px 0;background:var(--surface,#fff)}
 button.pick-item{width:100%;background:transparent;border:0;border-bottom:1px solid #eef2f6;border-radius:0;text-align:left;cursor:pointer;min-height:0}

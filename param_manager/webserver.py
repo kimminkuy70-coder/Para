@@ -140,6 +140,7 @@ class Natives:
         return None
 
     def app_exit(self, args):
+        self.server.restart = bool((args or {}).get("restart"))   # update staged: start again (launcher)
         self.server.request_exit()
         return None
 
@@ -159,6 +160,8 @@ class WebServer:
         self.bridge = Bridge()
         self.upload_dir = Path(upload_dir) if upload_dir else Path(tempfile.gettempdir()) / "CamtekAOI_upload"
         self.exit_requested = threading.Event()
+        self.restart = False
+        self.boot = secrets.token_hex(8)        # changes every start: the window can tell a restart happened
         self.httpd = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
         self.httpd.daemon_threads = True
         self.port = self.httpd.server_address[1]
@@ -260,6 +263,8 @@ def _handler(server: WebServer):
             if not self._guard():
                 return
             parts = urlsplit(self.path)
+            if parts.path == "/api/ping":            # liveness only (window waits for a restart)
+                return self._json(200, {"ok": True, "boot": server.boot})
             if parts.path == "/api/events":
                 return self._events(parse_qs(parts.query).get("t", [""])[0])
             if parts.path.startswith("/api/"):
@@ -324,7 +329,7 @@ def _handler(server: WebServer):
                 except (ValueError, UnicodeError):
                     return self._json(400, {"error": "invalid_json"})
                 server.bridge.send(body)
-                return self._json(200, {"ok": True})
+                return self._json(200, {"ok": True, "boot": server.boot})
             if parts.path == "/api/native":
                 try:
                     req = json.loads(body.decode("utf-8"))

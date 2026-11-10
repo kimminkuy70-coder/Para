@@ -47,13 +47,13 @@ export function Settings(){
   const [upd,setUpd]=useState<AppUpdate>(),[pubPath,setPubPath]=useState(''),[pubNotes,setPubNotes]=useState('');
   async function checkUpdate(){
     try{const r=(await desktop.request('appupdate_check').promise).appupdate as AppUpdate;setUpd(r);
-      notify(r.newer?`새 버전 ${r.available}이 있습니다.`:r.available?`최신 버전입니다(${r.current}).`:'게시된 웹 버전이 없습니다.','info');}
+      notify(r.newer?`새 버전 ${r.available}이 있습니다.`:r.available?`최신 버전입니다(${r.current}).`:`확인할 수 있는 릴리스가 없습니다${r.error?` (${r.error})`:''}.`,'info');}
     catch(e){fail(e);}
   }
   async function publishPackage(){
     setBusy(true);
-    try{const r=(await desktop.request('appupdate_publish',{path:pubPath.trim(),notes:pubNotes}).promise).appupdate as {version:string;filename:string};
-      notify(`${r.version} 게시 완료 (${r.filename}). 다른 PC는 다음 실행 때 알림을 받습니다.`,'ok');setPubNotes('');setPubPath('');}
+    try{const r=(await desktop.request('appupdate_publish',{path:pubPath.trim(),notes:pubNotes}).promise).appupdate as {version:string;file:string};
+      notify(`${r.version} 게시 완료 (${r.file}). GitHub 에 연결되지 않는 PC는 다음 실행 때 알림을 받습니다.`,'ok');setPubNotes('');setPubPath('');}
     catch(e){fail(e);}finally{setBusy(false);}
   }
   const [diagZip,setDiagZip]=useState('');
@@ -298,17 +298,16 @@ export function Settings(){
       <h3 style={{marginTop:24}}>업데이트</h3>
       <div className="toolbar"><button onClick={checkUpdate}>업데이트 확인</button><button onClick={openProgramDir}>게시 폴더 열기</button>
         {upd?.newer&&<button className="primary" disabled={busy||!upd.installed} onClick={()=>void installUpdate()}>지금 {upd.available}(으)로 업데이트</button>}</div>
-      {upd&&<p className="hint">현재 {upd.current} · 게시 {upd.available||'없음'}{upd.changelog?` — ${upd.changelog}`:''}</p>}
-      <details style={{marginTop:16}}><summary>개발자: 새 버전 게시</summary>
-        <p className="hint">GitHub Actions 빌드 페이지(예: <code>…/actions/runs/…/artifacts/…</code>)에서 <b>브라우저로 받은 zip 파일을 그대로</b> 고르세요.
-          압축은 이 PC의 로컬 임시 폴더에서만 풀고, 안의 package-manifest.json 으로 모든 파일을 검증한 뒤 버전을 읽어 게시 폴더에 zip 1개로 올립니다.
-          다른 PC는 다음 실행 때 업데이트 알림을 받습니다. 이미 압축을 푼 패키지 폴더도 고를 수 있습니다.</p>
-        <p className="hint">프로그램이 GitHub 링크에서 직접 내려받지는 않습니다 — 아티팩트 링크는 GitHub 로그인이 필요해 프로그램이 인증 정보를 보관해야 하고,
-          서명 없는 프로그램이 인터넷에서 실행 파일 묶음을 받아 교체하는 동작은 백신(Defender)의 다운로더 탐지 대상이 될 수 있기 때문입니다.</p>
-        <div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>패키지 zip (또는 폴더)<input value={pubPath} maxLength={4096}
-          placeholder="예: C:\\Users\\이름\\Downloads\\Camtek_AOI_manager_v8.1.0.zip" onChange={e=>setPubPath(e.target.value)}/></label>
-          <button onClick={async()=>{const p=await pickFile('zip');if(p)setPubPath(p);else notify('파일 선택이 취소되었거나 데스크톱 앱이 아닙니다. 경로를 직접 붙여넣어 주세요.','info');}}>📦 zip 찾기</button>
-          <button onClick={()=>browse(setPubPath)}>📁 폴더 찾기</button></div>
+      {upd&&<p className="hint">현재 {upd.current} · 최신 {upd.available||'없음'}{upd.source?` (${upd.source==='github'?'GitHub':'OneDrive'})`:''}{upd.changelog?` — ${upd.changelog}`:''}</p>}
+      <p className="hint">새 버전은 <b>GitHub 의 이 프로그램 릴리스</b>에서 확인하고 받습니다(인터넷은 이때만 씁니다). GitHub 에 연결되지 않으면 OneDrive 게시 폴더를 봅니다.
+        받은 파일은 프로그램 글 파일(.py · .js)뿐이며 실행 파일이 들어 있으면 적용하지 않습니다.</p>
+      <details style={{marginTop:16}}><summary>개발자: OneDrive 에 새 버전 게시(보조 통로)</summary>
+        <p className="hint">GitHub 릴리스 페이지의 <b>Source code (zip)</b>(v13 태그)을 받아 그대로 고르세요. 이 PC의 로컬 임시 폴더에서만 풀어
+          실행 파일이 없는지 · 버전이 맞는지 확인한 뒤, OneDrive 프로그램 폴더에 zip 1개와 버전 정보 1개를 씁니다.
+          GitHub 에 연결되지 않는 PC는 이 파일로 업데이트합니다.</p>
+        <div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>소스 zip<input value={pubPath} maxLength={4096}
+          placeholder="예: C:\Users\이름\Downloads\Para-13.0.1.zip" onChange={e=>setPubPath(e.target.value)}/></label>
+          <button onClick={async()=>{const p=await pickFile('zip');if(p)setPubPath(p);else notify('파일 선택이 취소되었거나 프로그램 창이 아닙니다. 경로를 직접 붙여넣어 주세요.','info');}}>📦 zip 찾기</button></div>
         <label className="field">변경 내용<textarea rows={3} maxLength={4000} value={pubNotes} onChange={e=>setPubNotes(e.target.value)}/></label>
         <div className="toolbar"><button className="primary" disabled={busy||!pubPath.trim()} onClick={publishPackage}>게시</button></div>
       </details>

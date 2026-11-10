@@ -79,12 +79,20 @@ if sys.argv[1] == 'init':
     plan_ws.append(['DEVB', '7000', 'X', 'AOI-21', '', ''])
     plan_wb.save(root/'old_plan.xlsx')
     (root/'config.json').write_text(json.dumps(cfg), encoding='utf-8')
-    # A published web package newer than the running engine (self-update banner).
-    from param_manager import desktop_appupdate, desktop_package
-    pkg = root/'pkg'; (pkg/'sidecar').mkdir(parents=True)
-    (pkg/'Camtek_AOI_manager.exe').write_bytes(b'app'); (pkg/'sidecar'/'Camtek_AOI_engine.exe').write_bytes(b'engine')
-    desktop_package.create(pkg, '99.1.0')
-    desktop_appupdate.publish(str(shared), str(pkg), str(root/'local'), '테스트 게시', 'fixture')
+    # v13: a newer source zip published to the OneDrive program folder (start-up update pop-up).
+    # GitHub is switched off in the fixture session, so the OneDrive backup route is used.
+    import shutil, zipfile
+    from param_manager import desktop_appupdate, deploy
+    repo = Path(__file__).resolve().parents[1]
+    src = root/'pkg'/'Para-13.9.0'
+    for rel in deploy.files(repo):
+        (src/rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(repo/rel, src/rel)
+    init = src/'param_manager'/'__init__.py'
+    init.write_text(init.read_text(encoding='utf-8').replace('__version__ = "13.0.0"', '__version__ = "13.9.0"'), encoding='utf-8')
+    with zipfile.ZipFile(root/'pkg'/'v13.9.0.zip', 'w') as z:
+        for f in src.rglob('*'):
+            if f.is_file(): z.write(f, f.relative_to(root/'pkg').as_posix())
+    desktop_appupdate.DesktopAppUpdate(root/'config.json').publish({'path': str(root/'pkg'/'v13.9.0.zip'), 'notes': '테스트 게시'})
 else:
     original = desktop_ipc.Session
     class FixtureSession(original):
@@ -107,6 +115,7 @@ else:
             self.cmwatch.config_path = config
             self.cmwatch.form.config_path = config
             self.kla.config_path = config
+            self.appupdate.fetch_feed = lambda: (_ for _ in ()).throw(OSError('offline test'))   # no internet in tests
     desktop_ipc.Session = FixtureSession
     if sys.argv[1] == 'web':
         # v13: the real local web server (param_manager/webserver.py). Native dialogs are

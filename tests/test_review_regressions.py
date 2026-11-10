@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from param_manager import atomicfile, cmwatcher, errlog, updater, watcher, wph
+from param_manager import atomicfile, cmwatcher, errlog, watcher, wph
 import openpyxl
 
 
@@ -25,21 +25,6 @@ class ReviewTests(unittest.TestCase):
                 self.assertEqual(list(shared.iterdir()), [])
                 self.assertTrue((Path(d) / 'CamtekAOI/Logs' / errlog.LOG_NAME).exists())
 
-    def test_same_version_different_binary_preserves_release(self):
-        with tempfile.TemporaryDirectory() as d:
-            shared = Path(d) / 'shared'
-            shared.mkdir()
-            exe = Path(d) / 'built.exe'
-            exe.write_bytes(b'original')
-            first = updater.publish(str(shared), str(exe), '8.1')
-            before = Path(updater.manifest_path(str(shared))).read_bytes()
-            exe.write_bytes(b'changed')
-            with self.assertRaises(ValueError):
-                updater.publish(str(shared), str(exe), '8.1')
-            self.assertEqual(Path(updater.manifest_path(str(shared))).read_bytes(), before)
-            dest = Path(updater.program_dir(str(shared))) / first.filename
-            self.assertEqual(dest.read_bytes(), b'original')
-
     def test_local_atomic_failure_preserves_settings(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / 'settings.json'
@@ -49,22 +34,6 @@ class ReviewTests(unittest.TestCase):
                     atomicfile.write_json(p, {'new': 2})
             self.assertEqual(json.loads(p.read_text()), {'old': 1})
             self.assertEqual(list(Path(d).iterdir()), [p])
-
-    def test_invalid_manifests_and_legacy_name(self):
-        for value in (None, [], 'broken', 3):
-            self.assertIsNone(updater.ReleaseInfo.from_dict(value))
-        data = dict(version='8.1', sha256='a' * 64, size=10)
-        self.assertEqual(updater.ReleaseInfo.from_dict(data).filename, updater.LEGACY_EXE_NAME)
-        for name in ('../x.exe', 'C:\\x.exe', 'sub/x.exe', 'x.exe\n', 'x.txt'):
-            self.assertIsNone(updater.ReleaseInfo.from_dict(dict(data, filename=name)))
-
-    def test_download_read_failure_is_reported(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / 'new.exe'
-            p.write_bytes(b'x')
-            rel = updater.ReleaseInfo('8.1', 'new.exe', 'a' * 64, 1)
-            with patch.object(updater, 'file_sha256', side_effect=PermissionError('locked')):
-                self.assertFalse(updater.verify_download(str(p), rel)[0])
 
     def test_pending_scan_retries_without_parent_mtime_change(self):
         with tempfile.TemporaryDirectory() as d:

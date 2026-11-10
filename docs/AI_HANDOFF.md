@@ -19,7 +19,15 @@
   `vendor/` = openpyxl 3.1.5 + et_xmlfile 2.0.0(MIT, 휠 그대로). `frontend/dist` 를 저장소에 커밋(.gitignore 수정).
   배포 파일 목록 = `param_manager/deploy.py` 한 곳(릴리스 zip · 업데이트 · 시험 공용), `tests/test_deploy_files.py` 가 실행 파일 · 배치 문구를 배포 파일 전체에서 검사(종전 test_sidecar_no_scripts 대체).
   시험 추가: test_launcher(8). 리눅스에서 시작 파일 → 서버 → 화면 연결 → 종료까지 확인.
-- 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
+- **5단계 끝 — 업데이트**: `param_manager/desktop_appupdate.py` 새로 씀(화면 요청 이름은 그대로, `appupdate_skip` 삭제). 확인 = GitHub `releases.atom`(API 아님 — 시간당 60회 제한 회피) 의 `v13.x.y` 만,
+  실패하면 OneDrive `프로그램/버전정보_v13.json`. 적용 = 태그 소스 zip(github.com → codeload 만 허용, TLS 검증, UA `Para-Updater`) → 로컬 Temp 풀기 → `deploy.files` · 실행 파일 없음 · 버전=태그 확인
+  → `<home>/app.new`(.part 를 다 만든 뒤 이름 바꿈) → 화면 `restartForUpdate` 가 엔진 종료(`app_exit{restart}`) → launcher `relaunch` 가 같은 포트 · 토큰(`PARA_REUSE`)으로 다시 시작 → 시작 파일이 app.new 교체 → 창은 `/api/ping` 의 `boot` 가 바뀌면 새로고침.
+  OneDrive 게시(개발자, 설정 › 정보) = GitHub 'Source code (zip)' 을 골라 `Camtek_AOI_manager_v13.x.y_source.zip` + 매니페스트 1개(직접 1번 쓰기, 최근 2개). v12 파일(`버전정보_web.json`)과 이름이 달라 섞이지 않음.
+  시작할 때마다 새 판이 있으면 **알림 창**(`dialog.update-banner`, [지금 업데이트] / [나중에] — 나중에 눌러도 다음 실행 때 다시 뜸, 소유자 요청).
+  `__version__ = "13.0.0"`(저장소에 커밋, 태그와 같아야 함). 삭제: updater · desktop_swap · desktop_package · tools/set_version · version_info, 그 시험들.
+  시험: `tests/test_appupdate.py`(12). 리눅스 리허설(설치형 폴더 + 진짜 시작 파일 + OneDrive 13.9.9 → 버튼 → 교체 · 재시작 · 창 재연결) 통과.
+  **확인 못 한 것**: 이 작업 환경은 github.com 웹이 403(네트워크 정책)이라 실제 releases.atom 읽기는 회사 PC 에서 처음 확인. 회사 프록시가 PAC 파일이면 urllib 이 못 쓸 수 있음(그때는 OneDrive 보조 통로).
+- 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
 
 ## 최신 재개 — 회사에서 잘 되는 다른 프로그램의 업데이트 방식 분석 → V13 계획 10절 (2026-11-10 KST, `version_v12`)

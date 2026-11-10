@@ -189,8 +189,8 @@ def resolve_save_dir(chosen):
 def share_paths(save_dir):
     """화면 안내용 경로(만들지 않음): 공유 폴더(docs 의 부모) · 프로그램 게시 폴더 · 캐시 공유 폴더."""
     from .desktop_batch import cache_share_dir
-    from .updater import resolve_program_dir
-    program = resolve_program_dir(save_dir)
+    from .desktop_appupdate import program_dir
+    program = program_dir(save_dir)
     return dict(share_root=os.path.dirname(program), program_dir=program, cache_share_dir=cache_share_dir(save_dir))
 
 
