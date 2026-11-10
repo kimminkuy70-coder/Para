@@ -58,6 +58,9 @@
   해석: 규칙 이름의 핵심 = **Windowless(pythonw.exe)** + Anomalous(스크립트 호스트 부모 · Downloads 같은 비표준 위치 · 회사에서 드문 실행). v13 은 WScript · Downloads 는 없지만 **pythonw.exe 를 쓰므로 같은 규칙에 걸릴 수 있음**.
   제안(소유자 답 대기): v13 실행을 `pythonw.exe` → **`python.exe` + 최소화된 콘솔 창**(바로가기 '최소화' 실행, 창 제목 '엔진 — 닫지 마세요')으로 바꿔 'Windowless' 자체를 없앰. 업데이트 뒤 재시작도 DETACHED(창 없음) 대신 새 콘솔 · 최소화.
   콘솔을 숨기는 코드(ShowWindow 숨김)는 '탐지 회피'로 보이므로 쓰지 않음. 설치 안내 Win+R 줄도 python.exe 로. 함께 SOC 에 v13 사전 소명 · 예외 요청 권장.
+- **소유자 결정(2026-11-10)**: "보낸 프로그램(AOI Recipe Verification, 회사에서 잘 씀)과 동일하면 문제없다" → python.exe 콘솔 전환 제안은 **하지 않음, pythonw 유지**.
+  확인한 동일점: 동봉 python.org Python 의 pythonw.exe 가 설치 폴더의 .py 실행 · .vbs/WScript 없음 · Downloads 아님. 다른 점: 부모(그 프로그램 = .bat 의 cmd, v13 = 바로가기 · Win+R 의 explorer),
+  업데이트 뒤 v13 은 pythonw 가 pythonw 를 다시 띄움(그 프로그램은 다음 실행 때 런처가 교체) · v13 만 127.0.0.1 포트 · Edge 실행.
 - **남은 일(7단계, 소유자 실기)**: 회사 PC 에서 ① 설치 zip 받기(Defender) ② Win+R 첫 실행 · 바로가기 ③ 고르기 창 · 끌어 넣기 · 트레이 ④ 다음 릴리스로 [지금 업데이트](GitHub 접속 · 회사 프록시). Windows 부분은 이 환경에서 확인 못 함.
 - 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ ~~6~~ → 7 소유자 실기 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
