@@ -606,15 +606,15 @@ function applyUnit(w,u,known){w.lotPath=u.lotPath;w.lotName=u.lotName;w.slotName
   if(prev){w.step=prev.step;w.contrast=prev.contrast;w.tool=prev.tool;return false}
   let step=w.lotName,ca=null;for(const n of u.caNames){const m=CA_RE.exec(n);if(m){ca=+m[1];step=n;break}}
   w.step=step;w.contrast=ca;known.set(w.lotPath,w);return true}
-async function addEntries(entries){
-  const msg=[],{units,sum}=planUnits(entries);
+async function addEntries(entries,dirs){
+  const msg=[],{units,sum}=planUnits(entries,dirs);
   if(!units.length){busy(null);showLoad([['err','고른 폴더에 Surface.flt 가 없습니다. Lot 폴더들이 들어 있는 폴더(또는 Lot 폴더)를 고르십시오.']]);return}
   const made=[],total=units.length,fileTotal=entries.length,t0=Date.now();let done=0,files=0;
   // Para #59: Slot 폴더 k / N 개, 파일 x / M 개를 실시간으로 보여 준다
   const tick=(r)=>busy({title:'폴더 등록 중',done,total,unit:'Slot 폴더',files,fileTotal,detail:r?`읽는 중: ${r.replace(/\/$/,'')}`:`경과 ${((Date.now()-t0)/1000).toFixed(1)}초`});
   try{
     for(const u of units){tick(u.dir);await nextPaint();
-      try{const w=await buildScan(u.dir.replace(/\/$/,'')||'(선택 폴더)',u.files);w.unit=u;made.push(w)}catch(e){msg.push(['err',`${u.dir}: ${e.message}`])}
+      try{const w=dirs?await unitScan(u):await buildScan(u.dir.replace(/\/$/,'')||'(선택 폴더)',u.files);w.unit=u;made.push(w)}catch(e){msg.push(['err',`${u.dir}: ${e.message}`])}
       done++;files=Math.min(fileTotal,files+u.own.length);tick(null)}
     files=fileTotal;tick(null);await nextPaint();
   }finally{busy(null)}
@@ -633,6 +633,16 @@ async function addEntries(entries){
   const pr=S.scans.map(x=>x.product).find(x=>x&&(x.waferD||x.edge!=null));
   if(pr){if(pr.waferD&&!$('#waferD').dataset.user)$('#waferD').value=pr.waferD/1000;if(pr.edge!=null&&!$('#edgeEx').dataset.user)$('#edgeEx').value=pr.edge/1000}
 }
+/** rev1: 폴더 핸들로 고른 Slot 하나 → 전체 정보 스캔(Step 5 fullScan 과 같은 길: Slot 폴더 안을 그때 나열, 사진은 개수만 · 볼 때 핸들로 읽음) */
+async function unitScan(u){const files=new Map(),paths=new Map();
+  for(const e of u.files){const k=lower(baseName(e.path));if(!files.has(k)){files.set(k,e.file||e.handle);paths.set(k,e.path)}}
+  const p={name:u.dir.replace(/\/$/,'')||'(선택 폴더)',files,paths,dirs:u.dirs.slice(),xdirs:u.xdirs,lazy:u.dirs.some(d=>LAZY.has(d)),light:true,images:0};
+  const f=await fullScan(p);delete f.full;return f}
+/** 빠른 폴더 열기(showDirectoryPicker, 읽기 전용). {h} = 고름, {cancel} = 취소, {why} = 쓸 수 없음(이유). 쓸 수 없을 때 느린 방식으로 갈지는 부르는 쪽이 묻는다. */
+async function pickDir(){if(!window.showDirectoryPicker)return {why:'이 브라우저는 빠른 폴더 열기(showDirectoryPicker)를 지원하지 않습니다. Microsoft Edge 또는 Chrome 최신 버전으로 이 파일을 여십시오.'};
+  try{return {h:await window.showDirectoryPicker({mode:'read'})}}catch(e){if(e&&e.name==='AbortError')return {cancel:true};return {why:`빠른 폴더 열기가 막혔습니다(${e&&e.name||''}: ${e&&e.message||e}). 회사 정책으로 막혔을 수 있습니다.`}}}
+/** 빠른 폴더 열기를 못 쓸 때: 느린 방식(브라우저가 사진까지 모든 파일 목록을 만듦)으로 갈지 묻는다 */
+const slowOk=why=>confirm(why+'\n\n느린 방식(브라우저가 사진까지 모든 파일 목록을 만든 뒤 넘겨줌 — 큰 폴더는 몇 분 걸릴 수 있음)으로 계속할까요?');
 /** 등록한 Wafer(Slot)를 Lot 으로 묶는다. Contrast AVG 오름차순. */
 function lotsOf(){const m=new Map();for(const w of S.scans){let L=m.get(w.lotPath);if(!L)m.set(w.lotPath,L={path:w.lotPath,name:w.lotName,step:w.step,contrast:w.contrast,tool:w.tool,seq:w.seq,wafers:[]});L.wafers.push(w)}
   for(const L of m.values())L.wafers.sort((a,b)=>natCmp(a.slotName,b.slotName));
@@ -721,7 +731,14 @@ $('#scanTbl').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)ret
 $('#scanTbl').addEventListener('click',e=>{const id=e.target.dataset.del;if(id==null)return;S.scans=S.scans.filter(w=>w.lotPath!==id);renderScans()});
 $$('#unit,#unit3').forEach(el=>el.addEventListener('change',e=>setUnit(e.target.value)));
 // Para #59: 폴더를 고른 뒤 브라우저가 파일 목록을 만드는 동안은 개수를 알 수 없어 '목록 만드는 중' 만 보이고(닫기 가능), 목록이 오면 Slot 폴더 · 파일 개수로 바뀐다.
-$('#addBtn').onclick=()=>{busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다. 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true});$('#dirInput').click()};
+$('#addBtn').onclick=async()=>{
+  // rev1: 빠른 폴더 열기 — 폴더마다 Surface.flt 만 바로 찾고(fastWalk), Slot 폴더 안은 그 Slot 을 읽을 때 나열한다(사진은 개수만). 종전 <input webkitdirectory> 는 브라우저가 사진까지 모든 파일 목록을 만들어 '폴더 고르는 중'이 오래 걸렸다.
+  const r=await pickDir();if(r.cancel)return;
+  if(r.h){try{busy({title:'Surface.flt 찾는 중 (Slot 폴더 안은 열지 않음)',indet:true,count:'…',files:r.h.name});await nextPaint();
+      const acc=await fastWalk(r.h,r.h.name+'/',{entries:[],dirs:[],n:0,files:0,images:0,slots:0});await addEntries(acc.entries,acc.dirs)}
+    catch(e){busy(null);showLoad([['err','폴더를 읽지 못했습니다: '+e.message]])}return}
+  if(!slowOk(r.why)){showLoad([['warn',r.why]]);return}
+  busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다. 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true});$('#dirInput').click()};
 $('#busyX').onclick=()=>busy(null);
 $('#dirInput').addEventListener('cancel',()=>busy(null));
 $('#dirInput').onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length){busy(null);return}
@@ -1458,7 +1475,7 @@ async function fullScan(s){if(!s.light)return s;if(s.full)return s.full;
   const own=[];for(const [k,h] of s.files)own.push({path:(s.paths&&s.paths.get(k))||k,file:h.getFile?await h.getFile():h});
   const f=await buildScan(s.name,own);f.dirs=s.dirs;f.xdirs=s.xdirs;f.images=s.images;
   for(const k of ['lotPath','lotName','slotName','slot','step','contrast','tool'])f[k]=s[k];
-  if(f.defects.length!==s.cols.n)f.warns.push(`다시 읽은 Defect 수 ${f.defects.length} ≠ 리스트 ${s.cols.n}`);
+  if(s.cols&&f.defects.length!==s.cols.n)f.warns.push(`다시 읽은 Defect 수 ${f.defects.length} ≠ 리스트 ${s.cols.n}`);
   return s.full=f}
 const P5_COLORS=['#e4572e','#2e86de','#17a589','#f39c12','#8e44ad','#c0392b','#16a085','#d35400','#2c3e50','#7f8c8d'];
 /** 패널마다 wafer map 맥락(S.cmpScans · S.allPts …)이 다르다 → 그릴 때만 바꿔 넣고 되돌린다(Step 3 · 4 비교 결과를 건드리지 않는다). */
@@ -1567,11 +1584,12 @@ $('#bigClear').onclick=()=>{BIG.scans=[];bigMsg([]);bigLots();bigRefresh()};
 $('#bigCsv').onclick=()=>{const parts=bigCsv();if(!parts)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(parts,{type:'text/csv'}));a.download='Defect_조회.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
 // 폴더 고르기: 폴더 핸들(showDirectoryPicker, 읽기 전용)을 쓸 수 있으면 사진 파일 목록을 만들지 않아 훨씬 빠르다. 없으면 <input webkitdirectory>(브라우저가 사진까지 목록을 만든다 — 그래도 사진 내용은 읽지 않는다).
 $('#bigAdd').onclick=async()=>{
-  if(window.showDirectoryPicker){let h;try{h=await window.showDirectoryPicker({mode:'read'})}catch(e){if(e&&e.name==='AbortError')return;h=null}
-    if(h){const b=await askBase(h.name);if(b==null){bigMsg([['warn',`폴더 '${h.name}' 의 PC 경로를 입력하지 않아 등록하지 않았습니다. 다시 [Lot 폴더 추가]를 누르십시오.`]]);return}
-      try{busy({title:'Surface.flt 찾는 중 (Slot 폴더 안은 열지 않음)',indet:true,count:'…',files:h.name});await nextPaint();
-        const acc=await fastWalk(h,h.name+'/',{entries:[],dirs:[],n:0,files:0,images:0,slots:0});await addBigEntries(acc.entries,acc.dirs)}
-      catch(e){busy(null);bigMsg([['err','폴더를 읽지 못했습니다: '+e.message]])}return}}
+  const r=await pickDir();if(r.cancel)return;
+  if(r.h){const h=r.h,b=await askBase(h.name);if(b==null){bigMsg([['warn',`폴더 '${h.name}' 의 PC 경로를 입력하지 않아 등록하지 않았습니다. 다시 [Lot 폴더 추가]를 누르십시오.`]]);return}
+    try{busy({title:'Surface.flt 찾는 중 (Slot 폴더 안은 열지 않음)',indet:true,count:'…',files:h.name});await nextPaint();
+      const acc=await fastWalk(h,h.name+'/',{entries:[],dirs:[],n:0,files:0,images:0,slots:0});await addBigEntries(acc.entries,acc.dirs)}
+    catch(e){busy(null);bigMsg([['err','폴더를 읽지 못했습니다: '+e.message]])}return}
+  if(!slowOk(r.why)){bigMsg([['warn',r.why]]);return}
   busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다. 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true});$('#bigInput').click()};
 $('#bigInput').addEventListener('cancel',()=>busy(null));
 $('#bigInput').onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length){busy(null);return}
@@ -1593,7 +1611,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={askBase,baseCheck,get BASES(){return BASES},fastWalk,planUnits,BIG,slotPath,pcPath,imgOf,bigShow,bigDecide,fullScan,withCtx,get P5(){return P5},fileGet,ensureImg,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={pickDir,unitScan,askBase,baseCheck,get BASES(){return BASES},fastWalk,planUnits,BIG,slotPath,pcPath,imgOf,bigShow,bigDecide,fullScan,withCtx,get P5(){return P5},fileGet,ensureImg,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

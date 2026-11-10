@@ -433,6 +433,23 @@ const perf=await page.evaluate(async()=>{const c=window.__cw,REC=c.REC,N=100000,
   return {load:t1-t0,flt:t2-t1,m:c.BIG.view.m,total:c.BIG.view.total,rows:document.querySelectorAll('#bigList .br').length,first:+document.querySelector('#bigList .br').children[5].textContent}});
 assert.equal(perf.total,300007);assert.ok(perf.m>0&&perf.m<perf.total/50,JSON.stringify(perf));assert.ok(perf.rows<80,JSON.stringify(perf));assert.ok(perf.first>=59.9);
 assert.ok(perf.load<15000&&perf.flt<5000,JSON.stringify(perf));console.log('step5 30만 Defect:',JSON.stringify(perf));
+// rev1 Step 1 [Lot 폴더 추가] = 빠른 폴더 열기: Surface.flt 로 Slot 을 찾고(그 전에 Slot 폴더 이름 목록을 만들지 않음), 등록 때 그 Slot 만 나열 · 사진은 볼 때 핸들로
+await page.locator('nav button[data-step="1"]').click();
+const s1=await page.evaluate(async fx=>{const f=JSON.parse(fx),listed=[],fh=(name,b64)=>({kind:'file',name,getFile:async()=>new File([Uint8Array.from(atob(b64),ch=>ch.charCodeAt(0))],name)});
+  const mk=name=>({kind:'directory',name,kids:new Map(),async *entries(){listed.push(this.name);yield* this.kids},async getFileHandle(n){const h=[...this.kids.values()].find(k=>k.kind==='file'&&k.name.toLowerCase()===n.toLowerCase());if(!h)throw new Error('NotFound');return h}});
+  const root=mk('S1');for(const [p,b] of Object.entries(f)){if(!p.startsWith('CA20/LOTA/W01/'))continue;const segs=p.replace('CA20/LOTA','CA41/LOTQ').split('/');let d=root;
+    for(const s of segs.slice(0,-1)){if(!d.kids.has(s))d.kids.set(s,mk(s));d=d.kids.get(s)}d.kids.set(segs.at(-1),fh(segs.at(-1),b))}
+  window.showDirectoryPicker=async()=>root;const c=window.__cw,n0=c.state.scans.length;
+  document.getElementById('addBtn').click();for(let i=0;i<100&&c.state.scans.length===n0;i++)await new Promise(r=>setTimeout(r,50));
+  const w=c.state.scans.at(-1),img=await c.fileGet(w,'C1.c.1.jpeg');
+  return {added:c.state.scans.length-n0,lot:w.lotPath,slot:w.slotName,defects:w.defects.length,colors:w.colors.length,frames:w.frames.length,tf:w.transforms.size,images:w.images,img:img&&img.name,listed,hidden:document.getElementById('busy').hidden}},fixture);
+assert.equal(s1.added,1);assert.equal(s1.lot,'S1/CA41');assert.equal(s1.slot,'W01');assert.equal(s1.defects,4);assert.deepEqual([s1.colors,s1.frames,s1.tf,s1.images],[2,2,1,4]);assert.equal(s1.img,'C1.c.1.jpeg');assert.ok(s1.hidden);
+assert.equal(s1.listed.filter(x=>x==='W01').length,1,s1.listed.join());   // Slot 폴더는 등록할 때 한 번만 나열
+assert.match(await page.locator('#scanTbl').innerText(),/S1\/CA41/);
+// 빠른 폴더 열기를 못 쓰면 이유를 알리고 느린 방식으로 갈지 묻는다(취소 = 안 함)
+await page.evaluate(()=>{delete window.showDirectoryPicker;window.showDirectoryPicker=undefined});
+let dmsg='';page.once('dialog',d=>{dmsg=d.message();d.dismiss()});await page.locator('#addBtn').click();await page.waitForTimeout(200);assert.match(dmsg,/빠른 폴더 열기[\s\S]*느린 방식/);assert.match(await page.locator('#loadMsg').innerText(),/빠른 폴더 열기/);
+assert.ok(await page.locator('#busy').isHidden());
 assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 await browser.close();
 console.log('test_contrast_wizard: passed');

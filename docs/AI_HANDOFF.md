@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #61 후속 5: rev1 Step 1 도 빠른 폴더 열기('폴더 고르는 중' 오래 걸림) (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `63a1d7d` · 이슈 Para #61(소유자 세션 대화) · 파일 `AOI_Contrast_Wizard_rev1.html` 만.
+- 소유자: "폴더 고르는 중에서 오래 걸려."
+- 원인(판단): '폴더 고르는 중' 로딩창은 `<input webkitdirectory>` 경로에만 뜬다. rev1 Step 1 [Lot 폴더 추가]는 이 경로뿐이었고(Step 5 는 빠른 폴더 열기), 이 창은 브라우저가 사진까지 모든 파일의 목록(파일마다 크기 · 시각)을 만든 뒤 넘겨줘 네트워크 폴더에서 오래 걸린다. HTML 이 줄일 수 없는 단계. Step 5 에서 빠른 폴더 열기가 막혀 이 경로로 떨어졌을 가능성도 있음(그 경우 이유를 화면에 알리게 함).
+- 한 일: `pickDir`(showDirectoryPicker, 못 쓰면 이유 `{why}`) — Step 1 · Step 5 공용. Step 1 = `fastWalk` → `addEntries(entries, dirs)` → Slot 마다 `unitScan`(Step 5 `fullScan` 과 같은 길: 그 Slot 만 `walkDir`, 사진은 개수만 · 볼 때 핸들). 빠른 폴더 열기를 못 쓰면 이유를 알리고 느린 방식으로 갈지 `confirm`(취소 = 안 함, 이유를 메시지에 남김).
+- 시험: `node tools/test_contrast_wizard_rev1.mjs` 3회 연속 통과(새 시험: Step 1 가짜 폴더 핸들 → Lot 1개 · Defect 4 · Color 2 · Gray 프레임 2 · 변환 1 · 사진 4개, 사진 핸들로 읽힘, Slot 폴더는 한 번만 나열, 빠른 폴더 열기 없음 → 이유 + 느린 방식 확인 창, 취소하면 로딩창 없음). 실제 네트워크 드라이브 속도는 미측정.
+- 릴리스: 없음.
+- 남은 일: 소유자에게 rev1 에서 Step 1 · Step 5 의 걸린 시간과, 느린 방식 확인 창이 떴는지(떴다면 이유 문구) 확인 요청.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #61 후속 5 | '폴더 고르는 중' 오래 걸림 | rev1 Step 1 빠른 폴더 열기 + 못 쓰면 이유 · 확인, 시험 통과 |
+
 ## 최신 재개 — Para #61 후속 4: rev1 폴더 고를 때 PC 경로 필수 입력 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `9b84b71` · 이슈 Para #61(소유자 세션 대화) · 파일 `AOI_Contrast_Wizard_rev1.html` 만.
