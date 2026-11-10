@@ -128,17 +128,17 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <h2>Step 1 · 스캔 결과 등록</h2>
   <div class="card">
     <div class="drop">
-      <p>압축을 푼 결과 폴더를 고르십시오. <span class="muted">(상위 폴더를 고르면 안의 Surface.flt 폴더를 모두 등록합니다)</span></p>
+      <p>Lot 폴더(또는 그 상위 폴더)를 고르십시오. <span class="muted">(Lot 폴더 안의 Wafer Slot 폴더 1~25개 = Surface.flt 가 있는 폴더를 그 Lot 으로 묶어 등록합니다. 상위 폴더를 고르면 안의 Lot 을 모두 등록합니다)</span></p>
       <input type="file" id="dirInput" webkitdirectory multiple hidden>
-      <button class="pri" id="addBtn">결과 폴더 추가</button>
+      <button class="pri" id="addBtn">Lot 폴더 추가</button>
       <p class="muted">파일은 이 PC 브라우저 안에서만 읽습니다. 원본은 고치지 않습니다.</p>
     </div>
     <div id="loadMsg"></div>
   </div>
   <div class="card">
-    <h3>등록된 스캔 <span class="muted">(Contrast AVG 를 입력하십시오. 비교는 Contrast AVG 오름차순입니다)</span></h3>
+    <h3>등록된 Lot <span class="muted">(Lot 1개 = 스캔 결과 1개. Contrast AVG 를 입력하십시오. 비교는 Contrast AVG 오름차순입니다)</span></h3>
     <div class="tblwrap" style="max-height:none"><table id="scanTbl"><thead><tr>
-      <th>Step 이름</th><th>Contrast AVG</th><th>검사 호기</th><th>폴더</th><th class="num">Defect 수</th><th class="num">이미지 수</th><th>점검</th><th></th>
+      <th>Step 이름</th><th>Contrast AVG</th><th>검사 호기</th><th>Lot 폴더</th><th>Slot</th><th class="num">Defect 수</th><th class="num">이미지 수</th><th>점검</th><th></th>
     </tr></thead><tbody></tbody></table></div>
     <div class="row"><button class="pri" id="to2">다음: 비교 조건 →</button></div>
   </div>
@@ -148,6 +148,9 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <h2>Step 2 · 비교 조건 설정</h2>
   <div class="card">
     <p class="muted">등록한 리스트를 Contrast AVG 오름차순으로 놓고 <b>모든 순서쌍</b>을 비교합니다(리스트 3개 = 3×2 = 6쌍, CA20 → CA27 과 CA27 → CA20 을 따로). 쌍 A → B 마다 A - B(A 에만 있는 Defect) = B 에서 없어진 Defect 입니다. 보기 = A ∪ B · A(전체) · B(전체) · A - B · A ∩ B · B - A.</p>
+    <div class="row"><b>보기 단위</b>
+      <label><select id="unit"><option value="lot">Lot 별 (모든 Slot)</option></select></label>
+      <span class="muted">Lot 별 = Lot 의 모든 Slot 을 한 wafer map 에 겹쳐 봅니다(같은 Defect 판정은 같은 Slot 끼리만). Slot 별 = 고른 Slot 1장만 봅니다.</span></div>
     <div class="row">
       <label>동일 좌표 허용오차 <input type="number" id="tol" value="2" min="0" step="0.5"> µm</label>
     </div>
@@ -188,6 +191,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 <section class="step" id="step3">
   <h2>Step 3 · Wafer Map 분석 (스캔 결과 = 집합, 벤다이어그램)</h2>
   <div class="card">
+    <div class="row"><label><b>보기 단위</b> <select id="unit3"><option value="lot">Lot 별 (모든 Slot)</option></select></label><span class="muted">바꾸면 바로 다시 비교합니다.</span></div>
     <div class="row"><b>시뮬레이션 집합</b><span id="setPick" class="row" style="margin:0"></span>
       <button class="pri" id="vennBtn">결과 →</button></div>
     <p class="muted" id="vennNote">집합을 1개 ~ 스캔 수만큼 고르고 [결과] 를 누르십시오. 그 뒤에는 체크를 바꾸면 바로 바뀝니다. 벤다이어그램은 늘 모든 스캔 결과로 그리고, 고른 집합과 관련된 영역만 색으로 칠합니다.</p>
@@ -207,7 +211,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
     <div class="row"><label>보기 <select id="fltSt"><option value="all">전체</option></select></label>
       <button id="csvBtn">CSV 내보내기</button></div>
     <div class="tblwrap"><table id="detTbl"><thead><tr>
-      <th>구분</th><th class="num">ID</th><th class="num">Wafer X</th><th class="num">Wafer Y</th><th>Die</th><th class="num">Area(µm²)</th><th class="num">Width</th><th class="num">Length</th><th>Box W×H</th><th class="num">Contrast</th><th>Step</th><th>호기</th>
+      <th>구분</th><th class="num">ID</th><th class="num">Wafer X</th><th class="num">Wafer Y</th><th>Die</th><th class="num">Area(µm²)</th><th class="num">Width</th><th class="num">Length</th><th>Box W×H</th><th class="num">Contrast</th><th>Step</th><th>Slot</th><th>호기</th>
     </tr></thead><tbody></tbody></table></div>
     <div class="pager"><button id="pgPrev">◀</button><span id="pgInfo"></span><button id="pgNext">▶</button><span class="muted">한 쪽 200행까지 표시합니다(전체는 CSV).</span></div>
   </details>
@@ -392,6 +396,13 @@ function matchSets(A,B,tol){
   for(const [d,i,k] of pairs){if(ua[i]||ub[k])continue;ua[i]=ub[k]=1;keep.push({a:A[i],b:B[k],d})}
   return {keep,gone:A.filter((_,i)=>!ua[i]),added:B.filter((_,k)=>!ub[k])};
 }
+/** Para #57: Lot 별 비교 — 같은 Defect 는 같은 Slot(Wafer) 끼리만 짝짓는다(다른 Wafer 의 같은 좌표는 다른 Defect).
+ *  양쪽이 Slot 1개씩이면 Slot 이름이 달라도 그대로 짝짓는다(Slot 폴더를 하나씩 고른 경우). */
+const slotOf=x=>x.slot??(x.scan&&x.scan.slot)??'';
+function matchBySlot(A,B,tol){const ga=new Map(),gb=new Map(),put=(m,x)=>{const k=slotOf(x);(m.get(k)||m.set(k,[]).get(k)).push(x)};
+  A.forEach(x=>put(ga,x));B.forEach(x=>put(gb,x));if(ga.size<=1&&gb.size<=1)return matchSets(A,B,tol);
+  const keep=[],gone=[],added=[];for(const k of new Set([...ga.keys(),...gb.keys()])){const r=matchSets(ga.get(k)||[],gb.get(k)||[],tol);keep.push(...r.keep);gone.push(...r.gone);added.push(...r.added)}
+  return {keep,gone,added}}
 
 // ════════════════════════════════════════════════════════════════════════
 // 3. Gray 프레임 · 픽셀 찾기 (colorgray.choose_frame 와 같은 모델)
@@ -452,21 +463,62 @@ const stepName=s=>s.step||s.name;
 // ════════════════════════════════════════════════════════════════════════
 const baseName=p=>p.split(/[\\/]/).pop();
 const lower=s=>s.toLowerCase();
+/** Para #57: 폴더 인식 기준 = Lot 폴더 안 Wafer Slot 폴더(1~25개). Surface.flt 가 있는 폴더 = Slot, 그 바로 위 폴더 = Lot.
+ *  Slot 폴더를 바로 고르면(위 폴더가 선택에 없음) 그 폴더 = Slot 1개짜리 Lot. Lot 1개 = 스캔 결과 1개(Step · Contrast AVG · 호기는 Lot 단위).
+ *  Contrast AVG · Step 이름 = Lot 폴더 이름 → 그 위 폴더들 → Slot 폴더 이름 순으로 'CA27' 같은 이름을 찾는다. */
+const CA_RE=/(?:contrast|avg|ca)[ _-]?(\d+(?:\.\d+)?)/i;
+const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
 async function addEntries(entries){
   const msg=[];
   const roots=entries.filter(e=>lower(baseName(e.path))==='surface.flt').map(e=>e.path.slice(0,e.path.length-baseName(e.path).length));
-  if(!roots.length){showLoad([['err','고른 폴더에 Surface.flt 가 없습니다. 압축을 푼 결과 폴더를 고르십시오.']]);return}
+  if(!roots.length){showLoad([['err','고른 폴더에 Surface.flt 가 없습니다. Lot 폴더(안에 Wafer Slot 폴더)를 고르십시오.']]);return}
   roots.sort((a,b)=>b.length-a.length);   // 깊은 폴더부터: 안쪽 결과 폴더의 파일을 바깥 폴더가 가져가지 않게
   const taken=new Set();
   const made=[];
   for(const r of roots){
     const own=entries.filter(e=>e.path.startsWith(r)&&!taken.has(e));own.forEach(e=>taken.add(e));
     try{made.push(await buildScan(r.replace(/\/$/,'')||'(선택 폴더)',own))}catch(e){msg.push(['err',`${r}: ${e.message}`])}}
-  made.reverse().forEach(s=>{S.scans.push(s);msg.push([s.errors.length?'err':(s.warns.length?'warn':'ok'),`${s.name}: Defect ${s.defects.length}개, 이미지 ${s.images}개 등록${s.errors.length?' — '+s.errors.join(' / '):''}`])});
+  made.reverse();
+  const known=new Map(S.scans.map(w=>[w.lotPath,w])),newLots=new Map();
+  for(const w of made){const segs=w.name.split('/').filter(Boolean),slot=segs[segs.length-1]||w.name,lotSegs=segs.length>1?segs.slice(0,-1):segs;
+    w.lotPath=lotSegs.join('/')||w.name;w.lotName=lotSegs[lotSegs.length-1]||w.name;w.slotName=slot;w.slot=lower(slot.trim());
+    const prev=known.get(w.lotPath)||newLots.get(w.lotPath);
+    if(prev){w.step=prev.step;w.contrast=prev.contrast;w.tool=prev.tool}
+    else{let step=w.lotName,ca=null;for(const n of [...lotSegs].reverse().concat(segs.length>1?[slot]:[])){const m=CA_RE.exec(n);if(m){ca=+m[1];step=n;break}}
+      w.step=step;w.contrast=ca;newLots.set(w.lotPath,w)}
+    for(const d of w.defects)d.slot=w.slot;
+    S.scans.push(w)}
+  // 다른 Lot 과 Step 이름이 같으면 Lot 경로로(구분되게)
+  for(const w of newLots.values()){if(S.scans.some(x=>x.lotPath!==w.lotPath&&x.step===w.step))S.scans.filter(x=>x.lotPath===w.lotPath).forEach(x=>x.step=w.lotPath)}
+  for(const [path] of newLots){const ws=made.filter(w=>w.lotPath===path).sort((a,b)=>natCmp(a.slotName,b.slotName)),bad=ws.filter(w=>w.errors.length),wr=ws.filter(w=>w.warns.length);
+    msg.push([bad.length?'err':(wr.length?'warn':'ok'),`Lot ${path}: Slot ${ws.length}개(${ws.map(w=>w.slotName).join(', ')}), Defect ${ws.reduce((a,w)=>a+w.defects.length,0)}개, 이미지 ${ws.reduce((a,w)=>a+w.images,0)}개 등록`
+      +(bad.length?' — 제외할 Slot: '+bad.map(w=>`${w.slotName}(${w.errors.join(' / ')})`).join(', '):'')])}
+  const added=made.filter(w=>!newLots.has(w.lotPath));if(added.length)msg.push(['ok',`기존 Lot 에 Slot ${added.length}개 추가: ${added.map(w=>w.lotPath+'/'+w.slotName).join(', ')}`]);
   showLoad(msg);renderScans();
   const pr=S.scans.map(x=>x.product).find(x=>x&&(x.waferD||x.edge!=null));
   if(pr){if(pr.waferD&&!$('#waferD').dataset.user)$('#waferD').value=pr.waferD/1000;if(pr.edge!=null&&!$('#edgeEx').dataset.user)$('#edgeEx').value=pr.edge/1000}
 }
+/** 등록한 Wafer(Slot)를 Lot 으로 묶는다. Contrast AVG 오름차순. */
+function lotsOf(){const m=new Map();for(const w of S.scans){let L=m.get(w.lotPath);if(!L)m.set(w.lotPath,L={path:w.lotPath,name:w.lotName,step:w.step,contrast:w.contrast,tool:w.tool,seq:w.seq,wafers:[]});L.wafers.push(w)}
+  for(const L of m.values())L.wafers.sort((a,b)=>natCmp(a.slotName,b.slotName));
+  return [...m.values()].sort((a,b)=>(a.contrast??Infinity)-(b.contrast??Infinity)||a.seq-b.seq)}
+/** 보기 단위 고르기(Para #57): lot = Lot 별(모든 Slot), slot:<키> = 그 Slot 만. Step 2 · Step 3 두 곳이 같은 값. */
+function renderUnit(){const L=lotsOf(),slots=new Map();for(const l of L)for(const w of l.wafers){const e=slots.get(w.slot)||{name:w.slotName,n:new Set()};e.n.add(l.path);slots.set(w.slot,e)}
+  const cur=S.unit||'lot',html=`<option value="lot">Lot 별 (모든 Slot 합침)</option>`+[...slots].sort((a,b)=>natCmp(a[1].name,b[1].name)).map(([k,e])=>`<option value="slot:${esc(k)}">Slot 별 · ${esc(e.name)} (${e.n.size}/${L.length} Lot)</option>`).join('');
+  $$('#unit,#unit3').forEach(el=>{el.innerHTML=html;el.value=cur;if(el.value!==cur){el.value='lot'}});S.unit=$('#unit').value||'lot'}
+function setUnit(v){S.unit=v;$$('#unit,#unit3').forEach(el=>el.value=v);if(S.cmp)runCompare()}
+/** 비교할 대상(스캔 = 집합): Lot 별이면 Lot 마다 가상 스캔(모든 Slot 의 Defect), Slot 별이면 Lot 마다 그 Slot 의 Wafer. 오류 Slot 은 뺀다. */
+function compareViews(msg){const u=S.unit||'lot',L=lotsOf();S.lotViews=S.lotViews||new Map();
+  if(u==='lot'){const out=[];for(const l of L){const ok=l.wafers.filter(w=>!w.errors.length);if(ok.length<l.wafers.length)msg.push(['warn',`Lot ${l.path}: 오류 Slot ${l.wafers.length-ok.length}개를 뺐습니다.`]);if(!ok.length)continue;
+      let v=S.lotViews.get(l.path);if(!v){v={id:'L'+(++scanSeq),isLot:true};S.lotViews.set(l.path,v)}
+      const first=k=>(ok.find(w=>w[k])||{})[k]||null;
+      Object.assign(v,{lotPath:l.path,name:l.path,step:l.step,contrast:l.contrast,tool:l.tool,seq:l.seq,wafers:ok,defects:ok.flatMap(w=>w.defects),
+        product:first('product'),waferMap:first('waferMap'),dieLoc:first('dieLoc'),dieCheck:first('dieCheck')});out.push(v)}
+    const all=new Set(out.flatMap(v=>v.wafers.map(w=>w.slot))),part=[...all].filter(k=>out.some(v=>!v.wafers.some(w=>w.slot===k)));
+    if(out.length>1&&part.length&&!out.every(v=>v.wafers.length===1))msg.push(['warn',`모든 Lot 에 있지는 않은 Slot: ${part.length}개 — 그 Slot 의 Defect 는 없는 Lot 쪽과 짝이 없습니다.`]);
+    return out}
+  const k=u.slice(5),out=[];for(const l of L){const w=l.wafers.find(w=>w.slot===k&&!w.errors.length);if(w)out.push(w);else msg.push(['warn',`Lot ${l.path}: Slot ${k} 이 없거나 오류라 뺐습니다.`])}
+  return out}
 function showLoad(list){$('#loadMsg').innerHTML=list.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('')}
 async function buildScan(name,own){
   const files=new Map();for(const e of own){const k=lower(baseName(e.path));if(!files.has(k))files.set(k,e.file)}
@@ -516,20 +568,23 @@ async function buildScan(name,own){
 // ════════════════════════════════════════════════════════════════════════
 function renderScans(){
   const tb=$('#scanTbl tbody');
-  tb.innerHTML=sortedScans().map(s=>`<tr data-id="${s.id}">
-    <td><input data-k="step" value="${esc(s.step)}" style="width:140px"></td>
-    <td><input data-k="contrast" type="number" step="0.1" value="${s.contrast??''}" placeholder="필수"></td>
-    <td><input data-k="tool" value="${esc(s.tool)}" placeholder="예: AOI-3" style="width:90px"></td>
-    <td title="${esc(s.name)}">${esc(s.name)}</td><td class="num">${s.defects.length}</td><td class="num">${s.images}</td>
-    <td><details><summary>${s.errors.length?'⛔ 오류':s.warns.length?`⚠ ${s.warns.length}건`:'✔ 정상'}</summary>
-      <div class="muted" style="white-space:normal;max-width:420px">${[...s.errors,...s.warns].map(esc).join('<br>')||'문제 없음'}
-      <br>Color ${s.colors.length} · Gray 프레임 ${s.frames.length} · 변환 ${s.transforms.size?'frameToChuckPlane':'없음'} · Die ${s.product?`${s.product.cols}×${s.product.rows}`:'계산 불가'}
-      ${s.crossCount?`<br>교차 검증: ${esc(s.crossCount.file)} = ${s.crossCount.count}`:''}${s.frameData?'<br>'+esc(s.frameData):''}</div></details></td>
-    <td><button data-del="${s.id}">삭제</button></td></tr>`).join('')||'<tr><td colspan="8" class="muted">아직 없습니다.</td></tr>';
+  tb.innerHTML=lotsOf().map(l=>{const ws=l.wafers,er=ws.flatMap(w=>w.errors.map(t=>w.slotName+': '+t)),wr=ws.flatMap(w=>w.warns.map(t=>w.slotName+': '+t));
+    return `<tr data-id="${esc(l.path)}">
+    <td><input data-k="step" value="${esc(l.step)}" style="width:140px"></td>
+    <td><input data-k="contrast" type="number" step="0.1" value="${l.contrast??''}" placeholder="필수"></td>
+    <td><input data-k="tool" value="${esc(l.tool)}" placeholder="예: AOI-3" style="width:90px"></td>
+    <td title="${esc(l.path)}">${esc(l.path)}</td><td title="${esc(ws.map(w=>w.slotName).join(', '))}">${ws.length}개 <span class="muted">${esc(ws.slice(0,4).map(w=>w.slotName).join(', '))}${ws.length>4?' …':''}</span></td>
+    <td class="num">${ws.reduce((a,w)=>a+w.defects.length,0)}</td><td class="num">${ws.reduce((a,w)=>a+w.images,0)}</td>
+    <td><details><summary>${er.length?`⛔ 오류 Slot ${ws.filter(w=>w.errors.length).length}`:wr.length?`⚠ ${wr.length}건`:'✔ 정상'}</summary>
+      <div class="muted" style="white-space:normal;max-width:420px">${[...er,...wr].map(esc).join('<br>')||'문제 없음'}
+      ${ws.map(w=>`<br>${esc(w.slotName)}: Defect ${w.defects.length} · Color ${w.colors.length} · Gray 프레임 ${w.frames.length} · 변환 ${w.transforms.size?'frameToChuckPlane':'없음'} · Die ${w.product?`${w.product.cols}×${w.product.rows}`:'계산 불가'}${w.crossCount?` · 교차 검증 ${esc(w.crossCount.file)} = ${w.crossCount.count}`:''}`).join('')}</div></details></td>
+    <td><button data-del="${esc(l.path)}">삭제</button></td></tr>`}).join('')||'<tr><td colspan="9" class="muted">아직 없습니다.</td></tr>';
+  renderUnit();
 }
-$('#scanTbl').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)return;const s=S.scans.find(x=>x.id==e.target.closest('tr').dataset.id);
-  s[k]=k==='contrast'?(e.target.value===''?null:+e.target.value):e.target.value;renderScans()});
-$('#scanTbl').addEventListener('click',e=>{const id=e.target.dataset.del;if(!id)return;S.scans=S.scans.filter(s=>s.id!=id);renderScans()});
+$('#scanTbl').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)return;const path=e.target.closest('tr').dataset.id,v=k==='contrast'?(e.target.value===''?null:+e.target.value):e.target.value;
+  for(const w of S.scans)if(w.lotPath===path)w[k]=v;renderScans()});
+$('#scanTbl').addEventListener('click',e=>{const id=e.target.dataset.del;if(id==null)return;S.scans=S.scans.filter(w=>w.lotPath!==id);renderScans()});
+$$('#unit,#unit3').forEach(el=>el.addEventListener('change',e=>setUnit(e.target.value)));
 $('#addBtn').onclick=()=>$('#dirInput').click();
 $('#dirInput').onchange=async e=>{const fs=[...e.target.files];e.target.value='';showLoad([['warn',`파일 ${fs.length}개 읽는 중…`]]);
   await addEntries(fs.map(f=>({path:f.webkitRelativePath||f.name,file:f})))};
@@ -547,18 +602,20 @@ const viewSet=v=>new Set((VIEWS.find(x=>x[0]===v)||VIEWS[0])[1]);
 /** 등록한 리스트를 Contrast AVG 오름차순으로 놓고 모든 순서쌍(i ≠ j)을 비교한다. 3개 → 6쌍(Para #56). */
 function runCompare(){
   const o=opts(),msg=[];
-  if(S.scans.length<2){$('#cmpMsg').innerHTML='<div class="msg err">스캔 결과를 2개 이상 등록하십시오.</div>';return false}
-  if(S.scans.some(s=>s.contrast==null))msg.push(['warn','Contrast AVG 가 빈 리스트가 있습니다. 정렬은 입력한 순서로 맨 뒤에 둡니다.']);
-  const ss=sortedScans(),P=new Map(ss.map(s=>[s,pts(s,o)])),prev=S.pairs[S.pi];
+  S.unit=S.unit||$('#unit').value||'lot';const ss=compareViews(msg);
+  if(ss.length<2){$('#cmpMsg').innerHTML=[...msg,['err',S.unit==='lot'?'Lot 을 2개 이상 등록하십시오.':'이 Slot 이 있는 Lot 이 2개 이상이어야 합니다. 보기 단위를 바꾸십시오.']].map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('');return false}
+  if(ss.some(s=>s.contrast==null))msg.push(['warn','Contrast AVG 가 빈 Lot 이 있습니다. 정렬은 입력한 순서로 맨 뒤에 둡니다.']);
+  // Para #57: Lot 별 = 그 Lot 의 모든 Slot Defect(같은 Defect 판정은 같은 Slot 끼리만, matchBySlot), Slot 별 = 그 Slot 만
+  const P=new Map(ss.map(s=>[s,s.isLot?s.wafers.flatMap(w=>pts(w,o)):pts(s,o)])),prev=S.pairs[S.pi];
   // Para #55: wafer map · 벤다이어그램은 쌍이 아니라 등록한 스캔 전체로 그린다(같은 wafer)
   S.o=o;S.cmpScans=ss;S.allPts=[...P.values()].flat();S.venn=buildVenn(ss,P,o,S.venn);
   // Para #56: 모든 순서쌍 A → B (i ≠ j). 3개 → 3×2 = 6쌍
-  S.pairs=[];for(let i=0;i<ss.length;i++)for(let j=0;j<ss.length;j++){if(i===j)continue;const A=ss[i],B=ss[j];S.pairs.push({A,B,o,...matchSets(P.get(A),P.get(B),o.tol)})}
+  S.pairs=[];for(let i=0;i<ss.length;i++)for(let j=0;j<ss.length;j++){if(i===j)continue;const A=ss[i],B=ss[j];S.pairs.push({A,B,o,...matchBySlot(P.get(A),P.get(B),o.tol)})}
   const k=prev?S.pairs.findIndex(c=>c.A===prev.A&&c.B===prev.B):-1;
   $('#pairTbl tbody').innerHTML=S.pairs.map((c,i)=>{const n=c.keep.length+c.gone.length;
     return `<tr><td><b>${esc(stepName(c.A))} → ${esc(stepName(c.B))}</b></td><td class="num">${n}</td><td class="num">${c.keep.length+c.added.length}</td><td class="num">${c.keep.length}</td>
       <td class="num">${c.gone.length}</td><td class="num">${c.added.length}</td><td class="num">${n?(100*c.gone.length/n).toFixed(1)+'%':''}</td><td><button data-pair="${i}">보기</button></td></tr>`}).join('');
-  msg.push(['ok',`리스트 ${ss.length}개 → ${S.pairs.length}쌍 비교 (허용오차 ${o.tol} µm). `+S.pairs.map(c=>`${stepName(c.A)} → ${stepName(c.B)}: 없어짐 ${c.gone.length}`).join(' · ')]);
+  msg.push(['ok',`${S.unit==='lot'?'Lot 별(모든 Slot)':'Slot 별 · '+(ss[0].slotName||'')} · 리스트 ${ss.length}개 → ${S.pairs.length}쌍 비교 (허용오차 ${o.tol} µm). `+S.pairs.map(c=>`${stepName(c.A)} → ${stepName(c.B)}: 없어짐 ${c.gone.length}`).join(' · ')]);
   $('#cmpMsg').innerHTML=msg.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('');
   selectPair(k>=0?k:0);renderSetPick();if(S.venn.shown)refresh3();return true;
 }
@@ -582,6 +639,7 @@ function mapStatus(){const c=S.cmp,sc=S.cmpScans||[];if(!c){$('#mapSt').textCont
   if(k)t+=k.size?` · 맵 ${k.file} 에 Die 가 없거나 계산 Die 가 없어 비교 못 함`
     :k.ok?` · 맵 ${k.file} Die ${k.map}개 = ${k.vs} 일치 ✔`:` · 맵 ${k.file} Die ${k.map}개와 ${k.vs} 다름: ${k.vs}에만 ${k.onlyCalc} · 맵에만 ${k.onlyMap}${k.vs==='계산'?' (그리기는 맵 기준)':''}`;
   const N=notchInfo();t+=` · Notch ${({0:'위',90:'오른쪽',180:'아래',270:'왼쪽'})[N.deg]??N.deg+'°'} (${N.src})`;
+  if(S.unit==='lot'&&sc.some(v=>v.isLot&&v.wafers.length>1))t+=` · Lot 별: Slot ${Math.max(...sc.map(v=>v.wafers?v.wafers.length:1))}개까지 한 wafer map 에 겹쳐 그림`;
   $('#mapSt').textContent=t}
 function setWaferMap(text,name){const m=parseWaferMap(text);if(!m)return false;S.userMap={...m,file:name||'Wafer Map'};if(S.cmp){mapStatus();repaintAll()}return true}
 $('#mapBtn').onclick=()=>$('#mapInput').click();
@@ -600,19 +658,19 @@ function info(r){const d=r.d,s=d.scan,o=S.o,die=dieOf(d.X,d.Y,s.product),px2=o.p
   // 화면 Die = 맨 왼쪽 아래 Die 가 (0,0). 장비 Col/Row 와 다르면 함께 적는다(Para #53).
   const eq=die&&(b.c||b.r)?` · 장비 Col ${die.col}, Row ${die.row}`:'';
   return {st:r.label??stLabel(r.st),id:d.no??d.id,X:d.X,Y:d.Y,die:die?`(${die.col-b.c}, ${die.row-b.r})${eq}${die.valid?(off?' · wafer 밖 칸':''):' 범위 밖'}`:'계산 불가',dieXY:die?`${die.dx.toFixed(0)}, ${die.dy.toFixed(0)}`:'',
-    area:d.area*px2,width:d.BlobBreadth,length:d.BlobLength,box:`${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,contrast:d.Contrast,cmpContrast:r.b?r.b.Contrast:null,step:stepName(s),tool:s.tool,dieWarn:die&&(!die.valid||off)}}
+    area:d.area*px2,width:d.BlobBreadth,length:d.BlobLength,box:`${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,contrast:d.Contrast,cmpContrast:r.b?r.b.Contrast:null,step:stepName(s),slot:s.slotName||'',tool:s.tool,dieWarn:die&&(!die.valid||off)}}
 function filtered(){const f=viewSet($('#fltSt').value||'all');return S.rows.filter(r=>f.has(r.st))}
 function renderTable(){const rows=filtered(),P=200,pages=Math.max(1,Math.ceil(rows.length/P));S.page=Math.min(S.page,pages-1);
   $('#detTbl tbody').innerHTML=rows.slice(S.page*P,S.page*P+P).map((r,k)=>{const x=info(r);return `<tr data-k="${S.page*P+k}"><td><span class="st ${r.st}">${x.st}</span></td><td class="num">${x.id}</td><td class="num">${f1(x.X)}</td><td class="num">${f1(x.Y)}</td>
-    <td${x.dieWarn?' style="color:var(--err)"':''}>${x.die}</td><td class="num">${f2(x.area)}</td><td class="num">${f1(x.width)}</td><td class="num">${f1(x.length)}</td><td>${x.box}</td><td class="num">${f2(x.contrast)}${x.cmpContrast!=null?' → '+f2(x.cmpContrast):''}</td><td>${esc(x.step)}</td><td>${esc(x.tool)}</td></tr>`}).join('');
+    <td${x.dieWarn?' style="color:var(--err)"':''}>${x.die}</td><td class="num">${f2(x.area)}</td><td class="num">${f1(x.width)}</td><td class="num">${f1(x.length)}</td><td>${x.box}</td><td class="num">${f2(x.contrast)}${x.cmpContrast!=null?' → '+f2(x.cmpContrast):''}</td><td>${esc(x.step)}</td><td>${esc(x.slot)}</td><td>${esc(x.tool)}</td></tr>`}).join('');
   $('#pgInfo').textContent=`${S.page+1} / ${pages} 쪽 (${rows.length}행)`}
 $('#fltSt').onchange=()=>{S.page=0;renderTable()};$('#pgPrev').onclick=()=>{S.page=Math.max(0,S.page-1);renderTable()};$('#pgNext').onclick=()=>{S.page++;renderTable()};
 $('#detTbl').addEventListener('click',e=>{const tr=e.target.closest('tr[data-k]');if(tr)openWindow(filtered()[+tr.dataset.k])});
 function csvText(){const q=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-  const head=['구분','ID','resultID','WaferX','WaferY','Die','DieX','DieY','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','비교Contrast','Step','ContrastAVG','호기','Color이미지','Color연결','Gray프레임','GrayPX','GrayPY','Gray모델','ROI_mean','ROI_median','ROI_max','Ring_median','ROI_local_delta','위치확인'];
+  const head=['구분','ID','resultID','WaferX','WaferY','Die','DieX','DieY','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','비교Contrast','Step','Slot','ContrastAVG','호기','Color이미지','Color연결','Gray프레임','GrayPX','GrayPY','Gray모델','ROI_mean','ROI_median','ROI_max','Ring_median','ROI_local_delta','위치확인'];
   const lines=[head];
   for(const r of S.rows){const x=info(r),d=r.d,g=grayOf(d),c=linkColor(d,d.scan,S.cmp.o.ctol),gl=d.gl||{};
-    lines.push([x.st,x.id,d.resultID,f2(x.X),f2(x.Y),x.die,...(x.dieXY?x.dieXY.split(', '):['','']),f2(x.area),d.area,f2(x.width),f2(x.length),f2(d.BoxWidth),f2(d.BoxHeight),f2(d.Contrast),f2(x.cmpContrast),x.step,d.scan.contrast,x.tool,
+    lines.push([x.st,x.id,d.resultID,f2(x.X),f2(x.Y),x.die,...(x.dieXY?x.dieXY.split(', '):['','']),f2(x.area),d.area,f2(x.width),f2(x.length),f2(d.BoxWidth),f2(d.BoxHeight),f2(d.Contrast),f2(x.cmpContrast),x.step,x.slot,d.scan.contrast,x.tool,
       c?c.c.file:'',c?c.how:'연결 실패',g.frame?g.frame.file:'',g.frame?f1(g.px):'',g.frame?f1(g.py):'',g.frame?g.model:g.reason,f2(gl.mean),f2(gl.median),gl.max??'',f2(gl.ring),f2(gl.delta),S.overlay[key(d)]||''])}
   return '﻿'+lines.map(l=>l.map(q).join(',')).join('\r\n')}
 $('#csvBtn').onclick=()=>{if(!S.cmp)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csvText()],{type:'text/csv'}));
@@ -713,8 +771,10 @@ function dieCells(){
   const M=activeMap();let mapCells=null;
   const locKeys=DL&&DL.length?[...new Set(DL.map(d=>{const q=dieOf(d.x,d.y,p);return q.col+','+q.row}))]:null;
   if(M){const R=M.rowct||M.rows,raw=[];for(let r=0;r<M.rows;r++)for(let cc=0;cc<M.cols;cc++){const v=(M.cells[r]||[])[cc];if(v!=null)raw.push([cc,R-1-r,v])}
-    if(raw.length){const mc=Math.min(...raw.map(q=>q[0])),mr=Math.min(...raw.map(q=>q[1]));
-      const ab=locKeys?{c:Math.min(...locKeys.map(k=>+k.split(',')[0])),r:Math.min(...locKeys.map(k=>+k.split(',')[1]))}:cbase;
+    if(raw.length){const mc=Math.min(...raw.map(q=>q[0])),mr=Math.min(...raw.map(q=>q[1])),mw=Math.max(...raw.map(q=>q[0]))-mc+1,mh=Math.max(...raw.map(q=>q[1]))-mr+1;
+      // Para #57: s_DieLocation 이 없으면 맵 Die 묶음의 가운데를 wafer 중심에 맞춘다(종전: 계산 Die 묶음 왼쪽 아래에 맞춰, 맵이 계산보다 크면 맵만 오른쪽 위로 밀렸다)
+      const ab=locKeys?{c:Math.min(...locKeys.map(k=>+k.split(',')[0])),r:Math.min(...locKeys.map(k=>+k.split(',')[1]))}
+        :{c:Math.round((cx-p.offX)/p.pitchX-mw/2),r:Math.round((cy-p.offY)/p.pitchY-mh/2)};
       mapCells=raw.map(([cc,rr,v])=>[ab.c+cc-mc,ab.r+rr-mr,v])}}
   let dsrc;
   if(locKeys){for(const d of dies)d.full=false;for(const k of locKeys){const [a,b]=k.split(',').map(Number);cell(a,b).full=true}dsrc='s_DieLocation(실제 스캔 Die)'}
@@ -722,6 +782,11 @@ function dieCells(){
   else dsrc='계산(네 모서리가 원 안 · 확인 필요)';
   if(mapCells)for(const [a,b,v] of mapCells)cell(a,b).code=v;
   const F=dies.filter(d=>d.full),calc=F.length;
+  // Para #57: 그리는 Die(s_DieLocation · 맵 파일)의 가운데가 wafer 중심(ProductInfo 등)과 0.75 Pitch 넘게 다르면 원 · Notch 를 Die 에 맞춘다
+  //  (다른 파일에서 중심 값의 기준이 달라 원과 Die 가 따로 놀았다). 실제 자료(#53)는 두 값이 같아 그대로 ProductInfo.
+  let G2=G;S.centerShift=null;
+  if(F.length&&(locKeys||mapCells)){const fx=(Math.min(...F.map(d=>d.x0))+Math.max(...F.map(d=>d.x0))+p.pitchX)/2,fy=(Math.min(...F.map(d=>d.y0))+Math.max(...F.map(d=>d.y0))+p.pitchY)/2;
+    if(Math.abs(fx-cx)>.75*p.pitchX||Math.abs(fy-cy)>.75*p.pitchY){S.centerShift={dx:fx-cx,dy:fy-cy,from:csrc};csrc=`Die 묶음 가운데(${csrc} 중심과 ${Math.round(fx-cx)}, ${Math.round(fy-cy)} µm 달라 Die 에 맞춤)`;cx=fx;cy=fy;G2=fullCells(p,cx,cy,rad,rin)}}
   // 화면 Die 번호 = 맨 왼쪽 아래 Die 가 (0,0)(소유자 #52 지시). 장비 Col/Row(= dieOf, ColorImageGrabingInfo Col/Row) 는 base 만큼 크다.
   const base=F.length?{c:Math.min(...F.map(d=>d.ix)),r:Math.min(...F.map(d=>d.iy))}:{c:0,r:0};
   for(const d of dies){d.col=d.ix-base.c;d.row=d.iy-base.r}
@@ -731,7 +796,7 @@ function dieCells(){
   // s_DieLocation 과 계산 Die 비교(계산 규칙이 이 자재에 맞는지)
   let dl=null;if(locKeys){const r=cmpSets(new Set(locKeys),calcSet);dl={n:locKeys.length,both:r.both,onlyCalc:r.onlyB,onlyLoc:r.onlyA,ok:r.ok}}
   S.dieLocCheck=dl;
-  const nx=G.ix1-G.ix0+1,ny=G.iy1-G.iy0+1,gx0=p.offX+G.ix0*p.pitchX,gy0=p.offY+G.iy0*p.pitchY,gx1=gx0+nx*p.pitchX,gy1=gy0+ny*p.pitchY;
+  const nx=G2.ix1-G2.ix0+1,ny=G2.iy1-G2.iy0+1,gx0=p.offX+G2.ix0*p.pitchX,gy0=p.offY+G2.iy0*p.pitchY,gx1=gx0+nx*p.pitchX,gy1=gy0+ny*p.pitchY;
   const dc=F.length?{cols:Math.max(...F.map(d=>d.col))+1,rows:Math.max(...F.map(d=>d.row))+1}:{cols:0,rows:0};
   const pts=S.allPts||[];let outC=0;for(const d of pts)if(Math.hypot(d.X-cx,d.Y-cy)>rin)outC++;
   S.center={cx,cy,n:pts.length,out:outC,cols:dc.cols,rows:dc.rows,src:csrc,base};
@@ -815,7 +880,7 @@ function attachTip(cv,geo){
   cv.addEventListener('mousemove',e=>{const q=hit(e,geo(),cv),tip=$('#tip');if(!q||!q.d){tip.style.display='none';tipFor=null;return}
     tip.style.display='block';tip.style.left=Math.min(e.clientX+16,innerWidth-580)+'px';tip.style.top=Math.min(e.clientY+16,innerHeight-300)+'px';
     if(tipFor===q)return;tipFor=q;const x=info(q);
-    tip.innerHTML=`<b>${esc(x.st)}</b> · <b>ID ${x.id}</b> · ${esc(x.step)} · 호기 ${esc(x.tool||'-')}<br>
+    tip.innerHTML=`<b>${esc(x.st)}</b> · <b>ID ${x.id}</b> · ${esc(x.step)} · Slot ${esc(x.slot||'-')} · 호기 ${esc(x.tool||'-')}<br>
       Wafer X/Y ${f1(x.X)}, ${f1(x.Y)} µm · Die ${x.die}${x.dieXY?` (내부 ${x.dieXY})`:''}<br>Area ${f2(x.area)} µm² · Box ${x.box} px · Contrast(실제) ${f2(x.contrast)}${x.cmpContrast!=null?' → '+f2(x.cmpContrast):''}
       <div class="imgs"><img alt="Color"><canvas width="200" height="150"></canvas></div>`;
     colorUrl(q.d).then(u=>{if(tipFor!==q)return;const im=tip.querySelector('img');if(u)im.src=u;else im.alt='Color 없음'});
@@ -835,7 +900,7 @@ async function openWindow(q){
     figure>img,figure>canvas{max-width:100%;max-height:calc(100vh - 110px);object-fit:contain;cursor:zoom-in}
     figure.full{align-items:flex-start;justify-content:flex-start}figure.full>img,figure.full>canvas{max-width:none;max-height:none;cursor:zoom-out}
     .ft{padding:0 10px 6px;flex:none;color:#bbb}</style>`);
-  doc.body.innerHTML=`<div class="hd">[${esc(x.st)}] ID ${esc(x.id)} · ${esc(x.step)} · 호기 ${esc(x.tool||'-')} · Wafer ${f1(x.X)}, ${f1(x.Y)} µm · Die ${esc(x.die)} · Area ${f2(x.area)} µm² · Contrast ${f2(x.contrast)} <span style="color:#999">(사진을 누르면 원래 크기 ↔ 창 맞춤)</span></div>
+  doc.body.innerHTML=`<div class="hd">[${esc(x.st)}] ID ${esc(x.id)} · ${esc(x.step)} · Slot ${esc(x.slot||'-')} · 호기 ${esc(x.tool||'-')} · Wafer ${f1(x.X)}, ${f1(x.Y)} µm · Die ${esc(x.die)} · Area ${f2(x.area)} µm² · Contrast ${f2(x.contrast)} <span style="color:#999">(사진을 누르면 원래 크기 ↔ 창 맞춤)</span></div>
     <div class="pane"><figure id="c"><figcaption>Color</figcaption></figure><figure id="g"><figcaption>Gray 프레임</figcaption></figure></div><div class="ft" id="ft"></div>`;
   const zoom=el=>el.onclick=()=>el.parentNode.classList.toggle('full');
   const fc=doc.getElementById('c'),fg=doc.getElementById('g'),ft=doc.getElementById('ft');
@@ -930,9 +995,9 @@ async function showPanel(P){
   if(!L.length){paintPanel(P);P.el('Color').innerHTML=`<figcaption>Color</figcaption><div class="ph">${esc(P.o.empty)}</div>`;P.el('Gray').innerHTML='<figcaption>Gray Crop</figcaption>';P.el('Info').innerHTML='';P.el('Mem').innerHTML='';return}
   P.sel=Math.max(0,Math.min(L.length-1,P.sel));const q=L[P.sel],tk=++P.tok,box=P.el('List');if(P.o.onShow)P.o.onShow();
   if(P.sel*RH<box.scrollTop)box.scrollTop=P.sel*RH;else if((P.sel+1)*RH>box.scrollTop+box.clientHeight)box.scrollTop=(P.sel+1)*RH-box.clientHeight;paintPanelList(P);blinkOn=true;paintPanel(P);
-  P.el('Mem').innerHTML=q.members&&q.members.length>1?'<span class="muted">사진 · 정보 스캔:</span>'+q.members.map((m,i)=>`<button data-mem="${i}" aria-pressed="${m===q.d}">${esc(stepName(m.scan))}</button>`).join(''):'';
+  P.el('Mem').innerHTML=q.members&&q.members.length>1?'<span class="muted">사진 · 정보 스캔:</span>'+q.members.map((m,i)=>`<button data-mem="${i}" aria-pressed="${m===q.d}">${esc(stepName(m.scan))}${m.scan.slotName?' · '+esc(m.scan.slotName):''}</button>`).join(''):'';
   const x=info(q),c=linkColor(q.d,q.d.scan,S.o.ctol),g=grayOf(q.d);
-  const fill=()=>{const gl=q.d.gl;P.el('Info').innerHTML=[['구분',x.st],['ID / resultID',`${x.id} / ${q.d.resultID}`],['Step · 호기',`${x.step} · CA ${q.d.scan.contrast??'?'} · ${x.tool||'-'}`],['Wafer X/Y',`${f1(x.X)}, ${f1(x.Y)} µm`],['Die',x.die+(x.dieXY?` · 내부 ${x.dieXY} µm`:'')],
+  const fill=()=>{const gl=q.d.gl;P.el('Info').innerHTML=[['구분',x.st],['ID / resultID',`${x.id} / ${q.d.resultID}`],['Step · Slot · 호기',`${x.step} · CA ${q.d.scan.contrast??'?'} · Slot ${x.slot||'-'} · ${x.tool||'-'}`],['Wafer X/Y',`${f1(x.X)}, ${f1(x.Y)} µm`],['Die',x.die+(x.dieXY?` · 내부 ${x.dieXY} µm`:'')],
     ['Area',`${f2(x.area)} µm² (${q.d.area} px)`],['Width / Length',`${f1(x.width)} / ${f1(x.length)}`],['Box W×H',x.box+' px'],['Contrast(실제)',f2(x.contrast)],
     ['Color',c?`${c.c.file} · ${c.how}`:'연결 실패'],['Gray',g.frame?`${g.frame.file} · (${f1(g.px)}, ${f1(g.py)}) · ${g.model==='transform'?'frameToChuckPlane':'간단 모델(보정 필요)'}`:g.reason],
     ['GL(Local 추정)',gl?`ROI mean ${f1(gl.mean)} · median ${f1(gl.median)} · max ${gl.max} · ring median ${f1(gl.ring)} · ROI−local ${f1(gl.delta)}`:'-']]
@@ -960,9 +1025,9 @@ function mark(P,v){const q=P.items[P.sel];if(!q)return;S.overlay[key(q.d)]=v;mod
 function buildVenn(ss,P,o,prev){
   const cl=[];
   ss.forEach((s,k)=>{const pts=P.get(s);
-    const m=matchSets(cl,pts,o.tol);
+    const m=matchBySlot(cl,pts,o.tol);
     for(const {a,b} of m.keep){a.mask|=1<<k;a.mem.push(b)}
-    for(const d of m.added)cl.push({X:d.X,Y:d.Y,mask:1<<k,mem:[d]})});
+    for(const d of m.added)cl.push({X:d.X,Y:d.Y,slot:slotOf(d),mask:1<<k,mem:[d]})});
   const counts=new Map();for(const c of cl)counts.set(c.mask,(counts.get(c.mask)||0)+1);
   // 집합 선택 · 결과를 눌렀는지는 다시 비교해도 유지(스캔이 같으면)
   const sel=new Set(),was=prev?new Set([...prev.sel].map(j=>prev.scans[j])):null;ss.forEach((s,k)=>{if(!was||was.has(s))sel.add(k)});
@@ -1079,7 +1144,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

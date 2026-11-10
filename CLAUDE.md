@@ -39,6 +39,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     wafer map 맥락(`dieCells`/`activeMap`/`notchInfo`/`waferGeom`) = 쌍이 아니라 등록 스캔 전체(`S.cmpScans`, `S.allPts`, `S.o`). Step 4 = 간략 wafer map 2개(`paintEsc`) + 같은 패널(`refresh4`), 쌍별 KPI · 표 · CSV 는 Step 3 맨 아래 접힌 상자.
   · #56(2026-11-10): 차집합 기호 = **`-`**(종전 `∖`, `stLabel` · `regLabel`), **영역 클릭 = 더하기/빼기**(`pickRegion(m)`, Ctrl 없음), **모든 순서쌍**(`runCompare` i ≠ j, 3개 → 6쌍), Step 4 이름 = **Escape Defect 리뷰**,
     새 창 = 왼쪽 side + 오른쪽 wafer map(`makePanel` 옵션 `side.mount` — Step 3 `mountVennSide`(`drawVennOn(cv)` → `S.venn.popGeo`), Step 4 `mountEscSide`(`paintEsc` 가 새 창에도), `sidePaint` 는 자료 · 선택이 바뀔 때만).
+  · #57(2026-11-10): **폴더 인식 = Lot 폴더 안 Wafer Slot 폴더**(Surface.flt 폴더 = Slot, 바로 위 = Lot, `w.lotPath`/`w.slot`/`w.slotName`, `lotsOf()`), Step 1 표 = Lot 줄(Step · CA · 호기는 Lot 단위),
+    **보기 단위** `#unit`(Step 2) · `#unit3`(Step 3) = `lot` | `slot:<키>`(`S.unit`, `setUnit`, `compareViews` — Lot 별 = 가상 스캔 `isLot` + `wafers`, `S.lotViews` 로 같은 객체 유지), 같은 Defect 판정 = **같은 Slot 끼리만**(`matchBySlot`, 양쪽 Slot 1개면 이름 무관). 상세 표 · CSV 에 Slot 열.
+    wafer map 맞춤: 맵만 있으면 맵 Die 묶음 가운데 = wafer 중심(종전 왼쪽 아래 맞춤 → 맵이 오른쪽 위로 밀림), 그리는 Die 가운데가 중심과 0.75 Pitch 넘게 다르면 원 · Notch 를 Die 에 맞춤(`S.centerShift`).
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.
 
 ### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)

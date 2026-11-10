@@ -8,12 +8,16 @@
 ## 1. 사용 절차
 
 1. `AOI_Contrast_Wizard.html` 을 Edge 로 여십시오.
-2. Step 1 에서 [결과 폴더 추가]를 누르고, 압축을 푼 결과 폴더를 고르십시오.
-   - 상위 폴더를 고르면 안에 있는 `Surface.flt` 폴더를 모두 등록합니다.
+2. Step 1 에서 [Lot 폴더 추가]를 누르고, Lot 폴더(또는 그 상위 폴더)를 고르십시오(#57).
+   - 인식 기준: `Surface.flt` 가 있는 폴더 = **Wafer Slot 폴더**, 그 바로 위 폴더 = **Lot 폴더**. 한 Lot 폴더 안의 Slot 폴더 1~25개를 그 Lot 으로 묶습니다. **Lot 1개 = 스캔 결과 1개**(Step 1 표 한 줄).
+   - 상위 폴더(예: `CA20/` 아래 Lot 여러 개)를 고르면 안의 Lot 을 모두 등록합니다. Slot 폴더를 바로 고르면 그 폴더 = Slot 1개짜리 Lot.
+   - Contrast AVG · Step 이름은 Lot 폴더 이름 → 그 위 폴더들 → Slot 폴더 이름 순으로 `CA27` 같은 이름을 찾아 채웁니다. 같은 Lot 을 다시 추가하면 Slot 만 더합니다.
+   - 오류 Slot(Record Size 등)은 [점검]에 Slot 이름과 함께 나오고 비교에서 뺍니다.
    - 브라우저가 "파일 업로드" 확인을 물으면 [업로드]를 누르십시오. 파일은 이 PC 브라우저 안에서만 읽습니다(서버로 보내지 않음).
-3. 스캔마다 Contrast AVG · 검사 호기 · Step 이름을 입력하십시오. 폴더 이름에 `CA27` · `Contrast27` · `AVG27` 이 있으면 Contrast AVG 를 미리 채웁니다.
+3. Lot 마다 Contrast AVG · 검사 호기 · Step 이름을 입력하십시오. 폴더 이름에 `CA27` · `Contrast27` · `AVG27` 이 있으면 Contrast AVG 를 미리 채웁니다.
 4. [점검]을 펼쳐 경고를 확인하십시오 (Record Size, 파일 누락, ScanLog 교차 검증, Die 계산 가능 여부).
-5. Step 2 에서 허용오차(기본 2 µm)를 확인하고 [비교 실행]을 누르십시오. 등록한 리스트의 **모든 순서쌍**을 비교합니다(리스트 3개 = 3×2 = 6쌍, `CA20 → CA27` 과 `CA27 → CA20` 을 따로, #56). [쌍별 비교] 표의 [보기] 또는 Step 3 · 4 위의 쌍 단추로 볼 쌍을 고르십시오.
+5. Step 2 에서 **[보기 단위]**를 고르십시오(#57). `Lot 별 (모든 Slot 합침)` = Lot 의 모든 Slot Defect 를 한 wafer map 에 겹쳐 보고 집계합니다(같은 Defect 판정은 **같은 Slot 끼리만** — 다른 Wafer 의 같은 좌표는 다른 Defect). `Slot 별 · W05 (2/2 Lot)` = 그 Slot 1장만(그 Slot 이 없는 Lot 은 빠짐). Step 3 맨 위에도 같은 고르기가 있고, 바꾸면 바로 다시 비교합니다. Slot 짝은 Slot 폴더 이름(대소문자 무시)으로 맞춥니다. 양쪽 Lot 이 Slot 1개씩이면 이름이 달라도 짝짓습니다.
+   이어서 허용오차(기본 2 µm)를 확인하고 [비교 실행]을 누르십시오. 등록한 리스트의 **모든 순서쌍**을 비교합니다(리스트 3개 = 3×2 = 6쌍, `CA20 → CA27` 과 `CA27 → CA20` 을 따로, #56). [쌍별 비교] 표의 [보기] 또는 Step 3 · 4 위의 쌍 단추로 볼 쌍을 고르십시오.
 6. Step 3 Wafer Map 분석(#55): **스캔 결과 하나 = 집합 하나**. 맨 위 [시뮬레이션 집합]에서 1개 ~ 스캔 수만큼 체크하고 [결과 →]를 누르십시오. 그 뒤에는 체크를 바꾸면 바로 바뀝니다.
    - 벤다이어그램은 늘 **모든 스캔**으로 그립니다(4개까지 원 · 타원, 5개 이상은 아래 영역 표만). 고른 집합과 관련된 영역(그 집합이 하나라도 들어 있는 영역)만 영역마다 다른 색, 나머지는 옅은 회색 + 경계선만. 영역 안 숫자 = Defect 수.
    - 영역(또는 영역 표의 줄)을 누르면 그 영역이 **더해집니다**. 이미 고른 영역을 다시 누르면 **빠집니다**(Ctrl 필요 없음, #56). 빈 곳 = 고른 집합 전체.
@@ -36,6 +40,7 @@
 | 쌍 | 리스트를 Contrast AVG 오름차순(빈 값은 등록 순서로 뒤)으로 놓고 i ≠ j 모든 순서쌍(#56, n개 → n×(n−1)쌍, A 순서 → B 순서로 나열). 쌍별 표 = A · B Defect 수, 둘 다, A 에만, B 에만, 없어진 비율(A 에만 ÷ A) |
 | Wafer map | **맵 파일 없이 계산**(#52 소유자 확정 좌표): Die 좌표 = 좌측 하단 (0,0) 에서 x, y 그래프처럼 오른쪽 · 위쪽으로 1씩. ① 칸 짝수/홀수 = ProductInfo 격자 (Cols−1)×(Rows−1) 가운데에 wafer 중심을 둘 때와 같게 ② 반지름 = Wafer 지름/2 − Edge 제외(Step 2, 기본 300 mm · 0 mm, ProductInfo 에 `WaferDiameter`/`WaferSize`/`EdgeExclusion` 이 있으면 그 값) ③ Die = 네 모서리가 모두 원 안인 칸(굵게) ④ **wafer 중심(#53) = ProductInfo `[Geometric] CenterX/CenterY`**(없으면 Params_WaferInfo `Center_X/Y` → `s_DieLocation.dat` Die 묶음 가운데 → 셋 다 없을 때만 종전 추정 = 그 Die 들의 좌측 하단이 Wafer (0,0) 이 되는 위치). 화면 Die 번호는 맨 왼쪽 아래 Die = (0,0) 으로 다시 센다(장비 Col/Row 와 다르면 상세 표에 '장비 Col, Row' 함께). 실제 폴더(#53): 중심 (204849, 224520) µm = (5.5·PitchX, 5·PitchY), 맨 왼쪽 아래 Die = 장비 Col 2 · Row 2, s_DieLocation 30개 · Color 이미지 Col/Row 353개와 일치, Defect 353개 모두 원 안. 아래 '예시 맵 중심 (3.5·PitchX, 3·PitchY)'는 중심 정보가 없을 때의 추정이다. 검증: #50 ProductInfo(37249×44905.8, Cols 10, Rows 9)로 소유자 예시 맵(7×6, 아래 줄부터 3·5·7·7·5·3 = 30)과 같고 wafer 중심 = (3.5·PitchX, 3·PitchY) = (130372, 134717) µm. 점선 = Die 를 꽉 채우는 직사각형(좌측 하단 (0,0)). Wafer Map 파일(RowData)이 있으면 비교만: 맵 칸 (r, c) ↔ Col = c, Row = (ROWCT−1) − r(맵 맨 아래 줄 = Row 0), 일치 여부 표시 · 다른 칸 점선(계산에만 빨강, 맵에만 주황) · Bin ≠ 000 옅은 노랑. 상세 표 Die 칸에 Die 가 아닌 칸은 'wafer 밖 칸', 상태 문구에 원 밖 Defect 수. X 오른쪽 · Y 위쪽(맵 파일과 같은 방향). **Notch** = wafer 원 가장자리의 V 홈 + 'Notch' 글자. Step 2 [Notch] 자동 = 맵 파일 `FNLOC`(0 위 · 90 오른쪽 · 180 아래 · 270 왼쪽) → ProductInfo(`FNLOC`/`Notch`/`NotchAngle`/`FlatAngle` 등) → 없으면 아래(180). 직접 고를 수도 있음 |
 | Die 판정 순서 (#52 후속, 어떤 자재에도) | 그리는 Die = ① `s_DieLocation.dat`(장비가 실제로 스캔한 Die) → ② Wafer Map 파일 RowData(`___` 아닌 칸, 맵 Die 묶음의 왼쪽 아래를 기준 Die 묶음의 왼쪽 아래에 맞춤) → ③ 계산(네 모서리가 모두 원 안, '확인 필요' 표시). 계산 결과는 늘 남겨 ①·② 와 비교만 한다(`#mapSt` 에 일치 ✔ / 다름 수). 상태 문구 맨 앞 `[기준 …]` 이 어느 것으로 그렸는지 알려 준다. wafer 중심은 #53 순서(ProductInfo CenterX/Y → s_DieLocation 가운데 → 추정) 그대로 |
+| Wafer map 과 원 · Notch 맞춤(#57) | ① 맵 파일만 있을 때(s_DieLocation 없음) 맵 Die 묶음의 **가운데**를 wafer 중심에 맞춘다(종전: 계산 Die 묶음의 왼쪽 아래에 맞춰 맵이 계산보다 크면 맵만 오른쪽 위로 밀렸다 — 소유자 #57 지적). ② 그리는 Die(s_DieLocation · 맵)의 가운데가 wafer 중심(ProductInfo 등)과 0.75 Pitch 넘게 다르면 원 · Notch 를 그 Die 묶음 가운데로 옮기고 상태 문구에 '중심과 x, y µm 달라 Die 에 맞춤'을 적는다. 실제 폴더(#53)는 두 값이 같아 ProductInfo 그대로 |
 | Die | (#53 확인: ColorImageGrabingInfo 의 장비 Col/Row 와 353/353 같음) (#52 소유자 확정) `Col=floor((X−OffX)/PitchX)`, `Row=floor((Y−OffY)/PitchY)` — 좌측 하단 (0,0) 에서 오른쪽 · 위쪽으로 1씩, Die 내부 = 그 Die 좌측 하단에서의 거리. 종전 #50 문서 식 `DieCol=(Cols−2)−ix`, `DieRow=(Rows−2)−iy` 는 폐기. 값은 폴더마다 `ProductInfo.ini` 에서 읽음. 없으면 "계산 불가" |
 | Gray 위치 | **Para 'Color · Gray 매칭'(`param_manager/colorgray.py`)과 같은 모델**: `frameToChuckPlane(.<레시피>).ini` 의 `Scan_X/Scan_Y` 역행렬로 `p = M⁻¹·(결함 − 프레임 좌표 − offset)`, 3168×1024 안에 들고 가장자리에서 가장 먼 프레임. 레시피 번호(.t.<n>)가 맞는 프레임 먼저 |
 | Gray 간단 모델 | `frameToChuckPlane` 이 없을 때만: `(결함 − 프레임 좌표) / PixelSize`. "보정 필요" 표시. 두 모델 모두 X/Y 반전 · X/Y Offset 을 Step 2 에서 조정 |
@@ -53,6 +58,8 @@
 - 이미지 캐시 LRU: Color object URL 80개(버리면 `revokeObjectURL`), Gray 프레임 ImageBitmap 16개(버리면 `close`). 현재 항목 앞뒤 8개 Color, 4개 Gray 를 미리 읽음.
 
 ## 4. 확인 전(소유자 확인 필요)
+
+- (#57) Slot 짝 = Slot 폴더 이름(대소문자 무시). Lot 마다 Slot 폴더 이름(Wafer ID)이 같은 Wafer 라고 보았다. 기본 보기 단위 = Lot 별. Lot 별 wafer map = 모든 Slot 을 한 지도에 겹침. Step 이름이 같은 Lot 이 둘 이상이면 Lot 경로로 바꿈. 원 · Notch 를 Die 에 맞추는 기준 0.75 Pitch(내 해석, 확인 전). 소유자가 말한 '다른 파일'을 받지 못해 그 파일로 직접 확인하지는 못함(합성 자료로 재현 · 확인).
 
 - (#55) Step 4 를 지우지 않고 Step 3 과 같은 구성으로 남김(위 7번 이유). 벤다이어그램 '관련 영역' = 고른 집합이 하나라도 들어 있는 영역. 스캔 5개 이상은 벤다이어그램 대신 영역 표만.
 

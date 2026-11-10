@@ -38,11 +38,11 @@ assert.equal(fn.gl.mean,200);assert.equal(fn.gl.ring,100);assert.equal(fn.gl.del
 // 폴더 등록
 await page.evaluate(fx=>{const f=JSON.parse(fx);return window.__cw.addEntries(Object.entries(f).map(([p,b])=>({path:p,file:new File([Uint8Array.from(atob(b),c=>c.charCodeAt(0))],p.split('/').pop())})))},fixture);
 const rows=await page.locator('#scanTbl tbody tr').allInnerTexts();
-assert.equal(rows.length,3,rows.join('\n'));
+assert.equal(rows.length,2,rows.join('\n'));   // Para #57: 줄 = Lot(CA20/LOTA · CA27/LOTA)
 const msgs=await page.locator('#loadMsg .msg').allInnerTexts();
-assert.ok(msgs.some(m=>/bad.*잘못된 Record Size: 150 byte/.test(m)),msgs.join('\n'));
+assert.ok(msgs.some(m=>/Lot CA27\/LOTA: Slot 2개\(W01, W02\).*제외할 Slot: W02\(잘못된 Record Size: 150 byte/.test(m)),msgs.join('\n'));
 const st=await page.evaluate(()=>window.__cw.state.scans.map(s=>({n:s.name,c:s.contrast,d:s.defects.length,img:s.images,w:s.warns,e:s.errors,t:s.transforms.size,p:!!s.product})));
-const a=st.find(s=>s.n==='Lot/CA20'),b=st.find(s=>s.n==='Lot/CA27');
+const a=st.find(s=>s.n==='CA20/LOTA/W01'),b=st.find(s=>s.n==='CA27/LOTA/W01');
 assert.equal(a.c,20);assert.equal(b.c,27);assert.equal(a.d,4);assert.equal(b.d,3);assert.equal(a.img,4);assert.equal(a.t,1);assert.ok(a.p);
 assert.ok(b.w.some(w=>/Surface defect 수 5 ≠ 파싱 3/.test(w)),b.w.join('|'));
 assert.ok(!a.w.some(w=>/Surface defect/.test(w)));
@@ -155,26 +155,26 @@ assert.match(csv,/CA27 - CA20,9,109,.*,,연결 실패,/);
 assert.match(csv,/CA20 ∩ CA27,2,102,1100\.00,200\.00.*C1\.c\.1\.jpeg,좌표\(0\.0 µm\),F1\.t\.1\.jpeg,1100\.0,200\.0,transform/);
 // Para #53: 실제 결과 폴더 형식 — ProductInfo CenterX/CenterY 가 있으면 그 중심을 쓴다(실제 자료: (5.5·PitchX, 5·PitchY), 맨 왼쪽 아래 Die = 장비 Col 2 · Row 2).
 // 종전 추정 중심(3.5·PitchX, 3·PitchY)은 Defect 를 2칸씩 오른쪽 위로 밀었다. s_DieLocation(Die 중심) 30개와 계산 Die 가 같아야 한다.
-const r53=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=44905.8;
+const r53=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=44905.8,T=[...new Set([...S.scans,...S.cmpScans])];
   const rowsSpec=[[2,[4,5,6]],[3,[3,4,5,6,7]],[4,[2,3,4,5,6,7,8]],[5,[2,3,4,5,6,7,8]],[6,[3,4,5,6,7]],[7,[4,5,6]]];
   const loc=[];for(const [r,cs] of rowsSpec)for(const cc of cs)loc.push({x:(cc+.5)*PX,y:(r+.5)*PY,sx:PX,sy:PY});
-  const saved=S.scans.map(s=>[s.product,s.dieLoc]);
-  for(const s of S.scans){s.product={...s.product,centerX:5.5*PX,centerY:5*PY,centerSrc:'ProductInfo'};s.dieLoc=loc}
+  const saved=T.map(s=>[s.product,s.dieLoc]);
+  for(const s of T){s.product={...s.product,centerX:5.5*PX,centerY:5*PY,centerSrc:'ProductInfo'};s.dieLoc=loc}
   const D53=c.dieCells();const out={fd:D53.calc,base:S.dieBase,loc:S.dieLocCheck,src:S.center.src,cx:Math.round(S.center.cx)};
   // 실제 자료 첫 Defect 와 같은 꼴: Wafer (203335, 203642) = 장비 Col 5, Row 4 → 화면 Die (3, 2)
   const d=c.dieOf(203335,203642,{pitchX:PX,pitchY:PY,offX:0,offY:0});out.eq=[d.col,d.row];out.rel=[d.col-S.dieBase.c,d.row-S.dieBase.r];out.inSet=S.dieSet.has(d.col+','+d.row);
   out.dl=c.parseDieLoc(new Uint8Array(256).buffer,null).length;
-  S.scans.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});c.dieCells();return out});
+  T.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});c.dieCells();return out});
 assert.equal(r53.fd,30);assert.deepEqual(r53.base,{c:2,r:2});assert.equal(r53.loc.ok,true);assert.equal(r53.loc.n,30);assert.equal(r53.src,'ProductInfo');assert.equal(r53.cx,204870);
 assert.deepEqual(r53.eq,[5,4]);assert.deepEqual(r53.rel,[3,2]);assert.equal(r53.inSet,true);assert.equal(r53.dl,2);
 // 어떤 자재에도 맞게: s_DieLocation(실제 스캔 Die)이 있으면 계산 규칙과 달라도 그 Die 로 그린다(맨 위 줄 가운데 Die 를 뺀 29개)
-const pr=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=44905.8;
+const pr=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=44905.8,T=[...new Set([...S.scans,...S.cmpScans])];
   const rowsSpec=[[2,[4,5,6]],[3,[3,4,5,6,7]],[4,[2,3,4,5,6,7,8]],[5,[2,3,4,5,6,7,8]],[6,[3,4,5,6,7]],[7,[4,6]]];
   const loc=[];for(const [r,cs] of rowsSpec)for(const cc of cs)loc.push({x:(cc+.5)*PX,y:(r+.5)*PY,sx:PX,sy:PY});
-  const saved=S.scans.map(s=>[s.product,s.dieLoc]),um=S.userMap;S.userMap=null;
-  for(const s of S.scans){s.product={...s.product,centerX:5.5*PX,centerY:5*PY,centerSrc:'ProductInfo'};s.dieLoc=loc}
+  const saved=T.map(s=>[s.product,s.dieLoc]),um=S.userMap;S.userMap=null;
+  for(const s of T){s.product={...s.product,centerX:5.5*PX,centerY:5*PY,centerSrc:'ProductInfo'};s.dieLoc=loc}
   const D=c.dieCells();const out={n:D.calc,from:D.from,src:S.dieSrc,miss:S.dieSet.has('5,7'),loc:S.dieLocCheck.ok,onlyCalc:S.dieLocCheck.onlyCalc};
-  S.scans.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});S.userMap=um;c.dieCells();return out});
+  T.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});S.userMap=um;c.dieCells();return out});
 assert.deepEqual(pr,{n:29,from:'dieloc',src:'s_DieLocation(실제 스캔 Die)',miss:false,loc:false,onlyCalc:1});
 // 지도 hover → 툴팁 + 그림
 await page.locator('#p3Map').hover({position:{x:5,y:5}});
@@ -216,7 +216,7 @@ assert.match(await p4w.locator('.sd').innerText(),/A = CA20/);
 const p4px=await p4w.evaluate(()=>[...document.querySelectorAll('.sd canvas')].map(c=>{const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let k=0;for(let i=3;i<d.length;i+=4)if(d[i])k++;return k}));
 assert.ok(p4px.every(n=>n>1000),'popup esc '+p4px);await p4w.close();
 // 리스트 3개 → 순서쌍 6개(Para #56)
-await page.evaluate(()=>{const S=window.__cw.state,b=S.scans.find(s=>s.name==='Lot/CA27');const c={...b,id:99,seq:99,name:'Lot/CA30',step:'CA30',contrast:30,_rule:null};
+await page.evaluate(()=>{const S=window.__cw.state,b=S.scans.find(s=>s.name==='CA27/LOTA/W01');const c={...b,id:99,seq:99,name:'CA30/LOTA/W01',lotPath:'CA30/LOTA',step:'CA30',contrast:30,_rule:null};
   c.defects=b.defects.slice(1).map(d=>({...d,scan:c}));S.scans.push(c)});
 await page.locator('nav button[data-step="2"]').click();await page.locator('#runBtn').click();await page.locator('#step3.on').waitFor();
 assert.equal(await page.locator('#pairTbl tbody tr').count(),6);
@@ -229,6 +229,44 @@ const v3=await page.evaluate(()=>{const c=window.__cw,V=c.state.venn;return {n:V
 assert.deepEqual(v3,{n:3,shown:true,sel:2,sum:v3.cl,cl:v3.cl,lab:'CA20 ∩ CA27 - CA30',geo:3});
 await page.locator('#step3 .pairtabs button').nth(3).click();
 assert.deepEqual(await page.locator('#kpis .kpi b').allInnerTexts(),['3','2','2','1','0','33.3%']);
+// Para #57: Lot 폴더 안 Slot 폴더 — Lot 별(모든 Slot 겹침, 같은 Slot 끼리만 짝) / Slot 별(고른 Slot 만)
+const lot=await page.evaluate(()=>{const c=window.__cw,S=c.state;
+  // CA20 · CA27 Lot 에 Slot W03 을 더한다: CA20 W03 의 Defect 하나는 CA20 W01 의 Defect 1 과 같은 좌표지만 다른 Wafer
+  const mk=(lotPath,step,ca,src,pts)=>{const w={...src,id:200+S.scans.length,seq:200+S.scans.length,name:lotPath+'/W03',lotPath,step,contrast:ca,slot:'w03',slotName:'W03',_rule:null};
+    w.defects=pts.map(([x,y],i)=>({...src.defects[0],i,id:50+i,no:50+i,x,y,ActualX:x,ActualY:y,slot:'w03',scan:w}));return w};
+  const a=S.scans.find(s=>s.name==='CA20/LOTA/W01'),b=S.scans.find(s=>s.name==='CA27/LOTA/W01');
+  S.scans=S.scans.filter(s=>s.lotPath!=='CA30/LOTA');
+  S.scans.push(mk('CA20/LOTA','CA20',20,a,[[200498,279473],[3000,3000]]),mk('CA27/LOTA','CA27',27,b,[[3000.5,3000]]));c.renderScans();
+  return {opts:[...document.querySelectorAll('#unit option')].map(o=>o.textContent),lots:c.lotsOf().map(l=>[l.path,l.wafers.map(w=>w.slotName).join(',')])}});
+assert.deepEqual(lot.lots,[['CA20/LOTA','W01,W03'],['CA27/LOTA','W01,W03']]);
+assert.deepEqual(lot.opts,['Lot 별 (모든 Slot 합침)','Slot 별 · W01 (2/2 Lot)','Slot 별 · W03 (2/2 Lot)']);
+await page.locator('nav button[data-step="2"]').click();await page.locator('#unit').selectOption('lot');await page.locator('#runBtn').click();await page.locator('#step3.on').waitFor();
+// Lot 별: CA20 = 4 + 2, CA27 = 3 + 1. W03 (200498, 279473) 은 W01 의 같은 좌표와 짝짓지 않는다(다른 Wafer)
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','6','4','3','3','1','50.0%','보기']);
+assert.match(await page.locator('#cmpMsg').innerText(),/Lot 별\(모든 Slot\) · 리스트 2개/);
+assert.match(await page.locator('#mapSt').innerText(),/Lot 별: Slot 2개까지 한 wafer map 에 겹쳐 그림/);
+assert.equal(await page.evaluate(()=>window.__cw.state.venn.cl.length),7);   // 묶음도 Slot 끼리: W01 5 + W03 2
+// Step 3 에서 Slot 별(W03)로 바꾸면 바로 다시 비교
+await page.locator('#unit3').selectOption('slot:w03');
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','2','1','1','1','0','50.0%','보기']);
+assert.equal(await page.locator('#unit').inputValue(),'slot:w03');
+const sl=await page.evaluate(()=>window.__cw.state.rows.map(r=>r.d.scan.slotName));assert.ok(sl.every(x=>x==='W03'),sl.join());
+assert.match(await page.locator('#detTbl thead').innerText(),/Slot/);assert.match(await page.evaluate(()=>window.__cw.csvText()),/,Step,Slot,ContrastAVG,/);
+await page.locator('#unit3').selectOption('slot:w01');
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','4','3','2','2','1','50.0%','보기']);
+// Para #57 추가: 다른 파일의 Wafer Map 이 계산 Die 보다 크면 종전에는 왼쪽 아래만 맞춰 맵이 오른쪽 위로 밀렸다 → 맵 가운데 = wafer 중심
+const al=await page.evaluate(()=>{const c=window.__cw,S=c.state;
+  const big='FNLOC:180\nROWCT:8\nCOLCT:9\n'+Array.from({length:8},()=>'RowData:'+Array(9).fill('000').join(' ')).join('\n')+'\n';
+  c.setWaferMap(big,'big.txt');const D=c.dieCells(),F=D.dies.filter(d=>d.full),p=D.p;
+  const fx=(Math.min(...F.map(d=>d.x0))+Math.max(...F.map(d=>d.x0))+p.pitchX)/2,fy=(Math.min(...F.map(d=>d.y0))+Math.max(...F.map(d=>d.y0))+p.pitchY)/2;
+  const r={n:F.length,dx:Math.abs(fx-D.cx)/p.pitchX,dy:Math.abs(fy-D.cy)/p.pitchY};
+  // s_DieLocation 이 중심 값과 다른 기준(오른쪽 위로 몇 칸)이면 원 · Notch 를 Die 묶음에 맞춘다
+  const PX=37249,PY=44905.8,loc=[];for(let r2=0;r2<6;r2++)for(let c2=0;c2<7;c2++)loc.push({x:(c2+6.5)*PX,y:(r2+6.5)*PY});
+  const um=S.userMap,sp=S.cmpScans.map(v=>v.product);S.userMap=null;S.cmpScans.forEach(v=>{v.dieLoc=loc;v.product={...v.product,centerX:3.5*PX,centerY:3*PY,centerSrc:'ProductInfo'}});
+  const D2=c.dieCells();r.shift=S.centerShift&&[+(S.centerShift.dx/PX).toFixed(2),+(S.centerShift.dy/PY).toFixed(2)];r.cx=+(D2.cx/PX).toFixed(3);r.cy=+(D2.cy/PY).toFixed(3);r.src=S.center.src;
+  S.cmpScans.forEach((v,i)=>{v.dieLoc=null;v.product=sp[i]});S.userMap=um;c.dieCells();return r});
+assert.equal(al.n,72);assert.ok(al.dx<=0.5&&al.dy<=0.5,JSON.stringify(al));
+assert.deepEqual([al.cx,al.cy],[9.5,9]);assert.ok(al.shift&&al.shift[0]>1&&al.shift[1]>1,JSON.stringify(al));assert.match(al.src,/Die 묶음 가운데\(ProductInfo 중심과 \d+, \d+ µm 달라 Die 에 맞춤\)/);
 assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 await browser.close();
 console.log('test_contrast_wizard: passed');

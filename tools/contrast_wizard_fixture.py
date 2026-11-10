@@ -1,4 +1,4 @@
-"""AOI_Contrast_Wizard.html 시험 자료(Para #50) — 합성 결과 폴더 2개를 {경로: base64} JSON 으로 출력한다.
+"""AOI_Contrast_Wizard.html 시험 자료(Para #50, #57 = {CA}/{Lot}/{Slot} 구조) — 합성 결과 폴더 2개를 {경로: base64} JSON 으로 출력한다.
 실제 고객 데이터가 아니다. JPEG 는 tests/colorgray_fixture.py 의 작은 그림을 재사용한다."""
 import base64, json, struct, sys
 from pathlib import Path
@@ -40,8 +40,8 @@ def scan(name, defects, count):
 
 files = {}
 # 기준 CA20: 1 = Die 검증 예, 2 = Gray 프레임 안 + Color 좌표 연결, 3 = Gray 범위 밖(Index 3 으로 Color 연결), 4 = 먼 곳
-files.update(scan("Lot/CA20", [(1, 200498, 279473), (2, 1100, 200), (3, 5000, 5000, 120, 40.0), (4, 90000, 90000, 50, 31.0)], 4))
+files.update(scan("CA20/LOTA/W01", [(1, 200498, 279473), (2, 1100, 200), (3, 5000, 5000, 120, 40.0), (4, 90000, 90000, 50, 31.0)], 4))
 # 비교 CA27: 1 · 2 와 2 µm 안(유지), 신규 1개. ScanLog 수를 일부러 틀리게(교차 검증 경고)
-files.update(scan("Lot/CA27", [(1, 200499, 279473.5), (2, 1100.5, 200, 82, 36.0), (9, 7000, 7000, 60, 45.0)], 5))
-files["Lot/CA27/bad/Surface.flt"] = b"\0" * 150   # 잘못된 Record Size
+files.update(scan("CA27/LOTA/W01", [(1, 200499, 279473.5), (2, 1100.5, 200, 82, 36.0), (9, 7000, 7000, 60, 45.0)], 5))
+files["CA27/LOTA/W02/Surface.flt"] = b"\0" * 150   # 잘못된 Record Size (Para #57: Lot 폴더 CA27/LOTA 안 Slot W02)
 print(json.dumps({k: base64.b64encode(v).decode() for k, v in files.items()}))

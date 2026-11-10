@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #57 Lot 폴더 · Slot 폴더 인식 + 보기 단위(Lot 별 / Slot 별) + wafer map · 원 · Notch 맞춤 (2026-11-10 KST, `version_graylevel_simulation`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `ac04576`(#56) · 이슈 Para #57("Graylevel 시뮬레이션 브랜치 신규생성 7", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**(#50~#56 연속).
+- 요청: ① 처음 폴더를 올릴 때 Lot 별로 본다 — Lot 폴더 안에 Wafer Slot 폴더 1~25개, 인식 기준을 다시 정함 ② 모드에서 Slot 별 / Lot 별 보기를 고름. ③ (같은 run 중 소유자 추가 지시) wafer map 과 Notch 가 그려진 원이 따로 논다 — 다른 파일로 하니 wafer map 만 오른쪽 위로 이동.
+- 한 일(`AOI_Contrast_Wizard.html`): ① `addEntries` = Surface.flt 폴더 = Slot, 바로 위 = Lot(`w.lotPath` · `w.lotName` · `w.slot`(소문자 키) · `w.slotName`, Defect `d.slot`), Slot 폴더를 바로 고르면 Slot 1개짜리 Lot. CA · Step = Lot 이름 → 위 폴더들 → Slot 이름에서 `CA27` 꼴. `lotsOf()` · Step 1 표 = Lot 줄(Slot 수 · 이름, 점검은 Slot 별).
+  ② `#unit`(Step 2) · `#unit3`(Step 3, 바꾸면 바로 다시 비교) = `lot` | `slot:<키>`(`renderUnit`/`setUnit`/`compareViews`). Lot 별 = Lot 마다 가상 스캔(`isLot`, `wafers`, `defects` 합, product · waferMap · dieLoc 은 첫 Slot 것, `S.lotViews` 로 같은 객체 유지) — 지도는 모든 Slot 겹침. 같은 Defect 판정 = `matchBySlot`(같은 Slot 끼리, 양쪽 Slot 1개면 그대로 `matchSets`) — 쌍 비교와 벤다이어그램(`buildVenn`) 둘 다. 오류 Slot 은 비교에서 뺌. 상세 표 · CSV · 패널 · 새 창에 Slot.
+  ③ `dieCells`: s_DieLocation 없이 맵만 있으면 맵 Die 묶음 **가운데**를 wafer 중심에 맞춤(종전: 계산 Die 묶음 왼쪽 아래 → 맵이 계산보다 크면 오른쪽 위로 밀림 = 소유자 증상과 같은 꼴). 그리는 Die 가운데가 중심과 0.75 Pitch 넘게 다르면 원 · Notch 를 Die 묶음 가운데로(`S.centerShift`, `#mapSt` 에 차이 표시).
+- 시험: `node tools/test_contrast_wizard.mjs` 3회 연속 통과(fixture = `CA20/LOTA/W01` · `CA27/LOTA/W01` + 오류 Slot `CA27/LOTA/W02`, 새 시험: Lot 2개 · Slot W01/W03, Lot 별 6 → 4 와 Slot 별 W03 · W01 값, 다른 Wafer 의 같은 좌표는 짝 안 함, 9×8 맵 가운데 정렬, 중심과 다른 s_DieLocation → 원 이동). `사진 제외.zip` 을 `CA20/LOTX/W05` · `CA27/LOTX/W05` 꼴로 넣어 확인(저장소 밖 scratch): 'Die 30 · 중심 204849, 224520 · ProductInfo · s_DieLocation 일치 ✔ · Defect 706개 모두 원 안'(원 이동 없음).
+  `tools/check_project.py` 는 이 환경에 openpyxl 이 없어 Python 시험 실패(Python 변경 없음, #55 · #56 와 같음). Windows Edge 실기 · 소유자가 말한 '다른 파일' 미검증(파일을 받지 못함 — 합성 자료로 같은 꼴 재현).
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML, #50~#56 와 같음).
+- 내 해석(확인 전): ⓐ Slot 짝 = Slot 폴더 이름(대소문자 무시) ⓑ 기본 보기 단위 = Lot 별, Lot 별 wafer map = 모든 Slot 겹침 ⓒ 원 · Notch 를 Die 에 맞추는 기준 0.75 Pitch ⓓ Step 이름이 겹치는 Lot 은 Lot 경로로 ⓔ 같은 Lot 경로를 다시 추가하면 Slot 만 더함.
+- 남은 일: ⓐ~ⓔ 확인, 맵이 밀렸던 '다른 파일'로 소유자 확인, #56 해석 ⓐ~ⓓ · #55 · #53 남은 일 그대로.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #57 | Lot 폴더 · Slot 폴더 인식 기준, Slot 별 / Lot 별 보기, (추가) wafer map 과 원 · Notch 어긋남 | 구현, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #56 새 창 = 벤다이어그램 + wafer map · 영역 더하기/빼기 · 차집합 `-` · Escape Defect 리뷰 · 모든 순서쌍 (2026-11-10 KST, `version_graylevel_simulation`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `af6e9a0`(#55) · 이슈 Para #56("Graylevel 시뮬레이션 브랜치 신규생성 6", routine 처리) · 작업 브랜치 **`version_graylevel_simulation`**(#50~#55 연속).
