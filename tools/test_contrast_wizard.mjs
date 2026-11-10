@@ -276,6 +276,93 @@ const al=await page.evaluate(()=>{const c=window.__cw,S=c.state;
   S.cmpScans.forEach((v,i)=>{v.dieLoc=null;v.product=sp[i]});S.userMap=um;c.dieCells();return r});
 assert.equal(al.n,72);assert.ok(al.dx<=0.5&&al.dy<=0.5,JSON.stringify(al));
 assert.deepEqual([al.cx,al.cy],[9.5,9]);assert.ok(al.shift&&al.shift[0]>1&&al.shift[1]>1,JSON.stringify(al));assert.match(al.src,/Die 묶음 가운데\(ProductInfo 중심과 \d+, \d+ µm 달라 Die 에 맞춤\)/);
+// ── 목록 필터 · 정렬(소유자 세션 지시 2026-11-10): Step 4 리뷰 패널 — Contrast(실제) · Area · Width 범위 + 정렬
+await page.locator('#unit3').selectOption('lot');
+await page.locator('nav button[data-step="4"]').click();await page.locator('#step4.on').waitFor();
+const p4n=async()=>page.evaluate(()=>window.__cw.PANELS.p4.items.map(it=>+it.d.Contrast.toFixed(2)));
+const base4=await p4n();assert.ok(base4.length>=3,String(base4));   // Lot 별 CA20 → CA27: 없어진 Defect 3개
+await page.locator('#p4Flt [data-f="sort"]').selectOption('c-d');await page.waitForTimeout(350);
+assert.deepEqual(await p4n(),[...base4].sort((a,b)=>b-a));
+assert.match(await page.locator('#p4Cnt').innerText(),/정렬: Contrast\(실제\) 큰 순/);
+await page.locator('#p4Flt [data-f="c0"]').fill('35');await page.waitForTimeout(350);
+assert.deepEqual(await p4n(),base4.filter(v=>v>=35).sort((a,b)=>b-a));
+assert.match(await page.locator('#p4Cnt').innerText(),new RegExp(`필터에 맞는 것 ${base4.filter(v=>v>=35).length} / ${base4.length}개`));
+// Area 는 화면 값(µm², 소수 2자리)으로: 82 px × 0.7708² = 48.72 → 최소 48.72 에 들어온다
+await page.locator('#p4Flt [data-f="c0"]').fill('');await page.locator('#p4Flt [data-f="a0"]').fill('48.72');await page.locator('#p4Flt [data-f="a1"]').fill('48.72');await page.waitForTimeout(350);
+const ar=await page.evaluate(()=>window.__cw.PANELS.p4.items.map(it=>it.d.area));assert.ok(ar.length&&ar.every(v=>v===82),String(ar));
+await page.locator('#p4Flt [data-f="clear"]').click();await page.locator('#p4Flt [data-f="sort"]').selectOption('');await page.waitForTimeout(350);
+assert.deepEqual(await p4n(),base4);assert.doesNotMatch(await page.locator('#p4Cnt').innerText(),/필터|정렬/);
+// Width 필터(모든 합성 Defect 가 7.5) — 범위 밖이면 목록이 비고 '없습니다' 안내
+await page.locator('#p4Flt [data-f="w0"]').fill('8');await page.waitForTimeout(350);
+assert.equal((await p4n()).length,0);assert.match(await page.locator('#p4Color').innerText(),/Escape Defect 가 없습니다/);
+await page.locator('#p4Flt [data-f="clear"]').click();await page.waitForTimeout(100);assert.deepEqual(await p4n(),base4);
+// ── Step 5 대용량 Defect 조회: 폴더 핸들(가짜)로 훑기 → 정보만 등록(사진 · 사진 목록은 읽지 않음) → 필터 · 정렬 → 고른 것만 사진
+await page.locator('nav button[data-step="5"]').click();await page.locator('#step5.on').waitFor();
+// Step 1 에 등록한 Lot 도 기본으로 목록에: CA20(4 + 2) + CA27(3 + 1) = 10, 기본 정렬 = Contrast(실제) 큰 순
+assert.match(await page.locator('#bigCnt').innerText(),/^Defect 10개/);
+await page.locator('#bigAuto').uncheck();   // 등록 때 읽는 파일만 보려고 잠깐 끈다(켜져 있으면 첫 줄 Defect 의 사진을 바로 읽는다)
+const bg5=await page.evaluate(async fx=>{const f=JSON.parse(fx),c=window.__cw,reads=[];
+  const fh=(name,b64)=>({kind:'file',name,getFile:async()=>{reads.push(name);return new File([Uint8Array.from(atob(b64),ch=>ch.charCodeAt(0))],name)}});
+  const mk=name=>({kind:'directory',name,kids:new Map(),async *entries(){yield* this.kids},async getFileHandle(n){const h=[...this.kids.values()].find(k=>k.kind==='file'&&k.name.toLowerCase()===n.toLowerCase());if(!h)throw new Error('NotFound');return h}});
+  const root=mk('BIG');
+  for(const [p,b] of Object.entries(f)){if(!p.startsWith('CA20/LOTA/W01/')&&!p.startsWith('CA27/LOTA/W01/'))continue;const segs=p.replace('LOTA','LOTB').split('/');let d=root;
+    for(const s of segs.slice(0,-1)){if(!d.kids.has(s))d.kids.set(s,mk(s));d=d.kids.get(s)}d.kids.set(segs.at(-1),fh(segs.at(-1),b))}
+  const acc=await c.walkDir(root,'BIG/',{entries:[],dirs:[],n:0,files:0,images:0});
+  const walked={files:acc.files,images:acc.images,hasImg:acc.entries.some(e=>/jpe?g$/i.test(e.path))};
+  await c.addBigEntries(acc.entries,acc.dirs);
+  return {walked,reads:[...reads],n:c.BIG.scans.length,light:c.BIG.scans.every(s=>s.light&&!s.defects&&!s.colors.length&&!s.frames.length),imgs:c.BIG.scans.map(s=>s.images),hidden:document.getElementById('busy').hidden}},fixture);
+assert.deepEqual(bg5.walked,{files:14,images:8,hasImg:false});   // 사진은 목록에 넣지 않고 개수만
+assert.ok(bg5.reads.length&&bg5.reads.every(n=>/^(surface\.flt(\.md)?|productinfo\.ini)$/i.test(n)),bg5.reads.join());   // 등록 때 읽는 파일 = Surface.flt(+ .md) · ProductInfo.ini 뿐
+assert.equal(bg5.n,2);assert.ok(bg5.light);assert.deepEqual(bg5.imgs,[4,4]);assert.ok(bg5.hidden);
+assert.match(await page.locator('#bigMsg').innerText(),/Slot 2개 · Defect 7개 등록 .*사진은 읽지 않음/);
+assert.match(await page.locator('#bigSum').innerText(),/Lot 2개 · Slot 2개 · Defect 7개/);
+assert.match(await page.locator('#bigCnt').innerText(),/^Defect 17개/);
+const col=async j=>page.locator('#bigList .br').evaluateAll((els,j)=>els.map(e=>e.children[j].textContent),j);
+const cs=(await col(5)).map(Number);assert.equal(cs.length,17);assert.deepEqual(cs,[...cs].sort((a,b)=>b-a));assert.equal(cs[0],45);
+assert.match(await page.locator('#bigList .bh').innerText(),/Contrast\(실제\) ▼/);
+// Step 1 Lot 빼기 → 여기서 등록한 7개만. Contrast 필터 · Area 필터 · 열 제목 정렬
+await page.locator('#bigS1').uncheck();assert.match(await page.locator('#bigCnt').innerText(),/^Defect 7개/);
+await page.locator('#bigFlt [data-f="c0"]').fill('36');await page.locator('#bigFlt [data-f="c1"]').fill('40');await page.waitForTimeout(350);
+assert.deepEqual((await col(5)).map(Number),[40,36]);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 2개 \(전체 7개 중/);
+await page.locator('#bigFlt [data-f="clear"]').click();await page.locator('#bigFlt [data-f="a1"]').fill('40');await page.waitForTimeout(350);
+assert.deepEqual((await col(6)).map(Number),[35.65,29.71]);   // 60 px · 50 px × 0.7708², Contrast 큰 순(45 · 31)
+await page.locator('#bigFlt [data-f="clear"]').click();await page.waitForTimeout(100);
+await page.locator('#bigList .bh [data-sort="a"]').click();assert.deepEqual((await col(6)).map(Number).slice(0,2),[71.3,48.72]);   // Area 큰 순
+await page.locator('#bigList .bh [data-sort="a"]').click();assert.equal((await col(6)).map(Number)[0],29.71);assert.match(await page.locator('#bigList .bh').innerText(),/Area µm² ▲/);
+await page.locator('#bigLot').selectOption({index:1});await page.waitForTimeout(350);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 4개 \(전체 7개 중/);
+await page.locator('#bigLot').selectOption('');await page.waitForTimeout(350);
+// 고르면 바로 사진: 그때 그 Slot 의 사진 목록(ini · txt)을 읽고 Color · Gray 를 띄운다. 다른 Slot 은 그대로 안 읽음
+await page.locator('#bigFlt [data-f="sort"]').selectOption('c-d');await page.waitForTimeout(350);
+await page.locator('#bigFlt [data-f="c0"]').fill('34');await page.locator('#bigFlt [data-f="c1"]').fill('35');await page.locator('#bigLot').selectOption({index:1});await page.waitForTimeout(350);
+await page.locator('#bigAuto').check();
+await page.locator('#bigList .br',{hasText:'1100.0'}).first().click();
+await page.locator('#bigColor img').waitFor();await page.locator('#bigGray canvas').waitFor();
+const bi=await page.locator('#bigInfo').innerText();
+assert.match(bi,/Lot 폴더 · 순서\s*BIG\/CA20\/LOTB/);assert.match(bi,/Contrast\(실제\)\s*34\.45/);assert.match(bi,/Color\s*C1\.c\.1\.jpeg · 좌표\(0\.0 µm\)/);assert.match(bi,/Gray\s*F1\.t\.1\.jpeg · \(1100\.0, 200\.0\) · frameToChuckPlane/);assert.match(bi,/ROI mean/);
+const lz=await page.evaluate(()=>window.__cw.BIG.scans.map(s=>[s.lotPath,s.colors.length,s.frames.length,s.transforms.size]));
+assert.deepEqual(lz,[['BIG/CA20/LOTB',2,2,1],['BIG/CA27/LOTB',0,0,0]]);
+// 바로 보기를 끄면 고르기만으로는 사진을 읽지 않는다 → 더블 클릭(또는 Enter · [사진 불러오기])으로 그 Defect 만
+await page.locator('#bigAuto').uncheck();await page.locator('#bigLot').selectOption('');await page.locator('#bigFlt [data-f="clear"]').click();await page.waitForTimeout(350);
+assert.match(await page.locator('#bigColor').innerText(),/사진을 아직 읽지 않았습니다/);assert.match(await page.locator('#bigInfo').innerText(),/Contrast\(실제\)\s*45\.00[\s\S]*Color\s*아직 읽지 않음/);
+assert.equal(await page.evaluate(()=>window.__cw.BIG.scans[1].colors.length),0);
+await page.locator('#bigList .br').first().dblclick();await page.locator('#bigColor img, #bigColor .ph:has-text("연결 실패")').first().waitFor();
+assert.equal(await page.evaluate(()=>window.__cw.BIG.scans[1].colors.length),2);
+await page.locator('#bigList').focus();await page.keyboard.press('ArrowDown');assert.match(await page.locator('#bigInfo').innerText(),/순서\s*BIG\/CA\d+\/LOTB · 2 \/ 7/);
+assert.match(await page.locator('#bigColor').innerText(),/사진을 아직 읽지 않았습니다/);
+// 바로 보기 켠 채 더블 클릭 = 새 창(큰 화면)
+await page.locator('#bigAuto').check();
+const [bw]=await Promise.all([page.waitForEvent('popup'),page.locator('#bigList .br').nth(1).dblclick()]);
+await bw.waitForLoadState();assert.match(await bw.locator('.hd').innerText(),/\[BIG\/CA\d+\/LOTB\] ID \d+ · .*Contrast \d/);await bw.close();
+// CSV = 지금 목록 전부(필터 · 정렬 그대로)
+const bc=await page.evaluate(()=>window.__cw.bigCsv().join(''));assert.match(bc,/^﻿순서,Lot폴더,Step,ContrastAVG,Slot,ID,resultID,WaferX,/);assert.equal(bc.trim().split('\r\n').length,8);
+// 많은 Defect: 합성 30만 개(Slot 3개)도 열 배열로 바로 필터 · 정렬(표는 보이는 줄만 그림)
+const perf=await page.evaluate(async()=>{const c=window.__cw,REC=c.REC,N=100000,mk=seed=>{const b=new ArrayBuffer(N*REC),dv=new DataView(b);for(let i=0;i<N;i++){const o=i*REC;dv.setFloat64(o+8,i%1000*300,true);dv.setFloat64(o+16,(i/1000|0)*3000,true);dv.setInt32(o+40,i,true);dv.setFloat64(o+80,(i*7+seed)%500+1,true);dv.setFloat64(o+88,(i%90)/10,true);dv.setFloat64(o+136,((i*31+seed)%6000)/100,true)}return b};
+  const es=[];for(let k=0;k<3;k++)es.push({path:`HUGE/CA3${k}/LOT/W0${k}/Surface.flt`,file:new File([mk(k)],'Surface.flt')});
+  const t0=performance.now();await c.addBigEntries(es);const t1=performance.now();
+  document.querySelector('#bigFlt [data-f="c0"]').value='59.9';c.bigRefresh();const t2=performance.now();
+  return {load:t1-t0,flt:t2-t1,m:c.BIG.view.m,total:c.BIG.view.total,rows:document.querySelectorAll('#bigList .br').length,first:+document.querySelector('#bigList .br').children[5].textContent}});
+assert.equal(perf.total,300007);assert.ok(perf.m>0&&perf.m<perf.total/50,JSON.stringify(perf));assert.ok(perf.rows<80,JSON.stringify(perf));assert.ok(perf.first>=59.9);
+assert.ok(perf.load<15000&&perf.flt<5000,JSON.stringify(perf));console.log('step5 30만 Defect:',JSON.stringify(perf));
 assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 await browser.close();
 console.log('test_contrast_wizard: passed');

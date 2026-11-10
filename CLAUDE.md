@@ -43,6 +43,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     **보기 단위** `#unit`(Step 2) · `#unit3`(Step 3) = `lot` | `slot:<키>`(`S.unit`, `setUnit`, `compareViews` — Lot 별 = 가상 스캔 `isLot` + `wafers`, `S.lotViews` 로 같은 객체 유지), 같은 Defect 판정 = **같은 Slot 끼리만**(`matchBySlot`, 양쪽 Slot 1개면 이름 무관). 상세 표 · CSV 에 Slot 열.
     wafer map 맞춤: 맵만 있으면 맵 Die 묶음 가운데 = wafer 중심(종전 왼쪽 아래 맞춤 → 맵이 오른쪽 위로 밀림), 그리는 Die 가운데가 중심과 0.75 Pitch 넘게 다르면 원 · Notch 를 Die 에 맞춤(`S.centerShift`).
   · #59(2026-11-10): **폴더 등록 진행 로딩창** `#busy`(`busy(p)` — `Slot 폴더 k / N` · 진행 막대 · `파일 x / M개` · 읽는 폴더, `addEntries` 가 Slot 마다 갱신 + `nextPaint` 로 화면 갱신, 끝나면 `finally` 로 닫음). [Lot 폴더 추가] 누르면 '폴더 고르는 중'(개수 모름, [닫기] · input `cancel` 로 닫힘).
+  · 필터 · Step 5(2026-11-10, 소유자 세션 지시): **목록 필터 · 정렬** = `fltHtml` · `readFlt` · `fltPass`(Contrast(실제) · Area µm² · Width(`BlobBreadth`) · Length, 화면 자릿수로 비교) · `SORTS` — 리뷰 패널 `#p3Flt`/`#p4Flt`(`setPanel` → `P.raw` → `applyPanel`, 필터 밖 = 지도 회색 원)와 Step 5 `#bigFlt` 공용.
+    **Step 5 대용량 Defect 조회**(`BIG`, 비교와 따로): `walkDir`(showDirectoryPicker 읽기 전용 핸들, 사진은 개수만) → `addBigEntries` → `buildLight`(Surface.flt + ProductInfo 만, `parseFltCols` → 열 배열 `COLS`, `scan.light`) → `bigBuild`(필터 → `gs`/`gi`/`ord`) → `bigPaint`(가상 표, 열 제목 = 정렬) → `bigShow`(`#bigAuto` 또는 더블 클릭 · Enter 때만 `ensureImg` · `fileGet` 으로 그 Slot 사진 목록 · 사진을 읽음, `bigDef` 가 Defect 객체를 그때 만듦).
+    `colorUrl`/`grayBmp` 는 `fileGet`(File 또는 핸들)로 바뀜(`fileIn` 삭제), `info(r)` 의 `r.raw` = 장비 Col/Row 그대로, `infoRows` = 정보 표 공용.
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.
 
 ### Color · Gray 매칭 = 전부 매칭 실패 대책 + 진단 (2026-11-09, 이슈 #49 후속, v12.9.29)
