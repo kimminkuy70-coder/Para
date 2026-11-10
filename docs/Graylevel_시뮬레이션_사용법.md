@@ -69,6 +69,13 @@
       ini · txt 는 UTF-8 · UTF-16 · EUC-KR 을 알아서 읽습니다. 5-2 결과에 'Color 연결 방법'(좌표 · 어긋남 보정 좌표 · 번호 · 가장 가까운 것 개수)과 좌표가 그대로 맞지 않은 Slot 의 기준(어긋남 · 규칙)을 보여 주고, 못 붙이면 이유(가장 가까운 Color 와의 거리)를 적습니다.
       실제 결과 폴더(`사진 제외.zip`, 353개)로 확인: 그대로 · 100 µm 어긋남 · 어긋남 + Index 없음 · ±8 µm 흔들림 · ini 없음 · UTF-16 ini 모두 353/353 맞는 Color(종전은 어긋남이면 0, UTF-16 이면 'Color 파일 없음' 353).
 
+13. **rev3 판**(`AOI_Contrast_Wizard_rev3.html`, 2026-11-10 소유자 세션 지시 "Rev2에 적용해서 rev3으로", 시험 `node tools/test_contrast_wizard_rev3.mjs`): rev2(위 Color 연결 포함) + **5-2 · 5-3 이 Slot 을 Step 1 과 똑같이 읽음**. rev2 · 원래 파일 · rev1 은 그대로입니다.
+    - 왜 바꿨나(소유자 "1,2,3 에서는 되는 Lot 도 5 에서는 안 된다 — 방식이 다른 것 아니냐"): 맞습니다. rev2 의 5-2 는 Slot 폴더에서 `ColorImageGrabingInfo.ini` · `ScanResultImageList.txt` · `frameToChuckPlane.ini` 를 **이름으로만** 찾았고, Step 1 은 Slot 안 파일 전부 + Lot ~ Slot 사이 폴더(위쪽 폴더)의 파일을 모아 읽습니다.
+      그래서 이 파일들이 Slot 이 아니라 위쪽 폴더(예: Lot 폴더)에 있거나 Slot 하위 폴더에 있으면 Step 1 은 되고 rev2 5-2 는 '없음'이 됩니다(실제 zip 의 세 파일을 Lot 폴더로 옮겨 재현: Step 1 353 · rev2 5-2 짝 0 · rev3 353).
+    - rev3: 5-2 를 누르면 리스트에 있는 Slot 만 **Slot 안 파일 전부(사진은 이름 · 핸들만, 내용은 안 읽음) + 위쪽 폴더 파일**을 모아 Step 1 의 `buildScan` 그대로 읽습니다(Color · Gray 프레임 · 변환 · Wafer Map · ProductInfo 전부 Step 1 과 같은 값). 5-1 은 rev2 와 같이 빠르게(Surface.flt · .md · ProductInfo 만).
+    - **Slot 별 읽은 결과** 표(5-2 결과 아래, 문제 있는 Slot 이 있으면 펼쳐짐 · 노란 줄): Lot · Slot · 리스트 Defect · Color 항목 수 · Color 연결 · Color 사진 있음 · Gray 프레임 수 · frameToChuckPlane · Gray 연결 · Gray 사진 있음 · 파일 수(사진, 위 폴더) · Color 기준 · 점검. 그래도 안 되면 이 표의 그 Slot 줄을 보면 어디서 끊겼는지 알 수 있습니다.
+    - 시험: 실제 결과 폴더(`사진 제외.zip`) 그대로 · 100 µm 어긋남 · UTF-16 ini · ini 없음 · 어긋남 + Index 없음 · ±8 µm 흔들림 · 세 파일이 Lot 폴더에 있음 — 모두 353/353 맞는 Color. 가짜 큰 폴더(rev2 와 같은 조건)에서 5-2 약 30초(rev2 약 20초 — 고른 Slot 의 파일 목록을 전부 만들기 때문), 5-1 약 14초 그대로. 실제 큰 폴더 · 네트워크 드라이브로는 확인 전.
+
 **폴더 인식(2026-11-10)**: Step 1 · Step 5 모두 **고른 폴더 바로 아래 폴더 = Lot**, Surface.flt 가 있는 폴더 = Wafer Slot(이름 = 그 폴더 이름)입니다. Slot 이 Lot 안 몇 단계 아래에 있어도(예: `고른 폴더/Contrast Avg24/Job/Setup/SM/Wafer/Surface.flt`) 그 Lot 으로 묶습니다.
 - Lot 폴더 하나를 고르면(`Lot/Wafer/Surface.flt`) 고른 폴더 = Lot, Slot 폴더를 고르면 Slot 1개짜리 Lot.
 - 고른 폴더 바로 아래 폴더마다 Surface.flt 가 바로 있고 폴더 이름마다 다른 CA 번호(`CA20`, `CA27` …)가 있으면 그 폴더들을 Lot 으로 봅니다.

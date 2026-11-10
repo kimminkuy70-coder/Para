@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Contrast Wizard rev3: Step 5 의 Slot 읽기 = Step 1 과 같게 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 소유자: "Rev2에 적용해서 rev3으로 만들어서 저장해 · 기존 1,2,3 에서는 잘되는 Lot 도 안 된다 · 바뀐 것은 테스트할 때 Lot 을 로컬로 복사한 것뿐".
+- 원인(재현): rev2 5-2 는 Slot 폴더에서 ColorImageGrabingInfo · ScanResultImageList · frameToChuckPlane 을 이름으로만 찾고, Step 1 은 Slot 안 전부 + Lot ~ Slot 사이 폴더 파일을 모은다.
+  실제 zip 의 세 파일을 Lot 폴더로 옮기면 Step 1 353 · rev2 5-2 짝 0 · rev3 353. 소유자 실패 폴더는 아직 못 봄(로컬 복사 때 파일 위치가 달라졌을 가능성 — 확인 전).
+- 한 일: 새 파일 `AOI_Contrast_Wizard_rev3.html` + `tools/test_contrast_wizard_rev3.mjs`(rev2 · rev1 · 원래 파일 무변경). `fullLoad` → `slotEntries` → `buildScan`, Slot 별 읽은 결과 표 `b5SlotTbl`.
+- 시험: 원래 · rev1 · rev2 · rev3 시험 모두 통과. zip 변형 7가지 353/353. 가짜 큰 폴더 5-2 약 30초(rev2 약 20초).
+- 남은 일: 소유자 PC 에서 rev3 로 실패하던 Lot 확인 — 안 되면 'Slot 별 읽은 결과' 표의 그 줄 값을 받는다.
+
 ## 최신 재개 — Contrast Wizard rev2: Gray 는 찾는데 Color 를 못 찾던 문제 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 소유자: "흑백은 있는데 컬러를 못 찾는 게 이해가 안 된다. Color 만 없는 경우는 없다. Contrast 가 있으면 좌표가 있고 그걸로 컬러를 찾게. 먼저 조사부터 보고." → 보고 후 "모든 사진 경로는 슬롯 폴더 안에 있어".
