@@ -11,11 +11,14 @@
   `equip_app` · `tests/test_updater.py` · `tests/test_review_regressions.py` 는 `updater_bat` 를 부름. workflow 는 안 고침.
 - 시험: `tools/check_project.py` = 종전 2개(`test_batchreport.py` tkinter 없음 · `test_kla_cache.py` 날짜 의존)만 실패, 새 시험 · `test_updater.py` 28 · `test_desktop_appupdate.py` 통과. frontend 무변경. Windows Defender 판정은 이 환경에서 확인 불가.
   (이 환경에는 openpyxl 이 없어 `python -m pip install openpyxl tksheet` 뒤에 돌림.)
-- 남은 일: 소유자 PC 에서 v12.9.32 zip 이 받아지는지. 막히면 보호 기록 '영향을 받는 항목'(zip 안 경로) 받기 + Microsoft 오탐 신고 / 코드 서명 검토(소유자 결정 필요).
+- 릴리스 v12.9.32 **안 함(소유자 지시 대기)**: 코드 · 노트 `docs/release_notes/v12.9.32.md` 는 push 함(`0677a32`). routine 의 태그 push(`git tag v12.9.32 0677a32 && git push origin v12.9.32`)가
+  "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Create Public Surface]" 로 거절됨(#49 · #54 와 같음) → REST 태그 · dispatch 는 시도하지 않음(같은 검사).
+  소유자가 "릴리즈해"라고 하면 `build-desktop.yml` dispatch(ref=version_v12, version=12.9.32) 또는 태그 push.
+- 남은 일: v12.9.32 릴리스(소유자 지시 필요), 소유자 PC 에서 v12.9.32 zip 이 받아지는지. 막히면 보호 기록 '영향을 받는 항목'(zip 안 경로) 받기 + Microsoft 오탐 신고 / 코드 서명 검토(소유자 결정 필요).
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
-| Para #58 | v12.9.31 zip 이 `Trojan:Script/Wacatac.F!ml` 로 막힘 — 참고해서 수정 | 엔진 zip 에서 배치 스크립트 문구 제거 · 시험 통과, v12.9.32 릴리스(결과는 아래 줄) |
+| Para #58 | v12.9.31 zip 이 `Trojan:Script/Wacatac.F!ml` 로 막힘 — 참고해서 수정 | 엔진 zip 에서 배치 스크립트 문구 제거 · 시험 통과(`0677a32`), v12.9.32 릴리스는 권한 검사 거절 → 소유자 지시 대기 |
 
 ## 최신 재개 — 설치 zip 이 Windows Defender 에 막힘 → v12.9.31 (2026-11-10 KST, `version_v12`)
 
