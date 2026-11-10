@@ -525,7 +525,10 @@ exp = {}
 for c in colors:
     fr, px, py, n = cg.choose_frame(c, frames, inv, off)
     exp[int(c['Index'])] = [c['file'], fr['file'], px, py, n]
-for n in [c['file'] for c in colors] + [f['file'] for f in frames]: files[n] = b''
+sys.path.insert(0, os.path.join(${JSON.stringify(root)}, 'tests'))
+from colorgray_fixture import COLOR_JPEG, GRAY_JPEG       # 사진 자리에 작은 진짜 JPEG(새 창 · 5-3 에서 그릴 수 있게)
+for c in colors: files[c['file']] = COLOR_JPEG
+for f in frames: files[f['file']] = GRAY_JPEG
 # 좌표 기준 시험용: Fault · Surface.flt 좌표를 프레임 직사각형의 좌측 하단 원점으로 옮긴 판(프로그램 frames_rect 와 같은 식)
 a, b2, c2, d = inv[0][0], inv[0][1], inv[1][0], inv[1][1]; det = a * d - b2 * c2; fw = ((d / det, -b2 / det), (-c2 / det, a / det))
 xs = [f['x'] + off[0] + fw[0][0] * px + fw[0][1] * py for f in frames for px, py in ((0, 0), (cg.GW, 0), (0, cg.GH), (cg.GW, cg.GH))]
@@ -551,6 +554,12 @@ const realRun=async(name,opt)=>{const pg=await browser.newPage();const er=[];pg.
       pairs:c.BIG.pairs.filter(p=>p.s.name==='RCP/SETUP1/LOT_A/W01').map(p=>[p.i,p.st,p.c&&p.c.file,p.c&&p.c.how,p.g&&p.g.file,p.g&&p.g.px,p.g&&p.g.py,p.g&&p.g.n]),warns:c.BIG.scans.flatMap(s=>s.warns),
       src:(c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01')||{}).cg?.src,alt:((c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01')||{}).cg?.tfAlt||[]).map(a=>[a.name,a.hits]),
       msg:document.getElementById('bigMsg').innerText,row:[...document.querySelectorAll('#b5slotTbl tbody tr')].map(x=>x.innerText).join('\n'),csv:c.pairCsv().join('')}},{real,opt});
+  if(opt.view){   // 5-2 줄 더블 클릭 → 사진 새 창 · 5-3 하나씩 크게 (Color 만인 Slot: Color 를 창 · 칸 전체에)
+    await pg.locator('nav button[data-step="5"]').click();await pg.locator('[data-b5="2"]').click();const [w]=await Promise.all([pg.waitForEvent('popup'),pg.locator('#b5list .br').nth(0).dblclick()]);await w.locator('#fc canvas').waitFor();
+    r.pop=await w.evaluate(()=>({conly:document.querySelector('.pv').classList.contains('conly'),hd:document.getElementById('hd').textContent,color:!!document.querySelector('#fc canvas'),
+      fcW:document.getElementById('fc').getBoundingClientRect().width,bodyW:document.body.getBoundingClientRect().width,grayShown:getComputedStyle(document.getElementById('fx')).display!=='none'}));await w.close();
+    await pg.locator('#toB3').click();await pg.locator('#c5Color canvas').waitFor();await pg.locator('#c5St',{hasText:'이 Defect 끝'}).waitFor();
+    r.c5={n:await pg.evaluate(()=>window.__cw.C5.items.length),conly:await pg.locator('#c5one .rvimgs.conly').count(),gray:await pg.locator('#c5Gray').isVisible(),cnt:await pg.locator('#c5cnt').innerText()}}
   await pg.close();assert.ok(r.scans.length,name);return {...r,er}};
 const cmpReal=(name,r,tol=1e-6)=>{let ok=0,dmax=0;for(const [i,st,cf,how,gf,px,py,n] of r.pairs){const e=real.exp[i];
     assert.equal(st,'ok',name+' '+i);assert.equal(cf,e[0],name+' '+i);assert.equal(how,'Index = 기록 순서',name+' '+i);assert.equal(gf,e[1],name+' '+i);
@@ -589,7 +598,10 @@ assert.equal(real9.src.frames,'Gray 없음(Wafer2Table.ini · s_FrameData.dat �
 assert.match(real9.row,/Gray 위치를 못 구함 — ScanResultImageList\.txt 가 없고 대신할 것도 없음/);
 // Color 사진만 있는 Slot(소유자 예: Gray 사진 · 목록이 저장되지 않음) → Color 353 개는 연결해 보여 주고 Gray 는 '없음'
 const noGray=Object.keys(real.files).filter(k=>/\.t\.jpeg$/i.test(k)).concat(['ScanResultImageList.txt']);
-const real10=await realRun('colorOnly',{drop:noGray});
+const real10=await realRun('colorOnly',{drop:noGray,view:true});
+assert.equal(real10.pop.conly,true);assert.equal(real10.pop.color,true);assert.equal(real10.pop.grayShown,false);assert.ok(real10.pop.fcW>real10.pop.bodyW*0.9,JSON.stringify(real10.pop));   // 새 창 = Color 가 창 전체
+assert.match(real10.pop.hd,/Gray 없음 — Color 만 크게 \(Gray 사진 없음 — 이 Slot 에는 Gray 프레임 사진/);
+assert.deepEqual([real10.c5.n,real10.c5.conly,real10.c5.gray],[353,1,false]);assert.match(real10.c5.cnt,/Defect 353개 \(사진 있는 것만\)/);   // 5-3: Color 만인 Defect 도 기본으로 보임
 assert.ok(real10.pairs.every(p=>p[1]==='color'&&p[2]===real.exp[p[0]][0]&&p[3]==='Index = 기록 순서'),'colorOnly');
 assert.match(real10.msg,/Gray 사진이 없는 Slot 1개\(Color 사진만 저장됨[\s\S]*W01/);assert.match(real10.row,/Gray 사진 없음 — 이 Slot 에는 Gray 프레임 사진\(X\.Y\.t\.jpeg\)/);
 assert.match(real10.csv,/Color 만 \(Gray 없음\),.*Gray 사진 없음 — 이 Slot 에는 Gray 프레임 사진/);

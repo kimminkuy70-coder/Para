@@ -22,6 +22,8 @@
 - 후속 4(소유자 Slot zip 2개 — 업로드, 저장소에 안 넣음): S3LQR170XMG2 = Color 3장만(Gray 사진 · ScanResultImageList 없음, .1 · .2 같음, RecipeNumber 0, 레시피 2 Defect 는 Surface.flt frameIdx · xInFrame 기록 ↔ 우리 계산 0.7 px)
   → 종전 rev5 는 Slot 전체를 '매칭 파일 없음'으로 처리해 Color 도 안 보였다 → `g.noGray` 로 Color 만 연결. 29126432EWE3 = Color 2 · Gray 2(레시피 1 · 2, `X.Y.t.1/2.jpeg`, Color `….1/2.jpeg`, Index 둘 다 0)
   → rev5 = colorgray.py 와 같음(2637.82, 358.58 / 2782.99, 356.29), 목록을 빼도 사진 이름 + Wafer2Table 로 같은 사진(≤ 1.9 px). 실제 사진으로 Color · Gray Crop 같은 장면 · Defect 같은 자리 확인. 변환 규칙 = 같은 레시피 번호 → 큰 번호.
+- 후속 5(소유자 "Color 이미지만 있을 경우에도 Color 이미지만이라도 띄워야"): 새 창 · 5-3 에서 Gray 가 없으면 Color 를 전체 크기로(`conly`), 5-3 기본 필터 = 사진 있는 것만(Color 만 포함).
+  소유자 S3LQR170XMG2 로 확인(Color 3장 창 전체). 시험 = 실제 zip 에서 Gray 사진 · 목록을 빼고 새 창 · 5-3 확인(사진 자리에 tests/colorgray_fixture 의 작은 JPEG).
 - 남은 일: 소유자 PC(실제 사진 · 네트워크 드라이브)에서 rev5 5-1 → 5-2 → 사진 새 창 확인. 속도(5-1 이 Slot 마다 파일 2 ~ 3개를 더 읽음, 5-2 는 매칭 폴더 이름 목록 한 번)는 확인 전. colorgray.py 를 바꾸면 rev5 `15-0` 구역도 같이.
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)

@@ -154,6 +154,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 #c5one .rvimgs figcaption{position:static;align-self:stretch;background:#000c;border-radius:8px 8px 0 0;padding:3px 8px;overflow-wrap:anywhere;user-select:text}
 #c5one .rvimgs figcaption .pp{display:block;font:11px Consolas,"Malgun Gothic",monospace;color:#cfd8e3;user-select:all}
 #c5one .rvimgs figure>canvas,#c5one .rvimgs figure>.ph{margin:auto}
+#c5one .rvimgs.conly{grid-template-columns:1fr}#c5one .rvimgs.conly #c5Gray{display:none}#c5one .rvimgs.conly figure canvas{max-height:560px}
 .g5 .gn{display:grid;grid-template-columns:1fr 1fr;gap:2px;font-size:11px;color:var(--sub)}.g5 .gn span{padding:1px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 로딩창: 단계 목록 · 심장 박동(경과 · 마지막 진행) */
 .busy ol{list-style:none;padding:0;margin:0 0 8px;font-size:13px}.busy ol li{padding:1px 0;color:var(--sub)}.busy ol li.on{color:var(--ink);font-weight:700}.busy ol li.ok{color:var(--ok)}
@@ -337,7 +338,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <div id="b5p3" hidden>
     <div class="card">
       <div class="row"><div class="viewtabs"><button data-v5="one" aria-pressed="true">하나씩 크게</button><button data-v5="grid">격자로 여러 개</button></div>
-        <label><input type="checkbox" id="b5okOnly" checked> 짝 완료만</label>
+        <label title="Color 사진이나 Gray 사진 중 하나라도 있는 Defect(짝 완료 · Color 만 · Gray 만) — Color 사진만 있어도 보입니다"><input type="checkbox" id="b5okOnly" checked> 사진 있는 것만</label>
         <button id="b5prep">이 목록 사진 모두 미리 준비</button><button id="toB2b">← 5-2</button>
         <span class="muted" id="c5cnt"></span></div>
     </div>
@@ -2034,7 +2035,8 @@ function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray'
     figcaption .pp{display:block;font:12px Consolas,"Malgun Gothic",monospace;color:#b9c6d8;user-select:all}figcaption .pp.rel{color:#e0b060}
     .im{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
     .im>canvas{max-width:100%;max-height:100%;cursor:zoom-in}.im.full{overflow:auto;align-items:flex-start;justify-content:flex-start}.im.full>canvas{max-width:none;max-height:none;cursor:zoom-out}
-    .ms{color:#ff9a92;padding:10px}</style>`);
+    .ms{color:#ff9a92;padding:10px}
+    .pv.conly{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}.pv.conly #fx,.pv.conly #ff{display:none}.hd .ng{color:#ffb37a;font-weight:600}</style>`);
   doc.body.tabIndex=-1;
   // 칸 = 제목(사진 파일명 + 전체 경로, 사진을 가리지 않게 위에) + 사진
   doc.body.innerHTML=`<div class="hd" id="hd"></div><div class="pv"><figure id="fc"><figcaption>Color</figcaption><div class="im"></div></figure><figure id="fx"><figcaption>Gray Crop (Color 시야)</figcaption><div class="im"></div></figure>`
@@ -2050,8 +2052,8 @@ async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w)
   if(!doc){try{w.close()}catch(e){}PW.w=null;w=window.open('','cw_photo_'+Date.now(),'width=1600,height=1000');if(!w)return;PW.w=w;photoWinInit(w);doc=w.document;try{w.focus()}catch(e){}}   // 닫고 새 창
   const V=PW.V,p=PW.items[V.sel],tk=++PW.tok,$w=id=>doc.getElementById(id);
   if(!$w('fc')||!doc.querySelector('#fc .im'))photoWinInit(w);   // 같은 출처로 새로 고쳐졌으면 다시 만든다
-  const F=id=>{const f=$w(id);return {cap:f.querySelector('figcaption'),im:f.querySelector('.im')}},fc=F('fc'),fx=F('fx'),ff=F('ff');
-  for(const f of [fc,fx,ff]){f.im.replaceChildren();f.im.classList.remove('full')}
+  const F=id=>{const f=$w(id);return {cap:f.querySelector('figcaption'),im:f.querySelector('.im')}},fc=F('fc'),fx=F('fx'),ff=F('ff'),pv=doc.querySelector('.pv');
+  for(const f of [fc,fx,ff]){f.im.replaceChildren();f.im.classList.remove('full')}pv.classList.remove('conly');
   const cap=(f,h,title)=>{f.cap.innerHTML=h;f.cap.title=title||''};
   if(!p){$w('hd').textContent='보여 줄 Defect 가 없습니다';cap(fc,'Color');cap(fx,'Gray Crop (Color 시야)');cap(ff,'Gray 프레임');return}
   const s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),ms=(f,t)=>f.im.insertAdjacentHTML('beforeend',`<p class="ms">${esc(t)}</p>`),zoom=el=>{el.onclick=()=>el.parentNode.classList.toggle('full')};
@@ -2066,9 +2068,11 @@ async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w)
   const draw=b=>{const cv=doc.createElement('canvas');cv.width=b.width;cv.height=b.height;cv.getContext('2d').drawImage(b,0,0);zoom(cv);return cv};
   const cb=r.c?await cgBitmap(s,r.c.file):null;if(tk!==PW.tok)return;
   if(cb)fc.im.append(draw(cb));else ms(fc,r.c?`Color 파일 없음: ${cleanName(r.c.file)}`:(p.cerr||r.why||'Color 항목 없음'));
-  if(!r.hit){ms(fx,p.gerr||`Gray: ${r.why||'위치 없음'}`);return}
+  // Gray 가 없으면(Color 사진만 저장된 Slot 등) Color 를 창 전체에 크게(소유자 "Color 이미지만 있을 경우에도 Color 이미지만이라도 띄워야")
+  const conly=why=>{if(!cb){ms(fx,why);return}pv.classList.add('conly');why=why.replace(/^Gray:\s*/,'');$w('hd').insertAdjacentHTML('beforeend',` <b class="ng" title="${esc(why)}">· Gray 없음 — Color 만 크게 (${esc(why)})</b>`)};
+  if(!r.hit){conly(p.gerr||`Gray: ${r.why||'위치 없음'}`);return}
   const gb=await cgBitmap(s,r.hit.frame.file);if(tk!==PW.tok)return;
-  if(!gb){ms(fx,`Gray 파일 없음: ${cleanName(r.hit.frame.file)}`);return}
+  if(!gb){conly(`Gray 파일 없음: ${cleanName(r.hit.frame.file)}`);return}
   const cs=r.crop||cgCropSize({}),k=cgCropCanvas(gb,r.hit,cs,doc);zoom(k.canvas);fx.im.append(k.canvas);const fr=cgFrameCanvas(gb,r.hit,cs,doc);zoom(fr);ff.im.append(fr);
   for(let j=V.sel+1;j<=V.sel+2&&j<PW.items.length;j++){const q=PW.items[j],rq=q.r||cgOf(q.s,q.i);if(rq.c)cgBitmap(q.s,rq.c.file);if(rq.hit)cgBitmap(q.s,rq.hit.frame.file)}}
 
@@ -2078,8 +2082,10 @@ const C5={items:[],tok:0,gtok:0,mode:'one',page:0};const G5=48,TW=240;
 const VC=makeVT($('#c5list'),[['5-1 #',60,'num',null],['상태',110,'s',null],['Lot',120,'',null],['Slot',100,'',null],['ID',60,'num',null],['Contrast(실제)',110,'num',null],['Area µm²',86,'num',null],['Width',62,'num',null]],{
   row:k=>{const p=C5.items[k],s=p.s,C=s.cols,i=p.i,px2=S.o.pix*S.o.pix;return [p.k+1,ST5[p.st],s.lotName,s.slotName||'',s.idByOrder?i:C.id[i],f2(C.c[i]),f2(C.area[i]*px2),f1(C.w[i])]},
   cls:k=>'st-'+C5.items[k].st,onSel:()=>{c5Show();photoWinFollow(VC)},onEnter:()=>photoWin(VC,C5.items)});
-function c5Refresh(keep){const ok=$('#b5okOnly').checked;C5.items=(BIG.pairs||[]).filter(p=>p.st!=='skip'&&(!ok||p.st==='ok'));vtSet(VC,C5.items.length,keep);
-  $('#c5cnt').textContent=`Defect ${C5.items.length.toLocaleString()}개${ok?' (짝 완료만)':''} · 사진 준비 끝 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`+(C5.note?' · '+C5.note:'');C5.note='';
+/** 5-3 목록: [사진 있는 것만] = Color 나 Gray 사진 중 하나라도 있는 것(소유자 "Color 이미지만 있을 경우에도 Color 이미지만이라도 띄워야") — 종전 '짝 완료만'은 Color 만인 Defect 를 숨겼다. */
+const hasPhoto=p=>p.st==='ok'||p.st==='color'||p.st==='gray';
+function c5Refresh(keep){const ok=$('#b5okOnly').checked;C5.items=(BIG.pairs||[]).filter(p=>p.st!=='skip'&&(!ok||hasPhoto(p)));vtSet(VC,C5.items.length,keep);
+  $('#c5cnt').textContent=`Defect ${C5.items.length.toLocaleString()}개${ok?' (사진 있는 것만)':''} · 사진 준비 끝 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`+(C5.note?' · '+C5.note:'');C5.note='';
   $('#c5one').hidden=C5.mode!=='one';$('#c5gridBox').hidden=C5.mode!=='grid';$$('[data-v5]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v5===C5.mode));
   if(C5.mode==='one')c5Show();else c5Grid();if(PW.V===VC)PW.items=C5.items}
 /** 진행 기록 줄(5-3 사진 하나): 지금 무엇을 읽는지 · 끝난 것 · 걸린 시간. 진행 중인 줄은 0.2초마다 시간이 올라간다(멈추면 응답 기다리는 중). */
@@ -2092,7 +2098,7 @@ function stLog(box,tk){const L=[],t0=performance.now();let cur=null;
     fail(x){if(cur&&cur.k==='on'){cur.k='err';cur.e=performance.now();cur.x=x}else L.push({t:x,k:'err'});draw()},
     end(){close();clearInterval(iv);L.push({t:`이 Defect 끝 (${((performance.now()-t0)/1000).toFixed(2)}초)`,k:'ok'});draw()}}}
 async function c5Show(){
-  const p=C5.items[VC.sel],tk=++C5.tok,cf=$('#c5Color'),gf=$('#c5Gray'),st=$('#c5St');
+  const p=C5.items[VC.sel],tk=++C5.tok,cf=$('#c5Color'),gf=$('#c5Gray'),st=$('#c5St'),rv=cf.parentNode;rv.classList.remove('conly');
   cf.innerHTML='<figcaption>Color 원본</figcaption>';gf.innerHTML='<figcaption>Gray Crop (Color 시야)</figcaption>';
   if(!p){cf.insertAdjacentHTML('beforeend','<div class="ph">보여 줄 Defect 가 없습니다</div>');$('#c5Info').innerHTML='';st.innerHTML='';return}
   const s=p.s,log=stLog(st,tk),r=p.r||cgOf(s,p.i),d=bigDef(s,p.i),x=info({d,raw:true,label:s.lotPath});d.gl=p.gl||null;
@@ -2106,7 +2112,8 @@ async function c5Show(){
     if(b){const cv=document.createElement('canvas');cv.width=b.width;cv.height=b.height;cv.getContext('2d').drawImage(b,0,0);cv.onclick=()=>photoWin(VC,C5.items);cf.append(cv);log.done(`${b.width}×${b.height}px`)}
     else{cf.insertAdjacentHTML('beforeend',`<div class="ph">Color 파일 없음: ${esc(cleanName(r.c.file))}</div>`);log.fail('Color 파일 없음')}}
   else{cf.insertAdjacentHTML('beforeend',`<div class="ph">${esc(ct)}</div>`);log.fail(ct)}
-  if(r.hit){log.step(`Gray 프레임 읽기 · 디코딩: ${cleanName(r.hit.frame.file)}`);const b=await cgBitmap(s,r.hit.frame.file);if(tk!==C5.tok)return;
+  const hasC=!!cf.querySelector('canvas');if(!r.hit&&hasC)rv.classList.add('conly');   // Gray 가 없으면 Color 를 칸 전체에(소유자)
+  if(r.hit){log.step(`Gray 프레임 읽기 · 디코딩: ${cleanName(r.hit.frame.file)}`);const b=await cgBitmap(s,r.hit.frame.file);if(tk!==C5.tok)return;if(!b&&hasC)rv.classList.add('conly');
     if(b){log.step('Crop(Color 시야) · GL 계산');const k=cgCropCanvas(b,r.hit,r.crop||cgCropSize({}));d.gl=p.gl=cgGL(k,b,d);k.canvas.onclick=()=>photoWin(VC,C5.items);gf.append(k.canvas);
       log.done(`픽셀 (${f1(r.hit.px)}, ${f1(r.hit.py)}) · Crop ${k.raw.width}×${k.raw.height} → ${k.canvas.width}×${k.canvas.height}`);fill()}
     else{gf.insertAdjacentHTML('beforeend',`<div class="ph">Gray 파일 없음: ${esc(cleanName(r.hit.frame.file))}</div>`);log.fail('Gray 파일 없음')}}
@@ -2153,7 +2160,7 @@ async function c5PrepAll(){const L=C5.items.filter(p=>!THUMB.has(p.k)).sort((a,b
 function b5tabs(){const b=$$('[data-b5]');b[1].disabled=!BIG.scans.length;b[2].disabled=!(BIG.pairs&&BIG.pairs.some(p=>p.st!=='skip'));b.forEach(x=>x.setAttribute('aria-pressed',+x.dataset.b5===BIG.stage))}
 function b5go(n){BIG.stage=n;[1,2,3].forEach(k=>$('#b5p'+k).hidden=k!==n);b5tabs();
   if(n===1){bigLots();bigRefresh();$('#bigList').focus()}else if(n===2){b5Refresh();$('#b5list').focus()}
-  else{const P=BIG.pairs||[];if($('#b5okOnly').checked&&!P.some(p=>p.st==='ok')&&P.some(p=>p.st!=='skip')){$('#b5okOnly').checked=false;C5.note='짝 완료가 하나도 없어 [짝 완료만]을 껐습니다 — Color 만 · Gray 만 · 둘 다 없음도 보입니다.'}
+  else{const P=BIG.pairs||[];if($('#b5okOnly').checked&&!P.some(hasPhoto)&&P.some(p=>p.st!=='skip')){$('#b5okOnly').checked=false;C5.note='사진이 있는 Defect 가 하나도 없어 [사진 있는 것만]을 껐습니다 — 둘 다 없음도 보입니다.'}
     c5Refresh();$('#c5list').focus()}}
 const curVT=()=>BIG.stage===1?VA:BIG.stage===2?VB:(C5.mode==='one'?VC:null);
 $$('[data-b5]').forEach(b=>b.onclick=()=>b5go(+b.dataset.b5));
