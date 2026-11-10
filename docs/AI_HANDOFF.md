@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v12.9.32 도 막힘 · 관리자 권한 없음 → 코드로는 더 줄일 것이 없음 (2026-11-10 KST, `version_v12`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `5583a14` · 이슈 없음(소유자 세션: v12.9.32 도 zip 자체가 안 받아짐, OneDrive 로 옮겨도 막힘, 회사 PC 라 '허용'으로 바꿀 수 없음, 담당 교수도 Defender 는 모름 — "다운 받을 때 문제없게 하려면?").
+- v12.9.32 = #58(엔진 배치 문구 제거) + 앱 exe 압축 끔 둘 다 포함. 29 · 32 zip 전체에서 스크립트류 문자열(powershell · cmd.exe · @echo off · del "%~f0" 등)을 찾으면
+  32 는 `Camtek_AOI_manager.exe`(Tauri) · `subprocess.pyc`(파이썬 표준) · `ucrtbase.dll`(Windows 런타임)만 남음 — 우리 코드에 남은 의심 문자열 없음. 29 는 이 3개 + 지금은 지운 updater/desktop_swap.
+- 판단: `!ml` = 클라우드 ML 의 평판(서명 없음 + 새 해시) 판정. 빌드마다 해시가 바뀌어 통과/차단이 갈림(29 통과는 우연에 가까움). 코드를 더 바꿔도 보장 못 함.
+- 소유자에게 안내한 해결: ① Microsoft 오탐 신고(관리자 권한 불필요, 그 파일 해시가 전 세계에서 풀림) ② 코드 서명(Azure Trusted Signing 등, 지속 해결, 비용) ③ 회사 IT 예외 등록. Defender 회피용 꼼수(암호 zip 등)는 권하지 않음.
+- 남은 일: 소유자 결정(신고 결과 · 서명 도입 여부). 서명을 쓰면 `build-desktop.yml` 에 서명 단계 추가 필요.
+
 ## 최신 재개 — Para #58 v12.9.31 zip 도 `Trojan:Script/Wacatac.F!ml` → 엔진에서 배치 스크립트 문구 제거, v12.9.32 (2026-11-10 KST, `version_v12`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `ecb81de` · 이슈 Para #58("v12.9.32 업데이트 사항": Defender 탐지 기록 `Trojan:Script/Wacatac.F!ml`, file = `Camtek_AOI_manager_v12.9.31.zip`, "이거 참고해서 수정해") · 작업 브랜치 `version_v12`.
