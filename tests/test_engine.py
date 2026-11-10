@@ -9,10 +9,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from param_manager import engine  # noqa: E402
 from param_manager.engine import ParamRepository  # noqa: E402
 
-SRC_XLSM = "/root/.claude/uploads/7851d2ae-4682-5f92-96aa-2026219c8485/52ecc345-Camtek_RTP_PI_CoreParameter_Managed_PI_ALL_IncrementalSync_VBA.xlsm"
+# Customer sample workbook: kept outside the repository (no customer data in git). Point
+# PARA_ENGINE_SAMPLE at it to run the sample tests; without it they are skipped, not failed.
+SRC_XLSM = os.environ.get("PARA_ENGINE_SAMPLE",
+    "/root/.claude/uploads/7851d2ae-4682-5f92-96aa-2026219c8485/52ecc345-Camtek_RTP_PI_CoreParameter_Managed_PI_ALL_IncrementalSync_VBA.xlsm")
+
+
+class SkipSample(Exception):
+    pass
 
 
 def _new_repo_from_sample(tmp):
+    if not os.path.isfile(SRC_XLSM):
+        raise SkipSample("샘플 .xlsm 없음(PARA_ENGINE_SAMPLE)")
     dest = os.path.join(tmp, "shared.xlsx")
     repo = engine.import_from_xlsm(SRC_XLSM, dest)
     return dest, repo
@@ -223,17 +232,20 @@ def test_lock_and_conflict():
 
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
-    failed = 0
+    failed = skipped = 0
     for t in tests:
         try:
             print(f"[RUN] {t.__name__}")
             t()
             print(f"[PASS] {t.__name__}\n")
+        except SkipSample as e:
+            skipped += 1
+            print(f"[SKIP] {t.__name__}: {e}\n")
         except Exception as e:  # noqa: BLE001
             failed += 1
             import traceback
             print(f"[FAIL] {t.__name__}: {e}")
             traceback.print_exc()
             print()
-    print(f"==== {len(tests) - failed}/{len(tests)} passed ====")
+    print(f"==== {len(tests) - failed - skipped}/{len(tests)} passed, {skipped} skipped ====")
     sys.exit(1 if failed else 0)

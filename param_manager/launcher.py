@@ -112,6 +112,11 @@ def main(argv=None) -> int:
         write_state(server)
         if not reused:
             winnative.open_app_window(server.url, profile)
+        home = os.environ.get("PARA_APP_HOME")
+        try:
+            winnative.ensure_desktop_shortcut(Path(home) if home else None)
+        except Exception:  # noqa: BLE001 - a missing shortcut must not stop the program
+            pass
         def loader():
             from . import desktop_ipc as ipc
             return ipc

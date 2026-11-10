@@ -166,6 +166,92 @@ def pick(kind: str) -> str | None:
         return _choose(kind)
 
 
+# ---------------------------------------------------------------- desktop shortcut (IShellLinkW)
+CLSID_SHELL_LINK = "00021401-0000-0000-C000-000000000046"
+IID_SHELL_LINK_W = "000214F9-0000-0000-C000-000000000046"
+IID_PERSIST_FILE = "0000010B-0000-0000-C000-000000000046"
+# IShellLinkW slots: SetDescription 7, SetWorkingDirectory 9, SetArguments 11, SetIconLocation 17, SetPath 20
+# IPersistFile slots: Save 6
+SL_DESC, SL_WORKDIR, SL_ARGS, SL_ICON, SL_PATH, PF_SAVE, QUERY = 7, 9, 11, 17, 20, 6, 0
+SHORTCUT_NAME = "Camtek AOI Manager.lnk"
+
+
+def desktop_dir() -> Path | None:
+    if not is_windows():
+        return None
+    import ctypes
+    buf = ctypes.create_unicode_buffer(260)
+    if ctypes.windll.shell32.SHGetFolderPathW(None, 0x10, None, 0, buf) != 0:   # CSIDL_DESKTOPDIRECTORY
+        return None
+    return Path(buf.value)
+
+
+def shortcut_spec(home: Path) -> dict:
+    """What the desktop shortcut points to: python.org pythonw.exe running our start file."""
+    return dict(target=str(home / "python" / "pythonw.exe"), args=f'"{home / "Camtek_AOI_manager.pyw"}"',
+                workdir=str(home), icon=str(home / "app" / "param_manager" / "data" / "para_icon.ico"),
+                description="Camtek AOI Manager (Para v13)")
+
+
+def create_shortcut(lnk: Path, spec: dict) -> bool:
+    """Write a .lnk with the Windows shell API (what Explorer itself uses). Windows only."""
+    if not is_windows():
+        return False
+    import ctypes
+    from ctypes import POINTER, byref, c_int, c_void_p, c_wchar_p
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", ctypes.c_ulong), ("b", ctypes.c_ushort), ("c", ctypes.c_ushort), ("d", ctypes.c_ubyte * 8)]
+
+    def guid(text):
+        u = uuid.UUID(text)
+        g = GUID(u.time_low, u.time_mid, u.time_hi_version)
+        for i, byte in enumerate(u.bytes[8:]):
+            g.d[i] = byte
+        return g
+
+    def method(obj, slot, *argtypes):
+        table = ctypes.cast(obj, POINTER(POINTER(c_void_p))).contents
+        return lambda *a: ctypes.WINFUNCTYPE(ctypes.HRESULT, c_void_p, *argtypes)(table[slot])(obj, *a)
+
+    ole32 = ctypes.windll.ole32
+    initialized = ole32.CoInitializeEx(None, 0x2) in (0, 1)
+    link, pf = c_void_p(), c_void_p()
+    try:
+        if ole32.CoCreateInstance(byref(guid(CLSID_SHELL_LINK)), None, 1, byref(guid(IID_SHELL_LINK_W)), byref(link)) != 0:
+            return False
+        method(link, SL_PATH, c_wchar_p)(spec["target"])
+        method(link, SL_ARGS, c_wchar_p)(spec["args"])
+        method(link, SL_WORKDIR, c_wchar_p)(spec["workdir"])
+        method(link, SL_DESC, c_wchar_p)(spec["description"])
+        if Path(spec["icon"]).is_file():
+            method(link, SL_ICON, c_wchar_p, c_int)(spec["icon"], 0)
+        method(link, QUERY, POINTER(GUID), POINTER(c_void_p))(byref(guid(IID_PERSIST_FILE)), byref(pf))
+        method(pf, PF_SAVE, c_wchar_p, c_int)(str(lnk), 1)
+        return True
+    except OSError:
+        return False
+    finally:
+        for obj in (pf, link):
+            if obj.value:
+                try:
+                    method(obj, RELEASE)()
+                except OSError:
+                    pass
+        if initialized:
+            ole32.CoUninitialize()
+
+
+def ensure_desktop_shortcut(home: Path | None) -> bool:
+    """Installed copy only: make the desktop shortcut once (the first start is done with Win+R)."""
+    if home is None or not is_windows() or not (home / "python" / "pythonw.exe").is_file():
+        return False
+    desk = desktop_dir()
+    if desk is None or (desk / SHORTCUT_NAME).exists():
+        return False
+    return create_shortcut(desk / SHORTCUT_NAME, shortcut_spec(home))
+
+
 # ---------------------------------------------------------------- natives for the web server
 class WinNatives(Natives):
     def __init__(self, server, profile: Path | None = None):

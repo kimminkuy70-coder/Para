@@ -7,6 +7,12 @@
 - **원칙 예외(소유자 확정 2026-11-10)**: 런타임 인터넷 금지의 예외는 **업데이트 확인 · 소스 zip 받기 때 github.com 의 이 저장소 하나**뿐(TLS 검증 필수 · 토큰 없음 · 실행 파일 들어 있으면 거부 · 받기는 버튼 때만). 그 밖은 계속 금지.
 - **tkinter 판 삭제**(equip_app · app · batchreport_ui · theme · refresh · updater_bat · run.py · .bat 전부), Tauri(`frontend/src-tauri`) · PyInstaller 빌드 삭제. 아래 tkinter · Tauri · exe 관련 절은 **v12 까지의 기록**이다(v12 는 `version_v12` 에 보존).
 - `.bat` · `.ps1` · `.vbs` · `.cmd` 파일을 저장소에 다시 넣지 말 것(#31 · #58 `Trojan:Script`). 배포 파일 전체에 배치 명령 문구 금지.
+- 구조: 시작 `Camtek_AOI_manager.pyw`(app.new 교체 · 경로) → `param_manager/launcher.py`(중복 실행 · server.json · Edge 창) → `webserver.py`(127.0.0.1, `/api/send` · `/api/events`(SSE) · `/api/native` · `/api/upload` · `/api/ping`)
+  → 엔진은 v12 그대로(`desktop_boot` · `desktop_ipc.serve`). Windows 기능 = `winnative.py`(고르기 창 · Edge · 트레이 · 바로가기). 화면 연결 = `frontend/src/desktop.ts`(fetch + EventSource).
+  업데이트 = `desktop_appupdate.py`. 배포 파일 목록 = `deploy.py` **한 곳**(설치 zip · 업데이트 · `tests/test_deploy_files.py`). `frontend/dist` · `vendor/` 는 커밋한다 — 화면을 고치면 `cd frontend && npm run build` 결과도 커밋(CI 가 확인).
+- 릴리스: `param_manager/__init__.py` `__version__` 을 올리고 `docs/release_notes/v{버전}.md` 를 넣어 `version_v13` 에 push → `.github/workflows/v13.yml` 이 시험 · dist 확인 · 설치 zip(PSF 서명 확인 · Defender 검사) · Release 생성.
+  시작 파일(`Camtek_AOI_manager.pyw`)은 업데이트로 바뀌지 않는다(실행 중이라 잠김) — 바꿔야 하면 새 설치 zip.
+- 시험: `tests/test_*.py` 하나씩(`PYTHONPATH=vendor` 가능) + 화면 `PARA_TEST_NODE_MODULES=/opt/node-tools/node_modules CODEX_PRIMARY_RUNTIME_PYTHON=python3 node tools/test_desktop_ui.mjs`(진짜 로컬 서버).
 
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
 프로그램(Python/tkinter). 기존 Excel(.xlsm)+VBA 도구를 대체.

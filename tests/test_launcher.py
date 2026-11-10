@@ -88,6 +88,12 @@ class LauncherTest(unittest.TestCase):
         if os.name != "nt":
             self.assertIsNone(winnative.pick("folder"))   # quiet no-op off Windows
 
+    def test_shortcut_runs_signed_pythonw_with_start_file(self):
+        spec = winnative.shortcut_spec(Path("H"))
+        self.assertEqual(Path(spec["target"]).parts[-2:], ("python", "pythonw.exe"))
+        self.assertTrue(spec["args"].strip('"').endswith("Camtek_AOI_manager.pyw"))
+        self.assertFalse(winnative.ensure_desktop_shortcut(None))     # source copy: never
+
 
 if __name__ == "__main__":
     unittest.main()

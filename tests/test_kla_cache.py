@@ -10,7 +10,12 @@ import tempfile
 import time
 import unittest
 import zipfile
+from datetime import date
 from pathlib import Path
+
+# A date inside KLA_REREAD_DAYS (re-read every build). It was a fixed 2026-11-05, which
+# stopped being 'recent' a few days later and failed the re-read check.
+RECENT = date.today().isoformat()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from param_manager.desktop_batch import CACHE_SHARE_DIRNAME, CACHE_SHARE_INDEX
@@ -38,8 +43,8 @@ class KlaCache(unittest.TestCase):
         self.folder = self.share / CACHE_SHARE_DIRNAME
         self.drive = base / "P"
         self.k6 = self.drive / "AOI-K6"
-        make_slot(self.k6, "2026-11-05", "TB500.INT948@6326_RAW", "2026-11-05-10-00_1")
-        make_slot(self.k6, "2026-11-05", "TB500.INT948@6326_RAW", "2026-11-05-10-02_2")
+        make_slot(self.k6, RECENT, "TB500.INT948@6326_RAW", f"{RECENT}-10-00_1")
+        make_slot(self.k6, RECENT, "TB500.INT948@6326_RAW", f"{RECENT}-10-02_2")
         make_slot(self.k6, "2020-01-01", "OLD11@6312", "2020-01-01-01-00_5")
         self.cfg = base / "dev.json"
         self.local = base / "local_dev"
@@ -62,9 +67,9 @@ class KlaCache(unittest.TestCase):
         res = self.kla.search({"query": "int948 6326", "source": "cache"})
         self.assertEqual(res["source"], "cache")
         self.assertEqual([(h["machine"], h["date"], h["lot"]) for h in res["hits"]],
-                         [("AOI-K6", "2026-11-05", "TB500.INT948@6326_RAW")])
+                         [("AOI-K6", RECENT, "TB500.INT948@6326_RAW")])
         self.assertEqual([s["slot"] for s in res["hits"][0]["slots"]], ["1", "2"])
-        self.assertEqual(res["hits"][0]["path"], os.path.join(str(self.k6), "2026-11-05", "TB500.INT948@6326_RAW"))
+        self.assertEqual(res["hits"][0]["path"], os.path.join(str(self.k6), RECENT, "TB500.INT948@6326_RAW"))
         # 장비 찾기와 결과가 같다
         eq = self.kla.search({"query": "int948 6326"})
         self.assertEqual([h["path"] for h in eq["hits"]], [h["path"] for h in res["hits"]])
@@ -72,7 +77,7 @@ class KlaCache(unittest.TestCase):
         self.assertEqual(self.kla.search({"query": "old11", "source": "cache", "start": "2021-01-01"})["hits"], [])
         self.assertEqual(self.kla.search({"query": "old11", "source": "cache", "machines": ["X"]})["hits"], [])
         # 오래된 날짜는 수정시각이 같으면 다시 읽지 않고, 최근 날짜는 다시 읽는다(새 슬롯 반영)
-        make_slot(self.k6, "2026-11-05", "TB500.INT948@6326_RAW", "2026-11-05-11-00_3")
+        make_slot(self.k6, RECENT, "TB500.INT948@6326_RAW", f"{RECENT}-11-00_3")
         again = self.kla.cache_build({})
         self.assertEqual((again["read_dates"], again["reused_dates"]), (1, 1))
         res = self.kla.search({"query": "int948", "source": "cache"})

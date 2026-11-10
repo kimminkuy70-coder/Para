@@ -1,0 +1,127 @@
+name: v13 test, package and release
+
+# v13 ships no program of ours that is an executable: the install zip holds the python.org
+# embeddable package (PSF-signed, checked below) + our source text. Every push to version_v13
+# runs the tests, checks frontend/dist matches the source, builds the install zip on Windows
+# and scans it with Windows Defender. A GitHub Release (tag v<version>) is created only when
+# docs/release_notes/v<version>.md exists and that release does not exist yet.
+
+on:
+  push:
+    branches: [version_v13]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # release step: creates the v<version> tag + GitHub Release
+
+env:
+  PY_EMBED_VERSION: "3.11.9"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Python tests (openpyxl from vendor/, as on user PCs)
+        env:
+          PYTHONPATH: vendor
+        run: |
+          fail=0
+          for t in tests/test_*.py; do
+            if ! timeout 900 python "$t" > out.txt 2>&1; then echo "::error::$t"; tail -30 out.txt; fail=1; fi
+          done
+          exit $fail
+
+      - name: frontend/dist must match the source
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          git status --porcelain -- dist
+          test -z "$(git status --porcelain -- dist)" || { echo "::error::frontend/dist is out of date: run npm run build and commit"; exit 1; }
+
+  package:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = python -c "import sys; sys.path.insert(0, '.'); import param_manager; print(param_manager.__version__)"
+          if ($v -notmatch '^13\.\d+\.\d+$') { Write-Error "version must be 13.x.y (got $v)"; exit 1 }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: python.org embeddable package (signature checked)
+        shell: pwsh
+        run: |
+          $v = "${{ env.PY_EMBED_VERSION }}"
+          Invoke-WebRequest "https://www.python.org/ftp/python/$v/python-$v-embed-amd64.zip" -OutFile embed.zip
+          Get-FileHash embed.zip -Algorithm SHA256 | Format-List
+          Expand-Archive embed.zip -DestinationPath pyembed
+          foreach ($f in "python.exe", "pythonw.exe", "python311.dll") {
+            $s = Get-AuthenticodeSignature "pyembed/$f"
+            Write-Host "$f : $($s.Status) $($s.SignerCertificate.Subject)"
+            if ($s.Status -ne "Valid" -or $s.SignerCertificate.Subject -notmatch "Python Software Foundation") { Write-Error "$f is not signed by the PSF"; exit 1 }
+          }
+
+      - name: The program starts its engine with the embeddable Python
+        shell: pwsh
+        run: |
+          pyembed/python.exe -c "import sys; sys.dont_write_bytecode=True; sys.path[:0]=['.', 'vendor']; import param_manager.desktop_ipc, param_manager.webserver, param_manager.winnative, param_manager.launcher, openpyxl, ssl, ctypes; print('engine imports ok', sys.version)"
+
+      - name: Build install zip
+        run: python tools/build_install.py --python-dir pyembed --out out
+
+      - name: Windows Defender scan (fail on any threat)
+        shell: pwsh
+        run: |
+          $mp = Join-Path $env:ProgramFiles "Windows Defender\MpCmdRun.exe"
+          try { Set-MpPreference -DisableRealtimeMonitoring $false -MAPSReporting Advanced -SubmitSamplesConsent NeverSend -DisableArchiveScanning $false -DisableScriptScanning $false -ErrorAction Stop } catch { Write-Host $_ }
+          # Runners exclude whole drives from Defender: remove the exclusions or nothing is scanned.
+          try { (Get-MpPreference).ExclusionPath | Where-Object { $_ } | ForEach-Object { Remove-MpPreference -ExclusionPath $_ } } catch { Write-Host $_ }
+          & $mp -SignatureUpdate | Out-Host
+          $zip = Get-ChildItem out/*.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath scan_x
+          $bad = 0
+          foreach ($p in @($zip.FullName, (Resolve-Path scan_x).Path)) {
+            & $mp -Scan -ScanType 3 -File $p -DisableRemediation | Out-Host
+            Write-Host "scan $p -> exit $LASTEXITCODE"
+            if ($LASTEXITCODE -eq 2) { $bad = 1 }
+          }
+          Get-MpThreatDetection | Format-List | Out-Host
+          if ($bad) { Write-Error "Defender found a threat"; exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Camtek_AOI_manager_v${{ steps.ver.outputs.version }}_install
+          path: out/*.zip
+          retention-days: 30
+
+      - name: GitHub Release (only when release notes exist and the release does not)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $notes = "docs/release_notes/v$v.md"
+          if (-not (Test-Path $notes)) { Write-Host "no $notes - no release"; exit 0 }
+          gh release view "v$v" 2>$null
+          if ($LASTEXITCODE -eq 0) { Write-Host "v$v already released - unchanged"; exit 0 }
+          $zip = (Get-ChildItem out/*.zip | Select-Object -First 1).FullName
+          gh release create "v$v" $zip --target "${{ github.sha }}" --title "Camtek AOI Manager v$v" --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { Write-Error "release failed"; exit 1 }

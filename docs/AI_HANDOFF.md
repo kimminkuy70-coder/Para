@@ -27,7 +27,15 @@
   `__version__ = "13.0.0"`(저장소에 커밋, 태그와 같아야 함). 삭제: updater · desktop_swap · desktop_package · tools/set_version · version_info, 그 시험들.
   시험: `tests/test_appupdate.py`(12). 리눅스 리허설(설치형 폴더 + 진짜 시작 파일 + OneDrive 13.9.9 → 버튼 → 교체 · 재시작 · 창 재연결) 통과.
   **확인 못 한 것**: 이 작업 환경은 github.com 웹이 403(네트워크 정책)이라 실제 releases.atom 읽기는 회사 PC 에서 처음 확인. 회사 프록시가 PAC 파일이면 urllib 이 못 쓸 수 있음(그때는 OneDrive 보조 통로).
-- 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
+- **6단계 — CI · 설치 zip · 릴리스**: `.github/workflows/v13.yml`(version_v13 push 마다): ubuntu 시험(`PYTHONPATH=vendor`) + `frontend/dist` 재빌드 일치 확인 → windows: python.org embeddable 3.11.9 받기 · `python.exe`/`pythonw.exe`/`python311.dll` **PSF 서명 확인**
+  · embeddable 로 엔진 import 확인 · `tools/build_install.py` → `Camtek_AOI_manager_v{버전}_설치.zip`(python/ · app/ · 시작 파일 · 설치_안내.txt) · **Defender 검사(위협이면 실패)** · artifact
+  · `docs/release_notes/v{버전}.md` 가 있고 그 릴리스가 없을 때만 GitHub Release(태그는 워크플로가 만듦 — 이 환경의 tag push 는 실패했었음). 스캔은 workflow 안에 직접(.ps1 파일 안 둠).
+  첫 실행 = Win+R 한 줄(설치_안내 · `docs/설치_v13.md`), 그 뒤 프로그램이 바탕화면 바로가기를 IShellLinkW 로 만듦(zip 에 .lnk 를 넣지 않음 — .lnk 동봉은 공격 모양이라).
+  시험 정리: `test_kla_cache` 날짜 고정(2026-11-05)이 3일 지나 실패하던 것 → 오늘 날짜 기준, `test_engine` 샘플(.xlsm, 저장소 밖) 없으면 건너뜀(`PARA_ENGINE_SAMPLE`). 이제 Python 시험 실패 0.
+  보안 문서: `IT보안_검토자료.md` 맨 위 v13 절, `보안_라이선스_검토.md` 머리 정정. 릴리스 노트 `docs/release_notes/v13.0.0.md`.
+  화면 통합 시험(`tools/test_desktop_ui.mjs`)은 이 세션에서 **원인 모를 실패 2번**(출력 못 남김) 뒤 연속 3번 통과 — 다시 나면 출력을 저장해 볼 것.
+- **남은 일(7단계, 소유자 실기)**: 회사 PC 에서 ① 설치 zip 받기(Defender) ② Win+R 첫 실행 · 바로가기 ③ 고르기 창 · 끌어 넣기 · 트레이 ④ 다음 릴리스로 [지금 업데이트](GitHub 접속 · 회사 프록시). Windows 부분은 이 환경에서 확인 못 함.
+- 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ ~~6~~ → 7 소유자 실기 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
 
 ## 최신 재개 — 회사에서 잘 되는 다른 프로그램의 업데이트 방식 분석 → V13 계획 10절 (2026-11-10 KST, `version_v12`)
