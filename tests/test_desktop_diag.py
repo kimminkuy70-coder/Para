@@ -100,11 +100,5 @@ class BootTests(unittest.TestCase):
         self.assertIn(f"MAX_FRAME = 4 * 1024 * 1024", src)
         self.assertEqual(desktop_ipc.MAX_FRAME, 4 * 1024 * 1024)
 
-    def test_builds_use_noarchive(self):
-        root = Path(__file__).resolve().parents[1]
-        self.assertIn("--debug noarchive", (root / ".github/workflows/build-desktop.yml").read_text(encoding="utf-8"))
-        self.assertIn("'--debug','noarchive'", (root / "tools/build_desktop.py").read_text(encoding="utf-8"))
-
-
 if __name__ == "__main__":
     unittest.main()

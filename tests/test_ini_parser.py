@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from param_manager import collector, engine, extract_io, ini_parser, refresh, workdirs  # noqa: E402
+from param_manager import collector, engine, extract_io, ini_parser, workdirs  # noqa: E402
 from param_manager import rtp_parser  # noqa: E402
 
 GLOBAL_RTP = """[GLOBAL_RTP]
@@ -112,35 +112,6 @@ def test_config_dir_only_fixed_plus_zones():
         names2 = {p.name for p in ini_parser.config_ini_files(d)}
         assert "GlobalRTP_2.ini" in names2
     print("  config_ini_files OK: 고정2 + Zones/* 만(쓸데없는 ini 제외, _N 인식)")
-
-
-def test_pivot_and_refresh_plan():
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        _mk_recipe(root / "AOI-13" / "PI3" / "PI")
-        rows, machines = ini_parser.build_pivot(ini_parser.scan_tree(root))
-        assert machines == ["AOI-13"]
-        assert any(r["extract"]["key"] == "High_Delta" for r in rows)
-
-        # 공용 파일: 같은 키 1행(값 옛것) + 안 맞는 행 1개
-        dest = os.path.join(tmp, "form_PI.xlsx")
-        recs = [
-            {"PI": "PI3", "Recipe": "PI", "Zone": "PI Opening / Mask Zone",
-             "Alg": "Surface", "Parameter": "Contrast Delta - Bright",
-             "초기 추천값": "25", "AOI-13": "99"},
-            {"PI": "PI3", "Recipe": "PI", "Zone": "없는 Zone", "Alg": "X",
-             "Parameter": "그런 파라미터 없음"},
-        ]
-        repo = engine.create_from_records(dest, recs, ["AOI-13"], sheet_name="PI_ALL")
-        plan = refresh.plan_refresh(repo, rows, machines)
-        assert plan.matched_rows == 1 and plan.unmatched_rows == 1
-        chg = [c for c in plan.changes if c.param == "Contrast Delta - Bright"]
-        assert len(chg) == 1 and chg[0].old == "99" and chg[0].new == "25"
-        stats = refresh.apply_refresh(repo, plan)
-        assert stats["updated_cells"] == len(plan.changes)
-        pr = next(p for p in repo.rows if engine._s(p.get("Parameter")) == "Contrast Delta - Bright")
-        assert engine._s(pr.get("AOI-13")) == "25"
-    print("  pivot+refresh OK: 미리보기 diff → 적용")
 
 
 def test_workdirs_and_backup():

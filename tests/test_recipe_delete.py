@@ -199,92 +199,12 @@ def test_watch_settings_are_cleaned():
     print("  감시 설정 자동 정리(호기별 지정·목록·plan) OK")
 
 
-def test_delete_scope_is_locked_in_source():
-    """삭제 범위가 슬그머니 늘거나 줄지 않도록 소스 규칙으로 고정."""
-    src = _src("equip_app.py")
-    m = re.search(r"def _delete_recipe_run.*?(?=\n    def )", src, re.S)
-    assert m, "_delete_recipe_run 을 찾지 못함"
-    body = m.group(0)
-    # ① 양식 폴더는 '이동'(되돌리기) — rmtree 로 지우지 않는다
-    assert "move_recipe_dir" in body and "new_deleted_slot" in body, \
-        "양식 폴더를 로컬 보관으로 옮기지 않음"
-    assert "rmtree" not in body, "되돌릴 수 없게 바로 지우고 있음"
-    # ② 최신 취합본만 (latest 한 개)
-    assert "collate.delete_recipe" in body
-    assert "list_collate_files" not in body, "과거 취합본까지 건드리고 있음"
-    # ③ 감시 설정 정리
-    assert "watcher.drop_recipe" in body and "watcher.save_settings" in body
-    # ④ 변환계수는 건드리지 않는다(호기+MAG 기준이라 공용)
-    assert "coefstore" not in body, "변환계수.xlsx 를 건드리고 있음"
-    # ⑤ 다른 사람이 그 레시피 양식을 만드는 중이면 막는다
-    assert "_acquire_global" in body and "_release_global" in body, \
-        "전역 잠금 없이 삭제하고 있음"
-
-    d = re.search(r"def _delete_recipe_dialog.*?(?=\n    def )", src, re.S)
-    assert d, "_delete_recipe_dialog 을 찾지 못함"
-    dbody = d.group(0)
-    assert "recipe_delete_preview" in dbody, "무엇이 지워지는지 안 보여줌"
-    assert 'typed.get().strip() == level' in dbody, \
-        "레시피 이름 확인 입력이 없음(오삭제 방지)"
-    print("  삭제 범위·안전장치 소스 규칙 OK")
-
-
-def test_restore_instructions_shown_before_and_after():
-    """되돌리는 법을 **삭제 전 확인창과 삭제 후 완료창 둘 다**에서 알려 준다.
-
-    지운 게 아니라 옮긴 것이라, 어디에 있는지 모르면 되돌릴 수 없다.
-    """
-    src = _src("equip_app.py")
-    # 안내문은 한 곳에서 만든다(두 창의 문구가 어긋나지 않게)
-    helper = re.search(r"def _recipe_restore_text.*?(?=\n    def )", src, re.S)
-    assert helper, "되돌리기 안내문 helper 가 없음"
-    htext = helper.group(0)
-    assert "옮깁니다" in htext and "다시 읽기" in htext, \
-        "안내문에 '어디로 옮겼는지 / 어떻게 되돌리는지'가 없음"
-    assert "workdirs.FORM_DIR" in htext, "되돌려 놓을 위치(양식 폴더)를 알려주지 않음"
-
-    # ① 삭제 전 확인창
-    d = re.search(r"def _delete_recipe_dialog.*?(?=\n    def )", src, re.S)
-    assert d and "_recipe_restore_text" in d.group(0), \
-        "삭제 확인창에 되돌리는 법이 없음"
-    # ② 삭제 후 완료창 — 보관 경로 + 되돌리는 절차 + 폴더 열기
-    w = re.search(r"def _recipe_deleted_window.*?(?=\n    def )", src, re.S)
-    assert w, "삭제 완료창이 없음"
-    wtext = w.group(0)
-    assert "되돌리는 법" in wtext, "완료창에 되돌리는 법이 없음"
-    assert "moved" in wtext and "보관 폴더 열기" in wtext, \
-        "완료창에서 보관 폴더를 열어 볼 수 없음"
-    assert "_open_in_excel(moved)" in wtext, "보관 폴더 열기가 동작하지 않음"
-    # 완료 안내는 이 창으로 간다(요약만 던지고 끝내지 않게)
-    r = re.search(r"def _delete_recipe_run.*?(?=\n    def )", src, re.S)
-    assert r and "_recipe_deleted_window" in r.group(0)
-    print("  되돌리는 법 안내(삭제 전·후 + 폴더 열기) OK")
-
-
-def test_backup_never_written_into_save_dir():
-    """보관 폴더 경로를 저장폴더에서 만들지 않는다(소스 규칙)."""
-    src = _src("equip_app.py")
-    m = re.search(r"def _delete_recipe_(dialog|run).*?(?=\n    def )", src, re.S)
-    assert m
-    both = "".join(x.group(0) for x in
-                   re.finditer(r"def _delete_recipe_(?:dialog|run).*?(?=\n    def )",
-                               src, re.S))
-    assert "localdirs.new_deleted_slot(self.local_dir" in both, \
-        "보관 위치를 로컬(local_dir)에서 만들지 않음"
-    assert "new_deleted_slot(self.save_dir" not in both, \
-        "저장폴더 안에 백업을 만들고 있음(OneDrive 동기화 폭주)"
-    print("  보관은 로컬(local_dir)에만 OK")
-
-
 if __name__ == "__main__":
     for t in [test_preview_counts_what_will_be_deleted,
               test_move_to_local_vault_and_restorable,
               test_vault_must_be_outside_save_dir,
               test_only_latest_collate_is_touched,
-              test_watch_settings_are_cleaned,
-              test_delete_scope_is_locked_in_source,
-              test_restore_instructions_shown_before_and_after,
-              test_backup_never_written_into_save_dir]:
+              test_watch_settings_are_cleaned]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

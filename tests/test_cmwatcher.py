@@ -460,78 +460,6 @@ def test_survey_skips_when_form_does_not_match():
     print("  양식 불일치는 열 유지+색 표시, 빈 폴더는 제외 OK")
 
 
-def test_gui_is_wired():
-    """헤드리스 모듈이 **실제로 화면에 연결**돼 있어야 한다(소스 규칙).
-
-    엔진만 있고 부르는 곳이 없으면 프로그램에서는 아무 일도 일어나지 않는다.
-    """
-    src_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "param_manager")
-    with open(os.path.join(src_dir, "equip_app.py"), encoding="utf-8") as fh:
-        app = fh.read()
-    assert "from . import cmwatcher" in app, "cmwatcher 를 import 하지 않음"
-    # ① 탭 최상단 감시 배너 + 설정창
-    for name in ("_cm_watch_banner", "_cmw_dialog", "_cmw_forms_dialog",
-                 "_cmw_make_form", "_cmw_build_form"):
-        assert f"def {name}(" in app, name
-    # 감시 배너는 조사 단계(Step 1)보다 **먼저**(최상단) 그려져야 한다 —
-    # 탭에 들어오면 바로 보이게(종전엔 맨 아래 7번이라 초기 화면에서 안 보였다).
-    assert app.index("self._cm_watch_banner(inner)") < app.index("조사할 장비(호기) 선택"), \
-        "감시 배너가 조사 단계보다 위에 있지 않음(초기 화면에서 안 보임)"
-    # ② 주기 실행이 실제로 걸려 있어야 한다(안 걸면 영원히 안 돈다)
-    assert "def _cmw_tick(" in app and "self.after(40_000, self._cmw_tick)" in app, \
-        "주기 확인 타이머가 시작되지 않음"
-    assert "self.after(60_000, self._cmw_tick)" in app, "틱이 스스로 다시 예약되지 않음"
-    # should_run(now, settings, state) — now 가 첫 인자다. 인자를 빼먹으면
-    # tick 마다 TypeError 로 감시가 영원히 안 돈다(실제로 그랬다).
-    assert "watcher.should_run(datetime.now(), s, st)" in app, \
-        "should_run 을 올바른 시그니처(now, s, st)로 부르지 않음"
-    # ③ 회차 로직은 **헤드리스**(cmwatcher.run_cycle)에 있어야 테스트가 잡는다.
-    #    GUI 는 로컬 루트·변환계수만 넘기는 얇은 래퍼여야 한다.
-    m = re.search(r"def _cmw_cycle_work.*?(?=\n    def )", app, re.S)
-    assert m, "_cmw_cycle_work 를 찾지 못함"
-    body = m.group(0)
-    assert "cmwatcher.run_cycle(" in body, "회차 로직을 헤드리스로 부르지 않음"
-    assert "local_root=" in body and "coef_rows=" in body, "필요한 인자를 넘기지 않음"
-    # 무인 회차는 모달을 띄우면 안 된다
-    assert "_run_bg(" in app, "무인 회차가 백그라운드로 돌지 않음"
-    # ④ 대표 S/M 은 최신순 후보에서 사람이 고른다
-    f = re.search(r"def _cmw_make_form.*?(?=\n    def )", app, re.S)
-    assert f and "cmwatcher.sm_candidates(" in f.group(0), "대표 S/M 후보 조회 없음"
-    assert "_pick_list_chooser(" in f.group(0), "사람이 고르는 단계가 없음"
-    # ④' 다중 레시피면 레시피별로 양식을 만든다(detect_recipes → set_forms)
-    b = re.search(r"def _cmw_build_form.*?(?=\n    def _cmw_pick_file)", app, re.S)
-    assert b and "cm.detect_recipes(" in b.group(0), "감시 양식이 다중 레시피를 감지하지 않음"
-    assert "cmwatcher.set_forms(" in app, "레시피별 양식 목록을 묶지 않음(set_forms)"
-    # ④'' 대표 S/M 은 **로컬로 안전복사한 뒤** 그 복사본을 읽는다(원본 반복접근 금지)
-    assert "cm.copy_lot(" in b.group(0) and "cm.set_wafer(" in b.group(0), \
-        "대표 S/M 을 로컬로 복사해 읽지 않음"
-    assert "cmwatcher.watch_dir(" in b.group(0), \
-        "대표 S/M 복사본이 로컬 자동감시(watch_dir) 폴더가 아님"
-    # ⑤ 산출물은 로컬(commonality 규칙)
-    assert "_cmw_local(" in app and "save_dir" not in re.findall(
-        r"def _cmw_local.*?(?=\n    def )", app, re.S)[0], \
-        "감시 설정을 저장폴더에 두고 있음"
-    # ⑥ 창을 닫아도 **두 감시 중 하나라도** 켜져 있으면 트레이 상주(백그라운드 계속).
-    #    종전엔 _on_close 가 장비 감시(_watch_is_on)만 봐서, commonality 감시만 켠 채
-    #    창을 닫으면 프로그램이 종료돼 감시가 멈췄다.
-    assert "def _cmw_is_on(" in app, "commonality 감시 on 판정(_cmw_is_on)이 없음"
-    oc = re.search(r"def _on_close.*?(?=\n    def |\n\n\ndef )", app, re.S)
-    assert oc and "_any_watch_on(" in oc.group(0), \
-        "_on_close 가 두 감시를 함께 보지 않음(_any_watch_on)"
-    anyw = re.search(r"def _any_watch_on.*?(?=\n    def )", app, re.S)
-    assert anyw and "_cmw_is_on(" in anyw.group(0) and "_watch_is_on(" in anyw.group(0), \
-        "_any_watch_on 이 장비·commonality 감시를 OR 하지 않음"
-    # ⑦ 트레이 툴팁이 **어떤 감시가 도는지** 보여준다(마우스를 올리면 뜬다).
-    assert "def _watch_tooltip(" in app, "트레이 툴팁 헬퍼(_watch_tooltip)가 없음"
-    tt = re.search(r"def _watch_tooltip.*?(?=\n    def )", app, re.S)
-    assert tt and "Commonality" in tt.group(0) and "장비" in tt.group(0), \
-        "툴팁이 장비/commonality 두 감시를 구분해 보여주지 않음"
-    ts = re.search(r"def _tray_start.*?(?=\n    def )", app, re.S)
-    assert ts and "_watch_tooltip(" in ts.group(0), "트레이 시작이 감시상태 툴팁을 안 씀"
-    print("  GUI 연결(카드·설정창·주기틱·회차·대표S/M·양쪽 감시 상주·툴팁) OK")
-
-
 def _write_watch_plan(path, rows):
     """감시 대상 계획 엑셀 하나 — rows=[(device, lot, machine)]."""
     cw.create_watch_plan_template(path, [
@@ -824,7 +752,6 @@ if __name__ == "__main__":
               test_survey_records_slot_and_created,
               test_survey_accumulates_into_one_file,
               test_survey_skips_when_form_does_not_match,
-              test_gui_is_wired,
               test_run_cycle_first_is_baseline_then_detects_and_surveys,
               test_run_cycle_missing_form_adds_plan_but_skips_survey,
               test_run_cycle_skips_machine_without_root,

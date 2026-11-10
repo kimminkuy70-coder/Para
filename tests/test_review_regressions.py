@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from param_manager import atomicfile, cmwatcher, errlog, updater, updater_bat, watcher, wph
+from param_manager import atomicfile, cmwatcher, errlog, updater, watcher, wph
 import openpyxl
 
 
@@ -105,48 +105,6 @@ class ReviewTests(unittest.TestCase):
                 self.assertTrue(any('2002' in f for f in formulas))
             finally:
                 wb.close()
-
-    def test_background_completion_uses_main_thread(self):
-        tree = ast.parse((Path(__file__).resolve().parents[1] / 'param_manager/equip_app.py').read_text())
-        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'EquipApp')
-        fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '_run_bg')
-        ns = {'threading': threading}
-        exec(compile(ast.Module(body=[fn], type_ignores=[]), '<extracted>', 'exec'), ns)
-        owner = threading.get_ident()
-        callbacks, results = [], []
-        class FakeApp:
-            def after(self, delay, callback):
-                if threading.get_ident() != owner:
-                    raise AssertionError('Tk called from worker')
-                callbacks.append(callback)
-        def done(ok, value):
-            self.assertEqual(threading.get_ident(), owner)
-            results.append((ok, value))
-        for work, expected in ((lambda: 42, True), (lambda: 1 / 0, False)):
-            ns['_run_bg'](FakeApp(), work, done)
-            deadline = time.monotonic() + 3
-            while callbacks and time.monotonic() < deadline:
-                callbacks.pop(0)()
-                time.sleep(.001)
-            self.assertEqual(results[-1][0], expected)
-        self.assertEqual(len(results), 2)
-
-    def test_batch_encoding_and_backup_order(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / 'swap.bat'
-            updater_bat._write_bat(str(p), '@echo off\r\nrem 한글\n')
-            self.assertNotIn(b'\r\r\n', p.read_bytes())
-            self.assertIn('한글', p.read_bytes().decode('cp949'))
-            p.unlink()
-            if os.name != 'nt':
-                with self.assertRaises(UnicodeEncodeError):
-                    updater_bat._write_bat(str(p), 'echo \U0001f600')
-                self.assertFalse(p.exists())
-            script = updater_bat.build_swap_script(d, 123, r'C:\100%\old.exe', r'C:\new.exe', r'C:\backup.exe')
-            text = Path(script).read_bytes().decode('cp949')
-            self.assertIn('100%%', text)
-            self.assertLess(text.index('fc /b'), text.index('del /q'))
-
 
 if __name__ == '__main__':
     unittest.main()

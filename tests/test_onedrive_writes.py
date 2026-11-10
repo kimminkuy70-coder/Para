@@ -86,56 +86,9 @@ def _src(name: str) -> str:
         return fh.read()
 
 
-def test_equipment_staging_never_targets_save_dir():
-    """수집(staging)은 반드시 로컬(localdirs) 로만 간다.
-
-    `_collect_dialog(staging_root, ...)` 의 첫 인자가 저장폴더 경로
-    (`related`/`workdirs.*`)이면 장비의 ini 수십~수백 개가 OneDrive 로 복사돼
-    사고가 재발한다. 소스 수준에서 고정한다.
-    """
-    src = _src("equip_app.py")
-    # 정의부(def _collect_dialog(self, …))가 아니라 **호출부**만 본다
-    calls = re.findall(r"self\._collect_dialog\(\s*\n?\s*([A-Za-z_][\w\.\[\]\"']*)", src)
-    assert calls, "_collect_dialog 호출을 찾지 못함(테스트가 낡음)"
-    for arg in calls:
-        assert not arg.startswith("workdirs."), \
-            f"수집 staging 이 저장폴더 경로: {arg}"
-        assert arg not in ("related", "run_dir", "self.save_dir"), \
-            f"수집 staging 이 저장폴더 경로: {arg}"
-    # 실제로 로컬 임시폴더를 쓰는 호출이 있어야 한다
-    assert re.search(r"staging\s*=\s*localdirs\.new_temp_run", src), \
-        "로컬 임시 staging 사용 흔적이 없음"
-    print(f"  수집 staging = 로컬 전용 OK (호출 {len(calls)}곳 확인: {calls})")
-
-
-def test_commonality_outputs_stay_local():
-    """Commonality 산출물(Lot 안전복사본 다수)은 저장폴더에 두지 않는다."""
-    src = _src("equip_app.py")
-    for m in re.finditer(r"workdirs\.commonality_\w+\(\s*([^,\)]+)", src):
-        arg = m.group(1).strip()
-        assert "save_dir" not in arg, f"Commonality 경로가 저장폴더 기준: {arg}"
-    print("  Commonality 산출물 = 로컬 전용 OK")
-
-
-def test_watch_cycle_writes_collation_only_on_change():
-    """무인 회차는 하루 몇 번씩 돈다 — 변경이 없으면 취합 엑셀을 저장폴더에
-    새로 만들지 않는다(같은 내용 파일이 쌓이는 것 = 순수 동기화 낭비)."""
-    src = _src("equip_app.py")
-    m = re.search(r"def _watch_cycle_work.*?(?=\n    def )", src, re.S)
-    assert m, "_watch_cycle_work 를 찾지 못함"
-    body = m.group(0)
-    assert "localdirs.new_temp_run" in body, "회차 취합본을 로컬에 먼저 쓰지 않음"
-    assert re.search(r"if res\.has_change or not prev", body), \
-        "변경이 있을 때만 저장폴더로 옮기는 분기가 없음"
-    print("  무인 회차: 변경 있을 때만 저장폴더에 취합본 생성 OK")
-
-
 if __name__ == "__main__":
     for t in [test_form_dirs_not_created_until_write,
-              test_repeat_acquire_does_not_rewrite_lock,
-              test_equipment_staging_never_targets_save_dir,
-              test_commonality_outputs_stay_local,
-              test_watch_cycle_writes_collation_only_on_change]:
+              test_repeat_acquire_does_not_rewrite_lock]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

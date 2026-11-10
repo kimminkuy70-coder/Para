@@ -1,5 +1,15 @@
 # AI 공통 인수인계
 
+## 최신 재개 — V13 구현 1단계: tkinter · exe 빌드 삭제 (2026-11-10 KST, 브랜치 `version_v13`)
+
+- 마지막 갱신 2026-11-10 · 기준 = `version_v12` `183e254` 에서 `version_v13` 생성 · 이슈 없음(소유자 세션: 계획 답 전부 받음, "진행해").
+- 소유자 결정 전부: 계획서 4-1 · 11 · 12절. 안 C(Python 동봉) 확정, GitHub 메인 · OneDrive 보조, Edge 앱 창, 릴리스 태그만 + 켤 때마다 새 판 알림 창 + 버튼 적용, tkinter 삭제 · v12 보존.
+- 1단계 결과: tkinter 판 · .bat 5개 · run.py · requirements-build · `frontend/src-tauri` · tools/build_desktop · desktop_bundle · desktop_inventory · build-desktop.yml 삭제, requirements = openpyxl 만.
+  시험: GUI 소스를 검사하던 시험 함수만 삭제, net use · 자격 증명 · 장비 간격 시험은 웹 엔진(param_manager 전체 · desktop_watch)을 보도록 옮김.
+  남은 실패 2개는 v12 에도 있던 것: `test_engine.py`(샘플 .xlsm 없음) · `test_kla_cache.py` 1건.
+- 다음 단계(계획 7절): 2 로컬 서버 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
+  `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
+
 ## 최신 재개 — 회사에서 잘 되는 다른 프로그램의 업데이트 방식 분석 → V13 계획 10절 (2026-11-10 KST, `version_v12`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `ab1ab22` · 이슈 없음(소유자 세션: 업로드한 `coding-claude-aoi-verification-app-LAXpX.zip` "업데이트 방식에 대해서 분석해봐, 회사에서 사용했을 때 문제 없어"). 코드 변경 없음.

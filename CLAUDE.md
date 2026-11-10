@@ -1,5 +1,13 @@
 # Para — 장비 파라미터 관리 프로그램
 
+## v13 (브랜치 `version_v13`, 2026-11-10~) — 가장 먼저 읽을 것
+
+- 계획 · 소유자 결정 = `docs/V13_계획.md`(4-1 · 11 · 12절이 최신). **우리가 만든 exe 를 배포하지 않는다**(v12.9.30~32 zip 이 Defender 평판 판정에 막힘).
+  실행 = 동봉 python.org embeddable Python 이 `.py` 소스를 그대로 실행, 화면 = Edge 앱 창(127.0.0.1 로컬 서버), 업데이트 = **GitHub 릴리스 태그 zip 메인 · OneDrive 보조**.
+- **원칙 예외(소유자 확정 2026-11-10)**: 런타임 인터넷 금지의 예외는 **업데이트 확인 · 소스 zip 받기 때 github.com 의 이 저장소 하나**뿐(TLS 검증 필수 · 토큰 없음 · 실행 파일 들어 있으면 거부 · 받기는 버튼 때만). 그 밖은 계속 금지.
+- **tkinter 판 삭제**(equip_app · app · batchreport_ui · theme · refresh · updater_bat · run.py · .bat 전부), Tauri(`frontend/src-tauri`) · PyInstaller 빌드 삭제. 아래 tkinter · Tauri · exe 관련 절은 **v12 까지의 기록**이다(v12 는 `version_v12` 에 보존).
+- `.bat` · `.ps1` · `.vbs` · `.cmd` 파일을 저장소에 다시 넣지 말 것(#31 · #58 `Trojan:Script`). 배포 파일 전체에 배치 명령 문구 금지.
+
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
 프로그램(Python/tkinter). 기존 Excel(.xlsm)+VBA 도구를 대체.
 현재 공통 작업 브랜치: `version_webview` (사용자 지정; 다른 브랜치 수정 금지)

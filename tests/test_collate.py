@@ -382,31 +382,6 @@ def test_variant_orig_annotated_in_result():
     print("  collate OK: 매칭된 하위 레시피 결과에 원래이름 괄호 병기(키는 양식 이름)")
 
 
-def test_update_flow_asks_before_collating():
-    """값 업데이트는 **취합 전에** 이름 매칭을 물어봐야 한다(취합 후면 늦다).
-    (GUI 는 이 환경에서 못 띄우므로 호출 순서를 소스로 고정한다.)"""
-    import re
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(root, "param_manager", "equip_app.py"),
-              encoding="utf-8") as fh:
-        src = fh.read()
-    m = re.search(r"def _update_collate_flow.*?(?=\n    def )", src, re.S)
-    assert m, "_update_collate_flow 를 찾지 못함"
-    body = m.group(0)
-    assert "_match_variants(forms, pivot_rows)" in body, "매칭 단계가 없음"
-    assert body.index("_match_variants") < body.index("build_collation"), \
-        "취합보다 먼저 매칭을 물어야 한다"
-    # 확인창(항상 표시)과 매칭 적용
-    assert "_confirm_variant_match" in src and "apply_variant_map" in src
-    assert "variant_match_table" in src, "확인창용 매칭표를 쓰지 않음"
-    # commonality 조사(_cm_collate)도 취합(collate_lots) 전에 매칭을 확인해야 한다
-    cm = re.search(r"def _cm_collate.*?(?=\n    def )", src, re.S)
-    assert cm and "_confirm_variant_match" in cm.group(0), \
-        "commonality 조사에 하위 레시피 매칭 확인이 없음"
-    assert cm.group(0).index("_confirm_variant_match") < cm.group(0).index("collate_lots"), \
-        "commonality 도 취합보다 먼저 매칭을 물어야 한다"
-    print("  collate OK: 값 업데이트·commonality 가 취합 전에 이름 매칭을 확인한다")
-
 def test_long_recipe_name_keeps_full_name():
     """이슈 #21: 31자를 넘는 레시피 이름은 시트 이름이 잘려도 취합 목록에는 원래 이름으로,
     재확정(이어받기)해도 잘린 이름 시트가 따로 이월 · 중복되지 않아야 한다."""

@@ -1,4 +1,0 @@
-# Needed ONLY to build the .exe (not needed to run the built .exe).
-# PyInstaller: GPL with a commercial exception -> internal/commercial
-# .exe distribution is allowed and free.
-pyinstaller>=6.0

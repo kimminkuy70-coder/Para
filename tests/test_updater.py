@@ -11,7 +11,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from param_manager import localdirs, updater as U, updater_bat as UB  # noqa: E402
+from param_manager import localdirs, updater as U  # noqa: E402
 
 PASS = FAIL = 0
 
@@ -258,125 +258,6 @@ def _commands(body):
             if l.strip() and not l.strip().lower().startswith("rem")]
 
 
-def test_swap_script_contains_required_steps():
-    """실제 실행은 Windows 필요 — 생성된 스크립트에 필수 단계가 있는지만 확인."""
-    with tempfile.TemporaryDirectory() as local:
-        script = UB.build_swap_script(
-            local, pid=12345,
-            current_exe=r"C:\Apps\Para\Camtek_AOI_manager_v3.0.0.exe",
-            new_exe=r"C:\Users\a\AppData\Local\CamtekAOI\Temp\update_x\Camtek_AOI_manager_v3.1.0.exe",
-            backup_path=r"C:\Users\a\AppData\Local\CamtekAOI\Camtek_AOI_manager_v3.0.0_prev.exe",
-            target_exe=r"C:\Apps\Para\Camtek_AOI_manager_v3.1.0.exe")
-        assert os.path.isfile(script)
-        body = _script_body(script)
-        cmds = "\n".join(_commands(body))
-        assert "_prev.exe" in cmds, "롤백 백업 경로 필요"
-        assert cmds.count("copy") >= 2, "백업 복사 + 교체 복사 둘 다 있어야 함"
-        assert "start" in cmds.lower(), "재실행 명령 필요"
-        assert "del" in cmds.lower(), "자기 삭제(정리) 필요"
-        assert "v3.1.0" in cmds, "새 버전 파일명으로 교체해야 함"
-    print("  교체 스크립트 필수 단계(백업·교체·재실행·자기삭제) 포함 OK")
-
-
-def test_swap_script_avoids_console_and_locale_traps():
-    """detached 실행·한글 Windows 에서 실제로 깨졌던 함정 3가지를 막았는지.
-
-      · `timeout` 은 콘솔이 없으면 즉시 실패한다 → `ping` 을 써야 한다.
-      · `tasklist | find "<PID>"` 는 메모리 열 숫자와 우연히 일치해 영원히 대기할
-        수 있다 → 복사 재시도로 종료를 판정해야 한다.
-      · 교체가 끝내 실패하면 기존 exe 를 되살려야 한다(사용자가 빈손이 되지 않게).
-    """
-    import re
-    with tempfile.TemporaryDirectory() as local:
-        script = UB.build_swap_script(
-            local, pid=12345, current_exe=r"C:\A\a_v3.0.0.exe",
-            new_exe=os.path.join(local, "n.exe"),
-            backup_path=os.path.join(local, "b_prev.exe"),
-            target_exe=r"C:\A\a_v3.1.0.exe")
-        cmds = _commands(_script_body(script))
-        assert not [c for c in cmds if re.match(r"^timeout\b", c, re.I)], \
-            "timeout 은 detached 에서 실패한다"
-        assert any(re.match(r"^ping\b", c, re.I) for c in cmds), "ping 대기 필요"
-        assert not [c for c in cmds if "tasklist" in c.lower()], \
-            "PID 문자열 매칭은 오탐 위험"
-        joined = "\n".join(cmds)
-        assert "goto waitloop" in joined, "종료 대기 재시도 필요"
-        assert 'if exist "%OLD%" start "" "%OLD%"' in joined, \
-            "실패 시 기존 exe 복구 필요"
-    print("  detached/로케일 함정 회피(ping·복사재시도·실패복구) OK")
-
-
-def test_swap_script_is_cp949_and_keeps_korean_paths():
-    """cmd.exe 는 .bat 을 UTF-8 이 아니라 시스템 ANSI 로 읽는다. UTF-8 로 쓰면
-    한글 경로가 깨져 엉뚱한 파일을 건드린다(되돌릴 수 없는 파일 조작이라 치명적)."""
-    with tempfile.TemporaryDirectory() as local:
-        cur = r"C:\Users\홍길동\바탕 화면\Camtek_AOI_manager_v3.0.0.exe"
-        script = UB.build_swap_script(
-            local, pid=1, current_exe=cur,
-            new_exe=os.path.join(local, "n.exe"),
-            backup_path=os.path.join(local, "b_prev.exe"),
-            target_exe=r"C:\Users\홍길동\바탕 화면\Camtek_AOI_manager_v3.1.0.exe")
-        raw = open(script, "rb").read()
-        body = raw.decode("cp949")            # cp949 로 읽혀야 정상
-        assert "홍길동" in body and "바탕 화면" in body, "한글 경로가 보존돼야 함"
-        # 우리가 넣는 문구는 전부 ASCII — 한 글자라도 cp949 밖이면 파일 전체가
-        # UTF-8 로 물러나 위 보장이 깨진다(실제로 em-dash 때문에 깨졌었다).
-        for line in _commands(body):
-            if not line.startswith("set "):   # set 줄에는 사용자 경로가 들어감
-                assert line.isascii(), f"명령 줄에 비ASCII: {line!r}"
-    print("  bat 인코딩 cp949 + 한글 경로 보존 + 문구 ASCII OK")
-
-
-def test_swap_waits_on_old_exe_not_new_name():
-    """**이름이 바뀌는 업데이트에서 종료 대기가 실제로 동작해야 한다.**
-
-    새 파일명은 아무도 잠그고 있지 않아 `copy → 새이름` 은 앱이 켜져 있어도
-    즉시 성공한다. 그걸 종료 판정으로 쓰면 앱이 살아 있는 채로 새 프로그램이
-    떠서 **2개가 동시에 실행**되고, 실행 중인 구 exe 는 지워지지 않아 다음
-    실행 때 또 업데이트 알림이 뜬다(실제 발생한 버그).
-    → 대기는 반드시 **구 exe 삭제 성공** 여부로 판정한다(실행 중이면 못 지움).
-    """
-    with tempfile.TemporaryDirectory() as local:
-        script = UB.build_swap_script(
-            local, pid=1, current_exe=r"C:\A\a_v3.0.0.exe",
-            new_exe=os.path.join(local, "n.exe"),
-            backup_path=os.path.join(local, "b_prev.exe"),
-            target_exe=r"C:\A\a_v3.1.0.exe")
-        body = _script_body(script)
-        cmds = _commands(body)
-        wait = body[body.index(":waitloop"):body.index(":gone")]
-        assert 'del /q "%OLD%"' in wait, "구 exe 삭제로 종료를 판정해야 함"
-        assert '"%TARGET%"' not in wait, \
-            "새 이름 복사는 앱이 켜져 있어도 성공한다 — 종료 판정에 쓰면 안 됨"
-        # 새 exe 복사·실행은 구 exe 가 사라진 뒤에만
-        gone = body[body.index(":gone"):]
-        assert 'copy /y "%NEW%" "%TARGET%"' in gone
-        assert gone.index('copy /y "%NEW%" "%TARGET%"') < gone.index('start "" "%TARGET%"')
-        assert "\n".join(cmds).count('start "" "%TARGET%"') == 1, \
-            "새 프로그램은 한 번만 실행"
-    print("  종료 대기 = 구 exe 삭제(이름 바뀌어도 유효) OK")
-
-
-def test_local_target_uses_new_version_name():
-    """업데이트하면 로컬 exe 이름도 새 버전으로 바뀐다(같은 폴더)."""
-    rel = U.ReleaseInfo("3.1.0", U.exe_filename("3.1.0"), "ab" * 32, 10)
-    cur = os.path.join("folder", "Camtek_AOI_manager_v3.0.0.exe")
-    target = UB.local_target_path(cur, rel)
-    assert os.path.dirname(target) == os.path.dirname(os.path.abspath(cur))
-    assert os.path.basename(target) == "Camtek_AOI_manager_v3.1.0.exe"
-    print("  업데이트 후 로컬 파일명도 새 버전 OK")
-
-
-def test_backup_name_is_ascii():
-    """백업 경로는 배치스크립트에 들어가므로 ASCII 여야 안전하다."""
-    with tempfile.TemporaryDirectory() as local:
-        p = UB.backup_path_for(local, os.path.join("x",
-                                                  "Camtek_AOI_manager_v3.0.0.exe"))
-        assert os.path.basename(p).isascii(), p
-        assert os.path.basename(p).endswith("_prev.exe"), p
-    print("  롤백 백업 파일명 ASCII OK")
-
-
 def test_is_frozen_false_in_dev():
     assert U.is_frozen() is False, "테스트는 소스 실행이라 항상 False"
     print("  소스 실행 시 is_frozen()=False OK")
@@ -456,28 +337,6 @@ def test_detects_onedir_build():
     print("  onedir 빌드 감지(단일 배포 차단) OK")
 
 
-def test_version_file_survives_pyinstaller_clean():
-    """`--version-file` 을 `build/` 에 두면 안 된다 — PyInstaller `--clean` 이
-    workpath(build/) 안을 **전부 지운 뒤** 빌드를 시작하므로 파일이 사라져
-    빌드가 통째로 실패한다(2026-08 실사고: 그 결과 반쪽짜리 exe 가 남아
-    "Failed to load Python DLL" 이 났다)."""
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.insert(0, os.path.join(root, "tools"))
-    import importlib
-    sv = importlib.import_module("set_version")
-    rel = os.path.relpath(sv.VERSION_INFO, root).replace("\\", "/")
-    assert not rel.startswith("build/"), \
-        f"--version-file 이 --clean 에 지워지는 위치에 있음: {rel}"
-    with open(os.path.join(root, "build_exe.bat"), encoding="utf-8") as fh:
-        bat = fh.read()
-    assert "--version-file build" not in bat, "bat 이 build\\ 안을 가리킴"
-    assert "--version-file tools" in bat
-    # 빌드가 실패했을 때 낡은/반쪽 exe 가 남아 배포되지 않도록
-    assert "del /q \"dist\\%APPNAME%.exe\"" in bat, "이전 산출물 삭제가 없음"
-    assert "is missing" in bat, "빌드 후 산출물 존재 확인이 없음"
-    print("  --version-file 위치(--clean 안전) + 빌드 실패 시 산출물 방지 OK")
-
-
 def test_display_version_trims_padding():
     """exe 파일 속성은 4자리('4.0.3.0') — 게시 표기는 '4.0.3' 으로 다듬는다."""
     assert U.display_version("4.0.3.0") == "4.0.3"
@@ -487,27 +346,6 @@ def test_display_version_trims_padding():
     assert U.display_version("") == ""
     assert U.same_version(U.display_version("4.0.3.0"), "4.0.3")
     print("  파일 버전 표기 다듬기(뒤 0 제거) OK")
-
-
-def test_publish_dialog_reads_version_from_exe():
-    """배포 창은 버전을 **입력받지 않고 exe 에서 읽는다**(사용자 지정 2026-08).
-    사람이 따로 타이핑하면 exe 내용과 어긋나 업데이트가 무한 반복된다."""
-    import re
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(root, "param_manager", "equip_app.py"),
-              encoding="utf-8") as fh:
-        src = fh.read()
-    m = re.search(r"def _publish_update_dialog.*?(?=\n    def )", src, re.S)
-    assert m, "_publish_update_dialog 를 찾지 못함"
-    body = m.group(0)
-    assert "updater.exe_file_version(path)" in body, "exe 에서 버전을 읽지 않음"
-    assert "exe 에서 읽음" in body, "읽은 버전을 표시하지 않음"
-    # 빌드 스크립트가 버전을 물어보는지(사람이 정하고, 한 곳에서만 타이핑)
-    with open(os.path.join(root, "build_exe.bat"), encoding="utf-8") as fh:
-        bat = fh.read()
-    assert "set /p" in bat and "Version to build" in bat, \
-        "build_exe.bat 이 버전을 물어보지 않음"
-    print("  버전 입력은 build_exe.bat 한 곳 · 배포 창은 exe 에서 읽음 OK")
 
 
 def test_same_version_ignores_padding():
@@ -551,20 +389,12 @@ if __name__ == "__main__":
               test_verify_download_detects_incomplete_sync,
               test_download_to_local_goes_to_local_not_onedrive,
               test_publish_rejects_bad_inputs,
-              test_swap_script_contains_required_steps,
-              test_swap_script_avoids_console_and_locale_traps,
-              test_swap_script_is_cp949_and_keeps_korean_paths,
-              test_swap_waits_on_old_exe_not_new_name,
-              test_local_target_uses_new_version_name,
-              test_backup_name_is_ascii,
               test_is_frozen_false_in_dev,
               test_program_dir_is_sibling_of_save_dir,
               test_old_inside_publish_still_readable_then_migrated,
               test_program_dir_falls_back_when_no_parent,
               test_detects_onedir_build,
-              test_version_file_survives_pyinstaller_clean,
               test_display_version_trims_padding,
-              test_publish_dialog_reads_version_from_exe,
               test_same_version_ignores_padding,
               test_exe_file_version_safe_off_windows]:
         run(t)

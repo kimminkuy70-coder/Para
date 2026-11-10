@@ -360,46 +360,5 @@ class Collection(unittest.TestCase):
         self.assertEqual(result['cached_only'], 1)
 
 
-class Scheduling(unittest.TestCase):
-    def test_daily_timestamp_and_busy_gate_without_tk_display(self):
-        from param_manager.batchreport_ui import BatchReportMixin
-        from param_manager import watcher
-        from datetime import timedelta
-
-        class App(BatchReportMixin):
-            def __init__(self):
-                self._cfg = {'batch_auto': True}
-                self.local_dir = '/unused'
-                self.launched = 0
-
-            def _batch_save(self):
-                pass
-
-            def _set_status(self, text):
-                self.status = text
-
-            def _run_bg(self, work, done):
-                self.launched += 1
-                done(True, {'collection': {'errors': []}, 'dashboard_error': '',
-                            'result': {'summary': {'Batch(리포트) 수': 1, 'Lot 수': 1}}, 'outdir': '/unused'})
-
-            def after(self, ms, fn):
-                self.delay = ms
-
-        app = App()
-        targets = [{'machine': 'A', 'folder': '/source', 'names': None}]
-        options = {'metrics': ['M02'], 'valid_wafers': 25}
-        app._batch_launch(targets, options, automatic=True)
-        self.assertEqual(app.launched, 1)
-        app._batch_tick()
-        self.assertEqual(app.launched, 1)  # must NOT run every minute
-        state = watcher.WatchState.from_dict(app._cfg['batch_schedule'])
-        settings = watcher.WatchSettings(enabled=True, interval_hours=24)
-        self.assertTrue(watcher.should_run(datetime.now() + timedelta(hours=25), settings, state))
-        app._watch_busy = True
-        app._batch_launch(targets, options, automatic=True)
-        self.assertEqual(app.launched, 1)
-
-
 if __name__ == '__main__':
     unittest.main()

@@ -91,27 +91,5 @@ class ColorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ns.resolve_original(rows, 'Surface', 'same')
 
-    def test_note_editor_tracks_cell_after_scroll_not_click(self):
-        source = Path(__file__).resolve().parents[1] / 'param_manager/equip_app.py'
-        tree = ast.parse(source.read_text())
-        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'EquipApp')
-        method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '_edit_note_cell')
-        tk = Mock()
-        top = tk.Toplevel.return_value
-        top.winfo_screenwidth.return_value = 1920
-        top.winfo_screenheight.return_value = 1080
-        ns_ = {'tk': tk, 'engine': engine}
-        exec(compile(ast.Module(body=[method], type_ignores=[]), '<method>', 'exec'), ns_)
-        mt = Mock(col_positions=[0, 24, 314, 426, 606], row_positions=[0, 28, 56, 84])
-        mt.winfo_rootx.return_value = 100
-        mt.winfo_rooty.return_value = 200
-        mt.canvasx.return_value = 0
-        mt.canvasy.return_value = 28
-        app = SimpleNamespace(fonts={'base': ('Arial', 10)})
-        ns_['_edit_note_cell'](app, SimpleNamespace(MT=mt), 2, 3,
-                              engine.ParamRow({'비고': 'note'}), SimpleNamespace(x_root=999, y_root=999))
-        top.wm_geometry.assert_called_once_with('180x28+526+228')
-
-
 if __name__ == '__main__':
     unittest.main()

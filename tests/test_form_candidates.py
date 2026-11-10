@@ -142,100 +142,10 @@ def test_status_survives_recipe_without_versions():
     print("  확정본 없는 레시피도 안전 OK")
 
 
-def test_editor_always_saves_original():
-    """화면 편집기로 **바로 확정**해도 원본(전체 후보)을 남겨야 한다.
-
-    이걸 빼면 그 회차는 나중에 '기존 양식 수정하기'로 열어도 항목을 다시 넣을
-    수 없다(실제로 그래서 문제가 됐다). 소스 수준에서 고정한다.
-    """
-    src = _src("equip_app.py")
-    m = re.search(r"def _form_param_editor.*?(?=\n    def _)", src, re.S)
-    assert m, "_form_param_editor 를 찾지 못함"
-    body = m.group(0)
-    conf = re.search(r"\n        def confirm\(\).*?(?=\n        def |\Z)", body, re.S)
-    assert conf, "confirm() 을 찾지 못함"
-    cbody = conf.group(0)
-    # ① 다른 저장 경로(on_confirm)로 넘어가기 전에 원본을 남긴다
-    assert "_save_candidate_snapshot" in cbody, \
-        "on_confirm 경로에서 원본(전체 후보)을 저장하지 않음"
-    # ② 기본(양식 만들기) 경로도 확정과 함께 원본을 남긴다
-    assert "form_original_path" in cbody and "build_initial_workbook" in cbody, \
-        "기본 확정 경로에서 원본(전체 후보)을 저장하지 않음"
-    # 저장 실패가 확정을 막으면 안 된다(비치명 로그)
-    assert "_logerr" in cbody, "원본 저장 실패를 치명적으로 다루고 있음"
-    print("  화면 편집기 확정도 원본을 남긴다 OK")
-
-
-def test_edit_existing_form_uses_candidates():
-    """'기존 양식 수정하기'가 후보 목록을 쓰고, 없으면 사람에게 알리고 물어본다."""
-    src = _src("equip_app.py")
-    m = re.search(r"def _edit_existing_form.*?(?=\n    def )", src, re.S)
-    assert m, "_edit_existing_form 를 찾지 못함"
-    body = m.group(0)
-    assert "form_version_status" in body, "버전별 원본 유무를 조사하지 않음"
-    assert "initial_to_pivot" in body and "merge_form_into_candidates" in body, \
-        "후보 목록으로 열지 않음(확정본만 쓰면 빼기만 가능)"
-    assert "_ask_edit_source" in body, "무엇을 기준으로 열지 고르는 단계가 없음"
-    # 원본이 있든 없든 '장비/로컬에서 다시 읽기'로 갈 수 있어야 한다 —
-    # 파서 규칙이 바뀌면 저장된 스냅샷에는 반영되지 않기 때문.
-    assert re.search(r'choice in \("EQUIP", "LOCAL"\)', body), \
-        "다시 읽기 경로로 분기하지 않음"
-    assert "_recollect_for_edit" in body
-    # 후보로 열 때 default_use=True 면 전부 체크돼 '무엇이 빠졌는지'가 사라진다
-    assert re.search(r"default_use=\(None if cand else True\)", body), \
-        "후보 목록을 열면서 사용 상태를 덮어쓰고 있음"
-    print("  기존 양식 수정 — 후보 사용 + 없을 때 안내 OK")
-
-
-def test_edit_source_dialog_always_offers_recollect():
-    """'다시 읽어 합치기'는 원본이 있어도 **항상** 고를 수 있어야 한다.
-
-    파서 규칙(예: OpticPreset target 선택)이 바뀌어도 저장된 원본 스냅샷에는
-    반영되지 않는다. 항목 구성까지 최신으로 맞추려면 장비/로컬에서 다시 읽어
-    합치는 길이 늘 열려 있어야 한다.
-    """
-    src = _src("equip_app.py")
-    d = re.search(r"def _ask_edit_source.*?(?=\n    def )", src, re.S)
-    assert d, "_ask_edit_source 를 찾지 못함"
-    body = d.group(0)
-    # 네 갈래: 저장된 원본 / 장비 다시 읽기 / 로컬 다시 읽기 / 확정본만
-    assert ", cand, primary=True)" in body, "저장된 원본 선택지가 없음"
-    assert '"EQUIP"' in body and '"LOCAL")' in body, "다시 읽기 선택지가 없음"
-    assert '확정본만으로 열기' in body and '"")' in body, "확정본만 열기가 없음"
-    assert "any_candidate_for" in body, "원본이 없을 때 다른 회차 빌려오기가 없음"
-
-    # 다시 읽기 선택지는 **cand 조건문 밖**에서 만들어져야 한다(원본이 있어도 노출)
-    cond = re.search(r"\n        if cand:\n(.*?)\n        elif other:\n(.*?)"
-                     r"\n        opt\(", body, re.S)
-    assert cond, "선택지 구성이 예상과 다름(if cand / elif other / 공통 opt)"
-    assert '"EQUIP"' not in cond.group(1) and '"EQUIP"' not in cond.group(2), \
-        "다시 읽기가 원본 유무 조건 안에 갇혀 있음"
-
-    # 고른 소스가 그대로 재수집 함수로 전달된다
-    r = re.search(r"def _recollect_for_edit.*?(?=\n    def )", src, re.S)
-    assert r, "_recollect_for_edit 를 찾지 못함"
-    rb = r.group(0)
-    assert 'source="EQUIP"' in rb, "소스 인자가 없음"
-    assert 'if source == "LOCAL":' in rb, "로컬 경로가 분리되지 않음"
-    assert "_local_pick_sources" in rb and "_collect_dialog" in rb
-    # 재수집 staging 은 **반드시 로컬**(OneDrive 동기화 폭주 방지)
-    assert "localdirs.new_temp_run(self.local_dir" in rb, \
-        "장비 수집 staging 이 로컬이 아님"
-
-    # 호출측이 EQUIP/LOCAL 을 그대로 넘긴다
-    e = re.search(r"def _edit_existing_form.*?(?=\n    def )", src, re.S)
-    assert re.search(r"_recollect_for_edit\([^)]*source=choice", e.group(0), re.S), \
-        "고른 소스를 넘기지 않음"
-    print("  '다시 읽어 합치기' 항상 선택 가능 + 소스 전달 OK")
-
-
 if __name__ == "__main__":
     for t in [test_candidate_lookup_prefers_original,
               test_version_status_flags_addable_versions,
-              test_status_survives_recipe_without_versions,
-              test_editor_always_saves_original,
-              test_edit_existing_form_uses_candidates,
-              test_edit_source_dialog_always_offers_recollect]:
+              test_status_survives_recipe_without_versions]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)

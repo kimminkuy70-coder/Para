@@ -55,46 +55,25 @@ def test_no_net_use_functions_in_collector():
     print("  collector: net use 접속 함수/명령 없음 OK")
 
 
+def _engine_sources():
+    """v13: 웹 엔진(param_manager 전체) — tkinter 판은 삭제됨."""
+    return {n: _src(n) for n in sorted(os.listdir(SRC_DIR)) if n.endswith(".py")}
+
+
 def test_no_netuse_calls_anywhere():
     """전체 소스에서 net use 접속을 호출하는 코드가 없어야 한다."""
-    for name in ("equip_app.py", "collector.py", "watcher.py", "cmwatcher.py"):
-        src = _src(name)
+    for name, src in _engine_sources().items():
         assert "connect_admin_share(" not in src, f"{name}: connect_admin_share 호출 남음"
         assert "use_net_use=" not in src, f"{name}: use_net_use 인자 사용 남음"
+        assert '"net", "use"' not in src and '"net","use"' not in src, f"{name}: net use 명령 남음"
     print("  connect_admin_share/use_net_use 호출 없음 OK")
-
-
-def test_collect_dialog_has_no_password_ui():
-    """수동 수집창(양식 만들기)에 ID·비밀번호 입력칸과 net use 체크가 없어야 한다."""
-    src = _src("equip_app.py")
-    m = re.search(r"def _collect_dialog.*?(?=\n    def )", src, re.S)
-    assert m, "_collect_dialog 를 찾지 못함"
-    body = m.group(0)
-    assert 'show="*"' not in body and 'show="•"' not in body, "비밀번호 입력칸이 남아 있음"
-    assert "net_var" not in body, "net use 체크박스가 남아 있음"
-    assert "login_id_for" not in body and "set_login_id" not in body, \
-        "접속 ID 처리가 남아 있음"
-    print("  수동 수집창: 비밀번호/net use/접속ID UI 없음 OK")
-
-
-def test_watch_collect_uses_session_only():
-    """무인 수집이 net use 없이 탐색기 세션만 쓰는지(자격증명 미취급)."""
-    src = _src("equip_app.py")
-    m = re.search(r"def _watch_collect.*?(?=\n    def )", src, re.S)
-    assert m, "_watch_collect 를 찾지 못함"
-    body = m.group(0)
-    for gone in ("all_creds", "netuse_mode", "use_netuse", "_watch_cred"):
-        assert gone not in body, f"무인 수집에 net use 흔적 남음: {gone}"
-    print("  무인 수집: 세션 전용(net use 흔적 없음) OK")
 
 
 def test_no_credentials_on_disk():
     """비밀번호를 config·감시설정 등 어디에도 저장/취급하지 않는다."""
-    app = _src("equip_app.py")
     assert "password" not in _src("watcher.py").lower(), "watcher 에 비밀번호 흔적"
-    assert "_watch_cred" not in app, "메모리 접속 정보(_watch_cred) 가 아직 남아 있음"
-    assert not re.search(r'_cfg\[[^\]]*(pw|pass|비밀번호)', app, re.I), \
-        "config 에 비밀번호를 저장하고 있음"
+    assert "password" not in _src("desktop_watch.py").lower(), "desktop_watch 에 비밀번호 흔적"
+    assert "password" not in _src("desktop_config.py").lower(), "desktop_config 에 비밀번호 흔적"
     print("  비밀번호 저장/취급 없음 OK")
 
 
@@ -109,32 +88,19 @@ def test_probe_has_gap_between_hosts():
 
 
 def test_unattended_collect_has_gap_between_machines():
-    """무인 수집도 장비 사이에 간격을 둔다(측면 이동 스캔 오탐 방지)."""
-    src = _src("equip_app.py")
-    gap = re.search(r"^HOST_GAP_SEC\s*=\s*([\d.]+)", src, re.M)
-    assert gap and float(gap.group(1)) > 0, "HOST_GAP_SEC 상수가 없거나 0"
-    m = re.search(r"def _watch_collect.*?(?=\n    def )", src, re.S)
-    assert m and "HOST_GAP_SEC" in m.group(0), "_watch_collect 에 장비 간 간격 없음"
-    print(f"  무인 수집 장비 간 간격 {gap.group(1)}s OK")
-
-
-def test_manual_install_path_exists():
-    """자동 교체(백신 행위탐지 대상)를 피하고 싶을 때 직접 설치 경로가 있어야 한다."""
-    src = _src("equip_app.py")
-    assert "_open_program_dir" in src, "직접 설치(게시 폴더 열기) 경로가 없음"
-    assert "askyesnocancel" in src, "자동 교체 외 선택지가 없음"
-    print("  업데이트: 자동 교체 / 직접 설치 선택 가능 OK")
+    """무인 수집(웹 엔진 자동 감시)도 장비 사이에 간격을 둔다(측면 이동 스캔 오탐 방지)."""
+    from param_manager import desktop_watch
+    assert desktop_watch.HOST_GAP_SEC > 0, "HOST_GAP_SEC 가 0"
+    assert _src("desktop_watch.py").count("self.sleep(HOST_GAP_SEC)") >= 2, "장비 간 간격 호출이 빠짐"
+    print(f"  무인 수집 장비 간 간격 {desktop_watch.HOST_GAP_SEC}s OK")
 
 
 if __name__ == "__main__":
     for t in [test_no_net_use_functions_in_collector,
               test_no_netuse_calls_anywhere,
-              test_collect_dialog_has_no_password_ui,
-              test_watch_collect_uses_session_only,
               test_no_credentials_on_disk,
               test_probe_has_gap_between_hosts,
-              test_unattended_collect_has_gap_between_machines,
-              test_manual_install_path_exists]:
+              test_unattended_collect_has_gap_between_machines]:
         run(t)
     print(f"==== {PASS}/{PASS + FAIL} passed ====")
     sys.exit(1 if FAIL else 0)
