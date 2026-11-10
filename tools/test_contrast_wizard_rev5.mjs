@@ -418,15 +418,34 @@ assert.match(sl5[0],/LOT_CA20\s+W01\s+4\s+2\s+2 \(50%\)\s+1 \(25%\)\s+2\s+frameT
 assert.match(sl5[1],/LOT_CA27\s+W01\s+3\s+2\s+1 \(33%\)\s+1 \(33%\)\s+2\s+frameToChuckPlane\.ini\s+1 \(33%\)\s+1 \(33%\)\s+그대로/);
 assert.equal(await page.locator('#b5list .br').count(),7);
 await page.locator('#b5show').selectOption('ok');assert.equal(await page.locator('#b5list .br').count(),2);
+// 결과 목록에 사진 전체 경로 칸(원본 폴더 경로 + 고른 폴더부터의 경로)
+assert.deepEqual((await page.locator('#b5list .br').nth(0).locator('span').allInnerTexts()).slice(10),
+  ['Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\C1.c.1.jpeg','Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\F1.t.1.jpeg']);
+// 전체 경로 = [원본 폴더 경로(PC)] + 고른 폴더부터: 상위 폴더 · 고른 폴더 자체(이름이 같으면 겹치지 않게) · UNC · 비었으면 그대로
+const pcp=await page.evaluate(()=>{const c=window.__cw,b=document.getElementById('bigBase'),old=b.value,set=v=>{b.value=v;return c.pcPath('RCP/SETUP1/LOT_A/W01/x.c.1.jpeg')};
+  const r=[set('Y:\\AOI\\SR'),set('Y:\\AOI\\SR\\RCP\\'),set('"\\\\nas01\\aoi\\RCP"'),set('/mnt/aoi'),set('')];b.value=old;return r});
+assert.deepEqual(pcp,['Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_A\\W01\\x.c.1.jpeg','Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_A\\W01\\x.c.1.jpeg','\\\\nas01\\aoi\\RCP\\SETUP1\\LOT_A\\W01\\x.c.1.jpeg','/mnt/aoi/RCP/SETUP1/LOT_A/W01/x.c.1.jpeg','RCP/SETUP1/LOT_A/W01/x.c.1.jpeg']);
+assert.equal(await page.locator('#bigBase1').inputValue(),'Y:\\AOI\\SR');   // 5-1 · 5-2 두 칸은 같은 값
 // 사진 새 창(큰 화면 · 사진만): 줄 더블 클릭 → Color · Gray Crop(Color 크기) · Gray 프레임, 새 창 ↓ = 목록도 이동, 목록 ↓ = 새 창도 바뀜
 const [pw]=await Promise.all([page.waitForEvent('popup'),page.locator('#b5list .br').nth(0).dblclick()]);
 await pw.locator('#ff canvas').waitFor();
-const pw1=await pw.evaluate(()=>({hd:document.getElementById('hd').textContent,cap:[...document.querySelectorAll('figcaption')].map(f=>f.textContent),tip:[...document.querySelectorAll('figcaption')].map(f=>f.title),
+const capOf=()=>pw.evaluate(()=>[...document.querySelectorAll('figcaption')].map(f=>({b:f.querySelector('b').textContent,pp:(f.querySelector('.pp')||{}).textContent||'',text:f.textContent,tip:f.title})));
+const pw1=await pw.evaluate(()=>({hd:document.getElementById('hd').textContent,
   c:!!document.querySelector('#fc canvas'),x:[document.querySelector('#fx canvas').width,document.querySelector('#fx canvas').height],tables:document.querySelectorAll('table,dl,input,button').length}));
-assert.match(pw1.hd,/^1 \/ 2 · LOT_CA\d+ · W01 · ID \d+ · Contrast /);
-// 사진 파일명(소유자 "사진 파일명도 같이 보이게") — 칸 제목에, 마우스를 올리면 경로
-assert.deepEqual(pw1.cap,['Color · C1.c.1.jpeg','Gray Crop (Color 시야) · F1.t.1.jpeg','Gray 프레임 · F1.t.1.jpeg · 픽셀 (1100.0, 200.0) · 빨간 + = Defect · 노란 상자 = Crop 범위']);
-assert.ok(/^RCP\/SETUP1\/LOT_CA\d+\/W01\/C1\.c\.1\.jpeg$/.test(pw1.tip[0])&&/\/W01\/F1\.t\.1\.jpeg$/.test(pw1.tip[1]),pw1.tip.join());
+assert.match(pw1.hd,/^1 \/ 2 · LOT_CA27 · W01 · ID \d+ · Contrast /);assert.doesNotMatch(pw1.hd,/원본 폴더 경로/);
+// 사진 파일명 + 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도") — 칸 제목(사진 위, 사진을 가리지 않음), 마우스를 올려도 경로
+const cap1=await capOf();
+assert.deepEqual(cap1.map(c=>c.b),['C1.c.1.jpeg','F1.t.1.jpeg','F1.t.1.jpeg']);
+assert.deepEqual(cap1.map(c=>c.pp),['Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\C1.c.1.jpeg','Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\F1.t.1.jpeg','Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\F1.t.1.jpeg']);
+assert.deepEqual(cap1.map(c=>c.tip),cap1.map(c=>c.pp));
+assert.match(cap1[2].text,/^Gray 프레임 · F1\.t\.1\.jpeg · 픽셀 \(1100\.0, 200\.0\) · 빨간 \+ = Defect · 노란 상자 = Crop 범위Y:/);
+assert.equal(await pw.evaluate(()=>[...document.querySelectorAll('figure')].every(f=>f.firstElementChild.tagName==='FIGCAPTION'&&f.querySelector('.im canvas'))),true);
+// 원본 폴더 경로를 비우면 고른 폴더부터 + 안내, 다시 적으면 바로 PC 경로로 다시 그림
+await page.locator('#bigBase').fill('');await page.locator('#bigBase').dispatchEvent('change');assert.equal(await page.locator('#bigBase1').inputValue(),'');
+await pw.locator('#hd',{hasText:'원본 폴더 경로(PC)'}).waitFor();assert.equal((await capOf())[0].pp,'RCP/SETUP1/LOT_CA27/W01/C1.c.1.jpeg');
+await page.locator('#bigBase').fill('Y:\\AOI\\SR\\RCP');await page.locator('#bigBase').dispatchEvent('change');   // 고른 폴더 자체 경로를 적어도 됨
+await pw.waitForFunction(()=>document.querySelector('#fc .pp').textContent.startsWith('Y:'));assert.equal((await capOf())[0].pp,'Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\C1.c.1.jpeg');
+assert.equal(await page.locator('#bigBase1').inputValue(),'Y:\\AOI\\SR\\RCP');assert.equal(await page.evaluate(()=>localStorage.getItem('cw.bigBase')),'Y:\\AOI\\SR\\RCP');
 assert.equal(pw1.c,true);assert.deepEqual(pw1.x,[1380,1036]);assert.equal(pw1.tables,0);   // 사진만(표 · 단추 없음)
 // 큰 화면에서 방향키(소유자 "방향키로 다음 목록"): ↓ → = 다음, ↑ ← = 이전, 끝에서는 멈춤, Home · End — 목록도 같이 움직임
 await pw.keyboard.press('ArrowDown');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();
@@ -449,9 +468,10 @@ await page.locator('#c5St',{hasText:'이 Defect 끝'}).waitFor();
 const st5=await page.locator('#c5St').innerText();
 assert.match(st5,/✔ Color 이미지 읽기 · 디코딩: C1\.c\.1\.jpeg/);assert.match(st5,/✔ Gray 프레임 읽기 · 디코딩: F1\.t\.1\.jpeg/);
 assert.match(st5,/✔ Crop\(Color 시야\) · GL 계산 — 픽셀 \(1100\.0, 200\.0\) · Crop 838×629 → 1380×1036/);
-const in5=await page.locator('#c5Info').innerText();assert.match(in5,/Gray 경로\s*RCP\/SETUP1\/LOT_CA\d+\/W01\/F1\.t\.1\.jpeg/);assert.match(in5,/ROI mean/);
+const in5=await page.locator('#c5Info').innerText();assert.match(in5,/Gray 경로\s*Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA\d+\\W01\\F1\.t\.1\.jpeg/);assert.match(in5,/Color 경로\s*Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA\d+\\W01\\C1\.c\.1\.jpeg/);assert.match(in5,/ROI mean/);
 assert.match(in5,/Gray\s*F1\.t\.1\.jpeg · \(1100\.0, 200\.0\) · 후보 2 · 좌표 기준 그대로 · frameToChuckPlane/);
-assert.deepEqual(await page.locator('#c5one figcaption').allInnerTexts(),['Color 원본 · C1.c.1.jpeg','Gray Crop (Color 시야) · F1.t.1.jpeg']);   // 사진 파일명
+const cap5=await page.locator('#c5one figcaption').allInnerTexts();   // 사진 파일명 + 전체 경로(사진 위)
+assert.match(cap5[0],/^Color 원본 · C1\.c\.1\.jpeg\s*Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA\d+\\W01\\C1\.c\.1\.jpeg$/);assert.match(cap5[1],/^Gray Crop \(Color 시야\) · F1\.t\.1\.jpeg\s*Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA\d+\\W01\\F1\.t\.1\.jpeg$/);
 assert.equal(await page.locator('#c5list .br').count(),2);
 await page.locator('#c5list').focus();await page.keyboard.press('ArrowRight');await page.locator('#c5Info',{hasText:'2 / 2'}).waitFor();   // ← → 도 이전 · 다음
 await page.keyboard.press('ArrowLeft');await page.locator('#c5Info',{hasText:'1 / 2'}).waitFor();
@@ -464,7 +484,8 @@ await page.evaluate(()=>window.__cw.THUMB.clear());await page.locator('#b5prep')
 await page.waitForFunction(()=>document.getElementById('busy').hidden&&window.__cw.THUMB.size===7);
 await page.locator('[data-v5="grid"]').click();await page.locator('#c5gst',{hasText:'준비돼 있습니다'}).waitFor();
 assert.equal(await page.locator('#c5grid .g5').count(),7);assert.equal(await page.locator('#c5grid .g5.st-ok img').count(),4);
-assert.deepEqual(await page.locator('#c5grid .g5.st-ok .gn').first().locator('span').allInnerTexts(),['C1.c.1.jpeg','F1.t.1.jpeg']);   // 격자 카드에도 사진 파일명
+assert.deepEqual(await page.locator('#c5grid .g5.st-ok .gn').first().locator('span').allInnerTexts(),['C1.c.1.jpeg','F1.t.1.jpeg']);   // 격자 카드에도 사진 파일명(마우스를 올리면 전체 경로)
+assert.match(await page.locator('#c5grid .g5.st-ok .gn span').first().getAttribute('title'),/^Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA\d+\\W01\\C1\.c\.1\.jpeg$/);
 await page.locator('#c5grid .g5').first().click();assert.equal(await page.locator('#c5one').isHidden(),false);
 // 많은 Defect: 합성 30만 개(Slot 3개)도 열 배열로 바로 필터 · 정렬(표는 보이는 줄만 그림) — 매칭 파일이 없는 Slot 은 '매칭 파일 없음'
 await page.locator('[data-b5="1"]').click();
