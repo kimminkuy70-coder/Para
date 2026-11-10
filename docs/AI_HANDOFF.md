@@ -5,6 +5,7 @@
 - 마지막 갱신 2026-11-10 · 기준 커밋 `ab1ab22` · 이슈 없음(소유자 세션: 업로드한 `coding-claude-aoi-verification-app-LAXpX.zip` "업데이트 방식에 대해서 분석해봐, 회사에서 사용했을 때 문제 없어"). 코드 변경 없음.
 - 결과: `docs/V13_계획.md` 10절에 비교표 추가. 그 프로그램 = 동봉 Python + `.py` 소스 + bat 런처, 업데이트 = Git 없이 urllib 로 GitHub 브랜치 zip → `app.new` 준비 → 다음 실행 때 런처가 교체. 우리만 쓰는 새 exe 가 없어 평판 판정에 안 걸리는 것으로 본다(추정).
 - 소유자에게 제안한 선택지(답 대기): 안 A = 지금 계획(Git 설치 + 태그 checkout) / 안 B = Git 없이 태그 zip 다운로드 + app.new 교체 / 안 C = B + python.org embeddable Python 동봉. 그 프로그램의 'SSL 검증 끄고 재시도'는 가져오지 않는다.
+- 후속 질문 "Python 이 없는 PC 에서도 되나?" → 된다고 답함: 그 프로그램은 Python 을 묶음에 넣거나(전체 · lite) 작은 exe 가 받아 옴(온라인). Para 는 openpyxl 만 vendor 하면 pip 불필요 → 첫 설치 zip 에 python.org embeddable 동봉(안 C), 업데이트는 소스만. 계획서 10-1절.
 - 남은 일: 9절 질문 + 10절 A/B/C 선택 답을 받은 뒤 `version_v13` 생성 · 구현.
 
 ## 최신 재개 — V13 계획(git clone 설치 · 업데이트, 자체 exe 없음, tkinter 제거) 검토 대기 (2026-11-10 KST, `version_v12`)
