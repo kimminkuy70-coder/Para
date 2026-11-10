@@ -157,7 +157,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <h2>Step 1 · 스캔 결과 등록</h2>
   <div class="card">
     <div class="drop">
-      <p>Lot 폴더(또는 그 상위 폴더)를 고르십시오. <span class="muted">(Lot 폴더 안의 Wafer Slot 폴더 1~25개 = Surface.flt 가 있는 폴더를 그 Lot 으로 묶어 등록합니다. 상위 폴더를 고르면 안의 Lot 을 모두 등록합니다)</span></p>
+      <p>Lot 폴더들이 들어 있는 폴더(또는 Lot 폴더 하나)를 고르십시오. <span class="muted">(고른 폴더 바로 아래 폴더 = Lot. 그 안에서 Surface.flt 가 있는 폴더 = Wafer Slot 이며, Lot 안 몇 단계 아래에 있어도 그 Lot 으로 묶습니다. Lot 폴더 하나를 고르면 그 안의 Slot 을 등록합니다)</span></p>
       <input type="file" id="dirInput" webkitdirectory multiple hidden>
       <button class="pri" id="addBtn">Lot 폴더 추가</button>
       <p class="muted">파일은 이 PC 브라우저 안에서만 읽습니다. 원본은 고치지 않습니다.</p>
@@ -552,35 +552,63 @@ function busy(p){const el=$('#busy');if(!el)return;if(!p){el.hidden=true;return}
   $('#busyF').textContent=p.fileTotal?`파일 ${p.files} / ${p.fileTotal}개 (${Math.round(100*p.files/p.fileTotal)}%)`:(p.files||'');
   $('#busyD').textContent=p.detail||'';$('#busyX').hidden=!p.close}
 const nextPaint=()=>new Promise(r=>setTimeout(r,0));
+/** 폴더 인식(소유자 지시 2026-11-10: "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"). entries = [{path}] (첫 마디 = 고른 폴더, '/' 구분), dirs = Step 5 폴더 핸들.
+ *  Slot = Surface.flt 가 있는 폴더(이름 = 그 폴더 이름). Lot = 고른 폴더 바로 아래 폴더 — Slot 이 Lot 안 몇 단계 아래에 있어도(예: Lot/Job/Setup/SM/Wafer) 그 Lot 으로 묶는다.
+ *   · 고른 폴더/Surface.flt          → 고른 폴더 = Slot 1개짜리 Lot(Slot 폴더를 바로 고름)
+ *   · 고른 폴더/X/Surface.flt        → 고른 폴더 = Lot, X = Slot(Lot 폴더를 바로 고름). 단 X 이름마다 다른 'CA27' 이 있고 고른 폴더 이름에는 없으면 X = Lot(Slot 1개)
+ *   · 고른 폴더/Lot/…/Slot/Surface.flt → 고른 폴더 바로 아래 = Lot
+ *  파일 주인 = 가장 가까운 위쪽 Slot 폴더. Slot 밖이지만 Lot 폴더 ~ Slot 사이 폴더에 있는 파일(ProductInfo · Wafer Map 등, 사진 제외)은 그 아래 Slot 들이 같이 쓴다(Slot 에 같은 이름이 있으면 Slot 것). */
+function planUnits(entries,dirs){
+  const dirOf=p=>p.slice(0,p.length-baseName(p).length),segs=d=>d.split('/').filter(Boolean);
+  const fd=[...new Set(entries.filter(e=>lower(baseName(e.path))==='surface.flt').map(e=>dirOf(e.path)))];
+  const bySel=new Map();for(const d of fd){const k=segs(d)[0]||'';(bySel.get(k)||bySel.set(k,[]).get(k)).push(d)}
+  const units=[],U=new Map();
+  for(const [sel,ds] of bySel){
+    const d2=ds.filter(d=>segs(d).length===2),cas=new Set(d2.map(d=>{const m=CA_RE.exec(segs(d)[1]);return m?m[1]:null}));
+    const childLots=d2.length>1&&!cas.has(null)&&cas.size===d2.length&&!CA_RE.test(sel);
+    for(const d of ds){const s=segs(d),n=s.length;let lot,slot=s[n-1]||sel,mids=[];
+      if(n<=1)lot=[sel];else if(n===2)lot=childLots?s:[sel];else{lot=s.slice(0,2);mids=s.slice(2,n-1)}
+      const u={dir:d,sel,lotPath:lot.join('/')||sel,lotDir:lot.join('/')+'/',lotName:lot[lot.length-1]||sel,slotName:slot,mids,own:[],shared:[],dirs:[],images:0};
+      // 'CA27' 찾는 순서: Lot 폴더 → Lot 과 Slot 사이 폴더(가까운 것부터) → Slot 폴더 → 고른 폴더(맨 마지막 — 고른 폴더 이름이 모든 Lot 에 붙지 않게)
+      u.caNames=[u.lotName,...[...mids].reverse(),...(n>1?[slot]:[]),...(lot.length>1?[sel]:[])];units.push(u);U.set(d,u)}}
+  // 같은 Lot 안에 같은 이름 Slot 이 여럿이면 사이 폴더까지 붙여 구분
+  const cnt=new Map();for(const u of units){const k=u.lotPath+'\n'+lower(u.slotName);cnt.set(k,(cnt.get(k)||0)+1)}
+  for(const u of units)if(cnt.get(u.lotPath+'\n'+lower(u.slotName))>1&&u.mids.length)u.slotName=[...u.mids,u.slotName].join('/');
+  const memo=new Map(),owner=d=>{if(memo.has(d))return memo.get(d);let x=d,r=null;for(;;){if(U.has(x)){r=U.get(x);break}if(!x)break;x=x.replace(/[^/]*\/$/,'')}memo.set(d,r);return r};
+  const under=new Map(),below=D=>{let l=under.get(D);if(!l)under.set(D,l=units.filter(u=>u.dir.startsWith(D)&&D.startsWith(u.lotDir)));return l};
+  for(const e of entries){const D=dirOf(e.path),u=owner(D);if(u){u.own.push(e);continue}if(/\.(jpe?g|png|bmp)$/i.test(e.path))continue;for(const v of below(D))v.shared.push(e)}
+  for(const d of dirs||[]){const u=owner(d.path);if(u){u.dirs.push(d.handle);u.images+=d.images||0}}
+  for(const u of units)u.files=u.own.concat(u.shared);
+  units.sort((a,b)=>natCmp(a.lotPath,b.lotPath)||natCmp(a.slotName,b.slotName));
+  // 화면 안내: 고른 폴더마다 Lot 몇 개로 보았는지
+  const sum=[...bySel.keys()].map(sel=>{const L=[...new Set(units.filter(u=>u.sel===sel).map(u=>u.lotName))];return `폴더 '${sel}' → Lot ${L.length}개(${L.slice(0,8).join(', ')}${L.length>8?' …':''})`}).join(' · ');
+  return {units,sum};
+}
+/** planUnits 의 Slot 정보를 스캔에 붙이고 Step 이름 · Contrast AVG 를 정한다(같은 Lot 이 이미 있으면 그 값). */
+function applyUnit(w,u,known){w.lotPath=u.lotPath;w.lotName=u.lotName;w.slotName=u.slotName;w.slot=lower(u.slotName.trim());
+  const prev=known.get(w.lotPath);
+  if(prev){w.step=prev.step;w.contrast=prev.contrast;w.tool=prev.tool;return false}
+  let step=w.lotName,ca=null;for(const n of u.caNames){const m=CA_RE.exec(n);if(m){ca=+m[1];step=n;break}}
+  w.step=step;w.contrast=ca;known.set(w.lotPath,w);return true}
 async function addEntries(entries){
-  const msg=[];
-  const roots=entries.filter(e=>lower(baseName(e.path))==='surface.flt').map(e=>e.path.slice(0,e.path.length-baseName(e.path).length));
-  if(!roots.length){busy(null);showLoad([['err','고른 폴더에 Surface.flt 가 없습니다. Lot 폴더(안에 Wafer Slot 폴더)를 고르십시오.']]);return}
-  roots.sort((a,b)=>b.length-a.length);   // 깊은 폴더부터: 안쪽 결과 폴더의 파일을 바깥 폴더가 가져가지 않게
-  const taken=new Set();
-  const made=[];
-  // Para #59: Slot 폴더 k / N 개, 파일 x / M 개를 실시간으로 보여 준다(얕은 폴더 순 = 화면에 보이는 순서)
-  const order=[...roots].reverse(),total=order.length,fileTotal=entries.length,t0=Date.now();let done=0,files=0;
-  const owns=new Map();for(const r of roots){const own=entries.filter(e=>e.path.startsWith(r)&&!taken.has(e));own.forEach(e=>taken.add(e));owns.set(r,own)}
+  const msg=[],{units,sum}=planUnits(entries);
+  if(!units.length){busy(null);showLoad([['err','고른 폴더에 Surface.flt 가 없습니다. Lot 폴더들이 들어 있는 폴더(또는 Lot 폴더)를 고르십시오.']]);return}
+  const made=[],total=units.length,fileTotal=entries.length,t0=Date.now();let done=0,files=0;
+  // Para #59: Slot 폴더 k / N 개, 파일 x / M 개를 실시간으로 보여 준다
   const tick=(r)=>busy({title:'폴더 등록 중',done,total,unit:'Slot 폴더',files,fileTotal,detail:r?`읽는 중: ${r.replace(/\/$/,'')}`:`경과 ${((Date.now()-t0)/1000).toFixed(1)}초`});
   try{
-    for(const r of order){tick(r);await nextPaint();
-      const own=owns.get(r);
-      try{made.push(await buildScan(r.replace(/\/$/,'')||'(선택 폴더)',own))}catch(e){msg.push(['err',`${r}: ${e.message}`])}
-      done++;files+=own.length;tick(null)}
+    for(const u of units){tick(u.dir);await nextPaint();
+      try{const w=await buildScan(u.dir.replace(/\/$/,'')||'(선택 폴더)',u.files);w.unit=u;made.push(w)}catch(e){msg.push(['err',`${u.dir}: ${e.message}`])}
+      done++;files=Math.min(fileTotal,files+u.own.length);tick(null)}
     files=fileTotal;tick(null);await nextPaint();
   }finally{busy(null)}
   const known=new Map(S.scans.map(w=>[w.lotPath,w])),newLots=new Map();
-  for(const w of made){const segs=w.name.split('/').filter(Boolean),slot=segs[segs.length-1]||w.name,lotSegs=segs.length>1?segs.slice(0,-1):segs;
-    w.lotPath=lotSegs.join('/')||w.name;w.lotName=lotSegs[lotSegs.length-1]||w.name;w.slotName=slot;w.slot=lower(slot.trim());
-    const prev=known.get(w.lotPath)||newLots.get(w.lotPath);
-    if(prev){w.step=prev.step;w.contrast=prev.contrast;w.tool=prev.tool}
-    else{let step=w.lotName,ca=null;for(const n of [...lotSegs].reverse().concat(segs.length>1?[slot]:[])){const m=CA_RE.exec(n);if(m){ca=+m[1];step=n;break}}
-      w.step=step;w.contrast=ca;newLots.set(w.lotPath,w)}
+  for(const w of made){if(applyUnit(w,w.unit,known))newLots.set(w.lotPath,w);delete w.unit;
     for(const d of w.defects)d.slot=w.slot;
     S.scans.push(w)}
   // 다른 Lot 과 Step 이름이 같으면 Lot 경로로(구분되게)
   for(const w of newLots.values()){if(S.scans.some(x=>x.lotPath!==w.lotPath&&x.step===w.step))S.scans.filter(x=>x.lotPath===w.lotPath).forEach(x=>x.step=w.lotPath)}
+  msg.unshift(['ok',sum]);
   for(const [path] of newLots){const ws=made.filter(w=>w.lotPath===path).sort((a,b)=>natCmp(a.slotName,b.slotName)),bad=ws.filter(w=>w.errors.length),wr=ws.filter(w=>w.warns.length);
     msg.push([bad.length?'err':(wr.length?'warn':'ok'),`Lot ${path}: Slot ${ws.length}개(${ws.map(w=>w.slotName).join(', ')}), Defect ${ws.reduce((a,w)=>a+w.defects.length,0)}개, 이미지 ${ws.reduce((a,w)=>a+w.images,0)}개 등록`
       +(bad.length?' — 제외할 Slot: '+bad.map(w=>`${w.slotName}(${w.errors.join(' / ')})`).join(', '):'')])}
@@ -1311,31 +1339,19 @@ async function buildLight(name,own){
 }
 /** entries = [{path, file | handle}], dirs = [{path(끝 '/'), handle, images}] (폴더 핸들로 고른 경우). Surface.flt 가 있는 폴더 = Slot, 바로 위 = Lot(Step 1 과 같은 규칙). */
 async function addBigEntries(entries,dirs){
-  const msg=[],dirOf=p=>p.slice(0,p.length-baseName(p).length);
-  const roots=new Set(entries.filter(e=>lower(baseName(e.path))==='surface.flt').map(e=>dirOf(e.path)));
-  if(!roots.size){busy(null);bigMsg([['err','고른 폴더에 Surface.flt 가 없습니다. Lot 폴더(안에 Wafer Slot 폴더)를 고르십시오.']]);return}
-  // 파일 · 폴더의 주인 Slot = 가장 가까운 위쪽 Slot 폴더(폴더마다 한 번만 찾는다 — 파일이 수십만 개여도 빠르게)
-  const memo=new Map(),owner=d=>{if(memo.has(d))return memo.get(d);let x=d,r=null;for(;;){if(roots.has(x)){r=x;break}if(!x)break;x=x.replace(/[^/]*\/$/,'')}memo.set(d,r);return r};
-  const owns=new Map([...roots].map(r=>[r,{files:[],dirs:[],images:0}]));
-  for(const e of entries){const r=owner(dirOf(e.path));if(r!=null)owns.get(r).files.push(e)}
-  for(const d of dirs||[]){const r=owner(d.path);if(r!=null){const o=owns.get(r);o.dirs.push(d.handle);o.images+=d.images||0}}
-  const order=[...roots].sort((a,b)=>a.split('/').length-b.split('/').length||natCmp(a,b)),total=order.length,t0=Date.now(),made=[];let done=0,nd=0;
-  try{for(const r of order){busy({title:'Defect 정보 읽는 중 (사진 제외)',done,total,unit:'Slot 폴더',files:`Defect ${nd.toLocaleString()}개`,detail:`읽는 중: ${r.replace(/\/$/,'')}`});await nextPaint();
-      try{const s=await buildLight(r.replace(/\/$/,'')||'(선택 폴더)',owns.get(r));made.push(s);nd+=s.cols.n}catch(e){msg.push(['err',`${r}: ${e.message}`])}
+  const msg=[],{units,sum}=planUnits(entries,dirs);
+  if(!units.length){busy(null);bigMsg([['err','고른 폴더에 Surface.flt 가 없습니다. Lot 폴더들이 들어 있는 폴더(또는 Lot 폴더)를 고르십시오.']]);return}
+  const total=units.length,t0=Date.now(),made=[];let done=0,nd=0;
+  try{for(const u of units){busy({title:'Defect 정보 읽는 중 (사진 제외)',done,total,unit:'Slot 폴더',files:`Defect ${nd.toLocaleString()}개`,detail:`읽는 중: ${u.dir.replace(/\/$/,'')}`});await nextPaint();
+      try{const s=await buildLight(u.dir.replace(/\/$/,'')||'(선택 폴더)',{files:u.files,dirs:u.dirs,images:u.images});s.unit=u;made.push(s);nd+=s.cols.n}catch(e){msg.push(['err',`${u.dir}: ${e.message}`])}
       done++}
   }finally{busy(null)}
-  // 이름: Step 1 과 같은 규칙(Lot 폴더 이름 → 위 폴더 → Slot 폴더 이름에서 'CA27' 찾기). 같은 Slot 폴더를 다시 넣으면 바꿔 넣는다.
+  // 이름: Step 1 과 같은 규칙(planUnits · applyUnit). 같은 Slot 폴더를 다시 넣으면 바꿔 넣는다.
   const fresh=new Set(made.map(w=>w.name));BIG.scans=BIG.scans.filter(w=>!fresh.has(w.name));
   const known=new Map(BIG.scans.map(w=>[w.lotPath,w]));
-  for(const w of made){const segs=w.name.split('/').filter(Boolean),slot=segs[segs.length-1]||w.name,lotSegs=segs.length>1?segs.slice(0,-1):segs;
-    w.lotPath=lotSegs.join('/')||w.name;w.lotName=lotSegs[lotSegs.length-1]||w.name;w.slotName=slot;w.slot=lower(slot.trim());
-    const prev=known.get(w.lotPath);
-    if(prev){w.step=prev.step;w.contrast=prev.contrast}
-    else{let step=w.lotName,ca=null;for(const n of [...lotSegs].reverse().concat(segs.length>1?[slot]:[])){const m=CA_RE.exec(n);if(m){ca=+m[1];step=n;break}}
-      w.step=step;w.contrast=ca;known.set(w.lotPath,w)}
-    BIG.scans.push(w)}
-  const bad=made.filter(w=>w.errors.length);
-  msg.unshift([bad.length?'warn':'ok',`Slot ${made.length}개 · Defect ${nd.toLocaleString()}개 등록 (${((Date.now()-t0)/1000).toFixed(1)}초, 사진은 읽지 않음)`+(bad.length?` — 제외한 Slot ${bad.length}개: `+bad.slice(0,6).map(w=>`${w.name}(${w.errors.join(' / ')})`).join(', ')+(bad.length>6?' …':''):'')]);
+  for(const w of made){applyUnit(w,w.unit,known);delete w.unit;BIG.scans.push(w)}
+  const bad=made.filter(w=>w.errors.length),nl=new Set(made.map(w=>w.lotPath)).size;
+  msg.unshift([bad.length?'warn':'ok',`${sum} · Slot ${made.length}개 · Defect ${nd.toLocaleString()}개 등록 (${((Date.now()-t0)/1000).toFixed(1)}초, 사진은 읽지 않음)`+(bad.length?` — 제외한 Slot ${bad.length}개: `+bad.slice(0,6).map(w=>`${w.name}(${w.errors.join(' / ')})`).join(', ')+(bad.length>6?' …':''):'')]);
   bigMsg(msg);bigLots();bigRefresh();
 }
 function bigSources(){return BIG.scans.concat($('#bigS1').checked?S.scans:[]).filter(s=>!s.errors.length)}
@@ -1455,7 +1471,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={BIG,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={planUnits,BIG,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

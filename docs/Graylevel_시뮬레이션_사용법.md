@@ -37,6 +37,13 @@
     - `고르면 바로 사진 보기`(기본 켬): 줄을 고르면 오른쪽에 Color · Gray Crop · 정보가 바로 나오고, 더블 클릭 · Enter = 새 창(큰 화면). 끄면 고를 때는 정보만 나오고 더블 클릭 · Enter · [사진 불러오기]로 그 Defect 사진만 읽습니다.
     - [CSV 내보내기] = 지금 목록 전부(필터 · 정렬 그대로, 사진 · Gray 측정 값은 없음). Die = 장비 Col/Row(`floor(X/PitchX)`, `floor(Y/PitchY)`) — 이 화면은 wafer map 맥락이 없어 '맨 왼쪽 아래 = (0,0)' 로 다시 세지 않습니다.
 
+**폴더 인식(2026-11-10)**: Step 1 · Step 5 모두 **고른 폴더 바로 아래 폴더 = Lot**, Surface.flt 가 있는 폴더 = Wafer Slot(이름 = 그 폴더 이름)입니다. Slot 이 Lot 안 몇 단계 아래에 있어도(예: `고른 폴더/Contrast Avg24/Job/Setup/SM/Wafer/Surface.flt`) 그 Lot 으로 묶습니다.
+- Lot 폴더 하나를 고르면(`Lot/Wafer/Surface.flt`) 고른 폴더 = Lot, Slot 폴더를 고르면 Slot 1개짜리 Lot.
+- 고른 폴더 바로 아래 폴더마다 Surface.flt 가 바로 있고 폴더 이름마다 다른 CA 번호(`CA20`, `CA27` …)가 있으면 그 폴더들을 Lot 으로 봅니다.
+- Contrast AVG · Step 이름은 Lot 폴더 이름 → Lot ~ Slot 사이 폴더 → Slot 폴더 → 고른 폴더 순으로 'CA27' · 'Avg24' 같은 이름을 찾습니다.
+- Lot 폴더 ~ Slot 사이 폴더에 있는 파일(ProductInfo.ini · Wafer Map 등, 사진 제외)은 그 아래 Slot 들이 같이 씁니다(Slot 에 같은 이름이 있으면 Slot 것). 같은 Lot 에 같은 이름 Slot 이 둘이면 사이 폴더 이름을 붙여 구분합니다.
+- 등록 결과 맨 위에 `폴더 '…' → Lot n개(…)` 로 어떻게 인식했는지 보여 줍니다.
+
 ## 2. 계산 규칙
 
 | 항목 | 규칙 |

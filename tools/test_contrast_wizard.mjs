@@ -35,6 +35,26 @@ assert.deepEqual(fn.colors,[['a.jpg',7,1],['b.jpg',3,null]]);
 assert.deepEqual(fn.frames,[{file:'A.t.2.jpeg',x:5,y:6,recipe:2}]);
 assert.equal(fn.count,123);
 assert.equal(fn.gl.mean,200);assert.equal(fn.gl.ring,100);assert.equal(fn.gl.delta,100);
+// 폴더 인식(2026-11-10 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): 고른 폴더 바로 아래 = Lot, Surface.flt 폴더 = Slot(몇 단계 아래여도)
+const pu=await page.evaluate(()=>{const c=window.__cw,E=ps=>ps.map(p=>({path:p})),f=r=>r.units.map(u=>[u.lotPath,u.slotName,u.files.map(e=>e.path.split('/').pop()).sort().join('|')]);
+  return {
+    // 고른 폴더(TOP) 아래 Lot 2개, Slot 이 Lot 안 깊숙이(Job/Setup/SM/Wafer) — Lot = TOP 바로 아래. Lot 폴더의 ProductInfo 는 그 아래 Slot 이 같이 씀, 사진은 안 나눔
+    deep:f(c.planUnits(E(['TOP/Avg24/JOB/6324/SM1/W01/Surface.flt','TOP/Avg24/JOB/6324/SM1/W02/Surface.flt','TOP/Avg24/ProductInfo.ini','TOP/Avg24/a.jpeg','TOP/Avg26/JOB2/6324/SM1/W01/Surface.flt','TOP/Avg26/JOB2/6324/SM1/W01/x.jpeg','TOP/note.txt']))),
+    sum:c.planUnits(E(['TOP/Avg24/J/S/W01/Surface.flt','TOP/Avg26/J/S/W01/Surface.flt'])).sum,
+    // Lot 폴더 하나를 고름(LOT/W01) → 고른 폴더 = Lot
+    lot:f(c.planUnits(E(['LOT/W01/Surface.flt','LOT/W02/Surface.flt']))),
+    // Slot 폴더를 고름 → Slot 1개짜리 Lot
+    slot:f(c.planUnits(E(['W07/Surface.flt']))),
+    // 고른 폴더 아래 폴더마다 다른 CA 이름 + Surface.flt 바로 들어 있음 → 그 폴더들 = Lot
+    ca:f(c.planUnits(E(['RUN/CA20/Surface.flt','RUN/CA27/Surface.flt']))),
+    // 같은 Lot 안 같은 이름 Slot 2개 → 사이 폴더로 구분
+    dup:f(c.planUnits(E(['T/L/SMA/W01/Surface.flt','T/L/SMB/W01/Surface.flt'])))}});
+assert.deepEqual(pu.deep,[['TOP/Avg24','W01','ProductInfo.ini|Surface.flt'],['TOP/Avg24','W02','ProductInfo.ini|Surface.flt'],['TOP/Avg26','W01','Surface.flt|x.jpeg']]);
+assert.equal(pu.sum,"폴더 'TOP' → Lot 2개(Avg24, Avg26)");
+assert.deepEqual(pu.lot.map(x=>x.slice(0,2)),[['LOT','W01'],['LOT','W02']]);
+assert.deepEqual(pu.slot.map(x=>x.slice(0,2)),[['W07','W07']]);
+assert.deepEqual(pu.ca.map(x=>x.slice(0,2)),[['RUN/CA20','CA20'],['RUN/CA27','CA27']]);
+assert.deepEqual(pu.dup.map(x=>x.slice(0,2)),[['T/L','SMA/W01'],['T/L','SMB/W01']]);
 // 폴더 등록
 // Para #59: 등록 중 로딩창이 'Slot 폴더 k / N' · '파일 x / M' 을 실시간으로 보여 주고, 끝나면 닫힌다
 const prog=await page.evaluate(async fx=>{const f=JSON.parse(fx),seen=[],el=document.getElementById('busy');
@@ -338,21 +358,21 @@ await page.locator('#bigAuto').check();
 await page.locator('#bigList .br',{hasText:'1100.0'}).first().click();
 await page.locator('#bigColor img').waitFor();await page.locator('#bigGray canvas').waitFor();
 const bi=await page.locator('#bigInfo').innerText();
-assert.match(bi,/Lot 폴더 · 순서\s*BIG\/CA20\/LOTB/);assert.match(bi,/Contrast\(실제\)\s*34\.45/);assert.match(bi,/Color\s*C1\.c\.1\.jpeg · 좌표\(0\.0 µm\)/);assert.match(bi,/Gray\s*F1\.t\.1\.jpeg · \(1100\.0, 200\.0\) · frameToChuckPlane/);assert.match(bi,/ROI mean/);
+assert.match(bi,/Lot 폴더 · 순서\s*BIG\/CA20/);assert.match(bi,/Contrast\(실제\)\s*34\.45/);assert.match(bi,/Color\s*C1\.c\.1\.jpeg · 좌표\(0\.0 µm\)/);assert.match(bi,/Gray\s*F1\.t\.1\.jpeg · \(1100\.0, 200\.0\) · frameToChuckPlane/);assert.match(bi,/ROI mean/);
 const lz=await page.evaluate(()=>window.__cw.BIG.scans.map(s=>[s.lotPath,s.colors.length,s.frames.length,s.transforms.size]));
-assert.deepEqual(lz,[['BIG/CA20/LOTB',2,2,1],['BIG/CA27/LOTB',0,0,0]]);
+assert.deepEqual(lz,[['BIG/CA20',2,2,1],['BIG/CA27',0,0,0]]);
 // 바로 보기를 끄면 고르기만으로는 사진을 읽지 않는다 → 더블 클릭(또는 Enter · [사진 불러오기])으로 그 Defect 만
 await page.locator('#bigAuto').uncheck();await page.locator('#bigLot').selectOption('');await page.locator('#bigFlt [data-f="clear"]').click();await page.waitForTimeout(350);
 assert.match(await page.locator('#bigColor').innerText(),/사진을 아직 읽지 않았습니다/);assert.match(await page.locator('#bigInfo').innerText(),/Contrast\(실제\)\s*45\.00[\s\S]*Color\s*아직 읽지 않음/);
 assert.equal(await page.evaluate(()=>window.__cw.BIG.scans[1].colors.length),0);
 await page.locator('#bigList .br').first().dblclick();await page.locator('#bigColor img, #bigColor .ph:has-text("연결 실패")').first().waitFor();
 assert.equal(await page.evaluate(()=>window.__cw.BIG.scans[1].colors.length),2);
-await page.locator('#bigList').focus();await page.keyboard.press('ArrowDown');assert.match(await page.locator('#bigInfo').innerText(),/순서\s*BIG\/CA\d+\/LOTB · 2 \/ 7/);
+await page.locator('#bigList').focus();await page.keyboard.press('ArrowDown');assert.match(await page.locator('#bigInfo').innerText(),/순서\s*BIG\/CA\d+ · 2 \/ 7/);
 assert.match(await page.locator('#bigColor').innerText(),/사진을 아직 읽지 않았습니다/);
 // 바로 보기 켠 채 더블 클릭 = 새 창(큰 화면)
 await page.locator('#bigAuto').check();
 const [bw]=await Promise.all([page.waitForEvent('popup'),page.locator('#bigList .br').nth(1).dblclick()]);
-await bw.waitForLoadState();assert.match(await bw.locator('.hd').innerText(),/\[BIG\/CA\d+\/LOTB\] ID \d+ · .*Contrast \d/);await bw.close();
+await bw.waitForLoadState();assert.match(await bw.locator('.hd').innerText(),/\[BIG\/CA\d+\] ID \d+ · .*Contrast \d/);await bw.close();
 // CSV = 지금 목록 전부(필터 · 정렬 그대로)
 const bc=await page.evaluate(()=>window.__cw.bigCsv().join(''));assert.match(bc,/^﻿순서,Lot폴더,Step,ContrastAVG,Slot,ID,resultID,WaferX,/);assert.equal(bc.trim().split('\r\n').length,8);
 // 많은 Defect: 합성 30만 개(Slot 3개)도 열 배열로 바로 필터 · 정렬(표는 보이는 줄만 그림)
