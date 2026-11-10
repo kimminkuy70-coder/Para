@@ -297,7 +297,8 @@ export function Settings(){
       {about?.diag_log&&<OpenPath label="상세 진단 로그" path={about.diag_log}/>}
       <h3 style={{marginTop:24}}>업데이트</h3>
       <div className="toolbar"><button onClick={checkUpdate}>업데이트 확인</button><button onClick={openProgramDir}>게시 폴더 열기</button>
-        {upd?.newer&&<button className="primary" disabled={busy||!upd.installed} onClick={()=>void installUpdate()}>지금 {upd.available}(으)로 업데이트</button>}</div>
+        {upd?.newer&&!upd.pending_ready&&<button className="primary" disabled={busy||!upd.installed} onClick={()=>void installUpdate()}>지금 {upd.available}(으)로 업데이트</button>}</div>
+      {upd?.pending_ready&&<p className="hint"><b>새 버전 {upd.pending}을 받아 두었습니다.</b> 프로그램을 종료하고 다시 실행하면 적용됩니다.</p>}
       {upd&&<p className="hint">현재 {upd.current} · 최신 {upd.available||'없음'}{upd.source?` (${upd.source==='github'?'GitHub':'OneDrive'})`:''}{upd.changelog?` — ${upd.changelog}`:''}</p>}
       <p className="hint">새 버전은 <b>GitHub 의 이 프로그램 릴리스</b>에서 확인하고 받습니다(인터넷은 이때만 씁니다). GitHub 에 연결되지 않으면 OneDrive 게시 폴더를 봅니다.
         받은 파일은 프로그램 글 파일(.py · .js)뿐이며 실행 파일이 들어 있으면 적용하지 않습니다.</p>

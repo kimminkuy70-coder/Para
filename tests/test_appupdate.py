@@ -105,7 +105,10 @@ class ApplyTest(unittest.TestCase):
         r = a.check()
         self.assertEqual((r["available"], r["newer"], r["source"], r["installed"]), ("13.9.9", True, "github", True))
         out = a.apply()
-        self.assertEqual(out, {"version": "13.9.9", "source": "github", "restart": True})
+        self.assertEqual(out, {"version": "13.9.9", "source": "github", "pending": True})
+        # nothing restarts by itself: the next check reports the download as waiting for a restart
+        r2 = a.check()
+        self.assertEqual((r2["pending"], r2["pending_ready"]), ("13.9.9", True))
         new = self.home / "app.new"
         self.assertTrue((new / "param_manager" / "launcher.py").is_file())
         self.assertEqual(sorted(deploy.files(new)), sorted(deploy.files(ROOT)))

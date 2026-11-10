@@ -97,21 +97,11 @@ def main(argv=None) -> int:
         return 1
 
     natives = lambda s: winnative.WinNatives(s, profile=profile)   # noqa: E731
-    server, reused = None, False
-    reuse = os.environ.pop("PARA_REUSE", "")
-    if reuse:                       # restart after an update: same address, the open window reconnects
-        try:
-            port, token = reuse.split(":", 1)
-            server, reused = webserver.WebServer(port=int(port), token=token, natives_factory=natives), True
-        except (ValueError, OSError):
-            server = None
-    if server is None:
-        server = webserver.WebServer(natives_factory=natives)
+    server = webserver.WebServer(natives_factory=natives)
     server.start()
     try:
         write_state(server)
-        if not reused:
-            winnative.open_app_window(server.url, profile)
+        winnative.open_app_window(server.url, profile)
         home = os.environ.get("PARA_APP_HOME")
         try:
             winnative.ensure_desktop_shortcut(Path(home) if home else None)
@@ -131,22 +121,5 @@ def main(argv=None) -> int:
         if stop:
             stop()
         instance.release()
-        if server.restart:
-            relaunch(server)
     return 0
 
-
-def relaunch(server) -> bool:
-    """Start the program again after an update was staged (the start file puts app.new in place).
-    Same port and token, so the window that asked for the update reconnects by itself."""
-    import subprocess
-    home = os.environ.get("PARA_APP_HOME")
-    start = os.path.join(home or "", "Camtek_AOI_manager.pyw")
-    if not home or not os.path.isfile(start):
-        return False
-    env = dict(os.environ, PARA_REUSE=f"{server.port}:{server.token}")
-    env.pop("PARA_APP_HOME", None)
-    flags = (getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)) if os.name == "nt" else 0
-    subprocess.Popen([sys.executable, start], cwd=home, env=env, close_fds=True, creationflags=flags,
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return True

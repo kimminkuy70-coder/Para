@@ -13,8 +13,9 @@ The OneDrive route keeps the v12 rules: copy to local Temp once, check size + SH
 write to OneDrive on the receiving PC.
 
 Apply = copy the deploy files (`deploy.files`) of the new tree into `<home>/app.new`
-(built as `app.new.part`, renamed when complete). The start file swaps it in before any
-module loads; the launcher restarts on the same address so the open window reconnects.
+(built as `app.new.part`, renamed when complete). Nothing restarts by itself: the screen asks the
+person to close and start the program again, and the start file swaps app.new in before any module
+loads (same as the AOI Recipe Verification program the company already uses — owner 2026-11-10).
 """
 from __future__ import annotations
 
@@ -242,6 +243,17 @@ def stage(root: Path, files: list[str], home: Path) -> Path:
     return ready
 
 
+def staged_version() -> str:
+    """Version waiting in <home>/app.new (applied at the next start), or ''."""
+    home = app_home()
+    if home is None or not (home / "app.new" / "param_manager" / "launcher.py").is_file():
+        return ""
+    try:
+        return tree_version(home / "app.new")
+    except (OSError, ValueError):
+        return ""
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as fh:
@@ -279,9 +291,11 @@ class DesktopAppUpdate:
                 found = None
         self.last = found
         newer = bool(found and is_newer(found["version"], __version__))
+        pending = staged_version()
         return dict(current=__version__, installed=app_home() is not None, available=(found or {}).get("version", ""),
                     newer=newer, changelog=(found or {}).get("notes", ""), published_at=(found or {}).get("at", ""),
                     source=(found or {}).get("source", ""), error=error,
+                    pending=pending, pending_ready=bool(pending and found and not is_newer(found["version"], pending)),
                     program_dir=program_dir(save_dir) if save_dir else "")
 
     def _fetch_zip(self, info: dict, work: Path) -> Path:
@@ -316,7 +330,7 @@ class DesktopAppUpdate:
             stage(root, check_tree(root, info["version"]), home)
         finally:
             localdirs.drop(str(work))
-        return dict(version=info["version"], source=info["source"], restart=True)
+        return dict(version=info["version"], source=info["source"], pending=True)
 
     def publish(self, params):
         """Developer: put a source zip (GitHub 'Source code (zip)' of a v13 tag) in OneDrive 프로그램/."""
