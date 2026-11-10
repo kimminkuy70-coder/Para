@@ -324,17 +324,18 @@ assert.equal(await page.locator('#bigRes').isHidden(),true);   // rev1: 3단계 
 assert.match(await page.locator('#step5 h2').innerText(),/rev1 \(1 폴더 · Contrast 만 → 2 리스트 결정 → 3 wafer map · 사진 · 정보 취합\)/);
 const bg5=await page.evaluate(async fx=>{const f=JSON.parse(fx),c=window.__cw,reads=[];
   const fh=(name,b64)=>({kind:'file',name,getFile:async()=>{reads.push(name);return new File([Uint8Array.from(atob(b64),ch=>ch.charCodeAt(0))],name)}});
-  const mk=name=>({kind:'directory',name,kids:new Map(),async *entries(){yield* this.kids},async getFileHandle(n){const h=[...this.kids.values()].find(k=>k.kind==='file'&&k.name.toLowerCase()===n.toLowerCase());if(!h)throw new Error('NotFound');return h}});
+  const listed=[],mk=name=>({kind:'directory',name,kids:new Map(),async *entries(){listed.push(this.name);yield* this.kids},async getFileHandle(n){const h=[...this.kids.values()].find(k=>k.kind==='file'&&k.name.toLowerCase()===n.toLowerCase());if(!h)throw new Error('NotFound');return h}});
   const root=mk('BIG');
   for(const [p,b] of Object.entries(f)){if(!p.startsWith('CA20/LOTA/W01/')&&!p.startsWith('CA27/LOTA/W01/'))continue;const segs=p.replace('LOTA','LOTB').split('/');let d=root;
     for(const s of segs.slice(0,-1)){if(!d.kids.has(s))d.kids.set(s,mk(s));d=d.kids.get(s)}d.kids.set(segs.at(-1),fh(segs.at(-1),b))}
-  const acc=await c.walkDir(root,'BIG/',{entries:[],dirs:[],n:0,files:0,images:0});
+  const acc=await c.fastWalk(root,'BIG/',{entries:[],dirs:[],n:0,files:0,images:0,slots:0});
   const walked={files:acc.files,images:acc.images,hasImg:acc.entries.some(e=>/jpe?g$/i.test(e.path))};
   await c.addBigEntries(acc.entries,acc.dirs);
-  return {walked,reads:[...reads],n:c.BIG.scans.length,light:c.BIG.scans.every(s=>s.light&&!s.defects&&!s.colors.length&&!s.frames.length),imgs:c.BIG.scans.map(s=>s.images),hidden:document.getElementById('busy').hidden}},fixture);
-assert.deepEqual(bg5.walked,{files:14,images:8,hasImg:false});   // 사진은 목록에 넣지 않고 개수만
+  return {walked,listed:[...listed],slots:acc.slots,reads:[...reads],n:c.BIG.scans.length,light:c.BIG.scans.every(s=>s.light&&!s.defects&&!s.colors.length&&!s.frames.length),imgs:c.BIG.scans.map(s=>s.images),hidden:document.getElementById('busy').hidden}},fixture);
+assert.deepEqual(bg5.walked,{files:4,images:0,hasImg:false});assert.equal(bg5.slots,2);   // rev1 빠른 훑기: Slot 마다 Surface.flt(+ .md) 만
+assert.ok(!bg5.listed.includes('W01'),bg5.listed.join());   // Slot 폴더(사진 수천 장) 이름 목록은 1단계에서 나열하지 않음
 assert.ok(bg5.reads.length&&bg5.reads.every(n=>/^surface\.flt(\.md)?$/i.test(n)),bg5.reads.join());   // Para #61: 1단계에서 읽는 파일 = Surface.flt(+ .md) 뿐(ProductInfo 도 3단계)
-assert.equal(bg5.n,2);assert.ok(bg5.light);assert.deepEqual(bg5.imgs,[4,4]);assert.ok(bg5.hidden);
+assert.equal(bg5.n,2);assert.ok(bg5.light);assert.deepEqual(bg5.imgs,[0,0]);assert.ok(bg5.hidden);
 assert.match(await page.locator('#bigMsg').innerText(),/Slot 2개 · Defect 7개 등록 .*사진은 읽지 않음/);
 assert.match(await page.locator('#bigSum').innerText(),/Lot 2개 · Slot 2개 · Defect 7개/);
 assert.match(await page.locator('#bigCnt').innerText(),/^Defect 17개/);

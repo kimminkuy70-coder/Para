@@ -1342,11 +1342,25 @@ async function walkDir(h,path,acc){let img=0;
   acc.dirs.push({path,handle:h,images:img});acc.images+=img;
   if(++acc.n%8===0){busy({title:'폴더 훑는 중 (사진은 읽지 않음)',indet:true,count:`폴더 ${acc.n}개`,files:`정보 파일 ${acc.files}개 · 사진 ${acc.images}개(개수만)`,detail:path});await nextPaint()}
   return acc}
+/** rev1 빠른 훑기(소유자 "Contrast 만 보려면 그 파일만 바로 찾으면 된다"): 폴더마다 먼저 Surface.flt 가 있는지 이름으로 바로 묻는다(getFileHandle).
+ *  있으면 Slot — 그 폴더 안(사진 수천 장)은 나열하지 않고 Surface.flt(+ .md)만 담는다. 없으면 그 폴더 이름 목록(사진 제외)을 보고 하위 폴더로 내려간다.
+ *  종전 walkDir 는 모든 폴더 · 파일 이름(사진 포함)을 나열해, 네트워크 드라이브에서 1단계 시간 대부분이 여기에 들었다.
+ *  Slot 폴더 안의 다른 파일은 3단계(fullScan)에서 결정한 Slot 만 나열한다. */
+const LAZY=new WeakSet();
+async function fastWalk(h,path,acc){acc.slots=acc.slots||0;
+  let flt=null;try{flt=await h.getFileHandle('Surface.flt')}catch(e){}
+  if(flt){acc.entries.push({path:path+'Surface.flt',handle:flt});acc.files++;
+    try{acc.entries.push({path:path+'Surface.flt.md',handle:await h.getFileHandle('Surface.flt.md')});acc.files++}catch(e){}
+    LAZY.add(h);acc.dirs.push({path,handle:h,images:0});acc.slots++}
+  else{for await(const [name,c] of h.entries()){if(c.kind==='directory')await fastWalk(c,path+name+'/',acc);else if(!/\.(jpe?g|png|bmp)$/i.test(name)){acc.entries.push({path:path+name,handle:c});acc.files++}}
+    acc.dirs.push({path,handle:h,images:0})}
+  if(++acc.n%8===0){busy({title:'Surface.flt 찾는 중 (Slot 폴더 안은 열지 않음)',indet:true,count:`폴더 ${acc.n}개 · Slot ${acc.slots}개`,files:`찾은 Surface.flt ${acc.slots}개`,detail:path});await nextPaint()}
+  return acc}
 /** 1단계(Para #61): Surface.flt(+ .md) → 열 배열. 그 밖의 파일(ProductInfo 포함)은 열지 않는다. own = {files:[{path, file|handle}], dirs:[폴더 핸들], images} */
 async function buildLight(name,own){
   const files=new Map();let images=own.images||0;
   const paths=new Map();for(const e of own.files){const k=lower(baseName(e.path));if(/\.(jpe?g|png|bmp)$/.test(k))images++;if(!files.has(k)){files.set(k,e.file||e.handle);paths.set(k,e.path)}}
-  const s={id:++scanSeq,seq:scanSeq,name,files,paths,dirs:own.dirs,light:true,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images};
+  const s={id:++scanSeq,seq:scanSeq,name,files,paths,dirs:own.dirs,lazy:(own.dirs||[]).some(d=>LAZY.has(d)),light:true,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images};
   const text=async n=>{const f=await fileGet(s,n);return f?f.text():null};
   const mdText=files.has('surface.flt.md')?await text('Surface.flt.md'):null,md=mdText?parseMd(mdText):null;
   if(mdText&&!md)s.warns.push('Surface.flt.md 를 읽지 못해 기본 필드 정의를 씁니다');
@@ -1382,7 +1396,7 @@ function bigLots(){
   const L=[...m.values()];
   $('#bigSum').textContent=`여기서 등록한 Lot ${L.length}개 · Slot ${BIG.scans.length}개 · Defect ${BIG.scans.reduce((a,w)=>a+w.cols.n,0).toLocaleString()}개`;
   $('#bigTbl tbody').innerHTML=L.map(l=>{const er=l.ws.filter(w=>w.errors.length),wr=l.ws.flatMap(w=>w.warns.map(t=>w.slotName+': '+t));
-    return `<tr><td>${esc(l.step)}</td><td class="num">${l.contrast??'?'}</td><td title="${esc(l.path)}">${esc(l.path)}</td><td class="num">${l.ws.length}</td><td class="num">${l.ws.reduce((a,w)=>a+w.cols.n,0).toLocaleString()}</td><td class="num">${l.ws.reduce((a,w)=>a+w.images,0).toLocaleString()}</td>
+    return `<tr><td>${esc(l.step)}</td><td class="num">${l.contrast??'?'}</td><td title="${esc(l.path)}">${esc(l.path)}</td><td class="num">${l.ws.length}</td><td class="num">${l.ws.reduce((a,w)=>a+w.cols.n,0).toLocaleString()}</td><td class="num">${l.ws.some(w=>w.lazy)?'<span class="muted" title="1단계는 Slot 폴더 안을 열지 않아 사진 수를 세지 않습니다">안 셈</span>':l.ws.reduce((a,w)=>a+w.images,0).toLocaleString()}</td>
       <td title="${esc([...er.map(w=>w.slotName+': '+w.errors.join(' / ')),...wr].join('\n'))}">${er.length?`⛔ 오류 Slot ${er.length}`:wr.length?`⚠ ${wr.length}건`:'✔ 정상'}</td><td><button data-bigdel="${esc(l.path)}">삭제</button></td></tr>`}).join('')||'<tr><td colspan="8" class="muted">아직 없습니다.</td></tr>';
   const src=bigSources(),lots=new Map(),slots=new Map();for(const s of src){lots.set(s.lotPath,stepName(s));slots.set(s.slot,s.slotName||s.slot)}
   const fillSel=(el,mp)=>{const cur=el.value;el.innerHTML='<option value="">전체</option>'+[...mp].sort((a,b)=>natCmp(a[1],b[1])).map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join('');el.value=cur;if(el.value!==cur)el.value=''};
@@ -1429,6 +1443,11 @@ function fileWhy(s,name){const k=lower(cleanName(name)),e=s.fileErr&&s.fileErr[k
 // ── 3단계(rev1): 결정한 리스트의 Slot 만 Step 1 과 같은 방식(buildScan)으로 다시 읽어 wafer map · Color · Gray 를 취합한다 ──
 /** 정보만 등록한 Slot(light) → 전체 정보 스캔. 사진 파일은 목록에 넣지 않고 볼 때 폴더 핸들에서 찾는다(fileGet). 한 번 만든 것은 다시 쓴다. */
 async function fullScan(s){if(!s.light)return s;if(s.full)return s.full;
+  // 빠른 훑기로 등록한 Slot: 이제 그 Slot 폴더 안(하위 폴더 포함)을 나열한다(사진은 개수만, 결정한 Slot 만)
+  if(s.lazy){for(const d of s.dirs.filter(x=>LAZY.has(x))){const acc=await walkDir(d,DIRPATH.get(d)||'',{entries:[],dirs:[],n:0,files:0,images:0});
+      for(const e of acc.entries){const k=lower(baseName(e.path));if(!s.files.has(k)){s.files.set(k,e.handle);s.paths.set(k,e.path)}}
+      for(const x of acc.dirs){if(x.handle!==d){DIRPATH.set(x.handle,x.path);s.dirs.push(x.handle)}}s.images+=acc.images}
+    s.lazy=false}
   const own=[];for(const [k,h] of s.files)own.push({path:(s.paths&&s.paths.get(k))||k,file:h.getFile?await h.getFile():h});
   const f=await buildScan(s.name,own);f.dirs=s.dirs;f.xdirs=s.xdirs;f.images=s.images;
   for(const k of ['lotPath','lotName','slotName','slot','step','contrast','tool'])f[k]=s[k];
@@ -1524,8 +1543,8 @@ $('#bigCsv').onclick=()=>{const parts=bigCsv();if(!parts)return;const a=document
 // 폴더 고르기: 폴더 핸들(showDirectoryPicker, 읽기 전용)을 쓸 수 있으면 사진 파일 목록을 만들지 않아 훨씬 빠르다. 없으면 <input webkitdirectory>(브라우저가 사진까지 목록을 만든다 — 그래도 사진 내용은 읽지 않는다).
 $('#bigAdd').onclick=async()=>{
   if(window.showDirectoryPicker){let h;try{h=await window.showDirectoryPicker({mode:'read'})}catch(e){if(e&&e.name==='AbortError')return;h=null}
-    if(h){try{busy({title:'폴더 훑는 중 (사진은 읽지 않음)',indet:true,count:'…',files:h.name});await nextPaint();
-        const acc=await walkDir(h,h.name+'/',{entries:[],dirs:[],n:0,files:0,images:0});await addBigEntries(acc.entries,acc.dirs)}
+    if(h){try{busy({title:'Surface.flt 찾는 중 (Slot 폴더 안은 열지 않음)',indet:true,count:'…',files:h.name});await nextPaint();
+        const acc=await fastWalk(h,h.name+'/',{entries:[],dirs:[],n:0,files:0,images:0,slots:0});await addBigEntries(acc.entries,acc.dirs)}
       catch(e){busy(null);bigMsg([['err','폴더를 읽지 못했습니다: '+e.message]])}return}}
   busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다. 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true});$('#bigInput').click()};
 $('#bigInput').addEventListener('cancel',()=>busy(null));
@@ -1547,7 +1566,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={planUnits,BIG,slotPath,pcPath,imgOf,bigShow,bigDecide,fullScan,withCtx,get P5(){return P5},fileGet,ensureImg,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={fastWalk,planUnits,BIG,slotPath,pcPath,imgOf,bigShow,bigDecide,fullScan,withCtx,get P5(){return P5},fileGet,ensureImg,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

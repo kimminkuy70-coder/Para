@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #61 후속 3: rev1 1단계 빠른 훑기(Surface.flt 만 바로 찾기) (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `6e2112c` · 이슈 Para #61(소유자 세션 대화) · 파일 `AOI_Contrast_Wizard_rev1.html` 만.
+- 소유자 질문: "처음 빠르게 로딩할 수는 없나? 느린 이유? Contrast 만 보려면 그 파일만 바로 찾으면 된다."
+- 답(원인): 1단계가 읽는 파일은 Surface.flt 뿐이었지만, 찾으려고 `walkDir` 가 고른 폴더 아래 **모든 폴더 · 파일 이름(Slot 마다 사진 수천 장 포함)** 을 나열했다. 네트워크 드라이브에서 이 나열이 1단계 시간 대부분.
+- 한 일: `fastWalk` — 폴더마다 `getFileHandle('Surface.flt')` 로 먼저 묻고, 있으면 Slot(그 안은 나열 안 함, Surface.flt(+ .md) 만), 없으면 그 폴더 이름 목록(사진 제외)만 보고 내려감. Slot 안의 나머지는 3단계 `fullScan` 이 결정한 Slot 만 나열(`LAZY` · `s.lazy`). Lot 표 이미지 수 = '안 셈'.
+- 시험: `node tools/test_contrast_wizard_rev1.mjs` 3회 연속 통과(1단계 = Slot 마다 Surface.flt(+ .md) 4개만, Slot 폴더 이름 목록 안 나열, 3단계 결정한 Slot 의 Color · Gray 목록 정상). 실제 네트워크 드라이브 속도는 미측정(이 환경에 없음).
+- 한계: 예전 폴더 고르기 창(webkitdirectory, showDirectoryPicker 가 없는 브라우저)은 브라우저가 모든 파일 목록을 만들어 빨라지지 않음.
+- 내 해석(확인 전): Slot 폴더 = Surface.flt 가 바로 들어 있는 폴더(종전과 같음), Slot 폴더 안 하위 폴더에는 다른 Slot 이 없다고 봄.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #61 후속 3 | 1단계 빠르게(Surface.flt 만 바로 찾기) | rev1 `fastWalk`, 시험 통과 |
+
 ## 최신 재개 — Para #61 후속 2: rev1 경로 단추 = 사진 경로 열기 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `93013dc` · 이슈 Para #61(소유자 세션 대화) · 작업 브랜치 **`ccr-7401b37d-bwze1e`** · 파일 `AOI_Contrast_Wizard_rev1.html` 만(원래 파일은 그대로 `c293da2`).

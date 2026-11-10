@@ -38,6 +38,7 @@
     - [CSV 내보내기] = 지금 목록 전부(필터 · 정렬 그대로, 사진 · Gray 측정 값은 없음). Die = 장비 Col/Row(`floor(X/PitchX)`, `floor(Y/PitchY)`) — 이 화면은 wafer map 맥락이 없어 '맨 왼쪽 아래 = (0,0)' 로 다시 세지 않습니다.
 11. **rev1 판 Step 5**(`AOI_Contrast_Wizard_rev1.html`, Para #61 후속 소유자 지시 2026-11-10): 원래 파일(`AOI_Contrast_Wizard.html`)은 그대로 두고 Step 5 만 3단계로 바꾼 새 파일입니다.
     - **1단계 · 폴더 불러오기**: Slot 마다 `Surface.flt`(+ `.md`)만 읽습니다(Contrast 리스트). ProductInfo, 사진 목록, 사진은 읽지 않습니다.
+      폴더를 훑을 때도 폴더마다 `Surface.flt` 가 있는지 이름으로 바로 확인합니다. 있으면 그 Slot 폴더 안(사진 수천 장)은 열어 보지 않습니다. 그래서 Lot 표의 이미지 수는 '안 셈'으로 나옵니다. Slot 폴더 안은 3단계에서 결정한 Slot 만 엽니다. (Edge · Chrome 의 읽기 전용 폴더 창에서만 빨라집니다. 예전 폴더 고르기 창은 브라우저가 모든 파일 목록을 만들어 빨라지지 않습니다.)
     - **2단계 · 리스트 결정**: Contrast(실제) 큰 순 리스트를 필터 · Lot · Slot · 정렬로 추린 뒤 **[리스트 결정 → 3단계 취합]** 을 누르십시오. 지금 보이는 리스트 전체가 대상입니다(2만 개가 넘으면 한 번 더 묻습니다).
     - **3단계 · 취합**: 로딩창(`리스트 취합 중`, Slot 폴더 k / N)이 뜨고, 리스트에 든 Slot 만 Step 1 과 같은 방식으로 다시 읽습니다(ProductInfo · Wafer Map 파일 · s_DieLocation · ColorImageGrabingInfo · ScanResultImageList · frameToChuckPlane). 그다음 Defect 마다 Die · Color 이미지 · Gray 프레임을 연결합니다.
     - 결과 화면 = Step 3 · 4 와 같은 리뷰 화면: wafer map(결정한 Defect, Lot 마다 색) · 리스트 · Color · Gray Crop · 정보(Die · Color · Gray · GL). 더블 클릭 · Enter = 새 창, [⧉ 새 창으로 크게 보기] = wafer map 새 창.
