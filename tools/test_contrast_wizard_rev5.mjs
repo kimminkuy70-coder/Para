@@ -571,17 +571,28 @@ assert.equal(real4.src.frames,'Gray 사진 이름 + Wafer2Table.ini');assert.mat
 assert.match(real4.row,/436\s*Gray 사진 이름 \+ Wafer2Table\.ini/);assert.match(real4.csv,/,Gray 사진 이름 \+ Wafer2Table\.ini,frameToChuckPlane\.ini,/);
 const real5=await realRun('noListW2T',{drop:['ScanResultImageList.txt','Wafer2Table.ini']});const d5=cmpReal('목록 · Wafer2Table 없음 → 사진 이름 + s_FrameData',real5,0.2);
 assert.equal(real5.src.frames,'Gray 사진 이름 + s_FrameData.dat');
-// 변환 파일 .1 · .2 둘(공통 파일 없음) → .2 기준(소유자). .1 은 일부러 500 µm 어긋나게 — .2 를 쓰면 프로그램과 똑같음, 점검 칸에 '.1 이면 몇 개'
+// 변환 파일 .1 · .2 둘(공통 파일 없음) → 레시피 번호가 같은 파일, 없으면 큰 번호 .2(소유자). 이 자료 Color 는 RecipeNumber 0 → .2. .1 은 일부러 500 µm 어긋나게 — 점검 칸에 '.1 이면 몇 개'
 const tfTxt=atob(real.files['frameToChuckPlane.ini']),tf1=tfTxt.replace(/(Scan_X=\s*\S+\s+\S+\s+)(\S+)/,(m,a,b)=>a+(+b+500));
 const real6=await realRun('tf12',{drop:['frameToChuckPlane.ini'],extra:{'frameToChuckPlane.2.ini':real.files['frameToChuckPlane.ini'],'frameToChuckPlane.1.ini':btoa(tf1)}});cmpReal('변환 .1 · .2 → .2',real6);
-assert.match(real6.src.tf,/^frameToChuckPlane\.2\.ini\(\.1 · \.2 중 큰 번호 — 소유자 기준\)$/);assert.equal(real6.alt.length,1);assert.equal(real6.alt[0][0],'frameToChuckPlane.1.ini');assert.ok(real6.alt[0][1]<353,JSON.stringify(real6.alt));
-assert.match(real6.row,/frameToChuckPlane\.2\.ini\(\.1 · \.2 중 큰 번호 — 소유자 기준\)[\s\S]*frameToChuckPlane\.1\.ini 이면 Gray 위치 \d+ \/ 353/);
+assert.equal(real6.src.tf,'frameToChuckPlane.1.ini · frameToChuckPlane.2.ini(레시피 번호가 같은 파일, 없으면 큰 번호 frameToChuckPlane.2.ini)');assert.match(real6.msg,/프로그램 파일 대신 계산한 Slot 1개[\s\S]*없으면 큰 번호 frameToChuckPlane\.2\.ini/);assert.equal(real6.alt.length,1);assert.equal(real6.alt[0][0],'frameToChuckPlane.1.ini');assert.ok(real6.alt[0][1]<353,JSON.stringify(real6.alt));
+assert.match(real6.row,/없으면 큰 번호 frameToChuckPlane\.2\.ini\)[\s\S]*frameToChuckPlane\.1\.ini 이면 Gray 위치 \d+ \/ 353/);
+// 레시피마다 변환 파일 · Gray 사진(소유자 예 29126432EWE3: Color RecipeNumber 1 · 2, Gray X.Y.t.1 · t.2.jpeg) → 레시피 번호가 같은 파일(프로그램과 같음) — Color 를 레시피 1 로 바꾸면 .1(어긋난 것)을 써서 일부가 달라짐
+const ci1=atob(real.files['ColorImageGrabingInfo.ini']).replace(/RecipeNumber=0/g,'RecipeNumber=1');
+const real6b=await realRun('tfRecipe',{drop:['frameToChuckPlane.ini'],extra:{'frameToChuckPlane.2.ini':real.files['frameToChuckPlane.ini'],'frameToChuckPlane.1.ini':btoa(tf1),'ColorImageGrabingInfo.ini':btoa(ci1)}});
+assert.ok(real6b.pairs.filter(p=>p[1]==='ok'&&Math.abs(p[5]-real.exp[p[0]][2])<1e-6).length<353,'recipe 1 → .1');assert.doesNotMatch(real6b.msg,/프로그램 파일 대신 계산한 Slot/);
 // 변환 파일 없음 → 가운데 모델(픽셀 크기 = s_FrameData) · 목록과 변환 파일 둘 다 없음
 const real7=await realRun('noTf',{drop:['frameToChuckPlane.ini']});const d7=cmpReal('변환 파일 없음 → 가운데 모델',real7,0.2);assert.match(real7.src.tf,/가운데 모델\(목록 좌표 = 프레임 가운데, 픽셀 0\.7699\d* µm\)/);
 const real8=await realRun('noListTf',{drop:['ScanResultImageList.txt','frameToChuckPlane.ini']});const d8=cmpReal('목록 · 변환 파일 없음',real8,3);
-// 대신할 것도 없음(목록 · Wafer2Table · s_FrameData 없음) → 짝을 구하지 않고 이유를 알림(어림셈 안 함)
+// 대신할 것도 없음(목록 · Wafer2Table · s_FrameData 없음) → Gray 위치는 어림셈 안 함, Color 는 그대로 연결('Color 만')
 const real9=await realRun('nothing',{drop:['ScanResultImageList.txt','Wafer2Table.ini','s_FrameData.dat','s_FrameData.dat.md']});
-assert.deepEqual(real9.scans,[['RCP/SETUP1/LOT_A/W01',353,'ScanResultImageList.txt(대체 못 함: Wafer2Table.ini · s_FrameData.dat 가 없음)']]);assert.ok(real9.pairs.every(p=>p[1]==='none'));
+assert.equal(real9.src.frames,'Gray 없음(Wafer2Table.ini · s_FrameData.dat 가 없음)');assert.ok(real9.pairs.every(p=>p[1]==='color'&&p[2]===real.exp[p[0]][0]),'nothing');
+assert.match(real9.row,/Gray 위치를 못 구함 — ScanResultImageList\.txt 가 없고 대신할 것도 없음/);
+// Color 사진만 있는 Slot(소유자 예: Gray 사진 · 목록이 저장되지 않음) → Color 353 개는 연결해 보여 주고 Gray 는 '없음'
+const noGray=Object.keys(real.files).filter(k=>/\.t\.jpeg$/i.test(k)).concat(['ScanResultImageList.txt']);
+const real10=await realRun('colorOnly',{drop:noGray});
+assert.ok(real10.pairs.every(p=>p[1]==='color'&&p[2]===real.exp[p[0]][0]&&p[3]==='Index = 기록 순서'),'colorOnly');
+assert.match(real10.msg,/Gray 사진이 없는 Slot 1개\(Color 사진만 저장됨[\s\S]*W01/);assert.match(real10.row,/Gray 사진 없음 — 이 Slot 에는 Gray 프레임 사진\(X\.Y\.t\.jpeg\)/);
+assert.match(real10.csv,/Color 만 \(Gray 없음\),.*Gray 사진 없음 — 이 Slot 에는 Gray 프레임 사진/);
 console.log(`step5 실제 결과 폴더: 프로그램 파일 4가지 조건 353/353 = colorgray.py · 대체 계산 5가지 353/353 같은 프레임(픽셀 차 최대 ${[d4,d5,d7,d8].map(v=>v.toFixed(2)).join(' · ')} px)`);
 
 // ── rev4 의 Surface.flt.md 찾기(Step 1 순서)는 그대로 — md 가 Lot 폴더 · Slot 하위 폴더에 있고 x · y 자리가 바뀌어도 5-1 좌표 · 짝이 같음 ─────────────

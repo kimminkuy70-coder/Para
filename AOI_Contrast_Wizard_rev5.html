@@ -1640,18 +1640,25 @@ async function cgLoad(s,root){const g=s.cg={missing:[],colors:[],frames:[],tfs:n
     let pix=null;
     if(hit.sl){g.frames=cgFrames(await readText(await hit.sl.file()));g.src.frames=CG.SL}
     else{const r=await cgFramesFromNames(hit.d);g.frames=r.frames;pix=r.pix||null;g.src.frames=r.src||'';
-      if(!g.frames.length)g.missing.push(`${CG.SL}(대체 못 함: ${r.why})`)}
+      // Gray 사진 · 목록이 없는 Slot(소유자 예: S3LQR170XMG2 — Color 사진만 저장됨)도 Color 는 연결해 보여 준다(Gray 만 '없음')
+      if(!g.frames.length){g.noGray=r.why;g.src.frames=`Gray 없음(${r.why})`}}
     // 변환: frameToChuckPlane.ini(+ 레시피 번호 파일) → 번호 파일만이면 가장 큰 번호(소유자 ".1 · .2 → .2") → 없으면 가운데 모델
     const num=new Map();await Promise.all(CG_TF_NUM.map(async r=>{const f=await hit.d.get(`frameToChuckPlane.${r}.ini`);if(f)num.set(r,f)}));
     if(!hit.tf&&!num.size){const nm=await hit.d.names();for(const [k,v] of [...nm].sort((a,b)=>a[0]<b[0]?-1:1)){const key=cgTfKey(k);if(typeof key==='number'&&!num.has(key))num.set(key,v);else if(key&&!num.has(key))num.set(key,v)}}
     const parse=async f=>{try{return parseTransform(await readText(await f.file()))}catch(e){return {err:`${f.name}: ${e.message}`}}};
     if(hit.tf){g.tfs.set(null,await parse(hit.tf));g.tfNames.push(hit.tf.name);for(const [k,f] of num){g.tfs.set(k,await parse(f));g.tfNames.push(f.name)}g.src.tf=hit.tf.name+(num.size?' + 레시피 번호 파일':'')}
-    else if(num.size){const ks=[...num.keys()].sort((a,b)=>typeof a==='number'&&typeof b==='number'?a-b:String(a)<String(b)?-1:1),hi=ks.filter(k=>typeof k==='number').pop()??ks[ks.length-1];
-      g.tfs.set(null,await parse(num.get(hi)));g.tfNames.push(num.get(hi).name);g.src.tf=num.size>1?`${num.get(hi).name}(${ks.map(k=>'.'+k).join(' · ')} 중 큰 번호 — 소유자 기준)`:num.get(hi).name;
-      for(const k of ks)if(k!==hi)g.tfAlt.push({name:num.get(k).name,t:await parse(num.get(k))})}
+    else if(num.size){   // 번호 파일만: 레시피 번호가 같은 파일(프로그램 · 소유자 예 29126432EWE3 = Color · Gray 사진이 레시피 1 · 2) → 없으면 가장 큰 번호(.1 · .2 → .2, 소유자)
+      const ks=[...num.keys()].sort((a,b)=>typeof a==='number'&&typeof b==='number'?a-b:String(a)<String(b)?-1:1),hi=ks.filter(k=>typeof k==='number').pop()??ks[ks.length-1];
+      const P=new Map();for(const k of ks)P.set(k,await parse(num.get(k)));for(const k of ks)g.tfs.set(k,P.get(k));g.tfs.set(null,P.get(hi));g.tfNames.push(...ks.map(k=>num.get(k).name));
+      const same=ks.every(k=>JSON.stringify(P.get(k))===JSON.stringify(P.get(hi)));
+      g.src.tf=num.size>1?`${ks.map(k=>num.get(k).name).join(' · ')}(레시피 번호가 같은 파일, 없으면 큰 번호 ${num.get(hi).name}${same?' — 내용 모두 같음':''})`:num.get(hi).name;
+      g.usedHi=g.colors.some(c=>!num.has(cgRecipe(c)));   // 레시피 번호 파일이 없는 Color 가 있어 큰 번호를 씀(소유자 기준) — 알림에 표시
+      if(!same)for(const k of ks)if(k!==hi)g.tfAlt.push({name:num.get(k).name,t:P.get(k)})}
     else{if(!pix){const R=await cgFrameData(hit.d);pix=R&&R.pix}pix=pix||CG_PIX;
       g.tfs.set(null,{inv:[[1/pix,0],[0,1/pix]],off:[-pix*CG.GW/2,-pix*CG.GH/2]});g.src.tf=`변환 파일 없음 → 가운데 모델(목록 좌표 = 프레임 가운데, 픽셀 ${+pix.toFixed(6)} µm)`;g.tfNames.push('(가운데 모델)')}
     if(g.missing.length){s.warns.push(`매칭 파일 없음: ${g.missing.join(', ')} (${g.path})`);return}
+    if(g.noGray){const why=/X\.Y\.t\.jpeg/.test(g.noGray)?`Gray 사진 없음 — 이 Slot 에는 Gray 프레임 사진(X.Y.t.jpeg) · ${CG.SL} 가 없음(Color 만)`:`Gray 위치를 못 구함 — ${CG.SL} 가 없고 대신할 것도 없음(${g.noGray}, Color 만)`;
+      g.plan={mode:0,rect:null,hits:0,recs:g.colors.map(c=>{const [fx,fy]=cgFault(c);return {c,fx,fy,r:cgRecipe(c),why}})};cgLink(s);s.warns.push(why);return}
     g.plan=cgPlan(g);cgLink(s);
     for(const a of g.tfAlt){if(a.t.err){a.hits=null;continue}try{a.hits=cgPlan({colors:g.colors,frames:g.frames,tfs:new Map([[null,a.t]])}).hits}catch(e){a.hits=null}}   // 점검용: 다른 번호 파일이면 몇 개 맞는지
   }catch(e){g.err=`매칭 파일을 읽지 못함: ${e.message||e}`;g.plan=null;s.warns.push(g.err)}}
@@ -1768,7 +1775,10 @@ function addMade(made,units,head){
   for(const w of made){if(w.errors.length)continue;cs.n++;const g=w.cg;
     if(!g||!g.plan){cs.miss.push(`${w.slotName||w.name}(${g?(g.err||'없음: '+g.missing.join(', ')):'안 읽음'})`);continue}
     cs.col+=g.colors.length;cs.hit+=g.plan.hits;cs.def+=w.cols.n;cs.link+=g.nIdx+g.nXY;if(g.plan.mode)cs.modes.push(`${w.slotName||w.name} ${CG.MODES[g.plan.mode]}`)}
-  const alt=made.filter(w=>w.cg&&w.cg.plan&&w.cg.src&&(w.cg.src.frames!==CG.SL||/모델|큰 번호/.test(w.cg.src.tf||''))).map(w=>`${w.slotName||w.name}: ${[w.cg.src.frames!==CG.SL?w.cg.src.frames:'',/모델|큰 번호/.test(w.cg.src.tf)?w.cg.src.tf:''].filter(Boolean).join(' · ')}`);
+  const altTf=g=>/모델/.test(g.src.tf||'')||!!g.usedHi;
+  const alt=made.filter(w=>w.cg&&w.cg.plan&&!w.cg.noGray&&w.cg.src&&(w.cg.src.frames!==CG.SL||altTf(w.cg))).map(w=>`${w.slotName||w.name}: ${[w.cg.src.frames!==CG.SL?w.cg.src.frames:'',altTf(w.cg)?w.cg.src.tf:''].filter(Boolean).join(' · ')}`);
+  const ng=made.filter(w=>w.cg&&w.cg.noGray).map(w=>w.slotName||w.name);
+  if(ng.length)msg.push(['warn',`Gray 사진이 없는 Slot ${ng.length}개(Color 사진만 저장됨 — Color 는 보여 주고 Gray 는 '없음'): `+ng.slice(0,6).join(', ')+(ng.length>6?' …':'')]);
   if(alt.length)msg.push(['warn',`프로그램 파일 대신 계산한 Slot ${alt.length}개(ScanResultImageList.txt 없음 → Gray 사진 이름 · 변환 파일 번호 여러 개 → 큰 번호 · 변환 파일 없음 → 가운데 모델): `+alt.slice(0,4).join(' / ')+(alt.length>4?' …':'')]);
   if(cs.n)msg.push([cs.miss.length?'warn':'ok',`Color · Gray 매칭(Para 프로그램과 같은 계산, 사진은 아직 안 읽음): Color 항목 ${cs.col.toLocaleString()}개 중 Gray 위치 ${cs.hit.toLocaleString()}개 · Defect ${cs.def.toLocaleString()}개 중 Color 연결 ${cs.link.toLocaleString()}개`
     +(cs.modes.length?` · 좌표 기준이 '그대로'가 아닌 Slot: ${cs.modes.slice(0,4).join(', ')}${cs.modes.length>4?' …':''}`:'')
@@ -1948,7 +1958,7 @@ async function b5Pair(save){
 function b5SlotTbl(slots){const rows=slots.filter(s=>s.pst).sort((a,b)=>natCmp(a.lotPath,b.lotPath)||natCmp(a.slotName||'',b.slotName||'')).map(s=>{const st=s.pst,g=s.cg||{},pc=(a,b)=>b?`${a} (${Math.round(100*a/b)}%)`:'0',bad=!g.plan||st.cf<st.n||st.gf<st.n;
     return `<tr${bad?' style="background:var(--warnbg)"':''}><td>${esc(s.lotName||'')}</td><td>${esc(s.slotName||'')}</td><td class="num">${st.n}</td><td class="num">${(g.colors||[]).length}</td><td class="num">${pc(st.cl,st.n)}</td><td class="num">${pc(st.cf,st.n)}</td>
       <td class="num">${(g.frames||[]).length}${g.src&&g.src.frames&&g.src.frames!==CG.SL?`<br><span class="muted">${esc(g.src.frames)}</span>`:''}</td><td>${esc((g.src&&g.src.tf)||(g.tfNames||[]).join(' · ')||'없음')}</td><td class="num">${pc(st.gl,st.n)}</td><td class="num">${pc(st.gf,st.n)}</td><td>${g.plan?esc(CG.MODES[g.plan.mode]):'-'}</td>
-      <td class="muted" style="white-space:normal;min-width:240px">${esc([g.path?`매칭 폴더 ${g.path}`:'',g.err||'',g.missing&&g.missing.length?'없음: '+g.missing.join(', '):'',...(g.tfAlt||[]).map(a=>`${a.name} 이면 Gray 위치 ${a.hits==null?'계산 못 함':a.hits+' / '+(g.colors||[]).length}`),...s.warns.filter(w=>!/id 가 고유하지|frameIdx\/xInFrame|매칭 파일/.test(w))].filter(Boolean).join(' / '))}</td></tr>`});
+      <td class="muted" style="white-space:normal;min-width:240px">${esc([g.path?`매칭 폴더 ${g.path}`:'',g.err||'',g.missing&&g.missing.length?'없음: '+g.missing.join(', '):'',...(g.noGray?[]:g.tfAlt||[]).map(a=>`${a.name} 이면 Gray 위치 ${a.hits==null?'계산 못 함':a.hits+' / '+(g.colors||[]).length}`),...s.warns.filter(w=>!/id 가 고유하지|frameIdx\/xInFrame|매칭 파일/.test(w))].filter(Boolean).join(' / '))}</td></tr>`});
   $('#b5slotTbl tbody').innerHTML=rows.join('')||'<tr><td colspan="12" class="muted">없음</td></tr>';
   $('#b5slotBox').open=slots.some(s=>s.pst&&(!s.cg||!s.cg.plan||s.pst.cf<s.pst.n||s.pst.gf<s.pst.n))}
 const csvName=()=>`Defect_짝_${(BIG.scans[0]&&BIG.scans[0].name.split('/')[0])||'목록'}_${stamp()}.csv`.replace(/[\\/:*?"<>|]/g,'_');

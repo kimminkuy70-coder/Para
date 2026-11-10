@@ -19,6 +19,9 @@
   프로그램은 원 v16 이식(d8e52c7)부터 v12.9.30 까지 세 파일이 다 있어야 Wafer 폴더(사진만으로는 안 됨, v16 은 번호 변환 파일 중 이름 순 첫 번째 = .1). 실제 zip 조사: Gray 사진 이름 = 프레임 가운데 Table 좌표(Wafer2Table.ini 로 Wafer 좌표, 평균 0.9 µm),
   목록 좌표 = 프레임 가운데(변환 파일로 0.0000 µm), s_FrameData.dat = 프레임 34,530개 WaferPos · TablePos(목록 436개 모두 있음, 2개는 같은 프레임이 두 번 — 나중 것), Color 사진 이름 = FaultX/Y(±2 µm).
   rev5 `cgLoad` 대체 계산 + 시험 5가지(목록 없음 2.6 px · + s_FrameData 0 px · .1/.2 → .2 0 px · 변환 없음 0.13 px · 둘 다 없음 2.5 px, 모두 353/353 같은 프레임) + 대신할 것도 없을 때 '대체 못 함'. 다른 장비 · SW 버전의 이름 규칙은 확인 전.
+- 후속 4(소유자 Slot zip 2개 — 업로드, 저장소에 안 넣음): S3LQR170XMG2 = Color 3장만(Gray 사진 · ScanResultImageList 없음, .1 · .2 같음, RecipeNumber 0, 레시피 2 Defect 는 Surface.flt frameIdx · xInFrame 기록 ↔ 우리 계산 0.7 px)
+  → 종전 rev5 는 Slot 전체를 '매칭 파일 없음'으로 처리해 Color 도 안 보였다 → `g.noGray` 로 Color 만 연결. 29126432EWE3 = Color 2 · Gray 2(레시피 1 · 2, `X.Y.t.1/2.jpeg`, Color `….1/2.jpeg`, Index 둘 다 0)
+  → rev5 = colorgray.py 와 같음(2637.82, 358.58 / 2782.99, 356.29), 목록을 빼도 사진 이름 + Wafer2Table 로 같은 사진(≤ 1.9 px). 실제 사진으로 Color · Gray Crop 같은 장면 · Defect 같은 자리 확인. 변환 규칙 = 같은 레시피 번호 → 큰 번호.
 - 남은 일: 소유자 PC(실제 사진 · 네트워크 드라이브)에서 rev5 5-1 → 5-2 → 사진 새 창 확인. 속도(5-1 이 Slot 마다 파일 2 ~ 3개를 더 읽음, 5-2 는 매칭 폴더 이름 목록 한 번)는 확인 전. colorgray.py 를 바꾸면 rev5 `15-0` 구역도 같이.
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)

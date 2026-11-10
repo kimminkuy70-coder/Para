@@ -91,7 +91,8 @@
       좌표 기준(그대로 → 맞지 않으면 프레임 직사각형의 좌측 하단 원점 해석 중 가장 많이 맞는 것)도 프로그램과 같습니다. Defect → Color 항목 = Index(기록 순서) + 좌표 5 µm 확인, 아니면 5 µm 안 가장 가까운 Color. Color 항목이 없는 Defect 는 Defect 좌표로 Gray 만 찾습니다.
       5-1 목록에 **'Color · Gray 매칭'** 칸(Color · Gray / Color 만 / Gray 만 / 짝 없음 / 매칭 파일 없음)이 생겼습니다.
     - **매칭 파일이 다 없어도 됩니다**(소유자 확정: ColorImageGrabingInfo.ini 는 항상 있음 · ScanResultImageList.txt 는 없을 수 있음 · 변환 파일이 `frameToChuckPlane.1.ini` · `.2.ini` 둘이면 .2 기준). 프로그램 파일이 있으면 프로그램 계산 그대로이고, 없는 것만 대신 계산합니다.
-      ScanResultImageList.txt 없음 → **Gray 사진 이름**(`-56211.70388.t.jpeg` = 프레임 가운데의 장비 Table 좌표)을 `Wafer2Table.ini` 로 웨이퍼 좌표로 바꿈(없으면 `s_FrameData.dat` 의 같은 프레임). 변환 파일이 번호 파일 여러 개면 가장 큰 번호, 하나도 없으면 '목록 좌표 = 프레임 가운데' 모델.
+      ScanResultImageList.txt 없음 → **Gray 사진 이름**(`-56211.70388.t.jpeg` = 프레임 가운데의 장비 Table 좌표)을 `Wafer2Table.ini` 로 웨이퍼 좌표로 바꿈(없으면 `s_FrameData.dat` 의 같은 프레임). 변환 파일이 번호 파일 여러 개면 레시피 번호가 같은 파일(예: Color RecipeNumber 2 → `.2`), 맞는 번호가 없으면 가장 큰 번호, 하나도 없으면 '목록 좌표 = 프레임 가운데' 모델.
+      **Color 사진만 있는 Slot**(Gray 사진 · 목록이 저장되지 않음)도 Color 는 연결해 목록 · 새 창에 보여 주고(상태 'Color 만'), Gray 칸에는 'Gray 사진 없음'이라고 나옵니다.
       실제 결과 폴더에서 파일을 빼고 시험: 모두 353/353 같은 Gray 프레임, 픽셀 차 최대 2.6 px(사진 이름 + Wafer2Table) · 0 px(+ s_FrameData) · 0.13 px(변환 파일 없음). 무엇으로 계산했는지는 5-1 알림 · Slot 별 결과 표 · CSV 에 나옵니다. 대신할 것도 없으면 짝을 만들지 않고 이유를 알립니다.
       참고: Para 프로그램의 Color · Gray 매칭(원 v16 부터)은 세 파일이 모두 있어야 Wafer 폴더로 인식합니다(사진만으로는 매칭하지 않음). 이 대신 계산은 rev5 HTML 에만 있습니다.
     - **5-2 = 결과 목록 · 사진 새 창 · CSV**: 사진 파일이 매칭 폴더에 있는지 이름 목록으로만 확인합니다(다른 파일은 열지 않음). rev3 · rev4 는 Slot · 위쪽 폴더의 사진 아닌 파일을 전부 열어, 하나만 열기에 실패해도 그 아래 Slot 이 모두 0 이 됐습니다(재현: Slot 안 파일 1개 → 그 Slot 0/353, Setup 폴더 파일 1개 → 모든 Slot 0).
