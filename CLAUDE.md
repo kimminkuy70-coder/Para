@@ -66,6 +66,10 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     원인: rev2 `ensureImg` 는 Slot 폴더에서 세 파일을 이름으로만 찾음(`fileFind`) ↔ Step 1 은 Slot 안 전부 + Lot ~ Slot 사이 폴더 파일. 세 파일이 위쪽 폴더에 있으면 rev2 만 실패(재현: Step 1 353 · rev2 0 · rev3 353).
     `fullLoad`(= `ensureImg`) → `slotEntries`(Slot 안 전부, 사진은 핸들 · 나머지는 File, 위쪽 폴더 = `dirOwnFiles`) → Step 1 `buildScan` 그대로 → 스캔에 colors · frames · transforms · waferMap · dieLoc · product 덮어씀(`s.full`). `fileFind` 는 `s.full` 이면 안 씀.
     `b5Pair` 가 Slot 마다 `s.pst`(n · cl · cf · gl · gf) → `b5SlotTbl`(`#b5slotBox` · `#b5slotTbl`, Lot · Slot 순, 덜 붙은 Slot 노란 줄 · 상자 자동 펼침).
+  · Step 5 **rev4**(2026-11-10, 소유자 "5-1 에서 사진 매칭에 필요한 정보가 부족한지 조사" → "rev4 로 새 파일 만들어서 둘 다 적용해"): **`AOI_Contrast_Wizard_rev4.html`**(시험 `node tools/test_contrast_wizard_rev4.mjs`) = rev3 + 아래 둘. rev3 이하 무변경.
+    조사: 5-1 `COLS` 는 매칭에 충분(Color = x/y/ActualX/Y/id/resultID/기록 순서, Gray = X/Y/recipe, `frameIdx`/`xInFrame`/`yInFrame` 은 어디서도 안 씀 · 실제 전부 0). 빈틈 = `readLight` 가 `Surface.flt.md` 를 Slot 바로 안에서만 찾음.
+    ① `findLikeStep1(s,name)` = Slot 바로 안(`fileFind` noIdx) → Slot 하위 폴더(`dirSubs` 이름 순 · 깊이 우선 · 4단계 = `slotEntries` 순서) → `s.chain`. `s.mdAt`(slot/sub/up/none) · `s.mdPath`, `MD_AT`, `MDSUB`(진행 표시), webkitdirectory 길은 `mdWhere`.
+    ② `fullLoad` 끝에서 `colsDiff(s.cols, full.defects)` → 다르면 `colsFromDefs` 로 바꾸고 `s.reread`. `b5Pair` = ① 리스트 Slot 읽기(바뀐 Slot 있으면 `bigRefresh` 로 목록 다시 → 새로 들어온 Slot 도, 최대 6번) → ② 짝짓기. `b5SlotTbl` 에 'Surface.flt.md · 5-1 값' 칸.
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.

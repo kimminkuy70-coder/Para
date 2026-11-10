@@ -76,6 +76,16 @@
     - **Slot 별 읽은 결과** 표(5-2 결과 아래, 문제 있는 Slot 이 있으면 펼쳐짐 · 노란 줄): Lot · Slot · 리스트 Defect · Color 항목 수 · Color 연결 · Color 사진 있음 · Gray 프레임 수 · frameToChuckPlane · Gray 연결 · Gray 사진 있음 · 파일 수(사진, 위 폴더) · Color 기준 · 점검. 그래도 안 되면 이 표의 그 Slot 줄을 보면 어디서 끊겼는지 알 수 있습니다.
     - 시험: 실제 결과 폴더(`사진 제외.zip`) 그대로 · 100 µm 어긋남 · UTF-16 ini · ini 없음 · 어긋남 + Index 없음 · ±8 µm 흔들림 · 세 파일이 Lot 폴더에 있음 — 모두 353/353 맞는 Color. 가짜 큰 폴더(rev2 와 같은 조건)에서 5-2 약 30초(rev2 약 20초 — 고른 Slot 의 파일 목록을 전부 만들기 때문), 5-1 약 14초 그대로. 실제 큰 폴더 · 네트워크 드라이브로는 확인 전.
 
+14. **rev4 판**(`AOI_Contrast_Wizard_rev4.html`, 2026-11-10 소유자 세션 지시 "rev4 로 새 파일 만들어서 둘 다 적용해", 시험 `node tools/test_contrast_wizard_rev4.mjs`): rev3 + 아래 두 가지. rev3 · rev2 · rev1 · 원래 파일은 그대로입니다.
+    - 조사 결과(rev3 까지): 5-1 이 모으는 Defect 정보(x · y · ActualX · ActualY · id · resultID · 기록 순서 · recipe · Box · Area · Width · Length · Contrast)는 사진 짝짓기에 충분합니다(실제 결과 폴더 353개 모두 Step 1 과 같은 값 · 같은 Color · 같은 Gray 프레임 · 픽셀).
+      `frameIdx` · `xInFrame` · `yInFrame` 은 모으지 않지만 어느 Step 도 쓰지 않고 실제 자료는 전부 0 입니다. 빈틈은 **`Surface.flt.md`(Surface.flt 안 필드 자리) 를 Slot 바로 안에서만 찾던 것** — md 가 Lot 폴더 · Slot 하위 폴더에 있고 그 배치가 기본과 다르면 5-1 좌표 · Contrast 가 틀립니다(재현: x · y 자리를 바꾼 md 를 Lot 폴더에 두면 rev3 5-1 좌표 353개 전부 틀림, Color 0 · Gray 3).
+    - **① 5-1 이 `Surface.flt.md` 를 Step 1 과 같은 순서로 찾음**: Slot 바로 안 → Slot 하위 폴더(이름 순, 4단계까지) → 위쪽 폴더(가까운 것부터). Slot 바로 안에 있으면 지금처럼 Slot 안 목록을 만들지 않습니다(빠름). 없을 때만 그 Slot 폴더 목록을 한 번 만들어 하위 폴더를 봅니다 — 로딩창에 '하위 폴더까지 찾은 Slot n개', 결과에 `Surface.flt.md 위치: Slot 안 · Slot 하위 폴더 · 위쪽 폴더 · 없음(기본 배치)` 개수.
+    - **② 5-2 안전장치**: 5-2 에서 Slot 을 Step 1 방식으로 읽은 뒤 5-1 이 모은 값과 Defect 마다 비교합니다. 다르면 그 Slot 을 Step 1 값으로 바꾸고 5-1 필터를 다시 걸어 목록을 다시 만든 뒤 짝짓습니다(Contrast 를 틀리게 읽어 빠졌던 Defect 도 돌아옴, 새로 들어온 Slot 도 읽음). 5-2 · 5-1 화면에 `Slot n개는 … Step 1 값으로 바꾸고 5-1 필터를 다시 걸었습니다(Defect a개 → b개): Slot — x 353개 · …`.
+      'Slot 별 읽은 결과' 표에 **Surface.flt.md · 5-1 값** 칸(예 `위쪽 폴더 · 값 같음`, `5-1 Slot 안 / Step 1 Slot 하위 폴더 · 값 다름 → Step 1 값으로 (x 353개)`) — 다르면 노란 줄. 안전장치는 5-1 목록에 남은 Slot 에서만 동작합니다(목록에 없는 Slot 은 5-2 에서 읽지 않음).
+    - 5-2 진행 = ① 리스트의 Slot 읽기 · 5-1 값 비교(Slot k / N) → ② Defect 짝짓기(Defect k / N) → ③ 결과.
+    - 시험: 실제 결과 폴더 + md 위치(Slot · Lot 폴더) × 배치(기본 · x/y 바꿈) 4가지 모두 5-1 값 · Die · Color · Gray 353/353 이 Step 1 과 같음, Color 연결 변형 6가지 · ini 를 Lot 폴더에 둔 경우 353/353.
+      가짜 큰 폴더(Lot 40 × Slot 25, Slot 마다 사진 3,000장): md 가 Slot 안이면 5-1 약 14초 · 5-2 약 30초(rev3 과 같음), md 가 모든 Slot 에서 Lot 폴더에 있으면 5-1 약 25초. 실제 큰 폴더 · 네트워크 드라이브로는 확인 전.
+
 **폴더 인식(2026-11-10)**: Step 1 · Step 5 모두 **고른 폴더 바로 아래 폴더 = Lot**, Surface.flt 가 있는 폴더 = Wafer Slot(이름 = 그 폴더 이름)입니다. Slot 이 Lot 안 몇 단계 아래에 있어도(예: `고른 폴더/Contrast Avg24/Job/Setup/SM/Wafer/Surface.flt`) 그 Lot 으로 묶습니다.
 - Lot 폴더 하나를 고르면(`Lot/Wafer/Surface.flt`) 고른 폴더 = Lot, Slot 폴더를 고르면 Slot 1개짜리 Lot.
 - 고른 폴더 바로 아래 폴더마다 Surface.flt 가 바로 있고 폴더 이름마다 다른 CA 번호(`CA20`, `CA27` …)가 있으면 그 폴더들을 Lot 으로 봅니다.

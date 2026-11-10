@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 소유자: "5-1 에서 추후 사진 매칭을 위해 필요한 정보가 부족한지 조사" → 보고 후 "rev4 로 새 파일 만들어서 둘 다 적용해".
+- 조사: 5-1 이 모으는 필드는 매칭에 충분(실제 zip 353개 필드 · Die · Color · Gray 모두 Step 1 과 같음). 빈틈 = md 를 Slot 바로 안에서만 찾음 → md 가 Lot 폴더/하위 폴더 + 배치가 기본과 다르면 rev3 5-1 좌표 전부 틀림(Color 0 · Gray 3, 재현).
+- 한 일: 새 파일 `AOI_Contrast_Wizard_rev4.html` + `tools/test_contrast_wizard_rev4.mjs`(rev3 이하 무변경). `findLikeStep1` · `colsDiff`/`colsFromDefs` · `b5Pair` 2단계 · Slot 표 md 칸.
+- 시험: 원래 · rev1 · rev2 · rev3 · rev4 시험 통과. rev4 새 시험 4가지(md Slot 안 · Lot 폴더 x/y 바꿈 · 하위 폴더 x/y 바꿈 · 5-1 값 일부러 틀리게) — 같은 시험을 rev3 에 돌리면 셋이 틀림.
+  실제 zip 변형 4가지 353/353. 가짜 큰 폴더 5-1 약 14초(md 가 Lot 폴더면 약 25초) · 5-2 약 30초.
+- 남은 일: 소유자 PC 에서 rev4 로 확인. 안전장치는 5-1 목록에 남은 Slot 만 봄(목록에서 다 빠진 Slot 은 5-2 에서 읽지 않음).
+
 ## 최신 재개 — Contrast Wizard rev3: Step 5 의 Slot 읽기 = Step 1 과 같게 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 소유자: "Rev2에 적용해서 rev3으로 만들어서 저장해 · 기존 1,2,3 에서는 잘되는 Lot 도 안 된다 · 바뀐 것은 테스트할 때 Lot 을 로컬로 복사한 것뿐".
