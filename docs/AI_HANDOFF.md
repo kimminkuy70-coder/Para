@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Defender 차단 원인 실측: 파일 내용 아님 → 릴리스 전 Defender 검사, v12.9.33 (2026-11-10 KST, 브랜치 `ccr-0f46ce9b-rkvb9y`)
+
+- 마지막 갱신 2026-11-10 · 소유자 세션 지시("30버전부터 Defender 에 막힘, 원인 찾아 해결, 33 으로 릴리즈") · 작업 브랜치 `ccr-0f46ce9b-rkvb9y`(세션 지정 — `version_v12` `5583a14` 에서 이어짐, **version_v12 에는 아직 안 들어감**).
+- 조사: `.github/workflows/defender-scan.yml` + `tools/defender_scan.ps1` 로 runner 의 Windows Defender 에 릴리스 zip 4개(29 · 30 · 31 · 32)를 검사. 첫 run 은 runner 가 `C:\` `D:\` 를 제외로 둬 무의미 → 제외 해제 + 시험 파일로 검사기 확인.
+  run 42741106962: 정의 1.463.218.0, 실시간 · 클라우드 켬, zip · 풀어서 · 브라우저 다운로드 경로, 클라우드 수준 기본/High/HighPlus/ZeroTolerance → **네 버전 모두 위협 없음**.
+- 결론: 파일 내용은 원인이 아님. 30 = 29 + 사소한 코드 변경이고 31 · 32 의 변경도 효과가 없던 것과 맞음. 차단은 소유자 PC 쪽(정의 버전 · 회사 정책 · 클라우드 평판 — 어느 것인지 **확인 전**, 이 환경에서 확인 불가).
+- 변경: `build-desktop.yml` 에 릴리스 전 Defender 검사(감지 시 중단, 검사한 zip 을 그대로 올림), `tests/test_desktop_diag.py` 시험 1개, 노트 `docs/release_notes/v12.9.33.md`. 앱 코드 변경 없음.
+- 남은 일(소유자): 막히는 PC 에서 정의 업데이트 뒤 재시도, PowerShell `Get-MpComputerStatus | fl AntivirusSignatureVersion` · `Get-MpPreference | fl CloudBlockLevel,MAPSReporting` 값, 회사 관리 PC 인지, 집 PC 에서도 막히는지. Microsoft 오탐 신고 / IT 허용 요청.
+
 ## 최신 재개 — Para #58 v12.9.31 zip 도 `Trojan:Script/Wacatac.F!ml` → 엔진에서 배치 스크립트 문구 제거, v12.9.32 (2026-11-10 KST, `version_v12`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `ecb81de` · 이슈 Para #58("v12.9.32 업데이트 사항": Defender 탐지 기록 `Trojan:Script/Wacatac.F!ml`, file = `Camtek_AOI_manager_v12.9.31.zip`, "이거 참고해서 수정해") · 작업 브랜치 `version_v12`.

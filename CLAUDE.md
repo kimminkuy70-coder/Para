@@ -23,6 +23,14 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 잔여(계획서 A2~A6): 양식 만들기·자동 감시·트레이·Recipe 값 업데이트/이력 웹 UI, Windows
   native 빌드·실기·배포. Windows/실기 게이트는 이 리눅스 환경에서 검증 불가 — 코드/테스트만.
 
+### 설치 zip Defender 차단 = 파일 내용이 원인 아님(실측) + 릴리스 전 Defender 검사 (2026-11-10, 소유자 세션 지시, v12.9.33)
+- 실측(`defender-scan.yml` run 42741106962, runner Windows Server 2025 · 정의 1.463.218.0 · 실시간 · 클라우드 켬 · 검사기 자체 확인 통과): v12.9.29 · 30 · 31 · 32 zip 모두
+  **위협 없음** — zip 검사 · 풀어서 검사 · 브라우저 다운로드 경로(IAttachmentExecute::Save) · 클라우드 차단 수준 기본/High/HighPlus/ZeroTolerance 전부.
+  → 아래 #58 · v12.9.31 · v12.9.32 절의 원인 추정(배치 문구 · 실행기 · 압축 자산)은 **근거 없음으로 확인**. 차단은 소유자 PC 쪽 판정(정의 버전 · 회사 정책 · 클라우드 평판)이다(어느 것인지는 확인 전).
+  **Defender 를 이유로 코드를 또 바꾸지 말 것** — 먼저 `defender-scan.yml`(Actions › Run workflow, versions 입력)로 재현되는지 본다. 그 절들의 변경은 해가 없어 그대로 둔다.
+- `tools/defender_scan.ps1`: runner 는 `C:\` `D:\` 를 Defender 제외로 둔다 → 제외를 풀어야 검사가 된다(안 풀면 무조건 '위협 없음'). `-Deep`(감지 시 파일별) · `-FailOnThreat` · `-CloudBlockLevel`.
+- `build-desktop.yml`: `relzip/` 에 zip 을 만들고 `defender_scan.ps1 -Folder relzip -Deep -FailOnThreat` → 감지되면 릴리스 중단, 릴리스 단계는 **검사한 그 zip** 을 올린다(`tests/test_desktop_diag.py`).
+
 ### 설치 zip 이 `Trojan:Script/Wacatac.F!ml` 로 막힘 → 엔진에 배치 스크립트 문구를 넣지 않음 (2026-11-10, 이슈 #58, v12.9.32)
 - v12.9.31 도 막힘, 위협 이름 = `Trojan:Script/Wacatac.F!ml`(스크립트 판정 · 파일 = zip). zip 에 스크립트 파일은 없지만 엔진 `_internal/param_manager/updater.pyc` 에 tkinter 판 교체 .bat 문구
   (`@echo off` · `ping -n` · `start ""` · `del "%~f0"`)가 문자열 상수로, `desktop_swap.pyc` docstring 에 같은 명령이 들어 있었다(#31 에서 막힌 `web_update.bat` 모양). → 가장 유력한 원인(확인 전 — v12.9.29 에도 있었음, ML 점수 경계 추정).
