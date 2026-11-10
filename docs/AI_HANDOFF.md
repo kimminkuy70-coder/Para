@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #61 후속: 1차 판 되돌림 + rev1 새 파일(Contrast 리스트 → 리스트 결정 → 로딩창 → wafer map · Color · Gray 취합) (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+
+- 마지막 갱신 2026-11-10 · 기준 커밋 `1ff8273` · 이슈 Para #61(소유자가 세션 대화로 후속 지시) · 작업 브랜치 **`ccr-7401b37d-bwze1e`**.
+- 소유자 지시: "contrast 만 알면 된다. 리스트 띄우고 리스트 결정 버튼 누르면 다시 로딩창 띄워서 기존에 했던대로 웨이퍼맵 · 디펙 좌표 · 컬러 이미지 · 흑백 이미지 관련 정보를 총 취합해서 띄워라. 방금 만든 버전은 이전 버전으로 되돌리고 지금 만든 버전은 rev1 버전으로 새로 만들어라."
+- 한 일: ① `AOI_Contrast_Wizard.html` · `tools/test_contrast_wizard.mjs` · 사용법 문서 Step 5 절을 `c293da2`(#61 전) 그대로 되돌림(새 commit, force push 없음). ② 새 파일 `AOI_Contrast_Wizard_rev1.html`(#61 1차 판에서 출발) + 시험 `tools/test_contrast_wizard_rev1.mjs`.
+  rev1 Step 5: 1단계 Surface.flt(+ .md) 만 → 2단계 Contrast 리스트(사진 칸 없음, 필터 · Lot · Slot · 정렬) → [리스트 결정 → 3단계 취합] → 로딩창 '리스트 취합 중'(Slot 폴더 k / N) → 리스트의 Slot 만 Step 1 `buildScan` 으로 다시 읽음 → Defect 마다 Color · Gray 연결 계산 → Step 3 · 4 와 같은 리뷰 패널(`p5`: wafer map · 리스트 · Color · Gray Crop · 정보 · 새 창) + 폴더 경로 열기. [← 2단계 리스트로 돌아가기].
+- 시험: `node tools/test_contrast_wizard_rev1.mjs` 3회 연속 통과(새 시험: 결정 전 다른 파일 안 읽음, 로딩창 제목 · Slot k / N, 결정한 Slot 만 전체 정보 · 다른 Slot 안 읽음, 리스트 4개 = 패널 4줄 · wafer map 점, Color · Gray · GL · Die, Step 3 맥락 그대로, 폴더 경로, 새 창, 돌아가기). 되돌린 원래 파일 `node tools/test_contrast_wizard.mjs` 통과. 3단계 화면 캡처 확인(scratch). Windows Edge 실기 · 실제 큰 폴더 미검증.
+- 릴리스: 없음(리뷰용 브랜치의 단일 HTML).
+- 내 해석(확인 전): ⓐ 'rev1 버전으로 새로 만들어' = 같은 브랜치에 새 파일 `AOI_Contrast_Wizard_rev1.html`(새 브랜치가 아님) ⓑ '리스트 결정' 대상 = 지금 보이는 리스트 전체(필터 · Lot · Slot 그대로), 2만 개 넘으면 확인 ⓒ '총 취합' = 정보 파일 · 연결은 결정 때 모두, 사진(jpeg) 자체는 볼 때 읽음(수만 장을 미리 읽으면 메모리 · 시간 문제) ⓓ #61 1차 판의 사진 찾기 보강 · 폴더 경로 열기는 rev1 에 남김.
+- 남은 일: ⓐ~ⓓ 확인, 소유자 PC 에서 rev1 사진이 나오는지, `version_graylevel_simulation`(#60 긴급 모드)과 합칠지.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #61 후속 | 1차 판 되돌림 + rev1(리스트 결정 → 로딩창 → wafer map · Color · Gray 취합) | 되돌림 + `AOI_Contrast_Wizard_rev1.html`, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #61 Step 5 = 3단계(폴더 → Contrast 정렬 → 이미지 + 정보), 사진 기본 끔, 이미지 로딩 보강, 폴더 경로 열기 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
 - 마지막 갱신 2026-11-10 · 기준 커밋 `c293da2`(소유자 세션) · 이슈 Para #61("ccr-7401b37d-bwze1e 브랜치 HTML 업데이트 사항 1", routine 처리) · 작업 브랜치 **`ccr-7401b37d-bwze1e`**(이슈가 이 브랜치를 지정). 이 브랜치는 `d30b35d`(#59) 에서 갈라져 소유자 세션 커밋 `e978462`(Step 5 신설) · `c293da2`(폴더 인식) 가 있고, `version_graylevel_simulation` 의 #60(`3e1dddf` 긴급 모드)은 들어 있지 않음.

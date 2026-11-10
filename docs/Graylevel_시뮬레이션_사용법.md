@@ -29,15 +29,21 @@
 7. Step 4 Escape Defect 리뷰(#55 에서 Step 3 과 같은 구성, #56 에서 이름 바꿈): 고른 쌍 A → B 에서 A 에만 있는 Defect(= B 로 가면서 Escape 된 Defect). 왼쪽 위 **간략 wafer map 2개**(A = A 의 Defect 회색 + 없어진 것 빨강 점, B = B 의 Defect 회색 + 없어진 자리 빨간 원 — 이해를 돕는 그림), 오른쪽 위 자세한 Wafer map(깜빡임 같음, 새 창 = 왼쪽 간략 지도 2개 + 오른쪽 wafer map), 아래 목록 + 사진. O = 위치 맞음, X = 벗어남. Step 3 에서 두 집합만 고르고 'A - B' 영역을 봐도 같은 Defect 지만, 스캔이 3개 이상이면 A - B 가 영역 여러 개로 나뉘고 O/X 위치 확인 기록은 Step 4 에만 있어 Step 4 를 남겼습니다(내 판단, 확인 전).
 8. [CSV 내보내기]로 전체 결과를 저장하십시오.
 9. **목록 필터 · 정렬**(Step 3 · 4 목록 위, 2026-11-10): `Contrast(실제)` · `Area(µm²)` · `Width` · `Length` 의 최소 ~ 최대(빈 칸 = 제한 없음)와 정렬(기본 순서 · 각 값 큰 순/작은 순). 필터에 맞는 Defect 만 목록 · 사진에 나오고, 맞지 않는 것은 wafer map 에 회색 원으로 남습니다. 비교는 화면에 보이는 자릿수(Contrast · Area 소수 2자리, Width · Length 1자리)로 하므로 보이는 값을 그대로 넣으면 됩니다. [필터 지우기] = 범위만 비움.
-10. **Step 5 대용량 Defect 조회**(2026-11-10, Para #61 에서 3단계로 바꿈): 큰 Lot 여러 개를 한꺼번에 불러와 Contrast 로 정렬한 뒤 필요한 Defect 의 사진과 정보만 봅니다. 비교(Step 2 ~ 4)와는 따로 움직입니다.
-    - **1단계 · 폴더 불러오기**: [Lot 폴더 추가 (정보만 빠르게)] → Lot 폴더나 그 상위 폴더를 고릅니다(여러 번 가능). Slot 폴더마다 `Surface.flt`(+ `.md`) **만** 읽습니다. `ProductInfo.ini`, 사진 목록(`ColorImageGrabingInfo.ini` · `ScanResultImageList.txt` · `frameToChuckPlane.ini`), 사진은 읽지 않습니다.
+10. **Step 5 대용량 Defect 조회**(2026-11-10): 큰 Lot 여러 개를 한꺼번에 불러와 필터 · 정렬한 뒤 필요한 Defect 의 사진만 봅니다. 비교(Step 2 ~ 4)와는 따로 움직입니다.
+    - [Lot 폴더 추가 (정보만 빠르게)] → Lot 폴더나 그 상위 폴더를 고릅니다(여러 번 가능). 등록 때는 Slot 폴더마다 `Surface.flt`(+ `.md`) · `ProductInfo.ini` **만** 읽습니다. 사진과 사진 목록(`ColorImageGrabingInfo.ini` · `ScanResultImageList.txt` · `frameToChuckPlane.ini`)은 그 Slot 의 Defect 사진을 처음 볼 때 읽습니다.
     - Edge/Chrome 에서는 폴더를 읽기 전용으로 여는 창이 뜹니다(사진 파일 목록을 만들지 않아 빠름). 지원하지 않는 브라우저는 Step 1 과 같은 폴더 고르기로 바뀝니다(파일 목록을 만드는 시간은 걸리지만 사진 내용은 읽지 않음).
     - `Step 1 에 등록한 Lot 도 목록에 포함`(기본 켬)이면 Step 1 의 Lot 도 같은 목록에 나옵니다.
-    - **2단계 · Contrast 정렬**: 기본 = Contrast(실제) 큰 순. 필터 = Lot · Slot · Contrast(실제) · Area · Width · Length, 정렬 = 정렬 고르기 또는 **열 제목 클릭**(다시 누르면 반대 순서). 이 단계는 사진을 읽지 않습니다(`고르면 바로 불러오기`를 켜도 정렬 · 필터를 바꿀 때는 읽지 않음). Die 칸은 3단계에서 그 Slot 의 ProductInfo 를 읽은 뒤에 채워집니다.
-    - **3단계 · 이미지 + 정보 불러오기**: 줄을 고르고 [이미지 + 정보 불러오기] · 더블 클릭 · Enter → 그 Slot 의 ProductInfo · 사진 목록과 Color · Gray Crop 을 읽어 정보(Die · Color · Gray · GL)를 채웁니다. `고르면 바로 불러오기`(기본 끔)를 켜면 줄을 고를 때마다 바로 불러옵니다. 불러온 뒤 더블 클릭 · Enter = 새 창(큰 화면).
-    - 사진을 못 읽으면 '연결 실패' 대신 이유를 적습니다: Color 목록 파일 없음 · 맞는 Color 항목 없음 · 파일을 찾지 못함(파일 이름 · Slot 폴더) · 파일 읽기 오류.
-    - **📂 폴더 경로 열기**: 브라우저는 고른 폴더의 PC 경로를 알 수 없습니다. 옆 칸 `고른 폴더의 PC 경로`에 고른 폴더의 경로(예: `D:\AOI\Result`)를 한 번 적으면(이 PC 브라우저에 기억) 단추가 그 Defect 의 Slot 폴더 경로를 복사하고 새 탭으로 엽니다. 새 탭이 안 열리면 탐색기(Win + E) 주소창(Ctrl + L)에 붙여 넣습니다(Ctrl + V). 사진을 불러온 뒤에는 `Color 파일 열기` · `Gray 파일 열기` 링크도 나옵니다. 경로를 적지 않으면 고른 폴더 안 경로만 복사합니다.
+    - 필터 = Lot · Slot · Contrast(실제) · Area · Width · Length, 정렬 = 정렬 고르기 또는 **열 제목 클릭**(다시 누르면 반대 순서). 기본 = Contrast(실제) 큰 순.
+    - `고르면 바로 사진 보기`(기본 켬): 줄을 고르면 오른쪽에 Color · Gray Crop · 정보가 바로 나오고, 더블 클릭 · Enter = 새 창(큰 화면). 끄면 고를 때는 정보만 나오고 더블 클릭 · Enter · [사진 불러오기]로 그 Defect 사진만 읽습니다.
     - [CSV 내보내기] = 지금 목록 전부(필터 · 정렬 그대로, 사진 · Gray 측정 값은 없음). Die = 장비 Col/Row(`floor(X/PitchX)`, `floor(Y/PitchY)`) — 이 화면은 wafer map 맥락이 없어 '맨 왼쪽 아래 = (0,0)' 로 다시 세지 않습니다.
+11. **rev1 판 Step 5**(`AOI_Contrast_Wizard_rev1.html`, Para #61 후속 소유자 지시 2026-11-10): 원래 파일(`AOI_Contrast_Wizard.html`)은 그대로 두고 Step 5 만 3단계로 바꾼 새 파일입니다.
+    - **1단계 · 폴더 불러오기**: Slot 마다 `Surface.flt`(+ `.md`)만 읽습니다(Contrast 리스트). ProductInfo, 사진 목록, 사진은 읽지 않습니다.
+    - **2단계 · 리스트 결정**: Contrast(실제) 큰 순 리스트를 필터 · Lot · Slot · 정렬로 추린 뒤 **[리스트 결정 → 3단계 취합]** 을 누르십시오. 지금 보이는 리스트 전체가 대상입니다(2만 개가 넘으면 한 번 더 묻습니다).
+    - **3단계 · 취합**: 로딩창(`리스트 취합 중`, Slot 폴더 k / N)이 뜨고, 리스트에 든 Slot 만 Step 1 과 같은 방식으로 다시 읽습니다(ProductInfo · Wafer Map 파일 · s_DieLocation · ColorImageGrabingInfo · ScanResultImageList · frameToChuckPlane). 그다음 Defect 마다 Die · Color 이미지 · Gray 프레임을 연결합니다.
+    - 결과 화면 = Step 3 · 4 와 같은 리뷰 화면: wafer map(결정한 Defect, Lot 마다 색) · 리스트 · Color · Gray Crop · 정보(Die · Color · Gray · GL). 더블 클릭 · Enter = 새 창, [⧉ 새 창으로 크게 보기] = wafer map 새 창.
+    - **📂 폴더 경로 열기**: 보고 있는 Defect 의 Slot 폴더 경로를 복사하고 새 탭으로 엽니다. 옆 칸에 고른 폴더의 PC 경로(예: `D:\AOI\Result`)를 한 번 적어야 합니다. 사진 파일 링크(`Color 파일 열기` · `Gray 파일 열기`)도 나옵니다.
+    - 사진 찾기: 이름의 대소문자가 달라도(`.JPEG`) 찾고, 한 번 실패한 사진을 다시 시도합니다.
+    - [← 2단계 리스트로 돌아가기] 로 리스트를 다시 고를 수 있습니다. 한 번 읽은 Slot 은 다시 읽지 않습니다.
 
 **폴더 인식(2026-11-10)**: Step 1 · Step 5 모두 **고른 폴더 바로 아래 폴더 = Lot**, Surface.flt 가 있는 폴더 = Wafer Slot(이름 = 그 폴더 이름)입니다. Slot 이 Lot 안 몇 단계 아래에 있어도(예: `고른 폴더/Contrast Avg24/Job/Setup/SM/Wafer/Surface.flt`) 그 Lot 으로 묶습니다.
 - Lot 폴더 하나를 고르면(`Lot/Wafer/Surface.flt`) 고른 폴더 = Lot, Slot 폴더를 고르면 Slot 1개짜리 Lot.

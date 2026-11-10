@@ -320,8 +320,6 @@ await page.locator('#p4Flt [data-f="clear"]').click();await page.waitForTimeout(
 await page.locator('nav button[data-step="5"]').click();await page.locator('#step5.on').waitFor();
 // Step 1 에 등록한 Lot 도 기본으로 목록에: CA20(4 + 2) + CA27(3 + 1) = 10, 기본 정렬 = Contrast(실제) 큰 순
 assert.match(await page.locator('#bigCnt').innerText(),/^Defect 10개/);
-assert.equal(await page.locator('#bigAuto').isChecked(),false);   // Para #61: 기본 = 끔(목록만 빠르게)
-assert.match(await page.locator('#step5 h2').innerText(),/1 폴더 불러오기 → 2 Contrast 정렬 → 3 이미지 \+ 정보 불러오기/);
 await page.locator('#bigAuto').uncheck();   // 등록 때 읽는 파일만 보려고 잠깐 끈다(켜져 있으면 첫 줄 Defect 의 사진을 바로 읽는다)
 const bg5=await page.evaluate(async fx=>{const f=JSON.parse(fx),c=window.__cw,reads=[];
   const fh=(name,b64)=>({kind:'file',name,getFile:async()=>{reads.push(name);return new File([Uint8Array.from(atob(b64),ch=>ch.charCodeAt(0))],name)}});
@@ -334,7 +332,7 @@ const bg5=await page.evaluate(async fx=>{const f=JSON.parse(fx),c=window.__cw,re
   await c.addBigEntries(acc.entries,acc.dirs);
   return {walked,reads:[...reads],n:c.BIG.scans.length,light:c.BIG.scans.every(s=>s.light&&!s.defects&&!s.colors.length&&!s.frames.length),imgs:c.BIG.scans.map(s=>s.images),hidden:document.getElementById('busy').hidden}},fixture);
 assert.deepEqual(bg5.walked,{files:14,images:8,hasImg:false});   // 사진은 목록에 넣지 않고 개수만
-assert.ok(bg5.reads.length&&bg5.reads.every(n=>/^surface\.flt(\.md)?$/i.test(n)),bg5.reads.join());   // Para #61: 1단계에서 읽는 파일 = Surface.flt(+ .md) 뿐(ProductInfo 도 3단계)
+assert.ok(bg5.reads.length&&bg5.reads.every(n=>/^(surface\.flt(\.md)?|productinfo\.ini)$/i.test(n)),bg5.reads.join());   // 등록 때 읽는 파일 = Surface.flt(+ .md) · ProductInfo.ini 뿐
 assert.equal(bg5.n,2);assert.ok(bg5.light);assert.deepEqual(bg5.imgs,[4,4]);assert.ok(bg5.hidden);
 assert.match(await page.locator('#bigMsg').innerText(),/Slot 2개 · Defect 7개 등록 .*사진은 읽지 않음/);
 assert.match(await page.locator('#bigSum').innerText(),/Lot 2개 · Slot 2개 · Defect 7개/);
@@ -356,35 +354,16 @@ await page.locator('#bigLot').selectOption('');await page.waitForTimeout(350);
 // 고르면 바로 사진: 그때 그 Slot 의 사진 목록(ini · txt)을 읽고 Color · Gray 를 띄운다. 다른 Slot 은 그대로 안 읽음
 await page.locator('#bigFlt [data-f="sort"]').selectOption('c-d');await page.waitForTimeout(350);
 await page.locator('#bigFlt [data-f="c0"]').fill('34');await page.locator('#bigFlt [data-f="c1"]').fill('35');await page.locator('#bigLot').selectOption({index:1});await page.waitForTimeout(350);
-assert.equal(await page.evaluate(()=>window.__cw.BIG.scans.filter(s=>s.product).length),0);   // 2단계까지 ProductInfo 안 읽음
-// Para #61: [고르면 바로 불러오기] 를 켜도 정렬 · 필터(2단계)는 사진을 읽지 않는다
-await page.evaluate(()=>{document.getElementById('bigAuto').checked=true});await page.locator('#bigFlt [data-f="sort"]').selectOption('a-d');await page.waitForTimeout(350);await page.locator('#bigFlt [data-f="sort"]').selectOption('c-d');await page.waitForTimeout(350);
-assert.deepEqual(await page.evaluate(()=>window.__cw.BIG.scans.map(s=>s.colors.length)),[0,0]);assert.equal(await page.locator('#bigColor img').count(),0);
+await page.locator('#bigAuto').check();
 await page.locator('#bigList .br',{hasText:'1100.0'}).first().click();
 await page.locator('#bigColor img').waitFor();await page.locator('#bigGray canvas').waitFor();
 const bi=await page.locator('#bigInfo').innerText();
 assert.match(bi,/Lot 폴더 · 순서\s*BIG\/CA20/);assert.match(bi,/Contrast\(실제\)\s*34\.45/);assert.match(bi,/Color\s*C1\.c\.1\.jpeg · 좌표\(0\.0 µm\)/);assert.match(bi,/Gray\s*F1\.t\.1\.jpeg · \(1100\.0, 200\.0\) · frameToChuckPlane/);assert.match(bi,/ROI mean/);
 const lz=await page.evaluate(()=>window.__cw.BIG.scans.map(s=>[s.lotPath,s.colors.length,s.frames.length,s.transforms.size]));
 assert.deepEqual(lz,[['BIG/CA20',2,2,1],['BIG/CA27',0,0,0]]);
-assert.match(bi,/Die\s*장비 Col 0, Row 0/);assert.equal(await page.evaluate(()=>window.__cw.BIG.scans.filter(s=>s.product).length),1);   // 3단계에서 그 Slot 의 ProductInfo
-// 폴더 경로 열기: PC 경로를 적지 않으면 고른 폴더 안 경로만, 적으면 Slot 폴더 · 사진 파일 주소
-assert.match(await page.locator('#bigPath').innerText(),/Slot 폴더: BIG\/CA20\/LOTB\/W01/);
-await page.locator('#bigBase').fill('D:\\AOI\\BIG');await page.locator('#bigBase').dispatchEvent('change');
-const sp=await page.evaluate(()=>{const c=window.__cw,s=c.BIG.scans[0];return [c.slotPath(s),c.slotPath(s,'C1.c.1.jpeg').url]});
-assert.equal(sp[0].pc,'D:\\AOI\\BIG\\CA20\\LOTB\\W01');assert.equal(sp[1],'file:///D:/AOI/BIG/CA20/LOTB/W01/C1.c.1.jpeg');
-await page.locator('#bigLoad').click();await page.locator('#bigPath a').first().waitFor();
-assert.match(await page.locator('#bigPath').innerText(),/D:\\AOI\\BIG\\CA20\\LOTB\\W01 · Color 파일 열기 · Gray 파일 열기/);
-await page.evaluate(()=>{window.__wo=window.open;window.open=u=>{window.__opened=u;return null}});await page.locator('#bigDir').click();await page.locator('#bigPath',{hasText:'탐색기'}).waitFor();   // Linux 에는 D: 가 없어 실제로 열지 않고 주소만 확인
-assert.equal(await page.evaluate(()=>{const u=window.__opened;window.open=window.__wo;return u}),'file:///D:/AOI/BIG/CA20/LOTB/W01');
-await page.locator('#bigBase').fill('');await page.locator('#bigBase').dispatchEvent('change');
-// 사진 파일 이름의 대소문자가 목록과 달라도(.JPEG) 찾는다, 못 찾으면 이유(파일 이름 · Slot 폴더)를 보여 준다
-const ci=await page.evaluate(async()=>{const c=window.__cw,f=new File(['x'],'Q.c.1.JPEG');
-  const d={kind:'directory',name:'W',async *entries(){yield ['Q.c.1.JPEG',{kind:'file',name:'Q.c.1.JPEG',getFile:async()=>f}]},async getFileHandle(n){if(n!=='Q.c.1.JPEG')throw new Error('NotFound');return {getFile:async()=>f}}};
-  const s={files:new Map(),dirs:[d]};const a=await c.fileGet(s,'q.c.1.jpeg'),b=await c.fileGet(s,'none.jpeg');return [a&&a.name,b]});
-assert.deepEqual(ci,['Q.c.1.JPEG',null]);
 // 바로 보기를 끄면 고르기만으로는 사진을 읽지 않는다 → 더블 클릭(또는 Enter · [사진 불러오기])으로 그 Defect 만
 await page.locator('#bigAuto').uncheck();await page.locator('#bigLot').selectOption('');await page.locator('#bigFlt [data-f="clear"]').click();await page.waitForTimeout(350);
-assert.match(await page.locator('#bigColor').innerText(),/사진을 아직 읽지 않았습니다/);assert.match(await page.locator('#bigInfo').innerText(),/Contrast\(실제\)\s*45\.00[\s\S]*Color\s*3단계에서 불러옵니다/);
+assert.match(await page.locator('#bigColor').innerText(),/사진을 아직 읽지 않았습니다/);assert.match(await page.locator('#bigInfo').innerText(),/Contrast\(실제\)\s*45\.00[\s\S]*Color\s*아직 읽지 않음/);
 assert.equal(await page.evaluate(()=>window.__cw.BIG.scans[1].colors.length),0);
 await page.locator('#bigList .br').first().dblclick();await page.locator('#bigColor img, #bigColor .ph:has-text("연결 실패")').first().waitFor();
 assert.equal(await page.evaluate(()=>window.__cw.BIG.scans[1].colors.length),2);
