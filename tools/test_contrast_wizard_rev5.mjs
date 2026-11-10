@@ -377,7 +377,7 @@ const s51=await page.evaluate(async()=>{const seen=new Set(),el=document.getElem
   await new Promise(r=>{const t=setInterval(()=>{if(el.hidden&&window.__cw.BIG.scans.length){clearInterval(t);r()}},20)});ob.disconnect();
   const L=window.__fsLog;return {seen:[...seen],reads:[...L.reads],lists:[...L.lists],scans:window.__cw.BIG.scans.map(s=>[s.lotPath,s.slotName,s.cols.n,s.errors.length]),
     cg:window.__cw.BIG.scans.filter(s=>s.cg&&s.cg.plan).map(s=>[s.slotName,s.cg.colors.length,s.cg.plan.hits,s.cg.plan.mode,s.cg.path])}});
-assert.ok(s51.seen.some(t=>/^5-1 Contrast 모으기 \| ▶ ② Slot 마다 Surface\.flt \+ 매칭 파일 3개 읽기/.test(t)),s51.seen.join('\n'));
+assert.ok(s51.seen.some(t=>/^5-1 Contrast 모으기 \| ▶ ② Slot 마다 Surface\.flt \+ 매칭 파일 읽기/.test(t)),s51.seen.join('\n'));
 // 5-1 에서 여는 파일 = Surface.flt(+ .md) · ProductInfo · 매칭 파일 3개 뿐(사진 · ScanLog 등 다른 파일은 안 엶)
 assert.ok(s51.reads.length&&s51.reads.every(n=>/^(surface\.flt(\.md)?|productinfo\.ini|colorimagegrabinginfo\.ini|scanresultimagelist\.txt|frametochuckplane\.ini)$/i.test(n)),s51.reads.join());
 assert.ok(s51.reads.includes('ColorImageGrabingInfo.ini')&&s51.reads.includes('frameToChuckPlane.ini'),s51.reads.join());
@@ -406,7 +406,7 @@ await page.locator('#toB2').click();await page.locator('#b5pairSt',{hasText:'CSV
 const sv=await page.evaluate(()=>({picked:window.__picked,saved:window.__saved}));
 assert.equal(sv.picked.length,1);assert.match(sv.saved.name,/^Defect_짝_RCP_\d{8}_\d{6}\.csv$/);
 const csv5=sv.saved.text;assert.equal(csv5.trim().split('\r\n').length,8);
-assert.match(csv5.split('\r\n')[0],/Color이미지,Color경로,Color연결,FaultX,FaultY,Gray프레임,Gray경로,GrayPX\(3168x1024기준\),GrayPY\(3168x1024기준\),후보프레임,Gray계산,좌표기준,CropW,CropH,매칭폴더,이유/);
+assert.match(csv5.split('\r\n')[0],/Color이미지,Color경로,Color연결,FaultX,FaultY,Gray프레임,Gray경로,GrayPX\(3168x1024기준\),GrayPY\(3168x1024기준\),후보프레임,Gray계산,좌표기준,CropW,CropH,매칭폴더,Gray프레임목록,변환,이유/);
 assert.ok(csv5.includes('Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA20\\W01\\C1.c.1.jpeg,좌표 (5 µm 안),1100.00,200.00,F1.t.1.jpeg,Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA20\\W01\\F1.t.1.jpeg,1100.0,200.0,2,Color 좌표,그대로,838,629,Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA20\\W01,'),csv5);
 assert.match(csv5,/둘 다 없음,LOT_CA20,RCP\/SETUP1\/LOT_CA20,W01,4,.*Color 파일 없음: Section2 .*Gray: 좌표 값을 읽을 수 없음/);   // FileName 키는 프로그램처럼 안 씀(섹션 이름 = 파일)
 assert.deepEqual(await page.locator('#b5sum .kpi b').allInnerTexts(),['2','0','0','5']);   // 짝 완료 · Color 만 · Gray 만 · 둘 다 없음
@@ -496,7 +496,7 @@ const perf=await page.evaluate(async()=>{const c=window.__cw,REC=c.REC,N=100000,
   return {load:t1-t0,flt:t2-t1,m:c.BIG.view.m,total:c.BIG.view.total,rows:document.querySelectorAll('#bigList .br').length,first:+document.querySelector('#bigList .br').children[4].textContent,
     cell:document.querySelector('#bigList .br').children[12].textContent,msg:document.getElementById('bigMsg').innerText}});
 assert.equal(perf.total,300007);assert.ok(perf.m>0&&perf.m<perf.total/50,JSON.stringify(perf));assert.ok(perf.rows<80,JSON.stringify(perf));assert.ok(perf.first>=59.9);
-assert.ok(perf.load<15000&&perf.flt<5000,JSON.stringify(perf));assert.equal(perf.cell,'✖ 매칭 파일 없음');assert.match(perf.msg,/매칭 파일이 없는 Slot 3개: W00\(없음: ColorImageGrabingInfo\.ini, ScanResultImageList\.txt, frameToChuckPlane\.ini\)/);
+assert.ok(perf.load<15000&&perf.flt<5000,JSON.stringify(perf));assert.equal(perf.cell,'✖ 매칭 파일 없음');assert.match(perf.msg,/매칭 파일이 없는 Slot 3개: W00\(없음: ColorImageGrabingInfo\.ini\)/);
 console.log('step5 30만 Defect:',JSON.stringify({load:perf.load,flt:perf.flt,m:perf.m}));
 // 중지: 5-2 를 시작하자마자 [중지] → 처리 못 한 것 = '확인 안 함', 자동 CSV 저장 안 함
 const stop=await page.evaluate(async()=>{const c=window.__cw;const p=c.b5Pair({h:null});c.BIG.stop=true;await p;const P=c.BIG.pairs;return {n:P.length,skip:P.filter(x=>x.st==='skip').length}});
@@ -516,7 +516,7 @@ for i in z.infolist():
     rel = i.filename.split('/', 1)[1]
     if '/' in rel: continue                       # Slot 바로 안 파일만(하위 폴더 자료는 매칭과 무관)
     b = z.read(i)
-    files[rel] = b if len(b) < 2_000_000 else b[:1024]
+    files[rel] = b if (len(b) < 2_000_000 or rel.startswith('s_FrameData')) else b[:1024]   # Zones.dat 만 줄임(크기만 봄)
 tmp = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'cw_rev5_real'); os.makedirs(tmp, exist_ok=True)
 for k in ('ColorImageGrabingInfo.ini', 'ScanResultImageList.txt', 'frameToChuckPlane.ini'): open(os.path.join(tmp, k), 'wb').write(files[k])
 colors = cg.parse_colors(os.path.join(tmp, 'ColorImageGrabingInfo.ini')); frames = cg.parse_frames(os.path.join(tmp, 'ScanResultImageList.txt'))
@@ -544,25 +544,45 @@ print(json.dumps({'files': enc(files), 'shift': enc(shift), 'exp': exp}))
 const realRun=async(name,opt)=>{const pg=await browser.newPage();const er=[];pg.on('pageerror',e=>er.push(String(e)));
   await pg.goto('file://'+resolve(root,'AOI_Contrast_Wizard_rev5.html'));await pg.evaluate(src=>{(0,eval)(src)},fakeTree);
   const r=await pg.evaluate(async ({real,opt})=>{const c=window.__cw,f={...real.files};if(opt.shift)Object.assign(f,real.shift);
-    const extra=opt.extra||{};for(const [k,v] of Object.entries(extra))f[k]=v;
+    for(const k of opt.drop||[])delete f[k];const extra=opt.extra||{};for(const [k,v] of Object.entries(extra))f[k]=v;
     const root=window.__mkTree(f,p=>p.startsWith('@')?p.slice(1).split('/'):['SETUP1','LOT_A','W01',p],opt);
     await c.bigPickHandle(root);await c.b5Pair(null);
     return {scans:c.BIG.scans.map(s=>[s.name,s.cols.n,s.cg&&s.cg.plan?c.CG.MODES[s.cg.plan.mode]:(s.cg&&(s.cg.err||s.cg.missing.join(',')))]),
-      pairs:c.BIG.pairs.filter(p=>p.s.name==='RCP/SETUP1/LOT_A/W01').map(p=>[p.i,p.st,p.c&&p.c.file,p.c&&p.c.how,p.g&&p.g.file,p.g&&p.g.px,p.g&&p.g.py,p.g&&p.g.n]),warns:c.BIG.scans.flatMap(s=>s.warns)}},{real,opt});
+      pairs:c.BIG.pairs.filter(p=>p.s.name==='RCP/SETUP1/LOT_A/W01').map(p=>[p.i,p.st,p.c&&p.c.file,p.c&&p.c.how,p.g&&p.g.file,p.g&&p.g.px,p.g&&p.g.py,p.g&&p.g.n]),warns:c.BIG.scans.flatMap(s=>s.warns),
+      src:(c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01')||{}).cg?.src,alt:((c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01')||{}).cg?.tfAlt||[]).map(a=>[a.name,a.hits]),
+      msg:document.getElementById('bigMsg').innerText,row:[...document.querySelectorAll('#b5slotTbl tbody tr')].map(x=>x.innerText).join('\n'),csv:c.pairCsv().join('')}},{real,opt});
   await pg.close();assert.ok(r.scans.length,name);return {...r,er}};
-const cmpReal=(name,r)=>{let ok=0;for(const [i,st,cf,how,gf,px,py,n] of r.pairs){const e=real.exp[i];
+const cmpReal=(name,r,tol=1e-6)=>{let ok=0,dmax=0;for(const [i,st,cf,how,gf,px,py,n] of r.pairs){const e=real.exp[i];
     assert.equal(st,'ok',name+' '+i);assert.equal(cf,e[0],name+' '+i);assert.equal(how,'Index = 기록 순서',name+' '+i);assert.equal(gf,e[1],name+' '+i);
-    assert.ok(Math.abs(px-e[2])<1e-6&&Math.abs(py-e[3])<1e-6,`${name} ${i}: ${px},${py} ≠ ${e[2]},${e[3]}`);assert.equal(n,e[4],name+' '+i);ok++}
-  assert.equal(ok,353,name);assert.deepEqual(r.er,[],name)};
+    const dd=Math.hypot(px-e[2],py-e[3]);dmax=Math.max(dmax,dd);assert.ok(dd<tol,`${name} ${i}: ${px},${py} ≠ ${e[2]},${e[3]}`);if(tol<1e-3)assert.equal(n,e[4],name+' '+i);ok++}
+  assert.equal(ok,353,name);assert.deepEqual(r.er,[],name);return dmax};
 const real0=await realRun('base',{});cmpReal('실제 결과 폴더',real0);assert.deepEqual(real0.scans,[['RCP/SETUP1/LOT_A/W01',353,'그대로']]);
 // rev3 · rev4 에서 Slot 을 0 으로 만들던 조건: Slot 안 · Setup 폴더의 관계없는 파일 하나를 열 수 없음 → rev5 는 그 파일을 열지 않아 그대로 353
 const real1=await realRun('bad',{bad:['RCP/SETUP1/LOT_A/W01/ManReClassify.ini','RCP/SETUP1/setup_note.ini'],extra:{'@SETUP1/setup_note.ini':btoa('[a]\nb=1\n')}});cmpReal('열 수 없는 파일',real1);
 // Lot 폴더에도 Surface.flt(매칭 파일 없음) → 그 아래 실제 Slot 도 찾음(Step 1 과 같음), Lot 폴더 Slot 은 '매칭 파일 없음'(아래 Slot 파일을 빌려 쓰지 않음)
 const real2=await realRun('lotflt',{extra:{'@SETUP1/LOT_A/Surface.flt':real.files['Surface.flt'],'@SETUP1/LOT_A/Surface.flt.md':real.files['Surface.flt.md']}});cmpReal('Lot 폴더 Surface.flt',real2);
-assert.deepEqual(real2.scans,[['RCP/SETUP1/LOT_A',353,'ColorImageGrabingInfo.ini,ScanResultImageList.txt,frameToChuckPlane.ini'],['RCP/SETUP1/LOT_A/W01',353,'그대로']]);
+assert.deepEqual(real2.scans,[['RCP/SETUP1/LOT_A',353,'ColorImageGrabingInfo.ini'],['RCP/SETUP1/LOT_A/W01',353,'그대로']]);
 // 좌표 기준(프로그램 v12.9.30 COORD_MODES): Fault · Defect 좌표가 프레임 직사각형의 좌측 하단 원점 기준이면 '좌측 하단 원점'으로 같은 짝
 const real3=await realRun('shift',{shift:true});cmpReal('좌측 하단 원점 좌표',real3);assert.deepEqual(real3.scans,[['RCP/SETUP1/LOT_A/W01',353,'좌측 하단 원점']]);
-console.log('step5 실제 결과 폴더: 4가지 조건 모두 353/353 = colorgray.py');
+// ── 소유자 확정(2026-11-10): ColorImageGrabingInfo.ini 는 항상 있음 · ScanResultImageList.txt 는 없을 수 있음 · frameToChuckPlane.1.ini · .2.ini 둘이면 .2 기준 ──────────
+//    프로그램 파일이 없을 때만 대신 계산(실제 결과 폴더에서 확인한 관계: Gray 사진 이름 = 프레임 가운데 Table 좌표, 목록 좌표 = 프레임 가운데)
+const real4=await realRun('noList',{drop:['ScanResultImageList.txt']});const d4=cmpReal('목록 없음 → 사진 이름 + Wafer2Table',real4,3);
+assert.equal(real4.src.frames,'Gray 사진 이름 + Wafer2Table.ini');assert.match(real4.msg,/프로그램 파일 대신 계산한 Slot 1개[\s\S]*W01: Gray 사진 이름 \+ Wafer2Table\.ini/);
+assert.match(real4.row,/436\s*Gray 사진 이름 \+ Wafer2Table\.ini/);assert.match(real4.csv,/,Gray 사진 이름 \+ Wafer2Table\.ini,frameToChuckPlane\.ini,/);
+const real5=await realRun('noListW2T',{drop:['ScanResultImageList.txt','Wafer2Table.ini']});const d5=cmpReal('목록 · Wafer2Table 없음 → 사진 이름 + s_FrameData',real5,0.2);
+assert.equal(real5.src.frames,'Gray 사진 이름 + s_FrameData.dat');
+// 변환 파일 .1 · .2 둘(공통 파일 없음) → .2 기준(소유자). .1 은 일부러 500 µm 어긋나게 — .2 를 쓰면 프로그램과 똑같음, 점검 칸에 '.1 이면 몇 개'
+const tfTxt=atob(real.files['frameToChuckPlane.ini']),tf1=tfTxt.replace(/(Scan_X=\s*\S+\s+\S+\s+)(\S+)/,(m,a,b)=>a+(+b+500));
+const real6=await realRun('tf12',{drop:['frameToChuckPlane.ini'],extra:{'frameToChuckPlane.2.ini':real.files['frameToChuckPlane.ini'],'frameToChuckPlane.1.ini':btoa(tf1)}});cmpReal('변환 .1 · .2 → .2',real6);
+assert.match(real6.src.tf,/^frameToChuckPlane\.2\.ini\(\.1 · \.2 중 큰 번호 — 소유자 기준\)$/);assert.equal(real6.alt.length,1);assert.equal(real6.alt[0][0],'frameToChuckPlane.1.ini');assert.ok(real6.alt[0][1]<353,JSON.stringify(real6.alt));
+assert.match(real6.row,/frameToChuckPlane\.2\.ini\(\.1 · \.2 중 큰 번호 — 소유자 기준\)[\s\S]*frameToChuckPlane\.1\.ini 이면 Gray 위치 \d+ \/ 353/);
+// 변환 파일 없음 → 가운데 모델(픽셀 크기 = s_FrameData) · 목록과 변환 파일 둘 다 없음
+const real7=await realRun('noTf',{drop:['frameToChuckPlane.ini']});const d7=cmpReal('변환 파일 없음 → 가운데 모델',real7,0.2);assert.match(real7.src.tf,/가운데 모델\(목록 좌표 = 프레임 가운데, 픽셀 0\.7699\d* µm\)/);
+const real8=await realRun('noListTf',{drop:['ScanResultImageList.txt','frameToChuckPlane.ini']});const d8=cmpReal('목록 · 변환 파일 없음',real8,3);
+// 대신할 것도 없음(목록 · Wafer2Table · s_FrameData 없음) → 짝을 구하지 않고 이유를 알림(어림셈 안 함)
+const real9=await realRun('nothing',{drop:['ScanResultImageList.txt','Wafer2Table.ini','s_FrameData.dat','s_FrameData.dat.md']});
+assert.deepEqual(real9.scans,[['RCP/SETUP1/LOT_A/W01',353,'ScanResultImageList.txt(대체 못 함: Wafer2Table.ini · s_FrameData.dat 가 없음)']]);assert.ok(real9.pairs.every(p=>p[1]==='none'));
+console.log(`step5 실제 결과 폴더: 프로그램 파일 4가지 조건 353/353 = colorgray.py · 대체 계산 5가지 353/353 같은 프레임(픽셀 차 최대 ${[d4,d5,d7,d8].map(v=>v.toFixed(2)).join(' · ')} px)`);
 
 // ── rev4 의 Surface.flt.md 찾기(Step 1 순서)는 그대로 — md 가 Lot 폴더 · Slot 하위 폴더에 있고 x · y 자리가 바뀌어도 5-1 좌표 · 짝이 같음 ─────────────
 const scen=async opt=>{const pg=await browser.newPage();const er=[];pg.on('pageerror',e=>er.push(String(e)));
