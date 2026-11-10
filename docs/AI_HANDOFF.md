@@ -39,6 +39,9 @@
 - 소유자 질문(2026-11-10) "저번에 파이썬 관련해서 숨겨서 실행했다고 연락 왔었는데 괜찮나?" → 저장소 · 이슈 · 인수인계 어디에도 그 연락 기록이 없음(가장 가까운 기록 = #31 Temp 의 .bat 숨김 실행 · 2026-09 net use 로 exe 삭제 · `run_silent.bat` 의 pythonw).
   v13 에서 '숨김 실행'으로 보일 수 있는 동작 4개(pythonw.exe 가 %LOCALAPPDATA% 의 .pyw 실행 · 업데이트 뒤 pythonw 가 pythonw 를 DETACHED 로 다시 띄움 · pythonw 가 Edge 를 전용 --user-data-dir 로 띄움 · 127.0.0.1 서버)를 설명하고,
   **연락 내용(경고 이름 · 프로세스 · 명령줄 · 날짜)을 요청함 — 답 대기, 코드 변경 없음**. 받으면 해당 동작만 바꿀 것(예: 재시작을 DETACHED 대신 일반 자식으로, Edge 전용 프로필 제거, 첫 실행 콘솔 표시).
+- 소유자 질문(2026-11-10) "WebSocket 대신 SSE 로 한 것 보안 괜찮나?" → 답만(코드 변경 없음): SSE 는 일반 HTTP GET 이라 브라우저 CORS 규칙을 그대로 받음(다른 사이트가 스트림을 못 읽음, 우리는 CORS 헤더를 안 보냄) —
+  WebSocket 은 CORS 를 안 받아 서버가 Origin 을 직접 막아야 하는 '교차 사이트 WebSocket 탈취' 위험이 있어 오히려 SSE 가 단순 · 안전. 남은 약점 = 이벤트 스트림 토큰이 주소(`?t=`)에 실림(EventSource 는 헤더를 못 붙임) · server.json 에 토큰(같은 사용자만 읽음) · 루프백 HTTP 평문.
+  보강안(소유자 선택 대기): 토큰을 HttpOnly · SameSite=Strict 쿠키로 옮겨 주소에서 없애기, `Sec-Fetch-Site: same-origin` 검사 추가.
 - **남은 일(7단계, 소유자 실기)**: 회사 PC 에서 ① 설치 zip 받기(Defender) ② Win+R 첫 실행 · 바로가기 ③ 고르기 창 · 끌어 넣기 · 트레이 ④ 다음 릴리스로 [지금 업데이트](GitHub 접속 · 회사 프록시). Windows 부분은 이 환경에서 확인 못 함.
 - 다음 단계(계획 7절): ~~2 로컬 서버~~ ~~3~~ ~~4~~ ~~5~~ ~~6~~ → 7 소유자 실기 + `desktop.ts` 교체 → 3 고르기 창 · 끌어 넣기 · 트레이 · 종료 → 4 실행기 · Edge · vendor · dist → 5 업데이트 → 6 CI · 태그.
   `desktop_appupdate` · `desktop_swap` · `updater` · `desktop_package` 는 5단계에서 새 업데이트로 바꾸면서 지운다.
