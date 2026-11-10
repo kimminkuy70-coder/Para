@@ -363,7 +363,12 @@ await page.locator('#bigDecide').click();await page.locator('#bigRes').waitFor()
 const seen=await page.evaluate(()=>{window.__mo.disconnect();return window.__seen});
 assert.ok(seen.some(t=>/리스트 취합 중/.test(t)&&/Slot 폴더/.test(t)),seen.join('\n'));assert.ok(await page.locator('#busy').isHidden());
 assert.ok(await page.locator('#bigPick').isHidden());
-assert.match(await page.locator('#bigResSum').innerText(),/결정한 리스트 4개 · Lot 1개 · Slot 1개 · Color 연결 [12] · Gray 프레임 \d/);
+assert.match(await page.locator('#bigResSum').innerText(),/결정한 리스트 4개 · Lot 1개 · Slot 1개 · Color 연결 2\(사진 있음 2\) · Gray 연결 \d\(사진 있음 \d\)/);
+// Slot 별 취합 결과 표(Step 1 점검처럼): 읽은 .ini · Color/Gray 항목 · 연결 · 사진 파일 있음
+const slotRow=await page.locator('#bigSlotTbl tbody tr').first().innerText();
+assert.match(slotRow,/CA20\s+W01\s+4\s+4\s+2\s+2 \(50%\)\s+2 \(50%\)\s+2\s+/);assert.match(slotRow,/있음\s+10×9/);assert.match(slotRow,/colorimagegrabinginfo\.ini/i);
+const rc=await page.evaluate(()=>window.__cw.bigResCsv());assert.match(rc,/^\uFEFF순서,Lot폴더,Step,ContrastAVG,Slot,ID,resultID,WaferX,WaferY,DieCol,DieRow,Area_um2,Width,Length,Contrast,Color파일,Color사진있음,Gray프레임,Gray사진있음/);
+assert.equal(rc.trim().split('\r\n').length,5);assert.match(rc,/C1\.c\.1\.jpeg,Y,F1\.t\.1\.jpeg,Y,BIG\/CA20\/LOTB\/W01\/C1\.c\.1\.jpeg/);
 assert.match(await page.locator('#bigMsg').innerText(),/리스트 4개 · Slot 1개 취합/);
 const fz=await page.evaluate(()=>window.__cw.BIG.scans.map(s=>s.full?[s.full.product?1:0,s.full.colors.length,s.full.frames.length,s.full.transforms.size,s.full.defects.length]:null));
 assert.deepEqual(fz,[[1,2,2,1,4],null]);   // 결정한 Slot(CA20)만 전체 정보, CA27 은 안 읽음

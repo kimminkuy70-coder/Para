@@ -290,6 +290,12 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
       <div class="row"><button id="bigImgC" title="보고 있는 Defect 의 Color 사진 파일 경로를 복사하고 새 탭으로 엽니다">📷 Color 사진 경로 열기</button><button id="bigImgG" title="보고 있는 Defect 의 Gray 사진 파일 경로를 복사하고 새 탭으로 엽니다">📷 Gray 사진 경로 열기</button>
         <button id="bigBaseEdit" title="보고 있는 Defect 가 든 고른 폴더의 PC 경로를 다시 입력합니다">PC 경로 바꾸기</button><span id="bigBaseShow" class="muted"></span></div>
       <div class="muted" id="bigPath"></div></div>
+    <div class="card" style="margin-top:12px"><h3 class="s3h">Slot 별 취합 결과 (읽은 .ini · 사진 파일 확인)</h3>
+      <div class="row"><button id="bigResCsv">리스트 취합 결과 CSV</button><span class="muted">사진 파일 = 연결된 Color · Gray 사진이 폴더에 실제로 있는지 확인한 수(내용은 볼 때 읽음)</span></div>
+      <div class="tblwrap" style="max-height:340px;margin-top:6px"><table id="bigSlotTbl"><thead><tr><th>Lot</th><th>Slot</th><th class="num">리스트</th><th class="num">Defect 전체</th>
+        <th class="num">Color 항목<br><span class="muted">ColorImageGrabingInfo</span></th><th class="num">Color 연결</th><th class="num">Color 사진 있음</th>
+        <th class="num">Gray 프레임<br><span class="muted">ScanResultImageList</span></th><th class="num">Gray 연결</th><th class="num">Gray 사진 있음</th>
+        <th>frameToChuckPlane</th><th>Die (ProductInfo)</th><th>Wafer Map · s_DieLocation</th><th>읽은 .ini · .txt</th><th>점검</th></tr></thead><tbody></tbody></table></div></div>
     <div id="p5map"></div><div id="p5low"></div>
   </div>
 </section>
@@ -1495,21 +1501,46 @@ async function bigDecide(){const V=BIG.view;if(!V||!V.m){bigMsg([['err','리스�
     const o=S.o=S.o||opts(),act=o.coord==='actual',lots=[...new Set([...full.values()].map(f=>f.lotPath))],col=lp=>P5_COLORS[lots.indexOf(lp)%P5_COLORS.length];
     const items=[];let nc=0,ng=0;
     for(let k=0;k<n;k++){const {s,i}=bigAt(k),f=full.get(s);if(!f)continue;const d=f.defects[i];if(!d)continue;d.X=act?d.ActualX:d.x;d.Y=act?d.ActualY:d.y;
-      if(linkColor(d,f,o.ctol))nc++;if(grayOf(d).frame)ng++;
-      items.push({d,X:d.X,Y:d.Y,c:col(f.lotPath),raw:true,label:`${stepName(f)} · ${f.slotName||''}`,tag:stepName(f)})}
+      const lc=linkColor(d,f,o.ctol),g=grayOf(d);if(lc)nc++;if(g.frame)ng++;
+      const st=f.stat||(f.stat={n:0,c:0,g:0,cf:new Set(),gf:new Set(),cOk:0,gOk:0});st.n++;if(lc){st.c++;st.cf.add(lc.c.file)}if(g.frame){st.g++;st.gf.add(g.frame.file)}
+      items.push({d,X:d.X,Y:d.Y,c:col(f.lotPath),raw:true,label:`${stepName(f)} · ${f.slotName||''}`,tag:stepName(f),cfile:lc?cleanName(lc.c.file):'',gfile:g.frame?cleanName(g.frame.file):''})}
     const scans=[...full.values()];
-    BIG.res={items,scans,lots,nc,ng,secs:(Date.now()-t0)/1000};
-    msg.unshift(['ok',`리스트 ${items.length.toLocaleString()}개 · Slot ${scans.length}개 취합 (${BIG.res.secs.toFixed(1)}초) — Color 연결 ${nc.toLocaleString()} · Gray 프레임 ${ng.toLocaleString()} / ${items.length.toLocaleString()}`]);
+    // 사진 파일이 폴더에 실제로 있는지(이름으로 찾기만 — 내용은 볼 때 읽음). 같은 파일은 한 번만.
+    const need=scans.reduce((a,f)=>a+(f.stat?f.stat.cf.size+f.stat.gf.size:0),0);let chk=0;
+    for(const f of scans){const st=f.stat;if(!st)continue;st.have=new Set();
+      for(const nm of [...st.cf,...st.gf]){if(chk%20===0){busy({title:'리스트 취합 중 (사진 파일 확인)',done:chk,total:Math.max(1,need),unit:'파일',files:`Slot ${f.slotName||f.name}`,detail:cleanName(nm)});await nextPaint()}
+        chk++;try{if(await fileGet(f,nm))st.have.add(lower(cleanName(nm)))}catch(e){}}}
+    let cOk=0,gOk=0;for(const it of items){const st=it.d.scan.stat;it.cok=!!(it.cfile&&st.have.has(lower(it.cfile)));it.gok=!!(it.gfile&&st.have.has(lower(it.gfile)));if(it.cok){cOk++;st.cOk++}if(it.gok){gOk++;st.gOk++}}
+    BIG.res={items,scans,lots,nc,ng,cOk,gOk,secs:(Date.now()-t0)/1000};
+    msg.unshift(['ok',`리스트 ${items.length.toLocaleString()}개 · Slot ${scans.length}개 취합 (${BIG.res.secs.toFixed(1)}초) — Color 연결 ${nc.toLocaleString()}(사진 있음 ${cOk.toLocaleString()}) · Gray 프레임 ${ng.toLocaleString()}(사진 있음 ${gOk.toLocaleString()}) / ${items.length.toLocaleString()}`]);
+    if(items.length&&(!nc||!ng||!cOk||!gOk))msg.push(['err','이미지 연결이 안 된 Slot 이 있습니다 — 아래 [Slot 별 취합 결과] 표의 읽은 .ini 와 점검 칸을 확인하십시오.']);
     const wr=scans.flatMap(f=>f.warns.map(t=>`${f.slotName||f.name}: ${t}`));if(wr.length)msg.push(['warn',`점검 ${wr.length}건: `+wr.slice(0,6).join(' / ')+(wr.length>6?' …':'')]);
   }finally{busy(null)}
   bigMsg(msg);bigResShow()}
 function bigResShow(){const R=BIG.res;if(!R)return;$('#bigPick').hidden=true;$('#bigFlt').hidden=true;$('#bigRes').hidden=false;
   if(!P5)P5=makePanel('p5',$('#p5map'),$('#p5low'),{step:5,allLabel:'필터 밖 Defect 도 회색으로 표시',empty:'리스트에 Defect 가 없습니다',onShow:p5Show});
   P5.title='Step 5 결정 리스트';P5.ctx={cmp:true,cmpScans:R.scans,allPts:R.items};
-  $('#bigResSum').textContent=`결정한 리스트 ${R.items.length.toLocaleString()}개 · Lot ${R.lots.length}개 · Slot ${R.scans.length}개 · Color 연결 ${R.nc.toLocaleString()} · Gray 프레임 ${R.ng.toLocaleString()}`;
+  $('#bigResSum').textContent=`결정한 리스트 ${R.items.length.toLocaleString()}개 · Lot ${R.lots.length}개 · Slot ${R.scans.length}개 · Color 연결 ${R.nc.toLocaleString()}(사진 있음 ${R.cOk.toLocaleString()}) · Gray 연결 ${R.ng.toLocaleString()}(사진 있음 ${R.gOk.toLocaleString()})`;bigSlotTbl();
   P5.el('Lg').innerHTML=R.lots.map((lp,i)=>`<span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${P5_COLORS[i%P5_COLORS.length]}"></i> ${esc(lp)}</span>`).join(' ');
   setPanel(P5,R.items,[],`결정한 리스트 ${R.items.length.toLocaleString()}개 (Contrast 리스트 순서)`);
   setTimeout(()=>paintPanel(P5),30)}
+/** 3단계 Slot 별 취합 결과 표(Step 1 점검 칸과 같은 내용 + 연결 · 사진 파일 확인) */
+function bigSlotTbl(){const R=BIG.res;if(!R)return;const pct=(a,b)=>b?`${a.toLocaleString()} <span class="muted">(${Math.round(100*a/b)}%)</span>`:'0';
+  $('#bigSlotTbl tbody').innerHTML=R.scans.map(f=>{const st=f.stat||{n:0,c:0,g:0,cOk:0,gOk:0},ini=[...f.files.keys()].filter(k=>/\.(ini|txt)$/i.test(k)).sort(),
+      bad=(x,t)=>x?t:`<b style="color:var(--bad,#c0392b)">${t}</b>`;
+    return `<tr><td>${esc(stepName(f))}</td><td title="${esc(f.name)}">${esc(f.slotName||'')}</td><td class="num">${st.n.toLocaleString()}</td><td class="num">${f.defects.length.toLocaleString()}</td>
+      <td class="num">${bad(f.colors.length,f.colors.length.toLocaleString())}</td><td class="num">${bad(st.c,pct(st.c,st.n))}</td><td class="num">${bad(st.cOk,pct(st.cOk,st.n))}</td>
+      <td class="num">${bad(f.frames.length,f.frames.length.toLocaleString())}</td><td class="num">${bad(st.g,pct(st.g,st.n))}</td><td class="num">${bad(st.gOk,pct(st.gOk,st.n))}</td>
+      <td>${f.transforms.size?'있음':bad(0,'없음')}</td><td>${f.product?`${f.product.cols}×${f.product.rows}`:bad(0,'없음')}</td><td>${esc(f.waferMap?f.waferMap.file:'맵 없음')} · ${f.dieLoc?f.dieLoc.length+' Die':'s_DieLocation 없음'}</td>
+      <td title="${esc(ini.join('\n'))}">${ini.length}개 <span class="muted">${esc(ini.slice(0,4).join(', '))}${ini.length>4?' …':''}</span></td>
+      <td><span class="muted" style="white-space:normal">${esc(f.warns.concat(f.errors).join(' / ')||'문제 없음')}</span></td></tr>`}).join('')}
+/** 리스트 취합 결과 CSV(결정한 리스트 전부: Defect 값 + Die + Color · Gray 연결과 사진 파일 확인) */
+function bigResCsv(){const R=BIG.res;if(!R)return null;const o=S.o,px2=o.pix*o.pix,q=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  const rows=['﻿'+['순서','Lot폴더','Step','ContrastAVG','Slot','ID','resultID','WaferX','WaferY','DieCol','DieRow','Area_um2','Width','Length','Contrast','Color파일','Color사진있음','Gray프레임','Gray사진있음','Color사진경로','Gray사진경로'].join(',')];
+  R.items.forEach((it,k)=>{const d=it.d,s=d.scan,die=dieOf(d.X,d.Y,s.product),w=s.where||new Map(),pp=n=>{if(!n)return '';const r=w.get(lower(n))||slotPath(s,n).rel;const p=pcPath(r);return p.pc||r};
+    rows.push([k+1,q(s.lotPath),q(stepName(s)),s.contrast??'',q(s.slotName||''),d.no??d.id,d.resultID,f2(d.X),f2(d.Y),die?die.col:'',die?die.row:'',f2(d.area*px2),f2(d.BlobBreadth),f2(d.BlobLength),f2(d.Contrast),q(it.cfile),it.cok?'Y':'N',q(it.gfile),it.gok?'Y':'N',q(pp(it.cfile)),q(pp(it.gfile))].join(','))});
+  return rows.join('\r\n')+'\r\n'}
+$('#bigResCsv').onclick=()=>{const t=bigResCsv();if(!t)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='Defect_리스트_취합.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
 function p5Show(){const q=P5&&P5.items[P5.sel];if(q)imgPathShow(q)}
 // ── 사진 경로 열기(Para #61 후속, 소유자 "경로 여는 거는 사진 경로 여는 버튼"): 브라우저는 고른 폴더의 PC 경로를 알 수 없다
 //    → 소유자가 한 번 적은 'PC 경로' + 사진을 실제로 찾은 곳(고른 폴더부터의 경로, fileGet 이 scan.where 에 남김)으로 사진 파일의 PC 경로를 만든다.
@@ -1611,7 +1642,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={pickDir,unitScan,askBase,baseCheck,get BASES(){return BASES},fastWalk,planUnits,BIG,slotPath,pcPath,imgOf,bigShow,bigDecide,fullScan,withCtx,get P5(){return P5},fileGet,ensureImg,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={bigResCsv,pickDir,unitScan,askBase,baseCheck,get BASES(){return BASES},fastWalk,planUnits,BIG,slotPath,pcPath,imgOf,bigShow,bigDecide,fullScan,withCtx,get P5(){return P5},fileGet,ensureImg,addBigEntries,walkDir,bigRefresh,bigCsv,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>
