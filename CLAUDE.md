@@ -91,6 +91,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     **#67 디자인**(2026-11-11): Defect 표시 = **빨간 네모**(`cgDefBox` — Defect 상자 `cgDefHalf`(BoxWidth × BoxHeight, Gray 3168 기준) 바깥에 틈 + 선, 최소 크기 · 굵기는 그림 크기 비례, Defect 를 가리지 않음).
     `cgCropCanvas(gray,hit,cs,doc,d)` 는 d 가 있으면 흑백 위에(필터 끈 뒤) 네모를 그리고 `mark` 를 돌려줌(GL 용 raw 에는 안 그림) — 새 창 · 5-3 · 격자 공용, `cgFrameCanvas(…,d)` 는 종전 빨간 + 대신 네모(노란 Crop 상자 그대로).
     새 창 확대 = `pwZoom`/`pwSet`/`pwFit`(배율 `_z` = 창 맞춤의 몇 배, 누르기 ×2 · 끝(`PZ_MAX` = 원래 픽셀 16배)에서 창 맞춤, Shift · 오른쪽 ÷2, 휠 ×1.25/0.8, 끌기 = 포인터 잡기로 스크롤, Esc · 0 = 전부 창 맞춤, 누른 점 고정, `.zb` 배율 표시). 종전 `full` 토글(1단계)을 대체.
+    **#68 최종 목록**: 짝 항목 `p.pick`(5-3 목록 첫 열 '최종' ☑/☐ · `vtKey` Space → `o.onSpace` · 첫 칸 클릭 · 새 창 Space → `pickToggle` → `pickChanged`(목록 · 격자 · 새 창 머리 `pickBadge`)), `b5Pair` 는 같은 `s.id|i` 의 ☑ 를 이어받음.
+    [💾 최종 목록 엑셀 저장] `c5SaveXlsx` = `pickSave(이름, xlsx)` 먼저 → ☑ 마다 `xlPhotos`(cgBitmap · cgCropCanvas · cgFrameCanvas 를 JPEG 로) → `xlsxBlob`(외부 라이브러리 없이 시트 1장 · `XL_COLS` · oneCellAnchor 사진 · 틀 고정 · 자동 필터) → `zipStore`(무압축 zip + `crc32`). 시험이 zip · XML · 사진 · 행 값을 Python 으로 확인.
     **#66 .ini 차단**(2026-11-11): 회사 PC Chrome 은 폴더 핸들로 `getFileHandle('ColorImageGrabingInfo.ini')` = TypeError 'Name is not allowed.', 목록에도 .ini 없음(Step 1 ~ 4 의 webkitdirectory 는 받음).
     `bigPickHandle` 이 훑은 뒤 첫 Slot 에 CI 를 한 번 물어 TypeError(`fsaBlocked`)면 `bigToList` — 읽기 멈춤 · 알림 · localStorage `cw.bigList=1` → 다음 [폴더 추가]는 webkitdirectory(`addBigEntries`).
     찾는 곳: Slot → 하위 4단계(Surface.flt 있는 폴더 빼고) → 위쪽 폴더(그 아래 Slot 이 하나일 때만, `sl.under` · 파일 목록은 `up`) — 못 찾으면 `cgDiag`(파일 수 · 비슷한 이름 · 묻기 오류 · 찾아본 폴더 · [원본 폴더 경로]가 있으면 전체 경로 길이)를 `cgMiss` 로 5-1/5-2 알림에.

@@ -144,6 +144,8 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 .g5grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px}
 .g5{border:1px solid var(--line);border-left:4px solid var(--line);border-radius:8px;background:var(--panel);cursor:pointer;overflow:hidden}
 .g5.st-ok{border-left-color:var(--keep)}.g5.st-none{border-left-color:var(--gone)}.g5.st-color,.g5.st-gray{border-left-color:var(--new)}
+.biglist .br.pk{background:color-mix(in srgb,var(--ok) 14%,transparent)}.biglist .br span.pk{text-align:center;font-weight:700;cursor:pointer}.biglist .br.pk span.pk{color:var(--ok)}
+.g5.pk{outline:3px solid var(--ok);outline-offset:-3px}.c5pick{font-weight:700}
 .g5 .gh{font-size:12px;padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .g5 .gi{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:#000}
 .g5 .gi>div{aspect-ratio:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
@@ -345,10 +347,13 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
         <label title="Color 사진이나 Gray 사진 중 하나라도 있는 Defect(짝 완료 · Color 만 · Gray 만) — Color 사진만 있어도 보입니다"><input type="checkbox" id="b5okOnly" checked> 사진 있는 것만</label>
         <button id="b5prep">이 목록 사진 모두 미리 준비</button><button id="toB2b">← 5-2</button>
         <span class="muted" id="c5cnt"></span></div>
+      <div class="row" title="소유자 #68: 목록에서 줄을 고르고 Space = 최종 목록에 넣기/빼기(☑). 사진 새 창에서도 Space. 엑셀에는 ☑ 한 Defect 만, 사진(Color · Gray Crop · Gray 프레임)을 넣어 저장합니다.">
+        <b>최종 목록</b><span class="c5pick" id="c5pickN">☑ 0개</span><button id="c5pickAll">보이는 목록 모두 ☑</button><button id="c5pickNone">모두 해제</button>
+        <button class="pri" id="c5save" disabled>💾 최종 목록 엑셀 저장 (사진 포함)</button><span class="muted" id="c5saveSt"></span></div>
     </div>
     <div id="c5one" class="big2">
       <div><div id="c5list" class="biglist" tabindex="0" aria-label="조사할 Defect 목록"></div>
-        <p class="muted">↑ ↓ ← → / J K 이동 · 더블 클릭 · Enter 또는 사진 누르기 = 사진 새 창(큰 화면 · 사진만: Color · Gray Crop · Gray 프레임)</p></div>
+        <p class="muted">↑ ↓ ← → / J K 이동 · <b>Space = 최종 목록 ☑ / ☐</b>(☑ 칸을 눌러도 됨) · 더블 클릭 · Enter 또는 사진 누르기 = 사진 새 창(큰 화면 · 사진만: Color · Gray Crop · Gray 프레임, 새 창에서도 Space)</p></div>
       <div><div class="row" style="margin-top:0"><button id="c5up">◀ 이전</button><button id="c5down">다음 ▶</button><button id="c5win">⧉ 새 창으로 크게 보기</button></div>
         <div class="rvimgs"><figure id="c5Color"><figcaption>Color 원본</figcaption></figure><figure id="c5Gray"><figcaption>Gray Crop (Color 시야)</figcaption></figure></div>
         <div class="stl" id="c5St" aria-live="polite"></div>
@@ -1954,7 +1959,8 @@ function vtGo(V,k,quiet){if(!V.n)return;k=Math.max(0,Math.min(V.n-1,k));const ch
 function vtKey(V,e){if(!V||/INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName))return;const k=e.key.toLowerCase();if(!V.n)return;
   const page=Math.max(1,Math.floor((V.box.clientHeight-BHH)/BRH)-1),mv={arrowdown:1,arrowright:1,j:1,arrowup:-1,arrowleft:-1,k:-1,pagedown:page,pageup:-page}[k];   // rev5: ←→ 도 이전 · 다음(소유자)
   if(mv){vtGo(V,V.sel+mv);e.preventDefault()}else if(k==='home'||k==='end'){vtGo(V,k==='home'?0:V.n-1);e.preventDefault()}
-  else if(k==='enter'&&V.o.onEnter){V.o.onEnter(V.sel);e.preventDefault()}}
+  else if(k==='enter'&&V.o.onEnter){V.o.onEnter(V.sel);e.preventDefault()}
+  else if(k===' '&&V.o.onSpace){V.o.onSpace(V.sel);e.preventDefault()}}
 const sortClick=k=>{const [sk,sd]=BIG.sort?BIG.sort.split('-'):['',''];return k+'-'+(k===sk?(sd==='d'?'a':'d'):(/^[cawl]$/.test(k)?'d':'a'))};
 
 // ── 5-1 목록 ───────────────────────────────────────────────────────────
@@ -1979,8 +1985,8 @@ function bigCsv(){const V=BIG.view;if(!V)return null;const o=S.o,px2=o.pix*o.pix
   if(buf.length)parts.push(buf.join('\r\n')+'\r\n');return parts}
 const csvQ=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
 /** 저장 위치 고르기(showSaveFilePicker) — 사람이 누른 직후에만 열 수 있다. 고른 파일 핸들, 취소 = false, 이 브라우저에 없음 = null. */
-async function pickSave(name){if(!window.showSaveFilePicker)return null;
-  try{return await window.showSaveFilePicker({suggestedName:name,types:[{description:'CSV',accept:{'text/csv':['.csv']}}]})}catch(e){return e&&e.name==='AbortError'?false:null}}
+async function pickSave(name,types){if(!window.showSaveFilePicker)return null;
+  try{return await window.showSaveFilePicker({suggestedName:name,types:types||[{description:'CSV',accept:{'text/csv':['.csv']}}]})}catch(e){return e&&e.name==='AbortError'?false:null}}
 /** CSV 저장: 미리 고른 핸들 → (pick 이면) 지금 위치 고르기 → 둘 다 없으면 다운로드 폴더(file:// 페이지에서는 브라우저가 이름을 'download' 로 바꿀 수 있다). 원본 폴더에는 쓰지 않는다. */
 async function saveCsv(parts,name,pick,handle){const blob=new Blob(parts,{type:'text/csv'});let h=handle||null;
   if(!h&&pick){h=await pickSave(name);if(h===false)return null}
@@ -2024,6 +2030,7 @@ async function b5Pair(save){
         st.n++;if(r.c)st.cl++;if(cf)st.cf++;if(r.hit)st.gl++;if(gf)st.gf++;
         p.st=p.c&&p.g?'ok':p.c?'color':p.g?'gray':'none';cnt[p.st]++;di++;pr()}});
     step=2;cur='결과 목록 만드는 중';show();await nextPaint();
+    {const was=new Set((BIG.pairs||[]).filter(p=>p.pick).map(p=>p.s.id+'|'+p.i));if(was.size)for(const p of items)if(was.has(p.s.id+'|'+p.i))p.pick=true}   // #68 최종 목록 ☑ 는 다시 확인해도 남김
     BIG.pairs=items;b5SlotTbl(slots);
     const sec=((performance.now()-t0)/1000).toFixed(1),skip=N-di;
     $('#b5pairSt').innerHTML=`<div class="msg ${skip?'warn':'ok'}">${esc(`Defect ${N.toLocaleString()}개 확인 끝 (${sec}초): 짝 완료 ${cnt.ok} · Color 만 ${cnt.color} · Gray 만 ${cnt.gray} · 둘 다 없음 ${cnt.none}`+(skip?` · 중지로 확인 안 함 ${skip}`:''))}</div>`;
@@ -2152,7 +2159,8 @@ function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray'
     .im>canvas{max-width:100%;max-height:100%;cursor:zoom-in}.im.full{overflow:auto;align-items:flex-start;justify-content:flex-start}.im.full>canvas{max-width:none;max-height:none;margin:auto;flex:none}
     .im.drag,.im.drag>canvas{cursor:grabbing}figure{position:relative}.zb{position:absolute;right:8px;bottom:8px;background:rgba(22,26,34,.85);color:#ffe08a;font-size:12px;padding:2px 8px;border-radius:4px;pointer-events:none}
     .ms{color:#ff9a92;padding:10px}
-    .pv.conly{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}.pv.conly #fx,.pv.conly #ff{display:none}.hd .ng{color:#ffb37a;font-weight:600}</style>`);
+    .pv.conly{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}.pv.conly #fx,.pv.conly #ff{display:none}.hd .ng{color:#ffb37a;font-weight:600}
+    .hd .pk{padding:0 6px;border-radius:4px;font-weight:700}.hd .pk.on{background:#a3e635;color:#12244a}.hd .pk.off{background:#333;color:#bbb}</style>`);
   doc.body.tabIndex=-1;
   // 칸 = 제목(사진 파일명 + 전체 경로, 사진을 가리지 않게 위에) + 사진
   doc.body.innerHTML=`<div class="hd" id="hd"></div><div class="pv"><figure id="fc"><figcaption>Color</figcaption><div class="im"></div><div class="zb" hidden></div></figure><figure id="fx"><figcaption>Gray Crop (Color 시야)</figcaption><div class="im"></div><div class="zb" hidden></div></figure>`
@@ -2160,6 +2168,7 @@ function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray'
   doc.addEventListener('keydown',e=>{const V=PW.V;if(!V||!V.n||e.ctrlKey||e.altKey||e.metaKey)return;const k=e.key.length===1?e.key.toLowerCase():e.key,
       mv={ArrowDown:1,ArrowRight:1,PageDown:1,j:1,ArrowUp:-1,ArrowLeft:-1,PageUp:-1,k:-1}[k];
     if(mv){vtGo(V,Math.max(0,Math.min(V.n-1,V.sel+mv)));e.preventDefault()}else if(k==='Home'||k==='End'){vtGo(V,k==='Home'?0:V.n-1);e.preventDefault()}
+    else if(k===' '){pickToggle(PW.items[V.sel]);e.preventDefault()}
     else if(k==='Escape'||k==='0'){doc.querySelectorAll('.im>canvas').forEach(c=>pwSet(c,1));e.preventDefault()}});
   try{doc.body.focus()}catch(e){}}
 function photoWinFollow(V){if(PW.w&&!PW.w.closed&&PW.V===V)photoWinShow()}
@@ -2174,7 +2183,7 @@ async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w)
   const cap=(f,h,title)=>{f.cap.innerHTML=h;f.cap.title=title||''};
   if(!p){$w('hd').textContent='보여 줄 Defect 가 없습니다';cap(fc,'Color');cap(fx,'Gray Crop (Color 시야)');cap(ff,'Gray 프레임');return}
   const s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),ms=(f,t)=>f.im.insertAdjacentHTML('beforeend',`<p class="ms">${esc(t)}</p>`),zoom=pwZoom;
-  $w('hd').innerHTML=`${V.sel+1} / ${V.n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · <b>${esc(clsText(s,i))}</b> · Contrast ${f2(C.c[i])} <i>(↑↓ ←→ 이전 · 다음 · 사진 누르기 = 2배씩 확대(Shift · 오른쪽 = 축소, 휠 · 끌기) · Esc = 창 맞춤)</i>`
+  $w('hd').innerHTML=`${V.sel+1} / ${V.n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · <b>${esc(clsText(s,i))}</b> · Contrast ${f2(C.c[i])} ${pickBadge(p)} <i>(↑↓ ←→ 이전 · 다음 · Space = 최종 목록 ☑/☐ · 사진 누르기 = 2배씩 확대(Shift · 오른쪽 = 축소, 휠 · 끌기) · Esc = 창 맞춤)</i>`
     +(pcBaseSet()?'':' <i style="color:#e0b060">· 전체 경로: 5-1 의 [원본 폴더 경로(PC)] 를 적으면 PC 경로로 나옵니다(지금은 고른 폴더부터)</i>');
   // 사진 파일명 + 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도") — 경로는 사진을 실제로 찾은 곳(없으면 매칭 폴더 + 이름)
   const cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'',rel=pcBaseSet()?'':' rel';
@@ -2196,15 +2205,16 @@ async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w)
 // ── 5-3: 사진 정밀 조사 ────────────────────────────────────────────────
 const THUMB=new Map();   // 짝 번호 → {c, g(data URL), gl, err} — 설정이 바뀌면 비운다
 const C5={items:[],tok:0,gtok:0,mode:'one',page:0};const G5=48,TW=240;
-const VC=makeVT($('#c5list'),[['5-1 #',60,'num',null],['상태',110,'s',null],['Lot',120,'',null],['Slot',100,'',null],['ID',60,'num',null],['첫번째 분류',130,'',null],['재분류',130,'',null],['Contrast(실제)',110,'num',null],['Area µm²',86,'num',null],['Width',62,'num',null]],{
-  row:k=>{const p=C5.items[k],s=p.s,C=s.cols,i=p.i,px2=S.o.pix*S.o.pix;return [p.k+1,ST5[p.st],s.lotName,s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),f2(C.c[i]),f2(C.area[i]*px2),f1(C.w[i])]},
-  cls:k=>'st-'+C5.items[k].st,onSel:()=>{c5Show();photoWinFollow(VC)},onEnter:()=>photoWin(VC,C5.items)});
+const VC=makeVT($('#c5list'),[['최종',46,'pk',null],['5-1 #',60,'num',null],['상태',110,'s',null],['Lot',120,'',null],['Slot',100,'',null],['ID',60,'num',null],['첫번째 분류',130,'',null],['재분류',130,'',null],['Contrast(실제)',110,'num',null],['Area µm²',86,'num',null],['Width',62,'num',null]],{
+  row:k=>{const p=C5.items[k],s=p.s,C=s.cols,i=p.i,px2=S.o.pix*S.o.pix;return [p.pick?'☑':'☐',p.k+1,ST5[p.st],s.lotName,s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),f2(C.c[i]),f2(C.area[i]*px2),f1(C.w[i])]},
+  cls:k=>'st-'+C5.items[k].st+(C5.items[k].pick?' pk':''),onSel:()=>{c5Show();photoWinFollow(VC)},onEnter:()=>photoWin(VC,C5.items),onSpace:k=>pickToggle(C5.items[k])});
+$('#c5list').addEventListener('click',e=>{const c=e.target.closest('.br>span.pk');if(c)pickToggle(C5.items[+c.parentNode.dataset.k])});
 /** 5-3 목록: [사진 있는 것만] = Color 나 Gray 사진 중 하나라도 있는 것(소유자 "Color 이미지만 있을 경우에도 Color 이미지만이라도 띄워야") — 종전 '짝 완료만'은 Color 만인 Defect 를 숨겼다. */
 const hasPhoto=p=>p.st==='ok'||p.st==='color'||p.st==='gray';
 function c5Refresh(keep){const ok=$('#b5okOnly').checked;C5.items=(BIG.pairs||[]).filter(p=>p.st!=='skip'&&(!ok||hasPhoto(p)));vtSet(VC,C5.items.length,keep);
   $('#c5cnt').textContent=`Defect ${C5.items.length.toLocaleString()}개${ok?' (사진 있는 것만)':''} · 사진 준비 끝 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`+(C5.note?' · '+C5.note:'');C5.note='';
   $('#c5one').hidden=C5.mode!=='one';$('#c5gridBox').hidden=C5.mode!=='grid';$$('[data-v5]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v5===C5.mode));
-  if(C5.mode==='one')c5Show();else c5Grid();if(PW.V===VC)PW.items=C5.items}
+  if(C5.mode==='one')c5Show();else c5Grid();if(PW.V===VC)PW.items=C5.items;pickInfo()}
 /** 진행 기록 줄(5-3 사진 하나): 지금 무엇을 읽는지 · 끝난 것 · 걸린 시간. 진행 중인 줄은 0.2초마다 시간이 올라간다(멈추면 응답 기다리는 중). */
 function stLog(box,tk){const L=[],t0=performance.now();let cur=null;
   const draw=()=>{const now=performance.now();box.innerHTML=L.map(l=>{const sec=((l.k==='on'?now:l.e)-l.s)/1000;
@@ -2252,7 +2262,7 @@ async function prepThumb(p,note){
   t={c,g,gl,err};THUMB.set(p.k,t);return t}
 function c5Card(p,k){const t=THUMB.get(p.k),s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'';
   const cp=cn?pcPath(p.c?p.c.path:dir+cn):'',gp=gn?pcPath(p.g?p.g.path:dir+gn):'';   // 마우스를 올리면 전체 경로
-  return `<div class="g5 st-${p.st}" data-k="${k}" title="눌러서 크게 보기"><div class="gh">${k+1}. ${esc(s.lotName)} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · C ${f2(C.c[i])}</div>
+  return `<div class="g5 st-${p.st}${p.pick?' pk':''}" data-k="${k}" title="눌러서 크게 보기"><div class="gh">${p.pick?'☑ ':''}${k+1}. ${esc(s.lotName)} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · C ${f2(C.c[i])}</div>
     <div class="gi"><div data-l="Color" title="${esc(cp)}">${t?(t.c?`<img src="${t.c}" alt="Color">`:'<span class="ph">Color 없음</span>'):'<span class="ph">⏳</span>'}</div><div data-l="Gray Crop" title="${esc(gp)}">${t?(t.g?`<img src="${t.g}" alt="Gray Crop">`:'<span class="ph">Gray 없음</span>'):'<span class="ph">⏳</span>'}</div></div>
     <div class="gn"><span title="${esc(cp)}">${esc(cn||'-')}</span><span title="${esc(gp)}">${esc(gn||'-')}</span></div>
     ${t&&t.err.length?`<div class="ge">${esc(t.err.join(' · '))}</div>`:''}${t&&t.gl?`<div class="gm">ROI−local ${f1(t.gl.delta)} · ROI mean ${f1(t.gl.mean)}</div>`:''}</div>`}
@@ -2272,6 +2282,106 @@ async function c5PrepAll(){const L=C5.items.filter(p=>!THUMB.has(p.k)).sort((a,b
   busy({title:'5-3 사진 모두 미리 준비',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});
   try{for(const p of L){if(BIG.stop)break;await prepThumb(p,(t,sp)=>{cur=t;step=sp;pr()});done++;pr()}}finally{busy(null)}
   c5Refresh(true)}
+
+// ── 5-3 최종 목록(소유자 #68): Space 로 ☑ / ☐ → 사진을 넣은 엑셀 저장 ─────────────────
+//   선택 = 짝 항목(BIG.pairs)의 p.pick — 5-3 목록 · 사진 새 창 · 격자가 같은 값을 본다. [다시 확인](5-2)을 해도 같은 Slot · Defect 면 남긴다.
+const pickBadge=p=>`<b class="pk ${p&&p.pick?'on':'off'}" id="pk">${p&&p.pick?'☑ 최종 목록':'☐ 최종 목록 아님'}</b>`;
+const pickList=()=>(BIG.pairs||[]).filter(p=>p.pick&&p.st!=='skip');
+function pickInfo(){const n=pickList().length;$('#c5pickN').textContent=`☑ ${n.toLocaleString()}개`;$('#c5save').disabled=!n;
+  $('#c5save').textContent=n?`💾 최종 목록 엑셀 저장 (☑ ${n.toLocaleString()}개 · 사진 포함)`:'💾 최종 목록 엑셀 저장 (사진 포함)'}
+function pickToggle(p,v){if(!p)return;p.pick=v==null?!p.pick:!!v;pickChanged()}
+function pickChanged(){vtPaint(VC);pickInfo();if(C5.mode==='grid')$$('#c5grid .g5').forEach(el=>{const p=C5.items[+el.dataset.k];if(!p)return;el.classList.toggle('pk',!!p.pick);const h=el.querySelector('.gh');h.textContent=h.textContent.replace(/^☑ /,'');if(p.pick)h.textContent='☑ '+h.textContent});
+  const w=PW.w,doc=w&&!w.closed?pwDoc(w):null,b=doc&&doc.getElementById('pk');if(b&&PW.V)b.outerHTML=pickBadge(PW.items[PW.V.sel])}
+/** 엑셀에 넣을 사진 하나 → JPEG(긴 쪽 mw × mh 안, 원본보다 크게 하지 않음). */
+async function xlJpeg(src,mw,mh){const k=Math.min(1,mw/src.width,mh/src.height),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(src.width*k));cv.height=Math.max(1,Math.round(src.height*k));
+  const c=cv.getContext('2d');c.imageSmoothingQuality='high';c.drawImage(src,0,0,cv.width,cv.height);
+  const b=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.88));return {data:new Uint8Array(await b.arrayBuffer()),w:cv.width,h:cv.height}}
+/** 한 Defect 의 사진 3장(Color · Gray Crop + 빨간 네모 · Gray 프레임 + 빨간 네모 · 노란 Crop 범위)과 GL. 5-3 · 새 창과 같은 함수로 그린다. */
+async function xlPhotos(p){const s=p.s,r=p.r||cgOf(s,p.i),d=bigDef(s,p.i),o={c:null,g:null,f:null,gl:null,err:[]};
+  if(r.c){const b=await cgBitmap(s,r.c.file);if(b)o.c=await xlJpeg(b,960,720);else o.err.push(`Color 파일 없음: ${cleanName(r.c.file)}`)}else o.err.push(p.cerr||r.why||'Color 항목 없음');
+  if(r.hit){const b=await cgBitmap(s,r.hit.frame.file);
+    if(b){const cs=r.crop||cgCropSize({}),k=cgCropCanvas(b,r.hit,cs,null,d);o.gl=p.gl=cgGL(k,b,d);o.g=await xlJpeg(k.canvas,960,720);o.f=await xlJpeg(cgFrameCanvas(b,r.hit,cs,null,d),1800,600)}
+    else o.err.push(`Gray 파일 없음: ${cleanName(r.hit.frame.file)}`)}
+  else o.err.push(p.gerr||`Gray: ${r.why||'위치 없음'}`);
+  return o}
+/** 엑셀 열: [제목, 폭 px, 사진 칸이면 'img' + 사진 상자 높이]. 사진 줄 높이 = XL_IMG_H + 여백. */
+const XL_IMG_H=180,XL_COLS=[['5-1 #',52],['Lot',130],['Slot',110],['ID',60],['첫번째 분류',130],['재분류',130],['Contrast(실제)',96],
+  ['Color',250,'c'],['Gray Crop (빨간 네모 = Defect)',250,'g'],['Gray 프레임 (빨간 네모 = Defect · 노란 상자 = Crop 범위)',570,'f'],
+  ['상태',120],['Area µm²',80],['Width',64],['Length',64],['Box W×H',84],['Wafer X',84],['Wafer Y',84],['Die (장비 Col, Row)',110],['ROI−local',80],['ROI mean',80],
+  ['Color 파일',190],['Color 전체 경로',380],['Gray 파일',190],['Gray 전체 경로',380],['사진 없음 이유',240],['Lot 경로',300]];
+function xlRow(p,o){const s=p.s,C=s.cols,i=p.i,ob=S.o,px2=ob.pix*ob.pix,act=ob.coord==='actual',X=act?C.ax[i]:C.x[i],Y=act?C.ay[i]:C.y[i],die=dieOf(X,Y,s.product),r=p.r||cgOf(s,i);
+  const cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'',cp=cn?pcPath(p.c?p.c.path:dir+cn):'',gp=gn?pcPath(p.g?p.g.path:dir+gn):'',n=v=>Number.isFinite(v)?+v.toFixed(3):'';
+  return [p.k+1,s.lotName||'',s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),n(C.c[i]),
+    o.c?null:'(Color 사진 없음)',o.g?null:'(Gray 사진 없음)',o.f?null:'(Gray 사진 없음)',
+    ST5[p.st]||p.st,n(C.area[i]*px2),n(C.w[i]),n(C.l[i]),`${f1(C.bw[i])}×${f1(C.bh[i])}`,n(X),n(Y),die?`${die.col}, ${die.row}`:'-',o.gl?n(o.gl.delta):'',o.gl?n(o.gl.mean):'',
+    cn,cp,gn,gp,o.err.join(' · '),s.lotPath||'']}
+/** [💾 최종 목록 엑셀 저장]: 저장 위치를 먼저 고르고(누른 직후에만 열림) → ☑ Defect 마다 사진 3장을 그려 → xlsx 한 파일(사진이 칸 안에). 원본 폴더에는 쓰지 않는다. */
+async function c5SaveXlsx(){const L=pickList();if(!L.length)return alert('최종 목록(☑)이 비어 있습니다. 5-3 목록에서 줄을 고르고 Space 를 누르십시오.');
+  const name=`최종목록_${stamp()}.xlsx`,h=await pickSave(name,[{description:'Excel',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]);if(h===false)return;
+  BIG.stop=false;const cancel=()=>{BIG.stop=true},total=L.length,rows=[],pics=[],STEPS=['① Defect 마다 사진 3장 읽기 · 그리기(Color · Gray Crop · Gray 프레임)','② 엑셀 파일 만들기 · 저장'];let done=0,cur='';
+  const pr=throttle(()=>busy({title:'최종 목록 엑셀 저장',steps:STEPS,step:0,done,total,unit:'Defect',files:`사진 ${pics.length}장`,detail:cur,cancel}),80);
+  busy({title:'최종 목록 엑셀 저장',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});let msg;
+  try{for(const p of L){if(BIG.stop)break;cur=`${p.s.lotName||''} · ${p.s.slotName||''} · 5-1 #${p.k+1}`;pr();
+      const o=await xlPhotos(p),ri=rows.length+1;rows.push(xlRow(p,o));XL_COLS.forEach(([,,k],ci)=>{if(k&&o[k])pics.push({row:ri,col:ci,...o[k]})});done++;pr()}
+    if(BIG.stop){msg=`중지 — 저장하지 않았습니다 (${done} / ${total} 개 준비)`;return}
+    busy({title:'최종 목록 엑셀 저장',steps:STEPS,step:1,done:total,total,unit:'Defect',files:`사진 ${pics.length}장`,detail:'xlsx 묶는 중',cancel});await nextPaint();
+    const blob=xlsxBlob('최종 목록',XL_COLS,rows,pics);
+    if(h){const w=await h.createWritable();await w.write(blob);await w.close();msg=`저장: ${h.name} (Defect ${rows.length}개 · 사진 ${pics.length}장 · ${(blob.size/1048576).toFixed(1)} MB)`}
+    else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      msg=`다운로드 폴더에 저장: ${name} (Defect ${rows.length}개 · 사진 ${pics.length}장)`}
+  }catch(e){msg=`저장 실패: ${(e&&e.message)||e}`}
+  finally{busy(null);$('#c5saveSt').textContent=msg||''}
+  return msg}
+
+// ── xlsx 만들기(외부 라이브러리 없음): 시트 1장 + 사진(oneCellAnchor) + 저장 방식 zip ─────────────────
+const xmlEsc=v=>String(v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const xlCol=n=>{let s='';n++;while(n){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=(n-1-m)/26}return s};
+/** cols = [[제목, 폭 px, 사진 칸 표시]], rows = 값 배열(null = 빈 칸), pics = [{row(1부터), col(0부터), data(JPEG), w, h}]. */
+function xlsxBlob(sheet,cols,rows,pics){const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main',RN='http://schemas.openxmlformats.org/officeDocument/2006/relationships',X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  const imgRow=new Set(pics.map(p=>p.row)),last=xlCol(cols.length-1)+(rows.length+1),E=9525;
+  const cell=(v,r,c,st)=>{const ref=xlCol(c)+r;if(v==null||v==='')return `<c r="${ref}" s="${st}"/>`;
+    return typeof v==='number'&&Number.isFinite(v)?`<c r="${ref}" s="${st}"><v>${v}</v></c>`:`<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`};
+  const sd=[`<row r="1" ht="33" customHeight="1">${cols.map((c,j)=>cell(c[0],1,j,1)).join('')}</row>`];
+  rows.forEach((R,k)=>{const r=k+2;sd.push(`<row r="${r}"${imgRow.has(k+1)?` ht="${(XL_IMG_H+10)*0.75}" customHeight="1"`:''}>${R.map((v,j)=>cell(v,r,j,2)).join('')}</row>`)});
+  const ws=X+`<worksheet xmlns="${NS}" xmlns:r="${RN}"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
+    +`<sheetFormatPr defaultRowHeight="15"/><cols>${cols.map((c,j)=>`<col min="${j+1}" max="${j+1}" width="${Math.max(4,(c[1]-5)/7).toFixed(2)}" customWidth="1"/>`).join('')}</cols>`
+    +`<sheetData>${sd.join('')}</sheetData><autoFilter ref="A1:${last}"/><drawing r:id="rId1"/></worksheet>`;
+  const anc=pics.map((p,k)=>{const bw=cols[p.col][1]-10,f=Math.min(bw/p.w,XL_IMG_H/p.h),cx=Math.round(p.w*f*E),cy=Math.round(p.h*f*E);
+    return `<xdr:oneCellAnchor><xdr:from><xdr:col>${p.col}</xdr:col><xdr:colOff>${5*E}</xdr:colOff><xdr:row>${p.row}</xdr:row><xdr:rowOff>${5*E}</xdr:rowOff></xdr:from><xdr:ext cx="${cx}" cy="${cy}"/>`
+      +`<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${k+2}" name="사진 ${k+1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
+      +`<xdr:blipFill><a:blip r:embed="rId${k+1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>`
+      +`<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`}).join('');
+  const files=[
+    ['[Content_Types].xml',X+`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpeg" ContentType="image/jpeg"/>`
+      +`<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+      +`<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`],
+    ['_rels/.rels',X+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RN}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml',X+`<workbook xmlns="${NS}" xmlns:r="${RN}"><sheets><sheet name="${xmlEsc(sheet)}" sheetId="1" r:id="rId1"/></sheets>`
+      +`<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${xmlEsc(sheet)}'!$A$1:$${xlCol(cols.length-1)}$${rows.length+1}</definedName></definedNames></workbook>`],
+    ['xl/_rels/workbook.xml.rels',X+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RN}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RN}/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml',X+`<styleSheet xmlns="${NS}"><fonts count="2"><font><sz val="10"/><name val="맑은 고딕"/></font><font><b/><sz val="10"/><name val="맑은 고딕"/></font></fonts>`
+      +`<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9E1F2"/><bgColor indexed="64"/></patternFill></fill></fills>`
+      +`<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`
+      +`<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>`
+      +`<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
+    ['xl/worksheets/sheet1.xml',ws],
+    ['xl/worksheets/_rels/sheet1.xml.rels',X+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RN}/drawing" Target="../drawings/drawing1.xml"/></Relationships>`],
+    ['xl/drawings/drawing1.xml',X+`<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${RN}">${anc}</xdr:wsDr>`],
+    ['xl/drawings/_rels/drawing1.xml.rels',X+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${pics.map((p,k)=>`<Relationship Id="rId${k+1}" Type="${RN}/image" Target="../media/image${k+1}.jpeg"/>`).join('')}</Relationships>`],
+    ...pics.map((p,k)=>[`xl/media/image${k+1}.jpeg`,p.data])];
+  return zipStore(files,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+/** zip(저장 방식 = 압축 없음 — JPEG 는 이미 압축됨). files = [[이름, 문자열 | Uint8Array]]. */
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(b){let c=0xffffffff;for(let i=0;i<b.length;i++)c=CRC_T[(c^b[i])&255]^(c>>>8);return (c^0xffffffff)>>>0}
+function zipStore(files,type){const te=new TextEncoder(),parts=[],cen=[];let off=0;const d=new Date(),dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate(),tm=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+  for(const [name,body] of files){const nm=te.encode(name),data=typeof body==='string'?te.encode(body):body,crc=crc32(data),h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);h.setUint16(10,tm,true);h.setUint16(12,dt,true);h.setUint32(14,crc,true);h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);h.setUint16(26,nm.length,true);h.setUint16(28,0,true);
+    parts.push(h.buffer,nm,data);const c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,0,true);c.setUint16(12,tm,true);c.setUint16(14,dt,true);c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);
+    c.setUint16(28,nm.length,true);c.setUint32(42,off,true);cen.push(c.buffer,nm);off+=30+nm.length+data.length}
+  const cl=cen.reduce((a,b)=>a+(b.byteLength!=null?b.byteLength:b.length),0),e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cl,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cen,e.buffer],{type})}
 
 // ── Step 5 이동 · 단추 ────────────────────────────────────────────────
 function b5tabs(){const b=$$('[data-b5]');b[1].disabled=!BIG.scans.length;b[2].disabled=!(BIG.pairs&&BIG.pairs.some(p=>p.st!=='skip'));b.forEach(x=>x.setAttribute('aria-pressed',+x.dataset.b5===BIG.stage))}
@@ -2300,6 +2410,9 @@ $$('[data-v5]').forEach(b=>b.onclick=()=>{C5.mode=b.dataset.v5;c5Refresh(true)})
 $('#c5prev').onclick=()=>{C5.page--;c5Grid()};$('#c5next').onclick=()=>{C5.page++;c5Grid()};
 $('#c5grid').addEventListener('click',e=>{const el=e.target.closest('.g5');if(!el)return;C5.mode='one';VC.sel=+el.dataset.k;c5Refresh(true);vtGo(VC,VC.sel,true)});
 $('#b5prep').onclick=()=>c5PrepAll();
+$('#c5pickAll').onclick=()=>{C5.items.forEach(p=>{if(p.st!=='skip')p.pick=true});pickChanged()};
+$('#c5pickNone').onclick=()=>{(BIG.pairs||[]).forEach(p=>p.pick=false);pickChanged()};
+$('#c5save').onclick=()=>c5SaveXlsx();
 $('#c5win').onclick=()=>photoWin(VC,C5.items);$('#b5win').onclick=()=>photoWin(VB,B5.items);
 $('#c5up').onclick=()=>vtGo(VC,VC.sel-1);$('#c5down').onclick=()=>vtGo(VC,VC.sel+1);
 // 원본 폴더 경로(PC): 5-1 · 5-2 두 칸이 같은 값, 이 PC 에 기억. 바꾸면 사진 새 창 · 5-3 · 결과 목록의 전체 경로를 바로 다시 그림.
@@ -2338,7 +2451,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

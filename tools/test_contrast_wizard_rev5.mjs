@@ -510,7 +510,42 @@ await page.locator('#c5list').focus();await page.keyboard.press('ArrowRight');aw
 await page.keyboard.press('ArrowLeft');await page.locator('#c5Info',{hasText:'1 / 2'}).waitFor();
 await page.keyboard.press('ArrowDown');await page.locator('#c5Info',{hasText:'2 / 2'}).waitFor();
 const [w5]=await Promise.all([page.waitForEvent('popup'),page.locator('#c5list .br').nth(0).dblclick()]);
-await w5.locator('#fx canvas').waitFor();assert.match(await w5.locator('#hd').innerText(),/^1 \/ 2 · /);await w5.close();
+await w5.locator('#fx canvas').waitFor();assert.match(await w5.locator('#hd').innerText(),/^1 \/ 2 · /);
+// #68 최종 목록: 목록에서 Space = ☑/☐(첫 칸), 새 창에서도 Space → 목록에 반영, 엑셀(사진 포함) = ☑ 한 Defect 만
+const pickN=()=>page.locator('#c5pickN').innerText(),firstCells=()=>page.$$eval('#c5list .br',r=>r.map(x=>x.children[0].textContent));
+assert.equal(await pickN(),'☑ 0개');assert.equal(await page.locator('#c5save').isDisabled(),true);assert.match(await w5.locator('#hd').innerText(),/☐ 최종 목록 아님/);
+await page.locator('#c5list').focus();await page.keyboard.press('Home');await page.keyboard.press(' ');
+assert.equal(await pickN(),'☑ 1개');assert.deepEqual(await firstCells(),['☑','☐']);assert.equal(await page.locator('#c5save').isDisabled(),false);
+await w5.locator('#hd',{hasText:'☑ 최종 목록'}).waitFor();   // 열린 새 창 머리도 바로 바뀜
+await w5.keyboard.press('ArrowDown');await w5.locator('#hd',{hasText:/^2 \/ 2 · .*☐ 최종 목록 아님/}).waitFor();
+await w5.keyboard.press(' ');await w5.locator('#hd',{hasText:'☑ 최종 목록'}).waitFor();assert.deepEqual(await firstCells(),['☑','☑']);assert.equal(await pickN(),'☑ 2개');
+await w5.keyboard.press(' ');await w5.locator('#hd',{hasText:'☐ 최종 목록 아님'}).waitFor();assert.deepEqual(await firstCells(),['☑','☐']);
+await w5.keyboard.press(' ');assert.deepEqual(await firstCells(),['☑','☑']);await w5.close();
+await page.locator('#c5list .br').nth(1).locator('span.pk').click();assert.deepEqual(await firstCells(),['☑','☐']);   // ☑ 칸을 눌러도 됨
+await page.locator('#c5list .br').nth(1).locator('span.pk').click();
+await page.evaluate(()=>{window.__xlOld=window.showSaveFilePicker;window.showSaveFilePicker=async o=>{window.__xlName=o.suggestedName;window.__xlTypes=o.types;return {name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__xl=b},close:async()=>{}})}}});
+await page.locator('#c5save').click();await page.locator('#c5saveSt',{hasText:'저장:'}).waitFor({timeout:30000});
+const xl=await page.evaluate(async()=>{const b=new Uint8Array(await window.__xl.arrayBuffer());let s='';for(let i=0;i<b.length;i+=0x8000)s+=String.fromCharCode(...b.subarray(i,i+0x8000));
+  const r={b64:btoa(s),name:window.__xlName,ext:Object.values(window.__xlTypes[0].accept)[0],st:document.getElementById('c5saveSt').textContent};window.showSaveFilePicker=window.__xlOld;return r});
+assert.match(xl.name,/^최종목록_\d{8}_\d{6}\.xlsx$/);assert.deepEqual(xl.ext,['.xlsx']);assert.match(xl.st,/Defect 2개 · 사진 6장/);
+const xlChk=JSON.parse(execFileSync('python3',['-I','-c',`
+import sys,io,zipfile,base64,json,xml.etree.ElementTree as ET
+z=zipfile.ZipFile(io.BytesIO(base64.b64decode(sys.stdin.read())));assert z.testzip() is None
+for n in z.namelist():
+    if n.endswith('.xml') or n.endswith('.rels'): ET.fromstring(z.read(n))
+ns={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+ws=ET.fromstring(z.read('xl/worksheets/sheet1.xml'));rows=[[ (c.findtext('m:is/m:t',default=None,namespaces=ns) or c.findtext('m:v',default='',namespaces=ns)) for c in r.findall('m:c',ns)] for r in ws.find('m:sheetData',ns)]
+media=[n for n in z.namelist() if n.startswith('xl/media/')];jp=all(z.read(n)[:3]==bytes([255,216,255]) for n in media)
+dr=z.read('xl/drawings/drawing1.xml').decode();print(json.dumps({'rows':rows,'media':len(media),'jpeg':jp,'anchors':dr.count('<xdr:oneCellAnchor>'),'names':z.namelist()[:3]}))
+`],{input:xl.b64,encoding:'utf-8',maxBuffer:1<<26}));
+assert.equal(xlChk.media,6);assert.equal(xlChk.jpeg,true);assert.equal(xlChk.anchors,6);assert.equal(xlChk.rows.length,3);
+assert.equal(xlChk.rows[0][7],'Color');assert.match(xlChk.rows[0][8],/^Gray Crop/);assert.match(xlChk.rows[0][9],/^Gray 프레임/);
+assert.deepEqual(xlChk.rows.slice(1).map(r=>r[2]),['W01','W01']);
+if(process.env.CW_XL_OUT)(await import('node:fs')).writeFileSync(process.env.CW_XL_OUT,Buffer.from(xl.b64,'base64'));   // 손으로 열어 보기(LibreOffice · Excel)
+assert.ok(xlChk.rows.slice(1).every(r=>/\.c\.\d\.jpeg$/.test(r[20])&&/\.t\.\d\.jpeg$/.test(r[22])&&/^Y:\\/.test(r[21])),JSON.stringify(xlChk.rows));
+// 다시 확인(5-2)을 해도 같은 Defect 의 ☑ 는 남음
+await page.evaluate(()=>window.__cw.b5Pair());await page.waitForFunction(()=>document.getElementById('busy').hidden);assert.equal(await page.evaluate(()=>window.__cw.pickList().length),2);
+await page.locator('#c5pickNone').click();assert.equal(await pickN(),'☑ 0개');
 await page.locator('#b5okOnly').uncheck();assert.equal(await page.locator('#c5list .br').count(),7);
 // 모두 미리 준비(로딩창) → 격자
 await page.evaluate(()=>window.__cw.THUMB.clear());await page.locator('#b5prep').click();
