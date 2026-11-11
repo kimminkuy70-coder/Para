@@ -441,7 +441,7 @@ const cap1=await capOf();
 assert.deepEqual(cap1.map(c=>c.b),['C1.c.1.jpeg','F1.t.1.jpeg','F1.t.1.jpeg']);
 assert.deepEqual(cap1.map(c=>c.pp),['Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\C1.c.1.jpeg','Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\F1.t.1.jpeg','Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\F1.t.1.jpeg']);
 assert.deepEqual(cap1.map(c=>c.tip),cap1.map(c=>c.pp));
-assert.match(cap1[2].text,/^Gray 프레임 · F1\.t\.1\.jpeg · 픽셀 \(1100\.0, 200\.0\) · 빨간 \+ = Defect · 노란 상자 = Crop 범위Y:/);
+assert.match(cap1[2].text,/^Gray 프레임 · F1\.t\.1\.jpeg · 픽셀 \(1100\.0, 200\.0\) · 빨간 네모 = Defect · 노란 상자 = Crop 범위Y:/);
 assert.equal(await pw.evaluate(()=>[...document.querySelectorAll('figure')].every(f=>f.firstElementChild.tagName==='FIGCAPTION'&&f.querySelector('.im canvas'))),true);
 // 원본 폴더 경로를 비우면 고른 폴더부터 + 안내, 다시 적으면 바로 PC 경로로 다시 그림
 await page.locator('#bigBase').fill('');await page.locator('#bigBase').dispatchEvent('change');assert.equal(await page.locator('#bigBase1').inputValue(),'');
@@ -457,6 +457,36 @@ await pw.keyboard.press('ArrowRight');await pw.waitForTimeout(150);assert.match(
 await pw.keyboard.press('ArrowLeft');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();assert.equal(await page.evaluate(()=>window.__cw.PW.V.sel),0);
 await pw.keyboard.press('ArrowRight');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();
 await pw.keyboard.press('Home');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();await pw.keyboard.press('End');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();
+// Para #67: Defect 빨간 네모 — 흑백 Crop · Gray 프레임 둘 다, Defect 상자(BoxWidth × BoxHeight)를 가리지 않음(선 안쪽 가장자리 > 상자 반폭)
+const box67=await page.evaluate(()=>{const c=window.__cw,g=document.createElement('canvas');g.width=3168;g.height=1024;const x=g.getContext('2d');x.fillStyle='rgb(128,128,128)';x.fillRect(0,0,3168,1024);
+  x.fillStyle='rgb(250,250,250)';x.fillRect(1500-5,500-4,10,8);   // Defect(밝은 점, 10 × 8 px)
+  const d={BoxWidth:10,BoxHeight:8},cs={cw:200,ch:150,ow:800,oh:600},k=c.cgCropCanvas(g,{px:1500,py:500},cs,document,d),o=k.canvas.getContext('2d');
+  const px=(cv,X,Y)=>[...cv.getContext('2d').getImageData(X,Y,1,1).data].slice(0,3);
+  const m=k.mark,hw=5*4,hh=4*4,lw=Math.max(2,Math.round(800/300));
+  const plain=c.cgCropCanvas(g,{px:1500,py:500},cs,document);   // d 없으면 네모 없음(종전 그대로)
+  let red=0,redIn=0;const im=o.getImageData(0,0,800,600).data;for(let y=0;y<600;y++)for(let X=0;X<800;X++){const i=(y*800+X)*4,r=im[i]>200&&im[i+1]<80&&im[i+2]<80;if(!r)continue;red++;if(Math.abs(X-400)<=hw&&Math.abs(y-300)<=hh)redIn++}
+  const fr=c.cgFrameCanvas(g,{px:1500,py:500},{cw:200,ch:150},document,d),fim=fr.getContext('2d').getImageData(1490,492,20,16).data;let frIn=0;for(let i=0;i<fim.length;i+=4)if(fim[i]>200&&fim[i+1]<80)frIn++;
+  return {mark:m,inner:[400-(m[0]+lw),300-(m[1]+lw)],hw,hh,center:px(k.canvas,400,300),edge:px(k.canvas,Math.round(m[0]+lw/2),300),red,redIn,plain:plain.mark,frIn,
+    frEdge:px(fr,Math.round(1500-Math.max(5+4,3168/60)-1),500)}});
+assert.ok(box67.inner[0]>box67.hw&&box67.inner[1]>box67.hh,'네모 안쪽이 Defect 상자보다 커야 함');
+assert.ok(box67.red>100);assert.equal(box67.redIn,0);   // Defect 상자 안에는 빨간 점 0개
+assert.deepEqual(box67.center,[250,250,250]);assert.ok(box67.edge[0]>200&&box67.edge[1]<80,'네모 선 = 빨강');
+assert.equal(box67.plain,null);assert.equal(box67.frIn,0);assert.ok(box67.frEdge[0]>200&&box67.frEdge[1]<80,'Gray 프레임도 빨간 네모');
+// 실제 새 창: Gray Crop · 프레임에 빨간 픽셀이 있다(흑백 위)
+assert.equal(await pw.evaluate(()=>['#fx canvas','#ff canvas'].every(q=>{const cv=document.querySelector(q),d=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;for(let i=0;i<d.length;i+=4)if(d[i]>200&&d[i+1]<80&&d[i+2]<80)return true;return false})),true);
+// Para #67: 새 창 확대가 여러 단계 — 누르기 2배씩(창 맞춤 → 2 → 4 → … 원래 픽셀 16배 끝 → 창 맞춤), Shift · 오른쪽 = 축소, 휠, Esc = 창 맞춤, 다음 사진 = 창 맞춤
+const zoomOf=()=>pw.evaluate(()=>{const cv=document.querySelector('#fx canvas');return {z:cv._z,w:cv.getBoundingClientRect().width,fit:window.opener.__cw.pwFit(cv),full:cv.parentNode.classList.contains('full'),zb:cv.parentNode.parentNode.querySelector('.zb').textContent}});
+const z0=await zoomOf();assert.equal(z0.z,1);assert.equal(z0.full,false);
+const zs=[];for(let n=0;n<12;n++){await pw.locator('#fx canvas').click();const z=await zoomOf();zs.push(z.z);if(z.z===1)break}
+const zmax=16/z0.fit;assert.ok(zs.length>=4,`확대 단계 ${zs}`);assert.equal(zs[0],2);assert.equal(zs[1],4);assert.equal(zs.at(-1),1);   // 끝까지 가면 창 맞춤으로
+assert.ok(Math.abs(zs.at(-2)-zmax)<1e-6||zs.at(-2)*2>zmax);
+await pw.locator('#fx canvas').click();await pw.locator('#fx canvas').click();let zz=await zoomOf();assert.equal(zz.z,4);assert.ok(Math.abs(zz.w-1380*z0.fit*4)<2);assert.equal(zz.full,true);assert.match(zz.zb,/^확대 ×4 · 원래 크기의 \d+%$/);
+await pw.locator('#fx canvas').click({modifiers:['Shift']});assert.equal((await zoomOf()).z,2);
+await pw.locator('#fx canvas').click({button:'right'});assert.equal((await zoomOf()).z,1);
+await pw.locator('#fx').hover();await pw.mouse.wheel(0,-100);await pw.waitForTimeout(50);assert.ok(Math.abs((await zoomOf()).z-1.25)<1e-6);
+await pw.locator('#fx canvas').click();await pw.keyboard.press('Escape');zz=await zoomOf();assert.equal(zz.z,1);assert.equal(zz.full,false);assert.equal(zz.zb,'');
+await pw.locator('#fx canvas').click();await pw.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();await pw.locator('#fx canvas').waitFor();
+assert.equal((await zoomOf()).z,1);await pw.keyboard.press('End');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();await pw.locator('#fx canvas').waitFor();
 await pw.locator('#fx canvas').click();await pw.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();   // 사진을 눌러 원래 크기로 봐도 키는 그대로
 await page.locator('#b5list').focus();await page.keyboard.press('ArrowRight');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();   // 목록 → 도 새 창을 바꿈
 await page.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();

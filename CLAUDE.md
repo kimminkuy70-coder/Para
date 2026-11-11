@@ -88,6 +88,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     **매칭 파일 찾기**(소유자 "ColorImageGrabingInfo.ini 파일 자체를 못 찾는다", 2026-11-11): 종전 rev5 는 `getFileHandle` 으로 이름을 한 번만 물었고 실패를 '없음'으로 기억했다(대소문자 · 일시 오류 · 위쪽 폴더에 약함).
     지금 `dirFile`(이름으로 — '없음' 아닌 오류는 150 ms 뒤 한 번 더, 오류는 `dirErrs` 에) → `dirFind` = 없으면 `dirList`(폴더 목록 한 번, 대소문자 무시, 핸들마다 기억 · 5-1/5-2 공용, 프로그램 #48 `file_names` 와 같음).
     `cgDirH.get` = dirFind(꼭 있어야 하는 CI · SL · TF), `opt` = 목록이 이미 있을 때만 목록(ManReClassify 등 — 매칭 파일이 이름으로 다 있는 Slot 은 5-1 에서 목록을 만들지 않음, 시험 그대로).
+    **#67 디자인**(2026-11-11): Defect 표시 = **빨간 네모**(`cgDefBox` — Defect 상자 `cgDefHalf`(BoxWidth × BoxHeight, Gray 3168 기준) 바깥에 틈 + 선, 최소 크기 · 굵기는 그림 크기 비례, Defect 를 가리지 않음).
+    `cgCropCanvas(gray,hit,cs,doc,d)` 는 d 가 있으면 흑백 위에(필터 끈 뒤) 네모를 그리고 `mark` 를 돌려줌(GL 용 raw 에는 안 그림) — 새 창 · 5-3 · 격자 공용, `cgFrameCanvas(…,d)` 는 종전 빨간 + 대신 네모(노란 Crop 상자 그대로).
+    새 창 확대 = `pwZoom`/`pwSet`/`pwFit`(배율 `_z` = 창 맞춤의 몇 배, 누르기 ×2 · 끝(`PZ_MAX` = 원래 픽셀 16배)에서 창 맞춤, Shift · 오른쪽 ÷2, 휠 ×1.25/0.8, 끌기 = 포인터 잡기로 스크롤, Esc · 0 = 전부 창 맞춤, 누른 점 고정, `.zb` 배율 표시). 종전 `full` 토글(1단계)을 대체.
     **#66 .ini 차단**(2026-11-11): 회사 PC Chrome 은 폴더 핸들로 `getFileHandle('ColorImageGrabingInfo.ini')` = TypeError 'Name is not allowed.', 목록에도 .ini 없음(Step 1 ~ 4 의 webkitdirectory 는 받음).
     `bigPickHandle` 이 훑은 뒤 첫 Slot 에 CI 를 한 번 물어 TypeError(`fsaBlocked`)면 `bigToList` — 읽기 멈춤 · 알림 · localStorage `cw.bigList=1` → 다음 [폴더 추가]는 webkitdirectory(`addBigEntries`).
     찾는 곳: Slot → 하위 4단계(Surface.flt 있는 폴더 빼고) → 위쪽 폴더(그 아래 Slot 이 하나일 때만, `sl.under` · 파일 목록은 `up`) — 못 찾으면 `cgDiag`(파일 수 · 비슷한 이름 · 묻기 오류 · 찾아본 폴더 · [원본 폴더 경로]가 있으면 전체 경로 길이)를 `cgMiss` 로 5-1/5-2 알림에.
