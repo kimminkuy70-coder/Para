@@ -1486,7 +1486,8 @@ function repaintAll(){if(!S.cmp)return;Object.values(PANELS).forEach(paintPanel)
 // 15-0. rev5: Color · Gray 매칭 = Para 프로그램 'Color · Gray 매칭'(param_manager/colorgray.py, v12.9.30) 그대로 — Step 5 전용
 //   소유자(2026-11-10): "프로그램에 있는 기능을 최우선으로 사용" · "설정은 아예 없애" · "결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
 //   · 매칭 폴더(프로그램의 Wafer 폴더) = ColorImageGrabingInfo.ini 가 바로 안에 있는 폴더(소유자: 이 파일은 항상 있음) —
-//     Slot 바로 안, 없으면 Slot 하위 폴더 중 그 파일이 있는 첫 폴더(이름 순, 3단계까지). 목록 · 변환 파일이 없을 때의 대신 계산은 cgLoad 설명. 그 폴더 파일만 쓴다(위쪽 폴더 것은 안 씀 — rev1 때 위쪽 폴더 파일로 좌표가 전부 어긋났다).
+//     Slot 바로 안 → Slot 하위 폴더 중 그 파일이 있는 첫 폴더(이름 순, 4단계까지) → 그 아래 Slot 이 이 Slot 하나뿐인 위쪽 폴더(이름은 대소문자 무시, cgLoad 설명). 목록 · 변환 파일이 없을 때의 대신 계산도 cgLoad 설명.
+//     그 폴더 파일만 쓴다(여러 Slot 이 같이 있는 위쪽 폴더 것은 안 씀 — rev1 때 위쪽 폴더 파일로 좌표가 전부 어긋났다).
 //   · Color 항목마다(choose_frame): Fault 좌표(FaultX/FaultY, 없으면 X/Y) · RecipeNumber(없으면 1) → 같은 레시피 프레임(없으면 레시피 번호 없는 프레임 → 전체) 중
 //     Gray 픽셀 p = M⁻¹ · (Fault − 프레임 좌표 − offset) 이 3168×1024 안이고 가장자리에서 가장 먼 프레임. 변환 파일 = 그 레시피 번호 → 공통 → 이름 순 첫 번째.
 //   · 좌표 기준(COORD_MODES): '그대로'로 다 맞으면 끝, 아니면 프레임들이 덮는 직사각형의 좌측 하단 원점 해석 3가지 중 가장 많이 맞는 것(동점 = 앞, 매칭 폴더마다 하나).
@@ -1592,7 +1593,7 @@ function parseManRe(text){const m=new Map();let sec='';
     if(sec!=='general')continue;const q=/^(-?\d+)\s*=\s*(.*)$/.exec(l);if(!q)continue;const f=q[2].split(',');m.set(+q[1],{name:(f[0]||'').trim()||`#${q[1]}`,status:(f[1]||'').trim()})}
   return m}
 async function clsLoad(s,dir){let f=null,t=null;
-  try{if(dir)f=await dir.get('ManReClassify.ini');if(!f)f=await fileFind(s,'ManReClassify.ini',true);
+  try{if(dir)f=await (dir.opt||dir.get)('ManReClassify.ini');if(!f)f=await fileFind(s,'ManReClassify.ini',true);
     if(f)t=await readText(await (f.file?f.file():f.get()));else if(s.chain&&s.chain.length)t=await chainText(s,'ManReClassify.ini');
     s.cls=t?{names:parseManRe(t),src:f?(f.path||f.name):'위쪽 폴더'}:null;if(!t)s.warns.push('ManReClassify.ini 없음 — Classify 는 코드 번호(#29 …)로 표시')}
   catch(e){s.cls=null;s.warns.push('ManReClassify.ini 를 읽지 못함: '+(e.message||e))}}
@@ -1607,15 +1608,16 @@ const clsText=(s,i)=>{const a=clsFirst(s,i),b=clsName(s,i);return a===b?a:`${a} 
 function cgShort(s,i){const g=s.cg;if(!g||!g.plan)return g&&!g.err?'✖ 매칭 파일 없음':'✖ 매칭 파일 오류';const r=cgOf(s,i);
   return r.c&&r.hit?'Color · Gray':r.c?'Color 만':r.hit?'Gray 만':'✖ 짝 없음'}
 /** 폴더 하나(읽기 전용 핸들): get(이름) = 이름으로 바로(목록 안 만듦), names() = 이름 목록 한 번(사진 내용은 안 읽음 · 실패해도 멈추지 않음 — Map.err), subs() = 하위 폴더. */
-function cgDirH(h,path){let L=null;return {path,
-  get:async n=>{const f=await dirFile(h,n);return f?{name:f.name,path:path+'/'+f.name,file:()=>f.getFile()}:null},
-  names:()=>L||(L=(async()=>{const m=new Map();try{for await(const [n,c] of h.entries())if(c.kind==='file'&&!m.has(lower(n)))m.set(lower(n),{name:n,path:path+'/'+n,file:()=>c.getFile()})}catch(e){m.err=e.message||String(e)}return m})()),
-  subs:()=>dirSubs(h).then(l=>l.map(([n,c])=>cgDirH(c,path+'/'+n)),()=>[])}}
+function cgDirH(h,path){let N=null;const fo=f=>f?{name:f.name,path:path+'/'+f.name,file:()=>f.getFile()}:null;return {path,
+  get:async n=>fo(await dirFind(h,n)),peek:async n=>fo(await dirFile(h,n)),listed:()=>listMemo.has(h),
+  opt:async n=>fo(listMemo.has(h)?await dirFind(h,n):await dirFile(h,n)),   // 없어도 되는 파일: 목록이 이미 있으면 목록에서, 없으면 이름으로만(5-1 에서 사진 많은 Slot 목록을 새로 만들지 않게)
+  names:()=>N||(N=dirList(h).then(L=>{const m=new Map();for(const [k,e] of L.files)m.set(k,{name:e.name,path:path+'/'+e.name,file:()=>e.h.getFile()});if(L.err)m.err=L.err;return m})),
+  subs:()=>dirSubs(h).then(l=>l.map(([n,c])=>cgDirH(c,path+'/'+n)),()=>[]),errs:()=>dirErrs.get(h)||[]}}
 /** 폴더 하나(webkitdirectory 파일 목록): base 아래 파일을 폴더별로 묶는다. */
 function cgDirsFromList(base,files){const by=new Map();
   for(const e of files){if(!e.path.startsWith(base+'/'))continue;const nm=baseName(e.path),d=e.path.slice(0,e.path.length-nm.length-1);let m=by.get(d);if(!m)by.set(d,m=new Map());
     if(!m.has(lower(nm)))m.set(lower(nm),{name:nm,path:e.path,file:()=>{const f=e.file||e.handle;return f&&f.getFile?f.getFile():Promise.resolve(f)}})}
-  const mk=d=>({path:d,get:async n=>(by.get(d)||new Map()).get(lower(n))||null,names:async()=>by.get(d)||new Map(),
+  const mk=d=>({path:d,get:async n=>(by.get(d)||new Map()).get(lower(n))||null,peek:async n=>(by.get(d)||new Map()).get(lower(n))||null,opt:async n=>(by.get(d)||new Map()).get(lower(n))||null,listed:()=>true,errs:()=>[],names:async()=>by.get(d)||new Map(),
     subs:async()=>[...by.keys()].filter(x=>x.startsWith(d+'/')&&!x.slice(d.length+1).includes('/')).sort(natCmp).map(mk)});
   for(const d of [...by.keys()])for(let p=d;p.length>base.length;p=p.slice(0,p.lastIndexOf('/')))if(!by.has(p))by.set(p,new Map());   // 파일 없는 중간 폴더
   return mk(base)}
@@ -1649,17 +1651,32 @@ async function cgFramesFromNames(d){const nm=await d.names();if(nm.err)return {f
       if(b>=0)fr.push({file:f.file,x:R.wx[b],y:R.wy[b],recipe:f.recipe})}
     if(fr.length)return {frames:fr,src:'Gray 사진 이름 + s_FrameData.dat',pix:R.pix}}
   return {frames:[],why:'Wafer2Table.ini · s_FrameData.dat 가 없음'}}
-async function cgLoad(s,root){const g=s.cg={missing:[],colors:[],frames:[],tfs:new Map(),tfNames:[],tfAlt:[],dir:null,path:root.path,src:{}};
+/** ColorImageGrabingInfo.ini 를 못 찾았을 때 화면에 보일 까닭(프로그램 #48 의 diagnosis 처럼): 폴더 파일 수 · 비슷한 이름 · 이름으로 묻기 오류 · 찾아본 폴더 · 경로 길이. */
+async function cgDiag(d,look){const nm=await d.names(),L=[...nm.values()].map(e=>e.name),er=d.errs?d.errs():[];
+  const like=L.filter(n=>/color|grab|imageinfo/i.test(n)&&!/\.(jpe?g|png|bmp)$/i.test(n)).slice(0,4),ini=L.filter(n=>/\.ini$/i.test(n)).slice(0,6);
+  const full=pcBaseSet()?pcPath(d.path+'/'+CG.CI):'',len=full.length;
+  return [nm.err?`Slot 폴더 목록 오류(${nm.err})`:`Slot 폴더 파일 ${L.length.toLocaleString()}개 중 이 이름(대소문자 무시) 없음`,
+    like.length?`비슷한 이름: ${like.join(', ')}`:ini.length?`.ini 파일: ${ini.join(', ')}`:'',er.length?`이름으로 묻기 오류: ${er.slice(0,2).join(' · ')}`:'',
+    `하위 폴더 ${look.subs}개${look.ups.length?` · 위쪽 폴더 ${look.ups.length}개`:''}도 찾아봄`,look.shared||'',
+    len?`전체 경로 ${len}자${len>=250?'(Windows 260자 제한에 가까움 — 더 짧은 경로로 옮겨 보십시오)':''}`:''].filter(Boolean).join(' · ')}
+const cgMiss=g=>!g?'안 읽음':g.err||('없음: '+g.missing.join(', ')+(g.diag?' — '+g.diag:''));
+async function cgLoad(s,root,up){const g=s.cg={missing:[],colors:[],frames:[],tfs:new Map(),tfNames:[],tfAlt:[],dir:null,path:root.path,src:{},at:'slot'};
   try{
-    const has=async d=>{const [ci,sl,tf]=await Promise.all([d.get(CG.CI),d.get(CG.SL),d.get(CG.TF)]);return {d,ci,sl,tf}};
-    let hit=await has(root);
-    if(!hit.ci){   // 바로 안에 없으면: 하위 폴더 중 ColorImageGrabingInfo.ini 가 있는 첫 폴더(프로그램 discover 처럼). 위쪽 폴더는 보지 않는다.
-      const q=[[root,0]];let found=null;   // Surface.flt 가 있는 하위 폴더 = 다른 Slot 이라 그 파일은 빌려 쓰지 않는다(그 아래도 안 봄)
-      while(q.length&&!found){const [d,dep]=q.shift();if(dep>=3)continue;
-        for(const sd of await d.subs()){if(await sd.get('Surface.flt'))continue;const h=await has(sd);if(h.ci){found=h;break}q.push([sd,dep+1])}}
-      if(found)hit=found}
+    // 소유자 "ColorImageGrabingInfo.ini 파일 자체를 못 찾는다": 종전 rev5 는 이름으로 한 번만 물었다(대소문자 · 일시 오류에 약함, 위쪽 폴더 안 봄 — Step 1 은 목록에서 대소문자 무시로 찾음).
+    // 지금: 이름으로 바로 → 없으면 폴더 목록(대소문자 무시, 프로그램 #48 과 같음). 찾는 곳: Slot 폴더 → 하위 폴더(4단계, 다른 Slot 빼고) → 이 Slot 하나만 있는 위쪽 폴더.
+    const has=async d=>{const ci=await d.get(CG.CI);if(!ci)return {d,ci:null};const [sl,tf]=await Promise.all([d.get(CG.SL),d.get(CG.TF)]);return {d,ci,sl,tf}};
+    let hit=await has(root);const look={subs:0,ups:[],shared:''};
+    if(!hit.ci){   // 하위 폴더 중 ColorImageGrabingInfo.ini 가 있는 첫 폴더(프로그램 discover 처럼). Surface.flt 가 있는 하위 폴더 = 다른 Slot 이라 빌려 쓰지 않는다(그 아래도 안 봄)
+      const q=[[root,0]];let found=null;
+      while(q.length&&!found){const [d,dep]=q.shift();if(dep>=4)continue;
+        for(const sd of await d.subs()){look.subs++;if(await sd.get('Surface.flt'))continue;const h=await has(sd);if(h.ci){found=h;break}q.push([sd,dep+1])}}
+      if(found){hit=found;g.at='sub'}}
+    if(!hit.ci)for(const u of up||[]){   // 위쪽 폴더(가까운 것부터, 고른 폴더까지): 그 아래 Slot 이 이 Slot 하나일 때만 — 여러 Slot 이 같이 쓰는 파일은 Index(기록 순서)가 맞지 않아 쓰지 않는다
+      look.ups.push(u.d.path);const h=await has(u.d);if(!h.ci)continue;
+      if(u.n===1){hit=h;g.at='up'}else look.shared=`위쪽 폴더 ${u.d.path} 에 있지만 그 아래 Slot 이 ${u.n}개라 쓰지 않음`;break}
     g.dir=hit.d;g.path=hit.d.path;
-    if(!hit.ci){g.missing.push(CG.CI);s.warns.push(`매칭 파일 없음: ${CG.CI} (${g.path})`);return}
+    if(!hit.ci){g.missing.push(CG.CI);g.diag=await cgDiag(root,look);s.warns.push(`매칭 파일 없음: ${CG.CI} (${root.path}) — ${g.diag}`);return}
+    if(g.at==='up')s.warns.push(`${CG.CI} 가 Slot 폴더가 아니라 위쪽 폴더에 있어 그 폴더를 매칭 폴더로 씀: ${g.path} (그 아래 Slot 은 이것 하나)`);
     g.colors=cgColors(await readText(await hit.ci.file()));
     // Gray 프레임 목록: ScanResultImageList.txt → 없으면 Gray 사진 이름(+ Wafer2Table.ini / s_FrameData.dat)
     let pix=null;
@@ -1668,7 +1685,9 @@ async function cgLoad(s,root){const g=s.cg={missing:[],colors:[],frames:[],tfs:n
       // Gray 사진 · 목록이 없는 Slot(소유자 예: S3LQR170XMG2 — Color 사진만 저장됨)도 Color 는 연결해 보여 준다(Gray 만 '없음')
       if(!g.frames.length){g.noGray=r.why;g.src.frames=`Gray 없음(${r.why})`}}
     // 변환: frameToChuckPlane.ini(+ 레시피 번호 파일) → 번호 파일만이면 가장 큰 번호(소유자 ".1 · .2 → .2") → 없으면 가운데 모델
-    const num=new Map();await Promise.all(CG_TF_NUM.map(async r=>{const f=await hit.d.get(`frameToChuckPlane.${r}.ini`);if(f)num.set(r,f)}));
+    const num=new Map();
+    if(hit.d.listed()){const nm=await hit.d.names();for(const [k,v] of nm){const key=cgTfKey(k);if(typeof key==='number'&&!num.has(key))num.set(key,v)}}
+    if(!num.size)await Promise.all(CG_TF_NUM.map(async r=>{const f=await hit.d.peek(`frameToChuckPlane.${r}.ini`);if(f)num.set(r,f)}));
     if(!hit.tf&&!num.size){const nm=await hit.d.names();for(const [k,v] of [...nm].sort((a,b)=>a[0]<b[0]?-1:1)){const key=cgTfKey(k);if(typeof key==='number'&&!num.has(key))num.set(key,v);else if(key&&!num.has(key))num.set(key,v)}}
     const parse=async f=>{try{return parseTransform(await readText(await f.file()))}catch(e){return {err:`${f.name}: ${e.message}`}}};
     if(hit.tf){g.tfs.set(null,await parse(hit.tf));g.tfNames.push(hit.tf.name);for(const [k,f] of num){g.tfs.set(k,await parse(f));g.tfNames.push(f.name)}g.src.tf=hit.tf.name+(num.size?' + 레시피 번호 파일':'')}
@@ -1686,7 +1705,8 @@ async function cgLoad(s,root){const g=s.cg={missing:[],colors:[],frames:[],tfs:n
       g.plan={mode:0,rect:null,hits:0,recs:g.colors.map(c=>{const [fx,fy]=cgFault(c);return {c,fx,fy,r:cgRecipe(c),why}})};cgLink(s);s.warns.push(why);return}
     g.plan=cgPlan(g);cgLink(s);
     for(const a of g.tfAlt){if(a.t.err){a.hits=null;continue}try{a.hits=cgPlan({colors:g.colors,frames:g.frames,tfs:new Map([[null,a.t]])}).hits}catch(e){a.hits=null}}   // 점검용: 다른 번호 파일이면 몇 개 맞는지
-  }catch(e){g.err=`매칭 파일을 읽지 못함: ${e.message||e}`;g.plan=null;s.warns.push(g.err)}}
+  }catch(e){const full=pcBaseSet()?pcPath(g.path+'/'+CG.CI):'';
+    g.err=`매칭 파일을 읽지 못함(${g.path}): ${e&&e.name&&e.name!=='Error'?e.name+' ':''}${(e&&e.message)||e}${full.length>=250?` — 전체 경로 ${full.length}자(Windows 260자 제한에 가까움)`:''}`;g.plan=null;s.warns.push(g.err)}}
 
 // ════════════════════════════════════════════════════════════════════════
 // 15. Step 5 — 대용량 Defect 조회 (소유자 세션 지시 2026-11-10, 3단계로 다시 만듦)
@@ -1726,9 +1746,10 @@ async function walkFast(root,par,onProg){
     let flt=null;try{flt=await it.h.getFileHandle('Surface.flt')}catch(e){}
     if(flt){slots.push({...it,flt});if(await dirFile(it.h,CG.CI))return}
     if(it.depth>=7)return;
-    const kids=[];let f2=null;for await(const [name,c] of it.h.entries()){if(c.kind==='directory')kids.push([name,c]);else if(lower(name)==='surface.flt')f2=c}
-    if(!flt&&f2){slots.push({...it,flt:f2});if(await dirFile(it.h,CG.CI))return}
-    kids.sort((a,b)=>natCmp(a[0],b[0]));for(const [name,c] of kids)q.push({h:c,path:it.path+name+'/',depth:it.depth+1,chain:[it.h,...it.chain]})};
+    const L=await dirList(it.h);if(L.err&&!L.dirs.length&&!L.files.size)throw new Error(L.err);
+    const f2=L.files.get('surface.flt');if(!flt&&f2)slots.push({...it,flt:f2.h});
+    if((flt||f2)&&L.files.has(lower(CG.CI)))return;   // 매칭 파일이 목록에는 있음(이름 대소문자가 다르거나 이름으로 묻기가 실패) → 이 폴더가 Slot, 아래는 안 봄
+    for(const [name,c] of L.dirs)q.push({h:c,path:it.path+name+'/',depth:it.depth+1,chain:[it.h,...it.chain]})};
   await new Promise(res=>{const next=()=>{
       while(!BIG.stop&&active<par&&q.length){const it=q.shift();active++;
         visit(it).catch(e=>errs.push(`${it.path}: ${e.message}`)).then(()=>{active--;next()})}
@@ -1741,7 +1762,23 @@ function unitOfPath(p){const s=p.split('/').filter(Boolean),n=s.length,lot=n>1?s
 function newLight(name){return {id:++scanSeq,seq:scanSeq,name,light:true,files:new Map(),paths:null,dirs:[],chain:[],warns:[],errors:[],step:baseName(name),tool:'',contrast:null,colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images:0,fltBytes:0}}
 /** 위쪽 폴더(Lot · Setup · 레시피)에서 파일 하나 찾기 — 폴더 · 이름마다 한 번만 묻는다. */
 const dirMemo=new WeakMap();
-function dirFile(h,name){let m=dirMemo.get(h);if(!m)dirMemo.set(h,m=new Map());const k=lower(name);if(!m.has(k))m.set(k,h.getFileHandle(name).then(x=>x,()=>null));return m.get(k)}
+const dirErrs=new WeakMap(),NOTFOUND=new Set(['NotFoundError','TypeMismatchError']);   // 폴더 → 이름으로 묻다 난 '없음' 아닌 오류(못 찾을 때 진단에 보임)
+function dirFile(h,name){let m=dirMemo.get(h);if(!m)dirMemo.set(h,m=new Map());const k=lower(name);
+  if(!m.has(k)){const ask=()=>h.getFileHandle(name);   // '없음' 이 아닌 오류(네트워크 드라이브 일시 오류 등)는 한 번 더 묻는다 — 실패를 '없음'으로 기억해 버리지 않게
+    m.set(k,ask().catch(e=>e&&NOTFOUND.has(e.name)?null:new Promise(r=>setTimeout(r,150)).then(ask))
+      .catch(e=>{if(!(e&&NOTFOUND.has(e.name))){let L=dirErrs.get(h);if(!L)dirErrs.set(h,L=[]);L.push(`${name}: ${((e&&e.name)||'')+' '+((e&&e.message)||e)}`.trim())}return null}))}
+  return m.get(k)}
+/** 폴더 목록 한 번(프로그램 colorgray.file_names 와 같음 — 이슈 #48 "이름으로 하나씩 묻지 않고 목록 1번, 대소문자 무시"). 사진 내용은 안 읽는다.
+ *  {files: Map(소문자 → {name, h}), dirs: [[이름, 핸들]] 이름 순, err}. 핸들마다 한 번(5-1 · 5-2 가 같이 씀). */
+const listMemo=new WeakMap();
+function dirList(h){let p=listMemo.get(h);
+  if(!p){p=(async()=>{const files=new Map(),dirs=[];let err='';
+      try{for await(const [n,c] of h.entries()){if(c.kind==='directory')dirs.push([n,c]);else{const k=lower(n);if(!files.has(k))files.set(k,{name:n,h:c})}}}
+      catch(e){err=`${(e&&e.name)||''} ${(e&&e.message)||e}`.trim()}
+      dirs.sort((a,b)=>natCmp(a[0],b[0]));return {files,dirs,err}})();listMemo.set(h,p)}
+  return p}
+/** 파일 찾기: 이름으로 바로(빠름, 목록 안 만듦) → 없으면 폴더 목록에서 대소문자 무시(NAS 대소문자 · 이름으로 묻기 실패 — Step 1 · 프로그램과 같은 결과). */
+async function dirFind(h,name){const f=await dirFile(h,name);if(f)return f;const L=await dirList(h),e=L.files.get(lower(name));return e?e.h:null}
 async function chainText(s,name){for(const h of s.chain){const f=await dirFile(h,name);if(f)return readText(await f.getFile())}return null}
 /** Surface.flt(+ .md) · ProductInfo.ini 만 읽어 열 배열로. md · ProductInfo 는 있을 때만(Slot → 위쪽 폴더 순). */
 async function finishLight(s,mdText,buf,piText){
@@ -1759,8 +1796,8 @@ async function finishLight(s,mdText,buf,piText){
  *  ①에 있으면 Slot 안 목록을 만들지 않는다(빠른 길 그대로). ①에 없을 때만 하위 폴더 이름을 보려고 그 Slot 폴더 목록을 한 번 만든다(폴더마다 기억). */
 const MD_AT={slot:'Slot 안',sub:'Slot 하위 폴더',up:'위쪽 폴더',none:'없음(기본 배치)'};
 const mdWhere=(s,p)=>!p?'none':p.startsWith(s.name+'/')?(p.slice(s.name.length+1).includes('/')?'sub':'slot'):'up';
-const subMemo=new WeakMap();let MDSUB=0;
-function dirSubs(h){let p=subMemo.get(h);if(!p){p=(async()=>{const out=[];for await(const [n,c] of h.entries())if(c.kind==='directory')out.push([n,c]);return out.sort((a,b)=>natCmp(a[0],b[0]))})();subMemo.set(h,p)}return p}
+let MDSUB=0;
+function dirSubs(h){return dirList(h).then(L=>{if(L.err&&!L.dirs.length&&!L.files.size)throw new Error(L.err);return L.dirs})}
 async function findLikeStep1(s,name){
   const top=await fileFind(s,name,true);if(top)return {...top,at:'slot'};
   const d=s.dirs&&s.dirs[0];
@@ -1774,14 +1811,15 @@ async function readLight(sl){const s=newLight(sl.path.replace(/\/$/,''));s.dirs=
   const md=await findLikeStep1(s,'Surface.flt.md'),f=await sl.flt.getFile(),buf=await f.arrayBuffer();s.mdAt=md?md.at:'none';s.mdPath=md?md.path:'';
   const pi=await fileFind(s,'ProductInfo.ini',true);
   await finishLight(s,md?await readText(await md.get()):null,buf,pi?await readText(await pi.get()):await chainText(s,'ProductInfo.ini'));
-  await cgLoad(s,cgDirH(sl.h,s.name));await clsLoad(s,s.cg&&s.cg.dir);return s}
+  const seg=s.name.split('/');await cgLoad(s,cgDirH(sl.h,s.name),(sl.chain||[]).map((h,k)=>({d:cgDirH(h,seg.slice(0,seg.length-1-k).join('/')),n:sl.under?sl.under[k]:0})));
+  await clsLoad(s,s.cg&&s.cg.dir);return s}
 /** <input webkitdirectory> 로 고른 경우(폴더 핸들을 못 쓰는 브라우저): 브라우저가 만든 파일 목록에서. */
 async function buildLight(name,own){const s=newLight(name);s.paths=new Map();s.entries=own.files;
   for(const e of own.files){const k=lower(baseName(e.path));if(/\.(jpe?g|png|bmp)$/.test(k))s.images++;if(!s.files.has(k)){s.files.set(k,e.file||e.handle);s.paths.set(k,e.path)}}
   const text=async n=>{const f=await fileFind(s,n,true);return f?readText(await f.get()):null};
   const flt=await fileFind(s,'Surface.flt',true),md=await fileFind(s,'Surface.flt.md',true);s.mdPath=md?md.path:'';s.mdAt=mdWhere(s,s.mdPath);   // 파일 목록 순서 = Step 1(planUnits)
   await finishLight(s,md?await readText(await md.get()):null,await (await flt.get()).arrayBuffer(),await text('ProductInfo.ini'));
-  await cgLoad(s,cgDirsFromList(name,own.files));await clsLoad(s,s.cg&&s.cg.dir);return s}
+  await cgLoad(s,cgDirsFromList(name,own.files),(own.up||[]).map(u=>({d:cgDirsFromList(u.path,u.files),n:u.n})));await clsLoad(s,s.cg&&s.cg.dir);return s}
 /** 읽은 Slot 들을 목록에 넣는다(같은 Slot 폴더를 다시 고르면 바꿔 넣음). 이름 = unitOfPath / planUnits. */
 function addMade(made,units,head){
   made.sort((a,b)=>natCmp(a.name,b.name));
@@ -1798,7 +1836,7 @@ function addMade(made,units,head){
   // rev5: 5-1 에서 끝낸 Color · Gray 매칭(Para 프로그램 계산) 요약
   const cs={n:0,miss:[],col:0,hit:0,def:0,link:0,modes:[]};
   for(const w of made){if(w.errors.length)continue;cs.n++;const g=w.cg;
-    if(!g||!g.plan){cs.miss.push(`${w.slotName||w.name}(${g?(g.err||'없음: '+g.missing.join(', ')):'안 읽음'})`);continue}
+    if(!g||!g.plan){cs.miss.push(`${w.slotName||w.name}(${cgMiss(g)})`);continue}
     cs.col+=g.colors.length;cs.hit+=g.plan.hits;cs.def+=w.cols.n;cs.link+=g.nIdx+g.nXY;if(g.plan.mode)cs.modes.push(`${w.slotName||w.name} ${CG.MODES[g.plan.mode]}`)}
   const altTf=g=>/모델/.test(g.src.tf||'')||!!g.usedHi;
   const alt=made.filter(w=>w.cg&&w.cg.plan&&!w.cg.noGray&&w.cg.src&&(w.cg.src.frames!==CG.SL||altTf(w.cg))).map(w=>`${w.slotName||w.name}: ${[w.cg.src.frames!==CG.SL?w.cg.src.frames:'',altTf(w.cg)?w.cg.src.tf:''].filter(Boolean).join(' · ')}`);
@@ -1817,6 +1855,7 @@ async function bigPickHandle(root){
   busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:0,indet:true,count:'폴더 0개',files:`동시에 ${par}개 폴더씩`,detail:root.name,cancel,reset:true});
   const p1=throttle(()=>busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:0,indet:true,count:`폴더 ${dirs}개 훑음 · Slot ${ns}개 찾음`,files:`동시에 ${par}개 폴더씩`,detail:'훑는 중: '+cur,cancel}),100);
   let W;try{W=await walkFast(root,par,(d,n,p)=>{dirs=d;ns=n;cur=p;p1()})}catch(e){busy(null);bigMsg([['err','폴더를 읽지 못했습니다: '+e.message]]);return}
+  {const cnt=new Map();for(const sl of W.slots)for(const h of sl.chain)cnt.set(h,(cnt.get(h)||0)+1);for(const sl of W.slots)sl.under=sl.chain.map(h=>cnt.get(h)||0)}   // 위쪽 폴더마다 그 아래 Slot 수
   if(!W.slots.length){busy(null);bigMsg([['err',`'${root.name}' 아래에서 Surface.flt 가 있는 폴더를 찾지 못했습니다(폴더 ${W.dirs}개 훑음)${BIG.stop?' — 중지됨':''}. 레시피 폴더(그 아래 Setup · Lot · Slot)를 고르십시오.`]]);return}
   const made=[],errs=[...W.errs],total=W.slots.length;let done=0,nd=0,bytes=0;cur='';
   const p2=throttle(()=>busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:1,done,total,unit:'Slot',files:`Defect ${nd.toLocaleString()}개 · Surface.flt ${kb(bytes)} 읽음 · 폴더 ${W.dirs}개 훑음${MDSUB?` · Surface.flt.md 가 Slot 바로 안에 없어 하위 폴더까지 찾은 Slot ${MDSUB}개`:''}`,detail:'읽는 중: '+cur,cancel}),80);
@@ -1836,7 +1875,9 @@ async function addBigEntries(entries){
   const p2=throttle(()=>busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:1,done,total,unit:'Slot',files:`Defect ${nd.toLocaleString()}개`,detail:'읽는 중: '+cur,cancel}),80);
   busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:1,done,total,unit:'Slot',files:'',detail:'',cancel,reset:true});
   try{for(const u of units){if(BIG.stop)break;cur=u.dir;p2();await nextPaint();
-      try{const s=await buildLight(u.dir.replace(/\/$/,'')||'(선택 폴더)',{files:u.files});made.push(s);U.set(s.name,u);nd+=s.cols.n}catch(e){}
+      const seg=u.dir.split('/').filter(Boolean),up=[];for(let k=seg.length-1;k>=1;k--){const D=seg.slice(0,k).join('/');   // 위쪽 폴더(가까운 것부터): 그 폴더 파일 · 그 아래 Slot 수
+        up.push({path:D,files:u.shared.filter(e=>e.path.slice(0,e.path.length-baseName(e.path).length)===D+'/'),n:units.filter(v=>v.dir.startsWith(D+'/')).length})}
+      try{const s=await buildLight(u.dir.replace(/\/$/,'')||'(선택 폴더)',{files:u.files,up});made.push(s);U.set(s.name,u);nd+=s.cols.n}catch(e){}
       done++;p2()}
     busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:2,indet:true,count:`Defect ${nd.toLocaleString()}개`,detail:'목록 · 필터 만드는 중'});await nextPaint();
     const msg=addMade(made,U,sum.replace(/ → Lot.*$/,''));msg[0][1]+=` (${((performance.now()-t0)/1000).toFixed(1)}초, 사진은 읽지 않음)`;bigMsg(msg)}
@@ -1979,7 +2020,7 @@ async function b5Pair(save){
     if(hows.size)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg ok">${esc('Color 연결: '+[...hows].map(([k,v])=>`${k} ${v.toLocaleString()}`).join(' · ')+' · Gray = Para 프로그램 Color · Gray 매칭 계산(frameToChuckPlane)')}</div>`);
     const modes=slots.filter(s=>s.cg&&s.cg.plan&&s.cg.plan.mode).map(s=>`${s.slotName||s.name}: ${CG.MODES[s.cg.plan.mode]}`);
     if(modes.length)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg warn">${esc("좌표 기준이 '그대로'가 아닌 Slot(프로그램과 같이 가장 많이 맞는 기준을 씀): "+modes.slice(0,6).join(' / ')+(modes.length>6?' …':''))}</div>`);
-    const miss=slots.filter(s=>!s.cg||!s.cg.plan).map(s=>`${s.slotName||s.name}(${s.cg?(s.cg.err||'없음: '+s.cg.missing.join(', ')):'안 읽음'})`);
+    const miss=slots.filter(s=>!s.cg||!s.cg.plan).map(s=>`${s.slotName||s.name}(${cgMiss(s.cg)})`);
     if(miss.length)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg err">${esc('매칭 파일이 없어 짝을 못 구한 Slot: '+miss.slice(0,6).join(' / ')+(miss.length>6?' …':''))}</div>`);
     b5Refresh();b5tabs();
     if(save&&!skip){const r=await saveCsv(pairCsv(),csvName(),false,save.h);$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg ok">CSV ${esc(r)}</div>`)}
@@ -2247,7 +2288,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

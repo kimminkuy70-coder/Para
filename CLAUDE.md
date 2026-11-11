@@ -85,6 +85,11 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     → 2열(소유자 "첫번째 분류, 재분류 2열 — 각각 AND 필터"): `clsFirst`(첫번째 분류 = orgReclassify, 0 이면 reclassify) · `clsName`(재분류 = reclassify) · `clsText`(같으면 하나, 다르면 'A → B', 새 창 머리).
     5-1 열 2개(ID 다음, 정렬 키 `k1` · `k2`) · `#bigCls` 체크 2묶음(`BIG.clsOff1` · `clsOff2` = 끈 이름, 개수 표시, 묶음마다 모두 켜기/끄기) — `bigBuild` 는 두 묶음을 모두 통과한 것만(AND) · 5-2/5-3 열 2개 · CSV(첫번째분류 · 재분류) · 5-3 정보.
     실제 zip: 29 = B R Surface Dark 334 · 28 = B R Other 19, 소유자 29126432EWE3 = 0 Accept · 원래 28/29. ManReClassify.ini 가 없으면 `#코드`.
+    **매칭 파일 찾기**(소유자 "ColorImageGrabingInfo.ini 파일 자체를 못 찾는다", 2026-11-11): 종전 rev5 는 `getFileHandle` 으로 이름을 한 번만 물었고 실패를 '없음'으로 기억했다(대소문자 · 일시 오류 · 위쪽 폴더에 약함).
+    지금 `dirFile`(이름으로 — '없음' 아닌 오류는 150 ms 뒤 한 번 더, 오류는 `dirErrs` 에) → `dirFind` = 없으면 `dirList`(폴더 목록 한 번, 대소문자 무시, 핸들마다 기억 · 5-1/5-2 공용, 프로그램 #48 `file_names` 와 같음).
+    `cgDirH.get` = dirFind(꼭 있어야 하는 CI · SL · TF), `opt` = 목록이 이미 있을 때만 목록(ManReClassify 등 — 매칭 파일이 이름으로 다 있는 Slot 은 5-1 에서 목록을 만들지 않음, 시험 그대로).
+    찾는 곳: Slot → 하위 4단계(Surface.flt 있는 폴더 빼고) → 위쪽 폴더(그 아래 Slot 이 하나일 때만, `sl.under` · 파일 목록은 `up`) — 못 찾으면 `cgDiag`(파일 수 · 비슷한 이름 · 묻기 오류 · 찾아본 폴더 · [원본 폴더 경로]가 있으면 전체 경로 길이)를 `cgMiss` 로 5-1/5-2 알림에.
+    `walkFast` 도 이름으로 못 찾으면 이미 만드는 목록에서 CI 확인. 시험: 대소문자 다름(NAS) · 일시 오류 1번 · 늘 오류 · 위쪽 폴더 · 두 Slot 공용(안 씀) · 진단 · 파일 목록 길 — 종전 HTML 은 앞 넷 모두 0/353.
     설정 없앰: `opts()` = `PIX`(0.7708) · `CTOL`(5) · coord 'xy' · 반전/Offset 없음(Step 1 ~ 4 도 같은 값), `#coordSrc/#pix/#ctol/#flipX/#flipY/#offX/#offY` · 5-2/5-3 거울 칸(`mirror`) · `BIG.stale`/`pairKey` 삭제. rev4 의 5-1 값 ↔ Step 1 값 안전장치(`fullLoad`)는 Step 5 에서 안 씀. 시험이 실제 zip 353개를 `param_manager/colorgray.py` 와 Defect 마다 비교.
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).

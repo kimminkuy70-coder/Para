@@ -26,6 +26,10 @@
   소유자 S3LQR170XMG2 로 확인(Color 3장 창 전체). 시험 = 실제 zip 에서 Gray 사진 · 목록을 빼고 새 창 · 5-3 확인(사진 자리에 tests/colorgray_fixture 의 작은 JPEG).
 - 후속 6(소유자 "classify 열 추가 검토 · B R Other, B R Surface Dark 같은 것 필터 · 정렬"): 분류 = Surface.flt `reclassify`(현재) · `orgReclassify`(재분류 전, 0 = 없음) → ManReClassify.ini [General] 이름.
   실제 zip 29/28 → B R Surface Dark 334 · B R Other 19, S3LQR170XMG2 B R Other 2 · Surface Dark 1, 29126432EWE3 Accept 2(원래 28 · 29). 5-1 열 · 체크 필터 · 정렬 + 5-2/5-3 · CSV · 새 창. 시험 = 실제 zip 개수 · 필터(19) · 정렬 · CSV · 재분류 판.
+- 후속 8(소유자 "ColorImageGrabingInfo.ini 파일 자체를 못 찾는데? 다시 점검해봐", 2026-11-11): 원인 = 5-1 만 이름으로 한 번 묻기(`getFileHandle`) — 대소문자가 다른 이름(NAS) ·
+  '없음' 아닌 일시 오류(그 실패를 '없음'으로 기억) · Surface.flt 가 하위 폴더이고 매칭 파일이 위쪽이면 못 찾았다(1~4단계는 목록에서 대소문자 무시 · 위쪽까지 → 됨). 어느 것인지는 소유자 화면을 못 봐 확인 전.
+  고침: 이름 → 폴더 목록(대소문자 무시, 프로그램 #48 과 같음) · 오류 한 번 더 · 하위 4단계 · 이 Slot 하나만 있는 위쪽 폴더 + 못 찾으면 진단(파일 수 · 비슷한 이름 · 오류 · 경로 길이)을 알림에.
+  확인: 종전 HTML 은 대소문자 · 일시 오류 1번 · 늘 오류 · 위쪽 폴더 넷 다 0/353 → 지금 353/353(colorgray.py 와 같음), 업로드 Slot 2개 결과 그대로. 남은 일: 소유자 PC 에서 다시 — 안 되면 알림의 '없음: … —' 뒤 문구를 받기.
 - 후속 7(소유자 "첫번째 분류, 재분류 2열로 만들어서 각각 and 조건으로 필터"): Classify 1열 → 첫번째 분류(`clsFirst` = orgReclassify, 0 이면 reclassify) · 재분류(`clsName` = reclassify) 2열.
   5-1 체크 2묶음(`BIG.clsOff1` · `clsOff2`) AND, 열 제목 정렬 `k1` · `k2`, 5-2/5-3 열 · CSV(첫번째분류 · 재분류) · 5-3 정보, 새 창 머리는 'A → B'.
   확인: 실제 zip(재분류 없음) 두 열 같음 334/19, 29126432EWE3 = B R Other → Accept · B R Surface Dark → Accept. 시험 = 화면 체크 클릭으로 353 → 19 → 0(AND) → 334, 재분류 판 AND = 1개(B R Other → Accept).

@@ -87,9 +87,12 @@
       가짜 큰 폴더(Lot 40 × Slot 25, Slot 마다 사진 3,000장): md 가 Slot 안이면 5-1 약 14초 · 5-2 약 30초(rev3 과 같음), md 가 모든 Slot 에서 Lot 폴더에 있으면 5-1 약 25초. 실제 큰 폴더 · 네트워크 드라이브로는 확인 전.
 15. **rev5 판**(`AOI_Contrast_Wizard_rev5.html`, 2026-11-10 소유자 세션 지시 "프로그램에 있는 기능을 최우선으로 · 설정은 아예 없애 · 결과물은 목록으로, 새 창에서 큰 화면으로 사진들만", 시험 `node tools/test_contrast_wizard_rev5.mjs`): rev4 + 아래. rev4 이하는 그대로입니다.
     - **Color · Gray 매칭 = Para 프로그램 'Color · Gray 매칭'(`param_manager/colorgray.py`)과 같은 계산**: 5-1 에서 Slot 마다 매칭 파일 3개(ColorImageGrabingInfo.ini · ScanResultImageList.txt · frameToChuckPlane.ini)를 이름으로 바로 읽어(폴더 목록은 만들지 않음) Color 항목마다 Gray 프레임 · 픽셀을 구합니다. 사진은 읽지 않습니다.
-      매칭 폴더 = 세 파일이 바로 안에 있는 폴더(Slot 바로 안 → 없으면 Slot 하위 폴더 중 세 파일이 다 있는 첫 폴더. Surface.flt 가 있는 하위 폴더는 다른 Slot 이라 빌려 쓰지 않음). 위쪽 폴더(Lot · Setup)의 세 파일은 쓰지 않습니다(프로그램과 같음).
+      매칭 폴더 = ColorImageGrabingInfo.ini 가 바로 안에 있는 폴더(Slot 바로 안 → 하위 폴더 → 그 Slot 하나만 있는 위쪽 폴더. Surface.flt 가 있는 하위 폴더는 다른 Slot 이라 빌려 쓰지 않음, 여러 Slot 이 같이 있는 위쪽 폴더의 파일도 쓰지 않습니다)(프로그램과 같음).
       좌표 기준(그대로 → 맞지 않으면 프레임 직사각형의 좌측 하단 원점 해석 중 가장 많이 맞는 것)도 프로그램과 같습니다. Defect → Color 항목 = Index(기록 순서) + 좌표 5 µm 확인, 아니면 5 µm 안 가장 가까운 Color. Color 항목이 없는 Defect 는 Defect 좌표로 Gray 만 찾습니다.
       5-1 목록에 **'Color · Gray 매칭'** 칸(Color · Gray / Color 만 / Gray 만 / 짝 없음 / 매칭 파일 없음)이 생겼습니다.
+    - **ColorImageGrabingInfo.ini 찾기**(프로그램 · 1~4단계와 같은 방식): 이름으로 바로 찾고, 없으면 폴더 목록에서 **대소문자를 무시**하고 찾습니다(네트워크 드라이브 · NAS). 일시 오류는 한 번 더 묻습니다.
+      Slot 폴더 → 하위 폴더(4단계) → **그 Slot 하나만 들어 있는 위쪽 폴더**(예: Surface.flt 가 Slot\Result 안에 있고 매칭 파일 · 사진이 Slot 에 있을 때) 순서입니다. 여러 Slot 이 같이 있는 위쪽 폴더의 파일은 쓰지 않습니다.
+      그래도 못 찾으면 알림에 까닭이 나옵니다: 폴더 파일 수 · 비슷한 이름(예: ColorImageGrabbingInfo.ini) · 오류 · 찾아본 폴더 · **[원본 폴더 경로]를 적었으면 전체 경로 길이**(250자가 넘으면 Windows 260자 제한 안내).
     - **매칭 파일이 다 없어도 됩니다**(소유자 확정: ColorImageGrabingInfo.ini 는 항상 있음 · ScanResultImageList.txt 는 없을 수 있음 · 변환 파일이 `frameToChuckPlane.1.ini` · `.2.ini` 둘이면 .2 기준). 프로그램 파일이 있으면 프로그램 계산 그대로이고, 없는 것만 대신 계산합니다.
       ScanResultImageList.txt 없음 → **Gray 사진 이름**(`-56211.70388.t.jpeg` = 프레임 가운데의 장비 Table 좌표)을 `Wafer2Table.ini` 로 웨이퍼 좌표로 바꿈(없으면 `s_FrameData.dat` 의 같은 프레임). 변환 파일이 번호 파일 여러 개면 레시피 번호가 같은 파일(예: Color RecipeNumber 2 → `.2`), 맞는 번호가 없으면 가장 큰 번호, 하나도 없으면 '목록 좌표 = 프레임 가운데' 모델.
       **Color 사진만 있는 Slot**(Gray 사진 · 목록이 저장되지 않음)도 Color 는 연결해 목록 · 새 창 · 5-3 에 보여 줍니다(상태 'Color 만'). Gray 가 없으면 새 창은 **Color 를 창 전체에 크게** 띄우고 위에 'Gray 없음 — Color 만 크게'와 이유를,

@@ -363,7 +363,8 @@ const fakeTree=`window.__mkTree=(f,map,opt)=>{opt=opt||{};const log=window.__fsL
   const fh=(name,path,b)=>({kind:'file',name,getFile:async()=>{log.reads.push(name);if(opt.bad&&opt.bad.includes(path))throw new DOMException('A requested file or directory could not be found at the time an operation was processed.','NotFoundError');
     return new File([typeof b==='string'?Uint8Array.from(atob(b),ch=>ch.charCodeAt(0)):b],name)}});
   const mk=(name,path)=>({kind:'directory',name,path,kids:new Map(),async *entries(){log.lists.push(this.path);await new Promise(r=>setTimeout(r,2));yield* this.kids},
-    async getFileHandle(n){const h=[...this.kids.values()].find(k=>k.kind==='file'&&k.name.toLowerCase()===n.toLowerCase());if(!h)throw new DOMException('없음','NotFoundError');return h}});
+    async getFileHandle(n){const fl=opt.flaky&&opt.flaky[n];if(fl>0){opt.flaky[n]=fl-1;(log.err||(log.err=[])).push(n);throw new DOMException('The I/O operation has been aborted','NotReadableError')}
+      const h=[...this.kids.values()].find(k=>k.kind==='file'&&(opt.cs?k.name===n:k.name.toLowerCase()===n.toLowerCase()));if(!h)throw new DOMException('없음','NotFoundError');return h}});
   const root=mk('RCP','RCP/');
   for(const [p,b] of Object.entries(f)){const segs=map(p);if(!segs)continue;let d=root;for(const s of segs.slice(0,-1)){if(!d.kids.has(s))d.kids.set(s,mk(s,d.path+s+'/'));d=d.kids.get(s)}
     d.kids.set(segs.at(-1),fh(segs.at(-1),'RCP/'+segs.join('/'),b))}
@@ -498,7 +499,7 @@ const perf=await page.evaluate(async()=>{const c=window.__cw,REC=c.REC,N=100000,
   return {load:t1-t0,flt:t2-t1,m:c.BIG.view.m,total:c.BIG.view.total,rows:document.querySelectorAll('#bigList .br').length,first:+document.querySelector('#bigList .br').children[6].textContent,
     cell:document.querySelector('#bigList .br').children[14].textContent,msg:document.getElementById('bigMsg').innerText}});
 assert.equal(perf.total,300007);assert.ok(perf.m>0&&perf.m<perf.total/50,JSON.stringify(perf));assert.ok(perf.rows<80,JSON.stringify(perf));assert.ok(perf.first>=59.9);
-assert.ok(perf.load<15000&&perf.flt<5000,JSON.stringify(perf));assert.equal(perf.cell,'✖ 매칭 파일 없음');assert.match(perf.msg,/매칭 파일이 없는 Slot 3개: W00\(없음: ColorImageGrabingInfo\.ini\)/);
+assert.ok(perf.load<15000&&perf.flt<5000,JSON.stringify(perf));assert.equal(perf.cell,'✖ 매칭 파일 없음');assert.match(perf.msg,/매칭 파일이 없는 Slot 3개: W00\(없음: ColorImageGrabingInfo\.ini — Slot 폴더 파일 1개 중 이 이름\(대소문자 무시\) 없음 · 하위 폴더 0개 · 위쪽 폴더 3개도 찾아봄 · 전체 경로 \d+자\)/);   // [원본 폴더 경로]를 적어 두면 전체 경로 길이도(260자 제한 점검)
 console.log('step5 30만 Defect:',JSON.stringify({load:perf.load,flt:perf.flt,m:perf.m}));
 // 중지: 5-2 를 시작하자마자 [중지] → 처리 못 한 것 = '확인 안 함', 자동 CSV 저장 안 함
 const stop=await page.evaluate(async()=>{const c=window.__cw;const p=c.b5Pair({h:null});c.BIG.stop=true;await p;const P=c.BIG.pairs;return {n:P.length,skip:P.filter(x=>x.st==='skip').length}});
@@ -554,7 +555,7 @@ const realRun=async(name,opt)=>{const pg=await browser.newPage();const er=[];pg.
     for(const k of opt.drop||[])delete f[k];if(opt.cls0)Object.assign(f,real.cls0);const extra=opt.extra||{};for(const [k,v] of Object.entries(extra))f[k]=v;
     const root=window.__mkTree(f,p=>p.startsWith('@')?p.slice(1).split('/'):['SETUP1','LOT_A','W01',p],opt);
     await c.bigPickHandle(root);await c.b5Pair(null);
-    let cls=null;if(opt.cls){const s=c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01');
+    const SN=opt.slot||'RCP/SETUP1/LOT_A/W01';let cls=null;if(opt.cls){const s=c.BIG.scans.find(s=>s.name===SN);
       const at=k=>{const V=c.BIG.view,j=V.ord[k];return [V.src[V.gs[j]],V.gi[j]]},ck=(g,k)=>document.querySelector(`#bigCls [data-cls${g}="${k}"]`).click(),m=()=>c.BIG.view.m;
       cls={chips:document.getElementById('bigCls').innerText.replace(/\s+/g,' '),t0:c.clsText(s,0),f0:c.clsFirst(s,0),r0:c.clsName(s,0),
         names1:[...new Set(Array.from({length:s.cols.n},(_,i)=>c.clsFirst(s,i)))].sort(),names2:[...new Set(Array.from({length:s.cols.n},(_,i)=>c.clsName(s,i)))].sort(),
@@ -568,8 +569,9 @@ const realRun=async(name,opt)=>{const pg=await browser.newPage();const er=[];pg.
       document.querySelector('#bigCls [data-clsall="2"]').click();cls.mClear=m();cls.off=[c.BIG.clsOff1.size,c.BIG.clsOff2.size];
       document.querySelector('#bigCls [data-clsall="1"]').click();cls.mNone=m();document.querySelector('#bigCls [data-clsall="1"]').click();cls.mBack=m();c.BIG.sort='c-d';c.bigRefresh()}
     return {scans:c.BIG.scans.map(s=>[s.name,s.cols.n,s.cg&&s.cg.plan?c.CG.MODES[s.cg.plan.mode]:(s.cg&&(s.cg.err||s.cg.missing.join(',')))]),
-      pairs:c.BIG.pairs.filter(p=>p.s.name==='RCP/SETUP1/LOT_A/W01').map(p=>[p.i,p.st,p.c&&p.c.file,p.c&&p.c.how,p.g&&p.g.file,p.g&&p.g.px,p.g&&p.g.py,p.g&&p.g.n]),warns:c.BIG.scans.flatMap(s=>s.warns),
-      src:(c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01')||{}).cg?.src,alt:((c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01')||{}).cg?.tfAlt||[]).map(a=>[a.name,a.hits]),
+      pairs:c.BIG.pairs.filter(p=>p.s.name===SN).map(p=>[p.i,p.st,p.c&&p.c.file,p.c&&p.c.how,p.g&&p.g.file,p.g&&p.g.px,p.g&&p.g.py,p.g&&p.g.n]),warns:c.BIG.scans.flatMap(s=>s.warns),
+      src:(c.BIG.scans.find(s=>s.name===SN)||{}).cg?.src,alt:((c.BIG.scans.find(s=>s.name===SN)||{}).cg?.tfAlt||[]).map(a=>[a.name,a.hits]),
+      at:(c.BIG.scans.find(s=>s.name===SN)||{}).cg?.at,cgPath:(c.BIG.scans.find(s=>s.name===SN)||{}).cg?.path,askErr:window.__fsLog.err||[],
       cls,msg:document.getElementById('bigMsg').innerText,row:[...document.querySelectorAll('#b5slotTbl tbody tr')].map(x=>x.innerText).join('\n'),csv:c.pairCsv().join('')}},{real,opt});
   if(opt.view){   // 5-2 줄 더블 클릭 → 사진 새 창 · 5-3 하나씩 크게 (Color 만인 Slot: Color 를 창 · 칸 전체에)
     await pg.locator('nav button[data-step="5"]').click();await pg.locator('[data-b5="2"]').click();const [w]=await Promise.all([pg.waitForEvent('popup'),pg.locator('#b5list .br').nth(0).dblclick()]);await w.locator('#fc canvas').waitFor();
@@ -606,6 +608,31 @@ const real1=await realRun('bad',{bad:['RCP/SETUP1/LOT_A/W01/ManReClassify.ini','
 // Lot 폴더에도 Surface.flt(매칭 파일 없음) → 그 아래 실제 Slot 도 찾음(Step 1 과 같음), Lot 폴더 Slot 은 '매칭 파일 없음'(아래 Slot 파일을 빌려 쓰지 않음)
 const real2=await realRun('lotflt',{extra:{'@SETUP1/LOT_A/Surface.flt':real.files['Surface.flt'],'@SETUP1/LOT_A/Surface.flt.md':real.files['Surface.flt.md']}});cmpReal('Lot 폴더 Surface.flt',real2);
 assert.deepEqual(real2.scans,[['RCP/SETUP1/LOT_A',353,'ColorImageGrabingInfo.ini'],['RCP/SETUP1/LOT_A/W01',353,'그대로']]);
+// ── 소유자 "ColorImageGrabingInfo.ini 파일 자체를 못 찾는다"(2026-11-11): 종전 rev5 는 이름으로 한 번만 물었다 → 아래 넷은 모두 '매칭 파일 없음'이었다 ──────────
+//    지금: 이름으로 바로 → 폴더 목록(대소문자 무시, 프로그램 #48 · Step 1 과 같음) · 일시 오류 한 번 더 · 이 Slot 하나만 있는 위쪽 폴더. 그래도 없으면 까닭을 알림에.
+const lowCI={drop:['ColorImageGrabingInfo.ini','ScanResultImageList.txt','frameToChuckPlane.ini'],extra:{'colorimagegrabinginfo.ini':real.files['ColorImageGrabingInfo.ini'],'SCANRESULTIMAGELIST.TXT':real.files['ScanResultImageList.txt'],'FrameToChuckPlane.ini':real.files['frameToChuckPlane.ini']}};
+const realCs=await realRun('case',{...lowCI,cs:true});cmpReal('NAS: 이름 대소문자가 다름',realCs);assert.deepEqual(realCs.scans,[['RCP/SETUP1/LOT_A/W01',353,'그대로']]);
+const realFl=await realRun('flaky1',{flaky:{'ColorImageGrabingInfo.ini':1}});cmpReal('이름으로 묻기 일시 오류(한 번)',realFl);assert.ok(realFl.askErr.length>=1);
+const realFl2=await realRun('flakyAll',{flaky:{'ColorImageGrabingInfo.ini':Infinity}});cmpReal('이름으로 묻기가 늘 오류 → 폴더 목록',realFl2);assert.deepEqual(realFl2.scans,[['RCP/SETUP1/LOT_A/W01',353,'그대로']]);
+// Surface.flt 가 Slot 하위 폴더에 있고 매칭 파일 · 사진은 그 위(그 아래 Slot 은 이것 하나) → 위쪽 폴더를 매칭 폴더로
+const upF={drop:['Surface.flt'],extra:{'@SETUP1/LOT_A/W01/Result/Surface.flt':real.files['Surface.flt']},slot:'RCP/SETUP1/LOT_A/W01/Result'};
+const realUp=await realRun('up',upF);cmpReal('매칭 파일이 위쪽 폴더',realUp);assert.deepEqual([realUp.at,realUp.cgPath],['up','RCP/SETUP1/LOT_A/W01']);
+assert.ok(realUp.warns.some(w=>/위쪽 폴더에 있어 그 폴더를 매칭 폴더로 씀: RCP\/SETUP1\/LOT_A\/W01 \(그 아래 Slot 은 이것 하나\)/.test(w)),realUp.warns.join('\n'));
+// 위쪽 폴더의 매칭 파일을 Slot 둘이 같이 씀 → 쓰지 않음(Index = 기록 순서가 Slot 마다 다름) + 알림에 까닭
+const realSh=await realRun('shared',{...upF,extra:{...upF.extra,'@SETUP1/LOT_A/W01/Other/Surface.flt':real.files['Surface.flt']}});
+assert.equal(realSh.scans.find(x=>x[0]==='RCP/SETUP1/LOT_A/W01/Result')[2],'ColorImageGrabingInfo.ini');
+assert.match(realSh.msg,/Result\(없음: ColorImageGrabingInfo\.ini — Slot 폴더 파일 1개 중 이 이름\(대소문자 무시\) 없음 · 하위 폴더 0개 · 위쪽 폴더 1개도 찾아봄 · 위쪽 폴더 RCP\/SETUP1\/LOT_A\/W01 에 있지만 그 아래 Slot 이 2개라 쓰지 않음\)/);
+// 정말 없음 → 까닭: 파일 수 · 비슷한 이름 · 이름으로 묻기 오류 · 찾아본 폴더(전체 경로 길이는 [원본 폴더 경로]를 적었을 때)
+const realNo=await realRun('noCI',{drop:['ColorImageGrabingInfo.ini'],extra:{'ColorImageGrabbingInfo.ini':real.files['ColorImageGrabingInfo.ini']},flaky:{'ColorImageGrabingInfo.ini':Infinity}});
+assert.equal(realNo.scans[0][2],'ColorImageGrabingInfo.ini');
+assert.match(realNo.msg,/W01\(없음: ColorImageGrabingInfo\.ini — Slot 폴더 파일 [\d,]+개 중 이 이름\(대소문자 무시\) 없음 · 비슷한 이름: ColorImageGrabbingInfo\.ini · 이름으로 묻기 오류: ColorImageGrabingInfo\.ini: NotReadableError The I\/O operation has been aborted · 하위 폴더 0개 · 위쪽 폴더 3개도 찾아봄\)/);
+// 파일 목록(webkitdirectory)으로 골라도 위쪽 폴더 · 여러 Slot 규칙이 같음
+const pgL=await browser.newPage();await pgL.goto('file://'+resolve(root,'AOI_Contrast_Wizard_rev5.html'));
+const listUp=await pgL.evaluate(async ({real})=>{const c=window.__cw,b=s=>new File([Uint8Array.from(atob(s),ch=>ch.charCodeAt(0))],'x');const es=[];
+  for(const [k,v] of Object.entries(real.files)){if(k==='Surface.flt'||/\.jpe?g$/i.test(k))continue;es.push({path:'L/S/LOT/W01/'+k,file:b(v)})}
+  es.push({path:'L/S/LOT/W01/Result/Surface.flt',file:b(real.files['Surface.flt'])});c.BIG.scans=[];await c.addBigEntries(es);const s=c.BIG.scans[0];
+  return {name:s.name,at:s.cg.at,path:s.cg.path,col:s.cg.colors.length,hits:s.cg.plan&&s.cg.plan.hits}},{real});await pgL.close();
+assert.deepEqual(listUp,{name:'L/S/LOT/W01/Result',at:'up',path:'L/S/LOT/W01',col:353,hits:353});
 // 좌표 기준(프로그램 v12.9.30 COORD_MODES): Fault · Defect 좌표가 프레임 직사각형의 좌측 하단 원점 기준이면 '좌측 하단 원점'으로 같은 짝
 const real3=await realRun('shift',{shift:true});cmpReal('좌측 하단 원점 좌표',real3);assert.deepEqual(real3.scans,[['RCP/SETUP1/LOT_A/W01',353,'좌측 하단 원점']]);
 // ── 소유자 확정(2026-11-10): ColorImageGrabingInfo.ini 는 항상 있음 · ScanResultImageList.txt 는 없을 수 있음 · frameToChuckPlane.1.ini · .2.ini 둘이면 .2 기준 ──────────
