@@ -398,7 +398,16 @@ assert.match(await page.locator('#toB2').innerText(),/걸러낸 Defect 2개 결�
 await page.locator('#bigFlt [data-f="clear"]').click();await page.waitForTimeout(100);
 await page.locator('#bigList .bh [data-sort="a"]').click();assert.deepEqual((await col(7)).map(Number).slice(0,2),[71.3,48.72]);   // Area 큰 순
 await page.locator('#bigLot').selectOption({index:1});await page.waitForTimeout(100);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 4개 \(전체 7개 중/);
-await page.locator('#bigLot').selectOption('');await page.locator('#bigFlt [data-f="sort"]').selectOption('c-d');await page.waitForTimeout(350);
+await page.locator('#bigLot').selectOption('');
+// Lot 제외(소유자 "5-1 에서 필터로 제외할 Lot 고를 수 있게"): 체크를 끄면 그 Lot 이 목록에서 빠지고, 다시 켜면 돌아옴 · 모두 끄기/켜기
+assert.match(await page.locator('#bigLotSum').innerText(),/^Lot 제외: 없음 \(전체 2개\)$/);await page.locator('#bigLotSum').click();
+{const ck=page.locator('#bigLotOff [data-lotoff]');assert.equal(await ck.count(),2);const n0=+(await page.locator('#bigLotOff .clsck').first().locator('.muted').innerText());
+  await ck.first().uncheck();assert.match(await page.locator('#bigCnt').innerText(),new RegExp(`^Defect ${7-n0}개 \\(전체 7개 중`));
+  assert.equal(await page.locator('#bigLotSum').innerText(),'Lot 제외 1개 / 전체 2개');
+  assert.equal(await page.evaluate(()=>{const c=window.__cw,V=c.BIG.view,off=[...c.BIG.lotOff][0];let k=0;for(let j=0;j<V.m;j++)if(V.src[V.gs[j]].lotPath===off)k++;return k}),0);
+  await page.locator('#bigLotOff [data-lotall]').click();assert.equal(await page.locator('#bigLotSum').innerText(),'Lot 제외: 없음 (전체 2개)');assert.match(await page.locator('#bigCnt').innerText(),/^Defect 7개/);
+  await page.locator('#bigLotOff [data-lotall]').click();assert.match(await page.locator('#bigCnt').innerText(),/전체 7개 중|^레시피 폴더|^Defect 0개/);assert.equal(await page.evaluate(()=>window.__cw.BIG.view.m),0);
+  await page.locator('#bigLotOff [data-lotall]').click();assert.match(await page.locator('#bigCnt').innerText(),/^Defect 7개/);await page.locator('#bigLotSum').click()}await page.locator('#bigFlt [data-f="sort"]').selectOption('c-d');await page.waitForTimeout(350);
 // 5-2: [다음] = 지금 목록(7개) — 사진 파일은 이름만 확인(어떤 파일도 열지 않음) → 결과 목록 · CSV 자동 저장
 await page.locator('#toB2').scrollIntoViewIfNeeded();
 const rd0=await page.evaluate(()=>window.__fsLog.reads.length);

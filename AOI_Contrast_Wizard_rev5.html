@@ -159,6 +159,8 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 #c5one .rvimgs figcaption .pp{display:block;font:11px Consolas,"Malgun Gothic",monospace;color:#cfd8e3;user-select:all}
 #c5one .rvimgs figure>canvas,#c5one .rvimgs figure>.ph{margin:auto}
 #c5one .rvimgs.conly{grid-template-columns:1fr}#c5one .rvimgs.conly #c5Gray{display:none}#c5one .rvimgs.conly figure canvas{max-height:560px}
+.lotbox{display:inline-block;margin-right:10px}.lotbox>summary{cursor:pointer;font-weight:700;padding:1px 8px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.lotbox[open]>summary{margin-bottom:4px}.lotbox.has>summary{border-color:var(--warn);color:var(--warn)}
+.lotbox .clsck.off{opacity:.55;text-decoration:line-through}
 .clsg{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;margin-right:14px}
 .clsck{display:inline-flex;gap:4px;align-items:center;margin:0 8px 0 0;padding:1px 8px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
 .g5 .gn{display:grid;grid-template-columns:1fr 1fr;gap:2px;font-size:11px;color:var(--sub)}.g5 .gn span{padding:1px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -316,6 +318,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
     <div class="card pflt" id="bigFlt">
       <label><b>Lot</b> <select id="bigLot"><option value="">전체</option></select></label>
       <label><b>Slot</b> <select id="bigSlot"><option value="">전체</option></select></label>
+      <details id="bigLotBox" class="lotbox"><summary id="bigLotSum">Lot 제외: 없음</summary><span id="bigLotOff" class="clsg" aria-label="Lot 제외(체크를 끄면 그 Lot 은 목록 · 5-2 · 5-3 에서 빠짐)"></span></details>
       <span id="bigCls" class="pflt" aria-label="분류 필터(첫번째 분류 · 재분류)"></span>
       <span id="bigFltIn" class="pflt"></span><button id="bigCsv">목록 CSV</button></div>
     <div class="muted" id="bigCnt"></div>
@@ -1729,7 +1732,8 @@ async function cgLoad(s,root,up){const g=s.cg={missing:[],colors:[],frames:[],tf
 //     5-3 사진 정밀 조사: 짝지은 Defect 만 Color 원본 + Gray Crop(빨간 박스 · GL 측정)을 띄운다(하나씩 크게 / 격자). Step 3 · 4 와 같은 계산(grayCrop · linkColor · locateGray).
 //     모든 긴 작업은 로딩창(busy)에 단계 · 개수 · 지금 읽는 파일 · 경과 · 마지막 진행 · 속도 · 남은 시간 · 화면 멈춤을 보여 주고 [중지] 할 수 있다.
 // ════════════════════════════════════════════════════════════════════════
-const BIG={scans:[],view:null,sort:'c-d',stop:false,pairs:null,stale:false,stage:1,clsOff1:new Set(),clsOff2:new Set()};   // 끈 이름: 1 = 첫번째 분류, 2 = 재분류(둘 다 맞아야 = AND)
+const BIG={scans:[],view:null,sort:'c-d',stop:false,pairs:null,stale:false,stage:1,clsOff1:new Set(),clsOff2:new Set(),lotOff:new Set()};   // lotOff = 뺀 Lot 폴더 경로(소유자 "5-1 에서 필터로 제외할 Lot 고를 수 있게")
+//   // 끈 이름: 1 = 첫번째 분류, 2 = 재분류(둘 다 맞아야 = AND)
 const BRH=26,BHH=28,BIG_MAX=1000000;   // 표에 그리는 줄 수 한도(브라우저 요소 높이 한도) — 넘으면 필터로 줄이라고 알린다
 const bigMsg=list=>{$('#bigMsg').innerHTML=list.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('')};
 const kb=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
@@ -1915,6 +1919,12 @@ function bigLots(){
   const src=bigSources(),lots=new Map(),slots=new Map();for(const s of src){lots.set(s.lotPath,s.lotName||baseName(s.lotPath));slots.set(s.slot,s.slotName||s.slot)}
   const fillSel=(el,mp)=>{const cur=el.value;el.innerHTML='<option value="">전체</option>'+[...mp].sort((a,b)=>natCmp(a[1],b[1])).map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join('');el.value=cur;if(el.value!==cur)el.value=''};
   fillSel($('#bigLot'),lots);fillSel($('#bigSlot'),slots);
+  // Lot 제외(소유자): Lot 마다 체크(Defect 수), 끄면 그 Lot 을 목록 · CSV · 5-2 · 5-3 에서 뺀다. 등록에서 빼는 [빼기]와 달리 다시 켜면 바로 돌아온다.
+  {const cnt=new Map();for(const s of src){const k=s.lotPath;cnt.set(k,(cnt.get(k)||0)+s.cols.n)}const off=BIG.lotOff,L=[...cnt].sort((a,b)=>natCmp(lots.get(a[0])||'',lots.get(b[0])||''));
+    const nOff=L.filter(([k])=>off.has(k)).length;
+    $('#bigLotOff').innerHTML=L.map(([k,n])=>`<label class="clsck${off.has(k)?' off':''}" title="${esc(k)}"><input type="checkbox" data-lotoff="${esc(k)}"${off.has(k)?'':' checked'}> ${esc(lots.get(k)||baseName(k))} <span class="muted">${n.toLocaleString()}</span></label>`).join('')
+      +(L.length>1?` <button type="button" data-lotall="1">${nOff?'모두 켜기':'모두 끄기'}</button>`:'')||'<span class="muted">Lot 없음</span>';
+    $('#bigLotSum').textContent=nOff?`Lot 제외 ${nOff}개 / 전체 ${L.length}개`:`Lot 제외: 없음 (전체 ${L.length}개)`;$('#bigLotBox').classList.toggle('has',!!nOff)}
   // 분류 필터 2묶음(소유자): 첫번째 분류 · 재분류 — 종류마다 체크(개수), 끈 것은 빼고 두 묶음은 AND
   const c1=new Map(),c2=new Map();for(const s of src)for(let i=0;i<s.cols.n;i++){const a=clsFirst(s,i),b=clsName(s,i);c1.set(a,(c1.get(a)||0)+1);c2.set(b,(c2.get(b)||0)+1)}
   const grp=(g,t,cc,off)=>cc.size?`<span class="clsg"><b>${t}</b> `+[...cc].sort((a,b)=>b[1]-a[1]||natCmp(a[0],b[0])).map(([k,n])=>`<label class="clsck"><input type="checkbox" data-cls${g}="${esc(k)}"${off.has(k)?'':' checked'}> ${esc(k)} <span class="muted">${n.toLocaleString()}</span></label>`).join('')
@@ -1929,7 +1939,8 @@ function bigBuild(){
   const rank=key=>new Map([...new Set(src.map(key))].sort(natCmp).map((n,i)=>[n,i])),rl=sk==='lot'?rank(s=>s.lotPath):null,rs=sk==='slot'?rank(s=>s.slotName||''):null;
   const kf=sk==='k1'?clsFirst:sk==='k2'?clsName:null,rk=kf?(()=>{const set=new Set();for(const s of src)for(let i=0;i<s.cols.n;i++)set.add(kf(s,i));return new Map([...set].sort(natCmp).map((n,j)=>[n,j]))})():null;
   const off1=BIG.clsOff1.size?BIG.clsOff1:null,off2=BIG.clsOff2.size?BIG.clsOff2:null;
-  src.forEach((s,si)=>{if(lot&&s.lotPath!==lot)return;if(slot&&s.slot!==slot)return;const C=s.cols,n=C.n;
+  const lotOff=BIG.lotOff;
+  src.forEach((s,si)=>{if(lot&&s.lotPath!==lot)return;if(lotOff.has(s.lotPath))return;if(slot&&s.slot!==slot)return;const C=s.cols,n=C.n;
     const sv=sk==='lot'?rl.get(s.lotPath):sk==='slot'?rs.get(s.slotName||''):null;
     const ka=sk==='id'?(s.idByOrder?null:C.id):sk==='c'?C.c:sk==='w'?C.w:sk==='l'?C.l:sk==='a'?C.area:sk==='x'?(act?C.ax:C.x):sk==='y'?(act?C.ay:C.y):null;
     for(let i=0;i<n;i++){if(f.on&&!fltPass(f,C.c[i],C.area[i]*px2,C.w[i],C.l[i]))continue;if(off1&&off1.has(clsFirst(s,i)))continue;if(off2&&off2.has(clsName(s,i)))continue;gs[m]=si;gi[m]=i;if(kv){const v=sv!=null?sv:rk?rk.get(kf(s,i)):ka?ka[i]:i;kv[m]=v===v?v:bad}m++}});
@@ -2433,6 +2444,8 @@ $('#bigFlt [data-f="sort"]').value=BIG.sort;
 $$('#bigLot,#bigSlot').forEach(el=>el.addEventListener('change',bigRefresh));
 $('#bigCls').addEventListener('change',e=>{const d=e.target.dataset||{},g=d.cls1!=null?1:d.cls2!=null?2:0;if(!g)return;const off=BIG['clsOff'+g],k=d['cls'+g];if(e.target.checked)off.delete(k);else off.add(k);bigLots();bigRefresh()});
 $('#bigCls').addEventListener('click',e=>{const g=e.target.dataset&&e.target.dataset.clsall;if(!g)return;const off=BIG['clsOff'+g];if(off.size)off.clear();else $$(`#bigCls [data-cls${g}]`).forEach(x=>off.add(x.dataset['cls'+g]));bigLots();bigRefresh()});
+$('#bigLotOff').addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.lotoff;if(k==null)return;if(e.target.checked)BIG.lotOff.delete(k);else BIG.lotOff.add(k);bigLots();bigRefresh()});
+$('#bigLotOff').addEventListener('click',e=>{if(!(e.target.dataset&&e.target.dataset.lotall))return;if(BIG.lotOff.size)BIG.lotOff.clear();else $$('#bigLotOff [data-lotoff]').forEach(x=>BIG.lotOff.add(x.dataset.lotoff));bigLots();bigRefresh()});
 $('#bigTbl').addEventListener('click',e=>{const p=e.target.dataset.bigdel;if(p==null)return;BIG.scans=BIG.scans.filter(w=>w.lotPath!==p);BIG.pairs=null;bigLots();bigRefresh();b5tabs()});
 $('#bigClear').onclick=()=>{BIG.scans=[];BIG.pairs=null;THUMB.clear();bigMsg([]);bigLots();bigRefresh();b5tabs()};
 $('#bigCsv').onclick=async()=>{const parts=bigCsv();if(parts)bigMsg([['ok','목록 CSV '+(await saveCsv(parts,`Defect_목록_${stamp()}.csv`,true)||'저장 취소')]])};

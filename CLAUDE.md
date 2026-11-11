@@ -84,6 +84,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     **Classify**(소유자 "classify 열 · 필터 · 정렬"): `COLS` 에 `rc`(reclassify) · `orc`(orgReclassify), `clsLoad`(ManReClassify.ini = 매칭 폴더 → Slot → 위쪽 폴더, `parseManRe` = [General] `코드=이름,Good/Defect,…`)
     → 2열(소유자 "첫번째 분류, 재분류 2열 — 각각 AND 필터"): `clsFirst`(첫번째 분류 = orgReclassify, 0 이면 reclassify) · `clsName`(재분류 = reclassify) · `clsText`(같으면 하나, 다르면 'A → B', 새 창 머리).
     5-1 열 2개(ID 다음, 정렬 키 `k1` · `k2`) · `#bigCls` 체크 2묶음(`BIG.clsOff1` · `clsOff2` = 끈 이름, 개수 표시, 묶음마다 모두 켜기/끄기) — `bigBuild` 는 두 묶음을 모두 통과한 것만(AND) · 5-2/5-3 열 2개 · CSV(첫번째분류 · 재분류) · 5-3 정보.
+    **Lot 제외**(소유자 2026-11-11 "5-1 에서 필터로 제외할 Lot 고르기"): `#bigLotBox`(접힌 상자, 요약 `#bigLotSum`) 안 Lot 마다 체크(Defect 수) · 모두 켜기/끄기, `BIG.lotOff`(뺀 lotPath) → `bigBuild` 가 건너뜀(목록 · CSV · 5-2 · 5-3 모두). Lot 고르기 select 와 같이 씀, 등록 [빼기]와 달리 다시 켜면 돌아옴.
     실제 zip: 29 = B R Surface Dark 334 · 28 = B R Other 19, 소유자 29126432EWE3 = 0 Accept · 원래 28/29. ManReClassify.ini 가 없으면 `#코드`.
     **매칭 파일 찾기**(소유자 "ColorImageGrabingInfo.ini 파일 자체를 못 찾는다", 2026-11-11): 종전 rev5 는 `getFileHandle` 으로 이름을 한 번만 물었고 실패를 '없음'으로 기억했다(대소문자 · 일시 오류 · 위쪽 폴더에 약함).
     지금 `dirFile`(이름으로 — '없음' 아닌 오류는 150 ms 뒤 한 번 더, 오류는 `dirErrs` 에) → `dirFind` = 없으면 `dirList`(폴더 목록 한 번, 대소문자 무시, 핸들마다 기억 · 5-1/5-2 공용, 프로그램 #48 `file_names` 와 같음).
