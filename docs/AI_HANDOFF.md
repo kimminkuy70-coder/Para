@@ -26,7 +26,9 @@
   소유자 S3LQR170XMG2 로 확인(Color 3장 창 전체). 시험 = 실제 zip 에서 Gray 사진 · 목록을 빼고 새 창 · 5-3 확인(사진 자리에 tests/colorgray_fixture 의 작은 JPEG).
 - 후속 6(소유자 "classify 열 추가 검토 · B R Other, B R Surface Dark 같은 것 필터 · 정렬"): 분류 = Surface.flt `reclassify`(현재) · `orgReclassify`(재분류 전, 0 = 없음) → ManReClassify.ini [General] 이름.
   실제 zip 29/28 → B R Surface Dark 334 · B R Other 19, S3LQR170XMG2 B R Other 2 · Surface Dark 1, 29126432EWE3 Accept 2(원래 28 · 29). 5-1 열 · 체크 필터 · 정렬 + 5-2/5-3 · CSV · 새 창. 시험 = 실제 zip 개수 · 필터(19) · 정렬 · CSV · 재분류 판.
-  남은 결정: 재분류된 Defect 를 원래 분류로도 거를지(지금은 현재 분류 기준).
+- 후속 7(소유자 "첫번째 분류, 재분류 2열로 만들어서 각각 and 조건으로 필터"): Classify 1열 → 첫번째 분류(`clsFirst` = orgReclassify, 0 이면 reclassify) · 재분류(`clsName` = reclassify) 2열.
+  5-1 체크 2묶음(`BIG.clsOff1` · `clsOff2`) AND, 열 제목 정렬 `k1` · `k2`, 5-2/5-3 열 · CSV(첫번째분류 · 재분류) · 5-3 정보, 새 창 머리는 'A → B'.
+  확인: 실제 zip(재분류 없음) 두 열 같음 334/19, 29126432EWE3 = B R Other → Accept · B R Surface Dark → Accept. 시험 = 화면 체크 클릭으로 353 → 19 → 0(AND) → 334, 재분류 판 AND = 1개(B R Other → Accept).
 - 남은 일: 소유자 PC(실제 사진 · 네트워크 드라이브)에서 rev5 5-1 → 5-2 → 사진 새 창 확인. 속도(5-1 이 Slot 마다 파일 2 ~ 3개를 더 읽음, 5-2 는 매칭 폴더 이름 목록 한 번)는 확인 전. colorgray.py 를 바꾸면 rev5 `15-0` 구역도 같이.
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
