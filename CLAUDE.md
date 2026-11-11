@@ -100,6 +100,15 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     찾는 곳: Slot → 하위 4단계(Surface.flt 있는 폴더 빼고) → 위쪽 폴더(그 아래 Slot 이 하나일 때만, `sl.under` · 파일 목록은 `up`) — 못 찾으면 `cgDiag`(파일 수 · 비슷한 이름 · 묻기 오류 · 찾아본 폴더 · [원본 폴더 경로]가 있으면 전체 경로 길이)를 `cgMiss` 로 5-1/5-2 알림에.
     `walkFast` 도 이름으로 못 찾으면 이미 만드는 목록에서 CI 확인. 시험: 대소문자 다름(NAS) · 일시 오류 1번 · 늘 오류 · 위쪽 폴더 · 두 Slot 공용(안 씀) · 진단 · 파일 목록 길 — 종전 HTML 은 앞 넷 모두 0/353.
     설정 없앰: `opts()` = `PIX`(0.7708) · `CTOL`(5) · coord 'xy' · 반전/Offset 없음(Step 1 ~ 4 도 같은 값), `#coordSrc/#pix/#ctol/#flipX/#flipY/#offX/#offY` · 5-2/5-3 거울 칸(`mirror`) · `BIG.stale`/`pairKey` 삭제. rev4 의 5-1 값 ↔ Step 1 값 안전장치(`fullLoad`)는 Step 5 에서 안 씀. 시험이 실제 zip 353개를 `param_manager/colorgray.py` 와 Defect 마다 비교.
+  · Step 5 **rev6**(2026-11-11, 소유자 세션 대화 "파일의 contrast 가 아니라 실제 흑백 이미지 픽셀의 gray level · 원형 영역 · 크기만 · 예시 이미지에 PPT 처럼 원을 그려 정함(가: Defect 가운데에서 바깥으로 끌기) · 최대 64 px · 사진에 원 표시 · 두 손잡이 바 · 조사 뒤 정렬 · 필터"):
+    **`AOI_Contrast_Wizard_rev6.html`**(시험 `node tools/test_contrast_wizard_rev6.mjs` = rev5 시험 + rev6 시험) = rev5 + 5-3 흑백 GL(원). rev5 이하 무변경.
+    `glProfile(gray, hit)` = Gray 프레임 **원본 픽셀**(Crop · 표시 그림 아님) 가운데 (cx, cy) = hit.px/py × 프레임크기/3168·1024(Crop · 빨간 네모와 같은 점), 원 안 = 픽셀 가운데 (x+.5, y+.5) 거리 ≤ r, 프레임 밖 뺌,
+    반지름 0.5 px 단계(칸 k = ceil(2d), 1 ~ `GL_K`=128) 누적 합 · 개수 → `p.glp` 기억 → `glMean(p, r)` · `glCount` 는 사진을 다시 읽지 않음(원 크기를 바꿔도 즉시). 값 = 0~255 단순 평균(흑백 JPEG R=G=B, 시험이 하나하나 센 값과 같음 확인).
+    `GLC{r(localStorage cw.glR, 기본 5.5, 최대 `GL_MAX`=64) · lo · hi · sort}`, 대상 `glCan` = 짝 완료 · Gray 만, [흑백 GL 측정] `glRun`(같은 Gray 프레임끼리 묶어 한 번 · 다음 프레임 미리 읽기 · 중지, 이미 잰 것 건너뜀), `b5Pair` 는 glp 를 이어받음.
+    5-3 목록 '흑백 GL 평균' 열(정렬 키 `gl`, 열 제목 = 높은/낮은 순) · `glApply`(상태 필터 뒤 범위 거르기 + 정렬 + 분포 막대 `glHist`) · 두 손잡이 `#glLo/#glHi`(input 마다 즉시) · 숫자 칸 `#glLoN/#glHiN` · 정렬 칸 `#glSort` · [범위 풀기]; 범위를 정하면 측정 안 된 · 흑백 없는 것은 숨김.
+    측정 원 그리기 창 `#glDlg`(`glDlgOpen/glDlgDraw/glDlgAt`): 고른 Defect(없으면 목록의 첫 흑백 Defect)의 원본 둘레를 ×4/8/16 각지게 크게 · 격자 · 원 안 픽셀 칠함(재는 규칙과 같음) · 노란 + = Defect, 가운데에서 끄는 거리 = r(0.5 단위), 휠 ±0.5, 픽셀 수 · 그 Defect 평균 바로 표시, [적용](Enter) `glSetR` · 취소(Esc).
+    `glRing` = 5-3 · 격자 · 새 창 · 엑셀 사진의 Gray Crop · 프레임에 측정 원(하늘색 점선, 표시 그림에만). 새 창 머리 · 5-3 정보 표에 GL, 최종 목록 엑셀 끝에 '흑백 GL 평균 (원)' · 'GL 원 반지름 px · 픽셀 수' 열(측정 안 했으면 저장 때 잼).
+    종전 5-3 'GL(Local 추정)'(`cgGL` = Defect 상자 평균 · ring) 은 그대로 둠 — 흑백 GL(원)과 다른 값.
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.
