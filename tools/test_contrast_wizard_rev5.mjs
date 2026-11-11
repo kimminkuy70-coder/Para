@@ -433,7 +433,7 @@ const [pw]=await Promise.all([page.waitForEvent('popup'),page.locator('#b5list .
 await pw.locator('#ff canvas').waitFor();
 const capOf=()=>pw.evaluate(()=>[...document.querySelectorAll('figcaption')].map(f=>({b:f.querySelector('b').textContent,pp:(f.querySelector('.pp')||{}).textContent||'',text:f.textContent,tip:f.title})));
 const pw1=await pw.evaluate(()=>({hd:document.getElementById('hd').textContent,
-  c:!!document.querySelector('#fc canvas'),x:[document.querySelector('#fx canvas').width,document.querySelector('#fx canvas').height],tables:document.querySelectorAll('table,dl,input,button').length}));
+  c:!!document.querySelector('#fc canvas'),x:[document.querySelector('#fx canvas').width,document.querySelector('#fx canvas').height],tables:document.querySelectorAll('table,dl,button,input:not(#pwLock)').length}));
 assert.match(pw1.hd,/^1 \/ 2 · LOT_CA27 · W01 · ID \d+ · #0 · Contrast /);   // 분류도 머리에
 assert.doesNotMatch(pw1.hd,/원본 폴더 경로/);
 // 사진 파일명 + 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도") — 칸 제목(사진 위, 사진을 가리지 않음), 마우스를 올려도 경로
@@ -490,6 +490,25 @@ assert.equal((await zoomOf()).z,1);await pw.keyboard.press('End');await pw.locat
 await pw.locator('#fx canvas').click();await pw.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();   // 사진을 눌러 원래 크기로 봐도 키는 그대로
 await page.locator('#b5list').focus();await page.keyboard.press('ArrowRight');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();   // 목록 → 도 새 창을 바꿈
 await page.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();
+// 확대 · 위치 고정(소유자 "가운데만 크롭해서 보게 — 배율과 위치를 고정, 고정 체크박스"): 켜면 다음 Defect 도 같은 배율 · 같은 곳(프레임은 Defect 를 따라감), 끄면 창 맞춤
+const lockOf=()=>pw.evaluate(()=>{const c=window.opener.__cw,o={};for(const id of ['fx','ff']){const cv=document.querySelector('#'+id+' canvas'),[x,y]=c.pwCenter(cv),a=cv._anchor||[0,0];o[id]={z:+cv._z.toFixed(4),dx:+(x-a[0]).toFixed(3),dy:+(y-a[1]).toFixed(3)}}
+  o.on=document.getElementById('pwLock').checked;o.zb=document.querySelector('#fx .zb').textContent;return o});
+assert.equal((await lockOf()).on,false);
+await pw.locator('#fx canvas').click();await pw.locator('#fx canvas').click();
+{const b=await pw.locator('#fx .im').boundingBox();await pw.mouse.move(b.x+b.width/2,b.y+b.height/2);await pw.mouse.down();await pw.mouse.move(b.x+b.width/2-80,b.y+b.height/2-40,{steps:5});await pw.mouse.up()}   // 끌어서 보는 곳 옮김
+await pw.locator('#ff canvas').click();
+await pw.locator('#pwLock').check();const L1=await lockOf();assert.equal(L1.on,true);assert.equal(L1.fx.z,4);assert.equal(L1.ff.z,2);assert.match(L1.zb,/🔒 고정/);
+assert.ok(Math.abs(L1.fx.dx-0.5)>0.01,JSON.stringify(L1));   // 끌어서 가운데가 아님
+await pw.keyboard.press('ArrowDown');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();await pw.locator('#ff canvas').waitFor();
+const L2=await lockOf();assert.deepEqual([L2.fx.z,L2.ff.z],[4,2]);
+for(const id of ['fx','ff'])for(const k of ['dx','dy'])assert.ok(Math.abs(L2[id][k]-L1[id][k])<0.01,`${id}.${k} ${L1[id][k]} → ${L2[id][k]}`);
+assert.equal(await page.evaluate(()=>localStorage.getItem('cw.pwLock')),'1');
+await pw.locator('#fx canvas').click({button:'right'});await pw.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();await pw.locator('#ff canvas').waitFor();
+assert.equal((await lockOf()).fx.z,2);   // 고정 중에 바꾼 배율도 따라감
+await pw.keyboard.press('f');const L3=await lockOf();assert.equal(L3.on,false);assert.doesNotMatch(L3.zb,/고정/);   // F = 고정 켜고 끄기
+await pw.keyboard.press('ArrowDown');await pw.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();await pw.locator('#ff canvas').waitFor();
+assert.deepEqual([(await lockOf()).fx.z,(await lockOf()).ff.z],[1,1]);assert.equal(await page.evaluate(()=>localStorage.getItem('cw.pwLock')),'0');
+await pw.keyboard.press('ArrowUp');await pw.locator('#hd',{hasText:/^1 \/ 2/}).waitFor();
 // 새 창을 새로 고침(F5) → 빈 창은 다른 출처라 손댈 수 없음 → 다음 이동 때 닫고 새 창으로 다시 그림
 await pw.reload();const [pw2]=await Promise.all([page.waitForEvent('popup'),(async()=>{await page.locator('#b5list').focus();await page.keyboard.press('ArrowDown')})()]);
 await pw2.locator('#hd',{hasText:/^2 \/ 2/}).waitFor();await pw2.locator('#fx canvas').waitFor();assert.equal(pw.isClosed(),true);

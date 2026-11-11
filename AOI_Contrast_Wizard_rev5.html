@@ -2105,15 +2105,32 @@ function pwSet(el,z,ax,ay){const im=el.parentNode,doc=el.ownerDocument,fit=pwFit
     const r1=el.getBoundingClientRect();im.scrollLeft+=r1.left+fxp*r1.width-ax;im.scrollTop+=r1.top+fyp*r1.height-ay}
   const f=im.parentNode,zb=f&&f.querySelector('.zb');if(zb){const pct=Math.round(fit*el._z*100);zb.textContent=el._z>1?`확대 ×${el._z>=10?Math.round(el._z):+el._z.toFixed(1)} · 원래 크기의 ${pct}%`:'';zb.hidden=el._z<=1}
   return el._z}
+/** 확대 · 위치 고정(소유자 "가운데만 크롭해서 볼 수 있게 — 확대 배율과 위치를 고정해 놓고 보면 될 것 같다, 고정 체크박스").
+ *  켜면 칸마다(fc Color · fx Gray Crop · ff Gray 프레임) 배율 z 와 보는 곳(칸 가운데가 사진의 어디인지, 사진 비율 0 ~ 1)을 기억하고 다음 Defect 에 그대로 쓴다.
+ *  보는 곳은 기준점(el._anchor)에서 떨어진 만큼 — Color · Crop 은 기준점 (0, 0) = 사진의 같은 자리, 프레임은 기준점 = Defect 자리(Defect 마다 프레임 안 위치가 달라서 Defect 를 따라감).
+ *  기억은 사람이 확대 · 축소 · 끌기 · Esc 할 때만 고친다(사진을 바꿀 때 생기는 스크롤로는 안 고침). 이 PC 에 기억(localStorage cw.pwLock · cw.pwLockV). */
+const PWL={on:false,v:{}};try{PWL.on=localStorage.getItem('cw.pwLock')==='1';PWL.v=JSON.parse(localStorage.getItem('cw.pwLockV')||'{}')||{}}catch(e){}
+function pwLockSave(){try{localStorage.setItem('cw.pwLock',PWL.on?'1':'0');localStorage.setItem('cw.pwLockV',JSON.stringify(PWL.v))}catch(e){}}
+/** 칸 가운데가 사진의 어디인지(사진 비율). */
+function pwCenter(el){const im=el.parentNode,r=el.getBoundingClientRect(),b=im.getBoundingClientRect();return [r.width?(b.left+b.width/2-r.left)/r.width:.5,r.height?(b.top+b.height/2-r.top)/r.height:.5]}
+function pwRemember(el){if(!PWL.on||!el._pid||!el.isConnected)return;const a=el._anchor||[0,0],[cx,cy]=pwCenter(el);
+  PWL.v[el._pid]={z:el._z||1,dx:cx-a[0],dy:cy-a[1]};pwLockSave();pwBadge(el)}
+/** 고정이 켜져 있으면 기억한 배율 · 보는 곳을 새 사진에 적용(칸에 붙인 뒤 부름). */
+function pwApply(el){const v=PWL.on&&PWL.v[el._pid];if(!v)return pwBadge(el);pwSet(el,v.z);
+  if(el._z>1){const a=el._anchor||[0,0],im=el.parentNode,r=el.getBoundingClientRect(),b=im.getBoundingClientRect(),fx=Math.max(0,Math.min(1,a[0]+v.dx)),fy=Math.max(0,Math.min(1,a[1]+v.dy));
+    im.scrollLeft+=r.left+fx*r.width-(b.left+b.width/2);im.scrollTop+=r.top+fy*r.height-(b.top+b.height/2)}
+  pwBadge(el)}
+function pwBadge(el){const f=el.parentNode&&el.parentNode.parentNode,zb=f&&f.querySelector('.zb');if(!zb)return;
+  if(PWL.on&&!/고정/.test(zb.textContent)){zb.textContent=(el._z>1?zb.textContent+' · ':'')+'🔒 고정';zb.hidden=false}}
 function pwZoom(el){el._z=1;let dn=null,moved=false;   // 끌기 = 포인터 잡기(setPointerCapture) — 창 문서에 이벤트를 쌓지 않는다
   el.addEventListener('pointerdown',e=>{if(e.button!==0)return;dn={x:e.clientX,y:e.clientY,sl:el.parentNode.scrollLeft,st:el.parentNode.scrollTop};moved=false;try{el.setPointerCapture(e.pointerId)}catch(x){}e.preventDefault()});
   el.addEventListener('pointermove',e=>{if(!dn)return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;if(Math.abs(dx)+Math.abs(dy)>4)moved=true;
     if(moved&&el._z>1){el.parentNode.scrollLeft=dn.sl-dx;el.parentNode.scrollTop=dn.st-dy;el.parentNode.classList.add('drag')}});
-  const up=()=>{if(dn)el.parentNode&&el.parentNode.classList.remove('drag');dn=null};el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);
+  const up=()=>{if(dn){el.parentNode&&el.parentNode.classList.remove('drag');if(moved)pwRemember(el)}dn=null};el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);
   el.addEventListener('click',e=>{if(moved){moved=false;return}const zmax=Math.max(1,PZ_MAX/pwFit(el));
-    if(e.shiftKey)pwSet(el,el._z/2,e.clientX,e.clientY);else pwSet(el,el._z>=zmax-1e-6?1:el._z*2,e.clientX,e.clientY)});
-  el.addEventListener('contextmenu',e=>{e.preventDefault();pwSet(el,el._z/2,e.clientX,e.clientY)});
-  el.addEventListener('wheel',e=>{e.preventDefault();pwSet(el,el._z*(e.deltaY<0?1.25:0.8),e.clientX,e.clientY)},{passive:false});
+    if(e.shiftKey)pwSet(el,el._z/2,e.clientX,e.clientY);else pwSet(el,el._z>=zmax-1e-6?1:el._z*2,e.clientX,e.clientY);pwRemember(el)});
+  el.addEventListener('contextmenu',e=>{e.preventDefault();pwSet(el,el._z/2,e.clientX,e.clientY);pwRemember(el)});
+  el.addEventListener('wheel',e=>{e.preventDefault();pwSet(el,el._z*(e.deltaY<0?1.25:0.8),e.clientX,e.clientY);pwRemember(el)},{passive:false});
   return el}
 const cgBmpCache=new LRU(24,p=>p.then(b=>b&&b.close&&b.close()).catch(()=>{}));
 /** 매칭 폴더의 사진 하나 → ImageBitmap(최근 24장 기억). 못 읽으면 null 이고 기억하지 않는다(다시 누르면 다시 읽음). */
@@ -2165,16 +2182,23 @@ function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray'
     .im.drag,.im.drag>canvas{cursor:grabbing}figure{position:relative}.zb{position:absolute;right:8px;bottom:8px;background:rgba(22,26,34,.85);color:#ffe08a;font-size:12px;padding:2px 8px;border-radius:4px;pointer-events:none}
     .ms{color:#ff9a92;padding:10px}
     .pv.conly{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}.pv.conly #fx,.pv.conly #ff{display:none}.hd .ng{color:#ffb37a;font-weight:600}
+    .tb{flex:none;display:flex;align-items:center;gap:8px;padding:3px 10px 0}.tb .hd{flex:1;min-width:0;padding:0}
+    .lk{flex:none;display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:4px;background:#222a36;color:#eee;font-weight:700;cursor:pointer;white-space:nowrap}.lk.on{background:#a3e635;color:#12244a}.lk input{margin:0}
     .hd .pk{padding:0 6px;border-radius:4px;font-weight:700}.hd .pk.on{background:#a3e635;color:#12244a}.hd .pk.off{background:#333;color:#bbb}</style>`);
   doc.body.tabIndex=-1;
   // 칸 = 제목(사진 파일명 + 전체 경로, 사진을 가리지 않게 위에) + 사진
-  doc.body.innerHTML=`<div class="hd" id="hd"></div><div class="pv"><figure id="fc"><figcaption>Color</figcaption><div class="im"></div><div class="zb" hidden></div></figure><figure id="fx"><figcaption>Gray Crop (Color 시야)</figcaption><div class="im"></div><div class="zb" hidden></div></figure>`
+  doc.body.innerHTML=`<div class="tb"><label class="lk" id="lkL" title="켜면 지금 칸마다의 확대 배율과 보는 곳을 다음 Defect 에도 그대로 씁니다(Color · Gray Crop = 사진의 같은 자리, Gray 프레임 = Defect 를 따라감). 끄면 사진을 바꿀 때 창 맞춤."><input type="checkbox" id="pwLock"> 🔒 확대 · 위치 고정</label><div class="hd" id="hd"></div></div><div class="pv"><figure id="fc"><figcaption>Color</figcaption><div class="im"></div><div class="zb" hidden></div></figure><figure id="fx"><figcaption>Gray Crop (Color 시야)</figcaption><div class="im"></div><div class="zb" hidden></div></figure>`
     +`<figure id="ff" class="wide"><figcaption>Gray 프레임</figcaption><div class="im"></div><div class="zb" hidden></div></figure></div>`;
   doc.addEventListener('keydown',e=>{const V=PW.V;if(!V||!V.n||e.ctrlKey||e.altKey||e.metaKey)return;const k=e.key.length===1?e.key.toLowerCase():e.key,
       mv={ArrowDown:1,ArrowRight:1,PageDown:1,j:1,ArrowUp:-1,ArrowLeft:-1,PageUp:-1,k:-1}[k];
     if(mv){vtGo(V,Math.max(0,Math.min(V.n-1,V.sel+mv)));e.preventDefault()}else if(k==='Home'||k==='End'){vtGo(V,k==='Home'?0:V.n-1);e.preventDefault()}
     else if(k===' '){pickToggle(PW.items[V.sel]);e.preventDefault()}
-    else if(k==='Escape'||k==='0'){doc.querySelectorAll('.im>canvas').forEach(c=>pwSet(c,1));e.preventDefault()}});
+    else if(k==='Escape'||k==='0'){doc.querySelectorAll('.im>canvas').forEach(c=>{pwSet(c,1);pwRemember(c)});e.preventDefault()}
+    else if(k==='f'||k==='l'){const b=doc.getElementById('pwLock');b.checked=!b.checked;b.dispatchEvent(new Event('change'));e.preventDefault()}});
+  {const b=doc.getElementById('pwLock'),L=doc.getElementById('lkL');b.checked=PWL.on;L.classList.toggle('on',PWL.on);
+    // 켜는 순간 지금 보이는 배율 · 보는 곳을 기억, 끄면 기억을 지움(다음 사진부터 창 맞춤)
+    b.addEventListener('change',()=>{PWL.on=b.checked;L.classList.toggle('on',PWL.on);PWL.v={};if(PWL.on)doc.querySelectorAll('.im>canvas').forEach(c=>pwRemember(c));pwLockSave();
+      doc.querySelectorAll('.im>canvas').forEach(c=>{const zb=c.parentNode.parentNode.querySelector('.zb');if(zb&&!PWL.on){zb.textContent=zb.textContent.replace(/( · )?🔒 고정$/,'');zb.hidden=!(c._z>1)}else pwBadge(c)});try{doc.body.focus()}catch(e){}})}
   try{doc.body.focus()}catch(e){}}
 function photoWinFollow(V){if(PW.w&&!PW.w.closed&&PW.V===V)photoWinShow()}
 /** 새 창 문서(손댈 수 없으면 null — 새 창을 새로 고침(F5)하면 빈 창이 다른 출처가 된다). */
@@ -2188,7 +2212,7 @@ async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w)
   const cap=(f,h,title)=>{f.cap.innerHTML=h;f.cap.title=title||''};
   if(!p){$w('hd').textContent='보여 줄 Defect 가 없습니다';cap(fc,'Color');cap(fx,'Gray Crop (Color 시야)');cap(ff,'Gray 프레임');return}
   const s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),ms=(f,t)=>f.im.insertAdjacentHTML('beforeend',`<p class="ms">${esc(t)}</p>`),zoom=pwZoom;
-  $w('hd').innerHTML=`${V.sel+1} / ${V.n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · <b>${esc(clsText(s,i))}</b> · Contrast ${f2(C.c[i])} ${pickBadge(p)} <i>(↑↓ ←→ 이전 · 다음 · Space = 최종 목록 ☑/☐ · 사진 누르기 = 2배씩 확대(Shift · 오른쪽 = 축소, 휠 · 끌기) · Esc = 창 맞춤)</i>`
+  $w('hd').innerHTML=`${V.sel+1} / ${V.n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · <b>${esc(clsText(s,i))}</b> · Contrast ${f2(C.c[i])} ${pickBadge(p)} <i>(↑↓ ←→ 이전 · 다음 · Space = 최종 목록 ☑/☐ · F = 확대 · 위치 고정 · 사진 누르기 = 2배씩 확대(Shift · 오른쪽 = 축소, 휠 · 끌기) · Esc = 창 맞춤)</i>`
     +(pcBaseSet()?'':' <i style="color:#e0b060">· 전체 경로: 5-1 의 [원본 폴더 경로(PC)] 를 적으면 PC 경로로 나옵니다(지금은 고른 폴더부터)</i>');
   // 사진 파일명 + 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도") — 경로는 사진을 실제로 찾은 곳(없으면 매칭 폴더 + 이름)
   const cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'',rel=pcBaseSet()?'':' rel';
@@ -2198,13 +2222,14 @@ async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w)
   cap(ff,`Gray 프레임 · <b>${esc(gn||'없음')}</b>${r.hit?` · 픽셀 (${f1(r.hit.px)}, ${f1(r.hit.py)})`:''} <i>· 빨간 네모 = Defect · 노란 상자 = Crop 범위</i>${pl(gp)}`,gp);
   const draw=b=>{const cv=doc.createElement('canvas');cv.width=b.width;cv.height=b.height;cv.getContext('2d').drawImage(b,0,0);zoom(cv);return cv};
   const cb=r.c?await cgBitmap(s,r.c.file):null;if(tk!==PW.tok)return;
-  if(cb)fc.im.append(draw(cb));else ms(fc,r.c?`Color 파일 없음: ${cleanName(r.c.file)}`:(p.cerr||r.why||'Color 항목 없음'));
+  if(cb){const c=draw(cb);c._pid='fc';fc.im.append(c);pwApply(c)}else ms(fc,r.c?`Color 파일 없음: ${cleanName(r.c.file)}`:(p.cerr||r.why||'Color 항목 없음'));
   // Gray 가 없으면(Color 사진만 저장된 Slot 등) Color 를 창 전체에 크게(소유자 "Color 이미지만 있을 경우에도 Color 이미지만이라도 띄워야")
   const conly=why=>{if(!cb){ms(fx,why);return}pv.classList.add('conly');why=why.replace(/^Gray:\s*/,'');$w('hd').insertAdjacentHTML('beforeend',` <b class="ng" title="${esc(why)}">· Gray 없음 — Color 만 크게 (${esc(why)})</b>`)};
   if(!r.hit){conly(p.gerr||`Gray: ${r.why||'위치 없음'}`);return}
   const gb=await cgBitmap(s,r.hit.frame.file);if(tk!==PW.tok)return;
   if(!gb){conly(`Gray 파일 없음: ${cleanName(r.hit.frame.file)}`);return}
-  const dd=bigDef(s,i),cs=r.crop||cgCropSize({}),k=cgCropCanvas(gb,r.hit,cs,doc,dd);zoom(k.canvas);fx.im.append(k.canvas);const fr=cgFrameCanvas(gb,r.hit,cs,doc,dd);zoom(fr);ff.im.append(fr);
+  const dd=bigDef(s,i),cs=r.crop||cgCropSize({}),k=cgCropCanvas(gb,r.hit,cs,doc,dd);zoom(k.canvas);k.canvas._pid='fx';fx.im.append(k.canvas);pwApply(k.canvas);
+  const fr=cgFrameCanvas(gb,r.hit,cs,doc,dd);zoom(fr);fr._pid='ff';fr._anchor=[r.hit.px/CG.GW,r.hit.py/CG.GH];ff.im.append(fr);pwApply(fr);   // 프레임은 Defect 자리를 기준으로 고정
   for(let j=V.sel+1;j<=V.sel+2&&j<PW.items.length;j++){const q=PW.items[j],rq=q.r||cgOf(q.s,q.i);if(rq.c)cgBitmap(q.s,rq.c.file);if(rq.hit)cgBitmap(q.s,rq.hit.frame.file)}}
 
 // ── 5-3: 사진 정밀 조사 ────────────────────────────────────────────────
@@ -2462,7 +2487,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>
