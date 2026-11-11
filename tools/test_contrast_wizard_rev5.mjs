@@ -546,7 +546,17 @@ assert.ok(xlChk.rows.slice(1).every(r=>/\.c\.\d\.jpeg$/.test(r[20])&&/\.t\.\d\.j
 // 다시 확인(5-2)을 해도 같은 Defect 의 ☑ 는 남음
 await page.evaluate(()=>window.__cw.b5Pair());await page.waitForFunction(()=>document.getElementById('busy').hidden);assert.equal(await page.evaluate(()=>window.__cw.pickList().length),2);
 await page.locator('#c5pickNone').click();assert.equal(await pickN(),'☑ 0개');
-await page.locator('#b5okOnly').uncheck();assert.equal(await page.locator('#c5list .br').count(),7);
+// 5-3 사진 상태 체크(소유자 "Color 만 · 짝 매칭 · 흑백만 구분해서 볼 수 있게"): 기본 = 짝 완료 · Color 만 · Gray 만, 하나씩 켜면 그 상태만, 개수 표시
+const stBox=k=>page.locator(`#c5stF [data-st5="${k}"]`),stOf=()=>page.evaluate(()=>window.__cw.C5.items.map(p=>p.st));
+const n5=await page.$$eval('#c5stF [data-n5]',x=>Object.fromEntries(x.map(e=>[e.dataset.n5,+e.textContent.replace(/[(),]/g,'')])));
+const want5=await page.evaluate(()=>{const n={ok:0,color:0,gray:0,none:0};for(const p of window.__cw.BIG.pairs)if(p.st!=='skip')n[p.st]++;return n});
+assert.deepEqual(n5,want5);assert.equal(Object.values(n5).reduce((a,b)=>a+b),7);assert.ok(n5.ok>0&&n5.none>0,JSON.stringify(n5));
+assert.deepEqual(await Promise.all(['ok','color','gray','none'].map(k=>stBox(k).isChecked())),[true,true,true,false]);
+assert.match(await page.locator('#c5cnt').innerText(),/\(사진 있는 것만\)/);
+for(const only of ['ok','color','gray','none']){for(const k of ['ok','color','gray','none'])await stBox(k).setChecked(k===only);
+  const st=await stOf();assert.equal(st.length,n5[only]);assert.ok(st.every(x=>x===only),only+' '+st);assert.equal(await page.locator('#c5list .br').count(),n5[only]);
+  assert.match(await page.locator('#c5cnt').innerText(),new RegExp(`^Defect ${n5[only]}개 \\(${{ok:'짝 완료',color:'Color 만',gray:'Gray 만',none:'둘 다 없음'}[only]}\\)`))}
+await stBox('ok').check();await stBox('color').check();await stBox('gray').check();assert.equal(await page.locator('#c5list .br').count(),7);assert.match(await page.locator('#c5cnt').innerText(),/^Defect 7개 · /);
 // 모두 미리 준비(로딩창) → 격자
 await page.evaluate(()=>window.__cw.THUMB.clear());await page.locator('#b5prep').click();
 await page.waitForFunction(()=>document.getElementById('busy').hidden&&window.__cw.THUMB.size===7);

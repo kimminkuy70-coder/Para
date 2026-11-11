@@ -146,6 +146,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 .g5.st-ok{border-left-color:var(--keep)}.g5.st-none{border-left-color:var(--gone)}.g5.st-color,.g5.st-gray{border-left-color:var(--new)}
 .biglist .br.pk{background:color-mix(in srgb,var(--ok) 14%,transparent)}.biglist .br span.pk{text-align:center;font-weight:700;cursor:pointer}.biglist .br.pk span.pk{color:var(--ok)}
 .g5.pk{outline:3px solid var(--ok);outline-offset:-3px}.c5pick{font-weight:700}
+.c5stF{display:inline-flex;flex-wrap:wrap;gap:4px 10px;align-items:center}.c5stF label{white-space:nowrap}.c5stF i{font-style:normal;color:var(--muted)}
 .g5 .gh{font-size:12px;padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .g5 .gi{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:#000}
 .g5 .gi>div{aspect-ratio:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
@@ -344,7 +345,11 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <div id="b5p3" hidden>
     <div class="card">
       <div class="row"><div class="viewtabs"><button data-v5="one" aria-pressed="true">하나씩 크게</button><button data-v5="grid">격자로 여러 개</button></div>
-        <label title="Color 사진이나 Gray 사진 중 하나라도 있는 Defect(짝 완료 · Color 만 · Gray 만) — Color 사진만 있어도 보입니다"><input type="checkbox" id="b5okOnly" checked> 사진 있는 것만</label>
+        <span id="c5stF" class="c5stF" title="사진 상태로 골라 보기(여러 개 켜면 모두 보임) — 소유자: Color 만 · 짝 매칭 · 흑백만 구분해서 보기">보기:
+          <label><input type="checkbox" data-st5="ok" checked> 짝 완료 <i data-n5="ok"></i></label>
+          <label><input type="checkbox" data-st5="color" checked> Color 만 <i data-n5="color"></i></label>
+          <label><input type="checkbox" data-st5="gray" checked> 흑백(Gray) 만 <i data-n5="gray"></i></label>
+          <label><input type="checkbox" data-st5="none"> 둘 다 없음 <i data-n5="none"></i></label></span>
         <button id="b5prep">이 목록 사진 모두 미리 준비</button><button id="toB2b">← 5-2</button>
         <span class="muted" id="c5cnt"></span></div>
       <div class="row" title="소유자 #68: 목록에서 줄을 고르고 Space = 최종 목록에 넣기/빼기(☑). 사진 새 창에서도 Space. 엑셀에는 ☑ 한 Defect 만, 사진(Color · Gray Crop · Gray 프레임)을 넣어 저장합니다.">
@@ -2211,8 +2216,14 @@ const VC=makeVT($('#c5list'),[['최종',46,'pk',null],['5-1 #',60,'num',null],['
 $('#c5list').addEventListener('click',e=>{const c=e.target.closest('.br>span.pk');if(c)pickToggle(C5.items[+c.parentNode.dataset.k])});
 /** 5-3 목록: [사진 있는 것만] = Color 나 Gray 사진 중 하나라도 있는 것(소유자 "Color 이미지만 있을 경우에도 Color 이미지만이라도 띄워야") — 종전 '짝 완료만'은 Color 만인 Defect 를 숨겼다. */
 const hasPhoto=p=>p.st==='ok'||p.st==='color'||p.st==='gray';
-function c5Refresh(keep){const ok=$('#b5okOnly').checked;C5.items=(BIG.pairs||[]).filter(p=>p.st!=='skip'&&(!ok||hasPhoto(p)));vtSet(VC,C5.items.length,keep);
-  $('#c5cnt').textContent=`Defect ${C5.items.length.toLocaleString()}개${ok?' (사진 있는 것만)':''} · 사진 준비 끝 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`+(C5.note?' · '+C5.note:'');C5.note='';
+/** 5-3 사진 상태 필터(소유자: "Color 만 · 짝 매칭 · 흑백만 구분해서 볼 수 있게 체크박스"): 켠 상태만 보인다. 기본 = 짝 완료 · Color 만 · Gray 만(종전 [사진 있는 것만]과 같음). */
+const ST5_LAB={ok:'짝 완료',color:'Color 만',gray:'Gray 만',none:'둘 다 없음'};
+const c5StOn=()=>new Set([...document.querySelectorAll('#c5stF [data-st5]')].filter(x=>x.checked).map(x=>x.dataset.st5));
+function c5StText(on){const k=Object.keys(ST5_LAB).filter(x=>on.has(x));if(k.length===4)return '';if(k.length===3&&!on.has('none'))return ' (사진 있는 것만)';return ` (${k.length?k.map(x=>ST5_LAB[x]).join(' · '):'보기를 하나도 안 켬'})`}
+function c5Refresh(keep){const on=c5StOn(),P=(BIG.pairs||[]).filter(p=>p.st!=='skip'),n={};for(const p of P)n[p.st]=(n[p.st]||0)+1;
+  document.querySelectorAll('#c5stF [data-n5]').forEach(x=>x.textContent=`(${(n[x.dataset.n5]||0).toLocaleString()})`);
+  C5.items=P.filter(p=>on.has(p.st));vtSet(VC,C5.items.length,keep);
+  $('#c5cnt').textContent=`Defect ${C5.items.length.toLocaleString()}개${c5StText(on)} · 사진 준비 끝 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`+(C5.note?' · '+C5.note:'');C5.note='';
   $('#c5one').hidden=C5.mode!=='one';$('#c5gridBox').hidden=C5.mode!=='grid';$$('[data-v5]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v5===C5.mode));
   if(C5.mode==='one')c5Show();else c5Grid();if(PW.V===VC)PW.items=C5.items;pickInfo()}
 /** 진행 기록 줄(5-3 사진 하나): 지금 무엇을 읽는지 · 끝난 것 · 걸린 시간. 진행 중인 줄은 0.2초마다 시간이 올라간다(멈추면 응답 기다리는 중). */
@@ -2387,7 +2398,7 @@ function zipStore(files,type){const te=new TextEncoder(),parts=[],cen=[];let off
 function b5tabs(){const b=$$('[data-b5]');b[1].disabled=!BIG.scans.length;b[2].disabled=!(BIG.pairs&&BIG.pairs.some(p=>p.st!=='skip'));b.forEach(x=>x.setAttribute('aria-pressed',+x.dataset.b5===BIG.stage))}
 function b5go(n){BIG.stage=n;[1,2,3].forEach(k=>$('#b5p'+k).hidden=k!==n);b5tabs();
   if(n===1){bigLots();bigRefresh();$('#bigList').focus()}else if(n===2){b5Refresh();$('#b5list').focus()}
-  else{const P=BIG.pairs||[];if($('#b5okOnly').checked&&!P.some(hasPhoto)&&P.some(p=>p.st!=='skip')){$('#b5okOnly').checked=false;C5.note='사진이 있는 Defect 가 하나도 없어 [사진 있는 것만]을 껐습니다 — 둘 다 없음도 보입니다.'}
+  else{const P=BIG.pairs||[];const on=c5StOn();if(!P.some(p=>p.st!=='skip'&&on.has(p.st))&&P.some(p=>p.st!=='skip')){const el=document.querySelector('#c5stF [data-st5="none"]');if(!on.has('none')&&P.some(p=>p.st==='none')){el.checked=true;C5.note='보이는 Defect 가 없어 [둘 다 없음]을 켰습니다.'}}
     c5Refresh();$('#c5list').focus()}}
 const curVT=()=>BIG.stage===1?VA:BIG.stage===2?VB:(C5.mode==='one'?VC:null);
 $$('[data-b5]').forEach(b=>b.onclick=()=>b5go(+b.dataset.b5));
@@ -2405,7 +2416,7 @@ $('#b5pair').onclick=()=>b5Start(false);
 $('#b5csv').onclick=async()=>{const r=await saveCsv(pairCsv(),csvName(),true);if(r)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg ok">CSV ${esc(r)}</div>`)};
 $('#b5show').addEventListener('change',b5Refresh);
 $('#toB1').onclick=()=>b5go(1);$('#toB3').onclick=()=>b5go(3);$('#toB2b').onclick=()=>b5go(2);
-$('#b5okOnly').addEventListener('change',()=>c5Refresh());
+$('#c5stF').addEventListener('change',()=>c5Refresh());
 $$('[data-v5]').forEach(b=>b.onclick=()=>{C5.mode=b.dataset.v5;c5Refresh(true)});
 $('#c5prev').onclick=()=>{C5.page--;c5Grid()};$('#c5next').onclick=()=>{C5.page++;c5Grid()};
 $('#c5grid').addEventListener('click',e=>{const el=e.target.closest('.g5');if(!el)return;C5.mode='one';VC.sel=+el.dataset.k;c5Refresh(true);vtGo(VC,VC.sel,true)});

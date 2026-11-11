@@ -96,7 +96,7 @@
     - **매칭 파일이 다 없어도 됩니다**(소유자 확정: ColorImageGrabingInfo.ini 는 항상 있음 · ScanResultImageList.txt 는 없을 수 있음 · 변환 파일이 `frameToChuckPlane.1.ini` · `.2.ini` 둘이면 .2 기준). 프로그램 파일이 있으면 프로그램 계산 그대로이고, 없는 것만 대신 계산합니다.
       ScanResultImageList.txt 없음 → **Gray 사진 이름**(`-56211.70388.t.jpeg` = 프레임 가운데의 장비 Table 좌표)을 `Wafer2Table.ini` 로 웨이퍼 좌표로 바꿈(없으면 `s_FrameData.dat` 의 같은 프레임). 변환 파일이 번호 파일 여러 개면 레시피 번호가 같은 파일(예: Color RecipeNumber 2 → `.2`), 맞는 번호가 없으면 가장 큰 번호, 하나도 없으면 '목록 좌표 = 프레임 가운데' 모델.
       **Color 사진만 있는 Slot**(Gray 사진 · 목록이 저장되지 않음)도 Color 는 연결해 목록 · 새 창 · 5-3 에 보여 줍니다(상태 'Color 만'). Gray 가 없으면 새 창은 **Color 를 창 전체에 크게** 띄우고 위에 'Gray 없음 — Color 만 크게'와 이유를,
-      5-3 은 Color 를 칸 전체에 띄웁니다. 5-3 의 [사진 있는 것만](기본)은 Color 나 Gray 중 하나라도 있으면 보여 줍니다.
+      5-3 은 Color 를 칸 전체에 띄웁니다. 5-3 위 **보기 체크**(짝 완료 · Color 만 · 흑백(Gray) 만 · 둘 다 없음, 옆에 개수)로 사진 상태별로 골라 봅니다 — 여러 개 켜면 모두 보이고, 기본은 앞 셋(= 사진 있는 것만)입니다. 보이는 Defect 가 없고 '둘 다 없음'만 있으면 그것을 자동으로 켭니다.
       실제 결과 폴더에서 파일을 빼고 시험: 모두 353/353 같은 Gray 프레임, 픽셀 차 최대 2.6 px(사진 이름 + Wafer2Table) · 0 px(+ s_FrameData) · 0.13 px(변환 파일 없음). 무엇으로 계산했는지는 5-1 알림 · Slot 별 결과 표 · CSV 에 나옵니다. 대신할 것도 없으면 짝을 만들지 않고 이유를 알립니다.
       참고: Para 프로그램의 Color · Gray 매칭(원 v16 부터)은 세 파일이 모두 있어야 Wafer 폴더로 인식합니다(사진만으로는 매칭하지 않음). 이 대신 계산은 rev5 HTML 에만 있습니다.
     - **첫번째 분류 · 재분류(결함 종류 2열)**: Surface.flt 의 분류 코드를 `ManReClassify.ini` 의 이름(예: B R Surface Dark, B R Other)으로 바꿔 5-1 목록(ID 다음 두 칸) · 5-2 · 5-3 · CSV 에 보여 줍니다.
