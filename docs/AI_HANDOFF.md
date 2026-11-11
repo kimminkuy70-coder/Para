@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #64 v13.0.1: 설치 zip 에 실행 .bat · Python 라이선스 답 · 릴리스 (2026-11-11 KST, `version_v13`)
+
+- 마지막 갱신 2026-11-11 · 기준 커밋 `cbb8de9` · 이슈 #64("v13.0.1 업데이트 사항"). 첨부 없음.
+- **소유자 결정(2026-11-11)**: #62 의 안 2 채택 — "pythonw.exe … .pyw 명령을 사람이 치기 어려우니 간단하게 .bat 으로". 그리고 "해당 사항 없으면 v13.0.1 로 최종 만들고 릴리스, 이 릴리스 파일로 사용자 배포".
+- 구현: `tools/build_install.py` 가 설치 zip 맨 위에 `Camtek_AOI_manager.bat`(ASCII · CRLF, `@echo off` + `start "" "%~dp0python\pythonw.exe" "%~dp0Camtek_AOI_manager.pyw"`)을 **zip 에만** 써 넣음.
+  저장소 · `deploy.files` · 업데이트에는 .bat 없음(`tests/test_build_install.py` 2개: zip 구성 · .bat 내용 고정 · 저장소에 .bat 없음). `%~dp0` 라 어느 로컬 폴더에 풀어도 동작.
+  설치 안내(`설치_안내.txt` GUIDE · `docs/설치_v13.md`)를 '.bat 더블클릭'으로 바꿈(Win+R 는 정책으로 .bat 이 막힐 때의 대안으로만), #62 에서 찾은 문서 불일치(바탕화면 · 문서 거부 → 실제는 OneDrive 만) 정정, launcher OneDrive 거부 문구도 .bat 안내로.
+  CLAUDE.md v13 절의 '.bat 금지'에 이 예외 한 줄 추가. `__version__` 13.0.1, 시험 2개(test_appupdate · desktop_browser_fixture)가 "13.0.0" 문자열에 묶여 있던 것을 정규식으로.
+- 질문 답(코드 무관): python.org Python = **PSF License**(무료 · 상업 사용 · 재배포 허용, 사용료 없음). Anaconda 요금은 Python 이 아니라 Anaconda Inc. 의 배포판 · 패키지 저장소(defaults 채널) 약관(직원 200명 이상 조직) 때문 — v13 은 python.org embeddable + openpyxl · et_xmlfile(MIT)만 쓰고 conda 를 안 씀 → 해당 없음.
+- 시험: Python `tests/test_*.py` 전부 통과(`PYTHONPATH=vendor`), `tools/check_project.py` OK. 화면(`frontend`) 변경 없음. **Windows 에서 .bat 더블클릭 실행 · Defender 반응은 이 환경에서 확인 못 함** — CI 의 Defender 검사 결과로만 확인.
+- 릴리스: v13.0.1(`docs/release_notes/v13.0.1.md`) — `version_v13` push 로 `v13.yml` 이 설치 zip(.bat 포함) · Defender 검사 · Release 생성. 결과는 이슈 #64 완료 댓글.
+  주의: v13.0.0 사용자가 업데이트로 13.0.1 을 받으면 .bat 은 생기지 않음(업데이트는 app/ 만 바꿈) — 바로가기로 실행하면 됨.
+- 남은 일: #63 제안 A/B/C(Edge DETACHED · 안내 · SOC 사전 소명) 답, '숨김 실행' 연락 원문, 첨부 프로그램(초기 exe) — 소유자가 이번에 언급하지 않아 그대로 대기.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #64 | .bat 실행 방식으로 · Python 서명/요금 질문 · v13.0.1 최종 릴리스 | 설치 zip 에 한 줄 .bat, 안내 갱신, PSF 라이선스(무료) 답, v13.0.1 릴리스 |
+
 ## 최신 재개 — #63 초기 exe 자동 업데이트 방식 검토 · Python 보안 경고 트리거 점검 (2026-11-11 KST, `version_v13`)
 
 - 마지막 갱신 2026-11-11 · 기준 커밋 `b25d936` · 이슈 #63("v13.0.0 업데이트 사항 2"). **코드 변경 없음, 릴리스 없음**(v13.0.0 그대로). 이슈에 첨부 파일 없음 → "첨부 프로그램"의 초기 exe 는 못 봄, 올려 달라고 요청함.

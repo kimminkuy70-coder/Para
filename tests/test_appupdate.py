@@ -1,6 +1,7 @@
 """v13 update: GitHub release feed (main) + OneDrive (backup), staged as app.new (docs/V13_계획.md 4-1)."""
 import json
 import os
+import re
 import runpy
 import shutil
 import sys
@@ -32,7 +33,7 @@ def source_zip(dest: Path, version: str, extra: dict | None = None, top="Para-13
         (work / top / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / rel, work / top / rel)
     init = work / top / "param_manager" / "__init__.py"
-    init.write_text(init.read_text(encoding="utf-8").replace('__version__ = "13.0.0"', f'__version__ = "{version}"'), encoding="utf-8")
+    init.write_text(re.sub(r'^__version__ = "[^"]+"', f'__version__ = "{version}"', init.read_text(encoding="utf-8"), flags=re.M), encoding="utf-8")
     for rel, data in (extra or {}).items():
         (work / top / rel).parent.mkdir(parents=True, exist_ok=True)
         (work / top / rel).write_bytes(data)

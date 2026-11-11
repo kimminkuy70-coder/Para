@@ -1,5 +1,6 @@
 """Local synthetic fixture for the browser-to-real-Python integration harness."""
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 import sys
@@ -88,7 +89,7 @@ if sys.argv[1] == 'init':
     for rel in deploy.files(repo):
         (src/rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(repo/rel, src/rel)
     init = src/'param_manager'/'__init__.py'
-    init.write_text(init.read_text(encoding='utf-8').replace('__version__ = "13.0.0"', '__version__ = "13.9.0"'), encoding='utf-8')
+    init.write_text(re.sub(r'^__version__ = "[^"]+"', '__version__ = "13.9.0"', init.read_text(encoding='utf-8'), flags=re.M), encoding='utf-8')
     with zipfile.ZipFile(root/'pkg'/'v13.9.0.zip', 'w') as z:
         for f in src.rglob('*'):
             if f.is_file(): z.write(f, f.relative_to(root/'pkg').as_posix())

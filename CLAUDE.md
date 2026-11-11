@@ -6,7 +6,8 @@
   실행 = 동봉 python.org embeddable Python 이 `.py` 소스를 그대로 실행, 화면 = Edge 앱 창(127.0.0.1 로컬 서버), 업데이트 = **GitHub 릴리스 태그 zip 메인 · OneDrive 보조**.
 - **원칙 예외(소유자 확정 2026-11-10)**: 런타임 인터넷 금지의 예외는 **업데이트 확인 · 소스 zip 받기 때 github.com 의 이 저장소 하나**뿐(TLS 검증 필수 · 토큰 없음 · 실행 파일 들어 있으면 거부 · 받기는 버튼 때만). 그 밖은 계속 금지.
 - **tkinter 판 삭제**(equip_app · app · batchreport_ui · theme · refresh · updater_bat · run.py · .bat 전부), Tauri(`frontend/src-tauri`) · PyInstaller 빌드 삭제. 아래 tkinter · Tauri · exe 관련 절은 **v12 까지의 기록**이다(v12 는 `version_v12` 에 보존).
-- `.bat` · `.ps1` · `.vbs` · `.cmd` 파일을 저장소에 다시 넣지 말 것(#31 · #58 `Trojan:Script`). 배포 파일 전체에 배치 명령 문구 금지.
+- `.bat` · `.ps1` · `.vbs` · `.cmd` 파일을 저장소에 다시 넣지 말 것(#31 · #58 `Trojan:Script`). 배포 파일(`deploy.files`) 전체에 배치 명령 문구 금지.
+  **예외(소유자 결정 2026-11-11, #64)**: 설치 zip 맨 위의 실행 단추 `Camtek_AOI_manager.bat` 하나(`@echo off` + `start "" "%~dp0python\pythonw.exe" "%~dp0Camtek_AOI_manager.pyw"`) — `tools/build_install.py` 가 zip 에만 써 넣는다(저장소 · 업데이트에는 없음, `tests/test_build_install.py`). 명령을 늘리지 말 것.
 - 구조: 시작 `Camtek_AOI_manager.pyw`(app.new 교체 · 경로) → `param_manager/launcher.py`(중복 실행 · server.json · Edge 창) → `webserver.py`(127.0.0.1, `/api/send` · `/api/events`(SSE) · `/api/native` · `/api/upload`)
   → 엔진은 v12 그대로(`desktop_boot` · `desktop_ipc.serve`). Windows 기능 = `winnative.py`(고르기 창 · Edge · 트레이 · 바로가기). 화면 연결 = `frontend/src/desktop.ts`(fetch + EventSource).
   업데이트 = `desktop_appupdate.py`. 배포 파일 목록 = `deploy.py` **한 곳**(설치 zip · 업데이트 · `tests/test_deploy_files.py`). `frontend/dist` · `vendor/` 는 커밋한다 — 화면을 고치면 `cd frontend && npm run build` 결과도 커밋(CI 가 확인).

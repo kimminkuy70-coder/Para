@@ -68,7 +68,8 @@ def onedrive_refusal(app_home: str | None) -> str | None:
     if app_home and localdirs.is_under_onedrive(app_home):
         return ("프로그램 폴더가 OneDrive 안에 있습니다.\n\n" + app_home + "\n\n"
                 "이 위치에서는 실행하지 않습니다(파일이 많아 동기화 경고가 납니다).\n"
-                "설치 안내대로 %LOCALAPPDATA%\\CamtekAOI\\app 에 풀고 그 바로가기로 실행하십시오.")
+                "OneDrive 밖의 로컬 폴더(권장: %LOCALAPPDATA%\\CamtekAOI\\app)에 다시 풀고\n"
+                "그 폴더의 Camtek_AOI_manager.bat 으로 실행하십시오.")
     return None
 
 

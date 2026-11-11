@@ -243,7 +243,7 @@ def create_shortcut(lnk: Path, spec: dict) -> bool:
 
 
 def ensure_desktop_shortcut(home: Path | None) -> bool:
-    """Installed copy only: make the desktop shortcut once (the first start is done with Win+R)."""
+    """Installed copy only: make the desktop shortcut once (the first start is the starter .bat in the install folder)."""
     if home is None or not is_windows() or not (home / "python" / "pythonw.exe").is_file():
         return False
     desk = desktop_dir()
