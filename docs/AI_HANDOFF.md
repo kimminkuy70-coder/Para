@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #65 v13.0.2: 프로그램 창 아이콘 = 기존 아이콘 · 릴리스 (2026-11-11 KST, `version_v13`)
+
+- 마지막 갱신 2026-11-11 · 기준 커밋 `f63f438` · 이슈 #65("v13.0.2 업데이트 사항": "업데이트 알람이 뜨는지 테스트해볼겸 … 기존에 쓰던 프로그램 아이콘 활용해서 지금 프로그램 실행 아이콘 바꿔"). 첨부 없음.
+- 해석(확인 전): '기존에 쓰던 아이콘' = `param_manager/data/para_icon.ico`(v12 exe · Tauri `icons/icon.ico` 와 같은 그림 — 웨이퍼 · AOI 카메라 · 슬라이더).
+  v13 에서 바탕화면 바로가기(`winnative.shortcut_spec`) · 트레이(`winnative.ICON`)는 이미 이 아이콘이었고, **Edge 앱 창(제목 표시줄 · 작업 표시줄)만 favicon 이 없어 기본 아이콘** → 이것을 고침.
+- 구현: `frontend/public/favicon.ico` = para_icon.ico 복사, `frontend/index.html` 에 `<link rel="icon" href="/favicon.ico">`(CSP `img-src 'self'` 안), `npm run build` → `frontend/dist/favicon.ico` · `dist/index.html` 커밋(JS · CSS 해시 그대로).
+  `deploy.files` 가 `frontend/dist` 전부를 넣으므로 업데이트로도 전달됨. `tests/test_app_icon.py`(4): favicon = para_icon 바이트 동일 · index 링크 · 배포 목록 · 바로가기/트레이 아이콘. **아이콘 그림을 바꾸면 `tools/make_icon.py` 출력과 favicon 두 곳 모두**.
+  설치 zip 의 `.bat` 은 아이콘을 가질 수 없음(Windows 제약) — 바로가기로 실행하면 아이콘이 보인다고 릴리스 노트에 적음. `__version__` 13.0.2.
+- 시험: `PYTHONPATH=vendor` 로 `tests/test_*.py` 전부 통과, `tools/check_project.py` OK, `npm ci && npm run build` 성공. **Windows 에서 Edge 창 · 작업 표시줄 아이콘이 실제로 바뀌는지는 이 환경에서 확인 못 함**(Edge 가 favicon 을 프로필에 캐시하므로 첫 실행 뒤 보일 수 있음).
+- 릴리스: v13.0.2(`docs/release_notes/v13.0.2.md`) — `version_v13` push 로 `v13.yml` 이 Release 생성. 소유자 목적 = v13.0.1 사용자에게 업데이트 알림이 뜨는지 시험. 결과는 이슈 #65 완료 댓글.
+- 남은 일: #63 제안 A/B/C 답 · '숨김 실행' 연락 원문 · 첨부 프로그램(초기 exe) — 그대로 대기. 업데이트 알림 시험 결과(소유자 확인).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #65 | 업데이트 알림 시험 겸 실행 아이콘을 기존 아이콘으로 | Edge 앱 창 favicon = para_icon.ico, v13.0.2 릴리스 |
+
 ## 최신 재개 — #64 v13.0.1: 설치 zip 에 실행 .bat · Python 라이선스 답 · 릴리스 (2026-11-11 KST, `version_v13`)
 
 - 마지막 갱신 2026-11-11 · 기준 커밋 `cbb8de9` · 이슈 #64("v13.0.1 업데이트 사항"). 첨부 없음.

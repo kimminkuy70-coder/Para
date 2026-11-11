@@ -14,6 +14,7 @@
 - 릴리스: `param_manager/__init__.py` `__version__` 을 올리고 `docs/release_notes/v{버전}.md` 를 넣어 `version_v13` 에 push → `.github/workflows/v13.yml` 이 시험 · dist 확인 · 설치 zip(PSF 서명 확인 · Defender 검사) · Release 생성.
   업데이트 적용 = **다음 실행 때 교체**(소유자 2026-11-10 — 회사에서 쓰는 AOI Recipe Verification 과 같은 방식): 받은 판은 `app.new` 로 두고 화면이 '종료 후 다시 실행' 창을 띄운다. 프로그램이 스스로 재시작하지 않는다.
   시작 파일(`Camtek_AOI_manager.pyw`)은 업데이트로 바뀌지 않는다(실행 중이라 잠김) — 바꿔야 하면 새 설치 zip.
+- 아이콘(#65) = `param_manager/data/para_icon.ico` 하나: 바로가기 · 트레이 + 화면 favicon(`frontend/public/favicon.ico` 복사본 → dist). 그림을 바꾸면 둘 다(`tests/test_app_icon.py`).
 - 시험: `tests/test_*.py` 하나씩(`PYTHONPATH=vendor` 가능) + 화면 `PARA_TEST_NODE_MODULES=/opt/node-tools/node_modules CODEX_PRIMARY_RUNTIME_PYTHON=python3 node tools/test_desktop_ui.mjs`(진짜 로컬 서버).
 
 Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한국어 오프라인 데스크톱
