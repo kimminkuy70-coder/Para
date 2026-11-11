@@ -18,6 +18,7 @@
   · 단일 HTML. 외부 CDN · 프레임워크 · 서버 없음. 네트워크 요청 없음. Chromium 계열(Edge/Chrome)에서 로컬 실행.
   · 원본 폴더는 <input webkitdirectory> 로 읽기만 한다. 쓰기 API 를 쓰지 않는다.
     (Step 5 만 showDirectoryPicker({mode:'read'}) — 읽기 전용 핸들, Slot 안 사진 목록을 만들지 않아 빠르다. 없으면 webkitdirectory.
+     #66: 그 핸들로 .ini 가 막힌 브라우저(getFileHandle TypeError 'Name is not allowed', 목록에도 .ini 없음)면 webkitdirectory 로 바꾸고 이 PC 에 기억(cw.bigList).
      Step 5 의 CSV 는 사람이 고른 위치(또는 다운로드 폴더)에만 저장한다 — 원본 폴더에는 쓰지 않는다.)
   · Gray Crop 좌표는 Para 앱 'Color · Gray 매칭'(param_manager/colorgray.py)과 같은 모델:
       frameToChuckPlane(.<레시피>).ini 의 Scan_X/Scan_Y 행렬 M, offset o
@@ -1656,7 +1657,7 @@ async function cgDiag(d,look){const nm=await d.names(),L=[...nm.values()].map(e=
   const like=L.filter(n=>/color|grab|imageinfo/i.test(n)&&!/\.(jpe?g|png|bmp)$/i.test(n)).slice(0,4),ini=L.filter(n=>/\.ini$/i.test(n)).slice(0,6);
   const full=pcBaseSet()?pcPath(d.path+'/'+CG.CI):'',len=full.length;
   return [nm.err?`Slot 폴더 목록 오류(${nm.err})`:`Slot 폴더 파일 ${L.length.toLocaleString()}개 중 이 이름(대소문자 무시) 없음`,
-    like.length?`비슷한 이름: ${like.join(', ')}`:ini.length?`.ini 파일: ${ini.join(', ')}`:'',er.length?`이름으로 묻기 오류: ${er.slice(0,2).join(' · ')}`:'',
+    like.length?`비슷한 이름: ${like.join(', ')}`:ini.length?`.ini 파일: ${ini.join(', ')}`:'',er.length?`이름으로 묻기 오류: ${er.slice(0,2).join(' · ')}${er.some(t=>/not allowed/i.test(t))?' — 브라우저가 이 이름(.ini)을 막음: [폴더 추가]를 다시 눌러 파일 목록 방식으로 고르십시오':''}`:'',
     `하위 폴더 ${look.subs}개${look.ups.length?` · 위쪽 폴더 ${look.ups.length}개`:''}도 찾아봄`,look.shared||'',
     len?`전체 경로 ${len}자${len>=250?'(Windows 260자 제한에 가까움 — 더 짧은 경로로 옮겨 보십시오)':''}`:''].filter(Boolean).join(' · ')}
 const cgMiss=g=>!g?'안 읽음':g.err||('없음: '+g.missing.join(', ')+(g.diag?' — '+g.diag:''));
@@ -1762,11 +1763,17 @@ function unitOfPath(p){const s=p.split('/').filter(Boolean),n=s.length,lot=n>1?s
 function newLight(name){return {id:++scanSeq,seq:scanSeq,name,light:true,files:new Map(),paths:null,dirs:[],chain:[],warns:[],errors:[],step:baseName(name),tool:'',contrast:null,colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images:0,fltBytes:0}}
 /** 위쪽 폴더(Lot · Setup · 레시피)에서 파일 하나 찾기 — 폴더 · 이름마다 한 번만 묻는다. */
 const dirMemo=new WeakMap();
-const dirErrs=new WeakMap(),NOTFOUND=new Set(['NotFoundError','TypeMismatchError']);   // 폴더 → 이름으로 묻다 난 '없음' 아닌 오류(못 찾을 때 진단에 보임)
+const dirErrs=new WeakMap(),NOTFOUND=new Set(['NotFoundError','TypeMismatchError']);
+/** 소유자 #66: 회사 PC Chrome 은 폴더 핸들(showDirectoryPicker)로 .ini 를 막았다 — getFileHandle('ColorImageGrabingInfo.ini') = TypeError 'Name is not allowed.',
+ *  폴더 목록(entries)에도 .ini 가 하나도 안 나옴(Slot 파일 39개 중 .ini 0). Step 1 ~ 4 의 <input webkitdirectory> 는 같은 파일을 받는다(그래서 1 ~ 4 는 됨).
+ *  → 이름이 막힌 것을 알아보면(TypeError = 이름 거부, '없음'이 아님) 5-1 을 파일 목록 방식으로 바꾼다. 이 PC 에 기억('cw.bigList'). */
+const fsaBlocked=e=>!!e&&e.name==='TypeError'&&/not allowed|not valid|invalid/i.test(e.message||'');
+let FSA_BLOCK='';
+const useList=()=>{try{return localStorage.getItem('cw.bigList')==='1'}catch(e){return false}};   // 폴더 → 이름으로 묻다 난 '없음' 아닌 오류(못 찾을 때 진단에 보임)
 function dirFile(h,name){let m=dirMemo.get(h);if(!m)dirMemo.set(h,m=new Map());const k=lower(name);
   if(!m.has(k)){const ask=()=>h.getFileHandle(name);   // '없음' 이 아닌 오류(네트워크 드라이브 일시 오류 등)는 한 번 더 묻는다 — 실패를 '없음'으로 기억해 버리지 않게
-    m.set(k,ask().catch(e=>e&&NOTFOUND.has(e.name)?null:new Promise(r=>setTimeout(r,150)).then(ask))
-      .catch(e=>{if(!(e&&NOTFOUND.has(e.name))){let L=dirErrs.get(h);if(!L)dirErrs.set(h,L=[]);L.push(`${name}: ${((e&&e.name)||'')+' '+((e&&e.message)||e)}`.trim())}return null}))}
+    m.set(k,ask().catch(e=>e&&NOTFOUND.has(e.name)?null:fsaBlocked(e)?Promise.reject(e):new Promise(r=>setTimeout(r,150)).then(ask))
+      .catch(e=>{if(fsaBlocked(e)&&!FSA_BLOCK)FSA_BLOCK=`${name}: ${e.message}`;if(!(e&&NOTFOUND.has(e.name))){let L=dirErrs.get(h);if(!L)dirErrs.set(h,L=[]);L.push(`${name}: ${((e&&e.name)||'')+' '+((e&&e.message)||e)}`.trim())}return null}))}
   return m.get(k)}
 /** 폴더 목록 한 번(프로그램 colorgray.file_names 와 같음 — 이슈 #48 "이름으로 하나씩 묻지 않고 목록 1번, 대소문자 무시"). 사진 내용은 안 읽는다.
  *  {files: Map(소문자 → {name, h}), dirs: [[이름, 핸들]] 이름 순, err}. 핸들마다 한 번(5-1 · 5-2 가 같이 씀). */
@@ -1856,6 +1863,9 @@ async function bigPickHandle(root){
   const p1=throttle(()=>busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:0,indet:true,count:`폴더 ${dirs}개 훑음 · Slot ${ns}개 찾음`,files:`동시에 ${par}개 폴더씩`,detail:'훑는 중: '+cur,cancel}),100);
   let W;try{W=await walkFast(root,par,(d,n,p)=>{dirs=d;ns=n;cur=p;p1()})}catch(e){busy(null);bigMsg([['err','폴더를 읽지 못했습니다: '+e.message]]);return}
   {const cnt=new Map();for(const sl of W.slots)for(const h of sl.chain)cnt.set(h,(cnt.get(h)||0)+1);for(const sl of W.slots)sl.under=sl.chain.map(h=>cnt.get(h)||0)}   // 위쪽 폴더마다 그 아래 Slot 수
+  if(W.slots.length&&!BIG.stop){   // #66: 이 브라우저가 폴더 핸들로 .ini 를 막는지 첫 Slot 에서 한 번 본다(막으면 매칭 파일 · ProductInfo.ini 를 못 읽어 모든 Slot 이 '매칭 파일 없음')
+    const sl=W.slots[0];let blk='';try{await sl.h.getFileHandle(CG.CI)}catch(e){if(fsaBlocked(e))blk=`${CG.CI}: ${e.message}`}
+    if(blk||FSA_BLOCK){bigToList(blk||FSA_BLOCK);return}}
   if(!W.slots.length){busy(null);bigMsg([['err',`'${root.name}' 아래에서 Surface.flt 가 있는 폴더를 찾지 못했습니다(폴더 ${W.dirs}개 훑음)${BIG.stop?' — 중지됨':''}. 레시피 폴더(그 아래 Setup · Lot · Slot)를 고르십시오.`]]);return}
   const made=[],errs=[...W.errs],total=W.slots.length;let done=0,nd=0,bytes=0;cur='';
   const p2=throttle(()=>busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:1,done,total,unit:'Slot',files:`Defect ${nd.toLocaleString()}개 · Surface.flt ${kb(bytes)} 읽음 · 폴더 ${W.dirs}개 훑음${MDSUB?` · Surface.flt.md 가 Slot 바로 안에 없어 하위 폴더까지 찾은 Slot ${MDSUB}개`:''}`,detail:'읽는 중: '+cur,cancel}),80);
@@ -2265,8 +2275,13 @@ for(const id of ['#bigBase','#bigBase1'])$(id).addEventListener('change',e=>{con
 function bigOptsChanged(){S.o=S.cmp?S.o:opts();THUMB.clear();
   if(!$('#step5').classList.contains('on'))return;if(BIG.stage===1&&BIG.view)vtPaint(VA);else if(BIG.stage===3)c5Refresh(true)}
 // 폴더 고르기: 폴더 핸들(showDirectoryPicker, 읽기 전용)을 쓸 수 있으면 Slot 안 사진 목록을 만들지 않아 훨씬 빠르다. 없으면 <input webkitdirectory>(브라우저가 사진까지 목록을 만든다 — 사진 내용은 읽지 않는다).
+/** #66: 폴더 핸들로 .ini 가 막힌 브라우저 → 이 PC 에서는 앞으로 파일 목록 방식(Step 1 과 같음). 아직 누른 직후면 바로 폴더 고르기 창을 연다. */
+function bigToList(why){busy(null);try{localStorage.setItem('cw.bigList','1')}catch(e){}BIG.useList=true;
+  bigMsg([['warn',`이 브라우저는 빠른 폴더 읽기(폴더 핸들)로 .ini 파일을 열지 못하게 막습니다(${why}). 그래서 ColorImageGrabingInfo.ini · ProductInfo.ini 등을 못 찾았습니다.`],
+    ['warn','Step 1 ~ 4 와 같은 파일 목록 방식으로 바꿨습니다(이 PC 에 기억). [폴더 추가]를 한 번 더 누르고 같은 폴더를 고르십시오. 브라우저가 사진 이름까지 목록을 만들어 큰 폴더는 시간이 더 걸립니다.']]);
+  try{if(navigator.userActivation&&navigator.userActivation.isActive)$('#bigAdd').click()}catch(e){}}
 $('#bigAdd').onclick=async()=>{
-  if(window.showDirectoryPicker){let h;try{h=await window.showDirectoryPicker({mode:'read'})}catch(e){if(e&&e.name==='AbortError')return;h=null}
+  if(window.showDirectoryPicker&&!BIG.useList&&!useList()){let h;try{h=await window.showDirectoryPicker({mode:'read'})}catch(e){if(e&&e.name==='AbortError')return;h=null}
     if(h){await bigPickHandle(h);return}}
   busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다(이 브라우저는 빠른 길을 쓸 수 없어 사진 이름까지 모두 셉니다). 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true,reset:true});$('#bigInput').click()};
 $('#bigInput').addEventListener('cancel',()=>busy(null));

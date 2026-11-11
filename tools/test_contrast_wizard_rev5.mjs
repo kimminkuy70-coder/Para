@@ -362,8 +362,8 @@ assert.match(await page.locator('[data-b5="2"]').innerText(),/결과 목록 · �
 const fakeTree=`window.__mkTree=(f,map,opt)=>{opt=opt||{};const log=window.__fsLog={reads:[],lists:[]};
   const fh=(name,path,b)=>({kind:'file',name,getFile:async()=>{log.reads.push(name);if(opt.bad&&opt.bad.includes(path))throw new DOMException('A requested file or directory could not be found at the time an operation was processed.','NotFoundError');
     return new File([typeof b==='string'?Uint8Array.from(atob(b),ch=>ch.charCodeAt(0)):b],name)}});
-  const mk=(name,path)=>({kind:'directory',name,path,kids:new Map(),async *entries(){log.lists.push(this.path);await new Promise(r=>setTimeout(r,2));yield* this.kids},
-    async getFileHandle(n){const fl=opt.flaky&&opt.flaky[n];if(fl>0){opt.flaky[n]=fl-1;(log.err||(log.err=[])).push(n);throw new DOMException('The I/O operation has been aborted','NotReadableError')}
+  const mk=(name,path)=>({kind:'directory',name,path,kids:new Map(),async *entries(){log.lists.push(this.path);await new Promise(r=>setTimeout(r,2));for(const kv of this.kids)if(!(opt.blockIni&&/\.ini$/i.test(kv[0])))yield kv},
+    async getFileHandle(n){if(opt.blockIni&&/\.ini$/i.test(n))throw new TypeError("Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': Name is not allowed.");const fl=opt.flaky&&opt.flaky[n];if(fl>0){opt.flaky[n]=fl-1;(log.err||(log.err=[])).push(n);throw new DOMException('The I/O operation has been aborted','NotReadableError')}
       const h=[...this.kids.values()].find(k=>k.kind==='file'&&(opt.cs?k.name===n:k.name.toLowerCase()===n.toLowerCase()));if(!h)throw new DOMException('없음','NotFoundError');return h}});
   const root=mk('RCP','RCP/');
   for(const [p,b] of Object.entries(f)){const segs=map(p);if(!segs)continue;let d=root;for(const s of segs.slice(0,-1)){if(!d.kids.has(s))d.kids.set(s,mk(s,d.path+s+'/'));d=d.kids.get(s)}
@@ -697,6 +697,23 @@ assert.match(lotSw.msg,/Surface\.flt\.md 위치\(Step 1 과 같은 순서로 찾
 const subSw=await scen({md:'sub',swap:true});
 assert.equal(subSw.mdAt,'sub');assert.equal(subSw.mdPath,'RCP/SETUP1/LOT_CA20/W01/Sub/Surface.flt.md');assert.equal(subSw.xOk,true);
 assert.match(subSw.msg,/Slot 하위 폴더 1/);assert.deepEqual(subSw.pairs,base.pairs);assert.deepEqual(subSw.er,[]);
+// #66: 회사 PC Chrome 이 폴더 핸들로 .ini 를 막음(getFileHandle TypeError 'Name is not allowed' · 목록에도 .ini 없음) → 파일 목록 방식으로 바꾸고 기억, 그 방식이면 매칭 됨
+{const pg=await browser.newPage();const er=[];pg.on('pageerror',e=>er.push(String(e)));
+  await pg.goto('file://'+resolve(root,'AOI_Contrast_Wizard_rev5.html'));await pg.evaluate(src=>{(0,eval)(src)},fakeTree);
+  const r=await pg.evaluate(async real=>{const c=window.__cw;let picks=0,inputs=0;try{localStorage.removeItem('cw.bigList')}catch(e){}
+    const root=window.__mkTree(real.files,p=>['SETUP1','LOT_A','W01',p],{blockIni:true});window.showDirectoryPicker=async()=>{picks++;return root};
+    document.getElementById('bigInput').click=()=>{inputs++};
+    document.getElementById('bigAdd').click();const el=document.getElementById('busy');
+    await new Promise(r=>{const t0=Date.now(),t=setInterval(()=>{if((/파일 목록 방식/.test(document.getElementById('bigMsg').innerText)&&el.hidden)||Date.now()-t0>20000){clearInterval(t);r()}},20)});
+    const first={msg:document.getElementById('bigMsg').innerText,scans:c.BIG.scans.length,flag:localStorage.getItem('cw.bigList'),picks,inputs};
+    document.getElementById('bigAdd').click();await new Promise(r=>setTimeout(r,50));const second={picks,inputs};busy(null);
+    const ents=Object.entries(real.files).map(([k,b])=>({path:'RCP/SETUP1/LOT_A/W01/'+k,file:new File([Uint8Array.from(atob(b),ch=>ch.charCodeAt(0))],k)}));
+    await c.addBigEntries(ents);const s=c.BIG.scans[0];return {first,second,n:c.BIG.scans.length,hits:s&&s.cg&&s.cg.plan?s.cg.plan.hits:null,miss:s?c.cgMiss(s.cg):null}},real);
+  await pg.close();
+  assert.deepEqual(er,[]);assert.match(r.first.msg,/Name is not allowed/);assert.match(r.first.msg,/\[폴더 추가\]를 한 번 더/);
+  assert.equal(r.first.scans,0);assert.equal(r.first.flag,'1');assert.equal(r.first.picks,1);
+  assert.ok(r.first.inputs<=1);assert.deepEqual(r.second,{picks:1,inputs:r.first.inputs+1});   // 누른 직후면 바로 파일 목록 창, 두 번째는 폴더 핸들을 묻지 않고 webkitdirectory
+  assert.equal(r.n,1);assert.equal(r.hits,353,JSON.stringify(r))}
 assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 await browser.close();
 console.log('test_contrast_wizard_rev5: passed');

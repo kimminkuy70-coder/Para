@@ -88,6 +88,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     **매칭 파일 찾기**(소유자 "ColorImageGrabingInfo.ini 파일 자체를 못 찾는다", 2026-11-11): 종전 rev5 는 `getFileHandle` 으로 이름을 한 번만 물었고 실패를 '없음'으로 기억했다(대소문자 · 일시 오류 · 위쪽 폴더에 약함).
     지금 `dirFile`(이름으로 — '없음' 아닌 오류는 150 ms 뒤 한 번 더, 오류는 `dirErrs` 에) → `dirFind` = 없으면 `dirList`(폴더 목록 한 번, 대소문자 무시, 핸들마다 기억 · 5-1/5-2 공용, 프로그램 #48 `file_names` 와 같음).
     `cgDirH.get` = dirFind(꼭 있어야 하는 CI · SL · TF), `opt` = 목록이 이미 있을 때만 목록(ManReClassify 등 — 매칭 파일이 이름으로 다 있는 Slot 은 5-1 에서 목록을 만들지 않음, 시험 그대로).
+    **#66 .ini 차단**(2026-11-11): 회사 PC Chrome 은 폴더 핸들로 `getFileHandle('ColorImageGrabingInfo.ini')` = TypeError 'Name is not allowed.', 목록에도 .ini 없음(Step 1 ~ 4 의 webkitdirectory 는 받음).
+    `bigPickHandle` 이 훑은 뒤 첫 Slot 에 CI 를 한 번 물어 TypeError(`fsaBlocked`)면 `bigToList` — 읽기 멈춤 · 알림 · localStorage `cw.bigList=1` → 다음 [폴더 추가]는 webkitdirectory(`addBigEntries`).
     찾는 곳: Slot → 하위 4단계(Surface.flt 있는 폴더 빼고) → 위쪽 폴더(그 아래 Slot 이 하나일 때만, `sl.under` · 파일 목록은 `up`) — 못 찾으면 `cgDiag`(파일 수 · 비슷한 이름 · 묻기 오류 · 찾아본 폴더 · [원본 폴더 경로]가 있으면 전체 경로 길이)를 `cgMiss` 로 5-1/5-2 알림에.
     `walkFast` 도 이름으로 못 찾으면 이미 만드는 목록에서 CI 확인. 시험: 대소문자 다름(NAS) · 일시 오류 1번 · 늘 오류 · 위쪽 폴더 · 두 Slot 공용(안 씀) · 진단 · 파일 목록 길 — 종전 HTML 은 앞 넷 모두 0/353.
     설정 없앰: `opts()` = `PIX`(0.7708) · `CTOL`(5) · coord 'xy' · 반전/Offset 없음(Step 1 ~ 4 도 같은 값), `#coordSrc/#pix/#ctol/#flipX/#flipY/#offX/#offY` · 5-2/5-3 거울 칸(`mirror`) · `BIG.stale`/`pairKey` 삭제. rev4 의 5-1 값 ↔ Step 1 값 안전장치(`fullLoad`)는 Step 5 에서 안 씀. 시험이 실제 zip 353개를 `param_manager/colorgray.py` 와 Defect 마다 비교.

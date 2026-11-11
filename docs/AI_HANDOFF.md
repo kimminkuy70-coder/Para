@@ -1,6 +1,6 @@
 # AI 공통 인수인계
 
-## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
+## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-11, #66, `ccr-7401b37d-bwze1e`)
 
 - 소유자(세션 대화, 지시는 세션 `ccr-1bb2ad9c-1u5hdy`): "프로그램의 Color gray 매칭 기능 뜯어봐 · 최신 rev html 5-2 · 5-3 에 적용 가능한지 · 지금 html 은 왜 안 되는지" → "설정은 아예 없애" · "1 ~ 4 는 되는데 5 만 안 돼, 로직이 다른지" ·
   "5-1 이 Surface.flt 만 조사해 데이터가 부족할 수 있는지" → "프로그램 기능을 최우선으로, 결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
@@ -33,6 +33,11 @@
 - 후속 7(소유자 "첫번째 분류, 재분류 2열로 만들어서 각각 and 조건으로 필터"): Classify 1열 → 첫번째 분류(`clsFirst` = orgReclassify, 0 이면 reclassify) · 재분류(`clsName` = reclassify) 2열.
   5-1 체크 2묶음(`BIG.clsOff1` · `clsOff2`) AND, 열 제목 정렬 `k1` · `k2`, 5-2/5-3 열 · CSV(첫번째분류 · 재분류) · 5-3 정보, 새 창 머리는 'A → B'.
   확인: 실제 zip(재분류 없음) 두 열 같음 334/19, 29126432EWE3 = B R Other → Accept · B R Surface Dark → Accept. 시험 = 화면 체크 클릭으로 353 → 19 → 0(AND) → 334, 재분류 판 AND = 1개(B R Other → Accept).
+- 후속 9(이슈 #66 "오류 메세지 줄게 rev5 수정해", 2026-11-11, 기준 커밋 5b58936): 소유자 알림 = 모든 Slot 에서 `getFileHandle('ColorImageGrabingInfo.ini')` → TypeError 'Name is not allowed.' + Slot 폴더 목록 39 ~ 64개 중 .ini 0개.
+  해석(확인 전, 회사 PC Chrome 버전 · 정책 모름): 그 Chrome 이 폴더 핸들(showDirectoryPicker, Step 5 만 씀)로 .ini 이름을 막고 목록에서도 뺌. Step 1 ~ 4 는 `<input webkitdirectory>` 라 같은 파일을 받음(그래서 1 ~ 4 는 됨).
+  고침(rev5 제자리 수정): 5-1 이 폴더를 훑은 뒤 첫 Slot 에서 `getFileHandle(CI)` 를 한 번 물어 TypeError(이름 거부)면 읽기를 멈추고 파일 목록 방식으로 바꿈(`bigToList`, localStorage `cw.bigList=1` 로 이 PC 에 기억 → 다음 [폴더 추가]는 바로 webkitdirectory).
+  알림에 까닭 + "[폴더 추가]를 한 번 더 누르고 같은 폴더를 고르십시오". 진단 문구에도 '브라우저가 이 이름(.ini)을 막음' 추가. 기억을 지우려면 브라우저 사이트 데이터(localStorage) 삭제.
+  시험: rev5 시험에 '.ini 를 막는 가짜 폴더 핸들' 시나리오 추가(알림 · 기억 · 두 번째는 폴더 핸들 안 물음 · 파일 목록으로 실제 zip 353 매칭).
 - 남은 일: 소유자 PC(실제 사진 · 네트워크 드라이브)에서 rev5 5-1 → 5-2 → 사진 새 창 확인. 속도(5-1 이 Slot 마다 파일 2 ~ 3개를 더 읽음, 5-2 는 매칭 폴더 이름 목록 한 번)는 확인 전. colorgray.py 를 바꾸면 rev5 `15-0` 구역도 같이.
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
