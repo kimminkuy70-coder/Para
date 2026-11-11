@@ -387,14 +387,15 @@ assert.deepEqual(s51.cg,[['W01',2,1,0,'RCP/SETUP1/LOT_CA20/W01'],['W01',2,1,0,'R
 assert.match(await page.locator('#bigMsg').innerText(),/Color · Gray 매칭\(Para 프로그램과 같은 계산, 사진은 아직 안 읽음\): Color 항목 4개 중 Gray 위치 2개 · Defect 7개 중 Color 연결 3개/);
 assert.match(await page.locator('#bigCnt').innerText(),/^Defect 7개/);
 const col=async j=>page.locator('#bigList .br').evaluateAll((els,j)=>els.map(e=>e.children[j].textContent),j);
-const cs=(await col(4)).map(Number);assert.deepEqual(cs,[...cs].sort((a,b)=>b-a));assert.equal(cs[0],45);
-assert.deepEqual((await col(12)).sort(),['Color · Gray','Color · Gray','Color 만','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음']);   // 5-1 목록에 매칭 칸(사진 파일 확인 전)
-assert.match(await page.locator('#bigList .bh').innerText(),/Contrast\(실제\) ▼[\s\S]*Color · Gray 매칭/);
+const cs=(await col(5)).map(Number);assert.deepEqual(cs,[...cs].sort((a,b)=>b-a));assert.equal(cs[0],45);
+assert.deepEqual((await col(13)).sort(),['Color · Gray','Color · Gray','Color 만','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음']);   // 5-1 목록에 매칭 칸(사진 파일 확인 전)
+assert.match(await page.locator('#bigList .bh').innerText(),/ID\s+Classify\s+Contrast\(실제\) ▼[\s\S]*Color · Gray 매칭/);
+assert.deepEqual([...new Set(await col(4))],['#0']);assert.match(await page.locator('#bigCls').innerText(),/Classify\s+#0\s+7/);   // ManReClassify.ini 가 없으면 코드 번호
 await page.locator('#bigFlt [data-f="c0"]').fill('36');await page.locator('#bigFlt [data-f="c1"]').fill('40');await page.waitForTimeout(350);
-assert.deepEqual((await col(4)).map(Number),[40,36]);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 2개 \(전체 7개 중/);
+assert.deepEqual((await col(5)).map(Number),[40,36]);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 2개 \(전체 7개 중/);
 assert.match(await page.locator('#toB2').innerText(),/걸러낸 Defect 2개 결과 목록 · 사진 확인/);
 await page.locator('#bigFlt [data-f="clear"]').click();await page.waitForTimeout(100);
-await page.locator('#bigList .bh [data-sort="a"]').click();assert.deepEqual((await col(5)).map(Number).slice(0,2),[71.3,48.72]);   // Area 큰 순
+await page.locator('#bigList .bh [data-sort="a"]').click();assert.deepEqual((await col(6)).map(Number).slice(0,2),[71.3,48.72]);   // Area 큰 순
 await page.locator('#bigLot').selectOption({index:1});await page.waitForTimeout(100);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 4개 \(전체 7개 중/);
 await page.locator('#bigLot').selectOption('');await page.locator('#bigFlt [data-f="sort"]').selectOption('c-d');await page.waitForTimeout(350);
 // 5-2: [다음] = 지금 목록(7개) — 사진 파일은 이름만 확인(어떤 파일도 열지 않음) → 결과 목록 · CSV 자동 저장
@@ -419,7 +420,7 @@ assert.match(sl5[1],/LOT_CA27\s+W01\s+3\s+2\s+1 \(33%\)\s+1 \(33%\)\s+2\s+frameT
 assert.equal(await page.locator('#b5list .br').count(),7);
 await page.locator('#b5show').selectOption('ok');assert.equal(await page.locator('#b5list .br').count(),2);
 // 결과 목록에 사진 전체 경로 칸(원본 폴더 경로 + 고른 폴더부터의 경로)
-assert.deepEqual((await page.locator('#b5list .br').nth(0).locator('span').allInnerTexts()).slice(10),
+assert.deepEqual((await page.locator('#b5list .br').nth(0).locator('span').allInnerTexts()).slice(11),
   ['Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\C1.c.1.jpeg','Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\F1.t.1.jpeg']);
 // 전체 경로 = [원본 폴더 경로(PC)] + 고른 폴더부터: 상위 폴더 · 고른 폴더 자체(이름이 같으면 겹치지 않게) · UNC · 비었으면 그대로
 const pcp=await page.evaluate(()=>{const c=window.__cw,b=document.getElementById('bigBase'),old=b.value,set=v=>{b.value=v;return c.pcPath('RCP/SETUP1/LOT_A/W01/x.c.1.jpeg')};
@@ -432,7 +433,7 @@ await pw.locator('#ff canvas').waitFor();
 const capOf=()=>pw.evaluate(()=>[...document.querySelectorAll('figcaption')].map(f=>({b:f.querySelector('b').textContent,pp:(f.querySelector('.pp')||{}).textContent||'',text:f.textContent,tip:f.title})));
 const pw1=await pw.evaluate(()=>({hd:document.getElementById('hd').textContent,
   c:!!document.querySelector('#fc canvas'),x:[document.querySelector('#fx canvas').width,document.querySelector('#fx canvas').height],tables:document.querySelectorAll('table,dl,input,button').length}));
-assert.match(pw1.hd,/^1 \/ 2 · LOT_CA27 · W01 · ID \d+ · Contrast /);assert.doesNotMatch(pw1.hd,/원본 폴더 경로/);
+assert.match(pw1.hd,/^1 \/ 2 · LOT_CA27 · W01 · ID \d+ · #0 · Contrast /);   // Classify 도 머리에assert.doesNotMatch(pw1.hd,/원본 폴더 경로/);
 // 사진 파일명 + 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도") — 칸 제목(사진 위, 사진을 가리지 않음), 마우스를 올려도 경로
 const cap1=await capOf();
 assert.deepEqual(cap1.map(c=>c.b),['C1.c.1.jpeg','F1.t.1.jpeg','F1.t.1.jpeg']);
@@ -493,8 +494,8 @@ const perf=await page.evaluate(async()=>{const c=window.__cw,REC=c.REC,N=100000,
   const es=[];for(let k=0;k<3;k++)es.push({path:`HUGE/S1/LOT${k}/W0${k}/Surface.flt`,file:new File([mk(k)],'Surface.flt')});
   const t0=performance.now();await c.addBigEntries(es);const t1=performance.now();
   document.querySelector('#bigFlt [data-f="c0"]').value='59.9';c.bigRefresh();const t2=performance.now();
-  return {load:t1-t0,flt:t2-t1,m:c.BIG.view.m,total:c.BIG.view.total,rows:document.querySelectorAll('#bigList .br').length,first:+document.querySelector('#bigList .br').children[4].textContent,
-    cell:document.querySelector('#bigList .br').children[12].textContent,msg:document.getElementById('bigMsg').innerText}});
+  return {load:t1-t0,flt:t2-t1,m:c.BIG.view.m,total:c.BIG.view.total,rows:document.querySelectorAll('#bigList .br').length,first:+document.querySelector('#bigList .br').children[5].textContent,
+    cell:document.querySelector('#bigList .br').children[13].textContent,msg:document.getElementById('bigMsg').innerText}});
 assert.equal(perf.total,300007);assert.ok(perf.m>0&&perf.m<perf.total/50,JSON.stringify(perf));assert.ok(perf.rows<80,JSON.stringify(perf));assert.ok(perf.first>=59.9);
 assert.ok(perf.load<15000&&perf.flt<5000,JSON.stringify(perf));assert.equal(perf.cell,'✖ 매칭 파일 없음');assert.match(perf.msg,/매칭 파일이 없는 Slot 3개: W00\(없음: ColorImageGrabingInfo\.ini\)/);
 console.log('step5 30만 Defect:',JSON.stringify({load:perf.load,flt:perf.flt,m:perf.m}));
@@ -541,19 +542,26 @@ ci = files['ColorImageGrabingInfo.ini'].decode('utf-8', 'replace')
 ci = re.sub(r'^(X|FaultX)=(.+)$', lambda q: f'{q.group(1)}={float(q.group(2)) - x0!r}', ci, flags=re.M)
 ci = re.sub(r'^(Y|FaultY)=(.+)$', lambda q: f'{q.group(1)}={float(q.group(2)) - y0!r}', ci, flags=re.M)
 shift = {'Surface.flt': bytes(flt), 'ColorImageGrabingInfo.ini': ci.encode()}
+f0 = bytearray(files['Surface.flt']); struct.pack_into('<hh', f0, 0, 0, 28)   # 첫 Defect: 현재 0(Accept) · 원래 28(B R Other) — 소유자 Slot 29126432EWE3 모양
+shift_cls = {'Surface.flt': bytes(f0)}
 enc = lambda d: {k: base64.b64encode(v).decode() for k, v in d.items()}
-print(json.dumps({'files': enc(files), 'shift': enc(shift), 'exp': exp}))
+print(json.dumps({'files': enc(files), 'shift': enc(shift), 'cls0': enc(shift_cls), 'exp': exp}))
 `],{encoding:'utf-8',maxBuffer:1<<28}));
 const realRun=async(name,opt)=>{const pg=await browser.newPage();const er=[];pg.on('pageerror',e=>er.push(String(e)));
   await pg.goto('file://'+resolve(root,'AOI_Contrast_Wizard_rev5.html'));await pg.evaluate(src=>{(0,eval)(src)},fakeTree);
   const r=await pg.evaluate(async ({real,opt})=>{const c=window.__cw,f={...real.files};if(opt.shift)Object.assign(f,real.shift);
-    for(const k of opt.drop||[])delete f[k];const extra=opt.extra||{};for(const [k,v] of Object.entries(extra))f[k]=v;
+    for(const k of opt.drop||[])delete f[k];if(opt.cls0)Object.assign(f,real.cls0);const extra=opt.extra||{};for(const [k,v] of Object.entries(extra))f[k]=v;
     const root=window.__mkTree(f,p=>p.startsWith('@')?p.slice(1).split('/'):['SETUP1','LOT_A','W01',p],opt);
     await c.bigPickHandle(root);await c.b5Pair(null);
+    let cls=null;if(opt.cls){const s=c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01');
+      cls={chips:document.getElementById('bigCls').innerText.replace(/\s+/g,' '),t0:c.clsText(s,0),names:[...new Set(Array.from({length:s.cols.n},(_,i)=>c.clsName(s,i)))].sort(),
+        csv1:c.bigCsv().join('').split('\r\n').slice(0,2),csv2:c.pairCsv().join('').split('\r\n').slice(0,2)};
+      c.BIG.sort='k-a';c.bigRefresh();cls.sortFirst=c.clsName(c.BIG.view.src[c.BIG.view.gs[c.BIG.view.ord[0]]],c.BIG.view.gi[c.BIG.view.ord[0]]);
+      c.BIG.clsOff.add('B R Surface Dark');c.bigRefresh();cls.mOff=c.BIG.view.m;c.BIG.clsOff.clear();c.bigRefresh();cls.mAll=c.BIG.view.m}
     return {scans:c.BIG.scans.map(s=>[s.name,s.cols.n,s.cg&&s.cg.plan?c.CG.MODES[s.cg.plan.mode]:(s.cg&&(s.cg.err||s.cg.missing.join(',')))]),
       pairs:c.BIG.pairs.filter(p=>p.s.name==='RCP/SETUP1/LOT_A/W01').map(p=>[p.i,p.st,p.c&&p.c.file,p.c&&p.c.how,p.g&&p.g.file,p.g&&p.g.px,p.g&&p.g.py,p.g&&p.g.n]),warns:c.BIG.scans.flatMap(s=>s.warns),
       src:(c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01')||{}).cg?.src,alt:((c.BIG.scans.find(s=>s.name==='RCP/SETUP1/LOT_A/W01')||{}).cg?.tfAlt||[]).map(a=>[a.name,a.hits]),
-      msg:document.getElementById('bigMsg').innerText,row:[...document.querySelectorAll('#b5slotTbl tbody tr')].map(x=>x.innerText).join('\n'),csv:c.pairCsv().join('')}},{real,opt});
+      cls,msg:document.getElementById('bigMsg').innerText,row:[...document.querySelectorAll('#b5slotTbl tbody tr')].map(x=>x.innerText).join('\n'),csv:c.pairCsv().join('')}},{real,opt});
   if(opt.view){   // 5-2 줄 더블 클릭 → 사진 새 창 · 5-3 하나씩 크게 (Color 만인 Slot: Color 를 창 · 칸 전체에)
     await pg.locator('nav button[data-step="5"]').click();await pg.locator('[data-b5="2"]').click();const [w]=await Promise.all([pg.waitForEvent('popup'),pg.locator('#b5list .br').nth(0).dblclick()]);await w.locator('#fc canvas').waitFor();
     r.pop=await w.evaluate(()=>({conly:document.querySelector('.pv').classList.contains('conly'),hd:document.getElementById('hd').textContent,color:!!document.querySelector('#fc canvas'),
@@ -565,7 +573,14 @@ const cmpReal=(name,r,tol=1e-6)=>{let ok=0,dmax=0;for(const [i,st,cf,how,gf,px,p
     assert.equal(st,'ok',name+' '+i);assert.equal(cf,e[0],name+' '+i);assert.equal(how,'Index = 기록 순서',name+' '+i);assert.equal(gf,e[1],name+' '+i);
     const dd=Math.hypot(px-e[2],py-e[3]);dmax=Math.max(dmax,dd);assert.ok(dd<tol,`${name} ${i}: ${px},${py} ≠ ${e[2]},${e[3]}`);if(tol<1e-3)assert.equal(n,e[4],name+' '+i);ok++}
   assert.equal(ok,353,name);assert.deepEqual(r.er,[],name);return dmax};
-const real0=await realRun('base',{});cmpReal('실제 결과 폴더',real0);assert.deepEqual(real0.scans,[['RCP/SETUP1/LOT_A/W01',353,'그대로']]);
+const real0=await realRun('base',{cls:true});cmpReal('실제 결과 폴더',real0);
+// Classify(소유자 "classify 열 · 필터 · 정렬"): Surface.flt reclassify → ManReClassify.ini 이름 — 실제 자료 29 = B R Surface Dark 334 · 28 = B R Other 19
+assert.equal(real0.cls.chips,'Classify B R Surface Dark 334 B R Other 19 모두 끄기');assert.deepEqual(real0.cls.names,['B R Other','B R Surface Dark']);
+assert.equal(real0.cls.sortFirst,'B R Other');assert.deepEqual([real0.cls.mOff,real0.cls.mAll],[19,353]);
+assert.match(real0.cls.csv1[0],/,Contrast,Classify,Classify원래$/);assert.match(real0.cls.csv1[1],/,B R (Surface Dark|Other),$/);
+assert.match(real0.cls.csv2[0],/,ID,resultID,Classify,Classify원래,Contrast,/);
+const realC=await realRun('cls0',{cls:true,cls0:true});cmpReal('재분류된 Defect',realC);
+assert.equal(realC.cls.t0,'Accept (원래 B R Other)');assert.ok(realC.cls.names.includes('Accept'));assert.deepEqual(real0.scans,[['RCP/SETUP1/LOT_A/W01',353,'그대로']]);
 // rev3 · rev4 에서 Slot 을 0 으로 만들던 조건: Slot 안 · Setup 폴더의 관계없는 파일 하나를 열 수 없음 → rev5 는 그 파일을 열지 않아 그대로 353
 const real1=await realRun('bad',{bad:['RCP/SETUP1/LOT_A/W01/ManReClassify.ini','RCP/SETUP1/setup_note.ini'],extra:{'@SETUP1/setup_note.ini':btoa('[a]\nb=1\n')}});cmpReal('열 수 없는 파일',real1);
 // Lot 폴더에도 Surface.flt(매칭 파일 없음) → 그 아래 실제 Slot 도 찾음(Step 1 과 같음), Lot 폴더 Slot 은 '매칭 파일 없음'(아래 Slot 파일을 빌려 쓰지 않음)

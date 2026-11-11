@@ -81,6 +81,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     · Gray 사진 · 목록이 다 없는 Slot(Color 사진만) = `g.noGray` → Color 는 연결(`cgLink`, 상태 'Color 만'), Gray 이유만 표시. 새 창 = Gray 가 없으면 `.pv.conly`(Color 가 창 전체, 머리에 'Gray 없음 — Color 만 크게'),
       5-3 = `.rvimgs.conly`(Color 칸 전체), 5-3 필터 `#b5okOnly` = **사진 있는 것만**(`hasPhoto` = 짝 완료 · Color 만 · Gray 만 — 종전 '짝 완료만'은 Color 만인 Defect 를 숨김). 소유자 Slot 2개(S3LQR170XMG2 Color 만 · 29126432EWE3 레시피 1 · 2)로 확인 — 자료는 저장소에 안 넣음.
     + `tfAlt`(다른 번호면 몇 개 맞는지 점검 칸) → 없으면 가운데 모델(목록 좌표 = 프레임 가운데 — 실제 변환 파일로 확인, 픽셀 = s_FrameData PixelSizeX 또는 `CG_PIX` 0.7698). 무엇으로 계산했는지 `s.cg.src` → 5-1 알림 · Slot 표 · CSV(Gray프레임목록 · 변환). 대신할 것도 없으면 어림셈 없이 '대체 못 함'.
+    **Classify**(소유자 "classify 열 · 필터 · 정렬"): `COLS` 에 `rc`(reclassify) · `orc`(orgReclassify), `clsLoad`(ManReClassify.ini = 매칭 폴더 → Slot → 위쪽 폴더, `parseManRe` = [General] `코드=이름,Good/Defect,…`)
+    → `clsName`(현재 분류 = 필터 · 정렬 키) · `clsText`(재분류됐으면 '(원래 …)'). 5-1 열(ID 다음, 정렬 키 `k`) · `#bigCls` 체크 필터(`BIG.clsOff` = 끈 이름, 개수 표시, 모두 켜기/끄기) · 5-2/5-3 열 · CSV(Classify · Classify원래) · 5-3 정보 · 새 창 머리.
+    실제 zip: 29 = B R Surface Dark 334 · 28 = B R Other 19, 소유자 29126432EWE3 = 0 Accept · 원래 28/29. ManReClassify.ini 가 없으면 `#코드`.
     설정 없앰: `opts()` = `PIX`(0.7708) · `CTOL`(5) · coord 'xy' · 반전/Offset 없음(Step 1 ~ 4 도 같은 값), `#coordSrc/#pix/#ctol/#flipX/#flipY/#offX/#offY` · 5-2/5-3 거울 칸(`mirror`) · `BIG.stale`/`pairKey` 삭제. rev4 의 5-1 값 ↔ Step 1 값 안전장치(`fullLoad`)는 Step 5 에서 안 씀. 시험이 실제 zip 353개를 `param_manager/colorgray.py` 와 Defect 마다 비교.
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).
