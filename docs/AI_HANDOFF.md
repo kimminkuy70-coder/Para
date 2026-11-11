@@ -1,5 +1,18 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #62 설치 방식(pyw vs .bat) · 설치 폴더 지정 검토 (2026-11-11 KST, `version_v13`)
+
+- 마지막 갱신 2026-11-11 · 기준 커밋 `66f5bba` · 이슈 #62("v13.0.0 업데이트 사항 1", "지금은 검토해서 답변만해"). **코드 변경 없음, 릴리스 없음**(v13.0.0 그대로).
+- 질문 1 "왜 pyw 방식인가, 첨부한 프로그램은 .bat 으로 실행" → 확인: 그 프로그램(AOI Recipe Verification)은 `run_aoi.bat` → `start "" python\pythonw.exe app\main.py`. 즉 **.bat 은 실행 단추일 뿐 실제로 도는 것은 같은 pythonw.exe**.
+  v13 이 .bat 을 안 쓴 이유 = 계획서 11절 ⑥: Para 는 #31 · #58(v12.9.30~32)에서 .bat · bat 문구 때문에 `Trojan:Script/Wacatac` 판정을 받음 → 배포 파일에 .bat 0개 규칙(`tests/test_deploy_files.py`).
+  embeddable Python 은 `.pyw` 파일 연결이 없어 더블클릭이 안 되므로 첫 실행만 Win+R, 그 뒤 프로그램이 바탕화면 바로가기(.lnk)를 만듦.
+- 질문 2 "%LOCALAPPDATA% 대신 사용자가 (OneDrive 아닌) 폴더를 지정해 설치할 수 없나" → 검토 결과 **코드는 이미 어느 폴더든 동작**: 시작 파일이 자기 위치를 home 으로 씀(`Camtek_AOI_manager.pyw` HOME), 바로가기 · app.new 교체 · 업데이트 모두 home 기준.
+  고정 경로는 **안내 문서(`docs/설치_v13.md` · `tools/build_install.py` GUIDE) · launcher 의 OneDrive 거부 문구 · Win+R 한 줄**에만 있음. 설정 · 로그 · 캐시 · EdgeProfile 은 설치 폴더와 별개로 `%LOCALAPPDATA%\CamtekAOI`(그대로 두는 것이 맞음).
+  제안(소유자 선택 대기): 안 1 = 문서만 고침(아무 로컬 폴더, 첫 실행은 탐색기에서 `.pyw` 를 `python\pythonw.exe` 위로 끌어다 놓기 → 입력 없음) / 안 2 = 그 프로그램처럼 한 줄 `.bat` 동봉(더블클릭, #31 규칙 예외 필요 · Defender 재확인) .
+  주의점: Program Files(관리자 권한 · 업데이트 쓰기 불가) · 네트워크 드라이브 · Downloads(SOC 경고에서 '비표준 위치'로 잡힘) 피하기, 폴더를 옮기면 바로가기가 옛 경로(이미 있으면 다시 안 만듦).
+  발견한 문서 불일치: 안내는 "바탕화면 · 문서 폴더면 실행 거부"라 하지만 코드(`localdirs.is_under_onedrive`)는 **OneDrive 경로만** 거부(바탕화면 · 문서가 OneDrive 로 옮겨진 PC 에서만 거부됨). 다음 수정 때 맞출 것.
+- 남은 일: 소유자 답(안 1/안 2, 설치 폴더 제한 범위) 받으면 구현 · v13.0.1 릴리스 여부(앞 이슈의 '다음 실행 때 교체' 변경도 아직 미릴리스).
+
 ## 최신 재개 — V13 구현 1단계: tkinter · exe 빌드 삭제 (2026-11-10 KST, 브랜치 `version_v13`)
 
 - 마지막 갱신 2026-11-10 · 기준 = `version_v12` `183e254` 에서 `version_v13` 생성 · 이슈 없음(소유자 세션: 계획 답 전부 받음, "진행해").
