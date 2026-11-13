@@ -6,6 +6,9 @@
 <title>AOI Contrast Wizard rev6</title>
 <!--
   AOI Contrast AVG 단계별 비교 (Graylevel 시뮬레이션) — Para #50, 브랜치 version_graylevel_simulation
+  · rev6 세션(2026-11-13, 소유자 "파일을 불러올 때 다른 창에 갔다 오거나 다른 작업을 하다 오면 끊기는 경우가 있다 — 계속 이어서 불러오게"):
+    탭이 숨으면 Chrome 이 setTimeout 을 1초(5분 뒤 1분)마다로 늦춰 Slot 마다 쉬던 불러오기가 사실상 멈췄다 → nextPaint = 숨은 동안 MessageChannel(늦춰지지 않음),
+    불러오는 동안 Web Lock(탭 얼림 · 버림 막기, 최선) · 닫기/새로 고침 경고, Slot 읽기 일시 오류(DOMException)는 1초 · 3초 뒤 두 번 더(retryRead), 폴더 목록 오류도 두 번 더, 돌아왔을 때 '멈췄었음' 오경고 없앰.
   · rev6 #70(2026-11-13, 소유자 "리뷰PC 에서 Defect 를 보면 Surface · Area · Width · Length · Box · Recipe · Col/Row · 분류 · 판정 종류 · Zone · Region 이 나오는데 우리도 되는지 —
     사진 제외.zip 으로 검토 · 되면 Recipe 별 정렬 필터 · Lot 1개만 올려도 분석(벤다이어그램 1개)"): Step 3 · 4 리뷰 패널 · 새 창에 '리뷰PC 정보' 칸(rvText),
     목록 필터에 Recipe 고르기 · Recipe 정렬, 상세 표 · CSV 에 Recipe · Zone · 판정 종류 · 분류 · Region, Lot 1개 = 자기 자신 하나(c.single)로 Step 3 벤다이어그램 1개 · Step 4 는 비교 없음 안내.
@@ -731,8 +734,9 @@ const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,se
 /** 로딩창(Para #59, Step 5 에서 확장). p = {title, done, total, unit, files, fileTotal, detail, indet, count, close, steps[], step, cancel(), reset}. null 이면 닫는다.
  *  아래 줄(#busyH)은 0.25초마다: 경과 · 마지막 진행(busy/throttle 이 마지막으로 불린 뒤) · 속도 · 남은 시간 · 화면 멈춤(타이머가 늦게 돈 만큼 = 브라우저가 계산하느라 멈춘 시간).
  *  '마지막 진행'이 3초를 넘으면 노란 글로 '응답 기다리는 중' — 렉인지 기다리는 중인지 사람이 알 수 있게. */
-const BUSY={t0:0,last:0,tick:0,lag:0,lagAt:0,p:null};
-function busy(p){const el=$('#busy');if(!el)return;const now=performance.now();if(!p){el.hidden=true;BUSY.p=null;return}
+const BUSY={t0:0,last:0,tick:0,lag:0,lagAt:0,p:null,unlock:null,hidAt:0,away:0,awayAt:0};
+function busy(p){const el=$('#busy');if(!el)return;const now=performance.now();if(!p){el.hidden=true;BUSY.p=null;bgUnlock();return}
+  bgLock();
   if(el.hidden||p.reset){BUSY.t0=now;BUSY.lag=0;BUSY.tick=now}BUSY.last=now;BUSY.p=p;
   el.hidden=false;$('#busyT').textContent=p.title||'폴더 등록 중';
   const ind=!!p.indet||!p.total;$('#busyBar').classList.toggle('ind',ind);
@@ -749,10 +753,29 @@ function beat(now){const p=BUSY.p;if(!p)return;const el=$('#busyH'),t=(now-BUSY.
   if(p.total&&p.done>0&&p.done<p.total&&t>1){const r=p.done/t;s+=` · ${r>=10?Math.round(r):r.toFixed(1)} ${p.unit||'개'}/초 · 남은 시간 약 ${fmtSec((p.total-p.done)/r)}`}
   const warn=gap>3;if(warn)s+=' — ⏳ 응답을 기다리는 중입니다(네트워크 드라이브 · 큰 파일). 이 숫자가 계속 커지기만 하면 [중지]를 누르십시오';
   if(BUSY.lag>700&&now-BUSY.lagAt<8000)s+=` · 화면이 ${(BUSY.lag/1000).toFixed(1)}초 멈췄었음(브라우저 계산)`;
+  if(BUSY.away&&now-BUSY.awayAt<10000)s+=` · 다른 창에 있던 ${fmtSec(BUSY.away/1000)} 동안에도 계속 읽었습니다`;
   el.textContent=s;el.classList.toggle('warn',warn)}
-setInterval(()=>{const now=performance.now();if(!BUSY.p){BUSY.tick=now;return}const lag=now-BUSY.tick-250;BUSY.tick=now;if(lag>700){BUSY.lag=lag;BUSY.lagAt=now}beat(now)},250);
+setInterval(()=>{const now=performance.now();if(!BUSY.p||document.hidden){BUSY.tick=now;return}const lag=now-BUSY.tick-250;BUSY.tick=now;if(lag>700){BUSY.lag=lag;BUSY.lagAt=now}beat(now)},250);
 $('#busyC').onclick=()=>{const p=BUSY.p;if(p&&p.cancel){p.cancel();$('#busyC').disabled=true;$('#busyC').textContent='중지하는 중… (지금 읽는 파일까지 끝내고 멈춤)'}};
-const nextPaint=()=>new Promise(r=>setTimeout(r,0));
+// ── 다른 창 · 다른 작업 중에도 계속 불러오기(소유자 2026-11-13 "다른 창에 갔다 오면 끊기는 경우 — 계속 이어서 불러오게") ──────────────
+//   원인: 불러오기는 Slot 마다 nextPaint(종전 setTimeout 0)로 한 번 쉰다. 탭이 숨으면 Chrome 이 이어지는 setTimeout 을 1초마다(5분 넘게 숨으면 1분마다)로 늦춘다
+//   → Slot 하나에 1초 ~ 1분, 사실상 멈춤(돌아오면 다시 빨라짐). 오래 숨은 탭은 절전 · 메모리 절약으로 얼리거나 버릴 수도 있다.
+//   고침: ① 숨은 동안은 MessageChannel 로 쉰다(타이머가 아니라 늦춰지지 않음). 쉬는 중에 숨어도 바로 MessageChannel 로 넘어간다.
+//         ② 불러오는 동안(busy 창이 떠 있는 동안) Web Lock 을 잡는다 — Chrome 은 Web Lock 을 잡은 탭을 얼리거나 버리지 않으려 한다(최선, 보장 아님).
+//         ③ 불러오는 동안 창 닫기 · 새로 고침은 브라우저 확인 창을 띄운다. ④ Slot 읽기가 일시 오류(DOMException: NotReadableError 등 — 네트워크 드라이브 다시 연결 중)면
+//            1초 · 3초 뒤 두 번 더 읽는다(retryRead). '없음'(NotFoundError) · 막힘(#66 TypeError)은 다시 읽지 않는다.
+const yieldMC=(()=>{let ch=null;const q=[];return ()=>new Promise(r=>{if(!ch){ch=new MessageChannel();ch.port1.onmessage=()=>{const f=q.shift();if(f)f()}}q.push(r);ch.port2.postMessage(0)})})();
+const nextPaint=()=>document.hidden?yieldMC():new Promise(r=>{let done=false;const go=()=>{if(done)return;done=true;document.removeEventListener('visibilitychange',vis);r()},
+  vis=()=>{if(document.hidden)yieldMC().then(go)};document.addEventListener('visibilitychange',vis);setTimeout(go,0)});
+const waitMs=ms=>new Promise(r=>setTimeout(r,ms));
+const transientErr=e=>!!e&&typeof DOMException!=='undefined'&&e instanceof DOMException&&!/^(NotFoundError|TypeMismatchError|SecurityError|NotAllowedError|AbortError)$/.test(e.name);
+async function retryRead(fn,tries=3){for(let k=1;;k++){try{return await fn()}catch(e){if(k>=tries||!transientErr(e))throw e;BUSY.last=performance.now();await waitMs(k===1?1000:3000)}}}
+function bgLock(){if(BUSY.unlock||!(navigator.locks&&navigator.locks.request))return;let rel;const held=new Promise(r=>rel=r);BUSY.unlock=rel;
+  navigator.locks.request('aoi-contrast-wizard-loading',()=>held).catch(()=>{})}
+function bgUnlock(){const f=BUSY.unlock;BUSY.unlock=null;if(f)f()}
+document.addEventListener('visibilitychange',()=>{const now=performance.now();if(document.hidden){BUSY.hidAt=now;return}
+  BUSY.tick=now;if(BUSY.p&&BUSY.hidAt&&now-BUSY.hidAt>2000){BUSY.away=now-BUSY.hidAt;BUSY.awayAt=now;beat(now)}BUSY.hidAt=0});
+addEventListener('beforeunload',e=>{if(BUSY.p){e.preventDefault();e.returnValue=''}});
 /** 폴더 인식(소유자 확정 2026-11-10: 레시피 폴더 / Setup 폴더 / Lot 폴더 / Slot 폴더(최대 25개)). entries = [{path}] (첫 마디 = 고른 폴더, '/' 구분).
  *  Slot = Surface.flt 가 있는 폴더(이름 = 그 폴더 이름), Lot = 그 바로 위 폴더 — 레시피 · Setup · Lot · Slot 어느 폴더를 골라도 같은 Lot 으로 묶인다.
  *   · 고른 폴더/Surface.flt → 고른 폴더 = Slot 1개짜리 Lot(Slot 폴더를 바로 고름)
@@ -791,7 +814,7 @@ async function addEntries(entries){
   const tick=(r)=>busy({title:'폴더 등록 중',done,total,unit:'Slot 폴더',files,fileTotal,detail:r?`읽는 중: ${r.replace(/\/$/,'')}`:`경과 ${((Date.now()-t0)/1000).toFixed(1)}초`});
   try{
     for(const u of units){tick(u.dir);await nextPaint();
-      try{const w=await buildScan(u.dir.replace(/\/$/,'')||'(선택 폴더)',u.files);w.unit=u;made.push(w)}catch(e){msg.push(['err',`${u.dir}: ${e.message}`])}
+      try{const w=await retryRead(()=>buildScan(u.dir.replace(/\/$/,'')||'(선택 폴더)',u.files));w.unit=u;made.push(w)}catch(e){msg.push(['err',`${u.dir}: ${e.message}`])}
       done++;files=Math.min(fileTotal,files+u.own.length);tick(null)}
     files=fileTotal;tick(null);await nextPaint();
   }finally{busy(null)}
@@ -1890,7 +1913,9 @@ async function walkFast(root,par,onProg){
     let flt=null;try{flt=await it.h.getFileHandle('Surface.flt')}catch(e){}
     if(flt){slots.push({...it,flt});if(await dirFile(it.h,CG.CI))return}
     if(it.depth>=7)return;
-    const L=await dirList(it.h);if(L.err&&!L.dirs.length&&!L.files.size)throw new Error(L.err);
+    let L=await dirList(it.h);   // 목록 오류(네트워크 드라이브 일시 오류)는 1초 · 3초 뒤 두 번 더 — 폴더 아래 Slot 이 통째로 빠지지 않게
+    for(let k=0;k<2&&L.err&&!L.dirs.length&&!L.files.size&&!BIG.stop;k++){await waitMs(k?3000:1000);listMemo.delete(it.h);L=await dirList(it.h)}
+    if(L.err&&!L.dirs.length&&!L.files.size)throw new Error(L.err);
     const f2=L.files.get('surface.flt');if(!flt&&f2)slots.push({...it,flt:f2.h});
     if((flt||f2)&&L.files.has(lower(CG.CI)))return;   // 매칭 파일이 목록에는 있음(이름 대소문자가 다르거나 이름으로 묻기가 실패) → 이 폴더가 Slot, 아래는 안 봄
     for(const [name,c] of L.dirs)q.push({h:c,path:it.path+name+'/',depth:it.depth+1,chain:[it.h,...it.chain]})};
@@ -2013,7 +2038,7 @@ async function bigPickHandle(root){
   const made=[],errs=[...W.errs],total=W.slots.length;let done=0,nd=0,bytes=0;cur='';
   const p2=throttle(()=>busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:1,done,total,unit:'Slot',files:`Defect ${nd.toLocaleString()}개 · Surface.flt ${kb(bytes)} 읽음 · 폴더 ${W.dirs}개 훑음${MDSUB?` · Surface.flt.md 가 Slot 바로 안에 없어 하위 폴더까지 찾은 Slot ${MDSUB}개`:''}`,detail:'읽는 중: '+cur,cancel}),80);
   await pool(W.slots,par,async sl=>{cur=sl.path;p2();
-    try{const s=await readLight(sl);made.push(s);nd+=s.cols.n;bytes+=s.fltBytes}catch(e){errs.push(`${sl.path}: ${e.message}`)}done++;p2()});
+    try{const s=await retryRead(()=>readLight(sl));made.push(s);nd+=s.cols.n;bytes+=s.fltBytes}catch(e){errs.push(`${sl.path}: ${e.message}`)}done++;p2()});
   busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:2,indet:true,count:`Defect ${nd.toLocaleString()}개`,detail:'목록 · 필터 만드는 중'});await nextPaint();
   try{const msg=addMade(made,new Map(),`폴더 '${root.name}'`);msg[0][1]+=` (${((performance.now()-t0)/1000).toFixed(1)}초, 폴더 ${W.dirs}개 훑음, 사진은 읽지 않음)`;
     if(BIG.stop)msg.push(['warn',`중지했습니다 — Slot ${total}개 중 ${done}개만 읽었습니다.`]);
@@ -2030,7 +2055,7 @@ async function addBigEntries(entries){
   try{for(const u of units){if(BIG.stop)break;cur=u.dir;p2();await nextPaint();
       const seg=u.dir.split('/').filter(Boolean),up=[];for(let k=seg.length-1;k>=1;k--){const D=seg.slice(0,k).join('/');   // 위쪽 폴더(가까운 것부터): 그 폴더 파일 · 그 아래 Slot 수
         up.push({path:D,files:u.shared.filter(e=>e.path.slice(0,e.path.length-baseName(e.path).length)===D+'/'),n:units.filter(v=>v.dir.startsWith(D+'/')).length})}
-      try{const s=await buildLight(u.dir.replace(/\/$/,'')||'(선택 폴더)',{files:u.files,up});made.push(s);U.set(s.name,u);nd+=s.cols.n}catch(e){}
+      try{const s=await retryRead(()=>buildLight(u.dir.replace(/\/$/,'')||'(선택 폴더)',{files:u.files,up}));made.push(s);U.set(s.name,u);nd+=s.cols.n}catch(e){}
       done++;p2()}
     busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:2,indet:true,count:`Defect ${nd.toLocaleString()}개`,detail:'목록 · 필터 만드는 중'});await nextPaint();
     const msg=addMade(made,U,sum.replace(/ → Lot.*$/,''));msg[0][1]+=` (${((performance.now()-t0)/1000).toFixed(1)}초, 사진은 읽지 않음)`;bigMsg(msg)}
@@ -2723,7 +2748,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,sampleFit,sampleClear,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,sampleFit,sampleClear,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

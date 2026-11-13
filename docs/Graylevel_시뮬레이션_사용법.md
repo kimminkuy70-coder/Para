@@ -32,6 +32,7 @@
    (#70, rev6) **Recipe** 칸: 목록에 있는 Recipe 이름(+ 개수)에서 하나를 고르면 그 Recipe Defect 만 남습니다. 정렬에 `Recipe 이름 순` · `Recipe 이름 역순`(같은 Recipe 안은 기본 순서). [필터 지우기]는 Recipe 도 '전체'로 돌립니다.
    (#70, rev6) Step 3 · 4 정보 칸 위에 **리뷰PC 정보**가 리뷰PC 와 같은 순서로 나옵니다: Surface · Area · Width · Length · Box Width · Box Height(u = µm) · Recipe · Col/Row · 분류 · 판정 종류 · Zone · Region. 사진 새 창 오른쪽에도 같은 글이 나옵니다.
    (#70, rev6) **Lot 1개만** 등록해도 [비교 실행]이 됩니다. Step 3 벤다이어그램은 원 1개(그 Lot 의 모든 Defect), Step 4(Escape)는 '비교 없음' 안내만 나옵니다.
+   (2026-11-13) **불러오는 중에 다른 창 · 다른 작업을 해도 계속 읽습니다.** 돌아오면 진행 창에 '다른 창에 있던 … 동안에도 계속 읽었습니다'가 나옵니다. 불러오는 동안 이 탭을 닫거나 새로 고치면 브라우저가 한 번 묻습니다. 네트워크 드라이브 일시 오류로 Slot 을 못 읽으면 1초 · 3초 뒤 두 번 더 읽습니다.
 10. **Step 5 대용량 Defect 조회**(2026-11-10): 큰 Lot 여러 개를 한꺼번에 불러와 필터 · 정렬한 뒤 필요한 Defect 의 사진만 봅니다. 비교(Step 2 ~ 4)와는 따로 움직입니다.
     - [Lot 폴더 추가 (정보만 빠르게)] → Lot 폴더나 그 상위 폴더를 고릅니다(여러 번 가능). 등록 때는 Slot 폴더마다 `Surface.flt`(+ `.md`) · `ProductInfo.ini` **만** 읽습니다. 사진과 사진 목록(`ColorImageGrabingInfo.ini` · `ScanResultImageList.txt` · `frameToChuckPlane.ini`)은 그 Slot 의 Defect 사진을 처음 볼 때 읽습니다.
     - Edge/Chrome 에서는 폴더를 읽기 전용으로 여는 창이 뜹니다(사진 파일 목록을 만들지 않아 빠름). 지원하지 않는 브라우저는 Step 1 과 같은 폴더 고르기로 바뀝니다(파일 목록을 만드는 시간은 걸리지만 사진 내용은 읽지 않음).

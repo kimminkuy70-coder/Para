@@ -969,6 +969,38 @@ assert.match(subSw.msg,/Slot 하위 폴더 1/);assert.deepEqual(subSw.pairs,base
   assert.match(await pg.locator('#p4Color').innerText(),/Lot 이 1개\(LOT_ONE\)라 A → B 비교\(Escape Defect\)가 없습니다/);
   await pg.close();assert.deepEqual(er,[]);
   console.log('Para #70: 리뷰PC 정보(소유자 예시 되짚기 · 실제 zip) · Recipe 필터 · 정렬 · Lot 1개(벤다이어그램 원 1개, Defect 353) 통과')}
+// ── 소유자 세션(2026-11-13): "파일을 불러올 때 다른 창에 갔다 오거나 다른 작업을 하다 오면 끊긴다 — 계속 이어서 불러오게" ─────────────────
+//    시험 브라우저(Playwright)는 배경 타이머 늦추기를 꺼 두므로 흉내 낸다: document.hidden = true + setTimeout 을 모두 60초 이상으로(숨은 탭의 강한 늦추기).
+//    종전 nextPaint(setTimeout 0)는 Slot 마다 60초 → 멈춤. 지금은 숨은 동안 MessageChannel 로 쉬어 Step 1 · Step 5 불러오기가 그대로 끝나야 한다.
+{const pg=await browser.newPage({viewport:{width:1400,height:1000}});const er=[];pg.on('pageerror',e=>er.push(String(e)));
+  await pg.goto('file://'+resolve(root,'AOI_Contrast_Wizard_rev6.html'));
+  // ① 일시 오류 다시 읽기 · Web Lock(숨기 전, 진짜 타이머)
+  const rr=await pg.evaluate(async()=>{const c=window.__cw;let n=0;const t0=performance.now();
+    const ok=await c.retryRead(async()=>{if(++n<3)throw new DOMException('drive','NotReadableError');return 'ok'});const sec=(performance.now()-t0)/1000;
+    let m=0,nf='',pl='';try{await c.retryRead(async()=>{m++;throw new DOMException('x','NotFoundError')})}catch(e){nf=e.name}
+    let k=0;try{await c.retryRead(async()=>{k++;throw new Error('잘못된 Record Size')})}catch(e){pl=e.message}
+    window.__cw.busy({title:'시험'});await new Promise(r=>setTimeout(r,50));const held=(await navigator.locks.query()).held.map(l=>l.name);
+    window.__cw.busy(null);await new Promise(r=>setTimeout(r,50));const after=(await navigator.locks.query()).held.map(l=>l.name);
+    return {ok,n,sec,m,nf,k,pl,held,after}});
+  assert.equal(rr.ok,'ok');assert.equal(rr.n,3);assert.ok(rr.sec>=3.9&&rr.sec<6,String(rr.sec));   // 1초 · 3초 뒤 두 번 더
+  assert.deepEqual([rr.m,rr.nf,rr.k,rr.pl],[1,'NotFoundError',1,'잘못된 Record Size']);              // '없음' · 자료 오류는 다시 읽지 않음
+  assert.deepEqual(rr.held,['aoi-contrast-wizard-loading']);assert.deepEqual(rr.after,[]);
+  // ② 숨은 탭 흉내: 진짜 setTimeout 이면 2초 안에 안 끝남(흉내가 맞는지) · nextPaint 는 바로
+  const sim=await pg.evaluate(async()=>{const real=window.setTimeout.bind(window);window.__realTimeout=real;
+    Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>'hidden'});
+    window.setTimeout=(f,ms,...a)=>real(f,Math.max(+ms||0,60000),...a);
+    const race=p=>Promise.race([p.then(()=>'done'),new Promise(r=>real(()=>r('stall'),2000))]);
+    return {timer:await race(new Promise(r=>setTimeout(r,0))),np:await race(window.__cw.nextPaint())}});
+  assert.deepEqual(sim,{timer:'stall',np:'done'});
+  // ③ 숨은 채로 Step 1 Lot 폴더(Slot 4개) · Step 5 파일 목록(Slot 4개) 불러오기가 끝까지
+  const bg=await pg.evaluate(async real=>{const c=window.__cw,mk=pre=>[1,2,3,4].flatMap(k=>Object.entries(real.files).map(([n,b])=>({path:`${pre}/W0${k}/${n}`,file:new File([Uint8Array.from(atob(b),ch=>ch.charCodeAt(0))],n)})));
+    const race=(p,ms)=>Promise.race([p.then(()=>'done'),new Promise(r=>window.__realTimeout(()=>r('stall'),ms))]);const t0=performance.now();
+    const s1=await race(c.addEntries(mk('LOT_BG')),30000),n1=c.state.scans.length,d1=c.state.scans.reduce((a,s)=>a+s.defects.length,0);
+    const s5=await race(c.addBigEntries(mk('RCP/SETUP1/LOT_BG5')),30000),n5=c.BIG.scans.length;
+    return {s1,n1,d1,s5,n5,busy:!document.getElementById('busy').hidden,sec:(performance.now()-t0)/1000}},real);
+  assert.deepEqual([bg.s1,bg.n1,bg.d1,bg.s5,bg.n5,bg.busy],['done',4,353*4,'done',4,false],JSON.stringify(bg));
+  await pg.close();assert.deepEqual(er,[]);
+  console.log(`다른 창 · 숨은 탭 불러오기: 타이머 60초 늦추기 흉내에서도 Step 1 Slot 4개 · Step 5 Slot 4개 ${bg.sec.toFixed(1)}초에 끝남, 일시 오류 두 번 더 읽기 · Web Lock 통과`)}
 assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 await browser.close();
 console.log('test_contrast_wizard_rev6: passed');

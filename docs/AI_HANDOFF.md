@@ -1,6 +1,6 @@
 # AI 공통 인수인계
 
-## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 이슈 Para #70 rev6 리뷰PC 정보 · Recipe 필터 · Lot 1개 분석, 기준 커밋 bab0683, `ccr-7401b37d-bwze1e`)
+## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 세션 지시 '다른 창에 갔다 오면 불러오기 끊김' 수정(이슈 없음, 직전 이슈 Para #70), 기준 커밋 ae59ee3, `ccr-7401b37d-bwze1e`)
 
 - 소유자(세션 대화, 지시는 세션 `ccr-1bb2ad9c-1u5hdy`): "프로그램의 Color gray 매칭 기능 뜯어봐 · 최신 rev html 5-2 · 5-3 에 적용 가능한지 · 지금 html 은 왜 안 되는지" → "설정은 아예 없애" · "1 ~ 4 는 되는데 5 만 안 돼, 로직이 다른지" ·
   "5-1 이 Surface.flt 만 조사해 데이터가 부족할 수 있는지" → "프로그램 기능을 최우선으로, 결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
@@ -96,6 +96,16 @@
   ⓓ Col/Row = 장비 Col/Row(Color 이미지 Col/Row 와 353/353 같음, #53) ⓔ Recipe 필터 · 리뷰PC 정보는 Step 3 · 4 만(Step 5 5-1 목록은 그대로) ⓕ 판정 비트가 여러 개면 이름을 ', ' 로 이어 씀.
   시험: `node tools/test_contrast_wizard_rev6.mjs` 통과(새 시험: 소유자 예시를 px 값으로 되짚어 리뷰PC 글 15줄이 그대로, 실제 zip Lot 1개 등록 → 비교 → 벤다이어그램 원 1개 · 353 · 리뷰PC 글(Zone RDL · Event Defect · PI_Bubble)
   · Recipe 고르기 · 정렬 · 지우기 · 상세 표 · CSV 열 · Step 4 안내 · 페이지 오류 0). 화면 사진으로 배치 확인. `tools/check_project.py` 는 HTML · 시험만 바뀌어 안 돌림.
+- 후속 18(소유자 세션 대화, 2026-11-13, 이슈 없음, 기준 커밋 ae59ee3): "하던 작업 마무리하고 버그 수정 — html 에서 파일을 불러올 때 다른 창에 접속하거나 다른 작업을 하다 오면 끊기는 경우가 있다, 계속 이어서 불러오게".
+  (하던 작업 = #70 은 이미 끝나 push · 이슈 댓글까지 됨.) 원인: 불러오기(Step 1 `addEntries` · 5-1 파일 목록 `addBigEntries` 등)가 Slot 마다 `nextPaint`(setTimeout 0)로 쉼 → 숨은 탭에서 Chrome 이 이어지는 타이머를 1초,
+  5분 넘게 숨으면 1분 간격으로 늦춤 → 사실상 멈춤(돌아오면 다시 감). 그 밖에 오래 숨은 탭은 절전(얼림) · 메모리 절약(버림, 돌아오면 새로 고침)도 될 수 있음. 회사 PC 에서 어느 경우였는지는 확인 전.
+  고침(rev6 제자리): `nextPaint` = 숨은 동안 `yieldMC`(MessageChannel — 타이머가 아니라 늦춰지지 않음, 쉬는 중에 숨어도 바로 넘어감) · `busy` 창이 떠 있는 동안 Web Lock(`bgLock/bgUnlock`, Chrome 이 얼리거나 버리지 않으려 함 — 최선, 보장 아님)
+  · beforeunload 확인(닫기 · 새로 고침) · `retryRead`(DOMException 일시 오류만 1초 · 3초 뒤 두 번 더 — NotFound · #66 TypeError · 자료 오류는 안 함) = Step 1 `buildScan` · 5-1 `readLight` · `buildLight`, `walkFast` 폴더 목록 오류 두 번 더,
+  숨은 동안 '화면 N초 멈췄었음' 오경고 안 셈, 돌아오면 진행 창에 '다른 창에 있던 N 동안에도 계속 읽었습니다'.
+  시험: rev6 시험 통과 + 새 시험(document.hidden + 모든 setTimeout 을 60초 이상으로 늦춘 흉내에서 Step 1 Slot 4개 · Step 5 Slot 4개가 5초에 끝남, 일시 오류 두 번 더 · NotFound/자료 오류는 한 번 · Web Lock 잡고 풂).
+  같은 흉내에서 종전 nextPaint 판은 15초 동안 Slot 0개(멈춤) 확인. 시험 브라우저는 배경 늦추기를 꺼 두므로 진짜 숨은 탭 · 절전 얼림은 흉내만 함.
+  내 해석(확인 전): ⓐ '이어서 불러오기' = 다른 창에 있어도 멈추지 않고 계속 + 일시 오류 Slot 다시 읽기(중지 뒤 남은 Slot 만 다시 읽는 [이어서] 단추는 안 만듦) ⓑ 사진 보기(5-3 · 새 창)는 그대로.
+- 남은 일(세션 2026-11-13 끊김): 회사 PC 에서 큰 폴더를 불러오는 중에 다른 창으로 몇 분 갔다 와서 끝까지 읽혔는지 확인. 그래도 끊기면: 탭이 새로 고쳐졌는지(메모리 절약 — Chrome 설정 '성능'에서 이 파일을 '항상 활성 상태' 사이트로 추가) · 진행 창 문구를 받기.
 - 남은 일(#70): 소유자 PC 에서 리뷰PC 와 같은 Defect 하나를 골라 Width · Length · Recipe 이름 · Region 이 같은지 확인(다르면 그 Slot 의 Surface.flt 값 · 리뷰PC 화면을 받기). Step 5 에도 Recipe 필터가 필요한지.
 - 남은 일(#69): 소유자 PC 의 실제 맵 파일 · 결과 폴더로 '불안정' 이 없어졌는지 확인. 샘플 방향이 장비 좌표와 다른 제품이 있으면 회전 · 뒤집기 맞춤을 더할지 정하기.
 - 남은 일(rev6): 소유자 PC 에서 실제 흑백 사진으로 GL 측정 속도(네트워크 드라이브 읽기) · 원 그리기 조작 · 바 끌기 반응 확인.
@@ -113,6 +123,7 @@
 | 세션 대화(rev6) | 흑백 GL(원) 측정 · 원 그리기 · 두 손잡이 범위 · 정렬 · 필터 → rev6 html | `AOI_Contrast_Wizard_rev6.html` + 시험 통과(릴리스 대상 아님) |
 | Para #69 | wafer 맵 불안정 → 샘플 wafer 맵 업로드 단계로 보정(검토 후 개선되면 수정) | rev6 Step 2 샘플 맵 = Die 배치 기준 + `sampleFit` 위치 맞춤 + 이 PC 기억, 시험 통과(릴리스 대상 아님) |
 | Para #70 | 리뷰PC Defect 정보 가능성(사진 제외.zip) · Recipe 별 정렬 필터 · Lot 1개 분석(벤다이어그램 1개) | 가능 — 리뷰PC 정보 칸 · Recipe 필터/정렬 · CSV 열 · Lot 1개 = 원 1개, 시험 통과(릴리스 대상 아님) |
+| 세션 대화(#70 뒤) | 파일 불러오는 중 다른 창 · 다른 작업 뒤 끊김 → 계속 이어서 불러오게 | 숨은 탭에서 늦춰지지 않는 쉬기(MessageChannel) · Web Lock · 닫기 확인 · 일시 오류 다시 읽기, 시험 통과(릴리스 대상 아님) |
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
