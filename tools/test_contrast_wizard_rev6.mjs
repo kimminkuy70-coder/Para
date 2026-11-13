@@ -931,6 +931,22 @@ assert.match(subSw.msg,/Slot 하위 폴더 1/);assert.deepEqual(subSw.pairs,base
   assert.equal(r.first.scans,0);assert.equal(r.first.flag,'1');assert.equal(r.first.picks,1);
   assert.ok(r.first.inputs<=1);assert.deepEqual(r.second,{picks:1,inputs:r.first.viaBtn+1});   // 누른 직후면 바로 파일 목록 창, 두 번째는 폴더 핸들을 묻지 않고 webkitdirectory
   assert.equal(r.n,1);assert.equal(r.hits,353,JSON.stringify(r))}
+// #72 후속: 소유자 PC = Edge — Edge 면 폴더 핸들(빠른 길)을 묻지 않고 처음부터 파일 목록 방식(알림 · 다시 고르기 없음), 그 방식으로 실제 zip 353 매칭
+{const ctx=await browser.newContext({userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0'});
+  const pg=await ctx.newPage();const er=[];pg.on('pageerror',e=>er.push(String(e)));
+  await pg.goto('file://'+resolve(root,'AOI_Contrast_Wizard_rev6.html'));await pg.evaluate(src=>{(0,eval)(src)},fakeTree);
+  const r=await pg.evaluate(async real=>{const c=window.__cw;let picks=0,inputs=0;try{localStorage.removeItem('cw.bigList')}catch(e){}
+    const root=window.__mkTree(real.files,p=>['SETUP1','LOT_A','W01',p],{blockIni:true});window.showDirectoryPicker=async()=>{picks++;return root};
+    document.getElementById('bigInput').click=()=>{inputs++};
+    document.getElementById('bigAdd').click();await new Promise(r=>setTimeout(r,100));
+    const first={picks,inputs,msg:document.getElementById('bigMsg').innerText,edge:c.isEdge()};busy(null);
+    const ents=Object.entries(real.files).map(([k,b])=>({path:'RCP/SETUP1/LOT_A/W01/'+k,file:new File([Uint8Array.from(atob(b),ch=>ch.charCodeAt(0))],k)}));
+    await c.addBigEntries(ents);const s=c.BIG.scans[0];return {first,hits:s&&s.cg&&s.cg.plan?s.cg.plan.hits:null,msg:document.getElementById('bigMsg').innerText}},real);
+  await ctx.close();
+  assert.deepEqual(er,[]);assert.equal(r.first.edge,true);assert.equal(r.first.picks,0);assert.equal(r.first.inputs,1);
+  assert.doesNotMatch(r.first.msg+r.msg,/파일이 없는 것이 아닙니다|Name is not allowed/);assert.equal(r.hits,353,JSON.stringify(r));
+  assert.equal(await page.evaluate(()=>window.__cw.isEdge()),false);   // 시험 Chromium(Chrome) 은 종전 길
+  console.log('#72 후속: Edge = 처음부터 파일 목록 방식(폴더 핸들 0번 · 알림 없음) · 실제 zip 353/353, Chrome = 종전 길 통과')}
 // ── Para #70(2026-11-13): 리뷰PC Defect 정보 · Recipe 필터 · 정렬 · Lot 1개 분석 ──────────────────────────────
 //    ① 소유자 예시(Area 26.74 · Box 7.71 × 8.48 u, Recipe PI, Col 3 Row 3, Accept, Long dark defect, Zone Scan Area, Region Default Region)를 Surface.flt 값(픽셀)으로 되짚기
 {const r=await page.evaluate(()=>{const c=window.__cw,eq=c.parseEqCls('[SURFACE]\n    -1 =0 ; ResType Internal\n  1024=Long dark defect ; RT2D_LENGTH_DARK\n  2048=Long bright defect ; X\n[SOLDER]\n1024=Big SB;\n'),
