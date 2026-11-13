@@ -121,6 +121,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     `rcpName` = recipe 번호(0 이면 '0 (WaferInfo 이름)'), CSV 끝 = Recipe · Zone · Region · 판정비트 · 분류코드 · Zone이름 · 판정종류 · 분류.
     **#72**(2026-11-13, 소유자 "5번 모드 '.ini 막음 … 못 찾았습니다' 경고는 버그"): `fsaProbe` = 폴더 고른 직후 .ini 이름 검사(막히면 훑기 전에 `bigToList`), 알림 = '파일이 없는 것이 아님' + `#bigRepick` [같은 폴더 다시 고르기] → webkitdirectory, 이 PC 기억 `cw.bigList`.
     **#72 후속**(소유자 PC = Edge): `isEdge()` 면 [레시피 폴더 고르기]가 처음부터 webkitdirectory(알림 · 다시 고르기 없음), Chrome 만 폴더 핸들 + `fsaProbe`.
+    **#73**(2026-11-13, 소유자 "#71 이 5-1 · 5-2 · 5-3 에 안 됨 · 목록에 Recipe 열, Step 1 ~ 5 모두"): Step 5 `COLS` + zone · waferRegion · Type, `rv5Load`(Slot 이름 파일), `rcp5` · `rcpSum`, Recipe 열(Step 1 표 · Step 2 쌍별 표 · Step 3 · 4 목록 `.rc` · 5-1 Lot 표 · 5-1 · 5-2 · 5-3 목록 · 엑셀), 5-1 Recipe 고르기 · 'Recipe 순' 정렬(종전 무시), 5-3 `#c5Rv` 리뷰PC 정보, CSV · 엑셀 끝 Recipe ~ 판정종류 열.
     Lot 1개 = `runCompare` 가 `S.pairs=[{A,B:A,single:true,keep:[{a:d,b:null}],gone:[],added:[]}]` — `stLabel/viewLabel` 은 Lot 이름, 보기는 '전체'만, 벤다이어그램 원 1개(VENN_SHAPES[1]), Step 4 = `P4.o.empty` 안내, `paintEsc` 는 `k.b||k.a`.
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).

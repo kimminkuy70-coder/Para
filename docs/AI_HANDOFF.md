@@ -1,6 +1,6 @@
 # AI 공통 인수인계
 
-## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 이슈 Para #72 + 후속(Edge 면 처음부터 파일 목록 방식), 기준 커밋 e00c34b, `ccr-7401b37d-bwze1e`, rev6 시험 통과, 릴리스 대상 아님)
+## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 이슈 Para #73(#71 을 Step 5 에도 · Recipe 열 Step 1 ~ 5), 기준 커밋 d9c9c77, `ccr-7401b37d-bwze1e`, rev6 시험 통과, 릴리스 대상 아님)
 
 - 소유자(세션 대화, 지시는 세션 `ccr-1bb2ad9c-1u5hdy`): "프로그램의 Color gray 매칭 기능 뜯어봐 · 최신 rev html 5-2 · 5-3 에 적용 가능한지 · 지금 html 은 왜 안 되는지" → "설정은 아예 없애" · "1 ~ 4 는 되는데 5 만 안 돼, 로직이 다른지" ·
   "5-1 이 Surface.flt 만 조사해 데이터가 부족할 수 있는지" → "프로그램 기능을 최우선으로, 결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
@@ -129,6 +129,19 @@
   검증 한계: 이 Linux 환경에는 Edge 가 없고, Playwright 는 showDirectoryPicker 를 실제 폴더로 채울 수 없어(`Intercepted by Page.setInterceptFileChooserDialog()` 로 중단) Edge 의 실제 .ini 거부는 재현 못 함 — Edge UA 흉내 + 가짜 폴더 핸들로만 확인.
   OPFS(브라우저 내부 저장소)에서는 Chromium 153 이 .ini 이름을 막지 않음 확인 — 막힘은 로컬 · 네트워크 폴더 핸들에서만(그 Edge 의 규칙 또는 회사 정책, 어느 쪽인지 확인 전).
   내 해석(확인 전): Edge 는 큰 폴더에서 브라우저가 사진 이름까지 목록을 만들어 빠른 길보다 느릴 수 있음 — 소유자 PC 에서 시간이 문제면 알려 달라고 함.
+- 후속 22(이슈 Para #73 "rev6 HTML 수정사항 5", 2026-11-13, 기준 커밋 d9c9c77, 자동 routine run): 소유자 "[rev6 HTML 수정사항 4] 여기 적용된 게 5-1,2,3 에서는 적용이 안 됐어 — 애초에 리스트 열 하나 더 추가해서 레시피도 띄워서 볼 수 있게, 1,2,3,4,5 모두".
+  이슈 본문 링크는 #72(수정사항 4)였지만 소유자가 세션 대화로 "이슈4가 아니라 이슈3" 이라고 정정 → 참조 = **#71**(Surface.flt 값 그대로).
+  원인: #70 · #71 의 리뷰PC 정보 · Recipe 는 Step 3 · 4 만(#70 해석 ⓔ). Step 5 열 배열(`COLS`)에 zone · waferRegion · Type 이 없었고 Slot 이름 파일(rvLoad)도 안 읽음,
+  5-1 필터 줄의 Recipe 고르기는 빈 칸(옵션 안 채움 · 거르기 무시), '정렬: Recipe 순' 도 무시(BIG.sort 'r' 처리 없음) — 버그.
+  고침(rev6 제자리): `COLS` + zn · rg · ty, `bigDef` 에 reclassify · zone · waferRegion · Type, `rv5Load`(Slot 의 WaferInfo · Zones · EquipmentClassifications · ManReClassify — 매칭 폴더 → Slot → 위쪽, 없으면 숫자만),
+  `rcp5`(= rcpName 같은 글) · `rcpSum`(표 칸 요약 '0 (PI_Bubble) 353 · 1 20'). Recipe 열: Step 1 등록 표 · Step 2 쌍별 표 'Recipe (A → B)' · Step 3 · 4 목록 오른쪽 열(`.it>.rc`) · 5-1 등록 Lot 표 · 5-1 목록(열 제목 정렬 'r')
+  · 5-2 결과 목록 · 5-3 목록 · 최종 목록 엑셀. 5-1 Recipe 고르기(개수) · 'Recipe 순' 정렬 동작. 5-3 정보 칸 위 '리뷰PC 정보'(`#c5Rv` = rvText, Step 3 · 4 와 같은 글), 사진 새 창 머리 Recipe · Zone · Region.
+  CSV(5-1 목록 · 5-2 결과) · 엑셀 끝에 Recipe · Zone · Region · 판정비트 · 분류코드 · Zone이름 · 판정종류(엑셀은 Recipe 가 재분류 뒤 열).
+  내 해석(확인 전): ⓐ '1,2,3,4,5' = Step 1 ~ 5 — Step 1 · 2 는 Defect 목록이 없어 등록 표 · 쌍별 표에 Recipe 요약 열 ⓑ Step 3 · 4 목록은 이미 줄 끝에 Recipe 글이 있었음 → 오른쪽 따로 열로
+  ⓒ 사진 새 창(5-2 · 5-3)은 '사진만' 지시(rev5)라 리뷰PC 글 전체 대신 머리 한 줄에 Recipe · Zone · Region ⓓ 5-1 목록 Area µm² · Width · Length 열과 필터 단위는 그대로(#71 해석 ⓒ 와 같음).
+  시험: `node tools/test_contrast_wizard_rev6.mjs` 통과 — 새 시험: Step 1 · Step 2 Recipe 열, Step 3 목록 `.rc`, 5-1 Recipe 열 · 고르기 '1 (7)' · 없는 값 → 0개 · 'r-a' 정렬 · Lot 표, 5-3 `#c5Rv` = rvText(Area · Box Width 값 그대로) · 목록 Recipe,
+  새 창 머리, 엑셀 Recipe · 끝 6열, 실제 zip 5-1 CSV 첫 줄 끝 = '0 (PI_Bubble),2,0,536870912,(29|28),RDL,Event Defect'. 화면 사진은 안 찍음. `tools/check_project.py` 는 HTML · 시험만 바뀌어 안 돌림.
+- 남은 일(#73): 소유자 PC 에서 5-1 Recipe 고르기 · 5-3 리뷰PC 정보 확인. 5-1 이 Slot 마다 이름 파일(.ini) 최대 5개를 더 읽음 — 큰 폴더에서 느려지면 알려 달라고 함. 사진 새 창에도 리뷰PC 글 전체가 필요한지 확인.
 - 남은 일(#72): 소유자 PC(Edge)에서 Step 5 → [레시피 폴더 고르기] → 바로 파일 목록 창(알림 없음) → 매칭 되는지 · 큰 폴더 불러오기 시간 확인.
 - 남은 일(#71): 소유자 PC 에서 리뷰PC 화면과 나란히 보고 숫자만으로 충분한지 · 괄호 이름을 뺄지 · Width/Length 를 리뷰PC 처럼 µm 로도 같이 보일지 확인.
 - 남은 일(세션 2026-11-13 끊김): 회사 PC 에서 큰 폴더를 불러오는 중에 다른 창으로 몇 분 갔다 와서 끝까지 읽혔는지 확인. 그래도 끊기면: 탭이 새로 고쳐졌는지(메모리 절약 — Chrome 설정 '성능'에서 이 파일을 '항상 활성 상태' 사이트로 추가) · 진행 창 문구를 받기.
@@ -153,6 +166,7 @@
 | 세션 대화(#70 뒤) | 파일 불러오는 중 다른 창 · 다른 작업 뒤 끊김 → 계속 이어서 불러오게 | 숨은 탭에서 늦춰지지 않는 쉬기(MessageChannel) · Web Lock · 닫기 확인 · 일시 오류 다시 읽기, 시험 통과(릴리스 대상 아님) |
 | Para #72 | 5번 모드 '.ini 를 열지 못하게 막습니다 … 못 찾았습니다' 경고 = 버그 같으니 수정 | 고른 직후 알아봄(`fsaProbe`, 훑기 전) · 알림 문구 '파일이 없는 것이 아님' · [같은 폴더 다시 고르기] 버튼, 시험 통과(릴리스 대상 아님) |
 | 세션 대화(#72 후속) | '막힘을 알아본다'가 뭔지 · Edge 로 열어 다시 검토 | 설명 + Edge 면 처음부터 파일 목록 방식(`isEdge`), 시험 통과(릴리스 대상 아님) |
+| Para #73 | #71(소유자 정정: #72 아님)이 5-1 · 5-2 · 5-3 에 안 됨 + 목록에 Recipe 열, Step 1 ~ 5 모두 | Step 5 Surface.flt 값 그대로 · 이름 파일 · 5-1 Recipe 고르기 · 정렬 버그 고침 · Recipe 열(Step 1 ~ 5) · 5-3 리뷰PC 정보 · CSV · 엑셀 열, 시험 통과(릴리스 대상 아님) |
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 

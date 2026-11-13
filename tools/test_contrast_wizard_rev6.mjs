@@ -90,6 +90,7 @@ assert.ok(prog.seen.some(t=>/^2 \/ 3 Slot 폴더/.test(t)),prog.seen.join('\n'))
 assert.ok(prog.seen.some(t=>t.startsWith('3 / 3 Slot 폴더')&&t.includes(`파일 ${prog.n} / ${prog.n}개 (100%)`)),prog.seen.join('\n'));
 const rows=await page.locator('#scanTbl tbody tr').allInnerTexts();
 assert.equal(rows.length,2,rows.join('\n'));   // Para #57: 줄 = Lot(CA20/LOTA · CA27/LOTA)
+assert.match(await page.locator('#scanTbl thead').innerText(),/Defect 수\s+Recipe\s+이미지 수/);assert.ok(rows.some(r=>/\t1 4\t/.test(r)),rows.join('\n'));   // #73: Step 1 Recipe 열
 const msgs=await page.locator('#loadMsg .msg').allInnerTexts();
 assert.ok(msgs.some(m=>/Lot CA27\/LOTA: Slot 2개\(W01, W02\).*제외할 Slot: W02\(잘못된 Record Size: 150 byte/.test(m)),msgs.join('\n'));
 const st=await page.evaluate(()=>window.__cw.state.scans.map(s=>({n:s.name,c:s.contrast,d:s.defects.length,img:s.images,w:s.warns,e:s.errors,t:s.transforms.size,p:!!s.product})));
@@ -108,8 +109,8 @@ const kp=await page.locator('#kpis .kpi b').allInnerTexts();
 assert.deepEqual(kp,['4','3','2','2','1','25.0%']);
 // 쌍별 비교(리스트 2개 = 순서쌍 2개, Para #56), 이름 표기(유지 · 소거 · 신규 없음)
 assert.equal(await page.locator('#pairTbl tbody tr').count(),2);
-assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','4','3','2','2','1','50.0%','보기']);
-assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(1).locator('td').allInnerTexts(),['CA27 → CA20','3','4','2','1','2','33.3%','보기']);
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','4','3','2','2','1','50.0%','1 4 → 1 3','보기']);   // #73: Recipe (A → B) 열
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(1).locator('td').allInnerTexts(),['CA27 → CA20','3','4','2','1','2','33.3%','1 3 → 1 4','보기']);
 assert.deepEqual(await page.locator('#kpis .kpi .muted:first-child').allInnerTexts(),['CA20 (전체)','CA27 (전체)','CA20 ∩ CA27','CA20 - CA27','CA27 - CA20','감소율']);
 // 표 필터 6가지(합집합 + 5가지)
 assert.deepEqual(await page.locator('#fltSt option').allInnerTexts(),['CA20 ∪ CA27','CA20 (전체)','CA27 (전체)','CA20 - CA27','CA20 ∩ CA27','CA27 - CA20']);
@@ -142,7 +143,8 @@ assert.match(await page.locator('#p3Cnt').innerText(),/고른 집합 전체\(CA2
 assert.equal(await page.evaluate(()=>window.__cw.PANELS.p3.bg.length),1);   // CA27 에만 있는 1개 = 회색 배경 점
 await page.locator('#setPick input[data-set="1"]').check();
 // 목록 j/k 이동 · 지도 깜빡임
-await page.locator('#p3List').focus();const s3a=await page.locator('#p3List .it.sel').innerText();await page.keyboard.press('j');assert.notEqual(await page.locator('#p3List .it.sel').innerText(),s3a);await page.keyboard.press('k');
+await page.locator('#p3List').focus();const s3a=await page.locator('#p3List .it.sel').innerText();assert.equal(await page.locator('#p3List .it.sel .rc').innerText(),'1');   // #73: Step 3 목록 Recipe 열
+await page.keyboard.press('j');assert.notEqual(await page.locator('#p3List .it.sel').innerText(),s3a);await page.keyboard.press('k');
 const bl=await page.evaluate(async()=>{const c=document.querySelector('#p3Map'),seen=new Set();for(let i=0;i<8;i++){seen.add(c.toDataURL());await new Promise(r=>setTimeout(r,200))}return seen.size});
 assert.ok(bl>1,'Step 3 wafer map 깜빡임');
 // wafer map 새 창 = 실시간 연동(목록을 옮기면 새 창 글 · 그림도 바뀐다)
@@ -297,18 +299,18 @@ assert.deepEqual(lot.lots,[['CA20/LOTA','W01,W03'],['CA27/LOTA','W01,W03']]);
 assert.deepEqual(lot.opts,['Lot 별 (모든 Slot 합침)','Slot 별 · W01 (2/2 Lot)','Slot 별 · W03 (2/2 Lot)']);
 await page.locator('nav button[data-step="2"]').click();await page.locator('#unit').selectOption('lot');await page.locator('#runBtn').click();await page.locator('#step3.on').waitFor();
 // Lot 별: CA20 = 4 + 2, CA27 = 3 + 1. W03 (200498, 279473) 은 W01 의 같은 좌표와 짝짓지 않는다(다른 Wafer)
-assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','6','4','3','3','1','50.0%','보기']);
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','6','4','3','3','1','50.0%','1 6 → 1 4','보기']);
 assert.match(await page.locator('#cmpMsg').innerText(),/Lot 별\(모든 Slot\) · 리스트 2개/);
 assert.match(await page.locator('#mapSt').innerText(),/Lot 별: Slot 2개까지 한 wafer map 에 겹쳐 그림/);
 assert.equal(await page.evaluate(()=>window.__cw.state.venn.cl.length),7);   // 묶음도 Slot 끼리: W01 5 + W03 2
 // Step 3 에서 Slot 별(W03)로 바꾸면 바로 다시 비교
 await page.locator('#unit3').selectOption('slot:w03');
-assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','2','1','1','1','0','50.0%','보기']);
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','2','1','1','1','0','50.0%','1 2 → 1 1','보기']);
 assert.equal(await page.locator('#unit').inputValue(),'slot:w03');
 const sl=await page.evaluate(()=>window.__cw.state.rows.map(r=>r.d.scan.slotName));assert.ok(sl.every(x=>x==='W03'),sl.join());
 assert.match(await page.locator('#detTbl thead').innerText(),/Slot/);assert.match(await page.evaluate(()=>window.__cw.csvText()),/,Step,Slot,ContrastAVG,/);
 await page.locator('#unit3').selectOption('slot:w01');
-assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','4','3','2','2','1','50.0%','보기']);
+assert.deepEqual(await page.locator('#pairTbl tbody tr').nth(0).locator('td').allInnerTexts(),['CA20 → CA27','4','3','2','2','1','50.0%','1 4 → 1 3','보기']);   // #73: Recipe (A → B) 열
 // Para #57 추가: 다른 파일의 Wafer Map 이 계산 Die 보다 크면 종전에는 왼쪽 아래만 맞춰 맵이 오른쪽 위로 밀렸다 → 맵 가운데 = wafer 중심
 const al=await page.evaluate(()=>{const c=window.__cw,S=c.state;
   const big='FNLOC:180\nROWCT:8\nCOLCT:9\n'+Array.from({length:8},()=>'RowData:'+Array(9).fill('000').join(' ')).join('\n')+'\n';
@@ -439,17 +441,28 @@ assert.deepEqual(s51.cg,[['W01',2,1,0,'RCP/SETUP1/LOT_CA20/W01'],['W01',2,1,0,'R
 assert.match(await page.locator('#bigMsg').innerText(),/Color · Gray 매칭\(Para 프로그램과 같은 계산, 사진은 아직 안 읽음\): Color 항목 4개 중 Gray 위치 2개 · Defect 7개 중 Color 연결 3개/);
 assert.match(await page.locator('#bigCnt').innerText(),/^Defect 7개/);
 const col=async j=>page.locator('#bigList .br').evaluateAll((els,j)=>els.map(e=>e.children[j].textContent),j);
-const cs=(await col(6)).map(Number);assert.deepEqual(cs,[...cs].sort((a,b)=>b-a));assert.equal(cs[0],45);
-assert.deepEqual((await col(14)).sort(),['Color · Gray','Color · Gray','Color 만','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음']);   // 5-1 목록에 매칭 칸(사진 파일 확인 전)
-assert.match(await page.locator('#bigList .bh').innerText(),/ID\s+첫번째 분류\s+재분류\s+Contrast\(실제\) ▼[\s\S]*Color · Gray 매칭/);
+const cs=(await col(7)).map(Number);assert.deepEqual(cs,[...cs].sort((a,b)=>b-a));assert.equal(cs[0],45);
+assert.deepEqual((await col(15)).sort(),['Color · Gray','Color · Gray','Color 만','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음']);   // 5-1 목록에 매칭 칸(사진 파일 확인 전)
+assert.match(await page.locator('#bigList .bh').innerText(),/ID\s+첫번째 분류\s+재분류\s+Recipe\s+Contrast\(실제\) ▼[\s\S]*Color · Gray 매칭/);
 assert.deepEqual([...new Set(await col(4)),...new Set(await col(5))],['#0','#0']);assert.match(await page.locator('#bigCls').innerText(),/첫번째 분류\s+#0\s+7\s+재분류\s+#0\s+7/);   // ManReClassify.ini 가 없으면 코드 번호
 await page.locator('#bigFlt [data-f="c0"]').fill('36');await page.locator('#bigFlt [data-f="c1"]').fill('40');await page.waitForTimeout(350);
-assert.deepEqual((await col(6)).map(Number),[40,36]);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 2개 \(전체 7개 중/);
+assert.deepEqual((await col(7)).map(Number),[40,36]);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 2개 \(전체 7개 중/);
 assert.match(await page.locator('#toB2').innerText(),/걸러낸 Defect 2개 결과 목록 · 사진 확인/);
 await page.locator('#bigFlt [data-f="clear"]').click();await page.waitForTimeout(100);
-await page.locator('#bigList .bh [data-sort="a"]').click();assert.deepEqual((await col(7)).map(Number).slice(0,2),[71.3,48.72]);   // Area 큰 순
+await page.locator('#bigList .bh [data-sort="a"]').click();assert.deepEqual((await col(8)).map(Number).slice(0,2),[71.3,48.72]);   // Area 큰 순
 await page.locator('#bigLot').selectOption({index:1});await page.waitForTimeout(100);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 4개 \(전체 7개 중/);
 await page.locator('#bigLot').selectOption('');
+// #73: 5-1 Recipe 열 · Recipe 고르기(종전 빈 칸) · 'Recipe 순' 정렬 · 등록 Lot 표 Recipe 열
+assert.deepEqual([...new Set(await col(6))],['1']);
+assert.deepEqual(await page.locator('#bigFlt [data-f="rcp"] option').allInnerTexts(),['전체','1 (7)']);
+await page.locator('#bigFlt [data-f="rcp"]').selectOption('1');await page.waitForTimeout(350);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 7개/);
+await page.evaluate(()=>{const o=document.createElement('option');o.value='9';o.textContent='9';const s=document.querySelector('#bigFlt [data-f="rcp"]');s.append(o);s.value='9';s.dispatchEvent(new Event('change',{bubbles:true}))});
+await page.waitForTimeout(350);assert.match(await page.locator('#bigCnt').innerText(),/^Defect 0개|레시피 폴더를/);
+await page.locator('#bigFlt [data-f="rcp"]').selectOption('');await page.locator('#bigFlt [data-f="sort"]').selectOption('r-a');await page.waitForTimeout(350);
+assert.equal(await page.evaluate(()=>window.__cw.BIG.sort),'r-a');assert.match(await page.locator('#bigCnt').innerText(),/^Defect 7개/);
+await page.locator('#bigList .bh [data-sort="c"]').click();await page.waitForTimeout(100);
+assert.deepEqual(await page.$$eval('#bigTbl thead th',h=>h.map(x=>x.textContent)).then(h=>h.slice(3,5)),['Defect 수','Recipe']);
+assert.deepEqual(await page.$$eval('#bigTbl tbody tr',r=>r.map(x=>x.children[4].textContent)),['1 4','1 3']);
 // Lot 제외(소유자 "5-1 에서 필터로 제외할 Lot 고를 수 있게"): 체크를 끄면 그 Lot 이 목록에서 빠지고, 다시 켜면 돌아옴 · 모두 끄기/켜기
 assert.match(await page.locator('#bigLotSum').innerText(),/^Lot 제외: 없음 \(전체 2개\)$/);await page.locator('#bigLotSum').click();
 {const ck=page.locator('#bigLotOff [data-lotoff]');assert.equal(await ck.count(),2);const n0=+(await page.locator('#bigLotOff .clsck').first().locator('.muted').innerText());
@@ -481,7 +494,7 @@ assert.match(sl5[1],/LOT_CA27\s+W01\s+3\s+2\s+1 \(33%\)\s+1 \(33%\)\s+2\s+frameT
 assert.equal(await page.locator('#b5list .br').count(),7);
 await page.locator('#b5show').selectOption('ok');assert.equal(await page.locator('#b5list .br').count(),2);
 // 결과 목록에 사진 전체 경로 칸(원본 폴더 경로 + 고른 폴더부터의 경로)
-assert.deepEqual((await page.locator('#b5list .br').nth(0).locator('span').allInnerTexts()).slice(12),
+assert.deepEqual((await page.locator('#b5list .br').nth(0).locator('span').allInnerTexts()).slice(13),
   ['Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\C1.c.1.jpeg','Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA27\\W01\\F1.t.1.jpeg']);
 // 전체 경로 = [원본 폴더 경로(PC)] + 고른 폴더부터: 상위 폴더 · 고른 폴더 자체(이름이 같으면 겹치지 않게) · UNC · 비었으면 그대로
 const pcp=await page.evaluate(()=>{const c=window.__cw,b=document.getElementById('bigBase'),old=b.value,set=v=>{b.value=v;return c.pcPath('RCP/SETUP1/LOT_A/W01/x.c.1.jpeg')};
@@ -494,7 +507,7 @@ await pw.locator('#ff canvas').waitFor();
 const capOf=()=>pw.evaluate(()=>[...document.querySelectorAll('figcaption')].map(f=>({b:f.querySelector('b').textContent,pp:(f.querySelector('.pp')||{}).textContent||'',text:f.textContent,tip:f.title})));
 const pw1=await pw.evaluate(()=>({hd:document.getElementById('hd').textContent,
   c:!!document.querySelector('#fc canvas'),x:[document.querySelector('#fx canvas').width,document.querySelector('#fx canvas').height],tables:document.querySelectorAll('table,dl,button,input:not(#pwLock)').length}));
-assert.match(pw1.hd,/^1 \/ 2 · LOT_CA27 · W01 · ID \d+ · #0 · Contrast /);   // 분류도 머리에
+assert.match(pw1.hd,/^1 \/ 2 · LOT_CA27 · W01 · ID \d+ · #0 · Recipe 1 · Zone 0 · Region 0 · Contrast /);   // 분류도 머리에
 assert.doesNotMatch(pw1.hd,/원본 폴더 경로/);
 // 사진 파일명 + 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도") — 칸 제목(사진 위, 사진을 가리지 않음), 마우스를 올려도 경로
 const cap1=await capOf();
@@ -590,6 +603,10 @@ await page.keyboard.press('ArrowLeft');await page.locator('#c5Info',{hasText:'1 
 await page.keyboard.press('ArrowDown');await page.locator('#c5Info',{hasText:'2 / 2'}).waitFor();
 const [w5]=await Promise.all([page.waitForEvent('popup'),page.locator('#c5list .br').nth(0).dblclick()]);
 await w5.locator('#fx canvas').waitFor();assert.match(await w5.locator('#hd').innerText(),/^1 \/ 2 · /);
+// #73: 5-3 리뷰PC 정보 = Surface.flt 값 그대로(Step 3 · 4 와 같은 글), 목록 Recipe 열
+{const rv=await page.locator('#c5Rv').textContent(),d=await page.evaluate(()=>{const p=window.__cw.C5.items[0],d=window.__cw.bigDef(p.s,p.i);return {area:d.area,bw:d.BoxWidth,txt:window.__cw.rvText(d)}});
+  assert.equal(rv,d.txt);assert.match(rv,new RegExp(`^Surface\nArea:${d.area}\n[\\s\\S]*Box Width:${d.bw}\n[\\s\\S]*Recipe: 1\n[\\s\\S]*Zone: 0\nRegion: 0$`));
+  assert.deepEqual(await page.$$eval('#c5list .br',r=>r.map(x=>x.children[8].textContent)),['1','1'])}
 // #68 최종 목록: 목록에서 Space = ☑/☐(첫 칸), 새 창에서도 Space → 목록에 반영, 엑셀(사진 포함) = ☑ 한 Defect 만
 const pickN=()=>page.locator('#c5pickN').innerText(),firstCells=()=>page.$$eval('#c5list .br',r=>r.map(x=>x.children[0].textContent));
 assert.equal(await pickN(),'☑ 0개');assert.equal(await page.locator('#c5save').isDisabled(),true);assert.match(await w5.locator('#hd').innerText(),/☐ 최종 목록 아님/);
@@ -618,11 +635,13 @@ media=[n for n in z.namelist() if n.startswith('xl/media/')];jp=all(z.read(n)[:3
 dr=z.read('xl/drawings/drawing1.xml').decode();print(json.dumps({'rows':rows,'media':len(media),'jpeg':jp,'anchors':dr.count('<xdr:oneCellAnchor>'),'names':z.namelist()[:3]}))
 `],{input:xl.b64,encoding:'utf-8',maxBuffer:1<<26}));
 assert.equal(xlChk.media,6);assert.equal(xlChk.jpeg,true);assert.equal(xlChk.anchors,6);assert.equal(xlChk.rows.length,3);
-assert.equal(xlChk.rows[0][7],'Color');assert.match(xlChk.rows[0][8],/^Gray Crop/);assert.match(xlChk.rows[0][9],/^Gray 프레임/);
+assert.equal(xlChk.rows[0][6],'Recipe');assert.deepEqual(xlChk.rows.slice(1).map(r=>r[6]),['1','1']);   // #73: Recipe 열
+assert.deepEqual(xlChk.rows[0].slice(-6),['Zone','Region','판정 비트','분류 코드','Zone 이름','판정 종류']);
+assert.equal(xlChk.rows[0][8],'Color');assert.match(xlChk.rows[0][9],/^Gray Crop/);assert.match(xlChk.rows[0][10],/^Gray 프레임/);
 assert.deepEqual(xlChk.rows.slice(1).map(r=>r[2]),['W01','W01']);
-assert.equal(xlChk.rows[0][26],'흑백 GL 평균 (원)');assert.ok(xlChk.rows.slice(1).every(r=>Number.isFinite(+r[26])&&/^\d+(\.\d+)? px · \d+픽셀$/.test(r[27])),JSON.stringify(xlChk.rows.map(r=>r.slice(26))));   // rev6: 측정 안 했어도 저장 때 잼
+assert.equal(xlChk.rows[0][27],'흑백 GL 평균 (원)');assert.ok(xlChk.rows.slice(1).every(r=>Number.isFinite(+r[27])&&/^\d+(\.\d+)? px · \d+픽셀$/.test(r[28])),JSON.stringify(xlChk.rows.map(r=>r.slice(27))));   // rev6: 측정 안 했어도 저장 때 잼
 if(process.env.CW_XL_OUT)(await import('node:fs')).writeFileSync(process.env.CW_XL_OUT,Buffer.from(xl.b64,'base64'));   // 손으로 열어 보기(LibreOffice · Excel)
-assert.ok(xlChk.rows.slice(1).every(r=>/\.c\.\d\.jpeg$/.test(r[20])&&/\.t\.\d\.jpeg$/.test(r[22])&&/^Y:\\/.test(r[21])),JSON.stringify(xlChk.rows));
+assert.ok(xlChk.rows.slice(1).every(r=>/\.c\.\d\.jpeg$/.test(r[21])&&/\.t\.\d\.jpeg$/.test(r[23])&&/^Y:\\/.test(r[22])),JSON.stringify(xlChk.rows));
 // 다시 확인(5-2)을 해도 같은 Defect 의 ☑ 는 남음
 await page.evaluate(()=>window.__cw.b5Pair());await page.waitForFunction(()=>document.getElementById('busy').hidden);assert.equal(await page.evaluate(()=>window.__cw.pickList().length),2);
 await page.locator('#c5pickNone').click();assert.equal(await pickN(),'☑ 0개');
@@ -656,7 +675,7 @@ const gl2=await page.evaluate(async()=>{const c=window.__cw,P=c.BIG.pairs.filter
   for(const p of P.filter(p=>p.glv!=null).slice(0,3)){const r=p.r||c.cgOf(p.s,p.i),b=await c.cgBitmap(p.s,r.hit.frame.file),cv=new OffscreenCanvas(b.width,b.height),x=cv.getContext('2d');x.drawImage(b,0,0);const D=x.getImageData(0,0,b.width,b.height).data;
     const cx=r.hit.px*b.width/c.CG.GW,cy=r.hit.py*b.height/c.CG.GH;let S=0,N=0;for(let y=0;y<b.height;y++)for(let xx=0;xx<b.width;xx++){const dx=xx+.5-cx,dy=y+.5-cy;if(Math.sqrt(dx*dx+dy*dy)<=5.5){S+=D[(y*b.width+xx)*4];N++}}
     out.brute.push([+(p.glv).toFixed(9),+(S/N).toFixed(9),c.glCount(p),N])}
-  out.cells=[...document.querySelectorAll('#c5list .br')].map(r=>r.children[8].textContent);out.sort=c.GLC.sort;out.items=c.C5.items.map(p=>p.glv);return out});
+  out.cells=[...document.querySelectorAll('#c5list .br')].map(r=>r.children[9].textContent);out.sort=c.GLC.sort;out.items=c.C5.items.map(p=>p.glv);return out});
 assert.ok(gl2.can>0&&gl2.val===gl2.can,JSON.stringify(gl2));assert.ok(gl2.other.every(Boolean));
 for(const [a,b,n,N] of gl2.brute){assert.equal(a,b);assert.equal(n,N)}
 assert.equal(gl2.sort,'gl-d');{const v=gl2.items.filter(x=>x!=null);for(let k=1;k<v.length;k++)assert.ok(v[k-1]>=v[k],v.join())}
@@ -710,8 +729,8 @@ const perf=await page.evaluate(async()=>{const c=window.__cw,REC=c.REC,N=100000,
   const es=[];for(let k=0;k<3;k++)es.push({path:`HUGE/S1/LOT${k}/W0${k}/Surface.flt`,file:new File([mk(k)],'Surface.flt')});
   const t0=performance.now();await c.addBigEntries(es);const t1=performance.now();
   document.querySelector('#bigFlt [data-f="c0"]').value='59.9';c.bigRefresh();const t2=performance.now();
-  return {load:t1-t0,flt:t2-t1,m:c.BIG.view.m,total:c.BIG.view.total,rows:document.querySelectorAll('#bigList .br').length,first:+document.querySelector('#bigList .br').children[6].textContent,
-    cell:document.querySelector('#bigList .br').children[14].textContent,msg:document.getElementById('bigMsg').innerText}});
+  return {load:t1-t0,flt:t2-t1,m:c.BIG.view.m,total:c.BIG.view.total,rows:document.querySelectorAll('#bigList .br').length,first:+document.querySelector('#bigList .br').children[7].textContent,
+    cell:document.querySelector('#bigList .br').children[15].textContent,msg:document.getElementById('bigMsg').innerText}});
 assert.equal(perf.total,300007);assert.ok(perf.m>0&&perf.m<perf.total/50,JSON.stringify(perf));assert.ok(perf.rows<80,JSON.stringify(perf));assert.ok(perf.first>=59.9);
 assert.ok(perf.load<15000&&perf.flt<5000,JSON.stringify(perf));assert.equal(perf.cell,'✖ 매칭 파일 없음');assert.match(perf.msg,/매칭 파일이 없는 Slot 3개: W00\(없음: ColorImageGrabingInfo\.ini — Slot 폴더 파일 1개 중 이 이름\(대소문자 무시\) 없음 · 하위 폴더 0개 · 위쪽 폴더 3개도 찾아봄 · 전체 경로 \d+자\)/);   // [원본 폴더 경로]를 적어 두면 전체 경로 길이도(260자 제한 점검)
 console.log('step5 30만 Defect:',JSON.stringify({load:perf.load,flt:perf.flt,m:perf.m}));
@@ -807,7 +826,8 @@ assert.deepEqual([real0.cls.sort1,real0.cls.sort2,real0.cls.sort2d],['B R Other'
 assert.deepEqual([real0.cls.mAll,real0.cls.mOff1,real0.cls.mAnd,real0.cls.mOff2],[353,19,0,334]);   // 1 끔 → Other 19, + 2 Other 끔 → 0(AND), 1 다시 켬 → 334
 assert.match(real0.cls.chipsOff,/재분류 B R Surface Dark 334 B R Other 19 모두 켜기$/);
 assert.deepEqual([real0.cls.mClear,real0.cls.off,real0.cls.mNone,real0.cls.mBack],[353,[0,0],0,353]);   // 모두 켜기 · 모두 끄기 → 0 · 다시 켜기
-assert.match(real0.cls.csv1[0],/,Contrast,첫번째분류,재분류$/);assert.match(real0.cls.csv1[1],/,(B R Surface Dark|B R Other),\1$/);
+assert.match(real0.cls.csv1[0],/,Contrast,첫번째분류,재분류,Recipe,Zone,Region,판정비트,분류코드,Zone이름,판정종류$/);   // #73: Step 5 도 Surface.flt 값 그대로 + 이름(괄호 · 이름 열)
+assert.match(real0.cls.csv1[1],/,(B R Surface Dark|B R Other),\1,0 \(PI_Bubble\),2,0,536870912,(29|28),RDL,Event Defect$/);
 assert.match(real0.cls.csv2[0],/,ID,resultID,첫번째분류,재분류,Contrast,/);
 // 재분류된 Defect(첫 Defect: 원래 28 B R Other → 지금 0 Accept, 소유자 Slot 29126432EWE3 모양): 열이 갈리고 AND 가 둘을 함께 봄
 const realC=await realRun('cls0',{cls:true,cls0:true});cmpReal('재분류된 Defect',realC);const cn=realC.cls.n;
