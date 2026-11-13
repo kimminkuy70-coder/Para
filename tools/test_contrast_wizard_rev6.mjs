@@ -928,6 +928,47 @@ assert.match(subSw.msg,/Slot 하위 폴더 1/);assert.deepEqual(subSw.pairs,base
   assert.equal(r.first.scans,0);assert.equal(r.first.flag,'1');assert.equal(r.first.picks,1);
   assert.ok(r.first.inputs<=1);assert.deepEqual(r.second,{picks:1,inputs:r.first.inputs+1});   // 누른 직후면 바로 파일 목록 창, 두 번째는 폴더 핸들을 묻지 않고 webkitdirectory
   assert.equal(r.n,1);assert.equal(r.hits,353,JSON.stringify(r))}
+// ── Para #70(2026-11-13): 리뷰PC Defect 정보 · Recipe 필터 · 정렬 · Lot 1개 분석 ──────────────────────────────
+//    ① 소유자 예시(Area 26.74 · Box 7.71 × 8.48 u, Recipe PI, Col 3 Row 3, Accept, Long dark defect, Zone Scan Area, Region Default Region)를 Surface.flt 값(픽셀)으로 되짚기
+{const r=await page.evaluate(()=>{const c=window.__cw,eq=c.parseEqCls('[SURFACE]\n    -1 =0 ; ResType Internal\n  1024=Long dark defect ; RT2D_LENGTH_DARK\n  2048=Long bright defect ; X\n[SOLDER]\n1024=Big SB;\n'),
+    zz=c.parseZones('[ALGName]\n255=PostProcess\n0=Scan Area\n2=RDL\n[ALG]\n0=Surface\n2=Surface\n');
+    const scan={rv:{recipe:'PI',zones:zz.zones,algs:zz.algs,types:eq,cls:c.parseManRe('[General]\n0=Accept,Good,0\n29=B R Surface Dark,Defect,110\n')},product:{pitchX:1000,pitchY:1000,offX:0,offY:0}};
+    const d={scan,area:45,BoxWidth:10,BoxHeight:11,BlobBreadth:2,BlobLength:13,recipe:0,zone:0,waferRegion:0,Type:1024,reclassify:0,X:3500,Y:3500};
+    return {eq:[...eq],txt:c.rvText(d),two:c.typeName({...d,Type:1024|2048}),none:c.typeName({...d,Type:4}),rc:c.rcpName({...d,recipe:2}),noname:c.rcpName({scan:{rv:{recipe:''}},recipe:1})}});
+  assert.deepEqual(r.eq,[[1024,'Long dark defect'],[2048,'Long bright defect']]);   // -1(내부용) · 다른 구역([SOLDER]) 은 안 씀
+  assert.equal(r.txt,['Surface','Area:26.74 u','Width:1.54 u','Length:10.02 u','Box Width:7.71 u','Box Height:8.48 u','','Recipe: PI','Col: 3 Row: 3','--------------------','Accept','Long dark defect','','Zone: Scan Area','Region: Default Region'].join('\n'));
+  assert.equal(r.two,'Long dark defect, Long bright defect');assert.equal(r.none,'Type 4');assert.equal(r.rc,'PI #2');assert.equal(r.noname,'레시피 1')}
+//    ② 실제 결과 폴더(사진 제외.zip) Lot 1개만 등록 → 비교 실행 → Step 3 벤다이어그램 원 1개 · Defect 353 · 리뷰PC 정보 · Recipe 필터 · Step 4 안내
+{const pg=await browser.newPage({viewport:{width:1400,height:1000}});const er=[];pg.on('pageerror',e=>er.push(String(e)));
+  await pg.goto('file://'+resolve(root,'AOI_Contrast_Wizard_rev6.html'));
+  await pg.evaluate(async real=>{const ents=Object.entries(real.files).map(([k,b])=>({path:'LOT_ONE/W01/'+k,file:new File([Uint8Array.from(atob(b),ch=>ch.charCodeAt(0))],k)}));
+    await window.__cw.addEntries(ents);await new Promise(r=>setTimeout(r,0))},real);
+  assert.equal(await pg.evaluate(()=>window.__cw.state.scans.length),1);
+  await pg.locator('nav button[data-step="2"]').click();await pg.locator('#runBtn').click();await pg.locator('#step3.on').waitFor();
+  assert.match(await pg.locator('#cmpMsg').innerText(),/Lot 1개\(.*Defect 353개\) — 비교 없이 분석합니다/);
+  assert.equal(await pg.locator('#pairTbl tbody tr').count(),1);assert.match(await pg.locator('#pairTbl tbody').innerText(),/Lot 1개 — 비교 없음/);
+  await pg.locator('#vennBtn').click();await pg.waitForTimeout(300);
+  const v=await pg.evaluate(()=>{const S=window.__cw.state,P=window.__cw.PANELS.p3;return {n:S.venn.scans.length,counts:[...S.venn.counts],items:P.items.length,rv:document.getElementById('p3Rv').textContent,
+    opts:[...document.querySelectorAll('#p3Flt [data-f="rcp"] option')].map(o=>o.textContent),geo:!!S.venn.geo}});
+  assert.equal(v.n,1);assert.deepEqual(v.counts,[[1,353]]);assert.equal(v.items,353);assert.ok(v.geo,'벤다이어그램(원 1개)을 그림');
+  // 실제 자료: zone 2 = RDL(Zones.ini), Type = 비트 29 Event Defect, reclassify 29 = B R Surface Dark, Recipe = WaferInfo.ini PI_Bubble, waferRegion 0
+  assert.match(v.rv,/^Surface\nArea:\d+\.\d\d u\nWidth:/);assert.match(v.rv,/Recipe: PI_Bubble\n/);assert.match(v.rv,/\nB R (Surface Dark|Other)\nEvent Defect\n\nZone: RDL\nRegion: Default Region$/);
+  assert.deepEqual(v.opts,['전체','PI_Bubble (353)']);
+  // Recipe 고르기 · 정렬 · 필터 지우기
+  await pg.locator('#p3Flt [data-f="rcp"]').selectOption('PI_Bubble');await pg.waitForTimeout(350);
+  assert.match(await pg.locator('#p3Cnt').innerText(),/필터에 맞는 것 353 \/ 353개 \(Recipe PI_Bubble\)/);
+  await pg.locator('#p3Flt [data-f="sort"]').selectOption('r-a');await pg.waitForTimeout(350);assert.match(await pg.locator('#p3Cnt').innerText(),/정렬: Recipe 이름 순/);
+  await pg.locator('#p3Flt [data-f="clear"]').click();await pg.waitForTimeout(350);
+  assert.equal(await pg.locator('#p3Flt [data-f="rcp"]').inputValue(),'');assert.doesNotMatch(await pg.locator('#p3Cnt').innerText(),/필터/);
+  // 상세 표 · CSV 에 Recipe · Zone · 판정 종류 · 분류
+  assert.match(await pg.locator('#detTbl thead').textContent(),/Recipe/);assert.match(await pg.locator('#detTbl tbody tr').first().textContent(),/PI_Bubble/);   // 접힌 <details> 안
+  const csv=await pg.evaluate(()=>window.__cw.csvText());assert.match(csv,/,Recipe,Zone,판정종류,분류,Region,BoxW_um,BoxH_um\r\n/);assert.match(csv,/,PI_Bubble,RDL,Event Defect,B R (Surface Dark|Other),Default Region,\d+\.\d\d,\d+\.\d\d\r\n/);
+  assert.deepEqual(await pg.locator('#fltSt option').allTextContents(),['LOT_ONE']);
+  // Step 4: 비교 없음 안내(오류 없이)
+  await pg.locator('nav button[data-step="4"]').click();await pg.locator('#step4.on').waitFor();await pg.waitForTimeout(200);
+  assert.match(await pg.locator('#p4Color').innerText(),/Lot 이 1개\(LOT_ONE\)라 A → B 비교\(Escape Defect\)가 없습니다/);
+  await pg.close();assert.deepEqual(er,[]);
+  console.log('Para #70: 리뷰PC 정보(소유자 예시 되짚기 · 실제 zip) · Recipe 필터 · 정렬 · Lot 1개(벤다이어그램 원 1개, Defect 353) 통과')}
 assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
 await browser.close();
 console.log('test_contrast_wizard_rev6: passed');

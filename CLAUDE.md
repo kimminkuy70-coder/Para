@@ -112,6 +112,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     **#69 샘플 Wafer Map**(2026-11-13, 소유자 "wafer 맵이 불안정하게 출력 — 샘플 맵을 업로드하는 스텝을 추가해 보정"): rev6 Step 2 `#mapBtn`(샘플 올리기) · `#mapClr` · `#mapSmp`, 올린 맵(`S.userMap`) = **Die 배치의 기준**
     (`dieCells` 의 `SMP` — s_DieLocation · 결과 폴더 맵 · 계산보다 우선, `D.from='sample'`, `S.dieSrc`='샘플 맵 …'). 위치 = `sampleFit`(처음 = 샘플 가운데 = wafer 중심, ±W·H 칸 대 보기: s_DieLocation 최대 겹침 →
     없으면 Defect 가 Die 안(20개 이상 · max(5, 10%) 넘게 나을 때만) → 중심, 결과 `S.mapFit` · 기억 `S._fitC`), `mapStatus` 에 맞춘 근거 · ⚠. localStorage `cw.sampleMap`({name, text}) 로 이 PC 에 기억. 결과 폴더에서 찾은 맵은 종전처럼 비교 · 대체용.
+    **#70 리뷰PC 정보 · Recipe 필터 · Lot 1개**(2026-11-13, 소유자 "리뷰PC 의 Defect 정보를 우리도 · Recipe 별 정렬 필터 · 1개 lot 만 올려도 분석, 벤다이어그램 1개"): Step 1 로더 `rvLoad`(WaferInfo/Params_WaferInfo Recipe 이름 · `parseZones` · `parseEqCls` · `parseManRe` → `s.rv`),
+    `rvInfo`/`rvText`(µm = px × `S.o.pix`) → 패널 `#p3Rv/#p4Rv` · 사진 새 창 `pre.rv`, `rcpName`(필터 · 정렬 · 목록 줄 · 상세 표 Recipe 열 · CSV 끝 7열), 필터 줄 `select[data-f=rcp]`(`rcpOptions` = 목록 Recipe + 개수) · SORTS `r-a/r-d`.
+    Lot 1개 = `runCompare` 가 `S.pairs=[{A,B:A,single:true,keep:[{a:d,b:null}],gone:[],added:[]}]` — `stLabel/viewLabel` 은 Lot 이름, 보기는 '전체'만, 벤다이어그램 원 1개(VENN_SHAPES[1]), Step 4 = `P4.o.empty` 안내, `paintEsc` 는 `k.b||k.a`.
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.

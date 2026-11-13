@@ -1,6 +1,6 @@
 # AI 공통 인수인계
 
-## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 이슈 Para #69 rev6 샘플 Wafer Map, 기준 커밋 ea38045, `ccr-7401b37d-bwze1e`)
+## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 이슈 Para #70 rev6 리뷰PC 정보 · Recipe 필터 · Lot 1개 분석, 기준 커밋 bab0683, `ccr-7401b37d-bwze1e`)
 
 - 소유자(세션 대화, 지시는 세션 `ccr-1bb2ad9c-1u5hdy`): "프로그램의 Color gray 매칭 기능 뜯어봐 · 최신 rev html 5-2 · 5-3 에 적용 가능한지 · 지금 html 은 왜 안 되는지" → "설정은 아예 없애" · "1 ~ 4 는 되는데 5 만 안 돼, 로직이 다른지" ·
   "5-1 이 Surface.flt 만 조사해 데이터가 부족할 수 있는지" → "프로그램 기능을 최우선으로, 결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
@@ -83,6 +83,20 @@
   ⓓ 맞춰 보는 범위 = 가운데에서 ±(샘플 폭/2, 3 ~ 20칸) ⓔ 샘플의 방향(회전 · 뒤집힘)은 맞춰 보지 않음 — 다르면 ⚠ 로 알림 ⓕ 샘플 한 개를 모든 Lot · Slot 에 씀(제품이 바뀌면 다시 올림).
   시험: `node tools/test_contrast_wizard_rev6.mjs` 통과(기존 맵 시험 = 샘플 기준 문구로 고침 + 새 시험: s_DieLocation 을 (4, 3) 칸 옮긴 자리 · 중심 정보 3가지(없음 · 맞음 · 1.4 칸 어긋남)에서 같은 Die 30개 = s_DieLocation,
   스캔 Die 29개여도 샘플 30개, Defect 40개로 맞춤, Defect 7개면 안 옮김, ⚠ 문구, 새 화면에서 기억 · [샘플 지우기], RowData 없는 파일 거부). `tools/check_project.py` 는 안 돌림(HTML · 시험 파일만 바뀜, 이 환경 openpyxl 없음).
+- 후속 17(이슈 Para #70 "rev6 HTML 수정사항 2", 2026-11-13, 기준 커밋 bab0683, 자동 routine run): 소유자 "리뷰PC 에서 Defect 를 보면 Surface · Area · Width · Length · Box W/H · Recipe · Col/Row · Accept · Long dark defect · Zone · Region 이 나오는데 우리도 되는지
+  사진 제외.zip 을 뜯어 검토 · 되면 Recipe 별 정렬 필터 · 1개 Lot 만 올려도 분석(벤다이어그램 1개)". 첨부 = 브랜치에 있는 `사진 제외.zip`(Slot 1개, Defect 353, 사진 없음 — 이 브랜치에도 같은 파일).
+  검토: 됨. Surface.flt(Surface.flt.md 필드) 한 줄에 area · BlobBreadth · BlobLength · BoxWidth · BoxHeight(Gray 픽셀) · recipe · zone · waferRegion · Type · reclassify. 이름 파일 = WaferInfo.ini [Recipe] Name(PI_Bubble) · Zones.ini [ALGName]/[ALG]
+  · EquipmentClassifications.ini [SURFACE](1024 = Long dark defect, 이 zip 은 전부 비트 29 Event Defect) · ManReClassify.ini(0 = Accept). zip 의 353개는 zone 2 = RDL, recipe 0, waferRegion 0, 분류 B R Surface Dark/Other.
+  µm 근거: 소유자 예시 Box 7.71 × 8.48 u = 10 × 11 px × 0.7708, Area 26.74 = 45 px × 0.7708² (정수 px 로 딱 맞음). zip 에서 BlobBreadth × BlobLength = area(px) 가 정확히 같음 → 둘 다 px 로 보고 같은 배율로 µm 표시.
+  고침(rev6 제자리): `rvLoad` · `rvInfo` · `rvText` · `rcpName` · `typeName` · `parseZones` · `parseEqCls`, Step 3 · 4 패널 '리뷰PC 정보' 칸(`#p3Rv/#p4Rv`) · 사진 새 창 오른쪽 `pre.rv`, 목록 줄 끝 Recipe,
+  필터 줄 Recipe 고르기(`rcpOptions`, 개수 표시) · 정렬 'Recipe 이름 순/역순', 상세 표 Recipe 열, CSV 끝 Recipe · Zone · 판정종류 · 분류 · Region · BoxW_um · BoxH_um.
+  Lot 1개: `runCompare` 가 비교 쌍 대신 자기 자신 하나(`single`) — Step 3 벤다이어그램 원 1개 · 그 Lot 모든 Defect, 쌍별 표 '비교 없음', 상세 표 보기 '전체'만, Step 4 = '비교(Escape) 없음 — Step 3 에서 보십시오' 안내.
+  내 해석(확인 전): ⓐ Recipe 이름 = Slot 의 WaferInfo.ini 이름 하나(Surface.flt recipe 번호가 0 이 아니면 '이름 #번호' — 다중 레시피 이름 파일을 zip 에서 못 찾음; 소유자 예시 'PI' 는 다른 Lot 으로 봄)
+  ⓑ Region: waferRegion 0 = 'Default Region', 다른 값은 'Region n'(이름 파일 못 찾음) ⓒ Width · Length 를 px × 0.7708 로 표시 — 예시 값(2.09 · 10.04)과 이 계산이 맞는지는 같은 Defect 자료가 없어 확인 전
+  ⓓ Col/Row = 장비 Col/Row(Color 이미지 Col/Row 와 353/353 같음, #53) ⓔ Recipe 필터 · 리뷰PC 정보는 Step 3 · 4 만(Step 5 5-1 목록은 그대로) ⓕ 판정 비트가 여러 개면 이름을 ', ' 로 이어 씀.
+  시험: `node tools/test_contrast_wizard_rev6.mjs` 통과(새 시험: 소유자 예시를 px 값으로 되짚어 리뷰PC 글 15줄이 그대로, 실제 zip Lot 1개 등록 → 비교 → 벤다이어그램 원 1개 · 353 · 리뷰PC 글(Zone RDL · Event Defect · PI_Bubble)
+  · Recipe 고르기 · 정렬 · 지우기 · 상세 표 · CSV 열 · Step 4 안내 · 페이지 오류 0). 화면 사진으로 배치 확인. `tools/check_project.py` 는 HTML · 시험만 바뀌어 안 돌림.
+- 남은 일(#70): 소유자 PC 에서 리뷰PC 와 같은 Defect 하나를 골라 Width · Length · Recipe 이름 · Region 이 같은지 확인(다르면 그 Slot 의 Surface.flt 값 · 리뷰PC 화면을 받기). Step 5 에도 Recipe 필터가 필요한지.
 - 남은 일(#69): 소유자 PC 의 실제 맵 파일 · 결과 폴더로 '불안정' 이 없어졌는지 확인. 샘플 방향이 장비 좌표와 다른 제품이 있으면 회전 · 뒤집기 맞춤을 더할지 정하기.
 - 남은 일(rev6): 소유자 PC 에서 실제 흑백 사진으로 GL 측정 속도(네트워크 드라이브 읽기) · 원 그리기 조작 · 바 끌기 반응 확인.
 - 남은 일: 소유자 PC(실제 사진 · 네트워크 드라이브)에서 rev5 5-1 → 5-2 → 사진 새 창 확인(빨간 네모 크기 · 확대 조작감 포함) · 최종 목록 엑셀을 Excel 에서 열어 사진 위치 · 크기 · 파일 크기(☑ 수백 개면 수십 MB) 확인. 속도(5-1 이 Slot 마다 파일 2 ~ 3개를 더 읽음, 5-2 는 매칭 폴더 이름 목록 한 번)는 확인 전. colorgray.py 를 바꾸면 rev5 `15-0` 구역도 같이.
@@ -98,6 +112,7 @@
 | 세션 대화(#68 후속 5) | GL 영역 = 원형, 예시 사진에 원을 그려 크기 설정(검토) | 설정 창 · 원 안 판정 · 조각 기억으로 즉시 재계산 안 정리, 답 기다림 |
 | 세션 대화(rev6) | 흑백 GL(원) 측정 · 원 그리기 · 두 손잡이 범위 · 정렬 · 필터 → rev6 html | `AOI_Contrast_Wizard_rev6.html` + 시험 통과(릴리스 대상 아님) |
 | Para #69 | wafer 맵 불안정 → 샘플 wafer 맵 업로드 단계로 보정(검토 후 개선되면 수정) | rev6 Step 2 샘플 맵 = Die 배치 기준 + `sampleFit` 위치 맞춤 + 이 PC 기억, 시험 통과(릴리스 대상 아님) |
+| Para #70 | 리뷰PC Defect 정보 가능성(사진 제외.zip) · Recipe 별 정렬 필터 · Lot 1개 분석(벤다이어그램 1개) | 가능 — 리뷰PC 정보 칸 · Recipe 필터/정렬 · CSV 열 · Lot 1개 = 원 1개, 시험 통과(릴리스 대상 아님) |
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 
