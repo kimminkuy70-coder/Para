@@ -109,6 +109,9 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     측정 원 그리기 창 `#glDlg`(`glDlgOpen/glDlgDraw/glDlgAt`): 고른 Defect(없으면 목록의 첫 흑백 Defect)의 원본 둘레를 ×4/8/16 각지게 크게 · 격자 · 원 안 픽셀 칠함(재는 규칙과 같음) · 노란 + = Defect, 가운데에서 끄는 거리 = r(0.5 단위), 휠 ±0.5, 픽셀 수 · 그 Defect 평균 바로 표시, [적용](Enter) `glSetR` · 취소(Esc).
     `glRing` = 5-3 · 격자 · 새 창 · 엑셀 사진의 Gray Crop · 프레임에 측정 원(하늘색 점선, 표시 그림에만). 새 창 머리 · 5-3 정보 표에 GL, 최종 목록 엑셀 끝에 '흑백 GL 평균 (원)' · 'GL 원 반지름 px · 픽셀 수' 열(측정 안 했으면 저장 때 잼).
     종전 5-3 'GL(Local 추정)'(`cgGL` = Defect 상자 평균 · ring) 은 그대로 둠 — 흑백 GL(원)과 다른 값.
+    **#69 샘플 Wafer Map**(2026-11-13, 소유자 "wafer 맵이 불안정하게 출력 — 샘플 맵을 업로드하는 스텝을 추가해 보정"): rev6 Step 2 `#mapBtn`(샘플 올리기) · `#mapClr` · `#mapSmp`, 올린 맵(`S.userMap`) = **Die 배치의 기준**
+    (`dieCells` 의 `SMP` — s_DieLocation · 결과 폴더 맵 · 계산보다 우선, `D.from='sample'`, `S.dieSrc`='샘플 맵 …'). 위치 = `sampleFit`(처음 = 샘플 가운데 = wafer 중심, ±W·H 칸 대 보기: s_DieLocation 최대 겹침 →
+    없으면 Defect 가 Die 안(20개 이상 · max(5, 10%) 넘게 나을 때만) → 중심, 결과 `S.mapFit` · 기억 `S._fitC`), `mapStatus` 에 맞춘 근거 · ⚠. localStorage `cw.sampleMap`({name, text}) 로 이 PC 에 기억. 결과 폴더에서 찾은 맵은 종전처럼 비교 · 대체용.
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).
   · Notch(같은 날): `notchInfo()` = `#notch`(자동 = 맵 `FNLOC` → ProductInfo `notch` → 180) → `paintMap` 이 원 가장자리에 V 홈(화면 각 = 360 − FNLOC, 좌우 반전), `S.notchDeg` · `S.notchSrc`, `#mapSt` 에 방향 표시.

@@ -6,6 +6,8 @@
 <title>AOI Contrast Wizard rev6</title>
 <!--
   AOI Contrast AVG 단계별 비교 (Graylevel 시뮬레이션) — Para #50, 브랜치 version_graylevel_simulation
+  · rev6 #69(2026-11-13, 소유자 "wafer 맵이 불안정하게 출력 — 샘플 wafer 맵을 하나 업로드하는 스텝을 추가해 그에 맞춰 보정"): Step 2 [샘플 Wafer Map 파일 올리기]
+    = Die 배치의 기준(s_DieLocation · 계산보다 우선), 위치만 sampleFit(s_DieLocation 최대 겹침 → Defect 가 Die 안 → wafer 중심)으로 맞춤, FNLOC = Notch, 이 PC 에 기억(cw.sampleMap).
   · rev6(2026-11-11, 소유자 "파일의 contrast 가 아니라 실제 흑백 이미지 픽셀의 gray level 을 재서 정렬 · 0~255 바(두 손잡이)를 끌면 바로 정렬 · 영역은 원형, 크기만 —
     예시 이미지에 PPT 처럼 원을 그려 정함(Defect 가운데에서 바깥으로 끌기) · 최대 64 픽셀 · 사진에 원 표시"): rev5 + 5-3 흑백 GL(원) 측정 · 정렬 · 범위 바 · 측정 원 그리기 창.
     GL = Gray 프레임 원본 픽셀(Crop · 표시 그림 아님)에서 Defect 좌표가 가운데인 원 안 픽셀(픽셀 가운데가 원 안)의 0~255 단순 평균. 시험 node tools/test_contrast_wizard_rev6.mjs
@@ -245,8 +247,12 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
       <label>Edge 제외 <input type="number" id="edgeEx" value="0" min="0" step="0.5"> mm</label>
       <label>Notch <select id="notch"><option value="auto">자동 (맵 FNLOC · ProductInfo · 없으면 아래)</option><option value="180">아래 (180°)</option><option value="0">위 (0°)</option><option value="90">오른쪽 (90°)</option><option value="270">왼쪽 (270°)</option></select></label>
       <span class="muted">Die 좌표 = 좌측 하단 (0,0) 에서 오른쪽 · 위쪽으로 1씩 커지는 x, y 그래프(Col = floor(X/PitchX), Row = floor(Y/PitchY)). Die = 네 모서리가 모두 wafer 원 안인 칸, 그 Die 들의 좌측 하단 = (0,0). wafer 중심은 ProductInfo CenterX/CenterY(장비 기록)를 씁니다. 맵 파일이 없어도 됩니다.</span></div>
-    <div class="row"><b>Wafer Map 파일 (선택, 비교용)</b> <input type="file" id="mapInput" hidden><button id="mapBtn">Wafer Map 파일 고르기</button>
-      <span id="mapSt" class="muted">결과 폴더 안에 RowData 줄이 있는 파일이 있으면 자동으로 계산 결과와 비교합니다.</span></div>
+    <div class="row"><b>Wafer map 샘플 (기준)</b> <input type="file" id="mapInput" hidden><button id="mapBtn">샘플 Wafer Map 파일 올리기</button><button id="mapClr" hidden>샘플 지우기</button>
+      <span id="mapSmp" class="muted">샘플 없음 — 계산으로 그립니다.</span></div>
+    <p class="muted" id="mapSmpHelp">Para #69: 이 제품의 Wafer Map 파일(RowData 줄이 있는 글 파일) 하나를 샘플로 올리면 wafer map 을 <b>샘플의 Die 배치 그대로</b> 그립니다.
+      프로그램은 샘플의 위치만 맞춥니다: s_DieLocation(장비가 스캔한 Die)이 있으면 그 Die 와 가장 많이 겹치는 자리, 없으면 Defect 가 Die 안에 가장 많이 들어가는 자리(Defect 20개 이상이고 가운데 맞춤보다 10% 넘게 많을 때만), 둘 다 없으면 wafer 중심.
+      Notch 는 샘플의 FNLOC 을 씁니다. 샘플은 이 PC 에 기억합니다(다음에 열어도 그대로). 샘플이 없으면 종전처럼 s_DieLocation → 결과 폴더의 맵 파일 → 계산 순서로 그립니다.</p>
+    <div class="row"><span id="mapSt" class="muted">결과 폴더 안에 RowData 줄이 있는 파일이 있으면 자동으로 계산 결과와 비교합니다.</span></div>
     <h3>Gray Crop · GL 측정 (Step 3 · 4)</h3>
     <div class="row">
       <label>Crop 크기 <input type="number" id="cropSz" value="160" min="32" step="16"> px</label>
@@ -945,13 +951,25 @@ function mapStatus(){const c=S.cmp,sc=S.cmpScans||[];if(!c){$('#mapSt').textCont
   t+=C.out?` · ⚠ Defect ${C.out}/${C.n}개가 wafer 원 밖`:` · Defect ${C.n}개 모두 원 안`;
   if(k)t+=k.size?` · 맵 ${k.file} 에 Die 가 없거나 계산 Die 가 없어 비교 못 함`
     :k.ok?` · 맵 ${k.file} Die ${k.map}개 = ${k.vs} 일치 ✔`:` · 맵 ${k.file} Die ${k.map}개와 ${k.vs} 다름: ${k.vs}에만 ${k.onlyCalc} · 맵에만 ${k.onlyMap}${k.vs==='계산'?' (그리기는 맵 기준)':''}`;
+  const Fm=S.mapFit;if(Fm)t+=Fm.kind==='dieloc'?` · 샘플 위치 = s_DieLocation 에 맞춤(스캔 Die ${Fm.hit}/${Fm.tot}개가 샘플 Die${Fm.dc||Fm.dr?`, 가운데 맞춤에서 ${Fm.dc}, ${Fm.dr} 칸 옮김`:''})${Fm.hit<Fm.tot||Fm.dies!==Fm.tot?' ⚠ 샘플과 스캔 Die 가 다름 — 같은 제품의 맵인지 확인하십시오':''}`
+    :Fm.kind==='defect'?` · 샘플 위치 = Defect 로 맞춤(Die 안 Defect ${Fm.hit}/${Fm.tot}개${Fm.dc||Fm.dr?`, 가운데 맞춤 ${Fm.g}개 → ${Fm.dc}, ${Fm.dr} 칸 옮김`:', 가운데 맞춤 그대로'})`
+    :` · 샘플 위치 = wafer 중심에 맞춤${Fm.why?`(${Fm.why})`:''}`;
   const N=notchInfo();t+=` · Notch ${({0:'위',90:'오른쪽',180:'아래',270:'왼쪽'})[N.deg]??N.deg+'°'} (${N.src})`;
   if(S.unit==='lot'&&sc.some(v=>v.isLot&&v.wafers.length>1))t+=` · Lot 별: Slot ${Math.max(...sc.map(v=>v.wafers?v.wafers.length:1))}개까지 한 wafer map 에 겹쳐 그림`;
   $('#mapSt').textContent=t}
-function setWaferMap(text,name){const m=parseWaferMap(text);if(!m)return false;S.userMap={...m,file:name||'Wafer Map'};if(S.cmp){mapStatus();repaintAll()}return true}
+/** Para #69: 샘플 Wafer Map(기준) — 올리면 이 PC 에 기억(localStorage cw.sampleMap = {name, text}), [샘플 지우기]로 잊음. */
+function setWaferMap(text,name,keep){const m=parseWaferMap(text);if(!m)return false;S.userMap={...m,file:name||'Wafer Map'};S._fitC=null;
+  if(keep!==false)try{localStorage.setItem('cw.sampleMap',JSON.stringify({name:S.userMap.file,text:String(text)}))}catch(e){}
+  sampleShow();if(S.cmp){mapStatus();repaintAll()}return true}
+function sampleClear(){S.userMap=null;S._fitC=null;try{localStorage.removeItem('cw.sampleMap')}catch(e){}sampleShow();if(S.cmp){mapStatus();repaintAll()}}
+function sampleShow(){const m=S.userMap,el=$('#mapSmp');$('#mapClr').hidden=!m;$('#mapBtn').textContent=m?'다른 샘플 올리기':'샘플 Wafer Map 파일 올리기';
+  el.textContent=m?`샘플 ${m.file} · RowData ${m.rows}줄 × ${m.cols}칸 · Die ${m.dies}개${m.head&&m.head.FNLOC!=null&&m.head.FNLOC!==''?` · FNLOC ${m.head.FNLOC}`:''}${m.head&&m.head.DEVICE?` · DEVICE ${m.head.DEVICE}`:''} — 이 샘플대로 그립니다(이 PC 에 기억).`:'샘플 없음 — s_DieLocation · 결과 폴더 맵 파일 · 계산으로 그립니다.'}
+try{const v=JSON.parse(localStorage.getItem('cw.sampleMap')||'null');if(v&&v.text&&!setWaferMap(v.text,v.name,false))localStorage.removeItem('cw.sampleMap')}catch(e){}
+sampleShow();
+$('#mapClr').onclick=sampleClear;
 $('#mapBtn').onclick=()=>$('#mapInput').click();
 ['#waferD','#edgeEx'].forEach(q=>$(q).addEventListener('input',e=>e.target.dataset.user=1));
-$('#mapInput').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;if(!setWaferMap(await readText(f),f.name))$('#mapSt').textContent=`${f.name}: RowData 줄이 없습니다.`};
+$('#mapInput').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;if(!setWaferMap(await readText(f),f.name))$('#mapSmp').textContent=`${f.name}: RowData 줄이 없어 샘플로 쓸 수 없습니다(Wafer Map 글 파일을 고르십시오).`};
 function renderKpis(){const c=S.cmp,n=c.keep.length+c.gone.length,a=stepName(c.A),b=stepName(c.B);
   $('#kpis').innerHTML=[[viewLabel('A'),`${n}`,'',`Contrast AVG ${c.A.contrast??'?'}`],[viewLabel('B'),`${c.keep.length+c.added.length}`,'',`Contrast AVG ${c.B.contrast??'?'}`],[stLabel('keep'),c.keep.length,'keep','둘 다 있음'],[stLabel('gone'),c.gone.length,'gone',`${b} 에서 없어짐`],[stLabel('new'),c.added.length,'new',`${b} 에서 새로 생김`],
     ['감소율',n?(100*(n-(c.keep.length+c.added.length))/n).toFixed(1)+'%':'-','',`없어진 비율 ${n?(100*c.gone.length/n).toFixed(1):'-'}%`]]
@@ -1139,16 +1157,19 @@ function dieCells(){
   const byKey=new Map(dies.map(d=>[d.ix+','+d.iy,d]));
   const cell=(ix,iy)=>{const k=ix+','+iy;let d=byKey.get(k);if(!d){const x0=p.offX+ix*p.pitchX,y0=p.offY+iy*p.pitchY;d={ix,iy,x0,y0,full:false,calc:false,code:null};dies.push(d);byKey.set(k,d)}return d};
   // 맵 파일 칸 → 장비 Col/Row: 맵 Die 묶음의 왼쪽 아래를 기준 Die 묶음(①이 있으면 ①, 없으면 계산)의 왼쪽 아래에 맞춘다(맵 맨 아래 줄 = 위로 갈수록 Row +1)
-  const M=activeMap();let mapCells=null;
+  const M=activeMap(),SMP=!!(M&&M===S.userMap);let mapCells=null;S.mapFit=null;
   const locKeys=DL&&DL.length?[...new Set(DL.map(d=>{const q=dieOf(d.x,d.y,p);return q.col+','+q.row}))]:null;
   if(M){const R=M.rowct||M.rows,raw=[];for(let r=0;r<M.rows;r++)for(let cc=0;cc<M.cols;cc++){const v=(M.cells[r]||[])[cc];if(v!=null)raw.push([cc,R-1-r,v])}
     if(raw.length){const mc=Math.min(...raw.map(q=>q[0])),mr=Math.min(...raw.map(q=>q[1])),mw=Math.max(...raw.map(q=>q[0]))-mc+1,mh=Math.max(...raw.map(q=>q[1]))-mr+1;
       // Para #57: s_DieLocation 이 없으면 맵 Die 묶음의 가운데를 wafer 중심에 맞춘다(종전: 계산 Die 묶음 왼쪽 아래에 맞춰, 맵이 계산보다 크면 맵만 오른쪽 위로 밀렸다)
-      const ab=locKeys?{c:Math.min(...locKeys.map(k=>+k.split(',')[0])),r:Math.min(...locKeys.map(k=>+k.split(',')[1]))}
+      // Para #69: 사람이 올린 샘플 맵(S.userMap)은 Die 배치의 기준 — 위치만 s_DieLocation · Defect · wafer 중심으로 맞춘다(sampleFit)
+      let ab;if(SMP){const Ft=sampleFit(raw.map(q=>[q[0]-mc,q[1]-mr]),mw,mh,p,cx,cy,locKeys);ab=Ft.ab;S.mapFit=Ft}
+      else ab=locKeys?{c:Math.min(...locKeys.map(k=>+k.split(',')[0])),r:Math.min(...locKeys.map(k=>+k.split(',')[1]))}
         :{c:Math.round((cx-p.offX)/p.pitchX-mw/2),r:Math.round((cy-p.offY)/p.pitchY-mh/2)};
       mapCells=raw.map(([cc,rr,v])=>[ab.c+cc-mc,ab.r+rr-mr,v])}}
   let dsrc;
-  if(locKeys){for(const d of dies)d.full=false;for(const k of locKeys){const [a,b]=k.split(',').map(Number);cell(a,b).full=true}dsrc='s_DieLocation(실제 스캔 Die)'}
+  if(SMP&&mapCells){for(const d of dies)d.full=false;for(const [a,b] of mapCells)cell(a,b).full=true;dsrc=`샘플 맵 ${M.file}`}
+  else if(locKeys){for(const d of dies)d.full=false;for(const k of locKeys){const [a,b]=k.split(',').map(Number);cell(a,b).full=true}dsrc='s_DieLocation(실제 스캔 Die)'}
   else if(mapCells){for(const d of dies)d.full=false;for(const [a,b] of mapCells)cell(a,b).full=true;dsrc='Wafer Map 파일'}
   else dsrc='계산(네 모서리가 원 안 · 확인 필요)';
   if(mapCells)for(const [a,b,v] of mapCells)cell(a,b).code=v;
@@ -1177,7 +1198,30 @@ function dieCells(){
       cmp={calc:ref.size,map:ms.size,both:r.both,onlyCalc:r.onlyA,onlyMap:r.onlyB,file:M.file,ok:r.ok,vs:locKeys?'s_DieLocation':'계산'}}
     else cmp={calc,map:0,file:M.file,ok:false,size:true}}
   S.dieSet=new Set(F.map(d=>d.ix+','+d.iy));S.mapCheck=cmp;   // 키 = 장비 Col/Row(dieOf)
-  return {dies,p,from:locKeys?'dieloc':mapCells?'map':'calc',nx,ny,gx0,gy0,gx1,gy1,cx,cy,rad,rin,calc};
+  return {dies,p,from:SMP&&mapCells?'sample':locKeys?'dieloc':mapCells?'map':'calc',nx,ny,gx0,gy0,gx1,gy1,cx,cy,rad,rin,calc};
+}
+/** Para #69: 샘플 맵의 자리 맞추기. cells = 샘플 Die 칸 [[c, r]](왼쪽 아래 = 0,0), 반환 ab = 샘플 (0,0) 칸의 장비 Col/Row.
+ *  처음 자리(guess) = 샘플 가운데 = wafer 중심(종전과 같음). 근거가 있으면 둘레 ±W · ±H 칸을 모두 대 보고 가장 잘 맞는 자리:
+ *  ① s_DieLocation(장비가 스캔한 Die) = 겹치는 Die 수가 가장 많은 자리 ② 없으면 Defect = Die 안에 들어가는 Defect 수 — 가운데 자리보다
+ *  Defect 20개 이상이고 max(5, 10%) 넘게 많을 때만 옮김(Defect 가 적거나 wafer 밖 칸에 있을 수 있어서). 같은 점수면 처음 자리에서 가까운 것. 결과는 기억(S._fitC) — 그릴 때마다 부름. */
+function sampleFit(cells,mw,mh,p,cx,cy,locKeys){
+  const guess={c:Math.round((cx-p.offX)/p.pitchX-mw/2),r:Math.round((cy-p.offY)/p.pitchY-mh/2)},pts=S.allPts||[];
+  const key=[S.userMap&&S.userMap.file,cells.length,mw,mh,p.pitchX,p.pitchY,p.offX,p.offY,guess.c,guess.r,locKeys?locKeys.join(';'):'',pts.length,pts.length?pts[0].X+','+pts[0].Y+','+pts[pts.length-1].X+','+pts[pts.length-1].Y:''].join('|');
+  if(S._fitC&&S._fitC.key===key)return S._fitC.res;
+  const grid=new Uint8Array(mw*mh);for(const [c,r] of cells)grid[r*mw+c]=1;
+  let ev=null,kind='center';
+  if(locKeys&&locKeys.length){ev=locKeys.map(k=>{const [a,b]=k.split(',').map(Number);return [a,b,1]});kind='dieloc'}
+  else if(pts.length){const h=new Map();for(const d of pts){const q=dieOf(d.X,d.Y,p);if(!q)continue;const k=q.col+','+q.row;h.set(k,(h.get(k)||0)+1)}
+    ev=[...h].map(([k,n])=>{const [a,b]=k.split(',').map(Number);return [a,b,n]});kind='defect'}
+  const score=(c,r)=>{let n=0;for(const q of ev){const x=q[0]-c,y=q[1]-r;if(x>=0&&y>=0&&x<mw&&y<mh&&grid[y*mw+x])n+=q[2]}return n};
+  let res={ab:guess,kind:'center',hit:0,tot:0,g:0,dc:0,dr:0,dies:cells.length};
+  if(ev&&ev.length){const tot=ev.reduce((s,q)=>s+q[2],0),W=Math.min(20,Math.max(3,Math.ceil(mw/2))),H=Math.min(20,Math.max(3,Math.ceil(mh/2))),g0=score(guess.c,guess.r);
+    let best={c:guess.c,r:guess.r,h:g0,d:0};
+    for(let dc=-W;dc<=W;dc++)for(let dr=-H;dr<=H;dr++){const h=score(guess.c+dc,guess.r+dr),d=dc*dc+dr*dr;if(h>best.h||h===best.h&&d<best.d)best={c:guess.c+dc,r:guess.r+dr,h,d}}
+    const use=kind==='dieloc'?(best.h?best:null):(tot>=20&&best.h-g0>=Math.max(5,tot*.1)?best:{c:guess.c,r:guess.r,h:g0});
+    if(use)res={ab:{c:use.c,r:use.r},kind,hit:use.h,tot,g:g0,dc:use.c-guess.c,dr:use.r-guess.r,dies:cells.length};
+    else res={...res,kind:'center',why:'s_DieLocation 과 겹치는 자리 없음'}}
+  S._fitC={key,res};return res;
 }
 function waferGeom(){
   const D=dieCells();let x0,y0,x1,y1,cx,cy,rad;
@@ -2623,7 +2667,7 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={sampleFit,sampleClear,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

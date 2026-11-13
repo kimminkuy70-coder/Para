@@ -173,8 +173,12 @@ const MAP='DEVICE:4DT-TB500-H-M1\nLOT:TB500.INT025@6322\nWAFER:00RW8126XYC1\nFNL
 const wm=await page.evaluate(m=>{const c=window.__cw,p=c.parseWaferMap(m);return {rows:p.rows,cols:p.cols,dies:p.dies,fn:p.head.FNLOC,ok:c.setWaferMap(m,'map.txt')}},MAP);
 assert.deepEqual(wm,{rows:6,cols:7,dies:30,fn:'180',ok:true});
 await page.waitForTimeout(150);
-assert.deepEqual(await page.evaluate(()=>{const S=window.__cw.state;return [S.mapFrom,S.mapDies,S.fullDies,S.mapCheck.ok,S.mapCheck.both]}),['map',30,30,true,30]);
-assert.match(await page.locator('#mapSt').innerText(),/Die 30개 \[기준 Wafer Map 파일\].*맵 map\.txt Die 30개 = 계산 일치 ✔/);
+assert.deepEqual(await page.evaluate(()=>{const S=window.__cw.state;return [S.mapFrom,S.mapDies,S.fullDies,S.mapCheck.ok,S.mapCheck.both]}),['sample',30,30,true,30]);
+assert.match(await page.locator('#mapSt').innerText(),/Die 30개 \[기준 샘플 맵 map\.txt\].*맵 map\.txt Die 30개 = 계산 일치 ✔/);
+// Para #69: 올린 맵 = 샘플(기준). Step 2 에 샘플 정보 · [샘플 지우기], 위치 = Defect 로 맞추되 가운데 맞춤보다 뚜렷이 낫지 않으면 그대로
+assert.match(await page.locator('#mapSmp').innerText(),/샘플 map\.txt · RowData 6줄 × 7칸 · Die 30개 · FNLOC 180 · DEVICE 4DT-TB500-H-M1/);
+assert.equal(await page.evaluate(()=>document.querySelector('#mapClr').hidden),false);
+assert.match(await page.locator('#mapSt').innerText(),/샘플 위치 = Defect 로 맞춤\(Die 안 Defect \d+\/\d+개, 가운데 맞춤 그대로\)/);
 assert.match(await page.locator('#mapSt').innerText(),/Notch 아래 \(맵 FNLOC:180\)/);
 // Notch 를 직접 고르면(오른쪽 90) 다시 그린다 → 자동으로 되돌리기
 await page.evaluate(()=>{const e=document.querySelector('#notch');e.value='90';e.dispatchEvent(new Event('change'))});await page.waitForTimeout(150);
@@ -318,6 +322,52 @@ const al=await page.evaluate(()=>{const c=window.__cw,S=c.state;
   S.cmpScans.forEach((v,i)=>{v.dieLoc=null;v.product=sp[i]});S.userMap=um;c.dieCells();return r});
 assert.equal(al.n,72);assert.ok(al.dx<=0.5&&al.dy<=0.5,JSON.stringify(al));
 assert.deepEqual([al.cx,al.cy],[9.5,9]);assert.ok(al.shift&&al.shift[0]>1&&al.shift[1]>1,JSON.stringify(al));assert.match(al.src,/Die 묶음 가운데\(ProductInfo 중심과 \d+, \d+ µm 달라 Die 에 맞춤\)/);
+// ── Para #69(2026-11-13): 샘플 Wafer Map(기준) — Die 배치 = 샘플, 위치만 맞춤. 중심 정보가 달라도(불안정 원인) 같은 그림
+const MAP69='DEVICE:T69\nFNLOC:180\nROWCT:6\nCOLCT:7\n'+['___ ___ 000 000 000 ___ ___','___ 000 000 000 000 000 ___','000 000 000 000 000 000 000','000 000 000 000 000 000 000','___ 000 000 000 000 000 ___','___ ___ 000 000 000 ___ ___'].map(r=>'RowData:'+r).join('\n')+'\n';
+const s69=await page.evaluate(m=>{const c=window.__cw,S=c.state,PX=37249,PY=44905.8,T=[...new Set([...S.scans,...S.cmpScans])];
+  const rowsSpec=[[0,[2,3,4]],[1,[1,2,3,4,5]],[2,[0,1,2,3,4,5,6]],[3,[0,1,2,3,4,5,6]],[4,[1,2,3,4,5]],[5,[2,3,4]]];
+  const at=(oc,orr,drop)=>{const L=[];for(const [r,cs] of rowsSpec)for(const cc of cs)if(!(drop&&r===5&&cc===3))L.push({x:(cc+oc+.5)*PX,y:(r+orr+.5)*PY,sx:PX,sy:PY});return L};
+  const saved=T.map(s=>[s.product,s.dieLoc]),um=S.userMap,ap=S.allPts,out={};
+  const keys=()=>[...S.dieSet].sort().join(';');
+  c.setWaferMap(m,'sample69.txt');
+  // ① s_DieLocation = 샘플 모양을 (4, 3) 칸 옮긴 자리 · 중심 정보 3가지(없음 / 맞음 / 1.4 칸 어긋남) → 늘 같은 Die 30개, s_DieLocation 과 30/30
+  const loc=at(4,3);const centers=[null,{centerX:7.5*PX,centerY:6*PY},{centerX:8.9*PX,centerY:7.4*PY}];const sets=[];
+  for(const ce of centers){for(const s of T){s.product={...s.product,...(ce||{centerX:null,centerY:null}),centerSrc:'ProductInfo'};s.dieLoc=loc}const D=c.dieCells();
+    sets.push(keys());out.from=D.from;out.fit=S.mapFit;out.n=D.calc;out.ok=S.mapCheck.ok}
+  out.same=sets.every(x=>x===sets[0]);out.locSet=new Set(loc.map(d=>c.dieOf(d.x,d.y,{pitchX:PX,pitchY:PY,offX:0,offY:0})).map(q=>q.col+','+q.row)).size;
+  out.eqLoc=sets[0]===[...new Set(loc.map(d=>{const q=c.dieOf(d.x,d.y,{pitchX:PX,pitchY:PY,offX:0,offY:0});return q.col+','+q.row}))].sort().join(';');
+  // ② 샘플은 s_DieLocation 보다 우선: 스캔 Die 가 하나 빠져도(29개) 그리기는 샘플 30개 + 경고
+  for(const s of T)s.dieLoc=at(4,3,true);let D=c.dieCells();out.p={n:D.calc,src:S.dieSrc,hit:S.mapFit.hit,tot:S.mapFit.tot};
+  // ③ s_DieLocation 없음 · Defect 40개가 (4,3) 옮긴 자리의 Die 들에 → Defect 로 맞춤(가운데 맞춤보다 뚜렷이 나음)
+  for(const s of T){s.dieLoc=null;s.product={...s.product,centerX:5*PX,centerY:4*PY}}
+  S.allPts=Array.from({length:40},(_,k)=>{const q=at(4,3)[k%30];return {X:q.x,Y:q.y}});S._fitC=null;D=c.dieCells();out.d={kind:S.mapFit.kind,hit:S.mapFit.hit,tot:S.mapFit.tot,eq:keys()===sets[0]};
+  // ④ Defect 가 적으면(7개) 옮기지 않음
+  S.allPts=S.allPts.slice(0,7);S._fitC=null;c.dieCells();out.few={kind:S.mapFit.kind,dc:S.mapFit.dc,dr:S.mapFit.dr};
+  out.ls=JSON.parse(localStorage.getItem('cw.sampleMap')||'null');
+  S.allPts=ap;T.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});S.userMap=um;S._fitC=null;c.dieCells();return out},MAP69);
+assert.equal(s69.from,'sample');assert.equal(s69.n,30);assert.equal(s69.same,true,'중심 정보가 달라도 같은 Die');assert.equal(s69.eqLoc,true);assert.equal(s69.ok,true);
+assert.equal(s69.fit.kind,'dieloc');assert.equal(s69.fit.hit,30);assert.equal(s69.fit.tot,30);
+assert.deepEqual(s69.p,{n:30,src:'샘플 맵 sample69.txt',hit:29,tot:29});
+assert.deepEqual(s69.d,{kind:'defect',hit:40,tot:40,eq:true});
+assert.equal(s69.few.kind,'defect');assert.deepEqual([s69.few.dc,s69.few.dr],[0,0]);
+assert.equal(s69.ls.name,'sample69.txt');assert.match(s69.ls.text,/DEVICE:T69/);
+// 상태 문구 · 경고(스캔 Die 가 샘플과 다르면)
+{const m=await page.evaluate(()=>{const c=window.__cw,S=c.state,PX=37249,PY=44905.8,T=[...new Set([...S.scans,...S.cmpScans])],saved=T.map(s=>[s.product,s.dieLoc]);
+  const L=[];for(let r=0;r<6;r++)for(let cc=2;cc<5;cc++)L.push({x:(cc+4.5)*PX,y:(r+3.5)*PY});for(const s of T){s.dieLoc=L;s.product={...s.product,centerX:7.5*PX,centerY:6*PY}}
+  S._fitC=null;c.dieCells();document.querySelector('#notch').dispatchEvent(new Event('change'));const t=document.querySelector('#mapSt').textContent;
+  T.forEach((s,i)=>{s.product=saved[i][0];s.dieLoc=saved[i][1]});S._fitC=null;c.dieCells();return t});
+  assert.match(m,/샘플 위치 = s_DieLocation 에 맞춤\(스캔 Die 18\/18개가 샘플 Die.*⚠ 샘플과 스캔 Die 가 다름/)}
+// 이 PC 에 기억: 새로 연 화면에서도 샘플 그대로 → [샘플 지우기] 하면 잊음
+{const kept=await page.evaluate(()=>localStorage.getItem('cw.sampleMap'));const pg=await browser.newPage();   // 새 창 = 다른 저장소라 이 PC 의 기억을 옮겨 넣고 연다
+  await pg.addInitScript(v=>{if(!sessionStorage.getItem('seeded')){localStorage.setItem('cw.sampleMap',v);sessionStorage.setItem('seeded','1')}},kept);
+  await pg.goto('file://'+resolve(root,'AOI_Contrast_Wizard_rev6.html'));
+  assert.match(await pg.locator('#mapSmp').textContent(),/샘플 sample69\.txt · RowData 6줄 × 7칸 · Die 30개 · FNLOC 180 · DEVICE T69/);
+  assert.equal(await pg.evaluate(()=>window.__cw.state.userMap.file),'sample69.txt');
+  await pg.evaluate(()=>document.querySelector('#mapClr').click());
+  assert.deepEqual(await pg.evaluate(()=>[window.__cw.state.userMap,localStorage.getItem('cw.sampleMap')]),[null,null]);
+  assert.match(await pg.locator('#mapSmp').textContent(),/샘플 없음/);assert.equal(await pg.evaluate(()=>document.querySelector('#mapClr').hidden),true);await pg.close()}
+// RowData 없는 파일은 샘플로 안 받음
+assert.equal(await page.evaluate(()=>window.__cw.setWaferMap('DEVICE:x\n','bad.txt')),false);
 // ── 목록 필터 · 정렬(소유자 세션 지시 2026-11-10): Step 4 리뷰 패널 — Contrast(실제) · Area · Width 범위 + 정렬
 await page.locator('#unit3').selectOption('lot');
 await page.locator('nav button[data-step="4"]').click();await page.locator('#step4.on').waitFor();
