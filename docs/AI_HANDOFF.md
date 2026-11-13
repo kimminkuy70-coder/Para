@@ -1,6 +1,6 @@
 # AI 공통 인수인계
 
-## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 이슈 Para #71(리뷰PC 정보 = Surface.flt 값 그대로), 기준 커밋 2125fc3, `ccr-7401b37d-bwze1e`, rev6 시험 통과, 릴리스 대상 아님)
+## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 이슈 Para #72(5번 모드 '.ini 막음' 경고 = 버그 → 고른 직후 알아보고 다시 고르기 버튼), 기준 커밋 1f9526f, `ccr-7401b37d-bwze1e`, rev6 시험 통과, 릴리스 대상 아님)
 
 - 소유자(세션 대화, 지시는 세션 `ccr-1bb2ad9c-1u5hdy`): "프로그램의 Color gray 매칭 기능 뜯어봐 · 최신 rev html 5-2 · 5-3 에 적용 가능한지 · 지금 html 은 왜 안 되는지" → "설정은 아예 없애" · "1 ~ 4 는 되는데 5 만 안 돼, 로직이 다른지" ·
   "5-1 이 Surface.flt 만 조사해 데이터가 부족할 수 있는지" → "프로그램 기능을 최우선으로, 결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
@@ -113,6 +113,16 @@
   ⓒ Step 3 · 4 목록 필터의 Area µm² · Width · Length(#70 이전 기능)는 그대로 ⓓ 소수는 4자리까지(5.531352996826172 → 5.5314).
   시험: `node tools/test_contrast_wizard_rev6.mjs` 통과(예시 되짚기 = 'Area:45 · Box Width:10 · Recipe: 0 (PI) · 분류: 0 (Accept) · 판정 비트: 1024 (Long dark defect) · Zone: 0 (Scan Area) · Region: 0',
   실제 zip = 첫 Defect 글의 Area · Box Width 가 Surface.flt 값과 같음, '판정 비트: 536870912 (Event Defect)' · 'Zone: 2 (RDL)', Recipe 고르기 '0 (PI_Bubble) (353)', CSV 새 열). `tools/check_project.py` 는 HTML · 시험만 바뀌어 안 돌림.
+- 후속 20(이슈 Para #72 "rev6 HTML 수정사항 4", 2026-11-13, 기준 커밋 1f9526f, 자동 routine run): 소유자 "5번 모드에서 '이 브라우저는 빠른 폴더 읽기(폴더 핸들)로 .ini 파일을 열지 못하게 막습니다(… Name is not allowed.) … 못 찾았습니다' 경고가 뜨는데 못 찾은 게 아니고 버그 같은데 수정해".
+  원인 해석: 이 알림은 #66 에서 넣은 안내(회사 PC Chrome 이 폴더 핸들로 .ini 이름을 거부 → 파일 목록 방식으로 전환)였다. 문제 ⓐ 폴더 전체를 다 훑은 뒤에야 알아봐 큰 폴더는 오래 기다린 끝에 아무것도 안 읽음 ⓑ 문구가 '못 찾았습니다'라 파일이 없다는 뜻으로 읽힘
+  ⓒ 다시 누르라는 버튼 이름이 [폴더 추가]인데 실제 버튼은 [레시피 폴더 고르기](없는 이름) ⓓ 폴더 고르기 창이 사용자 동작을 써 버려 자동으로 파일 목록 창이 안 열리면 무엇을 눌러야 하는지 불분명.
+  고침(rev6 제자리): `fsaProbe` = 폴더를 고른 직후 고른 폴더에서 `getFileHandle('ColorImageGrabingInfo.ini')` 한 번(막는 Chrome 은 파일이 있든 없든 이름 검사에서 TypeError) → 막히면 훑기 없이 바로 `bigToList`.
+  알림 = '파일이 없는 것이 아닙니다 … 이번에는 아무것도 읽지 않았습니다' + '이 PC 에 기억 — 다음부터 이 알림 안 나옴' + 알림 아래 [같은 폴더 다시 고르기] 버튼(`#bigRepick` → `#bigAdd` → webkitdirectory). 훑은 뒤 검사(종전)도 그대로 둠.
+  내 해석(확인 전): ⓐ 소유자가 말한 '버그' = 위 ⓐ ~ ⓓ(알림 내용 자체는 사실 — Chrome 이 .ini 를 막는 것은 HTML 로 못 바꿈) ⓑ 막힌 Chrome 에서 폴더 핸들로 .ini 를 읽을 길은 없음(목록에서도 빠짐) → 파일 목록 방식 한 번 다시 고르기는 남음.
+  만약 파일 목록 방식으로 다시 골라도 매칭이 안 되면 그것은 다른 버그 — 그때 알림 문구 전부를 받기.
+  시험: `node tools/test_contrast_wizard_rev6.mjs` 통과(#66 시나리오 고침: 알림에 '파일이 없는 것이 아닙니다' · [같은 폴더 다시 고르기], '못 찾았습니다' · '[폴더 추가]' 없음, 폴더 목록 0번(훑지 않음), 버튼 = 파일 목록 창, 다음 누름은 폴더 핸들 안 물음, 파일 목록으로 353 매칭).
+  `python tools/check_project.py` 는 이 환경에 openpyxl 이 없어 Python 시험 다수가 import 실패(이번 변경과 무관, HTML · 시험만 바꿈).
+- 남은 일(#72): 소유자 PC(회사 Chrome)에서 Step 5 → [레시피 폴더 고르기] → 안내 + [같은 폴더 다시 고르기] → 같은 폴더 → 매칭 되는지, 다음 번에는 안내 없이 바로 파일 목록 창인지 확인.
 - 남은 일(#71): 소유자 PC 에서 리뷰PC 화면과 나란히 보고 숫자만으로 충분한지 · 괄호 이름을 뺄지 · Width/Length 를 리뷰PC 처럼 µm 로도 같이 보일지 확인.
 - 남은 일(세션 2026-11-13 끊김): 회사 PC 에서 큰 폴더를 불러오는 중에 다른 창으로 몇 분 갔다 와서 끝까지 읽혔는지 확인. 그래도 끊기면: 탭이 새로 고쳐졌는지(메모리 절약 — Chrome 설정 '성능'에서 이 파일을 '항상 활성 상태' 사이트로 추가) · 진행 창 문구를 받기.
 - 남은 일(#70): 소유자 PC 에서 리뷰PC 와 같은 Defect 하나를 골라 Width · Length · Recipe 이름 · Region 이 같은지 확인(다르면 그 Slot 의 Surface.flt 값 · 리뷰PC 화면을 받기). Step 5 에도 Recipe 필터가 필요한지.
@@ -134,6 +144,7 @@
 | Para #70 | 리뷰PC Defect 정보 가능성(사진 제외.zip) · Recipe 별 정렬 필터 · Lot 1개 분석(벤다이어그램 1개) | 가능 — 리뷰PC 정보 칸 · Recipe 필터/정렬 · CSV 열 · Lot 1개 = 원 1개, 시험 통과(릴리스 대상 아님) |
 | Para #71 | 리뷰PC 정보에 Surface.flt 값(Area · Width · Length · Box · Recipe/Zone/Region 번호 · 판정 비트 · 분류 코드) 그대로 사용 | `rvInfo`/`rvText`/`rcpName` 환산 없이 숫자 그대로 + 이름 괄호, CSV 열 바꿈, 시험 통과(릴리스 대상 아님) |
 | 세션 대화(#70 뒤) | 파일 불러오는 중 다른 창 · 다른 작업 뒤 끊김 → 계속 이어서 불러오게 | 숨은 탭에서 늦춰지지 않는 쉬기(MessageChannel) · Web Lock · 닫기 확인 · 일시 오류 다시 읽기, 시험 통과(릴리스 대상 아님) |
+| Para #72 | 5번 모드 '.ini 를 열지 못하게 막습니다 … 못 찾았습니다' 경고 = 버그 같으니 수정 | 고른 직후 알아봄(`fsaProbe`, 훑기 전) · 알림 문구 '파일이 없는 것이 아님' · [같은 폴더 다시 고르기] 버튼, 시험 통과(릴리스 대상 아님) |
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)
 

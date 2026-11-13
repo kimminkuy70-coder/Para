@@ -6,6 +6,9 @@
 <title>AOI Contrast Wizard rev6</title>
 <!--
   AOI Contrast AVG 단계별 비교 (Graylevel 시뮬레이션) — Para #50, 브랜치 version_graylevel_simulation
+  · rev6 #72(2026-11-13, 소유자 "5번 모드에서 '.ini 를 열지 못하게 막습니다 … 못 찾았습니다' 경고 — 못 찾은 게 아니고 버그 같은데 고쳐"):
+    폴더를 고른 직후 고른 폴더에서 .ini 이름을 한 번 물어(fsaProbe) 막혔으면 폴더 전체를 훑기 전에 바로 파일 목록 방식으로 바꿈. 알림 = '파일이 없는 것이 아님' + [같은 폴더 다시 고르기] 버튼
+    (종전 알림은 '못 찾았습니다' · 없는 버튼 이름 [폴더 추가]를 말했다). 한 번 바꾸면 이 PC 에 기억(cw.bigList)해 다음부터는 알림 없이 파일 목록 방식.
   · rev6 세션(2026-11-13, 소유자 "파일을 불러올 때 다른 창에 갔다 오거나 다른 작업을 하다 오면 끊기는 경우가 있다 — 계속 이어서 불러오게"):
     탭이 숨으면 Chrome 이 setTimeout 을 1초(5분 뒤 1분)마다로 늦춰 Slot 마다 쉬던 불러오기가 사실상 멈췄다 → nextPaint = 숨은 동안 MessageChannel(늦춰지지 않음),
     불러오는 동안 Web Lock(탭 얼림 · 버림 막기, 최선) · 닫기/새로 고침 경고, Slot 읽기 일시 오류(DOMException)는 1초 · 3초 뒤 두 번 더(retryRead), 폴더 목록 오류도 두 번 더, 돌아왔을 때 '멈췄었음' 오경고 없앰.
@@ -2728,12 +2731,16 @@ function bigOptsChanged(){S.o=S.cmp?S.o:opts();THUMB.clear();
 // 폴더 고르기: 폴더 핸들(showDirectoryPicker, 읽기 전용)을 쓸 수 있으면 Slot 안 사진 목록을 만들지 않아 훨씬 빠르다. 없으면 <input webkitdirectory>(브라우저가 사진까지 목록을 만든다 — 사진 내용은 읽지 않는다).
 /** #66: 폴더 핸들로 .ini 가 막힌 브라우저 → 이 PC 에서는 앞으로 파일 목록 방식(Step 1 과 같음). 아직 누른 직후면 바로 폴더 고르기 창을 연다. */
 function bigToList(why){busy(null);try{localStorage.setItem('cw.bigList','1')}catch(e){}BIG.useList=true;
-  bigMsg([['warn',`이 브라우저는 빠른 폴더 읽기(폴더 핸들)로 .ini 파일을 열지 못하게 막습니다(${why}). 그래서 ColorImageGrabingInfo.ini · ProductInfo.ini 등을 못 찾았습니다.`],
-    ['warn','Step 1 ~ 4 와 같은 파일 목록 방식으로 바꿨습니다(이 PC 에 기억). [폴더 추가]를 한 번 더 누르고 같은 폴더를 고르십시오. 브라우저가 사진 이름까지 목록을 만들어 큰 폴더는 시간이 더 걸립니다.']]);
+  // #72: 소유자가 이 알림을 '못 찾음' 버그로 읽었다 — 파일은 그대로 있고, 빠른 방식이 .ini 를 못 여는 것뿐. 읽는 방식만 바꾸고 같은 폴더를 다시 고르면 된다고 쓴다.
+  bigMsg([['warn',`안내: 파일이 없는 것이 아닙니다. 이 Chrome 은 빠른 폴더 읽기(폴더 핸들)로 .ini 파일(ColorImageGrabingInfo.ini · ProductInfo.ini 등)을 열지 못하게 합니다(${why}). 그래서 이번에는 아무것도 읽지 않았습니다.`],
+    ['warn','읽는 방식을 Step 1 ~ 4 와 같은 파일 목록 방식으로 바꿨습니다(이 PC 에 기억 — 다음부터는 이 알림이 나오지 않습니다). 아래 [같은 폴더 다시 고르기]를 누르고 같은 폴더를 고르십시오. 큰 폴더는 브라우저가 파일 목록을 만드는 데 시간이 더 걸립니다.']]);
+  const b=document.createElement('button');b.className='pri';b.id='bigRepick';b.textContent='같은 폴더 다시 고르기';b.onclick=()=>$('#bigAdd').click();$('#bigMsg').appendChild(b);
   try{if(navigator.userActivation&&navigator.userActivation.isActive)$('#bigAdd').click()}catch(e){}}
+/** #72: 폴더를 고른 직후 고른 폴더에서 .ini 이름을 한 번 묻는다 — 이 Chrome 이 막으면 이름 검사에서 바로 TypeError(파일이 있든 없든). 폴더 전체를 훑기 전에 알아본다. */
+async function fsaProbe(h){try{await h.getFileHandle(CG.CI)}catch(e){if(fsaBlocked(e))return `${CG.CI}: ${e.message}`}return ''}
 $('#bigAdd').onclick=async()=>{
   if(window.showDirectoryPicker&&!BIG.useList&&!useList()){let h;try{h=await window.showDirectoryPicker({mode:'read'})}catch(e){if(e&&e.name==='AbortError')return;h=null}
-    if(h){await bigPickHandle(h);return}}
+    if(h){const blk=await fsaProbe(h);if(blk){bigToList(blk);return}await bigPickHandle(h);return}}
   busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다(이 브라우저는 빠른 길을 쓸 수 없어 사진 이름까지 모두 셉니다). 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true,reset:true});$('#bigInput').click()};
 $('#bigInput').addEventListener('cancel',()=>busy(null));
 $('#bigInput').onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length){busy(null);return}

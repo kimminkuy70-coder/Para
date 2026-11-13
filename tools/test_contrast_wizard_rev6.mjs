@@ -919,14 +919,17 @@ assert.match(subSw.msg,/Slot 하위 폴더 1/);assert.deepEqual(subSw.pairs,base
     document.getElementById('bigInput').click=()=>{inputs++};
     document.getElementById('bigAdd').click();const el=document.getElementById('busy');
     await new Promise(r=>{const t0=Date.now(),t=setInterval(()=>{if((/파일 목록 방식/.test(document.getElementById('bigMsg').innerText)&&el.hidden)||Date.now()-t0>20000){clearInterval(t);r()}},20)});
-    const first={msg:document.getElementById('bigMsg').innerText,scans:c.BIG.scans.length,flag:localStorage.getItem('cw.bigList'),picks,inputs};
+    const first={msg:document.getElementById('bigMsg').innerText,scans:c.BIG.scans.length,flag:localStorage.getItem('cw.bigList'),picks,inputs,lists:window.__fsLog.lists.length,btn:!!document.getElementById('bigRepick')};
+    document.getElementById('bigRepick').click();await new Promise(r=>setTimeout(r,50));first.viaBtn=inputs;busy(null);
     document.getElementById('bigAdd').click();await new Promise(r=>setTimeout(r,50));const second={picks,inputs};busy(null);
     const ents=Object.entries(real.files).map(([k,b])=>({path:'RCP/SETUP1/LOT_A/W01/'+k,file:new File([Uint8Array.from(atob(b),ch=>ch.charCodeAt(0))],k)}));
     await c.addBigEntries(ents);const s=c.BIG.scans[0];return {first,second,n:c.BIG.scans.length,hits:s&&s.cg&&s.cg.plan?s.cg.plan.hits:null,miss:s?c.cgMiss(s.cg):null}},real);
   await pg.close();
-  assert.deepEqual(er,[]);assert.match(r.first.msg,/Name is not allowed/);assert.match(r.first.msg,/\[폴더 추가\]를 한 번 더/);
+  assert.deepEqual(er,[]);assert.match(r.first.msg,/Name is not allowed/);assert.match(r.first.msg,/파일이 없는 것이 아닙니다/);assert.match(r.first.msg,/\[같은 폴더 다시 고르기\]/);
+  assert.doesNotMatch(r.first.msg,/못 찾았습니다|\[폴더 추가\]/);   // #72: '못 찾음'으로 읽히지 않게, 없는 버튼 이름도 안 씀
+  assert.equal(r.first.lists,0);assert.equal(r.first.btn,true);assert.equal(r.first.viaBtn,r.first.inputs+1);   // #72: 고른 직후 알아봐 폴더를 훑지 않음 · 버튼 = 파일 목록 창
   assert.equal(r.first.scans,0);assert.equal(r.first.flag,'1');assert.equal(r.first.picks,1);
-  assert.ok(r.first.inputs<=1);assert.deepEqual(r.second,{picks:1,inputs:r.first.inputs+1});   // 누른 직후면 바로 파일 목록 창, 두 번째는 폴더 핸들을 묻지 않고 webkitdirectory
+  assert.ok(r.first.inputs<=1);assert.deepEqual(r.second,{picks:1,inputs:r.first.viaBtn+1});   // 누른 직후면 바로 파일 목록 창, 두 번째는 폴더 핸들을 묻지 않고 webkitdirectory
   assert.equal(r.n,1);assert.equal(r.hits,353,JSON.stringify(r))}
 // ── Para #70(2026-11-13): 리뷰PC Defect 정보 · Recipe 필터 · 정렬 · Lot 1개 분석 ──────────────────────────────
 //    ① 소유자 예시(Area 26.74 · Box 7.71 × 8.48 u, Recipe PI, Col 3 Row 3, Accept, Long dark defect, Zone Scan Area, Region Default Region)를 Surface.flt 값(픽셀)으로 되짚기
