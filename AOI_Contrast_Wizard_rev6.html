@@ -12,6 +12,8 @@
   · rev6 #70(2026-11-13, 소유자 "리뷰PC 에서 Defect 를 보면 Surface · Area · Width · Length · Box · Recipe · Col/Row · 분류 · 판정 종류 · Zone · Region 이 나오는데 우리도 되는지 —
     사진 제외.zip 으로 검토 · 되면 Recipe 별 정렬 필터 · Lot 1개만 올려도 분석(벤다이어그램 1개)"): Step 3 · 4 리뷰 패널 · 새 창에 '리뷰PC 정보' 칸(rvText),
     목록 필터에 Recipe 고르기 · Recipe 정렬, 상세 표 · CSV 에 Recipe · Zone · 판정 종류 · 분류 · Region, Lot 1개 = 자기 자신 하나(c.single)로 Step 3 벤다이어그램 1개 · Step 4 는 비교 없음 안내.
+  · rev6 #71(2026-11-13, 소유자 "지금 방식 말고 Surface.flt 한 줄에 Area · Width · Length · Box W/H · Recipe 번호 · Zone 번호 · Region 번호 · 판정 비트 · 분류 코드가 있으면 그대로"):
+    리뷰PC 정보 칸(rvText) · CSV · Recipe 필터 = Surface.flt 값 그대로(µm 환산 없음, 번호 · 비트 · 코드 숫자 그대로, 이름은 괄호로만 덧붙임).
   · rev6 #69(2026-11-13, 소유자 "wafer 맵이 불안정하게 출력 — 샘플 wafer 맵을 하나 업로드하는 스텝을 추가해 그에 맞춰 보정"): Step 2 [샘플 Wafer Map 파일 올리기]
     = Die 배치의 기준(s_DieLocation · 계산보다 우선), 위치만 sampleFit(s_DieLocation 최대 겹침 → Defect 가 Die 안 → wafer 중심)으로 맞춤, FNLOC = Notch, 이 PC 에 기억(cw.sampleMap).
   · rev6(2026-11-11, 소유자 "파일의 contrast 가 아니라 실제 흑백 이미지 픽셀의 gray level 을 재서 정렬 · 0~255 바(두 손잡이)를 끌면 바로 정렬 · 영역은 원형, 크기만 —
@@ -1028,11 +1030,11 @@ function renderTable(){const rows=filtered(),P=200,pages=Math.max(1,Math.ceil(ro
 $('#fltSt').onchange=()=>{S.page=0;renderTable()};$('#pgPrev').onclick=()=>{S.page=Math.max(0,S.page-1);renderTable()};$('#pgNext').onclick=()=>{S.page++;renderTable()};
 $('#detTbl').addEventListener('click',e=>{const tr=e.target.closest('tr[data-k]');if(tr)openWindow(filtered()[+tr.dataset.k])});
 function csvText(){const q=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-  const head=['구분','ID','resultID','WaferX','WaferY','Die','DieX','DieY','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','비교Contrast','Step','Slot','ContrastAVG','호기','Color이미지','Color연결','Gray프레임','GrayPX','GrayPY','Gray모델','ROI_mean','ROI_median','ROI_max','Ring_median','ROI_local_delta','위치확인','Recipe','Zone','판정종류','분류','Region','BoxW_um','BoxH_um'];
+  const head=['구분','ID','resultID','WaferX','WaferY','Die','DieX','DieY','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','비교Contrast','Step','Slot','ContrastAVG','호기','Color이미지','Color연결','Gray프레임','GrayPX','GrayPY','Gray모델','ROI_mean','ROI_median','ROI_max','Ring_median','ROI_local_delta','위치확인','Recipe','Zone','Region','판정비트','분류코드','Zone이름','판정종류','분류'];
   const lines=[head];
   for(const r of S.rows){const x=info(r),d=r.d,g=grayOf(d),c=linkColor(d,d.scan,S.cmp.o.ctol),gl=d.gl||{};
     lines.push([x.st,x.id,d.resultID,f2(x.X),f2(x.Y),x.die,...(x.dieXY?x.dieXY.split(', '):['','']),f2(x.area),d.area,f2(x.width),f2(x.length),f2(d.BoxWidth),f2(d.BoxHeight),f2(d.Contrast),f2(x.cmpContrast),x.step,x.slot,d.scan.contrast,x.tool,
-      c?c.c.file:'',c?c.how:'연결 실패',g.frame?g.frame.file:'',g.frame?f1(g.px):'',g.frame?f1(g.py):'',g.frame?g.model:g.reason,f2(gl.mean),f2(gl.median),gl.max??'',f2(gl.ring),f2(gl.delta),S.overlay[key(d)]||'',...(v=>[v.recipe,v.zone,v.type,v.cls,v.region,f2(v.bw),f2(v.bh)])(rvInfo(d))])}
+      c?c.c.file:'',c?c.how:'연결 실패',g.frame?g.frame.file:'',g.frame?f1(g.px):'',g.frame?f1(g.py):'',g.frame?g.model:g.reason,f2(gl.mean),f2(gl.median),gl.max??'',f2(gl.ring),f2(gl.delta),S.overlay[key(d)]||'',...(v=>[v.recipe,rawNum(v.zoneNo),v.region,rawNum(v.typeNo),rawNum(v.clsNo),v.zoneName,v.typeName,v.clsName])(rvInfo(d))])}
   return '﻿'+lines.map(l=>l.map(q).join(',')).join('\r\n')}
 $('#csvBtn').onclick=async()=>{if(!S.cmp)return;await saveCsv([csvText()],`Contrast_비교_${stepName(S.cmp.A)}_to_${stepName(S.cmp.B)}.csv`.replace(/[\\/:*?"<>|]/g,'_'),true)};
 
@@ -1369,7 +1371,7 @@ async function openWindow(q){
 /** 필터 · 정렬 줄(Step 3 · 4 리뷰 패널, Step 5 공용). 값 = Contrast(실제) · Area(µm²) · Width · Length 의 최소 ~ 최대(빈 칸 = 제한 없음).
  *  비교는 화면에 보이는 자릿수로 한다(Contrast · Area 소수 2자리, Width · Length 1자리) — 보이는 값을 그대로 넣으면 그 Defect 가 들어온다. */
 const FLT_KEYS=[['c','Contrast(실제)',''],['a','Area','µm²'],['w','Width',''],['l','Length','']];
-const SORTS=[['','기본 순서'],['c-d','Contrast(실제) 큰 순'],['c-a','Contrast(실제) 작은 순'],['a-d','Area 큰 순'],['a-a','Area 작은 순'],['w-d','Width 큰 순'],['w-a','Width 작은 순'],['l-d','Length 큰 순'],['l-a','Length 작은 순'],['r-a','Recipe 이름 순'],['r-d','Recipe 이름 역순']];
+const SORTS=[['','기본 순서'],['c-d','Contrast(실제) 큰 순'],['c-a','Contrast(실제) 작은 순'],['a-d','Area 큰 순'],['a-a','Area 작은 순'],['w-d','Width 큰 순'],['w-a','Width 작은 순'],['l-d','Length 큰 순'],['l-a','Length 작은 순'],['r-a','Recipe 순'],['r-d','Recipe 이름 역순']];
 function fltHtml(){return FLT_KEYS.map(([k,t,u])=>`<label><b>${t}</b> <input type="number" step="any" data-f="${k}0" placeholder="최소" aria-label="${t} 최소"> ~ <input type="number" step="any" data-f="${k}1" placeholder="최대" aria-label="${t} 최대">${u?' '+u:''}</label>`).join('')+
   `<label><b>Recipe</b> <select data-f="rcp" aria-label="Recipe"><option value="">전체</option></select></label>`+
   `<label><b>정렬</b> <select data-f="sort" aria-label="정렬">${SORTS.map(([v,n])=>`<option value="${v}">${n}</option>`).join('')}</select></label><button data-f="clear">필터 지우기</button>`}
@@ -1494,7 +1496,7 @@ const kvHtml=rows=>rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).joi
 //   사진 제외.zip 조사: Surface.flt 한 줄에 area · BlobBreadth · BlobLength · BoxWidth · BoxHeight(모두 Gray 픽셀) · recipe · zone · waferRegion · Type(판정 비트) · reclassify 가 있다.
 //   이름은 Slot 의 글 파일: Recipe = WaferInfo.ini [Recipe] Name(없으면 Params_WaferInfo.ini RecipeName), Zone = Zones.ini [ALGName], 맨 위 'Surface' = Zones.ini [ALG],
 //   판정 종류 = EquipmentClassifications.ini [SURFACE] '비트=이름'(1024 = Long dark defect), 분류 = ManReClassify.ini [General](0 = Accept).
-//   µm = 픽셀 × 0.7708(Step 1 ~ 4 의 Gray 픽셀 크기): 소유자 예시 Box 7.71 × 8.48 u = 10 × 11 px, Area 26.74 = 45 px 와 맞음. Width · Length 단위 · Region 이름은 확인 전.
+//   #71(소유자 "지금 방식 말고 Surface.flt 한 줄의 값을 그대로"): 값 = Surface.flt 그대로(µm 환산 안 함), Recipe · Zone · Region 번호 · 판정 비트 · 분류 코드도 숫자 그대로. 이름 파일이 있으면 숫자 뒤 괄호.
 /** EquipmentClassifications.ini [SURFACE] '비트=이름 ; 기호' → Map(비트 → 이름). -1(내부용) · 0 은 뺀다. */
 function parseEqCls(text){const m=new Map();let sec='';
   for(const raw of String(text).split(/\r\n|\r|\n/)){const l=raw.trim();if(!l||l[0]===';')continue;const h=/^\[(.+)\]$/.exec(l);if(h){sec=lower(h[1]).trim();continue}
@@ -1513,19 +1515,23 @@ async function rvLoad(s,text){const r={recipe:'',zones:new Map(),algs:new Map(),
     const mt=await text('ManReClassify.ini');if(mt)r.cls=parseManRe(mt)}
   catch(e){s.warns.push('리뷰 정보 파일을 읽지 못함: '+(e.message||e))}
   s.rv=r}
-/** Recipe 표시 이름: Slot 의 Recipe 이름(+ 번호가 0 이 아니면 #번호). 이름이 없으면 '레시피 번호'. */
-function rcpName(d){const r=d.scan&&d.scan.rv,n=r&&r.recipe,k=d.recipe;return n?(k?`${n} #${k}`:n):(k!=null&&k===k?`레시피 ${k}`:'-')}
-/** 판정 종류: Type 비트마다 EquipmentClassifications 이름. 이름이 없으면 'Type 숫자'. */
-function typeName(d){const t=d.Type>>>0;if(d.Type==null||!t)return '-';const r=d.scan&&d.scan.rv,out=[];
-  if(r&&r.types)for(const [b,n] of r.types)if((b&(b-1))===0&&(t&b)>>>0===b)out.push(n);return out.length?out.join(', '):`Type ${t}`}
-function rvInfo(d){const s=d.scan||{},r=s.rv||{},p=S.o?S.o.pix:PIX,die=d.X!=null&&s.product?dieOf(d.X,d.Y,s.product):null,cl=r.cls&&r.cls.get(d.reclassify);
-  return {alg:(r.algs&&r.algs.get(d.zone))||'Surface',area:d.area*p*p,width:d.BlobBreadth*p,length:d.BlobLength*p,bw:d.BoxWidth*p,bh:d.BoxHeight*p,
-    recipe:rcpName(d),col:die?die.col:null,row:die?die.row:null,cls:cl?cl.name:(d.reclassify!=null?`#${d.reclassify}`:'-'),type:typeName(d),
-    zone:(r.zones&&r.zones.get(d.zone))||(d.zone!=null?`Zone ${d.zone}`:'-'),region:d.waferRegion==null?'-':d.waferRegion?`Region ${d.waferRegion}`:'Default Region'}}
-/** 리뷰PC 와 같은 순서 · 모양의 글(µm 는 'u'). */
-function rvText(d){const v=rvInfo(d),u=x=>`${f2(x)} u`;
-  return [v.alg,`Area:${u(v.area)}`,`Width:${u(v.width)}`,`Length:${u(v.length)}`,`Box Width:${u(v.bw)}`,`Box Height:${u(v.bh)}`,'',`Recipe: ${v.recipe}`,`Col: ${v.col??'-'} Row: ${v.row??'-'}`,
-    '--------------------',v.cls,v.type,'',`Zone: ${v.zone}`,`Region: ${v.region}`].join('\n')}
+/** #71: 리뷰PC 정보 = Surface.flt 한 줄의 값 그대로(픽셀 → µm 환산 없음, 번호 · 비트 · 코드도 숫자 그대로). 이름 파일에 있으면 숫자 뒤 괄호로만 덧붙인다. */
+function rawNum(x){if(x==null||x!==x)return '-';return Number.isInteger(x)?String(x):String(+x.toFixed(4))}
+/** Recipe = Surface.flt recipe 번호 그대로. 0 이고 Slot 의 Recipe 이름(WaferInfo.ini)이 있으면 '0 (이름)'. */
+function rcpName(d){const k=d.recipe,r=d.scan&&d.scan.rv,n=r&&r.recipe;if(k==null||k!==k)return '-';return k===0&&n?`0 (${n})`:String(k)}
+/** 판정 비트 이름(EquipmentClassifications.ini). 이름이 없으면 ''. */
+function typeName(d){const t=d.Type>>>0;if(d.Type==null||!t)return '';const r=d.scan&&d.scan.rv,out=[];
+  if(r&&r.types)for(const [b,n] of r.types)if((b&(b-1))===0&&(t&b)>>>0===b)out.push(n);return out.join(', ')}
+const withName=(v,n)=>v==null||v!==v?'-':n?`${v} (${n})`:String(v);
+function rvInfo(d){const s=d.scan||{},r=s.rv||{},die=d.X!=null&&s.product?dieOf(d.X,d.Y,s.product):null,cl=r.cls&&r.cls.get(d.reclassify),zn=r.zones&&r.zones.get(d.zone);
+  return {alg:(r.algs&&r.algs.get(d.zone))||'Surface',area:d.area,width:d.BlobBreadth,length:d.BlobLength,bw:d.BoxWidth,bh:d.BoxHeight,
+    recipe:rcpName(d),recipeNo:d.recipe,col:die?die.col:null,row:die?die.row:null,
+    clsNo:d.reclassify,clsName:cl?cl.name:'',cls:withName(d.reclassify,cl&&cl.name),typeNo:d.Type==null?null:d.Type>>>0,typeName:typeName(d),type:withName(d.Type==null?null:d.Type>>>0,typeName(d)),
+    zoneNo:d.zone,zoneName:zn||'',zone:withName(d.zone,zn),region:d.waferRegion==null?'-':String(d.waferRegion)}}
+/** 리뷰PC 와 같은 순서로 Surface.flt 값을 그대로(단위 환산 없음). */
+function rvText(d){const v=rvInfo(d);
+  return [v.alg,`Area:${rawNum(v.area)}`,`Width:${rawNum(v.width)}`,`Length:${rawNum(v.length)}`,`Box Width:${rawNum(v.bw)}`,`Box Height:${rawNum(v.bh)}`,'',`Recipe: ${v.recipe}`,`Col: ${v.col??'-'} Row: ${v.row??'-'}`,
+    '--------------------',`분류: ${v.cls}`,`판정 비트: ${v.type}`,'',`Zone: ${v.zone}`,`Region: ${v.region}`].join('\n')}
 // 깜빡임 0.45초: 보이는 Step 의 패널 + 새 창이 열린 패널(다른 Step 으로 가도 새 창은 계속 움직인다)
 setInterval(()=>{const on=Object.values(PANELS).filter(P=>P.items.length&&($('#step'+P.o.step).classList.contains('on')||(P.pop&&!P.pop.w.closed)));
   if(!on.length)return;blinkOn=!blinkOn;on.forEach(paintPanel)},450);

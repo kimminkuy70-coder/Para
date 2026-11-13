@@ -1,6 +1,6 @@
 # AI 공통 인수인계
 
-## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 세션 지시 '다른 창에 갔다 오면 불러오기 끊김' 수정(이슈 없음, 직전 이슈 Para #70), 기준 커밋 ae59ee3, `ccr-7401b37d-bwze1e`)
+## 최신 재개 — Contrast Wizard rev5: Step 5 Color · Gray 매칭 = Para 프로그램 그대로 + 결과 목록 · 사진 새 창 (마지막 갱신 2026-11-13, 이슈 Para #71(리뷰PC 정보 = Surface.flt 값 그대로), 기준 커밋 2125fc3, `ccr-7401b37d-bwze1e`, rev6 시험 통과, 릴리스 대상 아님)
 
 - 소유자(세션 대화, 지시는 세션 `ccr-1bb2ad9c-1u5hdy`): "프로그램의 Color gray 매칭 기능 뜯어봐 · 최신 rev html 5-2 · 5-3 에 적용 가능한지 · 지금 html 은 왜 안 되는지" → "설정은 아예 없애" · "1 ~ 4 는 되는데 5 만 안 돼, 로직이 다른지" ·
   "5-1 이 Surface.flt 만 조사해 데이터가 부족할 수 있는지" → "프로그램 기능을 최우선으로, 결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
@@ -105,6 +105,15 @@
   시험: rev6 시험 통과 + 새 시험(document.hidden + 모든 setTimeout 을 60초 이상으로 늦춘 흉내에서 Step 1 Slot 4개 · Step 5 Slot 4개가 5초에 끝남, 일시 오류 두 번 더 · NotFound/자료 오류는 한 번 · Web Lock 잡고 풂).
   같은 흉내에서 종전 nextPaint 판은 15초 동안 Slot 0개(멈춤) 확인. 시험 브라우저는 배경 늦추기를 꺼 두므로 진짜 숨은 탭 · 절전 얼림은 흉내만 함.
   내 해석(확인 전): ⓐ '이어서 불러오기' = 다른 창에 있어도 멈추지 않고 계속 + 일시 오류 Slot 다시 읽기(중지 뒤 남은 Slot 만 다시 읽는 [이어서] 단추는 안 만듦) ⓑ 사진 보기(5-3 · 새 창)는 그대로.
+- 후속 19(이슈 Para #71 "rev6 HTML 수정사항 3", 2026-11-13, 기준 커밋 2125fc3, 자동 routine run): 소유자 "지금 방식 말고 Surface.flt 한 줄에 Area · Width · Length · Box W/H · Recipe 번호 · Zone 번호 · Region 번호 · 판정 비트 · 분류 코드가 있으면 그거 그대로 사용해".
+  고침(rev6 제자리): `rvInfo` · `rvText` = Surface.flt 값 그대로(× 0.7708 µm 환산 없음, 단위 'u' 없음, 소수는 `rawNum` 으로 최대 4자리), Recipe · Zone · Region 번호 · 판정 비트(Type) · 분류 코드(reclassify)도 숫자 그대로.
+  이름 파일(WaferInfo · Zones · EquipmentClassifications · ManReClassify)에 있으면 숫자 뒤 괄호로만 덧붙임(예 'Zone: 2 (RDL)'). Region 은 이름 파일이 없어 숫자만(종전 'Default Region' 추정 없앰).
+  `rcpName` = recipe 번호(0 이고 WaferInfo 이름이 있으면 '0 (PI_Bubble)') → Recipe 필터 · 정렬('Recipe 순') · 목록 줄 · 상세 표 공용. CSV 끝 열 = Recipe · Zone · Region · 판정비트 · 분류코드 · Zone이름 · 판정종류 · 분류(종전 BoxW_um · BoxH_um 삭제 — 앞쪽 BoxW · BoxH 열이 이미 Surface.flt 값).
+  내 해석(확인 전): ⓐ '그대로' = 환산 · 이름 바꾸기 없이 Surface.flt 숫자를 보여 줌, 이름은 참고로 괄호에만(빼라면 `withName` 만 고치면 됨) ⓑ Recipe 이름은 번호 0 일 때만 붙임(WaferInfo 이름은 Slot 하나 — 다른 번호의 이름은 모름)
+  ⓒ Step 3 · 4 목록 필터의 Area µm² · Width · Length(#70 이전 기능)는 그대로 ⓓ 소수는 4자리까지(5.531352996826172 → 5.5314).
+  시험: `node tools/test_contrast_wizard_rev6.mjs` 통과(예시 되짚기 = 'Area:45 · Box Width:10 · Recipe: 0 (PI) · 분류: 0 (Accept) · 판정 비트: 1024 (Long dark defect) · Zone: 0 (Scan Area) · Region: 0',
+  실제 zip = 첫 Defect 글의 Area · Box Width 가 Surface.flt 값과 같음, '판정 비트: 536870912 (Event Defect)' · 'Zone: 2 (RDL)', Recipe 고르기 '0 (PI_Bubble) (353)', CSV 새 열). `tools/check_project.py` 는 HTML · 시험만 바뀌어 안 돌림.
+- 남은 일(#71): 소유자 PC 에서 리뷰PC 화면과 나란히 보고 숫자만으로 충분한지 · 괄호 이름을 뺄지 · Width/Length 를 리뷰PC 처럼 µm 로도 같이 보일지 확인.
 - 남은 일(세션 2026-11-13 끊김): 회사 PC 에서 큰 폴더를 불러오는 중에 다른 창으로 몇 분 갔다 와서 끝까지 읽혔는지 확인. 그래도 끊기면: 탭이 새로 고쳐졌는지(메모리 절약 — Chrome 설정 '성능'에서 이 파일을 '항상 활성 상태' 사이트로 추가) · 진행 창 문구를 받기.
 - 남은 일(#70): 소유자 PC 에서 리뷰PC 와 같은 Defect 하나를 골라 Width · Length · Recipe 이름 · Region 이 같은지 확인(다르면 그 Slot 의 Surface.flt 값 · 리뷰PC 화면을 받기). Step 5 에도 Recipe 필터가 필요한지.
 - 남은 일(#69): 소유자 PC 의 실제 맵 파일 · 결과 폴더로 '불안정' 이 없어졌는지 확인. 샘플 방향이 장비 좌표와 다른 제품이 있으면 회전 · 뒤집기 맞춤을 더할지 정하기.
@@ -123,6 +132,7 @@
 | 세션 대화(rev6) | 흑백 GL(원) 측정 · 원 그리기 · 두 손잡이 범위 · 정렬 · 필터 → rev6 html | `AOI_Contrast_Wizard_rev6.html` + 시험 통과(릴리스 대상 아님) |
 | Para #69 | wafer 맵 불안정 → 샘플 wafer 맵 업로드 단계로 보정(검토 후 개선되면 수정) | rev6 Step 2 샘플 맵 = Die 배치 기준 + `sampleFit` 위치 맞춤 + 이 PC 기억, 시험 통과(릴리스 대상 아님) |
 | Para #70 | 리뷰PC Defect 정보 가능성(사진 제외.zip) · Recipe 별 정렬 필터 · Lot 1개 분석(벤다이어그램 1개) | 가능 — 리뷰PC 정보 칸 · Recipe 필터/정렬 · CSV 열 · Lot 1개 = 원 1개, 시험 통과(릴리스 대상 아님) |
+| Para #71 | 리뷰PC 정보에 Surface.flt 값(Area · Width · Length · Box · Recipe/Zone/Region 번호 · 판정 비트 · 분류 코드) 그대로 사용 | `rvInfo`/`rvText`/`rcpName` 환산 없이 숫자 그대로 + 이름 괄호, CSV 열 바꿈, 시험 통과(릴리스 대상 아님) |
 | 세션 대화(#70 뒤) | 파일 불러오는 중 다른 창 · 다른 작업 뒤 끊김 → 계속 이어서 불러오게 | 숨은 탭에서 늦춰지지 않는 쉬기(MessageChannel) · Web Lock · 닫기 확인 · 일시 오류 다시 읽기, 시험 통과(릴리스 대상 아님) |
 
 ## 최신 재개 — Contrast Wizard rev4: 5-1 의 Surface.flt.md 찾기 = Step 1 순서 + 5-2 안전장치 (2026-11-10 KST, `ccr-7401b37d-bwze1e`)

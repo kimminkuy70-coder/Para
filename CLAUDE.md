@@ -117,6 +117,8 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
     `walkFast` 폴더 목록 오류도 두 번 더, 숨은 동안 '화면 멈춤' 오경고 안 셈 · 돌아오면 '다른 창에 있던 N 동안에도 계속 읽었습니다'.
     **#70 리뷰PC 정보 · Recipe 필터 · Lot 1개**(2026-11-13, 소유자 "리뷰PC 의 Defect 정보를 우리도 · Recipe 별 정렬 필터 · 1개 lot 만 올려도 분석, 벤다이어그램 1개"): Step 1 로더 `rvLoad`(WaferInfo/Params_WaferInfo Recipe 이름 · `parseZones` · `parseEqCls` · `parseManRe` → `s.rv`),
     `rvInfo`/`rvText`(µm = px × `S.o.pix`) → 패널 `#p3Rv/#p4Rv` · 사진 새 창 `pre.rv`, `rcpName`(필터 · 정렬 · 목록 줄 · 상세 표 Recipe 열 · CSV 끝 7열), 필터 줄 `select[data-f=rcp]`(`rcpOptions` = 목록 Recipe + 개수) · SORTS `r-a/r-d`.
+    **#71**(2026-11-13, 소유자 "지금 방식 말고 Surface.flt 한 줄의 값을 그대로"): `rvInfo`/`rvText` = Surface.flt 값 그대로(µm 환산 없음 · `rawNum`), Recipe/Zone/Region 번호 · 판정 비트 · 분류 코드 숫자 그대로 + 이름 파일이 있으면 괄호(`withName`),
+    `rcpName` = recipe 번호(0 이면 '0 (WaferInfo 이름)'), CSV 끝 = Recipe · Zone · Region · 판정비트 · 분류코드 · Zone이름 · 판정종류 · 분류.
     Lot 1개 = `runCompare` 가 `S.pairs=[{A,B:A,single:true,keep:[{a:d,b:null}],gone:[],added:[]}]` — `stLabel/viewLabel` 은 Lot 이름, 보기는 '전체'만, 벤다이어그램 원 1개(VENN_SHAPES[1]), Step 4 = `P4.o.empty` 안내, `paintEsc` 는 `k.b||k.a`.
   · 폴더 인식(2026-11-10, 소유자 "폴더를 지정하면 그 하위 폴더들이 Lot 폴더"): `planUnits(entries, dirs)` — **고른 폴더 바로 아래 = Lot**, Surface.flt 폴더 = Slot(Lot 안 몇 단계 아래여도), 깊이 1 = Slot 을 고름 · 깊이 2 = Lot 을 고름(단 하위 이름마다 다른 CA 면 하위 = Lot),
     Lot ~ Slot 사이 폴더의 파일(사진 제외)은 Slot 이 같이 씀, CA 찾는 순서 `caNames`, `applyUnit` 이 Step 1 · Step 5 공용(#57 의 'Surface.flt 바로 위 = Lot' 대체).
