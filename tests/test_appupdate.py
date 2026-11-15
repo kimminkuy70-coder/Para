@@ -55,6 +55,11 @@ class FeedTest(unittest.TestCase):
     def test_version_compare(self):
         self.assertTrue(au.is_newer("13.0.10", "13.0.9"))
         self.assertFalse(au.is_newer("13.0.0", "13.0.0"))
+        # v13.0.3(다리 판): v13 이후 판 태그를 모두 읽는다 → v14.0.0 을 찾아 알림(설치된 v13.0.2 는 v13.x.y 만 봄)
+        self.assertTrue(au.TAG_RE.match("v14.0.0") and au.TAG_RE.match("v13.0.3"))
+        self.assertFalse(au.TAG_RE.match("v12.9.40") or au.TAG_RE.match("v14.0.0-rc1"))
+        self.assertEqual(au.parse_feed(FEED.replace(b"v13.0.9", b"v14.0.0"))[0]["tag"], "v14.0.0")
+        self.assertTrue(au.is_newer("14.0.0", "13.0.3"))
 
     def test_only_github_hosts_over_https(self):
         for url in ("http://github.com/x", "https://evil.example/x", "https://api.github.com/x"):

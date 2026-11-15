@@ -124,5 +124,5 @@ jobs:
           gh release view "v$v" 2>$null
           if ($LASTEXITCODE -eq 0) { Write-Host "v$v already released - unchanged"; exit 0 }
           $zip = (Get-ChildItem out/*.zip | Select-Object -First 1).FullName
-          gh release create "v$v" $zip --target "${{ github.sha }}" --title "Camtek AOI Manager v$v" --notes-file $notes
+          gh release create "v$v" $zip --target "${{ github.sha }}" --title "Camtek AOI Manager v$v" --notes-file $notes --latest=false   # v14 이후가 Latest(v13 은 다리 판만)
           if ($LASTEXITCODE -ne 0) { Write-Error "release failed"; exit 1 }
