@@ -2080,11 +2080,14 @@ async function addBigEntries(entries){
   const {units,sum}=planUnits(entries);
   if(!units.length){busy(null);bigMsg([['err','고른 폴더에 Surface.flt 가 없습니다. 레시피 폴더(그 아래 Setup · Lot · Slot)를 고르십시오.']]);return}
   BIG.stop=false;S.o=opts();const total=units.length,t0=performance.now(),made=[],U=new Map(),cancel=()=>{BIG.stop=true};let done=0,nd=0,cur='';
+  // 위쪽 폴더마다 그 아래 Slot 수 — 한 번에 센다(종전 Slot 마다 전체 Slot 을 다시 셈 = Slot 수의 제곱: 5,000개 3초 · 15,000개 29초)
+  const under=new Map();for(const v of units){const sg=v.dir.split('/').filter(Boolean);for(let k=sg.length;k>=1;k--){const D=sg.slice(0,k).join('/');under.set(D,(under.get(D)||0)+1)}}
   const p2=throttle(()=>busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:1,done,total,unit:'Slot',files:`Defect ${nd.toLocaleString()}개`,detail:'읽는 중: '+cur,cancel}),80);
   busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:1,done,total,unit:'Slot',files:'',detail:'',cancel,reset:true});
   try{for(const u of units){if(BIG.stop)break;cur=u.dir;p2();await nextPaint();
-      const seg=u.dir.split('/').filter(Boolean),up=[];for(let k=seg.length-1;k>=1;k--){const D=seg.slice(0,k).join('/');   // 위쪽 폴더(가까운 것부터): 그 폴더 파일 · 그 아래 Slot 수
-        up.push({path:D,files:u.shared.filter(e=>e.path.slice(0,e.path.length-baseName(e.path).length)===D+'/'),n:units.filter(v=>v.dir.startsWith(D+'/')).length})}
+      const seg=u.dir.split('/').filter(Boolean),up=[],byDir=new Map();   // 위쪽 폴더(가까운 것부터): 그 폴더 파일 · 그 아래 Slot 수
+      for(const e of u.shared){const d=e.path.slice(0,e.path.length-baseName(e.path).length);let L=byDir.get(d);if(!L)byDir.set(d,L=[]);L.push(e)}
+      for(let k=seg.length-1;k>=1;k--){const D=seg.slice(0,k).join('/');up.push({path:D,files:byDir.get(D+'/')||[],n:under.get(D)||0})}
       try{const s=await retryRead(()=>buildLight(u.dir.replace(/\/$/,'')||'(선택 폴더)',{files:u.files,up}));made.push(s);U.set(s.name,u);nd+=s.cols.n}catch(e){}
       done++;p2()}
     busy({title:'5-1 Contrast 모으기',steps:STEPS_A,step:2,indet:true,count:`Defect ${nd.toLocaleString()}개`,detail:'목록 · 필터 만드는 중'});await nextPaint();
