@@ -1,0 +1,150 @@
+/* Para v14 Defect 분석: AOI Contrast Wizard(HTML rev6)를 프로그램 화면 테마로 — 겉모습만.
+   HTML 파일은 손대지 않는다(실자료로 검증한 동작 그대로). 프로그램(DefectAnalysis.tsx)이 iframe 에 이 파일과 para-skin.js 를 넣는다.
+   토큰은 body 에만 덮어쓴다: 지도 · 벤다이어그램 캔버스는 :root 값을 읽으므로 종전 색 그대로. 어두운 화면(화면 테마)은 HTML 의 어두운 색을 쓴다. */
+:root:not([data-theme="dark"]) body.pskin{--bg:#eef2f4;--panel:#fff;--ink:#1f2937;--sub:#5f6b7a;--line:#e6ebf0;--navy:#37474f;--acc:#10b981;--chip:#edf2f7;
+  --okbg:#ecfdf5;--ok:#0b5e46;--warnbg:#fff4e7;--warn:#79471c;--errbg:#fdecea;--err:#a33820;
+  --pri:#10b981;--pri2:#0d9668;--onpri:#04231a;--hov:#edf2f6;--th:#edf2f7;--thk:#425872;--hl:#f2fbf7;--sel:#e3f6ee;--chipon:#f3fbe4;--dot:#e7ecf0;--faint:#94a3b8;--band:#f7f9fb;--lbl:#52647d;--bd2:#bac7d6}
+:root[data-theme="dark"] body.pskin{--pri:#10b981;--pri2:#34d399;--onpri:#04231a;--hov:#222c40;--th:#222c40;--thk:#c9d4e6;--hl:#1b2a2a;--sel:#173328;--chipon:#173328;--dot:#2c3850;--faint:#5d6b84;--band:#1b2433;--lbl:#9fabc2;--bd2:#3a4762}
+body.pskin{--sh1:0 1px 3px rgba(30,40,80,.08),0 1px 2px rgba(30,40,80,.06);--sh2:0 8px 24px rgba(30,40,80,.13),0 2px 6px rgba(30,40,80,.07);
+  font:14px/1.55 'Malgun Gothic','맑은 고딕',system-ui,sans-serif;background:var(--bg);margin:0;position:relative;display:flow-root}
+
+/* ── 틀: HTML 머리 · 왼쪽 막대 없앰, 본문이 프로그램 칸 너비 그대로 ── */
+body.pskin .wrap{display:block;min-height:0}
+body.pskin main{padding:0}
+body.pskin header{position:absolute;top:0;right:0;z-index:6;height:40px;padding:0;gap:8px;flex-wrap:nowrap;background:transparent;color:var(--ink)}
+body.pskin header h1,body.pskin header .lim,body.pskin header .sp,body.pskin header>span.muted{display:none}
+body.pskin header label.muted,body.pskin .ptg{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--navy);font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1}
+body.pskin header button{min-height:34px;padding:6px 12px;font-size:12.5px}
+body.pskin .ptg .q{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font-size:11px;font-weight:800}
+body.pskin .ptg:has(input:checked){border-color:var(--pri);background:var(--chipon)}
+
+/* 설명글: [? 설명 보기] 를 켰을 때만(소유자 "설명글은 다 ? 체크박스로 빼"). 상태 · 개수 글(id 가 있는 것)은 늘 보인다 */
+body.pskin:not(.pskin-help) :is(
+  #step1 .drop p>span.muted, #step1 .drop>p.muted, #step1 h3>span.muted,
+  #step2 p.muted, #step2 .row>span.muted:not([id]), #step2 h3>span.muted,
+  #step3 .row>span.muted:not([id]), #step3 .pager>span.muted:not([id]), #step4 .row>span.muted:not([id]),
+  #b5p1 .card>p.muted, #b5p1 .row>span.muted:not([id]), #b5p2 .card>p.muted, #b5p2>.row>span.muted:not([id]),
+  #c5one p.muted, .card.pflt>span.muted, .review p.muted, [id$="Lg"]>span.muted, .pguide, .pinit){display:none}
+body.pskin section.step>h2>.muted{display:none}
+body.pskin:not(.pskin-help) .row:has(> .pinit:only-child){display:none}
+body.pskin .pguide{background:#f5f9ff;border-color:#c9d9ea;box-shadow:none;font-size:12.5px;line-height:1.75;color:var(--sub)}
+:root[data-theme="dark"] body.pskin .pguide{background:var(--band);border-color:var(--line)}
+body.pskin .pguide h3{margin:0 0 6px}
+body.pskin .pguide code{display:block;background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:6px 9px;border-radius:6px;margin:4px 0;font-size:12px;white-space:normal}
+@media (max-width:1180px){body.pskin header{position:static;justify-content:flex-end;margin:0 0 12px}body.pskin .b5tabs,body.pskin nav{padding-right:0!important}}
+
+/* 대규모 = Step 5 만: 왼쪽 막대 · Step 5 제목 숨김(하위 탭 이름과 같음) */
+body.pskin-big nav{display:none}
+body.pskin-big #step5>h2{display:none}
+
+/* 기본 = Step 1 ~ 4: 왼쪽 막대 → 프로그램 스텝퍼(Color·Gray 매칭과 같은 모양) */
+body.pskin-diagram nav{display:flex;align-items:center;width:auto;height:40px;margin:0 0 18px;padding:0 470px 0 0;background:transparent;border:0;overflow-x:auto}
+body.pskin nav button[data-step]{display:flex;align-items:center;gap:8px;width:auto;margin:0;padding:4px 6px;border:0;border-radius:0;background:transparent;color:var(--sub);font-weight:700;font-size:13px;white-space:nowrap;min-height:0;box-shadow:none}
+body.pskin nav button[data-step]:hover:not(:disabled){background:transparent;color:var(--navy)}
+body.pskin nav button[data-step]+button[data-step]:not([hidden])::before{content:'';flex:none;width:34px;height:2px;background:var(--line);margin:0 6px 0 0}
+body.pskin nav button .n{flex:none;display:grid;place-items:center;width:26px;height:26px;margin:0;line-height:1;border-radius:50%;background:var(--dot);color:var(--sub);font-size:12px;font-weight:800}
+body.pskin nav button[data-step]:has(~ button[aria-current]) .n{background:var(--pri);color:var(--onpri)}
+body.pskin nav button[aria-current]{color:var(--ink);background:transparent;border:0}
+body.pskin nav button[aria-current] .n{background:var(--navy);color:#fff}
+body.pskin section.step>h2{font-size:18px;letter-spacing:-.5px;color:var(--navy);margin:0 0 14px}
+body.pskin section.step>h2 .muted{font-size:12px;letter-spacing:0}
+
+/* Step 5 단계(5-1 · 5-2 · 5-3) → 스텝퍼 */
+body.pskin .b5tabs{display:flex;flex-wrap:nowrap;align-items:center;gap:0;height:40px;margin:0 0 18px;padding-right:470px;overflow-x:auto}
+body.pskin .b5tabs button{display:flex;align-items:center;gap:8px;padding:4px 6px;min-height:0;border:0;border-radius:0;background:transparent;color:var(--sub);font-weight:700;font-size:13px;white-space:nowrap;box-shadow:none}
+body.pskin .b5tabs button:hover:not(:disabled){background:transparent;color:var(--navy)}
+body.pskin .b5tabs button+button::before{content:'';flex:none;width:34px;height:2px;background:var(--line);margin:0 6px 0 0}
+body.pskin .b5tabs button b{display:inline-grid;place-items:center;min-width:36px;height:26px;padding:0 7px;border-radius:13px;background:var(--dot);color:var(--sub);font-size:12px;font-weight:800}
+body.pskin .b5tabs button:not(:disabled) b{background:var(--pri);color:var(--onpri)}
+body.pskin .b5tabs button[aria-pressed="true"]{color:var(--ink);background:transparent;border:0}
+body.pskin .b5tabs button[aria-pressed="true"] b{background:var(--navy);color:#fff}
+body.pskin .b5tabs button:disabled{opacity:1;color:var(--faint)}
+
+/* ── 칸 · 글 ── */
+body.pskin .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin-bottom:16px;box-shadow:var(--sh1)}
+body.pskin h3{font-size:15px;color:var(--navy);letter-spacing:-.2px}
+body.pskin .muted{color:var(--sub);font-size:12.5px;line-height:1.7}
+body.pskin .card>p.muted:first-child,body.pskin .drop>p:first-child{margin-top:0}
+body.pskin .row{gap:10px;margin:10px 0}
+body.pskin details>summary{color:var(--navy);font-weight:700}
+body.pskin .drop{border:2px dashed #c3cfdb;border-radius:12px;background:var(--band);padding:20px 22px}
+
+/* 단추 · 입력 */
+body.pskin button{border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--navy);font-weight:700;padding:7px 14px;min-height:36px;transition:background .15s,border-color .15s,box-shadow .15s}
+body.pskin button:hover:not(:disabled){background:var(--hov);border-color:#b3c0cc}
+body.pskin button.pri{background:var(--pri);border-color:var(--pri);color:var(--onpri);padding:8px 18px;box-shadow:var(--sh1)}
+body.pskin button.pri:hover:not(:disabled){background:var(--pri2);border-color:var(--pri2)}
+body.pskin button:disabled{opacity:.45}
+body.pskin input:not([type=checkbox]):not([type=radio]):not([type=range]),body.pskin select{border:1px solid var(--bd2);border-radius:6px;padding:6px 9px;min-height:34px;background:var(--panel);color:var(--ink)}
+body.pskin input[type=checkbox],body.pskin input[type=radio]{width:16px;height:16px;margin:0;accent-color:#31517c;cursor:pointer}
+body.pskin .row label,body.pskin .pflt label{gap:6px}
+body.pskin .pflt{gap:10px 18px}
+body.pskin .pflt label>b,body.pskin .row>b,body.pskin .row label>b{font-size:12.5px;color:var(--lbl)}
+
+/* Wafer Map 샘플(기준) = Step 2 맨 위 강조 칸 */
+body.pskin .psample{border:2px solid var(--pri);background:var(--chipon);box-shadow:0 0 0 4px color-mix(in srgb,var(--pri) 12%,transparent)}
+body.pskin .psample-h{display:flex;align-items:center;gap:10px}
+body.pskin .psample>.row:last-child,body.pskin .psample>p:last-child{margin-bottom:0}
+body.pskin .psample-h h3{margin:0;font-size:16px}
+body.pskin .pbadge{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--pri);color:var(--onpri);font-size:11.5px;font-weight:800}
+body.pskin .psample #mapSmp{font-size:13px;color:var(--ink);font-weight:600}
+
+/* 단계 아래 이전 · 다음 줄 = 프로그램 이전/다음(왼쪽 = 이전, 오른쪽 = 다음) */
+body.pskin #b5p1>.row:last-child{flex-direction:row-reverse;justify-content:space-between;margin-top:14px}
+body.pskin #b5p2>.row:last-child{justify-content:space-between;margin-top:14px}
+body.pskin #step1 .card>.row:last-child,body.pskin #step2 .card .row:has(#runBtn){justify-content:flex-end}
+
+/* 표 · 목록 */
+body.pskin .tblwrap{border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+body.pskin th{background:var(--th);color:var(--thk);font-size:12px;font-weight:700;padding:9px 12px;border-bottom:1px solid var(--line)}
+body.pskin td{padding:8px 12px;font-size:12.5px;border-bottom:1px solid var(--line)}
+body.pskin tbody tr:hover td{background:var(--hl)}
+body.pskin .biglist,body.pskin .rvlist{border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+body.pskin .biglist:focus,body.pskin .rvlist:focus{border-color:#8fd9bd;box-shadow:0 0 0 3px #10b98122}
+body.pskin .biglist .bh{background:var(--th);color:var(--thk);font-size:12px}
+body.pskin .biglist .br{border-bottom:1px solid var(--line)}
+body.pskin .biglist .br:hover{background:var(--hl)}
+body.pskin .biglist .br.sel{background:var(--sel);box-shadow:inset 4px 0 0 var(--pri)}
+body.pskin .rvlist .it:hover{background:var(--hl)}
+body.pskin .rvlist .it.sel{background:var(--sel)}
+body.pskin .pager{gap:10px}
+
+/* 알림 · 숫자 칸 */
+body.pskin .msg{border-radius:8px;padding:10px 14px;border:1px solid color-mix(in srgb,currentColor 22%,transparent)}
+body.pskin .cards{gap:10px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+body.pskin .kpi>.muted{white-space:nowrap}
+body.pskin .kpi{border-radius:10px;padding:12px 14px;box-shadow:var(--sh1)}
+body.pskin .kpi b{font-size:24px;letter-spacing:-.5px;color:var(--navy)}
+body.pskin .kpi.keep b{color:var(--keep)}body.pskin .kpi.gone b{color:var(--gone)}body.pskin .kpi.new b{color:var(--new)}
+
+/* 고르기 칩(분류 · Lot 제외 · 시뮬레이션 집합) */
+body.pskin .clsck,body.pskin .lotbox>summary,body.pskin #setPick label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:var(--panel);color:var(--ink);font-weight:600;font-size:12.5px}
+body.pskin .clsck:has(input:checked),body.pskin #setPick label:has(input:checked){border-color:var(--pri);background:var(--chipon)}
+body.pskin .lotbox.has>summary{border-color:var(--warn);color:var(--warn)}
+body.pskin .clsg>b{font-size:12.5px;color:var(--lbl);margin-right:4px}
+
+/* 보기 고르기(하나씩 크게 · 격자) = 프로그램 세그먼트, 쌍 고르기 = 알약 */
+body.pskin .viewtabs{gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+body.pskin .viewtabs button{border:0;border-radius:0;min-height:34px;padding:6px 14px}
+body.pskin .viewtabs button+button{border-left:1px solid var(--line)}
+body.pskin .viewtabs button[aria-pressed="true"]{background:var(--navy);color:#fff}
+body.pskin .pairtabs button,body.pskin .memb button{border-radius:999px}
+body.pskin .pairtabs button[aria-pressed="true"],body.pskin .memb button[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+
+/* 5-3 사진 · 리뷰PC 정보 */
+body.pskin .rvimgs figure{border-radius:10px;overflow:hidden}
+body.pskin #c5one .rvimgs figcaption{border-radius:0}
+body.pskin .kv{gap:4px 14px}body.pskin .kv dt{white-space:nowrap}body.pskin .kv dd{min-width:0;overflow-wrap:anywhere}
+body.pskin .rvbox{background:var(--band);border-color:var(--line);border-radius:8px}
+body.pskin .g5{border-radius:10px}
+body.pskin .bigmap,body.pskin canvas.mini{border-radius:12px}
+
+/* 로딩창 · 측정 원 창 · 같은 창 사진 칸: iframe 이 내용 높이만큼 길어서, 지금 보이는 부분(--vt · --vh, 프로그램이 알려 줌)에 맞춘다 */
+body.pskin .busy{position:absolute;inset:auto 0 auto 0;top:var(--vt,0px);height:var(--vh,100vh);background:rgba(31,41,55,.35)}
+body.pskin .busy .bx{border-radius:16px;box-shadow:var(--sh2);padding:22px 26px}
+body.pskin .busy .bar{height:10px;border-radius:999px;background:var(--dot)}
+body.pskin .busy .bar>i{background:var(--pri)}
+body.pskin .ovw{position:absolute;inset:auto 0 auto 0;top:var(--vt,0px);height:var(--vh,100vh)}
+body.pskin .ovw:fullscreen{inset:0;height:auto}
+body.pskin .ovwb button{min-height:0;padding:2px 10px;border:1px solid #3a4250;border-radius:6px;background:#222a36;color:#eee;font-weight:400;box-shadow:none}
+body.pskin .ovwb button:hover:not(:disabled){background:#2c3646;border-color:#4a5468}

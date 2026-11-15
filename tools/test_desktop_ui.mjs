@@ -758,10 +758,12 @@ try{
   // Para #54: 앞에서 켠 Batch Report 자동 분석이 남아 있으므로 파라미터 감시를 꺼도 트레이 상주는 유지된다.
   await page.waitForFunction(()=>true);assert.equal(background.enabled,true);
   assert(background.tooltip.includes('장비 ✗')&&background.tooltip.includes('Batch Report ✓'),'batch auto keeps the app resident: '+background.tooltip);
-  // v14 Defect 분석(종전 Color·Gray 매칭 탭): 하위 탭 = 대규모 Defect 분석 · Color·Gray 매칭(+ 다이어그램 분석 체크)
+  // v14.1 Defect 분석: 하위 탭 3개 = Color·Gray 매칭 · Defect 분석(대규모) · Defect 분석(기본) — 다이어그램 체크 없음, 처음 = Color·Gray 매칭
   await feature('Defect 분석');
-  assert.deepEqual(await page.locator('.defect-subtabs [role=tab]').allInnerTexts(),['대규모 Defect 분석','Color·Gray 매칭']);
-  await page.getByText('대규모 Defect 를 Contrast · 분류로 걸러').waitFor();
+  assert.deepEqual(await page.locator('.defect-tabs [role=tab]').allInnerTexts(),['Color·Gray 매칭','Defect 분석(대규모)','Defect 분석(기본)']);
+  assert.equal(await page.locator('.defect-tabs [role=tab][aria-selected=true]').innerText(),'Color·Gray 매칭');
+  assert.equal(await page.locator('.defect-opt').count(),0);
+  await page.getByText('Color · Gray 매칭으로 사진 · Excel 을 만들고').waitFor();
   // Color·Gray 매칭: scan a Lot folder, process both wafers (canvas crop/thumbnails), Excel per wafer.
   await page.getByRole('tab',{name:'Color·Gray 매칭',exact:true}).click();
   const cg=page.locator('section.panel',{has:page.getByRole('heading',{name:'Color · Gray 매칭'})});
@@ -784,11 +786,22 @@ try{
   const cgRows=await cg.getByLabel('Wafer별 결과').getByRole('row').allInnerTexts();
   assert(cgRows.slice(1).every(t=>/\t1\t2\t/.test(t)),'each wafer: 1 matched, 2 failed — '+JSON.stringify(cgRows));
   await page.screenshot({path:join(root,'docs/screenshots/rev1-colorgray.png'),fullPage:true});
-  // v14 대규모 Defect 분석 = AOI Contrast Wizard(HTML rev6) iframe. 폴더 고르기 · 읽기는 엔진(브라우저 '업로드' 없음 · .ini 그대로 · 읽기 전용)
-  await page.getByRole('tab',{name:'대규모 Defect 분석',exact:true}).click();
-  const wz=page.frameLocator('iframe.defect-frame[title="대규모 Defect 분석"]');
+  // v14 Defect 분석(대규모) = AOI Contrast Wizard(HTML rev6) iframe. 폴더 고르기 · 읽기는 엔진(브라우저 '업로드' 없음 · .ini 그대로 · 읽기 전용)
+  // v14.1: HTML 파일은 그대로, 프로그램이 para-skin.css · js 를 넣어 프로그램 테마(머리 · 왼쪽 막대 없음, 스텝퍼, 설명글 = [? 설명 보기])
+  await page.getByRole('tab',{name:'Defect 분석(대규모)',exact:true}).click();
+  const wz=page.frameLocator('iframe.defect-frame[title="Defect 분석(대규모)"]');
   await wz.locator('#step5.on').waitFor();
+  await page.locator('iframe.defect-frame.ready[title="Defect 분석(대규모)"]').waitFor();
   const wzf=page.frames().find(f=>/\/defect\/.*mode=big/.test(f.url()));
+  assert.equal(await wz.locator('body.pskin.pskin-big').count(),1);
+  assert.equal(await wz.locator('header h1').isVisible(),false);
+  assert.equal(await wz.locator('nav').isVisible(),false);
+  assert.equal(await wz.locator('#b5p1 .card>p.muted').isVisible(),false);          // 설명글은 숨김(기본)
+  await wz.locator('#pHelp').check();
+  assert.equal(await wz.locator('#b5p1 .card>p.muted').isVisible(),true);
+  assert.equal(await wz.locator('.pguide',{hasText:'Contrast 도움말'}).isVisible(),true);
+  await wz.locator('#pHelp').uncheck();
+  assert.equal(await wz.locator('.pguide').isVisible(),false);
   assert.deepEqual(await wz.locator('nav button[data-step]').evaluateAll(b=>b.filter(x=>!x.hidden).map(x=>x.dataset.step)),['5']);   // Step 5 만
   const recipe=join(fixture,'defect','RCP'),slotDir=join(recipe,'SETUP1','LOT_A','W01');
   await writeFile(join(fixture,'pick_folder.txt'),recipe);
@@ -802,7 +815,11 @@ try{
   assert.deepEqual(pairs.find(p=>p[0]===0),[0,'ok','C1.jpg','F1.t.1.jpg'],JSON.stringify(pairs));
   assert.equal(await wzf.evaluate(()=>window.__cw.pcPath('RCP/SETUP1/LOT_A/W01/C1.jpg')),join(slotDir,'C1.jpg'));   // 전체 경로 = 엔진이 아는 고른 폴더
   assert.equal(await wz.locator('#bigBase').isVisible(),false);                                                      // [원본 폴더 경로] 칸 없음
-  await wz.locator('[data-b5="2"]').click();await wz.locator('#toB3').click();await wz.locator('#c5Color canvas').waitFor({timeout:30000});   // 사진 = 엔진에서
+  // 스크롤 한 겹: iframe 높이 = 내용 높이(페이지만 스크롤)
+  await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Defect 분석(대규모)"]'),h=f.contentDocument.body.getBoundingClientRect().height;return h>400&&Math.abs(f.getBoundingClientRect().height-Math.ceil(h))<=1});
+  await wz.locator('[data-b5="2"]').click();
+  await wz.locator('#b5list .br',{hasText:'Color·Gray 매칭 완료'}).first().waitFor();                                // 종전 '짝 완료'
+  await wz.locator('#toB3').click();await wz.locator('#c5Color canvas').waitFor({timeout:30000});   // 사진 = 엔진에서
   const [pop]=await Promise.all([page.waitForEvent('popup'),wz.locator('#c5list .br').nth(0).dblclick()]);
   await pop.locator('#fx canvas').waitFor();await pop.close();
   await wz.locator('#c5list').focus();await wz.locator('#c5list').press('Home');await wz.locator('#c5list').press(' ');
@@ -834,19 +851,20 @@ ws=openpyxl.load_workbook(p).active;rows=[[c.value for c in r] for r in ws.iter_
 z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state':rows[1][11],'calc':rows[1][26],'media':len([x for x in z.namelist() if x.startswith('xl/media/')])}))`,join(fixture,'local')],{encoding:'utf-8',env:{...process.env,PYTHONPATH:join(root,'vendor')}}));
   assert.deepEqual([xl.n,xl.state,xl.calc,xl.media],[2,'추출 완료','Para 프로그램',3],JSON.stringify(xl)+finalBook);
   assert.equal(xl.head[0],'Color');
-  // 다이어그램 분석(Step 1 ~ 4) = 체크로 켜는 하위 탭, Step 1 도 엔진 목록(이름 · 크기)으로
-  await page.locator('.defect-opt input').check();
-  assert.deepEqual(await page.locator('.defect-subtabs [role=tab]').allInnerTexts(),['대규모 Defect 분석','Color·Gray 매칭','다이어그램 분석 (Step 1 ~ 4)']);
-  const dg=page.frameLocator('iframe.defect-frame[title="다이어그램 분석"]');
+  // Defect 분석(기본) = Step 1 ~ 4(종전 체크로 켜던 다이어그램 분석), Step 1 도 엔진 목록(이름 · 크기)으로
+  await page.getByRole('tab',{name:'Defect 분석(기본)',exact:true}).click();
+  const dg=page.frameLocator('iframe.defect-frame[title="Defect 분석(기본)"]');
   await dg.locator('#step1.on').waitFor();
+  await page.locator('iframe.defect-frame.ready[title="Defect 분석(기본)"]').waitFor();   // 겉모습(para-skin)을 넣은 뒤
+  assert.equal(await dg.locator('body.pskin.pskin-diagram').count(),1);
   assert.deepEqual(await dg.locator('nav button[data-step]').evaluateAll(b=>b.filter(x=>!x.hidden).map(x=>x.dataset.step)),['1','2','3','4']);
   await writeFile(join(fixture,'pick_folder.txt'),join(recipe,'SETUP1','LOT_A'));
   await dg.locator('#addBtn').click();
   const dgf=page.frames().find(f=>/\/defect\/.*mode=diagram/.test(f.url()));
   await dgf.waitForFunction(()=>window.__cw.state.scans.length===1,null,{timeout:30000});
   assert.deepEqual(await dgf.evaluate(()=>window.__cw.state.scans.map(s=>[s.defects.length,s.colors.length,s.frames.length])),[[2,3,2]]);
-  await page.locator('.defect-opt input').uncheck();
-  assert.deepEqual(await page.locator('.defect-subtabs [role=tab]').allInnerTexts(),['대규모 Defect 분석','Color·Gray 매칭']);
+  // Wafer Map 샘플(기준) = Step 2 맨 위 강조 칸(고르기 단추 · 상태 글이 그 칸 안)
+  assert.deepEqual(await dgf.evaluate(()=>{const b=document.querySelector('#step2 .psample');return b&&[b.previousElementSibling.tagName,b.contains(document.getElementById('mapBtn')),b.contains(document.getElementById('mapSmp'))]}),['H2',true,true]);
   await rm(join(fixture,'pick_folder.txt'));
   // KLA 자재 찾기(#30): 상단 회사 탭 CAMTEK / KLA. KLA 장비 폴더 등록 → Lot 키워드로 폴더 이름만 찾기.
   const klaRoot=join(fixture,'J','2.K2');

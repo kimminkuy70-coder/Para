@@ -3,8 +3,14 @@
 ## v14 (브랜치 `version_v14` = `version_v13` 복사, 2026-11-15~) — Defect 분석 탭
 
 - 계획 · 소유자 결정 = `docs/V14_Defect분석_계획.md`(맨 아래 '구현 결과'가 최신). 릴리스 = `version_v14` push → `.github/workflows/v14.yml`(종전 v13.yml, 판 = 14.x.y).
-- 탭 `Color·Gray 매칭` → **`Defect 분석`**(`frontend/src/DefectAnalysis.tsx`): 하위 탭 [대규모 Defect 분석] · [Color·Gray 매칭](기존 `ColorGray.tsx`) + 체크 '다이어그램 분석(Step 1 ~ 4) 보이기'(localStorage `para.defect.diagram`).
-- 대규모 Defect 분석 · 다이어그램 분석 = **AOI Contrast Wizard HTML 그대로**(`frontend/public/defect/AOI_Contrast_Wizard_rev6.html` → dist, 같은 출처 iframe `?t=토큰&mode=big|diagram`).
+- 탭 `Color·Gray 매칭` → **`Defect 분석`**(`frontend/src/DefectAnalysis.tsx`): 하위 탭 3개(v14.1, 소유자 순서) [Color·Gray 매칭](기존 `ColorGray.tsx`, 처음 선택) ·
+  [Defect 분석(대규모)](HTML Step 5) · [Defect 분석(기본)](HTML Step 1 ~ 4). 종전 '다이어그램 분석 보이기' 체크는 없앴다(v14.0 의 `para.defect.diagram` 은 안 읽음).
+- Defect 분석(대규모 · 기본) = **AOI Contrast Wizard HTML 그대로**(`frontend/public/defect/AOI_Contrast_Wizard_rev6.html` → dist, 같은 출처 iframe `?t=토큰&mode=big|diagram`).
+  **겉모습 = 프로그램 테마**(v14.1): HTML 파일은 그대로 두고 `DefectAnalysis.tsx` 가 iframe 에 `frontend/public/defect/para-skin.css` · `para-skin.js` 를 넣는다 —
+  HTML 머리 · 왼쪽 막대 숨김, 5-1 ~ 5-3 · Step 1 ~ 4 = 프로그램 스텝퍼, 카드 · 단추 · 표 = 앱 모양(토큰은 body 에만 → 지도 캔버스 색 그대로), 설명글 = **[? 설명 보기]** 체크
+  (`para.defect.help`, 숨길 글 목록 = para-skin.css `:is(...)`, id 있는 상태 글은 늘 보임), Contrast 도움말 = 설명 켜면 안내 칸, **Wafer Map 샘플(기준) = Step 2 맨 위 강조 칸**(요소를 옮기기만).
+  스크롤 한 겹: iframe 높이 = 내용 높이(para-skin.js → postMessage), 로딩창 · 같은 창 사진 칸은 '보이는 부분'(`--vt` · `--vh`)에, 같은 창 칸이 뜨면 페이지 스크롤 잠금.
+  HTML 이 목록에 주는 focus() 는 preventScroll(페이지가 끌려 내려가지 않게), 단계가 바뀌면 프로그램이 칸 맨 위를 보여 줌.
   원본은 `ccr-7401b37d-bwze1e` 의 `AOI_Contrast_Wizard_rev6.html` — **같은 내용으로 둔다(고치면 둘 다, 시험도 그쪽 `tools/test_contrast_wizard_rev6.mjs`)**. HTML 의 `PARA` 연결부가 프로그램 안에서만 켜진다.
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.

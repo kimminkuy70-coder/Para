@@ -18,7 +18,7 @@ import {Kla} from './Kla';
 
 const SUBTITLE: Record<string,string> = {
   'Batch Report 분석':'장비 Report 폴더의 Batch Report를 Lot 단위로 모아 가동률 · Lot 추적 · WPH를 보고, 필요한 Batch Report를 찾아 취합합니다.',
-  'Defect 분석':'대규모 Defect 를 Contrast · 분류로 걸러 Color · Gray 사진으로 확인하고(프로그램이 폴더를 직접 읽음), 고른 Defect 의 Color · Gray 매칭 결과를 Excel 로 만드세요.',
+  'Defect 분석':'Color · Gray 매칭으로 사진 · Excel 을 만들고, 대규모 Defect 는 Contrast · 분류로 걸러 사진으로 조사하고, 스캔 결과끼리 Wafer Map 으로 비교하세요. 원본 폴더는 읽기만 합니다.',
   'Wafer Map 수정하기':'Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리세요.',
   '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.',
   'KLA 자재 찾기':'KLA 장비 스캔 결과 폴더에서 Lot 이름으로 자재를 찾아 경로를 알려 주고, 바로 폴더를 엽니다.'

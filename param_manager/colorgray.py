@@ -590,7 +590,7 @@ def parse_final_csv(text: str) -> list[dict]:
         raise ValueError("빈 CSV 입니다")
     head = [h.strip() for h in rows[0]]
     if FINAL_COLOR_COL not in head or not any(c in head for c in FINAL_FOLDER_COLS):
-        raise ValueError("최종 목록 CSV 가 아닙니다 — Defect 분석 › 대규모 Defect 분석 5-3 의 [📄 최종 목록 CSV 저장] 파일을 고르십시오"
+        raise ValueError("최종 목록 CSV 가 아닙니다 — Defect 분석 › Defect 분석(대규모) 5-3 의 [📄 최종 목록 CSV 저장] 파일을 고르십시오"
                          f"('{FINAL_COLOR_COL}' · '매칭폴더' 열이 있어야 함)")
     if len(rows) - 1 > FINAL_MAX_ROWS:
         raise ValueError(f"줄이 너무 많습니다({len(rows) - 1}개 > {FINAL_MAX_ROWS})")

@@ -210,7 +210,7 @@ export function ColorGray(){
       {busy&&<p className="hint" role="status"><span className="spinner" aria-hidden="true"/> 하위 폴더에서 Wafer 를 찾는 중입니다. 진행 상황은 오른쪽 아래 창에 표시됩니다.
         <button onClick={()=>void desktop.request('cgm_reset').promise.catch(()=>undefined)}>검색 취소</button></p>}
       <div className="cg-final" aria-label="최종 목록 CSV 로 고르기">
-        <p className="hint"><b>또는 최종 목록 CSV 로 고르기</b> — [대규모 Defect 분석] 5-3 에서 ☑ 한 Defect 를 <b>📄 최종 목록 CSV 저장</b>으로 저장한 파일을 고르면,
+        <p className="hint"><b>또는 최종 목록 CSV 로 고르기</b> — [Defect 분석(대규모)] 5-3 에서 ☑ 한 Defect 를 <b>📄 최종 목록 CSV 저장</b>으로 저장한 파일을 고르면,
           그 Defect 만 추출하고 결과 파일과 함께 <b>최종 목록 엑셀(Color · Gray Crop · Gray 프레임 사진 3장)</b>을 만듭니다.
           CSV 의 매칭 폴더가 전체 경로(프로그램에서 저장)면 위 폴더 칸은 비워 두세요. 브라우저로 따로 연 HTML 에서 [원본 폴더 경로] 없이 저장했다면 그때 고른 폴더를 위 칸에 넣으세요.</p>
         <input ref={csvInput} type="file" accept=".csv,text/csv" hidden aria-label="최종 목록 CSV 파일" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void loadCsv(f);}}/>

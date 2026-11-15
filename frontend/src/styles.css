@@ -890,9 +890,12 @@ dialog::backdrop{overscroll-behavior:contain}
 .bv .groups .group>.gh input[type=checkbox]{accent-color:var(--lime)}
 
 /* v14 Defect 분석: 하위 탭 + AOI Contrast Wizard iframe(프로그램이 폴더를 읽음) */
-.defect-subtabs{align-items:center}
-.defect-subtabs .defect-opt{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);font-weight:600;white-space:nowrap}
-.defect-subtabs .defect-opt input{width:16px;height:16px;margin:0}
-.defect-frame{display:block;width:100%;height:calc(100vh - 230px);min-height:640px;border:1px solid var(--line);border-radius:10px;background:#fff}
+/* Defect 분석 하위 탭 3개(Batch Report 분석의 큰 탭과 같은 모양) · HTML(대규모 · 기본) = 내용 높이 iframe(스크롤 한 겹) */
+.defect-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 22px;overflow-x:auto}
+.defect-tabs button{border:0;border-radius:10px 10px 0 0;border-bottom:3px solid transparent;background:transparent;color:#596a81;font-size:15px;font-weight:800;padding:12px 24px;min-height:0;text-align:left;white-space:nowrap}
+.defect-tabs button:hover:not(:disabled){background:var(--band);border-color:transparent}
+.defect-tabs button.active,.defect-tabs button.active:hover{color:var(--navy);border-bottom-color:var(--lime);background:#eafaf3}
+.defect-frame{display:block;width:100%;border:0;background:transparent;overflow:hidden}
+.defect-frame:not(.ready){visibility:hidden}
 .defect-frame[hidden]{display:none}
 .cg-final{margin-top:18px;padding-top:12px;border-top:1px dashed var(--line)}
