@@ -201,8 +201,11 @@ try{
   // Weekly bars: WW number on the first line, the date range on the second; tooltip rows aligned.
   await page.locator('.chartcard').first().getByRole('button',{name:'주',exact:true}).click();
   assert.match(await page.locator('svg[aria-label="기간별 Lot Scan 현황"] text').filter({hasText:/^WW\d+/}).first().textContent(),/^WW\d+\(\d\d\/\d\d~\d\d\/\d\d\)$/);
-  await page.locator('svg[aria-label="기간별 Lot Scan 현황"] rect.hit').first().hover();
-  await page.locator('.bv-tip.rich .tg b').first().waitFor();
+  // 막대 위 도움말: 앞 단계의 알림(토스트) · 다시 그리기와 겹치면 첫 hover 가 빠질 때가 있어 마우스를 뺐다가 다시(최대 4번).
+  const barTip=page.locator('.bv-tip.rich .tg b').first();
+  for(let k=0;k<4;k++){await page.mouse.move(5,5);await page.locator('svg[aria-label="기간별 Lot Scan 현황"] rect.hit').first().hover();
+    if(await barTip.waitFor({timeout:5000}).then(()=>true,()=>false))break;}
+  await barTip.waitFor();
   await page.locator('.tabpanel tbody tr.clickable').first().click();
   await page.locator('dialog.lotwin[open] svg[aria-label="시간순 Batch Report 요약"]').waitFor();
   assert.equal(await page.locator('dialog.lotwin').getByRole('tab',{name:'Lot History',exact:true}).getAttribute('aria-selected'),'true');
@@ -760,6 +763,7 @@ try{
   assert(background.tooltip.includes('장비 ✗')&&background.tooltip.includes('Batch Report ✓'),'batch auto keeps the app resident: '+background.tooltip);
   // v14.1 Defect 분석: 하위 탭 3개 = Color·Gray 매칭 · Defect 분석(대규모) · Defect 분석(기본) — 다이어그램 체크 없음, 처음 = Color·Gray 매칭
   await feature('Defect 분석');
+  await page.locator('.defect-tabs [role=tab]').first().waitFor();   // allInnerTexts 는 기다리지 않음 — 화면이 그려진 뒤
   assert.deepEqual(await page.locator('.defect-tabs [role=tab]').allInnerTexts(),['Color·Gray 매칭','Defect 분석(대규모)','Defect 분석(기본)']);
   assert.equal(await page.locator('.defect-tabs [role=tab][aria-selected=true]').innerText(),'Color·Gray 매칭');
   assert.equal(await page.locator('.defect-opt').count(),0);
@@ -963,6 +967,9 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   // A7: a reloaded page re-attaches to the same engine (ids keep increasing, no 'already connected').
   await page.reload();
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
+  // v14.1.1: 시작하면 업데이트 확인이 먼저 — 새 버전 알림이 곧바로 뜬다(소스 폴더라 [나중에]).
+  await page.locator('dialog.update-banner').getByText('새 버전 14.9.0이 있습니다').waitFor();
+  await page.locator('dialog.update-banner').getByRole('button',{name:'나중에'}).click();
   await recipeTab('레시피 날짜별 비교하기');
   await page.locator('.cm-file input').first().waitFor();
   assert.deepEqual(errors,[]);

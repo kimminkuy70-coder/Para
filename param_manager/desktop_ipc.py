@@ -556,8 +556,8 @@ class Session:
                       'appupdate_publish': lambda: self.appupdate.publish(params),
                       'appupdate_open_dir': lambda: self.appupdate.open_dir(params)}
             if method in ('appupdate_apply', 'appupdate_publish'):
-                if method == 'appupdate_apply' and self.busy:
-                    raise ValueError('진행 중인 작업이 끝난 뒤 업데이트하세요')
+                # v14.1.1(소유자 "무조건 업데이트가 먼저"): 다른 작업이 진행 중이어도 받는다 — 받기 = <home>/app.new 에 준비만
+                # (실행 중인 파일은 건드리지 않음, 적용은 다음 실행 때 Camtek_AOI_manager.pyw). 같은 업데이트 두 번은 'appupdate' 자리가 막음.
                 # Copy/verify/extract or zip a whole package: worker thread.
                 bg(rid, 'appupdate', action[method], '업데이트를 준비하지 못했습니다. 인터넷(github.com) 연결 또는 OneDrive 게시 폴더와 로컬 저장 공간을 확인하세요.')
             elif method == 'appupdate_check':

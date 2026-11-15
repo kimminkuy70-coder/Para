@@ -18,6 +18,9 @@
 - Color·Gray 매칭 + **최종 목록 CSV**: `cgm_csv`(`DesktopColorGray.final_csv`) → Wafer = CSV 매칭 폴더(전체 경로, 상대면 폴더 칸과 붙여 찾음) → `cgm_start` 가 CSV 의 Color 만(프로그램 매칭에 없으면 CSV 의 Gray 위치 = `colorgray.final_fallback`)
   → 화면이 사진 3장 더(`color_view` · `crop_mark` · `frame_mark`, HTML cgDefBox · cgCropCanvas · cgFrameCanvas 와 같은 그림) → `cgm_final` = `colorgray.build_final_workbook`(HTML 최종 목록 엑셀과 같은 열 `FINAL_COLS`).
   CSV 열 이름 = HTML `FL_HEAD` 약속(`tests/test_colorgray_final.py` 가 dist 의 HTML 과 대조).
+- **업데이트가 먼저**(v14.1.1, 소유자 "프로그램 실행시 무조건 업데이트가 먼저"): 화면은 시작하자마자 `appupdate_check`, 시작 작업(Batch Report 지난 결과 불러오기 `batch_restore` ·
+  자동 분석 타이머)은 `AppUpdate.updateGate()` 가 열린 뒤에(새 버전 없음 · 확인 실패 · 소스 폴더 · [나중에] · 15초). 엔진 `appupdate_apply` 는 다른 작업이 돌아도 받는다
+  (app.new 준비만, 같은 업데이트 두 번만 'appupdate' 자리가 막음), 알림 창 단추도 진행 중 작업으로 잠그지 않는다(`tests/test_update_first.py`).
 - 업데이트: `desktop_appupdate.VERSION_PAT` = v13 이후 판 태그 전부(v14 부터). 설치된 v13.0.2 이하는 v13.x.y 만 찾으므로 **v13.0.3 다리 판**(`version_v13`, 같은 규칙)을 거쳐 v14 를 받는다.
 
 ## v13 (브랜치 `version_v13`, 2026-11-10~) — 가장 먼저 읽을 것

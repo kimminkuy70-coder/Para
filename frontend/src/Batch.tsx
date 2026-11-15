@@ -15,6 +15,7 @@ import {DevHelp} from './DevHelp';
 import {setKlaCache,type KlaCache} from './KlaSettings';
 import {Q,DefectWindow} from './BatchHelp';
 import {useDev,setDevLocked,setDevDrafts,registerDraftHandlers} from './devmode';
+import {updateGate,isUpdateGateOpen} from './AppUpdate';
 import {loadView,batchCall,addDays,ymd,type View,type ViewMeta,type ViewName,type LotDetail,type Raw,type AggGroup} from './batchData';
 
 // OneDrive 캐시 공유(#39): 개발자 = [OneDrive 에 게시](또는 자동 분석 뒤 자동 게시), 사용자 = [OneDrive 에서 불러오기].
@@ -73,7 +74,7 @@ export function Batch({active}:{active:boolean}){
         const t0=last[0];
         if(t0&&(t0.start||t0.end)){setAllDates(false);setFrom(t0.start||'');setTo(t0.end||'');}
         setCond(c=>({...c,machines:data.machines.map(m=>m.id)}));
-        if(!views.scope)void restore();
+        if(!views.scope)void updateGate().then(restore);   // v14.1.1: 업데이트 확인이 먼저(AppUpdate.updateGate)
       }else{
         setMachines(old=>old.filter(id=>ids.has(id)));
         setCond(c=>({...c,machines:c.machines.filter(id=>ids.has(id))}));
@@ -81,6 +82,7 @@ export function Batch({active}:{active:boolean}){
     }catch(e){fail(e);}
   }
   async function restore(){
+    if(runningRef.current)return;   // 업데이트 확인을 기다리는 사이 사람이 [조사 시작]을 눌렀으면 그 결과를 쓴다
     restoringRef.current=true;setRestoring(true);
     try{const r=await batchCall<{meta:ViewMeta;restored:boolean}>('batch_restore',{});
       if(r.restored){const v=await loadView(r.meta);if(v)setViews(o=>o.scope?o:{...o,scope:v});}}
@@ -195,7 +197,7 @@ export function Batch({active}:{active:boolean}){
   const runLastRef=useRef(runLast);runLastRef.current=runLast;
   useEffect(()=>{
     const timer=window.setInterval(async()=>{
-      if(runningRef.current||restoringRef.current||Date.now()<autoBlocked.current)return;
+      if(runningRef.current||restoringRef.current||!isUpdateGateOpen()||Date.now()<autoBlocked.current)return;
       try{await runLastRef.current(false);}catch{/* engine busy with another screen: try again next minute */}
     },60000);
     return()=>window.clearInterval(timer);
