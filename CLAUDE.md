@@ -12,7 +12,7 @@
 - Color·Gray 매칭 + **최종 목록 CSV**: `cgm_csv`(`DesktopColorGray.final_csv`) → Wafer = CSV 매칭 폴더(전체 경로, 상대면 폴더 칸과 붙여 찾음) → `cgm_start` 가 CSV 의 Color 만(프로그램 매칭에 없으면 CSV 의 Gray 위치 = `colorgray.final_fallback`)
   → 화면이 사진 3장 더(`color_view` · `crop_mark` · `frame_mark`, HTML cgDefBox · cgCropCanvas · cgFrameCanvas 와 같은 그림) → `cgm_final` = `colorgray.build_final_workbook`(HTML 최종 목록 엑셀과 같은 열 `FINAL_COLS`).
   CSV 열 이름 = HTML `FL_HEAD` 약속(`tests/test_colorgray_final.py` 가 dist 의 HTML 과 대조).
-- 업데이트: `desktop_appupdate.VERSION_PAT` = v13 이후 판 태그 전부(v14 부터). **설치된 v13 판은 v13.x.y 만 찾으므로 v14 알림을 못 받는다** — v14 는 설치 zip 으로 덮어쓰기(릴리스 노트).
+- 업데이트: `desktop_appupdate.VERSION_PAT` = v13 이후 판 태그 전부(v14 부터). 설치된 v13.0.2 이하는 v13.x.y 만 찾으므로 **v13.0.3 다리 판**(`version_v13`, 같은 규칙)을 거쳐 v14 를 받는다.
 
 ## v13 (브랜치 `version_v13`, 2026-11-10~) — 가장 먼저 읽을 것
 

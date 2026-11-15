@@ -6,7 +6,7 @@
 - 한 일(코드 지도는 CLAUDE.md 맨 위 v14 절, 결정 이유는 `docs/V14_Defect분석_계획.md` 12절): 탭 'Defect 분석' + 하위 탭, rev6 HTML 을 iframe 으로(`frontend/public/defect/`, 원본 = ccr 브랜치 같은 파일),
   엔진 읽기 전용 다리 `defect_fs.py` · `/api/fs/*` · `defect_pick`, Color·Gray 매칭 최종 목록 CSV(`cgm_csv` · `cgm_final` · 사진 3장 · 최종 목록 엑셀), 업데이트 태그 규칙 v13 이후 전부, 판 14.0.0, `v14.yml`.
 - 시험: Python 시험 77개 파일 통과 · `tools/check_project.py` OK · `npm run build` · `tools/test_desktop_ui.mjs` 두 번 연속 통과(Defect 분석 시나리오 추가). 이 Playwright 는 한글 파일 이름을 파일 고르기 창에 못 넣어 시험 CSV 이름은 영문.
-- **알릴 것**: 설치된 v13 판은 v13.x.y 태그만 찾으므로 v14.0.0 알림이 뜨지 않는다 → 설치 zip 덮어쓰기(릴리스 노트). 원하면 v13.0.3(태그 규칙만 넓힌 다리 판)을 `version_v13` 에 낼 수 있음 — 소유자 결정 전.
+- v14.0.0 릴리스 완료(GitHub Release · 설치 zip · Defender 검사 통과). 설치된 v13 판은 v13.x.y 태그만 찾으므로 → 소유자 "2번으로": **v13.0.3 다리 판**(`version_v13` 8a1e414, 업데이트 판 찾기만 v13 이후 전부로, Latest 표시 안 함)을 냄 — v13.0.2 → v13.0.3 → v14.0.0. v14.0.0 릴리스 본문의 '알림이 뜨지 않습니다'는 v13.0.3 이전 기준.
 - 남은 일: 회사 PC(Edge 앱 창)에서 iframe · 새 창/같은 창 · 전체 화면 · 네트워크 드라이브 읽기 속도 확인(PowerShell 측정은 ccr 인수인계 후속 23).
 
 ## 최신 재개 — #65 v13.0.2: 프로그램 창 아이콘 = 기존 아이콘 · 릴리스 (2026-11-11 KST, `version_v13`)
