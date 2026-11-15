@@ -154,6 +154,15 @@
   · ⓑ Slot 동시 읽기: Slot 읽기가 짧아 효과 없음 → 철회. ⓒ 끌어다 놓기: 탐색기에서 원본 폴더를 끌다 같은 네트워크 드라이브의 다른 폴더 위에 놓으면 '이동'(기본) — 원본 훼손 가능 · Edge 의 .ini · 보안 검사 여부도 모름 → 제외.
   · ⓓ Chrome 의 폴더 핸들(빠른 길, 사진 목록 안 만듦): 읽기 전용이라 안전, 회사 PC 에 Chrome 이 있고 .ini 를 막지 않아야 함 — Chromium 소스로 결정 못 함(이름 검사의 '위험 파일 형식' 목록이 브라우저마다 다름).
     rev6 는 Chrome 에서 고른 직후 막힘을 알아보고 막히면 알림 후 파일 목록 방식 → 소유자가 한 번 해 보면 앎. ⓔ 로컬 복사: 복사도 오래 걸리고 복사 도구 실수(/MIR 반대 방향 등)는 원본 삭제 위험 → 권하지 않음.
+  · ⓓ 정정(같은 날, Chromium 소스 확인): 폴더 핸들의 이름 검사 `FileSystemAccessManagerImpl::IsSafePathComponent` 가 `IsFileTypeDangerous`(= safe_browsing FileTypePolicies 위험 등급 DANGEROUS)면 거부 · 목록에서 뺌,
+    `components/safe_browsing/content/resources/download_file_types/download_file_types.asciipb`(version_id 70)에서 `ini` = PLATFORM_TYPE_WINDOWS DANGEROUS("Generic configuration file").
+    → Windows 의 Chrome 도 Edge 와 같이 .ini 를 폴더 핸들로 못 엶(#66 의 'Name is not allowed.'). ⓓ 는 회사 PC 에서 안 됨 — 제외. (rev6 `isEdge` 지름길은 Windows 전체로 넓혀도 됨, 지금은 Chrome 이면 한 번 알아보고 파일 목록으로 바꿈.)
+  · 실제 Slot 파일 분류(rev6 를 실제 결과 폴더 + 사진 이름으로 돌려 내용을 연 파일을 기록, `Blob` 읽기 가로채기): 사진 아닌 파일 71개 중
+    5단계 매번 10개(Surface.flt · .md · ProductInfo · ColorImageGrabingInfo · ScanResultImageList · frameToChuckPlane · WaferInfo.ini · Zones.ini · EquipmentClassifications · ManReClassify, 약 290 KB),
+    없을 때만 5개(Wafer2Table · s_FrameData(.md) · Params_WaferInfo · ProductionInfo), 1~4단계만 15개(ScanLog · s_DieLocation(.md) + Wafer Map 찾기로 'RowData:' 를 찾느라 여는 작은 글 파일 12개),
+    어디서도 안 읽음 41개(Zones.dat 11 MB · Surface_ORIG.flt · ClassificationConvertTable* · Zones/*.ini 등). 사진 789장: 5-1 안 읽음 · 5-2 이름만 · 5-3/새 창/엑셀은 보는 Defect 의 Color 1 + Gray 프레임 1.
+  · ⓕ 속도(어림, 소유자 PC 측정 전): 지금 = 고른 폴더 파일 전부(Slot 당 약 860개)를 브라우저가 처리(50만 ≈ 1시간 ≈ 파일당 7 ms). ⓕ = Slot 당 10개(1.2%) + 남긴 Defect 사진만 → 같은 파일당 비용이면 5-1 분량 1분 안팎.
+    소유자 PC 에서 읽기 전용으로 재는 법을 안내함(PowerShell Get-ChildItem -Recurse 나열 시간 · 필요한 10개만 ReadAllBytes).
   · ⓕ 근본 해결 후보: Para 데스크톱 프로그램이 네트워크 폴더를 직접 읽어(업로드 없음) 5-1 자료 · 필요한 사진만 로컬로 꺼내고 HTML 이 그것을 읽음 — 프로그램은 결과를 로컬 디스크에만 씀(`_check_output`: 네트워크 · 원본과 겹치면 거부). 큰 작업, 소유자 결정 전.
 - 남은 일(#73): 소유자 PC 에서 5-1 Recipe 고르기 · 5-3 리뷰PC 정보 확인. 5-1 이 Slot 마다 이름 파일(.ini) 최대 5개를 더 읽음 — 큰 폴더에서 느려지면 알려 달라고 함. 사진 새 창에도 리뷰PC 글 전체가 필요한지 확인.
 - 남은 일(#72): 소유자 PC(Edge)에서 Step 5 → [레시피 폴더 고르기] → 바로 파일 목록 창(알림 없음) → 매칭 되는지 · 큰 폴더 불러오기 시간 확인.
