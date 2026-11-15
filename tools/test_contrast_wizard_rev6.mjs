@@ -442,7 +442,7 @@ assert.match(await page.locator('#bigMsg').innerText(),/Color · Gray 매칭\(Pa
 assert.match(await page.locator('#bigCnt').innerText(),/^Defect 7개/);
 const col=async j=>page.locator('#bigList .br').evaluateAll((els,j)=>els.map(e=>e.children[j].textContent),j);
 const cs=(await col(7)).map(Number);assert.deepEqual(cs,[...cs].sort((a,b)=>b-a));assert.equal(cs[0],45);
-assert.deepEqual((await col(15)).sort(),['Color · Gray','Color · Gray','Color 만','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음','✖ 짝 없음']);   // 5-1 목록에 매칭 칸(사진 파일 확인 전)
+assert.deepEqual((await col(15)).sort(),['Color · Gray','Color · Gray','Color 만','✖ 매칭 없음','✖ 매칭 없음','✖ 매칭 없음','✖ 매칭 없음']);   // 5-1 목록에 매칭 칸(사진 파일 확인 전)
 assert.match(await page.locator('#bigList .bh').innerText(),/ID\s+첫번째 분류\s+재분류\s+Recipe\s+Contrast\(실제\) ▼[\s\S]*Color · Gray 매칭/);
 assert.deepEqual([...new Set(await col(4)),...new Set(await col(5))],['#0','#0']);assert.match(await page.locator('#bigCls').innerText(),/첫번째 분류\s+#0\s+7\s+재분류\s+#0\s+7/);   // ManReClassify.ini 가 없으면 코드 번호
 await page.locator('#bigFlt [data-f="c0"]').fill('36');await page.locator('#bigFlt [data-f="c1"]').fill('40');await page.waitForTimeout(350);
@@ -479,14 +479,14 @@ await page.evaluate(()=>{const b=document.getElementById('bigBase');b.value='Y:\
 await page.evaluate(()=>{window.__picked=[];window.showSaveFilePicker=async o=>{window.__picked.push(o.suggestedName);return {name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__saved={name:o.suggestedName,text:await b.text()}},close:async()=>{}})}}});
 await page.locator('#toB2').click();await page.locator('#b5pairSt',{hasText:'CSV 저장:'}).waitFor();
 const sv=await page.evaluate(()=>({picked:window.__picked,saved:window.__saved}));
-assert.equal(sv.picked.length,1);assert.match(sv.saved.name,/^Defect_짝_RCP_\d{8}_\d{6}\.csv$/);
+assert.equal(sv.picked.length,1);assert.match(sv.saved.name,/^Defect_매칭_RCP_\d{8}_\d{6}\.csv$/);
 const csv5=sv.saved.text;assert.equal(csv5.trim().split('\r\n').length,8);
 assert.match(csv5.split('\r\n')[0],/Color이미지,Color경로,Color연결,FaultX,FaultY,Gray프레임,Gray경로,GrayPX\(3168x1024기준\),GrayPY\(3168x1024기준\),후보프레임,Gray계산,좌표기준,CropW,CropH,매칭폴더,Gray프레임목록,변환,이유/);
 assert.ok(csv5.includes('Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA20\\W01\\C1.c.1.jpeg,좌표 (5 µm 안),1100.00,200.00,F1.t.1.jpeg,Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA20\\W01\\F1.t.1.jpeg,1100.0,200.0,2,Color 좌표,그대로,838,629,Y:\\AOI\\SR\\RCP\\SETUP1\\LOT_CA20\\W01,'),csv5);
 assert.match(csv5,/둘 다 없음,LOT_CA20,RCP\/SETUP1\/LOT_CA20,W01,4,.*Color 파일 없음: Section2 .*Gray: 좌표 값을 읽을 수 없음/);   // FileName 키는 프로그램처럼 안 씀(섹션 이름 = 파일)
 assert.deepEqual(await page.locator('#b5sum .kpi b').allInnerTexts(),['2','0','0','5']);   // 짝 완료 · Color 만 · Gray 만 · 둘 다 없음
 const pst5=await page.locator('#b5pairSt').innerText();
-assert.match(pst5,/Defect 7개 확인 끝[\s\S]*Color 연결: [\s\S]*CSV 저장: Defect_짝_RCP_/);assert.match(pst5,/좌표 \(5 µm 안\) 2/);assert.match(pst5,/Index \(Color 좌표 없음\) 1/);
+assert.match(pst5,/Defect 7개 확인 끝[\s\S]*Color 연결: [\s\S]*CSV 저장: Defect_매칭_RCP_/);assert.match(pst5,/좌표 \(5 µm 안\) 2/);assert.match(pst5,/Index \(Color 좌표 없음\) 1/);
 assert.deepEqual(await page.evaluate(rd0=>window.__fsLog.reads.slice(rd0),rd0),[]);   // 5-2 는 파일을 하나도 열지 않음(이름 목록만)
 const sl5=await page.locator('#b5slotTbl tbody tr').allInnerTexts();assert.equal(sl5.length,2,sl5.join('\n'));
 assert.match(sl5[0],/LOT_CA20\s+W01\s+4\s+2\s+2 \(50%\)\s+1 \(25%\)\s+2\s+frameToChuckPlane\.ini\s+1 \(25%\)\s+1 \(25%\)\s+그대로\s+매칭 폴더 RCP\/SETUP1\/LOT_CA20\/W01/);
@@ -655,7 +655,7 @@ assert.deepEqual(csvRows[0],flc.head);assert.equal(csvRows.length,3);
   for(const r of csvRows.slice(1)){assert.match(r[ix('Color 파일')],/\.c\.\d\.jpeg$/);assert.match(r[ix('Gray 파일')],/\.t\.\d\.jpeg$/);
     assert.match(r[ix('매칭폴더')],/^Y:\\/);assert.match(r[ix('매칭폴더(고른 폴더부터)')],/^RCP\//);assert.match(r[ix('Color 전체 경로')],/^Y:\\.*\.c\.\d\.jpeg$/);
     for(const k of ['GrayPX(3168x1024기준)','GrayPY(3168x1024기준)','BoxW','BoxH','CropW','CropH'])assert.ok(Number.isFinite(+r[ix(k)])&&r[ix(k)]!=='',k+' '+r[ix(k)]);
-    assert.equal(r[ix('상태')],'짝 완료')}}
+    assert.equal(r[ix('상태')],'Color·Gray 매칭 완료')}}
 // v14: 새 창이 막히면(Edge 앱 창 등) 같은 창 칸으로 — 같은 그림 · 키 · Space, [✕ 닫기]
 await page.evaluate(()=>{window.__wo=window.open;window.open=()=>null});
 await page.locator('#c5list .br').nth(0).dblclick();
@@ -682,7 +682,7 @@ assert.deepEqual(await Promise.all(['ok','color','gray','none'].map(k=>stBox(k).
 assert.match(await page.locator('#c5cnt').innerText(),/\(사진 있는 것만\)/);
 for(const only of ['ok','color','gray','none']){for(const k of ['ok','color','gray','none'])await stBox(k).setChecked(k===only);
   const st=await stOf();assert.equal(st.length,n5[only]);assert.ok(st.every(x=>x===only),only+' '+st);assert.equal(await page.locator('#c5list .br').count(),n5[only]);
-  assert.match(await page.locator('#c5cnt').innerText(),new RegExp(`^Defect ${n5[only]}개 \\(${{ok:'짝 완료',color:'Color 만',gray:'Gray 만',none:'둘 다 없음'}[only]}\\)`))}
+  assert.match(await page.locator('#c5cnt').innerText(),new RegExp(`^Defect ${n5[only]}개 \\(${{ok:'Color·Gray 매칭 완료',color:'Color 만',gray:'Gray 만',none:'둘 다 없음'}[only]}\\)`))}
 await stBox('ok').check();await stBox('color').check();await stBox('gray').check();assert.equal(await page.locator('#c5list .br').count(),7);assert.match(await page.locator('#c5cnt').innerText(),/^Defect 7개 · /);
 // ── rev6 흑백 GL(원)(소유자 "실제 흑백 이미지 픽셀의 gray level · 원형 · 크기만 · 원을 그려 정함 · 최대 64 px · 두 손잡이 바를 끌면 바로 정렬") ──
 // ① 계산 = 원본 픽셀 원 안(픽셀 가운데가 원 안) 단순 평균: 무작위 흑백 그림 · 소수 좌표 · 가장자리 · 반지름 0.5 ~ 64 를 하나하나 센 값과 같음
