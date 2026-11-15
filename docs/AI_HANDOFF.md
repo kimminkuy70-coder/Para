@@ -1,5 +1,14 @@
 # AI 공통 인수인계
 
+## 최신 재개 — V14: 'Defect 분석' 탭(HTML rev6 이식) 계획 (2026-11-15 KST, `version_v14`, 구현 전)
+
+- `version_v14` = `version_v13`(8c1306c) 복사(소유자 지시 — 표기 'vserion_v14' 는 `version_vN` 규칙에 맞춰 version_v14 로 만듦). **코드 변경 없음, 계획만**: `docs/V14_Defect분석_계획.md` 를 먼저 읽을 것.
+- 소유자 지시(세션 대화): HTML rev6(`ccr-7401b37d-bwze1e` 의 `AOI_Contrast_Wizard_rev6.html`) 기능을 프로그램에 동일하게 — 탭 이름 'Defect 분석', 하위 탭 = [대규모 Defect 분석](Step 5) + [Color·Gray 매칭(기존)],
+  Step 1~4(다이어그램 분석)는 옵션 체크. 5-3 최종 목록(☑) CSV 를 기존 Color·Gray 매칭이 읽어 그 Defect 만 추출(연동). 핵심 동기 = HTML 파일 목록 방식의 1시간 대기(브라우저가 사진까지 전부 처리) 제거 — 엔진이 폴더를 직접 읽는다.
+- 구현은 다음 세션이 계획 9절 단계대로(소유자: Opus 5.5). 구현 전 소유자 답 필요 = 계획 11절 1(릴리스 태그 v14.0.0 여부 · v13 사용자 업데이트 알림 규칙).
+- 배경 조사(2026-11-15 세션, `ccr` 브랜치 인수인계 후속 23): 1시간 대기 원인 = Windows Chromium(Edge·Chrome)이 폴더 핸들로 .ini 거부(download_file_types.asciipb: ini = Windows DANGEROUS) → webkitdirectory 전 파일 처리.
+  Slot 당 ~860개 중 5단계 필요 파일 10개(1.2%). 레시피·Setup·Lot·Slot 어느 높이를 골라도 결과 같음(실자료 353/353 확인).
+
 ## 최신 재개 — #65 v13.0.2: 프로그램 창 아이콘 = 기존 아이콘 · 릴리스 (2026-11-11 KST, `version_v13`)
 
 - 마지막 갱신 2026-11-11 · 기준 커밋 `f63f438` · 이슈 #65("v13.0.2 업데이트 사항": "업데이트 알람이 뜨는지 테스트해볼겸 … 기존에 쓰던 프로그램 아이콘 활용해서 지금 프로그램 실행 아이콘 바꿔"). 첨부 없음.
