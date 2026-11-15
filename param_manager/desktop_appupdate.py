@@ -1,9 +1,10 @@
-"""v13 program update: GitHub release tag (main) · OneDrive `프로그램/` folder (backup).
+"""v13+ program update: GitHub release tag (main) · OneDrive `프로그램/` folder (backup).
 
 Owner decision 2026-11-10 (docs/V13_계획.md 4-1, 12): the only internet access the program
 makes is here — checking for a new release and downloading its source zip from
 github.com/kimminkuy70-coder/Para — and only:
-  * one repository, release tags `v13.x.y` only (no branch tips, no pre-release suffixes)
+  * one repository, plain release tags of v13 and later — `v13.x.y`, `v14.x.y` … (no branch tips,
+    no pre-release suffixes); v14 (2026-11-15) widened the v13-only rule so later majors are found
   * TLS certificate checked (Windows certificate store via the ssl default context); never disabled
   * no token, no account, no personal data in the request (public repository)
   * redirects only to github.com / codeload.github.com
@@ -42,7 +43,8 @@ REPO = "kimminkuy70-coder/Para"
 FEED = f"https://github.com/{REPO}/releases.atom"
 TAG_ZIP = "https://github.com/" + REPO + "/archive/refs/tags/{tag}.zip"
 ALLOWED_HOSTS = {"github.com", "codeload.github.com"}
-TAG_RE = re.compile(r"^v(13\.\d+\.\d+)$")
+VERSION_PAT = r"(?:1[3-9]|[2-9]\d)\.\d+\.\d+"           # v13 이후 판(v14 에서 넓힘 — v13 판은 v13.x.y 만 봄)
+TAG_RE = re.compile(rf"^v({VERSION_PAT})$")
 USER_AGENT = "Para-Updater"                     # generic; nothing about the user or PC
 CHECK_TIMEOUT, DOWNLOAD_TIMEOUT = 15, 120
 MAX_ZIP = 300 * 1024 * 1024
@@ -145,7 +147,7 @@ def html_text(fragment: str, limit: int = 4000) -> str:
 
 
 def parse_feed(xml_bytes: bytes) -> list[dict]:
-    """Release entries `[{tag, version, notes, at}]`, only plain `v13.x.y` tags, newest version first."""
+    """Release entries `[{tag, version, notes, at}]`, only plain `v13.x.y` and later tags, newest version first."""
     ns = {"a": "http://www.w3.org/2005/Atom"}
     root = ET.fromstring(xml_bytes)
     out = []
@@ -179,9 +181,9 @@ def latest_onedrive(save_dir: str) -> dict | None:
     data = read_json(Path(manifest_path(save_dir)))
     if not isinstance(data, dict):
         return None
-    m = re.fullmatch(r"13\.\d+\.\d+", str(data.get("version", "")))
+    m = re.fullmatch(VERSION_PAT, str(data.get("version", "")))
     name = str(data.get("file", ""))
-    if not m or not re.fullmatch(re.escape(ZIP_PREFIX) + r"13\.\d+\.\d+" + re.escape(ZIP_SUFFIX), name):
+    if not m or not re.fullmatch(re.escape(ZIP_PREFIX) + VERSION_PAT + re.escape(ZIP_SUFFIX), name):
         return None
     return dict(tag="v" + data["version"], version=data["version"], notes=str(data.get("notes", ""))[:4000],
                 at=str(data.get("published_at", "")), source="onedrive", file=name,
@@ -333,13 +335,13 @@ class DesktopAppUpdate:
         return dict(version=info["version"], source=info["source"], pending=True)
 
     def publish(self, params):
-        """Developer: put a source zip (GitHub 'Source code (zip)' of a v13 tag) in OneDrive 프로그램/."""
+        """Developer: put a source zip (GitHub 'Source code (zip)' of a v13+ tag) in OneDrive 프로그램/."""
         save_dir = str(self._cfg().get("save_dir") or "")
         if not save_dir:
             raise ValueError("저장 폴더를 먼저 정하십시오")
         src = Path(str(params.get("path", "")))
         if src.suffix.lower() != ".zip" or not src.is_file():
-            raise ValueError("v13 소스 zip 파일을 고르십시오")
+            raise ValueError("v13 이후 소스 zip 파일을 고르십시오")
         work = Path(localdirs.new_temp_run(self._local_root(), "게시"))
         try:
             local = work / "in.zip"
@@ -347,8 +349,8 @@ class DesktopAppUpdate:
             _safe_extract(local, work / "x")
             root = tree_root(work / "x")
             version = tree_version(root)
-            if not re.fullmatch(r"13\.\d+\.\d+", version):
-                raise ValueError(f"v13 프로그램이 아닙니다(버전 {version})")
+            if not re.fullmatch(VERSION_PAT, version):
+                raise ValueError(f"v13 이후 프로그램이 아닙니다(버전 {version})")
             check_tree(root, version)
             name = f"{ZIP_PREFIX}{version}{ZIP_SUFFIX}"
             folder = Path(program_dir(save_dir))
@@ -373,7 +375,7 @@ class DesktopAppUpdate:
 
 def prune(folder: Path, keep: str) -> list[str]:
     """Keep the newest KEEP_VERSIONS of our zips (by version); never touch other files."""
-    pat = re.compile(re.escape(ZIP_PREFIX) + r"(13\.\d+\.\d+)" + re.escape(ZIP_SUFFIX))
+    pat = re.compile(re.escape(ZIP_PREFIX) + "(" + VERSION_PAT + ")" + re.escape(ZIP_SUFFIX))
     ours = sorted((p for p in folder.iterdir() if pat.fullmatch(p.name)),
                   key=lambda p: parse_version(pat.fullmatch(p.name).group(1)), reverse=True)
     removed = []

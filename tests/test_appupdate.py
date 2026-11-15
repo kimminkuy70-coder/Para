@@ -18,15 +18,15 @@ from param_manager import deploy, desktop_appupdate as au  # noqa: E402
 
 FEED = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
- <entry><updated>2026-11-12T01:00:00Z</updated><link rel="alternate" href="https://github.com/kimminkuy70-coder/Para/releases/tag/v13.0.10"/>
-  <title>v13.0.10</title><content type="html">&lt;h2&gt;고친 것&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;A&lt;/li&gt;&lt;/ul&gt;</content></entry>
+ <entry><updated>2026-11-12T01:00:00Z</updated><link rel="alternate" href="https://github.com/kimminkuy70-coder/Para/releases/tag/v14.0.10"/>
+  <title>v14.0.10</title><content type="html">&lt;h2&gt;고친 것&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;A&lt;/li&gt;&lt;/ul&gt;</content></entry>
  <entry><updated>2026-11-11T01:00:00Z</updated><link rel="alternate" href="https://github.com/kimminkuy70-coder/Para/releases/tag/v13.0.9"/><title>x</title><content type="html">old</content></entry>
- <entry><link rel="alternate" href="https://github.com/kimminkuy70-coder/Para/releases/tag/v13.1.0-rc1"/><title>rc</title></entry>
+ <entry><link rel="alternate" href="https://github.com/kimminkuy70-coder/Para/releases/tag/v14.1.0-rc1"/><title>rc</title></entry>
  <entry><link rel="alternate" href="https://github.com/kimminkuy70-coder/Para/releases/tag/v12.9.40"/><title>v12</title></entry>
 </feed>""".encode("utf-8")
 
 
-def source_zip(dest: Path, version: str, extra: dict | None = None, top="Para-13.9.9") -> Path:
+def source_zip(dest: Path, version: str, extra: dict | None = None, top="Para-14.9.9") -> Path:
     """A GitHub-style tag zip (one top folder) holding the deploy files with `version`."""
     work = dest.parent / ("src_" + dest.stem)
     for rel in deploy.files(ROOT):
@@ -46,15 +46,19 @@ def source_zip(dest: Path, version: str, extra: dict | None = None, top="Para-13
 
 
 class FeedTest(unittest.TestCase):
-    def test_only_plain_v13_tags_newest_first_with_text_notes(self):
+    def test_only_plain_v13_and_later_tags_newest_first_with_text_notes(self):
         e = au.parse_feed(FEED)
-        self.assertEqual([x["tag"] for x in e], ["v13.0.10", "v13.0.9"])   # 10 > 9, rc and v12 ignored
+        self.assertEqual([x["tag"] for x in e], ["v14.0.10", "v13.0.9"])   # v14 > v13, rc and v12 ignored
         self.assertIn("고친 것", e[0]["notes"])
         self.assertNotIn("<", e[0]["notes"])
 
     def test_version_compare(self):
         self.assertTrue(au.is_newer("13.0.10", "13.0.9"))
         self.assertFalse(au.is_newer("13.0.0", "13.0.0"))
+        # v14: v13 이후 판 태그를 모두 읽는다(v14 가 v13 보다 새것), v12 · 접미사는 아님
+        self.assertTrue(au.TAG_RE.match("v14.0.0") and au.TAG_RE.match("v13.0.2") and au.TAG_RE.match("v20.1.0"))
+        self.assertFalse(au.TAG_RE.match("v12.9.40") or au.TAG_RE.match("v14.0.0-rc1") or au.TAG_RE.match("v140.0.0"))
+        self.assertTrue(au.is_newer("14.0.0", "13.9.9"))
 
     def test_only_github_hosts_over_https(self):
         for url in ("http://github.com/x", "https://evil.example/x", "https://api.github.com/x"):
@@ -92,10 +96,10 @@ class ApplyTest(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
-    def adapter(self, version="13.9.9", extra=None, top=None):
+    def adapter(self, version="14.9.9", extra=None, top=None):
         a = au.DesktopAppUpdate(self.cfg)
         tag = "v" + version
-        feed = FEED.replace(b"v13.0.10", tag.encode())
+        feed = FEED.replace(b"v14.0.10", tag.encode())
         a.fetch_feed = lambda: feed
         z = source_zip(Path(self.tmp.name) / f"{tag}.zip", version, extra, top=top or f"Para-{version}")
         a.download = lambda _tag, dest: shutil.copyfile(z, dest)
@@ -104,12 +108,12 @@ class ApplyTest(unittest.TestCase):
     def test_check_then_apply_stages_app_new_that_the_start_file_swaps_in(self):
         a = self.adapter()
         r = a.check()
-        self.assertEqual((r["available"], r["newer"], r["source"], r["installed"]), ("13.9.9", True, "github", True))
+        self.assertEqual((r["available"], r["newer"], r["source"], r["installed"]), ("14.9.9", True, "github", True))
         out = a.apply()
-        self.assertEqual(out, {"version": "13.9.9", "source": "github", "pending": True})
+        self.assertEqual(out, {"version": "14.9.9", "source": "github", "pending": True})
         # nothing restarts by itself: the next check reports the download as waiting for a restart
         r2 = a.check()
-        self.assertEqual((r2["pending"], r2["pending_ready"]), ("13.9.9", True))
+        self.assertEqual((r2["pending"], r2["pending_ready"]), ("14.9.9", True))
         new = self.home / "app.new"
         self.assertTrue((new / "param_manager" / "launcher.py").is_file())
         self.assertEqual(sorted(deploy.files(new)), sorted(deploy.files(ROOT)))
@@ -117,7 +121,7 @@ class ApplyTest(unittest.TestCase):
         self.assertFalse(list((Path(self.tmp.name) / "local").rglob("source.zip")))   # Temp cleaned
         start = runpy.run_path(str(ROOT / "Camtek_AOI_manager.pyw"), run_name="para_start_test")
         start["_swap"](str(self.home))
-        self.assertIn('"13.9.9"', (self.home / "app" / "param_manager" / "__init__.py").read_text(encoding="utf-8"))
+        self.assertIn('"14.9.9"', (self.home / "app" / "param_manager" / "__init__.py").read_text(encoding="utf-8"))
 
     def test_executable_inside_is_refused(self):
         a = self.adapter(extra={"vendor/x.exe": b"MZ"})
@@ -128,7 +132,7 @@ class ApplyTest(unittest.TestCase):
 
     def test_tag_and_program_version_must_match(self):
         a = self.adapter()
-        a.fetch_feed = lambda: FEED.replace(b"v13.0.10", b"v13.9.8")
+        a.fetch_feed = lambda: FEED.replace(b"v14.0.10", b"v14.9.8")
         a.check()
         with self.assertRaisesRegex(ValueError, "버전"):
             a.apply()
@@ -149,14 +153,14 @@ class ApplyTest(unittest.TestCase):
                 a.apply()
 
     def test_onedrive_backup_when_github_unreachable(self):
-        a = self.adapter("13.9.9")
-        pub = a.publish({"path": str(source_zip(Path(self.tmp.name) / "p.zip", "13.9.9")), "notes": "노트"})
+        a = self.adapter("14.9.9")
+        pub = a.publish({"path": str(source_zip(Path(self.tmp.name) / "p.zip", "14.9.9")), "notes": "노트"})
         folder = Path(au.program_dir(str(self.save)))
         self.assertEqual(folder, self.save.parent / "프로그램")
         self.assertEqual(sorted(p.name for p in folder.iterdir()), sorted([au.MANIFEST, pub["file"]]))
         a.fetch_feed = lambda: (_ for _ in ()).throw(OSError("offline"))
         r = a.check()
-        self.assertEqual((r["source"], r["available"], r["changelog"]), ("onedrive", "13.9.9", "노트"))
+        self.assertEqual((r["source"], r["available"], r["changelog"]), ("onedrive", "14.9.9", "노트"))
         self.assertIn("GitHub", r["error"])
         a.apply()
         self.assertTrue((self.home / "app.new" / "param_manager" / "launcher.py").is_file())

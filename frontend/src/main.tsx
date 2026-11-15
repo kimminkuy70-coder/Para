@@ -10,7 +10,7 @@ import {UpdateBanner} from './AppUpdate';
 import {Watch} from './Watch';
 import {RecipeHub} from './RecipeHub';
 import {ActivityPanel} from './Activity';
-import {ColorGray} from './ColorGray';
+import {DefectAnalysis} from './DefectAnalysis';
 import {WaferMap} from './WaferMap';
 import {Batch} from './Batch';
 import {useDev} from './devmode';
@@ -18,7 +18,7 @@ import {Kla} from './Kla';
 
 const SUBTITLE: Record<string,string> = {
   'Batch Report 분석':'장비 Report 폴더의 Batch Report를 Lot 단위로 모아 가동률 · Lot 추적 · WPH를 보고, 필요한 Batch Report를 찾아 취합합니다.',
-  'Color·Gray 매칭':'AOI Color 이미지와 같은 위치의 Gray 스캔 이미지를 찾아 잘라 붙이고, 나란히 비교하는 Excel 을 만드세요.',
+  'Defect 분석':'대규모 Defect 를 Contrast · 분류로 걸러 Color · Gray 사진으로 확인하고(프로그램이 폴더를 직접 읽음), 고른 Defect 의 Color · Gray 매칭 결과를 Excel 로 만드세요.',
   'Wafer Map 수정하기':'Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리세요.',
   '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.',
   'KLA 자재 찾기':'KLA 장비 스캔 결과 폴더에서 Lot 이름으로 자재를 찾아 경로를 알려 주고, 바로 폴더를 엽니다.'
@@ -26,10 +26,10 @@ const SUBTITLE: Record<string,string> = {
 // Batch Report 분석 stays mounted too: its results, Lot window and unsaved developer choices
 // survive a visit to 설정 (where the developer toggle lives).
 import {TourLayer} from './Tour';
-const KEEP = ['Recipe 관리','Commonality 조사','자동 분석 및 취합','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기','KLA 자재 찾기'];
+const KEEP = ['Recipe 관리','Commonality 조사','자동 분석 및 취합','Batch Report 분석','Defect 분석','Wafer Map 수정하기','KLA 자재 찾기'];
 // 맨 위 탭(#32): CAMTEK · KLA · 설정 · 메모. CAMTEK / KLA = 장비 회사별 기능 묶음(#30, 아래 기능 탭 줄),
 // 설정 · 메모 = 회사와 관계없는 공통 탭이라 회사 묶음 밖에 따로 둔다(아래 기능 탭 줄 없음).
-const VENDORS = {CAMTEK:['Recipe 관리','자동 분석 및 취합','Commonality 조사','Batch Report 분석','Color·Gray 매칭','Wafer Map 수정하기'],
+const VENDORS = {CAMTEK:['Recipe 관리','자동 분석 및 취합','Commonality 조사','Batch Report 분석','Defect 분석','Wafer Map 수정하기'],
   KLA:['KLA 자재 찾기']} as const;
 type Vendor = keyof typeof VENDORS;
 const COMMON = ['설정','메모'] as const;
@@ -136,7 +136,7 @@ function App(){
       {visited.map(name=><div key={name} hidden={tab!==name} className="kept-screen">{
         name==='Commonality 조사'?<Commonality/>:name==='Recipe 관리'?<RecipeHub active={tab==='Recipe 관리'}/>
         :name==='Batch Report 분석'?<Batch active={tab==='Batch Report 분석'}/>
-        :name==='Color·Gray 매칭'?<ColorGray/>
+        :name==='Defect 분석'?<DefectAnalysis/>
         :name==='Wafer Map 수정하기'?<WaferMap/>
         :name==='KLA 자재 찾기'?<Kla/>
         :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}

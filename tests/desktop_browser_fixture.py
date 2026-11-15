@@ -55,6 +55,18 @@ if sys.argv[1] == 'init':
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from colorgray_fixture import make_wafer
     make_wafer(root/'cglot'/'Slot01','W01');make_wafer(root/'cglot'/'Slot02','W02')
+    # v14 Defect 분석: 레시피 폴더(RCP/SETUP1/LOT_A/W01 = Slot) — Color·Gray wafer + Surface.flt(Defect 2개: C1 · C2 자리)
+    import struct
+    slot = make_wafer(root/'defect'/'RCP'/'SETUP1'/'LOT_A', 'W01')
+    flt = bytearray(152 * 2)
+    for i, (x, y, c) in enumerate([(1100.0, 200.0, 45.0), (90000.0, 90000.0, 30.0)]):
+        o = i * 152
+        struct.pack_into('<dd', flt, o + 8, x, y)
+        struct.pack_into('<ii', flt, o + 40, i, i)
+        struct.pack_into('<B', flt, o + 62, 1)
+        struct.pack_into('<ddddd', flt, o + 64, 6.0, 4.0, 20.0, 3.0, 5.0)
+        struct.pack_into('<d', flt, o + 136, c)
+    (slot/'Surface.flt').write_bytes(bytes(flt))
     path=refdata.ip_path(str(shared));refdata.create_blank_ip(path)
     wb=openpyxl.load_workbook(path);wb.active.append(['AOI-01','10.0.0.1','Camtek']);wb.save(path);wb.close()
     special=refdata.special_path(str(shared));refdata.create_blank_special(special)
@@ -85,15 +97,15 @@ if sys.argv[1] == 'init':
     import shutil, zipfile
     from param_manager import desktop_appupdate, deploy
     repo = Path(__file__).resolve().parents[1]
-    src = root/'pkg'/'Para-13.9.0'
+    src = root/'pkg'/'Para-14.9.0'
     for rel in deploy.files(repo):
         (src/rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(repo/rel, src/rel)
     init = src/'param_manager'/'__init__.py'
-    init.write_text(re.sub(r'^__version__ = "[^"]+"', '__version__ = "13.9.0"', init.read_text(encoding='utf-8'), flags=re.M), encoding='utf-8')
-    with zipfile.ZipFile(root/'pkg'/'v13.9.0.zip', 'w') as z:
+    init.write_text(re.sub(r'^__version__ = "[^"]+"', '__version__ = "14.9.0"', init.read_text(encoding='utf-8'), flags=re.M), encoding='utf-8')
+    with zipfile.ZipFile(root/'pkg'/'v14.9.0.zip', 'w') as z:
         for f in src.rglob('*'):
             if f.is_file(): z.write(f, f.relative_to(root/'pkg').as_posix())
-    desktop_appupdate.DesktopAppUpdate(root/'config.json').publish({'path': str(root/'pkg'/'v13.9.0.zip'), 'notes': '테스트 게시'})
+    desktop_appupdate.DesktopAppUpdate(root/'config.json').publish({'path': str(root/'pkg'/'v14.9.0.zip'), 'notes': '테스트 게시'})
 else:
     original = desktop_ipc.Session
     class FixtureSession(original):
@@ -131,6 +143,11 @@ else:
 
             def pick_file(self, args):
                 return str(Path(sys.argv[2])/'old_plan.xlsx')
+
+            def pick_folder(self, args):
+                # v14 Defect 분석: the harness writes the folder 'picked' in the Windows dialog (none = cancelled)
+                f = Path(sys.argv[2])/'pick_folder.txt'
+                return f.read_text(encoding='utf-8').strip() if f.exists() else None
 
         server = webserver.WebServer(upload_dir=Path(sys.argv[2])/'local'/'Temp'/'upload',
                                      natives_factory=FixtureNatives).start()

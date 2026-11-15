@@ -18,6 +18,7 @@ The source folders are only read. Results go to a separate output folder.
 from __future__ import annotations
 
 import csv
+import io
 import os
 import re
 from pathlib import Path
@@ -552,4 +553,178 @@ def write_failures(result: Path, failures):
     path = Path(result) / "unmatched_or_missing.csv"
     with path.open("w", newline="", encoding="utf-8-sig") as handle:
         csv.writer(handle).writerows([("ColorFile", "Reason"), *failures])
+    return path
+
+
+# ---------------------------------------------------------------- v14: 최종 목록 CSV (Defect 분석)
+# AOI Contrast Wizard 5-3 [📄 최종 목록 CSV 저장](HTML `FL_HEAD`)이 쓰는 열 이름이 약속이다 — HTML 을 바꾸면 여기도.
+FINAL_FOLDER_COLS = ("매칭폴더", "매칭폴더(고른 폴더부터)")
+FINAL_COLOR_COL = "Color 파일"
+FINAL_MAX_ROWS = 5000                                 # CSV 는 한 번에 엔진으로 보낸다(4 MB 한도)
+FINAL_IMG_H = 180                                     # 사진 줄 높이(px) — HTML XL_IMG_H 와 같음
+# (제목, 폭 px, 사진 종류 또는 CSV 열 이름) — HTML 최종 목록 엑셀(XL_COLS)과 같은 차례 · 제목
+FINAL_COLS = [("5-1 #", 52, "5-1 #"), ("Lot", 130, "Lot"), ("Slot", 110, "Slot"), ("ID", 60, "ID"),
+              ("첫번째 분류", 130, "첫번째 분류"), ("재분류", 130, "재분류"), ("Recipe", 110, "Recipe"),
+              ("Contrast(실제)", 96, "Contrast(실제)"),
+              ("Color", 250, "img:color_view"), ("Gray Crop (빨간 네모 = Defect)", 250, "img:crop_mark"),
+              ("Gray 프레임 (빨간 네모 = Defect · 노란 상자 = Crop 범위)", 570, "img:frame_mark"),
+              ("상태", 150, "#state"), ("Area µm²", 80, "Area µm²"), ("Width", 64, "Width"), ("Length", 64, "Length"),
+              ("Box W×H", 84, "#box"), ("Wafer X", 84, "Wafer X"), ("Wafer Y", 84, "Wafer Y"),
+              ("Die (장비 Col, Row)", 110, "Die (장비 Col, Row)"), ("Color 파일", 190, "Color 파일"),
+              ("Color 전체 경로", 380, "#color_path"), ("Gray 파일", 190, "#gray_file"), ("Gray 전체 경로", 380, "#gray_path"),
+              ("사진 없음 이유", 240, "#reason"), ("Lot 경로", 300, "Lot 경로"), ("흑백 GL 평균 (원)", 110, "흑백 GL 평균 (원)"),
+              ("Gray 위치 계산", 140, "#calc"), ("매칭폴더", 380, "#folder"),
+              ("Zone", 90, "Zone"), ("Region", 70, "Region"), ("판정 비트", 110, "판정 비트"), ("분류 코드", 80, "분류 코드"),
+              ("Zone 이름", 110, "Zone 이름"), ("판정 종류", 150, "판정 종류")]
+
+
+def base_name(name: str) -> str:
+    return re.split(r"[\\/]", (name or "").strip().strip('"'))[-1]
+
+
+def parse_final_csv(text: str) -> list[dict]:
+    """최종 목록 CSV(UTF-8, BOM 있어도 됨) → 줄마다 {열 이름: 값}. 우리 형식이 아니면 ValueError."""
+    rows = list(csv.reader(io.StringIO((text or "").lstrip("﻿"))))
+    rows = [r for r in rows if any(c.strip() for c in r)]
+    if not rows:
+        raise ValueError("빈 CSV 입니다")
+    head = [h.strip() for h in rows[0]]
+    if FINAL_COLOR_COL not in head or not any(c in head for c in FINAL_FOLDER_COLS):
+        raise ValueError("최종 목록 CSV 가 아닙니다 — Defect 분석 › 대규모 Defect 분석 5-3 의 [📄 최종 목록 CSV 저장] 파일을 고르십시오"
+                         f"('{FINAL_COLOR_COL}' · '매칭폴더' 열이 있어야 함)")
+    if len(rows) - 1 > FINAL_MAX_ROWS:
+        raise ValueError(f"줄이 너무 많습니다({len(rows) - 1}개 > {FINAL_MAX_ROWS})")
+    return [{h: (r[i].strip() if i < len(r) else "") for i, h in enumerate(head)} for r in rows[1:]]
+
+
+def is_abs_path(v) -> bool:
+    v = (v or "").strip().strip('"')
+    return bool(v) and (Path(v).is_absolute() or v.startswith("\\\\") or bool(re.match(r"^[A-Za-z]:[\\/]", v)))
+
+
+def final_folder(row: dict, base=None):
+    """그 줄의 매칭 폴더(있는 폴더만). 전체 경로가 있으면 그대로, 상대 경로(고른 폴더부터)면 base(사람이 고른 폴더)와 붙여 본다."""
+    tried = []
+    for key in FINAL_FOLDER_COLS:
+        v = (row.get(key) or "").strip().strip('"')
+        if not v:
+            continue
+        if is_abs_path(v):
+            tried.append(Path(v))
+        elif base:
+            base = Path(base)
+            segs = [s for s in re.split(r"[\\/]", v) if s]
+            tried += [base.joinpath(*segs), base.parent.joinpath(*segs)]
+            if segs and segs[0].lower() == base.name.lower():
+                tried.append(base.joinpath(*segs[1:]))
+    for p in tried:
+        if os.path.isdir(long_path(p)):
+            return p
+    return None
+
+
+def _num(v):
+    try:
+        x = float(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+    return x if x == x and abs(x) != float("inf") else None
+
+
+def final_fallback(wafer: Path, row: dict, index: int):
+    """프로그램 매칭에 없는 줄(목록 · 변환 파일이 없는 Slot 등): 최종 목록 CSV 의 Gray 프레임 · Gray 위치 · Crop 크기
+    (HTML 이 대신 계산한 값)로 같은 처리를 한다. 파일이 없거나 값이 없으면 (None, 이유)."""
+    wafer = Path(wafer)
+    names = file_names(wafer)
+    cname, gname = base_name(row.get(FINAL_COLOR_COL, "")), base_name(row.get("Gray 파일", ""))
+    if not cname:
+        return None, "Color 파일 이름 없음"
+    cpath = _inside(wafer, cname, names)
+    if cpath is None or not os.path.exists(long_path(cpath)):
+        return None, f"Color 파일 없음: {cname}"
+    px, py = _num(row.get("GrayPX(3168x1024기준)")), _num(row.get("GrayPY(3168x1024기준)"))
+    if not gname or px is None or py is None:
+        return None, "Gray 위치 없음(프로그램 매칭에도, 최종 목록 CSV 에도)"
+    gpath = _inside(wafer, gname, names)
+    if gpath is None or not os.path.exists(long_path(gpath)):
+        return None, f"Gray 파일 없음: {gname}"
+    cw, ch = _num(row.get("CropW")), _num(row.get("CropH"))
+    crop_w, crop_h, out_w, out_h = crop_size({})
+    if cw and ch:
+        crop_w, crop_h = max(1, round(cw)), max(1, round(ch))
+    return dict(index=index, color_file=cname, gray_file=gname, color_path=str(cpath), gray_path=str(gpath),
+                fault_x=_num(row.get("Wafer X")) or 0.0, fault_y=_num(row.get("Wafer Y")) or 0.0,
+                pixel_x=px, pixel_y=py, candidate_count=0, crop_w=crop_w, crop_h=crop_h, out_w=out_w, out_h=out_h,
+                coord="최종 목록 CSV 값"), ""
+
+
+def _final_value(item: dict, key: str):
+    row, rec = item["row"], item.get("rec")
+    if key == "#state":
+        return "추출 완료" if item.get("done") else "사진 없음"
+    if key == "#reason":
+        return "" if item.get("done") else (item.get("reason") or "처리 안 됨(취소 또는 오류)")
+    if key == "#box":
+        bw, bh = row.get("BoxW", ""), row.get("BoxH", "")
+        return f"{bw}×{bh}" if bw or bh else row.get("Box W×H", "")
+    if key == "#calc":
+        return rec.get("calc", "") if rec else ""
+    if key == "#folder":
+        return item.get("folder", "")
+    if key == "#color_path":
+        return rec["color_path"] if rec else row.get("Color 전체 경로", "")
+    if key == "#gray_path":
+        return rec["gray_path"] if rec else row.get("Gray 전체 경로", "")
+    if key == "#gray_file":
+        return base_name(rec["gray_file"]) if rec else row.get("Gray 파일", "")
+    v = str(row.get(key, "") or "").strip()
+    if re.fullmatch(r"-?\d+", v):
+        return int(v)
+    if re.fullmatch(r"-?\d+\.\d+", v):
+        return float(v)
+    return v
+
+
+def build_final_workbook(path: Path, items: list[dict], callback=None) -> Path:
+    """최종 목록 엑셀 — HTML 5-3 [💾 최종 목록 엑셀 저장]과 같은 열 · 사진 3장(Color · Gray Crop 빨간 네모 · Gray 프레임 노란 상자).
+    items = [{row(CSV 줄), rec(처리한 기록 또는 None), done, reason, folder, pictures:{kind: 파일}}] — CSV 차례."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    JpegImage = _jpeg_image_class()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "최종목록"
+    ws.append([c[0] for c in FINAL_COLS])
+    for cell in ws[1]:
+        cell.fill = PatternFill("solid", fgColor="1B345F")
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[1].height = 34
+    for ci, (_, px, _) in enumerate(FINAL_COLS, 1):
+        ws.column_dimensions[get_column_letter(ci)].width = round(px / 7, 1)
+    ws.freeze_panes = "I2"
+    total = max(1, len(items))
+    for n, item in enumerate(items, 1):
+        r = n + 1
+        ws.row_dimensions[r].height = round((FINAL_IMG_H + 8) * 0.75, 1)
+        for ci, (_, px, key) in enumerate(FINAL_COLS, 1):
+            cell = ws.cell(r, ci)
+            if key.startswith("img:"):
+                f = (item.get("pictures") or {}).get(key[4:])
+                data = Path(f).read_bytes() if f and os.path.exists(long_path(f)) else b""
+                size = jpeg_size(data) if data else None
+                if size:
+                    k = min(1.0, (px - 8) / size[0], FINAL_IMG_H / size[1])
+                    ws.add_image(JpegImage(data, max(1, round(size[0] * k)), max(1, round(size[1] * k))), f"{get_column_letter(ci)}{r}")
+                else:
+                    cell.value = "(사진 없음)"
+            else:
+                cell.value = _final_value(item, key)
+            cell.alignment = Alignment(vertical="top", wrap_text=key in ("#reason",))
+        callback and callback(n, total)
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(FINAL_COLS))}{len(items) + 1}"
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(path)
     return path

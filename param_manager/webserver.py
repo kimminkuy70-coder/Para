@@ -14,6 +14,8 @@ Safety (docs/V13_계획.md 11-2 ③):
 - Host must be 127.0.0.1/localhost with our port (DNS rebinding), a present Origin must be ours,
   POST bodies must be ``application/json`` (except the file upload, which also needs the token).
 - static files only from the built screen folder (no path escape), no directory listing.
+- v14 Defect 분석: GET /api/fs/list · stat · file · walk = read-only access below folders the person
+  picked in the Windows folder dialog (`defect_pick`), token header required (`defect_fs`).
 """
 from __future__ import annotations
 
@@ -135,6 +137,13 @@ class Natives:
     def pick_file(self, args):
         return None
 
+    def defect_pick(self, args):
+        """v14 Defect 분석: the person picks a folder; only that folder becomes a read-only root."""
+        path = self.pick_folder({})
+        if not path:
+            return None
+        return self.server.fsroots.add(path)
+
     def set_background(self, args):
         self.background = {"enabled": bool(args.get("enabled")), "tooltip": str(args.get("tooltip", ""))[:120]}
         return None
@@ -144,7 +153,7 @@ class Natives:
         return None
 
     def call(self, command: str, args: dict):
-        fn = {"pick_folder": self.pick_folder, "pick_file": self.pick_file,
+        fn = {"pick_folder": self.pick_folder, "pick_file": self.pick_file, "defect_pick": self.defect_pick,
               "set_background": self.set_background, "app_exit": self.app_exit}.get(command)
         if fn is None:
             raise KeyError(command)
@@ -163,6 +172,8 @@ class WebServer:
         self.httpd.daemon_threads = True
         self.port = self.httpd.server_address[1]
         self.natives = natives_factory(self)
+        from .defect_fs import Roots
+        self.fsroots = Roots()
 
     @property
     def url(self) -> str:
@@ -262,6 +273,8 @@ def _handler(server: WebServer):
             parts = urlsplit(self.path)
             if parts.path == "/api/events":
                 return self._events(parse_qs(parts.query).get("t", [""])[0])
+            if parts.path.startswith("/api/fs/"):
+                return self._fs(parts.path[8:], parse_qs(parts.query))
             if parts.path.startswith("/api/"):
                 return self._json(404, {"error": "not_found"})
             rel = "index.html" if parts.path in ("", "/") else parts.path.lstrip("/")
@@ -301,6 +314,57 @@ def _handler(server: WebServer):
                 pass
             finally:
                 server.bridge.unsubscribe(q)
+
+        def _fs(self, kind, q):
+            """v14 Defect 분석 — read-only folder access below a picked root (defect_fs)."""
+            from . import defect_fs
+            if not server.token_ok(self.headers.get("X-Para-Token")):
+                return self._json(403, {"error": "token"})
+            try:
+                root = server.fsroots.get(q.get("r", [""])[0])
+                path = defect_fs.resolve(root, q.get("p", [""])[0])
+            except KeyError:
+                return self._json(404, {"error": "root"})
+            except ValueError:
+                return self._json(400, {"error": "path"})
+            try:
+                if kind == "list":
+                    return self._json(200, defect_fs.list_dir(path))
+                if kind == "stat":
+                    return self._json(200, defect_fs.stat(path))
+                if kind == "walk":
+                    return self._json(200, defect_fs.walk(path))
+                if kind == "file":
+                    try:
+                        size, fh = defect_fs.open_file(path)
+                    except ValueError as exc:
+                        return self._json(413 if str(exc) == "too_large" else 404, {"error": str(exc)})
+                    with fh:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/octet-stream")
+                        self.send_header("Content-Length", str(size))
+                        self.send_header("Cache-Control", "no-store")
+                        self.send_header("X-Content-Type-Options", "nosniff")
+                        self.end_headers()
+                        if self.command != "HEAD":
+                            left = size
+                            try:
+                                while left > 0:
+                                    chunk = fh.read(min(left, 1 << 20))
+                                    if not chunk:
+                                        break
+                                    self.wfile.write(chunk)
+                                    left -= len(chunk)
+                            except (BrokenPipeError, ConnectionResetError):
+                                self.close_connection = True   # the page went away mid-file
+                    return None
+            except FileNotFoundError:
+                return self._json(404, {"error": "not_found"})
+            except (NotADirectoryError, PermissionError) as exc:
+                return self._json(403 if isinstance(exc, PermissionError) else 404, {"error": type(exc).__name__})
+            except OSError as exc:
+                return self._json(503, {"error": "os", "detail": str(exc)[:200]})
+            return self._json(404, {"error": "not_found"})
 
         # ---- POST: requests, native commands, file upload
         def do_POST(self):

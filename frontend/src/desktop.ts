@@ -10,6 +10,8 @@ const TOKEN: string = (() => {
 })();
 /** True inside the app window (the engine handed this page its token). */
 export function isDesktop(): boolean { return !!TOKEN; }
+/** v14 Defect 분석: the embedded AOI Contrast Wizard page (same origin) gets the token in its address. */
+export function sessionToken(): string { return TOKEN; }
 async function post(path: string, body: unknown): Promise<Response> {
   return fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Para-Token': TOKEN}, body: JSON.stringify(body), cache: 'no-store'});
 }

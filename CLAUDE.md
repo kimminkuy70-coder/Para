@@ -1,5 +1,19 @@
 # Para — 장비 파라미터 관리 프로그램
 
+## v14 (브랜치 `version_v14` = `version_v13` 복사, 2026-11-15~) — Defect 분석 탭
+
+- 계획 · 소유자 결정 = `docs/V14_Defect분석_계획.md`(맨 아래 '구현 결과'가 최신). 릴리스 = `version_v14` push → `.github/workflows/v14.yml`(종전 v13.yml, 판 = 14.x.y).
+- 탭 `Color·Gray 매칭` → **`Defect 분석`**(`frontend/src/DefectAnalysis.tsx`): 하위 탭 [대규모 Defect 분석] · [Color·Gray 매칭](기존 `ColorGray.tsx`) + 체크 '다이어그램 분석(Step 1 ~ 4) 보이기'(localStorage `para.defect.diagram`).
+- 대규모 Defect 분석 · 다이어그램 분석 = **AOI Contrast Wizard HTML 그대로**(`frontend/public/defect/AOI_Contrast_Wizard_rev6.html` → dist, 같은 출처 iframe `?t=토큰&mode=big|diagram`).
+  원본은 `ccr-7401b37d-bwze1e` 의 `AOI_Contrast_Wizard_rev6.html` — **같은 내용으로 둔다(고치면 둘 다, 시험도 그쪽 `tools/test_contrast_wizard_rev6.mjs`)**. HTML 의 `PARA` 연결부가 프로그램 안에서만 켜진다.
+- 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
+  **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
+  브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.
+- Color·Gray 매칭 + **최종 목록 CSV**: `cgm_csv`(`DesktopColorGray.final_csv`) → Wafer = CSV 매칭 폴더(전체 경로, 상대면 폴더 칸과 붙여 찾음) → `cgm_start` 가 CSV 의 Color 만(프로그램 매칭에 없으면 CSV 의 Gray 위치 = `colorgray.final_fallback`)
+  → 화면이 사진 3장 더(`color_view` · `crop_mark` · `frame_mark`, HTML cgDefBox · cgCropCanvas · cgFrameCanvas 와 같은 그림) → `cgm_final` = `colorgray.build_final_workbook`(HTML 최종 목록 엑셀과 같은 열 `FINAL_COLS`).
+  CSV 열 이름 = HTML `FL_HEAD` 약속(`tests/test_colorgray_final.py` 가 dist 의 HTML 과 대조).
+- 업데이트: `desktop_appupdate.VERSION_PAT` = v13 이후 판 태그 전부(v14 부터). **설치된 v13 판은 v13.x.y 만 찾으므로 v14 알림을 못 받는다** — v14 는 설치 zip 으로 덮어쓰기(릴리스 노트).
+
 ## v13 (브랜치 `version_v13`, 2026-11-10~) — 가장 먼저 읽을 것
 
 - 계획 · 소유자 결정 = `docs/V13_계획.md`(4-1 · 11 · 12절이 최신). **우리가 만든 exe 를 배포하지 않는다**(v12.9.30~32 zip 이 Defender 평판 판정에 막힘).

@@ -1,14 +1,14 @@
-name: v13 test, package and release
+name: v14 test, package and release
 
-# v13 ships no program of ours that is an executable: the install zip holds the python.org
-# embeddable package (PSF-signed, checked below) + our source text. Every push to version_v13
+# v13 · v14 ship no program of ours that is an executable: the install zip holds the python.org
+# embeddable package (PSF-signed, checked below) + our source text. Every push to version_v14
 # runs the tests, checks frontend/dist matches the source, builds the install zip on Windows
 # and scans it with Windows Defender. A GitHub Release (tag v<version>) is created only when
 # docs/release_notes/v<version>.md exists and that release does not exist yet.
 
 on:
   push:
-    branches: [version_v13]
+    branches: [version_v14]
   workflow_dispatch:
 
 permissions:
@@ -64,7 +64,7 @@ jobs:
         shell: pwsh
         run: |
           $v = python -c "import sys; sys.path.insert(0, '.'); import param_manager; print(param_manager.__version__)"
-          if ($v -notmatch '^13\.\d+\.\d+$') { Write-Error "version must be 13.x.y (got $v)"; exit 1 }
+          if ($v -notmatch '^14\.\d+\.\d+$') { Write-Error "version must be 14.x.y (got $v)"; exit 1 }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: python.org embeddable package (signature checked)

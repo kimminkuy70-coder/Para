@@ -9,7 +9,9 @@ import {OpenPath} from './OpenPath';
    (디코드 · Crop · 썸네일 · JPEG 인코딩 — 프로그램에 이미지 패키지를 추가하지 않기 위해 WebView canvas 사용). */
 
 type Wafer={name:string;path:string};
-type Rec={color:string;gray:string;px:number;py:number;gw:number;gh:number;crop_w:number;crop_h:number;out_w:number;out_h:number};
+type Rec={color:string;gray:string;px:number;py:number;gw:number;gh:number;crop_w:number;crop_h:number;out_w:number;out_h:number;
+  /** v14: 최종 목록 CSV 로 고른 Defect — Defect 상자 크기(Gray 3168×1024 기준). 있으면 최종 목록 엑셀 사진 3장을 더 만든다. */
+  box?:[number,number]};
 type Diag={coord?:string|null;reasons?:Record<string,number>;transform?:string[];colors?:number;frames?:number;jpg_files?:number;frame_recipes?:string[];color_recipes?:string[];frame_example?:string;color_example?:string;
   nearest?:{color:string;fault:number[];frame:string;px:number;py:number;gw:number;gh:number}};
 type JobWafer={name:string;colors:number;failed:number;records:Rec[];finished?:Finished|null;diagnosis?:Diag|null;coord?:string|null};
@@ -22,7 +24,9 @@ const diagText=(d:Diag)=>[
   d.frame_example&&`목록 예 ${d.frame_example}`,
   d.nearest&&`가장 가까운 프레임 ${d.nearest.frame}: Fault (${d.nearest.fault.join(', ')}) → Gray 픽셀 (${d.nearest.px}, ${d.nearest.py}) / 범위 ${d.nearest.gw}×${d.nearest.gh}`,
 ].filter(Boolean).join(' | ');
-type Job={output:string;wafers:JobWafer[]};
+type Job={output:string;wafers:JobWafer[];final?:{rows:number;workbook:string}|null};
+type CsvInfo={name:string;rows:number;missing:number;examples:string[];needRoot:boolean};
+type FinalOut={workbook:string;rows:number;done:number;missing:number};
 type Finished={workbook:string;matched:number;failed:number;failures_csv:string;folder:string};
 const STEPS=['폴더 선택','Wafer 확인','저장 위치','실행 검토','처리 진행','완료'];
 const TW=360,TH=270;
@@ -51,6 +55,29 @@ function thumb(img:ImageBitmap|OffscreenCanvas,marker?:{x:number;y:number;w:numb
     g.moveTo(x-15,y);g.lineTo(x+15,y);g.moveTo(x,y-15);g.lineTo(x,y+15);g.stroke();}
   return c;
 }
+/** Shrink-to-fit (never enlarged, no padding) — 최종 목록 엑셀 사진(HTML xlJpeg 와 같은 크기 한도). */
+function fit(img:ImageBitmap|OffscreenCanvas,mw:number,mh:number){
+  const k=Math.min(1,mw/img.width,mh/img.height),c=new OffscreenCanvas(Math.max(1,Math.round(img.width*k)),Math.max(1,Math.round(img.height*k))),g=c.getContext('2d')!;
+  g.imageSmoothingQuality='high';g.drawImage(img,0,0,c.width,c.height);return c;
+}
+/** Defect 빨간 네모 — Defect 를 가리지 않게 상자 바깥에(HTML cgDefBox 와 같은 규칙, Para #67). */
+function defBox(g:OffscreenCanvasRenderingContext2D,x:number,y:number,hw:number,hh:number,size:number){
+  const lw=Math.max(2,Math.round(size/300)),gap=Math.max(4,lw*2),mn=Math.max(8,size/60),ax=Math.max(hw+gap,mn),ay=Math.max(hh+gap,mn);
+  g.save();g.filter='none';g.strokeStyle='#ff2d2d';g.lineWidth=lw;g.strokeRect(x-ax-lw/2,y-ay-lw/2,2*ax+lw,2*ay+lw);g.restore();
+}
+/** Gray Crop + 빨간 네모(HTML cgCropCanvas(d) 와 같은 그림). */
+function cropMark(gray:ImageBitmap,r:Rec,c:{canvas:OffscreenCanvas;box:number[]}){
+  const out=new OffscreenCanvas(c.canvas.width,c.canvas.height),o=out.getContext('2d')!;o.drawImage(c.canvas,0,0);
+  const sx=gray.width/r.gw,sy=gray.height/r.gh,x=r.px*sx,y=r.py*sy,fx=r.out_w/r.crop_w,fy=r.out_h/r.crop_h,[bw,bh]=r.box||[4,4];
+  defBox(o,(x-c.box[0])*fx,(y-c.box[1])*fy,Math.max(1,bw*sx)/2*fx,Math.max(1,bh*sy)/2*fy,Math.max(r.out_w,r.out_h));return out;
+}
+/** Gray 프레임 전체 + 노란 상자(Crop 범위) + 빨간 네모(HTML cgFrameCanvas 와 같은 그림). */
+function frameMark(gray:ImageBitmap,r:Rec){
+  const cv=new OffscreenCanvas(gray.width,gray.height),g=cv.getContext('2d')!;g.drawImage(gray,0,0);
+  const sx=gray.width/r.gw,sy=gray.height/r.gh,x=r.px*sx,y=r.py*sy,lw=Math.max(2,gray.width/700),[bw,bh]=r.box||[4,4];
+  g.strokeStyle='#ffd23f';g.lineWidth=lw;g.strokeRect(x-r.crop_w/2,y-r.crop_h/2,r.crop_w,r.crop_h);
+  defBox(g,x,y,Math.max(1,bw*sx)/2,Math.max(1,bh*sy)/2,Math.max(gray.width,gray.height));return cv;
+}
 /** Gray crop centred on the fault, the color image's field of view, resized to the color image size. */
 function crop(gray:ImageBitmap,r:Rec){
   const x=r.px*gray.width/r.gw,y=r.py*gray.height/r.gh,left=Math.round(x-r.crop_w/2),top=Math.round(y-r.crop_h/2);
@@ -67,14 +94,15 @@ export function ColorGray(){
   const [defaultOut,setDefaultOut]=useState(''),[mode,setMode]=useState<'default'|'custom'>('default'),[custom,setCustom]=useState('');
   const [job,setJob]=useState<Job>(),[progress,setProgress]=useState({done:0,total:0,text:''}),[log,setLog]=useState<string[]>([]);
   const [results,setResults]=useState<(Finished&{name:string})[]>([]),[state,setState]=useState<'idle'|'running'|'complete'|'cancelled'|'error'>('idle');
-  const stop=useRef(false);
+  const stop=useRef(false),csvInput=useRef<HTMLInputElement>(null);
+  const [csvInfo,setCsvInfo]=useState<CsvInfo|null>(null),[finalOut,setFinalOut]=useState<FinalOut|null>(null);
   const rel=(p:string)=>{const r=root.replace(/[\\/]+$/,'');return p.startsWith(r)?p.slice(r.length).replace(/^[\\/]+/,'')||p.split(/[\\/]/).pop()!:p;};
   const byId=new Map((wafers||[]).map(w=>[rel(w.path),w]));
   const addLog=(m:string)=>setLog(l=>[...l.slice(-249),`[${new Date().toLocaleTimeString('ko-KR',{hour12:false})}] ${m}`]);
 
   async function scan(){
     if(!root.trim())return notify('Lot 또는 Wafer 폴더를 입력하세요.','error');
-    setBusy(true);setWafers(undefined);setPicked([]);
+    setBusy(true);setWafers(undefined);setPicked([]);setCsvInfo(null);
     try{const r=(await desktop.request('cgm_scan',{root:root.trim()}).promise).colorgray as {wafers:Wafer[];default_output:string;limit:number;diagnosis?:{missing:string[];files:number;folders:number;path_len:number}};
       setWafers(r.wafers);setDefaultOut(r.default_output);
       setPicked(r.wafers.map(w=>rel(w.path)));
@@ -85,11 +113,25 @@ export function ColorGray(){
     }catch(e){fail(e);}finally{setBusy(false);}
   }
   async function browse(set:(p:string)=>void){const p=await pickFolder();if(p)set(p);}
+  /** v14: 최종 목록 CSV(대규모 Defect 분석 5-3 [📄 최종 목록 CSV 저장]) → 그 Defect 만. 매칭 폴더가 상대 경로면 위 폴더 칸 = 그때 고른 폴더. */
+  async function loadCsv(file:File){
+    const text=await file.text();
+    if(text.length>3_800_000)return notify('CSV 가 너무 큽니다(한 번에 4 MB 까지) — 5-3 에서 최종 목록을 나눠 저장하세요.','error');
+    setBusy(true);setWafers(undefined);setPicked([]);setCsvInfo(null);
+    try{const r=(await desktop.request('cgm_csv',{text,root:root.trim(),name:file.name}).promise).colorgray as
+        {rows:number;wafers:Wafer[];missing:number;missing_examples:string[];need_root:boolean;default_output:string};
+      setCsvInfo({name:file.name,rows:r.rows,missing:r.missing,examples:r.missing_examples,needRoot:r.need_root});
+      setWafers(r.wafers);setDefaultOut(r.default_output);setPicked(r.wafers.map(w=>rel(w.path)));
+      if(r.need_root&&!r.wafers.length)notify('CSV 의 매칭 폴더가 "고른 폴더부터"의 경로입니다. 위 [Lot / Wafer 폴더]에 그때 고른 폴더(예: 레시피 폴더)를 넣고 CSV 를 다시 고르세요.','error');
+      else if(r.wafers.length){notify(`최종 목록 ${r.rows}줄 · 매칭 폴더 ${r.wafers.length}개${r.missing?` · 폴더를 못 찾은 줄 ${r.missing}개(최종 목록 엑셀에 이유와 함께 남음)`:''}`,r.missing?'info':'ok');setStep(1);}
+      else notify('CSV 의 매칭 폴더를 하나도 찾지 못했습니다. 장비 공유를 탐색기로 먼저 연결했는지 확인하세요.','error');
+    }catch(e){fail(e);}finally{setBusy(false);}
+  }
 
   async function run(){
     const paths=picked.map(id=>byId.get(id)?.path).filter((p):p is string=>!!p);
     if(mode==='custom'&&!custom.trim())return notify('저장 위치를 고르세요.','error');
-    setBusy(true);stop.current=false;setResults([]);setLog([]);setState('running');
+    setBusy(true);stop.current=false;setResults([]);setLog([]);setState('running');setFinalOut(null);
     let plan:Job;
     try{plan=((await desktop.request('cgm_start',{wafers:paths,output:mode==='custom'?custom.trim():''}).promise).colorgray as {job:Job}).job;}
     catch(e){setBusy(false);setState('idle');return fail(e);}
@@ -115,6 +157,11 @@ export function ColorGray(){
             await put('color_thumb',await toB64(thumb(color),.78));
             await put('gray_thumb',await toB64(thumb(gray!,{x:r.px,y:r.py,w:r.gw,h:r.gh}),.78));
             await put('crop_thumb',await toB64(thumb(c.canvas),.78));
+            if(r.box){   // v14 최종 목록 엑셀 사진 3장(HTML 5-3 엑셀과 같은 그림 · 크기 한도)
+              await put('color_view',await toB64(fit(color,960,720),.85));
+              await put('crop_mark',await toB64(fit(cropMark(gray!,r,c),960,720),.85));
+              await put('frame_mark',await toB64(fit(frameMark(gray!,r),1800,600),.85));
+            }
             color.close();
           }catch(e){addLog(`실패 ${r.color}: ${errorText(e)}`);
             await desktop.request('cgm_fail',{wafer:wi,record:ri,reason:errorText(e)}).promise.catch(()=>undefined);}
@@ -126,6 +173,11 @@ export function ColorGray(){
         setResults(x=>[...x,{...f,name:w.name}]);addLog(`${w.name} 완료 — 성공 ${f.matched} · 실패 ${f.failed}`);
         if(stop.current)break;
       }
+      if(plan.final){
+        setProgress(p=>({...p,text:'최종 목록 엑셀 만드는 중…'}));
+        const fo=(await desktop.request('cgm_final').promise).colorgray as FinalOut;
+        setFinalOut(fo);addLog(`최종 목록 엑셀: ${fo.rows}줄 중 사진 ${fo.done}줄${fo.missing?` · 사진 없음 ${fo.missing}줄(이유 칸)`:''}`);
+      }
       setProgress(p=>({...p,done:stop.current?p.done:total,text:stop.current?'취소됨':'완료'}));
       setState(stop.current?'cancelled':'complete');setStep(5);
       notify(stop.current?'작업을 취소했습니다. 처리한 이미지까지 Excel 로 저장했습니다.':'Color·Gray 매칭을 마쳤습니다.',stop.current?'info':'ok');
@@ -134,7 +186,7 @@ export function ColorGray(){
   }
   async function restart(){
     await desktop.request('cgm_reset').promise.catch(()=>undefined);
-    setStep(0);setWafers(undefined);setPicked([]);setJob(undefined);setResults([]);setLog([]);setState('idle');setMode('default');setCustom('');
+    setStep(0);setWafers(undefined);setPicked([]);setJob(undefined);setResults([]);setLog([]);setState('idle');setMode('default');setCustom('');setCsvInfo(null);setFinalOut(null);
   }
 
   const outText=mode==='custom'?(custom||'(선택하지 않음)'):defaultOut;
@@ -157,6 +209,14 @@ export function ColorGray(){
       </div>
       {busy&&<p className="hint" role="status"><span className="spinner" aria-hidden="true"/> 하위 폴더에서 Wafer 를 찾는 중입니다. 진행 상황은 오른쪽 아래 창에 표시됩니다.
         <button onClick={()=>void desktop.request('cgm_reset').promise.catch(()=>undefined)}>검색 취소</button></p>}
+      <div className="cg-final" aria-label="최종 목록 CSV 로 고르기">
+        <p className="hint"><b>또는 최종 목록 CSV 로 고르기</b> — [대규모 Defect 분석] 5-3 에서 ☑ 한 Defect 를 <b>📄 최종 목록 CSV 저장</b>으로 저장한 파일을 고르면,
+          그 Defect 만 추출하고 결과 파일과 함께 <b>최종 목록 엑셀(Color · Gray Crop · Gray 프레임 사진 3장)</b>을 만듭니다.
+          CSV 의 매칭 폴더가 전체 경로(프로그램에서 저장)면 위 폴더 칸은 비워 두세요. 브라우저로 따로 연 HTML 에서 [원본 폴더 경로] 없이 저장했다면 그때 고른 폴더를 위 칸에 넣으세요.</p>
+        <input ref={csvInput} type="file" accept=".csv,text/csv" hidden aria-label="최종 목록 CSV 파일" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void loadCsv(f);}}/>
+        <button disabled={busy} onClick={()=>csvInput.current?.click()}>📄 최종 목록 CSV 고르기…</button>
+        {csvInfo&&<p className="hint" role="status"><b>{csvInfo.name}</b> — {csvInfo.rows}줄{csvInfo.missing?` · 매칭 폴더를 못 찾은 줄 ${csvInfo.missing}개 (예: ${csvInfo.examples.join(', ')})`:''}</p>}
+      </div>
     </>}
     {step===1&&wafers&&<>
       <p className="hint">처리할 Wafer 를 고르세요. 기본은 전체 선택입니다.</p>
@@ -180,7 +240,8 @@ export function ColorGray(){
     </>}
     {step===3&&<>
       <table className="tbl watch-status" aria-label="실행 전 검토"><tbody>
-        <tr><th>선택 폴더</th><td><code>{root}</code></td></tr>
+        {csvInfo?<tr><th>최종 목록 CSV</th><td><b>{csvInfo.name}</b> — {csvInfo.rows}줄 (그 Defect 만 · 최종 목록 엑셀 포함)</td></tr>
+          :<tr><th>선택 폴더</th><td><code>{root}</code></td></tr>}
         <tr><th>처리 Wafer</th><td>{picked.length}개 — {picked.slice(0,8).join(', ')}{picked.length>8?' …':''}</td></tr>
         <tr><th>결과 위치</th><td><code>{outText}</code>{mode==='default'&&' \\ 실행 시각 폴더'}</td></tr>
         <tr><th>Excel 링크</th><td>Crop 은 상대경로 · Color/Gray 는 원본 절대경로</td></tr></tbody></table>
@@ -196,6 +257,7 @@ export function ColorGray(){
     {step===5&&<>
       <p><b className={state==='complete'?'st-on':'st-off'}>{state==='complete'?'완료':state==='cancelled'?'취소됨':'오류'}</b>{job&&<> · 결과 폴더</>}</p>
       {job&&<OpenPath label="결과 폴더" path={job.output} folder/>}
+      {finalOut&&<p><b>최종 목록 엑셀</b> — {finalOut.rows}줄 중 사진 {finalOut.done}줄{finalOut.missing?` · 사진 없음 ${finalOut.missing}줄(엑셀의 '사진 없음 이유' 칸)`:''} <OpenPath label="" path={finalOut.workbook}/></p>}
       <table className="tbl" aria-label="Wafer별 결과"><thead><tr><th>Wafer</th><th>성공</th><th>실패</th><th>Excel</th></tr></thead>
         <tbody>{results.map(r=><tr key={r.workbook}><td><b>{r.name}</b></td><td>{r.matched}</td><td className={r.failed?'warn':''}>{r.failed}</td>
           <td><OpenPath label="" path={r.workbook}/>{r.failures_csv&&<OpenPath label="실패 목록" path={r.failures_csv}/>}</td></tr>)}</tbody></table>

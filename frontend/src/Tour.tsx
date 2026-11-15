@@ -33,7 +33,7 @@ const FEATURES:Step[]=[
   {target:'[data-tour="batch:start"]',go:'Batch Report 분석',title:'[조사 시작]',body:'이미 읽은 Batch Report 는 다시 읽지 않아 두 번째부터는 빠릅니다. 설정에서 하루 1회 자동 분석도 켤 수 있습니다.'},
   {target:'[data-tour="batch:cache-import"]',go:'Batch Report 분석',title:'Batch Report 캐시 가져오기',body:<>[OneDrive 에서 불러오기]로 개발자가 올린 캐시 zip 을 고르면 이 PC 로 받아 이 PC 캐시로 불러옵니다(받은 zip 을 <b>끌어 넣어도</b> 됩니다). 그 뒤 [조사 시작] · 찾기는 장비에서 새 것만 읽어 빠릅니다. OneDrive 에 올리기는 [🛠 개발자 기능].</>},
   {target:'[data-tour="batch:tabs"]',go:'Batch Report 분석',title:'Lot 추적 · 가동률 · WPH · 레시피 비교',body:<>조사가 끝나면 이 탭으로 결과를 봅니다. <b>레시피 비교</b>는 두 레시피 그룹(예: 기존 x20 ↔ 신규 x5)에 레시피를 끌어 넣어 속도 · 검출력을 같은 기준으로 비교합니다.</>},
-  {target:nav('Color·Gray 매칭'),go:'Color·Gray 매칭',title:'Color·Gray 매칭',body:'Lot 폴더의 wafer 이미지로 Color · Gray 값을 맞춰 봅니다.'},
+  {target:nav('Defect 분석'),go:'Defect 분석',title:'Defect 분석',body:'대규모 Defect 분석(Contrast · 분류로 걸러 Color · Gray 사진 확인, 최종 목록 저장)과 Color·Gray 매칭(최종 목록 CSV 로 그 Defect 만 추출)을 합니다. 다이어그램 분석(Step 1 ~ 4)은 체크로 켭니다.'},
   {target:nav('Wafer Map 수정하기'),go:'Wafer Map 수정하기',title:'Wafer Map 수정하기',body:'Wafer Map 파일을 열어 값을 고치고 이미지로 확인한 뒤 저장합니다.'},
   {target:nav('메모'),go:'메모',title:'메모',body:'팀이 함께 보는 메모와 공유 문서(장비 IP · 특이사항)를 엽니다.'},
   {target:nav('KLA 자재 찾기'),go:'KLA 자재 찾기',title:'KLA 자재 찾기',body:<>맨 위 <b>CAMTEK · KLA · 설정 · 메모</b> 탭 중 CAMTEK / KLA 로 장비 회사를 바꿉니다. KLA 탭에서는 Lot 이름 키워드로 스캔 결과 폴더를 찾아 바로 엽니다. KLA 장비 폴더 · Defect 이미지 백업본 등록은 [설정] › AOI 장비 호기 루트 › KLA 에서 합니다.</>},

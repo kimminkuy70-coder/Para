@@ -888,3 +888,11 @@ dialog::backdrop{overscroll-behavior:contain}
 .bv .groups .group>.gh b{color:#fff}
 .bv .groups .group>.gh .meta{color:#d6e0ec}
 .bv .groups .group>.gh input[type=checkbox]{accent-color:var(--lime)}
+
+/* v14 Defect 분석: 하위 탭 + AOI Contrast Wizard iframe(프로그램이 폴더를 읽음) */
+.defect-subtabs{align-items:center}
+.defect-subtabs .defect-opt{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);font-weight:600;white-space:nowrap}
+.defect-subtabs .defect-opt input{width:16px;height:16px;margin:0}
+.defect-frame{display:block;width:100%;height:calc(100vh - 230px);min-height:640px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.defect-frame[hidden]{display:none}
+.cg-final{margin-top:18px;padding-top:12px;border-top:1px dashed var(--line)}

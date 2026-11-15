@@ -1,13 +1,13 @@
 # AI 공통 인수인계
 
-## 최신 재개 — V14: 'Defect 분석' 탭(HTML rev6 이식) 계획 (2026-11-15 KST, `version_v14`, 구현 전)
+## 최신 재개 — v14.0.0: Defect 분석 탭(HTML rev6 그대로 + 엔진 폴더 다리) · 최종 목록 CSV 연동 (2026-11-15 KST, `version_v14`)
 
-- `version_v14` = `version_v13`(8c1306c) 복사(소유자 지시 — 표기 'vserion_v14' 는 `version_vN` 규칙에 맞춰 version_v14 로 만듦). **코드 변경 없음, 계획만**: `docs/V14_Defect분석_계획.md` 를 먼저 읽을 것.
-- 소유자 지시(세션 대화): HTML rev6(`ccr-7401b37d-bwze1e` 의 `AOI_Contrast_Wizard_rev6.html`) 기능을 프로그램에 동일하게 — 탭 이름 'Defect 분석', 하위 탭 = [대규모 Defect 분석](Step 5) + [Color·Gray 매칭(기존)],
-  Step 1~4(다이어그램 분석)는 옵션 체크. 5-3 최종 목록(☑) CSV 를 기존 Color·Gray 매칭이 읽어 그 Defect 만 추출(연동). 핵심 동기 = HTML 파일 목록 방식의 1시간 대기(브라우저가 사진까지 전부 처리) 제거 — 엔진이 폴더를 직접 읽는다.
-- 구현은 다음 세션이 계획 9절 단계대로(소유자: Opus 5.5). 구현 전 소유자 답 필요 = 계획 11절 1(릴리스 태그 v14.0.0 여부 · v13 사용자 업데이트 알림 규칙).
-- 배경 조사(2026-11-15 세션, `ccr` 브랜치 인수인계 후속 23): 1시간 대기 원인 = Windows Chromium(Edge·Chrome)이 폴더 핸들로 .ini 거부(download_file_types.asciipb: ini = Windows DANGEROUS) → webkitdirectory 전 파일 처리.
-  Slot 당 ~860개 중 5단계 필요 파일 10개(1.2%). 레시피·Setup·Lot·Slot 어느 높이를 골라도 결과 같음(실자료 353/353 확인).
+- 소유자(세션 대화): "version_v14 확인하고 계획서대로 구현해서 v14.0.0 로 릴리즈" · "사진 새 창이 Edge 앱 창에서 막히면 같은 창 전체 화면으로 대체 가능하게" · "CSV 로 거른 결과 = Color·Gray 매칭 결과 파일처럼 최종 목록 엑셀 형식 필요".
+- 한 일(코드 지도는 CLAUDE.md 맨 위 v14 절, 결정 이유는 `docs/V14_Defect분석_계획.md` 12절): 탭 'Defect 분석' + 하위 탭, rev6 HTML 을 iframe 으로(`frontend/public/defect/`, 원본 = ccr 브랜치 같은 파일),
+  엔진 읽기 전용 다리 `defect_fs.py` · `/api/fs/*` · `defect_pick`, Color·Gray 매칭 최종 목록 CSV(`cgm_csv` · `cgm_final` · 사진 3장 · 최종 목록 엑셀), 업데이트 태그 규칙 v13 이후 전부, 판 14.0.0, `v14.yml`.
+- 시험: Python 시험 77개 파일 통과 · `tools/check_project.py` OK · `npm run build` · `tools/test_desktop_ui.mjs` 두 번 연속 통과(Defect 분석 시나리오 추가). 이 Playwright 는 한글 파일 이름을 파일 고르기 창에 못 넣어 시험 CSV 이름은 영문.
+- **알릴 것**: 설치된 v13 판은 v13.x.y 태그만 찾으므로 v14.0.0 알림이 뜨지 않는다 → 설치 zip 덮어쓰기(릴리스 노트). 원하면 v13.0.3(태그 규칙만 넓힌 다리 판)을 `version_v13` 에 낼 수 있음 — 소유자 결정 전.
+- 남은 일: 회사 PC(Edge 앱 창)에서 iframe · 새 창/같은 창 · 전체 화면 · 네트워크 드라이브 읽기 속도 확인(PowerShell 측정은 ccr 인수인계 후속 23).
 
 ## 최신 재개 — #65 v13.0.2: 프로그램 창 아이콘 = 기존 아이콘 · 릴리스 (2026-11-11 KST, `version_v13`)
 

@@ -2,7 +2,7 @@
 // built screen (frontend/dist) and the real Python engine. Native dialogs are answered by the
 // fixture; native calls are echoed on the engine's stdout. Any other origin is refused.
 import {createRequire} from 'node:module';
-import {mkdtemp, readFile, rm, mkdir} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, mkdir, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve, extname} from 'node:path';
 import {spawn, execFileSync} from 'node:child_process';
@@ -19,10 +19,11 @@ const browser=await chromium.launch({headless:true});
 const engine=spawn(python,[join(root,'tests/desktop_browser_fixture.py'),'web',fixture],{cwd:root,stdio:['pipe','pipe','pipe']});
 let delivery=Promise.resolve();
 const page=await browser.newPage({viewport:{width:1440,height:1000}});
-const errors=[];
+const errors=[],nativeCalls=[];
 page.on('pageerror',e=>errors.push(e.message));
 const lines=createInterface({input:engine.stdout});
 let appUrl;const urlReady=new Promise(res=>{lines.on('line',line=>{const m=JSON.parse(line);
+  if(m.native)nativeCalls.push(m.native);
   if(m.url){appUrl=m.url;res();}
   else if(m.native==='set_background')background=m.args;   // tray residency request
 });});
@@ -55,7 +56,7 @@ try{
   // v13 start-up pop-up: GitHub is off in the fixture, so the OneDrive backup release is found;
   // a source copy (not installed) cannot install it. [나중에] closes it.
   const banner=page.locator('dialog.update-banner');
-  await banner.getByText('새 버전 13.9.0이 있습니다').waitFor();
+  await banner.getByText('새 버전 14.9.0이 있습니다').waitFor();
   await banner.getByText(/OneDrive 게시 폴더/).waitFor();
   assert(await banner.getByRole('button',{name:'지금 업데이트'}).isDisabled());
   await banner.getByRole('button',{name:'나중에'}).click();
@@ -520,8 +521,8 @@ try{
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('오류 로그 폴더').waitFor();
   await page.getByRole('button',{name:'업데이트 확인',exact:true}).click();
-  await page.getByText('새 버전 13.9.0이 있습니다.').waitFor();
-  await page.getByText(/최신 13.9.0 \(OneDrive\)/).waitFor();
+  await page.getByText('새 버전 14.9.0이 있습니다.').waitFor();
+  await page.getByText(/최신 14.9.0 \(OneDrive\)/).waitFor();
   await page.getByRole('tab',{name:'로컬 작업 폴더'}).click();
   await page.getByLabel('현재 위치').waitFor();
   await page.getByRole('button',{name:'오래된 임시 폴더 정리',exact:true}).click();
@@ -757,13 +758,16 @@ try{
   // Para #54: 앞에서 켠 Batch Report 자동 분석이 남아 있으므로 파라미터 감시를 꺼도 트레이 상주는 유지된다.
   await page.waitForFunction(()=>true);assert.equal(background.enabled,true);
   assert(background.tooltip.includes('장비 ✗')&&background.tooltip.includes('Batch Report ✓'),'batch auto keeps the app resident: '+background.tooltip);
+  // v14 Defect 분석(종전 Color·Gray 매칭 탭): 하위 탭 = 대규모 Defect 분석 · Color·Gray 매칭(+ 다이어그램 분석 체크)
+  await feature('Defect 분석');
+  assert.deepEqual(await page.locator('.defect-subtabs [role=tab]').allInnerTexts(),['대규모 Defect 분석','Color·Gray 매칭']);
+  await page.getByText('대규모 Defect 를 Contrast · 분류로 걸러').waitFor();
   // Color·Gray 매칭: scan a Lot folder, process both wafers (canvas crop/thumbnails), Excel per wafer.
-  await feature('Color·Gray 매칭');
+  await page.getByRole('tab',{name:'Color·Gray 매칭',exact:true}).click();
   const cg=page.locator('section.panel',{has:page.getByRole('heading',{name:'Color · Gray 매칭'})});
   await cg.getByLabel('Lot 또는 Wafer 폴더').fill(join(fixture,'cglot'));
   await cg.getByRole('button',{name:'Wafer 찾기'}).click();
   await cg.locator('[role=group][aria-label="처리할 Wafer"]').getByText('2개 선택').waitFor();
-  await page.getByText('AOI Color 이미지와 같은 위치의 Gray 스캔 이미지를 찾아').waitFor();
   await cg.getByRole('button',{name:'다음 ▶',exact:true}).click();          // → 저장 위치 (기본 = 로컬)
   const outs=cg.getByRole('radiogroup',{name:'결과 저장 위치'});
   assert.equal(await outs.getByRole('radio',{name:'로컬 작업 폴더 (기본)'}).getAttribute('aria-checked'),'true');
@@ -780,6 +784,70 @@ try{
   const cgRows=await cg.getByLabel('Wafer별 결과').getByRole('row').allInnerTexts();
   assert(cgRows.slice(1).every(t=>/\t1\t2\t/.test(t)),'each wafer: 1 matched, 2 failed — '+JSON.stringify(cgRows));
   await page.screenshot({path:join(root,'docs/screenshots/rev1-colorgray.png'),fullPage:true});
+  // v14 대규모 Defect 분석 = AOI Contrast Wizard(HTML rev6) iframe. 폴더 고르기 · 읽기는 엔진(브라우저 '업로드' 없음 · .ini 그대로 · 읽기 전용)
+  await page.getByRole('tab',{name:'대규모 Defect 분석',exact:true}).click();
+  const wz=page.frameLocator('iframe.defect-frame[title="대규모 Defect 분석"]');
+  await wz.locator('#step5.on').waitFor();
+  const wzf=page.frames().find(f=>/\/defect\/.*mode=big/.test(f.url()));
+  assert.deepEqual(await wz.locator('nav button[data-step]').evaluateAll(b=>b.filter(x=>!x.hidden).map(x=>x.dataset.step)),['5']);   // Step 5 만
+  const recipe=join(fixture,'defect','RCP'),slotDir=join(recipe,'SETUP1','LOT_A','W01');
+  await writeFile(join(fixture,'pick_folder.txt'),recipe);
+  await wz.locator('#bigAdd').click();
+  await wz.locator('#bigMsg',{hasText:/Slot 1개/}).waitFor({timeout:30000});
+  assert(nativeCalls.includes('defect_pick'),'folder picked through the engine: '+nativeCalls.join());
+  const s51=await wzf.evaluate(()=>{const c=window.__cw,s=c.BIG.scans[0];return {name:s.name,n:s.cols.n,ci:s.cg&&s.cg.colors.length,plan:!!(s.cg&&s.cg.plan),para:!!c.PARA,warn:s.warns}});
+  assert.deepEqual([s51.name,s51.n,s51.ci,s51.plan,s51.para],['RCP/SETUP1/LOT_A/W01',2,3,true,true],JSON.stringify(s51));
+  await wzf.evaluate(()=>window.__cw.b5Pair(null));
+  const pairs=await wzf.evaluate(()=>window.__cw.BIG.pairs.map(p=>[p.i,p.st,p.c&&p.c.file,p.g&&p.g.file]));
+  assert.deepEqual(pairs.find(p=>p[0]===0),[0,'ok','C1.jpg','F1.t.1.jpg'],JSON.stringify(pairs));
+  assert.equal(await wzf.evaluate(()=>window.__cw.pcPath('RCP/SETUP1/LOT_A/W01/C1.jpg')),join(slotDir,'C1.jpg'));   // 전체 경로 = 엔진이 아는 고른 폴더
+  assert.equal(await wz.locator('#bigBase').isVisible(),false);                                                      // [원본 폴더 경로] 칸 없음
+  await wz.locator('[data-b5="2"]').click();await wz.locator('#toB3').click();await wz.locator('#c5Color canvas').waitFor({timeout:30000});   // 사진 = 엔진에서
+  const [pop]=await Promise.all([page.waitForEvent('popup'),wz.locator('#c5list .br').nth(0).dblclick()]);
+  await pop.locator('#fx canvas').waitFor();await pop.close();
+  await wz.locator('#c5list').focus();await wz.locator('#c5list').press('Home');await wz.locator('#c5list').press(' ');
+  await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
+  await wz.locator('#c5saveCsv').click();await wzf.waitForFunction(()=>typeof window.__flc==='string');
+  const finalCsv=join(fixture,'final_list_test.csv');await writeFile(finalCsv,'\ufeff'+await wzf.evaluate(()=>window.__flc),'utf-8');
+  assert((await readFile(finalCsv,'utf-8')).includes(slotDir),'final list CSV carries the absolute matching folder');
+  // 기존 Color·Gray 매칭이 최종 목록 CSV 를 인식 → 그 Defect 만 + 최종 목록 엑셀(사진 3장)
+  await page.getByRole('tab',{name:'Color·Gray 매칭',exact:true}).click();
+  await cg.getByRole('button',{name:'새 작업'}).click();
+  await cg.getByLabel('Lot 또는 Wafer 폴더').fill('');
+  // 사람처럼: 단추 → 파일 고르기 창(이 시험 Playwright 는 한글 파일 이름을 못 넣어 영문 이름). 앞에서 켠 Batch Report 자동 분석이 장비 접근 자리를
+  // 쓰는 중이면 엔진이 '진행 중'으로 거절한다(Wafer 찾기와 같은 규칙) — 그때는 조금 뒤 다시.
+  const wafersShown=()=>cg.locator('[role=group][aria-label="처리할 Wafer"]').getByText('1개 선택').waitFor({timeout:4000}).then(()=>true,()=>false);
+  let csvOk=false;
+  for(let k=0;k<10&&!csvOk;k++){const [fc]=await Promise.all([page.waitForEvent('filechooser'),cg.getByRole('button',{name:'📄 최종 목록 CSV 고르기…'}).click()]);await fc.setFiles(finalCsv);
+    csvOk=await wafersShown();if(!csvOk)await page.waitForTimeout(3000);}
+  assert(csvOk,'final list CSV recognised by Color·Gray 매칭');
+  await cg.getByRole('button',{name:'다음 ▶',exact:true}).click();
+  await cg.getByRole('button',{name:'다음 ▶',exact:true}).click();
+  await cg.getByLabel('실행 전 검토').getByText('final_list_test.csv').waitFor();
+  await cg.getByRole('button',{name:'▶ 처리 시작'}).click();
+  await cg.getByText(/최종 목록 엑셀 — 1줄 중 사진 1줄/).waitFor({timeout:60000});
+  const finalBook=await cg.locator('p',{hasText:'최종 목록 엑셀'}).locator('code').first().innerText().catch(()=>'');
+  const xl=JSON.parse(execFileSync(python,['-c',`
+import sys,glob,json,zipfile,openpyxl
+p=sorted(glob.glob(sys.argv[1]+'/**/최종목록_*.xlsx',recursive=True))[-1]
+ws=openpyxl.load_workbook(p).active;rows=[[c.value for c in r] for r in ws.iter_rows()]
+z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state':rows[1][11],'calc':rows[1][26],'media':len([x for x in z.namelist() if x.startswith('xl/media/')])}))`,join(fixture,'local')],{encoding:'utf-8',env:{...process.env,PYTHONPATH:join(root,'vendor')}}));
+  assert.deepEqual([xl.n,xl.state,xl.calc,xl.media],[2,'추출 완료','Para 프로그램',3],JSON.stringify(xl)+finalBook);
+  assert.equal(xl.head[0],'Color');
+  // 다이어그램 분석(Step 1 ~ 4) = 체크로 켜는 하위 탭, Step 1 도 엔진 목록(이름 · 크기)으로
+  await page.locator('.defect-opt input').check();
+  assert.deepEqual(await page.locator('.defect-subtabs [role=tab]').allInnerTexts(),['대규모 Defect 분석','Color·Gray 매칭','다이어그램 분석 (Step 1 ~ 4)']);
+  const dg=page.frameLocator('iframe.defect-frame[title="다이어그램 분석"]');
+  await dg.locator('#step1.on').waitFor();
+  assert.deepEqual(await dg.locator('nav button[data-step]').evaluateAll(b=>b.filter(x=>!x.hidden).map(x=>x.dataset.step)),['1','2','3','4']);
+  await writeFile(join(fixture,'pick_folder.txt'),join(recipe,'SETUP1','LOT_A'));
+  await dg.locator('#addBtn').click();
+  const dgf=page.frames().find(f=>/\/defect\/.*mode=diagram/.test(f.url()));
+  await dgf.waitForFunction(()=>window.__cw.state.scans.length===1,null,{timeout:30000});
+  assert.deepEqual(await dgf.evaluate(()=>window.__cw.state.scans.map(s=>[s.defects.length,s.colors.length,s.frames.length])),[[2,3,2]]);
+  await page.locator('.defect-opt input').uncheck();
+  assert.deepEqual(await page.locator('.defect-subtabs [role=tab]').allInnerTexts(),['대규모 Defect 분석','Color·Gray 매칭']);
+  await rm(join(fixture,'pick_folder.txt'));
   // KLA 자재 찾기(#30): 상단 회사 탭 CAMTEK / KLA. KLA 장비 폴더 등록 → Lot 키워드로 폴더 이름만 찾기.
   const klaRoot=join(fixture,'J','2.K2');
   for(const d of ['2025-05-21/RINT63@6324/2025-05-21-09-08_16','2025-05-21/RINT63@6324/2025-05-21-09-30_2','2025-05-22/ABC11@1111/2025-05-22-02-00_1'])
