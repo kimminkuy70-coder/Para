@@ -495,25 +495,31 @@ function fltLayout(md){
   const by=new Map(md.fields.map(f=>[f.name.toLowerCase(),f]));
   for(const f of lay){const m=by.get(f.name.toLowerCase());if(!m)continue;
     if(m.offset!==f.offset||m.type!==f.type){warns.push(`${f.name}: 기본 ${f.type}@${f.offset} → md ${m.type}@${m.offset}`);f.offset=m.offset;f.type=m.type}}
-  if(md.recordSize&&md.recordSize!==REC)warns.push(`md 레코드 크기 ${md.recordSize} byte (기대 ${REC})`);
   return {lay,warns};
 }
-/** Surface.flt → Defect 배열. 152 로 나누어떨어지지 않으면 ok=false. */
-function parseFlt(buf,lay){
-  lay=lay||fltLayout(null).lay;
-  const n=Math.floor(buf.byteLength/REC),rem=buf.byteLength%REC,dv=new DataView(buf),out=[];
-  for(let i=0;i<n;i++){const d={i};for(const f of lay)if(f.offset+TYPE_SIZE[f.type]<=REC)d[f.name]=readField(dv,i*REC+f.offset,f.type);out.push(d)}
-  return {defects:out,ok:rem===0&&buf.byteLength>0,rem,bytes:buf.byteLength};
+/** Para #74: Surface.flt 레코드 크기(byte). 종전에는 152 로 고정해 레코드가 다른 장비 · 레시피(실제: 136 byte)의 Slot 이 전부 '잘못된 Record Size' 로 빠졌다.
+ *  지금: ① Surface.flt.md 의 RecordSize(없으면 필드 끝) ② 기본 152 — 파일 크기가 나누어떨어지는 첫 값. 둘 다 아니면 ① (오류 글에 그 값). */
+function fltRec(md,bytes){const c=[];if(md&&md.recordSize>=8)c.push(md.recordSize);c.push(REC);
+  for(const r of c)if(bytes>0&&bytes%r===0)return r;return c[0]}
+/** 오류 글: 어느 크기로 나눴는지 · md 가 없으면 무엇을 두어야 하는지. */
+function fltRecErr(r,md){return `잘못된 Record Size: ${r.bytes} byte 는 ${r.rec} 로 나누어떨어지지 않음(나머지 ${r.rem})`+
+  (md?` — Surface.flt.md 레코드 ${md.recordSize} byte`:` — Surface.flt.md 없음(기본 ${REC} byte). 레코드 크기가 다른 장비면 Surface.flt.md 를 Slot 또는 Lot 폴더에 두십시오`)}
+/** Surface.flt → Defect 배열. 레코드 크기(rec, 기본 152)로 나누어떨어지지 않으면 ok=false. */
+function parseFlt(buf,lay,rec){
+  lay=lay||fltLayout(null).lay;rec=rec||REC;
+  const n=Math.floor(buf.byteLength/rec),rem=buf.byteLength%rec,dv=new DataView(buf),out=[];
+  for(let i=0;i<n;i++){const d={i};for(const f of lay)if(f.offset+TYPE_SIZE[f.type]<=rec)d[f.name]=readField(dv,i*rec+f.offset,f.type);out.push(d)}
+  return {defects:out,ok:rem===0&&buf.byteLength>0,rem,bytes:buf.byteLength,rec};
 }
 /** Step 5(대용량): Surface.flt → 열 배열(필요한 필드만, Defect 마다 객체를 만들지 않는다). [열 키, 필드 이름, 배열 형식] */
 const COLS=[['x','x',Float64Array],['y','y',Float64Array],['ax','ActualX',Float64Array],['ay','ActualY',Float64Array],['id','id',Int32Array],['rid','resultID',Int32Array],['rec','recipe',Uint8Array],
   ['bw','BoxWidth',Float32Array],['bh','BoxHeight',Float32Array],['area','area',Float64Array],['w','BlobBreadth',Float64Array],['l','BlobLength',Float64Array],['c','Contrast',Float64Array],
   ['rc','reclassify',Int16Array],['orc','orgReclassify',Int16Array],['zn','zone',Uint8Array],['rg','waferRegion',Uint8Array],['ty','Type',Int32Array]];   // #73: 리뷰PC 정보(Zone · Region · 판정 비트)   // rev5: Classify(분류 코드 → ManReClassify.ini 이름)
-function parseFltCols(buf,lay){
-  lay=lay||fltLayout(null).lay;
-  const n=Math.floor(buf.byteLength/REC),rem=buf.byteLength%REC,dv=new DataView(buf),by=new Map(lay.map(f=>[f.name,f])),C={n};
-  for(const [k,name,T] of COLS){const a=C[k]=new T(n),f=by.get(name);if(!f||f.offset+TYPE_SIZE[f.type]>REC)continue;const o=f.offset,ty=f.type;for(let i=0;i<n;i++)a[i]=readField(dv,i*REC+o,ty)}
-  return {cols:C,ok:rem===0&&buf.byteLength>0,rem,bytes:buf.byteLength};
+function parseFltCols(buf,lay,rec){
+  lay=lay||fltLayout(null).lay;rec=rec||REC;
+  const n=Math.floor(buf.byteLength/rec),rem=buf.byteLength%rec,dv=new DataView(buf),by=new Map(lay.map(f=>[f.name,f])),C={n};
+  for(const [k,name,T] of COLS){const a=C[k]=new T(n),f=by.get(name);if(!f||f.offset+TYPE_SIZE[f.type]>rec)continue;const o=f.offset,ty=f.type;for(let i=0;i<n;i++)a[i]=readField(dv,i*rec+o,ty)}
+  return {cols:C,ok:rem===0&&buf.byteLength>0,rem,bytes:buf.byteLength,rec};
 }
 /** [section] key=value INI → [{name, kv:{소문자키:값}}] */
 function parseIni(text){
@@ -924,9 +930,10 @@ async function buildScan(name,own){
   const mdText=await text('Surface.flt.md');const md=mdText?parseMd(mdText):null;
   if(mdText&&!md)s.warns.push('Surface.flt.md 를 읽지 못해 기본 필드 정의를 씁니다');
   const {lay,warns}=fltLayout(md);warns.forEach(w=>s.warns.push('md: '+w));
-  const buf=await get('Surface.flt').arrayBuffer();const r=parseFlt(buf,lay);
+  const buf=await get('Surface.flt').arrayBuffer();const r=parseFlt(buf,lay,fltRec(md,buf.byteLength));
   if(!r.bytes)s.errors.push('빈 결과(Surface.flt 0 byte)');
-  else if(!r.ok)s.errors.push(`잘못된 Record Size: ${r.bytes} byte 는 ${REC} 로 나누어떨어지지 않음(나머지 ${r.rem})`);
+  else if(!r.ok)s.errors.push(fltRecErr(r,md));
+  else if(r.rec!==REC)s.warns.push(`Surface.flt 레코드 ${r.rec} byte(Surface.flt.md 기준, 기본 ${REC})`);
   s.defects=r.defects.map(d=>({...d,scan:s}));
   if(s.defects.length&&s.defects.every(d=>!d.frameIdx&&!d.xInFrame&&!d.yInFrame))s.warns.push('frameIdx/xInFrame/yInFrame 이 모두 0 — Wafer 좌표로 Gray 위치를 계산합니다');
   const ci=await text('ColorImageGrabingInfo.ini');if(ci){s.colors=parseColors(ci);for(const c of s.colors)if(c.index!=null&&!s.colorByIndex.has(c.index))s.colorByIndex.set(c.index,c)}else s.warns.push('ColorImageGrabingInfo.ini 없음');
@@ -2043,9 +2050,10 @@ async function chainText(s,name){for(const h of s.chain){const f=await dirFile(h
 async function finishLight(s,mdText,buf,piText){
   const md=mdText?parseMd(mdText):null;if(mdText&&!md)s.warns.push('Surface.flt.md 를 읽지 못해 기본 필드 정의를 씁니다');
   const {lay,warns}=fltLayout(md);warns.forEach(w=>s.warns.push('md: '+w));
-  const r=parseFltCols(buf,lay);s.fltBytes=buf.byteLength;
+  const r=parseFltCols(buf,lay,fltRec(md,buf.byteLength));s.fltBytes=buf.byteLength;
   if(!r.bytes)s.errors.push('빈 결과(Surface.flt 0 byte)');
-  else if(!r.ok)s.errors.push(`잘못된 Record Size: ${r.bytes} byte 는 ${REC} 로 나누어떨어지지 않음(나머지 ${r.rem})`);
+  else if(!r.ok)s.errors.push(fltRecErr(r,md));
+  else if(r.rec!==REC)s.warns.push(`Surface.flt 레코드 ${r.rec} byte(Surface.flt.md 기준, 기본 ${REC})`);
   s.cols=r.cols;s.idByOrder=r.cols.n>1&&new Set(r.cols.id).size<r.cols.n;
   if(piText)s.product=parseProduct(piText);if(!s.product)s.warns.push('ProductInfo.ini 없음 또는 Die Pitch 없음 — Die 계산 불가');
   return s}
@@ -2865,7 +2873,7 @@ if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대�
   if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
   else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,sampleFit,sampleClear,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,sampleFit,sampleClear,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

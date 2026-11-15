@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #74 v14.1.2: Surface.flt 레코드 크기를 Surface.flt.md 에서 (2026-11-15 KST, `version_v14`)
+
+- 마지막 갱신 2026-11-15 · 기준 커밋 `9e5ef40` · 이슈 #74("v14.1.2 업데이트 사항": Lot 25 Slot 전부 '잘못된 Record Size: N byte 는 152 로 나누어떨어지지 않음' → "버그 원인 파악하고 수정해"). 첨부 없음(본문 오류 글만). 소유자 세션 메시지: "버그 고쳤으면 릴리즈까지해".
+- 원인: rev6 HTML(`frontend/public/defect/AOI_Contrast_Wizard_rev6.html`)이 레코드 크기를 `REC = 152` 로 고정. md 의 RecordSize 가 다르면 경고만 내고 152 로 나눔.
+  이슈의 25개 파일 크기는 모두 136 의 배수(152 로 나눈 몫 합 = 화면의 'Defect 1124개'와 같음, 136 이면 1271개) → 이 장비 · 레시피는 136 byte 레코드.
+- 한 일: `fltRec(md, bytes)`(① md RecordSize(없으면 필드 끝) ② 152 — 나누어떨어지는 첫 값), `fltRecErr`(오류 글에 md 유무 · 크기), `parseFlt` · `parseFltCols` 에 `rec` 인자(생략 = 152, 종전과 같음),
+  Step 1(`buildScan`) · 5-1(`finishLight`) 둘 다 적용, 152 가 아니면 경고 'Surface.flt 레코드 N byte(Surface.flt.md 기준)'. dist 복사본 같게. 시험 `tests/test_flt_record_size.py`(node 로 파서 부분 실행, node 없으면 건너뜀). 판 14.1.2.
+- 해석(확인 전): 실제 폴더에 `Surface.flt.md` 가 있다고 봄(#53 에서 실제 .md = Vartype 숫자 형식 확인). **md 가 없으면 136 byte 배치(어느 16 byte 가 빠졌는지)를 알 수 없어 여전히 오류** — 오류 글에 md 를 두라는 안내. 소유자가 '여전히 오류'라면 그 Slot 의 `Surface.flt.md`(형식 파일, 고객 값 없음)를 받아 확인할 것.
+- 시험: `PYTHONPATH=vendor` 로 Python 시험 79개 파일 통과 · `tools/check_project.py` OK. 화면 시험(`test_desktop_ui.mjs`)은 이번에 안 돌림(HTML 파서만 바뀜). **실제 136 byte 결과 폴더 · Windows 에서는 확인 못 함.**
+- 릴리스: v14.1.2(`docs/release_notes/v14.1.2.md`) — `version_v14` push 로 `v14.yml` 이 Release 생성. 결과는 이슈 #74 완료 댓글.
+- 참고: 같은 HTML 원본이 ccr 브랜치(rev6)에도 있음 — 이번 고침은 Para `version_v14` 에만. ccr 쪽에도 넣을지는 소유자 확인 전.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #74 | Slot 25개 '잘못된 Record Size(152)' 버그 원인 · 수정 · 릴리스 | 레코드 크기를 Surface.flt.md 에서, v14.1.2 |
+
 ## 최신 재개 — v14.1.1: 프로그램 시작 때 업데이트가 먼저 (2026-11-15 KST, `version_v14`)
 
 - 소유자(세션 대화): "프로그램 실행시 무조건 업데이트가 먼저 작업되게 해. 지금 batch restore 가 실행돼서 업데이트 버튼을 눌러도 기다리라고 떠.
