@@ -642,6 +642,34 @@ assert.deepEqual(xlChk.rows.slice(1).map(r=>r[2]),['W01','W01']);
 assert.equal(xlChk.rows[0][27],'흑백 GL 평균 (원)');assert.ok(xlChk.rows.slice(1).every(r=>Number.isFinite(+r[27])&&/^\d+(\.\d+)? px · \d+픽셀$/.test(r[28])),JSON.stringify(xlChk.rows.map(r=>r.slice(27))));   // rev6: 측정 안 했어도 저장 때 잼
 if(process.env.CW_XL_OUT)(await import('node:fs')).writeFileSync(process.env.CW_XL_OUT,Buffer.from(xl.b64,'base64'));   // 손으로 열어 보기(LibreOffice · Excel)
 assert.ok(xlChk.rows.slice(1).every(r=>/\.c\.\d\.jpeg$/.test(r[21])&&/\.t\.\d\.jpeg$/.test(r[23])&&/^Y:\\/.test(r[22])),JSON.stringify(xlChk.rows));
+// v14: 최종 목록 CSV(Para Defect 분석 › Color·Gray 매칭이 읽는 파일) — ☑ 2개 = 2줄, 열 이름 약속(FL_HEAD), 전체 경로 · BoxW/H · Gray 위치
+assert.equal(await page.evaluate(()=>window.__cw.PARA),null);   // file:// 로 열면 프로그램 연결 없음(종전 그대로)
+assert.equal(await page.locator('#c5saveCsv').isDisabled(),false);
+await page.evaluate(()=>{window.__csvOld=window.showSaveFilePicker;window.showSaveFilePicker=async o=>{window.__csvName=o.suggestedName;return {name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__csvB=[...new Uint8Array(await b.slice(0,3).arrayBuffer())];window.__csv=await b.text()},close:async()=>{}})}}});
+await page.locator('#c5saveCsv').click();await page.waitForFunction(()=>window.__csv!==undefined);await page.locator('#c5saveSt',{hasText:/^저장: 최종목록_.*\.csv \(Defect 2개\)$/}).waitFor();
+const flc=await page.evaluate(()=>{window.showSaveFilePicker=window.__csvOld;return {name:window.__csvName,text:window.__csv,bom:window.__csvB,head:window.__cw.FL_HEAD}});
+assert.match(flc.name,/^최종목록_\d{8}_\d{6}\.csv$/);assert.deepEqual(flc.bom,[0xef,0xbb,0xbf]);   // Excel 이 한글을 바로 읽게 UTF-8 BOM
+const csvRows=JSON.parse(execFileSync('python3',['-I','-c','import csv,sys,json;print(json.dumps(list(csv.reader(sys.stdin.read().lstrip("\\ufeff").splitlines()))))'],{input:flc.text,encoding:'utf-8'}));
+assert.deepEqual(csvRows[0],flc.head);assert.equal(csvRows.length,3);
+{const ix=k=>flc.head.indexOf(k);
+  for(const r of csvRows.slice(1)){assert.match(r[ix('Color 파일')],/\.c\.\d\.jpeg$/);assert.match(r[ix('Gray 파일')],/\.t\.\d\.jpeg$/);
+    assert.match(r[ix('매칭폴더')],/^Y:\\/);assert.match(r[ix('매칭폴더(고른 폴더부터)')],/^RCP\//);assert.match(r[ix('Color 전체 경로')],/^Y:\\.*\.c\.\d\.jpeg$/);
+    for(const k of ['GrayPX(3168x1024기준)','GrayPY(3168x1024기준)','BoxW','BoxH','CropW','CropH'])assert.ok(Number.isFinite(+r[ix(k)])&&r[ix(k)]!=='',k+' '+r[ix(k)]);
+    assert.equal(r[ix('상태')],'짝 완료')}}
+// v14: 새 창이 막히면(Edge 앱 창 등) 같은 창 칸으로 — 같은 그림 · 키 · Space, [✕ 닫기]
+await page.evaluate(()=>{window.__wo=window.open;window.open=()=>null});
+await page.locator('#c5list .br').nth(0).dblclick();
+{const ov=page.frameLocator('.ovw iframe');await ov.locator('#fx canvas').waitFor();
+  assert.match(await ov.locator('#hd').innerText(),/^1 \/ 2 · /);assert.equal(await page.locator('.ovw').count(),1);
+  await ov.locator('body').press('ArrowDown');await ov.locator('#hd',{hasText:/^2 \/ 2 · /}).waitFor();
+  await page.locator('.ovw [data-x]').click();assert.equal(await page.locator('.ovw').count(),0)}
+await page.evaluate(()=>{window.open=window.__wo});
+// '같은 창에서 보기'를 켜면 새 창을 열 수 있어도 처음부터 칸(이 PC 에 기억)
+await page.locator('#inWin').check();assert.equal(await page.evaluate(()=>localStorage.getItem('cw.inWin')),'1');
+await page.locator('#c5list .br').nth(1).dblclick();
+{const ov=page.frameLocator('.ovw iframe');await ov.locator('#fx canvas').waitFor();assert.match(await ov.locator('#hd').innerText(),/^2 \/ 2 · /);
+  await page.locator('.ovw [data-x]').click()}
+await page.locator('#inWin').uncheck();assert.equal(await page.evaluate(()=>localStorage.getItem('cw.inWin')),'0');
 // 다시 확인(5-2)을 해도 같은 Defect 의 ☑ 는 남음
 await page.evaluate(()=>window.__cw.b5Pair());await page.waitForFunction(()=>document.getElementById('busy').hidden);assert.equal(await page.evaluate(()=>window.__cw.pickList().length),2);
 await page.locator('#c5pickNone').click();assert.equal(await pickN(),'☑ 0개');

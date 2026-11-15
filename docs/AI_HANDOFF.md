@@ -141,6 +141,11 @@
   ⓒ 사진 새 창(5-2 · 5-3)은 '사진만' 지시(rev5)라 리뷰PC 글 전체 대신 머리 한 줄에 Recipe · Zone · Region ⓓ 5-1 목록 Area µm² · Width · Length 열과 필터 단위는 그대로(#71 해석 ⓒ 와 같음).
   시험: `node tools/test_contrast_wizard_rev6.mjs` 통과 — 새 시험: Step 1 · Step 2 Recipe 열, Step 3 목록 `.rc`, 5-1 Recipe 열 · 고르기 '1 (7)' · 없는 값 → 0개 · 'r-a' 정렬 · Lot 표, 5-3 `#c5Rv` = rvText(Area · Box Width 값 그대로) · 목록 Recipe,
   새 창 머리, 엑셀 Recipe · 끝 6열, 실제 zip 5-1 CSV 첫 줄 끝 = '0 (PI_Bubble),2,0,536870912,(29|28),RDL,Event Defect'. 화면 사진은 안 찍음. `tools/check_project.py` 는 HTML · 시험만 바뀌어 안 돌림.
+- 후속 24(소유자 세션 대화, 2026-11-15, Para v14 'Defect 분석' 탭 구현과 함께): rev6 제자리 수정 — ① **PARA 연결부**: `http://127.0.0.1` 에 `?t=토큰` 으로 열리면(프로그램 v14 탭 iframe)
+  폴더 고르기 = 엔진 `/api/native defect_pick`, 폴더 · 파일 = 엔진 `GET /api/fs/list · stat · file · walk`(읽기 전용) — 5-1 은 폴더 핸들 길(walkFast) 그대로, Step 1 은 엔진 목록(이름 · 크기)으로 addEntries,
+  `isEdge` · `useList` 무시, 전체 경로 = 엔진이 아는 고른 폴더 경로(pcPath, [원본 폴더 경로] 칸 숨김), `mode=big`(Step 5 만) · `diagram`(Step 1 ~ 4 만). file:// 로 열면 PARA = null(종전 그대로).
+  ② **새 창 막히면 같은 창 칸**(소유자 "Edge 앱 창에서 막히면 같은 창 전체 화면으로 대체 가능하게"): `winOpen` — window.open 이 null 이면 같은 출처 빈 iframe 칸(`.ovw`, [⛶ 전체 화면] · [✕ 닫기]) → 기존 새 창 코드가 그대로 그림(사진 · 확대 · 키 · Space · wafer map · Defect 창). 머리 '같은 창에서 보기' 체크(cw.inWin)면 처음부터 칸.
+  ③ **[📄 최종 목록 CSV 저장]**(5-3 ☑, Para Color·Gray 매칭 연동): `FL_HEAD` 열 약속(매칭폴더 · Color 파일 · Gray 파일 · GrayPX/PY · CropW/H · BoxW/H 등, UTF-8 BOM). 시험: CSV 열 · 경로 · 숫자, 새 창 막힘 → 칸 · 키 · 닫기, 같은 창 체크.
 - 후속 23(소유자 세션 대화, 2026-11-15, 이슈 없음, 기준 커밋 0b64503): "네트워크 드라이브 폴더를 고르면 여러 폴더를 읽기 전에 대기가 너무 길다 — 전체 폴더 구조를 훑어 Slot 수를 보는 것 같은데 무슨 동작인지".
   답(설명): 소유자 PC = Edge → #72 후속부터 5-1 도 `<input webkitdirectory>`. 폴더를 고르면 **브라우저(Edge)가 먼저** 고른 폴더 아래 모든 하위 폴더 · 모든 파일(사진 포함)을 목록으로 만들고
   '파일 N개를 이 사이트에 업로드할까요?' 확인을 띄운 뒤에야 페이지가 목록을 받는다(이 동안 페이지 코드는 돌지 않아 진행 표시 · 중지 불가, 시간 ∝ 폴더 · 파일 수 × 네트워크 왕복). 업로드는 실제로 하지 않음.

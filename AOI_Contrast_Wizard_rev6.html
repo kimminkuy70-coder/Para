@@ -88,6 +88,11 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .msg.warn{background:var(--warnbg);color:var(--warn)}.msg.err{background:var(--errbg);color:var(--err)}.msg.ok{background:var(--okbg);color:var(--ok)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0}
 /* Para #59: 폴더 등록 진행 로딩창 */
+.ovw{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;background:#0b0b0b}
+.ovwb{flex:none;display:flex;gap:10px;align-items:center;padding:4px 10px;background:#161a22;color:#eee;font-size:13px}.ovwb span{flex:1;color:#aab;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ovwb button{background:#222a36;color:#eee;border:1px solid #3a4250;border-radius:6px;padding:2px 10px;cursor:pointer}
+.ovw iframe{flex:1;min-height:0;width:100%;border:0;background:#0b0b0b}
+body.para .pbase{display:none}
 .busy{position:fixed;inset:0;z-index:50;background:rgba(10,16,30,.45);display:flex;align-items:center;justify-content:center;padding:16px}
 .busy[hidden]{display:none}
 .busy .bx{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.3);padding:18px 22px;width:min(600px,100%)}
@@ -211,6 +216,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <span class="lim">간단 버전: Reference 이미지 없음 · Step 5 Color · Gray 매칭 = Para 프로그램과 같은 계산</span>
   <span class="sp"></span>
   <span class="muted" style="color:#dfe6f5">로컬 전용 · 서버 업로드 없음 · 원본 읽기 전용</span>
+  <label class="muted" title="켜면 사진 · wafer map 새 창을 처음부터 이 창 안의 칸으로 엽니다(새 창이 막히면 켜지 않아도 칸으로 엶)"><input type="checkbox" id="inWin"> 같은 창에서 보기</label>
   <button id="themeBtn" title="밝은/어두운 화면 바꾸기">화면 테마</button>
 </header>
 <div class="wrap">
@@ -347,7 +353,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
         <button class="pri" id="bigAdd">레시피 폴더 고르기</button><button id="bigClear">모두 지우기</button>
         <label>동시에 읽을 폴더 <select id="bigPar"><option>1</option><option>2</option><option selected>4</option><option>8</option></select></label>
         <span class="muted">레시피 폴더를 여러 번 골라 더할 수 있습니다.</span></div>
-      <div class="row"><label><b>원본 폴더 경로(PC)</b> <input id="bigBase1" style="width:420px" placeholder="탐색기 주소창 경로, 예: Y:\AOI-16\Scanresult\레시피폴더 (또는 그 상위 폴더)"></label>
+      <div class="row pbase"><label><b>원본 폴더 경로(PC)</b> <input id="bigBase1" style="width:420px" placeholder="탐색기 주소창 경로, 예: Y:\AOI-16\Scanresult\레시피폴더 (또는 그 상위 폴더)"></label>
         <span class="muted">브라우저는 고른 폴더의 PC 경로를 알려 주지 않습니다. 여기에 적으면 사진 새 창 · 5-3 · 결과 목록 · CSV 에 사진의 <b>전체 경로</b>가 나옵니다(이 PC 에 기억).</span></div>
       <div id="bigMsg"></div>
       <details><summary id="bigSum">등록한 Lot 0개</summary>
@@ -367,7 +373,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   <div id="b5p2" hidden>
     <div class="card">
       <p class="muted">짝(Color 이미지 · Gray 프레임 · 픽셀)은 5-1 에서 <b>Para 프로그램 'Color · Gray 매칭'과 같은 계산</b>으로 이미 구했습니다. 여기서는 걸러낸 Defect 마다 사진 파일이 매칭 폴더(세 파일이 있는 폴더)에 실제로 있는지 <b>이름으로만</b> 확인하고(사진 내용 · 다른 파일은 열지 않음) 결과 목록과 경로 CSV 를 만듭니다. 줄 더블 클릭 · Enter = <b>사진 새 창</b>(큰 화면, 사진만).</p>
-      <div class="row"><label>원본 폴더 경로(PC) <input id="bigBase" style="width:420px" placeholder="탐색기 주소창 경로, 예: Y:\AOI-16\Scanresult\레시피폴더 (또는 그 상위 폴더)"></label>
+      <div class="row pbase"><label>원본 폴더 경로(PC) <input id="bigBase" style="width:420px" placeholder="탐색기 주소창 경로, 예: Y:\AOI-16\Scanresult\레시피폴더 (또는 그 상위 폴더)"></label>
         <span class="muted">5-1 칸과 같은 값입니다. 고른 폴더 자체 경로나 그 상위 폴더 경로를 적으면 사진 전체 경로가 됩니다(비우면 고른 폴더 이름부터).</span></div>
       <div class="row"><button class="pri" id="b5pair">다시 확인</button><button id="b5csv" disabled>CSV 저장 (위치 고르기)</button>
         <label><input type="checkbox" id="b5auto" checked> 확인 전에 CSV 저장 위치를 고르고 끝나면 자동 저장</label></div>
@@ -395,7 +401,7 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
         <span class="muted" id="c5cnt"></span></div>
       <div class="row" title="소유자 #68: 목록에서 줄을 고르고 Space = 최종 목록에 넣기/빼기(☑). 사진 새 창에서도 Space. 엑셀에는 ☑ 한 Defect 만, 사진(Color · Gray Crop · Gray 프레임)을 넣어 저장합니다.">
         <b>최종 목록</b><span class="c5pick" id="c5pickN">☑ 0개</span><button id="c5pickAll">보이는 목록 모두 ☑</button><button id="c5pickNone">모두 해제</button>
-        <button class="pri" id="c5save" disabled>💾 최종 목록 엑셀 저장 (사진 포함)</button><span class="muted" id="c5saveSt"></span></div>
+        <button class="pri" id="c5save" disabled>💾 최종 목록 엑셀 저장 (사진 포함)</button><button id="c5saveCsv" disabled title="Para 프로그램 [Defect 분석 › Color·Gray 매칭] 의 [최종 목록 CSV 불러오기] 가 이 파일의 Defect 만 추출합니다">📄 최종 목록 CSV 저장</button><span class="muted" id="c5saveSt"></span></div>
       <div class="row glrow" title="rev6(소유자): 파일의 Contrast 가 아니라 흑백(Gray) 사진의 실제 픽셀 gray level — Defect 좌표가 가운데인 원 안 픽셀의 0~255 평균. 원 크기는 [측정 원 그리기]로 정합니다.">
         <b>흑백 GL (원)</b> 반지름 <input type="number" id="glR" min="0.5" max="64" step="0.5"> px <span class="muted" id="glRn"></span>
         <button id="glSet">⭕ 측정 원 그리기</button><button class="pri" id="glRun">흑백 GL 측정</button><span class="muted" id="glSt"></span></div>
@@ -738,6 +744,47 @@ const stepName=s=>s.step||s.name;
 // ════════════════════════════════════════════════════════════════════════
 const baseName=p=>p.split(/[\\/]/).pop();
 const lower=s=>s.toLowerCase();
+// ════════════════════════════════════════════════════════════════════════
+// Para v14 프로그램 안(Defect 분석 탭)에서 열렸을 때 — 소유자 2026-11-15 "HTML 기능을 프로그램에 동일하게 · 초기 읽기 대폭 단축".
+//   프로그램 엔진이 고른 폴더를 직접 읽어 준다(GET /api/fs/list · stat · file · walk, 읽기 전용 — 엔진에 쓰기 API 없음):
+//   · 브라우저 '업로드'(폴더 전체 · 사진까지 목록 만들기, 50만 파일 ≈ 1시간)가 없다 — 5-1 은 종전 빠른 길(폴더 핸들)과 같이 필요한 폴더 · 파일만 그때그때.
+//   · Windows Chromium(Edge · Chrome)이 폴더 핸들로 .ini 를 거부하는 규칙(파일 형식 정책 ini = DANGEROUS)과 무관(브라우저 핸들이 아니라 엔진).
+//   · 전체 경로를 엔진이 알아 [원본 폴더 경로]를 적지 않아도 된다(pcPath).
+//   파일 하나로 두 가지: file:// 로 열면 PARA = null → 종전 그대로. 프로그램이 http://127.0.0.1 에 ?t=토큰 으로 열면 PARA.
+const PARA=(()=>{try{if(location.protocol!=='http:'||!/^(127\.0\.0\.1|localhost)$/.test(location.hostname))return null;
+  const q=new URLSearchParams(location.search),t=q.get('t');if(!t)return null;
+  const H={'X-Para-Token':t},E=encodeURIComponent,roots=new Map(),join=(a,b)=>a?a+'/'+b:b;
+  const err=(st,what)=>new DOMException(`${what} (${st})`,st===404?'NotFoundError':st===403?'SecurityError':st===400?'TypeError':'NotReadableError');
+  const api=async(path,what)=>{const r=await fetch(path,{headers:H,cache:'no-store'});if(!r.ok)throw err(r.status,what);return r};
+  const url=(kind,R,rel)=>`/api/fs/${kind}?r=${E(R)}&p=${E(rel)}`;
+  const fileH=(R,rel,name,size,mt)=>({kind:'file',name,size,lastModified:mt||0,path:rel,
+    async getFile(){const b=await (await api(url('file',R,rel),rel)).blob();return new File([b],name,{lastModified:mt||0})}});
+  const dirH=(R,rel,name)=>({kind:'directory',name,
+    async *entries(){const j=await (await api(url('list',R,rel),rel||name)).json();for(const n of j.dirs)yield [n,dirH(R,join(rel,n),n)];for(const [n,sz,mt] of j.files)yield [n,fileH(R,join(rel,n),n,sz,mt)]},
+    async getFileHandle(n){const s=await (await api(url('stat',R,join(rel,n)),n)).json();if(s.kind!=='file')throw new DOMException(n,'TypeMismatchError');return fileH(R,join(rel,n),s.name||n,s.size,s.mtime)}});
+  // Step 1 ~ 4 의 파일(File 처럼 name · size · arrayBuffer · text · getFile) — 내용은 쓸 때만 엔진에서 읽는다(사진 내용은 보는 것만)
+  const lazy=(R,rel,size,mt)=>{const name=rel.split('/').pop(),f=fileH(R,rel,name,size,mt);
+    return {name,size,lastModified:mt||0,getFile:()=>f.getFile(),arrayBuffer:async()=>(await f.getFile()).arrayBuffer(),text:async()=>(await f.getFile()).text()}};
+  return {mode:q.get('mode')||'',roots,
+    /** 폴더 고르기 = 엔진이 Windows 고르기 창을 띄우고 그 폴더를 읽기 전용 뿌리로 등록. {id, name, path(전체 경로), handle} 또는 취소 null. */
+    async pick(){const r=await fetch('/api/native',{method:'POST',headers:{...H,'Content-Type':'application/json'},body:JSON.stringify({command:'defect_pick',args:{}}),cache:'no-store'});
+      if(!r.ok)throw err(r.status,'폴더 고르기');const R=(await r.json()).result;if(!R||!R.id)return null;roots.set(lower(R.name),R);return {...R,handle:dirH(R.id,'',R.name)}},
+    /** Step 1 ~ 4: 고른 폴더 아래 파일 목록(이름 · 크기만, 엔진이 폴더마다 한 번 나열) → addEntries 항목. */
+    async walk(R){const j=await (await api(`/api/fs/walk?r=${E(R.id)}`,R.name)).json();return {truncated:!!j.truncated,entries:j.files.map(([rel,sz,mt])=>({path:R.name+'/'+rel,file:lazy(R.id,rel,sz,mt)}))}}}}
+  catch(e){return null}})();
+/** 새 창 — 막히면(window.open = null, 소유자 v14 "Edge 앱 창에서 막히면 같은 창 전체 화면으로 대체 가능하게") 이 창 위에 전체 크기 칸(같은 출처 빈 문서)을 띄워
+ *  같은 코드가 그 칸에 그린다(키 · 확대 · Space 그대로). [⛶ 전체 화면] · [✕ 닫기]. '같은 창에서 보기'를 켜 두면 처음부터 칸. */
+const OVW=new Map();
+const inWinPref=()=>{try{return localStorage.getItem('cw.inWin')==='1'}catch(e){return false}};
+function winOpen(name,feats){let w=null;if(!inWinPref())try{w=window.open('',name,feats)}catch(e){w=null}return w||ovWin(name)}
+function ovWin(name){let box=OVW.get(name);if(box&&name!=='_blank'&&box.isConnected){try{return box.querySelector('iframe').contentWindow}catch(e){}}
+  if(box)box.remove();box=document.createElement('div');box.className='ovw';box.dataset.win=name;
+  box.innerHTML='<div class="ovwb"><b>같은 창 보기</b><span>새 창 대신 이 창 안에 띄웠습니다(새 창이 막혔거나 \'같은 창에서 보기\'가 켜짐)</span><button type="button" data-fs>⛶ 전체 화면</button><button type="button" data-x>✕ 닫기</button></div><iframe title="같은 창 보기"></iframe>';
+  document.body.append(box);OVW.set(name,box);
+  box.querySelector('[data-x]').onclick=()=>{try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}catch(e){}box.remove();OVW.delete(name)};
+  box.querySelector('[data-fs]').onclick=()=>{try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else if(box.requestFullscreen)box.requestFullscreen().catch(()=>{})}catch(e){}};
+  try{if(box.requestFullscreen)box.requestFullscreen().catch(()=>{})}catch(e){}   // 누른 직후라 전체 화면이 되면 좋고, 안 되면 창 크기 칸 그대로
+  return box.querySelector('iframe').contentWindow}
 /** Para #57: 폴더 인식 기준 = Lot 폴더 안 Wafer Slot 폴더(1~25개). Surface.flt 가 있는 폴더 = Slot, 그 바로 위 폴더 = Lot.
  *  Slot 폴더를 바로 고르면(위 폴더가 선택에 없음) 그 폴더 = Slot 1개짜리 Lot. Lot 1개 = 스캔 결과 1개(Step · Contrast AVG · 호기는 Lot 단위).
  *  Contrast AVG · Step 이름 = Lot 폴더 이름 → 그 위 폴더들 → Slot 폴더 이름 순으로 'CA27' 같은 이름을 찾는다. */
@@ -936,9 +983,16 @@ $('#scanTbl').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)ret
 $('#scanTbl').addEventListener('click',e=>{const id=e.target.dataset.del;if(id==null)return;S.scans=S.scans.filter(w=>w.lotPath!==id);renderScans()});
 $$('#unit,#unit3').forEach(el=>el.addEventListener('change',e=>setUnit(e.target.value)));
 // Para #59: 폴더를 고른 뒤 브라우저가 파일 목록을 만드는 동안은 개수를 알 수 없어 '목록 만드는 중' 만 보이고(닫기 가능), 목록이 오면 Slot 폴더 · 파일 개수로 바뀐다.
-$('#addBtn').onclick=()=>{busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다. 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true});$('#dirInput').click()};
+$('#addBtn').onclick=()=>{if(PARA)return void paraAdd1();busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다. 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true});$('#dirInput').click()};
 $('#busyX').onclick=()=>busy(null);
 $('#dirInput').addEventListener('cancel',()=>busy(null));
+/** v14 Step 1: 엔진이 고른 폴더 아래 파일 목록(이름 · 크기)을 만들고, 내용은 쓸 때만 읽는다(사진은 보는 것만). */
+async function paraAdd1(){let R;try{R=await PARA.pick()}catch(e){return showLoad([['err','폴더를 고르지 못했습니다: '+(e.message||e)]])}if(!R)return;
+  busy({title:'폴더 등록 중',indet:true,count:'…',files:`프로그램이 폴더 목록을 만드는 중(이름만): ${R.path}`});await nextPaint();
+  let W;try{W=await PARA.walk(R)}catch(e){busy(null);return showLoad([['err','폴더 목록을 만들지 못했습니다: '+(e.message||e)]])}
+  showLoad([[W.truncated?'err':'warn',`파일 ${W.entries.length}개 읽는 중…${W.truncated?' — 파일이 너무 많아 일부만 받았습니다(더 아래 폴더를 고르십시오)':''}`]]);
+  busy({title:'폴더 등록 중',indet:true,count:`파일 ${W.entries.length}개`,files:'Slot 폴더(Surface.flt) 찾는 중…'});await nextPaint();
+  await addEntries(W.entries)}
 $('#dirInput').onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length){busy(null);return}
   showLoad([['warn',`파일 ${fs.length}개 읽는 중…`]]);busy({title:'폴더 등록 중',indet:true,count:`파일 ${fs.length}개`,files:'Slot 폴더(Surface.flt) 찾는 중…'});await nextPaint();
   await addEntries(fs.map(f=>({path:f.webkitRelativePath||f.name,file:f})))};
@@ -1352,7 +1406,7 @@ function attachTip(cv,geo){
 
 /** 새 창: Color 원본 + 전체 Gray 프레임(빨간 박스). 사진은 창 크기에 맞춘다(누르면 원래 크기 ↔ 창 맞춤). */
 async function openWindow(q){
-  const w=window.open('','_blank','width=1400,height=900');if(!w)return alert('팝업이 막혔습니다. 이 파일의 팝업을 허용하십시오.');
+  const w=winOpen('_blank','width=1400,height=900');
   const x=info(q),doc=w.document;doc.title=`Defect ${x.id} · ${x.step}`;
   doc.head.insertAdjacentHTML('beforeend',`<style>html,body{height:100%}body{margin:0;background:#111;color:#eee;font:13px "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
     .hd{padding:6px 10px;flex:none}.pane{flex:1;min-height:0;display:flex;gap:8px;padding:0 8px 8px}
@@ -1464,7 +1518,7 @@ function paintPanel(P){if(!S.cmp)return;const hl=P.items[P.sel],opt={pts:panelPt
 /** 새 창 wafer map: 같은 그림을 그 창의 canvas 에도 그린다(깜빡임 · 목록 이동 · 영역 바꾸기가 바로 반영). 그 창에서 점을 누르면 이 화면이 그 Defect 로 간다. */
 function popMap(P){
   if(P.pop&&!P.pop.w.closed){P.pop.w.focus();return}
-  const w=window.open('','cw_map_'+P.pre,'width=1100,height=1000');if(!w)return alert('팝업이 막혔습니다. 이 파일의 팝업을 허용하십시오.');
+  const w=winOpen('cw_map_'+P.pre,'width=1100,height=1000');
   const css=getComputedStyle(document.documentElement),cl=n=>css.getPropertyValue(n).trim(),doc=w.document;doc.title='Wafer map · '+P.title;
   doc.head.innerHTML=`<meta charset="utf-8"><style>html,body{height:100%;margin:0}body{background:${cl('--bg')};color:${cl('--ink')};font:13px "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
     .hd{padding:6px 10px;flex:none}canvas{flex:1;min-height:0;width:100%;display:block;background:${cl('--panel')}}</style>`;
@@ -1967,7 +2021,7 @@ const dirErrs=new WeakMap(),NOTFOUND=new Set(['NotFoundError','TypeMismatchError
  *  → 이름이 막힌 것을 알아보면(TypeError = 이름 거부, '없음'이 아님) 5-1 을 파일 목록 방식으로 바꾼다. 이 PC 에 기억('cw.bigList'). */
 const fsaBlocked=e=>!!e&&e.name==='TypeError'&&/not allowed|not valid|invalid/i.test(e.message||'');
 let FSA_BLOCK='';
-const useList=()=>{try{return localStorage.getItem('cw.bigList')==='1'}catch(e){return false}};   // 폴더 → 이름으로 묻다 난 '없음' 아닌 오류(못 찾을 때 진단에 보임)
+const useList=()=>{if(PARA)return false;try{return localStorage.getItem('cw.bigList')==='1'}catch(e){return false}};   // 폴더 → 이름으로 묻다 난 '없음' 아닌 오류(못 찾을 때 진단에 보임)
 function dirFile(h,name){let m=dirMemo.get(h);if(!m)dirMemo.set(h,m=new Map());const k=lower(name);
   if(!m.has(k)){const ask=()=>h.getFileHandle(name);   // '없음' 이 아닌 오류(네트워크 드라이브 일시 오류 등)는 한 번 더 묻는다 — 실패를 '없음'으로 기억해 버리지 않게
     m.set(k,ask().catch(e=>e&&NOTFOUND.has(e.name)?null:fsaBlocked(e)?Promise.reject(e):new Promise(r=>setTimeout(r,150)).then(ask))
@@ -2262,11 +2316,14 @@ function b5SlotTbl(slots){const rows=slots.filter(s=>s.pst).sort((a,b)=>natCmp(a
 const csvName=()=>`Defect_짝_${(BIG.scans[0]&&BIG.scans[0].name.split('/')[0])||'목록'}_${stamp()}.csv`.replace(/[\\/:*?"<>|]/g,'_');
 /** 고른 폴더부터의 경로('RCP/SETUP1/…/x.jpeg') → PC 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도"). [원본 폴더 경로(PC)] = 고른 폴더 자체
  *  (마지막 폴더 이름이 고른 폴더 이름과 같으면 그 위를 씀) 또는 그 상위 폴더. 비었으면 고른 폴더 이름부터 그대로. 드라이브 · UNC 경로면 \ 로. */
-function pcPath(rel){if(!rel)return '';const base=(($('#bigBase')||{}).value||'').trim().replace(/^"|"$/g,'').replace(/[\\/]+$/,'');if(!base)return rel;
+function pcPath(rel){if(!rel)return '';
+  if(PARA){const seg=rel.split('/')[0],R=PARA.roots.get(lower(seg));if(R){const b=String(R.path).replace(/[\\/]+$/,''),win=/\\|^[A-Za-z]:/.test(b),rest=rel.slice(seg.length).replace(/^\/+/,'');
+      return rest?(win?b+'\\'+rest.replace(/\//g,'\\'):b+'/'+rest):b}}   // v14: 고른 폴더의 전체 경로(엔진) + 그 아래
+const base=(($('#bigBase')||{}).value||'').trim().replace(/^"|"$/g,'').replace(/[\\/]+$/,'');if(!base)return rel;
   const win=/\\|^[A-Za-z]:/.test(base),root=rel.split('/')[0],segs=base.split(/[\\/]/),last=segs[segs.length-1];
   const b=segs.length>1&&root&&lower(last)===lower(root)?base.slice(0,base.length-last.length).replace(/[\\/]+$/,''):base;
   return win?b+'\\'+rel.replace(/\//g,'\\'):b+'/'+rel}
-const pcBaseSet=()=>!!(($('#bigBase')||{}).value||'').trim();
+const pcBaseSet=()=>!!(PARA&&PARA.roots.size)||!!(($('#bigBase')||{}).value||'').trim();
 /** 결과 CSV. 경로 = 고른 폴더 이름부터의 상대 경로(브라우저는 전체 경로를 알려 주지 않음) — [원본 폴더 경로]를 적으면 그 앞에 붙인다. */
 function pairCsv(){const o=S.o,px2=o.pix*o.pix,full=pcPath;
   const head=['순서','상태','Lot','Lot경로','Slot','ID','resultID','첫번째분류','재분류','Contrast','Area_um2','Area_px','Width','Length','BoxW','BoxH','WaferX','WaferY','DieCol','DieRow',
@@ -2368,7 +2425,7 @@ function cgFrameCanvas(gray,hit,cs,doc,d){doc=doc||document;const cv=doc.createE
 function cgGL(k,gray,d){const sx=gray.width/CG.GW,sy=gray.height/CG.GH,bw=Math.max(1,(d.BoxWidth||4)*sx),bh=Math.max(1,(d.BoxHeight||4)*sy);
   return measureGL(k.raw.getContext('2d',{willReadFrequently:true}).getImageData(0,0,k.raw.width,k.raw.height),k.cx,k.cy,bw,bh,S.o.ring)}
 function photoWin(V,items){if(!V||!items||!items.length)return;let w=PW.w;
-  if(!w||w.closed){w=window.open('','cw_photo','width=1600,height=1000');if(!w)return alert('팝업이 막혔습니다. 이 파일의 팝업을 허용하십시오.');PW.w=w;photoWinInit(w)}
+  if(!w||w.closed){w=winOpen('cw_photo','width=1600,height=1000');PW.w=w;photoWinInit(w)}
   PW.V=V;PW.items=items;try{w.focus();w.document.body.focus()}catch(e){}photoWinShow()}
 /** 새 창 화면 · 키(소유자 "큰 화면으로 볼 때 방향키로 다음 목록" — ↑↓ ←→ · PageUp/PageDown · Home/End · J/K, 꾹 누르면 계속 넘어감). 사진을 눌러 원래 크기로 봐도 키는 그대로. */
 function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray';
@@ -2407,7 +2464,7 @@ function photoWinFollow(V){if(PW.w&&!PW.w.closed&&PW.V===V)photoWinShow()}
 /** 새 창 문서(손댈 수 없으면 null — 새 창을 새로 고침(F5)하면 빈 창이 다른 출처가 된다). */
 function pwDoc(w){try{const d=w.document;d.getElementById('fc');return d}catch(e){return null}}
 async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w);
-  if(!doc){try{w.close()}catch(e){}PW.w=null;w=window.open('','cw_photo_'+Date.now(),'width=1600,height=1000');if(!w)return;PW.w=w;photoWinInit(w);doc=w.document;try{w.focus()}catch(e){}}   // 닫고 새 창
+  if(!doc){try{w.close()}catch(e){}PW.w=null;w=winOpen('cw_photo_'+Date.now(),'width=1600,height=1000');PW.w=w;photoWinInit(w);doc=w.document;try{w.focus()}catch(e){}}   // 닫고 새 창
   const V=PW.V,p=PW.items[V.sel],tk=++PW.tok,$w=id=>doc.getElementById(id);
   if(!$w('fc')||!doc.querySelector('#fc .im'))photoWinInit(w);   // 같은 출처로 새로 고쳐졌으면 다시 만든다
   const F=id=>{const f=$w(id);return {cap:f.querySelector('figcaption'),im:f.querySelector('.im')}},fc=F('fc'),fx=F('fx'),ff=F('ff'),pv=doc.querySelector('.pv');
@@ -2527,7 +2584,7 @@ async function c5PrepAll(){const L=C5.items.filter(p=>!THUMB.has(p.k)).sort((a,b
 //   선택 = 짝 항목(BIG.pairs)의 p.pick — 5-3 목록 · 사진 새 창 · 격자가 같은 값을 본다. [다시 확인](5-2)을 해도 같은 Slot · Defect 면 남긴다.
 const pickBadge=p=>`<b class="pk ${p&&p.pick?'on':'off'}" id="pk">${p&&p.pick?'☑ 최종 목록':'☐ 최종 목록 아님'}</b>`;
 const pickList=()=>(BIG.pairs||[]).filter(p=>p.pick&&p.st!=='skip');
-function pickInfo(){const n=pickList().length;$('#c5pickN').textContent=`☑ ${n.toLocaleString()}개`;$('#c5save').disabled=!n;
+function pickInfo(){const n=pickList().length;$('#c5pickN').textContent=`☑ ${n.toLocaleString()}개`;$('#c5save').disabled=!n;$('#c5saveCsv').disabled=!n;
   $('#c5save').textContent=n?`💾 최종 목록 엑셀 저장 (☑ ${n.toLocaleString()}개 · 사진 포함)`:'💾 최종 목록 엑셀 저장 (사진 포함)'}
 function pickToggle(p,v){if(!p)return;p.pick=v==null?!p.pick:!!v;pickChanged()}
 function pickChanged(){vtPaint(VC);pickInfo();if(C5.mode==='grid')$$('#c5grid .g5').forEach(el=>{const p=C5.items[+el.dataset.k];if(!p)return;el.classList.toggle('pk',!!p.pick);const h=el.querySelector('.gh');h.textContent=h.textContent.replace(/^☑ /,'');if(p.pick)h.textContent='☑ '+h.textContent});
@@ -2555,6 +2612,18 @@ function xlRow(p,o){const s=p.s,C=s.cols,i=p.i,ob=S.o,px2=ob.pix*ob.pix,act=ob.c
     o.c?null:'(Color 사진 없음)',o.g?null:'(Gray 사진 없음)',o.f?null:'(Gray 사진 없음)',
     ST5[p.st]||p.st,n(C.area[i]*px2),n(C.w[i]),n(C.l[i]),`${f1(C.bw[i])}×${f1(C.bh[i])}`,n(X),n(Y),die?`${die.col}, ${die.row}`:'-',o.gl?n(o.gl.delta):'',o.gl?n(o.gl.mean):'',
     cn,cp,gn,gp,o.err.join(' · '),s.lotPath||'',p.glv!=null?+p.glv.toFixed(2):'',p.glp?`${GLC.r} px · ${glCount(p)}픽셀`:'',...rv5Cells(s,i).slice(1)]}
+/** v14 [📄 최종 목록 CSV 저장](Para 최종 목록 CSV v1): ☑ Defect 마다 한 줄. Para 프로그램 [Defect 분석 › Color·Gray 매칭] 이 '매칭폴더' + 'Color 파일'로 그 Defect 를 찾아
+ *  추출하고(프로그램 매칭에 필요한 파일이 없으면 이 줄의 Gray 프레임 · GrayPX/PY · CropW/H 를 씀), BoxW/BoxH(Gray 3168×1024 기준)로 빨간 네모를 그린다. 열 이름이 약속 — 바꾸면 Para colorgray.FINAL_REQUIRED 도. */
+const FL_HEAD=['5-1 #','Lot','Slot','ID','첫번째 분류','재분류','Recipe','Contrast(실제)','상태','Area µm²','Width','Length','BoxW','BoxH','Wafer X','Wafer Y','Die (장비 Col, Row)','흑백 GL 평균 (원)',
+  'Color 파일','Color 전체 경로','Gray 파일','Gray 전체 경로','GrayPX(3168x1024기준)','GrayPY(3168x1024기준)','CropW','CropH','매칭폴더','매칭폴더(고른 폴더부터)','Lot 경로','Zone','Region','판정 비트','분류 코드','Zone 이름','판정 종류'];
+function flRow(p){const s=p.s,C=s.cols,i=p.i,ob=S.o,px2=ob.pix*ob.pix,act=ob.coord==='actual',X=act?C.ax[i]:C.x[i],Y=act?C.ay[i]:C.y[i],die=dieOf(X,Y,s.product),r=p.r||cgOf(s,i),
+    cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'',n=v=>Number.isFinite(v)?+v.toFixed(3):'',cs=r.crop||cgCropSize({});
+  return [p.k+1,s.lotName||'',s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),n(C.c[i]),ST5[p.st]||p.st,n(C.area[i]*px2),n(C.w[i]),n(C.l[i]),n(C.bw[i]),n(C.bh[i]),n(X),n(Y),
+    die?`${die.col}, ${die.row}`:'-',p.glv!=null?+p.glv.toFixed(2):'',cn,cn?pcPath(p.c?p.c.path:dir+cn):'',gn,gn?pcPath(p.g?p.g.path:dir+gn):'',r.hit?n(r.hit.px):'',r.hit?n(r.hit.py):'',
+    r.hit?cs.cw:'',r.hit?cs.ch:'',s.cg&&s.cg.path?pcPath(s.cg.path):'',s.cg&&s.cg.path||'',s.lotPath||'',...rv5Cells(s,i).slice(1)]}
+async function c5SaveCsv(){const L=pickList();if(!L.length)return alert('최종 목록(☑)이 비어 있습니다. 5-3 목록에서 줄을 고르고 Space 를 누르십시오.');
+  const parts=['\ufeff'+FL_HEAD.map(csvQ).join(',')+'\r\n',...L.map(p=>flRow(p).map(csvQ).join(',')+'\r\n')];
+  const msg=await saveCsv(parts,`최종목록_${stamp()}.csv`,true);$('#c5saveSt').textContent=msg?`${msg} (Defect ${L.length}개${pcBaseSet()?'':' — 전체 경로 없음: 5-1 [원본 폴더 경로]를 적으면 Para 에서 폴더를 따로 고르지 않아도 됩니다'})`:'저장 취소'}
 /** [💾 최종 목록 엑셀 저장]: 저장 위치를 먼저 고르고(누른 직후에만 열림) → ☑ Defect 마다 사진 3장을 그려 → xlsx 한 파일(사진이 칸 안에). 원본 폴더에는 쓰지 않는다. */
 async function c5SaveXlsx(){const L=pickList();if(!L.length)return alert('최종 목록(☑)이 비어 있습니다. 5-3 목록에서 줄을 고르고 Space 를 누르십시오.');
   const name=`최종목록_${stamp()}.xlsx`,h=await pickSave(name,[{description:'Excel',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]);if(h===false)return;
@@ -2732,7 +2801,7 @@ $('#c5grid').addEventListener('click',e=>{const el=e.target.closest('.g5');if(!e
 $('#b5prep').onclick=()=>c5PrepAll();
 $('#c5pickAll').onclick=()=>{C5.items.forEach(p=>{if(p.st!=='skip')p.pick=true});pickChanged()};
 $('#c5pickNone').onclick=()=>{(BIG.pairs||[]).forEach(p=>p.pick=false);pickChanged()};
-$('#c5save').onclick=()=>c5SaveXlsx();
+$('#c5save').onclick=()=>c5SaveXlsx();$('#c5saveCsv').onclick=()=>c5SaveCsv();
 // rev6 흑백 GL(원)
 glRInfo();$('#glR').addEventListener('change',e=>glSetR(e.target.value));$('#glRun').onclick=()=>glRun();$('#glSet').onclick=()=>glDlgOpen();
 for(const id of ['glLo','glHi'])$('#'+id).addEventListener('input',e=>{GLC[id==='glLo'?'lo':'hi']=+e.target.value;c5Refresh(true)});   // 끄는 동안 바로 거르고 정렬
@@ -2766,9 +2835,10 @@ function bigToList(why){busy(null);try{localStorage.setItem('cw.bigList','1')}ca
   try{if(navigator.userActivation&&navigator.userActivation.isActive)$('#bigAdd').click()}catch(e){}}
 /** #72: 폴더를 고른 직후 고른 폴더에서 .ini 이름을 한 번 묻는다 — 이 Chrome 이 막으면 이름 검사에서 바로 TypeError(파일이 있든 없든). 폴더 전체를 훑기 전에 알아본다. */
 /** #72 후속(소유자 "Edge 로 열어 다시 검토"): 소유자 회사 PC 는 Edge — 그 Edge 가 폴더 핸들로 .ini 를 막았다(#66 알림). Edge 면 처음부터 파일 목록 방식(알림 · 다시 고르기 없음). */
-function isEdge(){try{const b=navigator.userAgentData&&navigator.userAgentData.brands;if(b&&b.some(x=>/edge/i.test(x.brand)))return true}catch(e){}return /\bEdg\//.test(navigator.userAgent||'')}
+function isEdge(){if(PARA)return false;try{const b=navigator.userAgentData&&navigator.userAgentData.brands;if(b&&b.some(x=>/edge/i.test(x.brand)))return true}catch(e){}return /\bEdg\//.test(navigator.userAgent||'')}
 async function fsaProbe(h){try{await h.getFileHandle(CG.CI)}catch(e){if(fsaBlocked(e))return `${CG.CI}: ${e.message}`}return ''}
 $('#bigAdd').onclick=async()=>{
+  if(PARA){let R;try{R=await PARA.pick()}catch(e){bigMsg([['err','폴더를 고르지 못했습니다: '+(e.message||e)]]);return}if(R)await bigPickHandle(R.handle);return}   // v14: 엔진이 고른 폴더를 직접 읽음
   if(window.showDirectoryPicker&&!BIG.useList&&!useList()&&!isEdge()){let h;try{h=await window.showDirectoryPicker({mode:'read'})}catch(e){if(e&&e.name==='AbortError')return;h=null}
     if(h){const blk=await fsaProbe(h);if(blk){bigToList(blk);return}await bigPickHandle(h);return}}
   busy({title:'폴더 고르는 중',indet:true,count:'…',files:'폴더를 고르면 브라우저가 파일 목록을 만듭니다(이 브라우저는 빠른 길을 쓸 수 없어 사진 이름까지 모두 셉니다). 큰 폴더는 시간이 걸립니다.',detail:'고르기를 취소했으면 [닫기]를 누르십시오.',close:true,reset:true});$('#bigInput').click()};
@@ -2790,8 +2860,12 @@ $('#themeBtn').onclick=()=>{const r=document.documentElement,dark=r.dataset.them
   r.dataset.theme=dark?'light':'dark';try{localStorage.setItem('cw.theme',r.dataset.theme)}catch(e){}repaintAll()};
 try{const t=localStorage.getItem('cw.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 renderScans();
+try{$('#inWin').checked=inWinPref()}catch(e){}$('#inWin').addEventListener('change',e=>{try{localStorage.setItem('cw.inWin',e.target.checked?'1':'0')}catch(x){}});
+if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대규모 Defect 분석] = Step 5 만, [다이어그램 분석] = Step 1 ~ 4 만
+  if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
+  else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,sampleFit,sampleClear,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,sampleFit,sampleClear,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseWaferMap,setWaferMap,dieCells,parseDieLoc,parseMd,fltLayout,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>
