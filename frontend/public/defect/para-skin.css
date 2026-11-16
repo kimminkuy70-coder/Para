@@ -15,6 +15,8 @@ body.pskin header{position:absolute;top:0;right:0;z-index:6;height:40px;padding:
 body.pskin header h1,body.pskin header .lim,body.pskin header .sp,body.pskin header>span.muted{display:none}
 body.pskin header label.muted,body.pskin .ptg{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--navy);font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1}
 body.pskin header button{min-height:34px;padding:6px 12px;font-size:12.5px}
+/* v14.1.6(소유자): [화면 테마] · [사진을 같은 창에서 보기] 없앰 — 머리에는 [? 설명 보기] 만 */
+body.pskin #themeBtn,body.pskin header label:has(#inWin){display:none!important}
 body.pskin .ptg .q{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font-size:11px;font-weight:800}
 body.pskin .ptg:has(input:checked){border-color:var(--pri);background:var(--chipon)}
 
@@ -38,7 +40,7 @@ body.pskin-big nav{display:none}
 body.pskin-big #step5>h2{display:none}
 
 /* 기본 = Step 1 ~ 4: 왼쪽 막대 → 프로그램 스텝퍼(Color·Gray 매칭과 같은 모양) */
-body.pskin-diagram nav{display:flex;align-items:center;width:auto;height:40px;margin:0 0 18px;padding:0 470px 0 0;background:transparent;border:0;overflow-x:auto}
+body.pskin-diagram nav{display:flex;align-items:center;width:auto;height:40px;margin:0 0 18px;padding:0 180px 0 0;background:transparent;border:0;overflow-x:auto}
 body.pskin nav button[data-step]{display:flex;align-items:center;gap:8px;width:auto;margin:0;padding:4px 6px;border:0;border-radius:0;background:transparent;color:var(--sub);font-weight:700;font-size:13px;white-space:nowrap;min-height:0;box-shadow:none}
 body.pskin nav button[data-step]:hover:not(:disabled){background:transparent;color:var(--navy)}
 body.pskin nav button[data-step]+button[data-step]:not([hidden])::before{content:'';flex:none;width:34px;height:2px;background:var(--line);margin:0 6px 0 0}
@@ -50,7 +52,7 @@ body.pskin section.step>h2{font-size:18px;letter-spacing:-.5px;color:var(--navy)
 body.pskin section.step>h2 .muted{font-size:12px;letter-spacing:0}
 
 /* Step 5 단계(5-1 · 5-2 · 5-3) → 스텝퍼 */
-body.pskin .b5tabs{display:flex;flex-wrap:nowrap;align-items:center;gap:0;height:40px;margin:0 0 18px;padding-right:470px;overflow-x:auto}
+body.pskin .b5tabs{display:flex;flex-wrap:nowrap;align-items:center;gap:0;height:40px;margin:0 0 18px;padding-right:180px;overflow-x:auto}
 body.pskin .b5tabs button{display:flex;align-items:center;gap:8px;padding:4px 6px;min-height:0;border:0;border-radius:0;background:transparent;color:var(--sub);font-weight:700;font-size:13px;white-space:nowrap;box-shadow:none}
 body.pskin .b5tabs button:hover:not(:disabled){background:transparent;color:var(--navy)}
 body.pskin .b5tabs button+button::before{content:'';flex:none;width:34px;height:2px;background:var(--line);margin:0 6px 0 0}
@@ -139,12 +141,20 @@ body.pskin .fgrid .fx button{min-height:30px;padding:4px 12px;font-size:12.5px}
 body.pskin .fgrid .fact{padding:12px 0 10px}
 
 /* 5-3 흑백 GL 측정 = 테두리 박스(v14.1.5) */
+/* 5-3 보기 박스 · 사진 모두 불러오기 · 최종 목록 개수 배지(v14.1.6, 소유자 "보기는 줄바꿈 · 박스로 구분, 불러오기는 다른 색, 최종 목록 개수는 구분이 가게") */
+body.pskin .c5stbox{border-color:var(--line);border-left-color:var(--navy);border-radius:10px;background:var(--band);padding:10px 16px}
+body.pskin .c5stbox .c5bh{color:var(--navy)}body.pskin .c5stbox label{font-size:12.5px;font-weight:600}
+body.pskin button.c5load{background:#4f46e5;border-color:#4f46e5;color:#fff;box-shadow:var(--sh1)}
+body.pskin button.c5load:hover:not(:disabled){background:#4338ca;border-color:#4338ca}
+body.pskin .c5pickrow>b{font-size:14px;color:var(--navy)}
+body.pskin .c5pick{min-height:30px;padding:3px 14px;font-size:14px;background:var(--dot);border-color:var(--bd2);color:var(--sub)}
+body.pskin .c5pick.on{background:var(--pri);border-color:var(--pri);color:var(--onpri)}
 body.pskin .glbox{border-color:var(--line);border-left-color:#22d3ee;border-radius:10px;background:var(--band);padding:10px 16px 12px}
 body.pskin .glbox .glhd>b{color:var(--navy);font-size:14px}
 body.pskin .glbox .glshow{padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12.5px}
 body.pskin .glbox .glshow:has(input:checked){border-color:#22d3ee;background:color-mix(in srgb,#22d3ee 12%,var(--panel))}
 
-/* 보기 고르기(하나씩 크게 · 격자) = 프로그램 세그먼트, 쌍 고르기 = 알약 */
+/* 보기 고르기(리스트 · 격자 구조) = 프로그램 세그먼트, 쌍 고르기 = 알약 */
 body.pskin .viewtabs{gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
 body.pskin .viewtabs button{border:0;border-radius:0;min-height:34px;padding:6px 14px}
 body.pskin .viewtabs button+button{border-left:1px solid var(--line)}

@@ -1,7 +1,7 @@
 /* Para v14 Defect 분석: AOI Contrast Wizard(HTML rev6)를 프로그램 화면에 맞추는 겉모습 · 틀 — 분석 동작은 건드리지 않는다.
    프로그램(DefectAnalysis.tsx)이 iframe 에 para-skin.css 다음에 넣는다. 하는 일:
    - body 표시(pskin · pskin-big | pskin-diagram) → para-skin.css 가 적용
-   - 화면 테마: 고른 적 없으면 밝은 화면(프로그램과 같게). [◐ 화면 테마] 로 바꾼 값은 HTML 이 종전처럼 기억
+   - 화면 테마 = 늘 밝은 화면(프로그램과 같게). [화면 테마] · [사진을 같은 창에서 보기] 는 없앰(v14.1.6 소유자) — 새 창이 막히면 HTML 이 알아서 같은 창 칸으로 연다
    - 설명글 · Contrast 도움말 → [? 설명 보기] 체크로 켜고 끔
    - Wafer Map 샘플(기준) → Step 2 맨 위 강조 칸
    - 브라우저 시절 문구 → 프로그램 문구
@@ -10,7 +10,10 @@
   const d = document, B = d.body, mode = new URLSearchParams(location.search).get('mode') || 'big';
   const post = m => { try { parent.postMessage(Object.assign({paraDefect: mode}, m), location.origin); } catch (e) { /* 프로그램 밖 */ } };
   B.classList.add('pskin', mode === 'diagram' ? 'pskin-diagram' : 'pskin-big');
-  try { if (!localStorage.getItem('cw.theme')) d.documentElement.dataset.theme = 'light'; } catch (e) { d.documentElement.dataset.theme = 'light'; }
+  d.documentElement.dataset.theme = 'light';
+  // v14.1.6(소유자 "화면 테마, 사진을 같은 창에서 보기 삭제"): 단추 · 체크를 숨기고, 예전에 켜 둔 '같은 창에서 보기'도 끈다(새 창 우선, 막히면 같은 창 칸).
+  const inWin = d.getElementById('inWin');
+  if (inWin) { inWin.checked = false; try { localStorage.setItem('cw.inWin', '0'); } catch (e) { /* 기억 못 해도 지금은 꺼짐 */ } }
 
   // 설명글은 모두 [? 설명 보기] 체크로(소유자 2026-11-15 "설명글은 다 ? 체크박스로 빼"): 끄면(기본) 설명 문단 · Contrast 도움말을 숨기고,
   // 켜면 보인다. 어떤 글이 설명인지는 para-skin.css 의 목록. 두 탭(대규모 · 기본)이 같은 값을 쓴다(이 PC 에 기억).
@@ -57,7 +60,6 @@
     for (let t = w.nextNode(); t; t = w.nextNode()) if (t.nodeValue.includes(from)) { t.nodeValue = t.nodeValue.replace(from, to); return; }
   });
   say('#step1 .drop p.muted', '파일은 이 PC 브라우저 안에서만 읽습니다.', '프로그램이 고른 폴더를 직접 읽습니다(읽기 전용).');
-  say('header label', '같은 창에서 보기', '사진을 같은 창에서 보기');
 
   // 페이지 한 겹 스크롤에서는 HTML 이 단계를 옮길 때 목록에 주는 포커스가 프로그램 페이지까지 끌어내린다 →
   // 포커스는 그대로 주되 화면은 움직이지 않고, 단계(스텝퍼)가 바뀌면 프로그램이 이 칸의 맨 위를 보여 준다.

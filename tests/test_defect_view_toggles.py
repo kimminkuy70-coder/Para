@@ -109,5 +109,47 @@ class DefectViewToggles(unittest.TestCase):
         self.assertIn("function fltHtml(){return fltRngHtml()+fltRcpHtml()+fltSortHtml()+fltClrHtml()}", self.t)
 
 
+class Defect53Layout(unittest.TestCase):
+    """v14.1.6(소유자): 하나씩 크게 → 리스트, 격자로 여러 개 → 격자 구조, 보기 = 줄바꿈 · 박스, 이 목록 사진 모두 미리 준비 → 사진 모두 불러오기(다른 색),
+    [← 5-2] · [화면 테마] · [사진을 같은 창에서 보기] 삭제, 보이는 목록 모두 → 전체 선택, 모두 해제 → 전체 해제, 최종 목록 개수 = 배지."""
+    @classmethod
+    def setUpClass(cls):
+        cls.t = HTML.read_text(encoding="utf-8")
+        cls.ids = _Ids()
+        cls.ids.feed(cls.t[cls.t.index("<body>"):cls.t.index("<script>")])
+        cls.css = (PUB / "para-skin.css").read_text(encoding="utf-8")
+        cls.js = (PUB / "para-skin.js").read_text(encoding="utf-8")
+
+    def test_labels(self):
+        self.assertIn('<button data-v5="one" aria-pressed="true">리스트</button><button data-v5="grid">격자 구조</button>', self.t)
+        self.assertIn('class="c5load"', self.t)
+        self.assertIn("📥 사진 모두 불러오기</button>", self.t)
+        self.assertIn('id="c5pickAll" title="지금 보이는 목록을 모두 최종 목록에 넣습니다(☑)">전체 선택</button><button id="c5pickNone">전체 해제</button>', self.t)
+        for old in ("하나씩 크게", "격자로 여러 개", "이 목록 사진 모두 미리 준비", "보이는 목록 모두", "보기:", "사진 준비 끝"):
+            self.assertNotIn(old, self.t, old)
+
+    def test_view_box_and_no_back_button(self):
+        self.assertIn("c5stF", self.ids.parents)
+        self.assertNotIn("toB2b", self.ids.parents)
+        self.assertNotIn("#toB2b", self.t)
+        box = self.t[self.t.index('<div class="c5stbox"'):self.t.index('id="c5stF"')]
+        self.assertIn(">보기</b>", box)
+        self.assertIn(".c5stbox{", self.t)
+        self.assertIn("body.pskin .c5stbox{", self.css)
+
+    def test_pick_badge(self):
+        self.assertIn("$('#c5pickN').classList.toggle('on',n>0)", self.t)
+        self.assertIn(".c5pick.on{", self.t)
+        self.assertIn("body.pskin .c5pick.on{", self.css)
+        self.assertIn("body.pskin button.c5load{", self.css)
+
+    def test_header_theme_and_same_window_gone_in_program(self):
+        self.assertIn("body.pskin #themeBtn,body.pskin header label:has(#inWin){display:none!important}", self.css)
+        self.assertIn("d.documentElement.dataset.theme = 'light';", self.js)
+        self.assertIn("localStorage.setItem('cw.inWin', '0')", self.js)
+        self.assertNotIn("같은 창에서 보기', '사진을", self.js)
+
+
+
 if __name__ == "__main__":
     unittest.main()

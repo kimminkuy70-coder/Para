@@ -16,6 +16,9 @@
   최종 목록 CSV(`FL_HEAD`) · 엑셀 전부. `colorgray.FINAL_ALIASES` 가 옛 CSV 열 이름도 읽는다. 5-1 필터 = `.fgrid` 줄(제목 `.fh` · 내용 `.fb`, 분류 · Lot 칸 = `.chipgrid` 같은 너비 격자, 값 범위 한 줄).
   새 창 [🟥 빨간 네모](B 키, `cw.pwBox`) = 새 창의 Gray 사진에서만, 그 자리에서 다시 그림(확대 유지). 5-3 흑백 GL = `#glBox` 테두리 박스 + [⭕ 측정 원 보기](`GLC.show`, `cw.glShow` —
   5-3 · 격자 · 새 창 · 엑셀 사진). 그림 함수 `cgCropCanvas` · `cgFrameCanvas(…, {box, ring})`. 시험 `tests/test_defect_view_toggles.py` + `test_desktop_ui.mjs`.
+- **v14.1.6(소유자 2026-11-16)**: 5-3 보기 = **[리스트 | 격자 구조]**(종전 하나씩 크게 · 격자로 여러 개), 사진 상태 보기 = `.c5stbox` 박스(줄바꿈), **[📥 사진 모두 불러오기]**(`#b5prep.c5load`, 남색 단추, 종전 '이 목록 사진 모두 미리 준비'),
+  최종 목록 = [전체 선택] · [전체 해제] + 개수 배지(`#c5pickN.on`). 5-3 의 [← 5-2](`toB2b`) 삭제. 프로그램 안에서는 [화면 테마] · [사진을 같은 창에서 보기] 를 숨기고(para-skin.css)
+  늘 밝은 화면 · `cw.inWin`=0(para-skin.js — 새 창이 막히면 HTML 이 같은 창 칸으로). **릴리스 노트는 맨 위 한 줄 목록만**(소유자: '자세히' 이하 문구 삭제).
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

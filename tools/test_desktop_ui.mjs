@@ -852,7 +852,17 @@ try{
   await pop.keyboard.press('b');await pop.waitForFunction(()=>document.getElementById('pwBox').checked);
   assert.deepEqual(await popPx(),boxOn);
   await pop.close();
+  // v14.1.6 5-3: [리스트 | 격자 구조] · [사진 모두 불러오기] · 보기 박스 · [전체 선택/해제] · 개수 배지, [← 5-2] · 화면 테마 · 같은 창 보기 없음
+  assert.deepEqual(await wz.locator('#b5p3 .viewtabs button').allInnerTexts(),['리스트','격자 구조']);
+  assert.match(await wz.locator('#b5prep.c5load').innerText(),/사진 모두 불러오기/);
+  assert.equal(await wz.locator('.c5stbox #c5stF [data-st5]').count(),4);
+  assert.deepEqual([await wz.locator('#c5pickAll').innerText(),await wz.locator('#c5pickNone').innerText()],['전체 선택','전체 해제']);
+  assert.equal(await wz.locator('#toB2b').count(),0);
+  assert.equal(await wz.locator('#themeBtn').isVisible(),false);assert.equal(await wz.locator('#inWin').isVisible(),false);
+  assert.equal(await wz.locator('#pHelp').isVisible(),true);
+  assert.equal(await wz.locator('#c5pickN.on').count(),0);
   await wz.locator('#c5list').focus();await wz.locator('#c5list').press('Home');await wz.locator('#c5list').press(' ');
+  await wz.locator('#c5pickN.on',{hasText:'☑ 1개'}).waitFor();
   await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
   await wz.locator('#c5saveCsv').click();await wzf.waitForFunction(()=>typeof window.__flc==='string');
   const finalCsv=join(fixture,'final_list_test.csv');await writeFile(finalCsv,'\ufeff'+await wzf.evaluate(()=>window.__flc),'utf-8');

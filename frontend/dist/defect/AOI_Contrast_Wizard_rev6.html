@@ -175,7 +175,13 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
 .g5.st-ok{border-left-color:var(--keep)}.g5.st-none{border-left-color:var(--gone)}.g5.st-color,.g5.st-gray{border-left-color:var(--new)}
 .biglist .br.pk{background:color-mix(in srgb,var(--ok) 14%,transparent)}.biglist .br span.pk{text-align:center;font-weight:700;cursor:pointer}.biglist .br.pk span.pk{color:var(--ok)}
 .g5.pk{outline:3px solid var(--ok);outline-offset:-3px}.c5pick{font-weight:700}
-.c5stF{display:inline-flex;flex-wrap:wrap;gap:4px 10px;align-items:center}.c5stF label{white-space:nowrap}.c5stF i{font-style:normal;color:var(--muted)}
+.c5stF{display:inline-flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+/* Para v14.1.6: 5-3 보기 = 따로 박스, 사진 모두 불러오기 = 다른 색 단추, 최종 목록 개수 = 배지 */
+.c5stbox{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:8px 12px;margin:10px 0}
+.c5stbox .c5bh{font-size:14px;white-space:nowrap}.c5stbox .c5stF{gap:6px 18px}.c5stbox .c5stF label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+button.c5load{background:#4f46e5;border-color:#4f46e5;color:#fff;font-weight:700}button.c5load:hover:not(:disabled){background:#4338ca;border-color:#4338ca}
+.c5pick{display:inline-flex;align-items:center;padding:3px 12px;border-radius:999px;background:var(--chip);border:1px solid var(--line);font-weight:800;font-variant-numeric:tabular-nums}
+.c5pick.on{background:var(--ok);border-color:var(--ok);color:#fff}.c5stF label{white-space:nowrap}.c5stF i{font-style:normal;color:var(--muted)}
 .glrow{align-items:center}.glrow input[type=number]{width:72px}
 .glbar{max-width:620px;margin-top:4px}
 /* Para v14.1.5: 흑백 GL 측정 = 테두리 박스(머리 = 제목 · 측정 원 보기) */
@@ -418,16 +424,17 @@ canvas.mini{width:100%;height:400px;background:var(--panel);border:1px solid var
   </div>
   <div id="b5p3" hidden>
     <div class="card">
-      <div class="row"><div class="viewtabs"><button data-v5="one" aria-pressed="true">하나씩 크게</button><button data-v5="grid">격자로 여러 개</button></div>
-        <span id="c5stF" class="c5stF" title="사진 상태로 골라 보기(여러 개 켜면 모두 보임) — 소유자: Color 만 · Color·Gray 매칭 · 흑백만 구분해서 보기">보기:
+      <div class="row c5top"><div class="viewtabs"><button data-v5="one" aria-pressed="true">리스트</button><button data-v5="grid">격자 구조</button></div>
+        <button id="b5prep" class="c5load" title="지금 목록의 Defect 사진(Color · Gray Crop)을 모두 읽어 둡니다 — 격자 구조 · 넘기기가 빨라짐(중지 가능)">📥 사진 모두 불러오기</button>
+        <span class="muted" id="c5cnt"></span></div>
+      <div class="c5stbox" role="group" aria-labelledby="c5stT"><b class="c5bh" id="c5stT">보기</b>
+        <span id="c5stF" class="c5stF" title="사진 상태로 골라 보기(여러 개 켜면 모두 보임) — 소유자: Color 만 · Color·Gray 매칭 · 흑백만 구분해서 보기">
           <label><input type="checkbox" data-st5="ok" checked> Color·Gray 매칭 완료 <i data-n5="ok"></i></label>
           <label><input type="checkbox" data-st5="color" checked> Color 만 <i data-n5="color"></i></label>
           <label><input type="checkbox" data-st5="gray" checked> 흑백(Gray) 만 <i data-n5="gray"></i></label>
-          <label><input type="checkbox" data-st5="none"> 둘 다 없음 <i data-n5="none"></i></label></span>
-        <button id="b5prep">이 목록 사진 모두 미리 준비</button><button id="toB2b">← 5-2</button>
-        <span class="muted" id="c5cnt"></span></div>
-      <div class="row" title="소유자 #68: 목록에서 줄을 고르고 Space = 최종 목록에 넣기/빼기(☑). 사진 새 창에서도 Space. 엑셀에는 ☑ 한 Defect 만, 사진(Color · Gray Crop · Gray 프레임)을 넣어 저장합니다.">
-        <b>최종 목록</b><span class="c5pick" id="c5pickN">☑ 0개</span><button id="c5pickAll">보이는 목록 모두 ☑</button><button id="c5pickNone">모두 해제</button>
+          <label><input type="checkbox" data-st5="none"> 둘 다 없음 <i data-n5="none"></i></label></span></div>
+      <div class="row c5pickrow" title="소유자 #68: 목록에서 줄을 고르고 Space = 최종 목록에 넣기/빼기(☑). 사진 새 창에서도 Space. 엑셀에는 ☑ 한 Defect 만, 사진(Color · Gray Crop · Gray 프레임)을 넣어 저장합니다.">
+        <b>최종 목록</b><span class="c5pick" id="c5pickN" aria-live="polite">☑ 0개</span><button id="c5pickAll" title="지금 보이는 목록을 모두 최종 목록에 넣습니다(☑)">전체 선택</button><button id="c5pickNone">전체 해제</button>
         <button class="pri" id="c5save" disabled>💾 최종 목록 엑셀 저장 (사진 포함)</button><button id="c5saveCsv" disabled title="Para 프로그램 [Defect 분석 › Color·Gray 매칭] 의 [최종 목록 CSV 불러오기] 가 이 파일의 Defect 만 추출합니다">📄 최종 목록 CSV 저장</button><span class="muted" id="c5saveSt"></span></div>
       <div class="glbox" id="glBox" role="group" aria-labelledby="glBoxT">
       <div class="glhd"><b id="glBoxT">흑백 GL (원) 측정</b>
@@ -2006,7 +2013,7 @@ async function cgLoad(s,root,up){const g=s.cg={missing:[],colors:[],frames:[],tf
 //         Contrast(실제) · Area · Width · Length · Lot · Slot 필터 + 정렬 → 조사할 Defect 를 줄인다.
 //     5-2 사진 짝짓기 · CSV: 걸러낸 Defect 마다 Color 이미지(ColorImageGrabingInfo)와 Gray 프레임 + 픽셀 좌표(ScanResultImageList · frameToChuckPlane)를 짝짓고
 //         파일이 실제로 있는지 확인 → 경로가 든 CSV 저장. 사진 픽셀은 아직 읽지 않는다.
-//     5-3 사진 정밀 조사: 짝지은 Defect 만 Color 원본 + Gray Crop(빨간 박스 · GL 측정)을 띄운다(하나씩 크게 / 격자). Step 3 · 4 와 같은 계산(grayCrop · linkColor · locateGray).
+//     5-3 사진 정밀 조사: 짝지은 Defect 만 Color 원본 + Gray Crop(빨간 박스 · GL 측정)을 띄운다(리스트 / 격자 구조 — v14.1.6 이름). Step 3 · 4 와 같은 계산(grayCrop · linkColor · locateGray).
 //     모든 긴 작업은 로딩창(busy)에 단계 · 개수 · 지금 읽는 파일 · 경과 · 마지막 진행 · 속도 · 남은 시간 · 화면 멈춤을 보여 주고 [중지] 할 수 있다.
 // ════════════════════════════════════════════════════════════════════════
 const BIG={scans:[],view:null,sort:'c-d',stop:false,pairs:null,stale:false,stage:1,clsOff1:new Set(),clsOff2:new Set(),lotOff:new Set()};   // lotOff = 뺀 Lot 폴더 경로(소유자 "5-1 에서 필터로 제외할 Lot 고를 수 있게")
@@ -2578,7 +2585,7 @@ function c5StText(on){const k=Object.keys(ST5_LAB).filter(x=>on.has(x));if(k.len
 function c5Refresh(keep){const on=c5StOn(),P=(BIG.pairs||[]).filter(p=>p.st!=='skip'),n={};for(const p of P)n[p.st]=(n[p.st]||0)+1;
   document.querySelectorAll('#c5stF [data-n5]').forEach(x=>x.textContent=`(${(n[x.dataset.n5]||0).toLocaleString()})`);
   C5.items=glApply(P.filter(p=>on.has(p.st)));vtSet(VC,C5.items.length,keep);
-  $('#c5cnt').textContent=`Defect ${C5.items.length.toLocaleString()}개${c5StText(on)}${glNote()} · 사진 준비 끝 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`+(C5.note?' · '+C5.note:'');C5.note='';
+  $('#c5cnt').textContent=`Defect ${C5.items.length.toLocaleString()}개${c5StText(on)}${glNote()} · 불러온 사진 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`+(C5.note?' · '+C5.note:'');C5.note='';
   $('#c5one').hidden=C5.mode!=='one';$('#c5gridBox').hidden=C5.mode!=='grid';$$('[data-v5]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v5===C5.mode));
   if(C5.mode==='one')c5Show();else c5Grid();if(PW.V===VC)PW.items=C5.items;pickInfo()}
 /** 진행 기록 줄(5-3 사진 하나): 지금 무엇을 읽는지 · 끝난 것 · 걸린 시간. 진행 중인 줄은 0.2초마다 시간이 올라간다(멈추면 응답 기다리는 중). */
@@ -2640,13 +2647,13 @@ async function c5GridFill(tk){const els=[...$$('#c5grid .g5')].filter(el=>!THUMB
   for(const el of els){if(tk!==C5.gtok)return;const p=C5.items[+el.dataset.k];
     await prepThumb(p,t=>{if(tk===C5.gtok)st.textContent=`이 쪽 사진 준비 ${k} / ${m} · 지금: ${t}`});if(tk!==C5.gtok)return;
     const ne=document.createElement('div');ne.innerHTML=c5Card(p,+el.dataset.k);el.replaceWith(ne.firstElementChild);k++;st.textContent=`이 쪽 사진 준비 ${k} / ${m}`;await nextPaint()}
-  st.textContent=m?`이 쪽 사진 ${m}개 준비 끝`:'이 쪽 사진은 모두 준비돼 있습니다';$('#c5cnt').textContent=$('#c5cnt').textContent.replace(/사진 준비 끝 \d+개/,`사진 준비 끝 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`)}
-/** 목록 전체 사진 미리 준비(로딩창 · 중지 가능). 같은 Gray 프레임끼리 묶어 프레임을 한 번만 디코딩한다. */
+  st.textContent=m?`이 쪽 사진 ${m}개 준비 끝`:'이 쪽 사진은 모두 준비돼 있습니다';$('#c5cnt').textContent=$('#c5cnt').textContent.replace(/불러온 사진 \d+개/,`불러온 사진 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`)}
+/** [📥 사진 모두 불러오기](v14.1.6, 종전 이름 = 목록 사진 미리 준비): 목록 전체 사진(로딩창 · 중지 가능). 같은 Gray 프레임끼리 묶어 프레임을 한 번만 디코딩한다. */
 async function c5PrepAll(){const L=C5.items.filter(p=>!THUMB.has(p.k)).sort((a,b)=>a.s.id-b.s.id||natCmp(a.g?a.g.file:'',b.g?b.g.file:'')||a.k-b.k);if(!L.length)return;
   BIG.stop=false;const total=L.length,cancel=()=>{BIG.stop=true};let done=0,cur='',step=0;
   const STEPS=['① Color 이미지 읽기 · 축소','② Gray 프레임 읽기 · 디코딩 · 크롭 · GL 계산'];
-  const pr=throttle(()=>busy({title:'5-3 사진 모두 미리 준비',steps:STEPS,step,done,total,unit:'Defect',files:`준비 끝 ${THUMB.size}개 · 같은 Gray 프레임끼리 묶어 한 번만 디코딩`,detail:cur,cancel}),80);
-  busy({title:'5-3 사진 모두 미리 준비',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});
+  const pr=throttle(()=>busy({title:'사진 모두 불러오기',steps:STEPS,step,done,total,unit:'Defect',files:`불러온 사진 ${THUMB.size}개 · 같은 Gray 프레임끼리 묶어 한 번만 디코딩`,detail:cur,cancel}),80);
+  busy({title:'사진 모두 불러오기',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});
   try{for(const p of L){if(BIG.stop)break;await prepThumb(p,(t,sp)=>{cur=t;step=sp;pr()});done++;pr()}}finally{busy(null)}
   c5Refresh(true)}
 
@@ -2654,7 +2661,7 @@ async function c5PrepAll(){const L=C5.items.filter(p=>!THUMB.has(p.k)).sort((a,b
 //   선택 = 짝 항목(BIG.pairs)의 p.pick — 5-3 목록 · 사진 새 창 · 격자가 같은 값을 본다. [다시 확인](5-2)을 해도 같은 Slot · Defect 면 남긴다.
 const pickBadge=p=>`<b class="pk ${p&&p.pick?'on':'off'}" id="pk">${p&&p.pick?'☑ 최종 목록':'☐ 최종 목록 아님'}</b>`;
 const pickList=()=>(BIG.pairs||[]).filter(p=>p.pick&&p.st!=='skip');
-function pickInfo(){const n=pickList().length;$('#c5pickN').textContent=`☑ ${n.toLocaleString()}개`;$('#c5save').disabled=!n;$('#c5saveCsv').disabled=!n;
+function pickInfo(){const n=pickList().length;$('#c5pickN').textContent=`☑ ${n.toLocaleString()}개`;$('#c5pickN').classList.toggle('on',n>0);$('#c5save').disabled=!n;$('#c5saveCsv').disabled=!n;
   $('#c5save').textContent=n?`💾 최종 목록 엑셀 저장 (☑ ${n.toLocaleString()}개 · 사진 포함)`:'💾 최종 목록 엑셀 저장 (사진 포함)'}
 function pickToggle(p,v){if(!p)return;p.pick=v==null?!p.pick:!!v;pickChanged()}
 function pickChanged(){vtPaint(VC);pickInfo();if(C5.mode==='grid')$$('#c5grid .g5').forEach(el=>{const p=C5.items[+el.dataset.k];if(!p)return;el.classList.toggle('pk',!!p.pick);const h=el.querySelector('.gh');h.textContent=h.textContent.replace(/^☑ /,'');if(p.pick)h.textContent='☑ '+h.textContent});
@@ -2867,7 +2874,7 @@ $('#toB2').onclick=()=>b5Start(true);
 $('#b5pair').onclick=()=>b5Start(false);
 $('#b5csv').onclick=async()=>{const r=await saveCsv(pairCsv(),csvName(),true);if(r)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg ok">CSV ${esc(r)}</div>`)};
 $('#b5show').addEventListener('change',b5Refresh);
-$('#toB1').onclick=()=>b5go(1);$('#toB3').onclick=()=>b5go(3);$('#toB2b').onclick=()=>b5go(2);
+$('#toB1').onclick=()=>b5go(1);$('#toB3').onclick=()=>b5go(3);   // v14.1.6: 5-3 의 [← 5-2] 단추는 없앰(소유자 — 단계 탭을 누르면 됨)
 $('#c5stF').addEventListener('change',()=>c5Refresh());
 $$('[data-v5]').forEach(b=>b.onclick=()=>{C5.mode=b.dataset.v5;c5Refresh(true)});
 $('#c5prev').onclick=()=>{C5.page--;c5Grid()};$('#c5next').onclick=()=>{C5.page++;c5Grid()};
