@@ -21,6 +21,11 @@
   늘 밝은 화면 · `cw.inWin`=0(para-skin.js — 새 창이 막히면 HTML 이 같은 창 칸으로). **릴리스 노트는 맨 위 한 줄 목록만**(소유자: '자세히' 이하 문구 삭제).
 - **v14.1.7(소유자 2026-11-16)**: 측정 원 그리기 창 = 보이는 높이에 맞춤(프로그램 안 `--vh` 기준 — iframe 의 100vh 는 내용 전체 높이라 쓰지 않음) + 사진 양옆 ‹ ›(`glPrev` · `glNext`, ← →) =
   다른 예시 사진(`glDlgShow` · `glDlgStep`, 후보 = 5-3 목록의 흑백 있는 Defect). **색 = 프로그램 남색 · 초록 + 회색만**(박스 띠 = 남색, 켜짐 = 연한 초록, 이모지 · 보라 · 형광 연두 · 하늘색 테두리 빼기).
+- **v14.1.8(소유자 검토 · 확정 2026-11-16)**: Defect 분석 두 탭의 **모든 목록 위 = 돋보기 검색 칸**(`lsHtml` · `lsBind`, 모든 열 값 + 사진 파일 이름, 여러 단어 = AND, Enter = 바로 · 입력 멈추면 0.3초 —
+  5-1 이 10만 줄 넘으면 0.7초, Esc = 지움) + **☑ 고르기**(전체 선택 · 전체 해제 = 보이는 줄만, 배지 `☑ n / m개`, [처음엔 모두 ☑] = `LS.def` · `cw.lsDef` 기본 켬 — 5-3 최종 목록도).
+  규칙 = **필터 · 검색에 맞고 ☑ 인 줄만 다음 단계 · CSV · 최종 목록**: 5-1 `s.pk`(Slot 마다 Uint8Array) → 5-2 `p.on2` → `c5Pool()`(5-2 보기 · 검색 · ☑) → 5-3 `pickList()` = `C5.items`(보기 · GL 범위 · 검색) 중 ☑.
+  기본 탭: Step 3 · 4 목록 ☑(`P.pk`, ☐ = 흐리게 · 지도 회색 원 · ↑↓ 건너뜀 · [CSV 저장]에서 뺌), 쌍별 상세 표 ☑(`S.dpk`, CSV = 보이는 ☑). 5-1 숫자 열 검색은 숫자 단어일 때만(30만 줄 ≈ 0.4초, 글자 단어 ≈ 30 ms).
+  5-1 사진 이름 검색 = Color 사진 + 그 Color 의 Gray 프레임(연결 없는 Defect 의 Gray 프레임은 5-2 부터 — 30만 개를 다 계산하지 않음).
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

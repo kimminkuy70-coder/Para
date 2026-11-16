@@ -826,10 +826,24 @@ try{
   assert.equal(await wz.locator('#bigCls .frow .chipgrid .clsck').count(),2);
   const bigHead=await wz.locator('#bigList .bh').innerText();
   assert(bigHead.includes('장비 스캔 분류')&&bigHead.includes('리뷰 결과')&&!/첫번째|재분류/.test(bigHead),bigHead);
+  // v14.1.8 목록 위 검색(모든 열 값 + 사진 이름, Enter) · ☑(처음 = 모두 ☑): ☐ 는 다음 단계 · CSV 에서 빠지고, 검색으로 숨었다 다시 보여도 그대로
+  assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 2 / 2개');
+  const q=async(bar,list,v)=>{await wz.locator(`#${bar} input[type=search]`).fill(v);await wz.locator(`#${bar} input[type=search]`).press('Enter');return wz.locator(`#${list} .br`).count()};
+  assert.deepEqual([await q('bigLs','bigList','45.00'),await q('bigLs','bigList','c1.jpg'),await q('bigLs','bigList','lot_a w01'),await q('bigLs','bigList','zzz')],[1,1,2,0]);   // 숫자 열 · Color 사진 이름 · 두 단어 · 없음
+  await q('bigLs','bigList','');
+  await wz.locator('#bigList .br').first().locator('span.pk').click();
+  assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 1 / 2개');assert.match(await wz.locator('#toB2').innerText(),/☑ 1개/);
+  await q('bigLs','bigList','zzz');await q('bigLs','bigList','');assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 1 / 2개');
+  await wz.locator('#bigLs [data-ls="none"]').click();assert.equal(await wz.locator('#toB2').isDisabled(),true);
+  await wz.locator('#bigLs [data-ls="all"]').click();assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 2 / 2개');
   // 스크롤 한 겹: iframe 높이 = 내용 높이(페이지만 스크롤)
   await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Defect 분석(대규모)"]'),h=f.contentDocument.body.getBoundingClientRect().height;return h>400&&Math.abs(f.getBoundingClientRect().height-Math.ceil(h))<=1});
   await wz.locator('[data-b5="2"]').click();
   await wz.locator('#b5list .br',{hasText:'Color·Gray 매칭 완료'}).first().waitFor();                                // 종전 '짝 완료'
+  assert.deepEqual([await q('b5Ls','b5list','f1.t.1'),await q('b5Ls','b5list','zzz')],[1,0]);await q('b5Ls','b5list','');   // Gray 프레임 이름
+  assert.equal(await wz.locator('#b5Ls .lsn').innerText(),'☑ 2 / 2개');
+  await wz.locator('#b5list .br',{hasText:'Color·Gray 매칭 완료'}).locator('span.pk').click();assert.match(await wz.locator('#toB3').innerText(),/☑ 1개/);   // 5-3 으로 = 보이는 ☑ 줄
+  await wz.locator('#b5Ls [data-ls="all"]').click();assert.match(await wz.locator('#toB3').innerText(),/☑ 2개/);
   await wz.locator('#toB3').click();await wz.locator('#c5Color canvas').waitFor({timeout:30000});   // 사진 = 엔진에서
   // v14.1.5 흑백 GL 측정 = 따로 박스, [⭕ 측정 원 보기] 를 끄면 5-3 사진에서 측정 원만 빠짐(켜면 다시)
   for(const id of ['glShow','glR','glSet','glRun','glHist'])assert.equal(await wz.locator(`#glBox #${id}`).count(),1,id);
@@ -860,7 +874,8 @@ try{
   assert.equal(await wz.locator('#toB2b').count(),0);
   assert.equal(await wz.locator('#themeBtn').isVisible(),false);assert.equal(await wz.locator('#inWin').isVisible(),false);
   assert.equal(await wz.locator('#pHelp').isVisible(),true);
-  assert.equal(await wz.locator('#c5pickN.on').count(),0);
+  assert.equal(await wz.locator('#c5pickN.on').innerText(),'☑ 1 / 1개');   // v14.1.8: 5-3 최종 목록도 처음 = 모두 ☑(소유자)
+  assert.deepEqual([await q('c5Ls','c5list','c1.jpg'),await q('c5Ls','c5list','zzz')],[1,0]);await q('c5Ls','c5list','');
   // v14.1.7 측정 원 그리기 창: 보이는 부분 안에 다 들어오고(잘리지 않음), 사진 양옆 ‹ › · ← → 로 다른 예시 사진
   await wzf.evaluate(()=>{const c=window.__cw.C5;c.items.push(Object.assign({},c.items[0],{k:c.items.length}))});   // 예시 후보 2개
   await wz.locator('#glSet').click();await wz.locator('#glDlg:not([hidden])').waitFor();
@@ -871,7 +886,8 @@ try{
   await wz.locator('#glCv').press('ArrowLeft');await wz.locator('#glDPos',{hasText:'예시 사진 1 / 2'}).waitFor();
   await wz.locator('#glDNo').click();await wzf.evaluate(()=>window.__cw.C5.items.pop());
   await wz.locator('#c5list').focus();await wz.locator('#c5list').press('Home');await wz.locator('#c5list').press(' ');
-  await wz.locator('#c5pickN.on',{hasText:'☑ 1개'}).waitFor();
+  await wz.locator('#c5pickN',{hasText:'☑ 0 / 1개'}).waitFor();await wz.locator('#c5list').press(' ');
+  await wz.locator('#c5pickN.on',{hasText:'☑ 1 / 1개'}).waitFor();
   await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
   await wz.locator('#c5saveCsv').click();await wzf.waitForFunction(()=>typeof window.__flc==='string');
   const finalCsv=join(fixture,'final_list_test.csv');await writeFile(finalCsv,'\ufeff'+await wzf.evaluate(()=>window.__flc),'utf-8');
@@ -914,6 +930,19 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   assert.deepEqual(await dgf.evaluate(()=>window.__cw.state.scans.map(s=>[s.defects.length,s.colors.length,s.frames.length])),[[2,3,2]]);
   // Wafer Map 샘플(기준) = Step 2 맨 위 강조 칸(고르기 단추 · 상태 글이 그 칸 안)
   assert.deepEqual(await dgf.evaluate(()=>{const b=document.querySelector('#step2 .psample');return b&&[b.previousElementSibling.tagName,b.contains(document.getElementById('mapBtn')),b.contains(document.getElementById('mapSmp'))]}),['H2',true,true]);
+  // v14.1.8 Step 3 목록 · 쌍별 상세 표: 검색 · ☑(☐ = 흐리게 · ↑↓ 건너뜀 · CSV 에서 뺌)
+  await dg.locator('#to2').click();await dg.locator('#runBtn').click();await dgf.waitForFunction(()=>window.__cw.state.cmp,null,{timeout:30000});
+  await dg.locator('nav button[data-step="3"]').click();await dg.locator('#setPick input').first().check();await dg.locator('#vennBtn').click();
+  await dg.locator('#p3List .it').nth(1).waitFor();
+  assert.equal(await dg.locator('#p3Ls .lsn').innerText(),'☑ 2 / 2개');
+  await dg.locator('#p3List .it').first().locator('span.pk').click();
+  assert.deepEqual([await dg.locator('#p3Ls .lsn').innerText(),await dg.locator('#p3Ls [data-ls="csv"]').innerText(),await dg.locator('#p3List .it.off').count()],['☑ 1 / 2개','CSV 저장 (☑ 1개)',1]);
+  await dg.locator('#p3Ls input[type=search]').fill('c1.jpg');await dg.locator('#p3Ls input[type=search]').press('Enter');
+  assert.equal(await dg.locator('#p3List .it').count(),1);
+  await dg.locator('#p3Ls input[type=search]').fill('');await dg.locator('#p3Ls input[type=search]').press('Enter');
+  await dg.locator('#step3 details.card summary').click();
+  assert.equal(await dg.locator('#detLs .lsn').innerText(),'☑ 2 / 2개');
+  await dg.locator('#detTbl tbody tr td.pk').first().click();assert.equal(await dg.locator('#csvBtn').innerText(),'CSV 내보내기 (☑ 1개)');
   await rm(join(fixture,'pick_folder.txt'));
   // KLA 자재 찾기(#30): 상단 회사 탭 CAMTEK / KLA. KLA 장비 폴더 등록 → Lot 키워드로 폴더 이름만 찾기.
   const klaRoot=join(fixture,'J','2.K2');

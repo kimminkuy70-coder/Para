@@ -180,5 +180,59 @@ class GlDialogAndColors(unittest.TestCase):
 
 
 
+class ListSearchAndPick(unittest.TestCase):
+    """v14.1.8(소유자 검토 · 확정): 모든 스텝 목록 위 돋보기 검색(모든 열 값 + 사진 파일 이름, Enter = 바로 · 입력 멈추면 자동),
+    목록마다 ☑ + 전체 선택 · 전체 해제 + [처음엔 모두 ☑](기본 켬, 5-3 최종 목록도), 다음 단계 · CSV · 최종 목록 = 보이는(필터 · 검색) ☑ 줄."""
+    @classmethod
+    def setUpClass(cls):
+        cls.t = HTML.read_text(encoding="utf-8")
+        cls.ids = _Ids()
+        cls.ids.feed(cls.t[cls.t.index("<body>"):cls.t.index("<script>")])
+        cls.css = (PUB / "para-skin.css").read_text(encoding="utf-8")
+
+    def test_bars_above_every_list(self):
+        p = self.ids.parents
+        for bar, sec in (("bigLs", "b5p1"), ("b5Ls", "b5p2"), ("c5Ls", "b5p3"), ("detLs", "step3")):
+            self.assertIn(sec, p[bar], bar)
+        self.assertLess(self.t.index('id="bigLs"'), self.t.index('id="bigList"'))
+        self.assertLess(self.t.index('id="b5Ls"'), self.t.index('id="b5list"'))
+        self.assertLess(self.t.index('id="c5Ls"'), self.t.index('id="c5one"'))
+        self.assertLess(self.t.index('id="detLs"'), self.t.index('id="detTbl"'))
+        self.assertIn("lsHtml(pre+'Ls',", self.t)                                  # Step 3 · 4 목록(패널)
+        for bar in ("bigLs", "b5Ls", "detLs"):                                     # ☑ 줄
+            seg = self.t[self.t.index(f'id="{bar}"'):]
+            seg = seg[:seg.index("</div>")]
+            for k in ('data-ls="all"', 'data-ls="none"', 'data-ls="def"', 'class="lsn"'):
+                self.assertIn(k, seg, (bar, k))
+        self.assertIn('<input type="checkbox" data-ls="def" checked> 처음엔 모두 ☑', self.t)     # 5-3 최종 목록 줄
+        self.assertIn("body.pskin .lsq{", self.css)
+
+    def test_search_rules(self):
+        self.assertIn("if(e.key==='Enter'){go();e.preventDefault()}", self.t)
+        self.assertIn("tm=setTimeout(go,wait())", self.t)
+        self.assertIn("BIG.view.total>100000?700:LS.delay", self.t)                # 큰 목록은 조금 더 기다림
+        self.assertIn("const qAll=(T,txt)=>{for(const w of T)if(!txt.includes(w))return false;return true}", self.t)
+        # 모든 열 값 + 사진 이름
+        self.assertIn("rec.c&&rec.c.file?qm(rec.c.file)", self.t)                  # 5-1 Color 사진
+        b5 = self.t[self.t.index("const b5Text=p=>"):self.t.index("const c5Pool=")]
+        for k in ("f2(C.c[i])", "f1(C.w[i])", "p.c&&p.c.file", "p.g&&`${p.g.file}", "pcPath(p.g.path)", "p.cerr"):
+            self.assertIn(k, b5, k)
+        for fn in ("function panelText(", "function detText("):
+            seg = self.t[self.t.index(fn):]
+            seg = seg[:seg.index("\n}") if "\n}" in seg[:600] else 900]
+            self.assertIn("g&&g.frame&&g.frame.file", seg, fn)
+
+    def test_pick_rules(self):
+        self.assertIn("LS.def=localStorage.getItem('cw.lsDef')!=='0'", self.t)        # 처음엔 모두 ☑ = 기본 켬
+        self.assertIn("if(s.pk[i])items.push(", self.t)                             # 5-1 → 5-2 = 보이는 ☑
+        self.assertIn("const c5Pool=()=>BIG.pairs?B5.items.filter(p=>p.on2&&p.st!=='skip'):[];", self.t)   # 5-2 → 5-3
+        self.assertIn("p.pick=v===undefined?LS.def:v", self.t)                      # 5-3 최종 목록 처음 = 옵션
+        self.assertIn("const pickList=()=>C5.items.filter(p=>p.pick);", self.t)     # 최종 목록 = 5-3 에 보이는 ☑
+        self.assertIn("csvText(filtered().filter(dOn))", self.t)                    # 쌍별 상세 표 CSV = 보이는 ☑
+        self.assertIn("P.items.filter(it=>pOn(P,it))", self.t)                      # Step 3 · 4 CSV = ☑
+        self.assertIn("function panelStep(P,dir)", self.t)                          # ↑↓ 는 ☑ 만
+
+
+
 if __name__ == "__main__":
     unittest.main()
