@@ -146,6 +146,70 @@ def html_text(fragment: str, limit: int = 4000) -> str:
     return text[:limit]
 
 
+# v14.1.4(소유자 "업데이트 알림은 핵심만, 업데이트 사항마다 1줄"): 알림 창에는 릴리스 노트 전체가 아니라
+# 맨 위 목록의 항목(바깥 '- ' 줄)만 한 줄씩 보인다. 아래 목록(원인 · 지금 …)과 '### 업데이트' · '### 처음 설치' 절은 뺀다.
+SUMMARY_MAX = 8        # 줄 수
+SUMMARY_LINE = 90      # 한 줄 글자 수
+_ISSUE_REF = re.compile(r"\s*[(（]\s*이슈\s*#?\d+(?:\s*[,·]\s*#?\d+)*\s*[)）]")
+
+
+def _one_line(text: str) -> str:
+    t = _ISSUE_REF.sub("", re.sub(r"\*\*|__|`", "", text))
+    t = re.sub(r"\s+", " ", t).strip()
+    return t if len(t) <= SUMMARY_LINE else t[:SUMMARY_LINE - 1].rstrip() + "…"
+
+
+class _Top(HTMLParser):
+    """GitHub 이 그린 노트 HTML 에서 첫 h3 앞, 바깥 목록(ul 1겹)의 li 글자만."""
+
+    def __init__(self):
+        super().__init__()
+        self.depth, self.stop, self.cur, self.items = 0, False, None, []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "h3" and self.depth == 0:
+            self.stop = True
+        elif tag in ("ul", "ol"):
+            self.depth += 1
+        elif tag == "li" and self.depth == 1 and not self.stop:
+            self.cur = []
+
+    def handle_endtag(self, tag):
+        if tag in ("ul", "ol"):
+            self.depth -= 1
+        elif tag == "li" and self.depth == 1 and self.cur is not None:
+            self.items.append("".join(self.cur))
+            self.cur = None
+
+    def handle_data(self, data):
+        if self.cur is not None and self.depth == 1:
+            self.cur.append(data)
+
+
+def _bullets(lines: list[str]) -> str:
+    out = [ln for ln in (_one_line(x) for x in lines) if ln][:SUMMARY_MAX]
+    return out[0] if len(out) == 1 else "\n".join("· " + ln for ln in out)   # 하나면 점 없이
+
+
+def summary_html(fragment: str) -> str:
+    """노트 HTML → 업데이트 사항마다 한 줄. 목록이 없으면 글의 첫 줄."""
+    t = _Top()
+    t.feed(fragment or "")
+    if t.items:
+        return _bullets(t.items)
+    first = next((ln for ln in html_text(fragment).splitlines() if ln.strip()), "")
+    return _one_line(first)
+
+
+def summary_text(md: str) -> str:
+    """노트 글(Markdown · OneDrive 게시 글) → 업데이트 사항마다 한 줄. 바깥 '- ' 줄이 없으면 줄마다."""
+    body = re.split(r"(?m)^#{3,}\s", md or "", maxsplit=1)[0]
+    lines = [ln[2:] for ln in body.splitlines() if re.match(r"[-*] ", ln)]
+    if not lines:
+        lines = [ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    return _bullets(lines)
+
+
 def parse_feed(xml_bytes: bytes) -> list[dict]:
     """Release entries `[{tag, version, notes, at}]`, only plain `v13.x.y` and later tags, newest version first."""
     ns = {"a": "http://www.w3.org/2005/Atom"}
@@ -159,7 +223,7 @@ def parse_feed(xml_bytes: bytes) -> list[dict]:
         if not m:
             continue
         content = e.findtext("a:content", default="", namespaces=ns)
-        out.append(dict(tag=tag, version=m.group(1), notes=html_text(content),
+        out.append(dict(tag=tag, version=m.group(1), notes=summary_html(content),
                         at=(e.findtext("a:updated", default="", namespaces=ns) or "")[:16].replace("T", " ")))
     return sorted(out, key=lambda r: parse_version(r["version"]), reverse=True)
 
@@ -185,7 +249,7 @@ def latest_onedrive(save_dir: str) -> dict | None:
     name = str(data.get("file", ""))
     if not m or not re.fullmatch(re.escape(ZIP_PREFIX) + VERSION_PAT + re.escape(ZIP_SUFFIX), name):
         return None
-    return dict(tag="v" + data["version"], version=data["version"], notes=str(data.get("notes", ""))[:4000],
+    return dict(tag="v" + data["version"], version=data["version"], notes=summary_text(str(data.get("notes", ""))[:4000]),
                 at=str(data.get("published_at", "")), source="onedrive", file=name,
                 size=int(data.get("size", 0) or 0), sha256=str(data.get("sha256", "")))
 

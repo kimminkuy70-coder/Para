@@ -46,10 +46,26 @@ def source_zip(dest: Path, version: str, extra: dict | None = None, top="Para-14
 
 
 class FeedTest(unittest.TestCase):
+    def test_notes_summary_one_line_per_change(self):
+        """v14.1.4(소유자): 알림 = 업데이트 사항마다 한 줄 — 아래 목록 · '### 업데이트' 절 · 이슈 번호 · 굵게 표시는 뺀다."""
+        html = ('<h2>Camtek AOI Manager v14.1.4 — 제목</h2><ul><li><strong>첫째 고침.</strong> (이슈 <a href="x">#75</a>)'
+                '<ul><li>종전: 자세한 설명</li></ul></li><li>둘째 고침</li></ul><h3>업데이트</h3><ul><li>업데이트 알림으로 받으십시오</li></ul>')
+        self.assertEqual(au.summary_html(html), "· 첫째 고침.\n· 둘째 고침")
+        md = "## 제목\n\n- **첫째 고침.** (이슈 #75)\n  - 종전: 설명\n- 둘째 고침\n\n### 업데이트\n\n- 업데이트 알림\n"
+        self.assertEqual(au.summary_text(md), "· 첫째 고침.\n· 둘째 고침")
+        self.assertEqual(au.summary_text("노트"), "노트")
+        self.assertEqual(au.summary_html("<p>글만</p>"), "글만")
+        self.assertTrue(au.summary_text("- " + "가" * 200).endswith("…"))
+        self.assertEqual(len(au.summary_text("\n".join(f"- {i}" for i in range(20))).splitlines()), au.SUMMARY_MAX)
+        notes = (ROOT / "docs" / "release_notes" / f"v{au.__version__}.md").read_text(encoding="utf-8")
+        for ln in au.summary_text(notes).splitlines():                  # 이번 판 노트도 한 줄씩 짧게
+            self.assertLessEqual(len(ln), au.SUMMARY_LINE + 2)
+
+
     def test_only_plain_v13_and_later_tags_newest_first_with_text_notes(self):
         e = au.parse_feed(FEED)
         self.assertEqual([x["tag"] for x in e], ["v14.0.10", "v13.0.9"])   # v14 > v13, rc and v12 ignored
-        self.assertIn("고친 것", e[0]["notes"])
+        self.assertEqual(e[0]["notes"], "A")                   # v14.1.4: 바깥 목록만 한 줄씩(제목 · 아래 절 빼고)
         self.assertNotIn("<", e[0]["notes"])
 
     def test_version_compare(self):

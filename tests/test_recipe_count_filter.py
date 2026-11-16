@@ -1,4 +1,4 @@
-"""Para #75: Defect 분석(대규모) 5-1 의 Recipe 고르기 개수가 Lot · Slot · 분류 · 범위 필터를 따른다.
+"""Para #75 · v14.1.4: Defect 분석(대규모) 5-1 의 Recipe 고르기 개수가 Lot · Slot · 분류 · 범위 필터를 따른다.
 
 종전(#73)에는 등록한 전체 Defect 로 Recipe 별 개수를 세어, Lot 필터를 걸어도 괄호 안 수가 그대로였다.
 HTML(AOI_Contrast_Wizard_rev6.html)의 readFlt ~ fltPass, rcp5, bigRcpFill, bigBuild 만 잘라 node 로 돌린다(node 가 없으면 건너뜀).
@@ -24,14 +24,18 @@ const flt={vals:{sort:'',rcp:''},querySelector(q){const m=/data-f="(\w+)"/.exec(
   return {get value(){return flt.vals[k]??''},set value(v){flt.vals[k]=v}}}};
 EL.rcp={_v:'',innerHTML:'',get value(){return this._v},set value(v){this._v=v}};
 EL.lot=mkSel('');EL.slot=mkSel('');
-const $=q=>q==='#bigFlt'?flt:q==='#bigFlt [data-f="rcp"]'?EL.rcp:q==='#bigLot'?EL.lot:q==='#bigSlot'?EL.slot:null;
+const box=()=>({innerHTML:'',textContent:'',classList:{toggle(){}}});EL.lotOff=box();EL.cls=box();EL.lotSum=box();EL.lotBox=box();
+const baseName=p=>p.split('/').pop();
+const $=q=>q==='#bigLotOff'?EL.lotOff:q==='#bigCls'?EL.cls:q==='#bigLotSum'?EL.lotSum:q==='#bigLotBox'?EL.lotBox:q==='#bigFlt'?flt:q==='#bigFlt [data-f="rcp"]'?EL.rcp:q==='#bigLot'?EL.lot:q==='#bigSlot'?EL.slot:null;
 const mkScan=(lot,slot,rec,k1,c,rv)=>({lotPath:lot,slot,slotName:slot,errors:[],rv,k1,k2:k1,
   cols:{n:rec.length,rec:Uint8Array.from(rec),c:Float64Array.from(c),area:new Float64Array(rec.length).fill(1),w:new Float64Array(rec.length).fill(1),l:new Float64Array(rec.length).fill(1),
     x:new Float64Array(rec.length),y:new Float64Array(rec.length),ax:new Float64Array(rec.length),ay:new Float64Array(rec.length),id:new Int32Array(rec.length)}});
 const scans=[mkScan('/L1','S1',[0,0,1],['A','B','A'],[10,20,30],{recipe:'PI'}),mkScan('/L2','S2',[0,1,1,2],['A','A','B','A'],[10,20,30,40],{recipe:'PI'})];
 const BIG={scans,sort:'',clsOff1:new Set(),clsOff2:new Set(),lotOff:new Set()};
 const bigSources=()=>BIG.scans;
-const run=()=>{const V=bigBuild();bigRcpFill(V.rc);return {m:V.m,rc:Object.fromEntries([...V.rc].sort()),opts:EL.rcp.innerHTML}};
+BIG.facet={lots:['/L1','/L2'],lotName:new Map([['/L1','L1'],['/L2','L2']]),c1:['A','B'],c2:['A','B']};
+const ob=m=>Object.fromEntries([...m].sort());
+const run=()=>{const V=bigBuild();bigRcpFill(V.rc);bigFacetFill(V);return {m:V.m,rc:ob(V.rc),opts:EL.rcp.innerHTML,lot:ob(V.nLot),c1:ob(V.n1),c2:ob(V.n2),lotHtml:EL.lotOff.innerHTML,clsHtml:EL.cls.innerHTML}};
 const out={};
 out.all=run();
 EL.lot.value='/L1';out.lot=run();EL.lot.value='';
@@ -56,6 +60,7 @@ class RecipeCountFollowsFilter(unittest.TestCase):
         t = html.read_text(encoding="utf-8")
         code = (cut(t, "function readFlt(", "/** 필터 줄 입력") + "\n"
                 + cut(t, "const rcp5=", "\n") + "\n"
+                + cut(t, "function bigFacetFill(", "/** Para #75: 5-1 Recipe") + "\n"
                 + cut(t, "function bigRcpFill(", "/** 필터 → 정렬") + "\n"
                 + cut(t, "function bigBuild(", "const bigAt="))
         r = subprocess.run(["node", "-e", STUB.replace("const out={};", code + "\nconst out={};", 1)],
@@ -80,6 +85,19 @@ class RecipeCountFollowsFilter(unittest.TestCase):
                 # Recipe 를 고르면 목록은 그 Recipe 만, 개수는 다른 필터 기준(다른 Recipe 로 바꿀 수 있게)
                 self.assertEqual(o["rcpLot"]["m"], 1)
                 self.assertEqual(o["rcpLot"]["rc"], {"0 (PI)": 2, "1": 1})
+                # v14.1.4: Lot 제외 · 분류 칸 개수도 다른 필터를 따른다(자기 묶음은 빼고 셈)
+                self.assertEqual((o["all"]["lot"], o["all"]["c1"]), ({"/L1": 3, "/L2": 4}, {"A": 5, "B": 2}))
+                self.assertEqual(o["lotOff"]["lot"], {"/L1": 3, "/L2": 4})           # 끈 Lot 도 자기 개수는 보임
+                self.assertEqual(o["lotOff"]["c1"], {"A": 3, "B": 1})               # 끈 Lot 은 분류 개수에서 빠짐
+                self.assertEqual(o["cls"]["c1"], {"A": 5, "B": 2})                  # 자기 묶음(첫번째 분류)은 그대로
+                self.assertEqual(o["cls"]["c2"], {"A": 5})                          # 다른 묶음(재분류)은 줄어듦
+                self.assertEqual(o["cls"]["lot"], {"/L1": 2, "/L2": 3})
+                self.assertEqual(o["contrast"]["lot"], {"/L1": 1, "/L2": 2})
+                self.assertEqual(o["contrast"]["c1"], {"A": 2, "B": 1})
+                self.assertEqual(o["rcpLot"]["lot"], {"/L1": 1})                    # Lot 고르기 + Recipe 1
+                self.assertIn("L1 <span class=\"muted\">1</span>", o["rcpLot"]["lotHtml"])
+                self.assertIn("L2 <span class=\"muted\">0</span>", o["rcpLot"]["lotHtml"])  # 0개여도 칸은 남음
+                self.assertIn("B <span class=\"muted\">0</span>", o["keep"]["clsHtml"])
                 # 고른 Recipe 가 필터로 0개가 되어도 칸에 남는다
                 self.assertEqual(o["keep"]["m"], 0)
                 self.assertIn("2 (0)", o["keep"]["opts"])
