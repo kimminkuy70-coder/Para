@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #75 v14.1.3: 5-1 Recipe 고르기 개수가 필터를 따름 (2026-11-16 KST, `version_v14`)
+
+- 마지막 갱신 2026-11-16 · 기준 커밋 `9964247` · 이슈 #75("v14.1.3 업데이트 사항": "defect 분석(대규모) 탭에서 Lot 필터 걸었는데 Recipe 에서 수량이 반영이 안되고 여전히 전체 수량 … 다른 필터 사항에 대해서도 필터 먹이면 그에 맞게 Recipe 별로 수량이 반영되게"). 첨부 없음.
+- 원인: rev6 HTML `bigLots()` 가 Recipe 고르기 칸(`#bigFlt [data-f="rcp"]`)의 개수를 등록한 전체 Slot · 전체 Defect 로 셈(#73). Lot · Slot 고르기 바꿈은 `bigRefresh` 만 불러 개수가 다시 계산되지도 않았음.
+- 한 일: `bigBuild()` 가 같은 루프에서 Recipe 를 뺀 모든 필터(Lot · Slot 고르기, Lot 제외, 첫번째 분류 · 재분류, Contrast · Area · Width · Length)를 지난 Defect 를 Recipe 별로 셈(`V.rc`, 글 = `rcp5` 와 같음),
+  새 `bigRcpFill(n)` 이 칸을 채움(`bigRefresh` 에서 매번). `bigLots` 의 종전 계산은 지움. 고른 Recipe 는 0개여도 '(0)' 으로 남김. dist 복사본 같게. 시험 `tests/test_recipe_count_filter.py`(node 로 bigBuild 부분 실행). 판 14.1.3.
+- 해석(확인 전): Recipe 개수는 **Recipe 필터 자신은 빼고** 셈(Recipe 를 골라도 다른 Recipe 개수가 보여 바꿀 수 있게 — 일반적인 facet 방식). 첫번째 분류 · 재분류 · Lot 제외 칸의 개수는 이번 요청 밖이라 종전처럼 전체 수 — 이것도 필터를 따르게 할지 소유자 확인 전.
+- 시험: `PYTHONPATH=vendor` 로 Python 시험 80개 파일 통과 · `tools/check_project.py` OK. 화면 시험(`test_desktop_ui.mjs`)은 안 돌림(HTML 안 계산만 바뀜). **Windows · 실제 Lot 에서는 확인 못 함.**
+- 릴리스: v14.1.3(`docs/release_notes/v14.1.3.md`) — `version_v14` push 로 `v14.yml` 이 Release 생성. 결과는 이슈 #75 완료 댓글.
+- 참고: 같은 HTML 원본이 ccr 브랜치(rev6)에도 있음 — 이번 고침도 Para `version_v14` 에만(#74 와 같음).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #75 | 대규모 탭 Recipe 별 개수가 Lot 등 필터를 따르게 | bigBuild 에서 필터 기준으로 셈, v14.1.3 |
+
 ## 최신 재개 — #74 v14.1.2: Surface.flt 레코드 크기를 Surface.flt.md 에서 (2026-11-15 KST, `version_v14`)
 
 - 마지막 갱신 2026-11-15 · 기준 커밋 `9e5ef40` · 이슈 #74("v14.1.2 업데이트 사항": Lot 25 Slot 전부 '잘못된 Record Size: N byte 는 152 로 나누어떨어지지 않음' → "버그 원인 파악하고 수정해"). 첨부 없음(본문 오류 글만). 소유자 세션 메시지: "버그 고쳤으면 릴리즈까지해".
