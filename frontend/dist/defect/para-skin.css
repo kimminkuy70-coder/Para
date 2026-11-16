@@ -123,6 +123,27 @@ body.pskin .clsck:has(input:checked),body.pskin #setPick label:has(input:checked
 body.pskin .lotbox.has>summary{border-color:var(--warn);color:var(--warn)}
 body.pskin .clsg>b{font-size:12.5px;color:var(--lbl);margin-right:4px}
 
+/* 5-1 필터(v14.1.5, 소유자 "필터 제목 · 행 간격 구분 · 값 범위 일렬 · 분류 하위 목록은 간격에 맞춰 · Lot 제외는 다른 줄"):
+   줄마다 왼쪽 제목 · 오른쪽 내용, 줄 사이 가는 선. 분류 · Lot 칸 = 같은 너비 격자(이름 왼쪽 · 개수 오른쪽) */
+body.pskin .fgrid{padding:6px 22px 4px}
+body.pskin .fgrid .frow{grid-template-columns:140px minmax(0,1fr);gap:8px 18px;padding:13px 0}
+body.pskin .fgrid .fh{font-size:13px;font-weight:800;color:var(--navy);padding-top:7px;letter-spacing:-.2px}
+body.pskin .fgrid .fb{gap:10px 26px}
+body.pskin .fgrid .fb label>b{font-size:12.5px;color:var(--lbl)}
+body.pskin .fgrid .frng label.rng{gap:6px}body.pskin .fgrid .frng input[type=number]{width:88px}
+body.pskin .fgrid .chipgrid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+body.pskin .fgrid .chipgrid .clsck{display:flex;border-radius:8px;padding:6px 12px;min-height:34px;gap:8px}
+body.pskin .fgrid .chipgrid .clsck>.muted{font-size:12px;font-weight:700;line-height:1}
+body.pskin .fgrid .lotbox>summary{list-style:none}body.pskin .fgrid .lotbox>summary::-webkit-details-marker{display:none}
+body.pskin .fgrid .fx button{min-height:30px;padding:4px 12px;font-size:12.5px}
+body.pskin .fgrid .fact{padding:12px 0 10px}
+
+/* 5-3 흑백 GL 측정 = 테두리 박스(v14.1.5) */
+body.pskin .glbox{border-color:var(--line);border-left-color:#22d3ee;border-radius:10px;background:var(--band);padding:10px 16px 12px}
+body.pskin .glbox .glhd>b{color:var(--navy);font-size:14px}
+body.pskin .glbox .glshow{padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12.5px}
+body.pskin .glbox .glshow:has(input:checked){border-color:#22d3ee;background:color-mix(in srgb,#22d3ee 12%,var(--panel))}
+
 /* 보기 고르기(하나씩 크게 · 격자) = 프로그램 세그먼트, 쌍 고르기 = 알약 */
 body.pskin .viewtabs{gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
 body.pskin .viewtabs button{border:0;border-radius:0;min-height:34px;padding:6px 14px}

@@ -1,5 +1,25 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.1.5: 새 창 빨간 네모 · 측정 원 켜고 끄기 · '장비 스캔 분류 · 리뷰 결과' · 5-1 필터 줄 정리 (2026-11-16 KST, `version_v14`)
+
+- 마지막 갱신 2026-11-16 · 기준 커밋 `00767be` · 이슈 없음(소유자 세션 대화): "14.1.5 버전 업데이트 사항이야 릴리즈까지해" —
+  ① 흑백 이미지 빨간 네모 on/off(새 창으로 크게 보기에서) ② 측정 원 on/off(5-3 상단 흑백 GL 측정 구간), 흑백 GL 측정은 따로 박스로 경계 구분
+  ③ '첫번째 분류' → '장비 스캔 분류', '재분류' → '리뷰 결과'(모든 곳) ④ 필터 제목 · 행 간격 구분, Contrast · Area · Width 일렬, 분류 하위 목록은 간격에 맞춰, Lot 제외는 다른 줄, 나머지도 줄바꿈.
+- 한 일(rev6 HTML · para-skin.css, dist 같게):
+  ① 새 창 도구 막대 [🟥 빨간 네모](`PWB` · `cw.pwBox` · B 키) → `pwRedraw()` 가 캔버스마다 `_redraw`(같은 크기로 다시 그림 → 확대 · 스크롤 유지), 프레임 칸 범례 글(`pwLegend`)도 바뀜.
+  ② 5-3 `#glBox`(테두리 · 왼쪽 하늘색 띠, 머리 = 제목 + [⭕ 측정 원 보기]) · `GLC.show`(`cw.glShow`) → `glShowSet` = 5-3 다시 그림 + 새 창 `pwRedraw`. 격자 작은 사진은 원 있는 것(`g`) · 없는 것(`g0`) 둘 다 준비(켜고 끌 때 다시 안 읽음).
+     그림 함수 `cgCropCanvas(…, opt)` · `cgFrameCanvas(…, o)` = `{box, ring}`(기본 box 켬 · ring = GLC.show). 엑셀 사진(`xlPhotos`)은 빨간 네모 늘 · 원은 GLC.show 를 따름(해석).
+  ③ 열 이름 · 정보 칸 · 필터 · 목록/결과 CSV 머리(`장비스캔분류` · `리뷰결과`) · `XL_COLS` · `FL_HEAD` · `colorgray.FINAL_COLS` + `FINAL_ALIASES`(옛 CSV 열 이름도 읽음). 리뷰PC 정보 칸의 '분류: N'(코드)은 그대로.
+  ④ `#bigFlt` = `.fgrid` 줄(`.frow` = `.fh` 제목 140px · `.fb` 내용): Lot · Slot / Lot 제외(접기 그대로, 칸 = `.chipgrid`) / 장비 스캔 분류 · 리뷰 결과(`bigFacetFill` 의 `grp` 가 줄째 그림) / 값 범위(`fltRngHtml`, 4개 한 줄) /
+     Recipe / 정렬 / [필터 지우기] · [목록 CSV]. 칸 `fChip` = 체크 · 이름(`.nm`, 길면 …) · 개수(오른쪽). Step 3 · 4 필터 줄(`fltHtml`)은 종전 그대로.
+- 시험: Python 81개 파일 통과(새 `tests/test_defect_view_toggles.py`, `test_recipe_count_filter.py` · `test_colorgray_final.py` 갱신), `check_project` OK, `npm run build`(dist = defect 파일만 바뀜),
+  `test_desktop_ui.mjs` 통과(필터 줄 제목 · 값 범위 한 줄 · 측정 원 끄면 5-3 사진이 바뀌고 켜면 같아짐 · 새 창 빨간 네모 끄면 두 Gray 사진이 바뀌고 확대 그대로 · B 로 다시 켬).
+  **Windows · 실제 Lot 에서는 확인 못 함.** 원본 HTML(ccr 브랜치)에는 #74 ~ v14.1.5 모두 아직 안 넣음 — 넣을지 소유자 확인 전.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| (세션) | 빨간 네모 · 측정 원 on/off, GL 박스, 분류 이름, 필터 줄 정리 | v14.1.5 |
+
 ## 최신 재개 — v14.1.4: Lot 제외 · 분류 개수도 필터를 따름 + 업데이트 알림 = 사항마다 한 줄 (2026-11-16 KST, `version_v14`)
 
 - 마지막 갱신 2026-11-16 · 기준 커밋 `9a8cdf5` · 이슈 없음(소유자 세션 대화, #75 후속): "V14.1.4 버전으로 업데이트 해 확인 필요 사항에 대해서도 필터를 따르게해" ·

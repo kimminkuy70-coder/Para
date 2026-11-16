@@ -819,13 +819,39 @@ try{
   assert.deepEqual(pairs.find(p=>p[0]===0),[0,'ok','C1.jpg','F1.t.1.jpg'],JSON.stringify(pairs));
   assert.equal(await wzf.evaluate(()=>window.__cw.pcPath('RCP/SETUP1/LOT_A/W01/C1.jpg')),join(slotDir,'C1.jpg'));   // 전체 경로 = 엔진이 아는 고른 폴더
   assert.equal(await wz.locator('#bigBase').isVisible(),false);                                                      // [원본 폴더 경로] 칸 없음
+  // v14.1.5 5-1 필터 = 줄마다 제목 · 내용(Lot 제외 · 분류 따로 줄), 값 범위 4개는 한 줄, 분류 이름 = 장비 스캔 분류 · 리뷰 결과
+  assert.deepEqual(await wz.locator('#bigFlt .frow>.fh').allInnerTexts(),['Lot · Slot','Lot 제외','장비 스캔 분류','리뷰 결과','값 범위','Recipe','정렬']);
+  const rngY=await wz.locator('#bigFltIn label.rng').evaluateAll(l=>l.map(x=>Math.round(x.getBoundingClientRect().top)));
+  assert.equal(rngY.length,4);assert.equal(new Set(rngY).size,1,'Contrast · Area · Width · Length on one line: '+rngY);
+  assert.equal(await wz.locator('#bigCls .frow .chipgrid .clsck').count(),2);
+  const bigHead=await wz.locator('#bigList .bh').innerText();
+  assert(bigHead.includes('장비 스캔 분류')&&bigHead.includes('리뷰 결과')&&!/첫번째|재분류/.test(bigHead),bigHead);
   // 스크롤 한 겹: iframe 높이 = 내용 높이(페이지만 스크롤)
   await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Defect 분석(대규모)"]'),h=f.contentDocument.body.getBoundingClientRect().height;return h>400&&Math.abs(f.getBoundingClientRect().height-Math.ceil(h))<=1});
   await wz.locator('[data-b5="2"]').click();
   await wz.locator('#b5list .br',{hasText:'Color·Gray 매칭 완료'}).first().waitFor();                                // 종전 '짝 완료'
   await wz.locator('#toB3').click();await wz.locator('#c5Color canvas').waitFor({timeout:30000});   // 사진 = 엔진에서
+  // v14.1.5 흑백 GL 측정 = 따로 박스, [⭕ 측정 원 보기] 를 끄면 5-3 사진에서 측정 원만 빠짐(켜면 다시)
+  for(const id of ['glShow','glR','glSet','glRun','glHist'])assert.equal(await wz.locator(`#glBox #${id}`).count(),1,id);
+  await wz.locator('#c5Gray canvas').waitFor();
+  const grayPx=()=>wzf.evaluate(()=>document.querySelector('#c5Gray canvas').toDataURL());
+  const ringOn=await grayPx();await wz.locator('#glShow').uncheck();
+  await wzf.waitForFunction(o=>{const c=document.querySelector('#c5Gray canvas');return c&&c.toDataURL()!==o},ringOn);
+  await wz.locator('#glShow').check();await wzf.waitForFunction(o=>{const c=document.querySelector('#c5Gray canvas');return c&&c.toDataURL()===o},ringOn);
   const [pop]=await Promise.all([page.waitForEvent('popup'),wz.locator('#c5list .br').nth(0).dblclick()]);
-  await pop.locator('#fx canvas').waitFor();await pop.close();
+  await pop.locator('#fx canvas').waitFor();
+  // v14.1.5 새 창 [🟥 빨간 네모]: 끄면 Gray Crop · Gray 프레임에서 빨간 네모만 빠지고(같은 캔버스 — 확대 그대로), B 키로 다시 켬
+  assert.equal(await pop.locator('#pwBox').isChecked(),true);
+  const popPx=()=>pop.evaluate(()=>[...document.querySelectorAll('#fx canvas,#ff canvas')].map(c=>c.toDataURL()));
+  await pop.locator('#fx canvas').click();                                                           // 2배 확대
+  const zoomed=await pop.evaluate(()=>document.querySelector('#fx canvas').style.width);assert(zoomed,'zoomed in');
+  const boxOn=await popPx();await pop.locator('#pwBox').uncheck();
+  const boxOff=await popPx();assert(boxOff[0]!==boxOn[0]&&boxOff[1]!==boxOn[1],'red box removed from both gray pictures');
+  assert.equal(await pop.evaluate(()=>document.querySelector('#fx canvas').style.width),zoomed);      // 확대 그대로
+  assert.match(await pop.locator('#ff figcaption .lg').innerText(),/빨간 네모 끔/);
+  await pop.keyboard.press('b');await pop.waitForFunction(()=>document.getElementById('pwBox').checked);
+  assert.deepEqual(await popPx(),boxOn);
+  await pop.close();
   await wz.locator('#c5list').focus();await wz.locator('#c5list').press('Home');await wz.locator('#c5list').press(' ');
   await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
   await wz.locator('#c5saveCsv').click();await wzf.waitForFunction(()=>typeof window.__flc==='string');

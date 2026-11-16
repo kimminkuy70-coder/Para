@@ -22,7 +22,7 @@ from param_manager.desktop_colorgray import DesktopColorGray, KINDS_FINAL, KINDS
 from colorgray_fixture import COLOR_JPEG, make_wafer  # noqa: E402
 
 # HTML(AOI_Contrast_Wizard_rev6.html) FL_HEAD — 바꾸면 둘 다(시험이 dist 의 HTML 과 대조)
-FL_HEAD = ['5-1 #', 'Lot', 'Slot', 'ID', '첫번째 분류', '재분류', 'Recipe', 'Contrast(실제)', '상태', 'Area µm²', 'Width', 'Length',
+FL_HEAD = ['5-1 #', 'Lot', 'Slot', 'ID', '장비 스캔 분류', '리뷰 결과', 'Recipe', 'Contrast(실제)', '상태', 'Area µm²', 'Width', 'Length',
            'BoxW', 'BoxH', 'Wafer X', 'Wafer Y', 'Die (장비 Col, Row)', '흑백 GL 평균 (원)', 'Color 파일', 'Color 전체 경로', 'Gray 파일',
            'Gray 전체 경로', 'GrayPX(3168x1024기준)', 'GrayPY(3168x1024기준)', 'CropW', 'CropH', '매칭폴더', '매칭폴더(고른 폴더부터)',
            'Lot 경로', 'Zone', 'Region', '판정 비트', '분류 코드', 'Zone 이름', '판정 종류']
@@ -65,7 +65,7 @@ class FinalListTests(unittest.TestCase):
     def rows(self, absolute=True):
         f = lambda w: str(w) if absolute else "RCP/LOT_A/" + w.name   # noqa: E731
         return [
-            {"5-1 #": "3", "Lot": "LOT_A", "Slot": "W01", "ID": "7", "첫번째 분류": "B R Other", "재분류": "Accept", "Recipe": "1",
+            {"5-1 #": "3", "Lot": "LOT_A", "Slot": "W01", "ID": "7", "장비 스캔 분류": "B R Other", "리뷰 결과": "Accept", "Recipe": "1",
              "Contrast(실제)": "41.5", "BoxW": "12", "BoxH": "8", "Color 파일": "C1.jpg", "Gray 파일": "F1.t.1.jpg",
              "GrayPX(3168x1024기준)": "1100", "GrayPY(3168x1024기준)": "200", "매칭폴더": f(self.w1) if absolute else "",
              "매칭폴더(고른 폴더부터)": "RCP/LOT_A/W01", "Zone": "0", "판정 종류": "Event Defect"},
@@ -137,10 +137,21 @@ class FinalListTests(unittest.TestCase):
         self.assertTrue(st[4][2].startswith("매칭 폴더를 찾지 못함"), st[4])
         self.assertEqual(body[2][head.index("Box W×H")], "12×8")
         self.assertEqual(body[2][head.index("Contrast(실제)")], 41.5)
+        self.assertEqual((body[2][head.index("장비 스캔 분류")], body[2][head.index("리뷰 결과")]), ("B R Other", "Accept"))
         with zipfile.ZipFile(book) as z:
             self.assertEqual(len([n for n in z.namelist() if n.startswith("xl/media/")]), 6)   # 사진 3장 × 2줄
         self.assertEqual(_digest(self.rcp), before)                                    # 원본 읽기만
         self.assertEqual(sorted(names), ["W01", "W02"])
+
+    def test_old_class_column_names_still_read(self):
+        """v14.1.5: '첫번째 분류' → '장비 스캔 분류', '재분류' → '리뷰 결과'. v14.1.4 이하 HTML 이 저장한 CSV 의 옛 열 이름도 읽는다."""
+        self.assertNotIn("첫번째 분류", [c[0] for c in cg.FINAL_COLS])
+        self.assertNotIn("재분류", [c[0] for c in cg.FINAL_COLS])
+        old = {"5-1 #": "1", "첫번째 분류": "B R Other", "재분류": "Accept"}
+        self.assertEqual(cg._final_value({"row": old}, "장비 스캔 분류"), "B R Other")
+        self.assertEqual(cg._final_value({"row": old}, "리뷰 결과"), "Accept")
+        new = {"장비 스캔 분류": "X", "리뷰 결과": "Y", "첫번째 분류": "old"}
+        self.assertEqual(cg._final_value({"row": new}, "장비 스캔 분류"), "X")              # 새 이름이 먼저
 
     def test_relative_paths_need_the_chosen_folder(self):
         a = DesktopColorGray(_Config(str(self.base / "local")))

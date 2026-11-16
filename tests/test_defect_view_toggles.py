@@ -1,0 +1,113 @@
+"""v14.1.5 Defect 분석(대규모) 화면 — 소유자 세션 대화(2026-11-16):
+
+- 새 창으로 크게 보기: 흑백 사진(Gray Crop · Gray 프레임)의 Defect 빨간 네모 켜고 끄기([🟥 빨간 네모] · B 키, 이 PC 에 기억).
+- 5-3 흑백 GL 측정 = 따로 테두리 박스 + [⭕ 측정 원 보기](측정 원만 켜고 끔, GL 값은 그대로).
+- '첫번째 분류' → '장비 스캔 분류', '재분류' → '리뷰 결과'(화면 · CSV · 엑셀 전부).
+- 5-1 필터 = 줄마다 제목 · 내용(Lot · Slot / Lot 제외 / 장비 스캔 분류 / 리뷰 결과 / 값 범위 / Recipe / 정렬), 값 범위 4개 한 줄, 분류 칸 = 같은 너비 격자.
+
+실제로 그려지는지는 tools/test_desktop_ui.mjs(진짜 서버 + 엔진)가 본다. 여기서는 HTML · 겉모습 파일의 약속만.
+"""
+import re
+import unittest
+from html.parser import HTMLParser
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PUB, DIST = ROOT / "frontend" / "public" / "defect", ROOT / "frontend" / "dist" / "defect"
+HTML = PUB / "AOI_Contrast_Wizard_rev6.html"
+
+
+class _Ids(HTMLParser):
+    """id → 조상 id 목록."""
+    def __init__(self):
+        super().__init__()
+        self.stack, self.parents, self.classes = [], {}, {}
+    VOID = {"input", "br", "meta", "link", "img", "hr", "source", "col", "area", "base", "wbr"}
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if a.get("id"):
+            self.parents[a["id"]] = [i for _, i in self.stack if i]
+            self.classes[a["id"]] = (a.get("class") or "").split()
+        if tag not in self.VOID:
+            self.stack.append((tag, a.get("id")))
+
+    def handle_endtag(self, tag):
+        for k in range(len(self.stack) - 1, -1, -1):
+            if self.stack[k][0] == tag:
+                del self.stack[k:]
+                break
+
+
+class DefectViewToggles(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.t = HTML.read_text(encoding="utf-8")
+        body = cls.t[cls.t.index("<body>"):cls.t.index("<script>")]
+        cls.ids = _Ids()
+        cls.ids.feed(body)
+
+    def test_public_and_dist_same(self):
+        for name in ("AOI_Contrast_Wizard_rev6.html", "para-skin.css", "para-skin.js"):
+            self.assertEqual((PUB / name).read_bytes(), (DIST / name).read_bytes(), name)
+
+    def test_old_class_names_gone(self):
+        # 옛 이름은 '종전' 을 밝히는 설명 줄에만 남는다
+        for n, line in enumerate(self.t.splitlines(), 1):
+            if "첫번째" in line or "재분류" in line:
+                self.assertIn("종전", line, f"{n}: {line[:120]}")
+        for name in ("FL_HEAD", "XL_COLS", "VA=makeVT", "VB=makeVT", "VC=makeVT"):
+            i = self.t.index(name)
+            seg = self.t[i:self.t.index("\n", i)]
+            self.assertIn("장비 스캔 분류", seg, name)
+            self.assertIn("리뷰 결과", seg, name)
+        self.assertEqual(self.t.count("'장비스캔분류','리뷰결과'"), 2)          # 목록 CSV · 결과 CSV 머리
+
+    def test_gl_box(self):
+        p = self.ids.parents
+        for i in ("glShow", "glR", "glSet", "glRun", "glSt", "glBar", "glHist", "glSort", "glRngAll"):
+            self.assertIn("glBox", p[i], i)
+        self.assertIn("b5p3", p["glBox"])
+        self.assertIn("glbox", self.ids.classes["glBox"])
+        self.assertIn(".glbox{border:", self.t)
+        # 측정 원 = GLC.show(이 PC 에 기억), 그림 함수는 opt.ring 일 때만 원을 그린다
+        self.assertIn("GLC.show=localStorage.getItem('cw.glShow')!=='0'", self.t)
+        self.assertIn("if(opt.ring)glRing(", self.t)
+        self.assertIn("if(d&&o.ring)glRing(", self.t)
+        self.assertIn("if(opt.box)mark=cgDefBox(", self.t)
+        self.assertIn("if(o.box)cgDefBox(", self.t)
+        # 격자 작은 사진은 원 있는 것 · 없는 것 둘 다 준비(켜고 끌 때 사진을 다시 읽지 않음)
+        self.assertIn("t={c,g,g0,gl,err}", self.t)
+
+    def test_photo_window_red_box(self):
+        i = self.t.index("function photoWinInit(")
+        init = self.t[i:self.t.index("\nfunction photoWinFollow", i)]
+        self.assertIn('id="pwBox"', init)
+        self.assertIn("else if(k==='b'){pwBoxSet(!PWB.on)", init)
+        self.assertIn("PWB.on=localStorage.getItem('cw.pwBox')!=='0'", self.t)
+        show = self.t[self.t.index("async function photoWinShow("):self.t.index("// ── 5-3: 사진 정밀 조사")]
+        self.assertEqual(show.count("{box:PWB.on}"), 4)                        # 처음 그림 2 + 다시 그림 2
+        self.assertIn("_redraw=", show)
+        # 5-3 칸 · 엑셀 사진은 빨간 네모 그대로(새 창에서만 끔)
+        xl = self.t[self.t.index("async function xlPhotos("):self.t.index("/** 엑셀 열:")]
+        self.assertNotIn("box:", xl)
+
+    def test_filter_rows(self):
+        p = self.ids.parents
+        for i in ("bigLot", "bigSlot", "bigLotBox", "bigCls", "bigFltIn", "bigFltRcp", "bigFltSort", "bigCsv"):
+            self.assertIn("bigFlt", p[i], i)
+        self.assertIn("fgrid", self.ids.classes["bigFlt"])
+        heads = re.findall(r'<span class="fh">([^<]+)</span>', self.t[self.t.index('id="bigFlt"'):self.t.index('id="bigCnt"')])
+        self.assertEqual(heads, ["Lot · Slot", "Lot 제외", "값 범위", "Recipe", "정렬"])   # 분류 두 줄은 bigFacetFill 이 그림
+        self.assertIn("grp(1,'장비 스캔 분류',", self.t)
+        self.assertIn("grp(2,'리뷰 결과',", self.t)
+        self.assertIn(".fgrid .chipgrid{", self.t)
+        css = (PUB / "para-skin.css").read_text(encoding="utf-8")
+        self.assertIn("body.pskin .fgrid .frow{", css)
+        self.assertIn("body.pskin .glbox{", css)
+        # Step 3 · 4 필터 줄은 종전 그대로(한 줄 조각을 이어 붙임)
+        self.assertIn("function fltHtml(){return fltRngHtml()+fltRcpHtml()+fltSortHtml()+fltClrHtml()}", self.t)
+
+
+if __name__ == "__main__":
+    unittest.main()

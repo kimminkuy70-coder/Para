@@ -563,8 +563,10 @@ FINAL_COLOR_COL = "Color 파일"
 FINAL_MAX_ROWS = 5000                                 # CSV 는 한 번에 엔진으로 보낸다(4 MB 한도)
 FINAL_IMG_H = 180                                     # 사진 줄 높이(px) — HTML XL_IMG_H 와 같음
 # (제목, 폭 px, 사진 종류 또는 CSV 열 이름) — HTML 최종 목록 엑셀(XL_COLS)과 같은 차례 · 제목
+# v14.1.5(소유자 "첫번째 분류 → 장비 스캔 분류, 재분류 → 리뷰 결과"): v14.1.4 이하 HTML 이 저장한 CSV 의 옛 열 이름도 읽는다.
+FINAL_ALIASES = {"장비 스캔 분류": ("첫번째 분류",), "리뷰 결과": ("재분류",)}
 FINAL_COLS = [("5-1 #", 52, "5-1 #"), ("Lot", 130, "Lot"), ("Slot", 110, "Slot"), ("ID", 60, "ID"),
-              ("첫번째 분류", 130, "첫번째 분류"), ("재분류", 130, "재분류"), ("Recipe", 110, "Recipe"),
+              ("장비 스캔 분류", 130, "장비 스캔 분류"), ("리뷰 결과", 130, "리뷰 결과"), ("Recipe", 110, "Recipe"),
               ("Contrast(실제)", 96, "Contrast(실제)"),
               ("Color", 250, "img:color_view"), ("Gray Crop (빨간 네모 = Defect)", 250, "img:crop_mark"),
               ("Gray 프레임 (빨간 네모 = Defect · 노란 상자 = Crop 범위)", 570, "img:frame_mark"),
@@ -678,6 +680,8 @@ def _final_value(item: dict, key: str):
     if key == "#gray_file":
         return base_name(rec["gray_file"]) if rec else row.get("Gray 파일", "")
     v = str(row.get(key, "") or "").strip()
+    for old in FINAL_ALIASES.get(key, ()):
+        v = v or str(row.get(old, "") or "").strip()
     if re.fullmatch(r"-?\d+", v):
         return int(v)
     if re.fullmatch(r"-?\d+\.\d+", v):

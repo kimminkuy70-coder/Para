@@ -12,6 +12,10 @@
   스크롤 한 겹: iframe 높이 = 내용 높이(para-skin.js → postMessage), 로딩창 · 같은 창 사진 칸은 '보이는 부분'(`--vt` · `--vh`)에, 같은 창 칸이 뜨면 페이지 스크롤 잠금.
   HTML 이 목록에 주는 focus() 는 preventScroll(페이지가 끌려 내려가지 않게), 단계가 바뀌면 프로그램이 칸 맨 위를 보여 줌.
   원본은 `ccr-7401b37d-bwze1e` 의 `AOI_Contrast_Wizard_rev6.html` — **같은 내용으로 둔다(고치면 둘 다, 시험도 그쪽 `tools/test_contrast_wizard_rev6.mjs`)**. HTML 의 `PARA` 연결부가 프로그램 안에서만 켜진다.
+- **v14.1.5 화면(소유자 2026-11-16)**: 분류 이름 = **'장비 스캔 분류'(종전 '첫번째 분류', orgReclassify) · '리뷰 결과'(종전 '재분류', reclassify)** — 화면 · 목록/결과 CSV(`장비스캔분류` · `리뷰결과`) ·
+  최종 목록 CSV(`FL_HEAD`) · 엑셀 전부. `colorgray.FINAL_ALIASES` 가 옛 CSV 열 이름도 읽는다. 5-1 필터 = `.fgrid` 줄(제목 `.fh` · 내용 `.fb`, 분류 · Lot 칸 = `.chipgrid` 같은 너비 격자, 값 범위 한 줄).
+  새 창 [🟥 빨간 네모](B 키, `cw.pwBox`) = 새 창의 Gray 사진에서만, 그 자리에서 다시 그림(확대 유지). 5-3 흑백 GL = `#glBox` 테두리 박스 + [⭕ 측정 원 보기](`GLC.show`, `cw.glShow` —
+  5-3 · 격자 · 새 창 · 엑셀 사진). 그림 함수 `cgCropCanvas` · `cgFrameCanvas(…, {box, ring})`. 시험 `tests/test_defect_view_toggles.py` + `test_desktop_ui.mjs`.
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

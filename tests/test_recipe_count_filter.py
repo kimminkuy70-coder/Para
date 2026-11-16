@@ -60,7 +60,7 @@ class RecipeCountFollowsFilter(unittest.TestCase):
         t = html.read_text(encoding="utf-8")
         code = (cut(t, "function readFlt(", "/** 필터 줄 입력") + "\n"
                 + cut(t, "const rcp5=", "\n") + "\n"
-                + cut(t, "function bigFacetFill(", "/** Para #75: 5-1 Recipe") + "\n"
+                + cut(t, "const fChip=", "/** Para #75: 5-1 Recipe") + "\n"
                 + cut(t, "function bigRcpFill(", "/** 필터 → 정렬") + "\n"
                 + cut(t, "function bigBuild(", "const bigAt="))
         r = subprocess.run(["node", "-e", STUB.replace("const out={};", code + "\nconst out={};", 1)],
@@ -89,18 +89,26 @@ class RecipeCountFollowsFilter(unittest.TestCase):
                 self.assertEqual((o["all"]["lot"], o["all"]["c1"]), ({"/L1": 3, "/L2": 4}, {"A": 5, "B": 2}))
                 self.assertEqual(o["lotOff"]["lot"], {"/L1": 3, "/L2": 4})           # 끈 Lot 도 자기 개수는 보임
                 self.assertEqual(o["lotOff"]["c1"], {"A": 3, "B": 1})               # 끈 Lot 은 분류 개수에서 빠짐
-                self.assertEqual(o["cls"]["c1"], {"A": 5, "B": 2})                  # 자기 묶음(첫번째 분류)은 그대로
-                self.assertEqual(o["cls"]["c2"], {"A": 5})                          # 다른 묶음(재분류)은 줄어듦
+                self.assertEqual(o["cls"]["c1"], {"A": 5, "B": 2})                  # 자기 묶음(장비 스캔 분류)은 그대로
+                self.assertEqual(o["cls"]["c2"], {"A": 5})                          # 다른 묶음(리뷰 결과)은 줄어듦
                 self.assertEqual(o["cls"]["lot"], {"/L1": 2, "/L2": 3})
                 self.assertEqual(o["contrast"]["lot"], {"/L1": 1, "/L2": 2})
                 self.assertEqual(o["contrast"]["c1"], {"A": 2, "B": 1})
                 self.assertEqual(o["rcpLot"]["lot"], {"/L1": 1})                    # Lot 고르기 + Recipe 1
-                self.assertIn("L1 <span class=\"muted\">1</span>", o["rcpLot"]["lotHtml"])
-                self.assertIn("L2 <span class=\"muted\">0</span>", o["rcpLot"]["lotHtml"])  # 0개여도 칸은 남음
-                self.assertIn("B <span class=\"muted\">0</span>", o["keep"]["clsHtml"])
+                self.assertIn("<span class=\"nm\">L1</span> <span class=\"muted\">1</span>", o["rcpLot"]["lotHtml"])
+                self.assertIn("<span class=\"nm\">L2</span> <span class=\"muted\">0</span>", o["rcpLot"]["lotHtml"])  # 0개여도 칸은 남음
+                self.assertIn("<span class=\"nm\">B</span> <span class=\"muted\">0</span>", o["keep"]["clsHtml"])
                 # 고른 Recipe 가 필터로 0개가 되어도 칸에 남는다
                 self.assertEqual(o["keep"]["m"], 0)
                 self.assertIn("2 (0)", o["keep"]["opts"])
+                # v14.1.5: 분류 칸 = 줄(제목 · 같은 너비 칸 격자), 이름 = 장비 스캔 분류 · 리뷰 결과(종전 첫번째 분류 · 재분류)
+                h = o["all"]["clsHtml"]
+                self.assertEqual(h.count('<div class="frow"><span class="fh">'), 2)
+                self.assertLess(h.index("장비 스캔 분류"), h.index("리뷰 결과"))
+                self.assertNotIn("첫번째", h)
+                self.assertNotIn("재분류", h)
+                self.assertEqual(h.count('class="chipgrid"'), 2)
+                self.assertIn('class="chipgrid"', o["all"]["lotHtml"])
 
     def test_public_and_dist_same(self):
         self.assertEqual(HTMLS[0].read_bytes(), HTMLS[1].read_bytes())
