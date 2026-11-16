@@ -140,6 +140,15 @@ body.pskin .fgrid .lotbox>summary{list-style:none}body.pskin .fgrid .lotbox>summ
 body.pskin .fgrid .fx button{min-height:30px;padding:4px 12px;font-size:12.5px}
 body.pskin .fgrid .fact{padding:12px 0 10px}
 
+/* 목록 위 검색 · ☑ 줄(v14.1.8): 돋보기 + 가로 칸, ☑ 개수 배지 = 5-3 최종 목록 배지와 같은 모양 */
+body.pskin .lsbar{gap:8px 14px;margin:10px 0}
+body.pskin .lsq{border-color:var(--bd2);border-radius:8px;min-height:36px;background:var(--panel)}
+body.pskin .lsbar .lsq input[type=search][aria-label]{border:0;min-height:0;padding:7px 0;background:transparent;box-shadow:none}
+body.pskin .lsq:focus-within{border-color:var(--pri);box-shadow:0 0 0 3px #10b98122}
+body.pskin .lsq.on{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
+body.pskin .lsn{min-height:30px;padding:3px 14px;font-size:13px;background:var(--dot);border-color:var(--bd2);color:var(--sub)}
+body.pskin .lsn.on{background:var(--navy);border-color:var(--navy);color:#fff}
+body.pskin .lsdef{font-size:12.5px;font-weight:600;color:var(--lbl)}
 /* 5-3 흑백 GL 측정 = 테두리 박스(v14.1.5) */
 /* 색(v14.1.7, 소유자 "테마에 맞게 색 다시 배치 — 너무 알록달록"): 프로그램 남색 · 초록 + 회색만. 박스 왼쪽 띠 = 남색, 켜짐 = 연한 초록,
    5-1 분류 · Lot 칸은 켜진 칸을 흰 바탕(체크 표시로 구분), 끈 칸만 회색 */

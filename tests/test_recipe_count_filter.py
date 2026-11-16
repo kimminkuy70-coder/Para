@@ -14,6 +14,7 @@ HTMLS = [ROOT / "frontend" / p / "defect" / "AOI_Contrast_Wizard_rev6.html" for 
 
 STUB = r"""
 const FLT_KEYS=[['c'],['a'],['w'],['l']];
+const LS={def:true};const lower=s=>s.toLowerCase();
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
 const esc=s=>String(s);
 const S={};const opts=()=>({pix:1,coord:'wafer'});
