@@ -861,6 +861,15 @@ try{
   assert.equal(await wz.locator('#themeBtn').isVisible(),false);assert.equal(await wz.locator('#inWin').isVisible(),false);
   assert.equal(await wz.locator('#pHelp').isVisible(),true);
   assert.equal(await wz.locator('#c5pickN.on').count(),0);
+  // v14.1.7 측정 원 그리기 창: 보이는 부분 안에 다 들어오고(잘리지 않음), 사진 양옆 ‹ › · ← → 로 다른 예시 사진
+  await wzf.evaluate(()=>{const c=window.__cw.C5;c.items.push(Object.assign({},c.items[0],{k:c.items.length}))});   // 예시 후보 2개
+  await wz.locator('#glSet').click();await wz.locator('#glDlg:not([hidden])').waitFor();
+  const dlgFit=await wzf.evaluate(()=>{const b=document.querySelector('#glDlg .bx').getBoundingClientRect(),o=document.querySelector('#glDlg').getBoundingClientRect();return b.top>=o.top-1&&b.bottom<=o.bottom+1});
+  assert(dlgFit,'measure-circle dialog fits the visible part');
+  assert.match(await wz.locator('#glDPos').innerText(),/예시 사진 1 \/ 2/);
+  await wz.locator('#glNext').click();await wz.locator('#glDPos',{hasText:'예시 사진 2 / 2'}).waitFor();
+  await wz.locator('#glCv').press('ArrowLeft');await wz.locator('#glDPos',{hasText:'예시 사진 1 / 2'}).waitFor();
+  await wz.locator('#glDNo').click();await wzf.evaluate(()=>window.__cw.C5.items.pop());
   await wz.locator('#c5list').focus();await wz.locator('#c5list').press('Home');await wz.locator('#c5list').press(' ');
   await wz.locator('#c5pickN.on',{hasText:'☑ 1개'}).waitFor();
   await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});

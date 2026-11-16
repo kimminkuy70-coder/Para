@@ -3,7 +3,7 @@
    토큰은 body 에만 덮어쓴다: 지도 · 벤다이어그램 캔버스는 :root 값을 읽으므로 종전 색 그대로. 어두운 화면(화면 테마)은 HTML 의 어두운 색을 쓴다. */
 :root:not([data-theme="dark"]) body.pskin{--bg:#eef2f4;--panel:#fff;--ink:#1f2937;--sub:#5f6b7a;--line:#e6ebf0;--navy:#37474f;--acc:#10b981;--chip:#edf2f7;
   --okbg:#ecfdf5;--ok:#0b5e46;--warnbg:#fff4e7;--warn:#79471c;--errbg:#fdecea;--err:#a33820;
-  --pri:#10b981;--pri2:#0d9668;--onpri:#04231a;--hov:#edf2f6;--th:#edf2f7;--thk:#425872;--hl:#f2fbf7;--sel:#e3f6ee;--chipon:#f3fbe4;--dot:#e7ecf0;--faint:#94a3b8;--band:#f7f9fb;--lbl:#52647d;--bd2:#bac7d6}
+  --pri:#10b981;--pri2:#0d9668;--onpri:#04231a;--hov:#edf2f6;--th:#edf2f7;--thk:#425872;--hl:#f2fbf7;--sel:#e3f6ee;--chipon:#ecf8f2;--dot:#e7ecf0;--faint:#94a3b8;--band:#f7f9fb;--lbl:#52647d;--bd2:#bac7d6}
 :root[data-theme="dark"] body.pskin{--pri:#10b981;--pri2:#34d399;--onpri:#04231a;--hov:#222c40;--th:#222c40;--thk:#c9d4e6;--hl:#1b2a2a;--sel:#173328;--chipon:#173328;--dot:#2c3850;--faint:#5d6b84;--band:#1b2433;--lbl:#9fabc2;--bd2:#3a4762}
 body.pskin{--sh1:0 1px 3px rgba(30,40,80,.08),0 1px 2px rgba(30,40,80,.06);--sh2:0 8px 24px rgba(30,40,80,.13),0 2px 6px rgba(30,40,80,.07);
   font:14px/1.55 'Malgun Gothic','맑은 고딕',system-ui,sans-serif;background:var(--bg);margin:0;position:relative;display:flow-root}
@@ -130,9 +130,9 @@ body.pskin .clsg>b{font-size:12.5px;color:var(--lbl);margin-right:4px}
 body.pskin .fgrid{padding:6px 22px 4px}
 body.pskin .fgrid .frow{grid-template-columns:140px minmax(0,1fr);gap:8px 18px;padding:13px 0}
 body.pskin .fgrid .fh{font-size:13px;font-weight:800;color:var(--navy);padding-top:7px;letter-spacing:-.2px}
-body.pskin .fgrid .fb{gap:10px 26px}
+body.pskin .fgrid .fb{gap:10px 22px}
 body.pskin .fgrid .fb label>b{font-size:12.5px;color:var(--lbl)}
-body.pskin .fgrid .frng label.rng{gap:6px}body.pskin .fgrid .frng input[type=number]{width:88px}
+body.pskin .fgrid .frng label.rng{gap:5px}body.pskin .fgrid .frng input[type=number]{width:72px}
 body.pskin .fgrid .chipgrid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
 body.pskin .fgrid .chipgrid .clsck{display:flex;border-radius:8px;padding:6px 12px;min-height:34px;gap:8px}
 body.pskin .fgrid .chipgrid .clsck>.muted{font-size:12px;font-weight:700;line-height:1}
@@ -141,18 +141,26 @@ body.pskin .fgrid .fx button{min-height:30px;padding:4px 12px;font-size:12.5px}
 body.pskin .fgrid .fact{padding:12px 0 10px}
 
 /* 5-3 흑백 GL 측정 = 테두리 박스(v14.1.5) */
+/* 색(v14.1.7, 소유자 "테마에 맞게 색 다시 배치 — 너무 알록달록"): 프로그램 남색 · 초록 + 회색만. 박스 왼쪽 띠 = 남색, 켜짐 = 연한 초록,
+   5-1 분류 · Lot 칸은 켜진 칸을 흰 바탕(체크 표시로 구분), 끈 칸만 회색 */
+body.pskin .fgrid .chipgrid .clsck:has(input:checked){border-color:var(--bd2);background:var(--panel)}
+body.pskin .fgrid .chipgrid .clsck.off{background:var(--band);border-color:var(--line)}
+/* 측정 원 그리기 창: 사진 칸 = 프로그램이 알려 준 보이는 높이(--vh)에 맞춤(iframe 의 100vh 는 내용 전체 높이라 쓰지 않음) */
+body.pskin .gldlg .bx{max-height:calc(var(--vh,100vh) - 24px);padding:16px 20px}
+body.pskin .gldlg #glCv{width:min(528px,calc(var(--vh,100vh) - 300px),calc(100vw - 150px))}
+body.pskin .glnav{min-height:0;height:84px;width:40px;padding:0;font-size:30px;font-weight:400;color:var(--navy)}
 /* 5-3 보기 박스 · 사진 모두 불러오기 · 최종 목록 개수 배지(v14.1.6, 소유자 "보기는 줄바꿈 · 박스로 구분, 불러오기는 다른 색, 최종 목록 개수는 구분이 가게") */
 body.pskin .c5stbox{border-color:var(--line);border-left-color:var(--navy);border-radius:10px;background:var(--band);padding:10px 16px}
 body.pskin .c5stbox .c5bh{color:var(--navy)}body.pskin .c5stbox label{font-size:12.5px;font-weight:600}
-body.pskin button.c5load{background:#4f46e5;border-color:#4f46e5;color:#fff;box-shadow:var(--sh1)}
-body.pskin button.c5load:hover:not(:disabled){background:#4338ca;border-color:#4338ca}
+body.pskin button.c5load{background:var(--sel);border-color:var(--pri);color:var(--ok);box-shadow:var(--sh1)}
+body.pskin button.c5load:hover:not(:disabled){background:#cdeedf;border-color:var(--pri2)}
 body.pskin .c5pickrow>b{font-size:14px;color:var(--navy)}
 body.pskin .c5pick{min-height:30px;padding:3px 14px;font-size:14px;background:var(--dot);border-color:var(--bd2);color:var(--sub)}
-body.pskin .c5pick.on{background:var(--pri);border-color:var(--pri);color:var(--onpri)}
-body.pskin .glbox{border-color:var(--line);border-left-color:#22d3ee;border-radius:10px;background:var(--band);padding:10px 16px 12px}
+body.pskin .c5pick.on{background:var(--navy);border-color:var(--navy);color:#fff}
+body.pskin .glbox{border-color:var(--line);border-left-color:var(--navy);border-radius:10px;background:var(--band);padding:10px 16px 12px}
 body.pskin .glbox .glhd>b{color:var(--navy);font-size:14px}
 body.pskin .glbox .glshow{padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12.5px}
-body.pskin .glbox .glshow:has(input:checked){border-color:#22d3ee;background:color-mix(in srgb,#22d3ee 12%,var(--panel))}
+body.pskin .glbox .glshow:has(input:checked){border-color:var(--pri);background:var(--sel)}
 
 /* 보기 고르기(리스트 · 격자 구조) = 프로그램 세그먼트, 쌍 고르기 = 알약 */
 body.pskin .viewtabs{gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}

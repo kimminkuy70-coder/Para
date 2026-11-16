@@ -123,7 +123,7 @@ class Defect53Layout(unittest.TestCase):
     def test_labels(self):
         self.assertIn('<button data-v5="one" aria-pressed="true">리스트</button><button data-v5="grid">격자 구조</button>', self.t)
         self.assertIn('class="c5load"', self.t)
-        self.assertIn("📥 사진 모두 불러오기</button>", self.t)
+        self.assertIn(">사진 모두 불러오기</button>", self.t)
         self.assertIn('id="c5pickAll" title="지금 보이는 목록을 모두 최종 목록에 넣습니다(☑)">전체 선택</button><button id="c5pickNone">전체 해제</button>', self.t)
         for old in ("하나씩 크게", "격자로 여러 개", "이 목록 사진 모두 미리 준비", "보이는 목록 모두", "보기:", "사진 준비 끝"):
             self.assertNotIn(old, self.t, old)
@@ -148,6 +148,35 @@ class Defect53Layout(unittest.TestCase):
         self.assertIn("d.documentElement.dataset.theme = 'light';", self.js)
         self.assertIn("localStorage.setItem('cw.inWin', '0')", self.js)
         self.assertNotIn("같은 창에서 보기', '사진을", self.js)
+
+
+
+class GlDialogAndColors(unittest.TestCase):
+    """v14.1.7(소유자): 측정 원 그리기 창이 커서 잘림 → 보이는 높이에 맞춤, 사진 양옆 ‹ › 로 다른 예시 사진, 색은 테마(남색 · 초록 + 회색)로 — 알록달록 정리."""
+    @classmethod
+    def setUpClass(cls):
+        cls.t = HTML.read_text(encoding="utf-8")
+        cls.css = (PUB / "para-skin.css").read_text(encoding="utf-8")
+
+    def test_dialog_fits_and_arrows(self):
+        dlg = self.t[self.t.index('<div class="busy gldlg" id="glDlg"'):self.t.index('<div class="busy" id="busy"')]
+        self.assertLess(dlg.index('id="glPrev"'), dlg.index('id="glCv"'))
+        self.assertLess(dlg.index('id="glCv"'), dlg.index('id="glNext"'))
+        self.assertIn('id="glDPos"', dlg)
+        self.assertIn("$('#glPrev').onclick=()=>glDlgStep(-1);$('#glNext').onclick=()=>glDlgStep(1);", self.t)
+        self.assertIn("e.key==='ArrowLeft'||e.key==='ArrowRight'", self.t)
+        self.assertIn(".gldlg .bx{width:min(660px,100%);max-height:100%;overflow:auto}", self.t)
+        # 프로그램 안: iframe 의 100vh 는 내용 전체 높이 → 보이는 높이(--vh)로
+        self.assertIn("body.pskin .gldlg .bx{max-height:calc(var(--vh,100vh) - 24px)", self.css)
+        self.assertIn("body.pskin .gldlg #glCv{width:min(528px,calc(var(--vh,100vh) - 300px)", self.css)
+
+    def test_theme_colors(self):
+        for loud in ("#4f46e5", "#a3e635", "📥", "🟥", "⭕ 측정 원"):
+            self.assertNotIn(loud, self.t + self.css, loud)
+        self.assertNotIn("#22d3ee;background", self.css)                    # 측정 원 보기 = 테마 초록
+        self.assertIn("body.pskin .glbox{border-color:var(--line);border-left-color:var(--navy);", self.css)
+        self.assertIn("body.pskin .c5pick.on{background:var(--navy);", self.css)
+        self.assertIn("body.pskin .fgrid .chipgrid .clsck:has(input:checked){border-color:var(--bd2);background:var(--panel)}", self.css)
 
 
 

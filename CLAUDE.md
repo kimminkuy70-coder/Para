@@ -19,6 +19,8 @@
 - **v14.1.6(소유자 2026-11-16)**: 5-3 보기 = **[리스트 | 격자 구조]**(종전 하나씩 크게 · 격자로 여러 개), 사진 상태 보기 = `.c5stbox` 박스(줄바꿈), **[📥 사진 모두 불러오기]**(`#b5prep.c5load`, 남색 단추, 종전 '이 목록 사진 모두 미리 준비'),
   최종 목록 = [전체 선택] · [전체 해제] + 개수 배지(`#c5pickN.on`). 5-3 의 [← 5-2](`toB2b`) 삭제. 프로그램 안에서는 [화면 테마] · [사진을 같은 창에서 보기] 를 숨기고(para-skin.css)
   늘 밝은 화면 · `cw.inWin`=0(para-skin.js — 새 창이 막히면 HTML 이 같은 창 칸으로). **릴리스 노트는 맨 위 한 줄 목록만**(소유자: '자세히' 이하 문구 삭제).
+- **v14.1.7(소유자 2026-11-16)**: 측정 원 그리기 창 = 보이는 높이에 맞춤(프로그램 안 `--vh` 기준 — iframe 의 100vh 는 내용 전체 높이라 쓰지 않음) + 사진 양옆 ‹ ›(`glPrev` · `glNext`, ← →) =
+  다른 예시 사진(`glDlgShow` · `glDlgStep`, 후보 = 5-3 목록의 흑백 있는 Defect). **색 = 프로그램 남색 · 초록 + 회색만**(박스 띠 = 남색, 켜짐 = 연한 초록, 이모지 · 보라 · 형광 연두 · 하늘색 테두리 빼기).
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.
