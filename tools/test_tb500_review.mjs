@@ -75,6 +75,7 @@ const localNames=await page.evaluate(()=>[...window.__fs.top.local.files.keys()]
 assert.deepEqual(localNames,['TB500리뷰_Camtek색인_20261106_090000.json','TB500리뷰_KLA색인_20261106_090100.json','TB500리뷰_기록.json','다른파일.txt']);
 assert.ok(!log.some(l=>/^write/.test(l)&&!/^write TB500리뷰_/.test(l)));                              // 우리 파일만 씀
 assert.equal(await page.locator('#banner.show').count(),0);
+assert.ok(await page.locator('#errbox').isHidden(),'정상 갱신에서는 오류 정보 칸이 안 보임');
 assert.match(await page.locator('#cache-camtek').innerText(),/호기 2 대 · Batch Report 5 개/);
 // 다시 누르면 이미 최신
 await page.getByRole('button',{name:'캐시 갱신'}).click();
@@ -105,7 +106,19 @@ await page.locator('#msg2').filter({hasText:'KLA 캐시: 받지 못했습니다'
 const m76=await page.locator('#msg2').innerText();
 assert.match(m76,/Camtek 캐시: BatchReport_캐시_20261106_090000\.zip 받음/);
 assert.match(m76,/이 장치에 항상 유지/);
-assert.ok(!/could not be read/.test(m76),m76);
+assert.match(m76,/단계: SHA-256 확인\(0 \/ \d+ MB 지점\) · 파일: KLA_캐시_20261106_090100\.zip · NotReadableError: The requested file could not be read/,m76);
+// 오류 정보 칸: 작업 · 단계 · 폴더 · 파일(크기 · 수정 시각) · 시도 · 원래 오류 · 뜻 · 코드 위치
+assert.ok(await page.locator('#errbox').isVisible());
+assert.ok(await page.evaluate(()=>document.querySelector('#msg2').nextElementSibling.id==='errbox'));   // 설정 탭: 진행 문구 바로 아래
+const eb=await page.locator('#errText').innerText();
+if(process.env.TB500_SHOT){await page.locator('#errbox').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.TB500_SHOT+'/errbox.png'});await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:process.env.TB500_SHOT+'/errbox_dark.png'});await page.emulateMedia({colorScheme:'light'})}
+assert.ok(!/file:\/\//.test(eb),'코드 위치에 PC 경로를 넣지 않음');
+for(const re of [/작업: 캐시 갱신 · 단계: SHA-256 확인/,/폴더: share/,/파일: KLA_캐시_20261106_090100\.zip \(크기 \d+ B · 수정 시각 /,/시도: 3번째/,/오류: NotReadableError: The requested file/,/뜻: 파일을 집은 뒤/,/참고: KLA 캐시 을\(를\) 받지 못했습니다/,/코드 위치: /])assert.match(eb,re,eb);
+const dg=await page.evaluate(()=>window.__tb500Diag());
+assert.match(dg,/^TB500 Review 진단 정보\nHTML: /);assert.match(dg,/브라우저: Mozilla/);assert.match(dg,/폴더: ① OneDrive 연결됨\(share\)/);
+assert.match(dg,/다시 읽음/);   // 다시 읽은 기록(retry)도 들어간다
+assert.ok(await page.evaluate(()=>JSON.parse(localStorage.getItem('tb500-review-diag')).length>0));
+await page.locator('#errClose').click();assert.ok(await page.locator('#errbox').isHidden());
 assert.ok(await page.evaluate(()=>window.__fs.top.local.files.has('TB500리뷰_KLA색인_20261106_090100.json')));
 const recAfter=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
 assert.equal(recAfter.updated_at,recBefore.updated_at);

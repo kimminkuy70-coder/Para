@@ -1,5 +1,26 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #76 후속: 리뷰 HTML 오류 메시지를 원인 파악할 수 있게 자세히 (2026-11-17 KST, `version_TB500_review`, 세션 지시)
+
+- 마지막 갱신 2026-11-17 · 기준 커밋 `6eef502` · Para #76 후속(소유자 세션 지시: "오류 메세지를 명확하게 출력하게끔 수정해 너가 확인하고 원인 파악해서 수정할 수 있게끔").
+- 한 일(`TB500_Review.html`):
+  - 진단 모듈(`setMsg` 바로 아래): `ctx`(작업 · 단계 · 폴더 · 파일 · fileInfo · Lot · 시도) · `begin`/`step` · `logDiag(level,e,extra)` · `ERR_KO`(DOMException 이름 → 한국어 뜻) · `stackOf`(DOMException 은 stack 이 없어 기록한 곳 stack 을 대신, PC 경로는 HTML 파일 이름만 남김) · `diagText`(복사할 글) · `copyDiag`(클립보드 막히면 글을 선택해 Ctrl+C 안내).
+  - 기록 = localStorage `tb500-review-diag` 최근 30개. level: error · warn(칸 보임) · retry(칸 안 보임, 복사 글에는 들어감).
+  - 화면: `#errbox`(빨간 칸, [오류 정보 복사] · [닫기])를 보이는 탭의 진행 문구(`#msg2`/`#msg`) 바로 아래로 옮겨 보인다(`placeErr`). [설정] 캐시 칸에 [진단 정보 복사] 버튼.
+  - `errText` = 한국어 뜻 + `[단계 · 파일 · 이름: 원래 문구]` + "아래 [오류 정보] 칸을 확인". (#76 1차에서 영어 문구를 감췄던 것을 되돌려 원문도 보인다.)
+  - 단계를 적는 곳: readJson(집기 · 읽기 · 해석) · writeText · fileSha(MB 지점) · zipEntries · zipText(안 파일 이름 · 크기) · zip 안 JSON 해석 · 지난 색인 지우기 · lookLot(Lot 폴더 찾기 · 하위 폴더 목록 · 재리뷰 맵 세기 · 장비 판정 · 호기 찾기) · 폴더 연결.
+  - 말없이 삼키던 catch 를 기록으로 바꿈: newest()(게시 정보 · zip 집기 — 이제 '게시 정보를 읽지 못했습니다' / '열지 못했습니다 — 이름: 문구' 로 구분, 실패로 셈), 지난 기록 · 색인 읽기, loadIndex(색인 못 읽으면 경고), removeEntry. NotFoundError 가 정상인 곳은 기록 안 함.
+  - 전역 `error` · `unhandledrejection` 도 기록. 시험용 `window.__tb500Diag`.
+- 시험: `tools/test_tb500_review.mjs` 에 오류 칸(위치 · 작업/단계/폴더/파일 크기 · 수정 시각/시도 3번째/원래 오류/뜻/참고/코드 위치 · PC 경로 없음), 진단 글(HTML 판 · 브라우저 · 폴더 · retry 기록), localStorage, [닫기], 정상 갱신에서는 칸 안 보임 단언 추가. 연속 3회 통과.
+  밝은 · 어두운 화면 캡처로 칸 모양 확인(`TB500_SHOT` 에 errbox.png · errbox_dark.png). 실제 Edge · 회사 PC 미검증.
+- 내 해석(확인 전): ⓐ 고객사 정보(Lot · 폴더 이름)는 진단 글에 그대로 넣고, 붙여 넣기 전에 지우라고 안내만 한다(원인 찾기에 필요). ⓑ 기록은 30개까지.
+- 남은 일: 소유자가 실제 오류의 [오류 정보 복사] 글을 #76 에 붙이면 그 단계 · 파일을 보고 원인을 다시 판단할 것.
+- 릴리스 없음(리뷰용 브랜치의 단일 HTML).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #76 후속(세션 지시) | 오류 메시지를 원인 파악할 수 있게 자세히 | 오류 정보 칸 · 진단 정보 복사 · 단계 기록 구현, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #76 리뷰 HTML: "The requested file could not be read …" 오류 (2026-11-17 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-17 · 기준 커밋 `48f282f` · 이슈 Para #76("리뷰용 프로그램 브랜치 신규 생성 7") · 작업 브랜치 `version_TB500_review`(#40~#47 과 같은 제목 연속, 릴리스 없음 — 단일 HTML).
