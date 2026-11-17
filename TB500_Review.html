@@ -238,7 +238,13 @@ function paintTabs(){$('#tab-setup').innerHTML='설정'+(setupDone()?'':'<span c
 $('#tab-setup').onclick=()=>showTab('setup');$('#tab-review').onclick=()=>showTab('review');
 document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=async()=>{try{await pick(b.dataset.pick)}catch(e){if(e.name!=='AbortError')setMsg('폴더 연결 실패: '+e.message)}});
 async function dirs(h){const a=[];for await(const [n,x] of h.entries())if(x.kind==='directory')a.push([n,x]);return a}
-async function readJson(dir,name){const f=await (await dir.getFileHandle(name)).getFile();return JSON.parse(await f.text())}
+/* 파일을 읽는 사이에 OneDrive 동기화 등으로 파일이 바뀌면 Edge 가 NotReadableError("The requested file could not be read …")를 낸다(Para #76).
+   그때는 파일을 새로 집어(getFile) 처음부터 다시 읽는다(최대 3번). */
+const isNotReadable=e=>!!e&&(e.name==='NotReadableError'||/could not be read/i.test(String(e.message||'')));
+const NOT_READABLE_HELP='OneDrive 가 파일을 동기화하는 중이거나, 파일이 아직 이 PC 에 내려받아지지 않았습니다. 파일 탐색기에서 캐시공유 폴더를 마우스 오른쪽 단추로 누르고 [이 장치에 항상 유지]를 고르십시오. 동기화가 끝나면(초록 체크) [캐시 갱신]을 다시 누르십시오.';
+function errText(e){return isNotReadable(e)?'파일을 읽지 못했습니다(읽는 사이에 파일이 바뀜). '+NOT_READABLE_HELP:String(e&&e.message||e)}
+async function retryRead(fn,tries=3){for(let i=1;;i++){try{return await fn(i)}catch(e){if(!isNotReadable(e)||i>=tries)throw e;await new Promise(r=>setTimeout(r,T?0:1500*i))}}}
+async function readJson(dir,name){return retryRead(async()=>{const f=await (await dir.getFileHandle(name)).getFile();return JSON.parse(await f.text())})}
 async function writeText(dir,name,text){const fh=await dir.getFileHandle(name,{create:true}),w=await fh.createWritable();await w.write(text);await w.close()}
 
 /* ---------- 기록 · 갱신 알림(내 PC 기록만 본다 — OneDrive 에 접속하지 않음) ---------- */
@@ -252,7 +258,7 @@ function paintRecord(){
  if(!record||!record.updated_at){b.textContent='캐시를 아직 받지 않았습니다. [설정] 탭에서 폴더를 연결하고 [캐시 갱신]을 누르십시오.';b.classList.add('show');paintTabs();return}
  const age=(now()-new Date(record.updated_at.replace(' ','T')))/3600000;
  if(!(age<STALE_HOURS)){b.textContent=`캐시를 마지막으로 받은 지 ${Math.floor(age/24)}일 ${Math.floor(age%24)}시간 지났습니다(${record.updated_at}). [캐시 갱신]을 누르십시오.`;b.classList.add('show')}paintTabs()}
-async function loadRecord(quiet){if(!handles.local)return;try{if(!await ready('local'))return;record=await readJson(handles.local,RECORD);saveRecordLocal()}catch(e){if(!quiet)setMsg('내 PC 캐시 기록을 읽지 못했습니다: '+e.message)}paintRecord()}
+async function loadRecord(quiet){if(!handles.local)return;try{if(!await ready('local'))return;record=await readJson(handles.local,RECORD);saveRecordLocal()}catch(e){if(!quiet)setMsg('내 PC 캐시 기록을 읽지 못했습니다: '+errText(e))}paintRecord()}
 
 /* ---------- 캐시 갱신 ---------- */
 const lotCode=sm=>{const m=String(sm||'').match(/(?:^|[^A-Za-z])([A-Za-z]{3})(?![A-Za-z])/);return m?m[1].toUpperCase():''};
@@ -298,16 +304,20 @@ async function refresh(){
  const btn=$('#refresh');btn.disabled=true;setBar(5);
  try{
   let old=null;try{old=await readJson(handles.local,RECORD)}catch{}
-  const next={schema:1,updated_at:'',camtek:old&&old.camtek||null,kla:old&&old.kla||null},notes=[];
+  const next={schema:1,updated_at:'',camtek:old&&old.camtek||null,kla:old&&old.kla||null},notes=[];let failed=false;
   for(const kind of ['camtek','kla']){
    const label=kind==='camtek'?'Camtek 캐시':'KLA 캐시',got=await newest(handles.share,kind);
    if(!got){notes.push(label+': OneDrive 에 게시된 캐시가 없습니다');continue}
    if(!got.f){notes.push(label+': '+got.it.name+' 이(가) 아직 동기화되지 않았습니다');continue}
    const stampOf=SHARE[kind].name.exec(got.it.name)[1],file=PREFIX+(kind==='camtek'?'Camtek':'KLA')+'색인_'+stampOf+'.json';
    if(old&&old[kind]&&old[kind].zip===got.it.name){try{const cur=await readJson(handles.local,file);if(kind!=='camtek'||cur.schema>=4){notes.push(label+': 이미 최신('+got.it.name+')');continue}}catch{}}
-   if(got.f.size!==got.it.size){notes.push(label+': 크기가 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');continue}
+   // 한 캐시를 읽다가 실패해도 다른 캐시는 계속 받는다. 실패한 캐시는 지난 기록 · 파일을 그대로 둔다(Para #76).
+   try{
+   const took=await retryRead(async i=>{
+   if(i>1){got.f=await (await handles.share.getFileHandle(got.it.name)).getFile();setMsg(label+': 파일이 바뀌어 처음부터 다시 읽습니다('+i+'번째)')}
+   if(got.f.size!==got.it.size){notes.push(label+': 크기가 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');return false}
    const sha=await fileSha(got.f,label);
-   if(sha!==got.it.sha256){notes.push(label+': SHA-256 이 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');continue}
+   if(sha!==got.it.sha256){notes.push(label+': SHA-256 이 게시 정보와 다릅니다(동기화 중일 수 있음) — 잠시 뒤 다시 누르세요');return false}
    const entries=await zipEntries(got.f);let data,sum;
    if(kind==='camtek'){
     const rows=[],machines=new Set,members=entries.filter(e=>/^누적\/.+\.json$/.test(e.name));
@@ -322,15 +332,19 @@ async function refresh(){
     sum={machines:new Set(sources.map(s=>s.machine)).size,lots:sources.reduce((n,s)=>n+Object.values(s.dates||{}).reduce((m,d)=>m+Object.keys(d.lots||{}).length,0),0)}}
    await writeText(handles.local,file,JSON.stringify(data));
    next[kind]=Object.assign({zip:got.it.name,file,exported_at:got.it.exported_at||'',taken_at:stamp(now())},sum);
+   return true});
+   if(!took){failed=true;continue}
+   }catch(e){failed=true;notes.push(label+': 받지 못했습니다 — '+errText(e));continue}
    notes.push(label+': '+got.it.name+' 받음')}
-  next.updated_at=stamp(now());
+  // 하나라도 받지 못했으면 받은 시각을 새로 적지 않는다(24시간 알림이 계속 나오게, Para #76).
+  next.updated_at=failed&&old&&old.updated_at?old.updated_at:failed?'':stamp(now());
   await writeText(handles.local,RECORD,JSON.stringify(next,null,1));
   // 최신 1개만: 이 프로그램이 만든 색인 파일(이름 규칙이 맞는 것)만 지운다. 다른 파일은 건드리지 않는다.
   const keep=new Set([next.camtek&&next.camtek.file,next.kla&&next.kla.file].filter(Boolean));let removed=0;
   for await(const [n,x] of handles.local.entries())if(x.kind==='file'&&OUR_FILE.test(n)&&!keep.has(n)){try{await handles.local.removeEntry(n);removed++}catch{}}
   record=next;saveRecordLocal();indexCache=null;paintRecord();
   setMsg(notes.join(' / ')+(removed?' / 지난 캐시 '+removed+'개 정리':''));setBar(100)}
- catch(e){setMsg('캐시 갱신 실패: '+e.message)}
+ catch(e){setMsg('캐시 갱신 실패: '+errText(e))}
  finally{btn.disabled=false}}
 $('#refresh').onclick=refresh;
 
@@ -395,7 +409,7 @@ async function run(){
   if(stopReq)throw STOPPED;const idx=await loadIndex();if(!idx.camtek.length&&!idx.kla.size)setMsg('캐시가 비어 있습니다 — 재리뷰 여부만 확인합니다. [캐시 갱신]을 누르세요.');
   for(let i=0;i<lots.length;i++){setMsg((i+1)+' / '+lots.length+' 조회 중… '+lots[i]);if(stopReq)throw STOPPED;results.push(await lookLot(lots[i],idx));setBar((i+1)/lots.length*100)}
   render();const need=results.reduce((n,r)=>n+(r.layers||[]).filter(l=>l.status==='need').length,0);setMsg('조회 완료: Lot '+lots.length+'개 · 재리뷰 필요 Layer '+need+'개')}
- catch(e){if(e===STOPPED){render();setMsg('조회를 중단했습니다: Lot '+lots.length+'개 중 '+results.length+'개까지 조회 · 끝난 Lot 만 표에 보입니다.')}else setMsg('조회 실패: '+e.message)}
+ catch(e){if(e===STOPPED){render();setMsg('조회를 중단했습니다: Lot '+lots.length+'개 중 '+results.length+'개까지 조회 · 끝난 Lot 만 표에 보입니다.')}else setMsg('조회 실패: '+errText(e))}
  finally{$('#scan').disabled=false;$('#stop').disabled=true;stopReq=false}}
 $('#scan').onclick=run;
 // 중단(Para #42 후속): 다음 폴더를 읽기 전에 멈춘다. 하던 Lot 은 버리고, 끝난 Lot 만 표에 남긴다. 아무것도 쓰거나 지우지 않는다.

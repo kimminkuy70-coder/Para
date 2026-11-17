@@ -1,5 +1,26 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #76 리뷰 HTML: "The requested file could not be read …" 오류 (2026-11-17 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-17 · 기준 커밋 `48f282f` · 이슈 Para #76("리뷰용 프로그램 브랜치 신규 생성 7") · 작업 브랜치 `version_TB500_review`(#40~#47 과 같은 제목 연속, 릴리스 없음 — 단일 HTML).
+- 요청: "TB500_Review.html 버그 사항 있어 원인 파악해서 보고하고 수정이 필요하면 수정해" + 오류 문구 `The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.` (첨부 없음, 어느 버튼에서 났는지 적혀 있지 않음).
+- 원인(추정, 확인 전): Edge 의 `NotReadableError` 기본 문구. HTML 이 파일을 읽는 곳은 `readJson`(게시 정보 · 내 PC 기록 · 색인)과 [캐시 갱신]의 OneDrive zip 뿐이다(Conder Scan 은 이름만 봄).
+  [캐시 갱신]은 `newest()` 에서 zip 을 `getFile()` 한 뒤 SHA-256(8 MB 씩) → zip 목차 → JSON 풀기까지 같은 File 을 오래 읽는다. 그 사이 OneDrive 가 zip 을 바꾸거나(동기화 · 새 게시), 파일이 아직 내려받지 않은 상태면 이 오류가 난다.
+  종전 코드는 이 오류 하나로 [캐시 갱신] 전체가 멈추고(KLA 도 안 받음) 영어 문구를 그대로 보였다.
+- 한 일(`TB500_Review.html`): `isNotReadable` · `retryRead`(최대 3번, 파일을 새로 집어 처음부터) · `errText`(한국어 안내: [이 장치에 항상 유지] 후 다시 [캐시 갱신]).
+  `readJson` 에 다시 읽기 적용. [캐시 갱신]은 캐시마다 try/catch — 하나가 실패해도 다른 캐시는 받고, 실패한 캐시의 지난 색인 · 기록은 그대로, 실패가 있으면 `updated_at` 을 새로 적지 않음(24시간 알림 유지).
+  크기 · SHA-256 불일치도 이제 '실패'로 보아 `updated_at` 을 새로 적지 않는다(종전에는 새로 적었음 — 내 해석, 확인 전). 조회 · 기록 읽기 실패 문구도 `errText` 사용.
+  `docs/TB500_review_사용법.md` 4-1절 추가.
+- 시험: `tools/test_tb500_review.mjs` 에 #76 단언 추가(한 번 실패 → 다시 읽어 받음 / 계속 실패 → KLA 만 `받지 못했습니다` · Camtek 받음 · KLA 색인 보존 · 받은 시각 그대로 · 영어 문구 안 보임). 연속 3회 통과, 고치기 전 HTML 에서는 실패 확인.
+  `python tools/check_project.py` 는 이 컨테이너에 `openpyxl` 이 없어 Python 시험 대부분이 ModuleNotFoundError(이번 변경과 무관, HTML 만 고침).
+  실제 Edge · 회사 OneDrive 에서 오류가 사라지는지는 미검증.
+- 남은 일: 소유자에게 오류가 난 버튼([캐시 갱신] · 조회 · HTML 열 때)과 그때 캐시공유 폴더가 '이 장치에 항상 유지' 였는지 물음(#76 댓글). 다른 곳에서 났다면 다시 볼 것.
+- 릴리스 없음(리뷰용 브랜치의 단일 HTML).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #76 | 리뷰 HTML "The requested file could not be read" 오류 원인 · 수정 | 다시 읽기 · 캐시별 실패 처리 · 한국어 안내 구현, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — 리뷰 HTML: OneDrive 안내를 [바로 가기] 기준으로, 파일 탐색기 고르는 순서 추가 (2026-11-09 KST, `version_TB500_review`, 세션 직접 지시)
 
 - 마지막 갱신 2026-11-09 · 기준 커밋 `ff7a0a7` · 이슈 없음(바로 아래 절의 후속 지시).

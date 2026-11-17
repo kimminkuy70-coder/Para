@@ -84,6 +84,35 @@ await page.evaluate(()=>{const d=window.__fs.top.local,n='TB500리뷰_Camtek색�
 await page.getByRole('button',{name:'캐시 갱신'}).click();
 await page.locator('#msg2').filter({hasText:'Camtek 캐시: BatchReport_캐시_20261106_090000.zip 받음'}).waitFor();
 assert.equal(await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_Camtek색인_20261106_090000.json'))).schema),4);
+// Para #76: 읽는 사이에 파일이 바뀌면 Edge 가 NotReadableError 를 낸다 → 파일을 새로 집어 다시 읽는다. 계속 실패하면 다른 캐시는 받고 안내를 보인다.
+await page.evaluate(()=>{
+  window.__bad={};window.__fs.top.share.getFileHandle('캐시정보.json').then(h=>{const P=Object.getPrototypeOf(h),orig=P.getFile;window.__origGetFile=orig;
+   P.getFile=async function(){const f=await orig.call(this);const n=window.__bad[this.name];if(!n)return f;window.__bad[this.name]=n-1;
+    const err=()=>Promise.reject(new DOMException('The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.','NotReadableError'));
+    return {name:f.name,size:f.size,lastModified:f.lastModified,slice:()=>({arrayBuffer:err,text:err,stream:()=>{throw new DOMException('x','NotReadableError')}}),text:err,arrayBuffer:err}}})});
+await page.waitForFunction(()=>!!window.__origGetFile);
+const recBefore=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
+// ① 한 번 실패 후 다시 읽어 성공(Camtek 색인을 예전 형식으로 바꿔 다시 받게 함)
+await page.evaluate(()=>{const d=window.__fs.top.local,n='TB500리뷰_Camtek색인_20261106_090000.json',j=JSON.parse(new TextDecoder().decode(d.files.get(n)));j.schema=3;d.files.set(n,new TextEncoder().encode(JSON.stringify(j)));window.__bad['BatchReport_캐시_20261106_090000.zip']=1});
+await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});await page.getByRole('button',{name:'캐시 갱신'}).click();
+await page.locator('#msg2').filter({hasText:'Camtek 캐시: BatchReport_캐시_20261106_090000.zip 받음'}).waitFor();
+assert.equal(await page.evaluate(()=>window.__bad['BatchReport_캐시_20261106_090000.zip']),0);
+// ② 계속 실패: KLA 는 못 받았다고 안내, Camtek 은 받음, KLA 색인 파일 · 받은 시각은 그대로
+await page.evaluate(()=>{const d=window.__fs.top.local,n='TB500리뷰_Camtek색인_20261106_090000.json',j=JSON.parse(new TextDecoder().decode(d.files.get(n)));j.schema=3;d.files.set(n,new TextEncoder().encode(JSON.stringify(j)));
+  const r=JSON.parse(new TextDecoder().decode(d.files.get('TB500리뷰_기록.json')));r.kla.zip='예전.zip';d.files.set('TB500리뷰_기록.json',new TextEncoder().encode(JSON.stringify(r)));window.__bad['KLA_캐시_20261106_090100.zip']=99});
+await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});await page.getByRole('button',{name:'캐시 갱신'}).click();
+await page.locator('#msg2').filter({hasText:'KLA 캐시: 받지 못했습니다'}).waitFor();
+const m76=await page.locator('#msg2').innerText();
+assert.match(m76,/Camtek 캐시: BatchReport_캐시_20261106_090000\.zip 받음/);
+assert.match(m76,/이 장치에 항상 유지/);
+assert.ok(!/could not be read/.test(m76),m76);
+assert.ok(await page.evaluate(()=>window.__fs.top.local.files.has('TB500리뷰_KLA색인_20261106_090100.json')));
+const recAfter=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
+assert.equal(recAfter.updated_at,recBefore.updated_at);
+// ③ 다시 정상으로
+await page.evaluate(()=>{window.__bad={}});
+await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});await page.getByRole('button',{name:'캐시 갱신'}).click();
+await page.locator('#msg2').filter({hasText:'KLA 캐시: KLA_캐시_20261106_090100.zip 받음'}).waitFor();
 // 조회
 assert.equal(await page.locator('#tab-setup .tdot').count(),0);
 assert.match(await page.locator('#share-text').innerText(),/^연결됨/);
