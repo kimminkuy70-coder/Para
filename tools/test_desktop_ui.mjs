@@ -301,6 +301,20 @@ try{
   await page.locator('.devbar').waitFor({state:'detached'});
   // 찾기 · 취합: file-name search → Lot groups → aggregate → Excel.
   await page.getByRole('tab',{name:/Batch Report 찾기/}).click();
+  // v14.1.9 [캐시에서만 찾기]: 호기 격자 = 로컬 캐시에 든 호기(이 PC 에 등록하지 않은 호기도) — 장비 없이 찾는다.
+  await page.getByLabel('캐시에서만 찾기',{exact:true}).check();
+  await page.locator('.mhead .lbl').filter({hasText:'캐시 호기'}).waitFor();
+  await page.getByRole('checkbox',{name:'AOI-01 찾기'}).waitFor();
+  assert.match(await page.getByRole('group',{name:'찾을 호기'}).locator('label.mbox').first().getAttribute('data-tip'),/^AOI-01\n캐시 Batch Report \d+개\n/);
+  assert.equal(await page.getByRole('checkbox',{name:'AOI-05 찾기'}).count(),0);           // 캐시에 없는 등록 호기는 안 보임
+  await page.getByRole('button',{name:'OneDrive 에서 최신 캐시 받기',exact:true}).waitFor();
+  await page.getByLabel('Batch Report 키워드').fill('BatchReport_00');
+  await page.getByRole('button',{name:'검색 →'}).click();
+  await page.getByRole('table',{name:'찾은 Batch Report 목록'}).waitFor({timeout:60000});
+  await page.getByText(/로컬 조사 캐시에서만 찾았습니다/).waitFor();
+  await page.getByRole('button',{name:'◀ 검색으로',exact:true}).click();
+  await page.getByLabel('캐시에서만 찾기',{exact:true}).uncheck();
+  await page.locator('.mhead .lbl').filter({hasText:'호기 범위'}).waitFor();
   await page.getByLabel('Batch Report 키워드').fill('BatchReport_00');
   await page.getByRole('button',{name:'검색 →'}).click();
   // #19: 찾은 파일 이름 목록(원문 안 엶) → 고른 것만 읽기(앞뒤 24시간 포함).
@@ -953,6 +967,12 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   await page.getByRole('button',{name:'KLA',exact:true}).click();
   assert.deepEqual(await page.locator('.navigation button').allInnerTexts(),['KLA 자재 찾기']);
   const kla=page.locator('section.kla');
+  // v14.1.9: KLA 장비를 등록하지 않은 PC 는 처음부터 [KLA 캐시에서만 찾기](캐시가 아직 없어도 잠그지 않음) + [OneDrive 에서 최신 캐시 받기].
+  await kla.getByText(/이 PC 에 KLA 캐시가 없습니다/).waitFor();
+  assert.equal(await kla.getByRole('checkbox',{name:'KLA 캐시에서만 찾기'}).isChecked(),true);
+  await kla.getByRole('button',{name:'OneDrive 에서 최신 캐시 받기',exact:true}).click();
+  await page.locator('.toast').filter({hasText:'OneDrive 에 게시된 KLA 캐시가 아직 없습니다.'}).waitFor();
+  await kla.getByRole('checkbox',{name:'KLA 캐시에서만 찾기'}).uncheck();
   await kla.getByText(/⚠ 등록된 KLA 장비 폴더가 없습니다/).waitFor();
   await kla.getByRole('button',{name:/설정 › AOI 장비 호기 루트 › KLA/}).click();
   assert.equal(await page.locator('.navigation').count(),0);                      // 설정 = 공통 탭(아래 기능 탭 줄 없음)
@@ -975,7 +995,7 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   // Para #43: 찾기 화면 = Batch Report 찾기 · 취합과 같은 모양(장비 상자 격자 · 모든 장비 · 캐시에서만 찾기 체크).
   await kla.getByRole('checkbox',{name:'2.K2 찾기'}).waitFor();
   assert.equal(await kla.getByRole('checkbox',{name:'찾기 모든 장비'}).isChecked(),true);
-  assert.equal(await kla.getByRole('checkbox',{name:'KLA 캐시에서만 찾기'}).isDisabled(),true);   // 캐시가 아직 없음
+  assert.equal(await kla.getByRole('checkbox',{name:'KLA 캐시에서만 찾기'}).isChecked(),false);   // 장비 폴더를 등록했으므로 장비에서 찾기
   await kla.getByLabel(/Lot 키워드/).fill('rint63');
   await kla.getByRole('button',{name:'검색 →',exact:true}).click();
   await kla.getByText(/Lot 폴더 2개\(Lot 2개\)/).waitFor();

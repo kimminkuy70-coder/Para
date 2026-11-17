@@ -128,14 +128,15 @@ class CachePublish(unittest.TestCase):
         self.assertEqual([(i["name"], i["present"], i["compatible"], i["machines"], i["reports"]) for i in listed["items"]],
                          [(published["name"], True, True, ["M01", "M02"], 5)])
         out = pc_b.cache_share_import({"name": published["name"]})
-        self.assertEqual((out["added"], out["machines"], out["source"]), (3, ["M01"], published["name"]))
-        self.assertEqual(out["skipped"], [{"machine": "M02", "reports": 2}])
-        self.assertEqual(len(list((local_b / "배치분석" / "누적").glob("*.json"))), 1)
+        # v14.1.9: 이 PC 에 등록하지 않은 호기(M02)도 건너뛰지 않는다 — [캐시에서만 찾기]로 찾는다.
+        self.assertEqual((out["added"], out["machines"], out["source"]), (5, ["M01", "M02"], published["name"]))
+        self.assertEqual((out["skipped"], out["unregistered"]), ([], ["M02"]))
+        self.assertEqual(len(list((local_b / "배치분석" / "누적").glob("*.json"))), 2)
         after = {p.name: (p.stat().st_mtime_ns, p.stat().st_size) for p in self.folder.iterdir()}
         self.assertEqual(before, after)                          # OneDrive 에는 아무것도 쓰지 않음
         self.assertEqual(list((local_b / "Temp").iterdir()), [])   # 받은 zip 은 로컬 임시 폴더에서 지움
         # 다시 받으면 이미 있는 것은 그대로
-        self.assertEqual(pc_b.cache_share_import({"name": published["name"]})["kept"], 3)
+        self.assertEqual(pc_b.cache_share_import({"name": published["name"]})["kept"], 5)
 
     def test_import_rejects_partial_sync_and_unknown_names(self):
         self.write_caches()
@@ -234,23 +235,24 @@ class CacheImport(unittest.TestCase):
                                   dict(self.other_pc("AOI-1", r"P:\AOI-1\Reports", []), entries={"../evil.htm": report_entry(9),
                                                                                                   names[0]: {"bad": 1}})])
         out = self.batch.cache_import({"path": str(zip_path)})
-        self.assertEqual((out["added"], out["kept"], out["machines"]), (3, 0, ["AOI-1"]))
-        self.assertEqual(out["skipped"], [{"machine": "AOI-9", "reports": 1}])
+        self.assertEqual((out["added"], out["kept"], out["machines"]), (4, 0, ["AOI-1", "AOI-9"]))
+        self.assertEqual((out["skipped"], out["unregistered"]), ([], ["AOI-9"]))   # v14.1.9: 등록 안 한 호기도 가져옴
         self.assertEqual(out["invalid"], 2)                 # 경로 문자 든 이름 · 형식이 깨진 항목은 넣지 않음
         self.assertTrue(out["choices_skipped"])
         self.assertFalse((self.local / "Cache" / CHOICES_FILE).exists())   # 사람 선택은 PC 마다 따로
         files = self.cache_files()
-        self.assertEqual(len(files), 1)
-        state = json.loads(files[0].read_text(encoding="utf-8"))
-        self.assertEqual((state["machine"], state["folder"]), ("AOI-1", str(Path(self.folder))))
-        self.assertEqual(sorted(state["entries"]), sorted(names))
+        self.assertEqual(len(files), 2)
+        states = {s["machine"]: s for s in (json.loads(f.read_text(encoding="utf-8")) for f in files)}
+        self.assertEqual(states["AOI-1"]["folder"], str(Path(self.folder)))
+        self.assertEqual(sorted(states["AOI-1"]["entries"]), sorted(names))
+        self.assertEqual(states["AOI-9"]["folder"], str(Path(r"P:\AOI-9\Reports")))   # 등록 안 한 호기 = zip 에 적힌 폴더 그대로
         # 장비 접근 없이 캐시만으로: 찾기 1단계 · 지난 범위 복원이 가져온 것을 본다
         cached = batchreport_store.load_cached(self.local, [{"machine": "AOI-1", "folder": self.folder}])
         self.assertEqual(len(cached["records"]), 3)
         # 다시 넣으면 이미 있는 것은 그대로
         again = self.batch.cache_import({"path": str(zip_path)})
-        self.assertEqual((again["added"], again["kept"]), (0, 3))
-        self.assertEqual(len(self.cache_files()), 1)
+        self.assertEqual((again["added"], again["kept"]), (0, 4))
+        self.assertEqual(len(self.cache_files()), 2)
 
     def test_collect_adopts_imported_cache_and_reads_only_new(self):
         names = [f"J_S_LOT{i}_26-Oct-0{i}_(10.00.00)_BatchReport.htm" for i in range(1, 3)]
@@ -281,8 +283,14 @@ class CacheImport(unittest.TestCase):
             self.batch.cache_import({"path": str(broken)})
         with self.assertRaises(ValueError):          # 다른 캐시 형식
             self.batch.cache_import({"path": str(self.make_zip([], "old.zip", {"schema": 1, "cache_schema": 99}))})
-        with self.assertRaises(ValueError):          # 이 PC 에 같은 호기가 없음
-            self.batch.cache_import({"path": str(self.make_zip([self.other_pc("AOI-9", "P:\\x", ["a_BatchReport.htm"])], "other.zip"))})
+        with self.assertRaises(ValueError):          # 가져올 캐시가 없음(폴더가 비었거나 이름이 모두 잘못됨)
+            self.batch.cache_import({"path": str(self.make_zip([self.other_pc("AOI-9", "", ["a_BatchReport.htm"]),
+                                                                self.other_pc("AOI-8", "P:\\x", ["../a_BatchReport.htm"])], "other.zip"))})
+        # v14.1.9: 호기를 하나도 등록하지 않은 PC 도 가져온다(종전에는 '등록된 호기가 없습니다'로 막음)
+        bare = self.base / "bare.json"
+        bare.write_text(json.dumps({"local_dir": str(self.base / "local_bare")}), encoding="utf-8")
+        out = DesktopBatch(bare).cache_import({"path": str(self.make_zip([self.other_pc("AOI-9", "P:\\x", ["a_BatchReport.htm"])], "bare.zip"))})
+        self.assertEqual((out["added"], out["machines"], out["unregistered"]), (1, ["AOI-9"], ["AOI-9"]))
 
     def test_round_trip_and_ipc(self):
         # B 가 만든 zip(게시와 같은 형식) → 새 PC(C) 가 IPC 로 import

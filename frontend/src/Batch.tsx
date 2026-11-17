@@ -10,7 +10,7 @@ import {LotWindow,type Drafts} from './BatchLotWindow';
 import {UtilTab} from './BatchUtil';
 import {WphTab} from './BatchWph';
 import {CompareTab} from './BatchCompare';
-import {FindTab,type FindCond,type FindList} from './BatchFind';
+import {FindTab,type FindCond,type FindList,type CacheMachine} from './BatchFind';
 import {DevHelp} from './DevHelp';
 import {setKlaCache,type KlaCache} from './KlaSettings';
 import {Q,DefectWindow} from './BatchHelp';
@@ -25,7 +25,7 @@ type ShareList={folder:string;exists:boolean;items:ShareItem[]};
 // 자동 분석 실패 뒤 다시 시도하기까지(Para #54).
 const AUTO_RETRY_MS=30*60*1000;
 const mb=(n:number)=>(n/1048576).toFixed(1)+'MB';
-type CacheImport={path:string;source?:string;files:number;added:number;kept:number;invalid:number;machines:string[];skipped:{machine:string;reports:number}[];
+type CacheImport={path:string;source?:string;files:number;added:number;kept:number;invalid:number;machines:string[];skipped:{machine:string;reports:number}[];unregistered?:string[];
   targets:{machine:string;folder:string;added:number;kept:number}[];exported_at:string;app_version:string;choices_skipped:boolean};
 
 /* Batch Report 분석 — 큰 탭 2개: [가동률 조사 및 분석](조사 범위 공통 · Lot 추적 · 가동률 · WPH) /
@@ -56,6 +56,9 @@ export function Batch({active}:{active:boolean}){
   const [cond,setCond]=useState<FindCond>({machines:[],query:'',start:'',end:''});
   const [fstep,setFstep]=useState(0),[finding,setFinding]=useState(false),[fprog,setFprog]=useState('');
   const [flist,setFlist]=useState<FindList>(),[fchecking,setFchecking]=useState(false);
+  // v14.1.9 [캐시에서만 찾기] 호기 = 로컬 캐시에 든 호기(이 PC 에 등록하지 않은 호기도). 고르기 = undefined 면 전부.
+  const [cacheMs,setCacheMs]=useState<CacheMachine[]>(),[cachePick,setCachePick]=useState<string[]>(),[cacheMsBusy,setCacheMsBusy]=useState(false);
+  const cacheMsReq=useRef<Promise<CacheMachine[]|undefined>|undefined>(undefined);
   const job=useRef<number|undefined>(undefined),runningRef=useRef(false),restoringRef=useRef(false),autoBlocked=useRef(0),first=useRef(true);
   const critRef=useRef<HTMLDialogElement>(null),rawRef=useRef<HTMLDialogElement>(null);
 
@@ -73,7 +76,8 @@ export function Batch({active}:{active:boolean}){
         setMachines([...new Set(last.map(t=>t.machine))].filter(id=>ids.has(id)));
         const t0=last[0];
         if(t0&&(t0.start||t0.end)){setAllDates(false);setFrom(t0.start||'');setTo(t0.end||'');}
-        setCond(c=>({...c,machines:data.machines.map(m=>m.id)}));
+        // v14.1.9: 등록한 호기가 없으면 찾기는 처음부터 [캐시에서만 찾기](OneDrive 에서 받은 캐시로 찾음).
+        setCond(c=>({...c,machines:data.machines.map(m=>m.id),cacheOnly:c.cacheOnly??(data.machines.length?undefined:true)}));
         if(!views.scope)void updateGate().then(restore);   // v14.1.1: 업데이트 확인이 먼저(AppUpdate.updateGate)
       }else{
         setMachines(old=>old.filter(id=>ids.has(id)));
@@ -153,7 +157,7 @@ export function Batch({active}:{active:boolean}){
   async function launchKlaOnly(automatic:boolean,publish:boolean){
     runningRef.current=true;setRunning(true);setAutoRun(automatic);setProgress(undefined);
     try{if(!await klaAuto(publish,true)&&automatic)autoBlocked.current=Date.now()+AUTO_RETRY_MS;}
-    finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);}
+    finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);setCacheMs(undefined);}
   }
   async function launch(payload:Target[],opts:Options&{reuse:boolean},automatic:boolean,publish=false,kla?:{publish:boolean}){
     runningRef.current=true;setRunning(true);setAutoRun(automatic);setCancelSent(false);setProgress(undefined);
@@ -173,7 +177,7 @@ export function Batch({active}:{active:boolean}){
       if(kla)await klaAuto(kla.publish,false);
     }catch(e){
       if(automatic){autoBlocked.current=Date.now()+AUTO_RETRY_MS;notify('Batch Report 자동 갱신 실패: '+errorText(e),'error');}else fail(e);
-    }finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);}
+    }finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);setCacheMs(undefined);}
   }
   // 자동 분석(자동 분석 및 취합 › Batch Report 자동 분석): 지난 조사 조건으로, 캐시는 늘 재사용.
   // 실패하면 AUTO_RETRY_MS 동안만 쉰다(Para #54: 종전에는 한 번 실패하면 앱을 다시 켜기 전까지 자동 분석이 영영 멈췄다).
@@ -235,11 +239,25 @@ export function Batch({active}:{active:boolean}){
   }
 
   // ---- 찾기 · 취합 -------------------------------------------------------------------
+  // v14.1.9: [캐시에서만 찾기] 호기 격자 — 로컬 캐시 파일만 읽는다(장비 접근 없음). 같은 요청이 겹치지 않게 하나만.
+  function loadCacheMs(){
+    if(cacheMsReq.current)return cacheMsReq.current;
+    setCacheMsBusy(true);
+    const req=batchCall<{machines:CacheMachine[];reports:number}>('batch_cache_machines',{}).then(r=>{setCacheMs(r.machines);return r.machines;})
+      .catch(e=>{fail(e);return undefined;}).finally(()=>{cacheMsReq.current=undefined;setCacheMsBusy(false);});
+    cacheMsReq.current=req;return req;
+  }
+  useEffect(()=>{if(active&&main==='find'&&cond.cacheOnly&&!cacheMs&&!cacheMsReq.current)void loadCacheMs();},[active,main,cond.cacheOnly,cacheMs]);
   // 1단계(#19): 파일 이름만 — 로컬 조사 캐시에서 먼저(즉시) 보여 주고, 이어서 장비 Reports 폴더 이름 목록으로 새 것을 더한다.
   async function runFind(c=cond){
     if(!c.query.trim()){notify('Batch Report 키워드를 입력하세요.','error');return;}
-    if(!c.machines.length){notify('찾을 호기를 하나 이상 고르세요.','error');return;}
-    const base={machines:c.machines,query:c.query.trim(),start:c.start,end:c.end};
+    let ms=c.machines;
+    if(c.cacheOnly){
+      const list=cacheMs??await loadCacheMs();if(!list)return;
+      const ids=list.map(m=>m.id);ms=(cachePick??ids).filter(id=>ids.includes(id));
+      if(!ms.length){notify(list.length?'찾을 호기를 하나 이상 고르세요.':'이 PC 로컬 캐시에 Batch Report가 없습니다. 먼저 [OneDrive 에서 최신 캐시 받기]를 누르세요.','error');return;}
+    }else if(!ms.length){notify(config?.machines.length?'찾을 호기를 하나 이상 고르세요.':'등록된 호기가 없습니다. [캐시에서만 찾기]를 켜면 OneDrive 에서 받은 캐시로 찾을 수 있습니다.','error');return;}
+    const base={machines:ms,query:c.query.trim(),start:c.start,end:c.end};
     setFinding(true);setFprog('로컬 조사 캐시에서 찾는 중…');
     try{const cached=(await desktop.request('batch_find',{...base,stage:'cache'}).promise).batch as FindList;
       setFlist(cached);setFstep(1);
@@ -284,9 +302,17 @@ export function Batch({active}:{active:boolean}){
     setShareLoading(true);
     try{const r=await batchCall<ShareList>('batch_cache_share_list',{});setShare(r);
       const first=r.items.find(i=>i.present&&i.compatible);setSharePick(first?first.name:'');
-      if(!r.items.length)notify('OneDrive 에 게시된 Batch Report 캐시가 아직 없습니다.','info');}
-    catch(e){fail(e);}
+      if(!r.items.length)notify('OneDrive 에 게시된 Batch Report 캐시가 아직 없습니다.','info');
+      return r;}
+    catch(e){fail(e);return undefined;}
     finally{setShareLoading(false);}
+  }
+  // v14.1.9 찾기 화면 [OneDrive 에서 최신 캐시 받기]: 목록에서 받을 수 있는 가장 최근 캐시를 골라 바로 불러온다(누를 때만).
+  async function latestShare(){
+    const r=await loadShare();if(!r)return;
+    const first=r.items.find(i=>i.present&&i.compatible);
+    if(first)await importCache('',first.name);
+    else if(r.items.length)notify('받을 수 있는 캐시가 아직 없습니다 — OneDrive 동기화가 끝나지 않았거나 형식(버전)이 다릅니다.','info');
   }
   // 다른 PC(개발자)가 게시한 캐시 zip → 이 PC 로컬 캐시에 합침(이슈 #29 · #39). 장비 접근 없음, zip 은 읽기만(풀지 않음).
   const importRef=useRef(false),activeRef=useRef(active);activeRef.current=active;
@@ -297,7 +323,10 @@ export function Batch({active}:{active:boolean}){
     try{const r=shared?await batchCall<CacheImport>('batch_cache_share_import',{name:shared}):await batchCall<CacheImport>('batch_cache_import',{path});setCacheIn(r);
       const known=new Set(config?.machines.map(m=>m.id));
       setMachines(o=>[...new Set([...o,...r.machines.filter(m=>known.has(m))])]);
-      notify(`Batch Report 캐시를 가져왔습니다 — 호기 ${r.machines.length}대 · 새 Batch Report ${r.added}개${r.kept?` (이미 있던 ${r.kept}개는 그대로)`:''}.`,'ok');}
+      setCacheMs(undefined);   // v14.1.9: [캐시에서만 찾기] 호기 격자를 새로 읽는다
+      const un=r.unregistered||[];
+      notify(`Batch Report 캐시를 가져왔습니다 — 호기 ${r.machines.length}대 · 새 Batch Report ${r.added}개${r.kept?` (이미 있던 ${r.kept}개는 그대로)`:''}.`+
+        (un.length?` 이 PC 에 등록하지 않은 호기 ${un.length}대는 [Batch Report 찾기 · 취합]의 [캐시에서만 찾기]로 찾을 수 있습니다.`:''),'ok');}
     catch(e){fail(e);}
     finally{importRef.current=false;setImporting(false);}
   }
@@ -397,8 +426,8 @@ export function Batch({active}:{active:boolean}){
           {importing&&<div className="progress3" role="progressbar" aria-label="캐시 가져오는 중"><span style={{width:'45%'}}/></div>}
           {cacheIn&&<div className="hint" role="status">가져옴: <code>{cacheIn.source||cacheIn.path}</code>{cacheIn.exported_at?` (게시 시각 ${cacheIn.exported_at}${cacheIn.app_version?` · v${cacheIn.app_version}`:''})`:''} —
             호기 {cacheIn.machines.length}대({cacheIn.machines.join(', ')}) · 새 Batch Report <b>{cacheIn.added}</b>개{cacheIn.kept?` · 이미 있던 ${cacheIn.kept}개는 그대로`:''}{cacheIn.invalid?` · 형식이 맞지 않는 ${cacheIn.invalid}개 제외`:''}.
-            {cacheIn.skipped.length>0&&<> 이 PC에 등록되지 않은 호기 {cacheIn.skipped.map(s=>`${s.machine}(${s.reports}개)`).join(', ')}는 건너뛰었습니다 — <button type="button" className="gear" onClick={()=>goToSettings({sub:'aoi'})}>⚙ AOI 장비 호기 루트 설정</button>에서 같은 이름으로 등록한 뒤 다시 넣으세요.</>}
-            <br/>이제 [조사 시작]은 가져온 캐시를 먼저 쓰고 장비에서는 새로 생긴 Batch Report만 읽으며, [Batch Report 찾기 · 취합]의 캐시 검색에도 바로 나옵니다. 가져온 호기는 조사 범위에 골라 두었습니다.
+            {(cacheIn.unregistered||[]).length>0&&<> 이 PC 에 등록하지 않은 호기 {cacheIn.unregistered!.join(', ')}는 <button type="button" className="linklike" onClick={()=>{setMain('find');setCond(c=>({...c,cacheOnly:true}));}}>[Batch Report 찾기 · 취합]의 [캐시에서만 찾기]</button>로 찾을 수 있습니다(조사 범위에는 등록한 호기만).</>}
+            <br/>이제 [조사 시작]은 가져온 캐시를 먼저 쓰고 장비에서는 새로 생긴 Batch Report만 읽으며, [Batch Report 찾기 · 취합]의 캐시 검색에도 바로 나옵니다. 가져온 호기 중 이 PC 에 등록한 호기는 조사 범위에 골라 두었습니다.
             {cacheIn.choices_skipped&&' (중복 Pass 사람 선택은 PC마다 따로라 가져오지 않습니다.)'}</div>}
           {devTools&&<div className="cache-export" aria-label="Batch Report 캐시 OneDrive 게시">
             <div className="toolbar"><button type="button" className="primary" disabled={running||publishing||restoring} onClick={()=>void publishCache()}>{publishing?'올리는 중…':'OneDrive 에 게시'}</button>
@@ -418,6 +447,8 @@ export function Batch({active}:{active:boolean}){
     </div>
     <div hidden={main!=='find'}>
       <FindTab machines={config?.machines||[]} view={views.find} busy={finding||busy||restoring} dev={dev.on} progress={fprog} cond={cond} setCond={setCond} onFind={()=>void runFind()}
+        cacheMs={cacheMs} cacheBusy={cacheMsBusy} cachePick={cachePick} setCachePick={setCachePick}
+        onLatest={()=>void latestShare()} latestBusy={shareLoading||importing} running={running}
         list={flist} checking={fchecking} onLoad={hits=>void loadFind(hits)}
         aggregate={aggregate} exportAgg={exportAgg} openLot={li=>void openLot('find',li)} showRaw={g=>void showRaw('find',g)} openFile={g=>void openFile('find',g)}
         onCrit={()=>critRef.current?.showModal()} goSettings={()=>goToSettings({sub:'aoi'})} step={fstep} setStep={setFstep}/>

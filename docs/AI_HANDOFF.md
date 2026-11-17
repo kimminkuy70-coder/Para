@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.1.9: 호기 설정 없이 캐시에서 찾기 (2026-11-17 KST, `version_v14`)
+
+- 마지막 갱신 2026-11-17 · 기준 커밋 `5fe1ebe`(v14.1.8) · 이슈 없음(소유자 세션 대화). 요청 "배치 레포트 찾기나 kla 자재 찾기에서 호기 설정이 안되어 있어도 캐시에서 찾기 키면 찾을 수 있으니까
+  그렇게 가능하게끔 수정해 지금은 막혀있어 버전은 14.1.9로 릴리즈해".
+- 막혀 있던 곳: Batch = 화면 검색 단추(`cond.machines` 비면 잠김) · 엔진 `prepare_find`(등록 호기만) · `cache_import`(미등록 호기 건너뜀, 등록 0 이면 '등록된 호기가 없습니다'로 거부 — OneDrive 캐시를 받을 수조차 없었다) ·
+  `desktop_open._report_file`(등록 폴더만). KLA = 로컬 캐시가 없으면 [KLA 캐시에서만 찾기] 체크가 잠김 · `allows`(등록 폴더만 — 캐시 결과 [폴더 열기] 거부). KLA 엔진 찾기 자체는 이미 등록 없이 됐다.
+- 한 일: `desktop_batch._cache_sources`(캐시 파일 안 (호기, 폴더) 문자열만 · 장비 접근 없음) · `cache_machines` · IPC `batch_cache_machines`('batchcache' 자리 — 조사와 겹쳐도 됨) ·
+  `prepare_find(params, cache=True)`(IPC 캐시 단계는 작업 스레드에서 확인) · `FIND_CACHE_FOLDERS` · `cache_import` 미등록 호기 = zip 폴더 그대로(`local_root` 글자 검사 · 길이 확인, 결과 `unregistered`, 모두 잘못되면 빈 캐시 파일 안 만듦),
+  `DesktopKla.allows` += 로컬 KLA 색인 sources. 화면: `BatchFind` 캐시 모드 격자 = 캐시 호기(툴팁 = 캐시 개수 · 미등록 · 폴더), 고르기 `cachePick`(없으면 전부), 등록 0 이면 `cacheOnly` 기본 켬,
+  [OneDrive 에서 최신 캐시 받기](`latestShare` — 목록 → 받을 수 있는 첫 zip → 불러오기), 캐시 가져오기 안내에 미등록 호기 → [캐시에서만 찾기] 링크. `Kla.tsx` 기본 = 장비 미등록이면 캐시 모드(캐시 없어도), 같은 빠른 받기 단추.
+- 시험: Python 전부 통과(`test_batchview` 미등록 PC 흐름 — 가져오기 · 캐시 호기 · 캐시 찾기 · 장비 단계 거부 · 읽기 · 취합 · 원본 열기 범위, `test_cache_export` 미등록 호기 가져옴 · 등록 0 PC,
+  `test_kla_cache` 등록 없는 PC [폴더 열기] 범위), `test_desktop_ui.mjs` 통과(KLA 미등록 = 캐시 모드 + 빠른 받기, Batch 캐시 모드 격자 · 검색). 등록 호기 0 인 fixture 로 실제 화면도 확인(Batch 캐시 찾기 → 읽기 → Lot 4개 · KLA 캐시 찾기).
+  **Windows · 실제 OneDrive 캐시는 확인 못 함.**
+
 ## 최신 재개 — v14.1.8: Defect 분석 목록 검색 · ☑ 고르기 (2026-11-16 KST, `version_v14`)
 
 - 마지막 갱신 2026-11-16 · 기준 커밋 `6ec51ae`(v14.1.7) · 이슈 없음(소유자 세션 대화). 요청 "모든 스텝 리스트 상단에 돋보기 검색 · 5-3 처럼 ☑ · 전체 선택/해제 · 기본 선택(옵션) ·

@@ -369,6 +369,42 @@ class DesktopFlow(unittest.TestCase):
         self.assertEqual(self.call('batch_find', machines=['AOI-1'], query='', start='', end='')['event'], 'error')
         self.assertEqual(self.call('batch_find', machines=['AOI-9'], query='X', start='', end='')['event'], 'error')
 
+    def test_find_from_cache_without_registered_machines(self):
+        # v14.1.9: 호기를 하나도 등록하지 않은 PC(OneDrive 캐시만 받은 PC)도 [캐시에서만 찾기]로 찾고 · 읽고 · 취합한다.
+        self.investigate()
+        base = Path(self.temp.name)
+        zip_path = base / 'BatchReport_캐시_20261117_090000.zip'
+        self.batch._build_cache_zip(base / 'local', zip_path)
+        bare = base / 'bare.json'
+        bare.write_text(json.dumps({'local_dir': str(base / 'local_bare')}), encoding='utf-8')
+        self.session.batch = DesktopBatch(bare)
+        out = self.call('batch_cache_import', path=str(zip_path))
+        self.assertEqual(out['event'], 'completed', out)
+        self.assertEqual((out['batch']['machines'], out['batch']['unregistered'], out['batch']['added']), (['AOI-1'], ['AOI-1'], 6))
+        self.source.rename(self.source.with_name('gone'))          # 장비가 없어도(접속하지 않음)
+        ms = self.call('batch_cache_machines')
+        self.assertEqual(ms['event'], 'completed', ms)
+        self.assertEqual(ms['batch'], {'machines': [{'id': 'AOI-1', 'folders': [str(self.source)], 'reports': 6, 'registered': False}],
+                                       'reports': 6})
+        listed = self.call('batch_find', machines=['AOI-1'], query='BAW', start='', end='', stage='cache')
+        self.assertEqual(listed['event'], 'completed', listed)
+        self.assertEqual((listed['batch']['total'], listed['batch']['cached'], listed['batch']['listed']), (2, 2, 0))
+        # 장비 단계 · 캐시에 없는 호기는 여전히 거절(등록 호기만 장비를 읽는다)
+        self.assertEqual(self.call('batch_find', machines=['AOI-1'], query='BAW', start='', end='', stage='equipment')['event'], 'error')
+        self.assertEqual(self.call('batch_find', machines=['AOI-9'], query='BAW', start='', end='', stage='cache')['event'], 'error')
+        reply = self.call('batch_find_load', hits=[h['i'] for h in listed['batch']['hits']])
+        self.assertEqual(reply['event'], 'completed', reply)
+        p = self.view('find', reply['batch'])
+        self.assertTrue(p['find']['cached_only'])
+        self.assertEqual(sorted(p['R'][g]['sm'] for g in p['hits']), ['BAW', 'BAW'])
+        self.assertEqual(len(self.call('batch_aggregate', view='find', reports=p['hits'])['batch']['groups']), 1)
+        # 그 캐시 폴더 바로 아래 Batch Report 는 [원본 열기] 허용(글자로만 비교), 다른 폴더는 그대로 거부
+        from param_manager.desktop_open import DesktopOpen
+        name = lot_records()[0]['report']['file_name']
+        opener = DesktopOpen(bare)
+        self.assertTrue(opener._report_file(self.source / name))
+        self.assertFalse(opener._report_file(base / 'elsewhere' / name))
+
     def test_chunks_reassemble(self):
         meta = self.investigate()['view']
         self.assertLess(meta['size'], VIEW_CHUNK)

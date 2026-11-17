@@ -38,9 +38,10 @@ export function Kla(){
   const [filter,setFilter]=useState('');
   const [open,setOpen]=useState<Record<string,boolean>>({});
   const cache=kla?.cache;
-  // [KLA 캐시에서만 찾기](Para #43, Batch Report 찾기 · 취합의 [캐시에서만 찾기]와 같은 모양). 정하지 않았으면 장비 미등록 PC 에서 캐시가 있을 때 켬.
+  // [KLA 캐시에서만 찾기](Para #43, Batch Report 찾기 · 취합의 [캐시에서만 찾기]와 같은 모양). 정하지 않았으면 장비 미등록 PC 에서 켬
+  // (v14.1.9 — 이 PC 에 KLA 캐시가 아직 없어도 켜 두고 [OneDrive 에서 최신 캐시 받기]로 받게 한다. 종전에는 캐시가 없으면 잠겨 막혔다).
   const [cacheOnly,setCacheOnly]=useState<boolean>();
-  const src:Source=(cacheOnly??(!roots?.length&&!!cache?.lots))&&!!cache?.lots?'cache':'equipment';
+  const src:Source=(cacheOnly??(roots!==undefined&&!roots.length))?'cache':'equipment';
   const [cachePicked,setCachePicked]=useState<string[]>();
   const [share,setShare]=useState<ShareList>();
   const [sharePick,setSharePick]=useState('');
@@ -69,9 +70,16 @@ export function Kla(){
     if(r){setShare(r);const first=r.items.find(i=>i.present&&i.compatible);setSharePick(first?first.name:'');
       if(!r.items.length)notify('OneDrive 에 게시된 KLA 캐시가 아직 없습니다.','info');}
   }
-  async function importShare(){
-    const r=await klaCall<KlaCache&{source:string}>('kla_cache_share_import',{name:sharePick},'import');
+  async function importShare(name=sharePick){
+    const r=await klaCall<KlaCache&{source:string}>('kla_cache_share_import',{name},'import');
     if(r){setKlaCache(r);setCacheOnly(true);setCachePicked(undefined);notify(`KLA 캐시를 불러왔습니다 — 장비 ${r.machines.length}대 · Lot 폴더 ${r.lots}개. [KLA 캐시에서만 찾기]를 켰습니다.`,'ok');}
+  }
+  // v14.1.9 찾기 칸 [OneDrive 에서 최신 캐시 받기]: 목록에서 받을 수 있는 가장 최근 KLA 캐시를 골라 바로 불러온다(누를 때만).
+  async function latestShare(){
+    const r=await klaCall<ShareList>('kla_cache_share_list',{},'list');if(!r)return;
+    setShare(r);const first=r.items.find(i=>i.present&&i.compatible);setSharePick(first?first.name:'');
+    if(first)await importShare(first.name);
+    else notify(r.items.length?'받을 수 있는 KLA 캐시가 아직 없습니다 — OneDrive 동기화가 끝나지 않았거나 형식(버전)이 다릅니다.':'OneDrive 에 게시된 KLA 캐시가 아직 없습니다.','info');
   }
   // 설정에서 장비를 더하거나 빼면 찾을 장비 고르기도 따라간다(새 장비는 골라 둔다).
   const known=useRef<string[]|undefined>(undefined);
@@ -156,15 +164,17 @@ export function Kla(){
         return <label key={n} className={'mbox'+(on?' on':'')} data-tip={folder?n+'\n'+folder:n}><input type="checkbox" checked={on} aria-label={n+' 찾기'}
           onChange={e=>setChosen(e.target.checked?[...chosen,n]:chosen.filter(x=>x!==n))}/><span className="mn">{n}</span><span className="ms">{folder||'KLA 캐시'}</span></label>;})}</div>
         :roots===undefined?(loadError?null:<p className="hint">불러오는 중…</p>)
-        :<p className="warn">{src==='cache'?'KLA 캐시에 장비가 없습니다.':'⚠ 등록된 KLA 장비 폴더가 없습니다 — 설정에서 등록하거나, 아래 [KLA 캐시]에서 OneDrive 캐시를 불러오세요.'}</p>}
+        :<p className="warn">{src==='cache'?'이 PC 에 KLA 캐시가 없습니다 — [OneDrive 에서 최신 캐시 받기]를 누르면 개발자가 올린 캐시를 받아 장비 없이 찾을 수 있습니다.'
+          :'⚠ 등록된 KLA 장비 폴더가 없습니다 — [KLA 캐시에서만 찾기]를 켜면 OneDrive 에서 받은 캐시로 찾을 수 있습니다(설정에서 장비 폴더를 등록해도 됩니다).'}</p>}
       <div className="scope-row"><label className="field" style={{flex:1,minWidth:320}}>Lot 키워드<input value={query} maxLength={200} placeholder="예: RINT63 6324 — 여러 단어는 모두 포함"
           onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!busy)void search();}}/></label>
         <div className="dates"><label className="field" title="비우면 처음부터">시작일<input type="date" aria-label="KLA 찾기 시작일" value={start} onChange={e=>setStart(e.target.value)}/></label>
           <label className="field" title="비우면 끝까지">종료일<input type="date" aria-label="KLA 찾기 종료일" value={end} onChange={e=>setEnd(e.target.value)}/></label></div>
-        <label className="tgl2" title={cache?.lots?`로컬 KLA 캐시(${cache.updated_at||'시각 모름'} 갱신)에서만 찾습니다(장비에 접속하지 않음)`:'이 PC 에 KLA 캐시가 없습니다 — 아래 [KLA 캐시]에서 불러오세요'}>
-          <input type="checkbox" aria-label="KLA 캐시에서만 찾기" disabled={!cache?.lots} checked={src==='cache'} onChange={e=>setCacheOnly(e.target.checked)}/> KLA 캐시에서만 찾기</label>
+        <label className="tgl2" title={cache?.lots?`로컬 KLA 캐시(${cache.updated_at||'시각 모름'} 갱신)에서만 찾습니다(장비에 접속하지 않음 · 이 PC 에 등록하지 않은 장비도)`:'이 PC 에 KLA 캐시가 아직 없습니다 — 켜고 [OneDrive 에서 최신 캐시 받기]를 누르세요'}>
+          <input type="checkbox" aria-label="KLA 캐시에서만 찾기" checked={src==='cache'} onChange={e=>setCacheOnly(e.target.checked)}/> KLA 캐시에서만 찾기</label>
         <div className="go"><button className="primary" disabled={busy||!!cacheBusy||!query.trim()||!chosen.length} onClick={()=>void search()}>{busy?'찾는 중…':'검색 →'}</button></div></div>
-      <p className="hint">{src==='cache'?`KLA 캐시(${cache?.updated_at||'시각 모름'} 기준)에서만 찾습니다 — 장비에 접속하지 않습니다.`:'장비 폴더 이름만 읽습니다(파일은 열지 않음).'} 기간을 비우면 모든 날짜를 찾습니다.</p>
+      <p className="hint">{src==='cache'?(cache?.lots?`KLA 캐시(${cache.updated_at||'시각 모름'} 기준)에서만 찾습니다 — 장비에 접속하지 않습니다. `:''):'장비 폴더 이름만 읽습니다(파일은 열지 않음). '}기간을 비우면 모든 날짜를 찾습니다.
+        {src==='cache'&&<> <button type="button" style={{minHeight:28,padding:'3px 10px',fontSize:12}} disabled={!!cacheBusy||busy} onClick={()=>void latestShare()}>{cacheBusy==='list'||cacheBusy==='import'?'받는 중…':'OneDrive 에서 최신 캐시 받기'}</button></>}</p>
       {src==='equipment'&&<KlaBackupBar disabled={busy}/>}
     </div>
     {busy&&<p className="kc-note"><span className="spinner" aria-hidden="true"/> {progress}</p>}

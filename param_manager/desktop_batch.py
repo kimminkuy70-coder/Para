@@ -207,6 +207,39 @@ def _cached_names(root, folders):
     return out
 
 
+def _cache_sources(root):
+    """{호기: {폴더: {파일 이름}}} — 로컬 조사 캐시(배치분석/누적)에 든 (호기, 폴더)와 Batch Report 이름(v14.1.9).
+
+    장비에 묻지 않는다 — 캐시 파일 안에 적어 둔 (호기, 폴더) 문자열만 본다. 이 PC 에 호기를 등록하지 않았어도
+    (OneDrive 캐시만 받은 PC) [캐시에서만 찾기]가 이 목록의 호기 · 폴더로 찾는다. 같은 (호기, 폴더)의 캐시가
+    둘이면(#29 — 가져온 이름 · resolve 한 이름) 이름을 합친다."""
+    import os
+    base = batchreport_store.local_root(root) / "배치분석" / "누적"
+    out, raw = {}, {}
+    if not base.is_dir():
+        return out
+    for cachefile in sorted(base.glob("*.json")):
+        if cachefile.is_symlink():
+            continue
+        try:
+            state = batchreport_store._load_state(cachefile)
+        except (OSError, ValueError):
+            continue
+        machine, folder = state.get("machine"), state.get("folder")
+        if not isinstance(machine, str) or not machine.strip() or not isinstance(folder, str) or not folder.strip() \
+                or len(folder) > 1024 or not state["entries"]:
+            continue
+        key = (machine, os.path.normcase(str(Path(folder))))
+        name = raw.setdefault(key, folder)
+        out.setdefault(machine, {}).setdefault(name, set()).update(state["entries"])
+    return out
+
+
+# [캐시에서만 찾기]로 고른, 이 PC 에 등록하지 않은 호기의 캐시 폴더(v14.1.9) — 그 찾기 결과의 [원본 열기]를
+# 등록 폴더처럼 허용한다(desktop_open, 폴더 바로 아래 Batch Report 만 · 글자로만 비교).
+FIND_CACHE_FOLDERS = set()
+
+
 class BatchViews:
     """새 Batch Report 화면용 결과 보관(엔진 메모리). 화면은 `view_chunk` 로 조각을 받아 간다."""
 
@@ -343,14 +376,31 @@ class BatchViews:
                     errors=[[e["machine"], e["source_file"], e["error"]] for e in collection["errors"][:200]],
                     artifacts={k: output[k] for k in ("outdir", "html", "lots", "xlsx", "dashboard")})
 
-    def prepare_find(self, params):
+    def cache_machines(self, params):
+        """[캐시에서만 찾기] 호기 격자(v14.1.9) — 로컬 조사 캐시에 든 호기 · 폴더 · Batch Report 수. 장비 접근 없음."""
+        if params:
+            raise ValueError("요청을 확인하세요")
+        _, paths, root, _ = self.configuration()
+        out = []
+        for machine, folders in sorted(_cache_sources(root).items(), key=lambda kv: _name_key(kv[0])):
+            out.append(dict(id=machine, folders=sorted(folders), reports=len(set().union(*folders.values())),
+                            registered=machine in paths))
+        return dict(machines=out, reports=sum(m["reports"] for m in out))
+
+    def prepare_find(self, params, cache=False):
+        """찾기 조건 확인. cache=True(캐시 단계, v14.1.9)면 이 PC 에 등록하지 않은 호기도 로컬 캐시에 있으면 받는다
+        — 그 호기는 캐시에 적힌 폴더로 찾는다(장비 단계는 등록 호기만)."""
         if not isinstance(params, dict) or set(params) - {"machines", "query", "start", "end"}:
             raise ValueError("검색 조건을 확인하세요")
         cfg, paths, root, _ = self.configuration()
         machines = params.get("machines")
+        cached = {}
+        if cache and isinstance(machines, list) and any(isinstance(m, str) and m not in paths for m in machines):
+            cached = _cache_sources(root)
         if not isinstance(machines, list) or not 1 <= len(machines) <= MAX_FIND_MACHINES or any(
-                not isinstance(m, str) or m not in paths for m in machines):
-            raise ValueError("찾을 호기를 하나 이상 고르세요")
+                not isinstance(m, str) or (m not in paths and m not in cached) for m in machines):
+            raise ValueError("찾을 호기를 하나 이상 고르세요" if not cache else
+                             "찾을 호기를 하나 이상 고르세요 — 이 PC 에 등록하지 않은 호기는 로컬 캐시에 있어야 합니다")
         target = {}
         for key in ("query", "start", "end"):
             value = params.get(key, "")
@@ -362,6 +412,11 @@ class BatchViews:
         batchreport_store.dates(target)
         folders = []
         for m in dict.fromkeys(machines):
+            if m not in paths:
+                # 이 PC 에 등록하지 않은 호기(v14.1.9): 캐시에 적힌 폴더 문자열 그대로 — 장비에는 접근하지 않는다.
+                folders.extend((m, f) for f in sorted(cached[m]))
+                FIND_CACHE_FOLDERS.update(cached[m])
+                continue
             for folder in dict.fromkeys([paths[m], *cfg.get("batch_extra_paths", {}).get(m, [])]):
                 if isinstance(folder, str) and Path(folder).is_absolute():
                     folders.append((m, folder))
@@ -787,6 +842,7 @@ class BatchViews:
         """다른 PC 가 게시한 캐시 zip(_build_cache_zip 결과)을 이 PC 로컬 캐시(배치분석/누적)에 합친다(이슈 #29).
         장비 접근 없음, zip 은 읽기만. 호기는 이 PC 에 등록된 호기 이름으로 짝짓고, 폴더는 이 PC 의 그 호기 Report 폴더
         (같은 경로 → 같은 마지막 폴더 이름 → 기본 폴더 순)로 옮겨 적는다 — PC 마다 드라이브 문자 · 경로가 달라도 쓰이게.
+        이 PC 에 등록하지 않은 호기(v14.1.9)는 zip 에 적힌 폴더 그대로 둔다 — [캐시에서만 찾기]가 그대로 찾는다.
         이미 이 PC 캐시에 있는 Batch Report(같은 파일 이름)는 그대로 두고 없는 것만 더한다. 사람 선택은 PC 마다 따로라 가져오지 않는다."""
         import hashlib
         import os
@@ -806,8 +862,7 @@ class BatchViews:
             folders = [f for f in dict.fromkeys([main, *(extra.get(machine) or [])]) if isinstance(f, str) and Path(f).is_absolute()]
             if folders:
                 mine[machine] = folders
-        if not mine:
-            raise ValueError("이 PC 에 등록된 호기가 없습니다. 먼저 [설정 › AOI 장비 호기 루트]에 호기를 등록하세요.")
+        # v14.1.9: 이 PC 에 호기를 하나도 등록하지 않았어도 가져온다([캐시에서만 찾기]가 가져온 호기 그대로 찾음).
         base = batchreport_store.local_root(root, [f for fs in mine.values() for f in fs]) / "배치분석" / "누적"
         norm = lambda p: str(p).replace("/", "\\").rstrip("\\").lower()
 
@@ -859,7 +914,7 @@ class BatchViews:
             members = [i for i in infos if i.filename.startswith("누적/") and i.filename.lower().endswith(".json")]
             if not members:
                 raise ValueError("zip 안에 Batch Report 캐시가 없습니다")
-            targets, skipped = {}, {}
+            targets, unregistered = {}, set()
             base.mkdir(parents=True, exist_ok=True)
             for n, info in enumerate(members, 1):
                 desktop_progress.report(f"캐시 가져오는 중 {n}/{len(members)}")
@@ -874,11 +929,22 @@ class BatchViews:
                     result["invalid"] += 1
                     continue
                 machine, entries = state["machine"], state["entries"]
-                if machine not in mine:
-                    skipped[machine] = skipped.get(machine, 0) + len(entries)
-                    continue
+                if machine in mine:
+                    folder = str(Path(pick(machine, str(state.get("folder") or ""))))
+                else:
+                    # 이 PC 에 등록하지 않은 호기(v14.1.9) — 건너뛰지 않고 zip 에 적힌 폴더 그대로 둔다.
+                    # [캐시에서만 찾기]가 이 (호기, 폴더)로 찾고, 나중에 같은 이름으로 등록하면 [조사 시작]이 장비에서 새로 읽는다.
+                    folder = str(state.get("folder") or "")
+                    try:
+                        if not machine.strip() or len(machine) > 64 or not folder.strip() or len(folder) > 1024:
+                            raise ValueError(folder)
+                        batchreport_store.local_root(root, [folder])
+                    except ValueError:
+                        result["invalid"] += len(entries)
+                        continue
+                    folder = str(Path(folder))
+                    unregistered.add(machine)
                 result["files"] += 1
-                folder = str(Path(pick(machine, str(state.get("folder") or ""))))
                 key = (machine, os.path.normcase(folder))
                 cachefile = existing.get(key)
                 if cachefile is None:
@@ -899,19 +965,19 @@ class BatchViews:
                         local["entries"][name] = entry
                         added += 1
                 del state, entries
-                if added or not cachefile.exists():
+                if added:       # 모두 잘못된 항목이면 빈 캐시 파일을 만들지 않는다
                     local.update(machine=machine, folder=folder)
                     batchreport_store._save_state(cachefile, local)
                 target["added"] += added
-        result["targets"] = list(targets.values())
+        result["targets"] = [t for t in targets.values() if t["added"] or t["kept"]]
         result["added"] = sum(t["added"] for t in result["targets"])
         result["kept"] = sum(t["kept"] for t in result["targets"])
         result["machines"] = sorted({t["machine"] for t in result["targets"]}, key=_name_key)
-        result["skipped"] = [dict(machine=m, reports=c) for m, c in sorted(skipped.items())]
+        result["skipped"] = []      # v14.1.9 부터 등록하지 않은 호기도 가져오므로 늘 빈 목록(예전 화면 호환)
+        # 이 PC 에 등록하지 않은 호기(v14.1.9) — 화면이 '[캐시에서만 찾기]로 찾을 수 있음'을 알린다.
+        result["unregistered"] = sorted(unregistered, key=_name_key)
         if not result["targets"]:
-            names = ", ".join(sorted(skipped)) or "없음"
-            raise ValueError(f"이 PC 에 등록된 호기와 같은 이름의 캐시가 없습니다(zip 안 호기: {names}). "
-                             "[설정 › AOI 장비 호기 루트]에 같은 호기 이름으로 등록한 뒤 다시 넣으세요.")
+            raise ValueError("zip 안에 가져올 수 있는 Batch Report 캐시가 없습니다 — [OneDrive 에 게시]로 만든 zip 인지 확인하세요")
         return result
 
 

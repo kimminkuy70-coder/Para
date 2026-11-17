@@ -26,6 +26,10 @@
   규칙 = **필터 · 검색에 맞고 ☑ 인 줄만 다음 단계 · CSV · 최종 목록**: 5-1 `s.pk`(Slot 마다 Uint8Array) → 5-2 `p.on2` → `c5Pool()`(5-2 보기 · 검색 · ☑) → 5-3 `pickList()` = `C5.items`(보기 · GL 범위 · 검색) 중 ☑.
   기본 탭: Step 3 · 4 목록 ☑(`P.pk`, ☐ = 흐리게 · 지도 회색 원 · ↑↓ 건너뜀 · [CSV 저장]에서 뺌), 쌍별 상세 표 ☑(`S.dpk`, CSV = 보이는 ☑). 5-1 숫자 열 검색은 숫자 단어일 때만(30만 줄 ≈ 0.4초, 글자 단어 ≈ 30 ms).
   5-1 사진 이름 검색 = Color 사진 + 그 Color 의 Gray 프레임(연결 없는 Defect 의 Gray 프레임은 5-2 부터 — 30만 개를 다 계산하지 않음).
+- **v14.1.9(소유자 2026-11-17)**: **호기 설정 없이 캐시에서 찾기** — Batch Report 찾기 · KLA 자재 찾기에서 호기(장비 폴더)를 등록하지 않은 PC 도 [캐시에서만 찾기]로 찾는다(등록 0 이면 처음부터 켬).
+  Batch: 캐시 모드 호기 격자 = 로컬 캐시에 든 호기(`batch_cache_machines` → `_cache_sources`, 'batchcache' 자리), `prepare_find(cache=True)`(캐시 단계는 작업 스레드)가 미등록 호기를 캐시에 적힌 폴더 문자열로 찾고
+  `FIND_CACHE_FOLDERS` 로 그 폴더 바로 아래 Batch Report [원본 열기] 허용, 장비 단계는 여전히 등록 호기만. `cache_import` 는 **미등록 호기도 가져온다**(zip 의 폴더 그대로, 결과 `unregistered`; 종전 = 건너뜀 · 등록 0 이면 거부).
+  KLA: 캐시가 없어도 체크를 잠그지 않음, `DesktopKla.allows` = 등록 폴더 + 로컬 KLA 색인의 장비 · 백업 폴더 안. 두 화면 모두 찾기 칸에 [OneDrive 에서 최신 캐시 받기](받을 수 있는 가장 최근 zip 을 바로 불러옴).
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.
@@ -202,7 +206,7 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
 - 끌어 넣기: Tauri 셸이 `WindowEvent::DragDrop` 을 받아 페이지가 등록한 채널(`drop_connect`)로 `{kind: enter|leave|drop, paths}` 만 넘긴다
   (`desktop.ts` `onFileDrop`). Batch Report 화면이 보일 때만 받고 첫 `.zip` 만 쓴다. HTML5 drop 은 경로가 없어 안내만.
 - 엔진 `DesktopBatch.cache_import{path}` / IPC `batch_cache_import`('batch' 슬롯 — 조사 · 찾기와 동시 실행 안 함). zip 은 읽기만, 장비 접근 없음.
-  manifest(schema 1, cache_schema = `batchreport_store.SCHEMA`) 확인 · 파일 수/크기 한도. **호기 이름으로 짝**(이 PC 에 없는 호기는 건너뜀 · 안내),
+  manifest(schema 1, cache_schema = `batchreport_store.SCHEMA`) 확인 · 파일 수/크기 한도. **호기 이름으로 짝**(이 PC 에 없는 호기는 v14.1.9 부터 건너뛰지 않고 zip 의 폴더 그대로 — [캐시에서만 찾기]가 찾음),
   폴더는 이 PC 의 그 호기 Report 폴더로 옮겨 적음(같은 경로 → 같은 마지막 폴더 이름(하나일 때) → 기본 폴더). 같은 파일 이름이 이미 있으면 **이 PC 것 유지**,
   없는 것만 더함. 사람 선택(`사람선택/`)은 PC 마다 따로라 가져오지 않음.
 - 새 캐시 파일 이름 = 폴더를 **resolve 하지 않은** 해시(장비 접근 없이 만들려고). `batchreport_store.collect` 는 resolve 한 이름의 캐시가 없으면 이 이름의

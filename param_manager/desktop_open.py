@@ -5,8 +5,9 @@ The web UI only shows paths the engine itself returned, but it could send any
 string, so this adapter never trusts it: the path must already exist, be a
 known document type or a folder, contain no link/junction, and sit under the
 configured save folder or the local result folder (or, for equipment shares, is a
-Batch Report file right in a registered Reports folder / a folder inside a
-registered Scanresult folder / a folder inside a registered KLA equipment folder). Nothing is executed except
+Batch Report file right in a registered Reports folder (or, v14.1.9, a cache folder a
+[캐시에서만 찾기] search used) / a folder inside a registered Scanresult folder / a folder
+inside a registered KLA equipment folder or one listed in the local KLA cache). Nothing is executed except
 the OS default handler (`os.startfile`) or Explorer's select switch.
 """
 import os
@@ -64,7 +65,9 @@ class DesktopOpen:
                 for folder in (value if isinstance(value, list) else [value]):
                     if isinstance(folder, str) and folder.strip() and Path(folder).is_absolute() and key(folder) == parent:
                         return True
-        return False
+        # v14.1.9: 이 PC 에 등록하지 않은 호기를 [캐시에서만 찾기]로 찾았으면 그 캐시 폴더(캐시에 적힌 문자열)도
+        from .desktop_batch import FIND_CACHE_FOLDERS
+        return any(Path(folder).is_absolute() and key(folder) == parent for folder in list(FIND_CACHE_FOLDERS))
 
     def _scan_folder(self, path):
         """Batch Report 찾기의 Scanresult 경로 [폴더 열기] — 등록한 호기 루트 아래 `Scanresult*` 폴더 안,

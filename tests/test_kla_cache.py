@@ -137,6 +137,12 @@ class KlaCache(unittest.TestCase):
         res = self.user.search({"query": "INT948", "source": "cache"})
         self.assertEqual([h["machine"] for h in res["hits"]], ["AOI-K6"])
         self.assertEqual(self.user.state()["cache"]["machines"], ["AOI-K6"])
+        # v14.1.9: 장비를 등록하지 않은 PC 도 캐시에서 찾은 폴더는 [폴더 열기] 허용(캐시에 든 장비 폴더 안만)
+        self.assertEqual(self.user.roots(), [])
+        self.assertTrue(self.user.allows(res["hits"][0]["path"]))
+        self.assertTrue(self.user.allows(res["hits"][0]["slots"][0]["path"]))
+        self.assertFalse(self.user.allows(str(self.base / "elsewhere")))
+        self.assertFalse(self.user.allows(str(self.drive)))
         # 동기화가 덜 된 zip(내용이 다름)은 거부
         target.write_bytes(target.read_bytes()[:-5] + b"xxxxx")
         with self.assertRaises(ValueError):

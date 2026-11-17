@@ -16,13 +16,16 @@ import {grpLabel,bunchLabel,num,isRealId,aggState,STATES,ST,type View,type AggGr
 const small={minHeight:28,padding:'3px 10px',fontSize:12} as const;
 export type FindCond={machines:string[];query:string;start:string;end:string;cacheOnly?:boolean};
 export type FindHit={i:number;m:string;f:string;t:string;c:boolean};
+/** v14.1.9 [캐시에서만 찾기] 호기 — 로컬 캐시에 든 호기(이 PC 에 등록하지 않은 호기도, registered=false). */
+export type CacheMachine={id:string;folders:string[];reports:number;registered:boolean};
 export type FindList={stage:'cache'|'equipment';query:string;start:string;end:string;hits:FindHit[];total:number;cached:number;listed:number;offline:string[];neighbor_h:number};
 const LIST_MAX=1000;
 type Props={machines:{id:string;folder:string}[];view?:View;busy:boolean;dev:boolean;progress:string;
   cond:FindCond;setCond:(c:FindCond)=>void;onFind:()=>void;aggregate:(reports:number[])=>Promise<AggGroup[]|undefined>;
   exportAgg:(reports:number[],choices:Record<string,number>,stamp:string)=>Promise<string|undefined>;
   openLot:(li:number)=>void;showRaw:(g:number)=>void;openFile:(g:number)=>void;onCrit:()=>void;goSettings:()=>void;step:number;setStep:(n:number)=>void;
-  list?:FindList;checking:boolean;onLoad:(hits:number[])=>void};
+  list?:FindList;checking:boolean;onLoad:(hits:number[])=>void;
+  cacheMs?:CacheMachine[];cacheBusy:boolean;cachePick?:string[];setCachePick:(v:string[])=>void;onLatest:()=>void;latestBusy:boolean;running:boolean};
 type Stamp={manual:number;saved:number;at:string};
 const recIdx=(c:{ok:boolean}[])=>{for(let j=c.length-1;j>=0;j--)if(c[j].ok)return j;return c.length-1;};
 const qWords=(q:string)=>q.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -45,6 +48,14 @@ function TagChips({label,counts,val,set}:{label:string;counts:Record<string,numb
 
 export function FindTab(p:Props){
   const {view:v,cond}=p;
+  // 찾을 호기 격자: 장비 = 등록한 호기, [캐시에서만 찾기] = 로컬 캐시에 든 호기(v14.1.9 — 이 PC 에 등록하지 않은 호기도).
+  const cacheOn=!!cond.cacheOnly,cacheIds=(p.cacheMs||[]).map(m=>m.id);
+  const grid=cacheOn?(p.cacheMs||[]).map(m=>({id:m.id,sub:`캐시 ${m.reports.toLocaleString()}개${m.registered?'':' · 미등록'}`,
+      tip:[`캐시 Batch Report ${m.reports.toLocaleString()}개`,...(m.registered?[]:['이 PC 에 등록하지 않은 호기(캐시에서만 찾기)']),...m.folders]}))
+    :p.machines.map(m=>({id:m.id,sub:m.folder,tip:[m.folder]}));
+  const chosen=cacheOn?(p.cachePick??cacheIds).filter(id=>cacheIds.includes(id)):cond.machines;
+  const setChosen=(next:string[])=>cacheOn?p.setCachePick(next):p.setCond({...cond,machines:next});
+  const cacheReports=(p.cacheMs||[]).reduce((a,m)=>a+m.reports,0),unreg=(p.cacheMs||[]).filter(m=>!m.registered).length;
   const [sel,setSel]=useState<Record<number,1>>({});
   const [groups,setGroups]=useState<AggGroup[]>([]),[choice,setChoice]=useState<Record<string,number>>({});
   const [stamp,setStamp]=useState<Stamp>(),[note,setNote]=useState(''),[xlsx,setXlsx]=useState('');
@@ -111,26 +122,31 @@ export function FindTab(p:Props){
     <div className="section-heading"><div><span className="step">찾기 · 취합</span><h2>Batch Report 찾기 · Lot 취합</h2></div>{v?.find&&<span className="count">찾은 Batch Report {v.find.total}개</span>}</div>
     <Stepper labels={['검색','찾은 파일 고르기','Lot · Batch Report 고르기','취합 결과']} current={p.step} onJump={p.setStep}/>
     {p.step===0&&<>
-      <div className="mhead"><span className="lbl">호기 범위</span><span className="count">선택 {cond.machines.length} / {p.machines.length}</span><span className="grow"/>
-        <label className="tgl2"><input type="checkbox" aria-label="찾기 모든 호기" checked={!!p.machines.length&&cond.machines.length===p.machines.length}
-          onChange={e=>p.setCond({...cond,machines:e.target.checked?p.machines.map(m=>m.id):[]})}/> 모든 호기</label>
+      <div className="mhead"><span className="lbl">{cacheOn?'캐시 호기':'호기 범위'}</span><span className="count">선택 {chosen.length} / {grid.length}</span><span className="grow"/>
+        <label className="tgl2"><input type="checkbox" aria-label="찾기 모든 호기" disabled={!grid.length} checked={!!grid.length&&chosen.length===grid.length}
+          onChange={e=>setChosen(e.target.checked?grid.map(m=>m.id):[])}/> 모든 호기</label>
         <button type="button" className="gear" onClick={p.goSettings}>⚙ AOI 장비 호기 루트 설정</button></div>
-      <div className="mgrid compact" role="group" aria-label="찾을 호기">{p.machines.map(m=>{const on=cond.machines.includes(m.id);
-        return <label key={m.id} className={'mbox'+(on?' on':'')} data-tip={m.id+'\n'+m.folder}><input type="checkbox" checked={on} aria-label={m.id+' 찾기'}
-          onChange={e=>p.setCond({...cond,machines:e.target.checked?[...cond.machines,m.id]:cond.machines.filter(x=>x!==m.id)})}/><span className="mn">{m.id}</span><span className="ms">{m.folder}</span></label>;})}</div>
+      {grid.length?<div className="mgrid compact" role="group" aria-label="찾을 호기">{grid.map(m=>{const on=chosen.includes(m.id);
+        return <label key={m.id} className={'mbox'+(on?' on':'')} data-tip={[m.id,...m.tip].join('\n')}><input type="checkbox" checked={on} aria-label={m.id+' 찾기'}
+          onChange={e=>setChosen(e.target.checked?[...chosen,m.id]:chosen.filter(x=>x!==m.id))}/><span className="mn">{m.id}</span><span className="ms">{m.sub}</span></label>;})}</div>
+        :cacheOn?(p.cacheBusy||!p.cacheMs?<p className="hint">로컬 캐시의 호기를 읽는 중…</p>
+          :<p className="warn">이 PC 로컬 캐시에 Batch Report가 없습니다 — [OneDrive 에서 최신 캐시 받기]를 누르면 개발자가 올린 캐시를 받아 장비 없이 찾을 수 있습니다.</p>)
+        :<p className="warn">⚠ 등록된 호기가 없습니다 — [캐시에서만 찾기]를 켜면 OneDrive 에서 받은 캐시로 찾을 수 있습니다(장비 접속 없음).</p>}
+      {cacheOn&&<p className="hint">{p.cacheMs?.length?<>로컬 캐시에서만 찾습니다(장비 접속 없음) — 호기 {p.cacheMs.length}대 · Batch Report {cacheReports.toLocaleString()}개{unreg?` · 이 PC 미등록 ${unreg}대`:''}. </>:null}
+        <button type="button" style={small} disabled={p.latestBusy||p.running||p.busy} onClick={p.onLatest}>{p.latestBusy?'받는 중…':'OneDrive 에서 최신 캐시 받기'}</button></p>}
       <div className="scope-row"><label className="field" style={{flex:1,minWidth:360}}>Batch Report 키워드<input value={cond.query} maxLength={256} placeholder="예: BAW · NSW WBG · 0856268PD — 여러 단어는 모두 포함"
           onChange={e=>p.setCond({...cond,query:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'&&!p.busy)p.onFind();}}/></label>
         <div className="dates"><label className="field">시작일<input type="date" aria-label="찾기 시작일" value={cond.start} onChange={e=>p.setCond({...cond,start:e.target.value})}/></label>
           <label className="field">종료일<input type="date" aria-label="찾기 종료일" value={cond.end} onChange={e=>p.setCond({...cond,end:e.target.value})}/></label></div>
-        <label className="tgl2" title="[조사 시작]으로 이미 읽어 둔 로컬 캐시에서만 찾습니다(장비에 접속하지 않음)"><input type="checkbox" aria-label="캐시에서만 찾기" checked={!!cond.cacheOnly}
+        <label className="tgl2" title="로컬 캐시([조사 시작]으로 읽어 둔 것 · OneDrive 에서 받은 것)에서만 찾습니다 — 장비에 접속하지 않고, 이 PC 에 등록하지 않은 호기도 찾습니다"><input type="checkbox" aria-label="캐시에서만 찾기" checked={!!cond.cacheOnly}
           onChange={e=>p.setCond({...cond,cacheOnly:e.target.checked})}/> 캐시에서만 찾기</label>
-        <div className="go"><button className="primary" disabled={p.busy||!cond.query.trim()||!cond.machines.length} onClick={p.onFind}>{p.busy?'찾는 중…':'검색 →'}</button>
+        <div className="go"><button className="primary" disabled={p.busy||!cond.query.trim()||!chosen.length} onClick={p.onFind}>{p.busy?'찾는 중…':'검색 →'}</button>
           <button type="button" className="help-btn lg" aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 묶는지 보기" onClick={p.onCrit}>?</button></div></div>
       <ScanBackupBar note="찾은 Lot 의 Scanresult 경로를 보여 줄 때 적용됩니다." disabled={p.busy}/>
       {p.busy&&<p className="scope-status" role="status">{p.progress||'Reports 폴더를 확인하는 중…'}</p>}
       <details className="logic"><summary>로직 · 검색</summary><ol>
         <li><b>파일 이름만</b> 봅니다(원본을 열지 않음). 키워드는 대소문자 무시, 여러 단어는 모두 포함, 기간은 파일 이름 안 날짜.</li>
-        <li>먼저 <b>[조사 시작]으로 이미 읽어 둔 로컬 캐시</b>에서 찾아 바로 보여 주고(장비 접속 없음), 이어서 고른 호기 Reports 폴더 이름 목록에서 캐시에 없는 새 Batch Report를 더합니다. [캐시에서만 찾기]를 켜면 장비에 접속하지 않습니다.</li>
+        <li>먼저 <b>[조사 시작]으로 이미 읽어 둔 로컬 캐시</b>에서 찾아 바로 보여 주고(장비 접속 없음), 이어서 고른 호기 Reports 폴더 이름 목록에서 캐시에 없는 새 Batch Report를 더합니다. [캐시에서만 찾기]를 켜면 장비에 접속하지 않고, 이 PC 에 호기를 등록하지 않았어도 OneDrive 에서 받은 캐시에 든 호기로 찾습니다.</li>
         <li>찾은 목록에서 고른 것만 읽습니다. 고른 Batch Report와, 같은 호기에서 그 <b>앞뒤 24시간</b> 안에 스캔한 Batch Report를 함께 읽어(캐시에 있으면 장비 접속 없음) <b>Lot · 레시피 · 공정 단계</b>로 모읍니다. 같은 Lot을 이어서 스캔했는데 키워드에 안 걸린 Batch Report(S/M 꼬리가 다른 것 등)도 회색으로 함께 보여 놓칠 일이 없게 합니다.</li>
         <li>호기 사이에는 2초 간격으로 순서대로 읽습니다(장비 접속 매너).</li></ol></details></>}
     {p.step===1&&<>

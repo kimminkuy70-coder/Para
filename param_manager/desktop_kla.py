@@ -626,14 +626,25 @@ class DesktopKla:
 
     # ---- 열기 허용 범위(desktop_open) ------------------------------------------
     def allows(self, path):
-        """등록한 KLA 장비 폴더 · 백업 폴더 **안의 폴더**인지(글자로만 비교 — 끊긴 공유에서 멈추지 않게)."""
+        """등록한 KLA 장비 폴더 · 백업 폴더, 또는 로컬 KLA 캐시에 든 장비 · 백업 폴더(v14.1.9) **안의 폴더**인지
+        (글자로만 비교 — 끊긴 공유에서 멈추지 않게)."""
         def key(p):
             return os.path.normcase(os.path.normpath(os.path.abspath(str(p))))
         target = key(path)
-        for base_path in (p for r in self.roots() for p in [r["path"], *r["backups"]]):
-            if not Path(base_path).is_absolute():
-                continue
-            base = key(base_path)
-            if target == base or target.startswith(base.rstrip(os.sep) + os.sep):
-                return True
-        return False
+
+        def inside(paths):
+            for base_path in paths:
+                if not isinstance(base_path, str) or not base_path.strip() or not Path(base_path).is_absolute():
+                    continue
+                base = key(base_path)
+                if target == base or target.startswith(base.rstrip(os.sep) + os.sep):
+                    return True
+            return False
+        if inside(p for r in self.roots() for p in [r["path"], *r["backups"]]):
+            return True
+        # v14.1.9: 장비를 등록하지 않은 PC 도 KLA 캐시에서 찾은 폴더는 연다 — 로컬 KLA 색인에 든 장비 · 백업 폴더 안만.
+        try:
+            sources = self._load_cache()["sources"]
+        except (OSError, ValueError):
+            return False
+        return inside(s["path"] for s in sources)
