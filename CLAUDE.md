@@ -30,6 +30,10 @@
   Batch: 캐시 모드 호기 격자 = 로컬 캐시에 든 호기(`batch_cache_machines` → `_cache_sources`, 'batchcache' 자리), `prepare_find(cache=True)`(캐시 단계는 작업 스레드)가 미등록 호기를 캐시에 적힌 폴더 문자열로 찾고
   `FIND_CACHE_FOLDERS` 로 그 폴더 바로 아래 Batch Report [원본 열기] 허용, 장비 단계는 여전히 등록 호기만. `cache_import` 는 **미등록 호기도 가져온다**(zip 의 폴더 그대로, 결과 `unregistered`; 종전 = 건너뜀 · 등록 0 이면 거부).
   KLA: 캐시가 없어도 체크를 잠그지 않음, `DesktopKla.allows` = 등록 폴더 + 로컬 KLA 색인의 장비 · 백업 폴더 안. 두 화면 모두 찾기 칸에 [OneDrive 에서 최신 캐시 받기](받을 수 있는 가장 최근 zip 을 바로 불러옴).
+- **v14.1.10(#78, 2026-11-17)**: 5-3 최종 목록 엑셀 **[원본 이미지도 넣기]**(`#c5xlOrig`, `XLO` · `cw.xlOrig`, 기본 끔) — 켜면 Gray 프레임 열 뒤에 `XL_ORIG` 2열(Color 원본 · Gray 프레임 원본)을 넣는다.
+  원본 = `xlOrig` 가 매칭 폴더의 파일 바이트 그대로(JPEG · PNG, 그 밖 형식만 같은 픽셀 PNG), `xlsxBlob` pics 의 `ext`. 끄면 종전 `XL_COLS`(Para `colorgray.FINAL_COLS` 와 같은 차례) 그대로.
+  종전 엑셀 사진(Color · Gray Crop · Gray 프레임)은 **원본이 아니다**: Color = JPEG 다시 압축(0.88, 960×720 넘으면 줄임), Gray = 빨간 네모 · 측정 원을 그린 그림(프레임 1800×600 안).
+  기본 탭 wafer map Defect 위치(±1 칸 밀림) 검토 보고 = `docs/AI_HANDOFF.md` v14.1.10 절(수정 전 — 소유자 지시 "보고부터").
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

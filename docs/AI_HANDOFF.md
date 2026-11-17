@@ -1,5 +1,32 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.1.10: 최종 목록 엑셀 원본 이미지 옵션 + 기본 탭 wafer map 위치 검토 보고 (2026-11-17 KST, `version_v14`, 이슈 #78)
+
+- 마지막 갱신 2026-11-17 · 기준 커밋 `f6d8857`(v14.1.9 뒤) · 이슈 #78 "v14.1.10 업데이트 사항"(자동 실행 routine 처리).
+- 요청 ① "defect 분석에서 이미지 엑셀 파일로 저장시에 원본 이미지 저장 옵션 기능 추가 (현재 원본 이미지가 저장되는건지 확인)"
+  ② "defect 분석(기본)탭 웨이퍼 맵이 제대로 출력이 안돼 — 빠진 defect, row/col +1 쉬프트 — 로직 재검토, **수정하지 말고 보고부터**".
+- ① 확인 결과: 종전 엑셀 사진은 **원본이 아니었다** — Color = 원본을 JPEG 로 다시 압축(품질 0.88, 960×720 보다 크면 줄임), Gray Crop · Gray 프레임 = 빨간 네모(+ 측정 원)를 그린 그림(프레임은 1800×600 안으로 줄임).
+  한 일(rev6 HTML · para-skin.css, dist 같게): 5-3 최종 목록 줄에 **[원본 이미지도 넣기]**(`#c5xlOrig`, 기본 끔, `cw.xlOrig` 기억) → 켜면 Gray 프레임 열 뒤 `XL_ORIG` 2열
+  (Color 원본 · Gray 프레임 원본) = `xlOrig`(매칭 폴더 파일 바이트 그대로; JPEG · PNG 그대로, 그 밖 형식만 같은 픽셀 PNG), `xlsxBlob` 가 png 도 넣음(`ext`). 끄면 열 · 사진 종전 그대로.
+  해석(확인 전): '원본 이미지' = Color 사진 · Gray 프레임 사진 파일 그대로(Gray Crop 은 원본 파일이 아니라 넣지 않음), 종전 사진 3장은 그대로 두고 **더한다**. Para 프로그램 [Color·Gray 매칭] 의 최종 목록 엑셀(`colorgray.build_final_workbook`)은 안 바꿈.
+- ② 보고(코드 **안 고침**, 실제 자료 없이 코드만 읽은 추정 — 확인 전). 기본 탭 그림 = `dieCells`(rev6 HTML) · `sampleFit` · `paintMap`, Defect Die = `dieOf` = floor((X−offX)/PitchX).
+  1. **가장 유력 — 샘플 맵 자리 맞추기 ±1 칸**: 샘플 Wafer Map 을 올리면 맵 칸 → 장비 Col/Row 자리를 `sampleFit` 이 정한다. s_DieLocation 이 없으면 처음 자리 = `round(중심/Pitch − 맵폭/2)`(맵 Die 묶음 가운데 = wafer 중심 가정).
+     맵 Die 묶음이 wafer 중심에 대칭이 아니면(한쪽에만 가장자리 Die 줄 · 열이 더 있음 등) 반올림이 1칸 틀린다. Defect 로 고치는 것은 Defect ≥ 20개이고 max(5, 10%) 넘게 나을 때만이라 대개 그대로 남는다.
+     화면 Die 번호 = 장비 Col/Row − 기준(맵 맨 왼쪽 아래 Die)이라, 맵이 1칸 왼쪽 · 아래로 놓이면 **모든 Defect 의 (col, row) 가 +1** 로 보이고, 가장자리 Defect 는 맵 Die 밖('wafer 밖 칸')에 찍혀 빠진 것처럼 보인다 — 증상과 같다.
+  2. **맵 머리 REFPX · REFPY 를 안 쓴다**: 맵 파일의 기준 Die 위치를 읽지 않고 가운데 맞춤만 한다. 기준 Die 로 맞추면 반올림 추정이 필요 없다(수정안 후보).
+  3. **FNLOC 은 Notch 그림에만** 쓰고 맵 회전에는 안 쓴다(RowData 첫 줄 = 위로 고정). 맵 파일 방향이 장비 Wafer 좌표 방향과 다르면(예 FNLOC 0 vs 장비 Notch 아래) 맵이 뒤집혀 놓인다.
+  4. Die 경계 = ProductInfo `CustomerDieOffsetX/Y` · `CustomerDiePitchX/Y`(floor). offset 기준이 Defect Wafer 좌표와 다르면 경계 근처 Defect 만 옆 Die 로 간다(전체 +1 이면 1번이 더 유력).
+  5. '빠진 defect' 다른 후보: Step 3 · 4 ☐ 줄은 회색 · 흐리게(v14.1.8), 보기 필터 · 같은 자리 점 겹침, Lot 별 보기의 Slot 겹쳐 그림.
+  확인에 필요한 것(소유자에게 물음): 그 화면 맵 아래 상태 줄('샘플 위치 = … 칸 옮김' · '맵 … Die … 일치/다름' · 'Die 번호 = Color 이미지 Col/Row … 일치' 문구), 샘플 맵 파일의 머리(FNLOC · REFPX · REFPY · ROWCT · COLCT),
+  그 Slot 결과 폴더에 s_DieLocation.dat · ProductInfo.ini 가 있는지, +1 이 Col · Row 둘 다인지. 고칠 방향 후보(소유자 결정 전): REFPX/REFPY 로 자리 맞춤 · Color 이미지 이름의 Col/Row(`dieCheck`)로 자리 검증 · 화면에 맵 ±1 칸 옮기기 단추.
+- 시험: Python 전부 통과(`check_project` Failed files: none, `test_defect_view_toggles.py` 에 `ExcelOriginalImages` 3개), `test_desktop_ui.mjs` 통과, 브라우저에서 원본 2열 xlsx(JPEG + PNG) 만들어 zip · 열 확인.
+  **Windows · 실제 Lot · Excel 에서 열어 보기는 확인 못 함.** 시험이 덧붙인 `CamtekAOI/Logs` · `docs/screenshots` 변경은 되돌림. 원본 HTML(ccr 브랜치)에는 #74 ~ v14.1.10 모두 아직 안 넣음.
+- 릴리스: `__version__` 14.1.10 + `docs/release_notes/v14.1.10.md` → push 하면 `v14.yml` 이 Release 생성.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #78 | ① 엑셀 원본 이미지 옵션 ② 기본 탭 wafer map 위치 검토(보고만) | ① v14.1.10 ② 보고(수정 전, 소유자 답 대기) |
+
 ## 최신 재개 — v14.1.9: 호기 설정 없이 캐시에서 찾기 (2026-11-17 KST, `version_v14`)
 
 - 마지막 갱신 2026-11-17 · 기준 커밋 `5fe1ebe`(v14.1.8) · 이슈 없음(소유자 세션 대화). 요청 "배치 레포트 찾기나 kla 자재 찾기에서 호기 설정이 안되어 있어도 캐시에서 찾기 키면 찾을 수 있으니까

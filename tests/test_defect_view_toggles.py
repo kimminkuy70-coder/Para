@@ -234,5 +234,32 @@ class ListSearchAndPick(unittest.TestCase):
 
 
 
+class ExcelOriginalImages(unittest.TestCase):
+    """v14.1.10(#78): 최종 목록 엑셀 [원본 이미지도 넣기] — 원본 파일 바이트 그대로, 끄면 종전 열 그대로."""
+    @classmethod
+    def setUpClass(cls):
+        cls.t = HTML.read_text(encoding="utf-8")
+
+    def test_checkbox_and_memory(self):
+        self.assertIn('<input type="checkbox" id="c5xlOrig"> 원본 이미지도 넣기', self.t)
+        self.assertIn("XLO.on=localStorage.getItem('cw.xlOrig')==='1'", self.t)    # 기본 끔
+        self.assertIn("$('#c5xlOrig').onchange=e=>xlOrigSet(e.target.checked)", self.t)
+
+    def test_original_bytes_unchanged(self):
+        i = self.t.index("async function xlOrig(")
+        f = self.t[i:self.t.index("\n/** 엑셀 열:", i)]
+        self.assertIn("new Uint8Array(await f.arrayBuffer())", f)
+        self.assertIn("if(ext){bm.close&&bm.close();return {data,w,h,ext,orig:true}}", f)   # JPEG · PNG = 파일 그대로
+        self.assertNotIn("xlJpeg", f)
+
+    def test_columns(self):
+        self.assertIn("const xlCols=orig=>orig?[...XL_COLS.slice(0,XL_OI),...XL_ORIG,...XL_COLS.slice(XL_OI)]:XL_COLS;", self.t)
+        self.assertIn("XL_OI=XL_COLS.findIndex(c=>c[2]==='f')+1", self.t)
+        self.assertIn("const blob=xlsxBlob('최종 목록',COLS,rows,pics);", self.t)
+        # xlsx 안 사진 형식 = jpeg 기본 · png
+        self.assertIn('<Default Extension="png" ContentType="image/png"/>', self.t)
+        self.assertIn("`xl/media/image${k+1}.${p.ext||'jpeg'}`", self.t)
+
+
 if __name__ == "__main__":
     unittest.main()
