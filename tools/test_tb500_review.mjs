@@ -106,6 +106,11 @@ await page.locator('#msg2').filter({hasText:'KLA 캐시: 받지 못했습니다'
 const m76=await page.locator('#msg2').innerText();
 assert.match(m76,/Camtek 캐시: BatchReport_캐시_20261106_090000\.zip 받음/);
 assert.match(m76,/이 장치에 항상 유지/);
+// Para #77: 3번 모두 같은 파일(크기 · 수정 시각 같음)을 못 읽으면 '바뀐 것'이 아니라 열지 못하는 상태 → 판정 · [파일 직접 고르기] 안내, 내 PC 읽기 시험
+assert.match(m76,/파일이 바뀌지 않았는데도 3번 모두 읽지 못했습니다/,m76);
+assert.match(m76,/\[파일 직접 고르기\]/);
+assert.match(m76,/판정: 내 PC 캐시 폴더의 파일은 읽힙니다/,m76);
+assert.ok(!(await page.evaluate(()=>window.__fs.top.local.files.has('TB500리뷰_읽기시험.json'))),'읽기 시험 파일은 지움');
 assert.match(m76,/단계: SHA-256 확인\(0 \/ \d+ MB 지점\) · 파일: KLA_캐시_20261106_090100\.zip · NotReadableError: The requested file could not be read/,m76);
 // 오류 정보 칸: 작업 · 단계 · 폴더 · 파일(크기 · 수정 시각) · 시도 · 원래 오류 · 뜻 · 코드 위치
 assert.ok(await page.locator('#errbox').isVisible());
@@ -113,7 +118,7 @@ assert.ok(await page.evaluate(()=>document.querySelector('#msg2').nextElementSib
 const eb=await page.locator('#errText').innerText();
 if(process.env.TB500_SHOT){await page.locator('#errbox').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.TB500_SHOT+'/errbox.png'});await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:process.env.TB500_SHOT+'/errbox_dark.png'});await page.emulateMedia({colorScheme:'light'})}
 assert.ok(!/file:\/\//.test(eb),'코드 위치에 PC 경로를 넣지 않음');
-for(const re of [/작업: 캐시 갱신 · 단계: SHA-256 확인/,/폴더: share/,/파일: KLA_캐시_20261106_090100\.zip \(크기 \d+ B · 수정 시각 /,/시도: 3번째/,/오류: NotReadableError: The requested file/,/뜻: 파일을 집은 뒤/,/참고: KLA 캐시 을\(를\) 받지 못했습니다/,/코드 위치: /])assert.match(eb,re,eb);
+for(const re of [/작업: 캐시 갱신 · 단계: SHA-256 확인/,/폴더: share/,/파일: KLA_캐시_20261106_090100\.zip \(크기 \d+ B · 수정 시각 /,/시도: 3번째/,/오류: NotReadableError: The requested file/,/뜻: 브라우저가 파일 내용을 열지 못했습니다/,/참고: KLA 캐시 을\(를\) 받지 못했습니다/,/코드 위치: /])assert.match(eb,re,eb);
 const dg=await page.evaluate(()=>window.__tb500Diag());
 assert.match(dg,/^TB500 Review 진단 정보\nHTML: /);assert.match(dg,/브라우저: Mozilla/);assert.match(dg,/폴더: ① OneDrive 연결됨\(share\)/);
 assert.match(dg,/다시 읽음/);   // 다시 읽은 기록(retry)도 들어간다
@@ -122,6 +127,18 @@ await page.locator('#errClose').click();assert.ok(await page.locator('#errbox').
 assert.ok(await page.evaluate(()=>window.__fs.top.local.files.has('TB500리뷰_KLA색인_20261106_090100.json')));
 const recAfter=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
 assert.equal(recAfter.updated_at,recBefore.updated_at);
+// Para #77: 폴더에서는 계속 못 읽어도 [파일 직접 고르기]로 고른 파일(Windows 파일 고르기 창)로 받는다. 정보 JSON 이 없으면 그 캐시는 건너뜀.
+{const fx=JSON.parse(fixture),pickOf=names=>names.map(n=>({name:n,mimeType:n.endsWith('.zip')?'application/zip':'application/json',buffer:Buffer.from(fx['share/'+n],'base64')}));
+ const badBefore=await page.evaluate(()=>window.__bad['KLA_캐시_20261106_090100.zip']);
+ await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});
+ await page.locator('#pickInput').setInputFiles(pickOf(['KLA캐시정보.json','KLA_캐시_20261106_090100.zip']));
+ await page.locator('#msg2').filter({hasText:'KLA 캐시: KLA_캐시_20261106_090100.zip 받음'}).waitFor();
+ const mp=await page.locator('#msg2').innerText();
+ assert.match(mp,/Camtek 캐시: 고른 파일에 캐시정보\.json 이\(가\) 없어 건너뜀/,mp);
+ assert.equal(await page.evaluate(()=>window.__bad['KLA_캐시_20261106_090100.zip']),badBefore,'폴더 쪽 파일은 읽지 않음');
+ const kr=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
+ assert.equal(kr.kla.zip,'KLA_캐시_20261106_090100.zip');
+ await page.evaluate(()=>{const d=window.__fs.top.local,r=JSON.parse(new TextDecoder().decode(d.files.get('TB500리뷰_기록.json')));r.kla.zip='예전.zip';d.files.set('TB500리뷰_기록.json',new TextEncoder().encode(JSON.stringify(r)))})}
 // ③ 다시 정상으로
 await page.evaluate(()=>{window.__bad={}});
 await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});await page.getByRole('button',{name:'캐시 갱신'}).click();
