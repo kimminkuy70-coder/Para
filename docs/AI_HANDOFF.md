@@ -36,6 +36,10 @@
 - **소유자가 `wafer map 구현/` 폴더를 지움**(커밋 `d804367` "Delete wafer map 구현 directory", zip 과 보고서 HTML 둘 다). 세션 후속 3 의 확인은 이 세션 시작 때 scratchpad 에 풀어 둔 사본으로 함(GitHub 에서 다시 받은 것 아님).
   zip · 보고서는 이력(`e808259`, `dafd02e`, `d6ef3fa`)에는 남아 있음 — 공개 저장소라 그 커밋으로 누구나 받을 수 있음. 이력에서 지우려면 history 재작성 + force push 가 필요(소유자 지시 없이 하지 않음, 확인 전).
   보고서를 다시 볼 곳: `git show d6ef3fa:"wafer map 구현/wafer_map_구현_검토_보고서.html"`.
+- **세션 후속 4(질문 "삭제 방법 알려줘")** — 방법만 안내(실행 안 함). zip 이 든 곳 = 브랜치 `version_v14` + **태그 `v14.2.12`**(Release 의 Source code 압축에도 들어감), fork 0.
+  안내: ① 바로 Para 비공개 ② 이력 삭제 = mirror clone → `git filter-repo --invert-paths --path "wafer map.zip" --path "wafer map 구현/wafer map.zip"` → `version_v14` · `v14.2.12` force push
+  ③ 그 뒤 GitHub Support 에 옛 커밋 캐시 삭제 요청. 영향: `e808259` 이후 커밋 SHA 전부 바뀜(이 문서의 SHA 도 옛 값), 다른 PC · 세션 clone 은 다시 받아야 함, force push 가 `v14.yml` 을 다시 돌릴 수 있음.
+  Claude 가 대신 하려면 소유자의 명시 지시 필요(routine 규칙: force push · 태그 이동 금지).
 | 이슈 | 요청 | 결과 |
 |---|---|---|
 | #82 | wafer map.zip 으로 wafer map 구현 가능성 새 검토 · HTML 보고서 · `wafer map 구현` 폴더 | 보고서(코드 안 고침, 릴리스 없음) |
