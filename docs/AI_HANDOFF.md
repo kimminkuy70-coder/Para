@@ -27,6 +27,9 @@
   ③ 실제 중심(Wafer2Table 역변환 204758, 179735)을 넣으면 같은 코드가 (2, 1), 30/30. 샘플 맵 없이 s_DieLocation 만이면 die 칸은 맞음(원은 `centerShift` 가 옮김).
   보고서에 "0. 지금까지 안 된 이유" 절 추가. **코드는 안 고침**(소유자 결정 대기). 고칠 방향 후보: Center 0 = 값 없음으로 보기 · 샘플 자리 맞추기를 s_DieLocation 왼쪽 아래 기준으로(추정 없이) · 보고서의 3줄 규칙으로 다시 만들기.
 
+- **세션 후속 2(질문 "zip 업로드가 25 MB 까지만 됨, 대용량은?")** — 답(코드 변경 없음): ① 맵 검토에는 `s_FrameData.dat`(46 MB) · `WaferAlignData.zip`(23 MB) · 사진이 필요 없으니 빼고 올리면 대개 수 MB
+  ② 꼭 크면 7-Zip 분할 압축(20 MB 씩, `.zip.001` …)을 각각 업로드 → Claude 가 합침 ③ GitHub Release 첨부(파일당 2 GB) ④ GitHub Desktop 등 git push(파일당 100 MB).
+  주의로 알림: Para 는 공개 저장소라 올린 zip · Release 첨부는 누구나 받을 수 있음(확인 전 — 소유자 판단).
 | 이슈 | 요청 | 결과 |
 |---|---|---|
 | #82 | wafer map.zip 으로 wafer map 구현 가능성 새 검토 · HTML 보고서 · `wafer map 구현` 폴더 | 보고서(코드 안 고침, 릴리스 없음) |
