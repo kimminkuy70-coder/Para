@@ -56,7 +56,7 @@ export function UpdateBanner({busy}:{busy:boolean}){
   return <>
     {info&&<dialog ref={box} className="update-banner" aria-label="새 버전 알림" onCancel={close}>
       <h3>새 버전 {info.available}이 있습니다</h3>
-      <p>지금 버전 {info.current}{info.published_at?` · 공개 ${info.published_at}`:''} · {info.source==='github'?'GitHub 릴리스':'OneDrive 게시 폴더'}</p>
+      {/* v14.3.12(소유자): '지금 버전 · 공개 · GitHub 릴리스' 줄은 뺐다 — 업데이트 내용(번호 붙인 한 줄씩)만 */}
       {info.changelog&&<pre className="changelog">{info.changelog}</pre>}
       {!info.installed&&<p className="hint">설치본이 아니라 소스 폴더에서 실행 중이라 자동 업데이트는 하지 않습니다(git 으로 받으십시오).</p>}
       {busy&&<p className="hint">진행 중인 작업이 있어도 지금 받을 수 있습니다(새 버전은 프로그램을 다시 실행할 때 적용).</p>}

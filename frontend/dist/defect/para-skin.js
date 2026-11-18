@@ -3,7 +3,7 @@
    - body 표시(pskin · pskin-big | pskin-diagram) → para-skin.css 가 적용
    - 화면 테마 = 늘 밝은 화면(프로그램과 같게). [화면 테마] · [사진을 같은 창에서 보기] 는 없앰(v14.1.6 소유자) — 새 창이 막히면 HTML 이 알아서 같은 창 칸으로 연다
    - 설명글 · Contrast 도움말 → [? 설명 보기] 체크로 켜고 끔
-   - Wafer Map 샘플(기준) → Step 2 맨 위 강조 칸
+   - (v14.3.12 에서 Wafer Map 샘플 강조 칸은 없앰)
    - 브라우저 시절 문구 → 프로그램 문구
    - 스크롤 한 겹: 내용 높이를 프로그램에 알림(프로그램이 iframe 높이를 맞춤). 로딩창 · 같은 창 사진 칸은 프로그램이 알려 주는 '보이는 부분'에 맞춤 */
 (() => {
@@ -35,20 +35,7 @@
     const at = mode === 'diagram' ? null : d.querySelector('#step5 .b5tabs');
     if (at) at.after(box); else d.querySelector('main').prepend(box);
   }
-  // Wafer Map 샘플(기준)이 가장 중요(소유자 2026-11-15 "wafer map 샘플을 제일 상단으로 올리고 박스 표기해서 강조해"):
-  // Step 2 맨 위 강조 칸으로 옮긴다 — 요소를 옮기기만 해서 HTML 이 붙인 동작(고르기 · 지우기 · 상태 글)은 그대로.
-  const smpRow = d.getElementById('mapBtn') && d.getElementById('mapBtn').closest('.row'), s2 = d.getElementById('step2');
-  if (smpRow && s2) {
-    const box = d.createElement('div'), lbl = smpRow.querySelector(':scope > b'), st = d.getElementById('mapSt');
-    box.className = 'card psample'; box.setAttribute('aria-label', 'Wafer Map 샘플 (기준)');
-    box.innerHTML = '<div class="psample-h"><h3>Wafer Map 샘플 (기준)</h3><span class="pbadge">중요</span></div>';
-    if (lbl) lbl.remove();
-    d.getElementById('mapBtn').classList.add('pri');
-    box.append(smpRow);
-    const help = d.getElementById('mapSmpHelp'); if (help) box.append(help);
-    if (st && st.closest('.row')) box.append(st.closest('.row'));
-    s2.querySelector('h2').after(box);
-  }
+  // v14.3.12: Wafer Map 샘플(기준) 강조 칸(v14.1.0)은 샘플 기능을 지워서 없앰 — 맵은 웨이퍼 맵 기준으로 바로 그린다.
   // 처음에는 안내글이다가 나중에 상태로 바뀌는 줄(맵 파일 비교 · 시뮬레이션 집합): 안내글인 동안만 설명으로 친다
   d.querySelectorAll('#mapSt, #vennNote').forEach(n => {
     const first = n.textContent, mark = () => n.classList.toggle('pinit', n.textContent === first);

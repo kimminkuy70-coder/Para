@@ -8,7 +8,7 @@
 - Defect 분석(대규모 · 기본) = **AOI Contrast Wizard HTML 그대로**(`frontend/public/defect/AOI_Contrast_Wizard_rev6.html` → dist, 같은 출처 iframe `?t=토큰&mode=big|diagram`).
   **겉모습 = 프로그램 테마**(v14.1): HTML 파일은 그대로 두고 `DefectAnalysis.tsx` 가 iframe 에 `frontend/public/defect/para-skin.css` · `para-skin.js` 를 넣는다 —
   HTML 머리 · 왼쪽 막대 숨김, 5-1 ~ 5-3 · Step 1 ~ 4 = 프로그램 스텝퍼, 카드 · 단추 · 표 = 앱 모양(토큰은 body 에만 → 지도 캔버스 색 그대로), 설명글 = **[? 설명 보기]** 체크
-  (`para.defect.help`, 숨길 글 목록 = para-skin.css `:is(...)`, id 있는 상태 글은 늘 보임), Contrast 도움말 = 설명 켜면 안내 칸, **Wafer Map 샘플(기준) = Step 2 맨 위 강조 칸**(요소를 옮기기만).
+  (`para.defect.help`, 숨길 글 목록 = para-skin.css `:is(...)`, id 있는 상태 글은 늘 보임), Contrast 도움말 = 설명 켜면 안내 칸, ~~Wafer Map 샘플(기준) = Step 2 맨 위 강조 칸~~(v14.3.12 에서 샘플 기능과 함께 삭제).
   스크롤 한 겹: iframe 높이 = 내용 높이(para-skin.js → postMessage), 로딩창 · 같은 창 사진 칸은 '보이는 부분'(`--vt` · `--vh`)에, 같은 창 칸이 뜨면 페이지 스크롤 잠금.
   HTML 이 목록에 주는 focus() 는 preventScroll(페이지가 끌려 내려가지 않게), 단계가 바뀌면 프로그램이 칸 맨 위를 보여 줌.
   원본은 `ccr-7401b37d-bwze1e` 의 `AOI_Contrast_Wizard_rev6.html` — **같은 내용으로 둔다(고치면 둘 다, 시험도 그쪽 `tools/test_contrast_wizard_rev6.mjs`)**. HTML 의 `PARA` 연결부가 프로그램 안에서만 켜진다.
@@ -40,6 +40,14 @@
   칸 · 줄을 누르면 위 Lot 목록 = 그 원문 + 고른 호기 · 레시피(`cxf`). 저장 결과 HTML(`batchsaved` · `lotreport`)에는 필터 없음(확인 전 — 앱만).
 - **v14.2.12(#81, 2026-11-18)**: 위 필터 = **여러 개 고르기**(`MultiPick` 펼침 목록, 누름 = 고름/해제, 고른 것 색 + ✓, 단추에 'N개'). `fRcp` · `fMac` · `fErr` · `cxf.m` · `cxf.r` = `string[]`(빈 = 전체),
   같은 필터 안 = 합침(OR), 필터끼리 = AND.
+- **v14.3.12(#82 후속, 소유자 2026-11-18)**: Defect 분석 wafer map = **웨이퍼 맵(Export Wafer Map) 기준**(종전 #50 ~ #69 계산 · 샘플 맵 · `sampleFit` · Notch 고르기 · 지름/Edge 입력 · 맵 파일 비교 **삭제**).
+  그림 = Export 맵과 같은 모양(맨 위 줄 = 장비 Row 가장 작은 줄 rMin, 맨 왼쪽 = Col cMin), **Die 번호 = X = Col − cMin(왼쪽 0), Y = rMax − Row(아래 0)**('Wafer Map 수정하기' 탭 그림과 같은 읽는 법),
+  범위 = ProductInfo `[ExportData] cMin~cMax · rMin~rMax`(없으면 s_DieLocation 범위). 장비 Col = floor(X / **XDieIndex**)(CustomerDiePitch 보다 먼저), Die = **s_DieLocation 만**(없으면 안 그림 — '300 mm 원 안' 규칙은 작은 die 에서 틀림),
+  불량 Die = reclassify ≠ 0 Defect 가 있는 Die(명암만 살짝), 원 중심 = Wafer2Table 역변환(Params_WaferInfo Center 0 은 안 씀), **Flat Pos 3 = Notch 아래**(소유자 확인 — 다른 값은 '미확인'),
+  모든 wafer map 오른쪽 위 태그 'Flat Pos · Notch'. 함수 `mapFrame` · `mapDie` · `mapGeom` · `toMap` · `flatTag` · `parseW2T`(rev6 HTML 10절). Lot 별 = Slot 마다 자기 cMin · rMax 로 맞춰 겹침.
+  화면 · 목록 = 맵 번호, **장비 Col/Row 는 마우스 · 상세 창 · 리뷰PC 정보에만**. CSV · 엑셀 = 장비 번호 열 그대로 + 맵 번호 열 **추가**(소유자 "바꾸지는 말고 추가로": 최종 목록 `Die (맵 X, Y)` — Para `colorgray.FINAL_COLS` 도,
+  5-1 · 결과 CSV `Die맵X` · `Die맵Y`, Step 3 상세 CSV 끝 `장비Col` · `장비Row`). 시험 `tests/test_wafer_map_basis.py`(가짜 숫자 · node). **실제 결과 폴더 · 맵 파일은 저장소에 넣지 않는다(소유자 — 구글 드라이브 자료 GitHub 금지).**
+  업데이트 알림창: '지금 버전 · 공개 · GitHub 릴리스' 줄 삭제, 업데이트 내용 = `1. …` 번호 + 항목마다 첫 문장만(`desktop_appupdate._bullets` · `_one_line`) — 릴리스 노트는 짧은 한 줄 목록으로 쓴다.
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

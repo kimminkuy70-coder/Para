@@ -23,7 +23,7 @@ from colorgray_fixture import COLOR_JPEG, make_wafer  # noqa: E402
 
 # HTML(AOI_Contrast_Wizard_rev6.html) FL_HEAD — 바꾸면 둘 다(시험이 dist 의 HTML 과 대조)
 FL_HEAD = ['5-1 #', 'Lot', 'Slot', 'ID', '장비 스캔 분류', '리뷰 결과', 'Recipe', 'Contrast(실제)', '상태', 'Area µm²', 'Width', 'Length',
-           'BoxW', 'BoxH', 'Wafer X', 'Wafer Y', 'Die (장비 Col, Row)', '흑백 GL 평균 (원)', 'Color 파일', 'Color 전체 경로', 'Gray 파일',
+           'BoxW', 'BoxH', 'Wafer X', 'Wafer Y', 'Die (장비 Col, Row)', 'Die (맵 X, Y)', '흑백 GL 평균 (원)', 'Color 파일', 'Color 전체 경로', 'Gray 파일',
            'Gray 전체 경로', 'GrayPX(3168x1024기준)', 'GrayPY(3168x1024기준)', 'CropW', 'CropH', '매칭폴더', '매칭폴더(고른 폴더부터)',
            'Lot 경로', 'Zone', 'Region', '판정 비트', '분류 코드', 'Zone 이름', '판정 종류']
 

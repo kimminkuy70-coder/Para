@@ -1,5 +1,35 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.3.12: wafer map 웨이퍼 맵 기준 + 업데이트 알림창 정리 (2026-11-18 KST, `version_v14`, #82 후속 세션)
+
+- 마지막 갱신 2026-11-18 · 기준 커밋 `4ed3316` · 소유자 세션 지시(계획 → 컨펌 → 구현). 릴리스 = `__version__` 14.3.12 + `docs/release_notes/v14.3.12.md`.
+- 요청 1: 업데이트 알림창의 '지금 버전 … · 공개 … · GitHub 릴리스' 문구 삭제, 업데이트 항목은 단순하게 번호 붙여(예 "1. 필터별로 lot 이력 확인 가능").
+  → `AppUpdate.tsx` 줄 삭제, `desktop_appupdate._bullets` = "1. …" 번호(항목 하나여도), `_one_line` = 항목마다 첫 문장만. 알림은 **깔려 있는 판**이 그리므로 새 모양은 v14.3.12 다음 업데이트부터 보인다.
+- 요청 2 · 3: #82 에서 찾은 규칙으로 wafer map 을 새로(종전 구현 삭제), Flat Pos 3 = Notch 아래(소유자 확인, 다른 값 보류), 모든 wafer map 오른쪽 위 Flat Pos · Notch 태그.
+  소유자 결정(세션): Die 번호 = **웨이퍼 맵 기준 X 왼쪽부터 0 · Y 아래부터 0**, 장비 Col/Row 는 마우스 · 상세 창에만, Color·Gray 엑셀의 '장비 Col, Row' 열은 **바꾸지 말고 맵 열을 추가**,
+  불량 Die 는 정상 Die 와 **명암만 살짝** 다르게, 버전 14.3.12.
+- 근거(소유자가 구글 드라이브에 올린 Slot 3장 + 채팅으로 준 Export 맵 2개 — **저장소에 넣지 않음**, 소유자 "구글 드라이브 파일은 절대 깃허브에 올리면 안돼"):
+  1. 이미지 Col/Row = floor(X / XDieIndex): 3/3 · 152/152 · 123/123(작은 die 포함, 경계에서 가장 가까운 이미지 71 µm). 2. 맵 Die = s_DieLocation = ScanLog ScanDies(30 · 30 · 2959).
+  3. 불량 Die = reclassify ≠ 0 Defect 가 있는 Die = ScanLog BadDies(1 · 0 · 5), 그 Defect 수 = DefectsNum. 4. [ExportData] cMin~cMax · rMin~rMax = s_DieLocation 범위, RefDie = Alignment Die − (cMin, rMin)(3/3).
+  5. **Export RowData 첫 줄 = 장비 Row 가장 작은 줄(rMin)**, 열 0 = Col cMin(작은 die 맵 2955칸 일치, 위아래 뒤집으면 33칸 어긋남). 6. 작은 die Slot 의 Defect 70개가 맵 맨 아래 가운데(= Notch 자리)에 모임 — Notch 아래와 맞음.
+  7. 작은 die 는 '300 mm 원 안' 규칙이 122칸 더 나옴 → s_DieLocation 없으면 Die 를 그리지 않음. 8. 지금(종전) 앱 계산은 Params_WaferInfo Center 0 을 중심으로 써서 샘플 맵이 Col +1 · Row +2 밀림(#78 증상).
+  근거 보고서 HTML 은 세션 임시 폴더에만 만들어 소유자에게 보냄(커밋 안 함).
+- 한 일: rev6 HTML 10절 교체(`mapFrame` · `mapDie` · `dieTxt` · `dieEq` · `toMap` · `flatTag` · `mapGeom` · `paintMap` · `parseW2T`), `parseProduct` 에 `exp`([ExportData]) · `flatPos` · Pitch XDieIndex 먼저,
+  Step 2 의 Wafer map 입력 · 샘플 칸 → 안내 한 줄(`#mapHelp`) + 상태(`#mapSt`), 표 · 5-1 목록 Die 열 = 맵 번호, 마우스 · 상세 창 · 리뷰PC 정보 = 맵 + 장비 번호,
+  CSV · 엑셀 = 장비 번호 그대로 + 맵 열 추가(최종 목록 `Die (맵 X, Y)` = HTML `FL_HEAD` · `XL_COLS` · Para `colorgray.FINAL_COLS`), para-skin 의 샘플 강조 칸 코드 삭제.
+- 해석(확인 전): ① Lot 별 겹쳐 보기의 불량 Die = 어느 Slot 이든 판정 Defect 가 있으면 진하게. ② 리뷰 안 한 Slot(reclassify 가 아직 0 이 아닌 값)은 불량 Die 가 많게 보일 수 있음 — 확인한 3장은 모두 리뷰 끝난 Slot.
+  ③ 작은 die Slot 의 import 불량 3개(고객 맵에서 스캔 안 함)는 s_DieLocation 에 없어 빈칸으로 보임.
+- 부족한 자료(소유자에게 정리해 드림): 불량 Die 의 Export Bin 코드 규칙(맵 014 · 090 · 007 · 031 — 같은 wafer 결과 폴더나 ManReClassify.ini 필요), import 맵(빠진 Die 3개), REFPX · REFPY 뜻, Flat Pos 3 이외 값.
+- 시험: Python 전부 통과(`check_project` — `test_recipe_count_filter.py` 는 5-1 이 `mapDie` 를 불러 스텁 추가), 새 `tests/test_wafer_map_basis.py` 10개(가짜 숫자, node 로 HTML 함수 실행),
+  `test_appupdate.py` 번호 형식, `test_colorgray_final.py` FL_HEAD, `npm run build`, `PYTHONPATH=vendor node tools/test_desktop_ui.mjs` 통과(알림창 '1. 테스트 게시' · 지금 버전 줄 없음 · Step 2 샘플 칸 없음 · 최종 목록 엑셀 열 하나 밀림).
+  실제 Slot 3장으로 화면(지도 · 상태 줄 · 태그) 확인 — 세션 임시 폴더에서만. 시험이 바꾼 `docs/screenshots` · `CamtekAOI/Logs` 는 되돌림. **Windows · Edge 실기는 확인 못 함.** 원본 HTML(ccr 브랜치)은 이번에도 안 고침.
+
+| 요청 | 결과 |
+|---|---|
+| 업데이트 알림창 문구 삭제 · 번호 목록 | v14.3.12 |
+| wafer map 새 규칙(웨이퍼 맵 기준) · Flat Pos/Notch 태그 · 불량 Die 명암 · 엑셀 맵 열 추가 | v14.3.12 |
+| 구글 드라이브 Slot 3장 근거 검토 HTML 보고서 | 세션에서 전달(커밋 안 함) |
+
 ## 최신 재개 — #82: wafer map 구현 검토 보고서 (2026-11-18 KST, `version_v14`, 이슈 #82, 코드 안 고침)
 
 - 마지막 갱신 2026-11-18 · 기준 커밋 `47f3eb5`(v14.2.12) · 이슈 #82 "v14 브랜치 보고사항"(자동 실행 routine 처리).

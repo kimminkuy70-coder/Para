@@ -156,6 +156,7 @@ _ISSUE_REF = re.compile(r"\s*[(（]\s*이슈\s*#?\d+(?:\s*[,·]\s*#?\d+)*\s*[)�
 def _one_line(text: str) -> str:
     t = _ISSUE_REF.sub("", re.sub(r"\*\*|__|`", "", text))
     t = re.sub(r"\s+", " ", t).strip()
+    t = re.split(r"(?<=[.!?。])\s", t, maxsplit=1)[0]   # v14.3.12(소유자 "최대한 단순화"): 항목마다 첫 문장만
     return t if len(t) <= SUMMARY_LINE else t[:SUMMARY_LINE - 1].rstrip() + "…"
 
 
@@ -188,7 +189,7 @@ class _Top(HTMLParser):
 
 def _bullets(lines: list[str]) -> str:
     out = [ln for ln in (_one_line(x) for x in lines) if ln][:SUMMARY_MAX]
-    return out[0] if len(out) == 1 else "\n".join("· " + ln for ln in out)   # 하나면 점 없이
+    return "\n".join(f"{i}. {ln}" for i, ln in enumerate(out, 1))   # v14.3.12(소유자): "1. …" 번호를 붙여 한 줄씩
 
 
 def summary_html(fragment: str) -> str:
@@ -198,7 +199,7 @@ def summary_html(fragment: str) -> str:
     if t.items:
         return _bullets(t.items)
     first = next((ln for ln in html_text(fragment).splitlines() if ln.strip()), "")
-    return _one_line(first)
+    return _bullets([first])
 
 
 def summary_text(md: str) -> str:

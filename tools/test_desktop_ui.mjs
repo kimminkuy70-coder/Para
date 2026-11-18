@@ -57,7 +57,9 @@ try{
   // a source copy (not installed) cannot install it. [나중에] closes it.
   const banner=page.locator('dialog.update-banner');
   await banner.getByText('새 버전 14.9.0이 있습니다').waitFor();
-  await banner.getByText(/OneDrive 게시 폴더/).waitFor();
+  // v14.3.12(소유자): '지금 버전 · 공개 · GitHub 릴리스/OneDrive 게시 폴더' 줄은 없고, 업데이트 내용은 '1. …' 번호를 붙여 한 줄씩
+  await banner.locator('pre.changelog',{hasText:'1. 테스트 게시'}).waitFor();
+  assert.equal(await banner.getByText(/지금 버전|OneDrive 게시 폴더|GitHub 릴리스/).count(),0);
   assert(await banner.getByRole('button',{name:'지금 업데이트'}).isDisabled());
   await banner.getByRole('button',{name:'나중에'}).click();
   await banner.waitFor({state:'detached'});
@@ -962,7 +964,7 @@ try{
 import sys,glob,json,zipfile,openpyxl
 p=sorted(glob.glob(sys.argv[1]+'/**/최종목록_*.xlsx',recursive=True))[-1]
 ws=openpyxl.load_workbook(p).active;rows=[[c.value for c in r] for r in ws.iter_rows()]
-z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state':rows[1][11],'calc':rows[1][26],'media':len([x for x in z.namelist() if x.startswith('xl/media/')])}))`,join(fixture,'local')],{encoding:'utf-8',env:{...process.env,PYTHONPATH:join(root,'vendor')}}));
+z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state':rows[1][11],'calc':rows[1][27],'media':len([x for x in z.namelist() if x.startswith('xl/media/')])}))`,join(fixture,'local')],{encoding:'utf-8',env:{...process.env,PYTHONPATH:join(root,'vendor')}}));
   assert.deepEqual([xl.n,xl.state,xl.calc,xl.media],[2,'추출 완료','Para 프로그램',3],JSON.stringify(xl)+finalBook);
   assert.equal(xl.head[0],'Color');
   // Defect 분석(기본) = Step 1 ~ 4(종전 체크로 켜던 다이어그램 분석), Step 1 도 엔진 목록(이름 · 크기)으로
@@ -977,8 +979,8 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   const dgf=page.frames().find(f=>/\/defect\/.*mode=diagram/.test(f.url()));
   await dgf.waitForFunction(()=>window.__cw.state.scans.length===1,null,{timeout:30000});
   assert.deepEqual(await dgf.evaluate(()=>window.__cw.state.scans.map(s=>[s.defects.length,s.colors.length,s.frames.length])),[[2,3,2]]);
-  // Wafer Map 샘플(기준) = Step 2 맨 위 강조 칸(고르기 단추 · 상태 글이 그 칸 안)
-  assert.deepEqual(await dgf.evaluate(()=>{const b=document.querySelector('#step2 .psample');return b&&[b.previousElementSibling.tagName,b.contains(document.getElementById('mapBtn')),b.contains(document.getElementById('mapSmp'))]}),['H2',true,true]);
+  // v14.3.12: Wafer Map = 웨이퍼 맵 기준(샘플 올리기 · Notch 고르기 · 지름/Edge 입력 없음), 안내 = X 왼쪽부터 0 · Y 아래부터 0
+  assert.deepEqual(await dgf.evaluate(()=>['mapBtn','notch','waferD','edgeEx'].map(i=>!!document.getElementById(i)).concat(/아래부터 0/.test(document.getElementById('mapHelp').textContent))),[false,false,false,false,true]);
   // v14.1.8 Step 3 목록 · 쌍별 상세 표: 검색 · ☑(☐ = 흐리게 · ↑↓ 건너뜀 · CSV 에서 뺌)
   await dg.locator('#to2').click();await dg.locator('#runBtn').click();await dgf.waitForFunction(()=>window.__cw.state.cmp,null,{timeout:30000});
   await dg.locator('nav button[data-step="3"]').click();await dg.locator('#setPick input').first().check();await dg.locator('#vennBtn').click();

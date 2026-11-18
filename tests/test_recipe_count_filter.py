@@ -14,7 +14,7 @@ HTMLS = [ROOT / "frontend" / p / "defect" / "AOI_Contrast_Wizard_rev6.html" for 
 
 STUB = r"""
 const FLT_KEYS=[['c'],['a'],['w'],['l']];
-const LS={def:true};const lower=s=>s.toLowerCase();const f1=v=>v==null||!isFinite(v)?'':(+v).toFixed(1),f2=v=>v==null||!isFinite(v)?'':(+v).toFixed(2);const dieOf=()=>null;
+const LS={def:true};const lower=s=>s.toLowerCase();const f1=v=>v==null||!isFinite(v)?'':(+v).toFixed(1),f2=v=>v==null||!isFinite(v)?'':(+v).toFixed(2);const dieOf=()=>null,mapDie=()=>null;   // v14.3.12: 5-1 검색 글에 웨이퍼 맵 번호(여기서는 Die 없음)
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
 const esc=s=>String(s);
 const S={};const opts=()=>({pix:1,coord:'wafer'});

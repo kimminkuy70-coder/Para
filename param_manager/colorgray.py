@@ -564,6 +564,7 @@ FINAL_MAX_ROWS = 5000                                 # CSV 는 한 번에 엔�
 FINAL_IMG_H = 180                                     # 사진 줄 높이(px) — HTML XL_IMG_H 와 같음
 # (제목, 폭 px, 사진 종류 또는 CSV 열 이름) — HTML 최종 목록 엑셀(XL_COLS)과 같은 차례 · 제목
 # v14.1.5(소유자 "첫번째 분류 → 장비 스캔 분류, 재분류 → 리뷰 결과"): v14.1.4 이하 HTML 이 저장한 CSV 의 옛 열 이름도 읽는다.
+# v14.3.12(소유자 "장비 Col, Row 는 바꾸지 말고 추가로"): 'Die (맵 X, Y)' = 웨이퍼 맵 번호(X 왼쪽부터 0 · Y 아래부터 0) — 그 열이 없는 옛 CSV 는 빈칸.
 FINAL_ALIASES = {"장비 스캔 분류": ("첫번째 분류",), "리뷰 결과": ("재분류",)}
 FINAL_COLS = [("5-1 #", 52, "5-1 #"), ("Lot", 130, "Lot"), ("Slot", 110, "Slot"), ("ID", 60, "ID"),
               ("장비 스캔 분류", 130, "장비 스캔 분류"), ("리뷰 결과", 130, "리뷰 결과"), ("Recipe", 110, "Recipe"),
@@ -572,7 +573,8 @@ FINAL_COLS = [("5-1 #", 52, "5-1 #"), ("Lot", 130, "Lot"), ("Slot", 110, "Slot")
               ("Gray 프레임 (빨간 네모 = Defect · 노란 상자 = Crop 범위)", 570, "img:frame_mark"),
               ("상태", 150, "#state"), ("Area µm²", 80, "Area µm²"), ("Width", 64, "Width"), ("Length", 64, "Length"),
               ("Box W×H", 84, "#box"), ("Wafer X", 84, "Wafer X"), ("Wafer Y", 84, "Wafer Y"),
-              ("Die (장비 Col, Row)", 110, "Die (장비 Col, Row)"), ("Color 파일", 190, "Color 파일"),
+              ("Die (장비 Col, Row)", 110, "Die (장비 Col, Row)"), ("Die (맵 X, Y)", 110, "Die (맵 X, Y)"),
+              ("Color 파일", 190, "Color 파일"),
               ("Color 전체 경로", 380, "#color_path"), ("Gray 파일", 190, "#gray_file"), ("Gray 전체 경로", 380, "#gray_path"),
               ("사진 없음 이유", 240, "#reason"), ("Lot 경로", 300, "Lot 경로"), ("흑백 GL 평균 (원)", 110, "흑백 GL 평균 (원)"),
               ("Gray 위치 계산", 140, "#calc"), ("매칭폴더", 380, "#folder"),
