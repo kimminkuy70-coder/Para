@@ -44,6 +44,13 @@
   zip 커밋은 `version_v14` 이력에 남아 이후 모든 새 커밋 · 새 태그(v14.2.13 …)의 조상이 된다(clone · 커밋 주소로 받을 수 있음). 새 태그의 Source code 압축에는 안 들어감(그 시점 파일만).
   나중에 이력 삭제를 하면 그때까지 생긴 태그를 전부 다시 push 해야 해서 늦을수록 일이 커짐 → 지우려면 빨리 권장.
   **정정**: 세션 후속 4 의 "① 바로 비공개"는 Para 에 맞지 않음 — 앱 업데이트가 토큰 없이 공개 Release 를 받으므로(CLAUDE.md v13 원칙) 비공개로 바꾸면 모든 PC 의 자동 업데이트가 끊김.
+- **세션 후속 6 — zip 이력 삭제 완료(소유자 지시 "이력에서 지워줘 절대 다른 거 건들면 안 돼", 2026-11-18)**.
+  방법: zip 을 올린 커밋부터 끝까지 11개만 `git commit-tree` 로 다시 만듦(트리에서 `wafer map.zip` · `wafer map 구현/wafer map.zip` 만 뺌, 메시지 · 작성자 · 날짜 그대로).
+  `git filter-branch` 는 쓰지 말 것 — 첫 시도에서 예전 커밋 478개 · 다른 태그(v9.x …)까지 서명이 빠져 SHA 가 바뀜(push 전에 버림).
+  Claude 세션의 force push 는 HTTP 403(환경 정책)으로 막혀, 소유자가 PC Git Bash 로 같은 명령을 실행하고 `--force-with-lease` 로 push.
+  결과(Claude 확인): `version_v14` 9de1a42 → **adc1402**, 태그 `v14.2.12` 47f3eb5 → **8965443**, 다른 ref 는 전부 그대로(push 전후 ref 목록 비교), 새 이력에 zip 0.
+  Release v14.2.12 · 설치 zip asset 그대로. **e808259 이후 이 문서에 적힌 커밋 번호(e808259 · 47f3eb5 · dafd02e · d6ef3fa · 2d3cbaf · cca93e9 · 5851ce9 · 9029e43 · 9de1a42)는 옛 번호** — 새 이력에서는 같은 메시지의 커밋을 찾을 것.
+  남은 일(소유자): GitHub Support 에 옛 커밋 캐시 삭제 요청(e808259, dafd02e), 다른 PC 의 옛 clone 은 지우고 다시 받기. 보고서 HTML 은 이력(새 번호로 "wafer map 검토 보고서에 지금까지 안 된 이유 추가" 커밋)에 남아 있음.
 | 이슈 | 요청 | 결과 |
 |---|---|---|
 | #82 | wafer map.zip 으로 wafer map 구현 가능성 새 검토 · HTML 보고서 · `wafer map 구현` 폴더 | 보고서(코드 안 고침, 릴리스 없음) |
