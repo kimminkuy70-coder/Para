@@ -30,6 +30,9 @@
 - **세션 후속 2(질문 "zip 업로드가 25 MB 까지만 됨, 대용량은?")** — 답(코드 변경 없음): ① 맵 검토에는 `s_FrameData.dat`(46 MB) · `WaferAlignData.zip`(23 MB) · 사진이 필요 없으니 빼고 올리면 대개 수 MB
   ② 꼭 크면 7-Zip 분할 압축(20 MB 씩, `.zip.001` …)을 각각 업로드 → Claude 가 합침 ③ GitHub Release 첨부(파일당 2 GB) ④ GitHub Desktop 등 git push(파일당 100 MB).
   주의로 알림: Para 는 공개 저장소라 올린 zip · Release 첨부는 누구나 받을 수 있음(확인 전 — 소유자 판단).
+- **세션 후속 3(질문 "WaferAlignData.zip 은 분석해 봤나, 필요 없나?")** — 처음 검토 때는 안 열어 봤음(솔직히 답함). 열어 본 결과: 13 파일 = Align 결과 txt 4 + ini 1(합 4 KB) + Align 사진 8장(확장자 .jpeg 지만 실제 TIFF, 각 2.9 MB = 용량 전부).
+  `Alignment_Stat.txt` 의 변환(Ortho dX −204967.04, dY −179494.55, Th 0.067) = 폴더의 `Wafer2Table.ini` 와 같은 값, `Alignment_PatRes.txt` = Align 점 8개의 Col/Row(5,4 · 6,4 · 7,4 · 5,6 · 2,4 · 5,1 · 5,7 · 8,4).
+  (5,7) 은 맵 die(Row 1~6) 밖 — Align 점은 맵 die 목록으로 쓰면 안 됨. 결론: 맵에는 불필요(같은 값이 Wafer2Table.ini 에 있음), Align 실패 원인 볼 때만 쓸모. 업로드 때 빼도 됨(txt 만 남겨도 4 KB).
 | 이슈 | 요청 | 결과 |
 |---|---|---|
 | #82 | wafer map.zip 으로 wafer map 구현 가능성 새 검토 · HTML 보고서 · `wafer map 구현` 폴더 | 보고서(코드 안 고침, 릴리스 없음) |
