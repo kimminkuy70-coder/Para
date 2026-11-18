@@ -33,6 +33,9 @@
 - **세션 후속 3(질문 "WaferAlignData.zip 은 분석해 봤나, 필요 없나?")** — 처음 검토 때는 안 열어 봤음(솔직히 답함). 열어 본 결과: 13 파일 = Align 결과 txt 4 + ini 1(합 4 KB) + Align 사진 8장(확장자 .jpeg 지만 실제 TIFF, 각 2.9 MB = 용량 전부).
   `Alignment_Stat.txt` 의 변환(Ortho dX −204967.04, dY −179494.55, Th 0.067) = 폴더의 `Wafer2Table.ini` 와 같은 값, `Alignment_PatRes.txt` = Align 점 8개의 Col/Row(5,4 · 6,4 · 7,4 · 5,6 · 2,4 · 5,1 · 5,7 · 8,4).
   (5,7) 은 맵 die(Row 1~6) 밖 — Align 점은 맵 die 목록으로 쓰면 안 됨. 결론: 맵에는 불필요(같은 값이 Wafer2Table.ini 에 있음), Align 실패 원인 볼 때만 쓸모. 업로드 때 빼도 됨(txt 만 남겨도 4 KB).
+- **소유자가 `wafer map 구현/` 폴더를 지움**(커밋 `d804367` "Delete wafer map 구현 directory", zip 과 보고서 HTML 둘 다). 세션 후속 3 의 확인은 이 세션 시작 때 scratchpad 에 풀어 둔 사본으로 함(GitHub 에서 다시 받은 것 아님).
+  zip · 보고서는 이력(`e808259`, `dafd02e`, `d6ef3fa`)에는 남아 있음 — 공개 저장소라 그 커밋으로 누구나 받을 수 있음. 이력에서 지우려면 history 재작성 + force push 가 필요(소유자 지시 없이 하지 않음, 확인 전).
+  보고서를 다시 볼 곳: `git show d6ef3fa:"wafer map 구현/wafer_map_구현_검토_보고서.html"`.
 | 이슈 | 요청 | 결과 |
 |---|---|---|
 | #82 | wafer map.zip 으로 wafer map 구현 가능성 새 검토 · HTML 보고서 · `wafer map 구현` 폴더 | 보고서(코드 안 고침, 릴리스 없음) |
