@@ -1,5 +1,30 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #82: wafer map 구현 검토 보고서 (2026-11-18 KST, `version_v14`, 이슈 #82, 코드 안 고침)
+
+- 마지막 갱신 2026-11-18 · 기준 커밋 `47f3eb5`(v14.2.12) · 이슈 #82 "v14 브랜치 보고사항"(자동 실행 routine 처리).
+- 요청: 소유자가 올린 `wafer map.zip`(Slot 1장 Camtek 결과 폴더, 사진 뺌)으로 "wafer map 을 정확히 구현할 수 있는지 **지금 브랜치 로직은 무시하고 새로** 검토,
+  최대한 심플하게. wafer 300 mm 고정, die 크기는 device 마다 다름. 불충분한 자료 · 지금 자료로 어디까지 · 불안정한 부분을 시각자료 포함 HTML 보고서로,
+  zip 과 보고서는 새 폴더 `wafer map 구현` 에".
+- 한 일: 저장소 맨 위 `wafer map.zip` → `wafer map 구현/wafer map.zip`(git mv), 보고서 `wafer map 구현/wafer_map_구현_검토_보고서.html`(단독 HTML, 인라인 SVG, 밝은/어두운 테마).
+  프로그램 코드 · 버전은 안 바꿈 → **릴리스 없음**.
+- 찾은 규칙(이 wafer 1장으로 검증):
+  1. Die 번호 `Col = floor(X / XDieIndex)`, `Row = floor(Y / YDieIndex)` — X, Y = wafer 좌표 µm(원점 = 가상 직사각형 좌측 하단, Y 위), Pitch = `ProductInfo.ini [Geometric] XDieIndex/YDieIndex`, offset 0.
+     `ColorImageGrabingInfo.ini` 이미지 152장의 X, Y → 같은 파일 `Col`, `Row` 와 **152/152 일치**(Recipe 2 pitch 로도 같음, 경계에 가장 가까운 이미지 170 µm).
+  2. 맵 die 목록 = `s_DieLocation.dat`(128 byte 레코드, 형식 = 같은 폴더 `s_DieLocation.dat.md`, offset 8/16 = die 중심 x, y double; Recipe 마다 1벌 → 30 + 30). 30 die = `ScanLog.ini ScanDies=30`.
+     대체 규칙: `Wafer2Table.ini` 역변환으로 wafer 중심 → 300 mm 원 안에 네 꼭짓점이 다 들어가는 칸 = 같은 30 die(들어간 최대 146.0 mm, 빠진 최소 158.2 mm).
+  3. Defect = `Surface.flt`(152 byte 레코드, offset 8/16 = x, y) 152개, 모두 Recipe 2 · reclassify 0. 이 Slot 은 Yield 100 · BadDies 0.
+  4. `[ExportData] RefDieX=0, RefDieY=2` = Alignment die (Col 2, Row 3) − (최소 Col 2, 최소 Row 1) 로 맞음, `cMax=8 · rMax=6` = 당기기 전 최대 번호(확인 전).
+  5. 이미지 이름 앞 두 숫자(`18502.-31625.t.2.jpeg`) = Table(chuck) 좌표(`Wafer2Table` 변환 값과 수 µm 안).
+- 해석(확인 전): ① "지금 구현으로 어느 정도 맵까지" = "지금 받은 자료로 어디까지 되는가"로 읽음. ② 보고서에 Lot · wafer ID 는 안 적음. ③ 화면 번호 = 장비 Col/Row 그대로 권장.
+- 불충분한 자료(소유자에게 요청): 이 Slot 의 export 맵 파일(SINF3D), 불량 die 있는 Slot 1장, die 작은 device 1장, 장비 화면 맵 캡처(Notch · Row 방향, `Flat Pos=3` 뜻).
+- 시험: 코드 안 바꿈. `PYTHONPATH=vendor python tools/check_project.py` → Failed files: none. 보고서는 Chromium 으로 열어 확인(1000 px · 390 px, 가로 넘침 없음).
+- 같은 시각 다른 실행이 #81(v14.2.12)을 처리 중이었음 — 이 실행은 #81 을 건드리지 않음.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #82 | wafer map.zip 으로 wafer map 구현 가능성 새 검토 · HTML 보고서 · `wafer map 구현` 폴더 | 보고서(코드 안 고침, 릴리스 없음) |
+
 ## 최신 재개 — v14.2.12: 멈춘 이유 요약 필터 여러 개 고르기 (2026-11-18 KST, `version_v14`, 이슈 #81)
 
 - 마지막 갱신 2026-11-18 · 기준 커밋 `e480d4b`(v14.2.11) · 이슈 #81 "v14.2.12 업데이트 사항"(자동 실행 routine 처리).

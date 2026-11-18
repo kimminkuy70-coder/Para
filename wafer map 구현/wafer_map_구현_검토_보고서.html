@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wafer Map 구현 검토</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--fg:#1d1d1b;--mut:#66665f;--line:#d9d8d2;--die:#dbe8f7;--dieS:#4a78b5;--hit:#9fc0e8;--cell:#f1f0ec;--dft:#c0392b;--ref:#d68a00;--ok:#2e7d32;--warn:#b26a00;--bad:#b3261e;--wafer:#333}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171716;--card:#21211f;--fg:#ecebe6;--mut:#a9a89f;--line:#3a3935;--die:#1f3550;--dieS:#7fa7dc;--hit:#2f5a8c;--cell:#262624;--dft:#ff6b5b;--ref:#ffb547;--ok:#7cc77f;--warn:#ffb547;--bad:#ff8a80;--wafer:#ddd}}
+:root[data-theme="dark"]{--bg:#171716;--card:#21211f;--fg:#ecebe6;--mut:#a9a89f;--line:#3a3935;--die:#1f3550;--dieS:#7fa7dc;--hit:#2f5a8c;--cell:#262624;--dft:#ff6b5b;--ref:#ffb547;--ok:#7cc77f;--warn:#ffb547;--bad:#ff8a80;--wafer:#ddd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.sub{color:var(--mut);margin:0 0 18px}
+.card{overflow-x:auto;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0}
+.verdict{border-left:5px solid var(--ok)}
+.grid2{display:grid;grid-template-columns:1.25fr 1fr;gap:14px}@media(max-width:760px){.grid2{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{color:var(--mut);font-weight:600}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+code{overflow-wrap:anywhere;background:var(--cell);padding:1px 5px;border-radius:4px;font-size:13px}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:10px;border:1px solid currentColor}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+svg{width:100%;height:auto;display:block}
+.map .cell{fill:var(--cell);stroke:var(--line)}.map .die,.diag .die{fill:var(--die);stroke:var(--dieS)}.map .hit{fill:var(--hit)}
+.diag .cell{fill:var(--cell);stroke:var(--line)}
+.map .refo{fill:none;stroke:var(--ref);stroke-width:3}
+.wafer{fill:none;stroke:var(--wafer);stroke-width:1.5;stroke-dasharray:5 4}
+.dft{fill:var(--dft);opacity:.85}.ctr{stroke:var(--ref);stroke-width:2}
+.lbl{font-size:11px;fill:var(--mut)}.num{font-size:15px;font-weight:700;fill:var(--fg);text-anchor:middle}
+.ax,.axc{font-size:11px;fill:var(--mut)}.axc{text-anchor:middle}.tick{stroke:var(--mut)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--mut);margin-top:8px}
+.sw{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:4px;border:1px solid var(--line)}
+ol li,ul li{margin:4px 0}
+.step{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:760px){.step{grid-template-columns:1fr}}
+.step .card{margin:0}
+.bar{height:10px;border-radius:5px;background:var(--cell);overflow:hidden;margin-top:6px}.bar i{display:block;height:100%}
+</style>
+</head>
+<body><main>
+<h1>Wafer Map 구현 검토 보고서</h1>
+<p class="sub">Para 이슈 #82 · 자료: <code>wafer map 구현/wafer map.zip</code> (Slot 1장 결과 폴더, 사진 제외) · 지금 프로그램의 wafer map 로직은 보지 않고 자료만으로 새로 검토 · 2026-11-18</p>
+
+<div class="card verdict">
+<b>결론: 이 자료만으로 wafer map 을 정확히 그릴 수 있습니다.</b> 규칙은 3줄이면 됩니다. 이 wafer 에서 die 30개와 이미지 152장의 Col/Row 가 장비 값과 <b>모두 일치</b>했습니다.
+<ol>
+<li><b>Die 번호</b> = <code>Col = floor(X / PitchX)</code>, <code>Row = floor(Y / PitchY)</code>. X, Y = wafer 좌표(µm). 원점 = 가상 직사각형 좌측 하단, X 는 오른쪽, Y 는 위쪽.</li>
+<li><b>맵에 넣을 die</b> = <code>s_DieLocation.dat</code> 의 die 중심 좌표에 1번 규칙을 적용한 칸. (파일이 없으면: 300 mm 원 안에 네 꼭짓점이 모두 들어가는 칸.)</li>
+<li><b>Defect 위치</b> = defect(또는 이미지) X, Y 에 1번 규칙을 적용한 칸.</li>
+</ol>
+Pitch = <code>ProductInfo.ini [Geometric] XDieIndex / YDieIndex</code> (이 device: 37247.9 × 44905.3 µm). wafer 크기는 300 mm 고정, die 크기만 device 마다 읽습니다. Offset, 가운데 맞춤, 샘플 맵 맞추기는 필요 없습니다.
+</div>
+
+<h2>1. 이 자료로 그린 wafer map</h2>
+<div class="grid2">
+<div class="card"><svg viewBox="0 0 698 677" role="img" aria-label="wafer map" class="map">
+<rect class="cell" x="46.0" y="548.9" width="59.6" height="71.8"><title>Col 0, Row 0 · 맵 밖</title></rect>
+<rect class="cell" x="46.0" y="477.1" width="59.6" height="71.8"><title>Col 0, Row 1 · 맵 밖</title></rect>
+<rect class="cell" x="46.0" y="405.2" width="59.6" height="71.8"><title>Col 0, Row 2 · 맵 밖</title></rect>
+<rect class="cell" x="46.0" y="333.4" width="59.6" height="71.8"><title>Col 0, Row 3 · 맵 밖</title></rect>
+<rect class="cell" x="46.0" y="261.5" width="59.6" height="71.8"><title>Col 0, Row 4 · 맵 밖</title></rect>
+<rect class="cell" x="46.0" y="189.7" width="59.6" height="71.8"><title>Col 0, Row 5 · 맵 밖</title></rect>
+<rect class="cell" x="46.0" y="117.8" width="59.6" height="71.8"><title>Col 0, Row 6 · 맵 밖</title></rect>
+<rect class="cell" x="46.0" y="46.0" width="59.6" height="71.8"><title>Col 0, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="105.6" y="548.9" width="59.6" height="71.8"><title>Col 1, Row 0 · 맵 밖</title></rect>
+<rect class="cell" x="105.6" y="477.1" width="59.6" height="71.8"><title>Col 1, Row 1 · 맵 밖</title></rect>
+<rect class="cell" x="105.6" y="405.2" width="59.6" height="71.8"><title>Col 1, Row 2 · 맵 밖</title></rect>
+<rect class="cell" x="105.6" y="333.4" width="59.6" height="71.8"><title>Col 1, Row 3 · 맵 밖</title></rect>
+<rect class="cell" x="105.6" y="261.5" width="59.6" height="71.8"><title>Col 1, Row 4 · 맵 밖</title></rect>
+<rect class="cell" x="105.6" y="189.7" width="59.6" height="71.8"><title>Col 1, Row 5 · 맵 밖</title></rect>
+<rect class="cell" x="105.6" y="117.8" width="59.6" height="71.8"><title>Col 1, Row 6 · 맵 밖</title></rect>
+<rect class="cell" x="105.6" y="46.0" width="59.6" height="71.8"><title>Col 1, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="165.2" y="548.9" width="59.6" height="71.8"><title>Col 2, Row 0 · 맵 밖</title></rect>
+<rect class="cell" x="165.2" y="477.1" width="59.6" height="71.8"><title>Col 2, Row 1 · 맵 밖</title></rect>
+<rect class="cell" x="165.2" y="405.2" width="59.6" height="71.8"><title>Col 2, Row 2 · 맵 밖</title></rect>
+<rect class="die hit" x="165.2" y="333.4" width="59.6" height="71.8"><title>Col 2, Row 3 · 이미지(defect) 3개</title></rect>
+<text class="lbl" x="169.2" y="346.4">2,3</text>
+<text class="num" x="195.0" y="374.3">3</text>
+<rect class="die hit" x="165.2" y="261.5" width="59.6" height="71.8"><title>Col 2, Row 4 · 이미지(defect) 6개</title></rect>
+<text class="lbl" x="169.2" y="274.5">2,4</text>
+<text class="num" x="195.0" y="302.5">6</text>
+<rect class="cell" x="165.2" y="189.7" width="59.6" height="71.8"><title>Col 2, Row 5 · 맵 밖</title></rect>
+<rect class="cell" x="165.2" y="117.8" width="59.6" height="71.8"><title>Col 2, Row 6 · 맵 밖</title></rect>
+<rect class="cell" x="165.2" y="46.0" width="59.6" height="71.8"><title>Col 2, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="224.8" y="548.9" width="59.6" height="71.8"><title>Col 3, Row 0 · 맵 밖</title></rect>
+<rect class="cell" x="224.8" y="477.1" width="59.6" height="71.8"><title>Col 3, Row 1 · 맵 밖</title></rect>
+<rect class="die hit" x="224.8" y="405.2" width="59.6" height="71.8"><title>Col 3, Row 2 · 이미지(defect) 3개</title></rect>
+<text class="lbl" x="228.8" y="418.2">3,2</text>
+<text class="num" x="254.6" y="446.2">3</text>
+<rect class="die hit" x="224.8" y="333.4" width="59.6" height="71.8"><title>Col 3, Row 3 · 이미지(defect) 1개</title></rect>
+<text class="lbl" x="228.8" y="346.4">3,3</text>
+<text class="num" x="254.6" y="374.3">1</text>
+<rect class="die hit" x="224.8" y="261.5" width="59.6" height="71.8"><title>Col 3, Row 4 · 이미지(defect) 3개</title></rect>
+<text class="lbl" x="228.8" y="274.5">3,4</text>
+<text class="num" x="254.6" y="302.5">3</text>
+<rect class="die hit" x="224.8" y="189.7" width="59.6" height="71.8"><title>Col 3, Row 5 · 이미지(defect) 4개</title></rect>
+<text class="lbl" x="228.8" y="202.7">3,5</text>
+<text class="num" x="254.6" y="230.6">4</text>
+<rect class="cell" x="224.8" y="117.8" width="59.6" height="71.8"><title>Col 3, Row 6 · 맵 밖</title></rect>
+<rect class="cell" x="224.8" y="46.0" width="59.6" height="71.8"><title>Col 3, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="284.4" y="548.9" width="59.6" height="71.8"><title>Col 4, Row 0 · 맵 밖</title></rect>
+<rect class="die hit" x="284.4" y="477.1" width="59.6" height="71.8"><title>Col 4, Row 1 · 이미지(defect) 6개</title></rect>
+<text class="lbl" x="288.4" y="490.1">4,1</text>
+<text class="num" x="314.2" y="518.0">6</text>
+<rect class="die hit" x="284.4" y="405.2" width="59.6" height="71.8"><title>Col 4, Row 2 · 이미지(defect) 4개</title></rect>
+<text class="lbl" x="288.4" y="418.2">4,2</text>
+<text class="num" x="314.2" y="446.2">4</text>
+<rect class="die hit" x="284.4" y="333.4" width="59.6" height="71.8"><title>Col 4, Row 3 · 이미지(defect) 2개</title></rect>
+<text class="lbl" x="288.4" y="346.4">4,3</text>
+<text class="num" x="314.2" y="374.3">2</text>
+<rect class="die hit" x="284.4" y="261.5" width="59.6" height="71.8"><title>Col 4, Row 4 · 이미지(defect) 2개</title></rect>
+<text class="lbl" x="288.4" y="274.5">4,4</text>
+<text class="num" x="314.2" y="302.5">2</text>
+<rect class="die" x="284.4" y="189.7" width="59.6" height="71.8"><title>Col 4, Row 5 · 이미지(defect) 0개</title></rect>
+<text class="lbl" x="288.4" y="202.7">4,5</text>
+<rect class="die hit" x="284.4" y="117.8" width="59.6" height="71.8"><title>Col 4, Row 6 · 이미지(defect) 3개</title></rect>
+<text class="lbl" x="288.4" y="130.8">4,6</text>
+<text class="num" x="314.2" y="158.8">3</text>
+<rect class="cell" x="284.4" y="46.0" width="59.6" height="71.8"><title>Col 4, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="344.0" y="548.9" width="59.6" height="71.8"><title>Col 5, Row 0 · 맵 밖</title></rect>
+<rect class="die hit" x="344.0" y="477.1" width="59.6" height="71.8"><title>Col 5, Row 1 · 이미지(defect) 5개</title></rect>
+<text class="lbl" x="348.0" y="490.1">5,1</text>
+<text class="num" x="373.8" y="518.0">5</text>
+<rect class="die hit" x="344.0" y="405.2" width="59.6" height="71.8"><title>Col 5, Row 2 · 이미지(defect) 8개</title></rect>
+<text class="lbl" x="348.0" y="418.2">5,2</text>
+<text class="num" x="373.8" y="446.2">8</text>
+<rect class="die hit" x="344.0" y="333.4" width="59.6" height="71.8"><title>Col 5, Row 3 · 이미지(defect) 14개</title></rect>
+<text class="lbl" x="348.0" y="346.4">5,3</text>
+<text class="num" x="373.8" y="374.3">14</text>
+<rect class="die hit" x="344.0" y="261.5" width="59.6" height="71.8"><title>Col 5, Row 4 · 이미지(defect) 2개</title></rect>
+<text class="lbl" x="348.0" y="274.5">5,4</text>
+<text class="num" x="373.8" y="302.5">2</text>
+<rect class="die hit" x="344.0" y="189.7" width="59.6" height="71.8"><title>Col 5, Row 5 · 이미지(defect) 2개</title></rect>
+<text class="lbl" x="348.0" y="202.7">5,5</text>
+<text class="num" x="373.8" y="230.6">2</text>
+<rect class="die hit" x="344.0" y="117.8" width="59.6" height="71.8"><title>Col 5, Row 6 · 이미지(defect) 3개</title></rect>
+<text class="lbl" x="348.0" y="130.8">5,6</text>
+<text class="num" x="373.8" y="158.8">3</text>
+<rect class="cell" x="344.0" y="46.0" width="59.6" height="71.8"><title>Col 5, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="403.6" y="548.9" width="59.6" height="71.8"><title>Col 6, Row 0 · 맵 밖</title></rect>
+<rect class="die hit" x="403.6" y="477.1" width="59.6" height="71.8"><title>Col 6, Row 1 · 이미지(defect) 7개</title></rect>
+<text class="lbl" x="407.6" y="490.1">6,1</text>
+<text class="num" x="433.4" y="518.0">7</text>
+<rect class="die hit" x="403.6" y="405.2" width="59.6" height="71.8"><title>Col 6, Row 2 · 이미지(defect) 11개</title></rect>
+<text class="lbl" x="407.6" y="418.2">6,2</text>
+<text class="num" x="433.4" y="446.2">11</text>
+<rect class="die hit" x="403.6" y="333.4" width="59.6" height="71.8"><title>Col 6, Row 3 · 이미지(defect) 25개</title></rect>
+<text class="lbl" x="407.6" y="346.4">6,3</text>
+<text class="num" x="433.4" y="374.3">25</text>
+<rect class="die hit" x="403.6" y="261.5" width="59.6" height="71.8"><title>Col 6, Row 4 · 이미지(defect) 12개</title></rect>
+<text class="lbl" x="407.6" y="274.5">6,4</text>
+<text class="num" x="433.4" y="302.5">12</text>
+<rect class="die hit" x="403.6" y="189.7" width="59.6" height="71.8"><title>Col 6, Row 5 · 이미지(defect) 2개</title></rect>
+<text class="lbl" x="407.6" y="202.7">6,5</text>
+<text class="num" x="433.4" y="230.6">2</text>
+<rect class="die hit" x="403.6" y="117.8" width="59.6" height="71.8"><title>Col 6, Row 6 · 이미지(defect) 2개</title></rect>
+<text class="lbl" x="407.6" y="130.8">6,6</text>
+<text class="num" x="433.4" y="158.8">2</text>
+<rect class="cell" x="403.6" y="46.0" width="59.6" height="71.8"><title>Col 6, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="463.2" y="548.9" width="59.6" height="71.8"><title>Col 7, Row 0 · 맵 밖</title></rect>
+<rect class="cell" x="463.2" y="477.1" width="59.6" height="71.8"><title>Col 7, Row 1 · 맵 밖</title></rect>
+<rect class="die hit" x="463.2" y="405.2" width="59.6" height="71.8"><title>Col 7, Row 2 · 이미지(defect) 1개</title></rect>
+<text class="lbl" x="467.2" y="418.2">7,2</text>
+<text class="num" x="493.0" y="446.2">1</text>
+<rect class="die hit" x="463.2" y="333.4" width="59.6" height="71.8"><title>Col 7, Row 3 · 이미지(defect) 8개</title></rect>
+<text class="lbl" x="467.2" y="346.4">7,3</text>
+<text class="num" x="493.0" y="374.3">8</text>
+<rect class="die hit" x="463.2" y="261.5" width="59.6" height="71.8"><title>Col 7, Row 4 · 이미지(defect) 9개</title></rect>
+<text class="lbl" x="467.2" y="274.5">7,4</text>
+<text class="num" x="493.0" y="302.5">9</text>
+<rect class="die hit" x="463.2" y="189.7" width="59.6" height="71.8"><title>Col 7, Row 5 · 이미지(defect) 1개</title></rect>
+<text class="lbl" x="467.2" y="202.7">7,5</text>
+<text class="num" x="493.0" y="230.6">1</text>
+<rect class="cell" x="463.2" y="117.8" width="59.6" height="71.8"><title>Col 7, Row 6 · 맵 밖</title></rect>
+<rect class="cell" x="463.2" y="46.0" width="59.6" height="71.8"><title>Col 7, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="522.8" y="548.9" width="59.6" height="71.8"><title>Col 8, Row 0 · 맵 밖</title></rect>
+<rect class="cell" x="522.8" y="477.1" width="59.6" height="71.8"><title>Col 8, Row 1 · 맵 밖</title></rect>
+<rect class="cell" x="522.8" y="405.2" width="59.6" height="71.8"><title>Col 8, Row 2 · 맵 밖</title></rect>
+<rect class="die" x="522.8" y="333.4" width="59.6" height="71.8"><title>Col 8, Row 3 · 이미지(defect) 0개</title></rect>
+<text class="lbl" x="526.8" y="346.4">8,3</text>
+<rect class="die hit" x="522.8" y="261.5" width="59.6" height="71.8"><title>Col 8, Row 4 · 이미지(defect) 3개</title></rect>
+<text class="lbl" x="526.8" y="274.5">8,4</text>
+<text class="num" x="552.6" y="302.5">3</text>
+<rect class="cell" x="522.8" y="189.7" width="59.6" height="71.8"><title>Col 8, Row 5 · 맵 밖</title></rect>
+<rect class="cell" x="522.8" y="117.8" width="59.6" height="71.8"><title>Col 8, Row 6 · 맵 밖</title></rect>
+<rect class="cell" x="522.8" y="46.0" width="59.6" height="71.8"><title>Col 8, Row 7 · 맵 밖</title></rect>
+<rect class="cell" x="582.4" y="548.9" width="59.6" height="71.8"><title>Col 9, Row 0 · 맵 밖</title></rect>
+<rect class="cell" x="582.4" y="477.1" width="59.6" height="71.8"><title>Col 9, Row 1 · 맵 밖</title></rect>
+<rect class="cell" x="582.4" y="405.2" width="59.6" height="71.8"><title>Col 9, Row 2 · 맵 밖</title></rect>
+<rect class="cell" x="582.4" y="333.4" width="59.6" height="71.8"><title>Col 9, Row 3 · 맵 밖</title></rect>
+<rect class="cell" x="582.4" y="261.5" width="59.6" height="71.8"><title>Col 9, Row 4 · 맵 밖</title></rect>
+<rect class="cell" x="582.4" y="189.7" width="59.6" height="71.8"><title>Col 9, Row 5 · 맵 밖</title></rect>
+<rect class="cell" x="582.4" y="117.8" width="59.6" height="71.8"><title>Col 9, Row 6 · 맵 밖</title></rect>
+<rect class="cell" x="582.4" y="46.0" width="59.6" height="71.8"><title>Col 9, Row 7 · 맵 밖</title></rect>
+<rect class="refo" x="165.2" y="333.4" width="59.6" height="71.8"/>
+<circle class="wafer" cx="373.6" cy="333.2" r="240.0"/>
+<circle class="dft" cx="504.0" cy="336.0" r="1.8"/>
+<circle class="dft" cx="510.3" cy="334.8" r="1.8"/>
+<circle class="dft" cx="483.8" cy="385.0" r="1.8"/>
+<circle class="dft" cx="466.0" cy="342.3" r="1.8"/>
+<circle class="dft" cx="483.9" cy="346.1" r="1.8"/>
+<circle class="dft" cx="467.2" cy="373.1" r="1.8"/>
+<circle class="dft" cx="466.9" cy="387.6" r="1.8"/>
+<circle class="dft" cx="475.7" cy="380.8" r="1.8"/>
+<circle class="dft" cx="512.6" cy="280.6" r="1.8"/>
+<circle class="dft" cx="512.7" cy="275.8" r="1.8"/>
+<circle class="dft" cx="503.2" cy="289.3" r="1.8"/>
+<circle class="dft" cx="516.6" cy="285.0" r="1.8"/>
+<circle class="dft" cx="483.8" cy="287.2" r="1.8"/>
+<circle class="dft" cx="482.2" cy="287.1" r="1.8"/>
+<circle class="dft" cx="489.3" cy="291.7" r="1.8"/>
+<circle class="dft" cx="475.8" cy="279.3" r="1.8"/>
+<circle class="dft" cx="477.9" cy="280.6" r="1.8"/>
+<circle class="dft" cx="468.1" cy="430.1" r="1.8"/>
+<circle class="dft" cx="511.8" cy="199.4" r="1.8"/>
+<circle class="dft" cx="406.2" cy="413.7" r="1.8"/>
+<circle class="dft" cx="406.2" cy="425.4" r="1.8"/>
+<circle class="dft" cx="445.6" cy="422.6" r="1.8"/>
+<circle class="dft" cx="423.6" cy="424.3" r="1.8"/>
+<circle class="dft" cx="423.1" cy="427.6" r="1.8"/>
+<circle class="dft" cx="439.7" cy="420.2" r="1.8"/>
+<circle class="dft" cx="415.9" cy="417.0" r="1.8"/>
+<circle class="dft" cx="415.3" cy="409.6" r="1.8"/>
+<circle class="dft" cx="462.1" cy="475.3" r="1.8"/>
+<circle class="dft" cx="412.4" cy="415.6" r="1.8"/>
+<circle class="dft" cx="409.4" cy="435.1" r="1.8"/>
+<circle class="dft" cx="458.4" cy="342.5" r="1.8"/>
+<circle class="dft" cx="437.2" cy="344.3" r="1.8"/>
+<circle class="dft" cx="450.8" cy="341.4" r="1.8"/>
+<circle class="dft" cx="436.7" cy="367.5" r="1.8"/>
+<circle class="dft" cx="436.4" cy="348.4" r="1.8"/>
+<circle class="dft" cx="438.3" cy="335.7" r="1.8"/>
+<circle class="dft" cx="432.1" cy="367.8" r="1.8"/>
+<circle class="dft" cx="431.9" cy="388.8" r="1.8"/>
+<circle class="dft" cx="424.4" cy="403.8" r="1.8"/>
+<circle class="dft" cx="439.8" cy="375.0" r="1.8"/>
+<circle class="dft" cx="431.2" cy="355.5" r="1.8"/>
+<circle class="dft" cx="430.0" cy="354.6" r="1.8"/>
+<circle class="dft" cx="433.5" cy="343.3" r="1.8"/>
+<circle class="dft" cx="410.1" cy="343.6" r="1.8"/>
+<circle class="dft" cx="416.0" cy="369.1" r="1.8"/>
+<circle class="dft" cx="422.6" cy="395.2" r="1.8"/>
+<circle class="dft" cx="415.6" cy="387.3" r="1.8"/>
+<circle class="dft" cx="421.0" cy="399.7" r="1.8"/>
+<circle class="dft" cx="418.3" cy="390.9" r="1.8"/>
+<circle class="dft" cx="410.8" cy="352.8" r="1.8"/>
+<circle class="dft" cx="414.4" cy="352.2" r="1.8"/>
+<circle class="dft" cx="414.4" cy="358.4" r="1.8"/>
+<circle class="dft" cx="408.9" cy="383.7" r="1.8"/>
+<circle class="dft" cx="407.8" cy="339.2" r="1.8"/>
+<circle class="dft" cx="411.6" cy="391.6" r="1.8"/>
+<circle class="dft" cx="459.9" cy="482.5" r="1.8"/>
+<circle class="dft" cx="406.1" cy="501.7" r="1.8"/>
+<circle class="dft" cx="452.7" cy="539.5" r="1.8"/>
+<circle class="dft" cx="436.5" cy="494.4" r="1.8"/>
+<circle class="dft" cx="447.4" cy="544.6" r="1.8"/>
+<circle class="dft" cx="434.9" cy="510.3" r="1.8"/>
+<circle class="dft" cx="407.2" cy="505.8" r="1.8"/>
+<circle class="dft" cx="452.4" cy="307.8" r="1.8"/>
+<circle class="dft" cx="438.3" cy="309.9" r="1.8"/>
+<circle class="dft" cx="446.3" cy="296.0" r="1.8"/>
+<circle class="dft" cx="438.3" cy="319.4" r="1.8"/>
+<circle class="dft" cx="444.7" cy="290.3" r="1.8"/>
+<circle class="dft" cx="422.5" cy="326.5" r="1.8"/>
+<circle class="dft" cx="435.1" cy="323.3" r="1.8"/>
+<circle class="dft" cx="426.9" cy="316.8" r="1.8"/>
+<circle class="dft" cx="443.5" cy="320.4" r="1.8"/>
+<circle class="dft" cx="450.3" cy="313.6" r="1.8"/>
+<circle class="dft" cx="443.0" cy="280.4" r="1.8"/>
+<circle class="dft" cx="445.8" cy="297.4" r="1.8"/>
+<circle class="dft" cx="438.7" cy="244.0" r="1.8"/>
+<circle class="dft" cx="436.2" cy="203.2" r="1.8"/>
+<circle class="dft" cx="446.8" cy="120.6" r="1.8"/>
+<circle class="dft" cx="433.1" cy="128.7" r="1.8"/>
+<circle class="dft" cx="555.8" cy="321.1" r="1.8"/>
+<circle class="dft" cx="540.6" cy="274.8" r="1.8"/>
+<circle class="dft" cx="525.0" cy="327.1" r="1.8"/>
+<circle class="dft" cx="396.3" cy="415.6" r="1.8"/>
+<circle class="dft" cx="379.2" cy="461.3" r="1.8"/>
+<circle class="dft" cx="387.2" cy="411.9" r="1.8"/>
+<circle class="dft" cx="374.8" cy="464.6" r="1.8"/>
+<circle class="dft" cx="360.2" cy="431.7" r="1.8"/>
+<circle class="dft" cx="348.1" cy="417.5" r="1.8"/>
+<circle class="dft" cx="348.2" cy="464.4" r="1.8"/>
+<circle class="dft" cx="352.0" cy="415.2" r="1.8"/>
+<circle class="dft" cx="397.8" cy="157.9" r="1.8"/>
+<circle class="dft" cx="387.4" cy="187.0" r="1.8"/>
+<circle class="dft" cx="385.4" cy="186.0" r="1.8"/>
+<circle class="dft" cx="402.5" cy="533.7" r="1.8"/>
+<circle class="dft" cx="400.3" cy="539.1" r="1.8"/>
+<circle class="dft" cx="362.9" cy="514.0" r="1.8"/>
+<circle class="dft" cx="350.7" cy="500.4" r="1.8"/>
+<circle class="dft" cx="361.4" cy="477.4" r="1.8"/>
+<circle class="dft" cx="346.2" cy="215.4" r="1.8"/>
+<circle class="dft" cx="395.4" cy="198.9" r="1.8"/>
+<circle class="dft" cx="400.6" cy="348.1" r="1.8"/>
+<circle class="dft" cx="399.6" cy="368.5" r="1.8"/>
+<circle class="dft" cx="402.7" cy="383.0" r="1.8"/>
+<circle class="dft" cx="380.9" cy="384.7" r="1.8"/>
+<circle class="dft" cx="383.9" cy="374.6" r="1.8"/>
+<circle class="dft" cx="389.5" cy="395.3" r="1.8"/>
+<circle class="dft" cx="387.9" cy="391.3" r="1.8"/>
+<circle class="dft" cx="391.8" cy="390.0" r="1.8"/>
+<circle class="dft" cx="372.0" cy="379.1" r="1.8"/>
+<circle class="dft" cx="364.9" cy="398.1" r="1.8"/>
+<circle class="dft" cx="361.9" cy="378.0" r="1.8"/>
+<circle class="dft" cx="361.7" cy="384.3" r="1.8"/>
+<circle class="dft" cx="349.3" cy="393.5" r="1.8"/>
+<circle class="dft" cx="353.4" cy="370.2" r="1.8"/>
+<circle class="dft" cx="385.6" cy="279.3" r="1.8"/>
+<circle class="dft" cx="379.9" cy="321.2" r="1.8"/>
+<circle class="dft" cx="337.7" cy="160.1" r="1.8"/>
+<circle class="dft" cx="323.7" cy="178.2" r="1.8"/>
+<circle class="dft" cx="322.8" cy="137.8" r="1.8"/>
+<circle class="dft" cx="340.8" cy="456.5" r="1.8"/>
+<circle class="dft" cx="338.1" cy="416.6" r="1.8"/>
+<circle class="dft" cx="309.3" cy="456.1" r="1.8"/>
+<circle class="dft" cx="294.3" cy="435.5" r="1.8"/>
+<circle class="dft" cx="307.5" cy="342.9" r="1.8"/>
+<circle class="dft" cx="293.4" cy="394.6" r="1.8"/>
+<circle class="dft" cx="342.4" cy="533.6" r="1.8"/>
+<circle class="dft" cx="330.0" cy="507.9" r="1.8"/>
+<circle class="dft" cx="321.7" cy="541.9" r="1.8"/>
+<circle class="dft" cx="305.2" cy="518.8" r="1.8"/>
+<circle class="dft" cx="306.4" cy="529.8" r="1.8"/>
+<circle class="dft" cx="304.5" cy="536.3" r="1.8"/>
+<circle class="dft" cx="324.2" cy="283.2" r="1.8"/>
+<circle class="dft" cx="312.2" cy="320.1" r="1.8"/>
+<circle class="dft" cx="281.5" cy="411.1" r="1.8"/>
+<circle class="dft" cx="255.5" cy="439.8" r="1.8"/>
+<circle class="dft" cx="244.2" cy="444.1" r="1.8"/>
+<circle class="dft" cx="261.5" cy="346.3" r="1.8"/>
+<circle class="dft" cx="260.2" cy="316.8" r="1.8"/>
+<circle class="dft" cx="265.7" cy="287.3" r="1.8"/>
+<circle class="dft" cx="250.6" cy="273.2" r="1.8"/>
+<circle class="dft" cx="228.2" cy="232.0" r="1.8"/>
+<circle class="dft" cx="266.8" cy="252.3" r="1.8"/>
+<circle class="dft" cx="256.6" cy="220.6" r="1.8"/>
+<circle class="dft" cx="246.6" cy="214.7" r="1.8"/>
+<circle class="dft" cx="168.6" cy="379.5" r="1.8"/>
+<circle class="dft" cx="208.2" cy="382.9" r="1.8"/>
+<circle class="dft" cx="172.0" cy="350.1" r="1.8"/>
+<circle class="dft" cx="217.7" cy="270.5" r="1.8"/>
+<circle class="dft" cx="215.9" cy="285.7" r="1.8"/>
+<circle class="dft" cx="188.3" cy="292.6" r="1.8"/>
+<circle class="dft" cx="180.1" cy="315.3" r="1.8"/>
+<circle class="dft" cx="187.1" cy="295.2" r="1.8"/>
+<circle class="dft" cx="183.0" cy="279.1" r="1.8"/>
+<path class="ctr" d="M366.6,333.2h14M373.6,326.2v14"/>
+<text class="ax" x="46.0" y="636.8">0</text>
+<text class="ax" x="165.2" y="636.8">74</text>
+<text class="ax" x="284.4" y="636.8">149</text>
+<text class="ax" x="403.6" y="636.8">223</text>
+<text class="ax" x="522.8" y="636.8">298</text>
+<text class="ax" x="642.0" y="636.8">372</text>
+<text class="axc" x="75.8" y="36.0">C0</text>
+<text class="axc" x="135.4" y="36.0">C1</text>
+<text class="axc" x="195.0" y="36.0">C2</text>
+<text class="axc" x="254.6" y="36.0">C3</text>
+<text class="axc" x="314.2" y="36.0">C4</text>
+<text class="axc" x="373.8" y="36.0">C5</text>
+<text class="axc" x="433.4" y="36.0">C6</text>
+<text class="axc" x="493.0" y="36.0">C7</text>
+<text class="axc" x="552.6" y="36.0">C8</text>
+<text class="axc" x="612.2" y="36.0">C9</text>
+<text class="axc" x="24.0" y="588.9">R0</text>
+<text class="axc" x="24.0" y="517.0">R1</text>
+<text class="axc" x="24.0" y="445.2">R2</text>
+<text class="axc" x="24.0" y="373.3">R3</text>
+<text class="axc" x="24.0" y="301.5">R4</text>
+<text class="axc" x="24.0" y="229.6">R5</text>
+<text class="axc" x="24.0" y="157.8">R6</text>
+<text class="axc" x="24.0" y="85.9">R7</text>
+<text class="ax" x="40.0" y="650.8">(0,0) = 가상 직사각형 좌측 하단 · 눈금 mm</text>
+</svg>
+<div class="legend"><span><i class="sw" style="background:var(--die)"></i>맵 die (30)</span><span><i class="sw" style="background:var(--hit)"></i>이미지 있는 die (숫자 = 장 수)</span><span><i class="sw" style="background:var(--cell)"></i>맵 밖 칸</span><span><i class="sw" style="border:2px solid var(--ref)"></i>Alignment die (2,3)</span><span><i class="sw" style="background:var(--dft)"></i>Defect 152</span><span>점선 = 300 mm wafer, + = 중심</span></div>
+</div>
+<div class="card">
+<b>줄별 die</b> (위 → 아래)
+<table><tr><th>Row</th><th>Col 범위</th><th class="n">개수</th></tr><tr><td>R6</td><td>4 ~ 6</td><td class="n">3</td></tr><tr><td>R5</td><td>3 ~ 7</td><td class="n">5</td></tr><tr><td>R4</td><td>2 ~ 8</td><td class="n">7</td></tr><tr><td>R3</td><td>2 ~ 8</td><td class="n">7</td></tr><tr><td>R2</td><td>3 ~ 7</td><td class="n">5</td></tr><tr><td>R1</td><td>4 ~ 6</td><td class="n">3</td></tr></table>
+<p style="margin:10px 0 0">합계 30 = <code>ScanLog.ini ScanDies=30</code> = <code>DiceLocationStat.txt</code> 30. 줄마다 좌우 대칭입니다.</p>
+<p style="margin:8px 0 0">가상 직사각형 = <code>ProductInfo.ini Cols=10, Rows=8</code>. 실제 die 는 Col 2~8, Row 1~6 에만 있습니다.</p>
+<p style="margin:8px 0 0">Wafer 중심(wafer 좌표) = (204.76 mm, 179.74 mm) = (5.497 × PitchX, 4.003 × PitchY). <code>Wafer2Table.ini</code> 를 거꾸로 계산한 값입니다.</p>
+</div>
+</div>
+
+<h2>2. 규칙 확인 결과</h2>
+<div class="card">
+<table>
+<tr><th>확인한 것</th><th>방법</th><th>결과</th></tr>
+<tr><td>이미지 Col/Row</td><td><code>ColorImageGrabingInfo.ini</code> 152장의 X, Y 에 floor 규칙 → 같은 파일의 <code>Col</code>, <code>Row</code> 와 비교</td><td><span class="tag ok">152 / 152 일치</span></td></tr>
+<tr><td>Defect die</td><td><code>Surface.flt</code> 152개(레코드 152 byte, 형식 = <code>Surface.flt.md</code>) X, Y → die</td><td><span class="tag ok">이미지와 같은 die 분포</span></td></tr>
+<tr><td>Die 목록</td><td><code>s_DieLocation.dat</code> (128 byte × 60 = Recipe 2개 × 30 die). x, y = die 중심 = (Col+0.5)×Pitch</td><td><span class="tag ok">30 die, ScanLog 와 일치</span></td></tr>
+<tr><td>Die 목록 대체 규칙</td><td>Wafer 중심 + 반지름 150 mm 원 안에 die 네 꼭짓점이 모두 들어감</td><td><span class="tag ok">30 die 같음</span> 여유: 들어간 die 의 먼 꼭짓점 최대 146.0 mm, 빠진 die 최소 158.2 mm</td></tr>
+<tr><td>Recipe 2 (x5) pitch</td><td>Recipe 2 pitch(37247.7 × 44903.2)로 다시 계산</td><td><span class="tag ok">152 / 152 같음</span> (차이 수 µm)</td></tr>
+<tr><td>Export 번호</td><td><code>ProductInfo.ini [ExportData] RefDieX=0, RefDieY=2, cMax=8, rMax=6</code> 와 Alignment die (Col 2, Row 3)</td><td><span class="tag warn">맞는 해석 있음 · 확인 전</span> (2−최소 Col 2, 3−최소 Row 1) = (0, 2)</td></tr>
+<tr><td>이미지 이름 숫자</td><td><code>18502.-31625.t.2.jpeg</code> 등 앞 두 숫자</td><td><span class="tag ok">Table(chuck) 좌표</span> = <code>Wafer2Table</code> 로 바꾼 값과 수 µm 안</td></tr>
+</table>
+</div>
+<div class="card"><svg viewBox="0 0 560 250" class="diag" role="img" aria-label="Col Row 계산 그림">
+<rect class="cell" x="40" y="30" width="160" height="180"/><rect class="die" x="200" y="30" width="160" height="180"/><rect class="cell" x="360" y="30" width="160" height="180"/>
+<text class="lbl" x="98" y="122">Col 4</text><text class="lbl" x="258" y="122">Col 5</text><text class="lbl" x="418" y="122">Col 6</text>
+<line class="tick" x1="200" y1="210" x2="200" y2="232"/><line class="tick" x1="360" y1="210" x2="360" y2="232"/>
+<text class="ax" x="168" y="246">5 × PitchX</text><text class="ax" x="328" y="246">6 × PitchX</text>
+<circle class="dft" cx="300" cy="90" r="5"/><text class="lbl" x="310" y="86">Defect X</text>
+<text class="lbl" x="214" y="170">floor(X / PitchX) = 5</text>
+<text class="ax" x="40" y="20">경계 = Pitch 의 정수배 (offset 0) · 경계 가까운 defect 최소 170 µm</text>
+</svg></div>
+
+<h2>3. 쓰는 파일 (최소)</h2>
+<div class="card">
+<table>
+<tr><th>파일</th><th>읽을 값</th><th>쓰임</th><th>필수</th></tr>
+<tr><td><code>ProductInfo.ini</code></td><td><code>[Geometric] XDieIndex, YDieIndex, Cols, Rows, Diameter</code></td><td>Pitch, 직사각형 크기</td><td><span class="tag ok">필수</span></td></tr>
+<tr><td><code>s_DieLocation.dat</code></td><td>레코드 128 byte, offset 8 = x(double), 16 = y(double)</td><td>맵 die 목록</td><td><span class="tag ok">필수</span> (없으면 대체 규칙)</td></tr>
+<tr><td><code>ColorImageGrabingInfo.ini</code></td><td>섹션 = 이미지 이름, <code>X, Y, Col, Row, RecipeNumber</code></td><td>이미지 위치, 규칙 검증</td><td>이미지 볼 때</td></tr>
+<tr><td><code>Surface.flt</code></td><td>레코드 152 byte, offset 8 = x, 16 = y, 0 = reclassify</td><td>Defect 위치 · 분류</td><td>Defect 볼 때</td></tr>
+<tr><td><code>Wafer2Table.ini</code></td><td><code>Wafer2Table_X, _Y</code> (3 값씩)</td><td>Wafer 중심, Table 좌표 변환</td><td>대체 규칙에만</td></tr>
+<tr><td><code>AlignmentDieCol/Row</code>, <code>[ExportData]</code></td><td>ProductInfo.ini</td><td>기준 die 표시, export 번호</td><td>선택</td></tr>
+</table>
+<p style="margin:10px 0 0">쓰지 않아도 되는 것: <code>s_FrameData.dat</code>(46 MB), <code>WaferAlignData.zip</code>, <code>s_DieAlignPos.dat</code>, Focus, Zones, Optic 파일. 맵에는 필요 없습니다.</p>
+</div>
+
+<h2>4. 이 자료로 어디까지 되는가</h2>
+<div class="step">
+<div class="card"><span class="tag ok">확실</span><h3 style="margin:6px 0">die 칸 · 번호 · defect 위치</h3>
+die 30개 배치, Col/Row 번호, 이미지와 defect 가 어느 die 에 있는지, 기준 die. 위 확인으로 1장 기준 오차 0.
+<div class="bar"><i style="width:100%;background:var(--ok)"></i></div></div>
+<div class="card"><span class="tag warn">가정 필요</span><h3 style="margin:6px 0">방향 · export 번호</h3>
+Notch 위치(<code>Flat Pos=3</code> 의 뜻), export 맵의 번호 원점과 Row 방향(위/아래). 값은 있으나 뜻을 1장으로 못 정합니다.
+<div class="bar"><i style="width:60%;background:var(--warn)"></i></div></div>
+<div class="card"><span class="tag bad">자료 없음</span><h3 style="margin:6px 0">die 의 Bin(불량 판정)</h3>
+이 wafer 는 <code>Yield=100</code>, <code>BadDies=0</code>, defect 152개 모두 <code>reclassify=0</code>. 불량 die 가 어떻게 Bin 으로 바뀌는지 볼 수 없습니다.
+<div class="bar"><i style="width:20%;background:var(--bad)"></i></div></div>
+</div>
+
+<h2>5. 불충분한 자료</h2>
+<div class="card"><ol>
+<li><b>장비가 export 한 맵 파일이 없습니다.</b> <code>ScanLog.ini</code> 에 <code>ExportMapStarted / Ended</code> 가 있고 converter 이름은 <code>SINF3D</code> 입니다. 이 결과 폴더의 export 맵 1개가 있으면 번호 원점, Row 방향, Notch, Bin 기호를 바로 맞춰 볼 수 있습니다.</li>
+<li><b>불량 die 가 있는 wafer 가 없습니다.</b> 이 Slot 은 모두 Good 입니다. 불량 die 가 있는 Slot 1장(같은 폴더 구성)이 있으면 Defect 분류 → Bin 변환(<code>ClassificationConvertTable.ini</code>, <code>EquipmentClassifications.ini</code>)을 확인할 수 있습니다.</li>
+<li><b>device 가 1종입니다.</b> die 가 큰 device(30 die)라 가장자리 판정 여유가 큽니다(4 mm 이상). die 가 작은 device 1장이 있으면 가장자리 die 와 부분 die(<code>ScanPartialDice=0</code>) 규칙을 확인할 수 있습니다.</li>
+<li><b>Notch 방향 근거가 없습니다.</b> <code>Flat Pos=3</code>, <code>FlatNotchOrientation=3</code>, <code>ExportFlatPos=3</code> 만 있습니다. 숫자의 뜻(0/1/2/3 = 위/오른쪽/아래/왼쪽 등)을 정할 자료가 필요합니다. 장비 화면 맵 캡처 1장이면 됩니다.</li>
+<li>사진을 뺀 것은 문제가 없습니다. 사진 위치는 <code>ColorImageGrabingInfo.ini</code>, <code>ScanResultImageList.txt</code> 에 모두 있습니다.</li>
+</ol></div>
+
+<h2>6. 불안정한 부분</h2>
+<div class="card"><table>
+<tr><th>부분</th><th>위험</th><th>이유 · 대책</th></tr>
+<tr><td><code>s_DieLocation.dat</code> 가 없는 폴더</td><td><span class="tag warn">중간</span></td><td>대체 규칙(원 안 die)은 wafer 중심과 edge exclusion 을 가정합니다. 이 wafer 에서는 edge exclusion 0~4 mm 모두 결과가 같았습니다. 작은 die 에서는 1칸 차이가 날 수 있습니다. → 파일이 있으면 항상 파일을 씁니다.</td></tr>
+<tr><td>Die 경계에 붙은 defect</td><td><span class="tag ok">낮음</span></td><td>floor 경계 = Pitch 정수배. 이 자료에서 경계에 가장 가까운 이미지도 170 µm 떨어져 있습니다. Recipe 마다 pitch 가 수 µm 달라도 결과가 같았습니다.</td></tr>
+<tr><td>Notch · 맵 방향</td><td><span class="tag warn">중간</span></td><td>wafer 좌표 = Y 위쪽이 맞습니다(Row 1 = 아래쪽 3 die 줄). 다른 프로그램 맵과 비교할 때 위아래가 뒤집힐 수 있습니다. → export 맵 1장으로 확인.</td></tr>
+<tr><td>Export 번호 (0 부터)</td><td><span class="tag warn">중간</span></td><td>RefDie (0, 2) 는 "최소 Col/Row 를 0 으로 당긴 번호"로 맞습니다. 그런데 cMax=8, rMax=6 은 당기기 전 최대 번호입니다. 둘의 관계는 확인 전입니다. 화면에는 장비 Col/Row(이미지 이름과 같은 번호)를 쓰면 안전합니다.</td></tr>
+<tr><td>Bin · 색칠</td><td><span class="tag bad">높음</span></td><td>불량 die 자료가 없습니다(5절 2번). 지금은 "defect 있는 die" 까지만 확실합니다.</td></tr>
+<tr><td>Recipe 2개</td><td><span class="tag ok">낮음</span></td><td>die 목록이 Recipe 마다 1벌씩(30 + 30) 있습니다. 같은 칸이므로 Recipe 1 의 30개만 씁니다.</td></tr>
+</table></div>
+
+<h2>7. 구현안 (가장 단순)</h2>
+<div class="card"><ol>
+<li><code>ProductInfo.ini</code> 에서 <code>XDieIndex</code>, <code>YDieIndex</code>, <code>Cols</code>, <code>Rows</code> 를 읽습니다.</li>
+<li><code>s_DieLocation.dat</code> 를 128 byte 씩 읽습니다. 앞 1/2(Recipe 1)만 씁니다. 각 x, y 로 Col, Row 를 구해 맵 die 집합을 만듭니다.</li>
+<li><code>Cols × Rows</code> 칸을 그립니다. Row 0 = 아래. 집합에 있는 칸만 die 로 칠합니다. 300 mm 원은 참고선으로만 그립니다.</li>
+<li>Defect · 이미지마다 X, Y 로 Col, Row 를 구해 그 칸에 셉니다. 칸 안 점 위치 = (X − Col×PitchX, Y − Row×PitchY).</li>
+<li>화면 번호 = 장비 Col/Row 그대로(이미지 <code>Col</code>, <code>Row</code> 와 같음). 샘플 맵 맞추기, offset, 가운데 맞춤 추정은 쓰지 않습니다.</li>
+</ol>
+<p style="margin:8px 0 0">이 방식은 계산이 나눗셈 1번이라 틀릴 곳이 적습니다. 남는 확인은 5절의 자료 2~3개입니다.</p></div>
+
+<h2>8. 다음에 받으면 좋은 자료</h2>
+<div class="card"><ol>
+<li>이 Slot 의 export 맵 파일(SINF3D) 1개.</li>
+<li>불량 die 가 있는 Slot 결과 폴더 1개(사진 빼도 됨).</li>
+<li>die 가 작은 다른 device 결과 폴더 1개.</li>
+<li>장비 화면의 wafer map 캡처 1장(Notch 와 Row 방향 확인).</li>
+</ol></div>
+<p class="sub" style="margin-top:24px">검토 범위: Linux 에서 파일만 읽어 계산했습니다. 장비 화면 · 실제 export 맵과는 비교하지 못했습니다. Lot · wafer ID 는 이 보고서에 적지 않았습니다.</p>
+</main></body></html>
