@@ -20,6 +20,12 @@
 - 불충분한 자료(소유자에게 요청): 이 Slot 의 export 맵 파일(SINF3D), 불량 die 있는 Slot 1장, die 작은 device 1장, 장비 화면 맵 캡처(Notch · Row 방향, `Flat Pos=3` 뜻).
 - 시험: 코드 안 바꿈. `PYTHONPATH=vendor python tools/check_project.py` → Failed files: none. 보고서는 Chromium 으로 열어 확인(1000 px · 390 px, 가로 넘침 없음).
 - 같은 시각 다른 실행이 #81(v14.2.12)을 처리 중이었음 — 이 실행은 #81 을 건드리지 않음.
+- **세션 후속(소유자 질문 "지금까지는 왜 안 된 거야? 무슨 차이지?")** — 지금 rev6 HTML 코드(`parseProduct` · `sampleFit`)를 node 로 이 zip 에 돌려 확인:
+  ① `ProductInfo.ini` 에 중심 키가 없어 1034줄이 `Params_WaferInfo.ini` 의 `Center_X=0 · Center_Y=0`(= 값 없음)을 **실제 중심으로 씀** → wafer 중심 (0, 0).
+  ② 샘플 맵(#69, `S.userMap`)이 있으면 `sampleFit` 처음 자리 = round(0/Pitch − 맵폭/2) = (−3, −3), 정답 (2, 1) 과 5칸 · 4칸 차이인데 찾는 범위가 ±ceil(맵폭/2)(여기 ±4 · ±3)라 못 닿음
+     → 겹침 22/30 인 (1, 0) 을 고름 = 맵이 왼쪽 1 · 아래 1 칸 → **모든 defect (col+1, row+1), 안 겹친 die 8개의 defect 는 맵 밖('빠짐')** = #78 증상 재현.
+  ③ 실제 중심(Wafer2Table 역변환 204758, 179735)을 넣으면 같은 코드가 (2, 1), 30/30. 샘플 맵 없이 s_DieLocation 만이면 die 칸은 맞음(원은 `centerShift` 가 옮김).
+  보고서에 "0. 지금까지 안 된 이유" 절 추가. **코드는 안 고침**(소유자 결정 대기). 고칠 방향 후보: Center 0 = 값 없음으로 보기 · 샘플 자리 맞추기를 s_DieLocation 왼쪽 아래 기준으로(추정 없이) · 보고서의 3줄 규칙으로 다시 만들기.
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|

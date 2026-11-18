@@ -51,6 +51,24 @@ ol li,ul li{margin:4px 0}
 Pitch = <code>ProductInfo.ini [Geometric] XDieIndex / YDieIndex</code> (이 device: 37247.9 × 44905.3 µm). wafer 크기는 300 mm 고정, die 크기만 device 마다 읽습니다. Offset, 가운데 맞춤, 샘플 맵 맞추기는 필요 없습니다.
 </div>
 
+<h2>0. 지금까지 안 된 이유 (지금 앱 코드로 이 zip 을 돌려 본 결과)</h2>
+<div class="card" style="border-left:5px solid var(--bad)">
+<p style="margin:0 0 8px"><b>원인: 앱이 wafer 중심을 (0, 0) 으로 읽습니다.</b> Die 번호 계산(floor)과 <code>s_DieLocation.dat</code> 읽기는 지금 앱도 맞습니다. 틀린 곳은 <b>샘플 맵을 놓을 자리를 정하는 단계</b>입니다.</p>
+<ol>
+<li><code>ProductInfo.ini</code> 에는 중심 값이 없습니다. 그래서 앱은 <code>Params_WaferInfo.ini</code> 의 <code>Center_X=0, Center_Y=0</code> 을 읽습니다. 0 은 "값 없음"인데, 앱은 진짜 중심으로 씁니다. 실제 중심은 (204.76, 179.74) mm 입니다.</li>
+<li>샘플 맵이 있으면 앱은 맵의 가운데를 이 중심에 놓고 시작합니다(<code>sampleFit</code>). 처음 자리가 실제보다 5칸 왼쪽, 4칸 아래가 됩니다.</li>
+<li>앱은 처음 자리에서 맵 크기의 절반(여기서 ±4칸, ±3칸)까지만 찾아봅니다. 맞는 자리(+5, +4)까지 닿지 못합니다. 닿는 범위에서 가장 많이 겹치는 자리를 고릅니다.</li>
+</ol>
+<table>
+<tr><th>조건 (지금 앱 코드로 계산)</th><th>샘플 맵 (0,0) 자리</th><th>스캔 die 와 겹침</th></tr>
+<tr><td>중심 (0,0) + s_DieLocation 있음 (지금 상태)</td><td><span class="tag bad">Col 1, Row 0</span></td><td>22 / 30</td></tr>
+<tr><td>중심 (0,0), s_DieLocation 없음</td><td><span class="tag bad">Col −3, Row −3</span></td><td>—</td></tr>
+<tr><td>실제 중심 + s_DieLocation</td><td><span class="tag ok">Col 2, Row 1 (정답)</span></td><td>30 / 30</td></tr>
+</table>
+<p style="margin:10px 0 0">결과: 맵이 왼쪽으로 1칸, 아래로 1칸 놓입니다. defect 는 장비 좌표 그대로 찍힙니다. 그래서 <b>모든 defect 가 맵에서 (col +1, row +1)</b> 로 보입니다. 맵과 안 겹치는 die 8개 위의 defect 는 맵 밖에 찍혀 <b>빠진 것처럼</b> 보입니다. #78 의 증상과 같습니다.</p>
+<p style="margin:8px 0 0">샘플 맵 없이 <code>s_DieLocation.dat</code> 만으로 그릴 때는 die 칸이 맞습니다. 원은 나중에 die 묶음에 맞춰 옮겨집니다. 그래서 샘플 맵을 올린 뒤(#69 이후)부터 틀어졌을 가능성이 큽니다(확인 전).</p>
+<p style="margin:8px 0 0"><b>이 보고서의 방식과 다른 점</b>: 이 보고서는 중심을 추정하지 않습니다. die 목록은 <code>s_DieLocation.dat</code>, 번호는 floor 한 번입니다. 샘플 맵의 자리를 찾는 단계가 없어 이 오류가 생길 곳이 없습니다.</p>
+</div>
 <h2>1. 이 자료로 그린 wafer map</h2>
 <div class="grid2">
 <div class="card"><svg viewBox="0 0 698 677" role="img" aria-label="wafer map" class="map">
