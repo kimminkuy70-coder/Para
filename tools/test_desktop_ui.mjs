@@ -534,7 +534,19 @@ try{
   await page.getByLabel('추가 폴더',{exact:true}).fill(archive);
   await page.getByRole('button',{name:'추가 폴더 등록',exact:true}).click();
   await page.getByText(archive,{exact:true}).waitFor();
+  // #79: 호기별 Job 폴더 열 — 기본 C:\Job, [변경]으로 D:\Job 저장 · [기본값]으로 되돌림.
+  const jobCell=page.getByTestId('jobdir-AOI-08');
+  assert.match(await jobCell.innerText(),/C:\\Job \(기본\)/);
+  await page.getByRole('button',{name:'AOI-08 Job 폴더 변경',exact:true}).click();
+  await page.getByLabel('AOI-08 Job 폴더',{exact:true}).fill('d:\\Job');
+  await page.getByRole('button',{name:'저장',exact:true}).click();
+  await page.getByText(/AOI-08 Job 폴더를 저장했습니다/).first().waitFor();
+  assert.match(await jobCell.innerText(),/^D:\\Job/);
   await page.screenshot({path:join(root,'docs/screenshots/rev1-settings-aoi.png'),fullPage:true});
+  await page.getByRole('button',{name:'AOI-08 Job 폴더 변경',exact:true}).click();
+  await page.getByRole('button',{name:'기본값',exact:true}).click();
+  await page.getByRole('button',{name:'저장',exact:true}).click();
+  await page.waitForFunction(()=>/C:\\Job \(기본\)/.test(document.querySelector('[data-testid="jobdir-AOI-08"]')?.textContent||''));
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('오류 로그 폴더').waitFor();
   await page.getByRole('button',{name:'업데이트 확인',exact:true}).click();

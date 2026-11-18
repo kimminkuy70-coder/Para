@@ -172,7 +172,15 @@ class DesktopUpdate:
             raise ValueError("확인할 호기를 고르세요")
         save = self._cfg()["save_dir"]
         machines = list(dict.fromkeys(params["machines"]))
-        return dict(results=check_machine_connections(self._ip_rows(save), machines, self.job_root_override))
+        return dict(results=check_machine_connections(self._ip_rows(save), machines, self.job_root_override,
+                                                      job_dirs=self._job_dirs()))
+
+    def _job_dirs(self):
+        """호기별 장비 Job 폴더(#79, 설정 › AOI 장비 호기 루트 › CAMTEK). 없으면 기본 \\\\IP\\c$\\Job."""
+        from .desktop_config import job_dir_for
+        cfg = read_json(self.config_path)
+        table = cfg.get("aoi_job_dirs") if isinstance(cfg.get("aoi_job_dirs"), dict) else {}
+        return {m: job_dir_for(cfg, m) for m in table}
 
     # ---- step 1: collect + parse -----------------------------------------
     def gather(self, params, allow_new=False, hold=True):
@@ -271,6 +279,7 @@ class DesktopUpdate:
         skipped = answers.get("skip") if isinstance(answers.get("skip"), list) else []
         if state["staging"] is None:
             state["staging"] = localdirs.new_temp_run(str(self._local_root()), "수집")
+        job_dirs = self._job_dirs()
         for m in machines:
             if m in state["sources"] or m in state["errors"]:
                 continue
@@ -322,7 +331,8 @@ class DesktopUpdate:
                 _, plan, srcs = collector.collect_equipment(
                     ip, staging_for, chooser, plan=state["plan"], confirm=lambda planned: True,
                     target_levels=list(recipes), match_recipes=match_recipes,
-                    **({"job_root_override": self.job_root_override(m)} if self.job_root_override else {}))
+                    **({"job_root_override": self.job_root_override(m)} if self.job_root_override
+                       else {"job_root": watcher.job_root_unc(ip, job_dirs.get(m, ""))}))
                 state["plan"] = plan
                 state["sources"][m] = [(d, lvl) for d, lvl in srcs]
             except Question:

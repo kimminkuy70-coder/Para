@@ -61,9 +61,38 @@ def aoi_view(cfg):
         mine = aoi_extra.get(m) if isinstance(aoi_extra.get(m), dict) else {}
         out.append(dict(
             machine=m, root=root, report=report, scanresult=scans.get(m, ""), legacy=m not in roots,
+            job_dir=job_dir_for(cfg, m),
             extra=dict(report=sorted((p for p in extra.get(m, []) if isinstance(p, str)), key=name_key),
                        scanresult=sorted((p for p in mine.get("scanresult", []) if isinstance(p, str)), key=name_key))))
     return out
+
+
+def job_dir_for(cfg, machine):
+    r"""호기별 장비 Job 폴더(#79) — 설정 `aoi_job_dirs` {호기: 경로}. 없으면 '' = 기본 `\\IP\c$\Job`."""
+    table = cfg.get("aoi_job_dirs") if isinstance(cfg, dict) and isinstance(cfg.get("aoi_job_dirs"), dict) else {}
+    v = table.get(machine)
+    return v.strip() if isinstance(v, str) else ""
+
+
+def valid_job_dir(path):
+    r"""Job 폴더 입력 검사(장비가 꺼져 있어도 저장할 수 있게 폴더는 열어 보지 않는다).
+    '' = 기본(C:\Job). 장비 PC 기준 드라이브 경로(`D:\Job`) 또는 네트워크 경로(`\\IP\d$\Job`)."""
+    if not isinstance(path, str) or len(path) > MAX_PATH:
+        raise ValueError("Job 폴더 경로를 확인하세요")
+    spec = path.strip().strip('"').replace("/", "\\").rstrip("\\")
+    if not spec:
+        return ""
+    if any(c in spec for c in '<>|?*"') or "\n" in spec:
+        raise ValueError("Job 폴더 경로에 쓸 수 없는 글자가 있습니다")
+    if len(spec) == 2 and spec[1] == ":":
+        spec += "\\"
+    if spec.startswith("\\\\"):
+        if len([p for p in spec.split("\\") if p]) < 2:
+            raise ValueError("네트워크 경로는 \\\\장비IP\\d$\\Job 처럼 공유 이름까지 적으세요")
+        return spec
+    if len(spec) >= 3 and spec[0].isalpha() and spec[1] == ":" and spec[2] == "\\":
+        return spec[0].upper() + spec[1:]
+    raise ValueError("Job 폴더는 장비 PC 기준 경로(예: D:\\Job) 또는 \\\\장비IP\\d$\\Job 으로 적으세요")
 
 
 def scan_backup(cfg):
@@ -491,7 +520,7 @@ class DesktopConfig:
         if new != old and new in known:
             raise ValueError(f"{new} 은(는) 이미 등록되어 있습니다")
         if new != old:
-            for key in ("aoi_roots", "commonality_roots", "wph_report_paths", "batch_extra_paths", "aoi_extra"):
+            for key in ("aoi_roots", "commonality_roots", "wph_report_paths", "batch_extra_paths", "aoi_extra", "aoi_job_dirs"):
                 table = cfg.get(key)
                 if isinstance(table, dict) and old in table:
                     table[new] = table.pop(old)
@@ -504,12 +533,34 @@ class DesktopConfig:
             raise ValueError("삭제 대상을 확인하세요")
         machine = self._valid_machine(params["machine"])
         cfg = self._read()
-        for key in ("aoi_roots", "commonality_roots", "wph_report_paths", "batch_extra_paths", "aoi_extra"):
+        for key in ("aoi_roots", "commonality_roots", "wph_report_paths", "batch_extra_paths", "aoi_extra", "aoi_job_dirs"):
             table = cfg.get(key)
             if isinstance(table, dict):
                 table.pop(machine, None)
         self._write(cfg)
         return self.state()
+
+    def set_aoi_job_dir(self, params):
+        """호기별 장비 Job 폴더(#79). 비우면 기본(C:\\Job). Recipe 업데이트 · 분석 및 취합 · 장비 연결 확인이 이 위치를 쓴다."""
+        if set(params) != {"machine", "path"}:
+            raise ValueError("호기와 Job 폴더를 확인하세요")
+        machine = self._valid_machine(params["machine"])
+        spec = valid_job_dir(params["path"])
+        cfg = self._read()
+        if not any(v["machine"] == machine for v in aoi_view(cfg)):
+            raise ValueError("먼저 이 호기의 AOI 장비 호기 루트를 등록하세요")
+        table = cfg.get("aoi_job_dirs") if isinstance(cfg.get("aoi_job_dirs"), dict) else {}
+        if spec and spec.upper().rstrip("\\") != "C:\\JOB":
+            table[machine] = spec
+        else:
+            table.pop(machine, None)
+        if table:
+            cfg["aoi_job_dirs"] = table
+        else:
+            cfg.pop("aoi_job_dirs", None)
+        self._write(cfg)
+        shown = table.get(machine) or "C:\\Job(기본)"
+        return dict(self.state(), notice=f"{machine} Job 폴더: {shown}")
 
     def set_aoi_extra(self, params):
         """호기별 추가 폴더(백업·보관본). kind=report → Batch Report 분석이 함께 읽고

@@ -246,6 +246,7 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
                       confirm=None,
                       target_levels: list[str] | None = None,
                       match_recipes=None,
+                      job_root: Path | str | None = None,
                       ) -> tuple[list[tuple[Path, str, str]], CollectPlan, list]:
     """장비 1대에서 Recipe 파일 수집 계획을 세우고 staging 으로 복사.
 
@@ -259,17 +260,21 @@ def collect_equipment(ip: str, staging_root: Path, chooser,
     각 레벨은 staging 아래 별도 하위폴더(레벨명)로 복사돼 파싱 시 그 레벨로 인식된다.
 
     job_root_override 는 테스트용(로컬 가짜 트리).
+    job_root 는 호기별로 정한 장비 Job 폴더(#79, 예 `\\\\IP\\d$\\Job`) — 없으면 `\\\\IP\\c$\\Job`.
+    Classification Editor 설정(c$\\Bis)은 Job 위치와 상관없이 c$ 에서 찾는다.
     반환: (복사된 계획 목록, 다음 장비용 CollectPlan, sources) —
       sources = [(staging_폴더, 레벨_또는_job키워드)] (호기별 소스, 파싱 default_level 로 사용).
     """
     # net use 접속 기능은 삭제됨(2026-09). **탐색기(Win+R)로 미리 연결한 세션만** 쓴다.
     # 비밀번호를 다루지 않으므로 관리공유 로그온 행위가 없어 보안 오탐 트리거도 사라진다.
     if True:
-        job_root = job_root_override or Path(rf"\\{ip}\c$\Job")
+        job_root = Path(job_root_override or job_root or rf"\\{ip}\c$\Job")
         if not job_root.exists():
+            share = "\\".join(str(job_root).split("\\")[:4]) if str(job_root).startswith("\\\\") else str(job_root)
             raise RuntimeError(
                 f"Job 폴더가 없거나 접근할 수 없습니다: {job_root}\n"
-                "먼저 탐색기(Win+R)로 \\\\" + str(ip) + "\\c$ 에 한 번 연결하세요.")
+                f"먼저 탐색기(Win+R)로 {share} 에 한 번 연결하세요. "
+                "Job 폴더 위치가 다르면 설정 › AOI 장비 호기 루트 › CAMTEK 의 [Job 폴더]를 고치세요.")
         # Classification Editor 설정은 Job 밖(c$\Bis\data\dds)의 **장비 공용 파일**.
         # 없으면 조용히 건너뛴다(구 장비/권한 없음 — 나머지 수집을 막지 않는다).
         # 테스트/로컬 트리에서는 job_root 형제 경로에서 찾는다.

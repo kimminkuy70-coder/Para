@@ -1,5 +1,25 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.1.11: 호기별 장비 Job 폴더 위치 (2026-11-18 KST, `version_v14`, 이슈 #79)
+
+- 마지막 갱신 2026-11-18 · 기준 커밋 `d7954d6`(v14.1.10) · 이슈 #79 "v14.1.11 업데이트 사항"(자동 실행 routine 처리).
+- 요청: "JOB 폴더 위치가 기존 c 드라이브가 아니라 달라졌어. AOI 장비 호기 루트 CAMTEK 탭에서 수정할 수 있게끔 추가 열 만들어줘(현재 호기 | 호기 루트 | 인식된 폴더)".
+- 한 일: CAMTEK 호기 표에 **[Job 폴더]** 열(기본 `C:\Job (기본)` · [변경] → 한 줄 입력 · [기본값] · [취소]). IPC `config_set_aoi_job_dir {machine, path}`, config `aoi_job_dirs`,
+  `aoi_view` 에 `job_dir`. 변환 `watcher.job_root_unc(ip, job_dir)`: `D:\Job` → `\\IP\d$\Job`, `\\…` 그대로, 빈 값 → `\\IP\c$\Job`.
+  쓰는 곳: 파라미터 자동 분석 및 취합(`ParamWatch._job_root` · `_collect_fixed` · `collect_equipment(job_root=)` · Job 폴더 고르기 창), Recipe 업데이트(`DesktopUpdate`),
+  장비 연결 확인(`check_machine_connections(job_dirs=)` — Win+R 주소 `unc` 도 그 드라이브 공유, 결과에 `job`). 호기 이름 바꾸기 · 삭제 때 같이 따라감.
+- 해석(확인 전): ① 사람이 적는 값 = **장비 PC 기준 경로**(`D:\Job`)이고 관리공유 `d$` 로 읽는다(네트워크 경로 `\\IP\d$\Job` 도 받음). ② 호기마다 따로 정한다(장비 IP 문서의 IP 는 그대로).
+  ③ Classification Editor 설정(`c$\Bis\data\dds\ManReClassify.ini`)은 C 드라이브 그대로라고 봄. ④ 저장할 때 장비 폴더는 열어 보지 않음(장비가 꺼져 있어도 저장).
+  ⑤ 레시피 폴더 지정(`recipe_paths`)은 Job 아래 상대경로라 그대로 유효. Job 폴더 이름이 `Job` 이 아니면 `watcher.job_relative`(구 GUI 의 경로 → 상대경로)는 못 쓴다 — 새 화면은 안 씀.
+- 시험: Python 전부 통과(새 `tests/test_job_dir.py` 9개, `check_project` Failed files: none), `npm run build`(dist 갱신), `tools/test_desktop_ui.mjs` 통과(AOI-08 Job 폴더 D:\Job 저장 → 기본값 되돌림 추가).
+  첫 UI 시험 1회는 '즉시 확인 완료' 알림 대기 시간 초과로 실패, 다시 돌리니 통과(같은 코드) — 알림 타이밍 흔들림으로 봄. 시험이 바꾼 `docs/screenshots` · `CamtekAOI/Logs` 는 되돌림.
+  **Windows · 실제 장비(D$ 공유 접근)는 확인 못 함.**
+- 릴리스: `__version__` 14.1.11 + `docs/release_notes/v14.1.11.md` → push 하면 `v14.yml` 이 Release 생성.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #79 | CAMTEK 호기 표에 Job 폴더 위치 열(C 드라이브 아닌 장비) | v14.1.11 |
+
 ## 최신 재개 — v14.1.10: 최종 목록 엑셀 원본 이미지 옵션 + 기본 탭 wafer map 위치 검토 보고 (2026-11-17 KST, `version_v14`, 이슈 #78)
 
 - 마지막 갱신 2026-11-17 · 기준 커밋 `f6d8857`(v14.1.9 뒤) · 이슈 #78 "v14.1.10 업데이트 사항"(자동 실행 routine 처리).

@@ -17,10 +17,10 @@ import {MemoPick,type MemoMachine} from './MemoPick';
 import {AoiDriveScan} from './AoiDriveScan';
 
 type Auto={enabled:boolean;interval_hours:number;time?:string;last_run:string;last_result:string;next_run:string};
-type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;extra:{report:string[];scanresult:string[]}};
+type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;job_dir?:string;extra:{report:string[];scanresult:string[]}};
 type State={save_dir:string;share_root?:string;program_dir?:string;cache_share_dir?:string;local_dir:string;aoi:Aoi[];batch_auto:boolean;batch?:Auto;batch_intervals?:number[];local_root?:string;config_file?:string;memo_machines?:MemoMachine[]};
 type ExtraKind='report'|'scanresult';
-type Edit={kind:'aoi'|'extra';machine:string;newMachine:string;path:string;orig?:string;extraKind?:ExtraKind};
+type Edit={kind:'aoi'|'extra'|'job';machine:string;newMachine:string;path:string;orig?:string;extraKind?:ExtraKind};
 // Batch Report 분석 주기 설정은 CAMTEK › 자동 분석 및 취합 › [Batch Report 자동 분석] 탭으로 옮겼다(#39).
 const TABS:[string,string][]=[['save','저장 폴더'],['local','로컬 작업 폴더'],['aoi','AOI 장비 호기 루트'],['about','정보']];
 const EXTRA_LABEL:Record<ExtraKind,string>={report:'Batch Report',scanresult:'Scanresult'};
@@ -114,6 +114,10 @@ export function Settings(){
   const extrasOf=(m:string,k:ExtraKind)=>aois.find(a=>a.machine===m)?.extra[k]||[];
   async function saveEdit(){
     if(!edit||!st)return;
+    if(edit.kind==='job'){
+      await req('config_set_aoi_job_dir',{machine:edit.machine,path:edit.path.trim()},`${edit.machine} Job 폴더를 저장했습니다`,()=>setEdit(undefined));
+      return;
+    }
     if(edit.kind==='extra'){
       const k=edit.extraKind!;
       const list=extrasOf(edit.machine,k).map(p=>p===edit.orig?edit.path.trim():p);
@@ -125,6 +129,15 @@ export function Settings(){
   }
   function editRow(key:string,cols:number){
     if(!edit)return null;
+    if(edit.kind==='job')return <tr key={key} className="row-now"><td colSpan={cols}><div className="form-filter" style={{margin:0}}>
+      <b style={{alignSelf:'center'}}>{edit.machine} · Job 폴더</b>
+      <label className="field" style={{flex:1,minWidth:220}}>장비 PC 기준 Job 폴더 (비우면 기본 C:\Job)<input value={edit.path} maxLength={4096} placeholder="예: D:\Job" aria-label={`${edit.machine} Job 폴더`}
+        onChange={e=>setEdit(o=>o&&{...o,path:e.target.value})} onKeyDown={e=>{if(e.key==='Enter')void saveEdit();}}/></label>
+      <button className="primary" disabled={busy} onClick={saveEdit}>저장</button>
+      <button disabled={busy||!edit.orig} onClick={()=>setEdit(o=>o&&{...o,path:''})} title="입력을 비우고 [저장]하면 기본 위치 C:\Job 으로 돌아갑니다">기본값</button>
+      <button disabled={busy} onClick={()=>setEdit(undefined)}>취소</button></div>
+      <div className="hint" style={{marginTop:4}}>장비 PC 에서 보이는 경로(예: <code>D:\Job</code> → <code>\\장비IP\d$\Job</code> 으로 읽음) 또는 네트워크 경로(<code>\\장비IP\d$\Job</code>)를 적으세요.
+        Recipe 업데이트 · 분석 및 취합 · 장비 연결 확인이 이 위치를 씁니다. 장비가 꺼져 있어도 저장됩니다.</div></td></tr>;
     return <tr key={key} className="row-now"><td colSpan={cols}><div className="form-filter" style={{margin:0}}>
       {edit.kind==='aoi'?<label className="field" style={{width:130}}>호기<input value={edit.newMachine} maxLength={64} aria-label={`${edit.machine} 새 호기 이름`}
         onChange={e=>setEdit(o=>o&&{...o,newMachine:e.target.value})}/></label>
@@ -141,12 +154,16 @@ export function Settings(){
   // A plain render function (not a component) so the edit inputs keep focus while typing.
   function aoiRow(a:Aoi){
     const key='aoi'+a.machine;
-    if(edit?.kind==='aoi'&&edit.machine===a.machine)return editRow(key,4);
+    if((edit?.kind==='aoi'||edit?.kind==='job')&&edit.machine===a.machine)return editRow(key,5);
     return <tr key={key}><td style={{width:110,fontWeight:700}}>{a.machine}</td>
       <td><code>{a.root||'—'}</code>{a.legacy&&<div className="hint">기존 설정(따로 등록) — [수정]에서 호기 폴더를 저장하면 통합됩니다.</div>}</td>
       <td className="hint" style={{whiteSpace:'nowrap'}}>
         <div>Reports: {a.report?<code>{baseName(a.report)}</code>:<b className="warn">없음</b>}</div>
         <div>Scanresult: {a.scanresult?`자동 탐색(${scanBackup===false?'원본만':'백업본 포함'})`:<b className="warn">미등록</b>}</div></td>
+      <td className="hint" style={{whiteSpace:'nowrap'}} data-testid={`jobdir-${a.machine}`}>
+        {a.job_dir?<code>{a.job_dir}</code>:<span>C:\Job <small>(기본)</small></span>}{' '}
+        <button className="linklike" disabled={busy} aria-label={`${a.machine} Job 폴더 변경`}
+          onClick={()=>setEdit({kind:'job',machine:a.machine,newMachine:a.machine,path:a.job_dir||'',orig:a.job_dir||''})}>변경</button></td>
       {actions(a.machine,()=>setEdit({kind:'aoi',machine:a.machine,newMachine:a.machine,path:a.root}),
         ()=>{if(window.confirm(`${a.machine} 호기 루트와 추가 폴더 등록을 모두 삭제할까요? (폴더 자체는 지우지 않습니다)`))
           void req('config_remove_aoi',{machine:a.machine},`${a.machine} 삭제됨`);})}</tr>;
@@ -224,9 +241,10 @@ export function Settings(){
     {sub==='aoi'&&aoiVendor==='CAMTEK'&&<>
       <h3>AOI 장비 호기 루트 등록</h3>
       <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
-        <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사 · 분석 및 취합 · Batch Report 찾기가 읽습니다. 장비 폴더는 읽기만 합니다.</p>
+        <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사 · 분석 및 취합 · Batch Report 찾기가 읽습니다. 장비 폴더는 읽기만 합니다.<br/>
+        <b>Job 폴더</b> 열은 장비 PC 의 Recipe(Job) 폴더 위치입니다. 기본은 <code>C:\Job</code>(<code>\\장비IP\c$\Job</code>)이고, 장비의 Job 폴더가 다른 드라이브로 옮겨졌으면 [변경]으로 고치세요(예: <code>D:\Job</code>).</p>
       <ScanBackupBar note="Scanresult 를 찾는 모든 기능에 같이 적용됩니다."/>
-      {aois.length>0&&<table className="tbl" data-tour="settings:aoi-table" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th/></tr></thead>
+      {aois.length>0&&<table className="tbl" data-tour="settings:aoi-table" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th title="장비 PC 의 Job 폴더 — Recipe 업데이트 · 분석 및 취합 · 장비 연결 확인이 읽는 곳">Job 폴더</th><th/></tr></thead>
         <tbody>{aois.map(aoiRow)}</tbody></table>}
       <div className="form-filter" data-tour="settings:aoi-form" style={{marginTop:12}}>
         <MemoPick memo={st?.memo_machines} vendor="CAMTEK" registered={aois.map(a=>a.machine)} onPick={setAMachine} disabled={busy}/>

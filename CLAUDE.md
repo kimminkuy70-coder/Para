@@ -637,6 +637,11 @@ Camtek AOI 장비의 PI/RDL 코어 파라미터를 호기별로 관리하는 한
   `aoi_extra[m].scanresult`). Scanresult 추가분은 `desktop_config.scanresult_roots_for` 로
   수동 조사(`cmrun.plan`)·감시 후보·감시 회차(`cmwatcher` 의 roots 값이 목록이면 전부)가 함께 뒤진다.
   모든 목록은 이름 순(`name_key`, AOI-9 < AOI-10).
+- **호기별 장비 Job 폴더**(#79, v14.1.11, `config_set_aoi_job_dir`, config `aoi_job_dirs` {호기: `D:\Job` 또는 `\\IP\d$\Job`}).
+  CAMTEK 호기 표의 [Job 폴더] 열. 비우면(또는 `C:\Job`) 키를 지우고 기본 `\\IP\c$\Job`. 경로 변환은 `watcher.job_root_unc(ip, job_dir)`
+  (`D:\Job` → `\\IP\d$\Job`). 파라미터 자동 분석 및 취합(`ParamWatch._job_root` · `_collect_fixed` · `collect_equipment(job_root=)`),
+  Recipe 업데이트(`DesktopUpdate._job_dirs` → `collect_equipment(job_root=)`), 장비 연결 확인(`check_machine_connections(job_dirs=)`)이 쓴다.
+  ManReClassify(`c$\Bis\data\dds`)는 Job 위치와 상관없이 c$ 그대로. 저장 때 장비 폴더는 열어 보지 않는다.
 - **새 버전 게시 = GitHub Actions 아티팩트 zip 업로드**(`desktop_appupdate.publish` 가 .zip 을 받음 —
   로컬 Temp 에서만 풀고 package-manifest 검증 후 재압축 게시). **앱이 GitHub 링크에서 직접 받지 않는다**:
   아티팩트 링크는 GitHub 로그인(토큰 보관) 필요 + 서명 없는 exe 의 인터넷 다운로드→실행 파일 교체는

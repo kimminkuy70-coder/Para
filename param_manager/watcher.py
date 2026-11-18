@@ -340,10 +340,27 @@ def job_relative(path: str) -> str:
     return ""
 
 
-def machine_recipe_dir(ip: str, rel: str) -> str:
-    r"""(장비 IP, Job 상대경로) → `\\{IP}\c$\Job\{rel}`."""
+def job_root_unc(ip: str, job_dir: str = "") -> str:
+    r"""장비 Job 폴더의 네트워크 경로(#79). job_dir = 설정 [AOI 장비 호기 루트 › CAMTEK] 의 호기별 'Job 폴더'.
+      · 비어 있으면 기본 `\\{IP}\c$\Job`(종전 그대로).
+      · 장비 PC 기준 드라이브 경로(`D:\Job`, `E:\Data\Job`) → `\\{IP}\d$\Job` (관리공유 이름 = 드라이브 글자$).
+      · `\\` 로 시작하는 네트워크 경로는 그대로 쓴다(IP 무시)."""
+    spec = str(job_dir or "").strip().replace("/", "\\").rstrip("\\")
+    if not spec:
+        return rf"\\{ip}\c$\{JOB_DIRNAME}"
+    if spec.startswith("\\\\"):
+        return spec
+    if len(spec) >= 2 and spec[1] == ":" and spec[0].isalpha():
+        rest = spec[2:].strip("\\")
+        base = rf"\\{ip}\{spec[0].lower()}$"
+        return f"{base}\\{rest}" if rest else base
+    raise ValueError(f"Job 폴더 경로를 확인하세요(예: D:\\Job): {spec}")
+
+
+def machine_recipe_dir(ip: str, rel: str, job_dir: str = "") -> str:
+    r"""(장비 IP, Job 상대경로) → `\\{IP}\c$\Job\{rel}` (호기별 Job 폴더가 정해져 있으면 그 아래)."""
     rel = str(rel or "").strip("\\/")
-    base = rf"\\{ip}\c$\{JOB_DIRNAME}"
+    base = job_root_unc(ip, job_dir)
     return f"{base}\\{rel}" if rel else base
 
 
@@ -561,8 +578,8 @@ def record_run(save_dir: str, settings: WatchSettings, state: WatchState,
 # --------------------------------------------------------------------------
 # 접속 안내 (기본: net use 없이)
 # --------------------------------------------------------------------------
-def job_path_for(ip: str) -> str:
-    return rf"\\{ip}\c$\Job"
+def job_path_for(ip: str, job_dir: str = "") -> str:
+    return job_root_unc(ip, job_dir)
 
 
 SMB_PORT = 445

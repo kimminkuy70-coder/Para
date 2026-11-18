@@ -50,16 +50,23 @@ def valid_rel(rel: str) -> str:
     return "\\".join(parts)
 
 
-def check_machine_connections(rows, machines, job_root_override=None, sleep=time.sleep):
+def check_machine_connections(rows, machines, job_root_override=None, sleep=time.sleep, job_dirs=None):
     """[장비 IP] 호기마다 \\\\IP\\c$\\Job 이 지금 보이는지(탐색기로 로그인해 둔 세션, 읽기 없음).
-    호기 사이 `PROBE_GAP_SEC` 간격 — 스캔처럼 몰아치지 않는다. 장비 연결 탭 · Recipe 업데이트(#22) 공용."""
+    호기 사이 `PROBE_GAP_SEC` 간격 — 스캔처럼 몰아치지 않는다. 장비 연결 탭 · Recipe 업데이트(#22) 공용.
+    job_dirs = {호기: Job 폴더}(#79, 설정 › CAMTEK) — 있으면 \\\\IP\\c$\\Job 대신 그 위치를 본다."""
+    job_dirs = job_dirs or {}
     known = refdata.machines(rows)
     out = []
     for i, m in enumerate(machines):
         if m not in known:
             raise ValueError("[장비 IP]에 등록된 호기만 확인할 수 있습니다")
         ip = refdata.ip_for(rows, m)
-        unc = f"\\\\{ip}\\c$" if ip else ""
+        jd = job_dirs.get(m, "")
+        try:
+            job = watcher.job_path_for(ip, jd) if ip else ""
+        except ValueError:
+            job = ""
+        unc = ("\\".join(job.split("\\")[:4]) if job.startswith("\\\\") else job) if ip else ""
         report(f"[{i + 1}/{len(machines)}] {m} 연결 확인 중…")
         if not ip:
             out.append(dict(machine=m, ip="", unc="", ok=False, reason="IP 없음 — [장비 IP] 문서에 IP를 적으세요"))
@@ -73,11 +80,12 @@ def check_machine_connections(rows, machines, job_root_override=None, sleep=time
             ok, reason = False, "장비가 응답하지 않습니다(전원·네트워크 확인)"
         else:
             try:
-                ok = Path(watcher.job_path_for(ip)).exists()
+                ok = bool(job) and Path(job).exists()
             except Exception:  # noqa: BLE001
                 ok = False
-            reason = "" if ok else "로그인이 필요합니다 — Win+R 에 주소를 붙여 넣고 로그인하세요"
-        out.append(dict(machine=m, ip=ip, unc=unc, ok=ok, reason=reason))
+            reason = "" if ok else ("로그인이 필요합니다 — Win+R 에 주소를 붙여 넣고 로그인하세요"
+                                    + (f" (Job 폴더 {job} 가 보이지 않으면 설정 › CAMTEK 의 [Job 폴더]를 확인하세요)" if jd else ""))
+        out.append(dict(machine=m, ip=ip, unc=unc, ok=ok, reason=reason, job=job))
     return out
 
 
@@ -311,13 +319,20 @@ class ParamWatch(_Base):
         if set(params) != {"machines"} or not isinstance(params["machines"], list) or len(params["machines"]) > 200:
             raise ValueError("확인할 호기를 고르세요")
         save = self._save_dir()
-        out = check_machine_connections(self._ip_rows(save), params["machines"], self.job_root_override, self.sleep)
+        out = check_machine_connections(self._ip_rows(save), params["machines"], self.job_root_override, self.sleep,
+                                        job_dirs=self._job_dirs())
         return dict(results=out, checked_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    def _job_dirs(self):
+        from .desktop_config import job_dir_for
+        cfg = self._cfg()
+        table = cfg.get("aoi_job_dirs") if isinstance(cfg.get("aoi_job_dirs"), dict) else {}
+        return {m: job_dir_for(cfg, m) for m in table}
 
     def _job_root(self, machine, ip):
         if self.job_root_override:
             return Path(self.job_root_override(machine))
-        return Path(watcher.machine_recipe_dir(ip, ""))
+        return Path(watcher.machine_recipe_dir(ip, "", self._job_dirs().get(machine, "")))
 
     def jobs(self, params):
         """Browse the machine's Job tree (names only, read-only) to pick a folder."""
@@ -332,7 +347,8 @@ class ParamWatch(_Base):
         base = self._job_root(params["machine"], ip)
         folder = base.joinpath(*sub.split("\\")) if sub else base
         if not folder.is_dir():
-            raise ValueError("장비의 Job 폴더를 열 수 없습니다. 탐색기(Win+R)로 \\\\장비IP\\c$ 에 먼저 연결하세요.")
+            raise ValueError(f"장비의 Job 폴더를 열 수 없습니다({folder}). 탐색기(Win+R)로 그 장비 공유에 먼저 연결하세요. "
+                             "Job 폴더 위치가 다르면 설정 › AOI 장비 호기 루트 › CAMTEK 의 [Job 폴더]를 고치세요.")
         dirs = sorted((p.name for p in collector.list_dirs(folder)), key=str.lower)
         is_recipe = any((folder / f).is_file() for f in collector.FIXED_FILES) or (folder / "Zones").is_dir()
         return dict(machine=params["machine"], sub=sub, dirs=dirs[:500], is_recipe=is_recipe)
@@ -526,7 +542,8 @@ class ParamWatch(_Base):
                         d = os.path.join(staging_root, _sanitize(aoi))
                         os.makedirs(d, exist_ok=True)
                         return d
-                    extra = {"job_root_override": self._job_root(m, ip)} if self.job_root_override else {}
+                    extra = ({"job_root_override": self._job_root(m, ip)} if self.job_root_override
+                             else {"job_root": self._job_root(m, ip)})
                     _, _plan, srcs = collector.collect_equipment(
                         ip, staging_for, no_chooser, plan=plan, confirm=lambda planned: True,
                         target_levels=list(guess), match_recipes=auto_match, **extra)
@@ -554,7 +571,7 @@ class ParamWatch(_Base):
             localdirs.drop(staging_root)       # temp copies never accumulate
 
     def _collect_fixed(self, ip, machine, recipe, rel, staging_root, diag, save):
-        src = self._job_root(machine, ip).joinpath(*rel.split("\\")) if self.job_root_override else Path(watcher.machine_recipe_dir(ip, rel))
+        src = self._job_root(machine, ip).joinpath(*rel.split("\\"))
         try:
             if not src.is_dir():
                 diag.append(f"{machine}/{recipe}: 지정 폴더 없음({src})")
