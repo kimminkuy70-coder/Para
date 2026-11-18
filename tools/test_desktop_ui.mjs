@@ -288,6 +288,21 @@ try{
   await page.locator('.card2').getByRole('button',{name:'Defect 과다 판정 기준 · 목록 보기'}).click();
   await page.locator('#defTitle').waitFor();
   await page.locator('dialog[open]').filter({has:page.locator('#defTitle')}).getByRole('button',{name:'닫기',exact:true}).click();
+  // 멈춘 이유 요약 필터(이슈 #80): 레시피 · 호기 · Error 고르기, 호기별 표, 칸 누르면 그 Lot만 목록에.
+  await page.getByRole('button',{name:/^Error \d+/}).click();
+  const rz=page.getByRole('group',{name:'멈춘 이유 필터'});
+  const pickFirst=async label=>{const s=rz.getByLabel(label,{exact:true});const v=await s.locator('option').nth(1).getAttribute('value');assert(v,label+' has options');await s.selectOption(v);return v;};
+  const rcp=await pickFirst('레시피 필터');
+  await pickFirst('Error 필터');
+  await rz.getByRole('button',{name:'호기별 표',exact:true}).click();
+  const rzGrid=page.locator('table.rz-grid');
+  await rzGrid.waitFor();
+  assert.equal(await rzGrid.locator('tbody tr').count(),1,'one error row after Error filter');
+  await rzGrid.locator('tbody td.clickable').first().click();
+  assert(await page.locator('.ll-tools .chip').filter({hasText:rcp}).count(),'lot list chip carries the recipe');
+  await rz.getByRole('button',{name:/필터 지우기/}).click();
+  await rz.getByRole('button',{name:'목록',exact:true}).click();
+  await page.locator('.ll-tools .chip').filter({hasText:rcp}).click();
   // Developer mode lives in 설정 › 정보; the Batch screen shows its bar while it is on.
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('tab',{name:'정보'}).click();

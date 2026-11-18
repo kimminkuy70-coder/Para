@@ -8,7 +8,9 @@ export type Rep={f:string;m:string;sm:string;code:string;job:string;setup:string
   lot:number|null;b:number|null;n:number;ok:number;err:number;chain:number;fe:string;st:number;sp:number;o:'c'|'e'|'s';sk:''|'d'|'o';ff:number|null;r:string};
 export type Bunch={att:number[];step:string;k:string;s:string;e:string;moved:boolean;machines:string[];sec:number;job?:string;r?:string;st?:string};
 export type Lot={key:string;label:string;code:string;lot_id:string;sms:string[];jobs:string[];machines:string[];n:number;s:string;e:string;
-  state:string;open:number;re:number;dup:number;moved:boolean;saved:number;scans:string[];multi:boolean;causes:[string,number][];cz:[string,number,boolean][];sz:['d'|'o',number,boolean][];bunches:Bunch[]};
+  state:string;open:number;re:number;dup:number;moved:boolean;saved:number;scans:string[];multi:boolean;causes:[string,number][];cz:[string,number,boolean][];sz:['d'|'o',number,boolean][];
+  /** 멈춘 이유 요약 필터(이슈 #80) — [원문 · 중단 종류, 호기, 레시피, wafer, Pass 못 한 wafer 있음]. 예전 저장 결과에는 없다. */
+  cx?:[string,string,string,number,boolean][];sx?:['d'|'o',string,string,number,boolean][];bunches:Bunch[]};
 /** 날짜 × 호기 × 레시피 한 칸(초). p 웨이퍼 처리(du 그중 이미 Pass 한 wafer 다시 스캔) · ck 점검 스캔 ·
     e Error 원문별 [손실 초, wafer 수, Lot] · sd/so 작업자 중단 Defect 과다/그 외 [손실 초, Batch Report 수, Lot] ·
     ps Pass 장수 · dn 다시 스캔해 또 Pass 한 장수 · n Batch Report 수 · ne Error 있는 Batch Report 수 ·

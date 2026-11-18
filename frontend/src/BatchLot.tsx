@@ -1,7 +1,7 @@
 import {Fragment,useMemo,useRef,useState} from 'react';
 import {ColChart,Legend,Seg,type Key,type ColItem} from './BatchCharts';
 import {Q,openDefect} from './BatchHelp';
-import {bucket,shortKey,weekRange,periodName,num,stepLabel,is3D,STATES,ST,DONE,RE,OPEN,C_OK,C_ERR,C_WAIT,C_STOP,C_DEFECT,STOPK,type View,type Unit} from './batchData';
+import {bucket,shortKey,weekRange,periodName,num,stepLabel,is3D,STATES,ST,DONE,RE,OPEN,C_OK,C_ERR,C_WAIT,C_STOP,C_DEFECT,STOPK,type View,type Unit,type Lot} from './batchData';
 
 /* Lot 추적 탭 — 지표 5개(누르면 목록) · 기간별 Lot Scan 현황 · Lot 단위 Scan List · 멈춘 이유 요약(Error / 작업자 중단) · 점검 스캔.
    설명 글은 화면에 두지 않고 ? 버튼으로(사용자 지시 2026-10-05). */
@@ -14,6 +14,23 @@ const TITLE:Record<Mode,string>={lots:'Lot 단위 Scan List — 전체 Lot',repo
   re:'재스캔으로 완료된 Lot 목록',open:'Pass하지 못한 Lot 목록',dup:'중복 Scan한 wafer가 존재하는 Lot 목록'};
 const LOTKEYS:Key[]=[{k:'done',label:DONE,c:C_OK},{k:'re',label:RE,c:C_WAIT},{k:'open',label:OPEN,c:C_ERR}];
 const small={minHeight:28,padding:'3px 10px',fontSize:12} as const;
+/* 멈춘 이유 요약 필터(이슈 #80) — Lot 의 (원문, 호기, 레시피)별 묶음. 예전 저장 결과(cx 없음)는 Lot 의 호기 · 레시피가 하나일 때만 그 값, 아니면 '(알 수 없음)'. */
+const UNK='(알 수 없음)';
+type CX=[string,string,string,number,boolean];
+function lotCx(l:Lot,stop:boolean):CX[]{
+  const x=stop?l.sx:l.cx;if(x)return x as CX[];
+  const m=l.machines.length===1?l.machines[0]:UNK,rs=[...new Set(l.bunches.map(b=>b.r||''))],r=rs.length===1&&rs[0]?rs[0]:UNK;
+  return (stop?l.sz:l.cz).map(([c,w,o])=>[c,m,r,w,o] as CX);}
+type Agg={lots:number;w:number;ok:number;open:number};
+/** 필터에 맞는 묶음만 모아 원문(또는 중단 종류)별 Lot 수 — Lot 하나는 원문마다 한 번 센다(Pass 못 한 wafer 가 하나라도 있으면 Pass하지 못한 Lot). */
+function aggCx(lots:Lot[],stop:boolean,ok:(e:CX)=>boolean,col?:(e:CX)=>string){
+  const m:Record<string,Agg>={},g:Record<string,Record<string,Agg>>={};
+  lots.forEach(l=>{const per:Record<string,[number,boolean]>={},pc:Record<string,[number,boolean]>={};
+    lotCx(l,stop).forEach(e=>{if(!ok(e))return;const p=per[e[0]]||(per[e[0]]=[0,false]);p[0]+=e[3];p[1]=p[1]||e[4];
+      if(col){const k=e[0]+'\u0000'+col(e),q=pc[k]||(pc[k]=[0,false]);q[0]+=e[3];q[1]=q[1]||e[4];}});
+    Object.entries(per).forEach(([c,[w,o]])=>{const t=m[c]||(m[c]={lots:0,w:0,ok:0,open:0});t.lots++;t.w+=w;if(o)t.open++;else t.ok++;});
+    Object.entries(pc).forEach(([k,[w,o]])=>{const [c,cl]=k.split('\u0000');const r=g[c]||(g[c]={});const t=r[cl]||(r[cl]={lots:0,w:0,ok:0,open:0});t.lots++;t.w+=w;if(o)t.open++;else t.ok++;});});
+  return {m,g};}
 
 export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;showRaw:(g:number)=>void}){
   const [mode,setMode]=useState<Mode>('lots');
@@ -21,6 +38,9 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
   const [q,setQ]=useState(''),[fRe,setFRe]=useState(false),[fMove,setFMove]=useState(false);
   const [repQ,setRepQ]=useState(''),[repRes,setRepRes]=useState(''),[repKind,setRepKind]=useState('');
   const [unit,setUnit]=useState<Unit>('w'),[hid,setHid]=useState<Record<string,boolean>>({}),[why,setWhy]=useState<'err'|'stop'>('err');
+  // 멈춘 이유 요약 필터(이슈 #80): 레시피 · 호기 · Error 원문, 보기 = 목록 / 호기별 표
+  const [fRcp,setFRcp]=useState(''),[fMac,setFMac]=useState(''),[fErr,setFErr]=useState(''),[rv,setRv]=useState<'list'|'grid'>('list');
+  const [cxf,setCxf]=useState<{m:string;r:string}>({m:'',r:''});
   const listTop=useRef<HTMLHeadingElement>(null);
   const lots=v.lots,R=v.R;
   const kpi=useMemo(()=>({re:lots.filter(l=>l.state===RE).length,open:lots.filter(l=>l.state===OPEN).length,dup:lots.filter(l=>l.dup).length}),[lots]);
@@ -42,19 +62,35 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
     return lots.map((l,i)=>[l,i] as const).filter(([l])=>{
       if(t&&!(l.label+' '+l.sms.join(' ')+' '+l.lot_id+' '+l.jobs.join(' ')).toUpperCase().includes(t))return false;
       if(state&&l.state!==state)return false;if(fRe&&!l.multi)return false;if(fMove&&!l.moved)return false;if(dupOnly&&!l.dup)return false;
-      if(period&&(!l.s||bucket(l.s.slice(0,10),unit)!==period))return false;if(cause&&(cause.startsWith('__stop_')?!l.sz.some(c=>c[0]===cause.slice(7)):!l.cz.some(c=>c[0]===cause)))return false;return true;})
-      .sort((a,b)=>a[0].s<b[0].s?1:-1);},[lots,q,state,fRe,fMove,dupOnly,period,cause,unit]);
+      if(period&&(!l.s||bucket(l.s.slice(0,10),unit)!==period))return false;if(cause){const st=cause.startsWith('__stop_'),c=st?cause.slice(7):cause;
+        if(!lotCx(l,st).some(e=>e[0]===c&&(!cxf.m||e[1]===cxf.m)&&(!cxf.r||e[2]===cxf.r)))return false;}return true;})
+      .sort((a,b)=>a[0].s<b[0].s?1:-1);},[lots,q,state,fRe,fMove,dupOnly,period,cause,cxf,unit]);
   const reports=useMemo(()=>{const t=repQ.trim().toLowerCase();
     return R.map((r,i)=>[r,i] as const).filter(([r])=>{if(t&&!(r.f+' '+r.sm+' '+(r.lot!=null?lots[r.lot].label:'')).toLowerCase().includes(t))return false;
       if(repRes==='err'&&r.o!=='e')return false;if(repRes==='ok'&&r.o!=='c')return false;if(repRes==='stop'&&r.o!=='s')return false;if(repKind==='lot'&&r.lot==null)return false;if(repKind==='chk'&&r.lot!=null)return false;return true;})
       .sort((a,b)=>a[0].s<b[0].s?1:-1);},[R,lots,repQ,repRes,repKind]);
-  const causes=useMemo(()=>{const m:Record<string,{lots:number;w:number;ok:number;open:number}>={};
-    lots.forEach(l=>l.cz.forEach(([c,w,o])=>{const t=m[c]||(m[c]={lots:0,w:0,ok:0,open:0});t.lots++;t.w+=w;if(o)t.open++;else t.ok++;}));
-    const keys=Object.keys(m).sort((a,b)=>m[b].lots-m[a].lots||m[b].w-m[a].w);return {m,keys,mx:keys.length?m[keys[0]].lots:1};},[lots]);
-  // 작업자 중단(Error 아님) — 종류별 Lot 수 · 그 뒤 Pass / Pass 못 함
-  const stops=useMemo(()=>{const m:Record<string,{lots:number;w:number;ok:number;open:number;n:number}>={d:{lots:0,w:0,ok:0,open:0,n:0},o:{lots:0,w:0,ok:0,open:0,n:0}};
-    lots.forEach(l=>l.sz.forEach(([k,w,o])=>{const t=m[k];t.lots++;t.w+=w;if(o)t.open++;else t.ok++;}));v.stops.forEach(x=>{m[x.k].n++;});
-    return {m,mx:Math.max(1,m.d.lots,m.o.lots)};},[lots,v.stops]);
+  // 필터 고르기 목록 — 조사 범위 전체의 Error · 작업자 중단 묶음에서(개수 = 그 값이 들어간 Lot 수)
+  const opts=useMemo(()=>{const R:Record<string,Set<string>>={},M:Record<string,Set<string>>={},E:Record<string,Set<string>>={};
+    lots.forEach(l=>{([false,true] as const).forEach(st=>lotCx(l,st).forEach(e=>{
+      if(!fMac||e[1]===fMac)(R[e[2]]||(R[e[2]]=new Set())).add(l.key);
+      if(!fRcp||e[2]===fRcp)(M[e[1]]||(M[e[1]]=new Set())).add(l.key);
+      if(!st&&(!fRcp||e[2]===fRcp)&&(!fMac||e[1]===fMac))(E[e[0]]||(E[e[0]]=new Set())).add(l.key);}));});
+    const srt=(o:Record<string,Set<string>>)=>Object.keys(o).sort((a,b)=>o[b].size-o[a].size||a.localeCompare(b)).map(k=>[k,o[k].size] as [string,number]);
+    return {r:srt(R),m:srt(M),e:srt(E)};},[lots,fRcp,fMac]);
+  const fOk=(e:CX)=>(!fRcp||e[2]===fRcp)&&(!fMac||e[1]===fMac);
+  const causes=useMemo(()=>{const {m,g}=aggCx(lots,false,e=>fOk(e)&&(!fErr||e[0]===fErr),e=>e[1]);
+    const keys=Object.keys(m).sort((a,b)=>m[b].lots-m[a].lots||m[b].w-m[a].w);
+    const cm:Record<string,number>={};keys.forEach(k=>Object.entries(g[k]||{}).forEach(([mc,t])=>{cm[mc]=(cm[mc]||0)+t.lots;}));
+    const cols=Object.keys(cm).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    return {m,g,keys,cols,mx:keys.length?m[keys[0]].lots:1};},[lots,fRcp,fMac,fErr]);// eslint-disable-line react-hooks/exhaustive-deps
+  const allErr=useMemo(()=>new Set(lots.flatMap(l=>l.cz.map(c=>c[0]))).size,[lots]);
+  // 작업자 중단(Error 아님) — 종류별 Lot 수 · 그 뒤 Pass / Pass 못 함 (레시피 · 호기 필터 따름)
+  const stops=useMemo(()=>{const {m:a}=aggCx(lots,true,fOk);const z={lots:0,w:0,ok:0,open:0};
+    const m:Record<string,Agg&{n:number}>={d:{...z,...a.d,n:0},o:{...z,...a.o,n:0}};
+    v.stops.forEach(x=>{if((!fRcp||x.r===fRcp)&&(!fMac||x.m===fMac))m[x.k].n++;});
+    return {m,mx:Math.max(1,m.d.lots,m.o.lots)};},[lots,v.stops,fRcp,fMac]);// eslint-disable-line react-hooks/exhaustive-deps
+  const fOn=!!(fRcp||fMac||fErr);
+  function toList(c:string,m=fMac){setMode('lots');setState('');setPeriod(null);setCause(c);setCxf({m,r:fRcp});listTop.current?.scrollIntoView({behavior:'smooth',block:'start'});}
   const K:[Mode,string,string,number,string,string,string][]=[
     ['lots','','조사 범위 내 Lot Scan 완료',lots.length,'Lot','S/M 영문 3글자 + Lot ID 기준','Lot 단위 Scan List 보기 →'],
     ['reports','','조사 범위 내 Batch Report 존재',R.length,'개',`Lot ${R.length-chk} · 점검 스캔 ${chk}`,'Batch Report 목록 · 누르면 원문 →'],
@@ -64,7 +100,7 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
   const chips:[string,string,()=>void][]=[];
   if(period)chips.push(['period','기간 '+period,()=>setPeriod(null)]);
   if(dupOnly)chips.push(['dup','중복 Scan한 wafer가 존재하는 Lot',()=>setMode('lots')]);
-  if(cause)chips.push(['cause',cause.startsWith('__stop_')?STOPK[cause.slice(7)]:'Error '+cause,()=>setCause(null)]);
+  if(cause)chips.push(['cause',(cause.startsWith('__stop_')?STOPK[cause.slice(7)]:'Error '+cause)+(cxf.r?' · '+cxf.r:'')+(cxf.m?' · '+cxf.m:''),()=>{setCause(null);setCxf({m:'',r:''});}]);
   const lotMode=mode!=='reports';
   return <section className="panel tabpanel" aria-label="Lot 추적">
     <div className="section-heading"><div><span className="step">Lot 추적</span><h2>Lot은 어떻게 스캔됐고, 모든 wafer가 Pass했나 <Q id="lot.about"/></h2></div></div>
@@ -117,17 +153,36 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
       </table></div>
       {(lotMode?rows.length:reports.length)>2000&&<p className="ll-foot">처음 2,000행만 보여 줍니다. 검색 · 필터로 좁혀 보세요.</p>}
     </section>
-    <section className="card2"><div className="section-heading"><div><h2>멈춘 이유 요약 <Q id="lot.reasons"/></h2><p className="sub">개수는 모두 <b>Lot</b> 기준 · 행을 누르면 그 Lot만 위 목록에</p></div><span className="grow"/>
-        <Seg label="멈춘 이유" value={why} items={[['err',`Error ${causes.keys.length}종`],['stop',`작업자 중단 ${stops.m.d.n+stops.m.o.n}건`]]} onChange={setWhy}/></div>
-      <div className="keys"><span><i style={{background:C_OK}}>　</i> 재스캔하여 Pass한 Lot</span><span><i style={{background:C_ERR}}>　</i> Pass하지 못한 Lot</span></div>
-      {why==='err'?<div className="table-scroll" style={{maxHeight:380}}><table className="t-compact"><thead><tr><th>Error 원문(첫 문구)</th><th className="num">Lot</th><th/><th className="num" title="이 Error가 난 wafer가 모두 재스캔으로 Pass한 Lot">재스캔하여 Pass한 Lot</th><th className="num" title="이 Error가 난 wafer 중 끝까지 Pass하지 못한 wafer가 있는 Lot">Pass하지 못한 Lot</th><th className="num">wafer</th></tr></thead>
-        <tbody>{causes.keys.map(k=>{const t=causes.m[k];return <tr key={k} className="clickable" onClick={()=>{setMode('lots');setState('');setPeriod(null);setCause(k);listTop.current?.scrollIntoView({behavior:'smooth',block:'start'});}}>
+    <section className="card2"><div className="section-heading"><div><h2>멈춘 이유 요약 <Q id="lot.reasons"/></h2><p className="sub">개수는 모두 <b>Lot</b> 기준 · 행{why==='err'&&rv==='grid'?' · 칸':''}을 누르면 그 Lot만 위 목록에</p></div><span className="grow"/>
+        <Seg label="멈춘 이유" value={why} items={[['err',`Error ${fOn?causes.keys.length+' / '+allErr:allErr}종`],['stop',`작업자 중단 ${stops.m.d.n+stops.m.o.n}건`]]} onChange={setWhy}/></div>
+      {/* 필터(이슈 #80) — 예: 레시피 하나 + Error 하나 → 호기별 표에서 호기마다 몇 Lot 인지 한눈에 */}
+      <div className="ll-tools rz-filter" role="group" aria-label="멈춘 이유 필터">
+        <label>레시피 <select aria-label="레시피 필터" value={fRcp} onChange={e=>setFRcp(e.target.value)}><option value="">전체 레시피</option>
+          {fRcp&&!opts.r.some(o=>o[0]===fRcp)&&<option value={fRcp}>{fRcp} (0)</option>}{opts.r.map(([k,n])=><option key={k} value={k}>{k} ({n})</option>)}</select></label>
+        <label>호기 <select aria-label="호기 필터" value={fMac} onChange={e=>setFMac(e.target.value)}><option value="">전체 호기</option>
+          {fMac&&!opts.m.some(o=>o[0]===fMac)&&<option value={fMac}>{fMac} (0)</option>}{opts.m.map(([k,n])=><option key={k} value={k}>{k} ({n})</option>)}</select></label>
+        {why==='err'&&<label>Error <select aria-label="Error 필터" value={fErr} onChange={e=>setFErr(e.target.value)} style={{maxWidth:320}}><option value="">전체 Error</option>
+          {fErr&&!opts.e.some(o=>o[0]===fErr)&&<option value={fErr}>{fErr} (0)</option>}{opts.e.map(([k,n])=><option key={k} value={k}>{k} ({n})</option>)}</select></label>}
+        {why==='err'&&<Seg label="보기" value={rv} items={[['list','목록'],['grid','호기별 표']]} onChange={setRv}/>}
+        {fOn&&<button type="button" className="chip" onClick={()=>{setFRcp('');setFMac('');setFErr('');}}>필터 지우기 <i aria-hidden="true">✕</i></button>}
+        <span className="hint">( ) 안 = 그 값이 있는 Lot 수</span></div>
+      {!(why==='err'&&rv==='grid')&&<div className="keys"><span><i style={{background:C_OK}}>　</i> 재스캔하여 Pass한 Lot</span><span><i style={{background:C_ERR}}>　</i> Pass하지 못한 Lot</span></div>}
+      {why==='err'&&rv==='grid'?<div className="table-scroll" style={{maxHeight:420}}><table className="t-compact rz-grid"><thead><tr><th>Error 원문(첫 문구)</th>
+          {causes.cols.map(c=><th key={c} className="num">{c}</th>)}<th className="num">합계 Lot</th></tr></thead>
+        <tbody>{causes.keys.map(k=>{const t=causes.m[k],r=causes.g[k]||{};return <tr key={k}><td><button type="button" className="linklike" title="이 Error Lot만 위 목록에" onClick={()=>toList(k)}><b>{k}</b></button></td>
+          {causes.cols.map(c=>{const x=r[c];return <td key={c} className={'num'+(x?' clickable':' ll-zero')} title={x?`${k}\n호기 ${c}${fRcp?'\n레시피 '+fRcp:''}\nLot ${x.lots}개 · wafer ${x.w}장\n재스캔하여 Pass한 Lot ${x.ok}\nPass하지 못한 Lot ${x.open}\n누르면 이 Lot들만 목록에`:undefined}
+            onClick={x?()=>toList(k,c):undefined}>{x?<><b>{x.lots}</b>{x.open?<small className="v4"> ({x.open})</small>:null}</>:'—'}</td>;})}
+          <td className="num"><b>{t.lots}</b></td></tr>;})}
+          {!causes.keys.length&&<tr><td colSpan={causes.cols.length+2}>{fOn?'필터에 맞는 Error 없음':'Error 없음'}</td></tr>}</tbody></table>
+        <p className="hint">칸 숫자 = 그 호기에서 이 Error가 난 Lot 수, ( ) = 그중 Pass하지 못한 Lot. Lot이 여러 호기에서 Error가 나면 호기마다 셉니다(합계 Lot은 한 번).</p></div>
+      :why==='err'?<div className="table-scroll" style={{maxHeight:380}}><table className="t-compact"><thead><tr><th>Error 원문(첫 문구)</th><th className="num">Lot</th><th/><th className="num" title="이 Error가 난 wafer가 모두 재스캔으로 Pass한 Lot">재스캔하여 Pass한 Lot</th><th className="num" title="이 Error가 난 wafer 중 끝까지 Pass하지 못한 wafer가 있는 Lot">Pass하지 못한 Lot</th><th className="num">wafer</th></tr></thead>
+        <tbody>{causes.keys.map(k=>{const t=causes.m[k];return <tr key={k} className="clickable" onClick={()=>toList(k)}>
           <td><b>{k}</b></td><td className="num"><b>{t.lots}</b></td><td><span className="ebar" data-tip={`${k}\nLot ${t.lots}개\n재스캔하여 Pass한 Lot ${t.ok}\nPass하지 못한 Lot ${t.open}\n누르면 이 Lot들만 목록에`}>
             <span style={{width:(t.ok/causes.mx*100).toFixed(1)+'%',background:C_OK}}/><span style={{width:(t.open/causes.mx*100).toFixed(1)+'%',background:C_ERR}}/></span></td>
           <td className="num v1">{t.ok}</td><td className="num v4">{t.open||''}</td><td className="num">{t.w}</td></tr>;})}
-          {!causes.keys.length&&<tr><td colSpan={6}>Error 없음</td></tr>}</tbody></table></div>
+          {!causes.keys.length&&<tr><td colSpan={6}>{fOn?'필터에 맞는 Error 없음':'Error 없음'}</td></tr>}</tbody></table></div>
       :<div className="table-scroll" style={{maxHeight:380}}><table className="t-compact"><thead><tr><th>작업자 중단(앞 Error 없는 Aborted.)</th><th className="num">Batch Report</th><th className="num">Lot</th><th/><th className="num">재스캔하여 Pass한 Lot</th><th className="num">Pass하지 못한 Lot</th><th className="num">wafer</th></tr></thead>
-        <tbody>{(['d','o'] as const).map(k=>{const t=stops.m[k];return <tr key={k} className="clickable" onClick={()=>{setMode('lots');setState('');setPeriod(null);setCause('__stop_'+k);listTop.current?.scrollIntoView({behavior:'smooth',block:'start'});}}>
+        <tbody>{(['d','o'] as const).map(k=>{const t=stops.m[k];return <tr key={k} className="clickable" onClick={()=>toList('__stop_'+k)}>
           <td><i className="sw" style={{background:k==='d'?C_DEFECT:C_STOP}}/><b>{STOPK[k]}</b>{k==='d'&&<Q id="stop.defect"/>}</td><td className="num">{t.n}</td><td className="num"><b>{t.lots}</b></td>
           <td><span className="ebar"><span style={{width:(t.ok/stops.mx*100).toFixed(1)+'%',background:C_OK}}/><span style={{width:(t.open/stops.mx*100).toFixed(1)+'%',background:C_ERR}}/></span></td>
           <td className="num v1">{t.ok}</td><td className="num v4">{t.open||''}</td><td className="num">{t.w}</td></tr>;})}</tbody></table>

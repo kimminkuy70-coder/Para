@@ -313,6 +313,10 @@ def resolve(attempts, overrides=None, bunch_key=None, lot_slots=None):
         # 웨이퍼의 원인 = 직접 오류의 첫 문구. 연쇄뿐이면 그 연쇄를 일으킨 같은 Batch Report 의 첫 오류.
         direct = next((r for _, r in errors if r["kind"] == "원인"), None)
         chained = next((r for _, r in errors if r["kind"] == "연쇄"), None)
+        # 원인이 난 Batch Report(시도 번호) — 멈춘 이유 요약의 호기 · 레시피 필터(이슈 #80)
+        cause_at = next((p for p, r in errors if r["kind"] == "원인"), None)
+        if cause_at is None:
+            cause_at = next((p for p, r in errors if r["kind"] == "연쇄"), None)
         stopped = next((r for _, r in errors if r["kind"] == STOP), None)
         slots = [r["slot"] for _, r in items if r["slot"] is not None]
         wafers.append({"key": key, "slot": slots[0] if slots else int(key[1:]) if key.startswith("S") else None,
@@ -331,7 +335,8 @@ def resolve(attempts, overrides=None, bunch_key=None, lot_slots=None):
                        "chain_only": bool(chained and not direct),
                        # Error 없이 작업자 중단만 있었던 wafer(cause 는 원문 'Aborted.') — Error 집계에서 뺀다.
                        "stop": bool(stopped and not direct and not chained),
-                       "stop_attempt": next((p for p, r in errors if r["kind"] == STOP), None)})
+                       "stop_attempt": next((p for p, r in errors if r["kind"] == STOP), None),
+                       "cause_attempt": cause_at})
     totals["yield"] = totals["good"] / totals["scanned"] * 100 if totals["scanned"] else None
     return wafers, dict(counts), totals
 

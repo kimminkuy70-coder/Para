@@ -1,5 +1,25 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.2.11: 멈춘 이유 요약 필터 (2026-11-18 KST, `version_v14`, 이슈 #80)
+
+- 마지막 갱신 2026-11-18 · 기준 커밋 `9e0733f`(v14.1.11) · 이슈 #80 "v14.2.11 업데이트 사항"(자동 실행 routine 처리).
+- 요청: "멈춘 이유 요약에서 레시피별로, 호기별로, 에러별로 필터 걸어서 볼 수 있게 — 특정 레시피에서 호기별로 특정 에러가 얼마나 발생했는지 한눈에".
+- 한 일: Lot 추적 › 멈춘 이유 요약 머리 아래 필터 줄(`rz-filter`): [레시피] · [호기] · [Error](Error 보기만) select(괄호 = 그 값이 있는 Lot 수, 서로 좁혀짐) + 보기 [목록 | 호기별 표] + [필터 지우기].
+  호기별 표(`rz-grid`) = 줄 Error 원문 × 열 호기, 칸 = Lot 수(괄호 = Pass하지 못한 Lot), 합계 Lot. 칸 · 줄을 누르면 위 Lot 목록이 그 원문 + 호기 · 레시피 Lot 만(칩에 표시).
+  작업자 중단 보기도 레시피 · 호기 필터를 따름(Batch Report 수 = `v.stops` 의 m · r).
+  엔진: `lotmodel` wafer `cause_attempt`(직접 Error → 연쇄 순), `batchview` Lot `cx` · `sx` = [원문/중단 종류, 호기, 레시피(`recipe_of`), wafer, Pass 못 함]. `cz` · `sz` 는 그대로.
+- 해석(확인 전): ① Error 의 호기 · 레시피 = **Error 가 난 Batch Report** 의 것(다른 호기로 옮겨 재스캔해 Pass 해도 처음 호기에 센다). ② 칸 = Lot 수(기존 요약과 같은 단위, wafer 수는 툴팁).
+  ③ 한 Lot 이 두 호기에서 같은 Error 면 호기마다 1, 합계는 1. ④ '레시피' = `Job · Recipe(s)`(WPH 와 같은 이름). ⑤ 저장 결과 HTML(분석 · Lot 추적)에는 필터를 안 넣음 — 앱 화면만.
+  ⑥ 예전에 저장된 조사 결과(cx 없음)를 불러오면 Lot 의 호기 · 레시피가 하나일 때만 그 값, 아니면 '(알 수 없음)'(다시 조사하면 정확).
+- 시험: Python 전부 통과(새 `tests/test_reason_filter.py` 3개, `PYTHONPATH=vendor python tools/check_project.py` Failed files: none), `npm run build`(dist 갱신),
+  `tools/test_desktop_ui.mjs` 통과(레시피 · Error 고르기 → 호기별 표 1줄 → 칸 누름 → 목록 칩). 시험이 바꾼 `docs/screenshots` · `CamtekAOI/Logs` 는 되돌림. **Windows · 실제 Batch Report 로는 확인 못 함.**
+- 버전: 이슈 제목의 v14.2.11 을 그대로 씀(14.1.11 다음). 릴리스: `__version__` 14.2.11 + `docs/release_notes/v14.2.11.md` → push 하면 `v14.yml` 이 Release 생성.
+- `docs/ai_guide/BatchReport_캐시_분석지침.txt` 9절에 cx · sx 설명 추가.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #80 | 멈춘 이유 요약 레시피 · 호기 · Error 필터, 레시피별 호기별 Error 한눈에 | v14.2.11 |
+
 ## 최신 재개 — v14.1.11: 호기별 장비 Job 폴더 위치 (2026-11-18 KST, `version_v14`, 이슈 #79)
 
 - 마지막 갱신 2026-11-18 · 기준 커밋 `d7954d6`(v14.1.10) · 이슈 #79 "v14.1.11 업데이트 사항"(자동 실행 routine 처리).

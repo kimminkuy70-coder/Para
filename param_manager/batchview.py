@@ -159,6 +159,7 @@ class View:
         lots = []
         for li, lot in enumerate(self.model['lots']):
             bunches, causes, per, stops = [], Counter(), {}, {}
+            per_x, stop_x = {}, {}                        # (원문 · 호기 · 레시피)별 — 멈춘 이유 요약 필터(이슈 #80)
             for b in lot['bunches']:
                 bunches.append(dict(att=[self.index[a['id']] for a in b['attempts']], step=b['step'], k=b['scan'], s=stamp(b['start']),
                                     e=stamp(b['end']), moved=b['moved'], machines=b['machines'], sec=b['batch_sec'],
@@ -171,11 +172,20 @@ class View:
                         t = stops.setdefault(k, [0, False])
                         t[0] += 1
                         t[1] = t[1] or w['verdict'] == lm.UNRESOLVED
+                        sa = b['attempts'][w['stop_attempt']]
+                        t = stop_x.setdefault((k, sa['machine'], recipe_of(sa)), [0, False])
+                        t[0] += 1
+                        t[1] = t[1] or w['verdict'] == lm.UNRESOLVED
                         continue
                     if not w['cause']:
                         continue
                     causes[w['cause']] += 1
                     p = per.setdefault(w['cause'], [0, False])
+                    p[0] += 1
+                    p[1] = p[1] or w['verdict'] == lm.UNRESOLVED
+                    ca = w.get('cause_attempt')
+                    ca = b['attempts'][ca] if ca is not None else b['attempts'][0]
+                    p = per_x.setdefault((w['cause'], ca['machine'], recipe_of(ca)), [0, False])
                     p[0] += 1
                     p[1] = p[1] or w['verdict'] == lm.UNRESOLVED
             re_ = sum(w['verdict'] == lm.RECOVERED for b in lot['bunches'] for w in b['wafers'])
@@ -187,7 +197,9 @@ class View:
                              multi=any(len(b['attempts']) > 1 for b in lot['bunches']),
                              causes=[[k, n] for k, n in causes.most_common(3)],
                              cz=[[k, v[0], v[1]] for k, v in per.items()],
-                             sz=[[k, v[0], v[1]] for k, v in stops.items()], bunches=bunches))
+                             sz=[[k, v[0], v[1]] for k, v in stops.items()],
+                             cx=[[c, m, r, v[0], v[1]] for (c, m, r), v in per_x.items()],
+                             sx=[[k, m, r, v[0], v[1]] for (k, m, r), v in stop_x.items()], bunches=bunches))
         starts = [r['s'] for r in R if r['s']]
         U, waits, stops, N, L, X = self._metrics()
         return dict(R=R, lots=lots, excluded=[self.index[a['id']] for a in self.model['excluded']],
