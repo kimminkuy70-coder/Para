@@ -38,6 +38,8 @@
   엔진 payload Lot 에 `cx`=[원문, 호기, 레시피, wafer, Pass 못 함] · `sx`(작업자 중단 같은 꼴) — 호기 · 레시피 = **원인이 난 Batch Report**(`lotmodel` wafer `cause_attempt`, 직접 Error → 연쇄 순)의 것, 레시피 = `recipe_of`.
   `cz` · `sz` 는 그대로(합이 같음, `tests/test_reason_filter.py`). 예전 저장 결과(cx 없음)는 Lot 의 호기 · 레시피가 하나일 때만 그 값, 아니면 '(알 수 없음)'(`lotCx`).
   칸 · 줄을 누르면 위 Lot 목록 = 그 원문 + 고른 호기 · 레시피(`cxf`). 저장 결과 HTML(`batchsaved` · `lotreport`)에는 필터 없음(확인 전 — 앱만).
+- **v14.2.12(#81, 2026-11-18)**: 위 필터 = **여러 개 고르기**(`MultiPick` 펼침 목록, 누름 = 고름/해제, 고른 것 색 + ✓, 단추에 'N개'). `fRcp` · `fMac` · `fErr` · `cxf.m` · `cxf.r` = `string[]`(빈 = 전체),
+  같은 필터 안 = 합침(OR), 필터끼리 = AND.
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

@@ -42,8 +42,17 @@ class ReasonFilter(unittest.TestCase):
 
     def test_frontend_has_filters(self):
         src = (Path(__file__).resolve().parents[1] / 'frontend' / 'src' / 'BatchLot.tsx').read_text(encoding='utf-8')
-        for text in ('레시피 필터', '호기 필터', 'Error 필터', '호기별 표', '필터 지우기'):
+        for text in ("label+' 필터'", '호기별 표', '필터 지우기'):
             self.assertIn(text, src)
+
+    def test_frontend_multi_pick(self):
+        # 이슈 #81: 레시피 · 호기 · Error 를 여러 개 골라 합쳐 본다(누르면 고름, 다시 누르면 해제, 고른 것은 색).
+        src = (Path(__file__).resolve().parents[1] / 'frontend' / 'src' / 'BatchLot.tsx').read_text(encoding='utf-8')
+        for text in ('<MultiPick label="레시피"', '<MultiPick label="호기"', '<MultiPick label="Error"',
+                     'aria-multiselectable="true"', "'mp-opt'+(on.has(k)?' on':'')", 'useState<string[]>([])'):
+            self.assertIn(text, src)
+        css = (Path(__file__).resolve().parents[1] / 'frontend' / 'src' / 'styles.css').read_text(encoding='utf-8')
+        self.assertIn('.bv .mpick .mp-opt.on{', css)
 
 
 if __name__ == '__main__':

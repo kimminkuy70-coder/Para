@@ -1,4 +1,4 @@
-import {Fragment,useMemo,useRef,useState} from 'react';
+import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import {ColChart,Legend,Seg,type Key,type ColItem} from './BatchCharts';
 import {Q,openDefect} from './BatchHelp';
 import {bucket,shortKey,weekRange,periodName,num,stepLabel,is3D,STATES,ST,DONE,RE,OPEN,C_OK,C_ERR,C_WAIT,C_STOP,C_DEFECT,STOPK,type View,type Unit,type Lot} from './batchData';
@@ -31,6 +31,29 @@ function aggCx(lots:Lot[],stop:boolean,ok:(e:CX)=>boolean,col?:(e:CX)=>string){
     Object.entries(per).forEach(([c,[w,o]])=>{const t=m[c]||(m[c]={lots:0,w:0,ok:0,open:0});t.lots++;t.w+=w;if(o)t.open++;else t.ok++;});
     Object.entries(pc).forEach(([k,[w,o]])=>{const [c,cl]=k.split('\u0000');const r=g[c]||(g[c]={});const t=r[cl]||(r[cl]={lots:0,w:0,ok:0,open:0});t.lots++;t.w+=w;if(o)t.open++;else t.ok++;});});
   return {m,g};}
+/** 여러 개 고르기 펼침 목록(이슈 #81) — 기존 고르기 상자처럼 한 줄 단추, 누르면 목록이 열리고 항목을 누를 때마다 고름 / 고름 해제.
+    고른 항목은 색이 바뀌고(✓), 단추에 '레시피 2개' 처럼 몇 개를 합쳐 보는지 보인다. 아무것도 안 고르면 전체. */
+function MultiPick({label,all,opts,sel,onChange,width}:{label:string;all:string;opts:[string,number][];sel:string[];onChange:(v:string[])=>void;width?:number}){
+  const [open,setOpen]=useState(false);const box=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!open)return;const out=(e:MouseEvent)=>{if(box.current&&!box.current.contains(e.target as Node))setOpen(false);};
+    const esc=(e:KeyboardEvent)=>{if(e.key==='Escape')setOpen(false);};
+    document.addEventListener('mousedown',out);document.addEventListener('keydown',esc);
+    return ()=>{document.removeEventListener('mousedown',out);document.removeEventListener('keydown',esc);};},[open]);
+  const has=new Set(opts.map(o=>o[0])),list:[string,number][]=[...sel.filter(k=>!has.has(k)).map(k=>[k,0] as [string,number]),...opts];
+  const on=new Set(sel),toggle=(k:string)=>onChange(on.has(k)?sel.filter(x=>x!==k):[...sel,k]);
+  const text=!sel.length?all:sel.length===1?sel[0]:`${label} ${sel.length}개`;
+  return <div className={'mpick'+(sel.length?' has':'')} ref={box}>
+    <span className="mp-l">{label}</span>
+    <button type="button" className="mp-btn" aria-label={label+' 필터'} aria-haspopup="listbox" aria-expanded={open} title={sel.length?sel.join('\n'):all}
+      style={width?{maxWidth:width}:undefined} onClick={()=>setOpen(o=>!o)}><span>{text}</span>{sel.length>1&&<b className="mp-n">{sel.length}</b>}<i aria-hidden="true">▾</i></button>
+    {open&&<div className="mp-pop" role="listbox" aria-multiselectable="true" aria-label={label+' 목록'}>
+      <button type="button" role="option" aria-selected={!sel.length} className={'mp-opt'+(!sel.length?' all':'')} onClick={()=>onChange([])}><i aria-hidden="true">{!sel.length?'✓':''}</i><span>{all}</span></button>
+      {list.map(([k,n])=><button type="button" role="option" key={k} aria-selected={on.has(k)} className={'mp-opt'+(on.has(k)?' on':'')} title={k} onClick={()=>toggle(k)}>
+        <i aria-hidden="true">{on.has(k)?'✓':''}</i><span>{k}</span><small>({n})</small></button>)}
+      {!list.length&&<p className="mp-none">고를 값 없음</p>}
+      <p className="mp-foot">누를 때마다 고름 / 해제 · 고른 것을 합쳐 봅니다</p></div>}
+  </div>;}
+const inS=(a:string[],x:string)=>!a.length||a.includes(x);
 
 export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;showRaw:(g:number)=>void}){
   const [mode,setMode]=useState<Mode>('lots');
@@ -39,8 +62,9 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
   const [repQ,setRepQ]=useState(''),[repRes,setRepRes]=useState(''),[repKind,setRepKind]=useState('');
   const [unit,setUnit]=useState<Unit>('w'),[hid,setHid]=useState<Record<string,boolean>>({}),[why,setWhy]=useState<'err'|'stop'>('err');
   // 멈춘 이유 요약 필터(이슈 #80): 레시피 · 호기 · Error 원문, 보기 = 목록 / 호기별 표
-  const [fRcp,setFRcp]=useState(''),[fMac,setFMac]=useState(''),[fErr,setFErr]=useState(''),[rv,setRv]=useState<'list'|'grid'>('list');
-  const [cxf,setCxf]=useState<{m:string;r:string}>({m:'',r:''});
+  // 이슈 #81: 여러 개 고르기(빈 배열 = 전체), 고른 것을 합쳐 본다
+  const [fRcp,setFRcp]=useState<string[]>([]),[fMac,setFMac]=useState<string[]>([]),[fErr,setFErr]=useState<string[]>([]),[rv,setRv]=useState<'list'|'grid'>('list');
+  const [cxf,setCxf]=useState<{m:string[];r:string[]}>({m:[],r:[]});
   const listTop=useRef<HTMLHeadingElement>(null);
   const lots=v.lots,R=v.R;
   const kpi=useMemo(()=>({re:lots.filter(l=>l.state===RE).length,open:lots.filter(l=>l.state===OPEN).length,dup:lots.filter(l=>l.dup).length}),[lots]);
@@ -63,7 +87,7 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
       if(t&&!(l.label+' '+l.sms.join(' ')+' '+l.lot_id+' '+l.jobs.join(' ')).toUpperCase().includes(t))return false;
       if(state&&l.state!==state)return false;if(fRe&&!l.multi)return false;if(fMove&&!l.moved)return false;if(dupOnly&&!l.dup)return false;
       if(period&&(!l.s||bucket(l.s.slice(0,10),unit)!==period))return false;if(cause){const st=cause.startsWith('__stop_'),c=st?cause.slice(7):cause;
-        if(!lotCx(l,st).some(e=>e[0]===c&&(!cxf.m||e[1]===cxf.m)&&(!cxf.r||e[2]===cxf.r)))return false;}return true;})
+        if(!lotCx(l,st).some(e=>e[0]===c&&inS(cxf.m,e[1])&&inS(cxf.r,e[2])))return false;}return true;})
       .sort((a,b)=>a[0].s<b[0].s?1:-1);},[lots,q,state,fRe,fMove,dupOnly,period,cause,cxf,unit]);
   const reports=useMemo(()=>{const t=repQ.trim().toLowerCase();
     return R.map((r,i)=>[r,i] as const).filter(([r])=>{if(t&&!(r.f+' '+r.sm+' '+(r.lot!=null?lots[r.lot].label:'')).toLowerCase().includes(t))return false;
@@ -72,13 +96,13 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
   // 필터 고르기 목록 — 조사 범위 전체의 Error · 작업자 중단 묶음에서(개수 = 그 값이 들어간 Lot 수)
   const opts=useMemo(()=>{const R:Record<string,Set<string>>={},M:Record<string,Set<string>>={},E:Record<string,Set<string>>={};
     lots.forEach(l=>{([false,true] as const).forEach(st=>lotCx(l,st).forEach(e=>{
-      if(!fMac||e[1]===fMac)(R[e[2]]||(R[e[2]]=new Set())).add(l.key);
-      if(!fRcp||e[2]===fRcp)(M[e[1]]||(M[e[1]]=new Set())).add(l.key);
-      if(!st&&(!fRcp||e[2]===fRcp)&&(!fMac||e[1]===fMac))(E[e[0]]||(E[e[0]]=new Set())).add(l.key);}));});
+      if(inS(fMac,e[1]))(R[e[2]]||(R[e[2]]=new Set())).add(l.key);
+      if(inS(fRcp,e[2]))(M[e[1]]||(M[e[1]]=new Set())).add(l.key);
+      if(!st&&inS(fRcp,e[2])&&inS(fMac,e[1]))(E[e[0]]||(E[e[0]]=new Set())).add(l.key);}));});
     const srt=(o:Record<string,Set<string>>)=>Object.keys(o).sort((a,b)=>o[b].size-o[a].size||a.localeCompare(b)).map(k=>[k,o[k].size] as [string,number]);
     return {r:srt(R),m:srt(M),e:srt(E)};},[lots,fRcp,fMac]);
-  const fOk=(e:CX)=>(!fRcp||e[2]===fRcp)&&(!fMac||e[1]===fMac);
-  const causes=useMemo(()=>{const {m,g}=aggCx(lots,false,e=>fOk(e)&&(!fErr||e[0]===fErr),e=>e[1]);
+  const fOk=(e:CX)=>inS(fRcp,e[2])&&inS(fMac,e[1]);
+  const causes=useMemo(()=>{const {m,g}=aggCx(lots,false,e=>fOk(e)&&inS(fErr,e[0]),e=>e[1]);
     const keys=Object.keys(m).sort((a,b)=>m[b].lots-m[a].lots||m[b].w-m[a].w);
     const cm:Record<string,number>={};keys.forEach(k=>Object.entries(g[k]||{}).forEach(([mc,t])=>{cm[mc]=(cm[mc]||0)+t.lots;}));
     const cols=Object.keys(cm).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
@@ -87,10 +111,10 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
   // 작업자 중단(Error 아님) — 종류별 Lot 수 · 그 뒤 Pass / Pass 못 함 (레시피 · 호기 필터 따름)
   const stops=useMemo(()=>{const {m:a}=aggCx(lots,true,fOk);const z={lots:0,w:0,ok:0,open:0};
     const m:Record<string,Agg&{n:number}>={d:{...z,...a.d,n:0},o:{...z,...a.o,n:0}};
-    v.stops.forEach(x=>{if((!fRcp||x.r===fRcp)&&(!fMac||x.m===fMac))m[x.k].n++;});
+    v.stops.forEach(x=>{if(inS(fRcp,x.r)&&inS(fMac,x.m))m[x.k].n++;});
     return {m,mx:Math.max(1,m.d.lots,m.o.lots)};},[lots,v.stops,fRcp,fMac]);// eslint-disable-line react-hooks/exhaustive-deps
-  const fOn=!!(fRcp||fMac||fErr);
-  function toList(c:string,m=fMac){setMode('lots');setState('');setPeriod(null);setCause(c);setCxf({m,r:fRcp});listTop.current?.scrollIntoView({behavior:'smooth',block:'start'});}
+  const fOn=!!(fRcp.length||fMac.length||fErr.length);
+  function toList(c:string,m:string[]=fMac){setMode('lots');setState('');setPeriod(null);setCause(c);setCxf({m,r:fRcp});listTop.current?.scrollIntoView({behavior:'smooth',block:'start'});}
   const K:[Mode,string,string,number,string,string,string][]=[
     ['lots','','조사 범위 내 Lot Scan 완료',lots.length,'Lot','S/M 영문 3글자 + Lot ID 기준','Lot 단위 Scan List 보기 →'],
     ['reports','','조사 범위 내 Batch Report 존재',R.length,'개',`Lot ${R.length-chk} · 점검 스캔 ${chk}`,'Batch Report 목록 · 누르면 원문 →'],
@@ -100,7 +124,7 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
   const chips:[string,string,()=>void][]=[];
   if(period)chips.push(['period','기간 '+period,()=>setPeriod(null)]);
   if(dupOnly)chips.push(['dup','중복 Scan한 wafer가 존재하는 Lot',()=>setMode('lots')]);
-  if(cause)chips.push(['cause',(cause.startsWith('__stop_')?STOPK[cause.slice(7)]:'Error '+cause)+(cxf.r?' · '+cxf.r:'')+(cxf.m?' · '+cxf.m:''),()=>{setCause(null);setCxf({m:'',r:''});}]);
+  if(cause)chips.push(['cause',(cause.startsWith('__stop_')?STOPK[cause.slice(7)]:'Error '+cause)+(cxf.r.length?' · '+cxf.r.join(' + '):'')+(cxf.m.length?' · '+cxf.m.join(' + '):''),()=>{setCause(null);setCxf({m:[],r:[]});}]);
   const lotMode=mode!=='reports';
   return <section className="panel tabpanel" aria-label="Lot 추적">
     <div className="section-heading"><div><span className="step">Lot 추적</span><h2>Lot은 어떻게 스캔됐고, 모든 wafer가 Pass했나 <Q id="lot.about"/></h2></div></div>
@@ -157,21 +181,18 @@ export function LotTab({v,openLot,showRaw}:{v:View;openLot:(li:number)=>void;sho
         <Seg label="멈춘 이유" value={why} items={[['err',`Error ${fOn?causes.keys.length+' / '+allErr:allErr}종`],['stop',`작업자 중단 ${stops.m.d.n+stops.m.o.n}건`]]} onChange={setWhy}/></div>
       {/* 필터(이슈 #80) — 예: 레시피 하나 + Error 하나 → 호기별 표에서 호기마다 몇 Lot 인지 한눈에 */}
       <div className="ll-tools rz-filter" role="group" aria-label="멈춘 이유 필터">
-        <label>레시피 <select aria-label="레시피 필터" value={fRcp} onChange={e=>setFRcp(e.target.value)}><option value="">전체 레시피</option>
-          {fRcp&&!opts.r.some(o=>o[0]===fRcp)&&<option value={fRcp}>{fRcp} (0)</option>}{opts.r.map(([k,n])=><option key={k} value={k}>{k} ({n})</option>)}</select></label>
-        <label>호기 <select aria-label="호기 필터" value={fMac} onChange={e=>setFMac(e.target.value)}><option value="">전체 호기</option>
-          {fMac&&!opts.m.some(o=>o[0]===fMac)&&<option value={fMac}>{fMac} (0)</option>}{opts.m.map(([k,n])=><option key={k} value={k}>{k} ({n})</option>)}</select></label>
-        {why==='err'&&<label>Error <select aria-label="Error 필터" value={fErr} onChange={e=>setFErr(e.target.value)} style={{maxWidth:320}}><option value="">전체 Error</option>
-          {fErr&&!opts.e.some(o=>o[0]===fErr)&&<option value={fErr}>{fErr} (0)</option>}{opts.e.map(([k,n])=><option key={k} value={k}>{k} ({n})</option>)}</select></label>}
+        <MultiPick label="레시피" all="전체 레시피" opts={opts.r} sel={fRcp} onChange={setFRcp}/>
+        <MultiPick label="호기" all="전체 호기" opts={opts.m} sel={fMac} onChange={setFMac}/>
+        {why==='err'&&<MultiPick label="Error" all="전체 Error" opts={opts.e} sel={fErr} onChange={setFErr} width={320}/>}
         {why==='err'&&<Seg label="보기" value={rv} items={[['list','목록'],['grid','호기별 표']]} onChange={setRv}/>}
-        {fOn&&<button type="button" className="chip" onClick={()=>{setFRcp('');setFMac('');setFErr('');}}>필터 지우기 <i aria-hidden="true">✕</i></button>}
-        <span className="hint">( ) 안 = 그 값이 있는 Lot 수</span></div>
+        {fOn&&<button type="button" className="chip" onClick={()=>{setFRcp([]);setFMac([]);setFErr([]);}}>필터 지우기 <i aria-hidden="true">✕</i></button>}
+        <span className="hint">여러 개 고르면 합쳐 봅니다 · ( ) 안 = 그 값이 있는 Lot 수</span></div>
       {!(why==='err'&&rv==='grid')&&<div className="keys"><span><i style={{background:C_OK}}>　</i> 재스캔하여 Pass한 Lot</span><span><i style={{background:C_ERR}}>　</i> Pass하지 못한 Lot</span></div>}
       {why==='err'&&rv==='grid'?<div className="table-scroll" style={{maxHeight:420}}><table className="t-compact rz-grid"><thead><tr><th>Error 원문(첫 문구)</th>
           {causes.cols.map(c=><th key={c} className="num">{c}</th>)}<th className="num">합계 Lot</th></tr></thead>
         <tbody>{causes.keys.map(k=>{const t=causes.m[k],r=causes.g[k]||{};return <tr key={k}><td><button type="button" className="linklike" title="이 Error Lot만 위 목록에" onClick={()=>toList(k)}><b>{k}</b></button></td>
-          {causes.cols.map(c=>{const x=r[c];return <td key={c} className={'num'+(x?' clickable':' ll-zero')} title={x?`${k}\n호기 ${c}${fRcp?'\n레시피 '+fRcp:''}\nLot ${x.lots}개 · wafer ${x.w}장\n재스캔하여 Pass한 Lot ${x.ok}\nPass하지 못한 Lot ${x.open}\n누르면 이 Lot들만 목록에`:undefined}
-            onClick={x?()=>toList(k,c):undefined}>{x?<><b>{x.lots}</b>{x.open?<small className="v4"> ({x.open})</small>:null}</>:'—'}</td>;})}
+          {causes.cols.map(c=>{const x=r[c];return <td key={c} className={'num'+(x?' clickable':' ll-zero')} title={x?`${k}\n호기 ${c}${fRcp.length?'\n레시피 '+fRcp.join(' + '):''}\nLot ${x.lots}개 · wafer ${x.w}장\n재스캔하여 Pass한 Lot ${x.ok}\nPass하지 못한 Lot ${x.open}\n누르면 이 Lot들만 목록에`:undefined}
+            onClick={x?()=>toList(k,[c]):undefined}>{x?<><b>{x.lots}</b>{x.open?<small className="v4"> ({x.open})</small>:null}</>:'—'}</td>;})}
           <td className="num"><b>{t.lots}</b></td></tr>;})}
           {!causes.keys.length&&<tr><td colSpan={causes.cols.length+2}>{fOn?'필터에 맞는 Error 없음':'Error 없음'}</td></tr>}</tbody></table>
         <p className="hint">칸 숫자 = 그 호기에서 이 Error가 난 Lot 수, ( ) = 그중 Pass하지 못한 Lot. Lot이 여러 호기에서 Error가 나면 호기마다 셉니다(합계 Lot은 한 번).</p></div>

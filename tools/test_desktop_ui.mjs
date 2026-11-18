@@ -291,9 +291,17 @@ try{
   // 멈춘 이유 요약 필터(이슈 #80): 레시피 · 호기 · Error 고르기, 호기별 표, 칸 누르면 그 Lot만 목록에.
   await page.getByRole('button',{name:/^Error \d+/}).click();
   const rz=page.getByRole('group',{name:'멈춘 이유 필터'});
-  const pickFirst=async label=>{const s=rz.getByLabel(label,{exact:true});const v=await s.locator('option').nth(1).getAttribute('value');assert(v,label+' has options');await s.selectOption(v);return v;};
-  const rcp=await pickFirst('레시피 필터');
-  await pickFirst('Error 필터');
+  // 이슈 #81: 여러 개 고르기 — 펼침 목록에서 누를 때마다 고름 / 해제, 고른 항목은 색(aria-selected), 단추에 몇 개인지.
+  const pickN=async(label,n)=>{await rz.getByRole('button',{name:label,exact:true}).click();
+    const lb=rz.getByRole('listbox',{name:label.replace(' 필터',' 목록')}),op=lb.getByRole('option');
+    const cnt=await op.count();assert(cnt>1,label+' has options');const got=[];
+    for(let i=1;i<=Math.min(n,cnt-1);i++){const o=op.nth(i);got.push((await o.locator('span').textContent()).trim());await o.click();
+      assert.equal(await o.getAttribute('aria-selected'),'true',label+' option marked selected');}
+    const o1=op.nth(1);await o1.click();assert.equal(await o1.getAttribute('aria-selected'),'false','second click unselects');
+    assert.equal(await op.nth(0).getAttribute('aria-selected'),'true','nothing picked = all');await o1.click();
+    await page.keyboard.press('Escape');await lb.waitFor({state:'detached'});return got;};
+  const rcp=(await pickN('레시피 필터',1))[0];
+  await pickN('Error 필터',1);
   await rz.getByRole('button',{name:'호기별 표',exact:true}).click();
   const rzGrid=page.locator('table.rz-grid');
   await rzGrid.waitFor();
