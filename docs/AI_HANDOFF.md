@@ -40,6 +40,10 @@
   안내: ① 바로 Para 비공개 ② 이력 삭제 = mirror clone → `git filter-repo --invert-paths --path "wafer map.zip" --path "wafer map 구현/wafer map.zip"` → `version_v14` · `v14.2.12` force push
   ③ 그 뒤 GitHub Support 에 옛 커밋 캐시 삭제 요청. 영향: `e808259` 이후 커밋 SHA 전부 바뀜(이 문서의 SHA 도 옛 값), 다른 PC · 세션 clone 은 다시 받아야 함, force push 가 `v14.yml` 을 다시 돌릴 수 있음.
   Claude 가 대신 하려면 소유자의 명시 지시 필요(routine 규칙: force push · 태그 이동 금지).
+- **세션 후속 5(질문 "나중에 v14.2.12 릴리스만 지우면 되지 않나, 계속 새 버전 올릴 건데")** — 답: 아니다. 릴리스 · 태그를 지우면 그 Release 의 Source code 압축에서만 빠지고,
+  zip 커밋은 `version_v14` 이력에 남아 이후 모든 새 커밋 · 새 태그(v14.2.13 …)의 조상이 된다(clone · 커밋 주소로 받을 수 있음). 새 태그의 Source code 압축에는 안 들어감(그 시점 파일만).
+  나중에 이력 삭제를 하면 그때까지 생긴 태그를 전부 다시 push 해야 해서 늦을수록 일이 커짐 → 지우려면 빨리 권장.
+  **정정**: 세션 후속 4 의 "① 바로 비공개"는 Para 에 맞지 않음 — 앱 업데이트가 토큰 없이 공개 Release 를 받으므로(CLAUDE.md v13 원칙) 비공개로 바꾸면 모든 PC 의 자동 업데이트가 끊김.
 | 이슈 | 요청 | 결과 |
 |---|---|---|
 | #82 | wafer map.zip 으로 wafer map 구현 가능성 새 검토 · HTML 보고서 · `wafer map 구현` 폴더 | 보고서(코드 안 고침, 릴리스 없음) |
