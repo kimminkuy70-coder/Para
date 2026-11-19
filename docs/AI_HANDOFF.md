@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #84 v14.3.16: 5-3 흑백 GL 측정 = 최종 목록(☑)만 (2026-11-19 KST, `version_v14`, 이슈 #84)
+
+- 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.15(`c6fd9e3`) · 이슈 #84 "v14.3.15 업데이트 사항"(자동 실행 routine 처리, 첨부 없음).
+- 요청: "Defect 분석(대규모) 5-3 에서 흑백 GL 측정할 때 사람이 고른 최종 목록에 대해서만 측정 — 지금은 5-3 리스트 전체라 낭비".
+- 한 일(rev6 HTML, dist 같게): `c5Refresh` 가 `C5.base`(보기 · 검색을 지난 줄, GL 범위 적용 전)를 남기고, 새 `glTargets()` = `C5.base` 중 ☑(`p.pick`) && 흑백 있음(`glCan`).
+  `glRun` = `glTargets()` 중 아직 안 잰 것만(종전 `c5Pool()` 전체). ☑ 가 없으면 '최종 목록(☑)에 흑백 사진이 있는 Defect 가 없습니다…' 안내.
+  단추 글 '흑백 GL 측정 (☑ 만)' + title, 상태 글 '최종 목록 ☑ 측정 n/m개'.
+- 해석(확인 전): ① 최종 목록 = 5-3 의 ☑(엑셀 · CSV 저장과 같은 ☑). ② GL 범위 필터는 측정 결과라 대상 고르기에서 보지 않음(범위를 걸어 둔 채로도 안 잰 ☑ 를 잴 수 있게).
+  ③ 이미 잰 ☐ 줄의 GL 값은 지우지 않음. ④ 원본 HTML(`ccr-7401b37d-bwze1e`)에는 넣지 않음(routine 은 작업 브랜치에만 push — 같은 내용 유지 규칙과 어긋남, 필요하면 소유자 지시로).
+- 시험: `tests/test_defect_view_toggles.py` `test_gl_run_final_list_only`, `test_desktop_ui.mjs`(glTargets = ☑ + 흑백만 · ☑ 없으면 안내). `check_project` Failed files: none,
+  `test_desktop_ui.mjs` 통과(`PYTHONPATH=vendor` 필요 — 없으면 fixture 가 openpyxl 을 못 찾음). 시험이 바꾼 `docs/screenshots` · `CamtekAOI/Logs` 는 되돌림. **Windows 실기 · 실제 Lot 은 확인 못 함.**
+- 릴리스: `__version__` 14.3.16 + `docs/release_notes/v14.3.16.md` → push 하면 `v14.yml` 이 Release 생성.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #84 | 5-3 흑백 GL 측정을 최종 목록(☑)만 | v14.3.16 |
+
 ## 최신 재개 — #83 v14.3.15: Defect 분석 필터 = 실제 값 비교, 목록 = 실제 값 표기 + Zone 필터 (2026-11-19 KST, `version_v14`, 이슈 #83)
 
 - 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.14(`c4891e9`) · 이슈 #83 "v14.3.14 업데이트 사항"(자동 실행 routine 처리, 첨부 없음).

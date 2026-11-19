@@ -944,6 +944,12 @@ try{
   await wz.locator('#c5list').focus();await wz.locator('#c5list').press('Home');await wz.locator('#c5list').press(' ');
   await wz.locator('#c5pickN',{hasText:'☑ 0 / 1개'}).waitFor();await wz.locator('#c5list').press(' ');
   await wz.locator('#c5pickN.on',{hasText:'☑ 1 / 1개'}).waitFor();
+  // #84 흑백 GL 측정 = 최종 목록(☑) 중 흑백 사진이 있는 Defect 만(5-3 목록 전체가 아님)
+  const glT=await wzf.evaluate(async()=>{const cw=window.__cw,C=cw.C5,old=C.base;
+    C.base=[{pick:true,st:'ok'},{pick:false,st:'ok'},{pick:true,st:'color'},{pick:true,st:'gray'},{pick:false,st:'gray'}];const n=cw.glTargets().length;
+    C.base=[{pick:false,st:'ok'}];await cw.glRun();const msg=document.querySelector('#glSt').textContent;C.base=old;document.querySelector('#glSt').textContent='';return {n,msg}});
+  assert.equal(glT.n,2,'GL targets = picked rows with a gray image');
+  assert.match(glT.msg,/최종 목록\(☑\)에 흑백 사진이 있는 Defect 가 없습니다/);
   await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
   await wz.locator('#c5saveCsv').click();await wzf.waitForFunction(()=>typeof window.__flc==='string');
   const finalCsv=join(fixture,'final_list_test.csv');await writeFile(finalCsv,'\ufeff'+await wzf.evaluate(()=>window.__flc),'utf-8');

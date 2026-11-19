@@ -460,7 +460,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
         <label class="glshow" title="사진(5-3 하나씩 · 격자 · 새 창 · 최종 목록 엑셀)에 하늘색 점선 측정 원을 그릴지 정합니다(이 PC 에 기억). GL 값 · 측정에는 영향 없음."><input type="checkbox" id="glShow" checked> 측정 원 보기</label></div>
       <div class="row glrow" title="rev6(소유자): 파일의 Contrast 가 아니라 흑백(Gray) 사진의 실제 픽셀 gray level — Defect 좌표가 가운데인 원 안 픽셀의 0~255 평균. 원 크기는 [측정 원 그리기]로 정합니다.">
         <b>반지름</b> <input type="number" id="glR" min="0.5" max="64" step="0.5"> px <span class="muted" id="glRn"></span>
-        <button id="glSet">측정 원 그리기</button><button class="pri" id="glRun">흑백 GL 측정</button><span class="muted" id="glSt"></span></div>
+        <button id="glSet">측정 원 그리기</button><button class="pri" id="glRun" title="최종 목록(☑)의 Defect 중 흑백 사진이 있는 것만 잽니다(Para #84). ☐ 줄은 재지 않습니다.">흑백 GL 측정 (☑ 만)</button><span class="muted" id="glSt"></span></div>
       <div class="glbar" id="glBar"><canvas id="glHist" width="620" height="46" aria-label="GL 분포"></canvas>
         <div class="glrng"><input type="range" id="glLo" min="0" max="255" step="1" value="0" aria-label="GL 아래 끝"><input type="range" id="glHi" min="0" max="255" step="1" value="255" aria-label="GL 위 끝"></div>
         <div class="row" style="margin-top:2px"><label><b>정렬</b> <select id="glSort"><option value="">5-2 순서</option><option value="gl-d">GL 높은 순</option><option value="gl-a">GL 낮은 순</option></select></label>
@@ -2608,7 +2608,7 @@ async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w)
 
 // ── 5-3: 사진 정밀 조사 ────────────────────────────────────────────────
 const THUMB=new Map();   // 짝 번호 → {c, g(data URL), gl, err} — 설정이 바뀌면 비운다
-const C5={items:[],tok:0,gtok:0,mode:'one',page:0};const G5=48,TW=240;
+const C5={items:[],base:[],tok:0,gtok:0,mode:'one',page:0};const G5=48,TW=240;
 const VC=makeVT($('#c5list'),[['최종',46,'pk',null],['5-1 #',60,'num',null],['상태',150,'s',null],['Lot',120,'',null],['Slot',100,'',null],['ID',60,'num',null],['장비 스캔 분류',130,'',null],['리뷰 결과',130,'',null],['Recipe',120,'',null],['흑백 GL 평균',96,'num','gl'],['Contrast(실제)',110,'num',null],['Area µm²',86,'num',null],['Width',62,'num',null]],{
   sort:()=>GLC.sort,onSort:k=>{GLC.sort=GLC.sort==='gl-d'?'gl-a':'gl-d';c5Refresh()},
   row:k=>{const p=C5.items[k],s=p.s,C=s.cols,i=p.i,px2=S.o.pix*S.o.pix;return [p.pick?'☑':'☐',p.k+1,ST5[p.st],s.lotName,s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),glCell(p),fv(C.c[i]),fv(C.area[i]*px2),fv(C.w[i])]},
@@ -2622,7 +2622,7 @@ const c5StOn=()=>new Set([...document.querySelectorAll('#c5stF [data-st5]')].fil
 function c5StText(on){const k=Object.keys(ST5_LAB).filter(x=>on.has(x));if(k.length===4)return '';if(k.length===3&&!on.has('none'))return ' (사진 있는 것만)';return ` (${k.length?k.map(x=>ST5_LAB[x]).join(' · '):'보기를 하나도 안 켬'})`}
 function c5Refresh(keep){const on=c5StOn(),T=C5.q||[],P=c5Pool().filter(p=>!T.length||qAll(T,b5Text(p))),n={};for(const p of P)n[p.st]=(n[p.st]||0)+1;   // v14.1.8: 5-2 의 ☑ 줄 · 검색
   document.querySelectorAll('#c5stF [data-n5]').forEach(x=>x.textContent=`(${(n[x.dataset.n5]||0).toLocaleString()})`);
-  C5.items=glApply(P.filter(p=>on.has(p.st)));vtSet(VC,C5.items.length,keep);
+  C5.base=P.filter(p=>on.has(p.st));C5.items=glApply(C5.base);vtSet(VC,C5.items.length,keep);   // #84: base = GL 범위 전(흑백 GL 측정 대상 고르기)
   $('#c5cnt').textContent=`Defect ${C5.items.length.toLocaleString()}개${c5StText(on)}${glNote()}${T.length?` · 검색 '${T.join(' ')}'`:''} · 불러온 사진 ${C5.items.filter(p=>THUMB.has(p.k)).length}개`+(C5.note?' · '+C5.note:'');C5.note='';
   $('#c5one').hidden=C5.mode!=='one';$('#c5gridBox').hidden=C5.mode!=='grid';$$('[data-v5]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v5===C5.mode));
   if(C5.mode==='one')c5Show();else c5Grid();if(PW.V===VC)PW.items=C5.items;pickInfo()}
@@ -2869,8 +2869,11 @@ function glHist(H,lo,hi){const cv=$('#glHist'),r=cv.getBoundingClientRect(),W=Ma
   const pad=7,bw=(W-2*pad)/256;let mx=0;for(const v of H)mx=Math.max(mx,v);const cs=getComputedStyle(document.documentElement),acc=cs.getPropertyValue('--acc').trim()||'#3b82f6',mu=cs.getPropertyValue('--line').trim()||'#ccc';
   for(let b=0;b<256;b++){if(!H[b])continue;const h=Math.max(1,Math.round((Hh-6)*Math.sqrt(H[b]/mx)));c.fillStyle=b>=lo&&b<=hi?acc:mu;c.fillRect(pad+b*bw,Hh-h,Math.max(1,bw-.2),h)}
   c.fillStyle='rgba(0,0,0,.08)';c.fillRect(0,0,pad+lo*bw,Hh);c.fillRect(pad+(hi+1)*bw,0,W,Hh)}
-/** [흑백 GL 측정]: 흑백 사진이 있는 Defect(Color·Gray 매칭 완료 · Gray 만) 전부 — 같은 Gray 프레임끼리 묶어 한 번만 읽고, 다음 프레임은 미리 읽음. 이미 잰 것은 건너뜀. */
-async function glRun(){const L=c5Pool().filter(p=>glCan(p)&&!p.glp);if(!L.length){$('#glSt').textContent='새로 잴 Defect 가 없습니다(흑백 사진이 있는 것은 모두 잼).';return}
+/** [흑백 GL 측정]: 사람이 고른 최종 목록(☑)의 Defect 중 흑백 사진이 있는 것(Color·Gray 매칭 완료 · Gray 만)만 — Para #84(소유자 "5-3 리스트 전체를 재면 낭비, 최종 목록만").
+ *  대상 = 5-3 에 보이는 줄(보기 · 검색, GL 범위는 측정 결과라 보지 않음) 중 ☑. 같은 Gray 프레임끼리 묶어 한 번만 읽고, 다음 프레임은 미리 읽음. 이미 잰 것은 건너뜀. */
+const glTargets=()=>(C5.base||[]).filter(p=>p.pick&&glCan(p));
+async function glRun(){const T=glTargets(),L=T.filter(p=>!p.glp);
+  if(!L.length){$('#glSt').textContent=T.length?'새로 잴 Defect 가 없습니다(최종 목록 ☑ 의 흑백 사진은 모두 잼).':'최종 목록(☑)에 흑백 사진이 있는 Defect 가 없습니다. 목록에서 잴 Defect 를 ☑ 로 고르십시오(Space).';return}
   const G=new Map();for(const p of L){const r=p.r||cgOf(p.s,p.i);if(!r.hit){p.glErr='흑백 위치 없음: '+(r.why||'');continue}const k=p.s.id+'|'+lower(cleanName(r.hit.frame.file));let g=G.get(k);if(!g)G.set(k,g={s:p.s,file:r.hit.frame.file,ps:[]});g.ps.push({p,hit:r.hit})}
   const F=[...G.values()],total=L.length,t0=performance.now(),STEPS=['① Gray 프레임 읽기 · 디코딩(같은 프레임은 한 번)','② 원 안 픽셀 평균(반지름 0.5 px 단계마다 기억)'];
   BIG.stop=false;let done=0,bad=0,cur='';const cancel=()=>{BIG.stop=true};
@@ -2882,7 +2885,7 @@ async function glRun(){const L=c5Pool().filter(p=>glCan(p)&&!p.glp);if(!L.length
       for(const {p,hit} of f.ps){if(b){p.glp=glProfile(b,hit);p.glv=glMean(p);p.glErr=null}else{p.glErr='흑백 사진 못 읽음: '+cleanName(f.file);bad++}done++}
       pr();if(j%8===7)await nextPaint()}}
   finally{busy(null)}
-  $('#glSt').textContent=`${BIG.stop?'중지 — ':''}측정 ${done.toLocaleString()}/${total.toLocaleString()}개 · 못 잰 것 ${bad} · ${((performance.now()-t0)/1000).toFixed(1)}초`;
+  $('#glSt').textContent=`${BIG.stop?'중지 — ':''}최종 목록 ☑ 측정 ${done.toLocaleString()}/${total.toLocaleString()}개 · 못 잰 것 ${bad} · ${((performance.now()-t0)/1000).toFixed(1)}초`;
   if(!GLC.sort)GLC.sort='gl-d';c5Refresh(true)}
 // ── 측정 원 그리기 창(소유자 "PPT 도형 그리기처럼 — 가: Defect 가운데에서 바깥으로 끌기"): 원본 픽셀을 각지게 크게, 원 안 픽셀을 칠함, 지금 Defect 의 평균 · 픽셀 수를 바로 보여 줌
 const GLD={p:null,b:null,hit:null,prof:null,r:5.5,z:8,drag:false,list:[],i:0,tok:0};
@@ -3012,7 +3015,7 @@ if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대�
   if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
   else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

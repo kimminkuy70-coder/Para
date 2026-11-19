@@ -55,6 +55,8 @@
 - **v14.3.15(#83, 2026-11-19)**: Defect 분석 필터(Contrast · Area · Width · Length) = **실제 값 그대로 비교**(`inR` 의 반올림 삭제, `exv` = 12 유효숫자로 계산 잡음만 정리),
   목록 · 정보 · CSV · 엑셀의 네 값 = `fv`(반올림 안 한 실제 값 — `f1`/`f2` 쓰지 말 것, `tests/test_exact_filter.py`). 좌표 · Box · GL 은 종전 자릿수.
   **Zone 고르기**(소유자 세션 지시, 같은 판): 필터 줄 [Zone](`fltZnHtml` · `f.zn`, 글 = `zoneLbl` = 번호 + Zones.ini 이름), 기본 탭 `znOptions`, 5-1 `#bigFltZn` · `bigZnFill`(facet 개수).
+- **v14.3.16(#84, 2026-11-19)**: 5-3 **[흑백 GL 측정] = 최종 목록(☑) 중 흑백 사진이 있는 Defect 만**(`glTargets` = `C5.base`(보기 · 검색, GL 범위 전) 중 `p.pick` && `glCan`, 종전 = `c5Pool()` 전체).
+  ☐ 줄은 재지 않음, 단추 글 '흑백 GL 측정 (☑ 만)'. 시험 `test_defect_view_toggles.py` `test_gl_run_final_list_only` + `test_desktop_ui.mjs`.
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

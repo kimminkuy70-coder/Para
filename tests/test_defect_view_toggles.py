@@ -79,6 +79,15 @@ class DefectViewToggles(unittest.TestCase):
         # 격자 작은 사진은 원 있는 것 · 없는 것 둘 다 준비(켜고 끌 때 사진을 다시 읽지 않음)
         self.assertIn("t={c,g,g0,gl,err}", self.t)
 
+    def test_gl_run_final_list_only(self):
+        # Para #84: [흑백 GL 측정] = 최종 목록(☑) 중 흑백 사진이 있는 Defect 만(종전 = 5-3 목록 전체 c5Pool)
+        self.assertIn("const glTargets=()=>(C5.base||[]).filter(p=>p.pick&&glCan(p));", self.t)
+        i = self.t.index("async function glRun(")
+        body = self.t[i:self.t.index("\n", self.t.index("const G=new Map()", i))]
+        self.assertIn("glTargets()", body)
+        self.assertNotIn("c5Pool()", body)
+        self.assertIn("C5.base=P.filter(p=>on.has(p.st));C5.items=glApply(C5.base);", self.t)
+
     def test_photo_window_red_box(self):
         i = self.t.index("function photoWinInit(")
         init = self.t[i:self.t.index("\nfunction photoWinFollow", i)]
