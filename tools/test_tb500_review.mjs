@@ -168,8 +168,12 @@ const rows=(await page.locator('#tbody tr').allInnerTexts()).map(t=>t.replace(/[
 const find=n=>rows.find(r=>r.includes(n+'\t')||r.includes(n+' 재리뷰\t')||r.includes(n+' 재스캔\t')||r.includes(n+' Skip\t'))||'';
 assert.ok(rows.every(r=>!/조사하지 않음/.test(r)),'조사하지 않음 문구 없음');
 assert.match(find('1-1. RDL4_재리뷰'),/RDL4\t6305 AOI 6412 2D\/RE\t재리뷰 결과 맵\(\.txt\) 2개\t\t\t경로 복사$/);
-assert.match(find('1. RDL4'),/^1\. RDL4\tRDL4\t[\s\S]*\t재리뷰 완료\t\t\t경로 복사/);
-assert.match(find('1. RDL4_재스캔 (#24,25)'),/재스캔\tRDL4[\s\S]*재리뷰 완료\t\t\t/);
+// Para #85: 재리뷰 완료 Layer 의 기본 · 재스캔 폴더도 장비 · 스캔 호기를 보인다. 재리뷰 결과 폴더는 같은 Layer 라 겹치므로 빈칸.
+assert.match(find('1. RDL4'),/^1\. RDL4\tRDL4\t[\s\S]*\t재리뷰 완료\tCamtek\t캐시에 없음\t경로 복사/);
+assert.match(find('1. RDL4_재스캔 (#24,25)'),/재스캔\tRDL4[\s\S]*재리뷰 완료\t모름\t캐시에 없음\t/);
+assert.match(find('2. PIDS3'),/^2\. PIDS3\tPIDS3\t[\s\S]*\t재리뷰 완료\tCamtek\t한 번에 완료[\s\S]*AOI-22 · 2026-10-15 08:00:00 정상 Pass 25 Lot History\t경로 복사$/);
+assert.match(find('3. RDL3 (#23X)'),/재리뷰 완료\tCamtek\t[\s\S]*AOI-21 · 2026-10-18 13:00:00[\s\S]*Lot History/);
+for(const n of ['1-1. RDL4_재리뷰','2. PIDS3_재리뷰','3-1. RDL3_재리뷰'])assert.match(find(n),/재리뷰 결과 맵\(\.txt\) \d개\t\t\t경로 복사$/,n+' = 호기 빈칸');
 assert.match(find('2. PIDS3_재리뷰'),/맵\(\.txt\) 1개/);
 assert.match(find('4. PIDS5_Skip (RDL3 재리뷰 결과 나오면 맵만 수정해 주세요)'),/PIDS5[\s\S]*\tSkip\t\t\t/);
 assert.match(find('5. RDL2'),/재리뷰 필요\tKLA\t여러 호기 2대[\s\S]*AOI-K6 · 2026-11-05 10:00[\s\S]*AOI-K2 · 2026-11-04 07:30[\s\S]*Lot History/);

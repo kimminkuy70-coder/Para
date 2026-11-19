@@ -181,7 +181,7 @@ const now=()=>T&&T.now?new Date(T.now):new Date();
 function setMsg(s){$('#msg').textContent=s;const m2=$('#msg2');if(m2)m2.textContent=s}function setBar(n){const w=Math.max(0,Math.min(100,n))+'%';$('#bar').style.width=w;$('#bar2').style.width=w}
 /* ---------- 오류 진단(Para #76 후속): 어떤 작업 · 단계 · 폴더 · 파일에서 어떤 오류가 났는지 남기고 복사하게 한다 ----------
    기록은 이 브라우저의 localStorage 에 최근 30개만 둔다(HTML 을 다시 열어도 복사 가능). 밖으로 보내지 않는다. */
-const HTML_BUILD='2026-11-17 (Para #77: 읽기 판정 · 파일 직접 고르기)';
+const HTML_BUILD='2026-11-19 (Para #85: 재리뷰 완료 Layer 도 스캔 호기 표시)';
 const ctx={action:'',step:'',folder:'',file:'',fileInfo:'',lot:'',attempt:0};
 function begin(action){Object.assign(ctx,{action,step:'',folder:'',file:'',fileInfo:'',lot:'',attempt:0})}
 function step(s,o){ctx.step=s;if(o)Object.assign(ctx,o)}
@@ -440,6 +440,8 @@ async function loadIndex(){
  indexCache=out;return out}
 const parseLots=()=>[...new Set($('#lots').value.split(/[\n\r\t,;]+/).map(x=>x.trim()).filter(Boolean))];
 function stageOf(text){let best=null,pos=1e9;for(const s of STAGES)for(const re of s.keys){const m=re.exec(text);if(m&&m.index<pos){pos=m.index;best=s}}return best}
+// 장비 · 스캔 호기를 보이는 줄(Para #85): 재리뷰 필요 · 재리뷰 완료 Layer 의 기본 · 재스캔 폴더. 재리뷰 결과 폴더(rereview)는 같은 Layer 라 호기가 겹치므로 빼고, Skip 도 뺀다.
+const SCAN_SHOWN=st=>st==='need'||st==='done';
 const isStar=name=>/^\s*★/.test(name);
 function kindOf(name){const head=name.split('(')[0];if(/재리뷰/.test(head))return 'rereview';if(/skip/i.test(head))return 'skip';if(/재스캔/.test(head))return 'rescan';return 'base'}
 function classifyImage(fileName){const base=String(fileName||'').replace(/\.[^.]+$/,'').trim();if(/^TB500_/i.test(base)||/\s-\sMulti_/i.test(base))return 'Camtek';if(/^[A-Z0-9]+(?:_\d+){4,}$/i.test(base))return 'KLA';return 'Unknown'}
@@ -474,7 +476,7 @@ async function lookLot(lot,idx){
    if(s.kind==='rereview'){step('재리뷰 맵(.txt) 세기');R.status='rereview';R.txt=await countTxt(s.h)}
    else if(s.kind==='skip')R.status='skip';
    else{R.status=layerStatus.get(s.stage.key);
-    if(R.status==='need'){step('장비 판정(이미지 이름 보기)');R.equipment=await equipmentOf([[s.name,s.h]]);step('캐시에서 호기 찾기');
+    if(SCAN_SHOWN(R.status)){step('장비 판정(이미지 이름 보기)');R.equipment=await equipmentOf([[s.name,s.h]]);step('캐시에서 호기 찾기');
      if(R.equipment!=='KLA')R.camtek=camtekHits(idx,sm,s.stage);if(R.equipment!=='Camtek')R.kla=klaHits(idx,lot,s.stage)}}}
   out.push(R)}
  const layers=STAGES.filter(st=>layerStatus.has(st.key)).map(st=>({stage:st,status:layerStatus.get(st.key)}));
@@ -506,7 +508,7 @@ const layerColor=k=>{const i=STAGES.findIndex(s=>s.key===k);return i<0?'#64748b'
 function machColors(list){const m=new Map;[...new Set(list)].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true})).forEach((x,i)=>m.set(x,MPAL[i%MPAL.length]));return m}
 const hitsOf=S=>S.camtek.map(h=>({vendor:'Camtek',machine:h.machine,at:h.at,sm:h.sm,layer:S.stage.key,src:h.file,br:h.br,scan:scanOf(h.cells,h.wafers)})).concat(S.kla.map(h=>({vendor:'KLA',machine:h.machine,at:h.at}))).sort((a,b)=>a.at<b.at?1:-1);
 function hitsHtml(r,S,ri,si){
- if(S.status!=='need')return '';
+ if(!SCAN_SHOWN(S.status))return '';
  const all=hitsOf(S);if(!all.length)return '<span class="muted small">캐시에 없음</span>';
  const ms=new Set(all.map(h=>h.machine));
  const vg=verdictGroups(all.filter(h=>h.vendor==='Camtek'));
@@ -528,7 +530,7 @@ function render(){
     '<td class="left sname">'+esc(S.name)+(KIND[S.kind]&&st?' <span class="kind k-'+S.kind+'">'+KIND[S.kind]+'</span>':'')+'</td>'+
     '<td class="layername">'+(st?esc(st.key):'')+'</td>'+
     '<td>'+(st?'<span class="process aoi">'+st.aoi+' '+st.aoiName+'</span><span class="process review">'+st.rev+' '+st.revName+'</span>':'')+'</td>'+
-    '<td>'+statusHtml(S)+'</td><td>'+(S.status==='need'?equipBadge(S.equipment):'')+'</td><td class="left">'+hitsHtml(r,S,ri,si)+'</td>'+
+    '<td>'+statusHtml(S)+'</td><td>'+(SCAN_SHOWN(S.status)?equipBadge(S.equipment):'')+'</td><td class="left">'+hitsHtml(r,S,ri,si)+'</td>'+
     '<td>'+(S.star?'':'<button class="copy" data-copy="'+esc(path)+'" title="'+esc(path)+'">경로 복사</button>')+'</td></tr>')})});
  const lay=results.flatMap(r=>r.layers);
  $('#summary').textContent='Lot '+results.length+'개 · 못 찾은 Lot '+results.filter(r=>r.missing).length+'개 · Layer '+lay.length+'개(재리뷰 완료 '+lay.filter(l=>l.status==='done').length+' · 재리뷰 필요 '+lay.filter(l=>l.status==='need').length+' · Skip '+lay.filter(l=>l.status==='skip').length+')';
