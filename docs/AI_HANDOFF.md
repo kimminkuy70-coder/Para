@@ -1,6 +1,6 @@
 # AI 공통 인수인계
 
-## 최신 재개 — #83 v14.3.15: Defect 분석 필터 = 실제 값 비교, 목록 = 실제 값 표기 (2026-11-19 KST, `version_v14`, 이슈 #83)
+## 최신 재개 — #83 v14.3.15: Defect 분석 필터 = 실제 값 비교, 목록 = 실제 값 표기 + Zone 필터 (2026-11-19 KST, `version_v14`, 이슈 #83)
 
 - 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.14(`c4891e9`) · 이슈 #83 "v14.3.14 업데이트 사항"(자동 실행 routine 처리, 첨부 없음).
 - 요청: "defect 분석에서 각 필터 값이 명확하게 적용되게 — 리스트에 써있는 것도 그렇고 6.4749 와 같은 소수점 셋째 자리까지는 정확하게 필터링. 리스트에 작성되는 것도 반올림하지 말고 실제 값으로 표기".
@@ -13,11 +13,19 @@
 - 시험: 새 `tests/test_exact_filter.py`(6.4749 경계 · 셋째 자리 Width/Length · 잡음 · 반올림 함수 안 남음), `test_recipe_count_filter.py` 스텁 + 검색어 '30',
   `test_defect_view_toggles.py`(5-2 검색 글 = fv), `test_desktop_ui.mjs` 5-1 숫자 검색 '45'. `check_project` Failed files: none, `test_desktop_ui.mjs` 통과(첫 실행은 바뀐 검색어 기대값 때문에 실패 → 고친 뒤 통과).
   시험이 바꾼 `docs/screenshots` · `CamtekAOI/Logs` 는 되돌림. **Windows 실기 · 실제 Lot 은 확인 못 함.**
+- **소유자 추가 지시(같은 세션, 릴리스 전)**: "프로그램 업데이트 전 추가로 zone 별로 볼 수 있게 필터링 기능 추가해" → 첫 push(`d7162bb`)의 v14.yml 실행(44444620941)을 **Release 만들기 전에 취소**하고
+  Zone 필터를 같은 v14.3.15 에 넣음(릴리스 노트에 한 줄 추가).
+  한 일: `fltZnHtml` · `zoneLbl(z, s)`(글 = Surface.flt zone 번호 + 그 Slot Zones.ini [ALGName] 이름, 리뷰PC 정보의 Zone 과 같음, 없으면 '-') · `readFlt` 의 `f.zn`,
+  기본 탭 Step 3 · 4 필터 줄 = Recipe 옆 [Zone](`znOptions` — 필터 전 목록의 Zone + 개수), 5-1 = 'Zone' 줄(`#bigFltZn`, `bigZnFill(V.zn)`),
+  `bigBuild` 개수 = facet(Recipe 개수는 Zone 필터를 따르고 Zone 개수는 Recipe 필터를 따름, Lot 제외 · 분류 칸도 Zone 을 따름). 5-2 · 5-3 은 5-1 결과를 이어받음.
+  해석(확인 전): ① Zone 은 하나만 고름(Recipe 칸과 같은 방식 — 여러 개 고르기는 요청 없음). ② Zone 번호가 같아도 Slot 마다 Zones.ini 이름이 다르면 다른 칸.
+  시험: `test_recipe_count_filter.py` `test_zone_filter`, `test_defect_view_toggles.py`(필터 줄 · fltHtml), `test_desktop_ui.mjs`(5-1 Zone 줄 · 고르기 → 목록 줄어듦 → 비우면 전체). `check_project` Failed files: none, UI 시험 통과.
 - 릴리스: `__version__` 14.3.15 + `docs/release_notes/v14.3.15.md` → push 하면 `v14.yml` 이 Release 생성.
 
 | 이슈 | 요청 | 결과 |
 |---|---|---|
 | #83 | 필터 소수 셋째 자리까지 정확히, 목록 실제 값 표기 | v14.3.15 |
+| #83 후속(세션) | 릴리스 전 Zone 별 필터 추가 | v14.3.15 에 같이 |
 
 ## 최신 재개 — v14.3.14: wafer map = Defect 점이 찍힌 Die 만 다른 색 (2026-11-19 KST, `version_v14`)
 

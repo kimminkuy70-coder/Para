@@ -17,6 +17,7 @@ const FLT_KEYS=[['c'],['a'],['w'],['l']];
 const LS={def:true};const lower=s=>s.toLowerCase();const f1=v=>v==null||!isFinite(v)?'':(+v).toFixed(1),f2=v=>v==null||!isFinite(v)?'':(+v).toFixed(2);const exv=v=>+(+v).toPrecision(12),fv=v=>v==null||v===''||!isFinite(v)?'':String(exv(v));const dieOf=()=>null,mapDie=()=>null;   // v14.3.12: 5-1 검색 글에 웨이퍼 맵 번호(여기서는 Die 없음)
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
 const esc=s=>String(s);
+const withName=(v,n)=>v==null||v!==v?'-':n?`${v} (${n})`:String(v);
 const S={};const opts=()=>({pix:1,coord:'wafer'});
 const clsFirst=(s,i)=>s.k1[i],clsName=(s,i)=>s.k2[i];
 const EL={};
@@ -28,15 +29,16 @@ EL.lot=mkSel('');EL.slot=mkSel('');
 const box=()=>({innerHTML:'',textContent:'',classList:{toggle(){}}});EL.lotOff=box();EL.cls=box();EL.lotSum=box();EL.lotBox=box();
 const baseName=p=>p.split('/').pop();
 const $=q=>q==='#bigLotOff'?EL.lotOff:q==='#bigCls'?EL.cls:q==='#bigLotSum'?EL.lotSum:q==='#bigLotBox'?EL.lotBox:q==='#bigFlt'?flt:q==='#bigFlt [data-f="rcp"]'?EL.rcp:q==='#bigLot'?EL.lot:q==='#bigSlot'?EL.slot:null;
-const mkScan=(lot,slot,rec,k1,c,rv)=>({lotPath:lot,slot,slotName:slot,errors:[],rv,k1,k2:k1,
+const mkScan=(lot,slot,rec,k1,c,rv,zn)=>({lotPath:lot,slot,slotName:slot,errors:[],rv,k1,k2:k1,
   cols:{n:rec.length,rec:Uint8Array.from(rec),c:Float64Array.from(c),area:new Float64Array(rec.length).fill(1),w:new Float64Array(rec.length).fill(1),l:new Float64Array(rec.length).fill(1),
-    x:new Float64Array(rec.length),y:new Float64Array(rec.length),bw:new Float64Array(rec.length),bh:new Float64Array(rec.length),ax:new Float64Array(rec.length),ay:new Float64Array(rec.length),id:new Int32Array(rec.length)}});
-const scans=[mkScan('/L1','S1',[0,0,1],['A','B','A'],[10,20,30],{recipe:'PI'}),mkScan('/L2','S2',[0,1,1,2],['A','A','B','A'],[10,20,30,40],{recipe:'PI'})];
+    zn:Uint8Array.from(zn),x:new Float64Array(rec.length),y:new Float64Array(rec.length),bw:new Float64Array(rec.length),bh:new Float64Array(rec.length),ax:new Float64Array(rec.length),ay:new Float64Array(rec.length),id:new Int32Array(rec.length)}});
+const ZN=new Map([[1,'Bump'],[2,'Pad']]);
+const scans=[mkScan('/L1','S1',[0,0,1],['A','B','A'],[10,20,30],{recipe:'PI',zones:ZN},[1,1,2]),mkScan('/L2','S2',[0,1,1,2],['A','A','B','A'],[10,20,30,40],{recipe:'PI',zones:ZN},[1,2,2,2])];
 const BIG={scans,sort:'',clsOff1:new Set(),clsOff2:new Set(),lotOff:new Set()};
 const bigSources=()=>BIG.scans;
 BIG.facet={lots:['/L1','/L2'],lotName:new Map([['/L1','L1'],['/L2','L2']]),c1:['A','B'],c2:['A','B']};
 const ob=m=>Object.fromEntries([...m].sort());
-const run=()=>{const V=bigBuild();bigRcpFill(V.rc);bigFacetFill(V);return {m:V.m,np:V.np,rc:ob(V.rc),opts:EL.rcp.innerHTML,lot:ob(V.nLot),c1:ob(V.n1),c2:ob(V.n2),lotHtml:EL.lotOff.innerHTML,clsHtml:EL.cls.innerHTML}};
+const run=()=>{const V=bigBuild();bigRcpFill(V.rc);bigFacetFill(V);return {m:V.m,np:V.np,rc:ob(V.rc),opts:EL.rcp.innerHTML,lot:ob(V.nLot),zn:ob(V.zn),c1:ob(V.n1),c2:ob(V.n2),lotHtml:EL.lotOff.innerHTML,clsHtml:EL.cls.innerHTML}};
 const out={};
 out.all=run();
 EL.lot.value='/L1';out.lot=run();EL.lot.value='';
@@ -46,6 +48,7 @@ BIG.clsOff1.add('B');out.cls=run();BIG.clsOff1.clear();
 flt.vals.c0='25';out.contrast=run();flt.vals.c0='';
 BIG.q=['l1'];out.q=run();BIG.q=['30'];out.qnum=run();BIG.q=['l2','30'];out.q2=run();BIG.q=['zzz'];out.q0=run();BIG.q=[];
 scans[1].pk[0]=0;out.pk=run();scans[1].pk[0]=1;
+flt.vals.zn='2 (Pad)';out.zone=run();flt.vals.zn='';EL.rcp.value='1';out.rcpZn=run();EL.rcp.value='';
 EL.rcp.value='1';EL.lot.value='/L1';out.rcpLot=run();
 EL.rcp.value='2';out.keep=run();
 console.log(JSON.stringify(out));
@@ -112,6 +115,18 @@ class RecipeCountFollowsFilter(unittest.TestCase):
                 self.assertNotIn("재분류", h)
                 self.assertEqual(h.count('class="chipgrid"'), 2)
                 self.assertIn('class="chipgrid"', o["all"]["lotHtml"])
+
+    def test_zone_filter(self):
+        """#83 후속: 5-1 Zone 고르기 — 글 = 번호 (Zones.ini 이름), 개수 = Zone 을 뺀 다른 필터 기준, Recipe 개수는 Zone 필터를 따름."""
+        for html in HTMLS:
+            with self.subTest(html=html.parent.parent.name):
+                o = self.run_js(html)
+                self.assertEqual(o["all"]["zn"], {"1 (Bump)": 3, "2 (Pad)": 4})
+                self.assertEqual(o["zone"]["m"], 4)
+                self.assertEqual(o["zone"]["rc"], {"1": 3, "2": 1})                 # Recipe 개수 = Zone 필터를 따름
+                self.assertEqual(o["zone"]["zn"], {"1 (Bump)": 3, "2 (Pad)": 4})    # Zone 칸 자신은 그대로
+                self.assertEqual(o["zone"]["lot"], {"/L1": 1, "/L2": 3})
+                self.assertEqual(o["rcpZn"]["zn"], {"2 (Pad)": 3})                  # Recipe 1 을 고르면 Zone 개수가 따름
 
     def test_search_and_pick(self):
         """v14.1.8: 검색 = 필터와 같이(개수 칸에도 반영) — 글 칸(Lot · Slot …)과 숫자 열(Contrast 등), 여러 단어 = 모두. ☑ 수 = np."""

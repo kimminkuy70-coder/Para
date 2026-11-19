@@ -54,6 +54,7 @@
   (Defect 과다로 중간에 멈춘 리뷰 전 Slot 에서 reclassify 가 판정이 아니었다 — Color+Gray 쌍 Defect 와 Gray 만 있는 Defect 가 섞임).
 - **v14.3.15(#83, 2026-11-19)**: Defect 분석 필터(Contrast · Area · Width · Length) = **실제 값 그대로 비교**(`inR` 의 반올림 삭제, `exv` = 12 유효숫자로 계산 잡음만 정리),
   목록 · 정보 · CSV · 엑셀의 네 값 = `fv`(반올림 안 한 실제 값 — `f1`/`f2` 쓰지 말 것, `tests/test_exact_filter.py`). 좌표 · Box · GL 은 종전 자릿수.
+  **Zone 고르기**(소유자 세션 지시, 같은 판): 필터 줄 [Zone](`fltZnHtml` · `f.zn`, 글 = `zoneLbl` = 번호 + Zones.ini 이름), 기본 탭 `znOptions`, 5-1 `#bigFltZn` · `bigZnFill`(facet 개수).
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

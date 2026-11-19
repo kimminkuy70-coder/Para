@@ -411,6 +411,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
       <div id="bigCls" aria-label="분류 필터(장비 스캔 분류 · 리뷰 결과)"></div>
       <div class="frow"><span class="fh">값 범위</span><div class="fb frng" id="bigFltIn"></div></div>
       <div class="frow"><span class="fh">Recipe</span><div class="fb" id="bigFltRcp"></div></div>
+      <div class="frow"><span class="fh">Zone</span><div class="fb" id="bigFltZn"></div></div>
       <div class="frow"><span class="fh">정렬</span><div class="fb" id="bigFltSort"></div></div>
       <div class="fact"><span id="bigFltClr"></span><button id="bigCsv">목록 CSV</button></div></div>
     <div class="muted" id="bigCnt"></div>
@@ -1457,17 +1458,22 @@ const FLT_KEYS=[['c','Contrast(실제)',''],['a','Area','µm²'],['w','Width',''
 const SORTS=[['','기본 순서'],['c-d','Contrast(실제) 큰 순'],['c-a','Contrast(실제) 작은 순'],['a-d','Area 큰 순'],['a-a','Area 작은 순'],['w-d','Width 큰 순'],['w-a','Width 작은 순'],['l-d','Length 큰 순'],['l-a','Length 작은 순'],['r-a','Recipe 순'],['r-d','Recipe 이름 역순']];
 const fltRngHtml=()=>FLT_KEYS.map(([k,t,u])=>`<label class="rng"><b>${t}</b> <input type="number" step="any" data-f="${k}0" placeholder="최소" aria-label="${t} 최소"> ~ <input type="number" step="any" data-f="${k}1" placeholder="최대" aria-label="${t} 최대">${u?' '+u:''}</label>`).join('');
 const fltRcpHtml=(b=true)=>`<label>${b?'<b>Recipe</b> ':''}<select data-f="rcp" aria-label="Recipe"><option value="">전체</option></select></label>`;
+/** Zone 고르기(#83 후속): 값 = Surface.flt zone 번호 + Zones.ini 이름('3 (Bump)'), 리뷰PC 정보의 Zone 과 같은 글. */
+const fltZnHtml=(b=true)=>`<label>${b?'<b>Zone</b> ':''}<select data-f="zn" aria-label="Zone"><option value="">전체</option></select></label>`;
 const fltSortHtml=(b=true)=>`<label>${b?'<b>정렬</b> ':''}<select data-f="sort" aria-label="정렬">${SORTS.map(([v,n])=>`<option value="${v}">${n}</option>`).join('')}</select></label>`;
 const fltClrHtml=()=>'<button data-f="clear">필터 지우기</button>';
-function fltHtml(){return fltRngHtml()+fltRcpHtml()+fltSortHtml()+fltClrHtml()}
+function fltHtml(){return fltRngHtml()+fltRcpHtml()+fltZnHtml()+fltSortHtml()+fltClrHtml()}
 function readFlt(box){const v=k=>{const el=box.querySelector(`[data-f="${k}"]`),t=el?el.value.trim():'';return t===''||!isFinite(+t)?null:+t},f={sort:box.querySelector('[data-f="sort"]').value,on:false};
   for(const [k] of FLT_KEYS){f[k+'0']=v(k+'0');f[k+'1']=v(k+'1');if(f[k+'0']!=null||f[k+'1']!=null)f.on=true}
-  const rc=box.querySelector('[data-f="rcp"]');f.rcp=rc?rc.value:'';if(f.rcp)f.on=true;return f}
+  const rc=box.querySelector('[data-f="rcp"]');f.rcp=rc?rc.value:'';if(f.rcp)f.on=true;
+  const zn=box.querySelector('[data-f="zn"]');f.zn=zn?zn.value:'';if(f.zn)f.on=true;return f}
 const inR=(v,lo,hi)=>{if(lo==null&&hi==null)return true;v=exv(v);return (lo==null||v>=lo)&&(hi==null||v<=hi)};   // 값이 없으면(NaN) 범위를 건 필터에서 빠진다
 const fltPass=(f,c,a,w,l)=>inR(c,f.c0,f.c1)&&inR(a,f.a0,f.a1)&&inR(w,f.w0,f.w1)&&inR(l,f.l0,f.l1);
+/** Zone 글(#83 후속) = 번호 + 그 Slot Zones.ini 이름. 번호가 없으면 '-'. */
+const zoneLbl=(z,s)=>{const r=s&&s.rv,n=r&&r.zones&&z!=null?r.zones.get(z):null;return withName(z,n)};
 /** 필터 줄 입력 → fn(0.2초 모아서). [필터 지우기] = 범위만 비운다(정렬은 그대로). */
 function fltBind(box,fn){let t=0;const run=()=>{clearTimeout(t);t=setTimeout(fn,200)};box.addEventListener('input',run);box.addEventListener('change',run);
-  box.addEventListener('click',e=>{if(e.target.dataset.f!=='clear')return;box.querySelectorAll('input[data-f],select[data-f="rcp"]').forEach(el=>el.value='');clearTimeout(t);fn()})}
+  box.addEventListener('click',e=>{if(e.target.dataset.f!=='clear')return;box.querySelectorAll('input[data-f],select[data-f="rcp"],select[data-f="zn"]').forEach(el=>el.value='');clearTimeout(t);fn()})}
 const RH=30,PANELS={};let blinkOn=true;
 /** Step 3 새 창 왼쪽 = 벤다이어그램(클릭 = 영역 더하기/빼기, 빈 곳 = 고른 집합 전체). */
 function mountVennSide(P,box){const doc=box.ownerDocument;box.innerHTML='<div class="cap">벤다이어그램 · 영역 클릭 = 더하기 · 다시 클릭 = 빼기 · 빈 곳 = 고른 집합 전체</div><canvas aria-label="벤다이어그램" style="cursor:pointer"></canvas>';
@@ -1518,16 +1524,20 @@ function setPanel(P,items,bg,cnt,keep){P.raw=items;P.rawBg=bg;P.cntBase=cnt;appl
 function rcpOptions(P){const sel=P.el('Flt').querySelector('[data-f="rcp"]');if(!sel)return;const n=new Map();for(const it of P.raw){const k=rcpName(it.d);n.set(k,(n.get(k)||0)+1)}
   const v=sel.value,ks=[...n.keys()].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));if(v&&!n.has(v))ks.push(v);
   sel.innerHTML='<option value="">전체</option>'+ks.map(k=>`<option value="${esc(k)}">${esc(k)} (${n.get(k)||0})</option>`).join('');sel.value=v}
+/** #83 후속: Zone 고르기 칸 = 지금 목록(필터 전)의 Zone + 개수(Recipe 칸과 같은 방식). */
+function znOptions(P){const sel=P.el('Flt').querySelector('[data-f="zn"]');if(!sel)return;const n=new Map();for(const it of P.raw){const k=zoneLbl(it.d.zone,it.d.scan);n.set(k,(n.get(k)||0)+1)}
+  const v=sel.value,ks=[...n.keys()].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));if(v&&!n.has(v))ks.push(v);
+  sel.innerHTML='<option value="">전체</option>'+ks.map(k=>`<option value="${esc(k)}">${esc(k)} (${n.get(k)||0})</option>`).join('');sel.value=v}
 function applyPanel(P,keep){
-  rcpOptions(P);
+  rcpOptions(P);znOptions(P);
   const f=readFlt(P.el('Flt')),px2=S.o?S.o.pix*S.o.pix:1,cur=keep?P.items[P.sel]:null,T=P.q||[];let items=P.raw,bg=P.rawBg;
-  if(f.on||T.length){const out=[];items=[];for(const it of P.raw)((!f.on||fltPass(f,it.d.Contrast,it.d.area*px2,it.d.BlobBreadth,it.d.BlobLength)&&(!f.rcp||rcpName(it.d)===f.rcp))&&(!T.length||qAll(T,panelText(it)))?items:out).push(it);
+  if(f.on||T.length){const out=[];items=[];for(const it of P.raw)((!f.on||fltPass(f,it.d.Contrast,it.d.area*px2,it.d.BlobBreadth,it.d.BlobLength)&&(!f.rcp||rcpName(it.d)===f.rcp)&&(!f.zn||zoneLbl(it.d.zone,it.d.scan)===f.zn))&&(!T.length||qAll(T,panelText(it)))?items:out).push(it);
     bg=bg.concat(out.map(it=>({X:it.X,Y:it.Y,c:'#9aa3b2',r:2.4,ring:true,q:it})))}
   if(f.sort&&f.sort[0]==='r'){const sg=f.sort==='r-d'?-1:1;items=items.map((it,i)=>[rcpName(it.d),i,it]).sort((a,b)=>sg*a[0].localeCompare(b[0],'ko',{numeric:true})||a[1]-b[1]).map(x=>x[2])}
   else if(f.sort){const [sk,sd]=f.sort.split('-'),sg=sd==='d'?-1:1,bad=sd==='d'?-Infinity:Infinity,val=it=>{const d=it.d,v=sk==='c'?d.Contrast:sk==='a'?d.area:sk==='w'?d.BlobBreadth:d.BlobLength;return v===v&&v!=null?v:bad};
     items=items.map((it,i)=>[val(it),i,it]).sort((a,b)=>sg*(a[0]-b[0])||a[1]-b[1]).map(x=>x[2])}
   P.items=items;P.bg=bg;const k=cur?items.indexOf(cur):-1;P.sel=k>=0?k:0;
-  const cnt=P.cntBase+(f.on||T.length?` · ${f.on?'필터':''}${f.on&&T.length?' · ':''}${T.length?`검색 '${T.join(' ')}'`:''}에 맞는 것 ${items.length} / ${P.raw.length}개${f.rcp?` (Recipe ${f.rcp})`:''}`:'')+(f.sort?` · 정렬: ${SORTS.find(x=>x[0]===f.sort)[1]}`:'');
+  const cnt=P.cntBase+(f.on||T.length?` · ${f.on?'필터':''}${f.on&&T.length?' · ':''}${T.length?`검색 '${T.join(' ')}'`:''}에 맞는 것 ${items.length} / ${P.raw.length}개${f.rcp?` (Recipe ${f.rcp})`:''}${f.zn?` (Zone ${f.zn})`:''}`:'')+(f.sort?` · 정렬: ${SORTS.find(x=>x[0]===f.sort)[1]}`:'');
   P.el('Cnt').textContent=cnt;const L=P.el('List');L.innerHTML=`<div style="height:${items.length*RH}px"></div>`;if(k<0)L.scrollTop=0;
   P.ls.set(items.reduce((a,it)=>a+(pOn(P,it)?1:0),0),items.length);paintPanelList(P);showPanel(P)}
 /** v14.1.8 Step 3 · 4 ☑(처음 = [처음엔 모두 ☑]): ☐ = 목록에서 흐리게 · 지도에 회색 원 · ↑↓ 로 건너뜀 · CSV 에서 뺌. 기억 = Defect 마다(필터 · 검색 · 영역을 바꿔도). */
@@ -2218,6 +2228,10 @@ function bigFacetFill(V){const F=BIG.facet;if(!F)return;const off=BIG.lotOff,L=F
 function bigRcpFill(n){const sel=$('#bigFlt [data-f="rcp"]');if(!sel)return;
   const v=sel.value,ks=[...n.keys()].sort(natCmp);if(v&&!n.has(v))ks.push(v);
   sel.innerHTML='<option value="">전체</option>'+ks.map(k=>`<option value="${esc(k)}">${esc(k)} (${(n.get(k)||0).toLocaleString()})</option>`).join('');sel.value=v}
+/** #83 후속: 5-1 Zone 고르기 = Zone + 개수(Zone 을 뺀 다른 필터에 맞는 Defect 수, Recipe 칸과 같은 방식). */
+function bigZnFill(n){const sel=$('#bigFlt [data-f="zn"]');if(!sel)return;
+  const v=sel.value,ks=[...n.keys()].sort(natCmp);if(v&&!n.has(v))ks.push(v);
+  sel.innerHTML='<option value="">전체</option>'+ks.map(k=>`<option value="${esc(k)}">${esc(k)} (${(n.get(k)||0).toLocaleString()})</option>`).join('');sel.value=v}
 /** 필터 → 정렬 → 보기(V). 줄 = (스캔 번호 gs, 스캔 안 순서 gi), ord = 화면 순서. */
 function bigBuild(){
   const o=S.o=opts(),f=readFlt($('#bigFlt')),src=bigSources(),lot=$('#bigLot').value,slot=$('#bigSlot').value,px2=o.pix*o.pix,act=o.coord==='actual';
@@ -2226,7 +2240,7 @@ function bigBuild(){
   const rank=key=>new Map([...new Set(src.map(key))].sort(natCmp).map((n,i)=>[n,i])),rl=sk==='lot'?rank(s=>s.lotPath):null,rs=sk==='slot'?rank(s=>s.slotName||''):null;
   const kf=sk==='k1'?clsFirst:sk==='k2'?clsName:sk==='r'?rcp5:null,rk=kf?(()=>{const set=new Set();for(const s of src)for(let i=0;i<s.cols.n;i++)set.add(kf(s,i));return new Map([...set].sort(natCmp).map((n,j)=>[n,j]))})():null;
   const off1=BIG.clsOff1.size?BIG.clsOff1:null,off2=BIG.clsOff2.size?BIG.clsOff2:null;
-  const lotOff=BIG.lotOff,rc=new Map(),nLot=new Map(),n1=new Map(),n2=new Map(),add=(m,k)=>m.set(k,(m.get(k)||0)+1);   // v14.1.4: 칸마다 '자기 묶음을 뺀' 개수
+  const lotOff=BIG.lotOff,rc=new Map(),znc=new Map(),nLot=new Map(),n1=new Map(),n2=new Map(),add=(m,k)=>m.set(k,(m.get(k)||0)+1);   // v14.1.4: 칸마다 '자기 묶음을 뺀' 개수
   // v14.1.8 검색: 글(Lot · Slot, 분류 이름, Recipe)마다 맞는 단어를 한 번만 세어 둔다 → 줄마다는 비트 OR 몇 번(30만 줄도 가볍게)
   const T=BIG.q||[],full=(1<<T.length)-1,qc=new Map(),qm=x=>{let v=qc.get(x);if(v===undefined){v=0;const y=lower(String(x));for(let j=0;j<T.length;j++)if(y.includes(T[j]))v|=1<<j;qc.set(x,v)}return v};let np=0;
   const tn=T.reduce((a,w,j)=>/^[-\d.,×]+$/.test(w)&&/\d/.test(w)?a|1<<j:a,0);   // 숫자 단어(글자 없음)일 때만 숫자 열 글을 만든다(30만 줄)
@@ -2234,21 +2248,22 @@ function bigBuild(){
     if(!s.pk||s.pk.length!==n)s.pk=new Uint8Array(n).fill(LS.def?1:0);const pk=s.pk,qb=T.length?qm(`${s.lotName||baseName(s.lotPath)} ${s.slotName||''}`):0;   // v14.1.8 ☑(처음 = [처음엔 모두 ☑])
     const cg=s.cg,lk=T.length&&cg&&cg.plan&&cg.link?cg.link:null,recs=lk?cg.plan.recs:null;   // 사진 파일 이름 = Color 연결(5-1 에서 이미 계산) — 연결 없는 Defect 의 Gray 프레임은 5-2 에서
     const sv=sk==='lot'?rl.get(s.lotPath):sk==='slot'?rs.get(s.slotName||''):null;
+    const zcache=new Map(),zl=i=>{const z=C.zn?C.zn[i]:null;let v=zcache.get(z);if(v===undefined)zcache.set(z,v=zoneLbl(z,s));return v};   // #83 후속 Zone 글(Slot 마다 이름표가 다를 수 있다)
     const ka=sk==='id'?(s.idByOrder?null:C.id):sk==='c'?C.c:sk==='w'?C.w:sk==='l'?C.l:sk==='a'?C.area:sk==='x'?(act?C.ax:C.x):sk==='y'?(act?C.ay:C.y):null;
     for(let i=0;i<n;i++){if(f.on&&!fltPass(f,C.c[i],C.area[i]*px2,C.w[i],C.l[i]))continue;
-      const k1=clsFirst(s,i),k2=clsName(s,i),p1=!(off1&&off1.has(k1)),p2=!(off2&&off2.has(k2)),r=C.rec[i],rl=r===0&&nm?`0 (${nm})`:String(r),pr=!f.rcp||rl===f.rcp;   // 글 = rcp5 와 같음
+      const k1=clsFirst(s,i),k2=clsName(s,i),p1=!(off1&&off1.has(k1)),p2=!(off2&&off2.has(k2)),r=C.rec[i],rl=r===0&&nm?`0 (${nm})`:String(r),pr=!f.rcp||rl===f.rcp,zk=zl(i),pz=!f.zn||zk===f.zn;   // 글 = rcp5 와 같음
       if(T.length){let w=qb|qm(k1)|qm(k2)|qm(rl);   // 검색 = 다른 필터와 같이
         if(w!==full&&(tn&~w)){const X=act?C.ax[i]:C.x[i],Y=act?C.ay[i]:C.y[i],die=dieOf(X,Y,s.product),
             ns=`${s.idByOrder?i:C.id[i]} ${fv(C.c[i])} ${fv(C.area[i]*px2)} ${fv(C.w[i])} ${fv(C.l[i])} ${f1(C.bw[i])}×${f1(C.bh[i])} ${f1(X)} ${f1(Y)}${die?` ${die.col}, ${die.row}`:''}${(m=>m&&m.x!=null?` ${m.x}, ${m.y}`:'')(mapDie(X,Y,s))}`;
           for(let j=0;j<T.length;j++)if(!(w>>j&1)&&ns.includes(T[j]))w|=1<<j}
         if(w!==full&&lk){const ck=lk[i];if(ck>=0){const rec=recs[ck];w|=(rec.c&&rec.c.file?qm(rec.c.file):0)|(rec.frame&&rec.frame.file?qm(rec.frame.file):0)}}
         if(w!==full)continue}
-      if(p1&&p2&&pr)add(nLot,lp);if(!lon)continue;
-      if(p2&&pr)add(n1,k1);if(p1&&pr)add(n2,k2);if(!p1||!p2)continue;add(rc,rl);   // Para #75: Recipe = 다른 필터 기준
-      if(!pr)continue;gs[m]=si;gi[m]=i;if(kv){const v=sv!=null?sv:rk?rk.get(kf(s,i)):ka?ka[i]:i;kv[m]=v===v?v:bad}np+=pk[i];m++}});
+      if(p1&&p2&&pr&&pz)add(nLot,lp);if(!lon)continue;
+      if(p2&&pr&&pz)add(n1,k1);if(p1&&pr&&pz)add(n2,k2);if(!p1||!p2)continue;if(pz)add(rc,rl);if(pr)add(znc,zk);   // Para #75: Recipe · Zone = 다른 필터 기준
+      if(!pr||!pz)continue;gs[m]=si;gi[m]=i;if(kv){const v=sv!=null?sv:rk?rk.get(kf(s,i)):ka?ka[i]:i;kv[m]=v===v?v:bad}np+=pk[i];m++}});
   const ord=new Int32Array(m);for(let i=0;i<m;i++)ord[i]=i;
   if(kv){const sg=sd==='d'?-1:1;ord.sort((p,q)=>sg*(kv[p]-kv[q])||p-q)}
-  return BIG.view={src,gs,gi,ord,m,total:N,f,rc,nLot,n1,n2,np,q:T};
+  return BIG.view={src,gs,gi,ord,m,total:N,f,rc,zn:znc,nLot,n1,n2,np,q:T};
 }
 const bigAt=k=>{const V=BIG.view,j=V.ord[k];return {s:V.src[V.gs[j]],i:V.gi[j]}};
 
@@ -2298,7 +2313,7 @@ const LSA=lsBind('bigLs',{onQ:T=>{BIG.q=T;bigRefresh()},onAll:bigPickAll,delay:(
 $('#bigList').addEventListener('click',e=>{const c=e.target.closest('.br>span.pk');if(c)bigPick(+c.parentNode.dataset.k)});
 function bigRefresh(){
   const t0=performance.now(),V=bigBuild();vtSet(VA,V.m);
-  bigRcpFill(V.rc);bigFacetFill(V);   // Para #75 · v14.1.4
+  bigRcpFill(V.rc);bigZnFill(V.zn);bigFacetFill(V);   // Para #75 · v14.1.4
   const sel=$('#bigFlt [data-f="sort"]');sel.value=BIG.sort;if(sel.value!==BIG.sort)sel.value='';
   $('#bigCnt').textContent=V.total?`Defect ${V.m.toLocaleString()}개`+(V.m<V.total?` (전체 ${V.total.toLocaleString()}개 중 필터 · 검색 · Lot · Slot 에 맞는 것)`:'')+(V.q.length?` · 검색 '${V.q.join(' ')}'`:'')+` · Slot ${V.src.length}개 · ${Math.round(performance.now()-t0)} ms`
     +(V.m>BIG_MAX?` · ⚠ 표에는 앞 ${BIG_MAX.toLocaleString()}줄만 그립니다(CSV · 매칭은 전부).`:''):'레시피 폴더를 고르면 Defect 목록이 여기에 나옵니다.';
@@ -2907,7 +2922,7 @@ function b5go(n){BIG.stage=n;[1,2,3].forEach(k=>$('#b5p'+k).hidden=k!==n);b5tabs
     c5Refresh();$('#c5list').focus()}}
 const curVT=()=>BIG.stage===1?VA:BIG.stage===2?VB:(C5.mode==='one'?VC:null);
 $$('[data-b5]').forEach(b=>b.onclick=()=>b5go(+b.dataset.b5));
-$('#bigFltIn').innerHTML=fltRngHtml();$('#bigFltRcp').innerHTML=fltRcpHtml(false);$('#bigFltSort').innerHTML=fltSortHtml(false);$('#bigFltClr').outerHTML=fltClrHtml();   // v14.1.5: 줄마다 따로
+$('#bigFltIn').innerHTML=fltRngHtml();$('#bigFltRcp').innerHTML=fltRcpHtml(false);$('#bigFltZn').innerHTML=fltZnHtml(false);$('#bigFltSort').innerHTML=fltSortHtml(false);$('#bigFltClr').outerHTML=fltClrHtml();   // v14.1.5: 줄마다 따로
 fltBind($('#bigFlt'),()=>{const v=$('#bigFlt [data-f="sort"]').value,[sk]=BIG.sort?BIG.sort.split('-'):[''];if(v||['c','a','w','l','r',''].includes(sk))BIG.sort=v;bigRefresh()});
 $('#bigFlt [data-f="sort"]').value=BIG.sort;
 $$('#bigLot,#bigSlot').forEach(el=>el.addEventListener('change',bigRefresh));

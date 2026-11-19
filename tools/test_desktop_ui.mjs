@@ -871,7 +871,7 @@ try{
   assert.equal(await wzf.evaluate(()=>window.__cw.pcPath('RCP/SETUP1/LOT_A/W01/C1.jpg')),join(slotDir,'C1.jpg'));   // 전체 경로 = 엔진이 아는 고른 폴더
   assert.equal(await wz.locator('#bigBase').isVisible(),false);                                                      // [원본 폴더 경로] 칸 없음
   // v14.1.5 5-1 필터 = 줄마다 제목 · 내용(Lot 제외 · 분류 따로 줄), 값 범위 4개는 한 줄, 분류 이름 = 장비 스캔 분류 · 리뷰 결과
-  assert.deepEqual(await wz.locator('#bigFlt .frow>.fh').allInnerTexts(),['Lot · Slot','Lot 제외','장비 스캔 분류','리뷰 결과','값 범위','Recipe','정렬']);
+  assert.deepEqual(await wz.locator('#bigFlt .frow>.fh').allInnerTexts(),['Lot · Slot','Lot 제외','장비 스캔 분류','리뷰 결과','값 범위','Recipe','Zone','정렬']);
   const rngY=await wz.locator('#bigFltIn label.rng').evaluateAll(l=>l.map(x=>Math.round(x.getBoundingClientRect().top)));
   assert.equal(rngY.length,4);assert.equal(new Set(rngY).size,1,'Contrast · Area · Width · Length on one line: '+rngY);
   assert.equal(await wz.locator('#bigCls .frow .chipgrid .clsck').count(),2);
@@ -882,6 +882,11 @@ try{
   const q=async(bar,list,v)=>{await wz.locator(`#${bar} input[type=search]`).fill(v);await wz.locator(`#${bar} input[type=search]`).press('Enter');return wz.locator(`#${list} .br`).count()};
   assert.deepEqual([await q('bigLs','bigList','45'),await q('bigLs','bigList','c1.jpg'),await q('bigLs','bigList','lot_a w01'),await q('bigLs','bigList','zzz')],[1,1,2,0]);   // 숫자 열(#83 실제 값 45 — 종전 45.00) · Color 사진 이름 · 두 단어 · 없음
   await q('bigLs','bigList','');
+  // #83 후속: 5-1 Zone 고르기(번호 + Zones.ini 이름 + 개수) — 고르면 그 Zone 만, 비우면 전체
+  {const zs=wz.locator('#bigFlt select[data-f="zn"]'),zo=await zs.locator('option').allInnerTexts(),n0=await wz.locator('#bigList .br').count();
+    assert(zo.length>=2&&zo[0]==='전체',JSON.stringify(zo));await zs.selectOption({index:1});await new Promise(r=>setTimeout(r,400));
+    const n1=await wz.locator('#bigList .br').count();assert(n1>0&&n1<=n0,`zone ${n1}/${n0}`);await zs.selectOption('');await new Promise(r=>setTimeout(r,400));
+    assert.equal(await wz.locator('#bigList .br').count(),n0)}
   await wz.locator('#bigList .br').first().locator('span.pk').click();
   assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 1 / 2개');assert.match(await wz.locator('#toB2').innerText(),/☑ 1개/);
   await q('bigLs','bigList','zzz');await q('bigLs','bigList','');assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 1 / 2개');

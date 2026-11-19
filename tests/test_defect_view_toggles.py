@@ -98,7 +98,7 @@ class DefectViewToggles(unittest.TestCase):
             self.assertIn("bigFlt", p[i], i)
         self.assertIn("fgrid", self.ids.classes["bigFlt"])
         heads = re.findall(r'<span class="fh">([^<]+)</span>', self.t[self.t.index('id="bigFlt"'):self.t.index('id="bigCnt"')])
-        self.assertEqual(heads, ["Lot · Slot", "Lot 제외", "값 범위", "Recipe", "정렬"])   # 분류 두 줄은 bigFacetFill 이 그림
+        self.assertEqual(heads, ["Lot · Slot", "Lot 제외", "값 범위", "Recipe", "Zone", "정렬"])   # 분류 두 줄은 bigFacetFill 이 그림
         self.assertIn("grp(1,'장비 스캔 분류',", self.t)
         self.assertIn("grp(2,'리뷰 결과',", self.t)
         self.assertIn(".fgrid .chipgrid{", self.t)
@@ -106,7 +106,7 @@ class DefectViewToggles(unittest.TestCase):
         self.assertIn("body.pskin .fgrid .frow{", css)
         self.assertIn("body.pskin .glbox{", css)
         # Step 3 · 4 필터 줄은 종전 그대로(한 줄 조각을 이어 붙임)
-        self.assertIn("function fltHtml(){return fltRngHtml()+fltRcpHtml()+fltSortHtml()+fltClrHtml()}", self.t)
+        self.assertIn("function fltHtml(){return fltRngHtml()+fltRcpHtml()+fltZnHtml()+fltSortHtml()+fltClrHtml()}", self.t)
 
 
 class Defect53Layout(unittest.TestCase):
