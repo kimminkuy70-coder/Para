@@ -6,6 +6,8 @@
 <title>AOI Contrast Wizard rev6</title>
 <!--
   AOI Contrast AVG 단계별 비교 (Graylevel 시뮬레이션) — Para #50, 브랜치 version_graylevel_simulation
+  · v14.3.13(2026-11-19, 소유자 화면 "흰 Die 가 불량이야? · defect 와 관계없이 Die 색이 칠해짐 — Defect 과다로 중간에 멈춘 Slot"): 불량 Die 칠하기 =
+    리뷰 끝난 Slot(ScanLog VerifyDone = 1)이고 장비 BadDies 와 수가 같을 때만(badDiesOf), 아니면 칠하지 않고 이유 표시. 지도 왼쪽 위 = Die 색 설명(□ Die · ■ 불량 Die).
   · v14.3.12(Para #82 후속, 2026-11-18, 소유자 "wafer map 구현은 제거하고 새로 · die 위치는 웨이퍼 맵 기준 · Flat Pos 와 Notch 방향을 오른쪽 위 태그로"):
     Wafer map = 웨이퍼 맵(Export Wafer Map) 기준 — 맨 위 줄 = 장비 Row 가장 작은 줄, 번호 X = Col − cMin(왼쪽 0) · Y = rMax − Row(아래 0), Die = s_DieLocation 만,
     불량 Die(reclassify ≠ 0 Defect) = 명암만 살짝, wafer 원 중심 = Wafer2Table, Pitch = XDieIndex. 샘플 맵 · sampleFit · Notch 고르기 · 지름/Edge 입력 · 맵 파일 비교 삭제.
@@ -672,6 +674,10 @@ function parseDieLoc(buf,mdText){
   return out.filter(d=>isFinite(d.x)&&isFinite(d.y));
 }
 /** ScanLog / ProductionInfo 글에서 Surface defect 수를 찾는다(교차 검증, 참고). */
+/** v14.3.13: ScanLog.ini [General] → 리뷰 · 장비 집계 {verify(VerifyDone), bad(BadDies), defects(DefectsNum), dies(ScanDies), grab(GrabbingImageSucceeced — 없으면 null)}.
+ *  불량 Die 표시를 믿을 수 있는지 보는 데만 쓴다. [General] 이 없으면 null. */
+function parseScanLog(text){const g=(parseIni(text).find(x=>x.name.toLowerCase()==='general')||{}).kv;if(!g)return null;
+  return {verify:num(g.verifydone),bad:num(g.baddies),defects:num(g.defectsnum),dies:num(g.scandies),grab:num(g.grabbingimagesucceeced)}}
 function surfaceCount(text){const k=/^\s*SurfaceDefects\s*=\s*(\d+)/im.exec(text);if(k)return +k[1];   // Para #53: ScanLog.ini [2D] SurfaceDefects=
   const m=/surface[^\r\n\d]{0,40}?(\d+)/i.exec(text);return m?+m[1]:null}
 
@@ -1021,6 +1027,7 @@ async function buildScan(name,own){
   // v14.3.12: wafer 원 중심 = Wafer2Table.ini 역변환(wafer → table 변환에서 table (0, 0) 이 되는 wafer 좌표). 그림에만 씀.
   //  종전 Params_WaferInfo Center_X/Y 는 값이 없을 때 0 이라 중심을 (0, 0) 으로 잘못 읽었다(#82 — 맵이 1 ~ 2칸 밀린 원인) → 쓰지 않음.
   const w2=await text('Wafer2Table.ini');if(w2)s.w2t=parseW2T(w2);
+  const sl=await text('ScanLog.ini');if(sl)s.scanLog=parseScanLog(sl);   // v14.3.13: 불량 Die 표시 확인용(리뷰 끝 · 장비 BadDies)
   // Para #70: 리뷰PC 정보(Recipe 이름 · Zone 이름 · 판정 종류 이름 · 분류 이름) — 없어도 됨
   await rvLoad(s,text);
   // Para #53: 스캔한 Die 목록(s_DieLocation.dat) — wafer map 검증용
@@ -1125,7 +1132,7 @@ function mapStatus(){const el=$('#mapSt');if(!S.cmp){el.textContent='';return}co
   if(!g.frames.length){el.textContent='ProductInfo.ini(Die Pitch · [ExportData])가 없어 웨이퍼 맵 번호를 정할 수 없습니다 — Defect 위치만 그립니다. · '+flatTag(g.flat).txt;return}
   const nb=[...g.bad].filter(k=>g.dies.has(k)).length;
   let t=`웨이퍼 맵 기준 ${g.cols} × ${g.rows} 칸 — Die 번호 X 0~${g.cols-1}(왼쪽부터) · Y 0~${g.rows-1}(아래부터)`;
-  t+=g.dies.size?` · Die ${g.dies.size}개(s_DieLocation)`+(nb?` · 불량 Die ${nb}개(판정된 Defect 있음 · 조금 진하게)`:''):' · ⚠ s_DieLocation.dat 없음 — Die 를 그리지 않았습니다(번호는 [ExportData] 로 계산)';
+  t+=g.dies.size?` · Die ${g.dies.size}개(s_DieLocation, 흰색)`+(nb?` · 불량 Die ${nb}개(리뷰에서 판정된 Defect 있음 · 조금 진하게)`:'')+(g.badOff.length?` · ⚠ 불량 Die 표시 안 함: ${g.badOff.slice(0,3).join(' · ')}${g.badOff.length>3?` 외 ${g.badOff.length-3}개`:''}`:''):' · ⚠ s_DieLocation.dat 없음 — Die 를 그리지 않았습니다(번호는 [ExportData] 로 계산)';
   if(g.noLoc&&g.dies.size)t+=` · ⚠ s_DieLocation 없는 Slot ${g.noLoc}개`;
   if(g.outDie)t+=` · ⚠ Defect ${g.outDie}/${g.n}개가 맵 Die 밖`;
   const V=sc.map(x=>x.dieCheck).find(Boolean);if(V)t+=V.bad?` · ⚠ Die 번호가 Color 이미지 Col/Row 와 ${V.bad}/${V.n}개 다름`:` · Die 번호 확인: Color 이미지 Col/Row ${V.n}/${V.n} 일치`;
@@ -1224,7 +1231,7 @@ function fullLoad(s){if(!s.light)return READY;return s.fullP||(s.fullP=(async()=
   const entries=s.dirs.length?await slotEntries(s):(s.entries||[]);
   FS.note&&FS.note(`Step 1 과 같은 방식으로 읽는 중: ${s.name} (파일 ${entries.length.toLocaleString()}개)`);
   const full=await buildScan(s.name,entries);
-  Object.assign(s,{files:full.files,colors:full.colors,colorByIndex:full.colorByIndex,frames:full.frames,transforms:full.transforms,w2t:full.w2t,dieLoc:full.dieLoc,dieCheck:full.dieCheck,crossCount:full.crossCount,images:full.images});
+  Object.assign(s,{files:full.files,colors:full.colors,colorByIndex:full.colorByIndex,frames:full.frames,transforms:full.transforms,w2t:full.w2t,scanLog:full.scanLog,dieLoc:full.dieLoc,dieCheck:full.dieCheck,crossCount:full.crossCount,images:full.images});
   if(full.product)s.product=full.product;delete s._mf;   // v14.3.12: 맵 기준(mapFrame)을 s_DieLocation 까지 넣어 다시
   s.paths=new Map();for(const e of entries){const k=lower(baseName(e.path));if(!s.paths.has(k))s.paths.set(k,e.path)}
   s.fileCount=entries.length;s.upCount=entries.filter(e=>!e.path.startsWith(s.name+'/')).length;
@@ -1326,7 +1333,7 @@ function flatTag(vals){const v=[...vals].sort((a,b)=>a-b);if(!v.length)return {t
 /** 지금 비교의 맵(그릴 때마다 다시 세지 않게 기억 — runCompare · selectPair 에서 지움). */
 function mapGeom(){if(S._mg)return S._mg;
   const ws=(S.cmpScans||[]).flatMap(v=>v.isLot?v.wafers:[v]),F=ws.map(w=>[w,mapFrame(w)]).filter(x=>x[1]&&x[1].ok),warns=[];
-  const g={frames:F,dies:new Set(),bad:new Set(),px:null,py:null,cols:0,rows:0,cx:null,cy:null,flat:new Set(),warns,noLoc:0,noFrame:ws.length-F.length,outDie:0,n:0};
+  const g={frames:F,dies:new Set(),bad:new Set(),px:null,py:null,cols:0,rows:0,cx:null,cy:null,flat:new Set(),warns,noLoc:0,noFrame:ws.length-F.length,outDie:0,n:0,badOff:[]};
   for(const w of ws){const f=mapFrame(w);if(f&&f.flat!=null)g.flat.add(f.flat)}
   if(F.length){const f0=F[0][1];g.px=f0.px;g.py=f0.py;let ax=0,ay=0,an=0;const sizes=new Set();
     for(const [w,f] of F){const nm=w.slotName||w.name;
@@ -1337,9 +1344,16 @@ function mapGeom(){if(S._mg)return S._mg;
       for(const m of f.warns)warns.push(`${nm}: ${m}`)}
     if(sizes.size>1)warns.push(`Slot 마다 맵 크기가 다름(${[...sizes].join(', ')})`);
     if(an){g.cx=ax/an;g.cy=ay/an}else{g.cx=g.cols*g.px/2;g.cy=g.rows*g.py/2}}
-  for(const d of S.allPts||[]){const m=mapDie(d.X,d.Y,d.scan);if(!m||m.x==null)continue;g.n++;const k=m.x+','+m.y;
-    if(g.dies.size&&!g.dies.has(k))g.outDie++;if(d.reclassify)g.bad.add(k)}
+  for(const [w] of F){const B=badDiesOf(w);if(B.ok)for(const k of B.keys)g.bad.add(k);else if(B.keys.size)g.badOff.push(`${w.slotName||w.name} — ${B.why}`)}
+  for(const d of S.allPts||[]){const m=mapDie(d.X,d.Y,d.scan);if(!m||m.x==null)continue;g.n++;if(g.dies.size&&!g.dies.has(m.x+','+m.y))g.outDie++}
   return S._mg=g}
+/** v14.3.13 Slot 하나의 불량 Die(맵 번호 'x,y' — reclassify ≠ 0 인 Defect 가 있는 Die). ok = 믿을 수 있음 =
+ *  리뷰가 끝났고(ScanLog VerifyDone = 1) 장비 BadDies 와 수가 같을 때만(리뷰 끝난 실제 Slot 3장에서 1 · 0 · 5 모두 같음).
+ *  소유자 2026-11-19 화면: Defect 과다로 스캔 · 이미지 찍기가 멈춘 Slot(리뷰 전)은 reclassify 에 판정이 아니라 장비가 붙인 분류 번호가 남아
+ *  Defect 가 있는(또는 사진을 찍은) Die 가 거의 다 '불량'으로 칠해졌다 → 그런 Slot 은 칠하지 않고 이유를 상태 줄 · 지도 왼쪽 위에 알린다. */
+function badDiesOf(w){const keys=new Set();for(const d of w.defects||[]){if(!d.reclassify)continue;const m=mapDie(d.x,d.y,w);if(m&&m.x!=null)keys.add(m.x+','+m.y)}
+  const L=w.scanLog,why=!L?'ScanLog.ini 없음':L.verify!==1?'리뷰 전(ScanLog VerifyDone ≠ 1)':L.bad==null?'ScanLog BadDies 없음':L.bad!==keys.size?`장비 BadDies ${L.bad} ≠ 계산 ${keys.size}`:'';
+  return {keys,ok:!why,why:why+(L&&L.grab===0?' · 이미지 찍기 중간에 멈춤(GrabbingImageSucceeced = 0)':'')}}
 /** cv 에 wafer map 을 그린다: wafer 원 · Die(웨이퍼 맵 기준) · 맵 범위 · Notch · Flat Pos 태그 · Defect 점.
  *  opt.pts = [{X, Y(Wafer 좌표 µm), c(색 또는 '--변수'), r(반지름), ring(속 빈 원), q(누르면 돌려줄 것), s(그 점의 Slot — 없으면 q · d 에서)}], opt.hl = 강조, opt.on = 깜빡임 켜짐.
  *  다른 창(새 창 wafer map)의 canvas 에도 그린다 — 색은 이 문서의 CSS 변수에서 읽는다. 점 위치 목록 [x, y, q](화면 px)를 돌려준다. */
@@ -1382,6 +1396,14 @@ function paintMap(cv,opt){
   if(!T.ok){x.strokeStyle=cl('--warn');x.lineWidth=1;x.stroke()}
   x.fillStyle=T.ok?'#fff':cl('--warn');x.textBaseline='middle';x.fillText(T.txt,tx+9,ty+th/2+.5);x.textBaseline='alphabetic';
   S.mapTag=T.txt;
+  // v14.3.13 왼쪽 위 = Die 색 설명: □ Die(흰색) · ■ 불량 Die(조금 진하게) — 칠하지 않은 Slot 이 있으면 '불량 Die 표시 안 함'
+  if(g.dies.size){const nb=[...g.bad].some(k=>g.dies.has(k)),items=[['Die',cl('--panel')]];if(nb)items.push(['불량 Die',cl('--line')]);
+    const off=g.badOff.length?'불량 Die 표시 안 함(리뷰 전 등)':'';x.font='12px sans-serif';const sw=12;
+    let need=items.reduce((a,[l])=>a+sw+14+x.measureText(l).width,0)+(off?x.measureText(off).width+6:0);
+    if(8+need<tx-8){let lx=8;const ly=ty+th/2;x.textBaseline='middle';
+      for(const [l,f] of items){x.fillStyle=f;x.fillRect(lx,ly-sw/2,sw,sw);x.strokeStyle=cl('--sub');x.lineWidth=.8;x.strokeRect(lx+.5,ly-sw/2+.5,sw-1,sw-1);
+        x.fillStyle=cl('--ink');x.fillText(l,lx+sw+5,ly+.5);lx+=sw+14+x.measureText(l).width}
+      if(off){x.fillStyle=cl('--warn');x.fillText(off,lx,ly+.5)}x.textBaseline='alphabetic'}}
   const P=[];
   for(const [[X0,Y0],it] of pts){const X=PX(X0),Y=PY(Y0),rr=it.r||3;P.push([X,Y,it.q||it]);x.beginPath();x.arc(X,Y,rr,0,7);
     if(it.ring){x.strokeStyle=col(it.c);x.lineWidth=1.6;x.stroke()}else{x.fillStyle=col(it.c);x.fill()}}
@@ -2983,7 +3005,7 @@ if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대�
   if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
   else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,badDiesOf,parseScanLog,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

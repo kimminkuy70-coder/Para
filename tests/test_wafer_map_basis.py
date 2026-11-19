@@ -28,7 +28,8 @@ PUB = ROOT / "frontend" / "public" / "defect"
 DIST = ROOT / "frontend" / "dist" / "defect"
 HTML = PUB / "AOI_Contrast_Wizard_rev6.html"
 
-FUNCS = ["parseIni", "parseProduct", "dieOf", "parseDieLoc", "parseW2T", "mapFrame", "mapDie", "toMap", "flatTag"]
+FUNCS = ["parseIni", "parseProduct", "dieOf", "parseDieLoc", "parseW2T", "mapFrame", "mapDie", "toMap", "flatTag",
+         "parseScanLog", "badDiesOf"]
 CONSTS = ["pick", "num", "dieTxt", "dieEq", "FLAT_DIR", "WAFER_R"]
 
 
@@ -104,6 +105,13 @@ const bad=parseProduct(P.product.replace('cMax=7','cMax=8'));r.mismatch=mapFrame
 r.tags=[[3],[1],[3,1],[]].map(v=>flatTag(new Set(v)));
 const a=Math.PI/36,c=Math.cos(a),sn=Math.sin(a),w=[123456,98765],t=[-(c*w[0]+sn*w[1]),-(-sn*w[0]+c*w[1])];
 r.rot=parseW2T(`Wafer2Table_X= ${c} ${sn} ${t[0]}\nWafer2Table_Y= ${-sn} ${c} ${t[1]}`);
+// v14.3.13 불량 Die: 리뷰 끝(VerifyDone=1) · 장비 BadDies 와 수가 같을 때만
+const defs=[{x:55000,y:45000,reclassify:-9},{x:55000,y:45000,reclassify:0},{x:35000,y:65000,reclassify:0}];
+const sl=t=>parseScanLog('[Version]\nName=10\n[General]\n'+t+'\n[2D]\nBadDies=99\n');
+const bd=L=>{const o=badDiesOf({...s,defects:defs,scanLog:L});return {keys:[...o.keys],ok:o.ok,why:o.why}};
+r.scanLog=sl('ScanDies=14\nBadDies=1\nDefectsNum=1\nVerifyDone=1\nGrabbingImageSucceeced=1');
+r.badOk=bd(r.scanLog);r.badUnreviewed=bd(sl('BadDies=1\nVerifyDone=0\nGrabbingImageSucceeced=0'));
+r.badMismatch=bd(sl('BadDies=3\nVerifyDone=1'));r.badNoLog=bd(null);
 process.stdout.write(JSON.stringify(r));
 """
 
@@ -165,6 +173,18 @@ class MapRulesJs(unittest.TestCase):
     def test_wafer2table_center_with_rotation(self):
         self.assertAlmostEqual(self.r["rot"]["x"], 123456, places=3)
         self.assertAlmostEqual(self.r["rot"]["y"], 98765, places=3)
+
+
+    def test_bad_die_only_when_reviewed_and_matches_scanlog(self):
+        r = self.r
+        self.assertEqual(r["scanLog"], {"verify": 1, "bad": 1, "defects": 1, "dies": 14, "grab": 1})   # [General] 만(뒤 [2D] 아님)
+        self.assertEqual((r["badOk"]["keys"], r["badOk"]["ok"]), (["2,3"], True))         # reclassify 0 은 불량 아님
+        u = r["badUnreviewed"]                                                              # 리뷰 전 · 이미지 찍기 멈춤
+        self.assertFalse(u["ok"])
+        self.assertIn("리뷰 전", u["why"])
+        self.assertIn("이미지 찍기 중간에 멈춤", u["why"])
+        self.assertEqual((r["badMismatch"]["ok"], r["badMismatch"]["why"]), (False, "장비 BadDies 3 ≠ 계산 1"))
+        self.assertEqual((r["badNoLog"]["ok"], r["badNoLog"]["why"]), (False, "ScanLog.ini 없음"))
 
 
 class MapStatic(unittest.TestCase):

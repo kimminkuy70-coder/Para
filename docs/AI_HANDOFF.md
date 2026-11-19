@@ -1,5 +1,22 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.3.13: wafer map 불량 Die 표시 = 리뷰 끝난 Slot 만 (2026-11-19 KST, `version_v14`)
+
+- 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.12(`2292282`) · 소유자 세션 질문(화면 2장): "불량 Die 는 흰색 Die 로 표시한 거야? 불량 defect 위치 포함 여부와 관계없이 Die 색이 칠해져 있는데 원인이 뭐야?
+  — Defect 가 다량 발생해 중간에 스캔을 멈춘 경우, Color · 흑백 사진 쌍이 있는 Defect 와 흑백만 있는 Defect 가 있다".
+- 답: 흰색 = 정상 Die, 조금 진한 회청색 = '불량 Die'. 원인 = v14.3.12 의 불량 Die 규칙(reclassify ≠ 0 Defect 가 있는 Die)을 **리뷰 끝난 Slot 3장**(VerifyDone=1, 리뷰에서 Accept = 0 · 불량 = 음수)으로만 확인했는데,
+  리뷰 전 Slot 은 reclassify 에 판정이 아니라 장비 분류 번호가 남아 Defect 가 있는(또는 사진을 찍은) Die 가 거의 다 칠해짐(추정 — 그 Slot 자료는 못 받음. 첫 화면의 세로 띠 = 사진을 찍은 순서로 보임).
+- 한 일(rev6 HTML): `parseScanLog`(ScanLog.ini [General] VerifyDone · BadDies · DefectsNum · ScanDies · GrabbingImageSucceeced), `badDiesOf(w)` = Slot 마다 불량 Die 를 세고
+  **VerifyDone=1 이고 장비 BadDies 와 같을 때만** 칠함, 아니면 `g.badOff` 에 이유 → 상태 줄 '⚠ 불량 Die 표시 안 함: Slot — 리뷰 전 …' · 지도 왼쪽 위 '불량 Die 표시 안 함(리뷰 전 등)'.
+  지도 왼쪽 위 Die 색 설명(□ Die · ■ 불량 Die, 오른쪽 위 Flat Pos 태그와 겹치면 안 그림).
+- 시험: `tests/test_wafer_map_basis.py` 11개(리뷰 끝 · 리뷰 전 · BadDies 다름 · ScanLog 없음), `check_project` Failed files: none, `npm run build`, `test_desktop_ui.mjs` 통과.
+  실제 Slot 3장 = 칠함 그대로(1 · 0 · 5), 리뷰 전 흉내 자료(가짜 — reclassify = orgReclassify, VerifyDone=0) = 안 칠함. 그 멈춘 Slot 실제 자료 · Windows 화면은 확인 못 함.
+- 필요한 자료(소유자에게): 멈춘 Slot 의 ScanLog.ini · Surface.flt · ColorImageGrabingInfo.ini 가 있으면 추정(리뷰 전 reclassify 값 · 세로 띠 = 사진 찍은 Die)을 확인할 수 있음.
+
+| 요청 | 결과 |
+|---|---|
+| 불량 Die 색 원인 · 멈춘 Slot | v14.3.13(리뷰 끝 + BadDies 일치일 때만 칠함, 색 설명) |
+
 ## 최신 재개 — v14.3.12: wafer map 웨이퍼 맵 기준 + 업데이트 알림창 정리 (2026-11-18 KST, `version_v14`, #82 후속 세션)
 
 - 마지막 갱신 2026-11-18 · 기준 커밋 `4ed3316` · 소유자 세션 지시(계획 → 컨펌 → 구현). 릴리스 = `__version__` 14.3.12 + `docs/release_notes/v14.3.12.md`.

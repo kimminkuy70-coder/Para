@@ -48,6 +48,9 @@
   화면 · 목록 = 맵 번호, **장비 Col/Row 는 마우스 · 상세 창 · 리뷰PC 정보에만**. CSV · 엑셀 = 장비 번호 열 그대로 + 맵 번호 열 **추가**(소유자 "바꾸지는 말고 추가로": 최종 목록 `Die (맵 X, Y)` — Para `colorgray.FINAL_COLS` 도,
   5-1 · 결과 CSV `Die맵X` · `Die맵Y`, Step 3 상세 CSV 끝 `장비Col` · `장비Row`). 시험 `tests/test_wafer_map_basis.py`(가짜 숫자 · node). **실제 결과 폴더 · 맵 파일은 저장소에 넣지 않는다(소유자 — 구글 드라이브 자료 GitHub 금지).**
   업데이트 알림창: '지금 버전 · 공개 · GitHub 릴리스' 줄 삭제, 업데이트 내용 = `1. …` 번호 + 항목마다 첫 문장만(`desktop_appupdate._bullets` · `_one_line`) — 릴리스 노트는 짧은 한 줄 목록으로 쓴다.
+- **v14.3.13(소유자 2026-11-19 화면)**: 불량 Die 칠하기 = **리뷰 끝난 Slot(ScanLog `[General] VerifyDone=1`)이고 장비 `BadDies` 와 계산 수가 같을 때만**(`badDiesOf` · `parseScanLog`).
+  Defect 과다로 스캔 · 이미지 찍기가 멈춘 리뷰 전 Slot 은 reclassify 에 장비 분류 번호가 남아 거의 모든 Die 가 '불량'으로 칠해졌다 → 칠하지 않고 이유(리뷰 전 · BadDies 다름 · `GrabbingImageSucceeced=0`)를 상태 줄 · 지도 왼쪽 위에.
+  지도 왼쪽 위 = Die 색 설명(□ Die 흰색 · ■ 불량 Die 조금 진하게). 그런 Slot 은 Color+Gray 사진이 있는 Defect 와 Gray 만 있는 Defect 가 섞인다(소유자).
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.
