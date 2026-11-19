@@ -1,5 +1,19 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.3.14: wafer map = Defect 점이 찍힌 Die 만 다른 색 (2026-11-19 KST, `version_v14`)
+
+- 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.13(`6f59790`) · 소유자 지시: "그냥 간단하게 defect 위치가 있는 die 는 다른 색으로 표시해. 방금 구현한 로직은 삭제하고 내가 말한 로직으로 수정해서 릴리즈까지".
+- 한 일(rev6 HTML 10절): `ptDieKeys(맵 좌표 점들, g)` = 점이 든 맵 Die 칸(s_DieLocation Die 만) → `paintMap` 이 흰 Die 위에 `--navy` 를 `DIE_DEF_ALPHA`(0.22)로 덧칠.
+  점 = 그 지도에 그리는 점(opt.pts — 목록 점 · ☐ 회색 원 · '다른 영역도 표시' 배경 점 포함)이라 필터 · 검색 · 영역을 바꾸면 칠한 Die 도 바뀐다(점 없는 칠한 Die 가 생기지 않게).
+  지도 왼쪽 위 설명 = □ Die · ■ Defect 있는 Die. 상태 줄 · Step 2 안내도 같은 문구.
+- 삭제: v14.3.12 '불량 Die'(reclassify ≠ 0, `g.bad`) · v14.3.13 리뷰 확인(`badDiesOf` · `parseScanLog` · `s.scanLog` · `g.badOff`).
+- 시험: `tests/test_wafer_map_basis.py` 11개(Defect 있는 Die = 점이 든 칸 · s_DieLocation 밖 칸 제외, 옛 함수 없음), `check_project` Failed files: none, `npm run build`, `test_desktop_ui.mjs` 통과.
+  실제 Slot 3장 + 리뷰 전 흉내 자료로 화면 확인(세션 임시 폴더만). Windows 실기 확인 못 함. 릴리스 = `__version__` 14.3.14 + `docs/release_notes/v14.3.14.md`.
+
+| 요청 | 결과 |
+|---|---|
+| Defect 위치가 있는 Die 다른 색, 직전 로직 삭제 · 릴리스 | v14.3.14 |
+
 ## 최신 재개 — v14.3.13: wafer map 불량 Die 표시 = 리뷰 끝난 Slot 만 (2026-11-19 KST, `version_v14`)
 
 - 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.12(`2292282`) · 소유자 세션 질문(화면 2장): "불량 Die 는 흰색 Die 로 표시한 거야? 불량 defect 위치 포함 여부와 관계없이 Die 색이 칠해져 있는데 원인이 뭐야?

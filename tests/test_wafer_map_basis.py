@@ -29,7 +29,7 @@ DIST = ROOT / "frontend" / "dist" / "defect"
 HTML = PUB / "AOI_Contrast_Wizard_rev6.html"
 
 FUNCS = ["parseIni", "parseProduct", "dieOf", "parseDieLoc", "parseW2T", "mapFrame", "mapDie", "toMap", "flatTag",
-         "parseScanLog", "badDiesOf"]
+         "ptDieKeys"]
 CONSTS = ["pick", "num", "dieTxt", "dieEq", "FLAT_DIR", "WAFER_R"]
 
 
@@ -105,13 +105,10 @@ const bad=parseProduct(P.product.replace('cMax=7','cMax=8'));r.mismatch=mapFrame
 r.tags=[[3],[1],[3,1],[]].map(v=>flatTag(new Set(v)));
 const a=Math.PI/36,c=Math.cos(a),sn=Math.sin(a),w=[123456,98765],t=[-(c*w[0]+sn*w[1]),-(-sn*w[0]+c*w[1])];
 r.rot=parseW2T(`Wafer2Table_X= ${c} ${sn} ${t[0]}\nWafer2Table_Y= ${-sn} ${c} ${t[1]}`);
-// v14.3.13 불량 Die: 리뷰 끝(VerifyDone=1) · 장비 BadDies 와 수가 같을 때만
-const defs=[{x:55000,y:45000,reclassify:-9},{x:55000,y:45000,reclassify:0},{x:35000,y:65000,reclassify:0}];
-const sl=t=>parseScanLog('[Version]\nName=10\n[General]\n'+t+'\n[2D]\nBadDies=99\n');
-const bd=L=>{const o=badDiesOf({...s,defects:defs,scanLog:L});return {keys:[...o.keys],ok:o.ok,why:o.why}};
-r.scanLog=sl('ScanDies=14\nBadDies=1\nDefectsNum=1\nVerifyDone=1\nGrabbingImageSucceeced=1');
-r.badOk=bd(r.scanLog);r.badUnreviewed=bd(sl('BadDies=1\nVerifyDone=0\nGrabbingImageSucceeced=0'));
-r.badMismatch=bd(sl('BadDies=3\nVerifyDone=1'));r.badNoLog=bd(null);
+// v14.3.14 Defect 있는 Die = 그 지도에 찍힌 점이 든 맵 Die 칸(s_DieLocation Die 만)
+const dies=new Set([...f.cells].map(k=>{const [c,q]=k.split(',').map(Number);return (c-f.cMin)+','+(f.rMax-q)}));
+r.defDies=[...ptDieKeys([[55000,45000],[55100,45100],[35000,45000],[55000,105000]].map(([X,Y])=>toMap(X,Y,f)),{px:f.px,py:f.py,dies})].sort();
+r.defNone=[...ptDieKeys([],{px:f.px,py:f.py,dies})];
 process.stdout.write(JSON.stringify(r));
 """
 
@@ -175,16 +172,10 @@ class MapRulesJs(unittest.TestCase):
         self.assertAlmostEqual(self.r["rot"]["y"], 98765, places=3)
 
 
-    def test_bad_die_only_when_reviewed_and_matches_scanlog(self):
-        r = self.r
-        self.assertEqual(r["scanLog"], {"verify": 1, "bad": 1, "defects": 1, "dies": 14, "grab": 1})   # [General] 만(뒤 [2D] 아님)
-        self.assertEqual((r["badOk"]["keys"], r["badOk"]["ok"]), (["2,3"], True))         # reclassify 0 은 불량 아님
-        u = r["badUnreviewed"]                                                              # 리뷰 전 · 이미지 찍기 멈춤
-        self.assertFalse(u["ok"])
-        self.assertIn("리뷰 전", u["why"])
-        self.assertIn("이미지 찍기 중간에 멈춤", u["why"])
-        self.assertEqual((r["badMismatch"]["ok"], r["badMismatch"]["why"]), (False, "장비 BadDies 3 ≠ 계산 1"))
-        self.assertEqual((r["badNoLog"]["ok"], r["badNoLog"]["why"]), (False, "ScanLog.ini 없음"))
+    def test_defect_dies_are_dies_with_a_drawn_point(self):
+        # 같은 Die 의 점 둘 = 한 칸, s_DieLocation 에 없는 칸(장비 Col 3 · Row 2)의 점은 안 칠함, 맨 아래 줄(Y 0)도 칠함
+        self.assertEqual(self.r["defDies"], ["2,0", "2,3"])
+        self.assertEqual(self.r["defNone"], [])
 
 
 class MapStatic(unittest.TestCase):
@@ -193,12 +184,13 @@ class MapStatic(unittest.TestCase):
 
     def test_old_map_logic_removed(self):
         code = self.html[self.html.index("<script"):]                  # 머리 주석(변경 기록)은 빼고
-        for gone in ("function sampleFit", "function dieCells", "function notchInfo", 'id="mapBtn"', 'id="notch"', 'id="waferD"',
+        for gone in ("function badDiesOf", "function parseScanLog", "g.bad.has", "function sampleFit", "function dieCells", "function notchInfo", 'id="mapBtn"', 'id="notch"', 'id="waferD"',
                      'id="edgeEx"', "cw.sampleMap", "parseWaferMap", "Params_WaferInfo.ini [Geometric] Center"):
             self.assertNotIn(gone, code)
         self.assertNotIn("psample", (PUB / "para-skin.js").read_text(encoding="utf-8"))
         self.assertNotIn("psample", (PUB / "para-skin.css").read_text(encoding="utf-8"))
         self.assertIn("아래부터 0", self.html[self.html.index('id="mapHelp"'):][:400])
+        self.assertIn("Defect 있는 Die", code)                                    # v14.3.14 지도 왼쪽 위 색 설명
 
     def test_exports_keep_equipment_and_add_map_columns(self):
         head = json.loads(self.html[self.html.index("const FL_HEAD=") + len("const FL_HEAD="):].split(";")[0].replace("'", '"'))
