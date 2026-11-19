@@ -880,7 +880,7 @@ try{
   // v14.1.8 목록 위 검색(모든 열 값 + 사진 이름, Enter) · ☑(처음 = 모두 ☑): ☐ 는 다음 단계 · CSV 에서 빠지고, 검색으로 숨었다 다시 보여도 그대로
   assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 2 / 2개');
   const q=async(bar,list,v)=>{await wz.locator(`#${bar} input[type=search]`).fill(v);await wz.locator(`#${bar} input[type=search]`).press('Enter');return wz.locator(`#${list} .br`).count()};
-  assert.deepEqual([await q('bigLs','bigList','45.00'),await q('bigLs','bigList','c1.jpg'),await q('bigLs','bigList','lot_a w01'),await q('bigLs','bigList','zzz')],[1,1,2,0]);   // 숫자 열 · Color 사진 이름 · 두 단어 · 없음
+  assert.deepEqual([await q('bigLs','bigList','45'),await q('bigLs','bigList','c1.jpg'),await q('bigLs','bigList','lot_a w01'),await q('bigLs','bigList','zzz')],[1,1,2,0]);   // 숫자 열(#83 실제 값 45 — 종전 45.00) · Color 사진 이름 · 두 단어 · 없음
   await q('bigLs','bigList','');
   await wz.locator('#bigList .br').first().locator('span.pk').click();
   assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 1 / 2개');assert.match(await wz.locator('#toB2').innerText(),/☑ 1개/);

@@ -793,6 +793,8 @@ function colorWhy(d,scan,ctol){if(!scan.colors.length)return 'ColorImageGrabingI
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const f1=v=>v==null||!isFinite(v)?'':(+v).toFixed(1),f2=v=>v==null||!isFinite(v)?'':(+v).toFixed(2);
+/** 실제 값(#83) — Contrast · Area · Width · Length 를 반올림하지 않고 그대로 쓴다. 계산 잡음(1.2300000000000002)만 12 유효숫자로 없앤다. */
+const exv=v=>+(+v).toPrecision(12),fv=v=>v==null||v===''||!isFinite(v)?'':String(exv(v));
 const S={scans:[],rows:[],page:0,rv:0,rvList:[],overlay:{},pairs:[],pi:0};let scanSeq=0;
 /** rev5(소유자 "사용자가 설정을 건들 일은 없어 아예 없애"): 결함 좌표 = x/y, Pixel Size 0.7708(Area µm² · Step 3 · 4 간단 모델), Color 연결 5 µm, 반전 · Offset 없음 — 종전 기본값. */
 const PIX=0.7708,CTOL=5;
@@ -1152,11 +1154,11 @@ function info(r){const d=r.d,s=d.scan,o=S.o,m=mapDie(d.X,d.Y,s),px2=o.pix*o.pix;
 function filtered(){const f=viewSet($('#fltSt').value||'all'),T=S.dq||[];return S.rows.filter(r=>f.has(r.st)&&(!T.length||qAll(T,detText(r))))}
 /** v14.1.8 쌍별 상세 표 검색 글: 모든 열 값 + 사진 이름 + O/X. */
 function detText(r){if(!r.qt){const x=info(r),d=r.d,c=S.cmp?linkColor(d,d.scan,S.cmp.o.ctol):null,g=grayOf(d);
-    r.qt=lower([x.st,x.id,f1(x.X),f1(x.Y),x.die,x.dieEq,f2(x.area),f1(x.width),f1(x.length),x.box,f2(x.contrast),x.cmpContrast!=null?f2(x.cmpContrast):'',x.step,x.slot,x.tool,rcpName(d),c&&c.c&&c.c.file,g&&g.frame&&g.frame.file].filter(v=>v!=null&&v!=='').join(' '))}
+    r.qt=lower([x.st,x.id,f1(x.X),f1(x.Y),x.die,x.dieEq,fv(x.area),fv(x.width),fv(x.length),x.box,fv(x.contrast),x.cmpContrast!=null?fv(x.cmpContrast):'',x.step,x.slot,x.tool,rcpName(d),c&&c.c&&c.c.file,g&&g.frame&&g.frame.file].filter(v=>v!=null&&v!=='').join(' '))}
   const ov=S.overlay[key(r.d)];return ov?r.qt+' '+lower(ov):r.qt}
 function renderTable(){const rows=filtered(),P=200,pages=Math.max(1,Math.ceil(rows.length/P));S.page=Math.min(S.page,pages-1);
   $('#detTbl tbody').innerHTML=rows.slice(S.page*P,S.page*P+P).map((r,k)=>{const x=info(r),on=dOn(r);return `<tr data-k="${S.page*P+k}"${on?'':' class="off"'}><td class="pk" title="☑ = CSV 에 넣음">${on?'☑':'☐'}</td><td><span class="st ${r.st}">${x.st}</span></td><td class="num">${x.id}</td><td class="num">${f1(x.X)}</td><td class="num">${f1(x.Y)}</td>
-    <td${x.dieWarn?' style="color:var(--err)"':''}>${x.die}</td><td class="num">${f2(x.area)}</td><td class="num">${f1(x.width)}</td><td class="num">${f1(x.length)}</td><td>${x.box}</td><td class="num">${f2(x.contrast)}${x.cmpContrast!=null?' → '+f2(x.cmpContrast):''}</td><td>${esc(x.step)}</td><td>${esc(x.slot)}</td><td>${esc(x.tool)}</td><td>${esc(rcpName(r.d))}</td></tr>`}).join('');
+    <td${x.dieWarn?' style="color:var(--err)"':''}>${x.die}</td><td class="num">${fv(x.area)}</td><td class="num">${fv(x.width)}</td><td class="num">${fv(x.length)}</td><td>${x.box}</td><td class="num">${fv(x.contrast)}${x.cmpContrast!=null?' → '+fv(x.cmpContrast):''}</td><td>${esc(x.step)}</td><td>${esc(x.slot)}</td><td>${esc(x.tool)}</td><td>${esc(rcpName(r.d))}</td></tr>`}).join('');
   $('#pgInfo').textContent=`${S.page+1} / ${pages} 쪽 (${rows.length}행)`;const n=rows.reduce((a,r)=>a+(dOn(r)?1:0),0);DLS.set(n,rows.length);
   $('#csvBtn').disabled=!n;$('#csvBtn').textContent=n?`CSV 내보내기 (☑ ${n.toLocaleString()}개)`:'CSV 내보내기'}
 /** v14.1.8 쌍별 상세 표 ☑(처음 = [처음엔 모두 ☑]) — 기억 = (Defect, 구분)마다. */
@@ -1169,7 +1171,7 @@ function csvText(rows){rows=rows||S.rows;const q=v=>{v=v==null?'':String(v);retu
   const head=['구분','ID','resultID','WaferX','WaferY','Die','DieX','DieY','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','비교Contrast','Step','Slot','ContrastAVG','호기','Color이미지','Color연결','Gray프레임','GrayPX','GrayPY','Gray모델','ROI_mean','ROI_median','ROI_max','Ring_median','ROI_local_delta','위치확인','Recipe','Zone','Region','판정비트','분류코드','Zone이름','판정종류','분류','장비Col','장비Row'];
   const lines=[head];
   for(const r of rows){const x=info(r),d=r.d,g=grayOf(d),c=linkColor(d,d.scan,S.cmp.o.ctol),gl=d.gl||{};
-    lines.push([x.st,x.id,d.resultID,f2(x.X),f2(x.Y),x.die,...(x.dieXY?x.dieXY.split(', '):['','']),f2(x.area),d.area,f2(x.width),f2(x.length),f2(d.BoxWidth),f2(d.BoxHeight),f2(d.Contrast),f2(x.cmpContrast),x.step,x.slot,d.scan.contrast,x.tool,
+    lines.push([x.st,x.id,d.resultID,f2(x.X),f2(x.Y),x.die,...(x.dieXY?x.dieXY.split(', '):['','']),fv(x.area),d.area,fv(x.width),fv(x.length),f2(d.BoxWidth),f2(d.BoxHeight),fv(d.Contrast),fv(x.cmpContrast),x.step,x.slot,d.scan.contrast,x.tool,
       c?c.c.file:'',c?c.how:'연결 실패',g.frame?g.frame.file:'',g.frame?f1(g.px):'',g.frame?f1(g.py):'',g.frame?g.model:g.reason,f2(gl.mean),f2(gl.median),gl.max??'',f2(gl.ring),f2(gl.delta),S.overlay[key(d)]||'',...(v=>[v.recipe,rawNum(v.zoneNo),v.region,rawNum(v.typeNo),rawNum(v.clsNo),v.zoneName,v.typeName,v.clsName])(rvInfo(d)),x.m?x.m.col:'',x.m?x.m.row:''])}
   return '﻿'+lines.map(l=>l.map(q).join(',')).join('\r\n')}
 $('#csvBtn').onclick=async()=>{if(!S.cmp)return;await saveCsv([csvText(filtered().filter(dOn))],`Contrast_비교_${stepName(S.cmp.A)}_to_${stepName(S.cmp.B)}.csv`.replace(/[\\/:*?"<>|]/g,'_'),true)};
@@ -1412,7 +1414,7 @@ function attachTip(cv,geo){
     tip.style.display='block';tip.style.left=Math.min(e.clientX+16,innerWidth-580)+'px';tip.style.top=Math.min(e.clientY+16,innerHeight-300)+'px';
     if(tipFor===q)return;tipFor=q;const x=info(q);
     tip.innerHTML=`<b>${esc(x.st)}</b> · <b>ID ${x.id}</b> · ${esc(x.step)} · Slot ${esc(x.slot||'-')} · 호기 ${esc(x.tool||'-')}<br>
-      Wafer X/Y ${f1(x.X)}, ${f1(x.Y)} µm · Die(맵 X, Y) ${x.die}${x.dieEq?` · ${x.dieEq}`:''}${x.dieXY?` (Die 안 ${x.dieXY} µm)`:''}<br>Area ${f2(x.area)} µm² · Box ${x.box} px · Contrast(실제) ${f2(x.contrast)}${x.cmpContrast!=null?' → '+f2(x.cmpContrast):''}
+      Wafer X/Y ${f1(x.X)}, ${f1(x.Y)} µm · Die(맵 X, Y) ${x.die}${x.dieEq?` · ${x.dieEq}`:''}${x.dieXY?` (Die 안 ${x.dieXY} µm)`:''}<br>Area ${fv(x.area)} µm² · Box ${x.box} px · Contrast(실제) ${fv(x.contrast)}${x.cmpContrast!=null?' → '+fv(x.cmpContrast):''}
       <div class="imgs"><img alt="Color"><canvas width="200" height="150"></canvas></div>`;
     colorUrl(q.d).then(u=>{if(tipFor!==q)return;const im=tip.querySelector('img');if(u)im.src=u;else im.alt='Color 없음'});
     grayCrop(q.d,300).then(r=>{if(tipFor!==q)return;const cv=tip.querySelector('canvas');if(r.canvas){cv.replaceWith(r.canvas);r.canvas.style.cssText='width:200px;height:150px;object-fit:contain'}
@@ -1431,7 +1433,7 @@ async function openWindow(q){
     figure>img,figure>canvas{max-width:100%;max-height:calc(100vh - 110px);object-fit:contain;cursor:zoom-in}
     figure.full{align-items:flex-start;justify-content:flex-start}figure.full>img,figure.full>canvas{max-width:none;max-height:none;cursor:zoom-out}
     .ft{padding:0 10px 6px;flex:none;color:#bbb}pre.rv{flex:none;margin:0;padding:8px 10px;background:#1c1c1c;border-radius:8px;font:12px/1.4 Consolas,monospace;color:#ddd;align-self:flex-start}</style>`);
-  doc.body.innerHTML=`<div class="hd">[${esc(x.st)}] ID ${esc(x.id)} · ${esc(x.step)} · Slot ${esc(x.slot||'-')} · 호기 ${esc(x.tool||'-')} · Wafer ${f1(x.X)}, ${f1(x.Y)} µm · Die ${esc(x.die)} · Area ${f2(x.area)} µm² · Contrast ${f2(x.contrast)} <span style="color:#999">(사진을 누르면 원래 크기 ↔ 창 맞춤)</span></div>
+  doc.body.innerHTML=`<div class="hd">[${esc(x.st)}] ID ${esc(x.id)} · ${esc(x.step)} · Slot ${esc(x.slot||'-')} · 호기 ${esc(x.tool||'-')} · Wafer ${f1(x.X)}, ${f1(x.Y)} µm · Die ${esc(x.die)} · Area ${fv(x.area)} µm² · Contrast ${fv(x.contrast)} <span style="color:#999">(사진을 누르면 원래 크기 ↔ 창 맞춤)</span></div>
     <div class="pane"><figure id="c"><figcaption>Color</figcaption></figure><figure id="g"><figcaption>Gray 프레임</figcaption></figure><pre class="rv" id="rv">${esc(q.d.scan?rvText(q.d):'')}</pre></div><div class="ft" id="ft"></div>`;
   const zoom=el=>el.onclick=()=>el.parentNode.classList.toggle('full');
   const fc=doc.getElementById('c'),fg=doc.getElementById('g'),ft=doc.getElementById('ft');
@@ -1450,7 +1452,7 @@ async function openWindow(q){
 //     항목 = {d(사진 · 정보에 쓰는 Defect), X, Y, c(점 색), label(구분), tag(목록 글), members([Defect] — 여러 스캔에 있는 같은 Defect)}
 // ════════════════════════════════════════════════════════════════════════
 /** 필터 · 정렬 줄(Step 3 · 4 리뷰 패널, Step 5 공용). 값 = Contrast(실제) · Area(µm²) · Width · Length 의 최소 ~ 최대(빈 칸 = 제한 없음).
- *  비교는 화면에 보이는 자릿수로 한다(Contrast · Area 소수 2자리, Width · Length 1자리) — 보이는 값을 그대로 넣으면 그 Defect 가 들어온다. */
+ *  비교 = 실제 값 그대로(#83 — 반올림 안 함, 6.4749 처럼 소수 셋째 자리 이상도 정확히). 목록에도 실제 값을 쓰므로 보이는 값을 그대로 넣으면 그 Defect 가 들어온다. */
 const FLT_KEYS=[['c','Contrast(실제)',''],['a','Area','µm²'],['w','Width',''],['l','Length','']];
 const SORTS=[['','기본 순서'],['c-d','Contrast(실제) 큰 순'],['c-a','Contrast(실제) 작은 순'],['a-d','Area 큰 순'],['a-a','Area 작은 순'],['w-d','Width 큰 순'],['w-a','Width 작은 순'],['l-d','Length 큰 순'],['l-a','Length 작은 순'],['r-a','Recipe 순'],['r-d','Recipe 이름 역순']];
 const fltRngHtml=()=>FLT_KEYS.map(([k,t,u])=>`<label class="rng"><b>${t}</b> <input type="number" step="any" data-f="${k}0" placeholder="최소" aria-label="${t} 최소"> ~ <input type="number" step="any" data-f="${k}1" placeholder="최대" aria-label="${t} 최대">${u?' '+u:''}</label>`).join('');
@@ -1461,8 +1463,8 @@ function fltHtml(){return fltRngHtml()+fltRcpHtml()+fltSortHtml()+fltClrHtml()}
 function readFlt(box){const v=k=>{const el=box.querySelector(`[data-f="${k}"]`),t=el?el.value.trim():'';return t===''||!isFinite(+t)?null:+t},f={sort:box.querySelector('[data-f="sort"]').value,on:false};
   for(const [k] of FLT_KEYS){f[k+'0']=v(k+'0');f[k+'1']=v(k+'1');if(f[k+'0']!=null||f[k+'1']!=null)f.on=true}
   const rc=box.querySelector('[data-f="rcp"]');f.rcp=rc?rc.value:'';if(f.rcp)f.on=true;return f}
-const inR=(v,lo,hi,m)=>{if(lo==null&&hi==null)return true;v=Math.round(v*m)/m;return (lo==null||v>=lo)&&(hi==null||v<=hi)};   // 값이 없으면(NaN) 범위를 건 필터에서 빠진다
-const fltPass=(f,c,a,w,l)=>inR(c,f.c0,f.c1,100)&&inR(a,f.a0,f.a1,100)&&inR(w,f.w0,f.w1,10)&&inR(l,f.l0,f.l1,10);
+const inR=(v,lo,hi)=>{if(lo==null&&hi==null)return true;v=exv(v);return (lo==null||v>=lo)&&(hi==null||v<=hi)};   // 값이 없으면(NaN) 범위를 건 필터에서 빠진다
+const fltPass=(f,c,a,w,l)=>inR(c,f.c0,f.c1)&&inR(a,f.a0,f.a1)&&inR(w,f.w0,f.w1)&&inR(l,f.l0,f.l1);
 /** 필터 줄 입력 → fn(0.2초 모아서). [필터 지우기] = 범위만 비운다(정렬은 그대로). */
 function fltBind(box,fn){let t=0;const run=()=>{clearTimeout(t);t=setTimeout(fn,200)};box.addEventListener('input',run);box.addEventListener('change',run);
   box.addEventListener('click',e=>{if(e.target.dataset.f!=='clear')return;box.querySelectorAll('input[data-f],select[data-f="rcp"]').forEach(el=>el.value='');clearTimeout(t);fn()})}
@@ -1507,7 +1509,7 @@ function makePanel(pre,mapHost,lowHost,o){
 }
 /** v14.1.8: Step 3 · 4 목록 줄의 검색 글 — 목록 · 정보 칸의 값(구분 · ID · 좌표 · Die · Area · Width · Length · Box · Contrast · Step · Slot · 호기 · Recipe) + 사진 이름(+ O/X 는 매번). */
 function panelText(it){const d=it.d;if(!it.qt){const x=info({d,label:it.label||it.tag||''}),c=S.cmp?linkColor(d,d.scan,S.cmp.o.ctol):null,g=grayOf(d);
-    it.qt=lower([it.tag,it.label,x.id,f1(x.X),f1(x.Y),x.die,f2(x.area),f1(x.width),f1(x.length),x.box,f2(x.contrast),x.step,x.slot,x.tool,rcpName(d),c&&c.c&&c.c.file,g&&g.frame&&g.frame.file].filter(v=>v!=null&&v!=='').join(' '))}
+    it.qt=lower([it.tag,it.label,x.id,f1(x.X),f1(x.Y),x.die,fv(x.area),fv(x.width),fv(x.length),x.box,fv(x.contrast),x.step,x.slot,x.tool,rcpName(d),c&&c.c&&c.c.file,g&&g.frame&&g.frame.file].filter(v=>v!=null&&v!=='').join(' '))}
   const ov=S.overlay[key(d)];return ov?it.qt+' '+lower(ov):it.qt}
 /** 목록 · 지도 자료를 바꾼다. keep = 보고 있던 항목을 유지(같은 항목이 새 목록에 있으면). */
 function setPanel(P,items,bg,cnt,keep){P.raw=items;P.rawBg=bg;P.cntBase=cnt;applyPanel(P,keep)}
@@ -1538,7 +1540,7 @@ function paintPanelList(P){const box=P.el('List'),L=P.items,top=box.scrollTop,h=
   box.querySelectorAll('.it').forEach(n=>n.remove());
   for(let k=s;k<e;k++){const it=L[k],d=it.d,n=document.createElement('div'),on=pOn(P,it);n.className='it'+(k===P.sel?' sel':'')+(on?'':' off');n.style.top=k*RH+'px';n.dataset.k=k;n.style.borderLeftColor=it.c&&!it.c.startsWith('--')?it.c:'';
     const ov=S.overlay[key(d)],a=document.createElement('span'),b=document.createElement('span');b.className='rc';
-    a.textContent=`${k+1}. ${it.tag?it.tag+' · ':''}ID ${d.no??d.id} · (${f1(it.X)}, ${f1(it.Y)}) · C ${f2(d.Contrast)}${ov?' · '+ov:''}`;b.textContent=rcpName(d);b.title='Recipe (Surface.flt recipe 번호)';const ck=document.createElement('span');ck.className='pk';ck.textContent=on?'☑':'☐';ck.title='☑ = 지도 · ↑↓ · CSV 에 넣음';n.append(ck,a,b);box.append(n)}}   // #73: Recipe = 오른쪽 열
+    a.textContent=`${k+1}. ${it.tag?it.tag+' · ':''}ID ${d.no??d.id} · (${f1(it.X)}, ${f1(it.Y)}) · C ${fv(d.Contrast)}${ov?' · '+ov:''}`;b.textContent=rcpName(d);b.title='Recipe (Surface.flt recipe 번호)';const ck=document.createElement('span');ck.className='pk';ck.textContent=on?'☑':'☐';ck.title='☑ = 지도 · ↑↓ · CSV 에 넣음';n.append(ck,a,b);box.append(n)}}   // #73: Recipe = 오른쪽 열
 /** 지도에 그릴 점: '전체' 체크 = 배경 점(bg) + 목록 점, 아니면 목록 점만. 목록 점이 위에 그려진다. */
 function panelPts(P){const off=[],on=[];for(const it of P.items)(pOn(P,it)?on:off).push(it);   // v14.1.8: ☐ = 회색 원(☑ 가 위에)
   return (P.el('All').checked?P.bg:[]).concat(off.map(it=>({X:it.X,Y:it.Y,c:'#9aa3b2',r:2.4,ring:true,q:it})),on.map(it=>({X:it.X,Y:it.Y,c:it.c,r:3.6,q:it})))}
@@ -1586,7 +1588,7 @@ async function showPanel(P){
 }
 /** 사진 정보 표의 줄(Step 3 · 4 리뷰 패널, Step 5 공용). color · gray = 그 줄에 적을 글. */
 function infoRows(d,x,color,gray){const gl=d.gl;return [['ID / resultID',`${x.id} / ${d.resultID}`],['Step · Slot · 호기',`${x.step} · CA ${d.scan.contrast??'?'} · Slot ${x.slot||'-'} · ${x.tool||'-'}`],['Wafer X/Y',`${f1(x.X)}, ${f1(x.Y)} µm`],['Die (맵 X, Y)',x.die+(x.dieEq?` · ${x.dieEq}`:'')+(x.dieXY?` · Die 안 ${x.dieXY} µm`:'')],
-  ['Area',`${f2(x.area)} µm² (${d.area} px)`],['Width / Length',`${f1(x.width)} / ${f1(x.length)}`],['Box W×H',x.box+' px'],['Contrast(실제)',f2(x.contrast)],['Color',color],['Gray',gray],
+  ['Area',`${fv(x.area)} µm² (${d.area} px)`],['Width / Length',`${fv(x.width)} / ${fv(x.length)}`],['Box W×H',x.box+' px'],['Contrast(실제)',fv(x.contrast)],['Color',color],['Gray',gray],
   ['GL(Local 추정)',gl?`ROI mean ${f1(gl.mean)} · median ${f1(gl.median)} · max ${gl.max} · ring median ${f1(gl.ring)} · ROI−local ${f1(gl.delta)}`:'-']]}
 const grayText=g=>g.frame?`${g.frame.file} · (${f1(g.px)}, ${f1(g.py)}) · ${g.model==='transform'?'frameToChuckPlane':'간단 모델(보정 필요)'}`:g.reason;
 const kvHtml=rows=>rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
@@ -2237,7 +2239,7 @@ function bigBuild(){
       const k1=clsFirst(s,i),k2=clsName(s,i),p1=!(off1&&off1.has(k1)),p2=!(off2&&off2.has(k2)),r=C.rec[i],rl=r===0&&nm?`0 (${nm})`:String(r),pr=!f.rcp||rl===f.rcp;   // 글 = rcp5 와 같음
       if(T.length){let w=qb|qm(k1)|qm(k2)|qm(rl);   // 검색 = 다른 필터와 같이
         if(w!==full&&(tn&~w)){const X=act?C.ax[i]:C.x[i],Y=act?C.ay[i]:C.y[i],die=dieOf(X,Y,s.product),
-            ns=`${s.idByOrder?i:C.id[i]} ${f2(C.c[i])} ${f2(C.area[i]*px2)} ${f1(C.w[i])} ${f1(C.l[i])} ${f1(C.bw[i])}×${f1(C.bh[i])} ${f1(X)} ${f1(Y)}${die?` ${die.col}, ${die.row}`:''}${(m=>m&&m.x!=null?` ${m.x}, ${m.y}`:'')(mapDie(X,Y,s))}`;
+            ns=`${s.idByOrder?i:C.id[i]} ${fv(C.c[i])} ${fv(C.area[i]*px2)} ${fv(C.w[i])} ${fv(C.l[i])} ${f1(C.bw[i])}×${f1(C.bh[i])} ${f1(X)} ${f1(Y)}${die?` ${die.col}, ${die.row}`:''}${(m=>m&&m.x!=null?` ${m.x}, ${m.y}`:'')(mapDie(X,Y,s))}`;
           for(let j=0;j<T.length;j++)if(!(w>>j&1)&&ns.includes(T[j]))w|=1<<j}
         if(w!==full&&lk){const ck=lk[i];if(ck>=0){const rec=recs[ck];w|=(rec.c&&rec.c.file?qm(rec.c.file):0)|(rec.frame&&rec.frame.file?qm(rec.frame.file):0)}}
         if(w!==full)continue}
@@ -2284,7 +2286,7 @@ const VA=makeVT($('#bigList'),[['☑',46,'pk',null],['#',64,'num',null],['Lot',1
   ['Box W×H',96,'',null],['Wafer X',100,'num','x'],['Wafer Y',100,'num','y'],['Die (맵 X, Y)',120,'',null],['Color · Gray 매칭',120,'',null]],{
   sort:()=>BIG.sort,onSort:k=>{BIG.sort=sortClick(k);bigRefresh()},
   row:k=>{const o=S.o,px2=o.pix*o.pix,act=o.coord==='actual',{s,i}=bigAt(k),C=s.cols,X=act?C.ax[i]:C.x[i],Y=act?C.ay[i]:C.y[i],die=dieOf(X,Y,s.product);
-    return [s.pk[i]?'☑':'☐',k+1,s.lotName||baseName(s.lotPath),s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),f2(C.c[i]),f2(C.area[i]*px2),f1(C.w[i]),f1(C.l[i]),`${f1(C.bw[i])}×${f1(C.bh[i])}`,f1(X),f1(Y),dieTxt(mapDie(X,Y,s)),cgShort(s,i)]},
+    return [s.pk[i]?'☑':'☐',k+1,s.lotName||baseName(s.lotPath),s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),fv(C.c[i]),fv(C.area[i]*px2),fv(C.w[i]),fv(C.l[i]),`${f1(C.bw[i])}×${f1(C.bh[i])}`,f1(X),f1(Y),dieTxt(mapDie(X,Y,s)),cgShort(s,i)]},
   cls:k=>{const {s,i}=bigAt(k);return s.pk[i]?'':'off'},onSpace:k=>bigPick(k)});
 /** v14.1.8 5-1 ☑: 줄 하나 바꾸기 · 보이는 줄 모두(전체 선택 / 전체 해제 — 안 보이는 줄은 그대로). */
 function bigPick(k){const V=BIG.view;if(!V||k<0||k>=V.m)return;const {s,i}=bigAt(k),v=s.pk[i]^1;s.pk[i]=v;V.np+=v?1:-1;vtPaint(VA);bigPickInfo()}
@@ -2306,7 +2308,7 @@ function bigRefresh(){
 function bigCsv(){const V=BIG.view;if(!V)return null;const o=S.o,px2=o.pix*o.pix,act=o.coord==='actual';
   const parts=['\ufeff'+['순서','Lot','Lot경로','Slot','ID','resultID','WaferX','WaferY','DieCol','DieRow','Die맵X','Die맵Y','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','장비스캔분류','리뷰결과',...RV5_HEAD].join(',')+'\r\n'];let buf=[];
   for(let k=0;k<V.m;k++){const {s,i}=bigAt(k);if(!s.pk[i])continue;const C=s.cols,X=act?C.ax[i]:C.x[i],Y=act?C.ay[i]:C.y[i],die=dieOf(X,Y,s.product);   // v14.1.8: ☑ 한 줄만
-    buf.push([k+1,csvQ(s.lotName),csvQ(s.lotPath),csvQ(s.slotName||''),s.idByOrder?i:C.id[i],C.rid[i],f2(X),f2(Y),die?die.col:'',die?die.row:'',...(m=>m&&m.x!=null?[m.x,m.y]:['',''])(mapDie(X,Y,s)),f2(C.area[i]*px2),C.area[i],f2(C.w[i]),f2(C.l[i]),f2(C.bw[i]),f2(C.bh[i]),f2(C.c[i]),csvQ(clsFirst(s,i)),csvQ(clsName(s,i)),...rv5Cells(s,i).map(csvQ)].join(','));
+    buf.push([k+1,csvQ(s.lotName),csvQ(s.lotPath),csvQ(s.slotName||''),s.idByOrder?i:C.id[i],C.rid[i],f2(X),f2(Y),die?die.col:'',die?die.row:'',...(m=>m&&m.x!=null?[m.x,m.y]:['',''])(mapDie(X,Y,s)),fv(C.area[i]*px2),C.area[i],fv(C.w[i]),fv(C.l[i]),f2(C.bw[i]),f2(C.bh[i]),fv(C.c[i]),csvQ(clsFirst(s,i)),csvQ(clsName(s,i)),...rv5Cells(s,i).map(csvQ)].join(','));
     if(buf.length>=20000){parts.push(buf.join('\r\n')+'\r\n');buf=[]}}
   if(buf.length)parts.push(buf.join('\r\n')+'\r\n');return parts}
 const csvQ=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
@@ -2397,7 +2399,7 @@ function pairCsv(L){const o=S.o,px2=o.pix*o.pix,full=pcPath;   // L = 줄 목록
     'Color이미지','Color경로','Color연결','FaultX','FaultY','Gray프레임','Gray경로','GrayPX(3168x1024기준)','GrayPY(3168x1024기준)','후보프레임','Gray계산','좌표기준','CropW','CropH','매칭폴더','Gray프레임목록','변환','이유',...RV5_HEAD];
   const parts=['\ufeff'+head.join(',')+'\r\n'];let buf=[];
   for(const p of L||BIG.pairs||[]){const s=p.s,i=p.i,C=s.cols,X=C.x[i],Y=C.y[i],die=dieOf(X,Y,s.product),r=p.r,g=s.cg||{},cs=r&&r.hit&&r.crop,fc=r&&r.c?cgFault(r.c):null;
-    buf.push([p.k+1,csvQ(ST5[p.st]),csvQ(s.lotName),csvQ(s.lotPath),csvQ(s.slotName||''),s.idByOrder?i:C.id[i],C.rid[i],csvQ(clsFirst(s,i)),csvQ(clsName(s,i)),f2(C.c[i]),f2(C.area[i]*px2),C.area[i],f2(C.w[i]),f2(C.l[i]),f2(C.bw[i]),f2(C.bh[i]),f2(X),f2(Y),die?die.col:'',die?die.row:'',...(m=>m&&m.x!=null?[m.x,m.y]:['',''])(mapDie(X,Y,s)),
+    buf.push([p.k+1,csvQ(ST5[p.st]),csvQ(s.lotName),csvQ(s.lotPath),csvQ(s.slotName||''),s.idByOrder?i:C.id[i],C.rid[i],csvQ(clsFirst(s,i)),csvQ(clsName(s,i)),fv(C.c[i]),fv(C.area[i]*px2),C.area[i],fv(C.w[i]),fv(C.l[i]),f2(C.bw[i]),f2(C.bh[i]),f2(X),f2(Y),die?die.col:'',die?die.row:'',...(m=>m&&m.x!=null?[m.x,m.y]:['',''])(mapDie(X,Y,s)),
       csvQ(p.c?p.c.file:''),csvQ(p.c?full(p.c.path):''),csvQ(p.c?p.c.how:''),fc?f2(fc[0]):'',fc?f2(fc[1]):'',
       csvQ(p.g?p.g.file:''),csvQ(p.g?full(p.g.path):''),p.g?f1(p.g.px):'',p.g?f1(p.g.py):'',p.g?p.g.n:'',p.g?(p.g.from==='color'?'Color 좌표':'Defect 좌표'):'',g.plan?csvQ(CG.MODES[g.plan.mode]):'',cs?cs.cw:'',cs?cs.ch:'',csvQ(g.path?full(g.path):''),csvQ(g.src&&g.src.frames||''),csvQ(g.src&&g.src.tf||''),csvQ([p.cerr,p.gerr].filter(Boolean).join(' / ')),...rv5Cells(s,i).map(csvQ)].join(','));
     if(buf.length>=20000){parts.push(buf.join('\r\n')+'\r\n');buf=[]}}
@@ -2405,13 +2407,13 @@ function pairCsv(L){const o=S.o,px2=o.pix*o.pix,full=pcPath;   // L = 줄 목록
 const B5={items:[],q:[]};
 /** v14.1.8: 5-2 · 5-3 줄의 검색 글(한 번 만들어 둠). */
 const b5Text=p=>{if(!p.qt){const s=p.s,C=s.cols,i=p.i,o=S.o||{pix:1},px2=o.pix*o.pix,act=o.coord==='actual',X=act?C.ax[i]:C.x[i],Y=act?C.ay[i]:C.y[i],die=dieOf(X,Y,s.product);
-    p.qt=lower([p.k+1,ST5[p.st],s.lotName,s.slotName,s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),f2(C.c[i]),f2(C.area[i]*px2),f1(C.w[i]),f1(C.l[i]),`${f1(C.bw[i])}×${f1(C.bh[i])}`,f1(X),f1(Y),die?`${die.col}, ${die.row}`:'',dieTxt(mapDie(X,Y,s)),
+    p.qt=lower([p.k+1,ST5[p.st],s.lotName,s.slotName,s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),fv(C.c[i]),fv(C.area[i]*px2),fv(C.w[i]),fv(C.l[i]),`${f1(C.bw[i])}×${f1(C.bh[i])}`,f1(X),f1(Y),die?`${die.col}, ${die.row}`:'',dieTxt(mapDie(X,Y,s)),
       p.c&&p.c.file,p.c&&p.c.how,p.c&&pcPath(p.c.path),p.g&&`${p.g.file} (${f1(p.g.px)}, ${f1(p.g.py)})`,p.g&&pcPath(p.g.path),p.cerr,p.gerr].filter(x=>x!=null&&x!=='').join(' '))}
   return p.glv!=null?p.qt+' '+f1(p.glv):p.qt};
 /** 5-3 으로 가는 줄 = 5-2 에서 보이는(보기 · 검색) ☑ 줄, 확인 안 함은 빼고. */
 const c5Pool=()=>BIG.pairs?B5.items.filter(p=>p.on2&&p.st!=='skip'):[];
 const VB=makeVT($('#b5list'),[['☑',46,'pk',null],['5-1 #',64,'num',null],['상태',150,'s',null],['Lot',140,'',null],['Slot',110,'',null],['ID',62,'num',null],['장비 스캔 분류',140,'',null],['리뷰 결과',140,'',null],['Recipe',120,'',null],['Contrast(실제)',112,'num',null],['Color 이미지',230,'',null],['Gray 프레임 (픽셀)',280,'',null],['Color 연결',150,'',null],['이유',360,'',null],['Color 전체 경로',520,'',null],['Gray 전체 경로',520,'',null]],{
-  row:k=>{const p=B5.items[k],s=p.s,C=s.cols,i=p.i;return [p.on2?'☑':'☐',p.k+1,ST5[p.st],s.lotName,s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),f2(C.c[i]),p.c?p.c.file:'-',p.g?`${p.g.file} (${f1(p.g.px)}, ${f1(p.g.py)})${p.g.from==='defect'?' · Defect 좌표':''}`:'-',p.c?p.c.how:'-',[p.cerr,p.gerr].filter(Boolean).join(' / '),
+  row:k=>{const p=B5.items[k],s=p.s,C=s.cols,i=p.i;return [p.on2?'☑':'☐',p.k+1,ST5[p.st],s.lotName,s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),fv(C.c[i]),p.c?p.c.file:'-',p.g?`${p.g.file} (${f1(p.g.px)}, ${f1(p.g.py)})${p.g.from==='defect'?' · Defect 좌표':''}`:'-',p.c?p.c.how:'-',[p.cerr,p.gerr].filter(Boolean).join(' / '),
     p.c?pcPath(p.c.path):'-',p.g?pcPath(p.g.path):'-']},
   cls:k=>'st-'+B5.items[k].st+(B5.items[k].on2?'':' off'),onSel:()=>photoWinFollow(VB),onEnter:()=>photoWin(VB,B5.items),onSpace:k=>b5Pick(k)});
 function b5Pick(k){const p=B5.items[k];if(!p)return;p.on2=!p.on2;vtPaint(VB);b5PickInfo()}
@@ -2566,7 +2568,7 @@ async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w)
   const cap=(f,h,title)=>{f.cap.innerHTML=h;f.cap.title=title||''};
   if(!p){$w('hd').textContent='보여 줄 Defect 가 없습니다';cap(fc,'Color');cap(fx,'Gray Crop (Color 시야)');cap(ff,'Gray 프레임');return}
   const s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),ms=(f,t)=>f.im.insertAdjacentHTML('beforeend',`<p class="ms">${esc(t)}</p>`),zoom=pwZoom;
-  $w('hd').innerHTML=`${V.sel+1} / ${V.n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · <b>${esc(clsText(s,i))}</b> · Recipe <b>${esc(rcp5(s,i))}</b> · Zone ${esc(rvInfo(bigDef(s,i)).zone)} · Region ${C.rg[i]} · Contrast ${f2(C.c[i])}${p.glv!=null?` · <b>GL ${f1(p.glv)}</b>`:''} ${pickBadge(p)} <i>(↑↓ ←→ 이전 · 다음 · Space = 최종 목록 ☑/☐ · F = 확대 · 위치 고정 · B = 빨간 네모 켜기/끄기 · 사진 누르기 = 2배씩 확대(Shift · 오른쪽 = 축소, 휠 · 끌기) · Esc = 창 맞춤)</i>`
+  $w('hd').innerHTML=`${V.sel+1} / ${V.n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · <b>${esc(clsText(s,i))}</b> · Recipe <b>${esc(rcp5(s,i))}</b> · Zone ${esc(rvInfo(bigDef(s,i)).zone)} · Region ${C.rg[i]} · Contrast ${fv(C.c[i])}${p.glv!=null?` · <b>GL ${f1(p.glv)}</b>`:''} ${pickBadge(p)} <i>(↑↓ ←→ 이전 · 다음 · Space = 최종 목록 ☑/☐ · F = 확대 · 위치 고정 · B = 빨간 네모 켜기/끄기 · 사진 누르기 = 2배씩 확대(Shift · 오른쪽 = 축소, 휠 · 끌기) · Esc = 창 맞춤)</i>`
     +(pcBaseSet()?'':' <i style="color:#e0b060">· 전체 경로: 5-1 의 [원본 폴더 경로(PC)] 를 적으면 PC 경로로 나옵니다(지금은 고른 폴더부터)</i>');
   // 사진 파일명 + 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도") — 경로는 사진을 실제로 찾은 곳(없으면 매칭 폴더 + 이름)
   const cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'',rel=pcBaseSet()?'':' rel';
@@ -2594,7 +2596,7 @@ const THUMB=new Map();   // 짝 번호 → {c, g(data URL), gl, err} — 설정�
 const C5={items:[],tok:0,gtok:0,mode:'one',page:0};const G5=48,TW=240;
 const VC=makeVT($('#c5list'),[['최종',46,'pk',null],['5-1 #',60,'num',null],['상태',150,'s',null],['Lot',120,'',null],['Slot',100,'',null],['ID',60,'num',null],['장비 스캔 분류',130,'',null],['리뷰 결과',130,'',null],['Recipe',120,'',null],['흑백 GL 평균',96,'num','gl'],['Contrast(실제)',110,'num',null],['Area µm²',86,'num',null],['Width',62,'num',null]],{
   sort:()=>GLC.sort,onSort:k=>{GLC.sort=GLC.sort==='gl-d'?'gl-a':'gl-d';c5Refresh()},
-  row:k=>{const p=C5.items[k],s=p.s,C=s.cols,i=p.i,px2=S.o.pix*S.o.pix;return [p.pick?'☑':'☐',p.k+1,ST5[p.st],s.lotName,s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),glCell(p),f2(C.c[i]),f2(C.area[i]*px2),f1(C.w[i])]},
+  row:k=>{const p=C5.items[k],s=p.s,C=s.cols,i=p.i,px2=S.o.pix*S.o.pix;return [p.pick?'☑':'☐',p.k+1,ST5[p.st],s.lotName,s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),glCell(p),fv(C.c[i]),fv(C.area[i]*px2),fv(C.w[i])]},
   cls:k=>'st-'+C5.items[k].st+(C5.items[k].pick?' pk':''),onSel:()=>{c5Show();photoWinFollow(VC)},onEnter:()=>photoWin(VC,C5.items),onSpace:k=>pickToggle(C5.items[k])});
 $('#c5list').addEventListener('click',e=>{const c=e.target.closest('.br>span.pk');if(c)pickToggle(C5.items[+c.parentNode.dataset.k])});
 /** 5-3 목록: [사진 있는 것만] = Color 나 Gray 사진 중 하나라도 있는 것(소유자 "Color 이미지만 있을 경우에도 Color 이미지만이라도 띄워야") — 종전 'Color·Gray 매칭 완료만'은 Color 만인 Defect 를 숨겼다. */
@@ -2657,7 +2659,7 @@ async function prepThumb(p,note){
   t={c,g,g0,gl,err};THUMB.set(p.k,t);return t}
 function c5Card(p,k){const t=THUMB.get(p.k),s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'';
   const cp=cn?pcPath(p.c?p.c.path:dir+cn):'',gp=gn?pcPath(p.g?p.g.path:dir+gn):'';   // 마우스를 올리면 전체 경로
-  return `<div class="g5 st-${p.st}${p.pick?' pk':''}" data-k="${k}" title="눌러서 크게 보기"><div class="gh">${p.pick?'☑ ':''}${k+1}. ${esc(s.lotName)} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · C ${f2(C.c[i])}</div>
+  return `<div class="g5 st-${p.st}${p.pick?' pk':''}" data-k="${k}" title="눌러서 크게 보기"><div class="gh">${p.pick?'☑ ':''}${k+1}. ${esc(s.lotName)} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · C ${fv(C.c[i])}</div>
     <div class="gi"><div data-l="Color" title="${esc(cp)}">${t?(t.c?`<img src="${t.c}" alt="Color">`:'<span class="ph">Color 없음</span>'):'<span class="ph">⏳</span>'}</div><div data-l="Gray Crop" title="${esc(gp)}">${t?(t.g?`<img src="${GLC.show||!t.g0?t.g:t.g0}" alt="Gray Crop">`:'<span class="ph">Gray 없음</span>'):'<span class="ph">⏳</span>'}</div></div>
     <div class="gn"><span title="${esc(cp)}">${esc(cn||'-')}</span><span title="${esc(gp)}">${esc(gn||'-')}</span></div>
     ${t&&t.err.length?`<div class="ge">${esc(t.err.join(' · '))}</div>`:''}${t&&t.gl?`<div class="gm">ROI−local ${f1(t.gl.delta)} · ROI mean ${f1(t.gl.mean)}</div>`:''}</div>`}

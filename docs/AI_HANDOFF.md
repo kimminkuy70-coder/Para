@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #83 v14.3.15: Defect 분석 필터 = 실제 값 비교, 목록 = 실제 값 표기 (2026-11-19 KST, `version_v14`, 이슈 #83)
+
+- 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.14(`c4891e9`) · 이슈 #83 "v14.3.14 업데이트 사항"(자동 실행 routine 처리, 첨부 없음).
+- 요청: "defect 분석에서 각 필터 값이 명확하게 적용되게 — 리스트에 써있는 것도 그렇고 6.4749 와 같은 소수점 셋째 자리까지는 정확하게 필터링. 리스트에 작성되는 것도 반올림하지 말고 실제 값으로 표기".
+- 원인: rev6 HTML 의 `inR` 이 비교 전에 값을 반올림(Contrast · Area 소수 2자리, Width · Length 1자리)하고, 목록 · 정보 · CSV 도 `f2` · `f1`(toFixed)로 써서 6.4749 경계로 거를 수 없었다.
+- 한 일(rev6 HTML, dist 같게): 새 `exv`(12 유효숫자 — 계산 잡음 1.2300000000000002 만 없앰) · `fv`(실제 값 글자), `inR` = `exv` 값 그대로 비교(반올림 인자 삭제),
+  Contrast · Area · Width · Length 를 쓰는 모든 곳(기본 탭 Step 3 · 4 목록 · 정보 칸 · 새 창 · 상세 표 · CSV, 5-1 · 5-2 · 5-3 목록 · 검색 글 · 결과/최종 목록 CSV · 엑셀)의 `f1`/`f2` → `fv`.
+  좌표 · Box · GL 값은 그대로(요청 범위 밖).
+- 해석(확인 전): ① '실제 값' = Surface.flt 값(Area 는 px × 픽셀 크기² 계산 결과)을 반올림 없이 — 12 유효숫자를 넘는 부동소수 잡음만 정리. ② 검색어도 실제 값 글자와 맞춘다(종전 '45.00' → 이제 '45').
+  ③ Para 프로그램 [Color·Gray 매칭] 최종 목록 엑셀(`colorgray.build_final_workbook`)은 CSV 의 값을 그대로 쓰므로 따로 안 고침. 원본 HTML(ccr 브랜치)에는 이번에도 안 넣음.
+- 시험: 새 `tests/test_exact_filter.py`(6.4749 경계 · 셋째 자리 Width/Length · 잡음 · 반올림 함수 안 남음), `test_recipe_count_filter.py` 스텁 + 검색어 '30',
+  `test_defect_view_toggles.py`(5-2 검색 글 = fv), `test_desktop_ui.mjs` 5-1 숫자 검색 '45'. `check_project` Failed files: none, `test_desktop_ui.mjs` 통과(첫 실행은 바뀐 검색어 기대값 때문에 실패 → 고친 뒤 통과).
+  시험이 바꾼 `docs/screenshots` · `CamtekAOI/Logs` 는 되돌림. **Windows 실기 · 실제 Lot 은 확인 못 함.**
+- 릴리스: `__version__` 14.3.15 + `docs/release_notes/v14.3.15.md` → push 하면 `v14.yml` 이 Release 생성.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #83 | 필터 소수 셋째 자리까지 정확히, 목록 실제 값 표기 | v14.3.15 |
+
 ## 최신 재개 — v14.3.14: wafer map = Defect 점이 찍힌 Die 만 다른 색 (2026-11-19 KST, `version_v14`)
 
 - 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.13(`6f59790`) · 소유자 지시: "그냥 간단하게 defect 위치가 있는 die 는 다른 색으로 표시해. 방금 구현한 로직은 삭제하고 내가 말한 로직으로 수정해서 릴리즈까지".

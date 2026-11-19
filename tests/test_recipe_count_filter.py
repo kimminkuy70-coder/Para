@@ -14,7 +14,7 @@ HTMLS = [ROOT / "frontend" / p / "defect" / "AOI_Contrast_Wizard_rev6.html" for 
 
 STUB = r"""
 const FLT_KEYS=[['c'],['a'],['w'],['l']];
-const LS={def:true};const lower=s=>s.toLowerCase();const f1=v=>v==null||!isFinite(v)?'':(+v).toFixed(1),f2=v=>v==null||!isFinite(v)?'':(+v).toFixed(2);const dieOf=()=>null,mapDie=()=>null;   // v14.3.12: 5-1 검색 글에 웨이퍼 맵 번호(여기서는 Die 없음)
+const LS={def:true};const lower=s=>s.toLowerCase();const f1=v=>v==null||!isFinite(v)?'':(+v).toFixed(1),f2=v=>v==null||!isFinite(v)?'':(+v).toFixed(2);const exv=v=>+(+v).toPrecision(12),fv=v=>v==null||v===''||!isFinite(v)?'':String(exv(v));const dieOf=()=>null,mapDie=()=>null;   // v14.3.12: 5-1 검색 글에 웨이퍼 맵 번호(여기서는 Die 없음)
 const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
 const esc=s=>String(s);
 const S={};const opts=()=>({pix:1,coord:'wafer'});
@@ -44,7 +44,7 @@ BIG.lotOff.add('/L1');out.lotOff=run();BIG.lotOff.clear();
 EL.slot.value='S2';out.slot=run();EL.slot.value='';
 BIG.clsOff1.add('B');out.cls=run();BIG.clsOff1.clear();
 flt.vals.c0='25';out.contrast=run();flt.vals.c0='';
-BIG.q=['l1'];out.q=run();BIG.q=['30'];out.qnum=run();BIG.q=['l2','30.00'];out.q2=run();BIG.q=['zzz'];out.q0=run();BIG.q=[];
+BIG.q=['l1'];out.q=run();BIG.q=['30'];out.qnum=run();BIG.q=['l2','30'];out.q2=run();BIG.q=['zzz'];out.q0=run();BIG.q=[];
 scans[1].pk[0]=0;out.pk=run();scans[1].pk[0]=1;
 EL.rcp.value='1';EL.lot.value='/L1';out.rcpLot=run();
 EL.rcp.value='2';out.keep=run();
@@ -120,7 +120,7 @@ class RecipeCountFollowsFilter(unittest.TestCase):
                 o = self.run_js(html)
                 self.assertEqual((o["all"]["m"], o["all"]["np"]), (7, 7))                      # 처음 = 모두 ☑
                 self.assertEqual((o["q"]["m"], o["q"]["lot"]), (3, {"/L1": 3}))                 # Lot 이름
-                self.assertEqual(o["qnum"]["m"], 2)                                             # Contrast 30.00(숫자 열)
+                self.assertEqual(o["qnum"]["m"], 2)                                             # Contrast 30(숫자 열 — #83 부터 실제 값 그대로)
                 self.assertEqual(o["q2"]["m"], 1)                                               # 두 단어 = 둘 다
                 self.assertEqual((o["q0"]["m"], o["q0"]["rc"]), (0, {}))
                 self.assertEqual((o["pk"]["m"], o["pk"]["np"]), (7, 6))                         # ☐ 는 보이지만 ☑ 수에서 빠짐

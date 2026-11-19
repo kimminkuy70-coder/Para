@@ -215,7 +215,7 @@ class ListSearchAndPick(unittest.TestCase):
         # 모든 열 값 + 사진 이름
         self.assertIn("rec.c&&rec.c.file?qm(rec.c.file)", self.t)                  # 5-1 Color 사진
         b5 = self.t[self.t.index("const b5Text=p=>"):self.t.index("const c5Pool=")]
-        for k in ("f2(C.c[i])", "f1(C.w[i])", "p.c&&p.c.file", "p.g&&`${p.g.file}", "pcPath(p.g.path)", "p.cerr"):
+        for k in ("fv(C.c[i])", "fv(C.w[i])", "p.c&&p.c.file", "p.g&&`${p.g.file}", "pcPath(p.g.path)", "p.cerr"):
             self.assertIn(k, b5, k)
         for fn in ("function panelText(", "function detText("):
             seg = self.t[self.t.index(fn):]
