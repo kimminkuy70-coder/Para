@@ -1,5 +1,23 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #86 v14.3.17: 최종 목록 [원본 이미지로 저장] · [사진 파일.zip 저장] (2026-11-20 KST, `version_v14`, 이슈 #86)
+
+- 마지막 갱신 2026-11-20 · 기준 커밋 v14.3.16(`4f9f57b`) · 이슈 #86 "v14.3.16 업데이트 사항"(자동 실행 routine 처리, 첨부 없음).
+- 요청: ① [원본 이미지도 넣기] → '원본 이미지로 저장' 이름 변경, 열을 더하지 말고 기존 열 이미지를 원본으로 대체, 흑백(Crop · 빨간 네모)은 그대로 두고 추가 2열 = 원본 이미지 Crop · 흑백 원본.
+  ② [최종 목록 사진 파일.zip 저장] 단추: color 원본 · 흑백 원본 · 흑백 원본 Crop 3개 폴더(color, gray, gray crop), 파일 이름 = 원본 이름, 원본은 절대 훼손하지 말고 복사.
+- 한 일(rev6 HTML, dist 같게): 체크 글 '원본 이미지로 저장'(id `c5xlOrig` · `cw.xlOrig` 그대로). 켜면 `xlCols` = Color 열 자리에 `XL_CO`('Color 원본 (파일 그대로)', 그림 = `xlOrig` 바이트 — 못 읽으면 줄인 사진 + '사진 없음 이유' 칸에 적음),
+  Gray Crop · Gray 프레임(빨간 네모) 열 그대로, 그 뒤 `XL_ORIG` = ['Gray Crop 원본 (흑백 원본을 자른 그림 · 표시 없음)' `go` = `cropPng(k.raw)`, 'Gray 프레임 원본' `fo`]. #78 의 'Color 원본' 추가 열은 없앰.
+  새 `c5SaveZip` · `origBytes`(파일 바이트 그대로, 읽기만) · `zipName`(같은 원본 = 한 번, 이름만 겹치면 `_2`) · 단추 `#c5saveZip`(☑ 있을 때만 켜짐). zip = 기존 `zipStore`(압축 없음, UTF-8 이름).
+- 해석(확인 전): ① '원본 이미지 crop' = 흑백 프레임 원본 픽셀을 종전 Crop 범위(cs.cw × cs.ch, 프레임 밖 검정)로 자른 그림 — 늘리지 않고 표시 없음. ② gray crop 파일 = 원본 이름 + `.png`(무손실, JPEG 로 다시 압축하지 않으려고).
+  ③ 여러 Defect 가 같은 프레임이면 gray 는 한 번, gray crop 은 Defect 마다(`이름_2.png` …). ④ Color 원본이 PNG/JPEG 가 아니면 엑셀 안에서만 같은 픽셀 PNG(#78 그대로), zip 은 언제나 원래 바이트. ⑤ 원본 HTML(ccr 브랜치)에는 안 넣음.
+- 시험: `tests/test_defect_view_toggles.py` `ExcelOriginalImages`(열 차례 · zip 단추 · 폴더 · 표시 없는 Crop), `tools/test_desktop_ui.mjs`(zip 안 color/gray/gray crop · color/gray 바이트 = fixture 원본 · 엑셀 원본 열 제목) 통과,
+  `PYTHONPATH=vendor python tools/check_project.py` Failed files: none. 이 환경에 pytest 없음 → `python -m unittest` 로 돌림. 시험이 바꾼 `CamtekAOI/Logs` 는 되돌림. **Windows 실기 · 실제 Lot · Excel 에서 열어 보기는 확인 못 함.**
+- 릴리스: `__version__` 14.3.17 + `docs/release_notes/v14.3.17.md` → push 하면 `v14.yml` 이 Release 생성.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #86 | 엑셀 원본 이미지로 저장(Color 대체 + 흑백 원본 2열) · 사진 파일.zip 저장 | v14.3.17 |
+
 ## 최신 재개 — #84 v14.3.16: 5-3 흑백 GL 측정 = 최종 목록(☑)만 (2026-11-19 KST, `version_v14`, 이슈 #84)
 
 - 마지막 갱신 2026-11-19 · 기준 커밋 v14.3.15(`c6fd9e3`) · 이슈 #84 "v14.3.15 업데이트 사항"(자동 실행 routine 처리, 첨부 없음).

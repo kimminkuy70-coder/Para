@@ -454,7 +454,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
           <label><input type="checkbox" data-st5="none"> 둘 다 없음 <i data-n5="none"></i></label></span></div>
       <div class="row c5pickrow" title="소유자 #68: 목록에서 줄을 고르고 Space = 최종 목록에 넣기/빼기(☑). 사진 새 창에서도 Space. 엑셀에는 ☑ 한 Defect 만, 사진(Color · Gray Crop · Gray 프레임)을 넣어 저장합니다.">
         <b>최종 목록</b><span class="c5pick" id="c5pickN" aria-live="polite">☑ 0개</span><button id="c5pickAll" title="지금 보이는 목록을 모두 최종 목록에 넣습니다(☑)">전체 선택</button><button id="c5pickNone">전체 해제</button><label class="lsdef" title="새로 만든 목록의 줄을 처음부터 ☑ 로 둡니다(이 PC 에 기억). 끄면 처음엔 ☐"><input type="checkbox" data-ls="def" checked> 처음엔 모두 ☑</label>
-        <button class="pri" id="c5save" disabled>💾 최종 목록 엑셀 저장 (사진 포함)</button><button id="c5saveCsv" disabled title="Para 프로그램 [Defect 분석 › Color·Gray 매칭] 의 [최종 목록 CSV 불러오기] 가 이 파일의 Defect 만 추출합니다">📄 최종 목록 CSV 저장</button><label class="xlorig" title="v14.1.10(#78): 켜면 엑셀에 원본 사진 2장을 더 넣습니다 — Color 원본 · Gray 프레임 원본. 원본 파일을 줄이거나 다시 압축하지 않고 그대로 넣습니다(빨간 네모 · 측정 원 없음, 칸에는 작게 보이고 원래 크기 = 그림 우클릭 › 크기 및 속성 › 원래 크기로). 엑셀 파일이 커집니다. 이 PC 에 기억(cw.xlOrig)."><input type="checkbox" id="c5xlOrig"> 원본 이미지도 넣기</label><span class="muted" id="c5saveSt"></span></div>
+        <button class="pri" id="c5save" disabled>💾 최종 목록 엑셀 저장 (사진 포함)</button><button id="c5saveCsv" disabled title="Para 프로그램 [Defect 분석 › Color·Gray 매칭] 의 [최종 목록 CSV 불러오기] 가 이 파일의 Defect 만 추출합니다">📄 최종 목록 CSV 저장</button><button id="c5saveZip" disabled title="v14.3.17(#86): ☑ Defect 의 사진 파일을 .zip 하나로 — color(Color 원본) · gray(흑백 프레임 원본) · gray crop(흑백 원본을 자른 그림, 표시 없음) 3개 폴더. 원본 파일은 읽기만 하고 복사해서 넣습니다(원본 폴더는 바꾸지 않음). 파일 이름 = 원본 파일 이름.">🗂 최종 목록 사진 파일.zip 저장</button><label class="xlorig" title="v14.3.17(#86): 켜면 엑셀의 Color 열 = Color 원본 파일 그대로(줄이기 · 다시 압축 없음). 흑백은 종전 열(Gray Crop · Gray 프레임, 빨간 네모 표시)을 그대로 두고 2열을 더 넣습니다 — Gray Crop 원본(흑백 원본을 자른 그림, 표시 없음) · Gray 프레임 원본(파일 그대로). 칸에는 작게 보이고 원래 크기 = 그림 우클릭 › 크기 및 속성 › 원래 크기로. 엑셀 파일이 커집니다. 이 PC 에 기억(cw.xlOrig)."><input type="checkbox" id="c5xlOrig"> 원본 이미지로 저장</label><span class="muted" id="c5saveSt"></span></div>
       <div class="glbox" id="glBox" role="group" aria-labelledby="glBoxT">
       <div class="glhd"><b id="glBoxT">흑백 GL (원) 측정</b>
         <label class="glshow" title="사진(5-3 하나씩 · 격자 · 새 창 · 최종 목록 엑셀)에 하늘색 점선 측정 원을 그릴지 정합니다(이 PC 에 기억). GL 값 · 측정에는 영향 없음."><input type="checkbox" id="glShow" checked> 측정 원 보기</label></div>
@@ -2699,7 +2699,7 @@ async function c5PrepAll(){const L=C5.items.filter(p=>!THUMB.has(p.k)).sort((a,b
 //   선택 = 짝 항목(BIG.pairs)의 p.pick — 5-3 목록 · 사진 새 창 · 격자가 같은 값을 본다. [다시 확인](5-2)을 해도 같은 Slot · Defect 면 남긴다.
 const pickBadge=p=>`<b class="pk ${p&&p.pick?'on':'off'}" id="pk">${p&&p.pick?'☑ 최종 목록':'☐ 최종 목록 아님'}</b>`;
 const pickList=()=>C5.items.filter(p=>p.pick);   // v14.1.8: 최종 목록 = 5-3 에 보이는 줄(보기 · GL 범위 · 검색) 중 ☑ — 다른 단계와 같은 규칙
-function pickInfo(){const n=pickList().length;$('#c5pickN').textContent=`☑ ${n.toLocaleString()} / ${C5.items.length.toLocaleString()}개`;$('#c5pickN').classList.toggle('on',n>0);$('#c5save').disabled=!n;$('#c5saveCsv').disabled=!n;
+function pickInfo(){const n=pickList().length;$('#c5pickN').textContent=`☑ ${n.toLocaleString()} / ${C5.items.length.toLocaleString()}개`;$('#c5pickN').classList.toggle('on',n>0);$('#c5save').disabled=!n;$('#c5saveCsv').disabled=!n;$('#c5saveZip').disabled=!n;
   $('#c5save').textContent=n?`💾 최종 목록 엑셀 저장 (☑ ${n.toLocaleString()}개 · 사진 포함)`:'💾 최종 목록 엑셀 저장 (사진 포함)'}
 function pickToggle(p,v){if(!p)return;p.pick=v==null?!p.pick:!!v;pickChanged()}
 function pickChanged(){vtPaint(VC);pickInfo();if(C5.mode==='grid')$$('#c5grid .g5').forEach(el=>{const p=C5.items[+el.dataset.k];if(!p)return;el.classList.toggle('pk',!!p.pick);const h=el.querySelector('.gh');h.textContent=h.textContent.replace(/^☑ /,'');if(p.pick)h.textContent='☑ '+h.textContent});
@@ -2712,11 +2712,14 @@ async function xlJpeg(src,mw,mh){const k=Math.min(1,mw/src.width,mh/src.height),
 async function xlPhotos(p,orig){const s=p.s,r=p.r||cgOf(s,p.i),d=bigDef(s,p.i),o={c:null,g:null,f:null,gl:null,err:[]};
   if(r.c){const b=await cgBitmap(s,r.c.file);if(b)o.c=await xlJpeg(b,960,720);else o.err.push(`Color 파일 없음: ${cleanName(r.c.file)}`)}else o.err.push(p.cerr||r.why||'Color 항목 없음');
   if(r.hit){const b=await cgBitmap(s,r.hit.frame.file);
-    if(b){const cs=r.crop||cgCropSize({}),k=cgCropCanvas(b,r.hit,cs,null,d);o.gl=p.gl=cgGL(k,b,d);if(!p.glp){p.glp=glProfile(b,r.hit);p.glv=glMean(p)}o.g=await xlJpeg(k.canvas,960,720);o.f=await xlJpeg(cgFrameCanvas(b,r.hit,cs,null,d),1800,600)}
+    if(b){const cs=r.crop||cgCropSize({}),k=cgCropCanvas(b,r.hit,cs,null,d);o.gl=p.gl=cgGL(k,b,d);if(!p.glp){p.glp=glProfile(b,r.hit);p.glv=glMean(p)}o.g=await xlJpeg(k.canvas,960,720);o.f=await xlJpeg(cgFrameCanvas(b,r.hit,cs,null,d),1800,600);
+      if(orig)o.go=await cropPng(k.raw)}
     else o.err.push(`Gray 파일 없음: ${cleanName(r.hit.frame.file)}`)}
   else o.err.push(p.gerr||`Gray: ${r.why||'위치 없음'}`);
-  if(orig){if(r.c)o.co=await xlOrig(s,r.c.file);if(r.hit)o.fo=await xlOrig(s,r.hit.frame.file)}
+  if(orig){if(r.c){o.co=await xlOrig(s,r.c.file);if(o.co)o.c=o.co;else o.err.push('Color 원본 못 읽음 — 줄인 사진')}if(r.hit)o.fo=await xlOrig(s,r.hit.frame.file)}   // v14.3.17(#86): Color 열 = 원본으로 바꿈
   return o}
+/** v14.3.17(#86) 흑백 원본 Crop = cgCropCanvas 의 raw(Gray 원본 픽셀을 Crop 범위만큼 그대로 — 늘림 · 흑백 필터 · 빨간 네모 · 원 없음, 프레임 밖 = 검정) → PNG(무손실). */
+async function cropPng(cv){const b=await new Promise(r=>cv.toBlob(r,'image/png'));return {data:new Uint8Array(await b.arrayBuffer()),w:cv.width,h:cv.height,ext:'png',orig:true}}
 /** v14.1.10(#78) 원본 사진 = 매칭 폴더의 파일 바이트 그대로(줄이기 · 다시 압축 · 표시 그림 없음). JPEG · PNG 는 그대로, 그 밖의 형식만 같은 픽셀 PNG(무손실)로 바꾼다. 못 읽으면 null. */
 const XLO={on:false};try{XLO.on=localStorage.getItem('cw.xlOrig')==='1'}catch(e){}
 function xlOrigSet(on){XLO.on=!!on;$('#c5xlOrig').checked=XLO.on;try{localStorage.setItem('cw.xlOrig',XLO.on?'1':'0')}catch(e){}}
@@ -2733,10 +2736,12 @@ const XL_IMG_H=180,XL_COLS=[['5-1 #',52],['Lot',130],['Slot',110],['ID',60],['�
   ['Color',250,'c'],['Gray Crop (빨간 네모 = Defect)',250,'g'],['Gray 프레임 (빨간 네모 = Defect · 노란 상자 = Crop 범위)',570,'f'],
   ['상태',120],['Area µm²',80],['Width',64],['Length',64],['Box W×H',84],['Wafer X',84],['Wafer Y',84],['Die (장비 Col, Row)',110],['Die (맵 X, Y)',110],['ROI−local',80],['ROI mean',80],
   ['Color 파일',190],['Color 전체 경로',380],['Gray 파일',190],['Gray 전체 경로',380],['사진 없음 이유',240],['Lot 경로',300],['흑백 GL 평균 (원)',110],['GL 원 반지름 px · 픽셀 수',150],['Zone',90],['Region',70],['판정 비트',110],['분류 코드',80],['Zone 이름',110],['판정 종류',150]];
-/** v14.1.10(#78) [원본 이미지도 넣기] 를 켜면 Gray 프레임 열 바로 뒤에 원본 2열(XL_ORIG)을 넣는다. 끄면 종전 XL_COLS 그대로(Para colorgray.FINAL_COLS 와 같은 차례). */
-const XL_ORIG=[['Color 원본 (파일 그대로)',250,'co'],['Gray 프레임 원본 (파일 그대로 · 표시 없음)',570,'fo']],XL_OI=XL_COLS.findIndex(c=>c[2]==='f')+1;
-const xlCols=orig=>orig?[...XL_COLS.slice(0,XL_OI),...XL_ORIG,...XL_COLS.slice(XL_OI)]:XL_COLS;
-function xlRow(p,o,orig){const R=xlRow0(p,o);if(orig)R.splice(XL_OI,0,o.co?null:'(원본 없음)',o.fo?null:'(원본 없음)');return R}
+/** v14.3.17(#86) [원본 이미지로 저장] 을 켜면 Color 열 = Color 원본 파일(XL_CO 제목), 흑백 표시 열 2개는 그대로 두고 Gray 프레임 열 바로 뒤에 원본 2열(XL_ORIG)을 넣는다.
+ *  끄면 종전 XL_COLS 그대로(Para colorgray.FINAL_COLS 와 같은 차례). v14.1.10(#78) 의 'Color 원본' 추가 열은 없앰(Color 열을 바꾸므로). */
+const XL_ORIG=[['Gray Crop 원본 (흑백 원본을 자른 그림 · 표시 없음)',250,'go'],['Gray 프레임 원본 (파일 그대로 · 표시 없음)',570,'fo']],XL_OI=XL_COLS.findIndex(c=>c[2]==='f')+1,
+  XL_CI=XL_COLS.findIndex(c=>c[2]==='c'),XL_CO=['Color 원본 (파일 그대로)',250,'c'];
+const xlCols=orig=>orig?[...XL_COLS.slice(0,XL_CI),XL_CO,...XL_COLS.slice(XL_CI+1,XL_OI),...XL_ORIG,...XL_COLS.slice(XL_OI)]:XL_COLS;
+function xlRow(p,o,orig){const R=xlRow0(p,o);if(orig){R.splice(XL_OI,0,o.go?null:'(원본 없음)',o.fo?null:'(원본 없음)')}return R}
 function xlRow0(p,o){const s=p.s,C=s.cols,i=p.i,ob=S.o,px2=ob.pix*ob.pix,act=ob.coord==='actual',X=act?C.ax[i]:C.x[i],Y=act?C.ay[i]:C.y[i],die=dieOf(X,Y,s.product),r=p.r||cgOf(s,i);
   const cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'',cp=cn?pcPath(p.c?p.c.path:dir+cn):'',gp=gn?pcPath(p.g?p.g.path:dir+gn):'',n=v=>Number.isFinite(v)?+v.toFixed(3):'';
   return [p.k+1,s.lotName||'',s.slotName||'',s.idByOrder?i:C.id[i],clsFirst(s,i),clsName(s,i),rcp5(s,i),n(C.c[i]),
@@ -2758,7 +2763,7 @@ async function c5SaveCsv(){const L=pickList();if(!L.length)return alert('최종 
 /** [💾 최종 목록 엑셀 저장]: 저장 위치를 먼저 고르고(누른 직후에만 열림) → ☑ Defect 마다 사진 3장을 그려 → xlsx 한 파일(사진이 칸 안에). 원본 폴더에는 쓰지 않는다. */
 async function c5SaveXlsx(){const L=pickList();if(!L.length)return alert('최종 목록(☑)이 비어 있습니다. 5-3 목록에서 줄을 고르고 Space 를 누르십시오.');
   const name=`최종목록_${stamp()}.xlsx`,h=await pickSave(name,[{description:'Excel',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]);if(h===false)return;
-  BIG.stop=false;const orig=XLO.on,COLS=xlCols(orig),cancel=()=>{BIG.stop=true},total=L.length,rows=[],pics=[],STEPS=[orig?'① Defect 마다 사진 3장 읽기 · 그리기 + 원본 2장(Color · Gray 프레임 파일 그대로)':'① Defect 마다 사진 3장 읽기 · 그리기(Color · Gray Crop · Gray 프레임)','② 엑셀 파일 만들기 · 저장'];let done=0,cur='';
+  BIG.stop=false;const orig=XLO.on,COLS=xlCols(orig),cancel=()=>{BIG.stop=true},total=L.length,rows=[],pics=[],STEPS=[orig?'① Defect 마다 사진 읽기 · 그리기 — Color 원본(파일 그대로) · Gray Crop · Gray 프레임 + 흑백 원본 2장(Crop · 프레임)':'① Defect 마다 사진 3장 읽기 · 그리기(Color · Gray Crop · Gray 프레임)','② 엑셀 파일 만들기 · 저장'];let done=0,cur='';
   const pr=throttle(()=>busy({title:'최종 목록 엑셀 저장',steps:STEPS,step:0,done,total,unit:'Defect',files:`사진 ${pics.length}장`,detail:cur,cancel}),80);
   busy({title:'최종 목록 엑셀 저장',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});let msg;
   try{for(const p of L){if(BIG.stop)break;cur=`${p.s.lotName||''} · ${p.s.slotName||''} · 5-1 #${p.k+1}`;pr();
@@ -2769,6 +2774,36 @@ async function c5SaveXlsx(){const L=pickList();if(!L.length)return alert('최종
     if(h){const w=await h.createWritable();await w.write(blob);await w.close();msg=`저장: ${h.name} (Defect ${rows.length}개 · 사진 ${pics.length}장${orig?` · 원본 ${pics.filter(x=>x.orig).length}장`:''} · ${(blob.size/1048576).toFixed(1)} MB)`}
     else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
       msg=`다운로드 폴더에 저장: ${name} (Defect ${rows.length}개 · 사진 ${pics.length}장${orig?` · 원본 ${pics.filter(x=>x.orig).length}장`:''})`}
+  }catch(e){msg=`저장 실패: ${(e&&e.message)||e}`}
+  finally{busy(null);$('#c5saveSt').textContent=msg||''}
+  return msg}
+/** v14.3.17(#86) 원본 파일 바이트(형식 그대로 · 바꾸지 않음) + 파일 이름. 읽기만 한다(원본 폴더에 쓰지 않음). 못 읽으면 null. */
+async function origBytes(s,file){const g=s.cg,b=cleanName(file||'');if(!g||!g.dir||!b)return null;
+  try{const nm=await g.dir.names(),e=nm&&!nm.err?nm.get(lower(b)):await g.dir.get(b);if(!e)return null;const f=await e.file();return {name:f.name||b,data:new Uint8Array(await f.arrayBuffer())}}catch(e){return null}}
+/** zip 안 이름 겹침 막기: 같은 원본(key 같음)은 한 번만, 이름만 같고 다른 그림은 '이름_2.확장자'. 돌려줌 = 넣을 이름 | null(이미 넣음). */
+function zipName(U,dir,name,key){const k=dir+'\u0000'+key;if(U.keys.has(k))return null;U.keys.add(k);const dot=name.lastIndexOf('.'),stem=dot>0?name.slice(0,dot):name,ext=dot>0?name.slice(dot):'';
+  let n=dir+name,i=2;while(U.names.has(lower(n)))n=`${dir}${stem}_${i++}${ext}`;U.names.add(lower(n));return n}
+/** [🗂 최종 목록 사진 파일.zip 저장](#86): ☑ Defect 마다 color/ = Color 원본, gray/ = 흑백 프레임 원본(둘 다 파일 바이트 그대로 복사), gray crop/ = 흑백 원본을 Crop 범위로 자른 그림(PNG 무손실, 표시 없음).
+ *  파일 이름 = 원본 파일 이름(gray crop 은 같은 이름 + .png). 여러 Defect 가 같은 원본을 쓰면 color · gray 는 한 번만, gray crop 은 Defect 마다(이름 겹치면 _2 …). 원본 폴더에는 쓰지 않는다. */
+async function c5SaveZip(){const L=pickList();if(!L.length)return alert('최종 목록(☑)이 비어 있습니다. 5-3 목록에서 줄을 고르고 Space 를 누르십시오.');
+  const name=`최종목록_사진_${stamp()}.zip`,h=await pickSave(name,[{description:'ZIP',accept:{'application/zip':['.zip']}}]);if(h===false)return;
+  BIG.stop=false;const cancel=()=>{BIG.stop=true},total=L.length,files=[],U={keys:new Set(),names:new Set()},cnt={color:0,gray:0,crop:0},miss=[],STEPS=['① Defect 마다 원본 사진 읽기(color · gray 복사, gray crop 자르기)','② zip 파일 만들기 · 저장'];let done=0,cur='',msg;
+  const pr=throttle(()=>busy({title:'최종 목록 사진 파일.zip 저장',steps:STEPS,step:0,done,total,unit:'Defect',files:`파일 ${files.length}개`,detail:cur,cancel}),80);
+  busy({title:'최종 목록 사진 파일.zip 저장',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});
+  try{for(const p of L){if(BIG.stop)break;const s=p.s,r=p.r||cgOf(s,p.i),sk=s.cg&&s.cg.path||s.id;cur=`${s.lotName||''} · ${s.slotName||''} · 5-1 #${p.k+1}`;pr();
+      if(r.c){const key=sk+'|'+lower(cleanName(r.c.file));if(!U.keys.has('color/\u0000'+key)){const b=await origBytes(s,r.c.file);if(b){files.push([zipName(U,'color/',b.name,key),b.data]);cnt.color++}else miss.push(`Color ${cleanName(r.c.file)}`)}}
+      if(r.hit){const gf=cleanName(r.hit.frame.file),key=sk+'|'+lower(gf);
+        if(!U.keys.has('gray/\u0000'+key)){const b=await origBytes(s,r.hit.frame.file);if(b){files.push([zipName(U,'gray/',b.name,key),b.data]);cnt.gray++}else miss.push(`Gray ${gf}`)}
+        const bm=await cgBitmap(s,r.hit.frame.file);
+        if(bm){const k=cgCropCanvas(bm,r.hit,r.crop||cgCropSize({}),null,null),c=await cropPng(k.raw),dot=gf.lastIndexOf('.'),nm=(dot>0?gf.slice(0,dot):gf)+'.png',zn=zipName(U,'gray crop/',nm,key+'|'+r.hit.px+','+r.hit.py);
+          if(zn){files.push([zn,c.data]);cnt.crop++}}}
+      done++;pr()}
+    if(BIG.stop){msg=`중지 — 저장하지 않았습니다 (${done} / ${total} 개 준비)`;return}
+    if(!files.length){msg='저장할 사진 파일이 없습니다 (☑ Defect 의 원본 사진을 읽지 못함 — 매칭 폴더 확인)';return}
+    busy({title:'최종 목록 사진 파일.zip 저장',steps:STEPS,step:1,done:total,total,unit:'Defect',files:`파일 ${files.length}개`,detail:'zip 묶는 중',cancel});await nextPaint();
+    const blob=zipStore(files,'application/zip'),sum=`Defect ${total}개 · color ${cnt.color} · gray ${cnt.gray} · gray crop ${cnt.crop}개 · ${(blob.size/1048576).toFixed(1)} MB${miss.length?` · 못 읽음 ${miss.length}개(${miss.slice(0,3).join(', ')}${miss.length>3?' …':''})`:''}`;
+    if(h){const w=await h.createWritable();await w.write(blob);await w.close();msg=`저장: ${h.name} (${sum})`}
+    else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);msg=`다운로드 폴더에 저장: ${name} (${sum})`}
   }catch(e){msg=`저장 실패: ${(e&&e.message)||e}`}
   finally{busy(null);$('#c5saveSt').textContent=msg||''}
   return msg}
@@ -2949,7 +2984,7 @@ $('#c5grid').addEventListener('click',e=>{const el=e.target.closest('.g5');if(!e
 $('#b5prep').onclick=()=>c5PrepAll();
 $('#c5pickAll').onclick=()=>{C5.items.forEach(p=>{if(p.st!=='skip')p.pick=true});pickChanged()};
 $('#c5pickNone').onclick=()=>{C5.items.forEach(p=>p.pick=false);pickChanged()};   // v14.1.8: 보이는 줄만(안 보이는 줄은 그대로)
-$('#c5save').onclick=()=>c5SaveXlsx();$('#c5xlOrig').checked=XLO.on;$('#c5xlOrig').onchange=e=>xlOrigSet(e.target.checked);$('#c5saveCsv').onclick=()=>c5SaveCsv();
+$('#c5save').onclick=()=>c5SaveXlsx();$('#c5saveZip').onclick=()=>c5SaveZip();$('#c5xlOrig').checked=XLO.on;$('#c5xlOrig').onchange=e=>xlOrigSet(e.target.checked);$('#c5saveCsv').onclick=()=>c5SaveCsv();
 // rev6 흑백 GL(원)
 glRInfo();$('#glR').addEventListener('change',e=>glSetR(e.target.value));$('#glShow').checked=GLC.show;$('#glShow').addEventListener('change',e=>glShowSet(e.target.checked));$('#glRun').onclick=()=>glRun();$('#glSet').onclick=()=>glDlgOpen();
 for(const id of ['glLo','glHi'])$('#'+id).addEventListener('input',e=>{GLC[id==='glLo'?'lo':'hi']=+e.target.value;c5Refresh(true)});   // 끄는 동안 바로 거르고 정렬
@@ -3015,7 +3050,7 @@ if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대�
   if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
   else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

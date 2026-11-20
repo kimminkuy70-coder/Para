@@ -244,13 +244,15 @@ class ListSearchAndPick(unittest.TestCase):
 
 
 class ExcelOriginalImages(unittest.TestCase):
-    """v14.1.10(#78): 최종 목록 엑셀 [원본 이미지도 넣기] — 원본 파일 바이트 그대로, 끄면 종전 열 그대로."""
+    """v14.3.17(#86): 최종 목록 엑셀 [원본 이미지로 저장] — Color 열 = 원본으로 바꿈, 흑백 원본 2열(Crop · 프레임) 추가, 끄면 종전 열 그대로.
+    + [🗂 최종 목록 사진 파일.zip 저장] — color · gray · gray crop 폴더, 원본은 읽기만 · 바이트 그대로 복사."""
     @classmethod
     def setUpClass(cls):
         cls.t = HTML.read_text(encoding="utf-8")
 
     def test_checkbox_and_memory(self):
-        self.assertIn('<input type="checkbox" id="c5xlOrig"> 원본 이미지도 넣기', self.t)
+        self.assertIn('<input type="checkbox" id="c5xlOrig"> 원본 이미지로 저장', self.t)
+        self.assertNotIn("원본 이미지도 넣기", self.t)
         self.assertIn("XLO.on=localStorage.getItem('cw.xlOrig')==='1'", self.t)    # 기본 끔
         self.assertIn("$('#c5xlOrig').onchange=e=>xlOrigSet(e.target.checked)", self.t)
 
@@ -262,12 +264,31 @@ class ExcelOriginalImages(unittest.TestCase):
         self.assertNotIn("xlJpeg", f)
 
     def test_columns(self):
-        self.assertIn("const xlCols=orig=>orig?[...XL_COLS.slice(0,XL_OI),...XL_ORIG,...XL_COLS.slice(XL_OI)]:XL_COLS;", self.t)
-        self.assertIn("XL_OI=XL_COLS.findIndex(c=>c[2]==='f')+1", self.t)
+        # Color 열은 원본으로 바꾸고(추가 열 아님), 흑백 표시 열은 두고 원본 2열을 Gray 프레임 뒤에
+        self.assertIn("const xlCols=orig=>orig?[...XL_COLS.slice(0,XL_CI),XL_CO,...XL_COLS.slice(XL_CI+1,XL_OI),...XL_ORIG,...XL_COLS.slice(XL_OI)]:XL_COLS;", self.t)
+        self.assertIn("XL_ORIG=[['Gray Crop 원본 (흑백 원본을 자른 그림 · 표시 없음)',250,'go'],['Gray 프레임 원본 (파일 그대로 · 표시 없음)',570,'fo']]", self.t)
+        self.assertIn("XL_CO=['Color 원본 (파일 그대로)',250,'c']", self.t)
+        self.assertNotIn("'co'],", self.t)
+        self.assertIn("if(o.co)o.c=o.co", self.t)                                 # Color 칸 그림 = 원본
+        self.assertIn("if(orig)o.go=await cropPng(k.raw)", self.t)                # 흑백 원본 Crop = raw(표시 없음)
         self.assertIn("const blob=xlsxBlob('최종 목록',COLS,rows,pics);", self.t)
-        # xlsx 안 사진 형식 = jpeg 기본 · png
         self.assertIn('<Default Extension="png" ContentType="image/png"/>', self.t)
         self.assertIn("`xl/media/image${k+1}.${p.ext||'jpeg'}`", self.t)
+
+    def test_zip_button(self):
+        self.assertIn('<button id="c5saveZip" disabled', self.t)
+        self.assertIn("🗂 최종 목록 사진 파일.zip 저장</button>", self.t)
+        self.assertIn("$('#c5saveZip').disabled=!n;", self.t)
+        self.assertIn("$('#c5saveZip').onclick=()=>c5SaveZip();", self.t)
+        i = self.t.index("async function c5SaveZip(")
+        f = self.t[i:self.t.index("\n// ── xlsx 만들기", i)]
+        for d in ("'color/'", "'gray/'", "'gray crop/'"):
+            self.assertIn(d, f)
+        self.assertIn("origBytes(s,r.c.file)", f)
+        self.assertIn("origBytes(s,r.hit.frame.file)", f)
+        self.assertIn("cgCropCanvas(bm,r.hit,r.crop||cgCropSize({}),null,null)", f)   # 표시 없음
+        self.assertNotIn("createWritable", self.t[self.t.index("async function origBytes("):i])   # 원본은 읽기만
+        self.assertNotIn("removeEntry", f)
 
 
 if __name__ == "__main__":

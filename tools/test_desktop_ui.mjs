@@ -952,6 +952,27 @@ try{
   assert.match(glT.msg,/최종 목록\(☑\)에 흑백 사진이 있는 Defect 가 없습니다/);
   await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
   await wz.locator('#c5saveCsv').click();await wzf.waitForFunction(()=>typeof window.__flc==='string');
+  // #86 [🗂 최종 목록 사진 파일.zip 저장] = color · gray · gray crop 폴더(원본 바이트 그대로) + 엑셀 [원본 이미지로 저장] = Color 열 원본 · 흑백 원본 2열 추가
+  await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__bin=Array.from(new Uint8Array(await b.arrayBuffer()))},close:async()=>{}})})});
+  await wz.locator('#c5saveZip').click();await wzf.waitForFunction(()=>Array.isArray(window.__bin));
+  const zipPath=join(fixture,'final_photos_test.zip');await writeFile(zipPath,Buffer.from(await wzf.evaluate(()=>window.__bin)));
+  const zl=JSON.parse(execFileSync(python,['-c','import sys,json,zipfile;z=zipfile.ZipFile(sys.argv[1]);print(json.dumps(z.namelist()))',zipPath],{encoding:'utf-8'}));
+  assert(zl.some(n=>n.startsWith('color/'))&&zl.some(n=>n.startsWith('gray/'))&&zl.some(n=>n.startsWith('gray crop/')),'zip has color, gray, gray crop folders: '+zl);
+  assert(zl.some(n=>n.toLowerCase()==='color/c1.jpg'),'color file keeps the original name: '+zl);
+  const zsame=execFileSync(python,['-c',`
+import sys,os,zipfile
+z=zipfile.ZipFile(sys.argv[1]);d=sys.argv[2];bad=[]
+for n in z.namelist():
+    if n.startswith('color/') or n.startswith('gray/'):
+        src=[os.path.join(r,f) for r,_,fs in os.walk(d) for f in fs if f==n.split('/')[-1]]
+        if not src or open(src[0],'rb').read()!=z.read(n): bad.append(n)
+print('ok' if not bad else 'bad '+','.join(bad))`,zipPath,slotDir],{encoding:'utf-8'}).trim();
+  assert.equal(zsame,'ok','zip color/gray = original file bytes');
+  await wzf.evaluate(()=>{window.__bin=null;window.__cw.xlOrigSet(true)});await wz.locator('#c5save').click();await wzf.waitForFunction(()=>Array.isArray(window.__bin));
+  const xlo=join(fixture,'final_orig_test.xlsx');await writeFile(xlo,Buffer.from(await wzf.evaluate(()=>window.__bin)));await wzf.evaluate(()=>window.__cw.xlOrigSet(false));
+  const xs=execFileSync(python,['-c','import sys,zipfile;print(zipfile.ZipFile(sys.argv[1]).read("xl/worksheets/sheet1.xml").decode("utf-8"))',xlo],{encoding:'utf-8'});
+  assert(xs.includes('Color 원본 (파일 그대로)')&&xs.includes('Gray Crop 원본')&&xs.includes('Gray 프레임 원본')&&xs.includes('Gray Crop (빨간 네모'),'excel original columns');
+  await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
   const finalCsv=join(fixture,'final_list_test.csv');await writeFile(finalCsv,'\ufeff'+await wzf.evaluate(()=>window.__flc),'utf-8');
   assert((await readFile(finalCsv,'utf-8')).includes(slotDir),'final list CSV carries the absolute matching folder');
   // 기존 Color·Gray 매칭이 최종 목록 CSV 를 인식 → 그 Defect 만 + 최종 목록 엑셀(사진 3장)
