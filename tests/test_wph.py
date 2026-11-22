@@ -107,6 +107,15 @@ def test_recipe_search_contains():
     print("  wph OK: recipe 포함 검색·카운트(중간토큰·다단어AND·names 선택 조사)")
 
 
+def test_query_extension_htm_html():
+    """파일 이름을 통째로 붙여 넣을 때 .htm/.html 이 달라도 찾는다(4F-AOI-01 사례)."""
+    name = "2D@RE-AB_0857984AY_6412_UWB_26-Nov-20_(12.02.18)_BatchReport.htm"
+    assert wph._matches(name, name + "l")
+    assert wph._matches(name + "l", name)
+    assert wph._matches(name, "0857984AY 6412_UWB BatchReport.html")
+    assert not wph._matches(name, "0857984AY_6412_UWB_26-Nov-21")
+
+
 def test_period_filter():
     from datetime import date
     with tempfile.TemporaryDirectory() as d:

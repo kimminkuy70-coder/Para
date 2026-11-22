@@ -366,13 +366,17 @@ def _in_period(name: str, start, end) -> bool:
     return True
 
 
+_EXT_TAIL = re.compile(r"\.html?$")
+
+
 def _matches(name: str, query: str, start=None, end=None) -> bool:
     """검색어 포함(AND) **그리고** 기간(파일명 날짜) 조건을 모두 만족하면 매칭.
 
     검색어가 비면 모든 report, 기간이 비면 모든 날짜. 둘 다 걸면 교집합.
     """
-    nm = _norm_prefix(name)
-    terms = [t for t in _norm_prefix(query).split() if t]
+    # 확장자는 비교에서 뺀다(.htm ↔ .html) — 파일 이름을 '…_BatchReport.html' 로 붙여 넣어도 실제 '.htm' 을 찾는다.
+    nm = _EXT_TAIL.sub("", _norm_prefix(name))
+    terms = [t for t in (_EXT_TAIL.sub("", t) for t in _norm_prefix(query).split()) if t]
     if not all(t in nm for t in terms):
         return False
     return _in_period(name, start, end)
