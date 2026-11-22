@@ -18,3 +18,13 @@ export function openBatchAutoSettings(){
   window.dispatchEvent(new CustomEvent('para:watch-tab'));
 }
 export function takeWatchTab(){const t=watchTab;watchTab='';return t;}
+
+// Para v14.3.18: 자동 분석 탭 [⚙ 자동 분석 호기 설정] — Batch Report 분석 › 가동률 조사 및 분석의 조사 범위(호기 고르기)로 옮긴다.
+// 자동 분석 · 즉시 실행은 거기서 마지막으로 [조사 시작]한 호기 · 기간을 쓴다. 화면이 아직 안 열렸으면 열린 뒤 takeBatchScope() 로 받는다.
+let scopePending=false;
+export function openBatchScope(){
+  scopePending=true;
+  window.dispatchEvent(new CustomEvent('para:navigate',{detail:'Batch Report 분석'}));
+  window.dispatchEvent(new CustomEvent('para:batch-scope'));
+}
+export function takeBatchScope(){const p=scopePending;scopePending=false;return p;}

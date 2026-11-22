@@ -55,6 +55,9 @@
 - **v14.3.15(#83, 2026-11-19)**: Defect 분석 필터(Contrast · Area · Width · Length) = **실제 값 그대로 비교**(`inR` 의 반올림 삭제, `exv` = 12 유효숫자로 계산 잡음만 정리),
   목록 · 정보 · CSV · 엑셀의 네 값 = `fv`(반올림 안 한 실제 값 — `f1`/`f2` 쓰지 말 것, `tests/test_exact_filter.py`). 좌표 · Box · GL 은 종전 자릿수.
   **Zone 고르기**(소유자 세션 지시, 같은 판): 필터 줄 [Zone](`fltZnHtml` · `f.zn`, 글 = `zoneLbl` = 번호 + Zones.ini 이름), 기본 탭 `znOptions`, 5-1 `#bigFltZn` · `bigZnFill`(facet 개수).
+- **v14.3.18(소유자 세션 2026-11-22)**: 자동 분석 탭(CAMTEK) **자동 분석 호기 현황**(`BatchAutoPanel.tsx` `AutoMachines` · `autoTargets` — 등록 호기 × `configuration.last.targets`, 기간 · 검색어) +
+  **[⚙ 자동 분석 호기 설정]**(`batchAuto.openBatchScope` → `para:batch-scope` → `Batch.tsx` 가 [가동률 조사 및 분석] 탭 · 조사 범위로). 조사가 끝나면 `para:batch-last-changed` 로 현황 다시 읽음.
+  자동 분석 · 즉시 실행 = **지난 [조사 시작] 조건만**(화면 체크만 바꾸면 안 바뀜 — 4F 호기 캐시가 11-18 에서 멈춘 원인). 찾기 검색어 `.htm`/`.html` 무시(`wph._matches` `_EXT_TAIL`).
 - **v14.3.17(#86, 2026-11-20)**: 5-3 엑셀 체크 이름 **[원본 이미지로 저장]**(종전 '원본 이미지도 넣기', `cw.xlOrig` 그대로). 켜면 Color 열 = Color 원본(`XL_CO`, `o.c=o.co`), 흑백 표시 열은 두고 Gray 프레임 뒤에 `XL_ORIG` 2열 = Gray Crop 원본(`cropPng(k.raw)`, 표시 없음 PNG) · Gray 프레임 원본(파일 그대로). 새 단추 **[🗂 최종 목록 사진 파일.zip 저장]**(`c5SaveZip`) = zip 안 `color/` · `gray/`(원본 바이트 `origBytes`, 같은 원본은 한 번) · `gray crop/`(원본 이름 + .png, Defect 마다, 이름 겹치면 `_2`). 원본 폴더에는 쓰지 않음.
 - **v14.3.16(#84, 2026-11-19)**: 5-3 **[흑백 GL 측정] = 최종 목록(☑) 중 흑백 사진이 있는 Defect 만**(`glTargets` = `C5.base`(보기 · 검색, GL 범위 전) 중 `p.pick` && `glCan`, 종전 = `c5Pool()` 전체).
   ☐ 줄은 재지 않음, 단추 글 '흑백 GL 측정 (☑ 만)'. 시험 `test_defect_view_toggles.py` `test_gl_run_final_list_only` + `test_desktop_ui.mjs`.

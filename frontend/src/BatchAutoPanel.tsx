@@ -1,7 +1,31 @@
 import {useEffect,useState} from 'react';
-import {desktop,errorText} from './desktop';
+import {desktop,errorText,type Configuration} from './desktop';
 import {notify,fail,LoadFailed} from './ui';
-import {requestBatchRunNow} from './batchAuto';
+import {requestBatchRunNow,openBatchScope} from './batchAuto';
+
+// v14.3.18: 자동 분석(▶ 즉시 실행 포함)이 다시 읽는 호기 현황 — 지난 [조사 시작] 조건(configuration.last.targets).
+// 화면 체크만 바꾸면 안 바뀌고 [조사 시작]을 눌러야 바뀐다 → [⚙ 자동 분석 호기 설정]이 그 화면으로 데려간다.
+export function autoTargets(conf?:Configuration){
+  const last=(conf?.last?.targets||[]),ids=new Set((conf?.machines||[]).map(m=>m.id)),inLast=new Set(last.map(t=>t.machine));
+  const rows=(conf?.machines||[]).map(m=>({id:m.id,folder:m.folder,on:inLast.has(m.id)}));
+  const gone=[...inLast].filter(m=>!ids.has(m));      // 지난 조건에 있지만 이 PC 에 등록이 없는 호기(자동 분석이 건너뜀)
+  const t0=last[0],period=!t0?'':(t0.start||t0.end)?`${t0.start||'처음'} ~ ${t0.end||'끝'}`:'모든 기간';
+  return {rows,gone,period,query:t0?.query||'',count:rows.filter(r=>r.on).length};
+}
+function AutoMachines({conf}:{conf?:Configuration}){
+  const a=autoTargets(conf);
+  return <div className="auto-machines" aria-label="자동 분석 호기 현황" style={{marginTop:10}}>
+    <div className="form-filter" style={{alignItems:'center'}}>
+      <b>자동 분석 호기 현황</b>
+      <span className="count">{conf?(a.period?`${a.count} / ${a.rows.length}대 · ${a.period}${a.query?` · 검색어 "${a.query}"`:''}`:'지난 조사 조건 없음'):'읽는 중…'}</span>
+      <button type="button" onClick={openBatchScope} title="Batch Report 분석 › 가동률 조사 및 분석의 조사 범위로 이동합니다. 호기 · 기간을 고르고 [조사 시작]을 누르면 자동 분석 호기가 바뀝니다.">⚙ 자동 분석 호기 설정</button></div>
+    {conf&&a.rows.length>0&&<table className="tbl" style={{marginTop:6}}><thead><tr><th style={{width:130}}>호기</th><th style={{width:110}}>자동 분석</th><th>Batch Report 폴더</th></tr></thead>
+      <tbody>{a.rows.map(r=><tr key={r.id} className={r.on?'':'off'}><td>{r.id}</td><td>{r.on?'✓ 포함':'— 빠짐'}</td><td><code>{r.folder}</code></td></tr>)}</tbody></table>}
+    {conf&&!a.rows.length&&<p className="hint">등록한 호기가 없습니다. 설정 › AOI 장비 호기 루트에서 등록하세요.</p>}
+    {a.gone.length>0&&<p className="hint warn">지난 조건의 {a.gone.join(', ')} 는 이 PC 에 등록이 없어 건너뜁니다.</p>}
+    <p className="hint">자동 분석 · [▶ 즉시 실행]은 Batch Report 분석에서 <b>마지막으로 [조사 시작]한 호기 · 기간</b>을 다시 읽습니다. 그 화면에서 체크만 바꾸면 바뀌지 않습니다 —
+      [⚙ 자동 분석 호기 설정]으로 가서 호기를 고르고 [조사 시작]을 한 번 누르세요. 빠진 호기는 캐시도 새로 쌓이지 않습니다.</p></div>;
+}
 
 // Batch Report 자동 분석 설정(#39: 설정 탭에서 CAMTEK › 자동 분석 및 취합 탭으로 옮김). 엔진 요청은 그대로 config_state · config_set_batch_auto.
 type Auto={enabled:boolean;interval_hours:number;time?:string;publish?:boolean;kla?:boolean;kla_publish?:boolean;last_run:string;last_result:string;next_run:string};
@@ -14,15 +38,19 @@ const MINUTES=Array.from({length:12},(_,i)=>String(i*5).padStart(2,'0'));
 
 export function BatchAutoPanel(){
   const [st,setSt]=useState<State>(),[busy,setBusy]=useState(false),[loadError,setLoadError]=useState('');
+  const [conf,setConf]=useState<Configuration>();   // v14.3.18: 자동 분석 호기 현황 = 등록 호기 + 지난 조사 조건(last.targets)
   // 자동 분석에 들어가는 회사별 작업(Para #43): CAMTEK = Batch Report 분석 · 캐시 게시, KLA = KLA 캐시 갱신 · 게시. 주기 · 시각은 같이 쓴다.
   const [tab,setTab]=useState<Tab>(()=>{try{return localStorage.getItem('para.batchAuto.tab')==='kla'?'kla':'camtek';}catch{return 'camtek';}});
   useEffect(()=>{try{localStorage.setItem('para.batchAuto.tab',tab);}catch{/* 저장 못 해도 동작 */}},[tab]);
   async function load(){
     setLoadError('');
-    try{await desktop.connect();setSt((await desktop.request('config_state').promise).config as State);}
+    try{await desktop.connect();setSt((await desktop.request('config_state').promise).config as State);
+      setConf((await desktop.request('configuration').promise) as Configuration);}
     catch(e){setLoadError(errorText(e));}
   }
   useEffect(()=>{void load();},[]);
+  // Batch Report 분석에서 조사가 끝나면(지난 조사 조건이 바뀜) 현황을 다시 읽는다.
+  useEffect(()=>{const go=()=>void load();window.addEventListener('para:batch-last-changed',go);return()=>window.removeEventListener('para:batch-last-changed',go);},[]);
   async function save(params:object,ok:string){
     setBusy(true);
     try{setSt((await desktop.request('config_set_batch_auto',{enabled:!!st?.batch_auto,...params}).promise).config as State);notify(ok,'ok');
@@ -63,6 +91,7 @@ export function BatchAutoPanel(){
       <button role="tab" aria-selected={tab==='kla'} className={tab==='kla'?'active':''} onClick={()=>setTab('kla')}>KLA · KLA 캐시{st?.batch?.kla?' ✓':''}</button></div>
     {tab==='camtek'&&<div role="tabpanel" aria-label="CAMTEK 자동 분석">
       <p className="hint">마지막 조사 조건(호기 · 검색어 · 기간 · 지표)으로 Batch Report 를 다시 분석합니다.</p>
+      <AutoMachines conf={conf}/>
       <label className="field checkbox" style={{marginTop:10}}><input type="checkbox" disabled={busy||!st||!st.save_dir} checked={!!st?.batch?.publish}
         onChange={e=>save({publish:e.target.checked},e.target.checked?'자동 분석이 끝나면 캐시 zip 을 OneDrive 에 게시합니다':'OneDrive 게시를 껐습니다')}/>
         자동 분석이 끝나면 Batch Report 캐시 zip 을 OneDrive 에 올리기 (개발자 PC 용 · 기본 꺼짐)</label>

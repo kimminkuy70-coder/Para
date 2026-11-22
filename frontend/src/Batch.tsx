@@ -3,7 +3,7 @@ import {desktop,errorText,defaults,pickFile,onFileDrop,type Configuration,type O
 import {notify,fail} from './ui';
 import {OpenPath,openPath} from './OpenPath';
 import {goToSettings} from './nav';
-import {takeBatchRunNow,openBatchAutoSettings} from './batchAuto';
+import {takeBatchRunNow,openBatchAutoSettings,takeBatchScope} from './batchAuto';
 import {TipLayer,Seg} from './BatchCharts';
 import {LotTab} from './BatchLot';
 import {LotWindow,type Drafts} from './BatchLotWindow';
@@ -177,7 +177,8 @@ export function Batch({active}:{active:boolean}){
       if(kla)await klaAuto(kla.publish,false);
     }catch(e){
       if(automatic){autoBlocked.current=Date.now()+AUTO_RETRY_MS;notify('Batch Report 자동 갱신 실패: '+errorText(e),'error');}else fail(e);
-    }finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);setCacheMs(undefined);}
+    }finally{runningRef.current=false;setRunning(false);setAutoRun(false);setProgress(undefined);setCacheMs(undefined);
+      window.dispatchEvent(new Event('para:batch-last-changed'));}
   }
   // 자동 분석(자동 분석 및 취합 › Batch Report 자동 분석): 지난 조사 조건으로, 캐시는 늘 재사용.
   // 실패하면 AUTO_RETRY_MS 동안만 쉰다(Para #54: 종전에는 한 번 실패하면 앱을 다시 켜기 전까지 자동 분석이 영영 멈췄다).
@@ -216,6 +217,14 @@ export function Batch({active}:{active:boolean}){
     go();
     window.addEventListener('para:batch-run-now',go);
     return()=>window.removeEventListener('para:batch-run-now',go);
+  },[]);
+  // v14.3.18: 자동 분석 탭 [⚙ 자동 분석 호기 설정] → 가동률 조사 및 분석의 조사 범위로.
+  useEffect(()=>{
+    const go=()=>{if(!takeBatchScope())return;setMain('analysis');
+      window.setTimeout(()=>document.querySelector('[aria-label="조사 범위"]')?.scrollIntoView({block:'start'}),50);};
+    go();
+    window.addEventListener('para:batch-scope',go);
+    return()=>window.removeEventListener('para:batch-scope',go);
   },[]);
   async function cancel(){if(job.current===undefined)return;setCancelSent(true);try{await desktop.request('cancel',{job:job.current}).promise;}catch(e){fail(e);setCancelSent(false);}}
 

@@ -24,6 +24,22 @@
 |---|---|---|
 | #87 | Batch Report 캐시 누락 원인 가설 5가지(수정 금지) | 가설 5개 보고 · ② 재현 · 코드 무변경 · 릴리스 없음 |
 
+## 최신 재개 — v14.3.18: 자동 분석 호기 현황 · [⚙ 자동 분석 호기 설정] (2026-11-22 KST, `version_v14`, 소유자 세션 지시)
+
+- 마지막 갱신 2026-11-22 · 기준 커밋 `ea73e4d` · 소유자 지시: "자동분석 탭에 자동 조사되는 호기 현황 보여주는 리스트 만들어, 호기 설정할 수 있게 배치 레포트 가동률 분석하는 탭으로 이동하는 버튼 만들어서 릴리즈까지".
+- 한 일: `BatchAutoPanel.tsx` CAMTEK 탭 = `AutoMachines`(표: 호기 · 자동 분석 ✓ 포함/— 빠짐 · Batch Report 폴더, 머리 `n / m대 · 기간 · 검색어`, 지난 조건에 있으나 미등록 호기 경고) —
+  자료 = `configuration`(등록 호기 + `last.targets`), [새로고침] · `para:batch-last-changed`(Batch.tsx 조사 끝) 때 다시 읽음.
+  [⚙ 자동 분석 호기 설정] = `batchAuto.openBatchScope()`(`para:navigate` 'Batch Report 분석' + `para:batch-scope`, 화면이 처음이면 `takeBatchScope()`) → `setMain('analysis')` + 조사 범위로 스크롤.
+  화면 안내: 호기를 고르고 [조사 시작]을 눌러야 자동 분석 호기가 바뀐다. 릴리스 노트에 앞선 `.htm`/`.html` 찾기 수정도 같이.
+- 해석(확인 전): ① '호기 현황' = 등록 호기 전부를 보이고 포함/빠짐 표시(포함만 보이기 아님) ② 기간이 '최근 30일'처럼 날짜로 고정된 문제(자동 분석이 그 날짜 뒤를 안 읽음)는 이번에 안 고침 — 현황의 기간 글로 보이게만.
+- 시험: `npm ci && npm run build`(frontend, dist 커밋), `tools/test_desktop_ui.mjs`(현황 ✓ 포함 · 머리 글 · 단추 → 조사 범위 · 가동률 탭 선택) 통과, `check_project` Failed files: none. **Windows 실기 확인 못 함.**
+- 릴리스: `__version__` 14.3.18 + `docs/release_notes/v14.3.18.md` → push 하면 `v14.yml` 이 Release 생성.
+- 남은 질문(답 전): 자동 분석 기간 끝을 매번 오늘로 늘릴지 · 찾기 장비 단계 이름을 캐시에 넣을지.
+
+| 요청 | 결과 |
+|---|---|
+| 자동 분석 탭 호기 현황 + 가동률 분석 호기 설정 이동 단추 · 릴리스 | v14.3.18 |
+
 ## 최신 재개 — 소유자 세션 질문: 4F-AOI-01 Batch Report 를 찾기에서 못 찾음 (2026-11-22 KST, `version_v14`, 이슈 없음)
 
 - 마지막 갱신 2026-11-22 · 기준 커밋 `d97fa63` · 소유자가 세션에 캐시 zip(`BatchReport_캐시_20261122_174202.zip`, 앱 14.3.17, 33호기 · 75,159개)과

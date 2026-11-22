@@ -532,6 +532,14 @@ try{
   await page.getByRole('tab',{name:'Batch Report 자동 분석'}).click();
   await page.getByLabel(/자동 분석이 끝나면 Batch Report 캐시 zip 을 OneDrive 에 올리기/).click();
   await page.getByText('OneDrive 게시를 껐습니다').waitFor();
+  // v14.3.18: 자동 분석 호기 현황(지난 [조사 시작] 호기 = ✓ 포함) + [⚙ 자동 분석 호기 설정] → 가동률 조사 및 분석의 조사 범위
+  {const box=page.getByLabel('자동 분석 호기 현황');await box.getByText('✓ 포함').first().waitFor();
+    assert.match(await box.locator('.count').innerText(),/^\d+ \/ \d+대 · /);
+    await box.getByRole('button',{name:'⚙ 자동 분석 호기 설정'}).click();
+    await page.getByRole('heading',{name:'Batch Report 분석',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'어느 호기의 어느 기간을 조사할까요?'}).waitFor();
+    assert.equal(await page.getByRole('tab',{name:/가동률 조사 및 분석/}).getAttribute('aria-selected'),'true');
+    await feature('자동 분석 및 취합');await page.getByRole('tab',{name:'Batch Report 자동 분석'}).click();}
   await page.getByLabel('분석 주기').selectOption('12');
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();

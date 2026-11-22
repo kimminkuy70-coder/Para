@@ -913,3 +913,7 @@ dialog::backdrop{overscroll-behavior:contain}
 .defect-frame:not(.ready){visibility:hidden}
 .defect-frame[hidden]{display:none}
 .cg-final{margin-top:18px;padding-top:12px;border-top:1px dashed var(--line)}
+
+/* v14.3.18: 자동 분석 탭 호기 현황 — 빠진 호기는 흐리게 */
+.auto-machines .tbl tr.off td{color:var(--sub)}
+.auto-machines .tbl{max-width:760px}
