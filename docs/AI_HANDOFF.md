@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #89 질문: Defect 분석 대규모/기본 차이 · 사진 불러오기 · 좌표 보정 계획 (2026-11-23 KST, `version_v14`, 이슈 #89)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `399c963`(v14.3.18) · 이슈 #89 "질문사항3"(자동 실행 routine 처리, 첨부 없음).
+- 요청: ① Defect 분석(대규모)와 (기본) 차이 ② 기본 모드가 사진을 어떻게 불러오는지(color~.ini 없어도 됨) ③ 두 모드에 좌표 보정 기능(새 창, 빨간 박스를 사람이 Defect 중앙으로, 최소 개수는 Claude가 정함, 보정 값을 µm로 보여 주고 진행 여부를 물은 뒤 보정) — **"지금은 계획만 세워서 보고"**.
+- 한 일: **코드 안 바꿈**. 이슈 댓글로 분석과 계획 보고.
+  - 차이: 같은 HTML(rev6) iframe, `mode=big` = Step 5만(5-1 은 Surface.flt 만 빠르게, 5-2·5-3 은 고른 Slot 을 `buildScan` 으로 다시 읽음), `mode=diagram` = Step 1~4(등록 때 `buildScan` 전체). 사진 계산은 같음.
+  - 사진: Color = `ColorImageGrabingInfo.ini`, 없으면 사진 이름 `{X}.{Y}.c.{n}.jpeg` 좌표(`colorsFromNames`) → `linkColor`(좌표 → 번호 규칙 → 사진 범위, 일정 어긋남 자동 보정). Gray = `ScanResultImageList.txt` + `frameToChuckPlane(.레시피).ini` → `locateGray`(변환 없으면 0.7708 µm/px 간단 모델). 5-1 화면 글 "ColorImageGrabingInfo.ini 필수"는 옛 글(구현 때 고칠 것).
+  - 계획: [좌표 보정] 단추(기본 Step 3·4 목록, 대규모 5-2 목록) → `winOpen` 새 창, 기준 Defect **3개**(서로 다른 Gray 프레임·Wafer 에서 멀리, 최대 10) 자동 선택, 빨간 박스 끌기/화살표 1 px·Shift 10 px, Δpx → `frameToChuckPlane` 행렬로 µm, 평균 offset + 3점 이상이면 회전(최소제곱), 점별 잔차(3 µm 넘으면 경고, 확인 전), [보정 시작] → 확인 창(X/Y µm · 회전 · 잔차 · 적용 범위) → 진행 시 Wafer µm 보정을 `locateGray` 변환 앞에 넣어 Gray·Crop·GL·Color 연결 다시 계산, [보정 해제], CSV 에 보정 열. 저장 = localStorage (호기, 레시피)별(엔진 쓰기 API 없음). 판 v14.3.19 예정.
+- 해석(확인 전): 최소 3점 · 회전 포함 여부 · 적용 범위 기본 = 이 Slot · PC 에 기억 — 소유자에게 4가지 질문함(답 전).
+- 시험: 코드 안 바꿔 안 돌림. 릴리스 안 함(v14.3.18 그대로).
+- 다음 session: 소유자가 #89 에 답하면 위 계획대로 구현 → Playwright 시험 추가(`tests/test_defect_view_toggles.py` 방식) → `check_project` → frontend build → v14.3.19 릴리스.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #89 | 대규모/기본 차이 · 사진 불러오기 · 좌표 보정 계획만 | 분석 + 계획 보고 · 질문 4개 · 코드 무변경 · 릴리스 없음 |
+
 ## 최신 재개 — #87 질문: Batch Report 가 캐시에 안 들어가는 원인 가설 5가지 (2026-11-22 KST, `version_v14`, 이슈 #87)
 
 - 마지막 갱신 2026-11-22 · 기준 커밋 `d97fa63`(v14.3.17 + #86 인수인계) · 이슈 #87 "v14.3.16 질문사항"(자동 실행 routine 처리, 첨부 없음).
