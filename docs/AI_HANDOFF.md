@@ -15,9 +15,65 @@
   `PYTHONPATH=vendor python tools/check_project.py` Failed files: none. 시험이 바꾼 `docs/screenshots` · `CamtekAOI/Logs` 는 되돌림. **Windows 실기(bat · 바로가기 · Edge 창 제목 · 옛 바로가기 교체)는 확인 못 함.**
 - 릴리스: `__version__` 14.4.0 + `docs/release_notes/v14.4.0.md` → push 하면 `v14.yml` 이 Release(`AOI_Manager_v14.4.0_install.zip`) 생성.
 
+- 참고: 아래 #89 계획에 적힌 '판 v14.3.19 예정'은 이 v14.4.0 뒤라 **v14.4.1 이후**로 낸다(판 번호가 낮으면 업데이트가 안 됨).
+
 | 요청 | 결과 |
 |---|---|
 | 실행 .bat 2개(기존 · 고른 기능만) + 이름 AOI Manager / AOI Manager Mini | v14.4.0 |
+
+## 최신 재개 — #89 후속 2: 실제 Slot 3장으로 0.7708 · 두 모드 · 10 µm 오차 분석 (2026-11-23 KST, `version_v14`, 소유자 세션)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `4841244` · 소유자: "파일 올렸어 다시 확인", "실제 이미지로 보니 최대 10 µm 차이 — 리뷰 PC 는 정확히 잡는데 어떻게 보정하는지 분석", "기본 · 대규모 중 정확한 것?".
+  코드 안 바꿈, 릴리스 없음. 자료 = 구글 드라이브 `wafer map/wafer map/` Slot 폴더 3개(사진 없음, 데이터 파일만) — **저장소에 넣지 않음**(세션 scratchpad 에서만 분석, 분석 스크립트도 scratchpad).
+  10 MB 넘는 파일(s_FrameData 15 · 46 MB, s_RichSurface 820 MB, WaferAlignData.zip)은 커넥터 한도로 못 받음.
+- 0.7708 출처 = **`RecipesInfo.ini` [Recipe-N] `Scan2DPixelSize`**(공칭값, 레시피마다). 보정값 = `frameToChuckPlane.N.ini`: PI 0.7708 → 0.770719 · x20 0.3859 → 0.385264 · x5 1.538 → 1.536871 · 2D+3D 1.6892 → 1.689946.
+  프레임 크기(변환 offset = −pix·W/2, −pix·H/2 로 계산, s_FrameData frameSize 와 같음) = 3168×1024 · x20 **2848×1024** · 2D+3D **2048×2048**.
+- 장비 계산 검증: PHMW Type 1024 Defect 74개는 Surface.flt `frameIdx · xInFrame · yInFrame` 이 있음 → s_FrameData(같은 recipe · frameIdx, **Revision 1** 레코드) 프레임 가운데 + 변환 행렬 = Defect x, y, **차이 최대 0.89 µm(가운데 0.46)**.
+  Revision 0 레코드는 같은 frameIdx 인데 약 (31, 480) µm 다른 위치(두 번 찍은 프레임). Contrast Defect(Type 536870912, S3FL 3 · S3UFA 152 · PHMW 49)는 frameIdx · xInFrame = 0(기록 없음).
+  ColorImageGrabingInfo FaultX/FaultY = Defect x, y(278/278, 1e-9 µm).
+- 프레임 위치 출처끼리 차이: Gray 사진 이름(정수 Table 좌표) + Wafer2Table vs ScanResultImageList = S3UFA Y 가운데 5.2 · 최대 9.1 µm, X −2.2 ~ 3.3 µm(S3FL ≤ 2.7 µm).
+  s_FrameData 안 `x,y` vs `WaferPos`(= Wafer2Table⁻¹(TablePos), rev1 recipe1 정확히 같음) = 레시피 1 프레임 98% 같음, 1~2% 가 최대 18 µm · 레시피 2 는 늘 약 2 µm 다름.
+  장비 설정 `Params_AlignRTP.ini`: Frame Alignment(Frame_Uncertanty_px=16 · MaxModelShift 7 px) · DICE_TRACKER(MaxPosError 2) → 프레임마다 패턴으로 위치를 다시 잡음(x,y = 정렬 뒤 위치로 추정, 확인 전).
+- 두 모드(rev6 HTML 함수를 node 로 그대로 실행, `tools/modes.mjs` scratchpad): S3FL 3 · S3UFA 152 Defect **같은 프레임 · 같은 픽셀(차 1e-9 px)**. PHMW(목록 없음): 기본 = Gray 없음, 대규모 = 이름 대체(사진이 없어 s_FrameData 로 흉내) →
+  프레임 크기 3168×1024 고정 때문에 74개 중 못 찾음 17 · 다른 프레임 27, 2048×2048 로 고치면 못 찾음 0 · 같은 프레임 49(픽셀 차 ≤ 0.51 px) · 다른 프레임 25(더 가운데인 겹친 프레임).
+  결론: 계산은 같고, 자료가 빠졌을 때(목록 · 변환 없음)는 대규모가 맞음.
+  **정정(소유자 지적)**: 대규모는 `ColorImageGrabingInfo.ini` 가 없으면 `cgLoad` 1973줄에서 바로 끝나 프레임 · 변환도 안 읽음 → `cgOf` = Color · Gray 둘 다 없음(Gray 위치 계산에는 Color 가 필요 없는데도).
+  기본은 이 파일 없이도 Gray(Defect 좌표) · Color(사진 이름) 됨. 즉 '대규모가 늘 낫다'가 아님 — 모드마다 약점이 다름(대규모 = Color ini 필수, 기본 = 목록 필수 · 변환 없으면 틀림).
+  #89 첫 보고의 "5-2·5-3 도 같은 대체 방법"도 틀림(5-2 · 5-3 의 짝짓기는 `cgOf`). **두 모드 공통 버그 = 프레임 크기 3168×1024 고정(`GW/GH`, `CG.GW/GH`, 그림 배율 `width/GW`) · Gray Crop 시야 `CG.GP` 0.7696 고정 · Area 에 0.7708² 고정**.
+- 리뷰 PC 가 정확한 이유(해석, 일부 확인 전): 장비가 Defect 를 찾은 프레임 번호 · 픽셀을 그대로 쓰고(다시 계산 안 함), 프레임 위치도 장비가 정렬로 잰 값(s_FrameData). 우리는 Wafer 좌표에서 거꾸로 계산 + 프레임 위치 출처가 다를 수 있어 수 µm ~ 18 µm 차이.
+  Contrast Defect 는 Surface.flt 에 프레임 기록이 없어 리뷰 PC 가 무엇을 쓰는지(`s_RichSurface.dat` 에 같은 frameIdx · xInFrame 칸 있음, 820 MB) 확인 못 함.
+- 다음(소유자 답 전 계획): ① 프레임 크기 = 변환 파일(→ s_FrameData → 사진 크기) ② frameIdx 기록 있으면 그 프레임 · 픽셀 그대로 ③ 없으면 프레임 위치 = s_FrameData(정렬 값) → ScanResultImageList → 사진 이름 ④ 기본 = 대규모 계산 ⑤ 수동 보정 보류.
+  ③의 '어느 값이 맞는지'는 사진으로 확인 필요 → 소유자에게 S3FL Gray 프레임 5장 · Color 3장 + S3FL s_FrameData.dat(zip 또는 9 MB 분할) + 10 µm 본 Slot · Defect 요청.
+
+| 요청 | 결과 |
+|---|---|
+| 실제 파일로 0.7708 · 두 모드 · 10 µm 원인 분석 | RecipesInfo 공칭값 · 장비 계산 ≤ 0.9 µm 재현 · 두 모드 같음 · 프레임 크기 고정 버그 · 사진 추가 요청 · 코드 무변경 |
+
+## 최신 재개 — #89 후속: 0.7708 µm/px 출처 · 기본 모드 새 창 = 대규모 새 창 계획 (2026-11-23 KST, `version_v14`, 이슈 #89 댓글 3)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `efba127` · 소유자 댓글: "간단 모델 0.7708 이 있는 파일을 찾아 구글 드라이브 예시 파일로 직접 확인 — 정확히 알면 보정 기능은 필요 없을 것 같다",
+  "기본 모드 새 창을 대규모 새 창처럼(화면 잠금 · 빨간 박스 끄기 등, GL 원은 안 함)" — **계획만**. 코드 안 바꿈, 릴리스 없음.
+- 0.7708 = **어느 파일에도 없음**. rev6 HTML `const PIX=0.7708`(rev1 때 'Pixel Size' 설정 기본값, rev5 에서 설정을 없애며 고정). 쓰는 곳 2곳:
+  ① 기본 모드(Step 3 · 4) `locateGray` 의 간단 모델(frameToChuckPlane 없을 때만): `px=(X−프레임x)/0.7708` — 프레임 좌표를 **모서리(0, 0)** 로 봄.
+     대규모 `cgLoad` 의 가운데 모델은 프레임 좌표 = **가운데**(off = −pix·1584, −pix·512, 주석: 실제 변환 파일로 확인 ≤ 0.13 px) → 간단 모델은 X 1584 px(≈1219 µm) · Y 512 px(≈394 µm) 어긋남 = **큰 오차는 기준점, 0.7708 아님**.
+  ② Area µm² = Surface.flt area(Gray px²) × 0.7708² — 두 모드 목록 · 필터 · CSV · 엑셀 전부.
+- 정확한 값이 있는 곳: `frameToChuckPlane(.N).ini` Scan_X = a b ox · Scan_Y = c d oy(a, d = µm/px, b, c = 회전, 프로그램은 행렬 전체 사용) · `s_FrameData.dat(+.md)` 레코드 192 B PixelSizeX(@120, double) ·
+  ColorImageGrabingInfo.ini PixelSizeX/Y 는 Color 카메라(≈0.46, Gray 아님). 코드 상수: Para `colorgray.GP`=0.769644115336745(Crop 크기), rev6 `CG_PIX`=0.7698455822(대규모 대체), `PIX`=0.7708.
+  GP 는 Para 변환계수 0.7696441409644141(다른 배율)과 8자리까지 같음 → **Gray 픽셀 크기는 배율(optic)마다 다를 수 있음**(기본형 계수 0.8457, 확인 전 — 맞다면 0.7708 고정은 ≈154 px · Area −17%).
+  0.7708 vs 0.76964 = 0.15%(프레임 가운데에서 끝까지 ≤ 2.4 px, Area +0.30%).
+- 모드 차이(Gray 위치): 기본 = Surface.flt x/y · ScanResultImageList 필수 · 번호 파일만이면 첫 파일 · 좌표 기준 '그대로'만 · 변환 없으면 간단 모델.
+  대규모 = Color FaultX/Y(없으면 Defect 좌표) · 목록 없으면 Gray 사진 이름 + Wafer2Table / s_FrameData · 번호 파일만이면 큰 번호(.2) · 좌표 기준 4가지 중 많이 맞는 것 · 가운데 모델.
+- **실제 파일 확인 못 함**: 구글 드라이브의 예시는 `wafer map.zip`(280 MB) 하나뿐, Drive 커넥터는 10 MB 넘는 파일을 못 받음(`read_file_content` 는 zip 형식 거부). 저장소 이력의 zip 은 #82 에서 지움.
+  원본 HTML 저장소 추가(`add_repo related-AOI-program`)는 권한 거부. → 소유자에게 10 MB 이하 파일을 따로 올려 달라고 요청(목록은 이슈 댓글).
+- 계획(소유자 답 전): A. 기본 모드 Gray 위치 = 대규모와 같은 계산(Step 1 파일 목록을 `cgDirsFromList` 로 감싸 `cgLoad` · `cgOf`, 간단 모델 · `locateGray` 삭제), Area = Slot 의 실제 픽셀 크기(변환 → s_FrameData → 고정값, 소유자 확인 필요),
+  실제 파일로 대규모 · 기본 위치 같음 + 빨간 네모 위치 사진 확인 → 맞으면 좌표 보정 기능은 **보류**(남는 어긋남이 있을 때만 다시).
+  B. 기본 모드 새 창 = `photoWin`(한 창 `cw_photo` 재사용 · 목록 따라감, Color · Gray Crop(Color 시야) · Gray 프레임, 🔒 확대 · 위치 고정 F/L, 빨간 네모 B(`cgDefBox`, 종전 빨간 원 삭제), 노란 Crop 상자, 확대 · 끌기 · Esc,
+  ↑↓ 이동 · Space ☑, 파일 이름 + 경로, Color 만 칸, 다음 2개 미리 읽기, 설정 `cw.pwLock` · `cw.pwBox` 두 모드 공용, GL 원 없음). 대상 = Step 3 · 4 목록 Enter/더블 클릭 · 지도 점 · Step 2 쌍별 상세 표. 원본 `openWindow` 삭제.
+- 시험(구현 때): `tests/test_defect_view_toggles.py`(정적), `tools/test_desktop_ui.mjs`(기본 모드 Enter 두 번 = 창 1개, #pwBox · #pwLock, B · ↓ · Space), node 로 두 모드 같은 가짜 Slot 위치 비교. 판 v14.3.19 예정.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #89 후속 | 0.7708 출처 · 실제 파일 확인 · 기본 모드 새 창 계획 | 출처 · 오차 분석 + 계획 보고 · 실제 파일 확인 못 함(10 MB 한도) · 코드 무변경 · 릴리스 없음 |
 
 ## 최신 재개 — #89 질문: Defect 분석 대규모/기본 차이 · 사진 불러오기 · 좌표 보정 계획 (2026-11-23 KST, `version_v14`, 이슈 #89)
 
