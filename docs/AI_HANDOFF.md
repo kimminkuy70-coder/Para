@@ -1,5 +1,30 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #89 후속 2: 실제 Slot 3장으로 0.7708 · 두 모드 · 10 µm 오차 분석 (2026-11-23 KST, `version_v14`, 소유자 세션)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `4841244` · 소유자: "파일 올렸어 다시 확인", "실제 이미지로 보니 최대 10 µm 차이 — 리뷰 PC 는 정확히 잡는데 어떻게 보정하는지 분석", "기본 · 대규모 중 정확한 것?".
+  코드 안 바꿈, 릴리스 없음. 자료 = 구글 드라이브 `wafer map/wafer map/` Slot 폴더 3개(사진 없음, 데이터 파일만) — **저장소에 넣지 않음**(세션 scratchpad 에서만 분석, 분석 스크립트도 scratchpad).
+  10 MB 넘는 파일(s_FrameData 15 · 46 MB, s_RichSurface 820 MB, WaferAlignData.zip)은 커넥터 한도로 못 받음.
+- 0.7708 출처 = **`RecipesInfo.ini` [Recipe-N] `Scan2DPixelSize`**(공칭값, 레시피마다). 보정값 = `frameToChuckPlane.N.ini`: PI 0.7708 → 0.770719 · x20 0.3859 → 0.385264 · x5 1.538 → 1.536871 · 2D+3D 1.6892 → 1.689946.
+  프레임 크기(변환 offset = −pix·W/2, −pix·H/2 로 계산, s_FrameData frameSize 와 같음) = 3168×1024 · x20 **2848×1024** · 2D+3D **2048×2048**.
+- 장비 계산 검증: PHMW Type 1024 Defect 74개는 Surface.flt `frameIdx · xInFrame · yInFrame` 이 있음 → s_FrameData(같은 recipe · frameIdx, **Revision 1** 레코드) 프레임 가운데 + 변환 행렬 = Defect x, y, **차이 최대 0.89 µm(가운데 0.46)**.
+  Revision 0 레코드는 같은 frameIdx 인데 약 (31, 480) µm 다른 위치(두 번 찍은 프레임). Contrast Defect(Type 536870912, S3FL 3 · S3UFA 152 · PHMW 49)는 frameIdx · xInFrame = 0(기록 없음).
+  ColorImageGrabingInfo FaultX/FaultY = Defect x, y(278/278, 1e-9 µm).
+- 프레임 위치 출처끼리 차이: Gray 사진 이름(정수 Table 좌표) + Wafer2Table vs ScanResultImageList = S3UFA Y 가운데 5.2 · 최대 9.1 µm, X −2.2 ~ 3.3 µm(S3FL ≤ 2.7 µm).
+  s_FrameData 안 `x,y` vs `WaferPos`(= Wafer2Table⁻¹(TablePos), rev1 recipe1 정확히 같음) = 레시피 1 프레임 98% 같음, 1~2% 가 최대 18 µm · 레시피 2 는 늘 약 2 µm 다름.
+  장비 설정 `Params_AlignRTP.ini`: Frame Alignment(Frame_Uncertanty_px=16 · MaxModelShift 7 px) · DICE_TRACKER(MaxPosError 2) → 프레임마다 패턴으로 위치를 다시 잡음(x,y = 정렬 뒤 위치로 추정, 확인 전).
+- 두 모드(rev6 HTML 함수를 node 로 그대로 실행, `tools/modes.mjs` scratchpad): S3FL 3 · S3UFA 152 Defect **같은 프레임 · 같은 픽셀(차 1e-9 px)**. PHMW(목록 없음): 기본 = Gray 없음, 대규모 = 이름 대체(사진이 없어 s_FrameData 로 흉내) →
+  프레임 크기 3168×1024 고정 때문에 74개 중 못 찾음 17 · 다른 프레임 27, 2048×2048 로 고치면 못 찾음 0 · 같은 프레임 49(픽셀 차 ≤ 0.51 px) · 다른 프레임 25(더 가운데인 겹친 프레임).
+  결론: 계산은 같고, 자료가 빠졌을 때(목록 · 변환 없음)는 대규모가 맞음. **두 모드 공통 버그 = 프레임 크기 3168×1024 고정(`GW/GH`, `CG.GW/GH`, 그림 배율 `width/GW`) · Gray Crop 시야 `CG.GP` 0.7696 고정 · Area 에 0.7708² 고정**.
+- 리뷰 PC 가 정확한 이유(해석, 일부 확인 전): 장비가 Defect 를 찾은 프레임 번호 · 픽셀을 그대로 쓰고(다시 계산 안 함), 프레임 위치도 장비가 정렬로 잰 값(s_FrameData). 우리는 Wafer 좌표에서 거꾸로 계산 + 프레임 위치 출처가 다를 수 있어 수 µm ~ 18 µm 차이.
+  Contrast Defect 는 Surface.flt 에 프레임 기록이 없어 리뷰 PC 가 무엇을 쓰는지(`s_RichSurface.dat` 에 같은 frameIdx · xInFrame 칸 있음, 820 MB) 확인 못 함.
+- 다음(소유자 답 전 계획): ① 프레임 크기 = 변환 파일(→ s_FrameData → 사진 크기) ② frameIdx 기록 있으면 그 프레임 · 픽셀 그대로 ③ 없으면 프레임 위치 = s_FrameData(정렬 값) → ScanResultImageList → 사진 이름 ④ 기본 = 대규모 계산 ⑤ 수동 보정 보류.
+  ③의 '어느 값이 맞는지'는 사진으로 확인 필요 → 소유자에게 S3FL Gray 프레임 5장 · Color 3장 + S3FL s_FrameData.dat(zip 또는 9 MB 분할) + 10 µm 본 Slot · Defect 요청.
+
+| 요청 | 결과 |
+|---|---|
+| 실제 파일로 0.7708 · 두 모드 · 10 µm 원인 분석 | RecipesInfo 공칭값 · 장비 계산 ≤ 0.9 µm 재현 · 두 모드 같음 · 프레임 크기 고정 버그 · 사진 추가 요청 · 코드 무변경 |
+
 ## 최신 재개 — #89 후속: 0.7708 µm/px 출처 · 기본 모드 새 창 = 대규모 새 창 계획 (2026-11-23 KST, `version_v14`, 이슈 #89 댓글 3)
 
 - 마지막 갱신 2026-11-23 · 기준 커밋 `efba127` · 소유자 댓글: "간단 모델 0.7708 이 있는 파일을 찾아 구글 드라이브 예시 파일로 직접 확인 — 정확히 알면 보정 기능은 필요 없을 것 같다",
