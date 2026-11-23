@@ -328,7 +328,7 @@ def build_html(model, scope="", created=None, view=None):
 <div class="tscroll"><table><thead><tr><th>호기</th><th>S/M</th><th>시작</th><th>행</th><th>파일</th></tr></thead><tbody>{excluded or '<tr><td colspan="5">없음</td></tr>'}</tbody></table></div>
 </section>
 <div class="foot">※ 원본 Batch Report는 읽기만 했습니다. 판정 기준은 위 [? Lot 판정 기준]에 있습니다. 중복 wafer는 가장 나중 Pass(저장된 사람 선택이 있으면 그 선택)를 쓴 결과로, 앱 화면과 같습니다.</div>
-</div></div>{page_foot('Camtek AOI Manager · Batch Report Lot 추적 결과 파일', 'Batch Report 원문 ' + ('포함' if view is not None else '링크'))}
+</div></div>{page_foot('AOI Manager · Batch Report Lot 추적 결과 파일', 'Batch Report 원문 ' + ('포함' if view is not None else '링크'))}
 {raw_html}
 <div class="ovl" id="ovl" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal"><div class="mhead"><h3 id="mt"></h3><button class="x" id="mx" aria-label="닫기">×</button></div><div class="mbody" id="mb"></div></div></div>
 <script>window.__LOTDATA={payload};window.__LOTPERIOD={{unit:'w',hid:{{}},period:null}};</script><script>{CORE_JS}</script><script>{LOT_JS}</script><script>{LOTCHART_JS}</script>{raw_data}{raw_js}</body></html>"""

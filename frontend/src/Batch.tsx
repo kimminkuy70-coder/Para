@@ -16,6 +16,7 @@ import {setKlaCache,type KlaCache} from './KlaSettings';
 import {Q,DefectWindow} from './BatchHelp';
 import {useDev,setDevLocked,setDevDrafts,registerDraftHandlers} from './devmode';
 import {updateGate,isUpdateGateOpen} from './AppUpdate';
+import {isMini,MINI_BATCH_FIND_ONLY} from './edition';
 import {loadView,batchCall,addDays,ymd,type View,type ViewMeta,type ViewName,type LotDetail,type Raw,type AggGroup} from './batchData';
 
 // OneDrive 캐시 공유(#39): 개발자 = [OneDrive 에 게시](또는 자동 분석 뒤 자동 게시), 사용자 = [OneDrive 에서 불러오기].
@@ -24,6 +25,8 @@ type ShareItem={name:string;exported_at:string;app_version:string;size:number;ma
 type ShareList={folder:string;exists:boolean;items:ShareItem[]};
 // 자동 분석 실패 뒤 다시 시도하기까지(Para #54).
 const AUTO_RETRY_MS=30*60*1000;
+// AOI Manager Mini(v14.4): [Batch Report 찾기 · 취합]만 — 가동률 조사 및 분석 · 지난 결과 복원 · 자동 분석(타이머 · 즉시 실행)은 없다.
+const findOnly=isMini&&MINI_BATCH_FIND_ONLY;
 const mb=(n:number)=>(n/1048576).toFixed(1)+'MB';
 type CacheImport={path:string;source?:string;files:number;added:number;kept:number;invalid:number;machines:string[];skipped:{machine:string;reports:number}[];unregistered?:string[];
   targets:{machine:string;folder:string;added:number;kept:number}[];exported_at:string;app_version:string;choices_skipped:boolean};
@@ -37,7 +40,7 @@ const today=()=>ymd(new Date());
 export function Batch({active}:{active:boolean}){
   const dev=useDev();
   const [config,setConfig]=useState<Configuration>();
-  const [main,setMain]=useState<'analysis'|'find'>('analysis');
+  const [main,setMain]=useState<'analysis'|'find'>(findOnly?'find':'analysis');
   const [sub,setSub]=useState<'lot'|'util'|'wph'|'cmp'>('lot');
   const [machines,setMachines]=useState<string[]>([]);
   const [allDates,setAllDates]=useState(true),[from,setFrom]=useState(''),[to,setTo]=useState(''),[preset,setPreset]=useState<'30'|'90'|null>(null);
@@ -78,7 +81,7 @@ export function Batch({active}:{active:boolean}){
         if(t0&&(t0.start||t0.end)){setAllDates(false);setFrom(t0.start||'');setTo(t0.end||'');}
         // v14.1.9: 등록한 호기가 없으면 찾기는 처음부터 [캐시에서만 찾기](OneDrive 에서 받은 캐시로 찾음).
         setCond(c=>({...c,machines:data.machines.map(m=>m.id),cacheOnly:c.cacheOnly??(data.machines.length?undefined:true)}));
-        if(!views.scope)void updateGate().then(restore);   // v14.1.1: 업데이트 확인이 먼저(AppUpdate.updateGate)
+        if(!views.scope&&!findOnly)void updateGate().then(restore);   // v14.1.1: 업데이트 확인이 먼저(AppUpdate.updateGate)
       }else{
         setMachines(old=>old.filter(id=>ids.has(id)));
         setCond(c=>({...c,machines:c.machines.filter(id=>ids.has(id))}));
@@ -201,6 +204,7 @@ export function Batch({active}:{active:boolean}){
   }
   const runLastRef=useRef(runLast);runLastRef.current=runLast;
   useEffect(()=>{
+    if(findOnly)return;
     const timer=window.setInterval(async()=>{
       if(runningRef.current||restoringRef.current||!isUpdateGateOpen()||Date.now()<autoBlocked.current)return;
       try{await runLastRef.current(false);}catch{/* engine busy with another screen: try again next minute */}
@@ -213,6 +217,7 @@ export function Batch({active}:{active:boolean}){
     try{await runLastRef.current(true);}catch(e){fail(e);}
   }
   useEffect(()=>{
+    if(findOnly)return;
     const go=()=>{if(takeBatchRunNow())void runNow();};
     go();
     window.addEventListener('para:batch-run-now',go);
@@ -220,6 +225,7 @@ export function Batch({active}:{active:boolean}){
   },[]);
   // v14.3.18: 자동 분석 탭 [⚙ 자동 분석 호기 설정] → 가동률 조사 및 분석의 조사 범위로.
   useEffect(()=>{
+    if(findOnly)return;
     const go=()=>{if(!takeBatchScope())return;setMain('analysis');
       window.setTimeout(()=>document.querySelector('[aria-label="조사 범위"]')?.scrollIntoView({block:'start'}),50);};
     go();
@@ -376,7 +382,7 @@ export function Batch({active}:{active:boolean}){
         {nDrafts>0&&<><button type="button" className="primary" style={{minWidth:0}} disabled={busy} onClick={()=>void saveDrafts()}>저장</button><button type="button" onClick={()=>{setDrafts({});notify('저장 안 한 선택을 버렸습니다.','info');}}>버리기</button></>}</>
       :<><span>ⓘ 저장된 사람 선택 <b>{v?.saved}건</b>이 결과에 적용 중입니다(개발자 기능에서 저장). 나머지 wafer는 추천(가장 나중 Pass).</span>
         <button type="button" className="help-btn" aria-label="개발자 기능 설명" onClick={()=>setHelp(true)}>?</button></>}</div>}
-    <div className="maintabs" role="tablist" aria-label="Batch Report 기능">
+    {!findOnly&&<><div className="maintabs" role="tablist" aria-label="Batch Report 기능">
       <button role="tab" type="button" className={main==='analysis'?'active':''} aria-selected={main==='analysis'} onClick={()=>setMain('analysis')}>가동률 조사 및 분석<small>Lot 추적 · 가동률 · WPH — 조사 범위 공통</small></button>
       <button role="tab" type="button" className={main==='find'?'active':''} aria-selected={main==='find'} onClick={()=>setMain('find')}>Batch Report 찾기 · 취합<small>파일 이름으로 찾아 Lot별 Dice 취합</small></button></div>
     <div hidden={main!=='analysis'}>
@@ -453,7 +459,7 @@ export function Batch({active}:{active:boolean}){
         :sub==='lot'?<LotTab v={v} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>
         :sub==='util'?<UtilTab v={v} ids={ids} range={range} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>
         :<WphTab v={v} ids={ids} range={range} openLot={li=>void openLot('scope',li)} showRaw={g=>void showRaw('scope',g)}/>}
-    </div>
+    </div></>}
     <div hidden={main!=='find'}>
       <FindTab machines={config?.machines||[]} view={views.find} busy={finding||busy||restoring} dev={dev.on} progress={fprog} cond={cond} setCond={setCond} onFind={()=>void runFind()}
         cacheMs={cacheMs} cacheBusy={cacheMsBusy} cachePick={cachePick} setCachePick={setCachePick}

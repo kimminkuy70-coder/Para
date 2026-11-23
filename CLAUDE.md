@@ -3,6 +3,14 @@
 ## v14 (브랜치 `version_v14` = `version_v13` 복사, 2026-11-15~) — Defect 분석 탭
 
 - 계획 · 소유자 결정 = `docs/V14_Defect분석_계획.md`(맨 아래 '구현 결과'가 최신). 릴리스 = `version_v14` push → `.github/workflows/v14.yml`(종전 v13.yml, 판 = 14.x.y).
+- **v14.4.0(소유자 2026-11-23) — 프로그램 이름 = `AOI Manager`(종전 Camtek AOI Manager) + 간단판 `AOI Manager Mini`**. 같은 설치 · 같은 `app/` · 같은 업데이트, 실행 단추만 둘:
+  설치 zip 맨 위 `AOI_Manager.bat` · `AOI_Manager_Mini.bat`(= 같은 시작 파일 + `--mini`, `tools/build_install.py STARTERS`). 소유자는 zip 을 풀어 `AOI_Manager.bat` 만 지우고 다시 압축해 다른 부서에 준다.
+  **Mini 에 보이는 기능(소유자 선택) = Batch Report 분석의 [Batch Report 찾기 · 취합]만(탭 글 'Batch Report 찾기 · 취합', 가동률 조사 및 분석 · 지난 결과 복원 · 자동 분석 없음) · Defect 분석(하위 3개) · Wafer Map 수정하기 · KLA 자재 찾기 · 설정**(메모 · Recipe 관리 · 자동 분석 및 취합 · Commonality 없음).
+  정하는 곳 = 화면 `frontend/src/edition.ts`(`MINI_TABS` · `MINI_BATCH_FIND_ONLY` · `tabLabel`, 판 = 주소 `?e=mini` → sessionStorage) · 엔진 `param_manager/edition.py`(`--mini` → 환경 변수 `PARA_EDITION`, Mini = 감시 스케줄러 · 트레이 상주 없음 `watches_on`).
+  **기능을 고칠 때: Mini 에 들어 있는 기능은 같은 화면 · 같은 코드라 Mini 도 같이 바뀐다 — 따로 만들지 말 것.** 새 화면 · 단추가 Mini 에 없는 탭(메모 · Recipe 등)으로 보내면 `hasTab` 이 막는다. Mini 에서 숨길 것은 `isMini` 로.
+  두 판은 같이 실행하지 않는다(같은 설정 · 로컬 폴더 · 잠금): 다른 판이 돌면 `launcher.second_start` 가 종료 후 실행하라는 창. 바로가기 = `AOI Manager.lnk` / `AOI Manager Mini.lnk`(`edition.SHORTCUTS`, 예전 `Camtek AOI Manager.lnk` 는 새 것을 만든 뒤 지움).
+  **시작 파일은 저장소 · `app/` 에서 `Camtek_AOI_manager.pyw` 이름 그대로**(v14.3 이하 설치의 업데이트가 이 파일이 있어야 받음 — 바꾸거나 지우지 말 것), 설치 zip 맨 위에만 `AOI_Manager.pyw` 로 넣는다. 로컬 폴더 `CamtekAOI` · 뮤텍스 · OneDrive 게시 zip 이름(`Camtek_AOI_manager_v…_source.zip`)도 옛 판 호환으로 그대로.
+  Mini 의 기능 제한은 화면 단순화이지 보안 잠금이 아니다(같은 PC 에 모든 코드가 있음). 시험 `tests/test_launcher.py`(EditionStartTest) · `tests/test_build_install.py` · `tools/test_desktop_ui.mjs`(Mini 창).
 - 탭 `Color·Gray 매칭` → **`Defect 분석`**(`frontend/src/DefectAnalysis.tsx`): 하위 탭 3개(v14.1, 소유자 순서) [Color·Gray 매칭](기존 `ColorGray.tsx`, 처음 선택) ·
   [Defect 분석(대규모)](HTML Step 5) · [Defect 분석(기본)](HTML Step 1 ~ 4). 종전 '다이어그램 분석 보이기' 체크는 없앴다(v14.0 의 `para.defect.diagram` 은 안 읽음).
 - Defect 분석(대규모 · 기본) = **AOI Contrast Wizard HTML 그대로**(`frontend/public/defect/AOI_Contrast_Wizard_rev6.html` → dist, 같은 출처 iframe `?t=토큰&mode=big|diagram`).
@@ -79,7 +87,7 @@
 - **원칙 예외(소유자 확정 2026-11-10)**: 런타임 인터넷 금지의 예외는 **업데이트 확인 · 소스 zip 받기 때 github.com 의 이 저장소 하나**뿐(TLS 검증 필수 · 토큰 없음 · 실행 파일 들어 있으면 거부 · 받기는 버튼 때만). 그 밖은 계속 금지.
 - **tkinter 판 삭제**(equip_app · app · batchreport_ui · theme · refresh · updater_bat · run.py · .bat 전부), Tauri(`frontend/src-tauri`) · PyInstaller 빌드 삭제. 아래 tkinter · Tauri · exe 관련 절은 **v12 까지의 기록**이다(v12 는 `version_v12` 에 보존).
 - `.bat` · `.ps1` · `.vbs` · `.cmd` 파일을 저장소에 다시 넣지 말 것(#31 · #58 `Trojan:Script`). 배포 파일(`deploy.files`) 전체에 배치 명령 문구 금지.
-  **예외(소유자 결정 2026-11-11, #64)**: 설치 zip 맨 위의 실행 단추 `Camtek_AOI_manager.bat` 하나(`@echo off` + `start "" "%~dp0python\pythonw.exe" "%~dp0Camtek_AOI_manager.pyw"`) — `tools/build_install.py` 가 zip 에만 써 넣는다(저장소 · 업데이트에는 없음, `tests/test_build_install.py`). 명령을 늘리지 말 것.
+  **예외(소유자 결정 2026-11-11, #64 · 2026-11-23 v14.4)**: 설치 zip 맨 위의 실행 단추 `AOI_Manager.bat` · `AOI_Manager_Mini.bat` 둘(종전 `Camtek_AOI_manager.bat` 하나, 각각 `@echo off` + `start "" "%~dp0python\pythonw.exe" "%~dp0AOI_Manager.pyw"` [+ ` --mini`]) — `tools/build_install.py` 가 zip 에만 써 넣는다(저장소 · 업데이트에는 없음, `tests/test_build_install.py`). 명령을 늘리지 말 것.
 - 구조: 시작 `Camtek_AOI_manager.pyw`(app.new 교체 · 경로) → `param_manager/launcher.py`(중복 실행 · server.json · Edge 창) → `webserver.py`(127.0.0.1, `/api/send` · `/api/events`(SSE) · `/api/native` · `/api/upload`)
   → 엔진은 v12 그대로(`desktop_boot` · `desktop_ipc.serve`). Windows 기능 = `winnative.py`(고르기 창 · Edge · 트레이 · 바로가기). 화면 연결 = `frontend/src/desktop.ts`(fetch + EventSource).
   업데이트 = `desktop_appupdate.py`. 배포 파일 목록 = `deploy.py` **한 곳**(설치 zip · 업데이트 · `tests/test_deploy_files.py`). `frontend/dist` · `vendor/` 는 커밋한다 — 화면을 고치면 `cd frontend && npm run build` 결과도 커밋(CI 가 확인).

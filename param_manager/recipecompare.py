@@ -318,7 +318,7 @@ def build_html(result, view):
     return ("<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
             f"<title>{_esc(title)}</title><style>{THEME_CSS}{CMP_CSS}</style></head><body class=\"app-rpt\"><div class=\"doc\">{top}"
             f"<div class=\"pad\">{CMP_BODY}</div></div>"
-            + page_foot("Camtek AOI Manager · 레시피 비교 결과 파일", "원본 Batch Report 는 읽기만 했습니다")
+            + page_foot("AOI Manager · 레시피 비교 결과 파일", "원본 Batch Report 는 읽기만 했습니다")
             + RAW_HTML + f"<script type=\"application/json\" id=\"cmp\">{data}</script>"
             f"<script type=\"application/octet-stream\" id=\"rawgz\">{blob}</script><script>{CMP_JS}</script><script>{RAW_JS}</script></body></html>")
 

@@ -15,6 +15,7 @@ import {WaferMap} from './WaferMap';
 import {Batch} from './Batch';
 import {useDev} from './devmode';
 import {Kla} from './Kla';
+import {APP_NAME,isMini,hasTab,tabLabel} from './edition';
 
 const SUBTITLE: Record<string,string> = {
   'Batch Report 분석':'장비 Report 폴더의 Batch Report를 Lot 단위로 모아 가동률 · Lot 추적 · WPH를 보고, 필요한 Batch Report를 찾아 취합합니다.',
@@ -23,18 +24,23 @@ const SUBTITLE: Record<string,string> = {
   '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.',
   'KLA 자재 찾기':'KLA 장비 스캔 결과 폴더에서 Lot 이름으로 자재를 찾아 경로를 알려 주고, 바로 폴더를 엽니다.'
 };
+// AOI Manager Mini(v14.4): Batch Report 분석 탭 = [Batch Report 찾기 · 취합]만.
+if(isMini)SUBTITLE['Batch Report 분석']='Batch Report 를 파일 이름으로 찾아 고르고, Lot 별 Dice 를 취합해 Excel 로 저장합니다.';
+document.title=APP_NAME;
 // Batch Report 분석 stays mounted too: its results, Lot window and unsaved developer choices
 // survive a visit to 설정 (where the developer toggle lives).
 import {TourLayer} from './Tour';
 const KEEP = ['Recipe 관리','Commonality 조사','자동 분석 및 취합','Batch Report 분석','Defect 분석','Wafer Map 수정하기','KLA 자재 찾기'];
 // 맨 위 탭(#32): CAMTEK · KLA · 설정 · 메모. CAMTEK / KLA = 장비 회사별 기능 묶음(#30, 아래 기능 탭 줄),
 // 설정 · 메모 = 회사와 관계없는 공통 탭이라 회사 묶음 밖에 따로 둔다(아래 기능 탭 줄 없음).
-const VENDORS = {CAMTEK:['Recipe 관리','자동 분석 및 취합','Commonality 조사','Batch Report 분석','Defect 분석','Wafer Map 수정하기'],
+// AOI Manager Mini(v14.4)는 edition.ts MINI_TABS 에 있는 탭만 보인다(없는 탭 = 줄에서 빠짐, 탭이 하나도 없는 회사 · 공통 탭도 빠짐).
+const ALL_VENDORS = {CAMTEK:['Recipe 관리','자동 분석 및 취합','Commonality 조사','Batch Report 분석','Defect 분석','Wafer Map 수정하기'],
   KLA:['KLA 자재 찾기']} as const;
-type Vendor = keyof typeof VENDORS;
+type Vendor = keyof typeof ALL_VENDORS;
+const VENDORS:Record<Vendor,readonly string[]> = {CAMTEK:ALL_VENDORS.CAMTEK.filter(hasTab),KLA:ALL_VENDORS.KLA.filter(hasTab)};
 const COMMON = ['설정','메모'] as const;
 type Top = Vendor | typeof COMMON[number];
-const TOPS:Top[] = ['CAMTEK','KLA',...COMMON];
+const TOPS:Top[] = [...(['CAMTEK','KLA'] as Vendor[]).filter(v=>VENDORS[v].length>0),...COMMON.filter(hasTab)];
 const topOf = (tab:string):Top => (COMMON as readonly string[]).includes(tab)?tab as Top
   :(VENDORS.KLA as readonly string[]).includes(tab)?'KLA':'CAMTEK';
 
@@ -42,7 +48,7 @@ function App(){
   const [tab,setTab]=useState('설정');
   const top=topOf(tab);
   // 회사 탭을 오가도 각 회사에서 마지막에 보던 탭으로 돌아간다.
-  const lastTab=useRef<Record<Vendor,string>>({CAMTEK:'Recipe 관리',KLA:'KLA 자재 찾기'});
+  const lastTab=useRef<Record<Vendor,string>>({CAMTEK:VENDORS.CAMTEK[0]||'설정',KLA:VENDORS.KLA[0]||'설정'});
   useEffect(()=>{if(top==='CAMTEK'||top==='KLA')lastTab.current[top]=tab;},[tab,top]);
   const navigation:readonly string[]=top==='CAMTEK'||top==='KLA'?VENDORS[top]:[];
   const [config,setConfig]=useState<Configuration>();
@@ -60,7 +66,7 @@ function App(){
       const data=(await desktop.request('configuration').promise) as Configuration;
       if(!Array.isArray(data.machines))throw new Error('configuration_failed');
       setConfig(data);setConnection('로컬 엔진 연결됨');
-      if(data.auto?.enabled)mountBatch();
+      if(data.auto?.enabled&&!isMini)mountBatch();
     }catch(e){setConnection('연결 확인 필요');notify(errorText(e),'error');}
   }
   useEffect(()=>{void loadConfig();},[]);
@@ -71,7 +77,8 @@ function App(){
   }
   const [screenKey,setScreenKey]=useState(0);
   // Other screens can ask to open a tab (e.g. Commonality → 설정 › AOI 장비 호기 루트).
-  useEffect(()=>{const go=(e:Event)=>setTab((e as CustomEvent<string>).detail);window.addEventListener('para:navigate',go);return()=>window.removeEventListener('para:navigate',go);},[]);
+  // Mini 에 없는 탭으로 가라는 요청(예: 다른 화면의 바로 가기)은 무시한다.
+  useEffect(()=>{const go=(e:Event)=>{const t=(e as CustomEvent<string>).detail;if(hasTab(t))setTab(t);};window.addEventListener('para:navigate',go);return()=>window.removeEventListener('para:navigate',go);},[]);
   // Workflow screens stay mounted after the first visit, so leaving a tab never
   // loses an in-progress step (Commonality 조사, Recipe 관리의 업데이트·양식 …). Screens
   // that hold a shared-document edit lock (문서, Recipe 관리) still unmount so the lock
@@ -84,7 +91,7 @@ function App(){
   function mountBatch(){batchMounted.current=true;setVisited(v=>v.includes('Batch Report 분석')?v:[...v,'Batch Report 분석']);}
   useEffect(()=>{
     const check=async()=>{
-      if(batchMounted.current||desktop.closed)return;
+      if(batchMounted.current||desktop.closed||isMini)return;   // Mini: Batch Report 자동 분석 없음
       try{const d=(await desktop.request('configuration').promise) as Configuration;if(d.auto?.enabled)mountBatch();}
       catch{/* 엔진이 다른 작업 중: 다음 분에 다시 */}
     };
@@ -120,17 +127,17 @@ function App(){
     void syncWatch();
     return off;
   },[]);
-  return <div className="app">
+  return <div className={'app'+(isMini?' edition-mini':'')} data-edition={isMini?'mini':'full'}>
     <Toaster/>
     <TourLayer/>
     <ActivityPanel/>
-    <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">C</span><span>Camtek <b>AOI Manager</b><small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
+    <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">A</span><span className="brand-name"><b>AOI Manager</b>{isMini&&<em className="edition-pill" title="AOI Manager 의 간단판 — 고른 기능만 보입니다">Mini</em>}<small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
     <UpdateBanner busy={batchRunning}/>
     <nav className="vendor-tabs" aria-label="장비 회사 · 공통">{TOPS.map(t=><button key={t} data-tour={(t in VENDORS?'vendor:':'nav:')+t}
       className={(top===t?'active':'')+(t in VENDORS?'':' common')} aria-current={top===t?'page':undefined}
       onClick={()=>setTab(t==='CAMTEK'||t==='KLA'?lastTab.current[t]:t)}>{t}</button>)}</nav>
-    {navigation.length>0&&<nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} data-tour={'nav:'+name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{name}</button>)}</nav>}
-    <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tab}</h1><p>{SUBTITLE[tab]||'장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.'}</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
+    {navigation.length>0&&<nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} data-tour={'nav:'+name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{tabLabel(name)}</button>)}</nav>}
+    <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tabLabel(tab)}</h1><p>{SUBTITLE[tab]||'장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.'}</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
         {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>
       <div key={screenKey} style={{display:'contents'}}>
       {visited.map(name=><div key={name} hidden={tab!==name} className="kept-screen">{
@@ -142,7 +149,7 @@ function App(){
         :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}
       {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:<Memo/>}
       </div>
-    </main><footer><span>Camtek AOI Manager</span><span>{config?.local_root?`로컬 결과: ${config.local_root}`:'데이터는 장비 원본과 분리하여 로컬에 저장합니다.'}</span></footer>
+    </main><footer><span>{APP_NAME}</span><span>{config?.local_root?`로컬 결과: ${config.local_root}`:'데이터는 장비 원본과 분리하여 로컬에 저장합니다.'}</span></footer>
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

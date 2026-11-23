@@ -3,7 +3,8 @@
 // sessionStorage (a reload keeps working; the address no longer shows it).
 const TOKEN: string = (() => {
   try {
-    const q = new URLSearchParams(location.search).get('t');
+    const u = new URLSearchParams(location.search), q = u.get('t'), e = u.get('e');
+    if (e === 'mini' || e === 'full') sessionStorage.setItem('para.e', e);   // edition (edition.ts) — read before the address is cleaned
     if (q) { sessionStorage.setItem('para.t', q); history.replaceState(null, '', location.pathname + location.hash); return q; }
     return sessionStorage.getItem('para.t') || '';
   } catch { return ''; }

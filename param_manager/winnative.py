@@ -173,7 +173,7 @@ IID_PERSIST_FILE = "0000010B-0000-0000-C000-000000000046"
 # IShellLinkW slots: SetDescription 7, SetWorkingDirectory 9, SetArguments 11, SetIconLocation 17, SetPath 20
 # IPersistFile slots: Save 6
 SL_DESC, SL_WORKDIR, SL_ARGS, SL_ICON, SL_PATH, PF_SAVE, QUERY = 7, 9, 11, 17, 20, 6, 0
-SHORTCUT_NAME = "Camtek AOI Manager.lnk"
+SHORTCUT_NAME = "AOI Manager.lnk"          # full edition; names per edition = edition.SHORTCUTS
 
 
 def desktop_dir() -> Path | None:
@@ -186,11 +186,15 @@ def desktop_dir() -> Path | None:
     return Path(buf.value)
 
 
-def shortcut_spec(home: Path) -> dict:
-    """What the desktop shortcut points to: python.org pythonw.exe running our start file."""
-    return dict(target=str(home / "python" / "pythonw.exe"), args=f'"{home / "Camtek_AOI_manager.pyw"}"',
+def shortcut_spec(home: Path, edition: str = "full", start: Path | None = None) -> dict:
+    """What the desktop shortcut points to: python.org pythonw.exe running our start file
+    (``--mini`` added for AOI Manager Mini)."""
+    from . import edition as editions
+    start = start or home / "AOI_Manager.pyw"
+    extra = "".join(" " + a for a in editions.args(edition))
+    return dict(target=str(home / "python" / "pythonw.exe"), args=f'"{start}"{extra}',
                 workdir=str(home), icon=str(home / "app" / "param_manager" / "data" / "para_icon.ico"),
-                description="Camtek AOI Manager (Para v13)")
+                description=editions.name(edition))
 
 
 def create_shortcut(lnk: Path, spec: dict) -> bool:
@@ -242,14 +246,25 @@ def create_shortcut(lnk: Path, spec: dict) -> bool:
             ole32.CoUninitialize()
 
 
-def ensure_desktop_shortcut(home: Path | None) -> bool:
-    """Installed copy only: make the desktop shortcut once (the first start is the starter .bat in the install folder)."""
+def ensure_desktop_shortcut(home: Path | None, edition: str = "full", start: Path | None = None) -> bool:
+    """Installed copy only: make this edition's desktop shortcut once (the first start is the starter
+    .bat in the install folder). v14.4 renamed the program: an old 'Camtek AOI Manager' shortcut is
+    replaced by 'AOI Manager' (made first, the old one removed only after that worked)."""
+    from . import edition as editions
     if home is None or not is_windows() or not (home / "python" / "pythonw.exe").is_file():
         return False
     desk = desktop_dir()
-    if desk is None or (desk / SHORTCUT_NAME).exists():
+    name = editions.SHORTCUTS[editions.MINI if editions.is_mini(edition) else editions.FULL]
+    if desk is None or (desk / name).exists():
         return False
-    return create_shortcut(desk / SHORTCUT_NAME, shortcut_spec(home))
+    made = create_shortcut(desk / name, shortcut_spec(home, edition, start))
+    if made:
+        for old in editions.OLD_SHORTCUTS.get(edition, ()):
+            try:
+                (desk / old).unlink(missing_ok=True)       # only the exact name we made before
+            except OSError:
+                pass
+    return made
 
 
 # ---------------------------------------------------------------- natives for the web server

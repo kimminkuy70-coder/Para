@@ -160,11 +160,18 @@ class Natives:
         return fn(args or {})
 
 
+def page_url(port: int, token: str, edition: str = "full") -> str:
+    """The app page. ``e=mini`` tells the screen which edition to draw (v14.4 · AOI Manager Mini)."""
+    return f"http://127.0.0.1:{port}/?t={token}" + ("&e=mini" if edition == "mini" else "")
+
+
 class WebServer:
     def __init__(self, dist: Path = DIST, port: int = 0, token: str | None = None,
-                 upload_dir: Path | None = None, natives_factory=Natives):
+                 upload_dir: Path | None = None, natives_factory=Natives, edition: str | None = None):
+        from . import edition as editions
         self.dist = Path(dist).resolve()
         self.token = token or secrets.token_urlsafe(32)
+        self.edition = editions.MINI if editions.is_mini(edition) else editions.FULL
         self.bridge = Bridge()
         self.upload_dir = Path(upload_dir) if upload_dir else Path(tempfile.gettempdir()) / "CamtekAOI_upload"
         self.exit_requested = threading.Event()
@@ -177,7 +184,7 @@ class WebServer:
 
     @property
     def url(self) -> str:
-        return f"http://127.0.0.1:{self.port}/?t={self.token}"
+        return page_url(self.port, self.token, self.edition)
 
     def hosts(self):
         return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}

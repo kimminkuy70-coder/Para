@@ -917,3 +917,8 @@ dialog::backdrop{overscroll-behavior:contain}
 /* v14.3.18: 자동 분석 탭 호기 현황 — 빠진 호기는 흐리게 */
 .auto-machines .tbl tr.off td{color:var(--sub)}
 .auto-machines .tbl{max-width:760px}
+
+/* v14.4 — 프로그램 이름 AOI Manager · 간단판 AOI Manager Mini(edition.ts). 머리 막대에 'Mini' 표시. */
+.brand-name b{font-weight:800;letter-spacing:-.3px}
+.edition-pill{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:999px;background:var(--lime);color:var(--onacc);font-style:normal;font-size:12px;font-weight:800;letter-spacing:.4px;vertical-align:3px}
+.edition-mini .brand-icon{background:white;color:var(--navy)}

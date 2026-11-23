@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {desktop,exitApp,type AppUpdate} from './desktop';
 import {notify,fail} from './ui';
+import {APP_NAME} from './edition';
 
 /** Owner 2026-11-10: the update is applied at the next start (like the AOI Recipe Verification program);
  * after downloading, a window asks the person to close and start the program again. */
@@ -68,7 +69,7 @@ export function UpdateBanner({busy}:{busy:boolean}){
     {ready&&<dialog ref={readyBox} className="update-banner" aria-label="업데이트 적용 안내" onCancel={closeReady}>
       <h3>새 버전 {ready}을 받았습니다</h3>
       <p><b>프로그램을 종료한 뒤 다시 실행하면</b> 새 버전이 적용됩니다.</p>
-      <p className="hint">[지금 종료]를 누른 뒤 바탕화면의 Camtek AOI Manager 바로가기로 다시 실행하십시오. [나중에]를 누르면 지금 버전으로 계속 쓰고, 다음에 실행할 때 적용됩니다.</p>
+      <p className="hint">[지금 종료]를 누른 뒤 바탕화면의 {APP_NAME} 바로가기로 다시 실행하십시오. [나중에]를 누르면 지금 버전으로 계속 쓰고, 다음에 실행할 때 적용됩니다.</p>
       {busy&&<p className="hint">진행 중인 작업이 있으면 그 작업은 멈추고 종료합니다.</p>}
       <div className="actions">
         <button className="primary" onClick={()=>void quit()}>지금 종료</button>

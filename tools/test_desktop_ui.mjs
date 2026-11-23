@@ -1143,6 +1143,61 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   await page.locator('dialog.update-banner').getByRole('button',{name:'나중에'}).click();
   await recipeTab('레시피 날짜별 비교하기');
   await page.locator('.cm-file input').first().waitFor();
+  // v14.4: 프로그램 이름 = AOI Manager(전체판) — 머리 막대 · 창 제목 · 바닥글.
+  assert.equal(await page.title(),'AOI Manager');
+  assert.equal(await page.locator('.topbar .brand-name b').innerText(),'AOI Manager');
+  assert.equal(await page.locator('.edition-pill').count(),0);
+  assert.deepEqual(await page.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','설정','메모']);
+  // v14.4 AOI Manager Mini: 같은 엔진 · 같은 화면 파일, 주소의 e=mini(AOI_Manager_Mini.bat = 시작 파일 + --mini)만 다르다.
+  // 보이는 기능 = Batch Report 찾기 · 취합 · Defect 분석 · Wafer Map 수정하기 · KLA 자재 찾기 · 설정(소유자 2026-11-23).
+  const mini=await browser.newPage({viewport:{width:1440,height:1000}});
+  const miniErrors=[];mini.on('pageerror',e=>miniErrors.push(e.message));
+  await mini.route('**/*',async route=>{assert.equal(new URL(route.request().url()).origin,appOrigin,'External request must never occur');await route.continue();});
+  await mini.goto(appUrl+'&e=mini');
+  assert.equal(new URL(mini.url()).search,'','token · edition must be removed from the address');
+  await mini.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
+  await mini.locator('dialog.update-banner').getByText('새 버전 14.9.0이 있습니다').waitFor();
+  await mini.locator('dialog.update-banner').getByRole('button',{name:'나중에'}).click();
+  assert.equal(await mini.title(),'AOI Manager Mini');
+  assert.equal(await mini.locator('.app').getAttribute('data-edition'),'mini');
+  assert.equal(await mini.locator('.edition-pill').innerText(),'Mini');
+  assert.match(await mini.locator('footer').innerText(),/^AOI Manager Mini/);
+  assert.deepEqual(await mini.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','설정']);
+  await mini.getByRole('button',{name:'CAMTEK',exact:true}).click();
+  assert.deepEqual(await mini.locator('.navigation button').allInnerTexts(),['Batch Report 찾기 · 취합','Defect 분석','Wafer Map 수정하기']);
+  assert.equal(await mini.locator('main h1').innerText(),'Batch Report 찾기 · 취합');
+  // Batch Report = 찾기 · 취합만: 가동률 조사 및 분석 탭 · 조사 범위 · 즉시 실행이 없다.
+  await mini.getByLabel('캐시에서만 찾기').waitFor();
+  assert.equal(await mini.getByRole('tab',{name:/가동률 조사 및 분석/}).count(),0);
+  assert.equal(await mini.locator('[aria-label="조사 범위"]').count(),0);
+  assert.equal(await mini.getByRole('button',{name:'▶ 즉시 실행'}).count(),0);
+  await mini.locator('.navigation').getByRole('button',{name:'Defect 분석',exact:true}).click();
+  await mini.getByRole('tab',{name:/Color·Gray 매칭/}).waitFor();
+  await mini.locator('.navigation').getByRole('button',{name:'Wafer Map 수정하기',exact:true}).click();
+  assert.equal(await mini.locator('main h1').innerText(),'Wafer Map 수정하기');
+  await mini.getByRole('button',{name:'KLA',exact:true}).click();
+  assert.deepEqual(await mini.locator('.navigation button').allInnerTexts(),['KLA 자재 찾기']);
+  // 다른 화면이 Mini 에 없는 탭으로 가라고 해도 그대로 있다.
+  await mini.evaluate(()=>window.dispatchEvent(new CustomEvent('para:navigate',{detail:'Recipe 관리'})));
+  assert.equal(await mini.locator('main h1').innerText(),'KLA 자재 찾기');
+  // 설정: 자동 분석 줄 · Job 폴더 열이 없다(Mini 에 없는 기능).
+  await mini.getByRole('button',{name:'설정',exact:true}).click();
+  await mini.locator('.current-settings summary').click();
+  assert.equal(await mini.locator('.current-settings th',{hasText:'Batch Report 자동 분석'}).count(),0);
+  await mini.getByRole('tab',{name:'AOI 장비 호기 루트',exact:true}).click();
+  await mini.locator('[data-tour="settings:aoi-table"]').waitFor();
+  assert.equal(await mini.locator('[data-tour="settings:aoi-table"] th',{hasText:'Job 폴더'}).count(),0);
+  // 기능 둘러보기 = Mini 탭만, 끝까지 오류 없이.
+  await mini.getByRole('button',{name:'기능 둘러보기',exact:true}).click();
+  const mb=mini.locator('.tour-bubble');
+  const mtotal=Number((await mb.locator('.tour-count').innerText()).split('/')[1]);
+  const seen=[];
+  for(let k=1;k<=mtotal;k++){seen.push(await mb.locator('h3').innerText());if(k<mtotal){await mb.getByRole('button',{name:'다음 →'}).click();await mb.locator('.tour-count').filter({hasText:new RegExp('^'+(k+1)+' /')}).waitFor();}}
+  assert(!seen.some(t=>/Recipe 관리|Commonality|자동 분석 및 취합|메모|\[조사 시작\]/.test(t)),'Mini tour shows a full-only step: '+seen.join(' | '));
+  assert(seen.includes('Batch Report 찾기 · 취합'));
+  await mb.getByRole('button',{name:'완료',exact:true}).click();
+  assert.deepEqual(miniErrors,[]);
+  await mini.close();
   assert.deepEqual(errors,[]);
   assert.equal(stderr,'');
   console.log(JSON.stringify({passed:true,viewports:4,pythonReports:205,lots:69,scriptEscaped:true,localServer:'127.0.0.1'}));

@@ -1,4 +1,4 @@
-"""v13 start file + launcher: update swap, OneDrive refusal, Edge command, second start."""
+"""Start file + launcher: update swap, OneDrive refusal, Edge command, second start, editions (v14.4)."""
 import json
 import os
 import runpy
@@ -91,8 +91,70 @@ class LauncherTest(unittest.TestCase):
     def test_shortcut_runs_signed_pythonw_with_start_file(self):
         spec = winnative.shortcut_spec(Path("H"))
         self.assertEqual(Path(spec["target"]).parts[-2:], ("python", "pythonw.exe"))
-        self.assertTrue(spec["args"].strip('"').endswith("Camtek_AOI_manager.pyw"))
+        self.assertTrue(spec["args"].strip('"').endswith("AOI_Manager.pyw"))
+        self.assertEqual(spec["description"], "AOI Manager")
         self.assertFalse(winnative.ensure_desktop_shortcut(None))     # source copy: never
+
+    def test_mini_shortcut_adds_flag_and_keeps_old_start_file(self):
+        # An install from before v14.4 has only Camtek_AOI_manager.pyw at its root.
+        spec = winnative.shortcut_spec(Path("H"), "mini", Path("H") / "Camtek_AOI_manager.pyw")
+        self.assertTrue(spec["args"].endswith('Camtek_AOI_manager.pyw" --mini'))
+        self.assertEqual(spec["description"], "AOI Manager Mini")
+
+    def test_start_file_prefers_the_running_one(self):
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            (home / "Camtek_AOI_manager.pyw").write_text("x", encoding="utf-8")
+            self.assertEqual(launcher.start_file(home).name, "Camtek_AOI_manager.pyw")      # old install
+            (home / "AOI_Manager.pyw").write_text("x", encoding="utf-8")
+            self.assertEqual(launcher.start_file(home).name, "AOI_Manager.pyw")              # v14.4 install
+            self.assertEqual(launcher.start_file(home, str(home / "Camtek_AOI_manager.pyw")).name,
+                             "Camtek_AOI_manager.pyw")
+            self.assertEqual(launcher.start_file(home, str(home / "other.txt")).name, "AOI_Manager.pyw")
+
+
+class EditionStartTest(unittest.TestCase):
+    """v14.4: --mini starts AOI Manager Mini; the two editions never run side by side."""
+
+    def test_flag(self):
+        from param_manager import edition
+        self.assertEqual(edition.from_argv([]), "full")
+        self.assertEqual(edition.from_argv(["--mini"]), "mini")
+        self.assertEqual(edition.from_argv(["--MINI "]), "mini")
+        self.assertEqual(edition.args("mini"), ["--mini"])
+        self.assertEqual(edition.args("full"), [])
+
+    def test_server_url_and_state_carry_the_edition(self):
+        from param_manager import webserver
+        self.assertTrue(webserver.page_url(1, "t", "mini").endswith("?t=t&e=mini"))
+        self.assertTrue(webserver.page_url(1, "t", "full").endswith("?t=t"))
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"LOCALAPPDATA": d}):
+            launcher.write_state(mock.Mock(port=1, token="t", edition="mini"))
+            self.assertEqual(launcher.read_state()["edition"], "mini")
+
+    def test_second_start(self):
+        same = launcher.second_start({"port": 5, "token": "tk", "edition": "mini"}, "mini")
+        self.assertEqual(same, ("open", "http://127.0.0.1:5/?t=tk&e=mini"))
+        other = launcher.second_start({"port": 5, "token": "tk", "edition": "full"}, "mini")
+        self.assertEqual(other[0], "refuse")
+        self.assertIn("AOI Manager가 실행 중", other[1])
+        old = launcher.second_start({"port": 5, "token": "tk"}, "full")       # state of v14.3 = full
+        self.assertEqual(old, ("open", "http://127.0.0.1:5/?t=tk"))
+        self.assertEqual(launcher.second_start(None, "full")[0], "refuse")
+
+    def test_mini_runs_no_watch_and_reports_edition(self):
+        import io
+        from param_manager import desktop_ipc, edition
+        with mock.patch.dict(os.environ, {edition.ENV: "mini"}):
+            self.assertFalse(edition.watches_on())
+            session = desktop_ipc.Session(io.BytesIO())
+            with mock.patch.object(session.cmwatch, "due", side_effect=AssertionError("Mini must not check watches")), \
+                 mock.patch.object(session.pwatch, "due", side_effect=AssertionError("Mini must not check watches")):
+                session.tick(now=0)
+            st = session.watch_status()
+            self.assertEqual((st["param"], st["commonality"], st["batch"]), (False, False, False))
+        with mock.patch.dict(os.environ, {edition.ENV: ""}):
+            self.assertTrue(edition.watches_on())
 
 
 if __name__ == "__main__":

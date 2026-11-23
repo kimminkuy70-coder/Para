@@ -605,7 +605,7 @@ def build_html(s, dashboard=False, lot_file='', notices=()):
         f'</div></div>{page_foot(APP_FOOT, title)}{data_script("bvdata", chart_data(s, lot_file))}<script>{TAB_JS}</script><script>{CORE_JS}</script><script>{APP_JS}</script></body></html>'])
 
 
-APP_FOOT = 'Camtek AOI Manager · Batch Report 분석 결과 파일'
+APP_FOOT = 'AOI Manager · Batch Report 분석 결과 파일'
 
 
 _R_KEYS = ('f', 'm', 'sm', 'step', 'k', 's', 'e', 'sec', 'lot', 'n', 'ok', 'fe', 'o', 'sk', 'ff')

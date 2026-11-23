@@ -1,10 +1,12 @@
 import {useCallback,useEffect,useLayoutEffect,useRef,useState,type ReactNode} from 'react';
+import {isMini} from './edition';
 
 /* 튜토리얼(사용자 요청 2026-10-06, v12.2.6) — 화면을 어둡게 하고 대상에 강조 테두리 + 화살표 말풍선을 띄워 한 단계씩 안내한다.
    설정 › [튜토리얼]에서 시작. 화면 이동은 'para:navigate'(주요 탭) · 'para:settings-sub'(설정 하위 탭) 이벤트로 한다.
    튜토리얼은 안내만 한다 — 아무 값도 저장하거나 바꾸지 않는다. */
 export type TourKind='setup'|'features';
-type Step={target?:string;title:string;body:ReactNode;go?:string;sub?:string};
+// full = AOI Manager 에만, mini = AOI Manager Mini 에만 보이는 단계(v14.4). 둘 다 없으면 두 판 모두.
+type Step={target?:string;title:string;body:ReactNode;go?:string;sub?:string;full?:true;mini?:true};
 export function startTour(kind:TourKind){window.dispatchEvent(new CustomEvent('para:tour',{detail:kind}));}
 
 const nav=(name:string)=>`[data-tour="nav:${name}"]`;
@@ -16,7 +18,8 @@ const SETUP:Step[]=[
   {target:'[data-tour="settings:save-path"]',go:'설정',sub:'save',title:'OneDrive 폴더 경로 넣기',body:<>[📁 찾기]를 눌러 위에서 연결한 공유 폴더(<code>docs</code> 의 상위 폴더)를 고르거나, 탐색기 주소창의 경로를 붙여넣습니다. 그 안의 <code>docs</code> · <code>프로그램</code> · <code>캐시공유</code> 는 프로그램이 알아서 찾습니다.<br/><code>예: C:\Users\이름\OneDrive - 회사\0. Camtek AOI parameter 취합</code></>},
   {target:'[data-tour="settings:save-btn"]',go:'설정',sub:'save',title:'[저장]',body:'저장하면 처음 한 번 공유 문서(장비 IP 주소 · 참고자료 · 특이사항)가 만들어집니다. 업데이트도 이 폴더 옆 [프로그램] 폴더에서 자동으로 알림이 옵니다.'},
   {target:'[data-tour="settings:tab:aoi"]',go:'설정',sub:'aoi',title:'② 장비 연결 — AOI 장비 호기 루트',body:'장비(호기)마다 폴더를 하나씩 등록합니다. [AOI 장비 호기 루트] 탭을 엽니다.'},
-  {go:'설정',sub:'aoi',title:'먼저 장비마다 IP 폴더에 1회 로그인 (가장 중요)',body:<>프로그램은 장비 아이디 · 암호를 다루지 않습니다. 그래서 <b>장비마다 한 번</b> Windows 에서 직접 연결해 두어야 장비 폴더를 읽을 수 있습니다.<ol><li>장비 IP 주소는 [메모] 탭 › <b>장비 IP</b> 하위 탭(공유 문서)에 있습니다.</li><li>파일 탐색기 주소창에 <code>\\장비IP</code> 또는 <code>\\장비IP\c$</code>(Win+R 에 넣어도 됨)를 넣고 Enter.</li><li>로그인 창이 뜨면 장비 <b>아이디 · 암호</b>를 넣고 <b>[내 자격 증명 기억]</b>을 체크한 뒤 [확인].</li><li>공유 폴더가 보이면 연결 끝 — 모든 호기에 같은 방법으로 1회씩.</li></ol>이 연결이 되어 있어야 쓸 수 있는 기능: <b>Recipe 관리</b>(파라미터 읽기 · 양식 업데이트) · <b>자동 분석 및 취합</b> · <b>Commonality 조사</b>(Scanresult) · <b>Batch Report 분석 · 찾기</b>(Reports · Scanresult 경로 열기) · <b>Color·Gray 매칭</b>(장비 Lot 폴더). 저장 폴더 설정과 함께 <b>가장 중요한 단계</b>입니다. PC 를 바꾸거나 암호가 바뀌면 다시 연결하세요.</>},
+  {full:true,go:'설정',sub:'aoi',title:'먼저 장비마다 IP 폴더에 1회 로그인 (가장 중요)',body:<>프로그램은 장비 아이디 · 암호를 다루지 않습니다. 그래서 <b>장비마다 한 번</b> Windows 에서 직접 연결해 두어야 장비 폴더를 읽을 수 있습니다.<ol><li>장비 IP 주소는 [메모] 탭 › <b>장비 IP</b> 하위 탭(공유 문서)에 있습니다.</li><li>파일 탐색기 주소창에 <code>\\장비IP</code> 또는 <code>\\장비IP\c$</code>(Win+R 에 넣어도 됨)를 넣고 Enter.</li><li>로그인 창이 뜨면 장비 <b>아이디 · 암호</b>를 넣고 <b>[내 자격 증명 기억]</b>을 체크한 뒤 [확인].</li><li>공유 폴더가 보이면 연결 끝 — 모든 호기에 같은 방법으로 1회씩.</li></ol>이 연결이 되어 있어야 쓸 수 있는 기능: <b>Recipe 관리</b>(파라미터 읽기 · 양식 업데이트) · <b>자동 분석 및 취합</b> · <b>Commonality 조사</b>(Scanresult) · <b>Batch Report 분석 · 찾기</b>(Reports · Scanresult 경로 열기) · <b>Color·Gray 매칭</b>(장비 Lot 폴더). 저장 폴더 설정과 함께 <b>가장 중요한 단계</b>입니다. PC 를 바꾸거나 암호가 바뀌면 다시 연결하세요.</>},
+  {mini:true,go:'설정',sub:'aoi',title:'장비 폴더를 쓸 때: 장비마다 IP 폴더에 1회 로그인',body:<>프로그램은 장비 아이디 · 암호를 다루지 않습니다. 장비 폴더(Reports · Scanresult · KLA 결과)를 직접 읽으려면 <b>장비마다 한 번</b> Windows 에서 연결해 두어야 합니다.<ol><li>파일 탐색기 주소창에 <code>\\장비IP</code> 또는 <code>\\장비IP\c$</code> 를 넣고 Enter.</li><li>로그인 창이 뜨면 장비 <b>아이디 · 암호</b>를 넣고 <b>[내 자격 증명 기억]</b>을 체크한 뒤 [확인].</li></ol>장비에 연결하지 않아도 <b>Batch Report 찾기</b>는 OneDrive 에서 받은 캐시로([캐시에서만 찾기]), <b>Defect 분석 · Wafer Map 수정하기</b>는 고른 폴더로 쓸 수 있습니다.</>},
   {target:'[data-tour="settings:aoi-form"]',go:'설정',sub:'aoi',title:'호기 이름 + 호기 폴더 → [추가]',body:<><ol><li>먼저 <b>파일 탐색기에서 장비 폴더가 열리는지</b> 확인합니다(네트워크 드라이브 예: <code>P:\AOI-17</code>, 또는 <code>\\장비IP\공유</code>).</li><li><b>호기</b>에 이름(예: AOI-17 — 메모 › 장비 IP 에 적어 둔 호기는 <b>메모(장비 IP)에서 고르기</b>로 채울 수 있음), <b>호기 폴더</b>에 그 폴더를 넣고 [추가].</li></ol>그 아래 <b>Reports</b>(Batch Report 분석)와 <b>Scanresult</b>(Commonality)를 자동으로 찾습니다. 장비 폴더는 읽기만 합니다. 장비가 많으면 아래 <b>네트워크 드라이브에서 호기 자동 찾기</b>로 NAS 드라이브를 골라 바로 아래 장비 폴더를 한꺼번에 등록할 수 있습니다.</>},
   {target:'[data-tour="settings:aoi-table"]',go:'설정',sub:'aoi',title:'등록 확인',body:'등록한 호기는 이 표에 나오고 [인식된 폴더]에 Reports · Scanresult 가 보이면 연결된 것입니다. "없음 · 미등록"이면 폴더 경로나 네트워크 연결을 확인하세요.'},
   {target:'[data-tour="settings:aoi:KLA"]',go:'설정',sub:'aoi',title:'KLA 장비 폴더 (KLA 장비를 쓸 때만)',body:<>호기 루트 위의 <b>CAMTEK / KLA</b> 탭에서 KLA 를 고르면 KLA 장비 폴더(예: <code>J:\2.K2</code>)를 등록하고, 날짜 폴더를 옮겨 둔 <b>Defect 이미지 백업본</b> 폴더를 장비마다 더해 켜고 끌 수 있습니다. KLA 자재 찾기가 이 폴더들을 씁니다.</>},
@@ -26,20 +29,22 @@ const SETUP:Step[]=[
 ];
 const FEATURES:Step[]=[
   {title:'기능 둘러보기',body:'위쪽 탭마다 무엇을 하는지 차례로 짚어 봅니다. 화면은 실제로 이동하지만 아무것도 실행하지 않습니다.'},
-  {target:nav('Recipe 관리'),go:'Recipe 관리',title:'Recipe 관리',body:'장비 Recipe 파라미터 값을 확인 · 비교하고, 양식으로 여러 호기를 한 번에 업데이트합니다. 날짜별 변경 비교도 여기 있습니다.'},
-  {target:nav('자동 분석 및 취합'),go:'자동 분석 및 취합',title:'자동 분석 및 취합',body:'정해 둔 주기로 장비 파라미터 · Commonality 를 확인하고 바뀐 것이 있으면 알림과 보고서를 남깁니다. 켜 두면 트레이에서 계속 돕니다.'},
-  {target:nav('Commonality 조사'),go:'Commonality 조사',title:'Commonality 조사',body:'Scanresult 를 모아 같은 Lot · 공정을 거친 호기 사이의 결함 공통점을 조사합니다.'},
-  {target:nav('Batch Report 분석'),go:'Batch Report 분석',title:'Batch Report 분석',body:'호기와 기간을 골라 [조사 시작] — Lot 추적 · 가동률 · WPH · 레시피 비교를 봅니다. 결과는 HTML · Excel 로도 저장됩니다.'},
-  {target:'[data-tour="batch:start"]',go:'Batch Report 분석',title:'[조사 시작]',body:'이미 읽은 Batch Report 는 다시 읽지 않아 두 번째부터는 빠릅니다. 설정에서 하루 1회 자동 분석도 켤 수 있습니다.'},
-  {target:'[data-tour="batch:cache-import"]',go:'Batch Report 분석',title:'Batch Report 캐시 가져오기',body:<>[OneDrive 에서 불러오기]로 개발자가 올린 캐시 zip 을 고르면 이 PC 로 받아 이 PC 캐시로 불러옵니다(받은 zip 을 <b>끌어 넣어도</b> 됩니다). 그 뒤 [조사 시작] · 찾기는 장비에서 새 것만 읽어 빠릅니다. OneDrive 에 올리기는 [🛠 개발자 기능].</>},
-  {target:'[data-tour="batch:tabs"]',go:'Batch Report 분석',title:'Lot 추적 · 가동률 · WPH · 레시피 비교',body:<>조사가 끝나면 이 탭으로 결과를 봅니다. <b>레시피 비교</b>는 두 레시피 그룹(예: 기존 x20 ↔ 신규 x5)에 레시피를 끌어 넣어 속도 · 검출력을 같은 기준으로 비교합니다.</>},
+  {full:true,target:nav('Recipe 관리'),go:'Recipe 관리',title:'Recipe 관리',body:'장비 Recipe 파라미터 값을 확인 · 비교하고, 양식으로 여러 호기를 한 번에 업데이트합니다. 날짜별 변경 비교도 여기 있습니다.'},
+  {full:true,target:nav('자동 분석 및 취합'),go:'자동 분석 및 취합',title:'자동 분석 및 취합',body:'정해 둔 주기로 장비 파라미터 · Commonality 를 확인하고 바뀐 것이 있으면 알림과 보고서를 남깁니다. 켜 두면 트레이에서 계속 돕니다.'},
+  {full:true,target:nav('Commonality 조사'),go:'Commonality 조사',title:'Commonality 조사',body:'Scanresult 를 모아 같은 Lot · 공정을 거친 호기 사이의 결함 공통점을 조사합니다.'},
+  {full:true,target:nav('Batch Report 분석'),go:'Batch Report 분석',title:'Batch Report 분석',body:'호기와 기간을 골라 [조사 시작] — Lot 추적 · 가동률 · WPH · 레시피 비교를 봅니다. 결과는 HTML · Excel 로도 저장됩니다.'},
+  {full:true,target:'[data-tour="batch:start"]',go:'Batch Report 분석',title:'[조사 시작]',body:'이미 읽은 Batch Report 는 다시 읽지 않아 두 번째부터는 빠릅니다. 설정에서 하루 1회 자동 분석도 켤 수 있습니다.'},
+  {full:true,target:'[data-tour="batch:cache-import"]',go:'Batch Report 분석',title:'Batch Report 캐시 가져오기',body:<>[OneDrive 에서 불러오기]로 개발자가 올린 캐시 zip 을 고르면 이 PC 로 받아 이 PC 캐시로 불러옵니다(받은 zip 을 <b>끌어 넣어도</b> 됩니다). 그 뒤 [조사 시작] · 찾기는 장비에서 새 것만 읽어 빠릅니다. OneDrive 에 올리기는 [🛠 개발자 기능].</>},
+  {full:true,target:'[data-tour="batch:tabs"]',go:'Batch Report 분석',title:'Lot 추적 · 가동률 · WPH · 레시피 비교',body:<>조사가 끝나면 이 탭으로 결과를 봅니다. <b>레시피 비교</b>는 두 레시피 그룹(예: 기존 x20 ↔ 신규 x5)에 레시피를 끌어 넣어 속도 · 검출력을 같은 기준으로 비교합니다.</>},
+  {mini:true,target:nav('Batch Report 분석'),go:'Batch Report 분석',title:'Batch Report 찾기 · 취합',body:<>Batch Report 를 <b>파일 이름 키워드</b>로 찾아 고르고, 고른 것 + 같은 호기 앞뒤 24시간 Batch Report 로 Lot 별 Dice 를 취합해 Excel 로 저장합니다. 장비에 연결하지 않았으면 <b>[OneDrive 에서 최신 캐시 받기]</b> 뒤 <b>[캐시에서만 찾기]</b>로 찾습니다.</>},
   {target:nav('Defect 분석'),go:'Defect 분석',title:'Defect 분석',body:'하위 탭 3개: Color·Gray 매칭(폴더 또는 최종 목록 CSV → 사진 · Excel) · Defect 분석(대규모)(Contrast · 분류로 걸러 사진 조사, 최종 목록 저장) · Defect 분석(기본)(스캔 결과 비교 · Wafer Map · Escape 리뷰). 설명글은 [? 설명 보기] 를 켜면 보입니다.'},
   {target:nav('Wafer Map 수정하기'),go:'Wafer Map 수정하기',title:'Wafer Map 수정하기',body:'Wafer Map 파일을 열어 값을 고치고 이미지로 확인한 뒤 저장합니다.'},
-  {target:nav('메모'),go:'메모',title:'메모',body:'팀이 함께 보는 메모와 공유 문서(장비 IP · 특이사항)를 엽니다.'},
-  {target:nav('KLA 자재 찾기'),go:'KLA 자재 찾기',title:'KLA 자재 찾기',body:<>맨 위 <b>CAMTEK · KLA · 설정 · 메모</b> 탭 중 CAMTEK / KLA 로 장비 회사를 바꿉니다. KLA 탭에서는 Lot 이름 키워드로 스캔 결과 폴더를 찾아 바로 엽니다. KLA 장비 폴더 · Defect 이미지 백업본 등록은 [설정] › AOI 장비 호기 루트 › KLA 에서 합니다.</>},
+  {full:true,target:nav('메모'),go:'메모',title:'메모',body:'팀이 함께 보는 메모와 공유 문서(장비 IP · 특이사항)를 엽니다.'},
+  {target:nav('KLA 자재 찾기'),go:'KLA 자재 찾기',title:'KLA 자재 찾기',body:<>맨 위 <b>{isMini?'CAMTEK · KLA · 설정':'CAMTEK · KLA · 설정 · 메모'}</b> 탭 중 CAMTEK / KLA 로 장비 회사를 바꿉니다. KLA 탭에서는 Lot 이름 키워드로 스캔 결과 폴더를 찾아 바로 엽니다. KLA 장비 폴더 · Defect 이미지 백업본 등록은 [설정] › AOI 장비 호기 루트 › KLA 에서 합니다.</>},
   {target:nav('설정'),go:'설정',title:'끝!',body:'튜토리얼은 언제든 [설정] › [튜토리얼]에서 다시 볼 수 있습니다.'},
 ];
-const TOURS:Record<TourKind,Step[]>={setup:SETUP,features:FEATURES};
+const forEdition=(steps:Step[])=>steps.filter(st=>isMini?!st.full:!st.mini);
+const TOURS:Record<TourKind,Step[]>={setup:forEdition(SETUP),features:forEdition(FEATURES)};
 
 type Box={x:number;y:number;w:number;h:number}|null;
 function find(sel?:string):HTMLElement|null{

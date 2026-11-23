@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.4.0: 프로그램 이름 AOI Manager + 간단판 AOI Manager Mini (2026-11-23 KST, `version_v14`, 소유자 세션 지시)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `efba127`(v14.3.18 + #89 인수인계) · 소유자: "릴리즈 zip 을 풀면 .bat 으로 실행하는데 2개로 — 1개는 기존 그대로, 1개는 내가 고른 기능만(다른 부서용).
+  업데이트 방식도 같고 기능만 제한. 배포는 내가 기존 .bat 만 지우고 다시 압축. 기존 것을 업데이트하면 새 버전도 해당 기능이 있으면 같이 업데이트".
+  질문에 답(같은 세션): 기능 = **Batch Report 분석에서 [Batch Report 찾기 · 취합]만 · Defect 분석 · Wafer Map 수정하기 · KLA 자재 찾기**, 이름 = "Camtek AOI Manager → **AOI Manager**(실행 파일 이름 · UX 도), 간단판 = **AOI Manager Mini**".
+- 한 일: 위 CLAUDE.md v14.4.0 절 그대로 — `param_manager/edition.py`(새) · `launcher`(`--mini`, `second_start`, `start_file`, server.json `edition`) · `webserver.page_url`(`&e=mini`) · `winnative`(바로가기 이름 · `--mini` · 옛 바로가기 교체) ·
+  `desktop_ipc`(Mini = `tick` 이 감시 안 봄, `watch_status` 전부 꺼짐, `contract`/`configuration` 에 `edition`) · `tools/build_install.py`(bat 2개 · `AOI_Manager.pyw` · zip 이름 · 안내문) · `v14.yml`(아티팩트 · 릴리스 제목) ·
+  화면 `edition.ts`(새) · `main.tsx`(탭 거르기 · 탭 글 · 머리 막대 'AOI Manager' + Mini 표시 · 창 제목 · 바닥글 · 없는 탭 이동 무시 · Mini 는 Batch 자동 분석 화면을 미리 안 만듦) · `Batch.tsx`(Mini = 찾기만, 복원 · 타이머 · 즉시 실행 · 조사 범위 이동 없음) ·
+  `BatchFind.tsx`(캐시 설명 글) · `Settings.tsx`(Mini = 자동 분석 줄 · Recipe 양식 · 파라미터 취합 · 감시 행 · Job 폴더 열 숨김) · `Tour.tsx`(단계 `full`/`mini`) · `AppUpdate.tsx`(바로가기 이름) · 결과 HTML 머리 · 바닥글 이름(`report_theme` · `batchsaved` · `lotreport` · `recipecompare`).
+- 해석(확인 전): ① '해당 기능이 있으면 같이 업데이트' = 같은 코드 · 같은 릴리스라 저절로 됨(판 하나) — 릴리스 노트는 두 판이 같은 것을 봄(Mini 에 없는 기능 줄도 보임). ② Mini 의 설정 탭 = 저장 폴더 · 로컬 작업 폴더 · AOI 장비 호기 루트(CAMTEK · KLA) · 정보 모두 둠(OneDrive 캐시 · 업데이트 · 찾기 호기에 필요), 개발자 기능도 둠.
+  ③ 두 판은 함께 실행 안 함(다른 판이 돌면 안내 창). ④ 시작 파일 · `CamtekAOI` 로컬 폴더 · 뮤텍스 · OneDrive 게시 zip 이름은 옛 판 호환으로 안 바꿈. ⑤ 찾기 화면의 끌어 넣기 zip 가져오기는 Mini 에서도 동작(알림만).
+- 시험: `tests/test_launcher.py`(판 · 주소 · 두 번째 실행 · Mini 감시 없음 · 바로가기) · `tests/test_build_install.py`(bat 2개 · 시작 파일 이름) 통과, `tools/test_desktop_ui.mjs` 통과(끝에 Mini 창: 탭 · 탭 글 · 찾기만 · 설정 · 둘러보기),
+  `PYTHONPATH=vendor python tools/check_project.py` Failed files: none. 시험이 바꾼 `docs/screenshots` · `CamtekAOI/Logs` 는 되돌림. **Windows 실기(bat · 바로가기 · Edge 창 제목 · 옛 바로가기 교체)는 확인 못 함.**
+- 릴리스: `__version__` 14.4.0 + `docs/release_notes/v14.4.0.md` → push 하면 `v14.yml` 이 Release(`AOI_Manager_v14.4.0_install.zip`) 생성.
+
+| 요청 | 결과 |
+|---|---|
+| 실행 .bat 2개(기존 · 고른 기능만) + 이름 AOI Manager / AOI Manager Mini | v14.4.0 |
+
 ## 최신 재개 — #89 질문: Defect 분석 대규모/기본 차이 · 사진 불러오기 · 좌표 보정 계획 (2026-11-23 KST, `version_v14`, 이슈 #89)
 
 - 마지막 갱신 2026-11-23 · 기준 커밋 `399c963`(v14.3.18) · 이슈 #89 "질문사항3"(자동 실행 routine 처리, 첨부 없음).

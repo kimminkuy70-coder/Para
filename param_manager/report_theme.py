@@ -13,7 +13,7 @@ import html as _html
 import json
 import zlib
 
-APP_NAME = 'Camtek AOI Manager'
+APP_NAME = 'AOI Manager'
 
 
 def _esc(value):
@@ -203,7 +203,7 @@ def page_top(*, title, sub, eyebrow, desc='', badges=(), stamp=(), scope=''):
     badge_html = ''.join(f'<span class="connection {c}">{_esc(t)}</span>' for t, c in badges)
     stamp_html = ''.join(f'<span><b>{_esc(k)}</b>{_esc(v)}</span>' for k, v in stamp)
     scope_html = (f'<details class="scope"><summary>조사 범위 보기</summary><p>{_esc(scope)}</p></details>' if scope else '')
-    return (f'<header class="topbar"><span class="brand"><span class="brand-icon">C</span><span>Camtek <b>AOI Manager</b>'
+    return (f'<header class="topbar"><span class="brand"><span class="brand-icon">A</span><span><b>AOI Manager</b>'
             f'<small>{_esc(sub)}</small></span></span><div class="environment"><span>●</span>오프라인 결과 파일 · 원본 Batch Report 읽기 전용</div></header>'
             f'<div class="apphead"><div class="page-heading"><div><p class="eyebrow">{_esc(eyebrow)}</p><h1>{_esc(title)}</h1>'
             + (f'<p class="desc">{_esc(desc)}</p>' if desc else '') + f'</div><div class="badges">{badge_html}</div></div>'

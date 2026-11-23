@@ -4,7 +4,11 @@ import {StPill} from './BatchLot';
 import {OpenPath,openPath} from './OpenPath';
 import {ScanBackupBar} from './ScanBackup';
 import {YieldTab} from './BatchYield';
+import {isMini} from './edition';
 import {grpLabel,bunchLabel,num,isRealId,aggState,STATES,ST,type View,type AggGroup} from './batchData';
+
+// AOI Manager Mini(v14.4)에는 [조사 시작](가동률 조사 및 분석)이 없다 — 캐시는 OneDrive 에서 받은 것 · 찾기에서 읽은 것.
+const CACHE_FROM=isMini?'OneDrive 에서 받은 것 · 찾기에서 읽은 것':'[조사 시작]으로 읽어 둔 것 · OneDrive 에서 받은 것';
 
 /* Batch Report 찾기 · 취합 — ① 파일 이름으로 찾기(로컬 조사 캐시 먼저 → 장비 Reports 폴더 이름, 원문은 안 엶)
    ② 찾은 파일 고르기 ③ 고른 것 + 같은 호기 앞뒤 24시간만 읽어 Lot · 공정 단계별로 고르기(Scanresult 경로 · 원문)
@@ -138,7 +142,7 @@ export function FindTab(p:Props){
           onChange={e=>p.setCond({...cond,query:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'&&!p.busy)p.onFind();}}/></label>
         <div className="dates"><label className="field">시작일<input type="date" aria-label="찾기 시작일" value={cond.start} onChange={e=>p.setCond({...cond,start:e.target.value})}/></label>
           <label className="field">종료일<input type="date" aria-label="찾기 종료일" value={cond.end} onChange={e=>p.setCond({...cond,end:e.target.value})}/></label></div>
-        <label className="tgl2" title="로컬 캐시([조사 시작]으로 읽어 둔 것 · OneDrive 에서 받은 것)에서만 찾습니다 — 장비에 접속하지 않고, 이 PC 에 등록하지 않은 호기도 찾습니다"><input type="checkbox" aria-label="캐시에서만 찾기" checked={!!cond.cacheOnly}
+        <label className="tgl2" title={`로컬 캐시(${CACHE_FROM})에서만 찾습니다 — 장비에 접속하지 않고, 이 PC 에 등록하지 않은 호기도 찾습니다`}><input type="checkbox" aria-label="캐시에서만 찾기" checked={!!cond.cacheOnly}
           onChange={e=>p.setCond({...cond,cacheOnly:e.target.checked})}/> 캐시에서만 찾기</label>
         <div className="go"><button className="primary" disabled={p.busy||!cond.query.trim()||!chosen.length} onClick={p.onFind}>{p.busy?'찾는 중…':'검색 →'}</button>
           <button type="button" className="help-btn lg" aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 묶는지 보기" onClick={p.onCrit}>?</button></div></div>
@@ -146,7 +150,7 @@ export function FindTab(p:Props){
       {p.busy&&<p className="scope-status" role="status">{p.progress||'Reports 폴더를 확인하는 중…'}</p>}
       <details className="logic"><summary>로직 · 검색</summary><ol>
         <li><b>파일 이름만</b> 봅니다(원본을 열지 않음). 키워드는 대소문자 무시, 여러 단어는 모두 포함, 기간은 파일 이름 안 날짜.</li>
-        <li>먼저 <b>[조사 시작]으로 이미 읽어 둔 로컬 캐시</b>에서 찾아 바로 보여 주고(장비 접속 없음), 이어서 고른 호기 Reports 폴더 이름 목록에서 캐시에 없는 새 Batch Report를 더합니다. [캐시에서만 찾기]를 켜면 장비에 접속하지 않고, 이 PC 에 호기를 등록하지 않았어도 OneDrive 에서 받은 캐시에 든 호기로 찾습니다.</li>
+        <li>먼저 <b>이미 읽어 둔 로컬 캐시</b>({CACHE_FROM})에서 찾아 바로 보여 주고(장비 접속 없음), 이어서 고른 호기 Reports 폴더 이름 목록에서 캐시에 없는 새 Batch Report를 더합니다. [캐시에서만 찾기]를 켜면 장비에 접속하지 않고, 이 PC 에 호기를 등록하지 않았어도 OneDrive 에서 받은 캐시에 든 호기로 찾습니다.</li>
         <li>찾은 목록에서 고른 것만 읽습니다. 고른 Batch Report와, 같은 호기에서 그 <b>앞뒤 24시간</b> 안에 스캔한 Batch Report를 함께 읽어(캐시에 있으면 장비 접속 없음) <b>Lot · 레시피 · 공정 단계</b>로 모읍니다. 같은 Lot을 이어서 스캔했는데 키워드에 안 걸린 Batch Report(S/M 꼬리가 다른 것 등)도 회색으로 함께 보여 놓칠 일이 없게 합니다.</li>
         <li>호기 사이에는 2초 간격으로 순서대로 읽습니다(장비 접속 매너).</li></ol></details></>}
     {p.step===1&&<>

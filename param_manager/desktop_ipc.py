@@ -13,7 +13,7 @@ import threading
 import time
 from datetime import datetime
 
-from . import batchreport, batchreport_store, desktop_diag, desktop_progress, engine, locking
+from . import batchreport, batchreport_store, desktop_diag, desktop_progress, edition, engine, locking
 from .desktop_batch import DesktopBatch
 from .desktop_recipe import DesktopRecipe
 from .desktop_form import DesktopForm
@@ -560,7 +560,7 @@ class Session:
                       'appupdate_open_dir': lambda: self.appupdate.open_dir(params)}
             if method in ('appupdate_apply', 'appupdate_publish'):
                 # v14.1.1(소유자 "무조건 업데이트가 먼저"): 다른 작업이 진행 중이어도 받는다 — 받기 = <home>/app.new 에 준비만
-                # (실행 중인 파일은 건드리지 않음, 적용은 다음 실행 때 Camtek_AOI_manager.pyw). 같은 업데이트 두 번은 'appupdate' 자리가 막음.
+                # (실행 중인 파일은 건드리지 않음, 적용은 다음 실행 때 시작 파일 AOI_Manager.pyw · 예전 설치 Camtek_AOI_manager.pyw). 같은 업데이트 두 번은 'appupdate' 자리가 막음.
                 # Copy/verify/extract or zip a whole package: worker thread.
                 bg(rid, 'appupdate', action[method], '업데이트를 준비하지 못했습니다. 인터넷(github.com) 연결 또는 OneDrive 게시 폴더와 로컬 저장 공간을 확인하세요.')
             elif method == 'appupdate_check':
@@ -678,9 +678,9 @@ class Session:
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))
         elif method == "contract":
-            self.emit(rid, "completed", methods=sorted(METHODS), max_frame=MAX_FRAME, max_page=MAX_PAGE)
+            self.emit(rid, "completed", methods=sorted(METHODS), max_frame=MAX_FRAME, max_page=MAX_PAGE, edition=edition.current())
         elif method == "configuration":
-            self.emit(rid, "completed", **self.batch.describe())
+            self.emit(rid, "completed", **self.batch.describe(), edition=edition.current())
         elif method == "batch_reports":
             # Lists an equipment Report folder (network): never on the input thread.
             bg(rid, 'reports', lambda: self.batch.reports(params),
@@ -860,6 +860,10 @@ class Session:
 
     # ---- automatic watches ------------------------------------------------------
     def watch_status(self):
+        if not edition.watches_on():
+            # AOI Manager Mini has no automatic analysis: nothing keeps it in the tray (v14.4).
+            return dict(param=False, param_owned=False, commonality=False, batch=False,
+                        busy=self.watching or "", notices=list(self.notices[-20:]))
         try:
             p_on = self.pwatch.state_cached_enabled()
         except Exception:  # noqa: BLE001 - no save folder yet
@@ -971,8 +975,8 @@ class Session:
                     self.pwatch.refresh_lock()
                 except OSError:
                     pass
-            if self.watching or 'equipment' in self.busy:
-                return
+            if self.watching or 'equipment' in self.busy or not edition.watches_on():
+                return       # AOI Manager Mini never starts a watch cycle (edition.watches_on)
         try:
             if self.cmwatch.due():
                 with self.lock:

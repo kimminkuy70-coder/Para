@@ -15,6 +15,7 @@ import {periodLabel} from './BatchAutoPanel';
 import {KlaRootsSettings,useKlaState} from './KlaSettings';
 import {MemoPick,type MemoMachine} from './MemoPick';
 import {AoiDriveScan} from './AoiDriveScan';
+import {isMini,APP_NAME} from './edition';
 
 type Auto={enabled:boolean;interval_hours:number;time?:string;last_run:string;last_result:string;next_run:string};
 type Aoi={machine:string;root:string;report:string;scanresult:string;legacy:boolean;job_dir?:string;extra:{report:string[];scanresult:string[]}};
@@ -154,16 +155,16 @@ export function Settings(){
   // A plain render function (not a component) so the edit inputs keep focus while typing.
   function aoiRow(a:Aoi){
     const key='aoi'+a.machine;
-    if((edit?.kind==='aoi'||edit?.kind==='job')&&edit.machine===a.machine)return editRow(key,5);
+    if((edit?.kind==='aoi'||edit?.kind==='job')&&edit.machine===a.machine)return editRow(key,isMini?4:5);
     return <tr key={key}><td style={{width:110,fontWeight:700}}>{a.machine}</td>
       <td><code>{a.root||'—'}</code>{a.legacy&&<div className="hint">기존 설정(따로 등록) — [수정]에서 호기 폴더를 저장하면 통합됩니다.</div>}</td>
       <td className="hint" style={{whiteSpace:'nowrap'}}>
         <div>Reports: {a.report?<code>{baseName(a.report)}</code>:<b className="warn">없음</b>}</div>
         <div>Scanresult: {a.scanresult?`자동 탐색(${scanBackup===false?'원본만':'백업본 포함'})`:<b className="warn">미등록</b>}</div></td>
-      <td className="hint" style={{whiteSpace:'nowrap'}} data-testid={`jobdir-${a.machine}`}>
+      {!isMini&&<td className="hint" style={{whiteSpace:'nowrap'}} data-testid={`jobdir-${a.machine}`}>
         {a.job_dir?<code>{a.job_dir}</code>:<span>C:\Job <small>(기본)</small></span>}{' '}
         <button className="linklike" disabled={busy} aria-label={`${a.machine} Job 폴더 변경`}
-          onClick={()=>setEdit({kind:'job',machine:a.machine,newMachine:a.machine,path:a.job_dir||'',orig:a.job_dir||''})}>변경</button></td>
+          onClick={()=>setEdit({kind:'job',machine:a.machine,newMachine:a.machine,path:a.job_dir||'',orig:a.job_dir||''})}>변경</button></td>}
       {actions(a.machine,()=>setEdit({kind:'aoi',machine:a.machine,newMachine:a.machine,path:a.root}),
         ()=>{if(window.confirm(`${a.machine} 호기 루트와 추가 폴더 등록을 모두 삭제할까요? (폴더 자체는 지우지 않습니다)`))
           void req('config_remove_aoi',{machine:a.machine},`${a.machine} 삭제됨`);})}</tr>;
@@ -182,11 +183,11 @@ export function Settings(){
       <button disabled={busy} onClick={load}>새로고침</button></div>
     <div className="tour-entry" data-tour="settings:tour"><span className="tour-entry-ic" aria-hidden="true">🎓</span><div><b>튜토리얼</b><small>처음 쓰는 PC라면 초기 설정(저장 폴더 · 장비 연결)을 화면에서 따라 하세요. 안내만 하고 아무것도 바꾸지 않습니다.</small></div>
       <span className="grow"/><button type="button" className="primary" onClick={()=>startTour('setup')}>초기 설정 튜토리얼</button><button type="button" onClick={()=>startTour('features')}>기능 둘러보기</button></div>
-    <p className="hint">웹 앱과 기존 프로그램은 <b>같은 설정 파일</b>을 공유합니다. 경로는 [📁 찾기]로 고르거나 직접 붙여넣을 수 있습니다.</p>
+    <p className="hint">{isMini?<>{APP_NAME} 와 AOI Manager 는 <b>같은 설정 파일</b>을 씁니다.</>:<>웹 앱과 기존 프로그램은 <b>같은 설정 파일</b>을 공유합니다.</>} 경로는 [📁 찾기]로 고르거나 직접 붙여넣을 수 있습니다.</p>
 
     {loadError&&!st&&<LoadFailed message={loadError} onRetry={()=>void load()}/>}
     {st&&<details className="current-settings" aria-label="현재 설정" data-tour="settings:current">
-      <summary><h3>현재 설정</h3><span className="hint">{st.save_dir?'저장 폴더 지정됨':'⚠ 저장 폴더 미지정'} · AOI 호기 {aois.length}대 · 자동 분석 {st.batch_auto?'켜짐':'꺼짐'}</span></summary>
+      <summary><h3>현재 설정</h3><span className="hint">{st.save_dir?'저장 폴더 지정됨':'⚠ 저장 폴더 미지정'} · AOI 호기 {aois.length}대{!isMini&&<> · 자동 분석 {st.batch_auto?'켜짐':'꺼짐'}</>}</span></summary>
       <table className="tbl"><tbody>
         <tr><th>저장 폴더</th><td>{st.save_dir?<code>{st.save_dir}</code>:<b className="warn">미지정 — [저장 폴더] 탭에서 지정하세요</b>}</td>
           <td>{st.save_dir&&<button className="linklike" onClick={()=>openPath(st.save_dir)}>폴더 열기</button>}</td></tr>
@@ -198,8 +199,8 @@ export function Settings(){
         <tr><th>AOI 장비 호기 루트 · KLA</th><td>{kla?(kla.roots.length?`${kla.roots.length}개 장비 · ${kla.roots.map(r=>r.name).join(', ')}`:'없음'):'—'}
           {kla&&kla.roots.length>0&&<span className="hint"> · Defect 이미지 백업본 {kla.backup?`포함(백업 폴더 ${kla.roots.reduce((n,r)=>n+r.backups.length,0)}개)`:'제외'}</span>}</td>
           <td><button className="linklike" onClick={()=>{setSub('aoi');setAoiVendor('KLA');}}>보기</button></td></tr>
-        <tr><th>Batch Report 자동 분석</th><td>{st.batch_auto?`켜짐 · ${periodLabel(st.batch?.interval_hours??24)}${st.batch?.time&&(st.batch.interval_hours??24)%24===0?` · ${st.batch.time}`:''}`:'꺼짐'}</td>
-          <td><button className="linklike" onClick={openBatchAutoSettings} title="CAMTEK › 자동 분석 및 취합 › Batch Report 자동 분석">보기</button></td></tr>
+        {!isMini&&<tr><th>Batch Report 자동 분석</th><td>{st.batch_auto?`켜짐 · ${periodLabel(st.batch?.interval_hours??24)}${st.batch?.time&&(st.batch.interval_hours??24)%24===0?` · ${st.batch.time}`:''}`:'꺼짐'}</td>
+          <td><button className="linklike" onClick={openBatchAutoSettings} title="CAMTEK › 자동 분석 및 취합 › Batch Report 자동 분석">보기</button></td></tr>}
         <tr><th>설정 파일</th><td><code>{st.config_file||'—'}</code></td><td/></tr>
       </tbody></table></details>}
 
@@ -215,9 +216,9 @@ export function Settings(){
         <code>docs</code> 폴더를 직접 골라도 됩니다(예전 설정 그대로).</p>
       <table className="tbl" style={{marginTop:8}}><tbody>
         <tr><th style={{width:170}}>공유 문서</th><td>장비 IP 주소 · 참고자료 · 특이사항 · 변환계수 · 장비화면이름 (.xlsx) — 처음 지정하면 장비 IP·참고자료·특이사항이 자동 생성됩니다</td></tr>
-        <tr><th>Recipe 양식</th><td><code>양식\{'{레시피}'}\{'{생성시각}'}\</code> — 확정 양식 1개 + 관련파일(원본·수정본)</td></tr>
+        {!isMini&&<><tr><th>Recipe 양식</th><td><code>양식\{'{레시피}'}\{'{생성시각}'}\</code> — 확정 양식 1개 + 관련파일(원본·수정본)</td></tr>
         <tr><th>파라미터 값 취합</th><td><code>파라미터 값 취합\파라미터 값 취합_{'{시각}'}.xlsx</code> — Recipe 업데이트 1회당 1개</td></tr>
-        <tr><th>자동 분석 및 취합</th><td><code>감시설정.json</code> · <code>자동감시\</code> 변경보고서(변경이 있을 때만)·감시로그</td></tr>
+        <tr><th>자동 분석 및 취합</th><td><code>감시설정.json</code> · <code>자동감시\</code> 변경보고서(변경이 있을 때만)·감시로그</td></tr></>}
         <tr><th>동시 접속 정보</th><td><code>_세션\</code> 접속자·작업 잠금, 편집 중인 문서 옆 <code>.editlock</code></td></tr>
         <tr><th>새 버전 게시</th><td>저장 폴더 <b>옆</b>의 <code>프로그램\</code> 폴더(개발자가 게시한 설치 파일)</td></tr>
         <tr><th>Batch Report 캐시 공유</th><td>저장 폴더 <b>옆</b>의 <code>캐시공유\</code> 폴더 — 개발자가 올린 캐시 zip(최근 3개) · <code>캐시정보.json</code></td></tr>
@@ -241,10 +242,10 @@ export function Settings(){
     {sub==='aoi'&&aoiVendor==='CAMTEK'&&<>
       <h3>AOI 장비 호기 루트 등록</h3>
       <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
-        <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 Commonality 조사 · 분석 및 취합 · Batch Report 찾기가 읽습니다. 장비 폴더는 읽기만 합니다.<br/>
-        <b>Job 폴더</b> 열은 장비 PC 의 Recipe(Job) 폴더 위치입니다. 기본은 <code>C:\Job</code>(<code>\\장비IP\c$\Job</code>)이고, 장비의 Job 폴더가 다른 드라이브로 옮겨졌으면 [변경]으로 고치세요(예: <code>D:\Job</code>).</p>
+        <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 {isMini?'Batch Report 찾기':'Commonality 조사 · 분석 및 취합 · Batch Report 찾기'}가 읽습니다. 장비 폴더는 읽기만 합니다.{!isMini&&<><br/>
+        <b>Job 폴더</b> 열은 장비 PC 의 Recipe(Job) 폴더 위치입니다. 기본은 <code>C:\Job</code>(<code>\\장비IP\c$\Job</code>)이고, 장비의 Job 폴더가 다른 드라이브로 옮겨졌으면 [변경]으로 고치세요(예: <code>D:\Job</code>).</>}</p>
       <ScanBackupBar note="Scanresult 를 찾는 모든 기능에 같이 적용됩니다."/>
-      {aois.length>0&&<table className="tbl" data-tour="settings:aoi-table" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th><th title="장비 PC 의 Job 폴더 — Recipe 업데이트 · 분석 및 취합 · 장비 연결 확인이 읽는 곳">Job 폴더</th><th/></tr></thead>
+      {aois.length>0&&<table className="tbl" data-tour="settings:aoi-table" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th>{!isMini&&<th title="장비 PC 의 Job 폴더 — Recipe 업데이트 · 분석 및 취합 · 장비 연결 확인이 읽는 곳">Job 폴더</th>}<th/></tr></thead>
         <tbody>{aois.map(aoiRow)}</tbody></table>}
       <div className="form-filter" data-tour="settings:aoi-form" style={{marginTop:12}}>
         <MemoPick memo={st?.memo_machines} vendor="CAMTEK" registered={aois.map(a=>a.machine)} onPick={setAMachine} disabled={busy}/>
