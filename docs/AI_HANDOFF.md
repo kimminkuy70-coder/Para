@@ -15,7 +15,10 @@
   장비 설정 `Params_AlignRTP.ini`: Frame Alignment(Frame_Uncertanty_px=16 · MaxModelShift 7 px) · DICE_TRACKER(MaxPosError 2) → 프레임마다 패턴으로 위치를 다시 잡음(x,y = 정렬 뒤 위치로 추정, 확인 전).
 - 두 모드(rev6 HTML 함수를 node 로 그대로 실행, `tools/modes.mjs` scratchpad): S3FL 3 · S3UFA 152 Defect **같은 프레임 · 같은 픽셀(차 1e-9 px)**. PHMW(목록 없음): 기본 = Gray 없음, 대규모 = 이름 대체(사진이 없어 s_FrameData 로 흉내) →
   프레임 크기 3168×1024 고정 때문에 74개 중 못 찾음 17 · 다른 프레임 27, 2048×2048 로 고치면 못 찾음 0 · 같은 프레임 49(픽셀 차 ≤ 0.51 px) · 다른 프레임 25(더 가운데인 겹친 프레임).
-  결론: 계산은 같고, 자료가 빠졌을 때(목록 · 변환 없음)는 대규모가 맞음. **두 모드 공통 버그 = 프레임 크기 3168×1024 고정(`GW/GH`, `CG.GW/GH`, 그림 배율 `width/GW`) · Gray Crop 시야 `CG.GP` 0.7696 고정 · Area 에 0.7708² 고정**.
+  결론: 계산은 같고, 자료가 빠졌을 때(목록 · 변환 없음)는 대규모가 맞음.
+  **정정(소유자 지적)**: 대규모는 `ColorImageGrabingInfo.ini` 가 없으면 `cgLoad` 1973줄에서 바로 끝나 프레임 · 변환도 안 읽음 → `cgOf` = Color · Gray 둘 다 없음(Gray 위치 계산에는 Color 가 필요 없는데도).
+  기본은 이 파일 없이도 Gray(Defect 좌표) · Color(사진 이름) 됨. 즉 '대규모가 늘 낫다'가 아님 — 모드마다 약점이 다름(대규모 = Color ini 필수, 기본 = 목록 필수 · 변환 없으면 틀림).
+  #89 첫 보고의 "5-2·5-3 도 같은 대체 방법"도 틀림(5-2 · 5-3 의 짝짓기는 `cgOf`). **두 모드 공통 버그 = 프레임 크기 3168×1024 고정(`GW/GH`, `CG.GW/GH`, 그림 배율 `width/GW`) · Gray Crop 시야 `CG.GP` 0.7696 고정 · Area 에 0.7708² 고정**.
 - 리뷰 PC 가 정확한 이유(해석, 일부 확인 전): 장비가 Defect 를 찾은 프레임 번호 · 픽셀을 그대로 쓰고(다시 계산 안 함), 프레임 위치도 장비가 정렬로 잰 값(s_FrameData). 우리는 Wafer 좌표에서 거꾸로 계산 + 프레임 위치 출처가 다를 수 있어 수 µm ~ 18 µm 차이.
   Contrast Defect 는 Surface.flt 에 프레임 기록이 없어 리뷰 PC 가 무엇을 쓰는지(`s_RichSurface.dat` 에 같은 frameIdx · xInFrame 칸 있음, 820 MB) 확인 못 함.
 - 다음(소유자 답 전 계획): ① 프레임 크기 = 변환 파일(→ s_FrameData → 사진 크기) ② frameIdx 기록 있으면 그 프레임 · 픽셀 그대로 ③ 없으면 프레임 위치 = s_FrameData(정렬 값) → ScanResultImageList → 사진 이름 ④ 기본 = 대규모 계산 ⑤ 수동 보정 보류.
