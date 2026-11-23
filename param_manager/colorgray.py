@@ -569,8 +569,8 @@ FINAL_ALIASES = {"장비 스캔 분류": ("첫번째 분류",), "리뷰 결과":
 FINAL_COLS = [("5-1 #", 52, "5-1 #"), ("Lot", 130, "Lot"), ("Slot", 110, "Slot"), ("ID", 60, "ID"),
               ("장비 스캔 분류", 130, "장비 스캔 분류"), ("리뷰 결과", 130, "리뷰 결과"), ("Recipe", 110, "Recipe"),
               ("Contrast(실제)", 96, "Contrast(실제)"),
-              ("Color", 250, "img:color_view"), ("Gray Crop (빨간 네모 = Defect)", 250, "img:crop_mark"),
-              ("Gray 프레임 (빨간 네모 = Defect · 노란 상자 = Crop 범위)", 570, "img:frame_mark"),
+              ("Color", 250, "img:color_view"), ("Gray Crop (Defect 박스)", 250, "img:crop_mark"),
+              ("Gray 프레임 (Defect 박스 · 노란 상자 = Crop 범위)", 570, "img:frame_mark"),
               ("상태", 150, "#state"), ("Area µm²", 80, "Area µm²"), ("Width", 64, "Width"), ("Length", 64, "Length"),
               ("Box W×H", 84, "#box"), ("Wafer X", 84, "Wafer X"), ("Wafer Y", 84, "Wafer Y"),
               ("Die (장비 Col, Row)", 110, "Die (장비 Col, Row)"), ("Die (맵 X, Y)", 110, "Die (맵 X, Y)"),
@@ -692,7 +692,7 @@ def _final_value(item: dict, key: str):
 
 
 def build_final_workbook(path: Path, items: list[dict], callback=None) -> Path:
-    """최종 목록 엑셀 — HTML 5-3 [💾 최종 목록 엑셀 저장]과 같은 열 · 사진 3장(Color · Gray Crop 빨간 네모 · Gray 프레임 노란 상자).
+    """최종 목록 엑셀 — HTML 5-3 [💾 최종 목록 엑셀 저장]과 같은 열 · 사진 3장(Color · Gray Crop Defect 박스 · Gray 프레임 노란 상자).
     items = [{row(CSV 줄), rec(처리한 기록 또는 None), done, reason, folder, pictures:{kind: 파일}}] — CSV 차례."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill

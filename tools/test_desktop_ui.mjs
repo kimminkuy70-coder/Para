@@ -873,6 +873,7 @@ try{
   assert(nativeCalls.includes('defect_pick'),'folder picked through the engine: '+nativeCalls.join());
   const s51=await wzf.evaluate(()=>{const c=window.__cw,s=c.BIG.scans[0];return {name:s.name,n:s.cols.n,ci:s.cg&&s.cg.colors.length,plan:!!(s.cg&&s.cg.plan),para:!!c.PARA,warn:s.warns}});
   assert.deepEqual([s51.name,s51.n,s51.ci,s51.plan,s51.para],['RCP/SETUP1/LOT_A/W01',2,3,true,true],JSON.stringify(s51));
+  assert.match(await wz.locator('#bigPix').innerText(),/^µm 환산 픽셀 : [\d.]+$/);                              // v14.4.1
   await wzf.evaluate(()=>window.__cw.b5Pair(null));
   const pairs=await wzf.evaluate(()=>window.__cw.BIG.pairs.map(p=>[p.i,p.st,p.c&&p.c.file,p.g&&p.g.file]));
   assert.deepEqual(pairs.find(p=>p[0]===0),[0,'ok','C1.jpg','F1.t.1.jpg'],JSON.stringify(pairs));
@@ -918,7 +919,7 @@ try{
   await wz.locator('#glShow').check();await wzf.waitForFunction(o=>{const c=document.querySelector('#c5Gray canvas');return c&&c.toDataURL()===o},ringOn);
   const [pop]=await Promise.all([page.waitForEvent('popup'),wz.locator('#c5list .br').nth(0).dblclick()]);
   await pop.locator('#fx canvas').waitFor();
-  // v14.1.5 새 창 [🟥 빨간 네모]: 끄면 Gray Crop · Gray 프레임에서 빨간 네모만 빠지고(같은 캔버스 — 확대 그대로), B 키로 다시 켬
+  // v14.1.5 새 창 [Defect 박스](v14.4.1 이름 — 종전 빨간 네모): 끄면 Gray Crop · Gray 프레임에서 Defect 박스만 빠지고(같은 캔버스 — 확대 그대로), B 키로 다시 켬
   assert.equal(await pop.locator('#pwBox').isChecked(),true);
   const popPx=()=>pop.evaluate(()=>[...document.querySelectorAll('#fx canvas,#ff canvas')].map(c=>c.toDataURL()));
   await pop.locator('#fx canvas').click();                                                           // 2배 확대
@@ -926,7 +927,7 @@ try{
   const boxOn=await popPx();await pop.locator('#pwBox').uncheck();
   const boxOff=await popPx();assert(boxOff[0]!==boxOn[0]&&boxOff[1]!==boxOn[1],'red box removed from both gray pictures');
   assert.equal(await pop.evaluate(()=>document.querySelector('#fx canvas').style.width),zoomed);      // 확대 그대로
-  assert.match(await pop.locator('#ff figcaption .lg').innerText(),/빨간 네모 끔/);
+  assert.match(await pop.locator('#ff figcaption .lg').innerText(),/Defect 박스 끔/);
   await pop.keyboard.press('b');await pop.waitForFunction(()=>document.getElementById('pwBox').checked);
   assert.deepEqual(await popPx(),boxOn);
   await pop.close();
@@ -979,7 +980,7 @@ print('ok' if not bad else 'bad '+','.join(bad))`,zipPath,slotDir],{encoding:'ut
   await wzf.evaluate(()=>{window.__bin=null;window.__cw.xlOrigSet(true)});await wz.locator('#c5save').click();await wzf.waitForFunction(()=>Array.isArray(window.__bin));
   const xlo=join(fixture,'final_orig_test.xlsx');await writeFile(xlo,Buffer.from(await wzf.evaluate(()=>window.__bin)));await wzf.evaluate(()=>window.__cw.xlOrigSet(false));
   const xs=execFileSync(python,['-c','import sys,zipfile;print(zipfile.ZipFile(sys.argv[1]).read("xl/worksheets/sheet1.xml").decode("utf-8"))',xlo],{encoding:'utf-8'});
-  assert(xs.includes('Color 원본 (파일 그대로)')&&xs.includes('Gray Crop 원본')&&xs.includes('Gray 프레임 원본')&&xs.includes('Gray Crop (빨간 네모'),'excel original columns');
+  assert(xs.includes('Color 원본 (파일 그대로)')&&xs.includes('Gray Crop 원본')&&xs.includes('Gray 프레임 원본')&&xs.includes('Gray Crop (Defect 박스'),'excel original columns');
   await wzf.evaluate(()=>{window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
   const finalCsv=join(fixture,'final_list_test.csv');await writeFile(finalCsv,'\ufeff'+await wzf.evaluate(()=>window.__flc),'utf-8');
   assert((await readFile(finalCsv,'utf-8')).includes(slotDir),'final list CSV carries the absolute matching folder');
@@ -1031,14 +1032,31 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   await dg.locator('#p3Ls input[type=search]').fill('c1.jpg');await dg.locator('#p3Ls input[type=search]').press('Enter');
   assert.equal(await dg.locator('#p3List .it').count(),1);
   await dg.locator('#p3Ls input[type=search]').fill('');await dg.locator('#p3Ls input[type=search]').press('Enter');
-  // v14.4.1(#89): 기본 모드 새 창 = 대규모와 같은 창(한 창 · Color · Gray Crop · Gray 프레임 · 🔒 고정 · 빨간 네모 B · ↑↓ = ☑ 줄만 · Space ☑), 측정 원 없음(소유자)
+  // v14.4.1 µm 환산 픽셀(Slot 기준) · [µm 로 보기](처음 = 켬, 한 곳을 바꾸면 모든 목록 · 필터 · 열 제목이 같이)
+  assert.match(await dg.locator('#p3Pix').innerText(),/^µm 환산 픽셀 : [\d.]+$/);
+  assert.deepEqual(await dg.locator('#p3Flt [data-umu]').allInnerTexts(),['µm²','µm']);
+  await dg.locator('#p3Flt input[data-um]').uncheck();assert.deepEqual(await dg.locator('#p3Flt [data-umu]').allInnerTexts(),['','']);
+  assert.deepEqual(await dgf.evaluate(()=>[...document.querySelectorAll('#detTbl th[data-umh]')].map(x=>x.textContent)),['Area','Width']);
+  await dg.locator('#p3Flt input[data-um]').check();
+  assert.deepEqual(await dgf.evaluate(()=>[...document.querySelectorAll('#detTbl th[data-umh]')].map(x=>x.textContent)),['Area (µm²)','Width (µm)']);
+  assert.match(await dg.locator('#p3Rv').innerText(),/µm 환산 픽셀: /);
+  // v14.4.1(#89): 기본 모드 새 창 = 대규모와 같은 창(한 창 · Color · Gray Crop · Gray 프레임 · 🔒 고정 · Defect 박스 B · ↑↓ = ☑ 줄만 · Space ☑), 측정 원 없음(소유자)
   const [bp]=await Promise.all([page.waitForEvent('popup'),dg.locator('#p3List .it').nth(0).dblclick()]);   // 첫 줄 = C1(Color · Gray 있음, ☐)
   await bp.locator('#ff canvas').waitFor();await bp.locator('#fx canvas').waitFor();await bp.locator('#fc canvas').waitFor();
   assert.deepEqual(await bp.evaluate(()=>['pwBox','pwLock'].map(i=>!!document.getElementById(i))),[true,true]);
   assert.match(await bp.locator('#hd').innerText(),/^1 \/ 2 · /);
   assert.doesNotMatch(await bp.locator('#ff figcaption .lg').innerText(),/측정 원/);
-  await bp.locator('#pwBox').uncheck();assert.match(await bp.locator('#ff figcaption .lg').innerText(),/빨간 네모 끔/);
+  await bp.locator('#pwBox').uncheck();assert.match(await bp.locator('#ff figcaption .lg').innerText(),/Defect 박스 끔/);
   await bp.keyboard.press('b');await bp.waitForFunction(()=>document.getElementById('pwBox').checked);
+  // v14.4.1 크기 측정(소유자): [크기 측정 (M)] → 사진 원래 픽셀 + 직선 · 원 · 사각형(µm · µm²), 사진 픽셀 크기는 이 화면에만, 보기만(저장 없음), Esc = 끝
+  await bp.locator('#pwMz').click();await bp.locator('#mz').waitFor();assert.equal(await bp.locator('.pv').isVisible(),false);
+  await bp.locator('#mzSide',{hasText:'사진 픽셀 크기'}).waitFor();assert.match(await bp.locator('#mzSide').innerText(),/Gray 사진 · Recipe/);
+  {const bb=await bp.locator('#mzCv canvas').boundingBox();await bp.mouse.move(bb.x+bb.width/2-60,bb.y+bb.height/2);await bp.mouse.down();
+    await bp.mouse.move(bb.x+bb.width/2+60,bb.y+bb.height/2,{steps:5});await bp.mouse.up()}
+  await bp.locator('#mzSide',{hasText:'(1개)'}).waitFor();assert.match(await bp.locator('#mzSide li').first().innerText(),/직선 · [\d.]+ px\s+[\d.]+ µm/);
+  await bp.keyboard.press('2');assert.equal(await bp.locator('[data-mzt="circle"]').getAttribute('class'),'on');
+  await bp.keyboard.press('Control+z');await bp.locator('#mzSide',{hasText:'(0개)'}).waitFor();
+  await bp.keyboard.press('Escape');await bp.locator('.pv').waitFor();assert.equal(await bp.locator('#mz').isVisible(),false);
   await bp.keyboard.press(' ');await dg.locator('#p3Ls .lsn',{hasText:'☑ 2 / 2개'}).waitFor();            // Space = ☑/☐(목록과 같음)
   await bp.keyboard.press(' ');await dg.locator('#p3Ls .lsn',{hasText:'☑ 1 / 2개'}).waitFor();
   await bp.keyboard.press('ArrowDown');await bp.locator('#hd',{hasText:/^2 \/ 2 · /}).waitFor();          // 새 창 ↓ = 목록도 따라감

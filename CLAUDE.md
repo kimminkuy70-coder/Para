@@ -69,7 +69,7 @@
 - **v14.3.17(#86, 2026-11-20)**: 5-3 엑셀 체크 이름 **[원본 이미지로 저장]**(종전 '원본 이미지도 넣기', `cw.xlOrig` 그대로). 켜면 Color 열 = Color 원본(`XL_CO`, `o.c=o.co`), 흑백 표시 열은 두고 Gray 프레임 뒤에 `XL_ORIG` 2열 = Gray Crop 원본(`cropPng(k.raw)`, 표시 없음 PNG) · Gray 프레임 원본(파일 그대로). 새 단추 **[🗂 최종 목록 사진 파일.zip 저장]**(`c5SaveZip`) = zip 안 `color/` · `gray/`(원본 바이트 `origBytes`, 같은 원본은 한 번) · `gray crop/`(원본 이름 + .png, Defect 마다, 이름 겹치면 `_2`). 원본 폴더에는 쓰지 않음.
 - **v14.3.16(#84, 2026-11-19)**: 5-3 **[흑백 GL 측정] = 최종 목록(☑) 중 흑백 사진이 있는 Defect 만**(`glTargets` = `C5.base`(보기 · 검색, GL 범위 전) 중 `p.pick` && `glCan`, 종전 = `c5Pool()` 전체).
   ☐ 줄은 재지 않음, 단추 글 '흑백 GL 측정 (☑ 만)'. 시험 `test_defect_view_toggles.py` `test_gl_run_final_list_only` + `test_desktop_ui.mjs`.
-- **v14.4.1 판(아직 릴리스 안 함 — 소유자 "릴리즈까지는 하지마, 업데이트 사항이 더 남았어", #89 후속 2026-11-23)**: Defect 분석 **Gray 위치 = 기본 · 대규모 같은 계산**(rev6 3절 `geo*`).
+- **v14.4.1(릴리스 2026-11-23, #89 후속 — 소유자 세션)**: Defect 분석 **Gray 위치 = 기본 · 대규모 같은 계산**(rev6 3절 `geo*`).
   `geoLoad`(두 모드의 Slot 읽기 — 대규모 `cgLoad`, 기본 `buildScan` → `dirFromFiles`) · `geoHit`(대규모 `cgDefGray`, 기본 `grayOf`). 종전 `locateGray` · `cgChoose` · `cgRect` · 기본 모드 '간단 모델' 삭제.
   프레임 크기 · 픽셀 = **레시피마다 Slot 파일에서**(실제 Slot 3장: 3168×1024 · 2848×1024 · 2048×2048, 0.385 ~ 1.69 µm): 크기 = 변환 offset(`tfSize`, −M·(W/2, H/2)) → s_FrameData frameSize → 3168×1024,
   Gray 픽셀 = 변환(`tfPix`) → s_FrameData → `RecipesInfo.ini` Scan2DPixelSize(**0.7708 의 출처**, 공칭) → 0.7698. 그림(`hitW`/`hitH`) · Crop 시야(`cgCropSize(c, gp, cp)`, Color 픽셀 = RecipesInfo ColorPixelSize 대체)도 그 값.
@@ -77,8 +77,19 @@
   **장비 프레임 기록**(Surface.flt frameIdx · xInFrame · yInFrame, `COLS` fi · xf · yf)이 있으면 그 프레임 · 픽셀(`geoRecHit`, s_FrameData 같은 recipe · frameIdx 중 Defect 좌표와 5 µm 안, 5-2 에서 `geoLoadFd`).
   **대규모 = ColorImageGrabingInfo.ini 없어도 됨**(종전 = Color · Gray 둘 다 '매칭 파일 없음'): Color = 사진 이름(`cgColorsFromNames`, 연결 = 기본 모드 `colorModel` · `linkColor`, `CG_HOW[4]`), Gray = Defect 좌표.
   Defect 의 Gray 는 늘 Defect 좌표(종전 대규모 = Color Fault — 실제 자료에서 같음). **기본 모드 새 창 = 대규모와 같은 창**(`photoWinOpen` + 자료원 `bigSrc` · `baseSrc` · `listSrc`, 칸 자료 `bigView` · `baseView`):
-  한 창 재사용 · Color · Gray Crop · Gray 프레임 · 🔒 고정 · 빨간 네모 B · ↑↓(기본 = ☑ 줄만) · Space ☑, **측정 원 없음(기본, 소유자)**, 종전 `openWindow` 삭제. 5-2 CSV 끝에 `Gray프레임크기` 열 추가(GrayPX/PY 열 이름 그대로).
-  Area µm² 는 아직 0.7708² 그대로(단위 확인 전 — x5 레시피 Slot 의 Box 가 정수가 아님). 시험 `tests/test_gray_geometry.py`(가짜 숫자 · node) + `test_desktop_ui.mjs`(기본 모드 새 창). 원본 HTML(ccr 브랜치)은 안 고침.
+  한 창 재사용 · Color · Gray Crop · Gray 프레임 · 🔒 고정 · Defect 박스 B · ↑↓(기본 = ☑ 줄만) · Space ☑, **측정 원 없음(기본, 소유자)**, 종전 `openWindow` 삭제. 5-2 CSV 끝에 `Gray프레임크기` 열 추가(GrayPX/PY 열 이름 그대로).
+  (Area µm² · Defect 박스 크기는 아래 v14.4.1 µm 절.) 시험 `tests/test_gray_geometry.py`(가짜 숫자 · node) + `test_desktop_ui.mjs`(기본 모드 새 창). 원본 HTML(ccr 브랜치)은 안 고침.
+- **v14.4.1 µm · Defect 박스 · 크기 측정(소유자 2026-11-23, 같은 판)**: **Surface.flt 크기 값(area · BlobBreadth · BlobLength · Box) 단위 = Slot 기준 픽셀 = `RecipesInfo.ini` 첫 레시피 Scan2DPixelSize**
+  (`sizePix(s)` — 레시피마다 아님: 실제 Slot(Recipe 1 x20 0.3859 · Recipe 2 x5 1.538)에서 x5 Defect 의 Box · Area 가 x20 픽셀 기준 3.9855 배로 적혀 있었다. 없으면 변환 · s_FrameData 의 가장 작은 번호 레시피 → 0.7708 '기본값'.
+  기준이 'Recipe 1' 인지 '가장 작은 픽셀' 인지 미확인 — 바뀌면 `sizePix` 만). µm = 값 × 픽셀, µm² = 값 × 픽셀²(종전 0.7708 고정 → x5 Area 4배 · 2D+3D 4.8배 틀림).
+  화면(소유자 시안 확정): 리뷰PC 정보 `Area:값 (µm²)` · `Width:값 (µm)` + Box Height 뒤 한 줄 띄우고 `µm 환산 픽셀`(rvText), 사진 정보 `Area (µm²)` · `Width (µm)`(괄호 = 장비 값) · `µm 환산 픽셀`(infoRows),
+  목록 위 **`µm 환산 픽셀 : 계수`** 한 줄만(`pixLine` — Slot 마다 다르면 '값 (Slot n개)', `#…Pix` · bigPix · b5Pix · c5Pix). '찍은 레시피' 픽셀은 이 칸들에 **넣지 않음**(크기 측정 화면에만).
+  **[µm 로 보기]**(`UM` · `cw.um`, 처음 = 켬, 필터 '값 범위' 끝 `umCkHtml`): 목록(Step 2 표 `data-umh` · 5-1 VA · 5-3 VC 열 5번째 'a'/'w') · 필터 · 정렬의 Area · Width = µm 또는 장비 값, 한 곳 = 모든 목록(storage 알림으로 기본 · 대규모 탭도),
+  필터 숫자는 계수가 하나면 바꿔 적음(사람이 적은 글로 되돌아감 `dataset.umo`), 여럿이면 그대로 + 알림. Length · Box 는 늘 장비 값. CSV · 엑셀 열 그대로, `Area µm²` 값만 Slot 계수(`um2`).
+  **'빨간 네모' → 'Defect 박스'**(소유자 이름 — 체크 · 범례 · B 키 안내 · 엑셀 열 'Gray Crop (Defect 박스)' · Para `colorgray.FINAL_COLS` 도), 크기 = Box × `boxK(d)`(µm 환산 픽셀 ÷ 찍은 레시피 픽셀 — 종전 x5 Defect 4배 크게),
+  흑백 GL 측정(grayCrop · cgGL)도 같은 Box. **새 창 [크기 측정 (M)]**(`MZ` · `mz*`, 기본 · 대규모 새 창 같음): Gray 프레임 · Color 원본 픽셀, 처음 = Defect 크기의 약 6배가 보이게, 휠 64배 · 12배부터 픽셀 격자,
+  직선 · 원(지름 · 넓이) · 사각형(가로 × 세로 · 넓이) · 옮기기(1~4), 점 끌어 고치기, Ctrl+Z, 0 = 전체, ↑↓ = 다음 Defect(측정 비움), Esc = 끝. 오른쪽 = 사진 픽셀 크기 두 줄(Gray = 찍은 레시피 `geoPix`, Color = PixelSizeX) ·
+  측정 목록 · 참고 장비 값. **보기만(저장 없음, 소유자)**. Para [Color·Gray 매칭] 탭 계산(3168×1024 · 0.7696)은 안 바꿈(글만). 시험 `tests/test_um_measure.py`(가짜 숫자 · node) + `test_desktop_ui.mjs`(µm 체크 · 크기 측정).
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

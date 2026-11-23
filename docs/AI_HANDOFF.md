@@ -1,6 +1,19 @@
 # AI 공통 인수인계
 
-## 최신 재개 — v14.4.1(미릴리스): Defect 분석 Gray 위치 = 기본 · 대규모 같은 계산 + 기본 모드 새 창 (2026-11-23 KST, `version_v14`, #89 후속 소유자 세션)
+## 최신 재개 — v14.4.1 릴리스: µm 표시 · [µm 로 보기] · Defect 박스 · 사진 크기 측정 (+ 아래 Gray 위치) (2026-11-23 KST, `version_v14`, #89 후속 소유자 세션)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `748d0f0`(Gray 위치, 미릴리스였음) · 소유자: "진행해 릴리즈까지해 14.4.1 버전" → `__version__` 14.4.1 · `docs/release_notes/v14.4.1.md`(한 줄 목록).
+- 결정 과정(시안 사진 4번 — 세션 scratchpad, 저장소 밖): ① Width · Area µm 괄호 + 픽셀 크기 화면에 ② '찍은 레시피' 픽셀은 크기 측정 화면에만 ③ 목록 위 'µm 환산 픽셀 : 계수' 만
+  ④ 목록 · 필터 Width · Area = [µm 로 보기] 체크(처음 켬) ⑤ 새 창 [크기 측정] — 확대 · 직선 · 원 · 사각형 · 넓이, 보기만 ⑥ '빨간 네모' → 'Defect 박스'. 상세 = CLAUDE.md 'v14.4.1 µm …' 절 · 계획 문서 19절.
+- 찾은 것: Surface.flt 크기 값 = Slot 기준 픽셀(첫 레시피). 두 레시피 픽셀이 다른 Slot 에서 x5 Defect 의 Box · Area 가 x20 기준(3.9855 배)이었다 →
+  종전 Area µm²(0.7708² 고정)와 Defect 박스(Box 를 Gray 사진 픽셀로 봄) · 흑백 GL 측정 상자가 그런 Slot 에서 틀렸다(박스 4배). `sizePix` · `boxK` 로 고침.
+- 한 일: rev6 HTML(public = dist) — `sizePix` · `pixLine` · `boxK` · `UM`/`umSet`/`umRefresh`/`umHeads` · `mz*`(새 창 측정) · rvText · infoRows · 목록 · 필터 · 정렬 · CSV · 엑셀 Area µm²,
+  Para `colorgray.FINAL_COLS` 엑셀 열 이름(Defect 박스), `ColorGray.tsx` 주석. 시험 `tests/test_um_measure.py`(새, 11) · `test_defect_view_toggles.py` · `test_colorgray_final.py` · `test_desktop_ui.mjs`(µm 체크 · 크기 측정 · Defect 박스 끔).
+- 실제 Slot(저장소 밖, 가짜 사진)으로 확인: µm 환산 픽셀 0.3859, x5 Defect Area 111.18 µm²(종전 443.55), Defect 박스 9 픽셀(종전 36), 체크 끔/켬 · 필터 숫자 되돌리기(4.2 → 10.88 → 4.2), 5-1 · 5-2 목록 줄, 기본 · 대규모 새 창 측정.
+- 해석(확인 전): Slot 기준 = 'Recipe 1'(가장 작은 픽셀일 수도 — 그 Slot 에서는 같음) · Color 측정 화면의 처음 자리 = 사진 가운데(Color 사진은 Fault 가운데로 찍힘) · 새 창을 다시 열면 측정 화면은 닫힌 채로 시작.
+- 다음: 소유자 사진 → 기록 없는 Defect 의 프레임 위치 출처 확정(아래 절 ③) · 리뷰 PC 값과 µm 대조.
+
+## 이전 재개 — v14.4.1(이제 릴리스됨, 위 절과 같은 판): Defect 분석 Gray 위치 = 기본 · 대규모 같은 계산 + 기본 모드 새 창 (2026-11-23 KST, `version_v14`, #89 후속 소유자 세션)
 
 - 마지막 갱신 2026-11-23 · 기준 커밋 `ff10af8`(v14.4.0) · 소유자: "대규모 모드가 Color 정보 파일 없이 흑백도 찾게끔하고 나머지는 너가 정한대로 로직 수정, 대규모 · 기본 둘다 동일하게,
   사진은 나중에 올려서 검증, **릴리즈까지는 하지마 아직 업데이트 사항이 더 남았어**" → `__version__` 14.4.0 그대로 · 릴리스 노트 없음(push 해도 v14.yml 이 릴리스 안 함). 다음 릴리스 판 = v14.4.1 이상.

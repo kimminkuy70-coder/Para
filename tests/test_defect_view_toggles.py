@@ -1,6 +1,6 @@
 """v14.1.5 Defect 분석(대규모) 화면 — 소유자 세션 대화(2026-11-16):
 
-- 새 창으로 크게 보기: 흑백 사진(Gray Crop · Gray 프레임)의 Defect 빨간 네모 켜고 끄기([🟥 빨간 네모] · B 키, 이 PC 에 기억).
+- 새 창으로 크게 보기: 흑백 사진(Gray Crop · Gray 프레임)의 Defect 박스 켜고 끄기([Defect 박스](v14.4.1 이름 — 종전 빨간 네모) · B 키, 이 PC 에 기억).
 - 5-3 흑백 GL 측정 = 따로 테두리 박스 + [⭕ 측정 원 보기](측정 원만 켜고 끔, GL 값은 그대로).
 - '첫번째 분류' → '장비 스캔 분류', '재분류' → '리뷰 결과'(화면 · CSV · 엑셀 전부).
 - 5-1 필터 = 줄마다 제목 · 내용(Lot · Slot / Lot 제외 / 장비 스캔 분류 / 리뷰 결과 / 값 범위 / Recipe / 정렬), 값 범위 4개 한 줄, 분류 칸 = 같은 너비 격자.
@@ -98,7 +98,7 @@ class DefectViewToggles(unittest.TestCase):
         # v14.4.1(#89): 기본 · 대규모 같은 창 — 측정 원은 칸 자료(v.ring)가 정함(기본 모드 = 없음, 대규모 = 5-3 [측정 원 보기])
         self.assertEqual(show.count("{box:PWB.on,ring:ring()}"), 4)            # 처음 그림 2 + 다시 그림 2
         self.assertIn("_redraw=", show)
-        # 5-3 칸 · 엑셀 사진은 빨간 네모 그대로(새 창에서만 끔)
+        # 5-3 칸 · 엑셀 사진은 Defect 박스 그대로(새 창에서만 끔)
         xl = self.t[self.t.index("async function xlPhotos("):self.t.index("/** 엑셀 열:")]
         self.assertNotIn("box:", xl)
 

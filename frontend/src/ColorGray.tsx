@@ -60,18 +60,18 @@ function fit(img:ImageBitmap|OffscreenCanvas,mw:number,mh:number){
   const k=Math.min(1,mw/img.width,mh/img.height),c=new OffscreenCanvas(Math.max(1,Math.round(img.width*k)),Math.max(1,Math.round(img.height*k))),g=c.getContext('2d')!;
   g.imageSmoothingQuality='high';g.drawImage(img,0,0,c.width,c.height);return c;
 }
-/** Defect 빨간 네모 — Defect 를 가리지 않게 상자 바깥에(HTML cgDefBox 와 같은 규칙, Para #67). */
+/** Defect 박스(v14.4.1 이름 — 종전 빨간 네모) — Defect 를 가리지 않게 상자 바깥에(HTML cgDefBox 와 같은 규칙, Para #67). */
 function defBox(g:OffscreenCanvasRenderingContext2D,x:number,y:number,hw:number,hh:number,size:number){
   const lw=Math.max(2,Math.round(size/300)),gap=Math.max(4,lw*2),mn=Math.max(8,size/60),ax=Math.max(hw+gap,mn),ay=Math.max(hh+gap,mn);
   g.save();g.filter='none';g.strokeStyle='#ff2d2d';g.lineWidth=lw;g.strokeRect(x-ax-lw/2,y-ay-lw/2,2*ax+lw,2*ay+lw);g.restore();
 }
-/** Gray Crop + 빨간 네모(HTML cgCropCanvas(d) 와 같은 그림). */
+/** Gray Crop + Defect 박스(HTML cgCropCanvas(d) 와 같은 그림). */
 function cropMark(gray:ImageBitmap,r:Rec,c:{canvas:OffscreenCanvas;box:number[]}){
   const out=new OffscreenCanvas(c.canvas.width,c.canvas.height),o=out.getContext('2d')!;o.drawImage(c.canvas,0,0);
   const sx=gray.width/r.gw,sy=gray.height/r.gh,x=r.px*sx,y=r.py*sy,fx=r.out_w/r.crop_w,fy=r.out_h/r.crop_h,[bw,bh]=r.box||[4,4];
   defBox(o,(x-c.box[0])*fx,(y-c.box[1])*fy,Math.max(1,bw*sx)/2*fx,Math.max(1,bh*sy)/2*fy,Math.max(r.out_w,r.out_h));return out;
 }
-/** Gray 프레임 전체 + 노란 상자(Crop 범위) + 빨간 네모(HTML cgFrameCanvas 와 같은 그림). */
+/** Gray 프레임 전체 + 노란 상자(Crop 범위) + Defect 박스(HTML cgFrameCanvas 와 같은 그림). */
 function frameMark(gray:ImageBitmap,r:Rec){
   const cv=new OffscreenCanvas(gray.width,gray.height),g=cv.getContext('2d')!;g.drawImage(gray,0,0);
   const sx=gray.width/r.gw,sy=gray.height/r.gh,x=r.px*sx,y=r.py*sy,lw=Math.max(2,gray.width/700),[bw,bh]=r.box||[4,4];

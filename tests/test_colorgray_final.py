@@ -127,7 +127,7 @@ class FinalListTests(unittest.TestCase):
         ws = openpyxl.load_workbook(book).active
         head = [c.value for c in ws[1]]
         self.assertEqual(head, [c[0] for c in cg.FINAL_COLS])
-        self.assertEqual(head[8:11], ["Color", "Gray Crop (빨간 네모 = Defect)", "Gray 프레임 (빨간 네모 = Defect · 노란 상자 = Crop 범위)"])
+        self.assertEqual(head[8:11], ["Color", "Gray Crop (Defect 박스)", "Gray 프레임 (Defect 박스 · 노란 상자 = Crop 범위)"])
         body = [[c.value for c in row] for row in ws.iter_rows(min_row=2)]
         self.assertEqual([b[0] for b in body], [1, 2, 3, 4])                           # CSV 차례(5-1 #)
         st = {b[0]: (b[head.index("상태")], b[head.index("Gray 위치 계산")], b[head.index("사진 없음 이유")]) for b in body}

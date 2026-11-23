@@ -19,6 +19,7 @@ const natCmp=(a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
 const esc=s=>String(s);
 const withName=(v,n)=>v==null||v!==v?'-':n?`${v} (${n})`:String(v);
 const S={};const opts=()=>({pix:1,coord:'wafer'});
+const UM={on:true},sizePix=()=>({pix:1,r:null,name:'',from:''}),umK=s=>{const u=UM.on?sizePix(s).pix:1;return [u*u,u]};   // v14.4.1 µm 환산 픽셀(여기서는 1 — 개수 시험)
 const clsFirst=(s,i)=>s.k1[i],clsName=(s,i)=>s.k2[i];
 const EL={};
 const mkSel=v=>({value:v,innerHTML:'',querySelector:()=>null});
