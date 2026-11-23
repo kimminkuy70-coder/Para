@@ -116,7 +116,7 @@ details.vgrp>summary{cursor:pointer;list-style:none;display:flex;align-items:cen
         <div class="cachebox"><h4>Camtek 캐시 (Batch Report)</h4><p id="cache-camtek">없음</p></div>
         <div class="cachebox"><h4>KLA 캐시 (KLA 자재 찾기)</h4><p id="cache-kla">없음</p></div>
       </div>
-      <div class="btns"><button class="btn primary" id="refresh" type="button">캐시 갱신</button><button class="btn" id="pickFiles" type="button" title="폴더에서 읽지 못할 때: 캐시공유 폴더의 캐시정보.json · KLA캐시정보.json · 최근 zip 을 직접 고릅니다">파일 직접 고르기</button><input type="file" id="pickInput" multiple accept=".json,.zip" hidden><button class="btn" id="envCheck" type="button" title="이 PC 에서만 안 될 때: 폴더 허용 · 캐시공유 목록 · 파일 읽기 · 내 PC 폴더 쓰기를 하나씩 시험합니다">환경 점검</button><button class="btn" id="diagCopy" type="button" title="브라우저 · 폴더 연결 · 환경 점검 결과 · 최근 오류 기록을 복사합니다">진단 정보 복사</button></div>
+      <div class="btns"><button class="btn primary" id="refresh" type="button">캐시 갱신</button><button class="btn" id="pickFiles" type="button" title="폴더에서 읽지 못할 때: 캐시공유 폴더의 최근 캐시 zip(BatchReport_캐시 · KLA_캐시)을 직접 고릅니다">파일 직접 고르기</button><input type="file" id="pickInput" multiple accept=".json,.zip" hidden><button class="btn" id="envCheck" type="button" title="이 PC 에서만 안 될 때: 폴더 허용 · 캐시공유 목록 · 파일 읽기 · 내 PC 폴더 쓰기를 하나씩 시험합니다">환경 점검</button><button class="btn" id="diagCopy" type="button" title="브라우저 · 폴더 연결 · 환경 점검 결과 · 최근 오류 기록을 복사합니다">진단 정보 복사</button></div>
       <div class="progress"><div class="bar" id="bar2"></div></div><div class="help" id="msg2" aria-live="polite"></div>
       <div class="errbox envbox" id="envbox" hidden><div class="errhead"><b>환경 점검 결과</b><span class="small" id="envAt"></span><span class="sp"></span><button class="btn" type="button" id="envCopy">진단 정보 복사</button><button class="btn" type="button" id="envClose">닫기</button></div><pre id="envText"></pre></div>
       <ul class="helplist">
@@ -125,7 +125,7 @@ details.vgrp>summary{cursor:pointer;list-style:none;display:flex;align-items:cen
         <li>내 PC 캐시 폴더에는 <b>최신 1개만</b> 남깁니다.</li>
         <li>캐시를 받은 지 <b>24시간</b>이 지나면 위에 빨간 알림이 나옵니다.</li>
         <li>권장 브라우저: <b>Microsoft Edge</b></li>
-        <li>[캐시 갱신]이 파일을 읽지 못하면 <b>[파일 직접 고르기]</b>를 누르십시오. 캐시공유 폴더에서 <code>캐시정보.json</code> · <code>KLA캐시정보.json</code> · 가장 최근 zip 2개를 Ctrl 을 누른 채 고르십시오.</li>
+        <li>[캐시 갱신]이 파일을 읽지 못하면 <b>[파일 직접 고르기]</b>를 누르십시오. 캐시공유 폴더에서 가장 최근 <code>BatchReport_캐시_….zip</code> · <code>KLA_캐시_….zip</code> 을 고르십시오(둘 다 받으려면 Ctrl 을 누른 채 2개). zip 만 골라도 받습니다. <code>캐시정보.json</code> · <code>KLA캐시정보.json</code> 도 같이 고르면 크기 · SHA-256 까지 확인합니다.</li>
         <li>다른 PC 에서는 되는데 <b>이 PC 에서만</b> 안 되면 <b>[환경 점검]</b>을 누르고, 끝나면 <b>[진단 정보 복사]</b>로 보내 주십시오. [캐시 갱신]이 멈춘 채 그대로면 그 상태에서 [진단 정보 복사]를 누르십시오(어느 단계 · 파일에서 기다리는지 들어갑니다).</li>
       </ul>
     </section>
@@ -325,7 +325,7 @@ function errText(e){const n=errName(e),ko=isStuck(e)?'파일을 읽지 못했습
    그때는 브라우저가 그 파일 내용을 열지 못하는 상태(OneDrive 온라인 전용 파일 · 보안 프로그램 차단 등)라서 다시 읽어도 소용없다.
    해결 = [파일 직접 고르기](Windows 파일 고르기 창이 파일을 내려받은 뒤 넘겨 준다 — 실제 PC 확인 전). */
 const stuck=new WeakSet();const isStuck=e=>!!e&&typeof e==='object'&&stuck.has(e);
-const STUCK_HELP='파일이 바뀌지 않았는데도 3번 모두 읽지 못했습니다(파일을 새로 집어도 같음). 이 PC 의 브라우저가 이 파일 내용을 열지 못하는 상태입니다(OneDrive 온라인 전용 파일 또는 회사 보안 프로그램 차단). [파일 직접 고르기]를 누르고 캐시공유 폴더에서 캐시정보.json · KLA캐시정보.json · 가장 최근 zip 2개를 고르십시오. 또는 캐시공유 폴더를 [이 장치에 항상 유지]로 바꾸고 동기화가 끝난 뒤 [캐시 갱신]을 다시 누르십시오.';
+const STUCK_HELP='파일이 바뀌지 않았는데도 3번 모두 읽지 못했습니다(파일을 새로 집어도 같음). 이 PC 의 브라우저가 이 파일 내용을 열지 못하는 상태입니다(OneDrive 온라인 전용 파일 또는 회사 보안 프로그램 차단). [파일 직접 고르기]를 누르고 캐시공유 폴더에서 가장 최근 캐시 zip(BatchReport_캐시 · KLA_캐시)을 고르십시오. 또는 캐시공유 폴더를 [이 장치에 항상 유지]로 바꾸고 동기화가 끝난 뒤 [캐시 갱신]을 다시 누르십시오.';
 async function retryRead(fn,tries=3){const sig=[];for(let i=1;;i++){ctx.attempt=i;try{return await fn(i)}catch(e){if(!isNotReadable(e))throw e;sig.push(ctx.file+'|'+ctx.fileInfo);
   if(i>=tries){if(sig.length>1&&sig.every(x=>x===sig[0])&&typeof e==='object')stuck.add(e);throw e}
   logDiag('retry',e,'파일을 새로 집어 다시 읽습니다');await new Promise(r=>setTimeout(r,T?0:1500*i))}}}
@@ -379,7 +379,18 @@ function camtekRows(state){
   const br=[(r.metadata||[]).filter(p=>Array.isArray(p)&&p.length>=2).map(p=>[String(p[0]),String(p[1])]),cols,ws.map(w=>cols.map(k=>w&&w[k]!=null?String(w[k]):''))];
   rows.push([machine,job,setup,sm,lotCode(sm),batchStart(meta['batch start'])||fileStart(fname),ws.length,fname,pass,waferCells(ws),br])}
  return rows}
+/* [파일 직접 고르기](2026-11-23 소유자 지시): 고른 zip 을 그대로 쓴다(종류별로 이름이 가장 최근인 것 1개). 캐시정보.json · KLA캐시정보.json 은 없어도 된다.
+   같이 골랐고 그 안에 이 zip 이 적혀 있으면 크기 · SHA-256 도 확인한다. 없으면 zip 만으로 받는다(zipOnly — zip 목차 · 안의 JSON 을 풀 수 있어야 받음). */
+async function pickedNewest(share,kind){
+ const cfg=SHARE[kind],zips=[...share.picked].filter(n=>cfg.name.test(n)).sort().reverse();
+ if(!zips.length)return {missing:kind==='camtek'?'BatchReport_캐시_….zip':'KLA_캐시_….zip'};
+ const name=zips[0];let it=null;
+ if(share.picked.has(cfg.info)){try{const info=await readJson(share,cfg.info);it=(info&&Array.isArray(info.items)?info.items:[]).find(i=>i&&i.name===name)||null}catch(e){logDiag('warn',e,'같이 고른 '+cfg.info+' 을(를) 읽지 못해 zip 만으로 받습니다')}}
+ step('zip 파일 집기',{folder:share.name,file:name,fileInfo:''});const f=await (await share.getFileHandle(name)).getFile();
+ return {it:it||{name,size:f.size,sha256:'',exported_at:''},f,zipOnly:!it}}
+const stampText=name=>{const m=/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.zip$/.exec(name);return m?m[1]+'-'+m[2]+'-'+m[3]+' '+m[4]+':'+m[5]+':'+m[6]:''};
 async function newest(share,kind){
+ if(share.picked)return pickedNewest(share,kind);
  const cfg=SHARE[kind];let info;try{info=await readJson(share,cfg.info)}catch(e){if(isNotFound(e))return share.picked?{missing:cfg.info}:null;logDiag('error',e,'OneDrive 게시 정보를 읽지 못했습니다');return {err:e}}
  const items=(info&&info.schema===1&&Array.isArray(info.items)?info.items:[]).filter(i=>i&&cfg.name.test(i.name||'')&&(!share.picked||share.picked.has(i.name))).sort((a,b)=>a.name<b.name?1:-1);
  let last=null;for(const it of items){step('zip 파일 집기',{folder:share.name,file:it.name,fileInfo:''});try{const f=await (await share.getFileHandle(it.name)).getFile();return {it,f}}catch(e){last=e;logDiag('warn',e,'이 zip 을 열지 못해 다음(이전) zip 을 봅니다')}}
@@ -399,7 +410,6 @@ async function refresh(picked){
    const label=kind==='camtek'?'Camtek 캐시':'KLA 캐시',got=await newest(share,kind);
    if(!got){notes.push(label+': OneDrive 에 게시된 캐시가 없습니다');continue}
    if(got.missing){notes.push(label+': 고른 파일에 '+got.missing+' 이(가) 없어 건너뜀');continue}
-   if(picked&&!got.it){notes.push(label+': 고른 파일에 '+SHARE[kind].info+' 에 적힌 zip 이 없어 건너뜀');continue}
    if(got.err&&!got.it){failed=true;if(isStuck(got.err))stuckSeen=true;notes.push(label+': 게시 정보('+SHARE[kind].info+')를 읽지 못했습니다 — '+errText(got.err));continue}
    if(!got.f){failed=true;notes.push(label+': '+got.it.name+' 을(를) 열지 못했습니다(아직 동기화 전일 수 있음)'+(got.err?' — '+errName(got.err)+': '+errMsg(got.err):''));continue}
    const stampOf=SHARE[kind].name.exec(got.it.name)[1],file=PREFIX+(kind==='camtek'?'Camtek':'KLA')+'색인_'+stampOf+'.json';
@@ -409,12 +419,16 @@ async function refresh(picked){
    const took=await retryRead(async i=>{
    step('zip 열기',{folder:share.name,file:got.it.name,fileInfo:fileInfo(got.f)});
    if(i>1){got.f=await (await share.getFileHandle(got.it.name)).getFile();ctx.fileInfo=fileInfo(got.f);setMsg(label+': 파일이 바뀌어 처음부터 다시 읽습니다('+i+'번째)')}
-   if(got.f.size!==got.it.size){const m='크기가 게시 정보와 다릅니다(게시 '+got.it.size+' B, 이 PC '+got.f.size+' B — 동기화 중일 수 있음)';logDiag('warn',{name:'SizeMismatch',message:m});notes.push(label+': '+m+' — 잠시 뒤 다시 누르세요');return false}
-   const sha=await fileSha(got.f,label);
-   if(sha!==got.it.sha256){const m='SHA-256 이 게시 정보와 다릅니다(게시 '+String(got.it.sha256).slice(0,12)+'…, 이 PC '+sha.slice(0,12)+'… — 동기화 중일 수 있음)';logDiag('warn',{name:'ShaMismatch',message:m});notes.push(label+': '+m+' — 잠시 뒤 다시 누르세요');return false}
+   if(!got.zipOnly&&got.f.size!==got.it.size){const m='크기가 게시 정보와 다릅니다(게시 '+got.it.size+' B, 이 PC '+got.f.size+' B — 동기화 중일 수 있음)';logDiag('warn',{name:'SizeMismatch',message:m});notes.push(label+': '+m+' — 잠시 뒤 다시 누르세요');return false}
+   const sha=got.zipOnly?'':await fileSha(got.f,label);
+   if(!got.zipOnly&&sha!==got.it.sha256){const m='SHA-256 이 게시 정보와 다릅니다(게시 '+String(got.it.sha256).slice(0,12)+'…, 이 PC '+sha.slice(0,12)+'… — 동기화 중일 수 있음)';logDiag('warn',{name:'ShaMismatch',message:m});notes.push(label+': '+m+' — 잠시 뒤 다시 누르세요');return false}
    const entries=await zipEntries(got.f);let data,sum;
+   if(got.zipOnly&&!got.it.exported_at){let ex='';const me=entries.find(x=>x.name==='manifest.json');
+    if(me){try{const man=JSON.parse(await zipText(got.f,me));ex=man&&man.exported_at?String(man.exported_at):''}catch(e){logDiag('warn',e,'zip 안 manifest.json 을 읽지 못해 zip 이름의 시각을 씁니다')}}
+    got.it.exported_at=ex||stampText(got.it.name)}
    if(kind==='camtek'){
     const rows=[],machines=new Set,members=entries.filter(e=>/^누적\/.+\.json$/.test(e.name));
+    if(got.zipOnly&&!members.length)throw new Error('Camtek 캐시 zip 안에 누적/*.json 이 없습니다(다른 zip 이거나 덜 내려받은 파일)');
     for(let i=0;i<members.length;i++){setMsg('Camtek 캐시 푸는 중 '+(i+1)+' / '+members.length);setBar(10+80*i/members.length);
      const txt=await zipText(got.f,members[i]);step('zip 안 JSON 해석: '+members[i].name);const st=JSON.parse(txt);if(st&&st.machine)machines.add(String(st.machine));rows.push(...camtekRows(st))}
     data={schema:4,kind:'camtek',zip:got.it.name,exported_at:got.it.exported_at||'',rows};sum={machines:machines.size,reports:rows.length}}
@@ -429,7 +443,7 @@ async function refresh(picked){
    return true});
    if(!took){failed=true;continue}
    }catch(e){failed=true;if(isStuck(e))stuckSeen=true;logDiag('error',e,label+' 을(를) 받지 못했습니다');notes.push(label+': 받지 못했습니다 — '+errText(e));continue}
-   notes.push(label+': '+got.it.name+' 받음')}
+   notes.push(label+': '+got.it.name+' 받음'+(got.zipOnly?'(zip 만 — 크기 · SHA-256 확인 없이 zip 안 자료로 받음)':''))}
   // 하나라도 받지 못했으면 받은 시각을 새로 적지 않는다(24시간 알림이 계속 나오게, Para #76).
   next.updated_at=failed&&old&&old.updated_at?old.updated_at:failed?'':stamp(now());
   await writeText(handles.local,RECORD,JSON.stringify(next,null,1));
@@ -455,7 +469,11 @@ async function probeLocal(){const n=PREFIX+'읽기시험.json';let ok=false,err=
 function pickedDir(list){const m=new Map;for(const f of list)m.set(f.name,f);
  return {kind:'directory',name:'직접 고른 파일 '+m.size+'개',picked:new Set(m.keys()),
   async getFileHandle(n){const f=m.get(n);if(!f)throw new DOMException('직접 고른 파일에 없음: '+n,'NotFoundError');return {kind:'file',name:n,getFile:async()=>f}}}}
-$('#pickFiles').onclick=()=>{if(!handles.local){setMsg('먼저 ③ 내 PC 캐시 폴더를 연결하세요.');return}$('#pickInput').value='';$('#pickInput').click()};
+$('#pickFiles').onclick=async()=>{if(!handles.local){setMsg('먼저 ③ 내 PC 캐시 폴더를 연결하세요.');return}
+ begin('파일 직접 고르기');step('③ 폴더 허용 확인');
+ if(!await ready('local')){logDiag('warn',{name:'PermissionDenied',message:'폴더 접근이 허용되지 않았습니다 — '+permNote(['local'])},PERM_HELP);setMsg('③ 내 PC 캐시 폴더를 허용해야 받을 수 있습니다. '+PERM_HELP+' 또는 ③ [다시 고르기]로 같은 폴더를 다시 고르십시오.');return}
+ if(perm.local!=='허용됨'&&perm.local!=='시험')setMsg('③ 내 PC 캐시 폴더를 허용했습니다. 파일 고르기 창이 열리지 않으면 [파일 직접 고르기]를 한 번 더 누르십시오.');
+ $('#pickInput').value='';$('#pickInput').click()};
 $('#pickInput').onchange=()=>{const fs=[...$('#pickInput').files];if(fs.length)refresh(pickedDir(fs))};
 $('#errCopy').onclick=copyDiag;$('#diagCopy').onclick=copyDiag;$('#errClose').onclick=()=>{$('#errbox').hidden=true};
 /* ---------- 환경 점검(2026-11-23 세션 지시: 다른 PC 는 되는데 이 PC 만 [캐시 갱신]이 안 될 때 원인을 가른다) ----------

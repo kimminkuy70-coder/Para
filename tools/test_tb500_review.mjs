@@ -127,17 +127,35 @@ await page.locator('#errClose').click();assert.ok(await page.locator('#errbox').
 assert.ok(await page.evaluate(()=>window.__fs.top.local.files.has('TB500리뷰_KLA색인_20261106_090100.json')));
 const recAfter=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
 assert.equal(recAfter.updated_at,recBefore.updated_at);
-// Para #77: 폴더에서는 계속 못 읽어도 [파일 직접 고르기]로 고른 파일(Windows 파일 고르기 창)로 받는다. 정보 JSON 이 없으면 그 캐시는 건너뜀.
+// Para #77: 폴더에서는 계속 못 읽어도 [파일 직접 고르기]로 고른 파일(Windows 파일 고르기 창)로 받는다. 2026-11-23: 고른 zip 기준 — 그 종류 zip 을 안 고르면 건너뜀.
 {const fx=JSON.parse(fixture),pickOf=names=>names.map(n=>({name:n,mimeType:n.endsWith('.zip')?'application/zip':'application/json',buffer:Buffer.from(fx['share/'+n],'base64')}));
  const badBefore=await page.evaluate(()=>window.__bad['KLA_캐시_20261106_090100.zip']);
  await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});
  await page.locator('#pickInput').setInputFiles(pickOf(['KLA캐시정보.json','KLA_캐시_20261106_090100.zip']));
  await page.locator('#msg2').filter({hasText:'KLA 캐시: KLA_캐시_20261106_090100.zip 받음'}).waitFor();
  const mp=await page.locator('#msg2').innerText();
- assert.match(mp,/Camtek 캐시: 고른 파일에 캐시정보\.json 이\(가\) 없어 건너뜀/,mp);
+ assert.match(mp,/Camtek 캐시: 고른 파일에 BatchReport_캐시_….zip 이\(가\) 없어 건너뜀/,mp);
+ assert.ok(!/zip 만/.test(mp),'정보 JSON 을 같이 고르면 크기 · SHA-256 확인(zip 만 아님)');
  assert.equal(await page.evaluate(()=>window.__bad['KLA_캐시_20261106_090100.zip']),badBefore,'폴더 쪽 파일은 읽지 않음');
  const kr=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
  assert.equal(kr.kla.zip,'KLA_캐시_20261106_090100.zip');
+ // 2026-11-23 소유자 지시: zip 만 골라도 받는다(정보 JSON 없음 → 크기 · SHA-256 확인 없이 zip 안 자료로). 게시 시각 = zip 안 manifest.json, 없으면 zip 이름의 시각.
+ await page.evaluate(()=>{const d=window.__fs.top.local,r=JSON.parse(new TextDecoder().decode(d.files.get('TB500리뷰_기록.json')));r.camtek.zip='예전.zip';d.files.set('TB500리뷰_기록.json',new TextEncoder().encode(JSON.stringify(r)))});
+ await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});
+ const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'파일 직접 고르기'}).click();   // 누르면 (③ 허용 확인 뒤) 파일 고르기 창이 열린다
+ await (await chooser).setFiles(pickOf(['BatchReport_캐시_20261106_090000.zip']));
+ await page.locator('#msg2').filter({hasText:'Camtek 캐시: BatchReport_캐시_20261106_090000.zip 받음(zip 만'}).waitFor();
+ assert.match(await page.locator('#msg2').innerText(),/KLA 캐시: 고른 파일에 KLA_캐시_….zip 이\(가\) 없어 건너뜀/);
+ const zr=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
+ assert.equal(zr.camtek.zip,'BatchReport_캐시_20261106_090000.zip');assert.equal(zr.camtek.exported_at,'2026-11-06 09:00:00');assert.equal(zr.camtek.reports,5);
+ assert.equal(await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_Camtek색인_20261106_090000.json'))).rows.length),5);
+ // 정보 JSON 에 없는 zip(더 새 zip)만 골라도 zip 만으로. 깨진 zip 은 받지 않고 지난 기록 그대로.
+ await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});
+ await page.locator('#pickInput').setInputFiles([{name:'BatchReport_캐시_20261107_080000.zip',mimeType:'application/zip',buffer:Buffer.from('이건 zip 이 아님')},...pickOf(['캐시정보.json'])]);
+ await page.locator('#msg2').filter({hasText:'Camtek 캐시: 받지 못했습니다'}).waitFor();
+ assert.match(await page.locator('#msg2').innerText(),/zip 파일이 아닙니다/);
+ assert.equal(await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))).camtek.zip),'BatchReport_캐시_20261106_090000.zip');
+ await page.locator('#errClose').click();
  await page.evaluate(()=>{const d=window.__fs.top.local,r=JSON.parse(new TextDecoder().decode(d.files.get('TB500리뷰_기록.json')));r.kla.zip='예전.zip';d.files.set('TB500리뷰_기록.json',new TextEncoder().encode(JSON.stringify(r)))})}
 // ③ 다시 정상으로
 await page.evaluate(()=>{window.__bad={}});
