@@ -1,5 +1,27 @@
 # AI 공통 인수인계
 
+## 최신 재개 — 리뷰 HTML: 특정 PC 에서만 [캐시 갱신]이 오류 기록 없이 멈춤 → [환경 점검] · 응답 없음 · 허용 거절 기록 (2026-11-23 KST, 세션 지시)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `e44aec6` · 이슈 번호 없음(세션 지시) · 작업 브랜치 `ccr-c88e8cbd-kbcrtn`(세션 지정 — `version_TB500_review` 의 `e44aec6` 에서 이어짐. 이 브랜치로 옮길지는 소유자 결정). 릴리스 없음 — 단일 HTML.
+- 요청: 소유자 진단 글(HTML 2026-11-19 판, Chrome 158, 폴더 ①②③ 연결됨, 받은 시각 2026-11-19 10:11:12, **최근 기록 0개**) + "캐시 갱신하면 화면이 그대로, 갱신이 안 됨. 엣지 · 크롬 캐시 삭제하면 될까?" → "다른 컴퓨터는 정상, 특정 컴퓨터만 안 됨. 원인은? 원인을 알려면?".
+- 판단: 갱신이 끝나면 '이미 최신'이어도 `updated_at` 이 바뀌므로 갱신이 끝나지 않았다. 기록 0개 = 종전 코드가 기록하지 않던 ① `ready()` 허용 거절 · 오류(조용히 false) 또는 ② 오류 없는 응답 없음(대기) 중 하나. 브라우저가 Chrome(UA 에 `Edg/` 없음) — 다른 PC 와 브라우저가 다른지도 확인 필요. 브라우저 캐시 삭제는 무관(로컬 파일 · 캐시는 ③ 폴더 파일)이라고 답함.
+- 한 일(`TB500_Review.html`, HTML_BUILD `2026-11-23 (환경 점검 · 응답 없음 · 허용 거절 기록)`):
+  - `ready` 가 결과를 `perm` 에 남김. `refresh` · `run` 이 허용 거절 시 `PermissionDenied` 경고 기록(실패한 폴더만) + `PERM_HELP` 안내. `refresh` 는 `begin` 을 허용 확인 앞으로 옮김.
+  - 응답 없음 감시: `busyStart/busyEnd/busyTick`(refresh 동안만), `step()` 과 SHA 조각이 `busy.at` 갱신. `STALL_MS`(30초, 시험 `T.stallMs`) 넘게 그대로면 level `wait`(오류 칸 안 띄움) `NoResponse` 를 한 단계에 1번 기록 + 진행 문구.
+  - `diagText` 에 `브라우저 종류` · `폴더 허용(마지막 확인)` · `진행 중`(busyText) · `환경 점검`(envLast, localStorage `tb500-review-env`) 줄. refresh 끝에 `RefreshDone` 판정 기록.
+  - [환경 점검](`envCheck`, `#envbox` 결과 칸): `withTimeout(PROBE_MS=20초, zip 3배)` 로 허용 · 캐시공유 목록 · 정보 JSON · 최신 zip 앞뒤 64 KB · ③ 시험 파일 쓰기/읽기/지우기 · 캐시 기록을 시험하고 판정(사용법 4-4절 순서). OneDrive 에는 쓰지 않음.
+- 문서: `docs/TB500_review_사용법.md` 4-4절 · 6절.
+- 시험: `tools/test_tb500_review.mjs` 끝에 추가(T 에 `stallMs:4000, probeMs:2500`): 정상 점검(✔ 줄 · 새 캐시 있음 → 받은 뒤 '새 캐시 없음' · Chrome 참고 · 시험 파일 지움 · OneDrive 무쓰기), RefreshDone 기록,
+  허용 거절(SecurityError → PermissionDenied 기록 · 진단 '폴더 허용' 줄 · 판정 '두 번째 허용 창 막힘', denied → 'chrome://policy'), 캐시정보.json getFile 이 영원히 안 끝남(점검 Timeout · 판정 'OneDrive 파일만 응답 없이 멈춤', [캐시 갱신] '응답 기다리는 중' · 진단 '진행 중: … JSON 파일 집기 · 캐시정보.json' · 응답 기다림 1번).
+  순차 실행 19번 중 18번 통과, 1번은 종전부터 있던 맨 끝 '오래된 캐시 알림'(reload 뒤 `#banner`) 대기 시간 초과 — **고치기 전 HTML · 시험도 10번 중 1번 같은 곳에서 실패**(#85 항목의 기록과 같음, 이번 변경과 무관). 원인 미확인.
+  `python tools/check_project.py` 는 돌리지 않음(HTML · JS 시험만 바뀜). 실제 Edge · Chrome · 회사 PC 미검증.
+- 내 해석(확인 전): ⓐ 두 번째 `requestPermission` 이 사용자 동작 만료로 막힐 수 있다고 보고 판정 문구를 둠(Chromium 동작, 실기 확인 전). ⓑ 시간 제한 20초 · 응답 없음 30초는 임의 값.
+- 남은 일: 소유자가 문제 PC 에서 새 HTML 로 [환경 점검] → [진단 정보 복사] 결과(또는 멈춘 상태의 진단 글)를 주면 원인 확정. 잘 되는 PC 의 브라우저(Edge/Chrome)도 물을 것.
+
+| 요청 | 결과 |
+|---|---|
+| 특정 PC 만 [캐시 갱신] 안 됨 — 원인 · 확인 방법 | 진단 공백 2곳(허용 거절 · 응답 없음) 기록, [환경 점검] 구현, 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #85 리뷰 HTML: 재리뷰 완료 Layer 도 스캔 호기 표시, 재리뷰 결과 줄은 제외 (2026-11-19 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-19 · 기준 커밋 `eb7ad03` · 이슈 Para #85("TB500_Review.html 수정사항") · 작업 브랜치 `version_TB500_review`(이슈에 브랜치 이름은 없음 — `TB500_Review.html` 이 이 브랜치에만 있어 #40~#77 과 같이 여기서 작업. 릴리스 없음 — 단일 HTML).

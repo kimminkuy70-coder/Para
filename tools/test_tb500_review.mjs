@@ -29,7 +29,7 @@ await page.addInitScript(({fx})=>{
   const log=[],top={};
   for(const [p,v] of Object.entries(files)){const parts=p.split('/');const k=parts.shift();top[k]=top[k]||new DH(k,log);let d=top[k];while(parts.length>1)d=d.sub(parts.shift());d.files.set(parts[0],b64(v))}
   window.__fs={top,log};
-  window.__TB500_TEST__={now:localStorage.getItem('test-now')||'2026-11-06T12:00:00',pick:async kind=>top[kind]};
+  window.__TB500_TEST__={now:localStorage.getItem('test-now')||'2026-11-06T12:00:00',pick:async kind=>top[kind],stallMs:4000,probeMs:2500};
 },{fx:fixture});
 await page.goto('file://'+resolve(root,'TB500_Review.html'));
 // SHA-256 구현 = Node crypto
@@ -253,6 +253,51 @@ await page.evaluate(()=>localStorage.setItem('test-now','2026-11-09T12:00:00'));
 await page.reload();
 await page.locator('#banner.show').filter({hasText:'지났습니다'}).waitFor();
 await page.setViewportSize({width:1500,height:1000});
+
+// 2026-11-23 세션 지시: 다른 PC 는 되는데 이 PC 만 [캐시 갱신]이 오류 기록 없이 멈춤 → 환경 점검 · 허용 거절 기록 · 응답 없음 기록
+for(const k of ['share','conder','local'])await page.locator(`[data-pick="${k}"]`).click();
+const envRun=async()=>{await page.evaluate(()=>{document.querySelector('#envText').textContent=''});await page.getByRole('button',{name:'환경 점검'}).click();
+  await page.locator('#envText').filter({hasText:'판정:'}).waitFor();return page.locator('#envText').innerText()};
+// ① 정상: 단계마다 ✔, 판정 = 읽기 정상 · 새 캐시 있음(③ 에 기록 없음), Chrome 참고, 시험 파일 지움, OneDrive 에 안 씀
+let env=await envRun();
+for(const re of [/✔ ① 캐시공유 폴더 허용 — share/,/✔ ③ 내 PC 캐시 폴더 허용 — local/,/✔ ① 캐시공유 폴더 목록 읽기 — 항목 \d+개 · 캐시정보\.json 있음 · KLA캐시정보\.json 있음 · Camtek zip \d+개\(최신 BatchReport_캐시_20261106_090000\.zip\)/,
+  /✔ 캐시정보\.json 읽기 — 크기 \d+ B/,/✔ BatchReport_캐시_20261106_090000\.zip 앞 · 뒤 64 KB 읽기/,/✔ KLA_캐시_20261106_090100\.zip 앞 · 뒤 64 KB 읽기/,
+  /✔ ③ 내 PC 캐시 폴더 쓰기 · 읽기 · 지우기/,/✔ ③ 캐시 기록\(TB500리뷰_기록\.json\) 읽기 — 없음/,/판정: 이 PC 의 읽기는 모두 정상이고 받을 새 캐시가 있습니다/,/판정: 참고: 이 PC 는 Chrome \d+ \(Edge 아님\)/])assert.match(env,re,env);
+assert.ok(await page.locator('#envbox').isVisible());
+assert.ok(!(await page.evaluate(()=>window.__fs.top.local.files.has('TB500리뷰_읽기시험.json'))),'시험 파일은 지움');
+assert.ok(!(await page.evaluate(()=>window.__fs.log)).some(l=>/conder|share/.test(l)),'OneDrive · Conder 에 쓰지 않음');
+let dg2=await page.evaluate(()=>window.__tb500Diag());
+assert.match(dg2,/브라우저 종류: Chrome \d+ \(Edge 아님\) · 주소 file:/);assert.match(dg2,/\n환경 점검: \n점검 시각: /);assert.match(dg2,/진행 중: 없음/);
+// 받은 뒤 다시 점검하면 '새 캐시 없음', 갱신 결과(이미 최신 포함)도 진단 기록에 남는다
+await page.getByRole('button',{name:'캐시 갱신'}).click();
+await page.locator('#msg2').filter({hasText:'KLA 캐시: KLA_캐시_20261106_090100.zip 받음'}).waitFor();
+assert.match(await page.evaluate(()=>window.__tb500Diag()),/판정\n작업: 캐시 갱신 · 단계: 끝[\s\S]*RefreshDone: Camtek 캐시: BatchReport_캐시_20261106_090000\.zip 받음/);
+env=await envRun();assert.match(env,/판정: 이 PC 의 읽기는 모두 정상입니다\. 다만 OneDrive 에 이미 받은 것보다 새 캐시가 없습니다/,env);
+// ② 허용 거절: 종전에는 조용히 끝나 진단 기록에 남지 않았다 → 경고 기록 · 화면 안내 · 진단의 '폴더 허용' 줄
+await page.evaluate(()=>{const s=window.__fs.top.share;s.queryPermission=async()=>'prompt';s.requestPermission=async()=>{throw new DOMException('User activation is required to request permissions.','SecurityError')}});
+await page.getByRole('button',{name:'캐시 갱신'}).click();
+await page.locator('#msg2').filter({hasText:'폴더 접근을 허용해야 캐시를 갱신할 수 있습니다'}).waitFor();
+assert.match(await page.locator('#errText').innerText(),/작업: 캐시 갱신 · 단계: 폴더 허용 확인[\s\S]*PermissionDenied: 폴더 접근이 허용되지 않았습니다 — ① 허용 창 오류\(확인 prompt\) — SecurityError: User activation is required to request permissions\.\n/);
+assert.match(await page.evaluate(()=>window.__tb500Diag()),/폴더 허용\(마지막 확인\): ① 허용 창 오류/);
+env=await envRun();assert.match(env,/✖ ① 캐시공유 폴더 허용 — share · 허용 창 오류/,env);assert.match(env,/판정: 두 번째 허용 창이 브라우저에 막혔습니다/,env);
+await page.evaluate(()=>{window.__fs.top.share.requestPermission=async()=>'denied'});
+env=await envRun();assert.match(env,/허용 안 됨\(확인 prompt → 요청 denied\)/,env);assert.match(env,/판정: 폴더 접근 허용이 안 됩니다[\s\S]*chrome:\/\/policy/,env);
+await page.evaluate(()=>{const s=window.__fs.top.share;delete s.queryPermission;delete s.requestPermission});
+// ③ OneDrive 파일이 응답 없이 멈춤(오류도 안 남): 환경 점검은 시간 제한으로 판정, [캐시 갱신]은 '응답 기다림' 기록 + 진단의 '진행 중' 줄에 멈춘 단계 · 파일
+await page.evaluate(async()=>{const h=await window.__fs.top.share.getFileHandle('캐시정보.json'),P=Object.getPrototypeOf(h),orig=P.getFile;
+  P.getFile=function(){return this.dir===window.__fs.top.share&&this.name==='캐시정보.json'?new Promise(()=>{}):orig.call(this)}});
+env=await envRun();
+assert.match(env,/✖ 캐시정보\.json 읽기 — Timeout: \d+초 동안 응답 없음/,env);
+assert.match(env,/판정: ③ 내 PC 폴더는 정상인데 OneDrive 캐시공유 파일만 응답 없이 멈춥니다/,env);
+await page.getByRole('button',{name:'캐시 갱신'}).click();
+await page.locator('#msg2').filter({hasText:'응답 기다리는 중'}).waitFor();
+assert.match(await page.locator('#msg2').innerText(),/단계: JSON 파일 집기 · 파일: 캐시정보\.json/);
+assert.ok(await page.getByRole('button',{name:'캐시 갱신'}).isDisabled());
+dg2=await page.evaluate(()=>window.__tb500Diag());
+assert.match(dg2,/진행 중: 캐시 갱신 · 단계: JSON 파일 집기 · 폴더: share · 파일: 캐시정보\.json · 시작 후 \d+초 · 이 단계 \d+초째/,dg2);
+assert.match(dg2,/응답 기다림\n작업: 캐시 갱신 · 단계: JSON 파일 집기[\s\S]*NoResponse: 이 단계에서 \d+초 넘게 응답이 없습니다/,dg2);
+assert.equal((dg2.match(/응답 기다림\n작업: 캐시 갱신 · 단계: JSON 파일 집기/g)||[]).length,1,'한 단계에 한 번만 기록');
+if(process.env.TB500_SHOT){await page.locator('#envbox').scrollIntoViewIfNeeded();await page.screenshot({path:process.env.TB500_SHOT+'/envcheck.png'})}
 assert.deepEqual(errors,[]);
 await browser.close();
 console.log(JSON.stringify({passed:true}));

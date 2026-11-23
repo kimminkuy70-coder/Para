@@ -11,6 +11,7 @@
 table{min-width:1180px}td.left{text-align:left}.lotcell{white-space:nowrap}.st{display:inline-flex;align-items:center;justify-content:center;min-width:92px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}.st.done{background:var(--greenbg);color:var(--green)}.st.need{background:var(--redbg);color:var(--red)}.st.skip{background:var(--amberbg);color:var(--amber)}.st.etc{background:var(--graybg);color:var(--gray)}
 .hit{display:block;text-align:left;font-size:12px;line-height:1.45;padding:3px 0;border-bottom:1px dashed var(--line)}.hit:last-child{border-bottom:0}.hit b{font-size:13px}.muted{color:var(--muted)}.small{font-size:11px}.mono{font-family:Consolas,"D2Coding",monospace;font-size:11px;overflow-wrap:anywhere}
 .errbox{margin:10px 0 4px;padding:12px 14px;border:1px solid var(--red);border-radius:12px;background:var(--redbg);color:var(--text)}.errhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.errhead>b{color:var(--red);font-size:15px}.errhead .sp{flex:1}.errhow{margin:6px 0 0;font-size:12px;line-height:1.5}.errbox pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:Consolas,"D2Coding",monospace;font-size:12px;line-height:1.5;max-height:300px;overflow:auto;margin:8px 0 0;padding:8px 10px;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px}
+.errbox.envbox{border-color:var(--line);background:var(--card)}.envbox .errhead>b{color:var(--text)}
 .banner{display:none;padding:12px 14px;border-radius:12px;background:var(--redbg);color:var(--red);font-weight:700;margin-bottom:14px;line-height:1.5}.banner.show{display:block}.banner.ok{background:var(--greenbg);color:var(--green)}
 .setup{display:grid;gap:10px}.setrow{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px}.setrow .num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--graybg);font-weight:800}.setrow.ok .num{background:var(--greenbg);color:var(--green)}.setrow b{display:block}.setrow small{display:block;color:var(--muted);overflow-wrap:anywhere;margin-top:3px}
 .cachegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}.cachebox{border:1px solid var(--line);border-radius:10px;padding:10px}.cachebox h4{margin:0 0 6px}.cachebox p{margin:3px 0;color:var(--muted);font-size:12px}
@@ -115,8 +116,9 @@ details.vgrp>summary{cursor:pointer;list-style:none;display:flex;align-items:cen
         <div class="cachebox"><h4>Camtek 캐시 (Batch Report)</h4><p id="cache-camtek">없음</p></div>
         <div class="cachebox"><h4>KLA 캐시 (KLA 자재 찾기)</h4><p id="cache-kla">없음</p></div>
       </div>
-      <div class="btns"><button class="btn primary" id="refresh" type="button">캐시 갱신</button><button class="btn" id="pickFiles" type="button" title="폴더에서 읽지 못할 때: 캐시공유 폴더의 캐시정보.json · KLA캐시정보.json · 최근 zip 을 직접 고릅니다">파일 직접 고르기</button><input type="file" id="pickInput" multiple accept=".json,.zip" hidden><button class="btn" id="diagCopy" type="button" title="브라우저 · 폴더 연결 · 최근 오류 기록을 복사합니다">진단 정보 복사</button></div>
+      <div class="btns"><button class="btn primary" id="refresh" type="button">캐시 갱신</button><button class="btn" id="pickFiles" type="button" title="폴더에서 읽지 못할 때: 캐시공유 폴더의 캐시정보.json · KLA캐시정보.json · 최근 zip 을 직접 고릅니다">파일 직접 고르기</button><input type="file" id="pickInput" multiple accept=".json,.zip" hidden><button class="btn" id="envCheck" type="button" title="이 PC 에서만 안 될 때: 폴더 허용 · 캐시공유 목록 · 파일 읽기 · 내 PC 폴더 쓰기를 하나씩 시험합니다">환경 점검</button><button class="btn" id="diagCopy" type="button" title="브라우저 · 폴더 연결 · 환경 점검 결과 · 최근 오류 기록을 복사합니다">진단 정보 복사</button></div>
       <div class="progress"><div class="bar" id="bar2"></div></div><div class="help" id="msg2" aria-live="polite"></div>
+      <div class="errbox envbox" id="envbox" hidden><div class="errhead"><b>환경 점검 결과</b><span class="small" id="envAt"></span><span class="sp"></span><button class="btn" type="button" id="envCopy">진단 정보 복사</button><button class="btn" type="button" id="envClose">닫기</button></div><pre id="envText"></pre></div>
       <ul class="helplist">
         <li>[캐시 갱신]은 동기화된 OneDrive 폴더에서 <b>가장 최근 캐시 zip</b> 을 읽어 내 PC 캐시 폴더에 풀어 둡니다.</li>
         <li>크기와 SHA-256 이 <b>게시할 때와 같을 때만</b> 씁니다.</li>
@@ -124,6 +126,7 @@ details.vgrp>summary{cursor:pointer;list-style:none;display:flex;align-items:cen
         <li>캐시를 받은 지 <b>24시간</b>이 지나면 위에 빨간 알림이 나옵니다.</li>
         <li>권장 브라우저: <b>Microsoft Edge</b></li>
         <li>[캐시 갱신]이 파일을 읽지 못하면 <b>[파일 직접 고르기]</b>를 누르십시오. 캐시공유 폴더에서 <code>캐시정보.json</code> · <code>KLA캐시정보.json</code> · 가장 최근 zip 2개를 Ctrl 을 누른 채 고르십시오.</li>
+        <li>다른 PC 에서는 되는데 <b>이 PC 에서만</b> 안 되면 <b>[환경 점검]</b>을 누르고, 끝나면 <b>[진단 정보 복사]</b>로 보내 주십시오. [캐시 갱신]이 멈춘 채 그대로면 그 상태에서 [진단 정보 복사]를 누르십시오(어느 단계 · 파일에서 기다리는지 들어갑니다).</li>
       </ul>
     </section>
    </div>
@@ -181,10 +184,28 @@ const now=()=>T&&T.now?new Date(T.now):new Date();
 function setMsg(s){$('#msg').textContent=s;const m2=$('#msg2');if(m2)m2.textContent=s}function setBar(n){const w=Math.max(0,Math.min(100,n))+'%';$('#bar').style.width=w;$('#bar2').style.width=w}
 /* ---------- 오류 진단(Para #76 후속): 어떤 작업 · 단계 · 폴더 · 파일에서 어떤 오류가 났는지 남기고 복사하게 한다 ----------
    기록은 이 브라우저의 localStorage 에 최근 30개만 둔다(HTML 을 다시 열어도 복사 가능). 밖으로 보내지 않는다. */
-const HTML_BUILD='2026-11-19 (Para #85: 재리뷰 완료 Layer 도 스캔 호기 표시)';
+const HTML_BUILD='2026-11-23 (환경 점검 · 응답 없음 · 허용 거절 기록)';
 const ctx={action:'',step:'',folder:'',file:'',fileInfo:'',lot:'',attempt:0};
 function begin(action){Object.assign(ctx,{action,step:'',folder:'',file:'',fileInfo:'',lot:'',attempt:0})}
-function step(s,o){ctx.step=s;if(o)Object.assign(ctx,o)}
+function step(s,o){ctx.step=s;if(o)Object.assign(ctx,o);busy.at=Date.now();busy.warned=false}
+/* 응답 없음 감시(2026-11-23 세션 지시: 특정 PC 에서만 [캐시 갱신]이 오류 없이 멈추고 진단 기록이 0개).
+   [캐시 갱신] 중 한 단계가 STALL_MS 넘게 그대로면 '응답 기다림'을 기록(한 단계에 1번)하고 화면에 어느 단계 · 파일인지 보인다.
+   진단 정보에는 '진행 중' 줄로 지금 단계 · 파일 · 경과 시간이 들어간다 — 멈춘 상태에서 [진단 정보 복사]를 누르면 멈춘 곳이 보인다. */
+const STALL_MS=T&&T.stallMs||30000,PROBE_MS=T&&T.probeMs||20000;
+const busy={on:false,since:0,at:0,warned:false,timer:0};
+const secs=ms=>Math.round(ms/1000)+'초';
+function busyStart(){busy.on=true;busy.since=busy.at=Date.now();busy.warned=false;clearInterval(busy.timer);busy.timer=setInterval(busyTick,T?100:2000)}
+function busyEnd(){busy.on=false;clearInterval(busy.timer)}
+function busyTick(){if(!busy.on)return;const idle=Date.now()-busy.at;if(idle<STALL_MS)return;
+ if(!busy.warned){busy.warned=true;logDiag('wait',{name:'NoResponse',message:'이 단계에서 '+secs(idle)+' 넘게 응답이 없습니다'},'브라우저가 폴더 · 파일 응답을 기다리는 중(오류가 나지 않고 멈춤)')}
+ setMsg('응답 기다리는 중 '+secs(idle)+' — 단계: '+(ctx.step||'-')+(ctx.file?' · 파일: '+ctx.file:'')+'. 계속 이대로면 [진단 정보 복사]를 눌러 보내 주시고, 새로 고침(F5) 뒤 [환경 점검]을 누르십시오.')}
+function busyText(){if(!busy.on)return '없음';const n=Date.now();
+ return (ctx.action||'-')+' · 단계: '+(ctx.step||'-')+(ctx.folder?' · 폴더: '+ctx.folder:'')+(ctx.file?' · 파일: '+ctx.file:'')+(ctx.fileInfo?' ('+ctx.fileInfo+')':'')+' · 시작 후 '+secs(n-busy.since)+' · 이 단계 '+secs(n-busy.at)+'째'}
+const UA=navigator.userAgent;
+function browserKind(){const m=(re,n)=>{const x=UA.match(re);return x?n+' '+x[1]:''};
+ return m(/Edg\/(\d+)/,'Microsoft Edge')||m(/Whale\/(\d+)/,'Naver Whale')||m(/OPR\/(\d+)/,'Opera')||(m(/Chrome\/(\d+)/,'Chrome')?m(/Chrome\/(\d+)/,'Chrome')+' (Edge 아님)':'알 수 없음')}
+const perm={share:'',conder:'',local:''};   // 마지막 허용 확인 결과(ready · 환경 점검)
+let envLast=(()=>{try{return localStorage.getItem('tb500-review-env')||''}catch{return ''}})();
 function fileInfo(f){try{return f?'크기 '+f.size+' B · 수정 시각 '+(f.lastModified?stamp(new Date(f.lastModified)):'?'):''}catch{return ''}}
 const ERR_KO={NotReadableError:'브라우저가 파일 내용을 열지 못했습니다(읽는 사이에 파일이 바뀜, 아직 이 PC 에 내려받지 않은 OneDrive 파일, 보안 프로그램 차단 중 하나)',
  NotFoundError:'파일이나 폴더를 찾지 못했습니다(이름이 바뀌었거나, 지워졌거나, 아직 동기화 전)',NotAllowedError:'폴더 접근 권한이 없습니다([허용]을 누르지 않았거나 권한이 풀림)',
@@ -203,15 +224,18 @@ function logDiag(level,e,extra){
  const ent={time:stamp(new Date()),level,action:ctx.action,step:ctx.step,folder:ctx.folder,file:ctx.file,fileInfo:ctx.fileInfo,lot:ctx.lot,attempt:ctx.attempt||0,
   name:errName(e),message:errMsg(e),ko:ERR_KO[errName(e)]||'',stack:stackOf(e),extra:extra||''};
  diagLog.push(ent);while(diagLog.length>30)diagLog.shift();try{localStorage.setItem('tb500-review-diag',JSON.stringify(diagLog))}catch{}
- if(level!=='retry'&&level!=='info')showErr(ent);return ent}
-function entText(x,i){return ['['+(i+1)+'] '+x.time+' · '+({error:'오류',warn:'경고',retry:'다시 읽음',info:'판정'}[x.level]||x.level),
+ if(level!=='retry'&&level!=='info'&&level!=='wait')showErr(ent);return ent}
+function entText(x,i){return ['['+(i+1)+'] '+x.time+' · '+({error:'오류',warn:'경고',retry:'다시 읽음',info:'판정',wait:'응답 기다림'}[x.level]||x.level),
  '작업: '+(x.action||'-')+' · 단계: '+(x.step||'-'),x.folder?'폴더: '+x.folder:'',x.file?'파일: '+x.file+(x.fileInfo?' ('+x.fileInfo+')':''):'',x.lot?'Lot: '+x.lot:'',
  x.attempt?'시도: '+x.attempt+'번째':'','오류: '+x.name+': '+x.message,x.ko?'뜻: '+x.ko:'',x.extra?'참고: '+x.extra:'',x.stack?'코드 위치: '+x.stack:''].filter(Boolean).join('\n')}
 function diagText(){
  const conn=k=>handles[k]?'연결됨('+handles[k].name+')':'연결 안 됨',r=record||{};
- return ['TB500 Review 진단 정보','HTML: '+HTML_BUILD,'복사 시각: '+stamp(new Date()),'브라우저: '+navigator.userAgent,
+ return ['TB500 Review 진단 정보','HTML: '+HTML_BUILD,'복사 시각: '+stamp(new Date()),'브라우저: '+UA,'브라우저 종류: '+browserKind()+' · 주소 '+location.protocol,
   '폴더: ① OneDrive '+conn('share')+' · ② Conder Scan '+conn('conder')+' · ③ 내 PC '+conn('local'),
+  '폴더 허용(마지막 확인): ① '+(perm.share||'확인 전')+' · ② '+(perm.conder||'확인 전')+' · ③ '+(perm.local||'확인 전'),
   '캐시 기록: 받은 시각 '+(r.updated_at||'없음')+' · Camtek '+(r.camtek?r.camtek.zip:'없음')+' · KLA '+(r.kla?r.kla.zip:'없음'),
+  '진행 중: '+busyText(),
+  '','환경 점검: '+(envLast?'\n'+envLast:'안 함 — [설정] 탭의 [환경 점검]을 누른 뒤 다시 복사하십시오'),
   '','최근 기록 '+diagLog.length+'개(오래된 것 → 최신):',...diagLog.map((x,i)=>entText(x,i)+'\n')].join('\n')}
 // 오류 정보 칸은 지금 보이는 탭의 진행 문구 바로 아래로 옮긴다(맨 위에 두면 버튼 근처에서 안 보임).
 function placeErr(){const b=$('#errbox'),setup=$('#panel-setup'),a=setup&&!setup.hidden?$('#msg2'):$('#msg');if(b&&a&&a.nextElementSibling!==b)a.after(b)}
@@ -231,7 +255,7 @@ class Sha256{constructor(){this.h=new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef
   h[0]+=a;h[1]+=bb;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh}
  update(d){this.len+=d.length;let i=0;if(this.n){while(this.n<64&&i<d.length)this.buf[this.n++]=d[i++];if(this.n<64)return;this.block(this.buf,0);this.n=0}for(;i+64<=d.length;i+=64)this.block(d,i);while(i<d.length)this.buf[this.n++]=d[i++]}
  hex(){const bits=this.len*8,tail=new Uint8Array(((this.n<56)?64:128)-this.n);tail[0]=0x80;const v=new DataView(tail.buffer);v.setUint32(tail.length-8,Math.floor(bits/4294967296));v.setUint32(tail.length-4,bits>>>0);this.update(tail);return Array.from(this.h,x=>(x>>>0).toString(16).padStart(8,'0')).join('')}}
-async function fileSha(file,label){const sh=new Sha256(),step=8*1024*1024;for(let o=0;o<file.size;o+=step){ctx.step='SHA-256 확인('+Math.round(o/1048576)+' / '+Math.round(file.size/1048576)+' MB 지점)';sh.update(new Uint8Array(await file.slice(o,o+step).arrayBuffer()));setMsg(label+' 확인 중 '+Math.round(Math.min(o+step,file.size)/1048576)+' / '+Math.round(file.size/1048576)+'MB')}return sh.hex()}
+async function fileSha(file,label){const sh=new Sha256(),step=8*1024*1024;for(let o=0;o<file.size;o+=step){busy.at=Date.now();busy.warned=false;ctx.step='SHA-256 확인('+Math.round(o/1048576)+' / '+Math.round(file.size/1048576)+' MB 지점)';sh.update(new Uint8Array(await file.slice(o,o+step).arrayBuffer()));setMsg(label+' 확인 중 '+Math.round(Math.min(o+step,file.size)/1048576)+' / '+Math.round(file.size/1048576)+'MB')}return sh.hex()}
 window.__tb500Sha=async bytes=>{const s=new Sha256();s.update(bytes);return s.hex()};
 
 /* ---------- zip 읽기(풀지 않고 안의 JSON 만) ---------- */
@@ -269,8 +293,13 @@ const MODE={share:'read',conder:'read',local:'readwrite'};
 async function pick(kind){
  let h;if(T&&T.pick)h=await T.pick(kind);else{if(!('showDirectoryPicker'in window)){alert('이 브라우저는 폴더 연결을 지원하지 않습니다. Microsoft Edge 로 여세요.');return}h=await window.showDirectoryPicker({id:'tb500-'+kind,mode:MODE[kind],startIn:kind==='local'?'documents':undefined})}
  handles[kind]=h;await idbSet(kind,h);paintSetup();if(kind==='local')await loadRecord(true)}
-async function ready(kind){const h=handles[kind];if(!h)return false;if(T)return true;const o={mode:MODE[kind]};
- try{if(await h.queryPermission(o)==='granted')return true;return await h.requestPermission(o)==='granted'}catch{return false}}
+/* 허용 확인 결과를 perm 에 남긴다(2026-11-23): 종전에는 허용 창 거절 · 오류(SecurityError 등)를 조용히 false 로만 돌려 진단 기록에 남지 않았다. */
+async function ready(kind){const h=handles[kind];if(!h){perm[kind]='연결 안 됨';return false}if(T&&!h.queryPermission){perm[kind]='시험';return true}const o={mode:MODE[kind]};let q='?';
+ try{q=await h.queryPermission(o);if(q==='granted'){perm[kind]='허용됨';return true}
+  const r=await h.requestPermission(o);perm[kind]=(r==='granted'?'허용함':'허용 안 됨')+'(확인 '+q+' → 요청 '+r+')';return r==='granted'}
+ catch(e){perm[kind]='허용 창 오류(확인 '+q+') — '+errName(e)+': '+errMsg(e);return false}}
+const PERM_HELP='허용 창에서 [허용]을 누르지 않았거나, 허용 창이 뜨지 않고 막혔습니다. 허용 창이 두 번(① 캐시공유 · ③ 내 PC) 뜨면 둘 다 바로 [허용]을 누르십시오. 허용 창이 아예 뜨지 않으면 회사 브라우저 정책이 막는 것일 수 있습니다 — [환경 점검]을 누르십시오.';
+const permNote=kinds=>kinds.map(k=>({share:'①',conder:'②',local:'③'}[k])+' '+(perm[k]||'확인 전')).join(' · ');
 document.querySelectorAll('.gimg').forEach(b=>b.onclick=()=>{const i=b.querySelector('img');$('#imgBig').src=i.src;$('#imgBig').alt=i.alt;$('#imgDlg').showModal()});
 $('#imgClose').onclick=()=>$('#imgDlg').close();
 function paintSetup(){for(const k of ['share','conder','local']){const row=$('#row-'+k);row.classList.toggle('ok',!!handles[k]);const btn=row.querySelector('[data-pick]');btn.textContent=handles[k]?'다시 고르기':'폴더 연결';
@@ -358,8 +387,11 @@ async function newest(share,kind){
 async function refresh(picked){
  const share=picked||handles.share;
  if(!share||!handles.local){setMsg('먼저 ① OneDrive 캐시공유 폴더와 ③ 내 PC 캐시 폴더를 연결하세요.');return}
- if((!picked&&!await ready('share'))||!await ready('local')){setMsg('폴더 접근을 허용해야 캐시를 갱신할 수 있습니다.');return}
- begin(picked?'캐시 갱신(파일 직접 고르기)':'캐시 갱신');let stuckSeen=false;const btn=$('#refresh');btn.disabled=true;setBar(5);
+ begin(picked?'캐시 갱신(파일 직접 고르기)':'캐시 갱신');step('폴더 허용 확인');
+ const denied=!picked&&!await ready('share')?'share':!await ready('local')?'local':'';
+ if(denied){logDiag('warn',{name:'PermissionDenied',message:'폴더 접근이 허용되지 않았습니다 — '+permNote([denied])},PERM_HELP);
+  setMsg('폴더 접근을 허용해야 캐시를 갱신할 수 있습니다. '+PERM_HELP);return}
+ let stuckSeen=false;const btn=$('#refresh');btn.disabled=true;setBar(5);busyStart();
  try{
   let old=null;try{old=await readJson(handles.local,RECORD)}catch(e){if(!isNotFound(e))logDiag('warn',e,'지난 기록을 읽지 못해 새로 만듭니다')}
   const next={schema:1,updated_at:'',camtek:old&&old.camtek||null,kla:old&&old.kla||null},notes=[];let failed=false;
@@ -406,9 +438,10 @@ async function refresh(picked){
   for await(const [n,x] of handles.local.entries())if(x.kind==='file'&&OUR_FILE.test(n)&&!keep.has(n)){step('지난 색인 지우기',{folder:handles.local.name,file:n,fileInfo:''});try{await handles.local.removeEntry(n);removed++}catch(e){logDiag('warn',e,'지난 색인 파일을 지우지 못했습니다(다음 갱신 때 다시 지움)')}}
   record=next;saveRecordLocal();indexCache=null;paintRecord();
   if(stuckSeen)notes.push(await probeLocal());
-  setMsg(notes.join(' / ')+(removed?' / 지난 캐시 '+removed+'개 정리':''));setBar(100)}
+  setMsg(notes.join(' / ')+(removed?' / 지난 캐시 '+removed+'개 정리':''));setBar(100);
+  step('끝');logDiag('info',{name:'RefreshDone',message:notes.join(' / ')},'받은 시각 '+(next.updated_at||'없음'))}   // 결과도 진단 기록에(이미 최신 · 건너뜀 포함)
  catch(e){logDiag('error',e);setMsg('캐시 갱신 실패: '+errText(e))}
- finally{btn.disabled=false}}
+ finally{busyEnd();btn.disabled=false}}
 $('#refresh').onclick=()=>refresh();
 /* Para #77: 캐시공유 파일을 3번 모두 못 읽으면(stuck) 원인을 가르기 위해 내 PC 캐시 폴더에 작은 파일을 쓰고 다시 읽어 본다(쓰고 바로 지움). */
 async function probeLocal(){const n=PREFIX+'읽기시험.json';let ok=false,err=null;
@@ -425,6 +458,71 @@ function pickedDir(list){const m=new Map;for(const f of list)m.set(f.name,f);
 $('#pickFiles').onclick=()=>{if(!handles.local){setMsg('먼저 ③ 내 PC 캐시 폴더를 연결하세요.');return}$('#pickInput').value='';$('#pickInput').click()};
 $('#pickInput').onchange=()=>{const fs=[...$('#pickInput').files];if(fs.length)refresh(pickedDir(fs))};
 $('#errCopy').onclick=copyDiag;$('#diagCopy').onclick=copyDiag;$('#errClose').onclick=()=>{$('#errbox').hidden=true};
+/* ---------- 환경 점검(2026-11-23 세션 지시: 다른 PC 는 되는데 이 PC 만 [캐시 갱신]이 안 될 때 원인을 가른다) ----------
+   하나씩 시간 제한을 두고 시험한다: 브라우저 · 폴더 허용 · ① 캐시공유 목록 · 게시 정보 JSON · 최신 zip 앞뒤 64 KB · ③ 내 PC 폴더 쓰기 · 읽기 · 지우기 · 캐시 기록.
+   OneDrive 캐시공유는 읽기만 한다. 쓰기는 ③ 내 PC 폴더의 시험 파일 1개(쓰고 바로 지움)뿐. 결과는 이 브라우저에만 남고 [진단 정보 복사]에 들어간다. */
+const withTimeout=(p,ms)=>{let t;return Promise.race([p,new Promise((_,no)=>{t=setTimeout(()=>no(Object.assign(new Error(secs(ms)+' 동안 응답 없음'),{name:'Timeout'})),ms)})]).finally(()=>clearTimeout(t))};
+async function envCheck(){
+ const btn=$('#envCheck');if(btn.disabled)return;btn.disabled=true;begin('환경 점검');const L=[],J=[],r={},share=handles.share,local=handles.local;
+ async function probe(key,label,fn,ms){step(label);setMsg('환경 점검 중: '+label);const s=performance.now();
+  try{const v=await withTimeout(Promise.resolve().then(fn),ms||PROBE_MS);r[key]={ok:true,ms:Math.round(performance.now()-s)};L.push('✔ '+label+(v?' — '+v:'')+' ('+r[key].ms+' ms)')}
+  catch(e){r[key]={ok:false,e,ms:Math.round(performance.now()-s)};L.push('✖ '+label+(ctx.fileInfo?' ['+ctx.fileInfo+']':'')+' — '+errName(e)+': '+errMsg(e)+(ERR_KO[errName(e)]?' ('+ERR_KO[errName(e)]+')':'')+' ('+r[key].ms+' ms)')}}
+ const ok=k=>!!(r[k]&&r[k].ok),slow=k=>!!(r[k]&&r[k].e&&r[k].e.name==='Timeout');
+ try{
+  L.push('브라우저: '+browserKind()+' · 주소 '+location.protocol+' · 폴더 연결 기능 '+(T||'showDirectoryPicker'in window?'있음':'없음'));
+  // 1. 폴더 허용 — 허용 창이 뜰 수 있다(두 번 뜨면 둘 다 [허용]). ② Conder 는 조회 때만 쓰므로 상태만 본다(허용 창 안 띄움).
+  for(const [k,lab] of [['share','① 캐시공유 폴더 허용'],['local','③ 내 PC 캐시 폴더 허용']]){
+   if(!handles[k]){L.push('✖ '+lab+' — 연결 안 됨');continue}
+   r['perm_'+k]={ok:await ready(k)};L.push((r['perm_'+k].ok?'✔ ':'✖ ')+lab+' — '+handles[k].name+' · '+perm[k])}
+  if(handles.conder&&handles.conder.queryPermission){try{perm.conder='확인 '+await handles.conder.queryPermission({mode:'read'})}catch(e){perm.conder='확인 오류 — '+errName(e)+': '+errMsg(e)}L.push('· ② Conder Scan 허용 상태 — '+handles.conder.name+' · '+perm.conder)}
+  // 2. ① 캐시공유 목록 · 게시 정보 · 최신 zip
+  let names=[];const zips={camtek:[],kla:[]},items={camtek:[],kla:[]};
+  if(ok('perm_share')){
+   await probe('list','① 캐시공유 폴더 목록 읽기',async()=>{step('① 캐시공유 폴더 목록 읽기',{folder:share.name,file:'',fileInfo:''});const a=[];for await(const [n,x] of share.entries())a.push([n,x.kind]);names=a;
+    for(const k of ['camtek','kla'])zips[k]=a.filter(([n,kd])=>kd==='file'&&SHARE[k].name.test(n)).map(x=>x[0]).sort().reverse();
+    const has=n=>a.some(x=>x[0]===n)?'있음':'없음';
+    return '항목 '+a.length+'개 · 캐시정보.json '+has('캐시정보.json')+' · KLA캐시정보.json '+has('KLA캐시정보.json')+' · Camtek zip '+zips.camtek.length+'개(최신 '+(zips.camtek[0]||'없음')+') · KLA zip '+zips.kla.length+'개(최신 '+(zips.kla[0]||'없음')+')'});
+   for(const kind of ok('list')?['camtek','kla']:[]){
+    const cfg=SHARE[kind],lab=kind==='camtek'?'Camtek':'KLA';
+    if(!names.some(x=>x[0]===cfg.info)){L.push('✖ '+cfg.info+' — 연결한 ① 폴더에 없습니다');r['info_'+kind]={ok:false,missing:true};continue}
+    await probe('info_'+kind,cfg.info+' 읽기',async()=>{step(cfg.info+' 읽기',{folder:share.name,file:cfg.info,fileInfo:''});const f=await (await share.getFileHandle(cfg.info)).getFile();ctx.fileInfo=fileInfo(f);const info=JSON.parse(await f.text());
+     items[kind]=(info&&Array.isArray(info.items)?info.items:[]).filter(i=>i&&cfg.name.test(i.name||'')).sort((a,b)=>a.name<b.name?1:-1);
+     return ctx.fileInfo+' · 게시된 zip '+items[kind].length+'개 · 최신 '+(items[kind][0]?items[kind][0].name+' (게시 '+(items[kind][0].exported_at||'?')+')':'없음')});
+    const ni=items[kind][0]&&items[kind][0].name,nd=zips[kind][0];
+    if(ni&&nd&&nd>ni){r['lag_'+kind]=true;L.push('⚠ '+lab+': 폴더에는 더 새 zip('+nd+')이 있는데 '+cfg.info+' 의 최신은 '+ni+' — '+cfg.info+' 가 아직 이 PC 에 동기화되지 않았을 수 있습니다')}
+    const target=ni||nd;if(!target)continue;
+    if(!names.some(x=>x[0]===target)){L.push('✖ '+target+' — '+cfg.info+' 에는 있지만 이 PC 의 캐시공유 폴더에 없습니다(동기화 전)');r['zip_'+kind]={ok:false,missing:true};continue}
+    await probe('zip_'+kind,target+' 앞 · 뒤 64 KB 읽기',async()=>{step('zip 일부 읽기',{folder:share.name,file:target,fileInfo:''});const f=await (await share.getFileHandle(target)).getFile();ctx.fileInfo=fileInfo(f);
+     const n=Math.min(65536,f.size),it=items[kind].find(i=>i.name===target);await f.slice(0,n).arrayBuffer();await f.slice(f.size-n).arrayBuffer();
+     return ctx.fileInfo+(it&&it.size!=null&&it.size!==f.size?' · ⚠ 크기가 게시 정보('+it.size+' B)와 다름 — 동기화 중':'')},PROBE_MS*3)}}
+  // 3. ③ 내 PC 폴더
+  if(ok('perm_local')){const n=PREFIX+'읽기시험.json';
+   await probe('local','③ 내 PC 캐시 폴더 쓰기 · 읽기 · 지우기',async()=>{await writeText(local,n,'{"probe":1}');step('③ 시험 파일 읽기');const tx=await (await (await local.getFileHandle(n)).getFile()).text();
+    step('③ 시험 파일 지우기');await local.removeEntry(n);if(tx!=='{"probe":1}')throw new Error('쓴 내용과 읽은 내용이 다릅니다');return local.name});
+   if(!ok('local'))try{await local.removeEntry(n)}catch{}
+   await probe('rec','③ 캐시 기록('+RECORD+') 읽기',async()=>{let rec;try{rec=await readJson(local,RECORD)}catch(e){if(isNotFound(e)){r.recData={};return '없음(아직 받은 적 없음)'}throw e}r.recData=rec;
+    return '받은 시각 '+(rec.updated_at||'없음')+' · Camtek '+(rec.camtek?rec.camtek.zip:'없음')+' · KLA '+(rec.kla?rec.kla.zip:'없음')})}
+  // 4. 판정 — 위에서부터 먼저 걸리는 것 하나 + 참고
+  const readFail=['info_camtek','info_kla','zip_camtek','zip_kla'].filter(k=>r[k]&&!r[k].ok&&!r[k].missing),anySlow=readFail.some(slow);
+  if(!share||!local)J.push('① 캐시공유 · ③ 내 PC 캐시 폴더를 먼저 연결하십시오.');
+  else if(!ok('perm_share')||!ok('perm_local'))J.push(/activation/i.test(perm.share+perm.local)?'두 번째 허용 창이 브라우저에 막혔습니다(사용자 동작 필요). 버튼을 한 번 더 누르십시오 — 이미 허용한 폴더는 다시 묻지 않습니다.'
+   :'폴더 접근 허용이 안 됩니다. 허용 창이 떴다면 다시 누르고 [허용]을 누르십시오. 허용 창이 뜨지 않았다면 회사 브라우저 정책이 폴더 읽기 · 쓰기를 막는 것일 수 있습니다 — 주소창에 '+(/Edg\//.test(UA)?'edge://policy':'chrome://policy')+' 를 열어 이름에 FileSystemRead · FileSystemWrite 가 들어간 정책이 있는지 보십시오.');
+  else if(!ok('list'))J.push(slow('list')?'① 캐시공유 폴더 목록이 응답하지 않습니다 → 이 PC 의 OneDrive 가 멈췄을 수 있습니다(작업 표시줄 구름 아이콘에서 동기화 일시 중지 · 로그인 확인). ① [다시 고르기]로 캐시공유를 다시 고르십시오.'
+   :'① 캐시공유 폴더 목록을 읽지 못했습니다 → 폴더가 옮겨졌거나 지워졌습니다. ① [다시 고르기]로 캐시공유를 다시 고르십시오.');
+  else if(r.info_camtek&&r.info_camtek.missing&&r.info_kla&&r.info_kla.missing)J.push('연결한 ① 폴더('+share.name+')에 캐시정보.json · KLA캐시정보.json 이 없습니다 → 다른 폴더를 연결했거나 이 PC 에 아직 동기화되지 않았습니다. ① [다시 고르기]로 캐시공유 폴더를 다시 고르십시오.');
+  else if(local&&ok('perm_local')&&!ok('local'))J.push('③ 내 PC 캐시 폴더에 쓴 시험 파일을 '+(slow('local')?'처리하지 못하고 멈춥니다':'쓰거나 읽지 못했습니다')+'. ③ [다시 고르기]로 문서 아래 새 폴더(OneDrive 밖이면 더 좋음)를 고르십시오. 새 폴더도 안 되면 이 PC 의 보안 프로그램이 브라우저의 파일 쓰기 · 읽기를 막는 것으로 보입니다 — 회사 IT 에 문의하십시오.'+(readFail.length?' (OneDrive 파일도 못 읽음)':''));
+  else if(readFail.length)J.push('③ 내 PC 폴더는 정상인데 OneDrive 캐시공유 파일만 '+(anySlow?'응답 없이 멈춥니다':'읽지 못합니다')+' → 이 PC 의 OneDrive 가 브라우저에 파일을 내려받아 주지 못하는 상태입니다(온라인 전용 파일 + 동기화 일시 중지 · 로그인 만료 · 이 PC 에서 앱의 파일 내려받기 차단 · 보안 프로그램 중 하나). 파일 탐색기에서 캐시공유 폴더를 마우스 오른쪽 단추 → [이 장치에 항상 유지]로 바꾸고 초록 체크가 될 때까지 기다린 뒤 [캐시 갱신]을 누르십시오. 급하면 [파일 직접 고르기]로 받으십시오.');
+  else{const rec=r.recData||record||{},nc=items.camtek[0]&&items.camtek[0].name,nk=items.kla[0]&&items.kla[0].name,latest=[nc,nk].filter(Boolean).join(' · ')||'없음';
+   if(r.lag_camtek||r.lag_kla)J.push('읽기는 정상인데 캐시정보.json 이 폴더의 zip 보다 오래되었습니다 → 이 PC 의 OneDrive 동기화가 늦습니다. 잠시 뒤 [캐시 갱신]을 다시 누르십시오.');
+   else if((!nc||rec.camtek&&rec.camtek.zip===nc)&&(!nk||rec.kla&&rec.kla.zip===nk))J.push('이 PC 의 읽기는 모두 정상입니다. 다만 OneDrive 에 이미 받은 것보다 새 캐시가 없습니다(최신 '+latest+'). 새 캐시는 Camtek AOI Manager 에서 게시해야 생깁니다.');
+   else J.push('이 PC 의 읽기는 모두 정상이고 받을 새 캐시가 있습니다(최신 '+latest+'). [캐시 갱신]을 누르십시오. 또 멈추면 멈춘 상태에서 [진단 정보 복사]를 눌러 보내 주십시오.')}
+  if(!/Edg\//.test(UA))J.push('참고: 이 PC 는 '+browserKind()+' 로 열었습니다(권장 Microsoft Edge). 잘 되는 PC 와 브라우저가 같은지 보십시오. 브라우저를 바꾸면 폴더를 다시 연결해야 합니다.');
+  envLast=['점검 시각: '+stamp(new Date()),...L,'',...J.map(x=>'판정: '+x)].join('\n');try{localStorage.setItem('tb500-review-env',envLast)}catch{}
+  $('#envText').textContent=envLast;$('#envAt').textContent=stamp(new Date());$('#envbox').hidden=false;
+  setMsg('환경 점검 끝 — '+J[0]+' 아래 [환경 점검 결과]를 [진단 정보 복사]로 보내 주십시오.')}
+ catch(e){logDiag('error',e,'환경 점검 중 오류');setMsg('환경 점검 실패: '+errText(e))}
+ finally{btn.disabled=false}}
+$('#envCheck').onclick=envCheck;$('#envCopy').onclick=copyDiag;$('#envClose').onclick=()=>{$('#envbox').hidden=true};
 
 /* ---------- 조회 ---------- */
 let indexCache=null,results=[],rootList=null;
@@ -486,7 +584,7 @@ async function run(){
  if(!handles.conder)return setMsg('[설정] 탭에서 ② Conder Scan 폴더를 먼저 연결하십시오.');
  if(!handles.local)return setMsg('[설정] 탭에서 ③ 내 PC 캐시 폴더를 먼저 연결하십시오.');
  begin('조회');$('#scan').disabled=true;$('#stop').disabled=false;stopReq=false;rootList=null;results=[];setBar(0);
- try{if(!await ready('conder')||!await ready('local')){setMsg('폴더 접근을 허용해야 조회할 수 있습니다.');return}
+ try{step('폴더 허용 확인');const denied=!await ready('conder')?'conder':!await ready('local')?'local':'';if(denied){logDiag('warn',{name:'PermissionDenied',message:'폴더 접근이 허용되지 않았습니다 — '+permNote([denied])},PERM_HELP);setMsg('폴더 접근을 허용해야 조회할 수 있습니다. '+PERM_HELP);return}
   if(stopReq)throw STOPPED;const idx=await loadIndex();if(!idx.camtek.length&&!idx.kla.size)setMsg('캐시가 비어 있습니다 — 재리뷰 여부만 확인합니다. [캐시 갱신]을 누르세요.');
   for(let i=0;i<lots.length;i++){setMsg((i+1)+' / '+lots.length+' 조회 중… '+lots[i]);if(stopReq)throw STOPPED;results.push(await lookLot(lots[i],idx));setBar((i+1)/lots.length*100)}
   render();const need=results.reduce((n,r)=>n+(r.layers||[]).filter(l=>l.status==='need').length,0);setMsg('조회 완료: Lot '+lots.length+'개 · 재리뷰 필요 Layer '+need+'개')}
