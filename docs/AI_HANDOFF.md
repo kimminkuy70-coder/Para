@@ -1,5 +1,31 @@
 # AI 공통 인수인계
 
+## 최신 재개 — #89 후속: 0.7708 µm/px 출처 · 기본 모드 새 창 = 대규모 새 창 계획 (2026-11-23 KST, `version_v14`, 이슈 #89 댓글 3)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `efba127` · 소유자 댓글: "간단 모델 0.7708 이 있는 파일을 찾아 구글 드라이브 예시 파일로 직접 확인 — 정확히 알면 보정 기능은 필요 없을 것 같다",
+  "기본 모드 새 창을 대규모 새 창처럼(화면 잠금 · 빨간 박스 끄기 등, GL 원은 안 함)" — **계획만**. 코드 안 바꿈, 릴리스 없음.
+- 0.7708 = **어느 파일에도 없음**. rev6 HTML `const PIX=0.7708`(rev1 때 'Pixel Size' 설정 기본값, rev5 에서 설정을 없애며 고정). 쓰는 곳 2곳:
+  ① 기본 모드(Step 3 · 4) `locateGray` 의 간단 모델(frameToChuckPlane 없을 때만): `px=(X−프레임x)/0.7708` — 프레임 좌표를 **모서리(0, 0)** 로 봄.
+     대규모 `cgLoad` 의 가운데 모델은 프레임 좌표 = **가운데**(off = −pix·1584, −pix·512, 주석: 실제 변환 파일로 확인 ≤ 0.13 px) → 간단 모델은 X 1584 px(≈1219 µm) · Y 512 px(≈394 µm) 어긋남 = **큰 오차는 기준점, 0.7708 아님**.
+  ② Area µm² = Surface.flt area(Gray px²) × 0.7708² — 두 모드 목록 · 필터 · CSV · 엑셀 전부.
+- 정확한 값이 있는 곳: `frameToChuckPlane(.N).ini` Scan_X = a b ox · Scan_Y = c d oy(a, d = µm/px, b, c = 회전, 프로그램은 행렬 전체 사용) · `s_FrameData.dat(+.md)` 레코드 192 B PixelSizeX(@120, double) ·
+  ColorImageGrabingInfo.ini PixelSizeX/Y 는 Color 카메라(≈0.46, Gray 아님). 코드 상수: Para `colorgray.GP`=0.769644115336745(Crop 크기), rev6 `CG_PIX`=0.7698455822(대규모 대체), `PIX`=0.7708.
+  GP 는 Para 변환계수 0.7696441409644141(다른 배율)과 8자리까지 같음 → **Gray 픽셀 크기는 배율(optic)마다 다를 수 있음**(기본형 계수 0.8457, 확인 전 — 맞다면 0.7708 고정은 ≈154 px · Area −17%).
+  0.7708 vs 0.76964 = 0.15%(프레임 가운데에서 끝까지 ≤ 2.4 px, Area +0.30%).
+- 모드 차이(Gray 위치): 기본 = Surface.flt x/y · ScanResultImageList 필수 · 번호 파일만이면 첫 파일 · 좌표 기준 '그대로'만 · 변환 없으면 간단 모델.
+  대규모 = Color FaultX/Y(없으면 Defect 좌표) · 목록 없으면 Gray 사진 이름 + Wafer2Table / s_FrameData · 번호 파일만이면 큰 번호(.2) · 좌표 기준 4가지 중 많이 맞는 것 · 가운데 모델.
+- **실제 파일 확인 못 함**: 구글 드라이브의 예시는 `wafer map.zip`(280 MB) 하나뿐, Drive 커넥터는 10 MB 넘는 파일을 못 받음(`read_file_content` 는 zip 형식 거부). 저장소 이력의 zip 은 #82 에서 지움.
+  원본 HTML 저장소 추가(`add_repo related-AOI-program`)는 권한 거부. → 소유자에게 10 MB 이하 파일을 따로 올려 달라고 요청(목록은 이슈 댓글).
+- 계획(소유자 답 전): A. 기본 모드 Gray 위치 = 대규모와 같은 계산(Step 1 파일 목록을 `cgDirsFromList` 로 감싸 `cgLoad` · `cgOf`, 간단 모델 · `locateGray` 삭제), Area = Slot 의 실제 픽셀 크기(변환 → s_FrameData → 고정값, 소유자 확인 필요),
+  실제 파일로 대규모 · 기본 위치 같음 + 빨간 네모 위치 사진 확인 → 맞으면 좌표 보정 기능은 **보류**(남는 어긋남이 있을 때만 다시).
+  B. 기본 모드 새 창 = `photoWin`(한 창 `cw_photo` 재사용 · 목록 따라감, Color · Gray Crop(Color 시야) · Gray 프레임, 🔒 확대 · 위치 고정 F/L, 빨간 네모 B(`cgDefBox`, 종전 빨간 원 삭제), 노란 Crop 상자, 확대 · 끌기 · Esc,
+  ↑↓ 이동 · Space ☑, 파일 이름 + 경로, Color 만 칸, 다음 2개 미리 읽기, 설정 `cw.pwLock` · `cw.pwBox` 두 모드 공용, GL 원 없음). 대상 = Step 3 · 4 목록 Enter/더블 클릭 · 지도 점 · Step 2 쌍별 상세 표. 원본 `openWindow` 삭제.
+- 시험(구현 때): `tests/test_defect_view_toggles.py`(정적), `tools/test_desktop_ui.mjs`(기본 모드 Enter 두 번 = 창 1개, #pwBox · #pwLock, B · ↓ · Space), node 로 두 모드 같은 가짜 Slot 위치 비교. 판 v14.3.19 예정.
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| #89 후속 | 0.7708 출처 · 실제 파일 확인 · 기본 모드 새 창 계획 | 출처 · 오차 분석 + 계획 보고 · 실제 파일 확인 못 함(10 MB 한도) · 코드 무변경 · 릴리스 없음 |
+
 ## 최신 재개 — #89 질문: Defect 분석 대규모/기본 차이 · 사진 불러오기 · 좌표 보정 계획 (2026-11-23 KST, `version_v14`, 이슈 #89)
 
 - 마지막 갱신 2026-11-23 · 기준 커밋 `399c963`(v14.3.18) · 이슈 #89 "질문사항3"(자동 실행 routine 처리, 첨부 없음).
