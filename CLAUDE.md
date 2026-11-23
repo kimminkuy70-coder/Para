@@ -69,6 +69,16 @@
 - **v14.3.17(#86, 2026-11-20)**: 5-3 엑셀 체크 이름 **[원본 이미지로 저장]**(종전 '원본 이미지도 넣기', `cw.xlOrig` 그대로). 켜면 Color 열 = Color 원본(`XL_CO`, `o.c=o.co`), 흑백 표시 열은 두고 Gray 프레임 뒤에 `XL_ORIG` 2열 = Gray Crop 원본(`cropPng(k.raw)`, 표시 없음 PNG) · Gray 프레임 원본(파일 그대로). 새 단추 **[🗂 최종 목록 사진 파일.zip 저장]**(`c5SaveZip`) = zip 안 `color/` · `gray/`(원본 바이트 `origBytes`, 같은 원본은 한 번) · `gray crop/`(원본 이름 + .png, Defect 마다, 이름 겹치면 `_2`). 원본 폴더에는 쓰지 않음.
 - **v14.3.16(#84, 2026-11-19)**: 5-3 **[흑백 GL 측정] = 최종 목록(☑) 중 흑백 사진이 있는 Defect 만**(`glTargets` = `C5.base`(보기 · 검색, GL 범위 전) 중 `p.pick` && `glCan`, 종전 = `c5Pool()` 전체).
   ☐ 줄은 재지 않음, 단추 글 '흑백 GL 측정 (☑ 만)'. 시험 `test_defect_view_toggles.py` `test_gl_run_final_list_only` + `test_desktop_ui.mjs`.
+- **v14.4.1 판(아직 릴리스 안 함 — 소유자 "릴리즈까지는 하지마, 업데이트 사항이 더 남았어", #89 후속 2026-11-23)**: Defect 분석 **Gray 위치 = 기본 · 대규모 같은 계산**(rev6 3절 `geo*`).
+  `geoLoad`(두 모드의 Slot 읽기 — 대규모 `cgLoad`, 기본 `buildScan` → `dirFromFiles`) · `geoHit`(대규모 `cgDefGray`, 기본 `grayOf`). 종전 `locateGray` · `cgChoose` · `cgRect` · 기본 모드 '간단 모델' 삭제.
+  프레임 크기 · 픽셀 = **레시피마다 Slot 파일에서**(실제 Slot 3장: 3168×1024 · 2848×1024 · 2048×2048, 0.385 ~ 1.69 µm): 크기 = 변환 offset(`tfSize`, −M·(W/2, H/2)) → s_FrameData frameSize → 3168×1024,
+  Gray 픽셀 = 변환(`tfPix`) → s_FrameData → `RecipesInfo.ini` Scan2DPixelSize(**0.7708 의 출처**, 공칭) → 0.7698. 그림(`hitW`/`hitH`) · Crop 시야(`cgCropSize(c, gp, cp)`, Color 픽셀 = RecipesInfo ColorPixelSize 대체)도 그 값.
+  목록 없음 = Gray 사진 이름 + **s_FrameData 먼저**(잰 위치) → Wafer2Table(이름 정수 좌표, 수 µm 다름). 변환 없음 = 레시피마다 가운데 모델. 번호 파일만 = 그 레시피 번호 → 큰 번호.
+  **장비 프레임 기록**(Surface.flt frameIdx · xInFrame · yInFrame, `COLS` fi · xf · yf)이 있으면 그 프레임 · 픽셀(`geoRecHit`, s_FrameData 같은 recipe · frameIdx 중 Defect 좌표와 5 µm 안, 5-2 에서 `geoLoadFd`).
+  **대규모 = ColorImageGrabingInfo.ini 없어도 됨**(종전 = Color · Gray 둘 다 '매칭 파일 없음'): Color = 사진 이름(`cgColorsFromNames`, 연결 = 기본 모드 `colorModel` · `linkColor`, `CG_HOW[4]`), Gray = Defect 좌표.
+  Defect 의 Gray 는 늘 Defect 좌표(종전 대규모 = Color Fault — 실제 자료에서 같음). **기본 모드 새 창 = 대규모와 같은 창**(`photoWinOpen` + 자료원 `bigSrc` · `baseSrc` · `listSrc`, 칸 자료 `bigView` · `baseView`):
+  한 창 재사용 · Color · Gray Crop · Gray 프레임 · 🔒 고정 · 빨간 네모 B · ↑↓(기본 = ☑ 줄만) · Space ☑, **측정 원 없음(기본, 소유자)**, 종전 `openWindow` 삭제. 5-2 CSV 끝에 `Gray프레임크기` 열 추가(GrayPX/PY 열 이름 그대로).
+  Area µm² 는 아직 0.7708² 그대로(단위 확인 전 — x5 레시피 Slot 의 Box 가 정수가 아님). 시험 `tests/test_gray_geometry.py`(가짜 숫자 · node) + `test_desktop_ui.mjs`(기본 모드 새 창). 원본 HTML(ccr 브랜치)은 안 고침.
 - 엔진 다리 = `param_manager/defect_fs.py` + `webserver.py` `GET /api/fs/list · stat · file · walk`(토큰 헤더) + `Natives.defect_pick`(Windows 고르기 창 → 그 폴더만 읽기 뿌리).
   **읽기 전용**(scandir · stat · open rb 만, `tests/test_defect_fs.py` 가 쓰기 코드 없음을 확인) · 뿌리 밖 경로 거부('..' · 점/공백만 · '\\' · ':' · NUL) · 파일 64 MB 한도 · walk 200만 개 한도.
   브라우저 webkitdirectory '업로드'(50만 파일 ≈ 1시간)와 Windows Chromium 의 폴더 핸들 .ini 거부(파일 형식 정책 ini = DANGEROUS)를 둘 다 피한다.

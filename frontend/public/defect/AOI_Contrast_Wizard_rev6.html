@@ -391,7 +391,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
   </div>
   <div id="b5p1">
     <div class="card">
-      <p class="muted">레시피 폴더를 고르십시오(그 아래 Setup → Lot → Slot 최대 25개). Slot(= Surface.flt 가 있는 폴더)마다 <b>Surface.flt</b>(Contrast(실제) · Area · Width · Length)와 <b>매칭 파일</b>(ColorImageGrabingInfo.ini 필수 · ScanResultImageList.txt · frameToChuckPlane.ini — 이름으로 바로 읽음. 목록 · 변환 파일이 없으면 Gray 사진 이름 · Wafer2Table.ini · s_FrameData.dat 로 대신 계산)를 읽어 <b>Para 프로그램 'Color · Gray 매칭'과 같은 계산</b>으로 Defect 마다 Color 이미지 · Gray 프레임 · 픽셀을 미리 구합니다(목록의 'Color · Gray 매칭' 칸). 사진은 이 단계에서 읽지 않습니다. 원본은 읽기만 합니다.</p>
+      <p class="muted">레시피 폴더를 고르십시오(그 아래 Setup → Lot → Slot 최대 25개). Slot(= Surface.flt 가 있는 폴더)마다 <b>Surface.flt</b>(Contrast(실제) · Area · Width · Length)와 <b>매칭 파일</b>(ColorImageGrabingInfo.ini · ScanResultImageList.txt · frameToChuckPlane.ini — 이름으로 바로 읽음. Color 정보 파일이 없으면 Color 사진 이름으로 연결하고 Gray 는 Defect 좌표로 찾음, 목록 · 변환 파일이 없으면 Gray 사진 이름 · s_FrameData.dat · Wafer2Table.ini · RecipesInfo.ini 로 대신 계산)를 읽어 <b>Para 프로그램 'Color · Gray 매칭'과 같은 계산</b>으로 Defect 마다 Color 이미지 · Gray 프레임 · 픽셀을 미리 구합니다(목록의 'Color · Gray 매칭' 칸). 사진은 이 단계에서 읽지 않습니다. 원본은 읽기만 합니다.</p>
       <div class="row"><input type="file" id="bigInput" webkitdirectory multiple hidden>
         <button class="pri" id="bigAdd">레시피 폴더 고르기</button><button id="bigClear">모두 지우기</button>
         <label>동시에 읽을 폴더 <select id="bigPar"><option>1</option><option>2</option><option selected>4</option><option>8</option></select></label>
@@ -575,7 +575,8 @@ function parseFlt(buf,lay,rec){
 /** Step 5(대용량): Surface.flt → 열 배열(필요한 필드만, Defect 마다 객체를 만들지 않는다). [열 키, 필드 이름, 배열 형식] */
 const COLS=[['x','x',Float64Array],['y','y',Float64Array],['ax','ActualX',Float64Array],['ay','ActualY',Float64Array],['id','id',Int32Array],['rid','resultID',Int32Array],['rec','recipe',Uint8Array],
   ['bw','BoxWidth',Float32Array],['bh','BoxHeight',Float32Array],['area','area',Float64Array],['w','BlobBreadth',Float64Array],['l','BlobLength',Float64Array],['c','Contrast',Float64Array],
-  ['rc','reclassify',Int16Array],['orc','orgReclassify',Int16Array],['zn','zone',Uint8Array],['rg','waferRegion',Uint8Array],['ty','Type',Int32Array]];   // #73: 리뷰PC 정보(Zone · Region · 판정 비트)   // rev5: Classify(분류 코드 → ManReClassify.ini 이름)
+  ['rc','reclassify',Int16Array],['orc','orgReclassify',Int16Array],['zn','zone',Uint8Array],['rg','waferRegion',Uint8Array],['ty','Type',Int32Array],
+  ['fi','frameIdx',Int32Array],['xf','xInFrame',Float32Array],['yf','yInFrame',Float32Array]];   // v14.4.1(#89): 장비가 적은 Defect 의 프레임 · 픽셀(있으면 Gray 위치에 그대로 — geoHit)   // #73: 리뷰PC 정보(Zone · Region · 판정 비트)   // rev5: Classify(분류 코드 → ManReClassify.ini 이름)
 function parseFltCols(buf,lay,rec){
   lay=lay||fltLayout(null).lay;rec=rec||REC;
   const n=Math.floor(buf.byteLength/rec),rem=buf.byteLength%rec,dv=new DataView(buf),by=new Map(lay.map(f=>[f.name,f])),C={n};
@@ -702,23 +703,77 @@ function matchBySlot(A,B,tol){const ga=new Map(),gb=new Map(),put=(m,x)=>{const 
   return {keep,gone,added}}
 
 // ════════════════════════════════════════════════════════════════════════
-// 3. Gray 프레임 · 픽셀 찾기 (colorgray.choose_frame 와 같은 모델)
+// 3. Gray 프레임 · 픽셀 찾기 — 기본(Step 1 ~ 4) · 대규모(Step 5) 공통 (v14.4.1, #89 — 소유자 "수정된 로직은 대규모, 기본 모드 둘다 동일하게")
+//   모델 = Para 'Color · Gray 매칭'(colorgray.choose_frame): Gray 픽셀 p = M⁻¹ · (결함 − 프레임 좌표 − o)(frameToChuckPlane Scan_X · Scan_Y 의 M · o),
+//   프레임 좌표 = 프레임 가운데(o = −M·(W/2, H/2)), 같은 레시피 프레임 중 p 가 프레임 안이고 가장자리에서 가장 먼 것.
+//   #89 실제 Slot 3장: 프레임 크기 · 픽셀 크기는 레시피(배율)마다 다르다 — PI 3168×1024 · 0.7707 / x20 2848×1024 · 0.3853 / x5 3168×1024 · 1.5369 /
+//   2D+3D 2048×2048 · 1.6899 µm. 종전 3168×1024 · 0.7708 고정은 PI 레시피에만 맞았다 → Slot 의 파일에서 읽는다:
+//     크기 = 변환 offset → s_FrameData frameSize → 3168×1024, 픽셀 = 변환 → s_FrameData PixelSize → RecipesInfo.ini Scan2DPixelSize(공칭, 0.7708 의 출처) → 0.7698.
+//   장비가 Defect 의 프레임 · 픽셀(Surface.flt frameIdx · xInFrame · yInFrame)을 적어 두었으면 그것을 그대로 쓴다(실제 74개: 그 값으로 다시 계산한 좌표 = Defect 좌표 ± 0.9 µm).
+//   종전 기본 모드는 변환 파일이 없으면 프레임 좌표를 모서리로 본 '간단 모델'(0.7708, 약 1200 µm 어긋남) · 목록이 없으면 Gray 없음이었다 — 지금은 대규모와 같은 대체 계산.
 // ════════════════════════════════════════════════════════════════════════
-const GW=3168,GH=1024;   // Gray 프레임 크기(px). 실제 이미지 크기가 다르면 비율로 맞춘다.
-/** 결함 좌표 → {frame, px, py, model, n} 또는 {reason}. model: 'transform'(Color·Gray 매칭 변환) | 'simple'(보정 필요). */
-function locateGray(X,Y,recipe,scan,opt){
-  const fr=scan.frames;if(!fr.length)return {reason:'ScanResultImageList 없음'};
-  const same=fr.filter(f=>f.recipe===recipe);const pool=same.length?same:(fr.filter(f=>f.recipe==null).length?fr.filter(f=>f.recipe==null):fr);
-  const tf=scan.transforms.size?(scan.transforms.get(recipe)||scan.transforms.get(null)||[...scan.transforms.values()][0]):null;
-  let best=null,n=0;
-  for(const f of pool){let px,py;
-    if(tf){const tx=X-f.x-tf.off[0],ty=Y-f.y-tf.off[1];px=tf.inv[0][0]*tx+tf.inv[0][1]*ty;py=tf.inv[1][0]*tx+tf.inv[1][1]*ty}
-    else{px=(X-f.x)/opt.pix;py=(Y-f.y)/opt.pix}
-    if(opt.flipX)px=GW-px;if(opt.flipY)py=GH-py;px+=opt.offX;py+=opt.offY;
-    if(px>=0&&px<GW&&py>=0&&py<GH){n++;const m=Math.min(px,GW-px,py,GH-py);if(!best||m>best.m)best={m,frame:f,px,py}}}
-  if(!best)return {reason:'좌표 변환 보정 필요',model:tf?'transform':'simple'};
-  return {frame:best.frame,px:best.px,py:best.py,n,model:tf?'transform':'simple'};
-}
+const GEO_W=3168,GEO_H=1024,GEO_PIX=0.7698455822,GEO_REC_TOL=5;   // 마지막 대체값(파일에 아무 값도 없을 때) · 장비 기록 프레임 고르기 허용(µm)
+/** 변환 → 프레임 크기 {W, H}: 프레임 좌표(가운데) = 픽셀 (W/2, H/2) = −M⁻¹ · o. 값이 이상하면(예: offset 0) null. */
+function tfSize(t){if(!t||t.err)return null;if(t.W>0&&t.H>0)return {W:t.W,H:t.H};
+  const [[a,b],[c,d]]=t.inv,[ox,oy]=t.off,w=-2*(a*ox+b*oy),h=-2*(c*ox+d*oy),W=Math.round(w),H=Math.round(h);
+  return W>=64&&H>=64&&W<=20000&&H<=20000&&Math.abs(w-W)<2&&Math.abs(h-H)<2?{W,H}:null}
+/** 변환 → Gray 픽셀 크기(µm) = √|det M|. */
+function tfPix(t){if(!t||t.err)return null;if(t.pix>0)return t.pix;const [[a,b],[c,d]]=t.inv,k=Math.abs(a*d-b*c);return k>0?1/Math.sqrt(k):null}
+/** RecipesInfo.ini [Recipe-N] → {pix: Map(레시피 → Scan2DPixelSize µm — 장비 공칭값, 0.7708 의 출처, 변환 파일이 없을 때만), cpix: Map(레시피 → ColorPixelSize µm — Color 정보 파일이 없을 때 Crop 시야)}. */
+function parseRecipesInfo(text){const pix=new Map(),cpix=new Map();for(const s of parseIni(text)){const r=/^recipe-?(\d+)$/i.exec(s.name);if(!r)continue;const p=num(s.kv.scan2dpixelsize),c=num(s.kv.colorpixelsize);
+  if(p>0.05&&p<20)pix.set(+r[1],p);if(c>0.02&&c<20)cpix.set(+r[1],c)}return {pix,cpix}}
+const geoFirst=m=>m&&m.size?m.values().next().value:null;
+/** 레시피 r 의 프레임 크기 {W, H} · Gray 픽셀 크기(µm). */
+function geoSize(G,r){return tfSize(cgTfFor(G.tfs,r))||G.fsize.get(r)||G.fsize.get(null)||geoFirst(G.fsize)||{W:GEO_W,H:GEO_H}}
+function geoPix(G,r){const p=G?tfPix(cgTfFor(G.tfs,r)):null;return p>0.05&&p<20?p:G&&(G.fpix.get(r)||G.rpix.get(r)||geoFirst(G.fpix)||geoFirst(G.rpix))||GEO_PIX}
+/** 좌표 (x, y) · 레시피 r → 프레임 고르기. {frame, px, py, n(후보 수), W, H, model} 또는 null. */
+function geoChoose(G,x,y,r){const t=cgTfFor(G.tfs,r);if(!t||t.err||!G.frames.length)return null;const {W,H}=geoSize(G,r),[[a,b],[c,d]]=t.inv,[ox,oy]=t.off;let best=null,n=0;
+  for(const f of cgPool(G.frames,r,G.pmemo||(G.pmemo=new Map()))){const tx=x-f.x-ox,ty=y-f.y-oy,px=a*tx+b*ty,py=c*tx+d*ty;
+    if(px>=0&&px<W&&py>=0&&py<H){n++;const m=Math.min(px,W-px,py,H-py);if(!best||m>best.m)best={m,f,px,py}}}
+  return best?{frame:best.f,px:best.px,py:best.py,n,W,H,model:t.model||'transform'}:null}
+/** colorgray.frames_rect: 프레임 네 모서리를 변환 정방향으로 chuck 좌표에 놓은 직사각형 [x0, y0, x1, y1](좌표 기준 고르기용). */
+function geoRect(G){let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  for(const f of G.frames){const r=f.recipe!=null?f.recipe:1,t=cgTfFor(G.tfs,r);if(!t||t.err)continue;const [[a,b],[c,d]]=t.inv,det=a*d-b*c;if(!det)continue;
+    const m=[[d/det,-b/det],[-c/det,a/det]],{W,H}=geoSize(G,r);
+    for(const [px,py] of [[0,0],[W,0],[0,H],[W,H]]){const x=f.x+t.off[0]+m[0][0]*px+m[0][1]*py,y=f.y+t.off[1]+m[1][0]*px+m[1][1]*py;
+      x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}}
+  return x0<=x1?[x0,y0,x1,y1]:null}
+/** 표본 pts([[x, y, recipe]]) 중 좌표 기준 mode 로 프레임을 찾은 수. */
+function geoCount(G,pts,mode){let k=0;for(const [x,y,r] of pts){const [X,Y]=cgMap(mode,x,y,G.rect);if(geoChoose(G,X,Y,r))k++}return k}
+/** 좌표 기준(CG.MODES) 고르기: '그대로'로 다 맞으면 끝, 아니면 가장 많이 맞는 것(동점 = 앞). Defect 좌표 표본으로(두 모드 같음). */
+function geoPlan(G,pts){G.rect=geoRect(G);G.mode=0;G.ptsN=pts.length;G.planHits=0;if(!pts.length||!G.frames.length)return 0;
+  let hits=geoCount(G,pts,0);if(G.rect&&hits<pts.length)for(let m=1;m<CG.MODES.length;m++){const k=geoCount(G,pts,m);if(k>hits){G.mode=m;hits=k}}
+  G.planHits=hits;return hits}
+/** 좌표 기준 · 장비 기록 확인용 Defect 표본(많으면 고르게 600개). */
+function geoPtsCols(C){const n=C.n,st=Math.max(1,Math.ceil(n/600)),out=[];for(let i=0;i<n;i+=st)if(Number.isFinite(C.x[i])&&Number.isFinite(C.y[i]))out.push([C.x[i],C.y[i],C.rec[i]]);return out}
+function geoPtsDefs(D){const n=D.length,st=Math.max(1,Math.ceil(n/600)),out=[];for(let i=0;i<n;i+=st){const d=D[i],x=d.X??d.x,y=d.Y??d.y;if(Number.isFinite(x)&&Number.isFinite(y))out.push([x,y,d.recipe])}return out}
+/** 장비 프레임 기록(frameIdx · xInFrame · yInFrame)이 하나라도 있나. */
+function geoHasRecCols(C){if(!C.fi)return false;for(let i=0;i<C.n;i++)if(C.fi[i]||C.xf[i]||C.yf[i])return true;return false}
+const geoHasRecDefs=D=>D.some(d=>d.frameIdx||d.xInFrame||d.yInFrame);
+/** 장비 기록 → {frame, px, py, ...}: s_FrameData 의 같은 레시피 · frameIdx 레코드(두 번 찍힌 프레임이면 그 픽셀이 Defect 좌표와 맞는 것, 5 µm 안) → 그 프레임의 Gray 사진. 못 찾으면 null(계산으로). */
+function geoRecHit(G,x,y,r,fi,xf,yf){const R=G.fd;if(!R||!R.fi)return null;const t=cgTfFor(G.tfs,r);if(!t||t.err)return null;
+  const {W,H}=geoSize(G,r),[[a,b],[c,d]]=t.inv,det=a*d-b*c;if(!det)return null;
+  if(!R.byFi){R.byFi=new Map();for(let i=0;i<R.n;i++){const k=R.rc[i]+'|'+R.fi[i];(R.byFi.get(k)||R.byFi.set(k,[]).get(k)).push(i)}}
+  const dx=xf-W/2,dy=yf-H/2,ex=(d*dx-b*dy)/det,ey=(-c*dx+a*dy)/det;let best=-1,bd=GEO_REC_TOL;
+  for(const i of R.byFi.get(r+'|'+fi)||[]){const dd=Math.hypot(R.wx[i]+ex-x,R.wy[i]+ey-y);if(dd<bd){bd=dd;best=i}}
+  if(best<0)return null;const fr=geoFrameOf(G,best);
+  return fr?{frame:fr,px:xf,py:yf,n:1,W,H,model:'record',dd:bd}:null}
+/** s_FrameData 레코드 i 의 Gray 사진: 프레임 목록에서 같은 자리(3 µm 안) → Gray 사진 이름의 Table 좌표(5 µm 안). */
+function geoFrameOf(G,i){const R=G.fd,wx=R.wx[i],wy=R.wy[i],r=R.rc[i]>=0?R.rc[i]:null;let best=null,bd=3;
+  for(const f of G.frames){if(f.recipe!=null&&r!=null&&f.recipe!==r)continue;const dd=Math.hypot(f.x-wx,f.y-wy);if(dd<bd){bd=dd;best=f}}
+  if(best)return best;let b=null;bd=5;
+  for(const g of G.gn&&!G.gn.err?G.gn:[]){if(g.recipe!=null&&r!=null&&g.recipe!==r)continue;const dd=Math.hypot(g.tx-R.tx[i],g.ty-R.ty[i]);if(dd<=bd){bd=dd;b=g}}
+  return b?{file:b.file,x:wx,y:wy,recipe:b.recipe}:null}
+/** Defect 하나의 Gray 위치(두 모드 공통): 장비 기록이 있으면 그것 → 없으면 좌표 기준을 적용한 Defect 좌표로 계산. 없으면 null(이유 = geoWhy). */
+function geoHit(G,x,y,r,fi,xf,yf){if(!G||!G.frames||!G.frames.length)return null;
+  if((fi||xf||yf)&&G.fd){const h=geoRecHit(G,x,y,r,fi,xf,yf);if(h)return h}
+  const [X,Y]=cgMap(G.mode,x,y,G.rect);return geoChoose(G,X,Y,r)}
+const geoWhy=G=>!G?'Gray 위치 자료를 읽지 않음':G.noGray?`Gray 없음 — ${G.noGray}`:!G.frames.length?'Gray 프레임 목록 없음':'매칭되는 Gray 프레임 없음(프레임 밖)';
+/** 화면 · CSV 글: 계산 방법. */
+const geoModel=h=>!h?'':h.model==='record'?'장비 기록(frameIdx · xInFrame)':h.model==='center'?'가운데 모델(변환 파일 없음)':'frameToChuckPlane';
+/** Step 1 파일 목록(이름 → File) → 매칭 폴더 모양(geoLoad 가 읽는 get · names). */
+function dirFromFiles(base,files){const m=new Map();for(const [k,f] of files)m.set(k,{name:f.name,path:base+'/'+f.name,file:async()=>f&&f.getFile?f.getFile():f});
+  const get=async n=>m.get(lower(n))||null;return {path:base,get,peek:get,opt:get,listed:()=>true,names:async()=>m,subs:async()=>[],errs:()=>[]}}
 /** Color 연결(rev2, 소유자 확정 2026-11-10: "Contrast 가 있는 Defect 는 좌표가 있고 Color 이미지 정보는 어떤 경우에도 있다 · 사진은 모두 Slot 폴더 안").
  *  스캔마다 colorModel 로 한 번 기준을 정한다 → Defect 마다
  *   ① 좌표: Color FaultX/FaultY 와 Defect 좌표(x/y 또는 ActualX/ActualY 중 더 잘 맞는 쪽 + 스캔 전체에서 일정한 어긋남을 보정)가 허용오차 안
@@ -999,7 +1054,7 @@ function compareViews(msg){const u=S.unit||'lot',L=lotsOf();S.lotViews=S.lotView
   const k=u.slice(5),out=[];for(const l of L){const w=l.wafers.find(w=>w.slot===k&&!w.errors.length);if(w)out.push(w);else msg.push(['warn',`Lot ${l.path}: Slot ${k} 이 없거나 오류라 뺐습니다.`])}
   return out}
 function showLoad(list){$('#loadMsg').innerHTML=list.map(([k,t])=>`<div class="msg ${k}">${esc(t)}</div>`).join('')}
-async function buildScan(name,own){
+async function buildScan(name,own,opt){
   const files=new Map();for(const e of own){const k=lower(baseName(e.path));if(!files.has(k))files.set(k,e.file)}
   const get=n=>files.get(lower(n));const text=async n=>{const f=get(n);return f?await readText(f):null};
   const s={id:++scanSeq,seq:scanSeq,name,files,warns:[],errors:[],step:baseName(name),tool:'',contrast:null,defects:[],colors:[],frames:[],transforms:new Map(),colorByIndex:new Map(),product:null,images:0};
@@ -1017,11 +1072,14 @@ async function buildScan(name,own){
   if(s.defects.length&&s.defects.every(d=>!d.frameIdx&&!d.xInFrame&&!d.yInFrame))s.warns.push('frameIdx/xInFrame/yInFrame 이 모두 0 — Wafer 좌표로 Gray 위치를 계산합니다');
   const ci=await text('ColorImageGrabingInfo.ini');if(ci){s.colors=parseColors(ci);for(const c of s.colors)if(c.index!=null&&!s.colorByIndex.has(c.index))s.colorByIndex.set(c.index,c)}else s.warns.push('ColorImageGrabingInfo.ini 없음');
   if(!s.colors.length){s.colors=colorsFromNames([...files.values()].map(f=>f.name));if(s.colors.length)s.warns.push(`Color 항목이 없어 Slot 폴더의 Color 사진 ${s.colors.length}장 이름(X.Y.c.….jpeg)의 좌표로 연결합니다`);else s.warns.push('Color 이미지 정보 없음(ini · 사진 이름 둘 다) — Color 연결 불가')}
-  const fl=await text('ScanResultImageList.txt');if(fl)s.frames=parseFrames(fl);else s.warns.push('ScanResultImageList.txt 없음 — Gray Crop 불가');
-  for(const [k] of files){const t=/^frametochuckplane(?:\.(.+))?\.ini$/.exec(k);if(!t)continue;
-    try{s.transforms.set(t[1]&&/^\d+$/.test(t[1])?+t[1]:null,parseTransform(await readText(files.get(k))))}catch(e){s.warns.push(k+': '+e.message)}}
-  if(!s.transforms.size&&s.frames.length)s.warns.push('frameToChuckPlane.ini 없음 — 간단 좌표 모델(보정 필요)');
-  if(get('s_FrameData.dat'))s.frameData=`s_FrameData.dat ${get('s_FrameData.dat').size} byte${get('s_FrameData.dat.md')?' + .md':''} (참고용, 좌표 계산에는 frameToChuckPlane 사용)`;
+  // v14.4.1(#89): Gray 위치 자료 = 대규모 모드와 같은 계산(geoLoad — 프레임 목록 · 변환 · 레시피별 프레임 크기 · 픽셀 크기 · 대체 계산 · 장비 프레임 기록).
+  //   종전: 목록이 없으면 Gray 없음, 변환 파일이 없으면 간단 모델(모서리 기준 · 0.7708), 3168×1024 고정. Step 5 가 다시 읽을 때(opt.noGeo)는 s.cg 를 쓰므로 건너뛴다.
+  if(!(opt&&opt.noGeo)){const G=s.geo=await geoLoad(dirFromFiles(name,files),geoPtsDefs(s.defects),geoHasRecDefs(s.defects)?'now':false);s.frames=G.frames;s.transforms=G.tfs;
+    if(G.noGray)s.warns.push(`Gray 위치를 구할 수 없음 — ${G.noGray}`);else if(G.src.frames!==CG.SL)s.warns.push(`${CG.SL} 없음 — Gray 프레임 위치를 ${G.src.frames} 로 계산`);
+    if(/모델/.test(G.src.tf||''))s.warns.push(G.src.tf);else if(G.usedHi)s.warns.push(`레시피 번호가 같은 변환 파일이 없는 Defect 는 ${G.src.tf} 의 큰 번호 파일로 계산`);
+    for(const tf of new Set(G.tfs.values()))if(tf&&tf.err)s.warns.push(tf.err);
+    if(G.mode)s.warns.push(`좌표 기준: ${CG.MODES[G.mode]}(프레임과 맞는 Defect 가 가장 많음)`)}
+  if(get('s_FrameData.dat'))s.frameData=`s_FrameData.dat ${get('s_FrameData.dat').size} byte${get('s_FrameData.dat.md')?' + .md':''}${s.geo&&s.geo.fd?' (읽음: 프레임 위치 · 크기 · 장비 기록)':' (변환 파일 · 목록이 있어 안 읽음)'}`;
   const pi=await text('ProductInfo.ini');if(pi){s.product=parseProduct(pi);if(!s.product)s.warns.push('ProductInfo.ini 에 Die Pitch/Cols/Rows 없음 — Die 계산 불가')}else s.warns.push('ProductInfo.ini 없음 — Die 계산 불가');
   // v14.3.12: wafer 원 중심 = Wafer2Table.ini 역변환(wafer → table 변환에서 table (0, 0) 이 되는 wafer 좌표). 그림에만 씀.
   //  종전 Params_WaferInfo Center_X/Y 는 값이 없을 때 0 이라 중심을 (0, 0) 으로 잘못 읽었다(#82 — 맵이 1 ~ 2칸 밀린 원인) → 쓰지 않음.
@@ -1167,7 +1225,8 @@ const dKey=r=>key(r.d)+'|'+r.st,dOn=r=>{const v=S.dpk&&S.dpk.get(dKey(r));return
 $('#fltSt').onchange=()=>{S.page=0;renderTable()};
 const DLS=lsBind('detLs',{onQ:T=>{S.dq=T;S.page=0;renderTable()},onAll:v=>{S.dpk=S.dpk||new Map();for(const r of filtered())S.dpk.set(dKey(r),v);renderTable()}});$('#pgPrev').onclick=()=>{S.page=Math.max(0,S.page-1);renderTable()};$('#pgNext').onclick=()=>{S.page++;renderTable()};
 $('#detTbl').addEventListener('click',e=>{const tr=e.target.closest('tr[data-k]');if(!tr)return;const r=filtered()[+tr.dataset.k];
-  if(e.target.closest('td.pk')){S.dpk=S.dpk||new Map();S.dpk.set(dKey(r),!dOn(r));renderTable();return}openWindow(r)});
+  const tog=x=>{S.dpk=S.dpk||new Map();S.dpk.set(dKey(x),!dOn(x));renderTable()};
+  if(e.target.closest('td.pk')){tog(r);return}photoWinOpen(listSrc(filtered(),+tr.dataset.k,tog,dOn))});   // v14.4.1(#89): 대규모와 같은 새 창(↑↓ = 표의 다음 줄, Space = ☑/☐)
 function csvText(rows){rows=rows||S.rows;const q=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
   const head=['구분','ID','resultID','WaferX','WaferY','Die','DieX','DieY','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','비교Contrast','Step','Slot','ContrastAVG','호기','Color이미지','Color연결','Gray프레임','GrayPX','GrayPY','Gray모델','ROI_mean','ROI_median','ROI_max','Ring_median','ROI_local_delta','위치확인','Recipe','Zone','Region','판정비트','분류코드','Zone이름','판정종류','분류','장비Col','장비Row'];
   const lines=[head];
@@ -1227,7 +1286,7 @@ async function slotEntries(s){const out=[];let n=0;
 function fullLoad(s){if(!s.light)return READY;return s.fullP||(s.fullP=(async()=>{
   const entries=s.dirs.length?await slotEntries(s):(s.entries||[]);
   FS.note&&FS.note(`Step 1 과 같은 방식으로 읽는 중: ${s.name} (파일 ${entries.length.toLocaleString()}개)`);
-  const full=await buildScan(s.name,entries);
+  const full=await buildScan(s.name,entries,{noGeo:true});   // Gray 위치는 s.cg(cgLoad · geoLoad — 같은 계산)
   Object.assign(s,{files:full.files,colors:full.colors,colorByIndex:full.colorByIndex,frames:full.frames,transforms:full.transforms,w2t:full.w2t,dieLoc:full.dieLoc,dieCheck:full.dieCheck,crossCount:full.crossCount,images:full.images});
   if(full.product)s.product=full.product;delete s._mf;   // v14.3.12: 맵 기준(mapFrame)을 s_DieLocation 까지 넣어 다시
   s.paths=new Map();for(const e of entries){const k=lower(baseName(e.path));if(!s.paths.has(k))s.paths.set(k,e.path)}
@@ -1254,12 +1313,13 @@ function colorUrl(d){return ensureImg(d.scan).then(()=>{const c=linkColor(d,d.sc
 function grayBmp(scan,frame){const k=scan.id+'|'+lower(cleanName(frame.file));let p=bmpCache.get(k);
   if(!p){p=fileGet(scan,frame.file).then(f=>f?createImageBitmap(f):null).catch(()=>null);bmpCache.set(k,p)}return p}
 const grayMemo=new Map();   // 보정 값이 바뀌면 비운다
-function grayOf(d){const o=S.o,k=key(d)+'|'+[o.coord,o.pix,o.flipX,o.flipY,o.offX,o.offY].join();let g=grayMemo.get(k);if(!g){g=locateGray(d.X,d.Y,d.recipe,d.scan,o);grayMemo.set(k,g)}return g}
+/** Defect 의 Gray 위치 = 대규모 모드와 같은 geoHit(v14.4.1 #89). {frame, px, py, n, W, H, model} 또는 {reason}. */
+function grayOf(d){const k=key(d)+'|'+S.o.coord;let g=grayMemo.get(k);if(!g){const G=d.scan&&d.scan.geo,h=G?geoHit(G,d.X,d.Y,d.recipe,d.frameIdx,d.xInFrame,d.yInFrame):null;g=h||{reason:geoWhy(G)};grayMemo.set(k,g)}return g}
 /** Gray Crop 캔버스(가운데 = 결함, 빨간 박스 = BoxWidth×BoxHeight) + GL 측정. 범위 밖이면 이유 글을 돌려준다. */
 async function grayCrop(d,size){
   const g=grayOf(d);if(!g.frame)return {reason:g.reason};
   const bmp=await grayBmp(d.scan,g.frame);if(!bmp)return {reason:`Gray 이미지 없음: ${g.frame.file}`};
-  const o=S.o,sx=bmp.width/GW,sy=bmp.height/GH,cx=g.px*sx,cy=g.py*sy;
+  const o=S.o,sx=bmp.width/(g.W||GEO_W),sy=bmp.height/(g.H||GEO_H),cx=g.px*sx,cy=g.py*sy;   // 프레임 크기 = 그 레시피의 것(geoSize)
   if(cx<0||cy<0||cx>=bmp.width||cy>=bmp.height)return {reason:'좌표 변환 보정 필요'};
   const c=o.crop,cv=document.createElement('canvas');cv.width=cv.height=size||320;const x=cv.getContext('2d',{willReadFrequently:true});
   x.fillStyle='#000';x.fillRect(0,0,cv.width,cv.height);x.imageSmoothingEnabled=false;
@@ -1423,30 +1483,6 @@ function attachTip(cv,geo){
   cv.addEventListener('mouseleave',()=>{$('#tip').style.display='none';tipFor=null});
 }
 
-/** 새 창: Color 원본 + 전체 Gray 프레임(빨간 박스). 사진은 창 크기에 맞춘다(누르면 원래 크기 ↔ 창 맞춤). */
-async function openWindow(q){
-  const w=winOpen('_blank','width=1400,height=900');
-  const x=info(q),doc=w.document;doc.title=`Defect ${x.id} · ${x.step}`;
-  doc.head.insertAdjacentHTML('beforeend',`<style>html,body{height:100%}body{margin:0;background:#111;color:#eee;font:13px "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
-    .hd{padding:6px 10px;flex:none}.pane{flex:1;min-height:0;display:flex;gap:8px;padding:0 8px 8px}
-    figure{margin:0;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;border-radius:8px;overflow:auto;position:relative}
-    figcaption{position:absolute;left:6px;top:4px;background:#0009;padding:1px 6px;border-radius:4px;font-size:12px;z-index:1}
-    figure>img,figure>canvas{max-width:100%;max-height:calc(100vh - 110px);object-fit:contain;cursor:zoom-in}
-    figure.full{align-items:flex-start;justify-content:flex-start}figure.full>img,figure.full>canvas{max-width:none;max-height:none;cursor:zoom-out}
-    .ft{padding:0 10px 6px;flex:none;color:#bbb}pre.rv{flex:none;margin:0;padding:8px 10px;background:#1c1c1c;border-radius:8px;font:12px/1.4 Consolas,monospace;color:#ddd;align-self:flex-start}</style>`);
-  doc.body.innerHTML=`<div class="hd">[${esc(x.st)}] ID ${esc(x.id)} · ${esc(x.step)} · Slot ${esc(x.slot||'-')} · 호기 ${esc(x.tool||'-')} · Wafer ${f1(x.X)}, ${f1(x.Y)} µm · Die ${esc(x.die)} · Area ${fv(x.area)} µm² · Contrast ${fv(x.contrast)} <span style="color:#999">(사진을 누르면 원래 크기 ↔ 창 맞춤)</span></div>
-    <div class="pane"><figure id="c"><figcaption>Color</figcaption></figure><figure id="g"><figcaption>Gray 프레임</figcaption></figure><pre class="rv" id="rv">${esc(q.d.scan?rvText(q.d):'')}</pre></div><div class="ft" id="ft"></div>`;
-  const zoom=el=>el.onclick=()=>el.parentNode.classList.toggle('full');
-  const fc=doc.getElementById('c'),fg=doc.getElementById('g'),ft=doc.getElementById('ft');
-  const u=await colorUrl(q.d);if(u){const im=doc.createElement('img');im.src=u;zoom(im);fc.append(im)}
-  else fc.insertAdjacentHTML('beforeend','<p>Color 이미지 연결 실패</p>');
-  const g=grayOf(q.d);if(!g.frame){fg.insertAdjacentHTML('beforeend',`<p>Gray: ${esc(g.reason)}</p>`);return}
-  const bmp=await grayBmp(q.d.scan,g.frame);if(!bmp){fg.insertAdjacentHTML('beforeend',`<p>Gray 이미지 없음: ${esc(g.frame.file)}</p>`);return}
-  const cv=doc.createElement('canvas');cv.width=bmp.width;cv.height=bmp.height;const c=cv.getContext('2d');c.drawImage(bmp,0,0);
-  const sx=bmp.width/GW,sy=bmp.height/GH,bw=Math.max(6,(q.d.BoxWidth||4)*sx),bh=Math.max(6,(q.d.BoxHeight||4)*sy),lw=Math.max(2,bmp.width/600);c.strokeStyle='#ff2d2d';c.lineWidth=lw;
-  c.strokeRect(g.px*sx-bw/2-4,g.py*sy-bh/2-4,bw+8,bh+8);c.beginPath();c.arc(g.px*sx,g.py*sy,Math.max(24,bw*2),0,7);c.stroke();zoom(cv);fg.append(cv);
-  ft.textContent=`Gray 프레임 ${g.frame.file} · 픽셀 ${f1(g.px)}, ${f1(g.py)} · 모델 ${g.model==='transform'?'frameToChuckPlane':'간단(보정 필요)'}`;
-}
 
 // ════════════════════════════════════════════════════════════════════════
 // 11. 리뷰 패널 (Para #55 — Step 3 · 4 공용): wafer map(깜빡임 · 새 창 실시간 연동) + 목록 + Color/Gray 사진 + 정보
@@ -1504,7 +1540,7 @@ function makePanel(pre,mapHost,lowHost,o){
   L.addEventListener('scroll',()=>paintPanelList(P));
   L.addEventListener('click',e=>{const c=e.target.closest('.it>span.pk');if(c){panelTog(P,+c.parentNode.dataset.k);return}const n=e.target.closest('.it');if(n&&+n.dataset.k!==P.sel){P.sel=+n.dataset.k;showPanel(P)}});
   // 첫 클릭이 목록 줄을 다시 그리면 dblclick 대상이 목록 상자가 될 수 있다 → 그때는 고른 항목
-  L.addEventListener('dblclick',e=>{const n=e.target.closest('.it');if(n)P.sel=+n.dataset.k;const q=P.items[P.sel];if(q)openWindow(q)});
+  L.addEventListener('dblclick',e=>{const n=e.target.closest('.it');if(n)P.sel=+n.dataset.k;const q=P.items[P.sel];if(q)photoWinOpen(baseSrc(P))});
   P.el('All').addEventListener('change',()=>paintPanel(P));
   P.el('Pop').onclick=()=>popMap(P);
   P.el('Map').addEventListener('click',e=>{const q=hit(e,P.geo,P.el('Map'));if(q)panelPick(P,q)});
@@ -1576,16 +1612,17 @@ function popMap(P){
   setTimeout(()=>{paintPanel(P);sidePaint(P)},50)}
 /** 새 창 왼쪽(벤다이어그램 · 간략 지도) 다시 그리기 — 깜빡일 때마다가 아니라 자료 · 선택이 바뀔 때만 */
 function sidePaint(P){if(!P.pop||P.pop.w.closed)return;if(P===P3)drawVenn();else if(P===P4)paintEsc()}
-function panelPick(P,q){const k=P.items.indexOf(q);if(k>=0){P.sel=k;showPanel(P);return}if(P.o.pickOther&&P.o.pickOther(q))return;if(q.d)openWindow(q)}
+function panelPick(P,q){const k=P.items.indexOf(q);if(k>=0){P.sel=k;showPanel(P);return}if(P.o.pickOther&&P.o.pickOther(q))return;if(q.d)photoWinOpen(listSrc([q],0))}
 function panelKey(P,e){if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;const k=e.key.toLowerCase();
   if(k==='arrowdown'||k==='j'){P.sel=panelStep(P,1);showPanel(P);e.preventDefault()}else if(k==='arrowup'||k==='k'){P.sel=panelStep(P,-1);showPanel(P);e.preventDefault()}
   else if(k===' '){panelTog(P,P.sel);e.preventDefault()}
-  else if(k==='enter'){const q=P.items[P.sel];if(q)openWindow(q);e.preventDefault()}else if(P.o.mark&&k==='o')mark(P,'맞음');else if(P.o.mark&&k==='x')mark(P,'벗어남')}
+  else if(k==='enter'){const q=P.items[P.sel];if(q)photoWinOpen(baseSrc(P));e.preventDefault()}else if(P.o.mark&&k==='o')mark(P,'맞음');else if(P.o.mark&&k==='x')mark(P,'벗어남')}
 async function showPanel(P){
   const L=P.items;
   if(!L.length){if(P.o.onShow)P.o.onShow();paintPanel(P);P.el('Color').innerHTML=`<figcaption>Color</figcaption><div class="ph">${esc(P.o.empty)}</div>`;P.el('Gray').innerHTML='<figcaption>Gray Crop</figcaption>';P.el('Info').innerHTML='';P.el('Rv').textContent='';P.el('Mem').innerHTML='';return}
   P.sel=Math.max(0,Math.min(L.length-1,P.sel));const q=L[P.sel],tk=++P.tok,box=P.el('List');if(P.o.onShow)P.o.onShow();
   if(P.sel*RH<box.scrollTop)box.scrollTop=P.sel*RH;else if((P.sel+1)*RH>box.scrollTop+box.clientHeight)box.scrollTop=(P.sel+1)*RH-box.clientHeight;paintPanelList(P);blinkOn=true;paintPanel(P);
+  if(PW.src&&PW.src.key===P&&PW.w&&!PW.w.closed)photoWinShow();   // v14.4.1(#89): 새 창이 이 목록이면 같이 넘어감(대규모 photoWinFollow 와 같음)
   P.el('Mem').innerHTML=q.members&&q.members.length>1?'<span class="muted">사진 · 정보 스캔:</span>'+q.members.map((m,i)=>`<button data-mem="${i}" aria-pressed="${m===q.d}">${esc(stepName(m.scan))}${m.scan.slotName?' · '+esc(m.scan.slotName):''}</button>`).join(''):'';
   const x=info(q),c=linkColor(q.d,q.d.scan,S.o.ctol),g=grayOf(q.d);
   const fill=()=>{P.el('Info').innerHTML=kvHtml([['구분',x.st],...infoRows(q.d,x,c?`${c.c.file} · ${c.how}`:'연결 실패',grayText(g))])};fill();P.el('Rv').textContent=rvText(q.d);
@@ -1600,7 +1637,7 @@ async function showPanel(P){
 function infoRows(d,x,color,gray){const gl=d.gl;return [['ID / resultID',`${x.id} / ${d.resultID}`],['Step · Slot · 호기',`${x.step} · CA ${d.scan.contrast??'?'} · Slot ${x.slot||'-'} · ${x.tool||'-'}`],['Wafer X/Y',`${f1(x.X)}, ${f1(x.Y)} µm`],['Die (맵 X, Y)',x.die+(x.dieEq?` · ${x.dieEq}`:'')+(x.dieXY?` · Die 안 ${x.dieXY} µm`:'')],
   ['Area',`${fv(x.area)} µm² (${d.area} px)`],['Width / Length',`${fv(x.width)} / ${fv(x.length)}`],['Box W×H',x.box+' px'],['Contrast(실제)',fv(x.contrast)],['Color',color],['Gray',gray],
   ['GL(Local 추정)',gl?`ROI mean ${f1(gl.mean)} · median ${f1(gl.median)} · max ${gl.max} · ring median ${f1(gl.ring)} · ROI−local ${f1(gl.delta)}`:'-']]}
-const grayText=g=>g.frame?`${g.frame.file} · (${f1(g.px)}, ${f1(g.py)}) · ${g.model==='transform'?'frameToChuckPlane':'간단 모델(보정 필요)'}`:g.reason;
+const grayText=g=>g.frame?`${g.frame.file} · (${f1(g.px)}, ${f1(g.py)}) · ${g.W}×${g.H} · ${geoModel(g)}`:g.reason;
 const kvHtml=rows=>rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
 // ── Para #70: 리뷰PC Defect 정보 ────────────────────────────────────────────
 //   사진 제외.zip 조사: Surface.flt 한 줄에 area · BlobBreadth · BlobLength · BoxWidth · BoxHeight(모두 Gray 픽셀) · recipe · zone · waferRegion · Type(판정 비트) · reclassify 가 있다.
@@ -1770,11 +1807,12 @@ function repaintAll(){if(!S.cmp)return;Object.values(PANELS).forEach(paintPanel)
 // ════════════════════════════════════════════════════════════════════════
 // 15-0. rev5: Color · Gray 매칭 = Para 프로그램 'Color · Gray 매칭'(param_manager/colorgray.py, v12.9.30) 그대로 — Step 5 전용
 //   소유자(2026-11-10): "프로그램에 있는 기능을 최우선으로 사용" · "설정은 아예 없애" · "결과는 목록으로, 새 창에서 큰 화면으로 사진들만".
-//   · 매칭 폴더(프로그램의 Wafer 폴더) = ColorImageGrabingInfo.ini 가 바로 안에 있는 폴더(소유자: 이 파일은 항상 있음) —
+//   · 매칭 폴더(프로그램의 Wafer 폴더) = ColorImageGrabingInfo.ini 가 바로 안에 있는 폴더(v14.4.1 #89: 없으면 목록 · 변환 파일이 있는 폴더 → Slot 폴더, Color = 사진 이름) —
 //     Slot 바로 안 → Slot 하위 폴더 중 그 파일이 있는 첫 폴더(이름 순, 4단계까지) → 그 아래 Slot 이 이 Slot 하나뿐인 위쪽 폴더(이름은 대소문자 무시, cgLoad 설명). 목록 · 변환 파일이 없을 때의 대신 계산도 cgLoad 설명.
 //     그 폴더 파일만 쓴다(여러 Slot 이 같이 있는 위쪽 폴더 것은 안 씀 — rev1 때 위쪽 폴더 파일로 좌표가 전부 어긋났다).
 //   · Color 항목마다(choose_frame): Fault 좌표(FaultX/FaultY, 없으면 X/Y) · RecipeNumber(없으면 1) → 같은 레시피 프레임(없으면 레시피 번호 없는 프레임 → 전체) 중
-//     Gray 픽셀 p = M⁻¹ · (Fault − 프레임 좌표 − offset) 이 3168×1024 안이고 가장자리에서 가장 먼 프레임. 변환 파일 = 그 레시피 번호 → 공통 → 이름 순 첫 번째.
+//     Gray 픽셀 p = M⁻¹ · (Fault − 프레임 좌표 − offset) 이 프레임(레시피마다 크기 — geoSize) 안이고 가장자리에서 가장 먼 프레임. 변환 파일 = 그 레시피 번호 → 공통 → 이름 순 첫 번째.
+//     v14.4.1(#89): 이 계산은 3절 geo*(두 모드 공통)로 옮겼다. Defect 의 Gray 위치는 늘 Defect 좌표(또는 장비 기록)로 — Color Fault 좌표는 Color 항목의 검색 글에만.
 //   · 좌표 기준(COORD_MODES): '그대로'로 다 맞으면 끝, 아니면 프레임들이 덮는 직사각형의 좌측 하단 원점 해석 3가지 중 가장 많이 맞는 것(동점 = 앞, 매칭 폴더마다 하나).
 //   · Crop(ColorGray.tsx crop) = Fault 가운데 Color 시야(ImageSize × PixelSize ÷ 0.769644 µm)만큼 잘라(밖 = 검정) Color 크기로 늘림 · 흑백.
 //   · Defect(Surface.flt) → Color 항목(HTML 만 필요, 프로그램은 Color 항목만 다룸): ① Index = 기록 순서이고 좌표 5 µm 안(실제 결과 폴더 353/353)
@@ -1783,7 +1821,7 @@ function repaintAll(){if(!S.cmp)return;Object.values(PANELS).forEach(paintPanel)
 // ════════════════════════════════════════════════════════════════════════
 const CG={GW:3168,GH:1024,GP:0.769644115336745,MODES:['그대로','좌측 하단 원점','좌측 하단 원점 · Y 반전','Y 반전'],
   CI:'ColorImageGrabingInfo.ini',SL:'ScanResultImageList.txt',TF:'frameToChuckPlane.ini',TF_RE:/^frametochuckplane(\..+)?\.ini$/i,TOL:5};
-const CG_HOW=['','Index = 기록 순서','좌표 (5 µm 안)','Index (Color 좌표 없음)'];
+const CG_HOW=['','Index = 기록 순서','좌표 (5 µm 안)','Index (Color 좌표 없음)','Color 사진 이름 좌표(일정한 어긋남 보정 · 기본 모드와 같음)'];
 /** Python float() 처럼: 숫자 글자만(빈 칸 · 글자 = NaN). */
 const pyFloat=v=>{if(v==null)return NaN;const t=String(v).trim();return /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(t)?+t:NaN};
 /** Python round(): .5 는 짝수 쪽. */
@@ -1813,40 +1851,29 @@ function cgTfKey(name){const low=lower(name);if(!CG.TF_RE.test(low))return undef
 /** colorgray.transform_for: 그 레시피 → 공통 → 이름 순 첫 번째. */
 function cgTfFor(tfs,r){if(tfs.has(r))return tfs.get(r);if(tfs.has(null))return tfs.get(null);
   const ks=[...tfs.keys()].sort((a,b)=>{const x=String(a),y=String(b);return x<y?-1:x>y?1:0});return ks.length?tfs.get(ks[0]):null}
-/** colorgray.frames_rect: 프레임 네 모서리를 변환 정방향으로 chuck 좌표에 놓은 직사각형 [x0, y0, x1, y1]. */
-function cgRect(frames,tfs){let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-  for(const f of frames){const t=cgTfFor(tfs,f.recipe!=null?f.recipe:1);if(!t||t.err)continue;const [[a,b],[c,d]]=t.inv,det=a*d-b*c;if(!det)continue;
-    const m=[[d/det,-b/det],[-c/det,a/det]];
-    for(const [px,py] of [[0,0],[CG.GW,0],[0,CG.GH],[CG.GW,CG.GH]]){const x=f.x+t.off[0]+m[0][0]*px+m[0][1]*py,y=f.y+t.off[1]+m[1][0]*px+m[1][1]*py;
-      x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}}
-  return x0<=x1?[x0,y0,x1,y1]:null}
 /** colorgray.map_xy */
 const cgMap=(mode,x,y,r)=>!mode||!r?[x,y]:mode===1?[r[0]+x,r[1]+y]:mode===2?[r[0]+x,r[3]-y]:[x,r[1]+r[3]-y];
 /** choose_frame 의 후보 프레임: 같은 레시피 → 레시피 번호 없는 것 → 전체(레시피마다 한 번). */
 function cgPool(frames,r,memo){let p=memo.get(r);if(!p){const same=frames.filter(f=>f.recipe===r);p=same.length?same:frames.filter(f=>f.recipe==null);if(!p.length)p=frames;memo.set(r,p)}return p}
-/** colorgray.choose_frame: 3168×1024 안 + 가장자리에서 가장 먼 프레임(동점 = 앞). {frame, px, py, n(후보 수)} 또는 null. */
-function cgChoose(x,y,pool,t){const [[a,b],[c,d]]=t.inv,[ox,oy]=t.off;let best=null,n=0;
-  for(const f of pool){const tx=x-f.x-ox,ty=y-f.y-oy,px=a*tx+b*ty,py=c*tx+d*ty;
-    if(px>=0&&px<CG.GW&&py>=0&&py<CG.GH){n++;const m=Math.min(px,CG.GW-px,py,CG.GH-py);if(!best||m>best.m)best={m,f,px,py}}}
-  return best?{frame:best.f,px:best.px,py:best.py,n}:null}
-/** colorgray.crop_size: {cw, ch(잘라 낼 Gray 픽셀), ow, oh(Color 크기 = 늘릴 크기)}. 값이 숫자가 아니면 null. */
-function cgCropSize(c){const g=(k,d)=>{const v=cgGet(c,k);return pyFloat(v===undefined?d:v)};
-  const ow=Math.trunc(g('ImageSizeX',1380)),oh=Math.trunc(g('ImageSizeY',1036)),sx=g('PixelSizeX',0.4674),sy=g('PixelSizeY',0.4674);
-  if(![ow,oh,sx,sy].every(Number.isFinite))return null;return {cw:Math.max(1,pyRound(ow*sx/CG.GP)),ch:Math.max(1,pyRound(oh*sy/CG.GP)),ow,oh}}
-/** colorgray.plan_wafer(사진 파일 확인은 5-2). g = {colors, frames, tfs(키 → {inv, off} | {err})}. 변환 파일 오류는 던진다(프로그램: 그 Wafer 전체 실패). */
+/** colorgray.crop_size: {cw, ch(잘라 낼 Gray 픽셀), ow, oh(Color 크기 = 늘릴 크기)}. 값이 숫자가 아니면 null.
+ *  gp = 그 레시피의 Gray 픽셀 크기(µm, geoPix — v14.4.1 #89: 종전 0.769644 고정은 x5 · 2D+3D 레시피에서 Color 시야를 2배 넘게 크게 잘랐다). 없으면 종전 값. */
+function cgCropSize(c,gp,cp){const g=(k,d)=>{const v=cgGet(c,k);return pyFloat(v===undefined?d:v)},P=gp>0?gp:CG.GP,C0=cp>0?cp:0.4674;   // cp = RecipesInfo ColorPixelSize(Color 항목에 PixelSize 가 없을 때 — 사진 이름 Color)
+  const ow=Math.trunc(g('ImageSizeX',1380)),oh=Math.trunc(g('ImageSizeY',1036)),sx=g('PixelSizeX',C0),sy=g('PixelSizeY',C0);
+  if(![ow,oh,sx,sy].every(Number.isFinite))return null;return {cw:Math.max(1,pyRound(ow*sx/P)),ch:Math.max(1,pyRound(oh*sy/P)),ow,oh}}
+/** Color 항목마다 Gray 위치(5-1 의 검색 글 · 개수). 좌표 기준 g.mode 는 geoPlan(Defect 좌표 표본)이 정했다. 변환 파일 오류는 던진다(프로그램: 그 Wafer 전체 실패). */
 function cgPlan(g){
   for(const c of g.colors){const r=cgRecipe(c),t=cgTfFor(g.tfs,Number.isFinite(r)?r:1);if(t&&t.err)throw new Error(t.err)}
-  const rect=cgRect(g.frames,g.tfs),memo=new Map();
-  const match=mode=>g.colors.map(c=>{const [fx,fy]=cgFault(c),r=cgRecipe(c);if(!Number.isFinite(fx)||!Number.isFinite(fy)||!Number.isFinite(r))return null;
-    const t=cgTfFor(g.tfs,r),[x,y]=cgMap(mode,fx,fy,rect);return {fx,fy,r,hit:t?cgChoose(x,y,cgPool(g.frames,r,memo),t):null}});
-  let mode=0,best=match(0),hits=best.filter(m=>m&&m.hit).length;
-  if(rect&&hits<best.filter(Boolean).length)for(let a=1;a<CG.MODES.length;a++){const tr=match(a),n=tr.filter(m=>m&&m.hit).length;if(n>hits){mode=a;best=tr;hits=n}}
-  g.pmemo=memo;
-  return {mode,rect,hits,recs:best.map((m,k)=>{const c=g.colors[k];if(!m)return {c,why:'좌표 값을 읽을 수 없음'};
-    if(!m.hit)return {c,fx:m.fx,fy:m.fy,r:m.r,why:'매칭되는 Gray 프레임 없음'};
-    const cs=cgCropSize(c);return {c,fx:m.fx,fy:m.fy,r:m.r,...m.hit,crop:cs,why:cs?'':'Color ImageSize · PixelSize 값을 읽을 수 없음'}})}}
+  let hits=0;const recs=g.colors.map(c=>{const [fx,fy]=cgFault(c),r=cgRecipe(c);if(!Number.isFinite(fx)||!Number.isFinite(fy)||!Number.isFinite(r))return {c,why:'좌표 값을 읽을 수 없음'};
+    const [x,y]=cgMap(g.mode,fx,fy,g.rect),h=geoChoose(g,x,y,r),cs=cgCropSize(c,geoPix(g,r),g.rcpix&&g.rcpix.get(r));
+    if(!h)return {c,fx,fy,r,crop:cs,why:geoWhy(g)};hits++;
+    return {c,fx,fy,r,...h,crop:cs,why:cs?'':'Color ImageSize · PixelSize 값을 읽을 수 없음'}});
+  return {mode:g.mode,rect:g.rect,hits,recs}}
 /** Defect → Color 항목(s.cg.link[i] = Color 번호 | -1, s.cg.how[i] = CG_HOW 번호). */
 function cgLink(s){const g=s.cg,C=s.cols,n=C.n,link=new Int32Array(n).fill(-1),how=new Uint8Array(n),T=CG.TOL;
+  // v14.4.1(#89): Color 정보 파일이 없어 Color 가 사진 이름이면 기본 모드와 같은 연결(colorModel · linkColor — 사진 이름 좌표는 Fault 와 수 µm 일정하게 어긋날 수 있어 그 어긋남을 보정)
+  if(g.colors.length&&g.colors[0].fromName){const K=new Map(g.colors.map((c,k)=>[c._nc,k])),sc={colors:g.colors.map(c=>c._nc),colorByIndex:new Map(),cols:C};let nXY=0;
+    for(let i=0;i<n;i++){const r=linkColor({i,id:C.id[i],resultID:C.rid[i],x:C.x[i],y:C.y[i],ActualX:C.ax[i],ActualY:C.ay[i],X:C.x[i],Y:C.y[i]},sc,T);if(r){link[i]=K.get(r.c);how[i]=4;nXY++}}
+    g.colorNote=sc.colorNote||'';Object.assign(g,{link,how,nIdx:0,nXY});return}
   const byIdx=new Map(),fx=[],fy=[],grid=new Map(),K=(i,j)=>i+','+j;
   g.colors.forEach((c,k)=>{const ix=cgIndex(c);if(ix!=null&&!byIdx.has(ix))byIdx.set(ix,k);const [x,y]=cgFault(c);fx[k]=x;fy[k]=y;
     if(Number.isFinite(x)&&Number.isFinite(y)){const q=K(Math.floor(x/T),Math.floor(y/T));(grid.get(q)||grid.set(q,[]).get(q)).push(k)}});
@@ -1858,17 +1885,15 @@ function cgLink(s){const g=s.cg,C=s.cols,n=C.n,link=new Int32Array(n).fill(-1),h
       if(P.some(([x,y])=>Math.hypot(fx[k]-x,fy[k]-y)<=T)){link[i]=k;how[i]=1;nIdx++;continue}}
     for(const [x,y] of P){const b=near(x,y);if(b>=0){link[i]=b;how[i]=2;nXY++;break}}}
   Object.assign(g,{link,how,nIdx,nXY})}
-/** Color 항목이 없는 Defect: 같은 계산(좌표 기준 · 변환 · 후보 프레임)을 Defect 좌표 · recipe 로. */
+/** Defect 의 Gray 위치(v14.4.1 #89: 늘 Defect 좌표 · 장비 기록으로 — 기본 모드 grayOf 와 같은 geoHit. 종전 = Color 가 붙은 Defect 는 Color Fault 좌표로, 실제 자료에서 둘은 같다). */
 function cgDefGray(s,i){const g=s.cg,m=g.dmemo||(g.dmemo=new Map());if(m.has(i))return m.get(i);
-  const C=s.cols,r=C.rec[i],t=cgTfFor(g.tfs,r);let res=null;
-  if(t&&!t.err){const [x,y]=cgMap(g.plan.mode,C.x[i],C.y[i],g.plan.rect);res=cgChoose(x,y,cgPool(g.frames,r,g.pmemo||(g.pmemo=new Map())),t)}
+  const C=s.cols,res=geoHit(g,C.x[i],C.y[i],C.rec[i],C.fi?C.fi[i]:0,C.xf?C.xf[i]:0,C.yf?C.yf[i]:0);
   m.set(i,res);return res}
-/** Defect 하나의 매칭 → {ci(Color 번호 | -1), c(Color 항목), how, hit({frame, px, py, n} | null), from('color' | 'defect'), crop, why}. */
+/** Defect 하나의 매칭 → {ci(Color 번호 | -1), c(Color 항목), how, hit({frame, px, py, n, W, H, model} | null), from('defect' | 'record'), crop, why}. */
 function cgOf(s,i){const g=s.cg;if(!g||!g.plan)return {ci:-1,c:null,how:0,hit:null,from:'',crop:null,why:!g?'매칭 파일을 읽지 않음':g.err||`매칭 파일 없음: ${g.missing.join(', ')}${g.path?` (${g.path})`:''}`};
-  const k=g.link[i];
-  if(k>=0){const rec=g.plan.recs[k];if(rec.frame)return {ci:k,c:rec.c,how:g.how[i],hit:rec,from:'color',crop:rec.crop||cgCropSize({}),why:rec.why};
-    const h=cgDefGray(s,i);return {ci:k,c:rec.c,how:g.how[i],hit:h,from:'defect',crop:cgCropSize(rec.c)||cgCropSize({}),why:h?'':rec.why}}
-  const h=cgDefGray(s,i);return {ci:-1,c:null,how:0,hit:h,from:'defect',crop:cgCropSize({}),why:h?'':'매칭되는 Gray 프레임 없음'}}
+  const r=s.cols.rec[i],k=g.link[i],h=cgDefGray(s,i),gp=geoPix(g,r),cp=g.rcpix&&g.rcpix.get(r),from=h&&h.model==='record'?'record':'defect',gw=h?'':geoWhy(g);
+  if(k>=0){const rec=g.plan.recs[k],cs=cgCropSize(rec.c,gp,cp);return {ci:k,c:rec.c,how:g.how[i],hit:h,from,crop:cs||cgCropSize({},gp,cp),why:h?(cs?'':'Color ImageSize · PixelSize 값을 읽을 수 없음'):gw}}
+  return {ci:-1,c:null,how:0,hit:h,from,crop:cgCropSize({},gp,cp),why:gw}}
 // ── rev5: Classify(결함 종류) — 소유자 "classify 열 · 필터 · 정렬(B R Other, B R Surface Dark …)" ─────────────────
 //   Surface.flt reclassify = 현재 분류 코드, orgReclassify = 리뷰 전 코드 = 장비 스캔 분류(0 = 리뷰에서 안 바뀜) → ManReClassify.ini [General] '코드=이름,Good/Defect,…'
 //   (Para param_manager/manreclassify.py 와 같은 형식, 줄 맨 앞 ; 만 주석). 실제 결과 폴더: 29 = B R Surface Dark 334 · 28 = B R Other 19.
@@ -1917,35 +1942,89 @@ function cgDirsFromList(base,files){const by=new Map();
   for(const d of [...by.keys()])for(let p=d;p.length>base.length;p=p.slice(0,p.lastIndexOf('/')))if(!by.has(p))by.set(p,new Map());   // 파일 없는 중간 폴더
   return mk(base)}
 /** 5-1: Slot 의 매칭 폴더 · 매칭 파일 읽기 → 프로그램 계산(cgPlan) → Defect 연결(cgLink). 사진 · 다른 파일 내용은 열지 않는다. 결과 s.cg(src = 무엇으로 계산했는지).
- *  소유자 확정(2026-11-10): ColorImageGrabingInfo.ini 는 항상 있음 · ScanResultImageList.txt 는 없을 수 있음 · 변환 파일이 frameToChuckPlane.1.ini · .2.ini 둘이면 .2 기준.
- *  · Gray 프레임 목록: ScanResultImageList.txt(프로그램) → 없으면 Gray 사진 이름(X.Y.t.jpeg = 프레임 가운데 Table 좌표) + Wafer2Table.ini(Table → Wafer)
- *    → 그것도 없으면 Gray 사진 이름 + s_FrameData.dat(프레임마다 TablePos · WaferPos). 실제 결과 폴더: 이름 + Wafer2Table 353/353 같은 프레임(≤ 2.6 px), + s_FrameData ≤ 0.13 px.
- *  · 변환: frameToChuckPlane.ini 가 있으면 프로그램(레시피 번호 파일 → 공통) / 번호 파일만 있으면 가장 큰 번호(.1 · .2 → .2, 소유자) /
- *    하나도 없으면 가운데 모델(목록 좌표 = 프레임 가운데 — 실제 변환 파일로 확인, 픽셀 크기 = s_FrameData 또는 0.7698 µm, ≤ 0.13 px). */
+ *  소유자 확정(2026-11-10): ScanResultImageList.txt 는 없을 수 있음 · 변환 파일이 frameToChuckPlane.1.ini · .2.ini 둘이면 .2 기준(그 레시피 번호 파일이 없을 때).
+ *  v14.4.1(#89, 소유자): ColorImageGrabingInfo.ini 도 없을 수 있다 → Color = 사진 이름, Gray = Defect 좌표(geoLoad · geoHit — 기본 모드와 같은 계산).
+ *  · Gray 프레임 목록: ScanResultImageList.txt(프로그램) → 없으면 Gray 사진 이름(X.Y.t.jpeg = 프레임 가운데 Table 좌표) + s_FrameData.dat(프레임마다 잰 TablePos · WaferPos)
+ *    → 그것도 없으면 이름 + Wafer2Table.ini(Table → Wafer). 실제 결과 폴더: 이름 + s_FrameData ≤ 0.13 px, 이름 + Wafer2Table ≤ 2.6 px(#89 실제 Slot 최대 9 µm) — v14.4.1 에서 순서 바꿈.
+ *  · 변환: frameToChuckPlane.ini 가 있으면 프로그램(레시피 번호 파일 → 공통) / 번호 파일만 있으면 그 레시피 번호 파일 → 없으면 가장 큰 번호(.1 · .2 → .2, 소유자) /
+ *    하나도 없으면 레시피마다 가운데 모델(목록 좌표 = 프레임 가운데 — 실제 변환 파일로 확인, 픽셀 = s_FrameData → RecipesInfo → 0.7698 µm, 크기 = s_FrameData → 3168×1024).
+ *  · 계산은 geoLoad(3절과 함께 — 기본 모드 buildScan 도 같은 함수). */
 const CG_TF_NUM=[0,1,2,3,4,5,6,7,8,9],CG_PIX=0.7698455822;
-/** s_FrameData.dat(+ .md) → {n, tx, ty, wx, wy, pix}. 없거나 크기가 맞지 않으면 null. 소유자 PC 에서는 수 MB 라 필요할 때만(목록 · 변환 파일이 없을 때) 읽는다. */
+/** s_FrameData.dat(+ .md) → {n, tx, ty(TablePos), wx, wy(WaferPos = 프레임 가운데 Wafer 좌표), fi(frameIdx), rc(recipe), size(레시피 → {W, H}), pixs(레시피 → PixelSizeX), pix}.
+ *  없거나 크기가 맞지 않으면 null. 수 ~ 수십 MB 라 필요할 때만(목록 · 변환 파일이 없을 때, 장비 프레임 기록이 있을 때) 읽는다. md 가 없으면 실제 결과 폴더의 배치(192 byte). */
 async function cgFrameData(d){const f=await d.get('s_FrameData.dat');if(!f)return null;
   const mf=await d.get('s_FrameData.dat.md'),md=mf?parseMd(await readText(await mf.file())):null,by=new Map((md?md.fields:[]).map(x=>[lower(x.name),x]));
-  const off=k=>{const x=by.get(lower(k));return x?x.offset:{waferposx:72,waferposy:80,tableposx:88,tableposy:96,pixelsizex:120}[lower(k)]},rec=md&&md.recordSize||192;   // md 가 없으면 실제 결과 폴더의 배치
+  const DEF={tableposx:[88,'float64'],tableposy:[96,'float64'],waferposx:[72,'float64'],waferposy:[80,'float64'],pixelsizex:[120,'float64'],frameidx:[60,'int32'],recipe:[58,'uint8'],framesizex:[108,'int32'],framesizey:[112,'int32']};
+  const fld=k=>{const x=by.get(k);return x?[x.offset,x.type]:DEF[k]},rec=md&&md.recordSize||192;
   const buf=await (await f.file()).arrayBuffer();if(!buf.byteLength||buf.byteLength%rec)return null;
-  const n=buf.byteLength/rec,dv=new DataView(buf),o={tx:off('TablePosX'),ty:off('TablePosY'),wx:off('WaferPosX'),wy:off('WaferPosY'),px:off('PixelSizeX')},R={n,tx:new Float64Array(n),ty:new Float64Array(n),wx:new Float64Array(n),wy:new Float64Array(n)};
-  for(let i=0;i<n;i++){const b=i*rec;R.tx[i]=dv.getFloat64(b+o.tx,true);R.ty[i]=dv.getFloat64(b+o.ty,true);R.wx[i]=dv.getFloat64(b+o.wx,true);R.wy[i]=dv.getFloat64(b+o.wy,true)}
-  const p=dv.getFloat64(o.px,true);R.pix=p>0.1&&p<5?p:null;return R}
-/** ScanResultImageList.txt 가 없을 때 Gray 프레임 목록: 매칭 폴더의 Gray 사진 이름(X.Y.t[.레시피].jpeg) → Wafer 좌표(프레임 가운데). {frames, src, why, pix}. */
-async function cgFramesFromNames(d){const nm=await d.names();if(nm.err)return {frames:[],why:'매칭 폴더 목록 실패: '+nm.err};
-  const re=/^(-?\d+)\.(-?\d+)\.t(?:\.(\d+))?\.jpe?g$/i,L=[];for(const e of nm.values()){const m=re.exec(e.name);if(m)L.push({file:e.name,tx:+m[1],ty:+m[2],recipe:m[3]!=null?+m[3]:null})}
-  if(!L.length)return {frames:[],why:'Gray 사진(X.Y.t.jpeg)이 없음'};
-  const w2=await d.get('Wafer2Table.ini');
+  const n=buf.byteLength/rec,dv=new DataView(buf),o={tx:fld('tableposx'),ty:fld('tableposy'),wx:fld('waferposx'),wy:fld('waferposy'),px:fld('pixelsizex'),fi:fld('frameidx'),rc:fld('recipe'),fw:fld('framesizex'),fh:fld('framesizey')};
+  const ok=k=>o[k]&&o[k][0]+(TYPE_SIZE[o[k][1]]||8)<=rec,rd=(b,k)=>readField(dv,b+o[k][0],o[k][1]);
+  const R={n,tx:new Float64Array(n),ty:new Float64Array(n),wx:new Float64Array(n),wy:new Float64Array(n),fi:ok('fi')?new Int32Array(n):null,rc:new Int16Array(n).fill(-1),size:new Map(),pixs:new Map()};
+  for(let i=0;i<n;i++){const b=i*rec;R.tx[i]=rd(b,'tx');R.ty[i]=rd(b,'ty');R.wx[i]=rd(b,'wx');R.wy[i]=rd(b,'wy');if(R.fi)R.fi[i]=rd(b,'fi');if(ok('rc'))R.rc[i]=rd(b,'rc');
+    const r=R.rc[i]>=0?R.rc[i]:null;
+    if(!R.size.has(r)&&ok('fw')&&ok('fh')){const W=rd(b,'fw'),H=rd(b,'fh');if(W>=64&&H>=64&&W<=20000&&H<=20000)R.size.set(r,{W,H})}
+    if(!R.pixs.has(r)&&ok('px')){const p=rd(b,'px');if(p>0.05&&p<20)R.pixs.set(r,p)}}
+  R.pix=geoFirst(R.pixs);return R}
+/** G 에 s_FrameData 를 한 번만 읽어 둔다(없으면 false). 레시피마다 프레임 크기 · 픽셀 크기도 G 에. */
+async function geoFd(G,d){if(G.fd===null){let R=null;try{R=await cgFrameData(d)}catch(e){R=null}G.fd=R||false;if(R){for(const [r,v] of R.size)G.fsize.set(r,v);for(const [r,v] of R.pixs)G.fpix.set(r,v)}}return G.fd||null}
+/** 매칭 폴더의 Gray 사진 이름(X.Y.t[.레시피].jpeg — X, Y = 프레임 가운데 Table 좌표, 정수) 목록(한 번만). 목록 실패면 .err. */
+async function geoGrayNames(d,G){if(G.gn)return G.gn;const nm=await d.names(),L=[];if(nm.err){L.err=nm.err;return G.gn=L}
+  const re=/^(-?\d+)\.(-?\d+)\.t(?:\.(\d+))?\.jpe?g$/i;for(const e of nm.values()){const m=re.exec(e.name);if(m)L.push({file:e.name,tx:+m[1],ty:+m[2],recipe:m[3]!=null?+m[3]:null})}return G.gn=L}
+/** s_FrameData 에서 TablePos 가 (tx, ty) 에 가장 가까운 레코드(tol µm 안, 같으면 나중 것 — 실제 자료: 목록 좌표 = 나중 레코드). 없으면 −1. */
+function geoFdNear(R,tx,ty,tol){const Z=10,K=(i,j)=>i+','+j;if(!R.grid){R.grid=new Map();for(let i=0;i<R.n;i++){const k=K(Math.floor(R.tx[i]/Z),Math.floor(R.ty[i]/Z));(R.grid.get(k)||R.grid.set(k,[]).get(k)).push(i)}}
+  let b=-1,bd=tol;const ci=Math.floor(tx/Z),cj=Math.floor(ty/Z);
+  for(let di=-1;di<=1;di++)for(let dj=-1;dj<=1;dj++)for(const i of R.grid.get(K(ci+di,cj+dj))||[]){const dd=Math.hypot(R.tx[i]-tx,R.ty[i]-ty);if(dd<=bd){bd=dd;b=i}}return b}
+/** ScanResultImageList.txt 가 없을 때 Gray 프레임 목록: Gray 사진 이름 → s_FrameData.dat 의 그 프레임 잰 위치(WaferPos) → 없으면 Wafer2Table.ini 로 이름의 Table 좌표를 Wafer 로.
+ *  v14.4.1(#89) 순서 바꿈(종전 Wafer2Table 먼저): 이름은 정수 · 명령 위치라 목록과 수 µm 다르다(#89 실제 Slot: Y 가운데 5.2 · 최대 9.1 µm), s_FrameData 는 목록과 ≤ 0.13 px(rev5 실제 결과 폴더). */
+async function geoFramesFromNames(d,G){const L=await geoGrayNames(d,G);if(L.err)return {frames:[],why:'매칭 폴더 목록 실패: '+L.err};if(!L.length)return {frames:[],why:'Gray 사진(X.Y.t.jpeg)이 없음'};
+  const R=await geoFd(G,d);let w=null;const w2=await d.get('Wafer2Table.ini');
   if(w2){const t=await readText(await w2.file()),X=/Wafer2Table_X\s*=\s*(\S+)\s+(\S+)\s+(\S+)/i.exec(t),Y=/Wafer2Table_Y\s*=\s*(\S+)\s+(\S+)\s+(\S+)/i.exec(t);
-    if(X&&Y){const [a,b,c0]=X.slice(1).map(Number),[c,e,c1]=Y.slice(1).map(Number),det=a*e-b*c;
-      if(det&&[a,b,c0,c,e,c1].every(Number.isFinite))return {frames:L.map(f=>({file:f.file,x:(e*(f.tx-c0)-b*(f.ty-c1))/det,y:(-c*(f.tx-c0)+a*(f.ty-c1))/det,recipe:f.recipe})),src:'Gray 사진 이름 + Wafer2Table.ini'}}}
-  const R=await cgFrameData(d);
-  if(R){const G=10,grid=new Map(),K=(i,j)=>i+','+j;for(let i=0;i<R.n;i++){const k=K(Math.floor(R.tx[i]/G),Math.floor(R.ty[i]/G));(grid.get(k)||grid.set(k,[]).get(k)).push(i)}
-    const fr=[];for(const f of L){let b=-1,bd=5;const ci=Math.floor(f.tx/G),cj=Math.floor(f.ty/G);
-      for(let di=-1;di<=1;di++)for(let dj=-1;dj<=1;dj++)for(const i of grid.get(K(ci+di,cj+dj))||[]){const dd=Math.hypot(R.tx[i]-f.tx,R.ty[i]-f.ty);if(dd<=bd){bd=dd;b=i}}   // 같은 프레임이 두 번 기록되면 나중 것(실제 자료: 목록 좌표 = 나중 레코드)
-      if(b>=0)fr.push({file:f.file,x:R.wx[b],y:R.wy[b],recipe:f.recipe})}
-    if(fr.length)return {frames:fr,src:'Gray 사진 이름 + s_FrameData.dat',pix:R.pix}}
-  return {frames:[],why:'Wafer2Table.ini · s_FrameData.dat 가 없음'}}
+    if(X&&Y){const [a,b,c0]=X.slice(1).map(Number),[c,e,c1]=Y.slice(1).map(Number),det=a*e-b*c;if(det&&[a,b,c0,c,e,c1].every(Number.isFinite))w=f=>[(e*(f.tx-c0)-b*(f.ty-c1))/det,(-c*(f.tx-c0)+a*(f.ty-c1))/det]}}
+  const fr=[];let nf=0,nw=0;
+  for(const f of L){const b=R?geoFdNear(R,f.tx,f.ty,5):-1;if(b>=0){fr.push({file:f.file,x:R.wx[b],y:R.wy[b],recipe:f.recipe});nf++;continue}
+    if(w){const [x,y]=w(f);fr.push({file:f.file,x,y,recipe:f.recipe});nw++}}
+  if(!fr.length)return {frames:[],why:R||w?'Gray 사진 이름이 s_FrameData.dat · Wafer2Table.ini 와 맞지 않음':'Wafer2Table.ini · s_FrameData.dat 가 없음'};
+  return {frames:fr,src:nf&&nw?`Gray 사진 이름 + s_FrameData.dat ${nf} · Wafer2Table.ini ${nw}`:nf?'Gray 사진 이름 + s_FrameData.dat':'Gray 사진 이름 + Wafer2Table.ini'}}
+/** 두 모드 공통(v14.4.1, #89): 매칭 폴더 d(get · peek · opt · names · listed — cgDirH · cgDirsFromList · dirFromFiles)의 파일로 Gray 위치 자료 G 를 만든다. 사진 내용은 읽지 않는다.
+ *  pts = Defect 좌표 표본 [[x, y, recipe]](좌표 기준 · 번호 파일 점검), rec = 장비 프레임 기록이 있음('now' = 지금 s_FrameData 를 읽음, 'later' = geoLoadFd 를 나중에(5-1 은 빠르게)).
+ *  · 프레임 목록: ScanResultImageList.txt → Gray 사진 이름 + s_FrameData.dat → 이름 + Wafer2Table.ini (geoFramesFromNames)
+ *  · 변환: frameToChuckPlane.ini(+ 레시피 번호 파일) → 번호 파일만이면 그 레시피 번호 파일, 없으면 큰 번호(소유자 ".1 · .2 → .2") →
+ *    하나도 없으면 레시피마다 가운데 모델(픽셀 = s_FrameData → RecipesInfo.ini → 0.7698, 크기 = s_FrameData → 3168×1024)
+ *  · 좌표 기준(CG.MODES) = geoPlan(Defect 좌표). */
+async function geoLoad(d,pts,rec){
+  const G={frames:[],tfs:new Map(),tfNames:[],tfAlt:[],src:{},fsize:new Map(),fpix:new Map(),rpix:new Map(),rcpix:new Map(),fd:null,gn:null,mode:0,rect:null,noGray:'',usedHi:false,pmemo:null,recPending:false};
+  try{const ri=await (d.opt||d.get)('RecipesInfo.ini');if(ri){const R=parseRecipesInfo(await readText(await ri.file()));G.rpix=R.pix;G.rcpix=R.cpix}}catch(e){}
+  const sl=await d.get(CG.SL);
+  if(sl){G.frames=cgFrames(await readText(await sl.file()));G.src.frames=CG.SL}
+  else{const r=await geoFramesFromNames(d,G);G.frames=r.frames;G.src.frames=r.src||'';if(!G.frames.length){G.noGray=r.why;G.src.frames=`Gray 없음(${r.why})`}}
+  const tf=await d.get(CG.TF),num=new Map();
+  if(d.listed()){const nm=await d.names();for(const [k,v] of nm){const key=cgTfKey(k);if(typeof key==='number'&&!num.has(key))num.set(key,v)}}
+  if(!num.size)await Promise.all(CG_TF_NUM.map(async r=>{const f=await d.peek(`frameToChuckPlane.${r}.ini`);if(f)num.set(r,f)}));
+  if(!tf&&!num.size){const nm=await d.names();for(const [k,v] of [...nm].sort((a,b)=>a[0]<b[0]?-1:1)){const key=cgTfKey(k);if(typeof key==='number'&&!num.has(key))num.set(key,v);else if(key&&!num.has(key))num.set(key,v)}}
+  const parse=async f=>{try{return parseTransform(await readText(await f.file()))}catch(e){return {err:`${f.name}: ${e.message}`}}};
+  if(tf){G.tfs.set(null,await parse(tf));G.tfNames.push(tf.name);for(const [k,f] of num){G.tfs.set(k,await parse(f));G.tfNames.push(f.name)}G.src.tf=tf.name+(num.size?' + 레시피 번호 파일':'')}
+  else if(num.size){   // 번호 파일만: 레시피 번호가 같은 파일(프로그램 · 소유자 예 29126432EWE3 = Color · Gray 사진이 레시피 1 · 2) → 없으면 가장 큰 번호(.1 · .2 → .2, 소유자)
+    const ks=[...num.keys()].sort((a,b)=>typeof a==='number'&&typeof b==='number'?a-b:String(a)<String(b)?-1:1),hi=ks.filter(k=>typeof k==='number').pop()??ks[ks.length-1];
+    const P=new Map();for(const k of ks)P.set(k,await parse(num.get(k)));for(const k of ks)G.tfs.set(k,P.get(k));G.tfs.set(null,P.get(hi));G.tfNames.push(...ks.map(k=>num.get(k).name));
+    const same=ks.every(k=>JSON.stringify(P.get(k))===JSON.stringify(P.get(hi)));
+    G.src.tf=num.size>1?`${ks.map(k=>num.get(k).name).join(' · ')}(레시피 번호가 같은 파일, 없으면 큰 번호 ${num.get(hi).name}${same?' — 내용 모두 같음':''})`:num.get(hi).name;
+    G.usedHi=pts.some(p=>!num.has(p[2]));   // 레시피 번호 파일이 없는 Defect 가 있어 큰 번호를 씀(소유자 기준) — 알림에 표시
+    if(!same)for(const k of ks)if(k!==hi)G.tfAlt.push({name:num.get(k).name,t:P.get(k)})}
+  else{await geoFd(G,d);const rs=new Set([null,...pts.map(p=>p[2]),...G.frames.map(f=>f.recipe),...G.rpix.keys(),...G.fpix.keys()]);
+    for(const r of rs){const p=G.fpix.get(r)||G.rpix.get(r)||geoFirst(G.fpix)||geoFirst(G.rpix)||GEO_PIX,z=G.fsize.get(r)||G.fsize.get(null)||geoFirst(G.fsize)||{W:GEO_W,H:GEO_H};
+      G.tfs.set(r,{inv:[[1/p,0],[0,1/p]],off:[-p*z.W/2,-p*z.H/2],W:z.W,H:z.H,pix:p,model:'center'})}
+    const t0=G.tfs.get(null);G.src.tf=`변환 파일 없음 → 가운데 모델(목록 좌표 = 프레임 가운데, 픽셀 ${+t0.pix.toFixed(6)} µm${G.fpix.size?'(s_FrameData)':G.rpix.size?'(RecipesInfo.ini)':''} · ${t0.W}×${t0.H})`;G.tfNames.push('(가운데 모델)')}
+  if(rec==='now')await geoLoadFd(G,d);else if(rec)G.recPending=true;
+  geoPlan(G,pts);
+  for(const a of G.tfAlt){a.hits=a.t.err?null:geoCount({...G,tfs:new Map([[null,a.t]]),pmemo:null},pts,G.mode)}   // 점검용: 다른 번호 파일이면 Defect 표본 몇 개가 맞는지
+  return G}
+/** 장비 프레임 기록을 쓰려고 s_FrameData · Gray 사진 이름을 읽는다(5-2 에서 Slot 마다 한 번 — 5-1 은 빠르게). */
+async function geoLoadFd(G,d){await geoFd(G,d);if(G.fd)await geoGrayNames(d,G);G.recPending=false;G.dmemo=null}
+/** Color 정보 파일(ColorImageGrabingInfo.ini)이 없을 때 Color 항목 = Slot 폴더의 Color 사진 이름 '{X}.{Y}.c.{번호}[.{레시피}].jpeg'(기본 모드 colorsFromNames 와 같은 좌표 +0.5 µm, 2 µm 안). */
+async function cgColorsFromNames(d){const nm=await d.names(),out=[];if(nm.err)return out;
+  for(const e of nm.values()){const m=CNAME_RE.exec(e.name);if(!m)continue;const r=/\.c\.-?\d+\.(\d+)\.(?:jpe?g|png|bmp)$/i.exec(e.name);
+    out.push({file:e.name,FaultX:String(+m[1]+.5),FaultY:String(+m[2]+.5),...(r?{RecipeNumber:r[1]}:{}),fromName:true,_nc:{file:e.name,x:+m[1]+.5,y:+m[2]+.5,index:null,fromName:true}})}
+  return out.sort((a,b)=>natCmp(a.file,b.file))}
 /** ColorImageGrabingInfo.ini 를 못 찾았을 때 화면에 보일 까닭(프로그램 #48 의 diagnosis 처럼): 폴더 파일 수 · 비슷한 이름 · 이름으로 묻기 오류 · 찾아본 폴더 · 경로 길이. */
 async function cgDiag(d,look){const nm=await d.names(),L=[...nm.values()].map(e=>e.name),er=d.errs?d.errs():[];
   const like=L.filter(n=>/color|grab|imageinfo/i.test(n)&&!/\.(jpe?g|png|bmp)$/i.test(n)).slice(0,4),ini=L.filter(n=>/\.ini$/i.test(n)).slice(0,6);
@@ -1959,47 +2038,31 @@ async function cgLoad(s,root,up){const g=s.cg={missing:[],colors:[],frames:[],tf
   try{
     // 소유자 "ColorImageGrabingInfo.ini 파일 자체를 못 찾는다": 종전 rev5 는 이름으로 한 번만 물었다(대소문자 · 일시 오류에 약함, 위쪽 폴더 안 봄 — Step 1 은 목록에서 대소문자 무시로 찾음).
     // 지금: 이름으로 바로 → 없으면 폴더 목록(대소문자 무시, 프로그램 #48 과 같음). 찾는 곳: Slot 폴더 → 하위 폴더(4단계, 다른 Slot 빼고) → 이 Slot 하나만 있는 위쪽 폴더.
-    const has=async d=>{const ci=await d.get(CG.CI);if(!ci)return {d,ci:null};const [sl,tf]=await Promise.all([d.get(CG.SL),d.get(CG.TF)]);return {d,ci,sl,tf}};
-    let hit=await has(root);const look={subs:0,ups:[],shared:''};
+    // v14.4.1(#89, 소유자 "대규모 모드가 Color 정보 파일 없이 흑백도 찾게끔"): ColorImageGrabingInfo.ini 는 이제 없어도 된다 — 종전에는 여기서 멈춰 Gray 도 '매칭 파일 없음'이었다.
+    //   없으면 Color = Color 사진 이름(X.Y.c.….jpeg, 기본 모드와 같음), Gray = Defect 좌표 · 장비 기록(두 모드 공통 geoLoad · geoHit — Gray 에는 Color 가 필요 없다).
+    //   매칭 폴더 = ColorImageGrabingInfo.ini 가 있는 폴더(종전 순서) → 없으면 같은 순서로 ScanResultImageList.txt · frameToChuckPlane.ini 가 있는 폴더 → Slot 폴더.
+    const has=async d=>{const [ci,sl,tf]=await Promise.all([d.get(CG.CI),d.get(CG.SL),d.get(CG.TF)]);return {d,ci,any:!!(ci||sl||tf)}};
+    let hit=await has(root),alt=hit.any?hit:null;const look={subs:0,ups:[],shared:''};
     if(!hit.ci){   // 하위 폴더 중 ColorImageGrabingInfo.ini 가 있는 첫 폴더(프로그램 discover 처럼). Surface.flt 가 있는 하위 폴더 = 다른 Slot 이라 빌려 쓰지 않는다(그 아래도 안 봄)
       const q=[[root,0]];let found=null;
       while(q.length&&!found){const [d,dep]=q.shift();if(dep>=4)continue;
-        for(const sd of await d.subs()){look.subs++;if(await sd.get('Surface.flt'))continue;const h=await has(sd);if(h.ci){found=h;break}q.push([sd,dep+1])}}
+        for(const sd of await d.subs()){look.subs++;if(await sd.get('Surface.flt'))continue;const h=await has(sd);if(h.ci){found=h;break}if(!alt&&h.any)alt=h;q.push([sd,dep+1])}}
       if(found){hit=found;g.at='sub'}}
     if(!hit.ci)for(const u of up||[]){   // 위쪽 폴더(가까운 것부터, 고른 폴더까지): 그 아래 Slot 이 이 Slot 하나일 때만 — 여러 Slot 이 같이 쓰는 파일은 Index(기록 순서)가 맞지 않아 쓰지 않는다
       look.ups.push(u.d.path);const h=await has(u.d);if(!h.ci)continue;
       if(u.n===1){hit=h;g.at='up'}else look.shared=`위쪽 폴더 ${u.d.path} 에 있지만 그 아래 Slot 이 ${u.n}개라 쓰지 않음`;break}
+    if(!hit.ci&&alt&&alt.d!==root){hit=alt;g.at='sub'}
     g.dir=hit.d;g.path=hit.d.path;
-    if(!hit.ci){g.missing.push(CG.CI);g.diag=await cgDiag(root,look);s.warns.push(`매칭 파일 없음: ${CG.CI} (${root.path}) — ${g.diag}`);return}
-    if(g.at==='up')s.warns.push(`${CG.CI} 가 Slot 폴더가 아니라 위쪽 폴더에 있어 그 폴더를 매칭 폴더로 씀: ${g.path} (그 아래 Slot 은 이것 하나)`);
-    g.colors=cgColors(await readText(await hit.ci.file()));
-    // Gray 프레임 목록: ScanResultImageList.txt → 없으면 Gray 사진 이름(+ Wafer2Table.ini / s_FrameData.dat)
-    let pix=null;
-    if(hit.sl){g.frames=cgFrames(await readText(await hit.sl.file()));g.src.frames=CG.SL}
-    else{const r=await cgFramesFromNames(hit.d);g.frames=r.frames;pix=r.pix||null;g.src.frames=r.src||'';
-      // Gray 사진 · 목록이 없는 Slot(소유자 예: S3LQR170XMG2 — Color 사진만 저장됨)도 Color 는 연결해 보여 준다(Gray 만 '없음')
-      if(!g.frames.length){g.noGray=r.why;g.src.frames=`Gray 없음(${r.why})`}}
-    // 변환: frameToChuckPlane.ini(+ 레시피 번호 파일) → 번호 파일만이면 가장 큰 번호(소유자 ".1 · .2 → .2") → 없으면 가운데 모델
-    const num=new Map();
-    if(hit.d.listed()){const nm=await hit.d.names();for(const [k,v] of nm){const key=cgTfKey(k);if(typeof key==='number'&&!num.has(key))num.set(key,v)}}
-    if(!num.size)await Promise.all(CG_TF_NUM.map(async r=>{const f=await hit.d.peek(`frameToChuckPlane.${r}.ini`);if(f)num.set(r,f)}));
-    if(!hit.tf&&!num.size){const nm=await hit.d.names();for(const [k,v] of [...nm].sort((a,b)=>a[0]<b[0]?-1:1)){const key=cgTfKey(k);if(typeof key==='number'&&!num.has(key))num.set(key,v);else if(key&&!num.has(key))num.set(key,v)}}
-    const parse=async f=>{try{return parseTransform(await readText(await f.file()))}catch(e){return {err:`${f.name}: ${e.message}`}}};
-    if(hit.tf){g.tfs.set(null,await parse(hit.tf));g.tfNames.push(hit.tf.name);for(const [k,f] of num){g.tfs.set(k,await parse(f));g.tfNames.push(f.name)}g.src.tf=hit.tf.name+(num.size?' + 레시피 번호 파일':'')}
-    else if(num.size){   // 번호 파일만: 레시피 번호가 같은 파일(프로그램 · 소유자 예 29126432EWE3 = Color · Gray 사진이 레시피 1 · 2) → 없으면 가장 큰 번호(.1 · .2 → .2, 소유자)
-      const ks=[...num.keys()].sort((a,b)=>typeof a==='number'&&typeof b==='number'?a-b:String(a)<String(b)?-1:1),hi=ks.filter(k=>typeof k==='number').pop()??ks[ks.length-1];
-      const P=new Map();for(const k of ks)P.set(k,await parse(num.get(k)));for(const k of ks)g.tfs.set(k,P.get(k));g.tfs.set(null,P.get(hi));g.tfNames.push(...ks.map(k=>num.get(k).name));
-      const same=ks.every(k=>JSON.stringify(P.get(k))===JSON.stringify(P.get(hi)));
-      g.src.tf=num.size>1?`${ks.map(k=>num.get(k).name).join(' · ')}(레시피 번호가 같은 파일, 없으면 큰 번호 ${num.get(hi).name}${same?' — 내용 모두 같음':''})`:num.get(hi).name;
-      g.usedHi=g.colors.some(c=>!num.has(cgRecipe(c)));   // 레시피 번호 파일이 없는 Color 가 있어 큰 번호를 씀(소유자 기준) — 알림에 표시
-      if(!same)for(const k of ks)if(k!==hi)g.tfAlt.push({name:num.get(k).name,t:P.get(k)})}
-    else{if(!pix){const R=await cgFrameData(hit.d);pix=R&&R.pix}pix=pix||CG_PIX;
-      g.tfs.set(null,{inv:[[1/pix,0],[0,1/pix]],off:[-pix*CG.GW/2,-pix*CG.GH/2]});g.src.tf=`변환 파일 없음 → 가운데 모델(목록 좌표 = 프레임 가운데, 픽셀 ${+pix.toFixed(6)} µm)`;g.tfNames.push('(가운데 모델)')}
-    if(g.missing.length){s.warns.push(`매칭 파일 없음: ${g.missing.join(', ')} (${g.path})`);return}
+    let colorSrc=CG.CI;
+    if(hit.ci){if(g.at==='up')s.warns.push(`${CG.CI} 가 Slot 폴더가 아니라 위쪽 폴더에 있어 그 폴더를 매칭 폴더로 씀: ${g.path} (그 아래 Slot 은 이것 하나)`);
+      g.colors=cgColors(await readText(await hit.ci.file()))}
+    else{g.missing.push(CG.CI);g.diag=await cgDiag(root,look);g.colors=await cgColorsFromNames(hit.d);colorSrc=g.colors.length?`Color 사진 이름 ${g.colors.length}장`:'없음';
+      s.warns.push(`${CG.CI} 없음 — ${g.colors.length?`Color 는 Slot 폴더의 Color 사진 ${g.colors.length}장 이름(X.Y.c.….jpeg)의 좌표로 연결`:'Color 연결 불가(사진 이름도 없음)'} · Gray 는 Defect 좌표로 찾음 (${g.path}) — ${g.diag}`)}
+    // Gray 위치 자료(두 모드 공통): 프레임 목록 · 변환 · 레시피별 프레임 크기 · 픽셀 크기 · 좌표 기준. 장비 프레임 기록은 5-2 에서(geoLoadFd)
+    Object.assign(g,await geoLoad(hit.d,geoPtsCols(s.cols),geoHasRecCols(s.cols)?'later':false));g.src.color=colorSrc;
     if(g.noGray){const why=/X\.Y\.t\.jpeg/.test(g.noGray)?`Gray 사진 없음 — 이 Slot 에는 Gray 프레임 사진(X.Y.t.jpeg) · ${CG.SL} 가 없음(Color 만)`:`Gray 위치를 못 구함 — ${CG.SL} 가 없고 대신할 것도 없음(${g.noGray}, Color 만)`;
       g.plan={mode:0,rect:null,hits:0,recs:g.colors.map(c=>{const [fx,fy]=cgFault(c);return {c,fx,fy,r:cgRecipe(c),why}})};cgLink(s);s.warns.push(why);return}
     g.plan=cgPlan(g);cgLink(s);
-    for(const a of g.tfAlt){if(a.t.err){a.hits=null;continue}try{a.hits=cgPlan({colors:g.colors,frames:g.frames,tfs:new Map([[null,a.t]])}).hits}catch(e){a.hits=null}}   // 점검용: 다른 번호 파일이면 몇 개 맞는지
   }catch(e){const full=pcBaseSet()?pcPath(g.path+'/'+CG.CI):'';
     g.err=`매칭 파일을 읽지 못함(${g.path}): ${e&&e.name&&e.name!=='Error'?e.name+' ':''}${(e&&e.message)||e}${full.length>=250?` — 전체 경로 ${full.length}자(Windows 260자 제한에 가까움)`:''}`;g.plan=null;s.warns.push(g.err)}}
 
@@ -2027,7 +2090,7 @@ async function pool(items,n,fn){let i=0;const w=async()=>{while(i<items.length&&
 function bigDef(s,i){const act=S.o.coord==='actual';let d;
   if(s.defects)d=s.defects[i];
   else{const M=s.dc||(s.dc=new Map());d=M.get(i);
-    if(!d){if(M.size>400)M.clear();const C=s.cols;d={i,x:C.x[i],y:C.y[i],ActualX:C.ax[i],ActualY:C.ay[i],id:C.id[i],resultID:C.rid[i],recipe:C.rec[i],BoxWidth:C.bw[i],BoxHeight:C.bh[i],area:C.area[i],BlobBreadth:C.w[i],BlobLength:C.l[i],Contrast:C.c[i],reclassify:C.rc[i],orgReclassify:C.orc[i],zone:C.zn[i],waferRegion:C.rg[i],Type:C.ty[i],scan:s,slot:s.slot};
+    if(!d){if(M.size>400)M.clear();const C=s.cols;d={i,x:C.x[i],y:C.y[i],ActualX:C.ax[i],ActualY:C.ay[i],id:C.id[i],resultID:C.rid[i],recipe:C.rec[i],BoxWidth:C.bw[i],BoxHeight:C.bh[i],area:C.area[i],BlobBreadth:C.w[i],BlobLength:C.l[i],Contrast:C.c[i],reclassify:C.rc[i],orgReclassify:C.orc[i],zone:C.zn[i],waferRegion:C.rg[i],Type:C.ty[i],frameIdx:C.fi[i],xInFrame:C.xf[i],yInFrame:C.yf[i],scan:s,slot:s.slot};
       d.no=s.idByOrder?i:d.id;M.set(i,d)}}
   d.X=act?d.ActualX:d.x;d.Y=act?d.ActualY:d.y;return d}
 
@@ -2146,6 +2209,8 @@ function addMade(made,units,head){
   const altTf=g=>/모델/.test(g.src.tf||'')||!!g.usedHi;
   const alt=made.filter(w=>w.cg&&w.cg.plan&&!w.cg.noGray&&w.cg.src&&(w.cg.src.frames!==CG.SL||altTf(w.cg))).map(w=>`${w.slotName||w.name}: ${[w.cg.src.frames!==CG.SL?w.cg.src.frames:'',altTf(w.cg)?w.cg.src.tf:''].filter(Boolean).join(' · ')}`);
   const ng=made.filter(w=>w.cg&&w.cg.noGray).map(w=>w.slotName||w.name);
+  const noCi=made.filter(w=>w.cg&&w.cg.plan&&w.cg.missing&&w.cg.missing.includes(CG.CI)).map(w=>w.slotName||w.name);   // v14.4.1(#89): Color 정보 파일 없이도 Gray 를 찾음
+  if(noCi.length)msg.push(['warn',`${CG.CI} 가 없는 Slot ${noCi.length}개 — Color 는 Color 사진 이름(X.Y.c.….jpeg)의 좌표로 연결, Gray 는 Defect 좌표로 찾음: `+noCi.slice(0,6).join(', ')+(noCi.length>6?' …':'')]);
   if(ng.length)msg.push(['warn',`Gray 사진이 없는 Slot ${ng.length}개(Color 사진만 저장됨 — Color 는 보여 주고 Gray 는 '없음'): `+ng.slice(0,6).join(', ')+(ng.length>6?' …':'')]);
   if(alt.length)msg.push(['warn',`프로그램 파일 대신 계산한 Slot ${alt.length}개(ScanResultImageList.txt 없음 → Gray 사진 이름 · 변환 파일 번호 여러 개 → 큰 번호 · 변환 파일 없음 → 가운데 모델): `+alt.slice(0,4).join(' / ')+(alt.length>4?' …':'')]);
   if(cs.n)msg.push([cs.miss.length?'warn':'ok',`Color · Gray 매칭(Para 프로그램과 같은 계산, 사진은 아직 안 읽음): Color 항목 ${cs.col.toLocaleString()}개 중 Gray 위치 ${cs.hit.toLocaleString()}개 · Defect ${cs.def.toLocaleString()}개 중 Color 연결 ${cs.link.toLocaleString()}개`
@@ -2362,13 +2427,15 @@ async function b5Pair(save){
   busy({title:'5-2 결과 목록 · 사진 확인',steps:STEPS_B,step:0,done:0,total:Math.max(1,slots.length),unit:'Slot',files:'',detail:'',cancel,reset:true});
   try{
     await pool(slots,par,async s=>{const g=s.cg,st=s.pst={n:0,cl:0,cf:0,gl:0,gf:0};let names=null;
-      if(g&&g.dir){cur=`매칭 폴더 이름 목록(사진 내용은 안 읽음): ${g.path}`;pr();names=await g.dir.names()}ds++;pr();
+      if(g&&g.dir){cur=`매칭 폴더 이름 목록(사진 내용은 안 읽음): ${g.path}`;pr();names=await g.dir.names()}
+      if(g&&g.dir&&g.recPending){cur=`장비 프레임 기록(s_FrameData.dat) 읽는 중: ${g.path}`;pr();await geoLoadFd(g,g.dir)}   // v14.4.1(#89): frameIdx · xInFrame 이 있는 Defect = 장비가 적은 프레임 · 픽셀
+      ds++;pr();
       const find=async n=>{const b=cleanName(n||'');if(!b||!g||!g.dir)return null;if(names&&!names.err)return names.get(lower(b))||null;return g.dir.get(b)};
       for(const p of bySlot.get(s)){if(BIG.stop)return;step=1;const r=p.r=cgOf(s,p.i);cur=`사진 확인: ${s.name} · ID ${s.idByOrder?p.i:s.cols.id[p.i]}`;
         const cf=r.c?await find(r.c.file):null,gf=r.hit?await find(r.hit.frame.file):null;
         p.c=r.c&&cf?{file:cf.name,path:cf.path,how:CG_HOW[r.how]}:null;
-        p.cerr=!g||!g.plan?r.why:!r.c?'Color 항목 없음(ColorImageGrabingInfo.ini 에 이 Defect 가 없음)':!cf?`Color 파일 없음: ${cleanName(r.c.file)} (${g.path})`:'';
-        p.g=r.hit&&gf?{file:gf.name,path:gf.path,px:r.hit.px,py:r.hit.py,n:r.hit.n,from:r.from}:null;
+        p.cerr=!g||!g.plan?r.why:!r.c?(g.missing&&g.missing.includes(CG.CI)?'Color 없음(ColorImageGrabingInfo.ini 가 없고 Color 사진 이름에도 이 Defect 가 없음)':'Color 항목 없음(ColorImageGrabingInfo.ini 에 이 Defect 가 없음)'):!cf?`Color 파일 없음: ${cleanName(r.c.file)} (${g.path})`:'';
+        p.g=r.hit&&gf?{file:gf.name,path:gf.path,px:r.hit.px,py:r.hit.py,n:r.hit.n,from:r.from,W:r.hit.W,H:r.hit.H,model:r.hit.model}:null;
         p.gerr=!g||!g.plan?'':!r.hit?`Gray: ${r.why||'매칭되는 Gray 프레임 없음'}`:!gf?`Gray 파일 없음: ${cleanName(r.hit.frame.file)} (${g.path})`:'';
         if(r.c){const h=CG_HOW[r.how];hows.set(h,(hows.get(h)||0)+1)}
         st.n++;if(r.c)st.cl++;if(cf)st.cf++;if(r.hit)st.gl++;if(gf)st.gf++;
@@ -2394,7 +2461,7 @@ async function b5Pair(save){
 function b5SlotTbl(slots){const rows=slots.filter(s=>s.pst).sort((a,b)=>natCmp(a.lotPath,b.lotPath)||natCmp(a.slotName||'',b.slotName||'')).map(s=>{const st=s.pst,g=s.cg||{},pc=(a,b)=>b?`${a} (${Math.round(100*a/b)}%)`:'0',bad=!g.plan||st.cf<st.n||st.gf<st.n;
     return `<tr${bad?' style="background:var(--warnbg)"':''}><td>${esc(s.lotName||'')}</td><td>${esc(s.slotName||'')}</td><td class="num">${st.n}</td><td class="num">${(g.colors||[]).length}</td><td class="num">${pc(st.cl,st.n)}</td><td class="num">${pc(st.cf,st.n)}</td>
       <td class="num">${(g.frames||[]).length}${g.src&&g.src.frames&&g.src.frames!==CG.SL?`<br><span class="muted">${esc(g.src.frames)}</span>`:''}</td><td>${esc((g.src&&g.src.tf)||(g.tfNames||[]).join(' · ')||'없음')}</td><td class="num">${pc(st.gl,st.n)}</td><td class="num">${pc(st.gf,st.n)}</td><td>${g.plan?esc(CG.MODES[g.plan.mode]):'-'}</td>
-      <td class="muted" style="white-space:normal;min-width:240px">${esc([g.path?`매칭 폴더 ${g.path}`:'',g.err||'',g.missing&&g.missing.length?'없음: '+g.missing.join(', '):'',...(g.noGray?[]:g.tfAlt||[]).map(a=>`${a.name} 이면 Gray 위치 ${a.hits==null?'계산 못 함':a.hits+' / '+(g.colors||[]).length}`),...s.warns.filter(w=>!/id 가 고유하지|frameIdx\/xInFrame|매칭 파일/.test(w))].filter(Boolean).join(' / '))}</td></tr>`});
+      <td class="muted" style="white-space:normal;min-width:240px">${esc([g.path?`매칭 폴더 ${g.path}`:'',g.err||'',g.missing&&g.missing.length?'없음: '+g.missing.join(', '):'',...(g.noGray?[]:g.tfAlt||[]).map(a=>`${a.name} 이면 Gray 위치 ${a.hits==null?'계산 못 함':a.hits+' / '+(g.ptsN||0)}(Defect 표본)`),...s.warns.filter(w=>!/id 가 고유하지|frameIdx\/xInFrame|매칭 파일/.test(w))].filter(Boolean).join(' / '))}</td></tr>`});
   $('#b5slotTbl tbody').innerHTML=rows.join('')||'<tr><td colspan="12" class="muted">없음</td></tr>';
   $('#b5slotBox').open=slots.some(s=>s.pst&&(!s.cg||!s.cg.plan||s.pst.cf<s.pst.n||s.pst.gf<s.pst.n))}
 const csvName=()=>`Defect_매칭_${(BIG.scans[0]&&BIG.scans[0].name.split('/')[0])||'목록'}_${stamp()}.csv`.replace(/[\\/:*?"<>|]/g,'_');
@@ -2411,12 +2478,12 @@ const pcBaseSet=()=>!!(PARA&&PARA.roots.size)||!!(($('#bigBase')||{}).value||'')
 /** 결과 CSV. 경로 = 고른 폴더 이름부터의 상대 경로(브라우저는 전체 경로를 알려 주지 않음) — [원본 폴더 경로]를 적으면 그 앞에 붙인다. */
 function pairCsv(L){const o=S.o,px2=o.pix*o.pix,full=pcPath;   // L = 줄 목록(없으면 전체 — 확인 직후 자동 저장)
   const head=['순서','상태','Lot','Lot경로','Slot','ID','resultID','장비스캔분류','리뷰결과','Contrast','Area_um2','Area_px','Width','Length','BoxW','BoxH','WaferX','WaferY','DieCol','DieRow','Die맵X','Die맵Y',
-    'Color이미지','Color경로','Color연결','FaultX','FaultY','Gray프레임','Gray경로','GrayPX(3168x1024기준)','GrayPY(3168x1024기준)','후보프레임','Gray계산','좌표기준','CropW','CropH','매칭폴더','Gray프레임목록','변환','이유',...RV5_HEAD];
+    'Color이미지','Color경로','Color연결','FaultX','FaultY','Gray프레임','Gray경로','GrayPX(3168x1024기준)','GrayPY(3168x1024기준)','후보프레임','Gray계산','좌표기준','CropW','CropH','매칭폴더','Gray프레임목록','변환','이유',...RV5_HEAD,'Gray프레임크기'];   // v14.4.1(#89): 프레임 크기는 레시피마다 다름 — GrayPX/PY 는 그 프레임 픽셀(열 이름은 종전 그대로, 크기 열 추가)
   const parts=['\ufeff'+head.join(',')+'\r\n'];let buf=[];
   for(const p of L||BIG.pairs||[]){const s=p.s,i=p.i,C=s.cols,X=C.x[i],Y=C.y[i],die=dieOf(X,Y,s.product),r=p.r,g=s.cg||{},cs=r&&r.hit&&r.crop,fc=r&&r.c?cgFault(r.c):null;
     buf.push([p.k+1,csvQ(ST5[p.st]),csvQ(s.lotName),csvQ(s.lotPath),csvQ(s.slotName||''),s.idByOrder?i:C.id[i],C.rid[i],csvQ(clsFirst(s,i)),csvQ(clsName(s,i)),fv(C.c[i]),fv(C.area[i]*px2),C.area[i],fv(C.w[i]),fv(C.l[i]),f2(C.bw[i]),f2(C.bh[i]),f2(X),f2(Y),die?die.col:'',die?die.row:'',...(m=>m&&m.x!=null?[m.x,m.y]:['',''])(mapDie(X,Y,s)),
       csvQ(p.c?p.c.file:''),csvQ(p.c?full(p.c.path):''),csvQ(p.c?p.c.how:''),fc?f2(fc[0]):'',fc?f2(fc[1]):'',
-      csvQ(p.g?p.g.file:''),csvQ(p.g?full(p.g.path):''),p.g?f1(p.g.px):'',p.g?f1(p.g.py):'',p.g?p.g.n:'',p.g?(p.g.from==='color'?'Color 좌표':'Defect 좌표'):'',g.plan?csvQ(CG.MODES[g.plan.mode]):'',cs?cs.cw:'',cs?cs.ch:'',csvQ(g.path?full(g.path):''),csvQ(g.src&&g.src.frames||''),csvQ(g.src&&g.src.tf||''),csvQ([p.cerr,p.gerr].filter(Boolean).join(' / ')),...rv5Cells(s,i).map(csvQ)].join(','));
+      csvQ(p.g?p.g.file:''),csvQ(p.g?full(p.g.path):''),p.g?f1(p.g.px):'',p.g?f1(p.g.py):'',p.g?p.g.n:'',p.g?(p.g.from==='record'?'장비 기록':'Defect 좌표'):'',g.plan?csvQ(CG.MODES[g.plan.mode]):'',cs?cs.cw:'',cs?cs.ch:'',csvQ(g.path?full(g.path):''),csvQ(g.src&&g.src.frames||''),csvQ(g.src&&g.src.tf||''),csvQ([p.cerr,p.gerr].filter(Boolean).join(' / ')),...rv5Cells(s,i).map(csvQ),p.g&&p.g.W?`${p.g.W}x${p.g.H}`:''].join(','));
     if(buf.length>=20000){parts.push(buf.join('\r\n')+'\r\n');buf=[]}}
   if(buf.length)parts.push(buf.join('\r\n')+'\r\n');return parts}
 const B5={items:[],q:[]};
@@ -2451,7 +2518,7 @@ function b5Refresh(){const P=BIG.pairs||[],f=$('#b5show').value,T=B5.q;B5.items=
 //   새 창에서 ↑↓ ←→ · PageUp/PageDown · Home/End = 목록 이동(목록도 같이 움직임).
 //   확대(Para #67 소유자 "확대가 1번밖에 안 돼"): 사진 누르기 = 누른 곳을 2배씩(창 맞춤 → … 원래 픽셀의 16배까지, 끝에서 누르면 창 맞춤),
 //   Shift + 누르기 · 오른쪽 누르기 = 2배씩 작게, 마우스 휠 = 조금씩, 끌기 = 옮기기, Esc · 0 = 모든 사진 창 맞춤. 사진을 바꾸면 창 맞춤으로 돌아간다.
-const PW={w:null,V:null,items:[],tok:0};
+const PW={w:null,V:null,items:[],tok:0,src:null,ring:null};
 const PZ_MAX=16;   // 사진 확대 끝 = 원래 픽셀의 16배
 /** 새 창 사진 확대(pwZoom): el = canvas(.im 안). 배율 z = 창 맞춤 크기의 몇 배(1 = 창 맞춤). 누른 점(ax, ay 화면 좌표)이 확대 뒤에도 같은 자리에 오게 스크롤한다. */
 function pwFit(el){const im=el.parentNode;return Math.min(1,im.clientWidth/el.width||1,im.clientHeight/el.height||1)}
@@ -2471,7 +2538,7 @@ const PWL={on:false,v:{}};try{PWL.on=localStorage.getItem('cw.pwLock')==='1';PWL
 /** Para v14.1.5 새 창 [빨간 네모](소유자 "흑백 이미지의 빨간 네모 Defect 표시 on, off — 새 창으로 크게 보기에서"): Gray Crop · Gray 프레임의 빨간 네모만(노란 Crop 상자 · 측정 원은 그대로).
  *  끄고 켜면 지금 사진을 그 자리에서 다시 그린다(확대 · 보는 곳 그대로). 5-3 칸 · 격자 · 엑셀 사진은 늘 빨간 네모를 그린다. 이 PC 에 기억(cw.pwBox). */
 const PWB={on:true};try{PWB.on=localStorage.getItem('cw.pwBox')!=='0'}catch(e){}
-const pwLegend=()=>`${PWB.on?'빨간 네모 = Defect':'빨간 네모 끔'} · 노란 상자 = Crop 범위${GLC.show?' · 하늘색 점선 = 측정 원':''}`;
+const pwLegend=ring=>`${PWB.on?'빨간 네모 = Defect':'빨간 네모 끔'} · 노란 상자 = Crop 범위${(ring===undefined?(PW.ring?PW.ring():GLC.show):ring)?' · 하늘색 점선 = 측정 원':''}`;
 /** 새 창 사진을 그 자리에서 다시 그림(빨간 네모 · 측정 원을 바꿨을 때) — 캔버스는 그대로라 확대 · 스크롤이 유지된다. */
 function pwRedraw(){const w=PW.w,doc=w&&!w.closed?pwDoc(w):null;if(!doc)return;
   doc.querySelectorAll('.im>canvas').forEach(c=>{try{c._redraw&&c._redraw()}catch(e){}});
@@ -2512,29 +2579,58 @@ function cgDefBox(c,x,y,hw,hh,size){const lw=Math.max(2,Math.round(size/300)),ga
   const ax=Math.max(hw+gap,mn),ay=Math.max(hh+gap,mn);c.save();c.filter='none';c.strokeStyle='#ff2d2d';c.lineWidth=lw;c.strokeRect(x-ax-lw/2,y-ay-lw/2,2*ax+lw,2*ay+lw);c.restore();
   return [x-ax-lw,y-ay-lw,x+ax+lw,y+ay+lw]}
 /** Defect 상자 반폭 · 반높이(Gray 사진 픽셀). BoxWidth/BoxHeight 는 Gray 3168 × 1024 기준 — 값이 없으면 4. */
-function cgDefHalf(gray,d){const sx=gray.width/CG.GW,sy=gray.height/CG.GH;return [Math.max(1,((d&&d.BoxWidth)||4)*sx)/2,Math.max(1,((d&&d.BoxHeight)||4)*sy)/2]}
+/** 그 Defect 의 프레임 크기(geoChoose · geoRecHit 의 W, H — v14.4.1 #89: 레시피마다 다름). 없으면 종전 3168×1024. */
+const hitW=h=>h&&h.W>0?h.W:CG.GW,hitH=h=>h&&h.H>0?h.H:CG.GH;
+function cgDefHalf(gray,d,hit){const sx=gray.width/hitW(hit),sy=gray.height/hitH(hit);return [Math.max(1,((d&&d.BoxWidth)||4)*sx)/2,Math.max(1,((d&&d.BoxHeight)||4)*sy)/2]}
 /** Para ColorGray.tsx crop(): Fault 가운데 Color 시야(cs.cw × cs.ch Gray 픽셀)만큼 잘라(밖 = 검정) Color 크기(cs.ow × cs.oh)로 늘림 · 흑백. doc = 그릴 문서.
  *  d(Defect)를 주면 흑백 그림 위에 Defect 빨간 네모(cgDefBox, Defect 를 가리지 않음)와 측정 원을 그린다 — GL 측정용 raw 에는 그리지 않는다.
  *  opt = {box: 빨간 네모(기본 그림 — 새 창 [빨간 네모] 가 끔), ring: 측정 원(기본 = 5-3 [측정 원 보기])} — Para v14.1.5. */
 function cgCropCanvas(gray,hit,cs,doc,d,opt){doc=doc||document;opt=Object.assign({box:true,ring:GLC.show},opt);
-  const x=hit.px*gray.width/CG.GW,y=hit.py*gray.height/CG.GH,left=Math.round(x-cs.cw/2),top=Math.round(y-cs.ch/2);
+  const x=hit.px*gray.width/hitW(hit),y=hit.py*gray.height/hitH(hit),left=Math.round(x-cs.cw/2),top=Math.round(y-cs.ch/2);
   const raw=document.createElement('canvas');raw.width=cs.cw;raw.height=cs.ch;const g=raw.getContext('2d',{willReadFrequently:true});g.fillStyle='#000';g.fillRect(0,0,cs.cw,cs.ch);
   const sl=Math.max(0,left),st=Math.max(0,top),sr=Math.min(gray.width,left+cs.cw),sb=Math.min(gray.height,top+cs.ch);
   if(sr>sl&&sb>st)g.drawImage(gray,sl,st,sr-sl,sb-st,sl-left,st-top,sr-sl,sb-st);
   const out=doc.createElement('canvas');out.width=cs.ow;out.height=cs.oh;const o2=out.getContext('2d');o2.imageSmoothingQuality='high';o2.filter='grayscale(1)';o2.drawImage(raw,0,0,cs.ow,cs.oh);o2.filter='none';
-  let mark=null;if(d){const fx=cs.ow/cs.cw,fy=cs.oh/cs.ch,[hw,hh]=cgDefHalf(gray,d),M=Math.max(cs.ow,cs.oh);if(opt.box)mark=cgDefBox(o2,(x-left)*fx,(y-top)*fy,hw*fx,hh*fy,M);if(opt.ring)glRing(o2,(x-left)*fx,(y-top)*fy,GLC.r*fx,GLC.r*fy,M)}
-  return {canvas:out,raw,box:[left,top,left+cs.cw,top+cs.ch],cx:x-left,cy:y-top,mark}}
+  let mark=null;if(d){const fx=cs.ow/cs.cw,fy=cs.oh/cs.ch,[hw,hh]=cgDefHalf(gray,d,hit),M=Math.max(cs.ow,cs.oh);if(opt.box)mark=cgDefBox(o2,(x-left)*fx,(y-top)*fy,hw*fx,hh*fy,M);if(opt.ring)glRing(o2,(x-left)*fx,(y-top)*fy,GLC.r*fx,GLC.r*fy,M)}
+  return {canvas:out,raw,box:[left,top,left+cs.cw,top+cs.ch],cx:x-left,cy:y-top,mark,hit}}
 /** Gray 프레임 전체 + 빨간 네모(Defect — 가리지 않게 바깥에, Para #67. 종전 빨간 + 는 Defect 위를 지나가 없앰) + 노란 상자(Crop 범위). */
 function cgFrameCanvas(gray,hit,cs,doc,d,o){doc=doc||document;o=Object.assign({box:true,ring:GLC.show},o);const cv=doc.createElement('canvas');cv.width=gray.width;cv.height=gray.height;const c=cv.getContext('2d');c.drawImage(gray,0,0);
-  const sx=gray.width/CG.GW,sy=gray.height/CG.GH,x=hit.px*sx,y=hit.py*sy,lw=Math.max(2,gray.width/700);
+  const sx=gray.width/hitW(hit),sy=gray.height/hitH(hit),x=hit.px*sx,y=hit.py*sy,lw=Math.max(2,gray.width/700);
   if(cs){c.strokeStyle='#ffd23f';c.lineWidth=lw;c.strokeRect(x-cs.cw/2,y-cs.ch/2,cs.cw,cs.ch)}
-  const [hw,hh]=cgDefHalf(gray,d);if(o.box)cgDefBox(c,x,y,hw,hh,Math.max(gray.width,gray.height));if(d&&o.ring)glRing(c,x,y,GLC.r,GLC.r,Math.max(gray.width,gray.height));return cv}
+  const [hw,hh]=cgDefHalf(gray,d,hit);if(o.box)cgDefBox(c,x,y,hw,hh,Math.max(gray.width,gray.height));if(d&&o.ring)glRing(c,x,y,GLC.r,GLC.r,Math.max(gray.width,gray.height));return cv}
 /** GL(Local 추정): Crop 원본(Gray 해상도)에서 Fault 가운데 Box W×H · Ring 폭. */
-function cgGL(k,gray,d){const sx=gray.width/CG.GW,sy=gray.height/CG.GH,bw=Math.max(1,(d.BoxWidth||4)*sx),bh=Math.max(1,(d.BoxHeight||4)*sy);
+function cgGL(k,gray,d){const sx=gray.width/hitW(k.hit),sy=gray.height/hitH(k.hit),bw=Math.max(1,(d.BoxWidth||4)*sx),bh=Math.max(1,(d.BoxHeight||4)*sy);
   return measureGL(k.raw.getContext('2d',{willReadFrequently:true}).getImageData(0,0,k.raw.width,k.raw.height),k.cx,k.cy,bw,bh,S.o.ring)}
-function photoWin(V,items){if(!V||!items||!items.length)return;let w=PW.w;
+/** v14.4.1(#89, 소유자 "기본 모드에서 새창으로 이미지 볼 때 대규모 모드에서 보는 것처럼 동일하게 — 화면 잠금 · 빨간 박스 해제 등, GL 원은 ㄴㄴ"): 새 창은 두 모드가 같은 창 · 같은 코드.
+ *  자료원 src = {n(), sel(), go(k), step(dir)?, pick(k)?, v(k) → 칸 자료, key?}, 칸 자료 = {hd(머리 글 HTML), space(Space 안내), c:{name, path, bmp()}|null, cwhy, g:{hit, name, path, bmp(), crop, d}|null, gwhy, ring, rel, pre()}.
+ *  대규모 = 5-2 · 5-3 목록(bigSrc), 기본 = Step 3 · 4 리뷰 목록(baseSrc) · Step 2 쌍별 상세 표 · 지도의 목록 밖 점(listSrc). */
+function photoWinOpen(src){if(!src||!src.n())return;let w=PW.w;
   if(!w||w.closed){w=winOpen('cw_photo','width=1600,height=1000');PW.w=w;photoWinInit(w)}
-  PW.V=V;PW.items=items;try{w.focus();w.document.body.focus()}catch(e){}photoWinShow()}
+  PW.src=src;PW.V=src.V||null;if(src.V)PW.items=src.items;try{w.focus();w.document.body.focus()}catch(e){}photoWinShow()}
+function photoWin(V,items){if(!V||!items||!items.length)return;photoWinOpen(bigSrc(V,items))}
+/** 대규모 자료원: 목록 V(가상 표) + 줄(PW.items — 5-2 를 다시 고르면 바뀐다). Space = 최종 목록 ☑/☐. */
+function bigSrc(V,items){return {V,items,n:()=>V.n,sel:()=>V.sel,go:k=>vtGo(V,k),pick:k=>pickToggle(PW.items[k]),v:k=>bigView(PW.items[k],k,V.n),
+  pre:k=>{for(let j=k+1;j<=k+2&&j<PW.items.length;j++){const q=PW.items[j],rq=q.r||cgOf(q.s,q.i);if(rq.c)cgBitmap(q.s,rq.c.file);if(rq.hit)cgBitmap(q.s,rq.hit.frame.file)}}}}
+function bigView(p,k,n){if(!p)return null;const s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),dir=s.cg&&s.cg.path?s.cg.path+'/':'',cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'';
+  return {hd:`${k+1} / ${n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · <b>${esc(clsText(s,i))}</b> · Recipe <b>${esc(rcp5(s,i))}</b> · Zone ${esc(rvInfo(bigDef(s,i)).zone)} · Region ${C.rg[i]} · Contrast ${fv(C.c[i])}${p.glv!=null?` · <b>GL ${f1(p.glv)}</b>`:''} ${pickBadge(p)}`,
+    space:'Space = 최종 목록 ☑/☐',rel:!pcBaseSet(),ring:null,
+    c:r.c?{name:cn,path:cn?pcPath(p.c?p.c.path:dir+cn):'',bmp:()=>cgBitmap(s,r.c.file)}:null,cwhy:p.cerr||r.why||'Color 항목 없음',
+    g:r.hit?{hit:r.hit,name:gn,path:gn?pcPath(p.g?p.g.path:dir+gn):'',bmp:()=>cgBitmap(s,r.hit.frame.file),crop:r.crop||cgCropSize({}),d:bigDef(s,i)}:null,gwhy:p.gerr||`Gray: ${r.why||'위치 없음'}`}}
+/** 기본 자료원: 리뷰 패널 P(Step 3 · 4) — ↑↓ = ☑ 줄만(목록과 같은 규칙), Space = ☑/☐, 목록 · 지도에서 고르면 새 창도 따라감(showPanel). */
+function baseSrc(P){return {key:P,n:()=>P.items.length,sel:()=>P.sel,go:k=>{P.sel=k;showPanel(P)},step:dir=>panelStep(P,dir),pick:k=>{panelTog(P,k);photoWinShow()},
+  v:k=>baseView(P.items[k],k,P.items.length,pOn(P,P.items[k])),pre:k=>basePre(P.items,k)}}
+/** 기본 자료원: 줄 목록 L 의 k 번째(쌍별 상세 표 · 목록 밖 점). pick = ☑/☐ 바꾸기(없으면 Space 없음). */
+function listSrc(L,k,pick,on){let i=k;return {key:L,n:()=>L.length,sel:()=>i,go:j=>{i=j;photoWinShow()},pick:pick?j=>{pick(L[j]);photoWinShow()}:null,
+  v:j=>baseView(L[j],j,L.length,on?on(L[j]):null),pre:j=>basePre(L,j)}}
+const basePre=(L,k)=>{for(let j=k+1;j<=k+2&&j<L.length;j++){const d=L[j]&&L[j].d;if(!d)continue;const c=linkColor(d,d.scan,S.o.ctol),g=grayOf(d);if(c)grayBmp(d.scan,{file:c.c.file});if(g.frame)grayBmp(d.scan,g.frame)}};
+/** 기본 모드 줄 하나 → 칸 자료(대규모 bigView 와 같은 모양). Color = linkColor, Gray = grayOf(geoHit — 대규모와 같은 계산), Crop = Color 시야(대규모와 같음 · cgCropSize). */
+function baseView(q,k,n,on){if(!q||!q.d)return null;const d=q.d,s=d.scan,x=info(q),c=linkColor(d,s,S.o.ctol),g=grayOf(d),G=s.geo;
+  const cn=c?cleanName(c.c.file):'',gn=g.frame?cleanName(g.frame.file):'',pth=nm=>nm?`${s.name}/${nm}`:'';
+  const raw=c?Object.fromEntries([['ImageSizeX',c.c.w],['ImageSizeY',c.c.h],['PixelSizeX',c.c.psx],['PixelSizeY',c.c.psy]].filter(e=>e[1]!=null)):{},cs=cgCropSize(raw,geoPix(G,d.recipe),G&&G.rcpix&&G.rcpix.get(d.recipe))||cgCropSize({});
+  return {hd:`${k+1} / ${n} · [${esc(x.st)}] ${esc(x.step)} · Slot ${esc(x.slot||'-')} · 호기 ${esc(x.tool||'-')} · ID ${esc(x.id)} · Recipe <b>${esc(rcpName(d))}</b> · Zone ${esc(zoneLbl(d.zone,s))} · Wafer ${f1(x.X)}, ${f1(x.Y)} µm · Die ${esc(x.die)} · Contrast ${fv(x.contrast)}`
+      +(on==null?'':` <b class="pk ${on?'on':'off'}" id="pk">${on?'☑':'☐'}</b>`),space:on==null?'':'Space = ☑/☐',rel:true,ring:false,
+    c:c?{name:cn,path:pth(cn),bmp:()=>grayBmp(s,{file:c.c.file})}:null,cwhy:colorWhy(d,s,S.o.ctol),
+    g:g.frame?{hit:g,name:gn,path:pth(gn),bmp:()=>grayBmp(s,g.frame),crop:cs,d}:null,gwhy:`Gray: ${g.reason||'위치 없음'}`}}
 /** 새 창 화면 · 키(소유자 "큰 화면으로 볼 때 방향키로 다음 목록" — ↑↓ ←→ · PageUp/PageDown · Home/End · J/K, 꾹 누르면 계속 넘어감). 사진을 눌러 원래 크기로 봐도 키는 그대로. */
 function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray';
   doc.head.insertAdjacentHTML('beforeend',`<meta charset="utf-8"><style>html,body{height:100%;margin:0}body{background:#0b0b0b;color:#ccc;font:12px "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
@@ -2558,10 +2654,10 @@ function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray'
   doc.body.innerHTML=`<div class="tb"><label class="lk" id="lkL" title="켜면 지금 칸마다의 확대 배율과 보는 곳을 다음 Defect 에도 그대로 씁니다(Color · Gray Crop = 사진의 같은 자리, Gray 프레임 = Defect 를 따라감). 끄면 사진을 바꿀 때 창 맞춤."><input type="checkbox" id="pwLock"> 🔒 확대 · 위치 고정</label>`
     +`<label class="lk" id="bxL" title="흑백 사진(Gray Crop · Gray 프레임)의 Defect 빨간 네모를 켜고 끕니다(B). 확대 · 보는 곳은 그대로."><input type="checkbox" id="pwBox"> 빨간 네모</label><div class="hd" id="hd"></div></div><div class="pv"><figure id="fc"><figcaption>Color</figcaption><div class="im"></div><div class="zb" hidden></div></figure><figure id="fx"><figcaption>Gray Crop (Color 시야)</figcaption><div class="im"></div><div class="zb" hidden></div></figure>`
     +`<figure id="ff" class="wide"><figcaption>Gray 프레임</figcaption><div class="im"></div><div class="zb" hidden></div></figure></div>`;
-  doc.addEventListener('keydown',e=>{const V=PW.V;if(!V||!V.n||e.ctrlKey||e.altKey||e.metaKey)return;const k=e.key.length===1?e.key.toLowerCase():e.key,
+  doc.addEventListener('keydown',e=>{const src=PW.src,N=src?src.n():0;if(!N||e.ctrlKey||e.altKey||e.metaKey)return;const k=e.key.length===1?e.key.toLowerCase():e.key,
       mv={ArrowDown:1,ArrowRight:1,PageDown:1,j:1,ArrowUp:-1,ArrowLeft:-1,PageUp:-1,k:-1}[k];
-    if(mv){vtGo(V,Math.max(0,Math.min(V.n-1,V.sel+mv)));e.preventDefault()}else if(k==='Home'||k==='End'){vtGo(V,k==='Home'?0:V.n-1);e.preventDefault()}
-    else if(k===' '){pickToggle(PW.items[V.sel]);e.preventDefault()}
+    if(mv){src.go(src.step?src.step(mv):Math.max(0,Math.min(N-1,src.sel()+mv)));e.preventDefault()}else if(k==='Home'||k==='End'){src.go(k==='Home'?0:N-1);e.preventDefault()}
+    else if(k===' '){if(src.pick)src.pick(src.sel());e.preventDefault()}
     else if(k==='Escape'||k==='0'){doc.querySelectorAll('.im>canvas').forEach(c=>{pwSet(c,1);pwRemember(c)});e.preventDefault()}
     else if(k==='f'||k==='l'){const b=doc.getElementById('pwLock');b.checked=!b.checked;b.dispatchEvent(new Event('change'));e.preventDefault()}
     else if(k==='b'){pwBoxSet(!PWB.on);e.preventDefault()}});
@@ -2576,35 +2672,34 @@ function photoWinFollow(V){if(PW.w&&!PW.w.closed&&PW.V===V)photoWinShow()}
 function pwDoc(w){try{const d=w.document;d.getElementById('fc');return d}catch(e){return null}}
 async function photoWinShow(){let w=PW.w;if(!w||w.closed)return;let doc=pwDoc(w);
   if(!doc){try{w.close()}catch(e){}PW.w=null;w=winOpen('cw_photo_'+Date.now(),'width=1600,height=1000');PW.w=w;photoWinInit(w);doc=w.document;try{w.focus()}catch(e){}}   // 닫고 새 창
-  const V=PW.V,p=PW.items[V.sel],tk=++PW.tok,$w=id=>doc.getElementById(id);
+  const src=PW.src,tk=++PW.tok,$w=id=>doc.getElementById(id),K=src?src.sel():0,v=src&&src.n()?src.v(K):null;
   if(!$w('fc')||!doc.querySelector('#fc .im'))photoWinInit(w);   // 같은 출처로 새로 고쳐졌으면 다시 만든다
   const F=id=>{const f=$w(id);return {cap:f.querySelector('figcaption'),im:f.querySelector('.im')}},fc=F('fc'),fx=F('fx'),ff=F('ff'),pv=doc.querySelector('.pv');
   for(const f of [fc,fx,ff]){f.im.replaceChildren();f.im.classList.remove('full','drag');const zb=f.im.parentNode.querySelector('.zb');if(zb)zb.hidden=true}pv.classList.remove('conly');
   const cap=(f,h,title)=>{f.cap.innerHTML=h;f.cap.title=title||''};
-  if(!p){$w('hd').textContent='보여 줄 Defect 가 없습니다';cap(fc,'Color');cap(fx,'Gray Crop (Color 시야)');cap(ff,'Gray 프레임');return}
-  const s=p.s,C=s.cols,i=p.i,r=p.r||cgOf(s,i),ms=(f,t)=>f.im.insertAdjacentHTML('beforeend',`<p class="ms">${esc(t)}</p>`),zoom=pwZoom;
-  $w('hd').innerHTML=`${V.sel+1} / ${V.n} · ${esc(s.lotName||'')} · ${esc(s.slotName||'')} · ID ${s.idByOrder?i:C.id[i]} · <b>${esc(clsText(s,i))}</b> · Recipe <b>${esc(rcp5(s,i))}</b> · Zone ${esc(rvInfo(bigDef(s,i)).zone)} · Region ${C.rg[i]} · Contrast ${fv(C.c[i])}${p.glv!=null?` · <b>GL ${f1(p.glv)}</b>`:''} ${pickBadge(p)} <i>(↑↓ ←→ 이전 · 다음 · Space = 최종 목록 ☑/☐ · F = 확대 · 위치 고정 · B = 빨간 네모 켜기/끄기 · 사진 누르기 = 2배씩 확대(Shift · 오른쪽 = 축소, 휠 · 끌기) · Esc = 창 맞춤)</i>`
-    +(pcBaseSet()?'':' <i style="color:#e0b060">· 전체 경로: 5-1 의 [원본 폴더 경로(PC)] 를 적으면 PC 경로로 나옵니다(지금은 고른 폴더부터)</i>');
+  if(!v){$w('hd').textContent='보여 줄 Defect 가 없습니다';cap(fc,'Color');cap(fx,'Gray Crop (Color 시야)');cap(ff,'Gray 프레임');return}
+  const ms=(f,t)=>f.im.insertAdjacentHTML('beforeend',`<p class="ms">${esc(t)}</p>`),zoom=pwZoom,ring=()=>v.ring==null?GLC.show:v.ring;PW.ring=ring;
+  $w('hd').innerHTML=v.hd+` <i>(↑↓ ←→ 이전 · 다음${v.space?' · '+v.space:''} · F = 확대 · 위치 고정 · B = 빨간 네모 켜기/끄기 · 사진 누르기 = 2배씩 확대(Shift · 오른쪽 = 축소, 휠 · 끌기) · Esc = 창 맞춤)</i>`
+    +(v.rel&&src.V?' <i style="color:#e0b060">· 전체 경로: 5-1 의 [원본 폴더 경로(PC)] 를 적으면 PC 경로로 나옵니다(지금은 고른 폴더부터)</i>':'');
   // 사진 파일명 + 전체 경로(소유자 "사진 파일명뿐만 아니라 전체 경로도") — 경로는 사진을 실제로 찾은 곳(없으면 매칭 폴더 + 이름)
-  const cn=r.c?cleanName(r.c.file):'',gn=r.hit?cleanName(r.hit.frame.file):'',dir=s.cg&&s.cg.path?s.cg.path+'/':'',rel=pcBaseSet()?'':' rel';
-  const cp=cn?pcPath(p.c?p.c.path:dir+cn):'',gp=gn?pcPath(p.g?p.g.path:dir+gn):'',pl=x=>x?`<span class="pp${rel}">${esc(x)}</span>`:'';
-  cap(fc,`Color · <b>${esc(cn||'없음')}</b>${pl(cp)}`,cp);
+  const rel=v.rel?' rel':'',pl=x=>x?`<span class="pp${rel}">${esc(x)}</span>`:'',cp=v.c?v.c.path:'',gp=v.g?v.g.path:'',gn=v.g?v.g.name:'';
+  cap(fc,`Color · <b>${esc(v.c?v.c.name:'없음')}</b>${pl(cp)}`,cp);
   cap(fx,`Gray Crop (Color 시야) · <b>${esc(gn||'없음')}</b>${pl(gp)}`,gp);
-  cap(ff,`Gray 프레임 · <b>${esc(gn||'없음')}</b>${r.hit?` · 픽셀 (${f1(r.hit.px)}, ${f1(r.hit.py)})`:''} <i class="lg">· ${esc(pwLegend())}</i>${pl(gp)}`,gp);
+  cap(ff,`Gray 프레임 · <b>${esc(gn||'없음')}</b>${v.g?` · 픽셀 (${f1(v.g.hit.px)}, ${f1(v.g.hit.py)}) · ${hitW(v.g.hit)}×${hitH(v.g.hit)}`:''} <i class="lg">· ${esc(pwLegend(ring()))}</i>${pl(gp)}`,gp);
   const draw=b=>{const cv=doc.createElement('canvas');cv.width=b.width;cv.height=b.height;cv.getContext('2d').drawImage(b,0,0);zoom(cv);return cv};
-  const cb=r.c?await cgBitmap(s,r.c.file):null;if(tk!==PW.tok)return;
-  if(cb){const c=draw(cb);c._pid='fc';fc.im.append(c);pwApply(c)}else ms(fc,r.c?`Color 파일 없음: ${cleanName(r.c.file)}`:(p.cerr||r.why||'Color 항목 없음'));
+  const cb=v.c?await v.c.bmp():null;if(tk!==PW.tok)return;
+  if(cb){const c=draw(cb);c._pid='fc';fc.im.append(c);pwApply(c)}else ms(fc,v.c?`Color 파일 없음: ${v.c.name}`:(v.cwhy||'Color 항목 없음'));
   // Gray 가 없으면(Color 사진만 저장된 Slot 등) Color 를 창 전체에 크게(소유자 "Color 이미지만 있을 경우에도 Color 이미지만이라도 띄워야")
   const conly=why=>{if(!cb){ms(fx,why);return}pv.classList.add('conly');why=why.replace(/^Gray:\s*/,'');$w('hd').insertAdjacentHTML('beforeend',` <b class="ng" title="${esc(why)}">· Gray 없음 — Color 만 크게 (${esc(why)})</b>`)};
-  if(!r.hit){conly(p.gerr||`Gray: ${r.why||'위치 없음'}`);return}
-  const gb=await cgBitmap(s,r.hit.frame.file);if(tk!==PW.tok)return;
-  if(!gb){conly(`Gray 파일 없음: ${cleanName(r.hit.frame.file)}`);return}
-  const dd=bigDef(s,i),cs=r.crop||cgCropSize({}),k=cgCropCanvas(gb,r.hit,cs,doc,dd,{box:PWB.on});zoom(k.canvas);k.canvas._pid='fx';fx.im.append(k.canvas);pwApply(k.canvas);
-  const fr=cgFrameCanvas(gb,r.hit,cs,doc,dd,{box:PWB.on});zoom(fr);fr._pid='ff';fr._anchor=[r.hit.px/CG.GW,r.hit.py/CG.GH];ff.im.append(fr);pwApply(fr);   // 프레임은 Defect 자리를 기준으로 고정
-  // 빨간 네모 · 측정 원을 바꾸면 같은 캔버스에 다시 그린다(크기 같음 → 확대 · 스크롤 그대로)
-  k.canvas._redraw=()=>k.canvas.getContext('2d').drawImage(cgCropCanvas(gb,r.hit,cs,doc,dd,{box:PWB.on}).canvas,0,0);
-  fr._redraw=()=>fr.getContext('2d').drawImage(cgFrameCanvas(gb,r.hit,cs,doc,dd,{box:PWB.on}),0,0);
-  for(let j=V.sel+1;j<=V.sel+2&&j<PW.items.length;j++){const q=PW.items[j],rq=q.r||cgOf(q.s,q.i);if(rq.c)cgBitmap(q.s,rq.c.file);if(rq.hit)cgBitmap(q.s,rq.hit.frame.file)}}
+  if(!v.g){conly(v.gwhy||'Gray: 위치 없음');return}
+  const gb=await v.g.bmp();if(tk!==PW.tok)return;
+  if(!gb){conly(`Gray 파일 없음: ${v.g.name}`);return}
+  const H=v.g.hit,dd=v.g.d,cs=v.g.crop||cgCropSize({}),k=cgCropCanvas(gb,H,cs,doc,dd,{box:PWB.on,ring:ring()});zoom(k.canvas);k.canvas._pid='fx';fx.im.append(k.canvas);pwApply(k.canvas);
+  const fr=cgFrameCanvas(gb,H,cs,doc,dd,{box:PWB.on,ring:ring()});zoom(fr);fr._pid='ff';fr._anchor=[H.px/hitW(H),H.py/hitH(H)];ff.im.append(fr);pwApply(fr);   // 프레임은 Defect 자리를 기준으로 고정
+  // 빨간 네모 · 측정 원(대규모만)을 바꾸면 같은 캔버스에 다시 그린다(크기 같음 → 확대 · 스크롤 그대로)
+  k.canvas._redraw=()=>k.canvas.getContext('2d').drawImage(cgCropCanvas(gb,H,cs,doc,dd,{box:PWB.on,ring:ring()}).canvas,0,0);
+  fr._redraw=()=>fr.getContext('2d').drawImage(cgFrameCanvas(gb,H,cs,doc,dd,{box:PWB.on,ring:ring()}),0,0);
+  if(src.pre)src.pre(K)}
 
 // ── 5-3: 사진 정밀 조사 ────────────────────────────────────────────────
 const THUMB=new Map();   // 짝 번호 → {c, g(data URL), gl, err} — 설정이 바뀌면 비운다
@@ -2644,7 +2739,7 @@ async function c5Show(){
   const dir=s.cg&&s.cg.path?s.cg.path+'/':'',cp=cn?pcPath(p.c?p.c.path:dir+cn):'',gp=gn?pcPath(p.g?p.g.path:dir+gn):'',pl=x=>x?`<span class="pp">${esc(x)}</span>`:'';   // 전체 경로(소유자)
   cf.querySelector('figcaption').innerHTML=`Color 원본 · <b>${esc(cn||'없음')}</b>${pl(cp)}`;gf.querySelector('figcaption').innerHTML=`Gray Crop (Color 시야) · <b>${esc(gn||'없음')}</b>${pl(gp)}`;
   const ct=r.c?`${cleanName(r.c.file)} · ${CG_HOW[r.how]}`:(p.cerr||r.why||'Color 항목 없음');
-  const gt=r.hit?`${cleanName(r.hit.frame.file)} · (${f1(r.hit.px)}, ${f1(r.hit.py)}) · 후보 ${r.hit.n} · 좌표 기준 ${CG.MODES[s.cg.plan.mode]}${r.from==='defect'?' · Defect 좌표':''} · frameToChuckPlane`:(p.gerr||`Gray: ${r.why}`);
+  const gt=r.hit?`${cleanName(r.hit.frame.file)} · (${f1(r.hit.px)}, ${f1(r.hit.py)}) · 후보 ${r.hit.n} · 프레임 ${hitW(r.hit)}×${hitH(r.hit)} · 좌표 기준 ${CG.MODES[s.cg.plan.mode]} · ${geoModel(r.hit)}`:(p.gerr||`Gray: ${r.why}`);
   const fill=()=>{$('#c5Info').innerHTML=kvHtml([['상태',ST5[p.st]],['순서',`${VC.sel+1} / ${C5.items.length}`],['장비 스캔 분류',clsFirst(s,p.i)],['리뷰 결과',clsName(s,p.i)],['Lot 폴더',s.lotPath],['흑백 GL 평균 (원)',glInfo(p)],...infoRows(d,x,ct,gt),['Color 경로',cp||'-'],['Gray 경로',gp||'-']])};fill();$('#c5Rv').textContent=rvText(d);
   if(r.c){log.step(`Color 이미지 읽기 · 디코딩: ${cleanName(r.c.file)}`);const b=await cgBitmap(s,r.c.file);if(tk!==C5.tok)return;
     if(b){const cv=document.createElement('canvas');cv.width=b.width;cv.height=b.height;cv.getContext('2d').drawImage(b,0,0);cv.onclick=()=>photoWin(VC,C5.items);cf.append(cv);log.done(`${b.width}×${b.height}px`)}
@@ -2867,7 +2962,7 @@ const GL_MAX=64,GL_K=GL_MAX*2;
 const GLC={r:5.5,lo:0,hi:255,sort:'',show:true};try{const v=+localStorage.getItem('cw.glR');if(v>=0.5&&v<=GL_MAX)GLC.r=Math.round(v*2)/2;GLC.show=localStorage.getItem('cw.glShow')!=='0'}catch(e){}
 const glK=r=>Math.max(1,Math.min(GL_K,Math.round(r*2)));
 let GLCV=null;
-function glProfile(gray,hit){const cx=hit.px*gray.width/CG.GW,cy=hit.py*gray.height/CG.GH,S=new Float64Array(GL_K+1),N=new Uint32Array(GL_K+1);
+function glProfile(gray,hit){const cx=hit.px*gray.width/hitW(hit),cy=hit.py*gray.height/hitH(hit),S=new Float64Array(GL_K+1),N=new Uint32Array(GL_K+1);
   const x0=Math.max(0,Math.floor(cx-GL_MAX-1)),y0=Math.max(0,Math.floor(cy-GL_MAX-1)),x1=Math.min(gray.width,Math.ceil(cx+GL_MAX+1)),y1=Math.min(gray.height,Math.ceil(cy+GL_MAX+1));
   if(x1>x0&&y1>y0){const w=x1-x0,h=y1-y0;if(!GLCV)GLCV=document.createElement('canvas');GLCV.width=w;GLCV.height=h;
     const g=GLCV.getContext('2d',{willReadFrequently:true});g.clearRect(0,0,w,h);g.drawImage(gray,x0,y0,w,h,0,0,w,h);const D=g.getImageData(0,0,w,h).data,R2=GL_MAX*GL_MAX;
@@ -3050,7 +3145,7 @@ if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대�
   if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
   else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgRect,cgMap,cgChoose,cgCropSize,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,locateGray,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgMap,cgCropSize,geoLoad,geoLoadFd,geoHit,geoChoose,geoPlan,geoRect,geoSize,geoPix,geoWhy,geoModel,tfSize,tfPix,parseRecipesInfo,cgFrameData,geoFramesFromNames,cgColorsFromNames,dirFromFiles,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,grayOf,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

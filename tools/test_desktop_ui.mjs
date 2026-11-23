@@ -1031,6 +1031,24 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   await dg.locator('#p3Ls input[type=search]').fill('c1.jpg');await dg.locator('#p3Ls input[type=search]').press('Enter');
   assert.equal(await dg.locator('#p3List .it').count(),1);
   await dg.locator('#p3Ls input[type=search]').fill('');await dg.locator('#p3Ls input[type=search]').press('Enter');
+  // v14.4.1(#89): 기본 모드 새 창 = 대규모와 같은 창(한 창 · Color · Gray Crop · Gray 프레임 · 🔒 고정 · 빨간 네모 B · ↑↓ = ☑ 줄만 · Space ☑), 측정 원 없음(소유자)
+  const [bp]=await Promise.all([page.waitForEvent('popup'),dg.locator('#p3List .it').nth(0).dblclick()]);   // 첫 줄 = C1(Color · Gray 있음, ☐)
+  await bp.locator('#ff canvas').waitFor();await bp.locator('#fx canvas').waitFor();await bp.locator('#fc canvas').waitFor();
+  assert.deepEqual(await bp.evaluate(()=>['pwBox','pwLock'].map(i=>!!document.getElementById(i))),[true,true]);
+  assert.match(await bp.locator('#hd').innerText(),/^1 \/ 2 · /);
+  assert.doesNotMatch(await bp.locator('#ff figcaption .lg').innerText(),/측정 원/);
+  await bp.locator('#pwBox').uncheck();assert.match(await bp.locator('#ff figcaption .lg').innerText(),/빨간 네모 끔/);
+  await bp.keyboard.press('b');await bp.waitForFunction(()=>document.getElementById('pwBox').checked);
+  await bp.keyboard.press(' ');await dg.locator('#p3Ls .lsn',{hasText:'☑ 2 / 2개'}).waitFor();            // Space = ☑/☐(목록과 같음)
+  await bp.keyboard.press(' ');await dg.locator('#p3Ls .lsn',{hasText:'☑ 1 / 2개'}).waitFor();
+  await bp.keyboard.press('ArrowDown');await bp.locator('#hd',{hasText:/^2 \/ 2 · /}).waitFor();          // 새 창 ↓ = 목록도 따라감
+  assert.equal(await dgf.evaluate(()=>window.__cw.PANELS.p3.sel),1);
+  await bp.locator('#fx .ms',{hasText:'Gray'}).waitFor();                                                // C2 = 어느 프레임에도 없음 · Color 사진도 없음(시험 자료) → 칸에 이유
+  await bp.keyboard.press('ArrowUp');await bp.waitForTimeout(200);                                       // 첫 줄은 ☐ → 건너뜀(목록 ↑↓ 와 같음)
+  assert.equal(await dgf.evaluate(()=>window.__cw.PANELS.p3.sel),1);
+  const nPages=page.context().pages().length;await dg.locator('#p3List').press('Enter');await bp.waitForTimeout(300);
+  assert.equal(page.context().pages().length,nPages);                             // Enter 를 다시 눌러도 같은 창
+  await bp.close();
   await dg.locator('#step3 details.card summary').click();
   assert.equal(await dg.locator('#detLs .lsn').innerText(),'☑ 2 / 2개');
   await dg.locator('#detTbl tbody tr td.pk').first().click();assert.equal(await dg.locator('#csvBtn').innerText(),'CSV 내보내기 (☑ 1개)');

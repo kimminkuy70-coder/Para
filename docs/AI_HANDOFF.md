@@ -1,5 +1,26 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.4.1(미릴리스): Defect 분석 Gray 위치 = 기본 · 대규모 같은 계산 + 기본 모드 새 창 (2026-11-23 KST, `version_v14`, #89 후속 소유자 세션)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `ff10af8`(v14.4.0) · 소유자: "대규모 모드가 Color 정보 파일 없이 흑백도 찾게끔하고 나머지는 너가 정한대로 로직 수정, 대규모 · 기본 둘다 동일하게,
+  사진은 나중에 올려서 검증, **릴리즈까지는 하지마 아직 업데이트 사항이 더 남았어**" → `__version__` 14.4.0 그대로 · 릴리스 노트 없음(push 해도 v14.yml 이 릴리스 안 함). 다음 릴리스 판 = v14.4.1 이상.
+- 한 일(rev6 HTML 만, public · dist 같음): 위 CLAUDE.md 'v14.4.1 판' 절 그대로 — 3절 `geo*`(공통 계산) · `geoLoad`(CG 절, cgLoad · buildScan 이 부름) · `cgFrameData` 넓힘(frameIdx · recipe · frameSize · 레시피별 PixelSize) ·
+  `geoFramesFromNames`(s_FrameData 먼저) · `cgColorsFromNames` · `cgLink`(사진 이름 Color = linkColor) · `cgOf`/`cgDefGray`(Defect 좌표 · 장비 기록) · 그림 함수 `hitW`/`hitH` · `cgCropSize(c, gp, cp)` ·
+  새 창 `photoWinOpen` · `bigSrc`/`bigView` · `baseSrc`/`listSrc`/`baseView` · `photoWinShow`(칸 자료로) · 키(자료원 go/step/pick) · `pwLegend(ring)` · `showPanel` 이 새 창 따라가게 · Step 2 표 · 목록 Enter/더블 클릭 · 목록 밖 점.
+  5-2: Slot 마다 `geoLoadFd`(장비 기록), CSV 끝 `Gray프레임크기`, 'Gray계산' = Defect 좌표 / 장비 기록. 5-1 알림: Color 정보 파일 없는 Slot. 설명 글의 'ColorImageGrabingInfo.ini 필수' 고침.
+- 검증: ① `tests/test_gray_geometry.py`(새, 10 — 2048 프레임 · 가운데 쪽 프레임 · 가운데 모델(s_FrameData · RecipesInfo) · 이름 + s_FrameData 먼저 · 장비 기록(두 번 찍힌 프레임) · Color 사진 이름 · Crop · 정적(두 모드 같은 함수, 옛 함수 없음, 새 창))
+  ② `test_defect_view_toggles.py` 새 창 그림 호출 모양 고침 ③ `test_desktop_ui.mjs` 에 기본 모드 새 창(한 창 · 3칸 · 🔒 · B · Space · ↓ 따라감 · ↑ = ☐ 건너뜀 · Enter 다시 = 같은 창 · 측정 원 없음) ④ `check_project` Failed files: none(85)
+  ⑤ 실제 Slot 3장(세션 scratchpad, 저장소 밖): Chromium 에서 buildScan · cgLoad 를 그대로 돌림 — Slot A 3/3 · Slot B 152/152 · Slot B(Color 정보 파일 뺌) Gray 152/152 · Color 152/152 · Slot C(2048×2048, 사진 이름은 s_FrameData 로 흉내) 122/123,
+  **두 모드 같은 프레임 · 같은 픽셀(차 0)**, 장비 기록 73/74(나머지 1 = 흉내 낸 사진 이름에 그 프레임이 없어서). Crop(Color 시야) = Color 정보 파일 있을 때 · 없을 때 같음(155×116).
+- 화면 시험 `test_desktop_ui.mjs` 805줄(파라미터 감시 '즉시 확인' 알림 60초)은 이 환경에서 5번 중 2번 시간 초과 — Defect 와 무관, 다시 돌리면 통과(v14.4.0 전 판에서도 같은 단계). 원인 확인 전.
+- 해석(확인 전): ① 기본 새 창 ↑↓ = ☑ 줄만(기본 목록과 같음) ② 기본 새 창 머리 줄에 리뷰PC 정보 상자 대신 정보 한 줄(전체 글은 본 화면) ③ 기록 없는 Defect 의 프레임 위치 = 목록(종전 그대로), 목록 없을 때만 s_FrameData WaferPos
+  ④ Area µm² 는 0.7708² 그대로 ⑤ Para 'Color · Gray 매칭' 탭(colorgray.py)의 3168×1024 · 0.7696 고정은 이번 범위 밖(안 고침).
+- 다음: 소유자가 사진(Defect 3개 Slot 의 Gray 5 · Color 3 + s_FrameData) 올리면 ③ 확정 · 빨간 네모 위치를 사진으로 확인 → 나머지 업데이트와 함께 v14.4.1 릴리스.
+
+| 요청 | 결과 |
+|---|---|
+| 대규모 Color 정보 파일 없이 Gray · 두 모드 같은 로직 · 기본 새 창 = 대규모 | 구현 · 시험 통과 · **릴리스 안 함**(판 14.4.0 그대로) |
+
 ## 최신 재개 — v14.4.0: 프로그램 이름 AOI Manager + 간단판 AOI Manager Mini (2026-11-23 KST, `version_v14`, 소유자 세션 지시)
 
 - 마지막 갱신 2026-11-23 · 기준 커밋 `efba127`(v14.3.18 + #89 인수인계) · 소유자: "릴리즈 zip 을 풀면 .bat 으로 실행하는데 2개로 — 1개는 기존 그대로, 1개는 내가 고른 기능만(다른 부서용).

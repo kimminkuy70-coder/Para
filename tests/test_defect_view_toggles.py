@@ -95,7 +95,8 @@ class DefectViewToggles(unittest.TestCase):
         self.assertIn("else if(k==='b'){pwBoxSet(!PWB.on)", init)
         self.assertIn("PWB.on=localStorage.getItem('cw.pwBox')!=='0'", self.t)
         show = self.t[self.t.index("async function photoWinShow("):self.t.index("// ── 5-3: 사진 정밀 조사")]
-        self.assertEqual(show.count("{box:PWB.on}"), 4)                        # 처음 그림 2 + 다시 그림 2
+        # v14.4.1(#89): 기본 · 대규모 같은 창 — 측정 원은 칸 자료(v.ring)가 정함(기본 모드 = 없음, 대규모 = 5-3 [측정 원 보기])
+        self.assertEqual(show.count("{box:PWB.on,ring:ring()}"), 4)            # 처음 그림 2 + 다시 그림 2
         self.assertIn("_redraw=", show)
         # 5-3 칸 · 엑셀 사진은 빨간 네모 그대로(새 창에서만 끔)
         xl = self.t[self.t.index("async function xlPhotos("):self.t.index("/** 엑셀 열:")]
