@@ -1,5 +1,21 @@
 # AI 공통 인수인계
 
+## 최신 재개 — Para #88 리뷰 HTML: 캐시 상자에 zip 끌어 놓아 갱신(임시 우회) (2026-11-23 KST, `version_TB500_review`)
+
+- 마지막 갱신 2026-11-23 · 기준 커밋 `e44aec6` · 이슈 Para #88("TB500_Review.html 수정사항") · 작업 브랜치 `version_TB500_review`(이슈에 브랜치 이름 없음 — `TB500_Review.html` 이 이 브랜치에만 있어 #85 와 같이 여기서 작업).
+- 요청: "camtek 캐시, KLA 캐시 박스에 드래그 앤 드롭으로 .zip 파일 각각 업로드하면 캐시 갱신할 수 있게. 현재 버그(캐시 갱신 NotReadableError, #76 · #77)를 임시로 우회하는 방법".
+- 한 일(`TB500_Review.html`, HTML 판 `2026-11-23 (Para #88 …)`): 캐시 상자 `#drop-camtek` · `#drop-kla`(`.cachebox.drop`, data-kind) 에 dragover/drop. `dropZip(kind,files)` → 가짜 폴더(`drop:{kind,file}`) 로 `refresh()`.
+  `newest()` 는 drop 이면 그 종류만 `{it:{name,size,sha256:null,exported_at:zip 이름 시각},f,dropped:true}`, 다른 종류는 `{skip:true}`(메시지 없이 건너뜀). dropped 이면 '이미 최신' 검사와 크기 · SHA-256 검사를 건너뜀.
+  Camtek zip 에 `누적/*.json` 이 없으면 오류(KLA 는 원래 `KLA색인.json` 검사). 색인 파일 이름 시각 = zip 이름의 `\d{8}_\d{6}`, 없으면 파일 수정 시각(`fileStamp`). 다른 종류 이름 · zip 아님 · 2개 이상은 거절. window 전체 drop 은 preventDefault.
+- 문서: `docs/TB500_review_사용법.md` 4-4절, 화면 안내 목록에 한 줄.
+- 시험: `tools/test_tb500_review.mjs` 에 끌어 놓기 단언(다른 종류 거절, json 거절, Camtek 만 받음 · KLA 기록 그대로, 내용 없는 zip 거절) 추가 — 2번 돌려 2번 통과. `tools/check_project.py` 는 openpyxl 없어 Python 시험 실패(종전과 같음, HTML 만 고침). 실제 Edge 끌어 놓기 · 회사 PC · OneDrive 온라인 전용 파일을 끌어 놓을 때 읽히는지는 미검증.
+- 내 해석(확인 전): ⓐ 끌어 놓은 zip 은 게시 정보가 없어 크기 · SHA-256 확인 없이 받음. ⓑ 받은 시각을 지금으로 적어 24시간 알림을 끔(한 캐시만 받아도). ⓒ 같은 이름이 이미 받아져 있어도 다시 풂.
+- 릴리스 없음(리뷰용 브랜치의 단일 HTML).
+
+| 이슈 | 요청 | 결과 |
+|---|---|---|
+| Para #88 | 캐시 상자에 zip 끌어 놓아 캐시 갱신(임시 우회) | 구현 · 시험 통과(릴리스 대상 아님) |
+
 ## 최신 재개 — Para #85 리뷰 HTML: 재리뷰 완료 Layer 도 스캔 호기 표시, 재리뷰 결과 줄은 제외 (2026-11-19 KST, `version_TB500_review`)
 
 - 마지막 갱신 2026-11-19 · 기준 커밋 `eb7ad03` · 이슈 Para #85("TB500_Review.html 수정사항") · 작업 브랜치 `version_TB500_review`(이슈에 브랜치 이름은 없음 — `TB500_Review.html` 이 이 브랜치에만 있어 #40~#77 과 같이 여기서 작업. 릴리스 없음 — 단일 HTML).

@@ -13,7 +13,7 @@ table{min-width:1180px}td.left{text-align:left}.lotcell{white-space:nowrap}.st{d
 .errbox{margin:10px 0 4px;padding:12px 14px;border:1px solid var(--red);border-radius:12px;background:var(--redbg);color:var(--text)}.errhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.errhead>b{color:var(--red);font-size:15px}.errhead .sp{flex:1}.errhow{margin:6px 0 0;font-size:12px;line-height:1.5}.errbox pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:Consolas,"D2Coding",monospace;font-size:12px;line-height:1.5;max-height:300px;overflow:auto;margin:8px 0 0;padding:8px 10px;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px}
 .banner{display:none;padding:12px 14px;border-radius:12px;background:var(--redbg);color:var(--red);font-weight:700;margin-bottom:14px;line-height:1.5}.banner.show{display:block}.banner.ok{background:var(--greenbg);color:var(--green)}
 .setup{display:grid;gap:10px}.setrow{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px}.setrow .num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--graybg);font-weight:800}.setrow.ok .num{background:var(--greenbg);color:var(--green)}.setrow b{display:block}.setrow small{display:block;color:var(--muted);overflow-wrap:anywhere;margin-top:3px}
-.cachegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}.cachebox{border:1px solid var(--line);border-radius:10px;padding:10px}.cachebox h4{margin:0 0 6px}.cachebox p{margin:3px 0;color:var(--muted);font-size:12px}
+.cachegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}.cachebox{border:1px solid var(--line);border-radius:10px;padding:10px}.cachebox h4{margin:0 0 6px}.cachebox p{margin:3px 0;color:var(--muted);font-size:12px}.cachebox.drop{border-style:dashed}.cachebox.over{border-color:var(--acc);background:var(--acclt)}.cachebox .drophint{margin-top:6px;color:var(--acc2)}
 .layername{font-weight:800}.folders{display:block;margin-top:4px;font-size:11px;color:var(--muted);text-align:left;overflow-wrap:anywhere}.copy{border:0;background:none;color:var(--blue);cursor:pointer;font:inherit;font-size:11px;padding:0;text-decoration:underline}
 @media(max-width:900px){.cachegrid{grid-template-columns:1fr}.setrow{grid-template-columns:28px 1fr}.setrow .btn{grid-column:2}}
 .copy{white-space:nowrap}td .hit{white-space:nowrap}.lotstart>td{border-top:2px solid #94a3b8}.lothead b{display:block}.sub{display:block;margin-top:3px}.lothead .copy{margin-top:6px}.sname{font-weight:700;min-width:180px;max-width:320px;overflow-wrap:anywhere}
@@ -112,8 +112,8 @@ details.vgrp>summary{cursor:pointer;list-style:none;display:flex;align-items:cen
     <section class="card">
       <h2>캐시</h2>
       <div class="cachegrid">
-        <div class="cachebox"><h4>Camtek 캐시 (Batch Report)</h4><p id="cache-camtek">없음</p></div>
-        <div class="cachebox"><h4>KLA 캐시 (KLA 자재 찾기)</h4><p id="cache-kla">없음</p></div>
+        <div class="cachebox drop" id="drop-camtek" data-kind="camtek"><h4>Camtek 캐시 (Batch Report)</h4><p id="cache-camtek">없음</p><p class="drophint">BatchReport_캐시_*.zip 을 여기로 끌어 놓으면 Camtek 캐시만 갱신합니다.</p></div>
+        <div class="cachebox drop" id="drop-kla" data-kind="kla"><h4>KLA 캐시 (KLA 자재 찾기)</h4><p id="cache-kla">없음</p><p class="drophint">KLA_캐시_*.zip 을 여기로 끌어 놓으면 KLA 캐시만 갱신합니다.</p></div>
       </div>
       <div class="btns"><button class="btn primary" id="refresh" type="button">캐시 갱신</button><button class="btn" id="pickFiles" type="button" title="폴더에서 읽지 못할 때: 캐시공유 폴더의 캐시정보.json · KLA캐시정보.json · 최근 zip 을 직접 고릅니다">파일 직접 고르기</button><input type="file" id="pickInput" multiple accept=".json,.zip" hidden><button class="btn" id="diagCopy" type="button" title="브라우저 · 폴더 연결 · 최근 오류 기록을 복사합니다">진단 정보 복사</button></div>
       <div class="progress"><div class="bar" id="bar2"></div></div><div class="help" id="msg2" aria-live="polite"></div>
@@ -124,6 +124,7 @@ details.vgrp>summary{cursor:pointer;list-style:none;display:flex;align-items:cen
         <li>캐시를 받은 지 <b>24시간</b>이 지나면 위에 빨간 알림이 나옵니다.</li>
         <li>권장 브라우저: <b>Microsoft Edge</b></li>
         <li>[캐시 갱신]이 파일을 읽지 못하면 <b>[파일 직접 고르기]</b>를 누르십시오. 캐시공유 폴더에서 <code>캐시정보.json</code> · <code>KLA캐시정보.json</code> · 가장 최근 zip 2개를 Ctrl 을 누른 채 고르십시오.</li>
+        <li>그래도 안 되면(임시 우회) 캐시공유 폴더의 <code>BatchReport_캐시_*.zip</code> 을 <b>Camtek 캐시</b> 상자로, <code>KLA_캐시_*.zip</code> 을 <b>KLA 캐시</b> 상자로 끌어 놓으십시오. 그 캐시만 갱신합니다. 게시 정보(json)가 없으므로 크기 · SHA-256 확인은 하지 않습니다.</li>
       </ul>
     </section>
    </div>
@@ -181,7 +182,7 @@ const now=()=>T&&T.now?new Date(T.now):new Date();
 function setMsg(s){$('#msg').textContent=s;const m2=$('#msg2');if(m2)m2.textContent=s}function setBar(n){const w=Math.max(0,Math.min(100,n))+'%';$('#bar').style.width=w;$('#bar2').style.width=w}
 /* ---------- 오류 진단(Para #76 후속): 어떤 작업 · 단계 · 폴더 · 파일에서 어떤 오류가 났는지 남기고 복사하게 한다 ----------
    기록은 이 브라우저의 localStorage 에 최근 30개만 둔다(HTML 을 다시 열어도 복사 가능). 밖으로 보내지 않는다. */
-const HTML_BUILD='2026-11-19 (Para #85: 재리뷰 완료 Layer 도 스캔 호기 표시)';
+const HTML_BUILD='2026-11-23 (Para #88: 캐시 상자에 zip 끌어 놓아 갱신)';
 const ctx={action:'',step:'',folder:'',file:'',fileInfo:'',lot:'',attempt:0};
 function begin(action){Object.assign(ctx,{action,step:'',folder:'',file:'',fileInfo:'',lot:'',attempt:0})}
 function step(s,o){ctx.step=s;if(o)Object.assign(ctx,o)}
@@ -351,6 +352,9 @@ function camtekRows(state){
   rows.push([machine,job,setup,sm,lotCode(sm),batchStart(meta['batch start'])||fileStart(fname),ws.length,fname,pass,waferCells(ws),br])}
  return rows}
 async function newest(share,kind){
+ if(share.drop){if(share.drop.kind!==kind)return {skip:true};const f=share.drop.file,m=String(f.name).match(/(\d{8})_(\d{6})/);
+  const ex=m?m[1].slice(0,4)+'-'+m[1].slice(4,6)+'-'+m[1].slice(6)+' '+m[2].slice(0,2)+':'+m[2].slice(2,4)+':'+m[2].slice(4):'';
+  return {it:{name:f.name,size:f.size,sha256:null,exported_at:ex},f,dropped:true}}
  const cfg=SHARE[kind];let info;try{info=await readJson(share,cfg.info)}catch(e){if(isNotFound(e))return share.picked?{missing:cfg.info}:null;logDiag('error',e,'OneDrive 게시 정보를 읽지 못했습니다');return {err:e}}
  const items=(info&&info.schema===1&&Array.isArray(info.items)?info.items:[]).filter(i=>i&&cfg.name.test(i.name||'')&&(!share.picked||share.picked.has(i.name))).sort((a,b)=>a.name<b.name?1:-1);
  let last=null;for(const it of items){step('zip 파일 집기',{folder:share.name,file:it.name,fileInfo:''});try{const f=await (await share.getFileHandle(it.name)).getFile();return {it,f}}catch(e){last=e;logDiag('warn',e,'이 zip 을 열지 못해 다음(이전) zip 을 봅니다')}}
@@ -359,30 +363,34 @@ async function refresh(picked){
  const share=picked||handles.share;
  if(!share||!handles.local){setMsg('먼저 ① OneDrive 캐시공유 폴더와 ③ 내 PC 캐시 폴더를 연결하세요.');return}
  if((!picked&&!await ready('share'))||!await ready('local')){setMsg('폴더 접근을 허용해야 캐시를 갱신할 수 있습니다.');return}
- begin(picked?'캐시 갱신(파일 직접 고르기)':'캐시 갱신');let stuckSeen=false;const btn=$('#refresh');btn.disabled=true;setBar(5);
+ begin(picked?(picked.drop?'캐시 갱신(zip 끌어 놓기)':'캐시 갱신(파일 직접 고르기)'):'캐시 갱신');let stuckSeen=false;const btn=$('#refresh');btn.disabled=true;setBar(5);
  try{
   let old=null;try{old=await readJson(handles.local,RECORD)}catch(e){if(!isNotFound(e))logDiag('warn',e,'지난 기록을 읽지 못해 새로 만듭니다')}
   const next={schema:1,updated_at:'',camtek:old&&old.camtek||null,kla:old&&old.kla||null},notes=[];let failed=false;
   for(const kind of ['camtek','kla']){
    const label=kind==='camtek'?'Camtek 캐시':'KLA 캐시',got=await newest(share,kind);
+   if(got&&got.skip)continue;
    if(!got){notes.push(label+': OneDrive 에 게시된 캐시가 없습니다');continue}
    if(got.missing){notes.push(label+': 고른 파일에 '+got.missing+' 이(가) 없어 건너뜀');continue}
    if(picked&&!got.it){notes.push(label+': 고른 파일에 '+SHARE[kind].info+' 에 적힌 zip 이 없어 건너뜀');continue}
    if(got.err&&!got.it){failed=true;if(isStuck(got.err))stuckSeen=true;notes.push(label+': 게시 정보('+SHARE[kind].info+')를 읽지 못했습니다 — '+errText(got.err));continue}
    if(!got.f){failed=true;notes.push(label+': '+got.it.name+' 을(를) 열지 못했습니다(아직 동기화 전일 수 있음)'+(got.err?' — '+errName(got.err)+': '+errMsg(got.err):''));continue}
-   const stampOf=SHARE[kind].name.exec(got.it.name)[1],file=PREFIX+(kind==='camtek'?'Camtek':'KLA')+'색인_'+stampOf+'.json';
-   if(old&&old[kind]&&old[kind].zip===got.it.name){try{const cur=await readJson(handles.local,file);if(kind!=='camtek'||cur.schema>=4){notes.push(label+': 이미 최신('+got.it.name+')');continue}}catch(e){if(!isNotFound(e))logDiag('warn',e,'내 PC 색인을 읽지 못해 다시 받습니다')}}
+   const sm=got.dropped?String(got.it.name).match(/(\d{8}_\d{6})/):SHARE[kind].name.exec(got.it.name),stampOf=sm?sm[1]:fileStamp(got.f),file=PREFIX+(kind==='camtek'?'Camtek':'KLA')+'색인_'+stampOf+'.json';
+   if(!got.dropped&&old&&old[kind]&&old[kind].zip===got.it.name){try{const cur=await readJson(handles.local,file);if(kind!=='camtek'||cur.schema>=4){notes.push(label+': 이미 최신('+got.it.name+')');continue}}catch(e){if(!isNotFound(e))logDiag('warn',e,'내 PC 색인을 읽지 못해 다시 받습니다')}}
    // 한 캐시를 읽다가 실패해도 다른 캐시는 계속 받는다. 실패한 캐시는 지난 기록 · 파일을 그대로 둔다(Para #76).
    try{
    const took=await retryRead(async i=>{
    step('zip 열기',{folder:share.name,file:got.it.name,fileInfo:fileInfo(got.f)});
    if(i>1){got.f=await (await share.getFileHandle(got.it.name)).getFile();ctx.fileInfo=fileInfo(got.f);setMsg(label+': 파일이 바뀌어 처음부터 다시 읽습니다('+i+'번째)')}
+   // Para #88: 끌어 놓은 zip 은 게시 정보(json)가 없어 크기 · SHA-256 을 견줄 대상이 없다 — 내용 확인(zip 안 파일)만 한다.
+   if(!got.dropped){
    if(got.f.size!==got.it.size){const m='크기가 게시 정보와 다릅니다(게시 '+got.it.size+' B, 이 PC '+got.f.size+' B — 동기화 중일 수 있음)';logDiag('warn',{name:'SizeMismatch',message:m});notes.push(label+': '+m+' — 잠시 뒤 다시 누르세요');return false}
    const sha=await fileSha(got.f,label);
-   if(sha!==got.it.sha256){const m='SHA-256 이 게시 정보와 다릅니다(게시 '+String(got.it.sha256).slice(0,12)+'…, 이 PC '+sha.slice(0,12)+'… — 동기화 중일 수 있음)';logDiag('warn',{name:'ShaMismatch',message:m});notes.push(label+': '+m+' — 잠시 뒤 다시 누르세요');return false}
+   if(sha!==got.it.sha256){const m='SHA-256 이 게시 정보와 다릅니다(게시 '+String(got.it.sha256).slice(0,12)+'…, 이 PC '+sha.slice(0,12)+'… — 동기화 중일 수 있음)';logDiag('warn',{name:'ShaMismatch',message:m});notes.push(label+': '+m+' — 잠시 뒤 다시 누르세요');return false}}
    const entries=await zipEntries(got.f);let data,sum;
    if(kind==='camtek'){
     const rows=[],machines=new Set,members=entries.filter(e=>/^누적\/.+\.json$/.test(e.name));
+    if(got.dropped&&!members.length)throw new Error('Camtek 캐시 zip 이 아닙니다(zip 안에 누적/*.json 이 없음): '+got.it.name);
     for(let i=0;i<members.length;i++){setMsg('Camtek 캐시 푸는 중 '+(i+1)+' / '+members.length);setBar(10+80*i/members.length);
      const txt=await zipText(got.f,members[i]);step('zip 안 JSON 해석: '+members[i].name);const st=JSON.parse(txt);if(st&&st.machine)machines.add(String(st.machine));rows.push(...camtekRows(st))}
     data={schema:4,kind:'camtek',zip:got.it.name,exported_at:got.it.exported_at||'',rows};sum={machines:machines.size,reports:rows.length}}
@@ -410,6 +418,22 @@ async function refresh(picked){
  catch(e){logDiag('error',e);setMsg('캐시 갱신 실패: '+errText(e))}
  finally{btn.disabled=false}}
 $('#refresh').onclick=()=>refresh();
+/* Para #88 (임시 우회): Camtek · KLA 캐시 상자에 캐시 zip 을 끌어 놓으면 그 캐시만 갱신한다.
+   폴더 연결 · 게시 정보(json) 없이 zip 만 읽는다. 상자 밖에 놓친 파일은 브라우저가 열지 않게 막는다. */
+const fileStamp=f=>{const d=new Date(f&&f.lastModified||now());return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'_'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())};
+function dropZip(kind,list){
+ const label=kind==='camtek'?'Camtek 캐시':'KLA 캐시',zips=[...list].filter(f=>/\.zip$/i.test(f.name));
+ if(!handles.local){setMsg('먼저 ③ 내 PC 캐시 폴더를 연결하세요.');return}
+ if(!zips.length){setMsg(label+': .zip 파일을 끌어 놓으십시오.');return}
+ if(zips.length>1){setMsg(label+': zip 은 한 번에 1개만 끌어 놓으십시오.');return}
+ const other=kind==='camtek'?'kla':'camtek';
+ if(SHARE[other].name.test(zips[0].name)){setMsg(label+': '+zips[0].name+' 은(는) '+(other==='kla'?'KLA':'Camtek')+' 캐시 zip 입니다. '+(other==='kla'?'KLA':'Camtek')+' 캐시 상자에 놓으십시오.');return}
+ const f=zips[0];refresh({kind:'directory',name:'끌어 놓은 파일',picked:new Set([f.name]),drop:{kind,file:f},async getFileHandle(n){if(n!==f.name)throw new DOMException('끌어 놓은 파일에 없음: '+n,'NotFoundError');return {kind:'file',name:n,getFile:async()=>f}}})}
+for(const box of document.querySelectorAll('.cachebox.drop')){
+ box.addEventListener('dragover',e=>{e.preventDefault();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';box.classList.add('over')});
+ box.addEventListener('dragleave',()=>box.classList.remove('over'));
+ box.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();box.classList.remove('over');if($('#refresh').disabled){setMsg('캐시 갱신 중입니다. 끝난 뒤 다시 끌어 놓으십시오.');return}dropZip(box.dataset.kind,e.dataTransfer?e.dataTransfer.files:[])})}
+window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
 /* Para #77: 캐시공유 파일을 3번 모두 못 읽으면(stuck) 원인을 가르기 위해 내 PC 캐시 폴더에 작은 파일을 쓰고 다시 읽어 본다(쓰고 바로 지움). */
 async function probeLocal(){const n=PREFIX+'읽기시험.json';let ok=false,err=null;
  try{step('읽기 시험(내 PC 캐시 폴더)',{folder:handles.local.name,file:n,fileInfo:''});await writeText(handles.local,n,'{"probe":1}');const t=await (await (await handles.local.getFileHandle(n)).getFile()).text();ok=t==='{"probe":1}'}catch(e){err=e}

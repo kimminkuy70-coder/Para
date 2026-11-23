@@ -139,6 +139,27 @@ assert.equal(recAfter.updated_at,recBefore.updated_at);
  const kr=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
  assert.equal(kr.kla.zip,'KLA_캐시_20261106_090100.zip');
  await page.evaluate(()=>{const d=window.__fs.top.local,r=JSON.parse(new TextDecoder().decode(d.files.get('TB500리뷰_기록.json')));r.kla.zip='예전.zip';d.files.set('TB500리뷰_기록.json',new TextEncoder().encode(JSON.stringify(r)))})}
+// Para #88: 캐시 상자에 zip 을 끌어 놓으면 그 캐시만 갱신(게시 정보 json 없이). 다른 종류 zip · zip 아닌 파일은 거절.
+{const fx=JSON.parse(fixture);
+ const drop=(sel,names)=>page.evaluate(({sel,items})=>{const dt=new DataTransfer;for(const [n,b] of items)dt.items.add(new File([Uint8Array.from(atob(b),c=>c.charCodeAt(0))],n));
+   document.querySelector(sel).dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt}))},{sel,items:names.map(n=>Array.isArray(n)?n:[n,fx['share/'+n]||btoa('x')])});
+ await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});
+ await drop('#drop-camtek',['KLA_캐시_20261106_090100.zip']);
+ assert.match(await page.locator('#msg2').innerText(),/KLA 캐시 상자에 놓으십시오/);
+ await drop('#drop-kla',['캐시정보.json']);
+ assert.match(await page.locator('#msg2').innerText(),/\.zip 파일을 끌어 놓으십시오/);
+ const rb=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
+ await drop('#drop-camtek',['BatchReport_캐시_20261106_090000.zip']);
+ await page.locator('#msg2').filter({hasText:'Camtek 캐시: BatchReport_캐시_20261106_090000.zip 받음'}).waitFor();
+ const md=await page.locator('#msg2').innerText();assert.ok(!/KLA/.test(md),md);
+ const ra=await page.evaluate(()=>JSON.parse(new TextDecoder().decode(window.__fs.top.local.files.get('TB500리뷰_기록.json'))));
+ assert.equal(ra.camtek.zip,'BatchReport_캐시_20261106_090000.zip');assert.equal(ra.camtek.exported_at,'2026-11-06 09:00:00');assert.ok(ra.camtek.reports>0);
+ assert.deepEqual(ra.kla,rb.kla,'KLA 기록은 그대로');
+ assert.ok(await page.evaluate(()=>window.__fs.top.local.files.has('TB500리뷰_Camtek색인_20261106_090000.json')));
+ // 이름이 바뀐 Camtek zip 이라도 내용(누적/*.json)이 없으면 거절
+ await drop('#drop-camtek',[['아무거나.zip',fx['share/KLA_캐시_20261106_090100.zip']]]);
+ await page.locator('#msg2').filter({hasText:'Camtek 캐시 zip 이 아닙니다'}).waitFor();
+ await page.locator('#errClose').click().catch(()=>{});}
 // ③ 다시 정상으로
 await page.evaluate(()=>{window.__bad={}});
 await page.evaluate(()=>{document.querySelector('#msg2').textContent=''});await page.getByRole('button',{name:'캐시 갱신'}).click();
