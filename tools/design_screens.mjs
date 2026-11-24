@@ -23,6 +23,7 @@ const browser=await chromium.launch({headless:true});
 const shots=[];let n=0;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function shot(page,title,{full=true,maxH=2600}={}){
+  await page.waitForFunction(()=>!document.body.innerText.includes('불러오는 중'),null,{timeout:8000}).catch(()=>{});   // 읽는 중 화면은 찍지 않음
   await wait(450);
   const file=`${String(++n).padStart(2,'0')}_${title.replace(/[^\w가-힣]+/g,'_').replace(/^_|_$/g,'')}.jpg`;
   const h=await page.evaluate(()=>document.documentElement.scrollHeight);
