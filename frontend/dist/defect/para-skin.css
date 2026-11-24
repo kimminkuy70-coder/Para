@@ -190,3 +190,29 @@ body.pskin .ovw{position:absolute;inset:auto 0 auto 0;top:var(--vt,0px);height:v
 body.pskin .ovw:fullscreen{inset:0;height:auto}
 body.pskin .ovwb button{min-height:0;padding:2px 10px;border:1px solid #3a4250;border-radius:6px;background:#222a36;color:#eee;font-weight:400;box-shadow:none}
 body.pskin .ovwb button:hover:not(:disabled){background:#2c3646;border-color:#4a5468}
+
+/* ── 값 범위 = 양방향 막대 + 숫자 칸(소유자 2026-11-24, DESIGN.md 8-2 ④, para-skin.js mountRange) ──
+   한 값 = 한 줄: [이름] [막대: 손잡이 2개] [최소] ~ [최대] [단위]. 범위를 건 줄 = 이름 앞 점 + 진한 글자. 손잡이 = 0.25초 ease-soft(원본 스프링 1151 · 61 과 같은 시간) */
+body.pskin .fgrid .frng{flex-direction:column;align-items:stretch;gap:8px}
+body.pskin .pflt label.rng{flex:1 1 100%}
+body.pskin label.rng{display:flex;align-items:center;gap:6px 10px;width:100%;max-width:820px;white-space:nowrap}
+body.pskin label.rng>b{flex:0 0 126px;display:flex;align-items:center;gap:6px;color:var(--sub);font-size:13px;transition:color .2s cubic-bezier(.22,.61,.36,1)}
+body.pskin label.rng.on>b{color:var(--ink)}
+body.pskin label.rng.on>b::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:var(--pri)}
+body.pskin label.rng input[type=number]{width:86px;font-variant-numeric:tabular-nums}
+body.pskin label.rng [data-umu],body.pskin label.rng .prs-u{flex:0 0 28px}
+body.pskin .prs{position:relative;flex:1 1 220px;min-width:140px;height:32px;border-radius:8px;background:var(--th);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+body.pskin .prs.off{opacity:.4;cursor:default}
+body.pskin .prs-fill{position:absolute;top:0;bottom:0;left:0;right:0;background:color-mix(in srgb,var(--navy) 8%,transparent);pointer-events:none;
+  transition:left .15s cubic-bezier(.23,1,.32,1),right .15s cubic-bezier(.23,1,.32,1),background-color .2s cubic-bezier(.22,.61,.36,1)}
+body.pskin label.rng.on .prs-fill{background:color-mix(in srgb,var(--navy) 16%,transparent)}
+body.pskin .prs-th{position:absolute;top:0;bottom:0;width:20px;margin-left:-10px;display:grid;place-items:center;outline:none;cursor:grab;z-index:2;transition:left .15s cubic-bezier(.23,1,.32,1)}
+body.pskin .prs-th>i{width:4px;height:22px;border-radius:999px;background:var(--navy);opacity:.15;transform:scale(.7);transition:opacity .25s cubic-bezier(.23,1,.32,1),transform .25s cubic-bezier(.23,1,.32,1)}
+body.pskin .prs:hover .prs-th>i,body.pskin .prs.drag .prs-th>i,body.pskin .prs-th:focus-visible>i,body.pskin label.rng.on .prs-th>i{opacity:.8;transform:none}
+body.pskin .prs-th:focus-visible>i{box-shadow:0 0 0 2px var(--pri2)}
+body.pskin .prs.drag .prs-fill,body.pskin .prs.drag .prs-th{transition:none}body.pskin .prs.drag,body.pskin .prs.drag .prs-th{cursor:grabbing}
+@media (max-width:760px){body.pskin label.rng{flex-wrap:wrap}body.pskin label.rng>b{flex-basis:100%}}
+/* 5-3 흑백 GL 범위(분포 그림 위 막대 두 개)도 같은 손잡이 모양 */
+body.pskin .glrng input::-webkit-slider-thumb{width:20px;height:22px;border:0;border-radius:0;background:linear-gradient(var(--navy),var(--navy)) center/4px 22px no-repeat;opacity:.8;cursor:grab}
+body.pskin .glrng input::-moz-range-thumb{width:20px;height:22px;border:0;border-radius:0;background:linear-gradient(var(--navy),var(--navy)) center/4px 22px no-repeat;opacity:.8;cursor:grab}
+@media (prefers-reduced-motion:reduce){body.pskin .prs-fill,body.pskin .prs-th,body.pskin .prs-th>i,body.pskin label.rng>b{transition:none}}

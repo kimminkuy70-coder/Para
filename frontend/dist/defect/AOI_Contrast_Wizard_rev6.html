@@ -251,6 +251,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
 .lsn.on{background:var(--navy);border-color:var(--navy);color:#fff}#detTbl td.pk,#detTbl th.pk{width:34px;text-align:center;cursor:pointer;font-weight:700}#detTbl tr.off td:not(.pk){opacity:.42}.lsdef,.xlorig{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--sub);cursor:pointer;white-space:nowrap}
 .biglist .br.off>span:not(.pk){opacity:.42}.biglist .br.off span.pk{color:var(--sub)}
 .fgrid .fact{display:flex;gap:8px;justify-content:flex-end;padding:10px 0 6px;border-top:1px solid var(--line)}
+.fgrid .fact #bigFltNote{margin-right:auto;align-self:center}#b5p2 #bigCsv,#b5p3 #bigCsv{display:none}   /* 5-2 · 5-3 으로 옮긴 필터 카드(소유자 2026-11-24): 5-1 목록 CSV 는 5-1 에서만 */
 .g5 .gn{display:grid;grid-template-columns:1fr 1fr;gap:2px;font-size:11px;color:var(--sub)}.g5 .gn span{padding:1px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 로딩창: 단계 목록 · 심장 박동(경과 · 마지막 진행) */
 .busy ol{list-style:none;padding:0;margin:0 0 8px;font-size:13px}.busy ol li{padding:1px 0;color:var(--sub)}.busy ol li.on{color:var(--ink);font-weight:700}.busy ol li.ok{color:var(--ok)}
@@ -404,6 +405,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
       <details><summary id="bigSum">등록한 Lot 0개</summary>
         <div class="tblwrap" style="max-height:260px;margin-top:6px"><table id="bigTbl"><thead><tr><th>Lot</th><th>Lot 폴더 경로</th><th class="num">Slot</th><th class="num">Defect 수</th><th>Recipe</th><th>점검</th><th></th></tr></thead><tbody></tbody></table></div></details>
     </div>
+    <div data-b5flt="1" hidden></div>
     <div class="card fgrid" id="bigFlt" role="group" aria-label="5-1 필터">
       <div class="frow"><span class="fh">Lot · Slot</span><div class="fb">
         <label><b>Lot</b> <select id="bigLot"><option value="">전체</option></select></label>
@@ -415,7 +417,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
       <div class="frow"><span class="fh">Recipe</span><div class="fb" id="bigFltRcp"></div></div>
       <div class="frow"><span class="fh">Zone</span><div class="fb" id="bigFltZn"></div></div>
       <div class="frow"><span class="fh">정렬</span><div class="fb" id="bigFltSort"></div></div>
-      <div class="fact"><span id="bigFltClr"></span><button id="bigCsv">목록 CSV</button></div></div>
+      <div class="fact"><span class="muted" id="bigFltNote" hidden></span><span id="bigFltClr"></span><button id="bigCsv">목록 CSV</button></div></div>
     <div class="muted" id="bigCnt"></div>
     <div class="lsbar" id="bigLs" role="search"><label class="lsq"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.8" cy="6.8" r="4.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10.3 10.3 14.2 14.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input type="search" placeholder="검색 — 모든 열 값 · Color 사진 이름 (여러 단어 = 모두 포함)" aria-label="목록 검색"></label><span class="lspk"><span class="lsn" aria-live="polite">☑ 0 / 0개</span><button type="button" data-ls="all">전체 선택</button><button type="button" data-ls="none">전체 해제</button><label class="lsdef" title="새로 만든 목록(Lot 등록 · 5-2 확인)의 줄을 처음부터 ☑ 로 둡니다(이 PC 에 기억). 끄면 처음엔 ☐"><input type="checkbox" data-ls="def"> 처음엔 모두 ☑</label></span></div>
     <div class="pixln" id="bigPix" hidden></div>
@@ -436,6 +438,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
         <div class="tblwrap" style="max-height:360px;margin-top:6px"><table id="b5slotTbl"><thead><tr><th>Lot</th><th>Slot</th><th class="num">리스트 Defect</th><th class="num">Color 항목</th><th class="num">Color 연결</th><th class="num">Color 사진 있음</th>
           <th class="num">Gray 프레임 (목록)</th><th>변환 (frameToChuckPlane)</th><th class="num">Gray 위치</th><th class="num">Gray 사진 있음</th><th>좌표 기준</th><th>매칭 폴더 · 점검</th></tr></thead><tbody></tbody></table></div></details>
     </div>
+    <div data-b5flt="2" hidden></div>
     <div class="row"><label>보기 <select id="b5show"><option value="">전체</option><option value="ok">Color·Gray 매칭 완료</option><option value="color">Color 만</option><option value="gray">Gray 만</option><option value="none">둘 다 없음</option><option value="skip">확인 안 함</option></select></label>
       <button id="b5win" disabled>⧉ 사진 새 창 (큰 화면 · 사진만)</button>
       <span class="muted">줄 더블 클릭 · Enter = 사진 새 창 — 새 창은 이 목록에서 고른 줄을 따라갑니다(↑↓ ←→ 로 옮기면 새 창도 바뀜). 새 창에서도 방향키로 다음 · 이전.</span></div>
@@ -472,6 +475,7 @@ button.c5load{border-color:var(--acc);color:var(--acc);font-weight:700}
           <b id="glRngT">GL 0 ~ 255</b><span class="muted" id="glRngN"></span><button id="glRngAll">범위 풀기</button></div></div>
       </div>
     </div>
+    <div data-b5flt="3" hidden></div>
     <div class="lsbar" id="c5Ls" role="search"><label class="lsq"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.8" cy="6.8" r="4.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10.3 10.3 14.2 14.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input type="search" placeholder="검색 — 모든 열 값 · 사진 파일 이름 · 경로 (여러 단어 = 모두 포함)" aria-label="목록 검색"></label></div>
     <div id="c5one" class="big2">
       <div><div class="pixln" id="c5Pix" hidden></div><div id="c5list" class="biglist" tabindex="0" aria-label="조사할 Defect 목록"></div>
@@ -1555,6 +1559,15 @@ const zoneLbl=(z,s)=>{const r=s&&s.rv,n=r&&r.zones&&z!=null?r.zones.get(z):null;
 /** 필터 줄 입력 → fn(0.2초 모아서). [필터 지우기] = 범위만 비운다(정렬은 그대로). */
 function fltBind(box,fn){let t=0;const run=()=>{clearTimeout(t);t=setTimeout(fn,200)};box.addEventListener('input',run);box.addEventListener('change',run);
   box.addEventListener('click',e=>{if(e.target.dataset.f!=='clear')return;box.querySelectorAll('input[data-f],select[data-f="rcp"],select[data-f="zn"]').forEach(el=>el.value='');clearTimeout(t);fn()})}
+/** 값 범위 막대(Para para-skin.js — 소유자 2026-11-24 양방향 막대 + 숫자 칸)의 양 끝 = 그 필터 칸이 거르는 자료의 실제 최소 · 최대(지금 [µm 로 보기] 단위).
+ *  필터 계산은 바꾸지 않는다(막대는 숫자 칸에 값을 적을 뿐). 키(c · a · w · l)마다 [최소, 최대], 자료가 없으면 null. 자료 · 단위가 같으면 다시 세지 않는다. */
+function fltSpan(box){if(!box)return null;const big=box.id==='bigFlt',P=big?null:Object.values(PANELS).find(p=>p.el&&p.el('Flt')===box),src=big?bigSources():P&&P.raw;
+  const key=big?src.map(s=>s.id+':'+s.cols.n).join('|'):src;if(box.__spanK===key&&box.__spanU===UM.on)return box.__span;
+  const R={c:[Infinity,-Infinity],a:[Infinity,-Infinity],w:[Infinity,-Infinity],l:[Infinity,-Infinity]},put=(r,v)=>{if(v<r[0])r[0]=v;if(v>r[1])r[1]=v};   // NaN 은 비교에서 빠짐
+  if(big)for(const s of src){const C=s.cols,[uA,uW]=umK(s);for(let i=0;i<C.n;i++){put(R.c,C.c[i]);put(R.a,C.area[i]*uA);put(R.w,C.w[i]*uW);put(R.l,C.l[i])}}
+  else if(src)for(const it of src){const d=it.d,[uA,uW]=umK(d.scan);put(R.c,+d.Contrast);put(R.a,d.area*uA);put(R.w,d.BlobBreadth*uW);put(R.l,+d.BlobLength)}
+  for(const k in R)if(!(R[k][0]<=R[k][1])||!isFinite(R[k][0])||!isFinite(R[k][1]))R[k]=null;else R[k]=R[k].map(exv);
+  box.__spanK=key;box.__spanU=UM.on;return box.__span=R}
 const RH=30,PANELS={};let blinkOn=true;
 /** Step 3 새 창 왼쪽 = 벤다이어그램(클릭 = 영역 더하기/빼기, 빈 곳 = 고른 집합 전체). */
 function mountVennSide(P,box){const doc=box.ownerDocument;box.innerHTML='<div class="cap">벤다이어그램 · 영역 클릭 = 더하기 · 다시 클릭 = 빼기 · 빈 곳 = 고른 집합 전체</div><canvas aria-label="벤다이어그램" style="cursor:pointer"></canvas>';
@@ -2344,7 +2357,8 @@ function bigZnFill(n){const sel=$('#bigFlt [data-f="zn"]');if(!sel)return;
   const v=sel.value,ks=[...n.keys()].sort(natCmp);if(v&&!n.has(v))ks.push(v);
   sel.innerHTML='<option value="">전체</option>'+ks.map(k=>`<option value="${esc(k)}">${esc(k)} (${(n.get(k)||0).toLocaleString()})</option>`).join('');sel.value=v}
 /** 필터 → 정렬 → 보기(V). 줄 = (스캔 번호 gs, 스캔 안 순서 gi), ord = 화면 순서. */
-function bigBuild(){
+/** noQ = 5-1 검색을 빼고 계산해서 돌려주기만(BIG.view 는 그대로) — 5-2 · 5-3 필터(bigRankOf)용. */
+function bigBuild(noQ){
   const o=S.o=opts(),f=readFlt($('#bigFlt')),src=bigSources(),lot=$('#bigLot').value,slot=$('#bigSlot').value,act=o.coord==='actual';
   let N=0;for(const s of src)N+=s.cols.n;
   const [sk,sd]=BIG.sort?BIG.sort.split('-'):['',''],gs=new Int32Array(N),gi=new Int32Array(N),kv=sk?new Float64Array(N):null,bad=sd==='d'?-Infinity:Infinity;let m=0;
@@ -2353,7 +2367,7 @@ function bigBuild(){
   const off1=BIG.clsOff1.size?BIG.clsOff1:null,off2=BIG.clsOff2.size?BIG.clsOff2:null;
   const lotOff=BIG.lotOff,rc=new Map(),znc=new Map(),nLot=new Map(),n1=new Map(),n2=new Map(),add=(m,k)=>m.set(k,(m.get(k)||0)+1);   // v14.1.4: 칸마다 '자기 묶음을 뺀' 개수
   // v14.1.8 검색: 글(Lot · Slot, 분류 이름, Recipe)마다 맞는 단어를 한 번만 세어 둔다 → 줄마다는 비트 OR 몇 번(30만 줄도 가볍게)
-  const T=BIG.q||[],full=(1<<T.length)-1,qc=new Map(),qm=x=>{let v=qc.get(x);if(v===undefined){v=0;const y=lower(String(x));for(let j=0;j<T.length;j++)if(y.includes(T[j]))v|=1<<j;qc.set(x,v)}return v};let np=0;
+  const T=noQ?[]:BIG.q||[],full=(1<<T.length)-1,qc=new Map(),qm=x=>{let v=qc.get(x);if(v===undefined){v=0;const y=lower(String(x));for(let j=0;j<T.length;j++)if(y.includes(T[j]))v|=1<<j;qc.set(x,v)}return v};let np=0;
   const tn=T.reduce((a,w,j)=>/^[-\d.,×]+$/.test(w)&&/\d/.test(w)?a|1<<j:a,0);   // 숫자 단어(글자 없음)일 때만 숫자 열 글을 만든다(30만 줄)
   src.forEach((s,si)=>{if(lot&&s.lotPath!==lot)return;if(slot&&s.slot!==slot)return;const C=s.cols,n=C.n,lon=!lotOff.has(s.lotPath),nm=s.rv&&s.rv.recipe,lp=s.lotPath;
     if(!s.pk||s.pk.length!==n)s.pk=new Uint8Array(n).fill(LS.def?1:0);const pk=s.pk,qb=T.length?qm(`${s.lotName||baseName(s.lotPath)} ${s.slotName||''}`):0;   // v14.1.8 ☑(처음 = [처음엔 모두 ☑])
@@ -2375,7 +2389,7 @@ function bigBuild(){
       if(!pr||!pz)continue;gs[m]=si;gi[m]=i;if(kv){const v=sv!=null?sv:rk?rk.get(kf(s,i)):ka?ka[i]*ku:i;kv[m]=v===v?v:bad}np+=pk[i];m++}});
   const ord=new Int32Array(m);for(let i=0;i<m;i++)ord[i]=i;
   if(kv){const sg=sd==='d'?-1:1;ord.sort((p,q)=>sg*(kv[p]-kv[q])||p-q)}
-  return BIG.view={src,gs,gi,ord,m,total:N,f,rc,zn:znc,nLot,n1,n2,np,q:T};
+  const V={src,gs,gi,ord,m,total:N,f,rc,zn:znc,nLot,n1,n2,np,q:T};if(!noQ)BIG.view=V;return V;
 }
 const bigAt=k=>{const V=BIG.view,j=V.ord[k];return {s:V.src[V.gs[j]],i:V.gi[j]}};
 
@@ -2430,7 +2444,13 @@ function bigRefresh(){
   $('#bigCnt').textContent=V.total?`Defect ${V.m.toLocaleString()}개`+(V.m<V.total?` (전체 ${V.total.toLocaleString()}개 중 필터 · 검색 · Lot · Slot 에 맞는 것)`:'')+(V.q.length?` · 검색 '${V.q.join(' ')}'`:'')+` · Slot ${V.src.length}개 · ${Math.round(performance.now()-t0)} ms`
     +(V.m>BIG_MAX?` · ⚠ 표에는 앞 ${BIG_MAX.toLocaleString()}줄만 그립니다(CSV · 매칭은 전부).`:''):'레시피 폴더를 고르면 Defect 목록이 여기에 나옵니다.';
   bigPickInfo();
+  if(BIG.pairs){b5Refresh();if(BIG.stage===3)c5Refresh(true)}   // 소유자 2026-11-24: 필터는 5-1 · 5-2 · 5-3 같은 값 — 어느 단계에서 바꿔도 지금 목록에 바로
 }
+/** 대규모 5-2 · 5-3 필터(소유자 2026-11-24 "5-1 · 2 · 3 모두 필터가 있어야 하고 단계가 바뀌어도 유지"): 5-1 필터 카드 한 벌이 지금 단계 목록 위로 따라가고(b5go),
+ *  5-2 · 5-3 목록은 5-1 에서 넘어온 Defect 중 그 필터(Lot · Slot · Lot 제외 · 분류 · 값 범위 · Recipe · Zone)에 맞는 것만, 5-1 정렬 순서로 보인다.
+ *  계산 = 5-1 목록과 같은 bigBuild(검색만 단계마다 따로) → (Slot, 줄) 마다 5-1 순서 번호, 맞지 않으면 -1. */
+function bigRankOf(){const V=BIG.q&&BIG.q.length?bigBuild(true):BIG.view;if(!V)return null;const R=new Map();
+  for(let k=0;k<V.m;k++){const j=V.ord[k],s=V.src[V.gs[j]];let a=R.get(s);if(!a)R.set(s,a=new Int32Array(s.cols.n).fill(-1));a[V.gi[j]]=k}return R}
 /** 5-1 목록 CSV(사진 정보 없음) — 보이는 줄 중 ☑ 한 것만(v14.1.8). */
 function bigCsv(){const V=BIG.view;if(!V)return null;const o=S.o,act=o.coord==='actual';
   const parts=['\ufeff'+['순서','Lot','Lot경로','Slot','ID','resultID','WaferX','WaferY','DieCol','DieRow','Die맵X','Die맵Y','Area_um2','Area_px','Width','Length','BoxW','BoxH','Contrast','장비스캔분류','리뷰결과',...RV5_HEAD].join(',')+'\r\n'];let buf=[];
@@ -2552,7 +2572,10 @@ function b5PickInfo(){const n=B5.items.reduce((a,p)=>a+(p.on2?1:0),0),f=c5Pool()
   $('#toB3').disabled=!f;$('#toB3').textContent=f?`다음: ☑ ${f.toLocaleString()}개 사진 정밀 조사 →`:'다음: 사진 정밀 조사 →';b5tabs()}
 const LSB=lsBind('b5Ls',{onQ:T=>{B5.q=T;b5Refresh()},onAll:b5PickAll});
 $('#b5list').addEventListener('click',e=>{const c=e.target.closest('.br>span.pk');if(c)b5Pick(+c.parentNode.dataset.k)});
-function b5Refresh(){const P=BIG.pairs||[],f=$('#b5show').value,T=B5.q;B5.items=P.filter(p=>(!f||p.st===f)&&(!T.length||qAll(T,b5Text(p))));vtSet(VB,B5.items.length);pixLineSet($('#b5Pix'),B5.items.map(p=>p.s));
+function b5Refresh(){const P=BIG.pairs||[],f=$('#b5show').value,T=B5.q,R=bigRankOf(),rk=p=>{const a=R&&R.get(p.s);return R?a?a[p.i]:-1:p.k};
+  const F=[];for(const p of P){const r=rk(p);if(r>=0)F.push([r,p])}F.sort((a,b)=>a[0]-b[0]);   // 필터(5-1 과 같은 값) → 5-1 정렬 순서
+  const nt=$('#bigFltNote');nt.hidden=BIG.stage===1||!P.length;nt.textContent=`5-1 에서 넘어온 Defect ${P.length.toLocaleString()}개 중 필터에 맞는 것 ${F.length.toLocaleString()}개 · 범위를 넓혀 더하려면 5-1 에서 [다음]을 다시 누르십시오`;
+  B5.items=F.map(x=>x[1]).filter(p=>(!f||p.st===f)&&(!T.length||qAll(T,b5Text(p))));vtSet(VB,B5.items.length);pixLineSet($('#b5Pix'),B5.items.map(p=>p.s));
   const c={ok:0,color:0,gray:0,none:0,skip:0};for(const p of P)c[p.st]++;
   $('#b5sum').innerHTML=P.length?[['ok','Color·Gray 매칭 완료','keep'],['color','Color 만','new'],['gray','Gray 만','new'],['none','둘 다 없음','gone']].concat(c.skip?[['skip','확인 안 함','']]:[])
     .map(([k,t,cl])=>`<div class="kpi ${cl}"><span class="muted">${t}</span><b>${c[k].toLocaleString()}</b></div>`).join(''):'';
@@ -3205,9 +3228,9 @@ function glDlgAt(e){const cv=$('#glCv'),q=cv.getBoundingClientRect(),k=cv.width/
 function glDlgClose(ok){if(ok)glSetR(GLD.r);$('#glDlg').hidden=true;GLD.b=null;try{$('#c5list').focus()}catch(e){}}
 // ── Step 5 이동 · 단추 ────────────────────────────────────────────────
 function b5tabs(){const b=$$('[data-b5]');b[1].disabled=!BIG.scans.length;b[2].disabled=!c5Pool().length;b.forEach(x=>x.setAttribute('aria-pressed',+x.dataset.b5===BIG.stage))}
-function b5go(n){BIG.stage=n;[1,2,3].forEach(k=>$('#b5p'+k).hidden=k!==n);b5tabs();
+function b5go(n){BIG.stage=n;[1,2,3].forEach(k=>$('#b5p'+k).hidden=k!==n);$(`[data-b5flt="${n}"]`).after($('#bigFlt'));$('#bigFlt').setAttribute('aria-label',`5-${n} 필터`);b5tabs();   // 필터 카드 한 벌이 지금 단계로 따라감(값 그대로)
   if(n===1){bigLots();bigRefresh();$('#bigList').focus()}else if(n===2){b5Refresh();$('#b5list').focus()}
-  else{const P=c5Pool();const on=c5StOn();if(!P.some(p=>p.st!=='skip'&&on.has(p.st))&&P.some(p=>p.st!=='skip')){const el=document.querySelector('#c5stF [data-st5="none"]');if(!on.has('none')&&P.some(p=>p.st==='none')){el.checked=true;C5.note='보이는 Defect 가 없어 [둘 다 없음]을 켰습니다.'}}
+  else{b5Refresh();const P=c5Pool();const on=c5StOn();if(!P.some(p=>p.st!=='skip'&&on.has(p.st))&&P.some(p=>p.st!=='skip')){const el=document.querySelector('#c5stF [data-st5="none"]');if(!on.has('none')&&P.some(p=>p.st==='none')){el.checked=true;C5.note='보이는 Defect 가 없어 [둘 다 없음]을 켰습니다.'}}
     c5Refresh();$('#c5list').focus()}}
 const curVT=()=>BIG.stage===1?VA:BIG.stage===2?VB:(C5.mode==='one'?VC:null);
 $$('[data-b5]').forEach(b=>b.onclick=()=>b5go(+b.dataset.b5));
@@ -3301,7 +3324,7 @@ if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대�
   if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
   else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgMap,cgCropSize,geoLoad,geoLoadFd,geoHit,geoChoose,geoPlan,geoRect,geoSize,geoPix,geoWhy,geoModel,tfSize,tfPix,parseRecipesInfo,cgFrameData,geoFramesFromNames,cgColorsFromNames,dirFromFiles,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,grayOf,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgMap,cgCropSize,geoLoad,geoLoadFd,geoHit,geoChoose,geoPlan,geoRect,geoSize,geoPix,geoWhy,geoModel,tfSize,tfPix,parseRecipesInfo,cgFrameData,geoFramesFromNames,cgColorsFromNames,dirFromFiles,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRankOf,b5Refresh,B5,fltSpan,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,grayOf,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

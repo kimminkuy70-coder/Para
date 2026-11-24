@@ -774,13 +774,13 @@ try{
     ['파라미터 자동 분석 및 취합','Commonality 자동 분석 및 취합 (여러 호기 무인)','Batch Report 자동 분석']);
   await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합',exact:true}).click();
   await page.mouse.move(0,0);   // hover 색이 아니라 선택 색을 본다(아래 색 확인)
-  await page.waitForFunction(()=>getComputedStyle([...document.querySelectorAll('[role=tab]')].find(t=>t.textContent==='파라미터 자동 분석 및 취합')).backgroundColor==='rgb(234, 250, 243)');
+  await page.waitForFunction(()=>getComputedStyle([...document.querySelectorAll('[role=tab]')].find(t=>t.textContent==='파라미터 자동 분석 및 취합')).borderBottomColor==='rgb(16, 185, 129)');   // DESIGN 14절 3: 고른 탭 = 에메랄드 밑줄만
   const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 분석 및 취합'})});
   // 최근 알림 first, then one tab per watch; status table above the wizard.
   await page.getByRole('heading',{name:'최근 알림'}).waitFor();
   await pw.getByLabel('파라미터 자동 분석 및 취합 현황').waitFor();
-  // Selected sub-tab is highlighted green like the top tabs.
-  assert.equal(await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합'}).evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(234, 250, 243)');
+  // Selected sub-tab = green underline like the top tabs (DESIGN.md 14절 3 — 민트 바탕 없음).
+  assert.deepEqual(await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합'}).evaluate(el=>{const c=getComputedStyle(el);return [c.borderBottomColor,c.backgroundColor]}),['rgb(16, 185, 129)','rgba(0, 0, 0, 0)']);
   await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ① 주기·시간대 → ② 장비 연결 확인
   const conn=pw.locator('[role=group][aria-label="연결 확인 호기"]');
   await conn.getByLabel('AOI-01 선택').check();
@@ -794,9 +794,9 @@ try{
   await fp.getByRole('button',{name:'📁 R_TB500_PI2 - Enhanced'}).click();
   await fp.getByRole('button',{name:"이 폴더를 'PI2'에 지정"}).click();
   await pw.getByRole('cell',{name:'R_TB500_PI2 - Enhanced'}).waitFor();
-  // ON/OFF works without finishing the wizard; OFF is red.
+  // ON/OFF works without finishing the wizard; 스위치 모양(DESIGN.md 14절 7) — 꺼짐 = 회색 트랙, 글자 OFF 그대로.
   const pOff=pw.getByRole('button',{name:/파라미터 자동 분석 및 취합 OFF/});
-  assert.equal(await pOff.evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(220, 38, 38)');
+  assert.deepEqual(await pOff.evaluate(el=>[getComputedStyle(el,'::before').backgroundColor,el.textContent]),['rgb(207, 216, 227)','OFF']);
   await pOff.click();
   await pw.getByRole('button',{name:/파라미터 자동 분석 및 취합 ON/}).waitFor();
   await pw.getByLabel('파라미터 자동 분석 및 취합 현황').getByText('ON',{exact:true}).waitFor();
@@ -882,7 +882,8 @@ try{
   // v14.1.5 5-1 필터 = 줄마다 제목 · 내용(Lot 제외 · 분류 따로 줄), 값 범위 4개는 한 줄, 분류 이름 = 장비 스캔 분류 · 리뷰 결과
   assert.deepEqual(await wz.locator('#bigFlt .frow>.fh').allInnerTexts(),['Lot · Slot','Lot 제외','장비 스캔 분류','리뷰 결과','값 범위','Recipe','Zone','정렬']);
   const rngY=await wz.locator('#bigFltIn label.rng').evaluateAll(l=>l.map(x=>Math.round(x.getBoundingClientRect().top)));
-  assert.equal(rngY.length,4);assert.equal(new Set(rngY).size,1,'Contrast · Area · Width · Length on one line: '+rngY);
+  assert.equal(rngY.length,4);assert.equal(new Set(rngY).size,4,'값 범위 = 한 줄에 하나(막대 + 숫자 칸, 소유자 2026-11-24): '+rngY);
+  assert.equal(await wz.locator('#bigFltIn label.rng .prs .prs-th[role=slider]').count(),8);
   assert.equal(await wz.locator('#bigCls .frow .chipgrid .clsck').count(),2);
   const bigHead=await wz.locator('#bigList .bh').innerText();
   assert(bigHead.includes('장비 스캔 분류')&&bigHead.includes('리뷰 결과')&&!/첫번째|재분류/.test(bigHead),bigHead);
@@ -896,6 +897,12 @@ try{
     assert(zo.length>=2&&zo[0]==='전체',JSON.stringify(zo));await zs.selectOption({index:1});await new Promise(r=>setTimeout(r,400));
     const n1=await wz.locator('#bigList .br').count();assert(n1>0&&n1<=n0,`zone ${n1}/${n0}`);await zs.selectOption('');await new Promise(r=>setTimeout(r,400));
     assert.equal(await wz.locator('#bigList .br').count(),n0)}
+  // 소유자 2026-11-24 양방향 막대: 막대 끝 = 자료의 실제 최소 · 최대(Contrast 30 ~ 45), 손잡이 = 숫자 칸에 적음, 끝(Home) = 칸 비움(제한 없음)
+  {const th=wz.locator('#bigFltIn label.rng').first().locator('.prs-th').first(),c0=wz.locator('#bigFlt [data-f="c0"]');
+    assert.deepEqual([await th.getAttribute('aria-valuemin'),await th.getAttribute('aria-valuemax')],['30','45']);
+    await th.focus();await th.press('ArrowRight');assert.equal(await c0.inputValue(),'30.1');await wzf.waitForFunction(()=>document.querySelectorAll('#bigList .br').length===1);
+    assert.equal(await wz.locator('#bigFltIn label.rng.on').count(),1);
+    await th.press('Home');assert.equal(await c0.inputValue(),'');await wzf.waitForFunction(()=>document.querySelectorAll('#bigList .br').length===2)}
   await wz.locator('#bigList .br').first().locator('span.pk').click();
   assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 1 / 2개');assert.match(await wz.locator('#toB2').innerText(),/☑ 1개/);
   await q('bigLs','bigList','zzz');await q('bigLs','bigList','');assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 1 / 2개');
@@ -905,11 +912,27 @@ try{
   await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Defect 분석(대규모)"]'),h=f.contentDocument.body.getBoundingClientRect().height;return h>400&&Math.abs(f.getBoundingClientRect().height-Math.ceil(h))<=1});
   await wz.locator('[data-b5="2"]').click();
   await wz.locator('#b5list .br',{hasText:'Color·Gray 매칭 완료'}).first().waitFor();                                // 종전 '짝 완료'
+  // 소유자 2026-11-24: 대규모 필터 = 5-1 · 5-2 · 5-3 모두 — 필터 카드 한 벌이 지금 단계 목록 위로 따라가고 값은 그대로, 5-2 · 5-3 목록 = 넘어온 Defect 중 필터에 맞는 것
+  {const rows=n=>wzf.waitForFunction(k=>document.querySelectorAll('#b5list .br').length===k,n);
+    assert.equal(await wz.locator('#b5p2 #bigFlt').count(),1);assert.equal(await wz.locator('#bigCsv').isVisible(),false);
+    await wz.locator('#bigFlt [data-f="c0"]').fill('40');await rows(1);
+    assert.match(await wz.locator('#bigFltNote').innerText(),/넘어온 Defect 2개 중 필터에 맞는 것 1개/);
+    await wz.locator('[data-b5="1"]').click();assert.equal(await wz.locator('#b5p1 #bigFlt [data-f="c0"]').inputValue(),'40');
+    assert.equal(await wz.locator('#bigFltNote').isVisible(),false);assert.equal(await wz.locator('#bigList .br').count(),1);
+    await wz.locator('[data-b5="2"]').click();assert.equal(await wz.locator('#b5p2 #bigFlt [data-f="c0"]').inputValue(),'40');await rows(1);
+    await wz.locator('#bigFlt [data-f="clear"]').click();await rows(2)}
   assert.deepEqual([await q('b5Ls','b5list','f1.t.1'),await q('b5Ls','b5list','zzz')],[1,0]);await q('b5Ls','b5list','');   // Gray 프레임 이름
   assert.equal(await wz.locator('#b5Ls .lsn').innerText(),'☑ 2 / 2개');
   await wz.locator('#b5list .br',{hasText:'Color·Gray 매칭 완료'}).locator('span.pk').click();assert.match(await wz.locator('#toB3').innerText(),/☑ 1개/);   // 5-3 으로 = 보이는 ☑ 줄
   await wz.locator('#b5Ls [data-ls="all"]').click();assert.match(await wz.locator('#toB3').innerText(),/☑ 2개/);
   await wz.locator('#toB3').click();await wz.locator('#c5Color canvas').waitFor({timeout:30000});   // 사진 = 엔진에서
+  {const rows=n=>wzf.waitForFunction(k=>document.querySelectorAll('#c5list .br').length===k,n);   // 5-3 도 같은 필터(값 유지)
+    assert.equal(await wz.locator('#b5p3 #bigFlt').count(),1);await wz.locator('#bigFlt [data-f="c0"]').fill('50');await rows(0);   // Contrast 45 · 30 둘 다 빠짐
+    await wz.locator('[data-b5="2"]').click();assert.equal(await wz.locator('#b5p2 #bigFlt [data-f="c0"]').inputValue(),'50');assert.equal(await wz.locator('#b5list .br').count(),0);
+    assert.equal(await wz.locator('[data-b5="3"]').isDisabled(),true);   // 필터에 맞는 Defect 가 없으면 5-3 으로 갈 것이 없음
+    await wz.locator('#bigFlt [data-f="c0"]').fill('45');await wzf.waitForFunction(()=>document.querySelectorAll('#b5list .br').length===1);
+    await wz.locator('[data-b5="3"]').click();await rows(1);assert.equal(await wz.locator('#b5p3 #bigFlt [data-f="c0"]').inputValue(),'45');
+    await wz.locator('#bigFlt [data-f="c0"]').fill('');await rows(1);await wz.locator('#c5Color canvas').waitFor()}
   // v14.1.5 흑백 GL 측정 = 따로 박스, [⭕ 측정 원 보기] 를 끄면 5-3 사진에서 측정 원만 빠짐(켜면 다시)
   for(const id of ['glShow','glR','glSet','glRun','glHist'])assert.equal(await wz.locator(`#glBox #${id}`).count(),1,id);
   await wz.locator('#c5Gray canvas').waitFor();
@@ -1034,6 +1057,11 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   await dg.locator('#p3Ls input[type=search]').fill('');await dg.locator('#p3Ls input[type=search]').press('Enter');
   // v14.4.1 µm 환산 픽셀(Slot 기준) · [µm 로 보기](처음 = 켬, 한 곳을 바꾸면 모든 목록 · 필터 · 열 제목이 같이)
   assert.match(await dg.locator('#p3Pix').innerText(),/^µm 환산 픽셀 : [\d.]+$/);
+  // 소유자 2026-11-24: 기본 모드 필터도 같은 양방향 막대(막대 끝 = 이 목록 자료의 최소 · 최대, End = 최대 값을 최소 칸에, Home = 비움)
+  {const th=dg.locator('#p3Flt label.rng').first().locator('.prs-th').first(),c0=dg.locator('#p3Flt [data-f="c0"]');
+    assert.equal(await dg.locator('#p3Flt label.rng .prs').count(),4);
+    await th.focus();await th.press('End');assert.notEqual(await c0.inputValue(),'');await dgf.waitForFunction(()=>document.querySelectorAll('#p3List .it').length===1);
+    await th.press('Home');assert.equal(await c0.inputValue(),'');await dgf.waitForFunction(()=>document.querySelectorAll('#p3List .it').length===2)}
   assert.deepEqual(await dg.locator('#p3Flt [data-umu]').allInnerTexts(),['µm²','µm']);
   await dg.locator('#p3Flt input[data-um]').uncheck();assert.deepEqual(await dg.locator('#p3Flt [data-umu]').allInnerTexts(),['','']);
   assert.deepEqual(await dgf.evaluate(()=>[...document.querySelectorAll('#detTbl th[data-umh]')].map(x=>x.textContent)),['Area','Width']);
