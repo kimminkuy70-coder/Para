@@ -1,0 +1,1805 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- AOI Manager 디자인 예시(DESIGN.md 초안의 미리보기). 프로그램 화면이 아니다: 예시와 실제 화면이 다르면 프로그램이 우선(docs/design/이어서_하기.md). -->
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>AOI Manager 디자인 시안</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 레이아웃: 데스크톱 업무 창 그대로 — 슬레이트 머리 막대와 탭 4단계, 회색 바탕 위 1px 선 흰 카드, 강조색은 에메랄드 하나.
+   움직임은 스프링(강성 · 감쇠)과 ease-out 으로 부드럽게, transform · opacity 위주. AOI Manager 는 밝은 화면 하나만 쓰는 프로그램이라
+   이 미리보기도 밝은 화면 하나로 고정한다(모든 색은 아래 토큰에서). */
+:root{
+  --slate-900:#263238;--slate-800:#37474f;--slate-700:#455a64;--slate-600:#546e7a;--slate-500:#607d8b;--slate-100:#cfd8dc;--slate-50:#eceff1;
+  --emerald-800:#0b5e46;--emerald-700:#047857;--emerald-600:#0d9668;--emerald-500:#10b981;--emerald-200:#a7e0cb;--emerald-100:#d6f2e6;--emerald-50:#eafaf3;--on-emerald:#04231a;
+  --grey-900:#1f2937;--grey-700:#425872;--grey-600:#5f6b7a;--grey-500:#7a8798;--grey-400:#94a3b8;--grey-300:#cfd8e3;--grey-200:#e6ebf0;--grey-100:#eef2f4;--grey-50:#f7f9fb;--white:#ffffff;
+  --red-700:#a33820;--red-600:#c2410c;--red-50:#fdecea;
+  --amber-800:#79471c;--amber-500:#e0a526;--amber-50:#fff4e7;
+  --orange-500:#e0704b;
+  --stage:#dde3e8;
+  --bg-page:var(--grey-100);--bg-surface:var(--white);--bg-sunken:var(--grey-50);
+  --line:var(--grey-200);--line-strong:var(--grey-300);
+  --text-1:var(--grey-900);--text-2:var(--grey-600);--text-3:var(--grey-400);--text-th:var(--grey-700);
+  --brand:var(--slate-800);--on-brand:var(--white);--on-brand-2:var(--slate-100);--on-brand-hover:rgba(255,255,255,.08);--on-brand-line:rgba(255,255,255,.22);
+  --accent:var(--emerald-500);--accent-press:var(--emerald-600);--accent-weak:var(--emerald-50);--accent-line:var(--emerald-200);--accent-text:var(--emerald-800);--on-accent:var(--on-emerald);
+  --focus:var(--emerald-600);
+  --hover:rgba(38,50,56,.05);--press:rgba(38,50,56,.10);--scrim:rgba(31,41,55,.42);
+  --st-done:var(--emerald-500);--st-rescan:var(--amber-500);--st-open:var(--orange-500);
+  --map-die:var(--white);--map-die-hit:var(--slate-100);--map-dot:var(--red-600);
+  --eq-head:#28384c;--eq-bg:#333333;--eq-row:#373c42;--eq-line:#4a5057;--eq-text:#eeeeee;--eq-sub:#b7c4d1;--eq-val:#f4f6f7;--eq-val-text:#172944;--eq-diff-bg:#514d3e;--eq-diff:#ffdd92;
+  --log-bg:var(--slate-900);--log-text:#dbe7f5;
+  --font:'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo','Noto Sans KR',system-ui,sans-serif;
+  --font-mono:Consolas,'D2Coding',ui-monospace,monospace;
+  --fs-display:28px;--fs-h2:20px;--fs-h3:16px;--fs-title:15px;--fs-body:14px;--fs-body-s:13px;--fs-caption:12px;--fs-caption-s:11px;--fs-kpi:30px;
+  --r-xs:4px;--r-s:6px;--r-m:10px;--r-l:14px;--r-xl:20px;--r-full:999px;
+  --sh-1:0 1px 2px rgba(38,50,56,.07),0 1px 1px rgba(38,50,56,.04);
+  --sh-2:0 6px 16px rgba(38,50,56,.10),0 1px 3px rgba(38,50,56,.06);
+  --sh-3:0 16px 40px rgba(38,50,56,.18),0 2px 8px rgba(38,50,56,.08);
+  --card-shadow:none;
+  /* 움직임: ease-out 두 개 + 시간 세 단계. 스프링 값(강성 · 감쇠)은 각 부품 스크립트에 그대로 */
+  --ease:cubic-bezier(.22,.61,.36,1);--eo:cubic-bezier(.23,1,.32,1);--ease-out:cubic-bezier(.16,1,.3,1);
+  --dur-fast:120ms;--dur-base:200ms;--dur-slow:320ms;--stagger:45ms;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--stage);color:var(--text-1);font:400 var(--fs-body)/1.6 var(--font);font-synthesis:none;-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 48px}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+h1,h2,h3,h4{text-wrap:balance}
+.i{width:16px;height:16px;flex:none;display:inline-block;vertical-align:-3px}
+code{font-family:var(--font-mono);font-size:var(--fs-caption)}
+@keyframes fade{from{opacity:0}}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- 미리보기 도구 줄(프로그램 밖) ---------- */
+.pv{max-width:1440px;margin:0 auto 14px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.pv-name{font-size:15px;font-weight:700}
+.pv-note{flex:1 1 100%;font-size:12px;color:var(--text-2);min-width:0;margin:0}
+
+/* ---------- 창 틀 ---------- */
+.win{max-width:1440px;margin:0 auto;background:var(--bg-page);border:1px solid var(--line-strong);border-radius:12px;overflow:hidden;box-shadow:var(--sh-2)}
+.win-bar{height:34px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding-left:12px;background:var(--bg-surface);border-bottom:1px solid var(--line);font-size:12px;color:var(--text-2)}
+.win-bar span{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap}
+.win-bar .fav{width:14px;height:14px;border-radius:4px;background:var(--accent);flex:none}
+.win-ctl{display:flex;flex:none}.win-ctl .i{width:44px;height:14px;color:var(--text-2)}
+
+/* ---------- 머리 막대 · 탭 ---------- */
+.topbar{background:var(--brand);color:var(--on-brand);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 32px 14px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand-icon{width:36px;height:36px;border-radius:var(--r-m);background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;font-size:20px;flex:none}
+.brand b{display:block;font-size:18px;letter-spacing:-.02em;line-height:1.25}
+.brand small{display:block;font-size:var(--fs-caption-s);color:var(--on-brand-2);letter-spacing:.06em}
+.env{display:flex;align-items:center;gap:7px;font-size:var(--fs-caption);color:var(--on-brand-2);white-space:nowrap}
+.env i{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.vtabs{display:flex;gap:4px;padding:0 32px;background:var(--brand);overflow-x:auto;scrollbar-width:none}
+.vtabs button{padding:9px 20px;border-radius:var(--r-m) var(--r-m) 0 0;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--on-brand-2);white-space:nowrap;transition:background-color var(--dur-base) var(--ease),color var(--dur-base) var(--ease)}
+.vtabs button:hover{color:var(--on-brand);background:var(--on-brand-hover)}
+.vtabs button.on{color:var(--brand);background:var(--bg-surface)}
+.vtabs button.common-first{margin-left:14px;position:relative}
+.vtabs button.common-first::before{content:"";position:absolute;left:-9px;top:9px;bottom:9px;width:1px;background:var(--on-brand-line)}
+.vtabs button:focus-visible{outline-color:var(--accent);outline-offset:-2px}
+.ftabs{position:relative;display:flex;gap:2px;padding:0 22px;background:var(--bg-surface);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin}
+.ftabs button{position:relative;z-index:1;padding:14px 14px 15px;font-size:14px;font-weight:700;color:var(--text-2);white-space:nowrap;transition:color var(--dur-base) var(--ease)}
+.ftabs button:hover{color:var(--text-1)}
+.ftabs button.on{color:var(--brand)}
+.ftabs button:focus-visible{outline-offset:-3px}
+.ftabs button.has::after{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:3px;opacity:.9}
+.stabs{position:relative;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.stabs button{position:relative;z-index:1;padding:10px 16px 12px;text-align:left;font-size:var(--fs-title);font-weight:700;color:var(--text-2);white-space:nowrap;border-radius:var(--r-m) var(--r-m) 0 0;transition:color var(--dur-base) var(--ease)}
+.stabs button small{display:block;font-size:var(--fs-caption);font-weight:400;color:var(--text-2);margin-top:1px}
+.stabs button:hover{color:var(--text-1)}
+.stabs button.on{color:var(--brand)}
+.seg{position:relative;display:inline-flex;gap:2px;padding:3px;border-radius:var(--r-m);background:var(--grey-200);max-width:100%;overflow-x:auto;scrollbar-width:none}
+.card .seg{background:var(--grey-100)}
+.seg button{position:relative;z-index:1;height:30px;padding:0 14px;border-radius:8px;font-size:var(--fs-body-s);font-weight:700;color:var(--text-2);white-space:nowrap;transition:color var(--dur-base) var(--ease)}
+.seg button:hover{color:var(--text-1)}
+.seg button.on{color:var(--brand)}
+.pv .seg{background:var(--bg-surface);border:1px solid var(--line)}
+.pv .seg button.on{color:var(--on-brand)}
+/* 움직이는 표시(밑줄 · 고른 칸): 앞쪽 끝 620/36, 뒤쪽 끝 190/19 스프링으로 늘었다 줄며 따라간다 */
+.ind{position:absolute;left:0;pointer-events:none;will-change:transform,width;opacity:0;transition:opacity var(--dur-base) var(--ease)}
+.ind.show{opacity:1}
+.ind.line{bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--accent)}
+.ind.thumb{top:3px;bottom:3px;border-radius:8px;background:var(--bg-surface);box-shadow:var(--sh-1);z-index:0}
+.pv .seg .ind.thumb{background:var(--brand);box-shadow:none}
+
+/* ---------- 본문 ---------- */
+.main{padding:28px 32px 32px}
+.page-h{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.page-h>div{min-width:0;flex:1 1 420px}
+.eyebrow{margin:0 0 6px;font-size:var(--fs-caption-s);font-weight:700;letter-spacing:.14em;color:var(--emerald-700)}
+.page-h h1{margin:0 0 6px;font-size:var(--fs-display);line-height:1.3;letter-spacing:-.02em}
+.page-h p.lead{margin:0;color:var(--text-2);max-width:72ch}
+.conn{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:var(--r-full);background:var(--accent-weak);color:var(--accent-text);font-size:var(--fs-caption);font-weight:700;white-space:nowrap}
+.conn i{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 32px;border-top:1px solid var(--line);font-size:var(--fs-caption);color:var(--text-2)}
+.stack{display:flex;flex-direction:column;gap:20px}
+.enter>*{animation:rise var(--dur-slow) var(--ease-out) both;animation-delay:calc(var(--i,0) * var(--stagger))}
+.card{background:var(--bg-surface);border:1px solid var(--line);border-radius:var(--r-l);box-shadow:var(--card-shadow);padding:22px 24px;min-width:0}
+.card-h{display:flex;align-items:flex-start;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;margin-bottom:16px}
+.card-h>div{min-width:0}
+.card-h h3{margin:0;font-size:var(--fs-h3);line-height:1.4}
+.card-h p{margin:3px 0 0;font-size:var(--fs-body-s);color:var(--text-2)}
+.row{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px}
+.grid2.even{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+/* ---------- 단추 ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--r-m);border:1px solid transparent;font-size:var(--fs-body-s);font-weight:700;white-space:nowrap;position:relative;
+  transition:background-color var(--dur-base) var(--ease),border-color var(--dur-base) var(--ease),box-shadow var(--dur-fast) var(--ease),color var(--dur-base) var(--ease),opacity var(--dur-base) var(--ease),transform var(--dur-fast) var(--ease)}
+.btn.l{height:44px;padding:0 22px;font-size:var(--fs-body);border-radius:12px;min-width:140px}
+.btn.s{height:28px;padding:0 10px;font-size:var(--fs-caption);border-radius:8px;gap:4px}
+.btn.pri{background:var(--accent);color:var(--on-accent)}
+.btn.pri:hover:not(:disabled){background:var(--accent-press)}
+.btn.sec{background:var(--grey-100);color:var(--brand)}
+.btn.sec:hover:not(:disabled){background:var(--grey-200)}
+.btn.out{background:var(--bg-surface);border-color:var(--line-strong);color:var(--brand)}
+.btn.out:hover:not(:disabled){background:var(--grey-50)}
+.btn.ghost{background:transparent;color:var(--brand)}
+.btn.ghost:hover:not(:disabled){background:var(--hover)}
+.btn.dan{background:var(--red-600);color:var(--white)}
+.btn.dan:hover:not(:disabled){background:var(--red-700)}
+.btn:active:not(:disabled){box-shadow:inset 0 0 0 99px var(--press);transform:scale(.98)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.busy{color:transparent!important;pointer-events:none}
+.btn .dots{position:absolute;inset:0;display:none;place-items:center}
+.btn.busy .dots{display:grid}
+.btn.pri .dots{color:var(--on-accent)}.btn.sec .dots,.btn.out .dots,.btn.ghost .dots{color:var(--brand)}
+.help{width:24px;height:24px;border-radius:50%;border:1px solid var(--line-strong);background:var(--bg-surface);color:var(--text-2);font-size:var(--fs-caption);font-weight:700;display:inline-grid;place-items:center;flex:none;transition:color var(--dur-base) var(--ease),border-color var(--dur-base) var(--ease)}
+.help:hover{color:var(--brand);border-color:var(--grey-400)}
+.help.l{width:32px;height:32px;font-size:var(--fs-body)}
+.tlink{color:var(--brand);font-weight:700;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--line-strong);transition:text-decoration-color var(--dur-base) var(--ease)}
+.tlink:hover{text-decoration-color:currentColor}
+.dots3{display:inline-flex;gap:4px;align-items:center}
+.dots3 i{width:6px;height:6px;border-radius:50%;background:currentColor;animation:dot 900ms var(--ease) infinite}
+.dots3 i:nth-child(2){animation-delay:150ms}.dots3 i:nth-child(3){animation-delay:300ms}
+@keyframes dot{0%,80%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:none}}
+
+/* ---------- 입력 ---------- */
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field>span{font-size:var(--fs-caption);font-weight:700;color:var(--text-2)}
+.input{font:inherit;font-size:var(--fs-body-s);height:38px;padding:0 12px;border-radius:var(--r-m);border:1px solid var(--line-strong);background:var(--bg-sunken);color:var(--text-1);width:100%;min-width:0;
+  transition:border-color var(--dur-base) var(--ease),background-color var(--dur-base) var(--ease),box-shadow var(--dur-base) var(--ease)}
+.input:hover{border-color:var(--grey-400)}
+.input:focus,.input.is-focus{outline:none;background:var(--bg-surface);border-color:var(--focus);box-shadow:0 0 0 .5px var(--focus)}
+.input.err{border-color:var(--red-600);box-shadow:0 0 0 .5px var(--red-600);background:var(--bg-surface)}
+.input::placeholder{color:var(--text-3)}
+textarea.input{height:auto;padding:10px 12px;line-height:1.6;resize:vertical;font-family:var(--font-mono)}
+.hint{font-size:var(--fs-caption);color:var(--text-2);margin:0}
+.hint.err{color:var(--red-700)}
+.search{position:relative;min-width:0;display:block}
+.search .i{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--grey-500);pointer-events:none}
+.search .input{padding-left:34px}
+input[type=checkbox],input[type=radio]{width:16px;height:16px;margin:0;accent-color:var(--accent-press);cursor:pointer;flex:none}
+.ck{display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-body-s);font-weight:700;cursor:pointer;white-space:nowrap}
+.switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;min-width:0}
+.switch input{appearance:none;-webkit-appearance:none;width:40px;height:24px;border-radius:var(--r-full);background:var(--grey-300);position:relative;cursor:pointer;flex:none;transition:background-color var(--dur-base) var(--ease)}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--white);box-shadow:var(--sh-1);transition:transform 260ms var(--eo)}
+.switch input:checked{background:var(--accent)}
+.switch input:checked::after{transform:translateX(16px)}
+.switch b{display:block;font-size:var(--fs-body-s)}
+.switch small{display:block;font-size:var(--fs-caption);color:var(--text-2)}
+.chip{height:30px;padding:0 12px;border-radius:var(--r-full);border:1px solid var(--line-strong);background:var(--bg-surface);font-size:var(--fs-caption);font-weight:700;color:var(--text-1);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:background-color var(--dur-base) var(--ease),border-color var(--dur-base) var(--ease),color var(--dur-base) var(--ease),transform var(--dur-fast) var(--ease)}
+.chip:hover{border-color:var(--grey-400)}
+.chip:active{transform:scale(.97)}
+.chip em{font-style:normal;color:var(--text-2);font-variant-numeric:tabular-nums;transition:color var(--dur-base) var(--ease)}
+.chip.on{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.chip.on em{color:var(--on-brand-2)}
+
+/* ---------- 배지 · 안내 ---------- */
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:var(--r-s);font-size:var(--fs-caption);font-weight:700;white-space:nowrap}
+.badge>i{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.badge.ok{background:var(--accent-weak);color:var(--accent-text)}
+.badge.warn{background:var(--amber-50);color:var(--amber-800)}
+.badge.bad{background:var(--red-50);color:var(--red-700)}
+.badge.mut{background:var(--grey-100);color:var(--slate-700)}
+.note{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r-m);font-size:var(--fs-body-s);line-height:1.6;min-width:0}
+.note>.ic{flex:none;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;margin-top:2px;font-size:11px;font-weight:700}
+.note.info{background:var(--slate-50);color:var(--slate-800)}.note.info>.ic{background:var(--slate-700);color:var(--white)}
+.note.warn{background:var(--amber-50);color:var(--amber-800)}.note.warn>.ic{background:var(--amber-500);color:var(--on-emerald)}
+.note.bad{background:var(--red-50);color:var(--red-700)}.note.bad>.ic{background:var(--red-600);color:var(--white)}
+.eqchip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:var(--r-full);font-size:11px;font-weight:700;border:1px solid var(--line-strong);color:var(--slate-700);background:var(--bg-surface)}
+.eqchip.cam{border-color:var(--emerald-200);color:var(--emerald-800);background:var(--accent-weak)}
+.eqchip.kla{border-color:var(--slate-100);color:var(--slate-800);background:var(--slate-50)}
+
+/* ---------- 조사 범위 ---------- */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;max-height:208px;overflow-y:auto;padding:1px}
+.mbox{display:grid;grid-template-columns:16px minmax(0,1fr);column-gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--bg-surface);cursor:pointer;min-width:0;transition:border-color var(--dur-base) var(--ease),background-color var(--dur-base) var(--ease),box-shadow var(--dur-base) var(--ease)}
+.mbox:hover{border-color:var(--line-strong)}
+.mbox input{grid-row:1/3}
+.mbox b{font-size:var(--fs-body-s);line-height:1.35}
+.mbox small{font-size:var(--fs-caption-s);color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mbox.on{border-color:var(--accent);background:var(--accent-weak);box-shadow:inset 0 0 0 .5px var(--accent)}
+.scope-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 18px;margin-top:18px}
+.scope-row .field.date{width:150px}
+.scope-row .go{display:flex;align-items:center;gap:10px;margin-left:auto}
+.scope-status{margin:14px 0 0;font-size:var(--fs-caption);color:var(--text-2)}
+.prog{display:flex;align-items:center;gap:10px}
+.prog .tr{flex:1;height:8px;border-radius:var(--r-full);background:var(--grey-200);overflow:hidden}
+.prog .tr i{display:block;height:100%;width:100%;background:var(--accent);border-radius:inherit;transform-origin:left;transform:scaleX(0);transition:transform 300ms var(--eo)}
+.prog b{font-size:var(--fs-caption);font-variant-numeric:tabular-nums;min-width:78px;text-align:right}
+.run2{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,300px);gap:24px;align-items:start}
+.run-side{display:flex;flex-direction:column;gap:12px;padding:14px 16px;border-radius:var(--r-m);background:var(--bg-sunken)}
+.run-side p{margin:0;font-size:var(--fs-caption);color:var(--text-2);line-height:1.55}
+
+/* ---------- 큰 숫자 ---------- */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.kpi{text-align:left;padding:16px 18px;border-radius:var(--r-l);border:1px solid var(--line);background:var(--bg-surface);display:flex;flex-direction:column;gap:4px;min-width:0;transition:border-color var(--dur-base) var(--ease),background-color 600ms var(--eo),box-shadow var(--dur-base) var(--ease),transform var(--dur-fast) var(--ease)}
+.kpi>span{font-size:var(--fs-caption);font-weight:700;color:var(--text-2);display:flex;align-items:center;gap:6px}
+.kpi>span i{width:8px;height:8px;border-radius:50%;flex:none}
+.kpi strong{font-size:var(--fs-kpi);font-weight:700;letter-spacing:-.02em;line-height:1.2;font-variant-numeric:tabular-nums}
+.kpi strong small{font-size:var(--fs-body-s);font-weight:400;color:var(--text-2);margin-left:3px;letter-spacing:0}
+.kpi p{margin:0;font-size:var(--fs-caption);color:var(--text-2)}
+.kpi:hover{border-color:var(--line-strong)}
+.kpi:active{transform:scale(.99)}
+.kpi.on{border-color:var(--accent);box-shadow:inset 0 0 0 .5px var(--accent)}
+.kpis.fresh .kpi{background:var(--accent-weak);transition-duration:0ms}
+
+/* ---------- 그래프 ---------- */
+.chart-wrap{overflow-x:auto}
+.chart-wrap svg{display:block;width:100%;min-width:560px;height:auto}
+.chart text{font-family:var(--font);fill:var(--text-2);font-size:11px}
+.chart .tot{fill:var(--text-1);font-weight:700;font-size:12px}
+.chart .g{stroke:var(--grey-200);stroke-width:1}
+.chart .bar{cursor:pointer;transition:opacity var(--dur-base) var(--ease)}
+.chart .bar .grow{transform-box:fill-box;transform-origin:50% 100%;animation:grow 520ms var(--eo) both;animation-delay:calc(var(--i) * var(--stagger))}
+@keyframes grow{from{transform:scaleY(0)}}
+.chart .bar .tot{animation:fade 300ms var(--eo) both;animation-delay:calc(var(--i) * var(--stagger) + 300ms)}
+.chart.has-sel .bar:not(.sel){opacity:.35}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:var(--fs-caption);color:var(--text-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px}
+
+/* ---------- 표 ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-m)}
+table{border-collapse:collapse;width:100%;font-size:var(--fs-body-s)}
+.wide-tbl{min-width:860px}
+th{background:var(--bg-sunken);color:var(--text-th);font-size:var(--fs-caption);font-weight:700;text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+tbody tr:last-child td{border-bottom:0}
+tbody tr.click{cursor:pointer;transition:background-color var(--dur-fast) var(--ease)}
+tbody tr.click:hover{background:var(--bg-sunken)}
+tbody tr.in{animation:rise 260ms var(--eo) both;animation-delay:calc(var(--i,0) * 22ms)}
+td.r,th.r{text-align:right}
+td .sub{color:var(--text-2);margin-left:6px}
+td .mv{display:inline-flex;align-items:center;gap:4px}
+td .mv .i{width:13px;height:13px;color:var(--text-3)}
+.tbl-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:12px}
+.tbl-tools .search{flex:1 1 220px;max-width:320px}
+.tbl-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;font-size:var(--fs-caption);color:var(--text-2)}
+.empty-row td{text-align:center;color:var(--text-2);padding:28px}
+.path{display:flex;align-items:center;gap:8px;min-width:0}
+.path code{min-width:0;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1)}
+.pathbox{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:var(--r-m);background:var(--bg-sunken);border:1px solid var(--line);min-width:0}
+.pathbox code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pathbox .dim{color:var(--text-2);font-family:var(--font);font-weight:700;font-size:var(--fs-caption);flex:none}
+
+/* ---------- 빈 화면 ---------- */
+.empty{text-align:center;padding:36px 20px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.empty .ill{width:52px;height:52px;border-radius:var(--r-l);background:var(--grey-100);display:grid;place-items:center;color:var(--slate-600);margin-bottom:6px}
+.empty .ill .i{width:24px;height:24px}
+.empty h4{margin:0;font-size:var(--fs-title)}
+.empty p{margin:0 0 8px;font-size:var(--fs-body-s);color:var(--text-2);max-width:52ch}
+
+/* ---------- 토스트 · 창 ---------- */
+.toaster{position:fixed;top:calc(16px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));z-index:60;display:flex;flex-direction:column;gap:8px;width:min(380px,calc(100vw - 32px));pointer-events:none}
+.toast{pointer-events:auto;display:flex;gap:10px;align-items:center;padding:12px 12px 12px 14px;border-radius:var(--r-l);background:var(--slate-900);color:var(--white);box-shadow:var(--sh-3);font-size:var(--fs-body-s);line-height:1.5;animation:toast-in var(--dur-slow) var(--ease-out);transition:opacity var(--dur-base) var(--ease),transform var(--dur-base) var(--ease)}
+.toast.out{opacity:0;transform:translateX(12px)}
+.toast .ic{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;flex:none}
+.toast .ic .i{width:12px;height:12px}
+.toast.ok .ic{background:var(--accent);color:var(--on-accent)}.toast.bad .ic{background:var(--red-600);color:var(--white)}.toast.info .ic{background:var(--slate-500);color:var(--white)}
+.toast .msg{flex:1;min-width:0}
+.toast .x{color:var(--on-brand-2);width:24px;height:24px;border-radius:6px;display:grid;place-items:center;flex:none}
+.toast .x:hover{background:var(--on-brand-hover)}
+@keyframes toast-in{from{opacity:0;transform:translateY(-10px) scale(.98)}}
+dialog.dlg{border:0;padding:0;border-radius:var(--r-xl);width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);background:var(--bg-surface);color:var(--text-1);box-shadow:var(--sh-3)}
+dialog.dlg::backdrop{background:var(--scrim);backdrop-filter:blur(2px);animation:fade var(--dur-slow) var(--ease-out)}
+dialog.dlg[open]{display:flex;flex-direction:column;animation:sheet 360ms var(--ease-out)}
+dialog.dlg.closing{animation:sheet-out 160ms var(--ease) forwards}
+dialog.dlg.closing::backdrop{opacity:0;transition:opacity 160ms var(--ease)}
+@keyframes sheet{from{opacity:0;transform:translateY(14px) scale(.97)}}
+@keyframes sheet-out{to{opacity:0;transform:translateY(6px) scale(.98)}}
+.dlg-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:22px 24px 6px}
+.dlg-h h2{margin:0;font-size:var(--fs-h2);line-height:1.35}
+.dlg-h p{margin:4px 0 0;font-size:var(--fs-body-s);color:var(--text-2)}
+.dlg-h .x{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--text-2);flex:none;transition:background-color var(--dur-base) var(--ease)}
+.dlg-h .x:hover{background:var(--hover)}
+.dlg-b{padding:10px 24px 8px;overflow:auto}
+.dlg-f{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px 20px;flex-wrap:wrap}
+.tl{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column}
+.tl li{display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px;animation:rise 300ms var(--eo) both;animation-delay:calc(var(--i,0) * 60ms + 120ms)}
+.tl .n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:var(--fs-caption);font-weight:700;background:var(--grey-100);color:var(--slate-700)}
+.tl .n.ok{background:var(--accent);color:var(--on-accent)}
+.tl .n.bad{background:var(--red-50);color:var(--red-700)}
+.tl .body{padding-bottom:14px;min-width:0}
+.tl .body b{display:block;font-size:var(--fs-body-s)}
+.tl .body span{font-size:var(--fs-caption);color:var(--text-2)}
+.tl .gap{margin:-6px 0 10px;font-size:var(--fs-caption);color:var(--text-2);display:flex;align-items:center;gap:6px}
+.tl .gap.mv{color:var(--emerald-700);font-weight:700}
+
+/* ---------- 3. Step progress (단계 표시) ---------- */
+.spg{width:100%;max-width:760px;margin:0 auto}
+.spg-track{position:relative;height:32px;margin:0 52px}
+.spg-track::before{content:"";position:absolute;left:0;right:0;top:14px;height:4px;border-radius:2px;background:var(--grey-200)}
+.spg-bar{position:absolute;left:0;right:0;top:14px;height:4px;border-radius:2px;background:var(--accent);transform-origin:left;transform:scaleX(0);will-change:transform}
+.spg-dots{position:absolute;inset:0}
+.spg-dot{position:absolute;top:0;width:32px;height:32px;margin-left:-16px;border-radius:50%;background:var(--grey-100);color:var(--text-2);display:grid;place-items:center;font-size:13px;font-weight:700;will-change:transform}
+.spg-dot.click{cursor:pointer}
+.spg-dot b{position:absolute;font-weight:inherit}
+.spg-dot svg{position:absolute;width:16px;height:16px;fill:none;stroke:var(--on-accent);stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+.spg-names{position:relative;height:20px;margin:10px 52px 0}
+.spg-names span{position:absolute;top:0;transform:translateX(-50%);font-size:var(--fs-caption);color:var(--text-2);white-space:nowrap;transition:color .3s var(--ease)}
+.spg-names span.on{color:var(--text-1);font-weight:700}
+
+/* ---------- 4. Agent steps (작업 단계) ---------- */
+.as{width:100%}
+.as-head{display:flex;align-items:center;gap:8px;width:100%;padding:4px 6px 4px 0;text-align:left;font-size:var(--fs-body);font-weight:700;color:var(--text-2);border-radius:6px}
+.as-head output{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1)}
+.as-el,.as-n{color:var(--text-2);font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap}
+.as-chev{margin-left:auto;color:var(--text-3);transition:transform 200ms var(--eo),color 200ms var(--eo)}
+.as-head:hover .as-chev{color:var(--text-2)}
+.as-head[aria-expanded=true] .as-chev{transform:rotate(180deg)}
+.as-wrap{overflow:hidden;transition:height 250ms var(--eo),opacity 250ms var(--eo)}
+.as-list{list-style:none;margin:0;padding:0}
+.as-step{position:relative;display:flex;gap:12px;padding-top:14px}
+.as-rail{position:absolute;top:34px;bottom:-10px;left:7.5px;width:1px;overflow:hidden;background:var(--line)}
+.as-rail i{display:block;height:100%;background:color-mix(in srgb,var(--accent) 60%,transparent);transform:scaleY(0);transform-origin:top;transition:transform 500ms var(--eo)}
+.as-step[data-s=done] .as-rail i{transform:scaleY(1)}
+.as-ic{position:relative;width:16px;height:16px;flex:none;margin-top:3px}
+.as-i{position:absolute;inset:0;display:grid;place-items:center;opacity:0;filter:blur(2px);transition:opacity 180ms var(--eo),filter 180ms var(--eo)}
+.as-step[data-s=pending] .as-i.p,.as-step[data-s=running] .as-i.r,.as-step[data-s=done] .as-i.d,.as-step[data-s=error] .as-i.e{opacity:1;filter:none}
+.as-dot{width:6px;height:6px;border-radius:50%;background:var(--grey-300)}
+.as-i svg{width:14px;height:14px;fill:none}
+.as-i.r circle{stroke:var(--grey-200)}.as-i.r path{stroke:var(--emerald-600)}
+.as-step[data-s=running] .as-i.r svg{animation:spin .8s linear infinite}
+.as-i.d svg{color:var(--emerald-600)}.as-i.e svg{color:var(--red-600)}
+.as-i.d path{stroke-dasharray:1;stroke-dashoffset:1}
+.as-step[data-s=done] .as-i.d path{stroke-dashoffset:0;transition:stroke-dashoffset 300ms var(--eo) 50ms}
+.as-main{flex:1;min-width:0}
+.as-row{display:flex;align-items:baseline;gap:8px}
+.as-label{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-body);transition:color 200ms var(--ease)}
+.as-step[data-s=pending] .as-label{color:var(--text-3)}.as-step[data-s=running] .as-label{color:var(--text-1);font-weight:700}
+.as-step[data-s=done] .as-label{color:var(--text-2)}.as-step[data-s=error] .as-label{color:var(--red-700)}
+.as-label .w{display:none}.as-step[data-s=running] .as-label .w{display:inline}.as-step[data-s=running] .as-label .t{display:none}
+.as-label .w span{white-space:pre;animation:wave 1.6s ease-in-out infinite both}
+@keyframes wave{50%{opacity:.3}}
+.as-time{margin-left:auto;flex:none;font-size:var(--fs-caption);color:var(--text-2);font-variant-numeric:tabular-nums;animation:fade 200ms var(--eo)}
+.as-log{position:relative;overflow:hidden;height:0;font:12px/24px var(--font-mono);transition:height 240ms var(--eo)}
+.as-log.has{margin-top:2px}
+.as-log.mask{-webkit-mask-image:linear-gradient(to bottom,rgb(0 0 0/.25),#000 70%);mask-image:linear-gradient(to bottom,rgb(0 0 0/.25),#000 70%)}
+.as-lines{transition:transform 300ms var(--eo)}
+.as-line{display:flex;align-items:center;gap:8px;height:24px;color:var(--text-2);animation:fade 200ms var(--eo)}
+.as-line b{width:16px;text-align:right;color:var(--text-3);font-weight:400;font-variant-numeric:tabular-nums;flex:none}
+.as-line span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- 5. Wheel picker (돌림 선택) ---------- */
+.wp-set{display:flex;flex-wrap:wrap;gap:16px 20px;align-items:flex-start}
+.wp-lbl{font-size:var(--fs-caption);font-weight:700;color:var(--text-2);margin:0 0 6px}
+.wp{position:relative;display:inline-flex;justify-content:center;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-l);background:var(--bg-surface);user-select:none;-webkit-user-select:none;transition:opacity var(--dur-base) var(--ease)}
+.wp.off{opacity:.4;pointer-events:none}
+.wp-band{position:absolute;left:8px;right:8px;top:50%;height:36px;transform:translateY(-50%);border-radius:8px;background:var(--grey-100);pointer-events:none}
+.wp-tick{position:absolute;top:50%;width:4px;height:1px;background:var(--grey-400);transform:translateY(-50%);pointer-events:none}
+.wp-col{position:relative;height:222px;cursor:grab;touch-action:none;border-radius:8px;outline:none}
+.wp-col:active{cursor:grabbing}
+.wp-col:focus-visible{box-shadow:inset 0 0 0 2px var(--focus)}
+.wp-fade{position:absolute;inset:0;-webkit-mask-image:linear-gradient(to bottom,transparent,#000 34%,#000 66%,transparent);mask-image:linear-gradient(to bottom,transparent,#000 34%,#000 66%,transparent)}
+.wp-drum{position:absolute;inset:0;perspective:1000px;pointer-events:none}
+.wp-drum.clip{clip-path:inset(calc(50% - 18px) 0 calc(50% - 18px) 0)}
+.wp-rot{position:absolute;left:0;right:0;top:50%;transform-style:preserve-3d;will-change:transform}
+.wp-row{position:absolute;left:0;right:0;top:-18px;height:36px;display:flex;align-items:center;justify-content:center;font-size:20px;font-variant-numeric:tabular-nums;backface-visibility:hidden;color:var(--text-3);white-space:nowrap}
+.wp-drum.clip .wp-row{color:var(--text-1);font-weight:700}
+
+/* ---------- 6. Scrubber (값 끌어 고르기) ---------- */
+.scr-list{display:flex;flex-direction:column;gap:10px}
+.scr{position:relative;height:36px;border-radius:8px;background:var(--grey-100);overflow:hidden;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;outline-offset:2px}
+.scr-fill{position:absolute;top:0;bottom:0;left:0;border-radius:8px;background:color-mix(in srgb,var(--brand) 14%,transparent);transition:width 150ms var(--eo);pointer-events:none}
+.scr-ticks i{position:absolute;top:50%;width:1px;height:6px;border-radius:999px;background:color-mix(in srgb,var(--brand) 25%,transparent);transform:translate(-50%,-50%)}
+.scr-th{position:absolute;top:50%;margin-left:-5px;transform:translate(-50%,-50%);transition:left 150ms var(--eo);z-index:3;pointer-events:none}
+.scr-cap{width:4px;height:22px;border-radius:999px;background:var(--brand);opacity:.15;transform:scale(.7);will-change:transform,opacity}
+.scr.drag .scr-fill,.scr.drag .scr-th{transition:none}
+.scr-l{position:absolute;top:50%;left:12px;transform:translateY(-50%);font-size:13px;font-weight:700;color:var(--text-1);z-index:4;pointer-events:none;white-space:nowrap}
+.scr-v{position:absolute;top:50%;right:10px;transform:translateY(-50%);font:700 13px var(--font-mono);font-variant-numeric:tabular-nums;color:var(--text-1);z-index:4;pointer-events:none}
+
+/* ---------- 6-1. 범위 끌어 고르기 (양방향 Scrubber + 숫자 칸) ---------- */
+.rs-list{display:flex;flex-direction:column;gap:10px}
+.rs{display:grid;grid-template-columns:118px minmax(140px,1fr) auto;gap:8px 12px;align-items:center}
+.rs-l{font-size:13px;font-weight:700;color:var(--text-2);white-space:nowrap;display:flex;align-items:center;gap:6px;transition:color var(--dur-base) var(--ease)}
+.rs.on .rs-l{color:var(--text-1)}
+.rs.on .rs-l::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.rs-track{position:relative;height:36px;border-radius:8px;background:var(--grey-100);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+.rs-fill{position:absolute;top:0;bottom:0;left:0;right:0;background:color-mix(in srgb,var(--brand) 8%,transparent);transition:left 150ms var(--eo),right 150ms var(--eo),background-color var(--dur-base) var(--ease);pointer-events:none}
+.rs.on .rs-fill{background:color-mix(in srgb,var(--brand) 16%,transparent)}
+.rs-th{position:absolute;top:0;bottom:0;width:20px;margin-left:-10px;display:grid;place-items:center;transition:left 150ms var(--eo);z-index:3;outline:none;cursor:grab}
+.rs-th:focus-visible .scr-cap{box-shadow:0 0 0 2px var(--focus)}
+.rs.drag .rs-fill,.rs.drag .rs-th{transition:none}
+.rs.drag .rs-th{cursor:grabbing}
+.rs-in{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);white-space:nowrap}
+.rs-in .input{width:82px;height:32px;padding:0 8px;font:700 13px var(--font-mono);font-variant-numeric:tabular-nums}
+.rs-u{min-width:26px}
+.fgrid2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.fhead{font-size:var(--fs-caption);font-weight:700;color:var(--text-2);margin:0 0 8px}
+.fsec+.fsec{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.dmap-box{position:relative;width:100%;max-width:400px}
+.dmap-box canvas{cursor:crosshair;touch-action:none}
+.maptip{position:absolute;z-index:5;pointer-events:none;padding:6px 10px;border-radius:8px;background:var(--slate-900);color:var(--white);font-size:12px;line-height:1.5;white-space:nowrap;box-shadow:var(--sh-2);transition:opacity 120ms var(--ease)}
+.tbl-scroll{max-height:360px;overflow:auto}
+.tbl-scroll thead th{position:sticky;top:0;z-index:1}
+tbody tr.cur td{background:var(--accent-weak)}
+tbody tr.off td{color:var(--text-3)}
+.curline{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 14px;border-radius:var(--r-m);background:var(--bg-sunken);font-size:var(--fs-body-s);margin-bottom:12px;min-height:44px}
+.curline b{font-variant-numeric:tabular-nums}
+.ktiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ktile{padding:12px 14px;border-radius:var(--r-m);border:1px solid var(--line);background:var(--bg-surface)}
+.ktile span{display:flex;align-items:center;gap:6px;font-size:var(--fs-caption);font-weight:700;color:var(--text-2)}
+.ktile strong{display:block;font-size:22px;font-variant-numeric:tabular-nums;line-height:1.3}
+.photo2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.photo2 figure{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+.photo2 figcaption{font-size:var(--fs-caption);font-weight:700;color:var(--text-2)}
+.photo2 canvas,.g5 canvas{width:100%;aspect-ratio:4/3;border-radius:var(--r-m);display:block;background:var(--grey-100)}
+.g5grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.g5{border:1px solid var(--line);border-radius:var(--r-m);padding:8px;display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:border-color var(--dur-base) var(--ease),background-color var(--dur-base) var(--ease);animation:rise 260ms var(--eo) both;animation-delay:calc(var(--i,0) * 22ms)}
+.g5:hover{border-color:var(--line-strong)}
+.g5.cur{border-color:var(--accent);background:var(--accent-weak)}
+.g5 .row{justify-content:space-between;font-size:var(--fs-caption)}
+.big3{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1100px){.fgrid2{grid-template-columns:1fr 1fr}.ktiles{grid-template-columns:1fr 1fr}.big3{grid-template-columns:1fr}}
+@media (max-width:760px){.rs{grid-template-columns:1fr}.rs-in{justify-content:flex-start}.fgrid2{grid-template-columns:1fr}}
+
+/* ---------- 7. Copy button (복사) ---------- */
+.cpb{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 8px;border-radius:8px;background:var(--grey-100);color:var(--brand);font-size:12px;font-weight:700;overflow:hidden;flex:none;transition:background-color var(--dur-base) var(--ease)}
+.cpb:hover{background:var(--grey-200)}
+.cpb-ic{position:relative;width:16px;height:16px;flex:none}
+.cpb-ic svg{position:absolute;inset:0;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;will-change:transform,opacity}
+.cpb .i-ok{color:var(--emerald-600);stroke-width:2.4;opacity:0;transform:scale(.4)}
+.cpb-roll{position:relative;height:16px;overflow:hidden;display:block}
+.cpb-w{display:flex;flex-direction:column;align-items:flex-start;will-change:transform}
+.cpb-w b{display:block;height:16px;line-height:16px;white-space:nowrap}
+.cpb-w b+b{color:var(--emerald-700)}
+
+/* ---------- 페이지별 ---------- */
+.wiz-body{min-height:300px;margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+.wiz-pane{display:flex;flex-direction:column;gap:16px}
+.wiz-nav{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.wiz-nav .hint{font-weight:700}
+.flist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden}
+.flist label{display:grid;grid-template-columns:16px minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer;transition:background-color var(--dur-fast) var(--ease);animation:rise 260ms var(--eo) both;animation-delay:calc(var(--i,0) * 30ms)}
+.flist label:last-child{border-bottom:0}
+.flist label:hover{background:var(--bg-sunken)}
+.flist label.on{background:var(--accent-weak)}
+.flist code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1)}
+.flist small{font-size:var(--fs-caption);color:var(--text-2);white-space:nowrap}
+.groups{display:flex;flex-direction:column;gap:12px}
+.group{border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden;animation:rise 280ms var(--eo) both;animation-delay:calc(var(--i,0) * 45ms)}
+.group .gh{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--brand);color:var(--on-brand);font-size:var(--fs-body-s);flex-wrap:wrap}
+.group .gh input{accent-color:var(--accent)}
+.group .gh .meta{color:var(--on-brand-2);font-size:var(--fs-caption);margin-left:auto;white-space:nowrap}
+.group ul{list-style:none;margin:0;padding:4px 0}
+.group li{display:flex;gap:12px;padding:6px 14px;font-size:var(--fs-caption);color:var(--text-2);flex-wrap:wrap}
+.group li b{color:var(--text-1);font-weight:700}
+.dmap-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+.dmap{width:100%;max-width:380px;aspect-ratio:1;display:block}
+.dmap-tag{font-size:11px;font-weight:700;color:var(--slate-700);background:var(--slate-50);border-radius:var(--r-full);padding:2px 10px;white-space:nowrap}
+.count-line b{font-size:var(--fs-h3);color:var(--text-1);font-variant-numeric:tabular-nums}
+.next-run{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:var(--r-m);background:var(--accent-weak);color:var(--accent-text);font-size:var(--fs-body-s)}
+.next-run b{font-variant-numeric:tabular-nums}
+.next-run span{transition:opacity var(--dur-base) var(--ease)}
+.nlist{list-style:none;margin:0;padding:0}
+.nlist li{display:flex;gap:12px;align-items:flex-start;padding:12px 2px;border-bottom:1px solid var(--line)}
+.nlist li:last-child{border-bottom:0}
+.nlist .dt{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;flex:none;margin-top:1px}
+.nlist .dt .i{width:12px;height:12px}
+.nlist .dt.live{color:var(--brand)}.nlist .dt.ok{background:var(--accent-weak);color:var(--accent-text)}.nlist .dt.bad{background:var(--red-50);color:var(--red-700)}
+.nlist b{display:block;font-size:var(--fs-body-s)}
+.nlist small{font-size:var(--fs-caption);color:var(--text-2)}
+
+/* ---------- 컴포넌트 모음 ---------- */
+.parts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.parts .wide{grid-column:1/-1}
+.sw-groups{display:flex;flex-direction:column;gap:18px}
+.sw-group h4{margin:0 0 8px;font-size:var(--fs-body-s);color:var(--text-2)}
+.sw-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.sw{display:flex;flex-direction:column;gap:6px;min-width:0}
+.sw i{height:44px;border-radius:var(--r-m);border:1px solid rgba(31,41,55,.08)}
+.sw b{font-size:var(--fs-caption);font-family:var(--font-mono)}
+.sw span{font-size:var(--fs-caption-s);color:var(--text-2);line-height:1.45}
+.ramp{display:flex;flex-direction:column}
+.ramp div{display:grid;grid-template-columns:170px minmax(0,1fr);gap:14px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)}
+.ramp div:last-child{border-bottom:0}
+.ramp code{font-size:var(--fs-caption-s);color:var(--text-2)}
+.ramp p{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.part-list{display:flex;flex-direction:column;gap:16px}
+.part-list h4{margin:0 0 8px;font-size:var(--fs-caption);font-weight:700;color:var(--text-2)}
+.mini-vt{border-radius:var(--r-m);overflow:hidden}
+.mini-vt .vtabs{padding:8px 12px 0}
+.mini-ft{border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden}
+.mini-ft .ftabs{padding:0 8px;border-bottom:0}
+.spring-tbl td{padding:7px 12px;white-space:normal}
+.spring-tbl td:last-child{text-align:right;font-weight:700;white-space:nowrap}
+.demo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.9fr);gap:24px;align-items:start}
+.demo-stage{padding:20px;border-radius:var(--r-l);background:var(--bg-sunken);min-width:0}
+.demo-ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px}
+.eq{border-radius:var(--r-m);overflow:hidden;background:var(--eq-bg);color:var(--eq-text);font-size:var(--fs-caption)}
+.eq div{display:grid;grid-template-columns:150px repeat(3,minmax(70px,1fr));border-bottom:1px solid var(--eq-line)}
+.eq div:last-child{border-bottom:0}
+.eq span{padding:7px 10px;border-right:1px solid var(--eq-line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq .hd{background:var(--eq-head);font-weight:700}
+.eq .rw{background:var(--eq-row)}
+.eq .rw span:first-child small{display:block;color:var(--eq-sub);font-size:10px}
+.eq .v{background:var(--eq-val);color:var(--eq-val-text);margin:4px 6px;padding:2px 6px;font-variant-numeric:tabular-nums}
+.eq .diff{background:var(--eq-diff-bg);color:var(--eq-diff)}
+.eq-wrap{overflow-x:auto}
+.logbox{background:var(--log-bg);color:var(--log-text);border-radius:var(--r-m);padding:10px 14px;font:12px/1.7 var(--font-mono);white-space:pre-wrap;margin:0}
+
+/* ---------- 좁은 화면 ---------- */
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.grid2,.grid2.even{grid-template-columns:1fr}.run2{grid-template-columns:1fr}.demo{grid-template-columns:1fr}}
+@media (max-width:860px){.parts{grid-template-columns:1fr}}
+@media (max-width:760px){
+  .topbar{padding:14px 16px 12px}.env{display:none}.vtabs{padding:0 12px}.ftabs{padding:0 6px}
+  .main{padding:20px 16px 24px}.foot{padding:10px 16px}.card{padding:18px 16px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi:first-child{grid-column:1/-1}.kpi strong{font-size:26px}
+  .scope-row .go{margin-left:0;width:100%}.scope-row .go .btn{flex:1}.scope-row .field.date{width:calc(50% - 9px)}
+  .ramp div{grid-template-columns:1fr;gap:2px}.win-ctl .i{width:30px}
+  .spg-track,.spg-names{margin-left:30px;margin-right:30px}.spg-names span{font-size:11px}
+  .flist label{grid-template-columns:16px minmax(0,1fr) auto}.flist label small{display:none}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;animation-delay:0ms!important;transition-duration:1ms!important}}
+
+/* ---------- '지금 디자인' 재현 (비교용, 가까운 모양) — 모션 부품은 새로 넣는 것이라 그대로 보인다 ---------- */
+.cur{--r-m:8px;--r-l:12px;--r-xl:16px;--card-shadow:0 1px 3px rgba(30,40,80,.08),0 1px 2px rgba(30,40,80,.06);--fs-display:29px;--focus:#577eb0}
+.cur :focus-visible{outline-width:3px;outline-offset:3px}
+.cur .ind{display:none}
+.cur .ftabs button.on,.cur .stabs button.on{background:#eafaf3;box-shadow:inset 0 -3px 0 var(--accent)}
+.cur .seg{background:#e3e9ef;border-radius:999px}.cur .seg button{border-radius:999px}
+.cur .seg button.on{background:var(--white);box-shadow:var(--sh-1)}
+.cur .pv .seg{background:var(--bg-surface)}.cur .pv .seg button.on{background:var(--brand)}
+.cur .btn.sec,.cur .btn.out{background:var(--white);border-color:var(--grey-200);color:var(--slate-800)}
+.cur .btn.sec:hover:not(:disabled),.cur .btn.out:hover:not(:disabled){background:#edf2f6;border-color:#b3c0cc}
+.cur .btn.l{min-width:152px;box-shadow:var(--card-shadow)}
+.cur .input{background:var(--white);border-color:#bac7d6;border-radius:6px}
+.cur .input:focus,.cur .input.is-focus{border-color:#bac7d6;box-shadow:none;outline:3px solid #577eb0;outline-offset:3px}
+.cur .chip.on{background:#31517c;border-color:#31517c}
+.cur .badge{border-radius:4px}
+.cur .badge.mut{background:#e5ecf6;color:#31517c}
+.cur .toast{background:var(--white);color:var(--text-1);border:1px solid var(--line);border-left:4px solid var(--emerald-500);border-radius:12px;box-shadow:var(--sh-2)}
+.cur .toast.bad{border-left-color:var(--red-600)}.cur .toast.info{border-left-color:var(--slate-700)}.cur .toast .x{color:var(--grey-600)}
+.cur th{background:#edf2f7;color:#425872}
+.cur td,.cur th{border-right:1px solid #edf1f5}
+.cur .wide-tbl tbody tr:nth-child(even){background:#fafbfd}
+.cur .kpi{padding:20px 22px;border-radius:10px}
+.cur .kpi.on{border-color:#a7e0cb;background:#effaf5;box-shadow:none}
+.cur .mbox.on{border-color:#8fd9bd;background:#f2fbf7;box-shadow:none}
+.cur .note.info{background:#f5f9ff;border:1px solid #c9d9ea;color:#31517c}
+.cur .note.warn{border:1px solid #e9c39a}
+.cur input[type=checkbox],.cur input[type=radio]{accent-color:#31517c}
+.cur .group .gh{border-left:5px solid var(--accent)}
+.cur .conn{background:#d6f2e6;color:#0b5e46}
+/* ===== 디자인 시안(디자인 요소만): 예시 화면 · 미리보기 도구 · '지금 디자인' 비교 · 창 틀은 숨긴다 ===== */
+body.sian .pv,body.sian #v-example,body.sian #vtabs,body.sian #ftabs,body.sian .win-bar{display:none!important}
+body.sian .win{border:0;border-radius:0;box-shadow:none;max-width:none}
+.refs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.ref{display:flex;flex-direction:column;gap:6px;padding:16px 18px;border:1px solid var(--line);border-radius:var(--r-l);background:var(--bg-surface);min-width:0}
+.ref h4{margin:0;font-size:15px}.ref a{color:var(--brand);font-weight:700;word-break:break-all;text-underline-offset:3px}
+.ref p{margin:0;font-size:13px;color:var(--text-2)}.ref ul{margin:2px 0 0;padding-left:18px;font-size:13px;color:var(--text-1)}
+.ref .lic{align-self:flex-start;font-size:12px;font-weight:700;padding:2px 8px;border-radius:var(--r-s);background:var(--grey-100);color:var(--text-2)}
+.tok-row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+.tok{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--text-2)}
+.tok b{font-family:var(--font-mono);font-weight:700;color:var(--text-1);font-size:12px}
+.tok .rad{display:block;width:64px;height:44px;background:var(--grey-100);border:1px solid var(--line-strong)}
+.tok .sh{display:block;width:96px;height:56px;background:var(--bg-surface);border-radius:var(--r-l)}
+.tok .sp{display:block;height:12px;background:var(--accent);border-radius:2px}
+.files{width:100%;border-collapse:collapse;font-size:13px}.files td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}.files td:first-child{white-space:nowrap;font-weight:700}
+.files code{font-family:var(--font-mono);font-size:12px;word-break:break-all}
+@media (max-width:860px){.refs{grid-template-columns:1fr}.files td:first-child{white-space:normal}}
+</style>
+</head>
+<body class="sian">
+
+<div class="pv" role="region" aria-label="미리보기 도구">
+  <span class="pv-name">AOI Manager 새 디자인</span>
+  <div class="seg" id="pageSeg" aria-label="예시 페이지">
+    <button data-go="batch">Batch Report 분석</button><button data-go="find">찾기 · 취합</button><button data-go="defect">Defect 기본</button><button data-go="defect-big">Defect 대규모</button><button data-go="auto">자동 분석</button><button data-go="tb500">TB500 조회</button><button data-go="kla">KLA 자재 찾기</button><button data-go="components">컴포넌트 · 모션</button>
+  </div>
+  <div class="seg" id="designSeg" aria-label="디자인 비교"><button data-design="new">새 디자인</button><button data-design="cur">지금 디자인</button></div>
+  <p class="pv-note">숫자 · Lot · 경로 · 사진은 모두 예시입니다. 프로그램 안 탭으로도 옮겨 다닐 수 있고(점 ● 이 있는 탭에 예시가 있음), 조사 · 찾기 · 조회 · 필터 · 시각 고르기 · 복사를 눌러 볼 수 있습니다. '지금 디자인'은 현재 프로그램 모양을 가깝게 재현한 비교용입니다.</p>
+</div>
+
+<div class="win">
+  <div class="win-bar"><span><i class="fav"></i>AOI Manager</span><span class="win-ctl" aria-hidden="true"><i data-ic="min"></i><i data-ic="max"></i><i data-ic="x"></i></span></div>
+  <header class="topbar">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">A</span><span><b>AOI Manager</b><small>장비 데이터 작업공간</small></span></div>
+    <span class="env"><i></i>오프라인 · 원본 읽기 전용</span>
+  </header>
+  <nav class="vtabs" id="vtabs" aria-label="장비 회사 · 공통"></nav>
+  <nav class="ftabs" id="ftabs" aria-label="주요 기능"></nav>
+
+  <main class="main">
+    <div id="v-example">
+      <div class="page-h" id="pageHead">
+        <div><p class="eyebrow">PROCESS INTELLIGENCE</p><h1 id="pageTitle">Batch Report 분석</h1><p class="lead" id="pageLead"></p></div>
+        <span class="conn"><i></i>로컬 엔진 연결됨</span>
+      </div>
+
+      <!-- ===== Batch Report 분석 ===== -->
+      <div class="pg stack" id="pg-batch">
+        <div class="stabs" id="bigTabs" role="tablist">
+          <button class="on" data-big="0" role="tab">가동률 조사 및 분석<small>Lot 추적 · 가동률 · WPH</small></button>
+          <button data-big="1" role="tab">Batch Report 찾기 · 취합<small>파일 이름으로 찾아 Lot 별로 취합</small></button>
+        </div>
+        <div id="big0" class="stack">
+          <section class="card" aria-labelledby="scopeH">
+            <div class="card-h">
+              <div><h3 id="scopeH">조사 범위</h3><p>호기와 기간을 고르고 조사를 시작하세요. 장비 원본은 읽기만 합니다.</p></div>
+              <div class="row"><label class="ck"><input type="checkbox" id="allM"> 모든 호기</label>
+                <button class="btn ghost s" type="button"><i data-ic="sliders"></i>AOI 장비 호기 루트 설정</button></div>
+            </div>
+            <div class="mgrid" id="mgrid"></div>
+            <div class="scope-row">
+              <div class="field"><span>기간</span>
+                <div class="seg" id="periodSeg"><button data-p="30">최근 30일</button><button data-p="56" class="on">최근 8주</button><button data-p="90">최근 90일</button><button data-p="all">모든 기간</button></div></div>
+              <label class="field date"><span>시작</span><input class="input" type="date" id="dFrom" value="2026-09-28"></label>
+              <label class="field date"><span>끝</span><input class="input" type="date" id="dTo" value="2026-11-22"></label>
+              <label class="switch"><input type="checkbox" id="reuse" role="switch" checked><span><b>이미 읽은 Batch Report는 다시 읽지 않기</b><small>파일 이름 · 수정 시각 · 크기가 같으면 로컬 캐시를 씁니다</small></span></label>
+              <div class="go"><button class="help l" type="button" id="critBtn" aria-label="Lot 판정 기준">?</button>
+                <button class="btn pri l" type="button" id="runBtn">조사 시작<span class="dots"><span class="dots3"><i></i><i></i><i></i></span></span></button></div>
+            </div>
+            <p class="scope-status" id="scopeStatus"></p>
+          </section>
+
+          <section class="card" id="runCard" hidden>
+            <div class="run2">
+              <div class="as" id="agentRun"></div>
+              <div class="run-side">
+                <div class="prog"><span class="tr"><i id="runBar"></i></span><b id="runCount">0 / 420</b></div>
+                <p id="runSub">호기 5대 · 이미 읽은 Batch Report 는 캐시에서</p>
+                <div class="row"><button class="btn sec" type="button" id="runStop">중단</button><button class="btn ghost" type="button" id="runClose" hidden>닫기</button></div>
+              </div>
+            </div>
+          </section>
+
+          <div class="seg" id="innerSeg" style="align-self:flex-start"><button class="on" data-in="0">Lot 추적</button><button data-in="1">가동률 · 원인</button><button data-in="2">WPH · 생산능력</button></div>
+
+          <div id="in0" class="stack">
+            <div class="kpis" id="kpis">
+              <button class="kpi on" data-k="all" type="button"><span>조사 범위 내 Lot Scan 완료</span><strong><span data-n="251">251</span><small>Lot</small></strong><p>Pass 한 wafer 25장 기준</p></button>
+              <button class="kpi" data-k="all" type="button"><span>Batch Report 존재</span><strong><span data-n="420">420</span><small>개</small></strong><p>Lot 1개 ≠ Batch Report 1개</p></button>
+              <button class="kpi" data-k="rescan" type="button"><span><i style="background:var(--st-rescan)"></i>재스캔으로 완료된 Lot</span><strong><span data-n="38">38</span><small>Lot</small></strong><p>Error 뒤 다시 스캔해 Pass</p></button>
+              <button class="kpi" data-k="open" type="button"><span><i style="background:var(--st-open)"></i>Pass하지 못한 Lot</span><strong><span data-n="7">7</span><small>Lot</small></strong><p>다른 호기 확인 필요</p></button>
+              <button class="kpi" data-k="dup" type="button"><span>중복 Scan한 wafer가 있는 Lot</span><strong><span data-n="12">12</span><small>Lot</small></strong><p>가장 나중 Pass 를 씀</p></button>
+            </div>
+            <div class="grid2">
+              <section class="card">
+                <div class="card-h"><div><h3>기간별 Lot Scan 현황</h3><p id="chartSub">주 단위 · 막대를 누르면 그 주만 강조합니다</p></div>
+                  <div class="legend"><span><i style="background:var(--st-done)"></i>한 번에 완료</span><span><i style="background:var(--st-rescan)"></i>재스캔으로 완료</span><span><i style="background:var(--st-open)"></i>Pass하지 못한 wafer 존재</span></div></div>
+                <div class="chart-wrap"><svg class="chart" id="chart" viewBox="0 0 640 250" role="img" aria-label="주별 Lot Scan 막대 그래프"></svg></div>
+              </section>
+              <section class="card">
+                <div class="card-h"><div><h3>조사 범위 내 Lot Scan Error 요약</h3><p>Error 원문 그대로 · Lot 단위</p></div></div>
+                <div class="tbl-wrap"><table>
+                  <thead><tr><th>Error 원문</th><th class="r">Lot</th><th class="r">재스캔하여 Pass</th><th class="r">Pass 못 함</th><th class="r">wafer</th></tr></thead>
+                  <tbody>
+                    <tr><td>Scan 2D Error.</td><td class="r">21</td><td class="r">18</td><td class="r">3</td><td class="r">64</td></tr>
+                    <tr><td>Alignment Failed.</td><td class="r">9</td><td class="r">8</td><td class="r">1</td><td class="r">17</td></tr>
+                    <tr><td>Wafer Not Detected.</td><td class="r">6</td><td class="r">5</td><td class="r">1</td><td class="r">6</td></tr>
+                    <tr><td>Focus Error.</td><td class="r">5</td><td class="r">4</td><td class="r">1</td><td class="r">9</td></tr>
+                    <tr><td>Aborted.<span class="sub">작업자 중단</span></td><td class="r">4</td><td class="r">3</td><td class="r">1</td><td class="r">11</td></tr>
+                  </tbody></table></div>
+                <div class="note info" style="margin-top:12px"><span class="ic">i</span><span>앞 Error 뒤에 나온 Aborted · Skipped 는 그 Error 의 원문으로 셉니다.</span></div>
+              </section>
+            </div>
+            <section class="card">
+              <div class="card-h"><div><h3>Lot 단위 Scan List</h3><p>줄을 누르면 Lot History 를 엽니다</p></div>
+                <button class="btn out" type="button" id="xlBtn"><i data-ic="down"></i>Excel 로 저장</button></div>
+              <div class="tbl-tools">
+                <label class="search"><i data-ic="search"></i><input class="input" id="q" placeholder="Lot · 호기 · 레시피 검색" aria-label="Lot 검색"></label>
+                <div class="row" id="chips"></div>
+              </div>
+              <div class="tbl-wrap"><table class="wide-tbl">
+                <thead><tr><th>Lot</th><th>공정 단계</th><th>호기</th><th>처음 스캔</th><th class="r">Batch Report</th><th class="r">Pass wafer</th><th>상태</th><th></th></tr></thead>
+                <tbody id="lotBody"></tbody></table></div>
+              <div class="tbl-foot"><span id="lotCount"></span><span>예시 8줄 · 실제 목록은 251 Lot</span></div>
+            </section>
+          </div>
+          <section class="card" id="in1" hidden><div class="empty"><div class="ill"><i data-ic="chart"></i></div><h4>가동률 · 원인 화면은 이 예시에 그리지 않았습니다</h4><p>같은 카드 · 표 · 그래프 규칙을 씁니다.</p><button class="btn sec" type="button" data-goin="0">Lot 추적 보기</button></div></section>
+          <section class="card" id="in2" hidden><div class="empty"><div class="ill"><i data-ic="chart"></i></div><h4>WPH · 생산능력 화면은 이 예시에 그리지 않았습니다</h4><p>같은 카드 · 표 · 그래프 규칙을 씁니다.</p><button class="btn sec" type="button" data-goin="0">Lot 추적 보기</button></div></section>
+        </div>
+
+        <!-- 찾기 · 취합: 단계 표시 -->
+        <div id="big1" class="stack" hidden>
+          <section class="card">
+            <div class="spg" id="findSteps"></div>
+            <div class="wiz-body">
+              <div class="wiz-pane" data-pane="0">
+                <div class="grid2 even">
+                  <label class="field"><span>파일 이름 키워드</span><span class="search"><i data-ic="search"></i><input class="input" id="fq" value="SPT SC93F" aria-label="키워드"></span>
+                    <span class="hint">여러 단어는 모두 들어간 파일만 찾습니다. .htm 은 붙이지 않아도 됩니다.</span></label>
+                  <div class="field"><span>찾을 곳</span><div class="row" style="min-height:38px"><label class="ck"><input type="checkbox" id="fCache"> 캐시에서만 찾기</label><span class="hint">장비 폴더는 이름만 보고 열지 않습니다</span></div></div>
+                </div>
+                <div class="field"><span>호기</span><div class="row" id="fMach"></div></div>
+              </div>
+              <div class="wiz-pane" data-pane="1" hidden>
+                <div class="row" style="justify-content:space-between"><span class="hint" id="fPickCount"></span><div class="row"><button class="btn ghost s" id="fAll" type="button">보이는 것 모두 고르기</button><button class="btn ghost s" id="fNone" type="button">모두 해제</button></div></div>
+                <div class="flist" id="fList"></div>
+              </div>
+              <div class="wiz-pane" data-pane="2" hidden>
+                <div class="seg" id="recipeSeg" style="align-self:flex-start"><button class="on" data-r="all">전체</button><button data-r="2D_WBG">2D_WBG</button><button data-r="2D">2D</button></div>
+                <div class="groups" id="fGroups"></div>
+              </div>
+              <div class="wiz-pane" data-pane="3" hidden>
+                <div class="row"><span class="badge warn"><i></i>재스캔으로 완료</span><span class="hint">SPT · SC93F · 2D_WBG · Batch Report 3개에서 wafer 25장 · 가장 나중 Pass 를 씀</span></div>
+                <div class="pathbox"><span class="dim">Scanresult</span><code id="scanPath">Y:\AOI-21\Scanresult\2D_WBG@R5-GA285\6323\SPT-0911S</code><span id="cpScan"></span><button class="btn ghost s" type="button"><i data-ic="folder"></i>폴더 열기</button></div>
+                <div class="tbl-wrap"><table class="wide-tbl" style="min-width:700px">
+                  <thead><tr><th>Slot</th><th>Wafer ID</th><th>고른 Batch Report</th><th class="r">Scanned</th><th class="r">Good Dice</th><th class="r">Yield</th><th>결과</th></tr></thead>
+                  <tbody id="aggBody"></tbody></table></div>
+                <div class="row" style="justify-content:flex-end"><button class="btn out" type="button" id="aggXl"><i data-ic="down"></i>Excel 로 저장</button></div>
+              </div>
+            </div>
+            <div class="wiz-nav"><button class="btn sec" type="button" id="wBack">이전</button><span class="hint" id="wCount"></span><button class="btn pri" type="button" id="wNext">찾기<span class="dots"><span class="dots3"><i></i><i></i><i></i></span></span></button></div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ===== Defect 분석 ===== -->
+      <div class="pg stack" id="pg-defect" hidden>
+        <div class="stabs" id="defTabs"><button data-d="cg">Color·Gray 매칭<small>사진 · Excel</small></button><button data-d="big">Defect 분석(대규모)<small>5-1 ~ 5-3 · 목록으로 걸러내기</small></button><button class="on" data-d="base">Defect 분석(기본)<small>Step 1 ~ 4 · Wafer Map 으로 고르기</small></button></div>
+
+        <!-- 기본: Step 1 ~ 4 -->
+        <div id="defBase" class="stack">
+          <section class="card"><div class="spg" id="baseSteps"></div>
+            <div class="wiz-nav"><button class="btn sec" type="button" id="bBack">이전</button><span class="hint" id="bCount"></span><button class="btn pri" type="button" id="bNext">다음<span class="dots"><span class="dots3"><i></i><i></i><i></i></span></span></button></div></section>
+
+          <section class="card" data-bs="0" hidden>
+            <div class="card-h"><div><h3>등록된 Lot</h3><p>Lot 1개 = 스캔 결과 1개. Contrast AVG 오름차순으로 비교합니다.</p></div><button class="btn out" type="button" id="bAdd"><i data-ic="folder"></i>Lot 폴더 추가</button></div>
+            <div class="tbl-wrap"><table class="wide-tbl" style="min-width:900px"><thead><tr><th>Step 이름</th><th>Contrast AVG</th><th>검사 호기</th><th>Lot 폴더</th><th class="r">Slot</th><th class="r">Defect 수</th><th>Recipe</th><th>점검</th></tr></thead><tbody id="bLots"></tbody></table></div>
+          </section>
+
+          <section class="card" data-bs="1" hidden>
+            <div class="card-h"><div><h3>비교 조건</h3><p>모든 순서쌍을 비교합니다. A → B 마다 A - B = B 에서 없어진 Defect.</p></div></div>
+            <div class="row" style="align-items:flex-end;gap:14px 18px">
+              <label class="field" style="width:200px"><span>보기 단위</span><select class="input" id="bUnit"><option>Lot 별 (모든 Slot)</option><option>Slot 별</option></select></label>
+              <label class="field" style="width:200px"><span>동일 좌표 허용오차 (µm)</span><input class="input" type="number" id="bTol" value="2" min="0" step="0.5"></label>
+              <span class="hint" style="padding-bottom:10px">Wafer map = 웨이퍼 맵(Export Wafer Map) 기준 · Notch 아래 · Die 번호 = X 왼쪽부터 0, Y 아래부터 0</span>
+            </div>
+            <div class="tbl-wrap" style="margin-top:16px"><table style="min-width:720px"><thead><tr><th>쌍 (A → B)</th><th class="r">A (전체)</th><th class="r">B (전체)</th><th class="r">A ∩ B</th><th class="r">A - B (B 에서 없어짐)</th><th class="r">B - A</th><th class="r">없어진 비율</th></tr></thead><tbody id="bPairs"></tbody></table></div>
+          </section>
+
+          <div class="stack" data-bs="2">
+            <section class="card" id="bHead"></section>
+            <div class="grid2">
+              <section class="card">
+                <div class="card-h"><div><h3>필터</h3><p>막대를 끌거나 숫자를 적으세요. 칸을 비우면 제한 없음.</p></div><button class="btn ghost s" type="button" id="bfClear">필터 지우기</button></div>
+                <div class="fsec"><p class="fhead">값 범위 · µm 로 보기</p><div class="rs-list" id="bfRanges"></div></div>
+                <div class="fsec"><div class="fgrid2" style="margin-top:0">
+                  <label class="field"><span>Recipe</span><select class="input" id="bfRcp"></select></label>
+                  <label class="field"><span>Zone</span><select class="input" id="bfZn"></select></label>
+                  <label class="field"><span>정렬</span><select class="input" id="bfSort"></select></label></div></div>
+                <div class="note info" style="margin-top:14px"><span class="ic">i</span><span>필터에 맞지 않는 Defect 는 지도에 회색 원으로 남고 목록에서 빠집니다. 반올림하지 않은 실제 값으로 비교합니다.</span></div>
+              </section>
+              <section class="card">
+                <div class="card-h"><div><h3 id="bmTitle">Wafer Map</h3><p class="count-line">필터에 맞는 Defect <b id="bmCount">0</b> / <span id="bmTotal">0</span> · ☑ <b id="bmPick">0</b></p></div><span class="dmap-tag">Flat Pos 3 · Notch 아래</span></div>
+                <div class="dmap-wrap"><div class="dmap-box"><canvas class="dmap" id="bmap" role="img" aria-label="Wafer Map · 점 누르기 = 그 Defect 보기"></canvas><div class="maptip" id="bmTip" hidden></div></div>
+                  <div class="row" style="justify-content:center"><button class="btn sec s" type="button" id="bmAll">맞는 것 모두 ☑</button><button class="btn sec s" type="button" id="bmNone">모두 ☐</button><label class="ck"><input type="checkbox" id="bmBg" checked> 필터 밖 Defect 도 회색으로</label></div>
+                  <p class="hint" style="text-align:center">점 누르기 = 그 Defect 보기 · ☑ 는 목록에서</p>
+                  <div class="legend"><span><i style="background:var(--map-die);border:1px solid var(--line-strong)"></i>Die</span><span><i style="background:var(--map-die-hit)"></i>☑ Defect 있는 Die</span><span><i style="background:var(--map-dot);border-radius:50%"></i>☑</span><span><i style="border:1.5px solid var(--grey-500);border-radius:50%;background:transparent"></i>☐</span><span><i style="border:1px solid var(--grey-300);border-radius:50%;background:transparent"></i>필터 밖</span></div></div>
+              </section>
+            </div>
+            <section class="card">
+              <div class="card-h"><div><h3>Defect 목록</h3><p>☑ 한 Defect 만 다음 단계 · CSV 로 갑니다. 줄을 누르면 지도에서 표시됩니다.</p></div><button class="btn out" type="button" id="bCsv"><i data-ic="down"></i>CSV 저장 (☑ 만)</button></div>
+              <div class="curline" id="bCur"></div>
+              <div class="tbl-wrap tbl-scroll"><table style="min-width:900px"><thead><tr><th>☑</th><th>구분</th><th class="r">ID</th><th>Die (맵 X, Y)</th><th class="r">Contrast(실제)</th><th class="r">Area (µm²)</th><th class="r">Width (µm)</th><th class="r">Length</th><th>분류</th><th>Recipe</th></tr></thead><tbody id="bList"></tbody></table></div>
+              <div class="tbl-foot"><span id="bListNote"></span><span>예시 자료</span></div>
+            </section>
+          </div>
+        </div>
+
+        <!-- 대규모: 5-1 ~ 5-3 (지도 없음) -->
+        <div id="defBig" class="stack" hidden>
+          <section class="card"><div class="spg" id="bigSteps"></div></section>
+
+          <div class="stack" data-gs="0">
+            <section class="card">
+              <div class="card-h"><div><h3>5-1 필터</h3><p>레시피 폴더 3개 · Lot 3개 · Slot 75장에서 모은 Defect 를 걸러냅니다. 지도는 없고 목록으로 봅니다.</p></div><div class="row"><button class="btn ghost s" type="button" id="gfClear">필터 지우기</button><button class="btn out s" type="button" id="gCsv"><i data-ic="down"></i>목록 CSV</button></div></div>
+              <div class="fsec"><div class="fgrid2" style="margin-top:0">
+                <label class="field"><span>Lot</span><select class="input" id="gLot"></select></label>
+                <label class="field"><span>Slot</span><select class="input" id="gSlot"></select></label>
+                <div class="field"><span>장비 스캔 분류</span><div class="row" id="gCls"></div></div></div></div>
+              <div class="fsec"><p class="fhead">값 범위 · µm 로 보기</p><div class="rs-list" id="gfRanges"></div></div>
+              <div class="fsec"><div class="fgrid2" style="margin-top:0">
+                <label class="field"><span>Recipe</span><select class="input" id="gfRcp"></select></label>
+                <label class="field"><span>Zone</span><select class="input" id="gfZn"></select></label>
+                <label class="field"><span>정렬</span><select class="input" id="gfSort"></select></label></div></div>
+            </section>
+            <section class="card">
+              <div class="card-h"><div><h3>Defect 목록</h3><p class="count-line" id="gCount"></p></div>
+                <label class="search" style="width:280px"><i data-ic="search"></i><input class="input" id="gq" placeholder="ID · Lot · 분류 · Recipe 검색" aria-label="Defect 검색"></label></div>
+              <div class="tbl-wrap tbl-scroll"><table style="min-width:900px"><thead><tr><th>☑</th><th>Lot</th><th class="r">Slot</th><th class="r">ID</th><th class="r">Contrast(실제)</th><th class="r">Area (µm²)</th><th class="r">Width (µm)</th><th class="r">Length</th><th>분류</th><th>Recipe</th><th>Zone</th></tr></thead><tbody id="gList"></tbody></table></div>
+              <div class="wiz-nav"><span class="hint" id="gListNote"></span><button class="btn pri" type="button" id="toG2">다음: 결과 목록 · 사진 확인</button></div>
+            </section>
+          </div>
+
+          <div class="stack" data-gs="1" hidden>
+            <div class="ktiles" id="g2Tiles"></div>
+            <section class="card">
+              <div class="card-h"><div><h3>5-2 결과 목록</h3><p>걸러낸 Defect 마다 Color · Gray 사진이 매칭 폴더에 있는지 이름으로 확인했습니다.</p></div>
+                <div class="row"><label class="field" style="width:200px"><span>보기</span><select class="input" id="g2Show"><option value="">전체</option><option value="ok">Color·Gray 매칭 완료</option><option value="color">Color 만</option><option value="gray">Gray 만</option><option value="none">둘 다 없음</option></select></label></div></div>
+              <div class="tbl-wrap tbl-scroll"><table style="min-width:860px"><thead><tr><th>☑</th><th>Lot</th><th class="r">Slot</th><th class="r">ID</th><th>사진</th><th>Color 사진</th><th>Gray 프레임</th></tr></thead><tbody id="g2List"></tbody></table></div>
+              <div class="wiz-nav"><button class="btn sec" type="button" id="toG1">← 5-1 필터 고치기</button><span class="hint" id="g2Note"></span><div class="row"><button class="btn out" type="button" id="g2Csv"><i data-ic="down"></i>CSV 저장</button><button class="btn pri" type="button" id="toG3">다음: 사진 정밀 조사</button></div></div>
+            </section>
+          </div>
+
+          <div class="stack" data-gs="2" hidden>
+            <section class="card">
+              <div class="card-h"><div><h3>5-3 사진 정밀 조사</h3><p>최종 목록(☑)을 고르고 흑백 GL 을 잽니다. GL 범위로 다시 걸러낼 수 있습니다.</p></div>
+                <div class="seg" id="g3View"><button class="on" data-v="list">리스트</button><button data-v="grid">격자 구조</button></div></div>
+              <div class="fsec"><p class="fhead">흑백 GL (원) 측정</p><div class="rs-list" id="g3Gl"></div>
+                <div class="row" style="margin-top:10px"><button class="btn sec" type="button" id="g3Measure">흑백 GL 측정 (☑ 만)<span class="dots"><span class="dots3"><i></i><i></i><i></i></span></span></button><span class="hint" id="g3GlNote"></span></div></div>
+              <div class="fsec"><div class="row" style="justify-content:space-between"><div class="row"><b>최종 목록</b><span class="badge ok" id="g3PickN"><i></i>☑ 0개</span><button class="btn ghost s" type="button" id="g3All">전체 선택</button><button class="btn ghost s" type="button" id="g3None">전체 해제</button></div>
+                <div class="row"><button class="btn out" type="button" id="g3Csv"><i data-ic="down"></i>최종 목록 CSV 저장</button><button class="btn pri" type="button" id="g3Xl"><i data-ic="down"></i>최종 목록 엑셀 저장 (사진 포함)</button></div></div></div>
+            </section>
+            <section class="card" id="g3ListView">
+              <div class="big3">
+                <div class="tbl-wrap tbl-scroll"><table><thead><tr><th>☑</th><th>Lot</th><th class="r">ID</th><th>사진</th><th class="r">GL</th></tr></thead><tbody id="g3List"></tbody></table></div>
+                <div class="stack" style="gap:12px"><div class="row"><button class="btn sec s" type="button" id="g3Up">◀ 이전</button><button class="btn sec s" type="button" id="g3Down">다음 ▶</button><span class="hint" id="g3Pos"></span></div>
+                  <div class="photo2"><figure><figcaption>Color 원본</figcaption><canvas id="g3C"></canvas></figure><figure><figcaption>Gray Crop (Defect 박스)</figcaption><canvas id="g3G"></canvas></figure></div>
+                  <div class="curline" id="g3Info" style="margin:0"></div></div>
+              </div>
+            </section>
+            <section class="card" id="g3GridView" hidden><div class="g5grid" id="g3Grid"></div><div class="tbl-foot"><span id="g3GridNote"></span><span>격자는 앞 24개</span></div></section>
+          </div>
+        </div>
+
+        <section class="card" id="defCg" hidden><div class="empty"><div class="ill"><i data-ic="file"></i></div><h4>Color·Gray 매칭은 이 예시에 그리지 않았습니다</h4><p>Defect 분석(기본)에서 Wafer Map 으로 고르기, Defect 분석(대규모)에서 목록으로 걸러내기를 볼 수 있습니다.</p><button class="btn sec" type="button" data-defgo="base">Defect 분석(기본) 보기</button></div></section>
+      </div>
+
+      <!-- ===== 자동 분석 및 취합 ===== -->
+      <div class="pg stack" id="pg-auto" hidden>
+        <section class="card">
+          <div class="card-h"><div><h3>Batch Report 자동 분석</h3><p>지난 [조사 시작] 조건으로, 정한 주기 · 시각에 혼자 조사하고 결과를 남깁니다.</p></div>
+            <div class="seg" id="autoKind"><button class="on">CAMTEK · Batch Report</button><button>KLA · KLA 캐시</button></div></div>
+          <div class="stack" style="gap:18px">
+            <label class="switch"><input type="checkbox" id="autoOn" role="switch" checked><span><b>자동 분석 켜기</b><small>창을 닫아도 알림 영역에 남아 예약 시각에 돕니다</small></span></label>
+            <div class="wp-set">
+              <div><p class="wp-lbl">주기</p><div id="wpPeriod"></div></div>
+              <div><p class="wp-lbl">실행 시각 <span id="wpTimeNote" style="font-weight:400"></span></p><div id="wpTime"></div></div>
+            </div>
+            <div class="next-run"><i data-ic="clock"></i><span id="nextRun"></span></div>
+            <div class="row" style="justify-content:flex-end"><button class="btn sec" type="button" id="runNow"><i data-ic="play"></i>즉시 실행</button><button class="btn pri" type="button" id="autoSave">저장</button></div>
+          </div>
+        </section>
+        <div class="grid2">
+          <section class="card">
+            <div class="card-h"><div><h3>자동 분석 호기 현황</h3><p>등록 호기 × 지난 조사 대상</p></div></div>
+            <div class="tbl-wrap"><table><thead><tr><th>호기</th><th>마지막 조사</th><th>결과</th></tr></thead><tbody>
+              <tr><td><b>AOI-3</b></td><td>11-24 07:40</td><td><span class="badge ok"><i></i>읽음 12 · 캐시 400</span></td></tr>
+              <tr><td><b>AOI-9</b></td><td>11-24 07:41</td><td><span class="badge ok"><i></i>읽음 4 · 캐시 384</span></td></tr>
+              <tr><td><b>AOI-16</b></td><td>11-24 07:42</td><td><span class="badge ok"><i></i>읽음 16 · 캐시 520</span></td></tr>
+              <tr><td><b>AOI-21</b></td><td>11-24 07:42</td><td><span class="badge bad"><i></i>연결 못 함</span></td></tr>
+              <tr><td><b>AOI-25</b></td><td>11-24 07:43</td><td><span class="badge ok"><i></i>읽음 9 · 캐시 530</span></td></tr>
+            </tbody></table></div>
+          </section>
+          <section class="card">
+            <div class="card-h"><div><h3>최근 알림</h3><p>진행 · 변경 · 실패</p></div></div>
+            <ul class="nlist">
+              <li><span class="dt live"><span class="dots3"><i></i><i></i><i></i></span></span><div><b>KLA 캐시 갱신 중 · KLA-3</b><small>날짜 폴더 이름만 읽습니다 · 시작 15:18</small></div></li>
+              <li><span class="dt ok"><i data-ic="check"></i></span><div><b>Batch Report 자동 분석 끝 · 새 Batch Report 41개</b><small>11-24 07:43 · 결과 HTML · Excel 을 만들었습니다</small></div></li>
+              <li><span class="dt bad"><i data-ic="x"></i></span><div><b>AOI-21 Reports 폴더에 연결하지 못했습니다</b><small>11-24 07:42 · 30분 뒤 다시 시도합니다</small></div></li>
+            </ul>
+          </section>
+        </div>
+      </div>
+
+      <!-- ===== TB500 Review 조회 ===== -->
+      <div class="pg stack" id="pg-tb500" hidden>
+        <section class="card">
+          <div class="card-h"><div><h3>Lot 목록</h3><p>한 줄에 Lot 하나. Conder Scan 폴더는 읽기만 합니다.</p></div></div>
+          <div class="grid2 even">
+            <label class="field"><span>Lot</span><textarea class="input" id="tbLots" rows="5" aria-label="Lot 목록">SF14G
+SC93F
+SA78K
+GX570</textarea></label>
+            <div class="stack" style="gap:12px">
+              <div class="field"><span>Conder Scan 폴더</span><div class="pathbox"><code id="conderPath">\\10.20.30.40\ConderScan</code><span id="cpConder"></span></div></div>
+              <div class="field"><span>캐시</span><div class="row"><span class="badge ok"><i></i>Camtek 캐시 · 11-24 07:43</span><span class="badge ok"><i></i>KLA 색인 · 11-24 06:10</span></div></div>
+              <div class="row" style="justify-content:flex-end;margin-top:auto"><button class="btn pri l" id="tbGo" type="button">조회<span class="dots"><span class="dots3"><i></i><i></i><i></i></span></span></button></div>
+            </div>
+          </div>
+        </section>
+        <section class="card" id="tbRunCard" hidden><div class="as" id="agentTb" style="max-width:620px"></div></section>
+        <section class="card" id="tbResult" hidden>
+          <div class="card-h"><div><h3>조회 결과</h3><p>Layer 마다 재리뷰 판정과 스캔한 장비 · 호기</p></div><button class="btn out" type="button"><i data-ic="down"></i>Excel 로 저장</button></div>
+          <div class="tbl-wrap"><table class="wide-tbl" style="min-width:980px"><thead><tr><th>Lot</th><th>Layer</th><th>판정</th><th>장비</th><th>호기</th><th>스캔 시각</th><th>Conder Scan 경로</th></tr></thead><tbody id="tbBody"></tbody></table></div>
+        </section>
+      </div>
+
+      <!-- ===== KLA 자재 찾기 ===== -->
+      <div class="pg stack" id="pg-kla" hidden>
+        <section class="card">
+          <div class="card-h"><div><h3>찾기</h3><p>날짜 · Lot · 슬롯 폴더 이름만 봅니다. 파일은 열지 않습니다.</p></div><label class="ck"><input type="checkbox" checked id="kCache"> KLA 캐시에서만 찾기</label></div>
+          <div class="row" style="align-items:flex-end">
+            <label class="field" style="flex:1 1 260px"><span>Lot</span><span class="search"><i data-ic="search"></i><input class="input" id="kq" value="SC93F" aria-label="Lot"></span></label>
+            <label class="field" style="width:160px"><span>기간</span><select class="input" id="kd"><option>최근 30일</option><option selected>최근 90일</option><option>모든 기간</option></select></label>
+            <button class="btn pri" style="height:38px" id="kGo" type="button">찾기<span class="dots"><span class="dots3"><i></i><i></i><i></i></span></span></button>
+          </div>
+        </section>
+        <section class="card" id="kRes">
+          <div class="card-h"><div><h3>찾은 자재</h3><p id="kSum">KLA 캐시에서 찾았습니다 · 11-24 06:10 갱신</p></div></div>
+          <div class="tbl-wrap"><table class="wide-tbl" style="min-width:900px"><thead><tr><th>장비</th><th>날짜</th><th>Lot</th><th class="r">슬롯</th><th>폴더</th><th></th></tr></thead><tbody id="kBody"></tbody></table></div>
+        </section>
+      </div>
+
+      <section class="card pg" id="pg-other" hidden><div class="empty"><div class="ill"><i data-ic="file"></i></div><h4 id="otherTitle">이 탭은 예시에 그리지 않았습니다</h4><p>점(●)이 있는 탭에 예시가 있습니다. 다른 탭도 같은 머리 · 카드 · 표 · 모션 규칙을 따릅니다.</p><div class="row" style="justify-content:center"><button class="btn pri" type="button" data-jump="batch">Batch Report 분석</button><button class="btn sec" type="button" data-jump="defect">Defect 분석</button><button class="btn sec" type="button" data-jump="auto">자동 분석 및 취합</button></div></div></section>
+    </div>
+
+    <!-- ===== 컴포넌트 · 모션 ===== -->
+    <div id="v-components" hidden>
+      <div class="page-h">
+        <div><p class="eyebrow">DESIGN.md · 2026-11-24</p><h1>AOI Manager 디자인 시안</h1><p class="lead">색 · 글자 · 모서리 · 그림자 · 움직임과 부품만 모았습니다. 기준 문서는 저장소 맨 위 DESIGN.md, 프로그램 적용은 브랜치 design_rebuild 입니다. 모션 부품은 화면에 보일 때만 혼자 움직이고, 만지면 잠시 멈춥니다. 맨 아래에 참고한 사이트를 적었습니다.</p></div>
+      </div>
+      <div class="parts" id="partsGrid">
+        <section class="card wide"><div class="card-h"><div><h3>3 · 단계 표시 (Step progress)</h3><p>선은 스프링으로 차오르고, 끝난 단계는 체크가 그려지며, 지금 단계는 살짝 튀어 오릅니다.</p></div></div>
+          <div class="demo"><div class="demo-stage"><div class="spg" id="demoSteps"></div><div class="demo-ctl" style="justify-content:center"><button class="btn sec" id="dsBack" type="button">이전</button><button class="btn pri" id="dsNext" type="button">다음</button></div></div>
+            <table class="spring-tbl"><tbody><tr><td>선 길이</td><td>160 · 22</td></tr><tr><td>단계 채움(초록)</td><td>260 · 24</td></tr><tr><td>체크 그리기(0.12초 뒤)</td><td>140 · 20</td></tr><tr><td>지금 단계 튀어 오름(0.7배, 속도 6에서)</td><td>500 · 14</td></tr><tr><td>지금 단계 색</td><td>300 · 26</td></tr></tbody></table></div>
+          <p class="hint" style="margin-top:12px">쓰는 곳: Batch Report 찾기 · 취합 4단계, Defect 분석 5-1 ~ 5-3 · Step 1 ~ 4, Wafer Map 수정하기 6단계.</p></section>
+
+        <section class="card wide"><div class="card-h"><div><h3>4 · 작업 단계 (Agent steps)</h3><p>긴 작업을 단계로 보여 줍니다. 지금 단계는 글자에 물결이 지나가고, 기록 3줄이 위로 밀려 올라가며, 끝나면 접힙니다.</p></div></div>
+          <div class="demo"><div class="demo-stage"><div class="as" id="agentDemo"></div></div>
+            <table class="spring-tbl"><tbody><tr><td>아이콘 바뀜(흐림 2px → 선명)</td><td>180ms</td></tr><tr><td>체크 그리기(0.05초 뒤)</td><td>300ms</td></tr><tr><td>단계 사이 선 채움</td><td>500ms</td></tr><tr><td>기록 줄 밀림 · 칸 높이</td><td>300 · 240ms</td></tr><tr><td>목록 접기 · 펴기</td><td>250ms</td></tr><tr><td>글자 물결(한 글자 0.05초씩)</td><td>1.6초</td></tr><tr><td>곡선</td><td>(.23, 1, .32, 1)</td></tr></tbody></table></div>
+          <p class="hint" style="margin-top:12px">쓰는 곳: Batch Report 조사, TB500 Review 조회, KLA 캐시 갱신, Defect 폴더 읽기 · 사진 불러오기, Recipe 값 업데이트 수집.</p></section>
+
+        <section class="card"><div class="card-h"><div><h3>5 · 돌림 선택 (Wheel picker)</h3><p>끌거나 휠을 굴리면 원통이 돌고, 튕기면 미끄러지다 한 칸에 멈춥니다.</p></div></div>
+          <div class="wp-set" style="justify-content:center"><div id="wpDemo"></div></div>
+          <table class="spring-tbl" style="margin-top:14px"><tbody><tr><td>한 칸으로 가기(0.4초, 튐 0.15)</td><td>472 · 36.9</td></tr><tr><td>튕긴 뒤 멈추기(속도 이어받음)</td><td>140 · 24</td></tr><tr><td>미끄러지는 거리</td><td>속도 × 0.32초</td></tr><tr><td>끝 너머 끌기</td><td>최대 1.2칸</td></tr></tbody></table>
+          <p class="hint" style="margin-top:12px">쓰는 곳: 자동 분석 주기 · 실행 시각, 감시 시간대.</p></section>
+
+        <section class="card"><div class="card-h"><div><h3>6 · 값 끌어 고르기 (Scrubber · 범위)</h3><p>막대를 끌면 값이 바로 따라오고, 누르면 그 자리로 미끄러집니다. 범위는 손잡이 두 개 + 최소 · 최대 숫자 칸.</p></div></div>
+          <div class="scr-list" id="scrDemo"></div>
+          <table class="spring-tbl" style="margin-top:14px"><tbody><tr><td>손잡이 보임 · 크기(0.25초, 튐 0.1)</td><td>1151 · 61</td></tr><tr><td>채움 · 손잡이 위치(끌지 않을 때)</td><td>150ms</td></tr><tr><td>범위: 누른 곳에서 가까운 손잡이가 움직임, 서로 넘지 않음</td><td>—</td></tr><tr><td>범위: 숫자 칸이 기준 · 비우면 제한 없음 · 적고 0.2초 뒤(Enter = 바로)</td><td>200ms</td></tr><tr><td>곡선</td><td>(.23, 1, .32, 1)</td></tr></tbody></table>
+          <p class="hint" style="margin-top:12px">쓰는 곳: Defect 분석 값 범위(Contrast · Area · Width · Length · GL), 유효 Lot 매수.</p></section>
+
+        <section class="card"><div class="card-h"><div><h3>7 · 복사 (Copy button)</h3><p>아이콘이 돌며 체크로, 글자가 '복사됨'으로 말려 올라가고, 단추 폭이 맞춰 늘어납니다.</p></div></div>
+          <div class="pathbox"><span class="dim">Scanresult</span><code id="demoPath">Y:\AOI-16\Scanresult\2D@RE-GA285\6324\AHS\GX57009488</code><span id="cpDemo"></span></div>
+          <table class="spring-tbl" style="margin-top:14px"><tbody><tr><td>글자 말림</td><td>260 · 20</td></tr><tr><td>아이콘 바뀜</td><td>420 · 18</td></tr><tr><td>단추 폭</td><td>300 · 24</td></tr><tr><td>되돌아감</td><td>1.8초 뒤</td></tr></tbody></table>
+          <p class="hint" style="margin-top:12px">쓰는 곳: 모든 경로 칸(Scanresult · Conder Scan · KLA 폴더 · 로컬 결과 · 저장 폴더), 오류 코드.</p></section>
+
+        <section class="card"><div class="card-h"><div><h3>화면 전체의 부드러움</h3><p>렉이 생기지 않게 transform · opacity 만 움직이고, 멈춰 있으면 계산도 멈춥니다.</p></div></div>
+          <table class="spring-tbl"><tbody>
+            <tr><td>탭 밑줄 · 고른 칸 따라가기(앞 · 뒤 끝)</td><td>620 · 36 / 190 · 19</td></tr>
+            <tr><td>페이지 들어올 때(8px 위로, 카드마다 45ms)</td><td>320ms</td></tr>
+            <tr><td>표 줄 · 목록(줄마다 22ms)</td><td>260ms</td></tr>
+            <tr><td>막대 그래프 자라기(막대마다 45ms)</td><td>520ms</td></tr>
+            <tr><td>창 열기 · 닫기</td><td>360 · 160ms</td></tr>
+            <tr><td>토스트 들어오기 · 나가기</td><td>320 · 200ms</td></tr>
+            <tr><td>단추 누름(98% 로 작아짐)</td><td>120ms</td></tr>
+          </tbody></table></section>
+
+        <section class="card wide"><div class="card-h"><div><h3>색</h3><p>강조색은 에메랄드 하나만 씁니다. 그 밖의 강조는 슬레이트 · 굵기 · 크기로 합니다.</p></div></div><div class="sw-groups" id="swatches"></div></section>
+
+        <section class="card wide"><div class="card-h"><div><h3>글자</h3><p>맑은 고딕은 400 · 700 두 굵기뿐이라 그 둘만 씁니다. 숫자가 줄 맞춤되는 곳은 고정폭 숫자.</p></div></div>
+          <div class="ramp">
+            <div><code>display 28 / 700 / 1.3</code><p style="font-size:28px;font-weight:700;letter-spacing:-.02em">Batch Report 분석</p></div>
+            <div><code>h2 20 / 700 / 1.35</code><p style="font-size:20px;font-weight:700">Lot History · SPT SC93F</p></div>
+            <div><code>h3 16 / 700 / 1.4</code><p style="font-size:16px;font-weight:700">기간별 Lot Scan 현황</p></div>
+            <div><code>title 15 / 700 / 1.45</code><p style="font-size:15px;font-weight:700">가동률 조사 및 분석</p></div>
+            <div><code>body 14 / 400 / 1.6</code><p>장비 Report 폴더의 Batch Report를 Lot 단위로 모아 가동률 · Lot 추적 · WPH를 봅니다.</p></div>
+            <div><code>body-s 13 / 400 / 1.55</code><p style="font-size:13px">표 · 목록 · 입력 칸 · 단추 글자</p></div>
+            <div><code>caption 12 / 400 · 700</code><p style="font-size:12px;color:var(--text-2)">파일 이름 · 수정 시각 · 크기가 같으면 로컬 캐시를 씁니다</p></div>
+            <div><code>caption-s 11 / 700 / +.14em</code><p style="font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--emerald-700)">PROCESS INTELLIGENCE</p></div>
+            <div><code>kpi 30 / 700 · tabular</code><p style="font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">251 · 1,234,567</p></div>
+          </div></section>
+
+        <section class="card"><div class="card-h"><div><h3>단추</h3><p>주 단추는 화면 구역마다 하나. 누르면 살짝 작아지고 덧칠, 비활성은 전체 40%.</p></div></div>
+          <div class="part-list">
+            <div><h4>종류 · 보통(36)</h4><div class="row"><button class="btn pri">조사 시작</button><button class="btn sec">중단</button><button class="btn out">Excel 로 저장</button><button class="btn ghost">닫기</button><button class="btn dan">레시피 삭제</button></div></div>
+            <div><h4>크기 · 큰(44) · 보통(36) · 작은(28)</h4><div class="row"><button class="btn pri l">조사 시작</button><button class="btn pri">조사 시작</button><button class="btn pri s">조사 시작</button></div></div>
+            <div><h4>상태 · 처리 중 · 비활성 · 설명</h4><div class="row"><button class="btn pri" id="busyDemo">찾기<span class="dots"><span class="dots3"><i></i><i></i><i></i></span></span></button><button class="btn pri" disabled>저장</button><button class="btn sec" disabled>다시 연결</button><button class="help">?</button><a class="tlink" href="#components">폴더 열기</a></div></div>
+          </div></section>
+
+        <section class="card"><div class="card-h"><div><h3>입력 · 선택</h3><p>쉴 때 옅은 바탕 + 1px 선, 초점이면 흰 바탕 + 에메랄드 1.5px.</p></div></div>
+          <div class="part-list">
+            <label class="field"><span>초점 상태</span><input class="input is-focus" value="AOI-16" id="f2"></label>
+            <label class="field"><span>오류 상태</span><input class="input err" value="\\10.0.0.21\c$\Job" id="f3"><span class="hint err">이 폴더를 열 수 없습니다. 탐색기에서 먼저 연결해 주세요.</span></label>
+            <div class="row"><label class="ck"><input type="checkbox" checked id="c1"> 모든 호기</label><label class="ck"><input type="radio" name="r" checked id="c3"> 장비 폴더</label><label class="ck"><input type="radio" name="r" id="c4"> KLA 캐시</label><label class="switch"><input type="checkbox" role="switch" checked id="c5"><span><b>자동 분석</b></span></label></div>
+            <div class="row" id="chipDemo"><button class="chip on">전체 <em>8</em></button><button class="chip">재스캔 <em>2</em></button><button class="chip">호기 이동 <em>1</em></button></div>
+          </div></section>
+
+        <section class="card"><div class="card-h"><div><h3>탭 4단계</h3><p>눌러 보면 밑줄 · 고른 칸이 늘었다 줄며 따라갑니다.</p></div></div>
+          <div class="part-list">
+            <div><h4>1단계 · 회사 탭</h4><div class="mini-vt"><nav class="vtabs" id="miniVt"><button class="on">CAMTEK</button><button>KLA</button><button class="common-first">설정</button></nav></div></div>
+            <div><h4>2단계 · 기능 탭</h4><div class="mini-ft"><nav class="ftabs" id="miniFt"><button class="on">Batch Report 분석</button><button>Defect 분석</button><button>Wafer Map 수정하기</button></nav></div></div>
+            <div><h4>3단계 · 구역 탭</h4><div class="stabs" id="miniSt"><button class="on">Color·Gray 매칭<small>사진 · Excel</small></button><button>Defect 분석(대규모)<small>5-1 ~ 5-3</small></button></div></div>
+            <div><h4>4단계 · 보기 바꾸기</h4><div class="seg" id="miniSeg"><button class="on">Lot 추적</button><button>가동률 · 원인</button><button>WPH</button></div></div>
+          </div></section>
+
+        <section class="card"><div class="card-h"><div><h3>상태 · 안내 · 토스트</h3><p>왼쪽 색 띠 없이 바탕색 + 동그라미 표시로 구분합니다.</p></div></div>
+          <div class="part-list">
+            <div class="row"><span class="badge ok"><i></i>한 번에 완료</span><span class="badge warn"><i></i>재스캔으로 완료</span><span class="badge bad"><i></i>Pass하지 못한 wafer 존재</span><span class="badge mut">3D 스캔</span></div>
+            <div class="note warn"><span class="ic">!</span><span><b>저장 안 한 선택 2건</b> · 개발자 기능을 끄기 전에 저장하거나 버려 주세요.</span></div>
+            <div class="note bad"><span class="ic">!</span><span>AOI-21 에 연결하지 못했습니다. 탐색기에서 <b>\\10.0.0.21\c$</b> 를 먼저 열어 주세요.</span></div>
+            <div class="row"><button class="btn sec" data-toast="ok">완료 토스트</button><button class="btn sec" data-toast="bad">오류 토스트</button><button class="btn sec" data-toast="info">안내 토스트</button><button class="btn out" id="dlgDemo">창 열기</button></div>
+          </div></section>
+
+        <section class="card"><div class="card-h"><div><h3>빈 화면 · 진행 막대</h3><p>무엇이 나올지와 첫 동작 하나. 진행률을 알면 막대.</p></div></div>
+          <div class="part-list">
+            <div class="prog"><span class="tr"><i id="progDemo"></i></span><b id="progDemoN">0 / 420</b></div>
+            <div class="row" style="color:var(--brand)"><span class="dots3"><i></i><i></i><i></i></span><span class="hint">엔진에 요청을 보내는 중</span></div>
+            <div class="empty" style="padding:8px 0 0"><div class="ill"><i data-ic="folder"></i></div><h4>아직 조사한 결과가 없습니다</h4><p>조사 범위에서 호기와 기간을 고르고 조사를 시작하세요.</p></div>
+          </div></section>
+
+        <section class="card wide"><div class="card-h"><div><h3>모서리 · 그림자 · 간격</h3><p>모서리는 크기와 짝지어 씁니다(큰 것일수록 둥글게). 카드는 그림자 없이 1px 선, 그림자는 떠 있는 것에만.</p></div></div>
+          <div class="part-list">
+            <div><h4>모서리</h4><div class="tok-row">
+              <div class="tok"><i class="rad" style="border-radius:4px"></i><b>r-xs 4</b>표 안 표시</div><div class="tok"><i class="rad" style="border-radius:6px"></i><b>r-s 6</b>배지</div>
+              <div class="tok"><i class="rad" style="border-radius:8px"></i><b>btn-s 8</b>작은 단추</div><div class="tok"><i class="rad" style="border-radius:10px"></i><b>r-m 10</b>단추 · 입력</div>
+              <div class="tok"><i class="rad" style="border-radius:12px"></i><b>btn-l 12</b>큰 단추</div><div class="tok"><i class="rad" style="border-radius:14px"></i><b>r-l 14</b>카드 · 토스트</div>
+              <div class="tok"><i class="rad" style="border-radius:20px"></i><b>r-xl 20</b>창</div><div class="tok"><i class="rad" style="border-radius:999px"></i><b>r-full</b>칩 · 스위치</div></div></div>
+            <div><h4>그림자</h4><div class="tok-row">
+              <div class="tok"><i class="sh" style="border:1px solid var(--line)"></i><b>card</b>없음 + 1px 선</div><div class="tok"><i class="sh" style="box-shadow:var(--sh-1)"></i><b>sh-1</b>고른 칸 · 손잡이</div>
+              <div class="tok"><i class="sh" style="box-shadow:var(--sh-2)"></i><b>sh-2</b>펼침 목록 · 진행 패널</div><div class="tok"><i class="sh" style="box-shadow:var(--sh-3)"></i><b>sh-3</b>토스트 · 창</div></div></div>
+            <div><h4>간격(4 의 배수만)</h4><div class="tok-row">
+              <div class="tok"><i class="sp" style="width:4px"></i><b>4</b></div><div class="tok"><i class="sp" style="width:8px"></i><b>8</b></div><div class="tok"><i class="sp" style="width:12px"></i><b>12</b></div>
+              <div class="tok"><i class="sp" style="width:16px"></i><b>16</b></div><div class="tok"><i class="sp" style="width:20px"></i><b>20</b></div><div class="tok"><i class="sp" style="width:24px"></i><b>24</b></div>
+              <div class="tok"><i class="sp" style="width:32px"></i><b>32</b></div><div class="tok"><i class="sp" style="width:40px"></i><b>40</b></div><div class="tok"><i class="sp" style="width:48px"></i><b>48</b></div></div></div>
+          </div></section>
+
+        <section class="card wide"><div class="card-h"><div><h3>예외 · 그대로 두는 것</h3><p>장비 화면처럼 보여야 하는 값 비교표와 로그 상자는 팔레트 밖입니다.</p></div></div>
+          <div class="grid2 even">
+            <div class="eq-wrap"><div class="eq" style="min-width:420px">
+              <div class="hd"><span>Parameter</span><span>AOI-3</span><span>AOI-9</span><span>AOI-16</span></div>
+              <div class="rw"><span>Min Defect Area<small>Zone 1 · Scan2d</small></span><span><span class="v">12.0</span></span><span><span class="v">12.0</span></span><span class="diff"><span class="v">9.5</span></span></div>
+              <div class="rw"><span>Max Defects Per Die<small>GlobalRTP</small></span><span><span class="v">200</span></span><span><span class="v">200</span></span><span><span class="v">200</span></span></div>
+            </div></div>
+            <pre class="logbox">14:02:11 AOI-16 Reports 폴더 읽기 · 312개
+14:02:13 캐시와 같음 · 296개 건너뜀
+14:02:19 새로 읽음 · 16개</pre>
+          </div></section>
+
+        <section class="card wide"><div class="card-h"><div><h3>프로그램 적용 위치</h3><p>시안의 값이 프로그램 어디에 들어갔는지(브랜치 design_rebuild).</p></div></div>
+          <table class="files"><tbody>
+            <tr><td>토큰 · 공통 부품</td><td><code>frontend/src/styles.css</code> 맨 위 :root(옛 이름은 별칭) · 파일 끝 '새 디자인 부품' · '모션 부품'</td></tr>
+            <tr><td>스프링 · 탭 밑줄 · 돌림 선택</td><td><code>frontend/src/motion.ts</code> (돌림 선택 = select[data-wheel], select 는 남김)</td></tr>
+            <tr><td>복사 · 작업 단계</td><td><code>frontend/src/CopyButton.tsx</code> · <code>frontend/src/Activity.tsx</code></td></tr>
+            <tr><td>Defect 분석 겉모습 · 범위 막대</td><td><code>frontend/public/defect/para-skin.css</code> · <code>para-skin.js</code> (mountRange)</td></tr>
+            <tr><td>결과 HTML</td><td><code>param_manager/report_theme.py</code> THEME_CSS 끝</td></tr>
+            <tr><td>기준 문서</td><td><code>DESIGN.md</code> · <code>docs/design/이어서_하기.md</code></td></tr>
+          </tbody></table></section>
+
+        <section class="card wide" id="refs"><div class="card-h"><div><h3>참고한 사이트</h3><p>구조 · 움직임만 참고했습니다. 코드는 그대로 가져오지 않고 같은 타이밍으로 다시 만들었고(추가 패키지 없음), 색 · 서체는 AOI Manager 그대로입니다.</p></div></div>
+          <div class="refs">
+            <div class="ref"><h4>토스 디자인 시스템(TDS) design.md</h4><a href="https://getdesign.kr" target="_blank" rel="noopener">https://getdesign.kr</a>
+              <p>디자인 기준 문서(DESIGN.md)의 구조 · 원칙</p><ul><li>역할 토큰 · 평평한 표면 · 헤어라인</li><li>크기와 짝지은 모서리 · 짧은 전환 · 3점 로더 · 고정폭 숫자</li><li>쓰지 않은 것: 파란 강조색 · 토스 서체 · 모바일 패턴 · 해요체</li></ul></div>
+            <div class="ref"><h4>designbookmark · Motion Studies</h4><a href="https://designbookmark.com" target="_blank" rel="noopener">https://designbookmark.com</a>
+              <p>스프링 값(강성 · 감쇠)을 그대로 씀</p><ul><li>Step progress → ① 단계 표시</li><li>Copy button → ⑤ 복사</li><li>tokens.css spring-lead 620 · 36 / spring-trail 190 · 19 → 탭 밑줄 · 고른 칸</li></ul></div>
+            <div class="ref"><h4>Kokonut UI</h4><a href="https://kokonutui.com" target="_blank" rel="noopener">https://kokonutui.com</a>
+              <p>타이밍 · 움직임을 같게 다시 만듦</p><ul><li>AI Loading → ② 작업 단계(진행 패널)</li><li>Wheel picker → ③ 돌림 선택(자동 분석 주기 · 시각)</li></ul><span class="lic">MIT</span></div>
+            <div class="ref"><h4>SmoothUI</h4><a href="https://smoothui.dev" target="_blank" rel="noopener">https://smoothui.dev</a>
+              <p>손잡이 스프링 1151 · 61(0.25초)</p><ul><li>Scrubber → ④ 값 끌어 고르기 · Defect 값 범위 양방향 막대</li></ul><span class="lic">MIT</span></div>
+          </div></section>
+      </div>
+    </div>
+  </main>
+  <footer class="foot"><span>AOI Manager</span><span class="path" style="gap:10px"><span>로컬 결과: <code id="localPath">C:\AOI Manager\CamtekAOI</code></span><span id="cpLocal"></span></span></footer>
+</div>
+
+<div class="toaster" id="toaster" aria-live="polite"></div>
+
+<dialog class="dlg" id="dlg" aria-labelledby="dlgTitle">
+  <div class="dlg-h"><div><h2 id="dlgTitle">Lot History</h2><p id="dlgSub"></p></div><button class="x" type="button" id="dlgX" aria-label="닫기"><i data-ic="x"></i></button></div>
+  <div class="dlg-b" id="dlgBody"></div>
+  <div class="dlg-f"><button class="btn sec" type="button" id="dlgClose">닫기</button><button class="btn pri" type="button" id="dlgSave"><i data-ic="down"></i>Excel 로 저장</button></div>
+</dialog>
+
+<script>
+/* 모션 원본: Step progress · Copy button = designbookmark.com Motion Studies(스프링 값 그대로),
+   Agent steps = Kokonut UI ai-loading(MIT, kokonutui.com), Wheel picker = Kokonut UI wheel-picker(MIT),
+   Scrubber = SmoothUI scrubber(MIT, smoothui.dev). 여기서는 라이브러리 없이 같은 타이밍 · 움직임으로 다시 만들었다. */
+(()=>{
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const setHash=h=>{try{history.replaceState(null,'','#'+h);}catch{}};
+
+/* ---------- 아이콘 ---------- */
+const P={search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/>',check:'<path d="m5 12.5 4.5 4.5L19 7.5"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',
+ sliders:'<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>',
+ down:'<path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M5 20h14"/>',file:'<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/>',folder:'<path d="M3 7.5V18a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-8l-2-2.5H4a1 1 0 0 0-1 1z"/>',
+ chart:'<path d="M5 20V10M12 20V4M19 20v-7"/>',arrow:'<path d="M5 12h14m-5-5 5 5-5 5"/>',chev:'<path d="m9 6 6 6-6 6"/>',chevd:'<path d="m6 9 6 6 6-6"/>',
+ clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',play:'<path d="M8 5.5v13l10-6.5z"/>',
+ min:'<path d="M6 12h12"/>',max:'<rect x="6.5" y="6.5" width="11" height="11" rx="1"/>'};
+const ic=n=>`<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n]||''}</svg>`;
+const paintIcons=root=>(root||document).querySelectorAll('[data-ic]').forEach(e=>{e.outerHTML=ic(e.dataset.ic);});
+paintIcons();
+const store={get(k){try{return localStorage.getItem(k)}catch{return null}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
+
+/* ---------- 스프링 엔진: motion.js 와 같은 계산(반암시 오일러, 한 화면당 4번), 움직일 것이 없으면 쉰다 ---------- */
+const Sp=(x,k,c)=>({x,v:0,t:x,k,c:RM?2*Math.sqrt(k):c});
+const tune=(s,k,c)=>{s.k=k;s.c=RM?2*Math.sqrt(k):c;};
+const Engine=(()=>{const live=new Set();let raf=0,last=0;
+  const rest=s=>Math.abs(s.x-s.t)<5e-4&&Math.abs(s.v)<5e-3;
+  function loop(now){const dt=Math.min((now-last)/1000,1/30);last=now;
+    for(const c of [...live]){const h=dt/4;for(let n=0;n<4;n++)for(const s of c.springs){s.v+=(-s.k*(s.x-s.t)-s.c*s.v)*h;s.x+=s.v*h;}
+      c.render();if(c.springs.every(rest)){c.springs.forEach(s=>{s.x=s.t;s.v=0;});c.render();live.delete(c);c.onRest&&c.onRest();}}
+    raf=live.size?requestAnimationFrame(loop):0;}
+  return{wake(c){live.add(c);if(!raf){last=performance.now();raf=requestAnimationFrame(loop);}},stop(c){live.delete(c);}};})();
+function whenVisible(el,fn){let on=false;new IntersectionObserver(es=>{const v=es[es.length-1].isIntersecting;if(v!==on){on=v;fn(v);}}).observe(el);}
+function enterAnim(el){el.classList.remove('enter');[...el.children].forEach((c,i)=>c.style.setProperty('--i',Math.min(i,8)));void el.offsetWidth;el.classList.add('enter');}
+
+/* ---------- 탭 밑줄 · 고른 칸: 앞쪽 끝 620/36, 뒤쪽 끝 190/19 (tokens.css --spring-lead · --spring-trail) ---------- */
+const INDS=[];
+function Indicator(box,kind){
+  const el=document.createElement('span');el.className='ind '+kind;el.setAttribute('aria-hidden','true');
+  const L=Sp(0,620,36),R=Sp(0,620,36);let ready=false;
+  const comp={springs:[L,R],render(){el.style.transform=`translateX(${L.x.toFixed(2)}px)`;el.style.width=Math.max(0,R.x-L.x).toFixed(2)+'px';}};
+  const ins=kind==='line'?10:0;
+  function target(){const b=box.querySelector('button.on');if(!b||!b.offsetWidth)return null;return[b.offsetLeft+ins,b.offsetLeft+b.offsetWidth-ins];}
+  function move(snap){if(!el.isConnected)box.appendChild(el);const t=target();if(!t){el.classList.remove('show');ready=false;return;}
+    if(snap||!ready){L.x=L.t=t[0];R.x=R.t=t[1];L.v=R.v=0;comp.render();ready=true;el.classList.add('show');return;}
+    if(t[0]>L.t){tune(R,620,36);tune(L,190,19);}else{tune(L,620,36);tune(R,190,19);}
+    L.t=t[0];R.t=t[1];el.classList.add('show');Engine.wake(comp);}
+  box.appendChild(el);const api={move};INDS.push(api);return api;
+}
+const snapAll=()=>INDS.forEach(i=>i.move(true));
+addEventListener('resize',()=>requestAnimationFrame(snapAll));
+if(document.fonts)document.fonts.ready.then(snapAll);
+function segBind(box,onPick){const ind=Indicator(box,box.classList.contains('seg')?'thumb':'line');
+  box.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!box.contains(b))return;box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));ind.move();onPick&&onPick(b);});
+  requestAnimationFrame(()=>ind.move(true));return ind;}
+
+/* ---------- 토스트(남은 것이 부드럽게 자리 옮김) ---------- */
+function toast(msg,kind='ok'){
+  const box=$('#toaster'),before=new Map([...box.children].map(n=>[n,n.getBoundingClientRect().top]));
+  const t=document.createElement('div');t.className='toast '+kind;
+  t.innerHTML=`<span class="ic">${ic(kind==='ok'?'check':kind==='bad'?'x':'chev')}</span><span class="msg"></span><button class="x" type="button" aria-label="닫기">${ic('x')}</button>`;
+  t.querySelector('.msg').textContent=msg;box.prepend(t);
+  before.forEach((top,n)=>{const d=top-n.getBoundingClientRect().top;if(d&&n.animate)n.animate([{transform:`translateY(${d}px)`},{transform:'none'}],{duration:240,easing:'cubic-bezier(.23,1,.32,1)'});});
+  const close=()=>{t.classList.add('out');setTimeout(()=>t.remove(),220);};
+  t.querySelector('.x').onclick=close;setTimeout(close,3200);
+}
+
+/* ---------- 7. 복사 단추: 글자 말림 260/20, 아이콘 420/18, 폭 300/24, 1.8초 뒤 되돌아감 ---------- */
+function CopyBtn(getText,{auto=false}={}){
+  const b=document.createElement('button');b.type='button';b.className='cpb';b.setAttribute('aria-label','경로 복사');
+  b.innerHTML=`<span class="cpb-ic"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="3"/><path d="M15.5 8.5V7a2.5 2.5 0 0 0-2.5-2.5H7A2.5 2.5 0 0 0 4.5 7v6A2.5 2.5 0 0 0 7 15.5h1.5"/></svg><svg class="i-ok" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="cpb-roll"><span class="cpb-w"><b>복사</b><b>복사됨</b></span></span>`;
+  const [iC,iO]=b.querySelectorAll('svg'),roll=b.querySelector('.cpb-roll'),w=b.querySelector('.cpb-w'),[a,bb]=w.children;
+  const R=Sp(0,260,20),I=Sp(0,420,18),RW=Sp(0,300,24);let on=false,timer=0,inited=false,userAt=-1e9,it=0;
+  const comp={springs:[R,I,RW],render(){roll.style.width=RW.x.toFixed(2)+'px';w.style.transform=`translateY(${(-16*R.x).toFixed(2)}px)`;
+    const i=clamp(I.x,-.2,1.2),ii=clamp(i,0,1);iC.style.opacity=clamp(1-i*1.6,0,1).toFixed(3);iC.style.transform=`scale(${(1-.5*ii).toFixed(3)}) rotate(${(-40*ii).toFixed(1)}deg)`;
+    iO.style.opacity=clamp(i*1.6-.4,0,1).toFixed(3);iO.style.transform=`scale(${(.4+.6*i).toFixed(3)})`;}};
+  const init=()=>{if(inited||!a.offsetWidth)return;RW.x=RW.t=a.offsetWidth;roll.style.width=RW.x+'px';inited=true;};
+  function play(){init();if(!inited)return;on=true;R.t=1;I.t=1;RW.t=bb.offsetWidth;clearTimeout(timer);
+    timer=setTimeout(()=>{on=false;R.t=0;I.t=0;RW.t=a.offsetWidth;Engine.wake(comp);},1800);Engine.wake(comp);}
+  b.addEventListener('click',()=>{userAt=performance.now();play();const txt=getText();
+    const fail=()=>toast('클립보드에 넣지 못했습니다. 경로를 직접 골라 복사해 주세요','info');
+    try{const p=navigator.clipboard&&navigator.clipboard.writeText(txt);if(p)p.catch(fail);else fail();}catch{fail();}});
+  whenVisible(b,v=>{if(v)init();clearInterval(it);if(auto&&v)it=setInterval(()=>{if(performance.now()-userAt>6000&&!on)play();},3400);});
+  return b;
+}
+
+/* ---------- 3. 단계 표시: 선 160/22, 채움 260/24, 체크 140/20(0.12초 뒤), 튀어 오름 500/14(0.7 · 속도 6), 지금 색 300/26 ---------- */
+function StepProgress(root,names,{onJump}={}){
+  root.innerHTML='<div class="spg-track"><span class="spg-bar"></span><div class="spg-dots"></div></div><div class="spg-names"></div>';
+  const bar=root.querySelector('.spg-bar'),dotsEl=root.querySelector('.spg-dots'),namesEl=root.querySelector('.spg-names'),N=names.length;
+  let cur=-1;
+  const steps=names.map((name,i)=>{const d=document.createElement('span');d.className='spg-dot';d.style.left=(i/(N-1)*100)+'%';
+    const num=document.createElement('b');num.textContent=i+1;d.appendChild(num);
+    d.insertAdjacentHTML('beforeend','<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>');const path=d.querySelector('path');path.style.strokeDasharray=22;path.style.strokeDashoffset=22;
+    dotsEl.appendChild(d);const nm=document.createElement('span');nm.textContent=name;nm.style.left=(i/(N-1)*100)+'%';namesEl.appendChild(nm);
+    if(onJump)d.addEventListener('click',()=>{if(i<cur)onJump(i);});
+    return{d,num,path,nm,f:Sp(0,260,24),c:Sp(0,140,20),p:Sp(1,500,14),on:Sp(0,300,26),tm:0};});
+  const L=Sp(0,160,22);
+  const comp={springs:[L,...steps.flatMap(s=>[s.f,s.c,s.p,s.on])],render(){
+    bar.style.transform=`scaleX(${clamp(L.x,0,1).toFixed(4)})`;
+    steps.forEach(s=>{const f=clamp(s.f.x,0,1),o=clamp(s.on.x,0,1);
+      s.d.style.background=f>.01?`color-mix(in srgb, var(--accent) ${(f*100).toFixed(1)}%, var(--grey-100))`:o>.01?`color-mix(in srgb, var(--brand) ${(o*100).toFixed(1)}%, var(--grey-100))`:'';
+      s.d.style.color=o>.5?'var(--on-brand)':'';s.num.style.opacity=(1-f).toFixed(3);
+      s.path.style.strokeDashoffset=(22*(1-clamp(s.c.x,0,1))).toFixed(2);s.d.style.transform=`scale(${s.p.x.toFixed(4)})`;});}};
+  function go(i){i=clamp(i,0,N-1);if(i===cur)return;cur=i;L.t=i/(N-1);
+    steps.forEach((s,k)=>{const done=k<i||(i===N-1&&k===N-1);s.f.t=done?1:0;s.on.t=k===i&&!done?1:0;s.nm.classList.toggle('on',k<=i);
+      s.d.classList.toggle('click',!!onJump&&k<i);clearTimeout(s.tm);if(done)s.tm=setTimeout(()=>{s.c.t=1;Engine.wake(comp);},120);else s.c.t=0;});
+    steps[i].p.x=.7;steps[i].p.v=RM?0:6;Engine.wake(comp);}
+  return{go,get cur(){return cur;},N};
+}
+
+/* ---------- 4. 작업 단계: 아이콘 180ms(흐림 2px), 체크 300ms(0.05초 뒤), 선 500ms, 기록 300/240ms, 접기 250ms, 물결 1.6초 ---------- */
+const fmtDur=s=>s<60?`${s}초`:`${Math.floor(s/60)}분 ${String(s%60).padStart(2,'0')}초`;
+const fmtStep=ms=>ms<10000?`${(ms/1000).toFixed(1)}초`:`${Math.round(ms/1000)}초`;
+function AgentSteps(root,steps,{doneTitle='끝났습니다',collapseWhenDone=true}={}){
+  const N=steps.length,id='as'+Math.random().toString(36).slice(2,7);
+  root.innerHTML=`<button class="as-head" type="button" aria-expanded="true" aria-controls="${id}"><output class="as-title">준비 중</output><span class="as-el"></span><span class="as-n"></span><svg class="i as-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P.chevd}</svg></button><div class="as-wrap" id="${id}"><ol class="as-list"></ol></div>`;
+  const head=root.querySelector('.as-head'),title=root.querySelector('.as-title'),elEl=root.querySelector('.as-el'),nEl=root.querySelector('.as-n'),wrap=root.querySelector('.as-wrap'),list=root.querySelector('.as-list');
+  const rows=steps.map((s,i)=>{const li=document.createElement('li');li.className='as-step';li.dataset.s='pending';
+    li.innerHTML=`${i<N-1?'<span class="as-rail" aria-hidden="true"><i></i></span>':''}<span class="as-ic" aria-hidden="true"><span class="as-i p"><i class="as-dot"></i></span><span class="as-i r"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25" stroke-width="1.5"/><path d="M8 1.75a6.25 6.25 0 0 1 6.25 6.25" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="as-i d"><svg viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" pathLength="1" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="as-i e"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7m0-7-7 7" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span></span><div class="as-main"><div class="as-row"><p class="as-label"><span class="t"></span><span class="w" aria-hidden="true"></span></p></div><div class="as-log" aria-hidden="true"><div class="as-lines"></div></div></div>`;
+    li.querySelector('.t').textContent=s.label;const wv=li.querySelector('.w');Array.from(s.label).forEach((ch,k)=>{const sp=document.createElement('span');sp.textContent=ch;sp.style.animationDelay=(k*.05).toFixed(2)+'s';wv.appendChild(sp);});
+    list.appendChild(li);return{li,row:li.querySelector('.as-row'),log:li.querySelector('.as-log'),lines:li.querySelector('.as-lines'),n:0,start:0,time:null,status:'pending'};});
+  let open=true,t0=0,tEnd=0,failed=-1,doneAll=false;
+  function setOpen(o){if(o===open)return;open=o;head.setAttribute('aria-expanded',o);const from=wrap.offsetHeight;wrap.style.height=from+'px';const to=o?list.scrollHeight:0;
+    requestAnimationFrame(()=>{wrap.style.height=to+'px';wrap.style.opacity=o?1:0;});
+    const end=e=>{if(e.target!==wrap||e.propertyName!=='height')return;wrap.removeEventListener('transitionend',end);if(open)wrap.style.height='';};wrap.addEventListener('transitionend',end);}
+  head.addEventListener('click',()=>setOpen(!open));
+  function header(){const sec=t0?Math.floor(((doneAll||failed>=0?tEnd:performance.now())-t0)/1000):0;const run=rows.findIndex(r=>r.status==='running');
+    if(failed>=0){title.textContent=`멈춘 단계: ${steps[failed].label}`;elEl.textContent='';nEl.textContent='';}
+    else if(doneAll){title.textContent=doneTitle;elEl.textContent=t0?fmtDur(sec):'';nEl.textContent=`· ${N}단계`;}
+    else if(run>=0){title.textContent=steps[run].label;elEl.textContent=fmtDur(sec);nEl.textContent='';}
+    else{title.textContent='준비 중';elEl.textContent='';nEl.textContent='';}}
+  function setLines(r,arr){if(arr.length<r.n){r.lines.innerHTML='';r.n=0;}
+    for(let k=r.n;k<arr.length;k++){const d=document.createElement('div');d.className='as-line';d.innerHTML=`<b>${k+1}</b><span></span>`;d.lastChild.textContent=arr[k];r.lines.appendChild(d);}
+    r.n=arr.length;r.log.style.height=(24*Math.min(r.n,3))+'px';r.log.classList.toggle('has',r.n>0);r.log.classList.toggle('mask',r.n>2);
+    r.lines.style.transform=`translateY(${-Math.max(0,r.n-3)*24}px)`;}
+  function setStatus(r,s){if(r.status===s)return;const now=performance.now();
+    if(s==='running'){r.start=now;if(r.time){r.time.remove();r.time=null;}}
+    if((s==='done'||s==='error')&&!r.time){const t=document.createElement('span');t.className='as-time';t.textContent=fmtStep(now-(r.start||now));r.row.appendChild(t);r.time=t;}
+    if(s==='pending'&&r.time){r.time.remove();r.time=null;}
+    if(s!=='running'){r.log.style.height='0px';r.log.classList.remove('has','mask');const L=r.lines;setTimeout(()=>{if(r.status!=='running'){L.innerHTML='';r.n=0;L.style.transform='';}},260);}
+    r.status=s;r.li.dataset.s=s;}
+  const api={
+    set(step,line){if(!t0)t0=performance.now();failed=-1;doneAll=step>=N;
+      rows.forEach((r,k)=>{if(k<step)setStatus(r,'done');else if(k===step){setStatus(r,'running');setLines(r,(steps[k].detail||[]).slice(0,line));}else setStatus(r,'pending');});
+      if(doneAll){tEnd=performance.now();if(collapseWhenDone)setTimeout(()=>{if(doneAll)setOpen(false);},450);}else setOpen(true);header();},
+    fail(step){failed=step;tEnd=performance.now();if(rows[step])setStatus(rows[step],'error');header();},
+    reset(){t0=0;doneAll=false;failed=-1;rows.forEach(r=>setStatus(r,'pending'));header();setOpen(true);},
+    lines(step){return(steps[step].detail||[]).length;},N};
+  setInterval(()=>{if(t0&&!doneAll&&failed<0)header();},500);header();
+  return api;
+}
+function drive(agent,{tick=750,onStep,onDone}={}){let s=0,l=0,timer=0,stopped=false;agent.set(0,0);
+  const next=()=>{if(stopped)return;if(l<agent.lines(s))l++;else{s++;l=0;}agent.set(s,l);onStep&&onStep(s,l);if(s>=agent.N){onDone&&onDone();return;}timer=setTimeout(next,tick);};
+  timer=setTimeout(next,tick);return{stop(){stopped=true;clearTimeout(timer);return s;}};}
+
+/* ---------- 5. 돌림 선택: 한 칸 가기 472/36.9(0.4초 · 튐 0.15), 튕김 140/24 + 속도, 0.32초 미끄럼, 끝 너머 1.2칸 ---------- */
+const IH=36,IA=20,RAD=Math.round(IH/2/Math.tan(IA/2*Math.PI/180)*100)/100,WIN=Math.ceil(90/IA),COAST=.32,MAXO=1.2,VWIN=80,SLOP=4;
+const mod=(n,m)=>((n%m)+m)%m,damp=(d,m)=>m*(1-Math.exp(-d/m));
+function Wheel(root,cols,{label='시각',onChange}={}){
+  root.className='wp';root.setAttribute('role','group');root.setAttribute('aria-label',label);
+  root.innerHTML='<div class="wp-band" aria-hidden="true"></div><span class="wp-tick" style="left:2px"></span><span class="wp-tick" style="right:2px"></span>';
+  const value={};
+  cols.forEach(col=>{const opts=col.options,count=opts.length,loop=!!col.loop;const idx=Math.max(0,opts.findIndex(o=>o.value===col.value));value[col.id]=opts[idx].value;
+    const el=document.createElement('div');el.className='wp-col';el.tabIndex=0;el.setAttribute('role','spinbutton');el.setAttribute('aria-label',col.label);el.style.width=(col.w||64)+'px';
+    el.innerHTML='<div class="wp-fade"><div class="wp-drum"><div class="wp-rot"></div></div><div class="wp-drum clip"><div class="wp-rot"></div></div></div>';root.appendChild(el);
+    const rots=el.querySelectorAll('.wp-rot');const pos=Sp(idx,472,36.9);let center=null,drag=null;
+    const optAt=i=>opts[mod(i,count)];
+    const rowsFor=c=>{let h='';for(let i=c-WIN;i<=c+WIN;i++){if(!loop&&(i<0||i>=count))continue;h+=`<div class="wp-row" style="transform:rotateX(${-i*IA}deg) translateZ(${RAD}px)">${optAt(i).label}</div>`;}return h;};
+    const comp={springs:[pos],render(){const tf=`translateZ(${-RAD}px) rotateX(${(pos.x*IA).toFixed(3)}deg)`;rots.forEach(r=>r.style.transform=tf);
+      const c=Math.round(pos.x);if(c!==center){center=c;const h=rowsFor(c);rots.forEach(r=>r.innerHTML=h);}},onRest(){settle();}};
+    const aria=()=>{const o=optAt(Math.round(pos.x));el.setAttribute('aria-valuetext',o.label);el.setAttribute('aria-valuenow',mod(Math.round(pos.x),count));};
+    function settle(){const o=optAt(Math.round(pos.x));aria();if(value[col.id]!==o.value){value[col.id]=o.value;onChange&&onChange({...value},col.id);}}
+    comp.render();aria();
+    const clampI=i=>loop?i:clamp(i,0,count-1);
+    function goTo(t){tune(pos,472,36.9);pos.t=t;if(RM){pos.x=t;pos.v=0;comp.render();settle();return;}Engine.wake(comp);}
+    const over=raw=>loop?raw:raw<0?-damp(-raw,MAXO):raw>count-1?count-1+damp(raw-(count-1),MAXO):raw;
+    el.addEventListener('pointerdown',e=>{if(drag||(e.pointerType==='mouse'&&e.button!==0))return;Engine.stop(comp);pos.v=0;el.setPointerCapture(e.pointerId);
+      drag={id:e.pointerId,y:e.clientY,p:pos.x,moved:false,s:[{t:e.timeStamp,v:pos.x}]};});
+    el.addEventListener('pointermove',e=>{const d=drag;if(!d||d.id!==e.pointerId)return;const dy=e.clientY-d.y;if(!d.moved&&Math.abs(dy)<SLOP)return;d.moved=true;
+      const raw=d.p-dy/IH;pos.x=pos.t=over(raw);comp.render();d.s.push({t:e.timeStamp,v:raw});while(d.s.length>2&&e.timeStamp-d.s[0].t>VWIN)d.s.shift();});
+    const up=e=>{const d=drag;if(!d||d.id!==e.pointerId)return;drag=null;
+      if(!d.moved&&e.type!=='pointerup'){goTo(clampI(Math.round(pos.x)));return;}
+      if(!d.moved){const r=el.getBoundingClientRect(),rat=clamp((e.clientY-(r.top+r.height/2))/RAD,-1,1);goTo(clampI(Math.round(pos.x)+Math.round(Math.asin(rat)*180/Math.PI/IA)));return;}
+      const f=d.s[0],l=d.s[d.s.length-1],span=(l.t-f.t)/1000,paused=e.timeStamp-l.t>VWIN,vel=span>0&&!paused?(l.v-f.v)/span:0,p=pos.x,oob=!loop&&(p<0||p>count-1);
+      if(RM||oob||Math.abs(vel)<2){goTo(clampI(Math.round(p)));return;}
+      tune(pos,140,24);pos.v=vel;pos.t=clampI(Math.round(p+vel*COAST));Engine.wake(comp);};
+    el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);el.addEventListener('lostpointercapture',up);
+    el.addEventListener('keydown',e=>{const i=Math.round(pos.x),mv={ArrowUp:1,ArrowDown:-1,PageUp:5,PageDown:-5};let t;
+      if(e.key==='Home')t=i-mod(i,count);else if(e.key==='End')t=i-mod(i,count)+count-1;else if(e.key in mv)t=clampI(i+mv[e.key]);else return;
+      e.preventDefault();Engine.stop(comp);pos.x=pos.t=t;pos.v=0;comp.render();settle();});
+    let wt=0;el.addEventListener('wheel',e=>{e.preventDefault();Engine.stop(comp);pos.v=0;const raw=pos.x+e.deltaY/IH*.4;pos.x=pos.t=loop?raw:clamp(raw,-.4,count-1+.4);comp.render();
+      clearTimeout(wt);wt=setTimeout(()=>goTo(clampI(Math.round(pos.x))),120);},{passive:false});
+  });
+  return{value,off(b){root.classList.toggle('off',b);}};
+}
+
+/* ---------- 6. 값 끌어 고르기: 손잡이 1151/61(0.25초 · 튐 0.1), 위치 150ms (.23,1,.32,1) ---------- */
+const hoverDev=matchMedia('(hover: hover) and (pointer: fine)');
+function Scrubber(root,{label,min=0,max=1,step=.01,decimals=2,value=0,ticks=9,onChange}){
+  root.className='scr';root.tabIndex=0;root.setAttribute('role','slider');root.setAttribute('aria-label',label);root.setAttribute('aria-valuemin',min);root.setAttribute('aria-valuemax',max);
+  root.innerHTML=`<div class="scr-fill"></div><div class="scr-ticks">${Array.from({length:ticks},(_,i)=>`<i style="left:${((i+1)/(ticks+1)*100).toFixed(2)}%"></i>`).join('')}</div><div class="scr-th"><div class="scr-cap"></div></div><div class="scr-l"></div><div class="scr-v"></div>`;
+  root.querySelector('.scr-l').textContent=label;
+  const fill=root.querySelector('.scr-fill'),th=root.querySelector('.scr-th'),cap=root.querySelector('.scr-cap'),vEl=root.querySelector('.scr-v');
+  const O=Sp(.15,1151,61),S=Sp(.7,1151,61);let v=value,dragging=false,hover=false;
+  const comp={springs:[O,S],render(){cap.style.opacity=O.x.toFixed(3);cap.style.transform=`scale(${S.x.toFixed(4)})`;}};
+  const rnd=x=>clamp(Math.round((x-min)/step)*step+min,min,max);
+  function draw(){const pc=max>min?(v-min)/(max-min)*100:0;fill.style.width=pc+'%';th.style.left=pc+'%';vEl.textContent=v.toFixed(decimals);root.setAttribute('aria-valuenow',v.toFixed(decimals));}
+  function act(){const a=dragging||(hoverDev.matches&&hover);O.t=a?.8:.15;S.t=a?1:.7;Engine.wake(comp);}
+  function set(x,silent){const n=rnd(x);if(n===v){draw();return;}v=n;draw();if(!silent&&onChange)onChange(v);}
+  const fromX=cx=>{const r=root.getBoundingClientRect();return min+clamp((cx-r.left)/r.width,0,1)*(max-min);};
+  root.addEventListener('pointerdown',e=>{e.preventDefault();root.setPointerCapture(e.pointerId);dragging=true;act();set(fromX(e.clientX));root.focus({preventScroll:true});});
+  root.addEventListener('pointermove',e=>{if(!dragging)return;root.classList.add('drag');set(fromX(e.clientX));});
+  const up=()=>{if(!dragging)return;dragging=false;root.classList.remove('drag');act();};
+  root.addEventListener('pointerup',up);root.addEventListener('pointercancel',up);
+  root.addEventListener('mouseenter',()=>{hover=true;act();});root.addEventListener('mouseleave',()=>{hover=false;act();});
+  root.addEventListener('keydown',e=>{const m={ArrowRight:step,ArrowUp:step,ArrowLeft:-step,ArrowDown:-step};let n;
+    if(e.key in m)n=v+m[e.key];else if(e.key==='Home')n=min;else if(e.key==='End')n=max;else return;e.preventDefault();set(n);});
+  draw();return{get value(){return v;},set(x){set(x,true);}};
+}
+
+/* ---------- 탭 · 페이지 ---------- */
+const VENDORS={CAMTEK:['Recipe 관리','자동 분석 및 취합','Commonality 조사','Batch Report 분석','Defect 분석','Wafer Map 수정하기'],KLA:['KLA 자재 찾기']};
+const COMMON=['TB500 Review 조회','설정','메모'];
+const HAS={'Batch Report 분석':'batch','Defect 분석':'defect','자동 분석 및 취합':'auto','KLA 자재 찾기':'kla','TB500 Review 조회':'tb500'};
+const LEAD={'Batch Report 분석':'장비 Report 폴더의 Batch Report를 Lot 단위로 모아 가동률 · Lot 추적 · WPH를 보고, 필요한 Batch Report를 찾아 취합합니다.',
+ 'Defect 분석':'Color · Gray 매칭으로 사진 · Excel 을 만들고, 대규모 Defect 는 Contrast · 분류로 걸러 사진으로 조사하고, 스캔 결과끼리 Wafer Map 으로 비교하세요. 원본 폴더는 읽기만 합니다.',
+ 'Wafer Map 수정하기':'Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리세요.',
+ '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.',
+ 'KLA 자재 찾기':'KLA 장비 스캔 결과 폴더에서 Lot 이름으로 자재를 찾아 경로를 알려 주고, 바로 폴더를 엽니다.',
+ 'TB500 Review 조회':'Lot 목록을 붙여 넣으면 Conder Scan 폴더에서 Layer 마다 재리뷰 여부를 판정하고, Camtek · KLA 캐시에서 스캔한 장비 · 호기 · 시각을 찾습니다.',
+ '자동 분석 및 취합':'파라미터 · Commonality · Batch Report 를 정한 주기에 혼자 분석하고, 바뀐 것만 알려 줍니다.'};
+let tab='Batch Report 분석',curPage='';const last={CAMTEK:'Batch Report 분석',KLA:'KLA 자재 찾기'};
+const topOf=t=>COMMON.includes(t)?t:VENDORS.KLA.includes(t)?'KLA':'CAMTEK';
+const ftInd=Indicator($('#ftabs'),'line'),pageSegInd=Indicator($('#pageSeg'),'thumb'),designInd=Indicator($('#designSeg'),'thumb');
+function showPage(id){
+  const pg=$('#pg-'+id);$$('#v-example .pg').forEach(p=>p.hidden=p!==pg);
+  if(curPage!==id){curPage=id;enterAnim(pg);pg.querySelectorAll(':scope > .stack:not([hidden])').forEach(enterAnim);
+    $('#pageHead').animate([{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'none'}],{duration:280,easing:'cubic-bezier(.16,1,.3,1)'});}
+  requestAnimationFrame(snapAll);pageEnter(id);
+}
+function drawTabs(animate){
+  const top=topOf(tab),list=VENDORS[top]||[];
+  $('#vtabs').innerHTML=['CAMTEK','KLA',...COMMON].map((t,i)=>`<button type="button" class="${top===t?'on':''}${i===2?' common-first':''}" data-t="${t}">${t}</button>`).join('');
+  const ft=$('#ftabs');ft.hidden=!list.length;
+  ft.innerHTML=list.map(n=>`<button type="button" class="${tab===n?'on':''}${HAS[n]?' has':''}" data-f="${n}">${n}</button>`).join('');
+  ftInd.move(!animate);
+  $$('#vtabs button').forEach(b=>b.onclick=()=>{const t=b.dataset.t;goTab(VENDORS[t]?last[t]:t,false);});
+  $$('#ftabs button').forEach(b=>b.onclick=()=>goTab(b.dataset.f,true));
+  $('#pageTitle').textContent=tab;$('#pageLead').textContent=LEAD[tab]||'장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.';
+  $('#otherTitle').textContent=`${tab} 화면은 이 예시에 그리지 않았습니다`;
+}
+function syncPageSeg(h){$$('#pageSeg button').forEach(b=>b.classList.toggle('on',b.dataset.go===h));pageSegInd.move();}
+function goTab(t,animate){tab=t;if(VENDORS.CAMTEK.includes(t))last.CAMTEK=t;if(VENDORS.KLA.includes(t))last.KLA=t;drawTabs(animate);
+  const id=HAS[t]||'other',h=id==='batch'&&!$('#big1').hidden?'find':id==='defect'&&defSub==='big'?'defect-big':id;if(id!=='other')setHash(h);syncPageSeg(h);showPage(id);}
+function route(h){
+  h=h||'batch';
+  if(h==='components'){$('#v-example').hidden=true;$('#v-components').hidden=false;$('#vtabs').style.display=$('#ftabs').style.display='none';syncPageSeg(h);
+    enterAnim($('#partsGrid'));compInit();requestAnimationFrame(snapAll);return;}
+  $('#v-example').hidden=false;$('#v-components').hidden=true;$('#vtabs').style.display=$('#ftabs').style.display='';
+  const map={batch:'Batch Report 분석',find:'Batch Report 분석',defect:'Defect 분석','defect-big':'Defect 분석',auto:'자동 분석 및 취합',tb500:'TB500 Review 조회',kla:'KLA 자재 찾기'};
+  if(!map[h])h='batch';
+  if(h==='find'||h==='batch')big(h==='find'?1:0,true);
+  if(h==='defect'||h==='defect-big')defSub=h==='defect-big'?'big':'base';
+  tab=map[h];if(VENDORS.CAMTEK.includes(tab))last.CAMTEK=tab;if(VENDORS.KLA.includes(tab))last.KLA=tab;drawTabs(false);syncPageSeg(h);curPage='';showPage(HAS[tab]);
+}
+$$('#pageSeg button').forEach(b=>b.addEventListener('click',()=>{setHash(b.dataset.go);route(b.dataset.go);}));
+addEventListener('hashchange',()=>route('components'));
+$$('[data-jump]').forEach(b=>b.onclick=()=>{setHash(b.dataset.jump);route(b.dataset.jump);});
+function setDesign(d){document.documentElement.classList.toggle('cur',d==='cur');$$('#designSeg button').forEach(b=>b.classList.toggle('on',b.dataset.design===d));designInd.move();store.set('aoi.design',d);requestAnimationFrame(snapAll);}
+$$('#designSeg button').forEach(b=>b.onclick=()=>setDesign(b.dataset.design));
+
+/* ---------- Batch Report 분석 ---------- */
+const bigInd=Indicator($('#bigTabs'),'line');
+function big(i,silent){$$('#bigTabs button').forEach(b=>b.classList.toggle('on',b.dataset.big==i));$('#big0').hidden=i!=0;$('#big1').hidden=i!=1;bigInd.move(silent);
+  if(!silent){const h=i==1?'find':'batch';setHash(h);syncPageSeg(h);enterAnim(i==1?$('#big1'):$('#big0'));if(i==0)drawChart();}
+  if(i==1)findInit();requestAnimationFrame(snapAll);}
+$$('#bigTabs button').forEach(b=>b.onclick=()=>big(+b.dataset.big));
+segBind($('#innerSeg'),b=>{const i=+b.dataset.in;[0,1,2].forEach(k=>$('#in'+k).hidden=k!=i);if(i===0)drawChart();});
+$$('[data-goin]').forEach(b=>b.onclick=()=>$('#innerSeg button[data-in="0"]').click());
+const MACH=[['AOI-3','Report 412개 · 캐시 396'],['AOI-9','Report 388개 · 캐시 371'],['AOI-12','Report 205개 · 캐시 205'],['AOI-16','Report 536개 · 캐시 520'],['AOI-18','Report 97개 · 캐시 없음'],
+ ['AOI-21','Report 460개 · 캐시 441'],['AOI-22','Report 318개 · 캐시 318'],['AOI-25','Report 539개 · 캐시 503'],['AOI-27','Report 144개 · 캐시 120'],['AOI-30','Report 61개 · 캐시 없음']];
+const sel=new Set(['AOI-3','AOI-9','AOI-16','AOI-21','AOI-25']);
+function drawM(){
+  $('#mgrid').innerHTML=MACH.map(([m,s],i)=>`<label class="mbox${sel.has(m)?' on':''}"><input type="checkbox" id="m${i}" data-m="${m}"${sel.has(m)?' checked':''}><b>${m}</b><small>${s}</small></label>`).join('');
+  $$('#mgrid input').forEach(c=>c.onchange=()=>{c.checked?sel.add(c.dataset.m):sel.delete(c.dataset.m);c.closest('.mbox').classList.toggle('on',c.checked);syncAll();});syncAll();}
+function syncAll(){$('#allM').checked=sel.size===MACH.length;$('#allM').indeterminate=sel.size>0&&sel.size<MACH.length;$('#runBtn').disabled=!sel.size;scopeLine();}
+$('#allM').onchange=e=>{sel.clear();if(e.target.checked)MACH.forEach(([m])=>sel.add(m));drawM();};
+function scopeLine(){$('#scopeStatus').textContent=sel.size?`호기 ${sel.size}대 · ${$('#dFrom').value} ~ ${$('#dTo').value} · ${$('#reuse').checked?'이미 읽은 것은 캐시에서':'모두 다시 읽기'}`:'호기를 한 대 이상 골라 주세요';}
+segBind($('#periodSeg'),b=>{const to=new Date('2026-11-22');const d=b.dataset.p;const fr=d==='all'?new Date('2026-01-05'):new Date(to-(+d-1)*864e5);
+  $('#dFrom').value=fr.toISOString().slice(0,10);$('#dFrom').disabled=$('#dTo').disabled=d==='all';scopeLine();});
+['#dFrom','#dTo','#reuse'].forEach(s=>$(s).addEventListener('change',scopeLine));
+drawM();$('#critBtn').onclick=()=>openCriteria();
+
+const RUN_STEPS=[
+ {label:'장비 폴더 목록 읽기',detail:['AOI-3 Reports · 412개','AOI-9 Reports · 388개','AOI-16 Reports · 536개','AOI-21 Reports · 460개','AOI-25 Reports · 539개']},
+ {label:'캐시와 비교하기',detail:['이름 · 수정 시각 · 크기가 같음 · 384개','새로 생긴 Batch Report · 36개']},
+ {label:'새 Batch Report 읽기',detail:['AOI-16 · 2D@RE-GA285_6324_AHS_26-Nov-21','AOI-21 · 2D_WBG@R5-GA285_6323_SPT-0911S','AOI-25 · PI@W7317_0122_CCP-PIDS7','36개 중 36개 읽음']},
+ {label:'Lot 으로 묶기',detail:['Lot 251개 · 묶음 340개','3D 스캔 12개는 따로','점검 스캔 3개 제외']},
+ {label:'결과 파일 만들기',detail:['BatchReport_분석.html','BatchReport_Lot추적.html']}];
+let runAgent=null,runDrv=null;
+function startRun(){
+  if(runDrv)return;const card=$('#runCard');card.hidden=false;card.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],{duration:320,easing:'cubic-bezier(.16,1,.3,1)'});
+  if(!runAgent)runAgent=AgentSteps($('#agentRun'),RUN_STEPS,{doneTitle:'조사를 마쳤습니다'});else runAgent.reset();
+  $('#runBtn').classList.add('busy');$('#runStop').hidden=false;$('#runClose').hidden=true;
+  const total=420,lines=RUN_STEPS.reduce((a,s)=>a+s.detail.length+1,0);let k=0;
+  $('#runSub').textContent=`호기 ${sel.size}대 · ${$('#reuse').checked?'이미 읽은 Batch Report 는 캐시에서':'모두 다시 읽기'}`;
+  const upd=n=>{$('#runBar').style.transform=`scaleX(${n/total})`;$('#runCount').textContent=`${n} / ${total}`;};upd(0);
+  runDrv=drive(runAgent,{tick:520,onStep(){k++;upd(Math.min(total,Math.round(total*k/lines)));},onDone(){runDrv=null;upd(total);finishRun();}});
+}
+function finishRun(){$('#runBtn').classList.remove('busy');$('#runStop').hidden=true;$('#runClose').hidden=false;
+  $('#runSub').textContent=`호기 ${sel.size}대 · Batch Report 420개 · 새로 읽음 36개 · 캐시 384개`;
+  toast('조사를 마쳤습니다 · Batch Report 420개','ok');const k=$('#kpis');k.classList.add('fresh');setTimeout(()=>k.classList.remove('fresh'),60);countUp();}
+$('#runBtn').onclick=startRun;
+$('#runStop').onclick=()=>{if(!runDrv)return;const s=runDrv.stop();runDrv=null;runAgent.fail(s);$('#runBtn').classList.remove('busy');$('#runStop').hidden=true;$('#runClose').hidden=false;
+  $('#runSub').textContent='지금까지 읽은 Batch Report 는 캐시에 남았습니다. 다시 시작하면 이어서 읽습니다.';toast('조사를 중단했습니다','info');};
+$('#runClose').onclick=()=>{const c=$('#runCard');c.animate([{opacity:1},{opacity:0,transform:'translateY(-4px)'}],{duration:180,easing:'ease'}).onfinish=()=>{c.hidden=true;};};
+function countUp(){$$('#kpis [data-n]').forEach(e=>{const to=+e.dataset.n,t0=performance.now(),d=RM?1:700;
+  const f=now=>{const p=clamp((now-t0)/d,0,1),q=1-Math.pow(1-p,3);e.textContent=Math.round(to*q).toLocaleString('ko-KR');if(p<1)requestAnimationFrame(f);};requestAnimationFrame(f);});}
+
+const LOTS=[
+ {c:'BAW',id:'SF14G',step:'2D',m:['AOI-16'],t:'11-21 22:14',br:1,w:25,st:'done',dup:false,at:[['AOI-16','11-21 22:14','25장 모두 Pass','ok']]},
+ {c:'SPT',id:'SC93F',step:'2D_WBG',m:['AOI-9','AOI-21'],t:'11-20 09:41',br:3,w:25,st:'rescan',dup:true,at:[['AOI-9','11-20 09:41','Scan 2D Error. · wafer 3장','bad'],['AOI-9','11-20 10:02','Aborted. · 앞 Error 에 이어서','bad'],['AOI-21','11-21 08:15','25장 모두 Pass · 중복 Pass 2장','ok']],gaps:['21분 뒤 · 같은 호기','22시간 뒤 · 호기 이동']},
+ {c:'KDT',id:'SA78K',step:'2D',m:['AOI-21'],t:'11-19 15:02',br:2,w:23,st:'open',dup:false,at:[['AOI-21','11-19 15:02','Alignment Failed. · wafer 2장','bad'],['AOI-21','11-19 16:40','23장 Pass · 2장 Pass 없음','bad']],gaps:['1시간 38분 뒤 · 같은 호기']},
+ {c:'AHS',id:'GX570',step:'2D · 3D 스캔',m:['AOI-16'],t:'11-18 03:27',br:2,w:25,st:'done',dup:false,at:[['AOI-16','11-18 03:27','3D 스캔 · 25장 모두 Pass','ok'],['AOI-16','11-18 03:32','2D 스캔 · 25장 모두 Pass','ok']],gaps:['5분 뒤 · 2D 스캔(재스캔 아님)']},
+ {c:'CCP',id:'W7317',step:'PI',m:['AOI-3'],t:'11-17 18:55',br:1,w:25,st:'done',dup:false,at:[['AOI-3','11-17 18:55','25장 모두 Pass','ok']]},
+ {c:'NSW',id:'PG8E1',step:'2D_WBG',m:['AOI-25'],t:'11-16 11:08',br:2,w:25,st:'rescan',dup:true,at:[['AOI-25','11-16 11:08','Focus Error. · wafer 1장','bad'],['AOI-25','11-16 11:31','25장 모두 Pass · 중복 Pass 24장','ok']],gaps:['23분 뒤 · 같은 호기']},
+ {c:'FLS',id:'SD220',step:'RDL',m:['AOI-9'],t:'11-14 07:30',br:4,w:24,st:'open',dup:true,at:[['AOI-9','11-14 07:30','Wafer Not Detected. · wafer 1장','bad'],['AOI-9','11-14 07:52','Scan 2D Error. · wafer 2장','bad'],['AOI-9','11-14 09:10','24장 Pass · 1장 Pass 없음','bad'],['AOI-9','11-14 09:40','Skipped. · 스캔 안 한 슬롯','bad']],gaps:['22분 뒤 · 같은 호기','1시간 18분 뒤 · 같은 호기','30분 뒤 · 같은 호기']},
+ {c:'SUA',id:'SB45M',step:'2D',m:['AOI-3'],t:'11-12 20:16',br:1,w:25,st:'done',dup:false,at:[['AOI-3','11-12 20:16','25장 모두 Pass','ok']]}];
+const ST={done:['ok','한 번에 완료'],rescan:['warn','재스캔으로 완료'],open:['bad','Pass하지 못한 wafer 존재']};
+let filt='all';
+const FILTERS=[['all','전체',()=>true],['rescan','재스캔',l=>l.st==='rescan'],['open','Pass하지 못한 wafer 존재',l=>l.st==='open'],['move','호기 이동',l=>l.m.length>1],['dup','중복 Pass',l=>l.dup]];
+function drawChips(){$('#chips').innerHTML=FILTERS.map(([k,n,fn])=>`<button type="button" class="chip${filt===k?' on':''}" data-f="${k}">${n} <em>${LOTS.filter(fn).length}</em></button>`).join('');
+  $$('#chips .chip').forEach(b=>b.onclick=()=>{filt=b.dataset.f;syncKpi();drawLots();});}
+function drawLots(){
+  drawChips();const q=$('#q').value.trim().toLowerCase().split(/\s+/).filter(Boolean),f=FILTERS.find(x=>x[0]===filt)[2];
+  const rows=LOTS.map((l,i)=>[l,i]).filter(([l])=>f(l)&&q.every(w=>[l.c,l.id,l.step,...l.m].join(' ').toLowerCase().includes(w)));
+  $('#lotBody').innerHTML=rows.length?rows.map(([l,i],k)=>`<tr class="click in" style="--i:${k}" data-i="${i}" tabindex="0"><td><b>${l.c}</b><span class="sub">${l.id}</span></td><td>${l.step}</td>
+    <td>${l.m.length>1?`<span class="mv">${l.m[0]}${ic('arrow')}${l.m[1]}</span>`:l.m[0]}</td><td>${l.t}</td><td class="r">${l.br}</td><td class="r">${l.w} / 25</td>
+    <td><span class="badge ${ST[l.st][0]}"><i></i>${ST[l.st][1]}</span>${l.dup?' <span class="badge mut">중복 Pass</span>':''}</td>
+    <td class="r"><button class="btn ghost s" type="button" tabindex="-1">Lot History${ic('chev')}</button></td></tr>`).join('')
+    :`<tr class="empty-row in"><td colspan="8">조건에 맞는 Lot 이 없습니다. 검색어나 필터를 바꿔 보세요.</td></tr>`;
+  $$('#lotBody tr.click').forEach(r=>{r.onclick=()=>openLot(+r.dataset.i);r.onkeydown=e=>{if(e.key==='Enter')openLot(+r.dataset.i);};});
+  $('#lotCount').textContent=`보이는 Lot ${rows.length}개`;}
+let qT;$('#q').addEventListener('input',()=>{clearTimeout(qT);qT=setTimeout(drawLots,300);});
+$('#q').addEventListener('keydown',e=>{if(e.key==='Escape'){e.target.value='';drawLots();}});
+function syncKpi(){$$('#kpis .kpi').forEach((k,i)=>k.classList.toggle('on',k.dataset.k===filt&&(filt!=='all'||i===0)));}
+$$('#kpis .kpi').forEach(k=>k.onclick=()=>{filt=k.dataset.k;drawLots();$$('#kpis .kpi').forEach(x=>x.classList.toggle('on',x===k));});
+drawLots();$('#xlBtn').onclick=()=>toast('Excel 로 저장했습니다 · 배치분석\\취합\\Lot목록_20261124.xlsx','ok');
+
+const dlg=$('#dlg');
+function closeDlg(){if(!dlg.open)return;dlg.classList.add('closing');setTimeout(()=>{dlg.classList.remove('closing');dlg.close();},160);}
+function openLot(i){const l=LOTS[i];$('#dlgTitle').textContent=`Lot History · ${l.c} ${l.id}`;$('#dlgSub').textContent=`${l.step} · Batch Report ${l.br}개 · ${l.m.join(' → ')}`;
+  let h=`<div class="row" style="margin-bottom:12px"><span class="badge ${ST[l.st][0]}"><i></i>${ST[l.st][1]}</span><span class="hint">Pass wafer ${l.w} / 25</span></div><ol class="tl">`;let n=0;
+  l.at.forEach((a,k)=>{h+=`<li style="--i:${n++}"><span class="n ${a[3]==='ok'?'ok':'bad'}">${k+1}</span><div class="body"><b>${a[0]} · ${a[1]}</b><span>${a[2]}</span></div></li>`;
+    if(l.gaps&&l.gaps[k])h+=`<li style="--i:${n++}"><span></span><span class="gap${l.gaps[k].includes('이동')?' mv':''}">${ic('arrow')}${l.gaps[k]}</span></li>`;});
+  h+='</ol>';if(l.st==='open')h+='<div class="note warn" style="margin-top:4px"><span class="ic">!</span><span>Pass 하지 못한 wafer 가 있습니다. 다른 호기에서 다시 스캔했는지 확인해 주세요.</span></div>';
+  $('#dlgBody').innerHTML=h;$('#dlgSave').hidden=false;dlg.showModal();}
+function openCriteria(){$('#dlgTitle').textContent='Lot 판정 기준';$('#dlgSub').textContent='Batch Report 원문을 그대로 읽고 이 기준으로 Lot 을 묶습니다';
+  $('#dlgBody').innerHTML=`<table><tbody><tr><td><b>Lot</b></td><td style="white-space:normal">S/M 안의 첫 단독 영문 3글자 + Wafer ID 의 Lot ID</td></tr><tr><td><b>이어서 스캔</b></td><td style="white-space:normal">같은 호기 12시간 안 · 같은 Recipe(s) · 같은 Job</td></tr><tr><td><b>Error</b></td><td style="white-space:normal">wafer 행 Pass/Fail 이 Pass 가 아니면 전부 Error (빈칸 포함)</td></tr><tr><td><b>3D 스캔</b></td><td style="white-space:normal">같은 Lot 의 2D · 3D 스캔은 서로 재스캔이 아닙니다</td></tr></tbody></table>`;
+  $('#dlgSave').hidden=true;dlg.showModal();}
+[$('#dlgX'),$('#dlgClose')].forEach(b=>b.onclick=closeDlg);
+dlg.addEventListener('cancel',e=>{e.preventDefault();closeDlg();});
+dlg.addEventListener('click',e=>{if(e.target===dlg)closeDlg();});
+$('#dlgSave').onclick=()=>{closeDlg();toast('Excel 로 저장했습니다 · Lot History 1개','ok');};
+
+const WK=[['WW40','09-28',24,4,1],['WW41','10-05',27,5,0],['WW42','10-12',25,3,1],['WW43','10-19',31,6,2],['WW44','10-26',28,4,0],['WW45','11-02',30,7,1],['WW46','11-09',26,5,1],['WW47','11-16',15,4,1]];
+function drawChart(){const svg=$('#chart'),X0=40,X1=630,Y0=200,Y1=22,max=40,bw=36,step=(X1-X0)/WK.length,y=v=>Y0-(v/max)*(Y0-Y1);
+  let h='';[0,10,20,30,40].forEach(v=>{h+=`<line class="g" x1="${X0}" x2="${X1}" y1="${y(v)}" y2="${y(v)}"/><text x="${X0-8}" y="${y(v)+4}" text-anchor="end">${v}</text>`;});
+  WK.forEach((w,i)=>{const x=X0+step*i+(step-bw)/2,tot=w[2]+w[3]+w[4],yt=y(tot),r=4;let acc=0,rects='';
+    [[w[2],'--st-done'],[w[3],'--st-rescan'],[w[4],'--st-open']].forEach(([v,c])=>{if(!v)return;rects+=`<rect x="${x}" y="${y(acc+v)}" width="${bw}" height="${y(acc)-y(acc+v)}" fill="var(${c})"/>`;acc+=v;});
+    h+=`<clipPath id="cb${i}"><path d="M${x},${Y0}V${yt+r}Q${x},${yt} ${x+r},${yt}H${x+bw-r}Q${x+bw},${yt} ${x+bw},${yt+r}V${Y0}Z"/></clipPath>
+      <g class="bar" style="--i:${i}" data-i="${i}" tabindex="0" role="button" aria-label="${w[0]} ${tot} Lot"><title>${w[0]} · 한 번에 완료 ${w[2]} · 재스캔으로 완료 ${w[3]} · Pass하지 못한 wafer 존재 ${w[4]}</title>
+      <rect x="${x-6}" y="${Y1}" width="${bw+12}" height="${Y0-Y1}" fill="transparent"/><g clip-path="url(#cb${i})"><g class="grow">${rects}</g></g>
+      <text class="tot" x="${x+bw/2}" y="${yt-6}" text-anchor="middle">${tot}</text></g>
+      <text x="${x+bw/2}" y="${Y0+18}" text-anchor="middle" style="font-weight:700;fill:var(--text-1)">${w[0]}</text><text x="${x+bw/2}" y="${Y0+33}" text-anchor="middle">${w[1]}~</text>`;});
+  svg.innerHTML=h;svg.classList.remove('has-sel');let selI=-1;$('#chartSub').textContent='주 단위 · 막대를 누르면 그 주만 강조합니다';
+  const pick=i=>{selI=selI===i?-1:i;svg.classList.toggle('has-sel',selI>=0);$$('#chart .bar').forEach(b=>b.classList.toggle('sel',+b.dataset.i===selI));
+    const w=WK[selI];$('#chartSub').textContent=w?`${w[0]} (${w[1]}~) · ${w[2]+w[3]+w[4]} Lot · 다시 누르면 전체`:'주 단위 · 막대를 누르면 그 주만 강조합니다';};
+  $$('#chart .bar').forEach(b=>{b.onclick=()=>pick(+b.dataset.i);b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(+b.dataset.i);}};});}
+
+/* ---------- Batch Report 찾기 · 취합 (단계 표시) ---------- */
+let findSP=null,findStep=0,recipe='all';
+const FILES=[['2D_WBG@R5-GA285_6323_SPT-0911S_26-Nov-20_(09.41.12)_BatchReport.htm','AOI-9','11-20 09:41',true],['2D_WBG@R5-GA285_6323_SPT-0911S_26-Nov-20_(10.02.48)_BatchReport.htm','AOI-9','11-20 10:02',true],
+ ['2D_WBG@R5-GA285_6323_SPT-0911S_26-Nov-21_(08.15.03)_BatchReport.htm','AOI-21','11-21 08:15',false],['2D@R5-GA285_6324_SPT-0911S RE_26-Nov-22_(14.20.31)_BatchReport.htm','AOI-21','11-22 14:20',false],
+ ['2D_WBG@R5-GA285_6323_SPT SC93F-RW_26-Oct-30_(19.02.10)_BatchReport.htm','AOI-16','10-30 19:02',true],['2D@R5-GA285_6324_SPT-0911S_26-Oct-31_(07.44.55)_BatchReport.htm','AOI-16','10-31 07:44',true]];
+const fPick=new Set([0,1,2]);
+const GROUPS=[{n:'SPT · SC93F',r:'2D_WBG',meta:'AOI-9 → AOI-21 · Batch Report 3개',on:true,items:[['11-20 09:41','AOI-9','Scan 2D Error. · wafer 3장'],['11-20 10:02','AOI-9','Aborted.'],['11-21 08:15','AOI-21','25장 모두 Pass']]},
+ {n:'SPT · SC93F',r:'2D',meta:'AOI-21 · Batch Report 1개',on:false,items:[['11-22 14:20','AOI-21','25장 모두 Pass']]},
+ {n:'SPT · SC93F',r:'2D_WBG',meta:'AOI-16 · Batch Report 1개 · 10-30',on:false,items:[['10-30 19:02','AOI-16','25장 모두 Pass']]}];
+const NAMES_FIND=['검색','찾은 파일 고르기','Lot 고르기','취합 결과'],NEXT_LBL=['찾기','다음','취합하기','처음부터'];
+function findInit(){if(findSP)return;findSP=StepProgress($('#findSteps'),NAMES_FIND,{onJump:i=>findGo(i)});
+  $('#fMach').innerHTML=MACH.slice(0,8).map(([m])=>`<button class="chip${sel.has(m)?' on':''}" type="button">${m}</button>`).join('');
+  $$('#fMach .chip').forEach(c=>c.onclick=()=>c.classList.toggle('on'));
+  segBind($('#recipeSeg'),b=>{recipe=b.dataset.r;drawGroups();});
+  $('#cpScan').replaceWith(CopyBtn(()=>$('#scanPath').textContent));
+  $('#fAll').onclick=()=>{FILES.forEach((_,i)=>fPick.add(i));drawFiles();};$('#fNone').onclick=()=>{fPick.clear();drawFiles();};
+  $('#aggXl').onclick=()=>toast('Excel 로 저장했습니다 · 배치분석\\취합\\SPT_SC93F_취합.xlsx','ok');
+  findGo(0,true);}
+function drawFiles(){$('#fList').innerHTML=FILES.map(([f,m,t,c],i)=>`<label class="${fPick.has(i)?'on':''}" style="--i:${i}"><input type="checkbox" data-i="${i}"${fPick.has(i)?' checked':''}><code title="${f}">${f}</code><small>${m} · ${t}</small><span class="badge ${c?'mut':'ok'}">${c?'캐시':'장비'}</span></label>`).join('');
+  $$('#fList input').forEach(c=>c.onchange=()=>{c.checked?fPick.add(+c.dataset.i):fPick.delete(+c.dataset.i);c.closest('label').classList.toggle('on',c.checked);pickCount();});pickCount();}
+function pickCount(){$('#fPickCount').textContent=`고른 파일 ${fPick.size} / 찾은 파일 ${FILES.length} · 같은 호기 앞뒤 24시간 Batch Report 도 같이 읽습니다`;$('#wNext').disabled=findStep===1&&!fPick.size;}
+function drawGroups(){$('#fGroups').innerHTML=GROUPS.filter(g=>recipe==='all'||g.r===recipe).map((g,i)=>`<div class="group" style="--i:${i}"><div class="gh"><input type="checkbox"${g.on?' checked':''} aria-label="${g.n} 고르기"><b>${g.n}</b><span>${g.r}</span><span class="meta">${g.meta}</span></div><ul>${g.items.map(it=>`<li><b>${it[0]}</b><span>${it[1]}</span><span>${it[2]}</span></li>`).join('')}</ul></div>`).join('');}
+function drawAgg(){const rows=[];for(let s=25;s>=18;s--){const dup=s===24||s===23,yld=(97.2+((s*37)%26)/10).toFixed(1);rows.push(`<tr class="in" style="--i:${25-s}"><td>${String(s).padStart(2,'0')}</td><td>SC93F${String(s).padStart(2,'0')}-A0</td><td>11-21 08:15 · AOI-21</td><td class="r">1,248</td><td class="r">${Math.round(1248*yld/100).toLocaleString('ko-KR')}</td><td class="r">${yld}%</td><td>${dup?'<span class="badge mut">중복 Pass · 나중 것</span>':'<span class="badge ok"><i></i>Pass</span>'}</td></tr>`);}
+  $('#aggBody').innerHTML=rows.join('')+`<tr><td colspan="7" class="hint">… Slot 17 ~ 01 생략 (예시)</td></tr>`;}
+function findGo(i,first){const nb=$('#wNext');if(i===1)drawFiles();if(i===2)drawGroups();if(i===3)drawAgg();
+  findStep=i;findSP.go(i);$$('.wiz-pane').forEach(p=>{const on=+p.dataset.pane===i;p.hidden=!on;if(on&&!first)p.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],{duration:280,easing:'cubic-bezier(.16,1,.3,1)'});});
+  $('#wBack').disabled=i===0;nb.firstChild.nodeValue=NEXT_LBL[i];$('#wCount').textContent=`${i+1} / 4 단계`;nb.disabled=false;if(i===1)pickCount();requestAnimationFrame(snapAll);}
+$('#wBack').onclick=()=>findGo(findStep-1);
+$('#wNext').onclick=()=>{const nb=$('#wNext');if(findStep===3){findGo(0);return;}
+  if(findStep===0||findStep===2){nb.classList.add('busy');const was=findStep;setTimeout(()=>{nb.classList.remove('busy');findGo(was+1);if(was===0)toast(`찾은 파일 ${FILES.length}개 · 캐시 4 · 장비 2`,'info');},800);return;}
+  findGo(findStep+1);};
+
+/* ---------- 6-1. 범위 끌어 고르기: 양방향 막대 + 최소 · 최대 숫자 칸 (손잡이 1151/61, 위치 150ms) ----------
+   숫자 칸이 기준이다: 비우면 그쪽 제한 없음, 막대 밖 값(예: 최대 500)도 적을 수 있고 손잡이는 끝에 붙는다. */
+function RangeScrub(root,{label,unit='',min,max,step,decimals,lo=null,hi=null,ticks=9,onChange}){
+  root.className='rs';
+  root.innerHTML=`<span class="rs-l"></span><div class="rs-track"><div class="rs-fill"></div><div class="scr-ticks">${Array.from({length:ticks},(_,i)=>`<i style="left:${((i+1)/(ticks+1)*100).toFixed(2)}%"></i>`).join('')}</div><div class="rs-th" tabindex="0" role="slider"><div class="scr-cap"></div></div><div class="rs-th" tabindex="0" role="slider"><div class="scr-cap"></div></div></div><span class="rs-in"><input class="input" type="number" step="any" placeholder="최소"><span>~</span><input class="input" type="number" step="any" placeholder="최대"><span class="rs-u"></span></span>`;
+  root.querySelector('.rs-l').textContent=label;root.querySelector('.rs-u').textContent=unit;
+  const track=root.querySelector('.rs-track'),fill=root.querySelector('.rs-fill'),ths=[...root.querySelectorAll('.rs-th')],caps=ths.map(t=>t.querySelector('.scr-cap')),ins=[...root.querySelectorAll('.rs-in input')];
+  ths[0].setAttribute('aria-label',label+' 최소');ths[1].setAttribute('aria-label',label+' 최대');ins[0].setAttribute('aria-label',label+' 최소');ins[1].setAttribute('aria-label',label+' 최대');
+  let v=[lo,hi],drag=-1,hov=-1,foc=-1;
+  const sp=[0,1].map(()=>({O:Sp(.15,1151,61),S:Sp(.7,1151,61)}));
+  const comp={springs:sp.flatMap(s=>[s.O,s.S]),render(){sp.forEach((s,i)=>{caps[i].style.opacity=s.O.x.toFixed(3);caps[i].style.transform=`scale(${s.S.x.toFixed(4)})`;});}};
+  const fmt=x=>x==null?'':String(+x.toFixed(decimals));
+  const frac=x=>(clamp(x,min,max)-min)/(max-min);
+  const pos=f=>`calc(6px + (100% - 12px) * ${f.toFixed(5)})`;
+  const rnd=x=>clamp(Math.round((x-min)/step)*step+min,min,max);
+  function draw(keepInputs){const a=v[0]==null?0:frac(v[0]),b=v[1]==null?1:frac(v[1]);
+    ths[0].style.left=pos(a);ths[1].style.left=pos(b);fill.style.left=v[0]==null?'0px':pos(a);fill.style.right=v[1]==null?'0px':`calc(100% - ${pos(b)})`;
+    root.classList.toggle('on',v[0]!=null||v[1]!=null);
+    ths.forEach((t,i)=>{t.setAttribute('aria-valuemin',min);t.setAttribute('aria-valuemax',max);t.setAttribute('aria-valuenow',v[i]==null?(i?max:min):v[i]);t.setAttribute('aria-valuetext',v[i]==null?'제한 없음':fmt(v[i])+(unit?' '+unit:''));});
+    if(!keepInputs)ins.forEach((n,i)=>{if(document.activeElement!==n)n.value=fmt(v[i]);});}
+  function act(){sp.forEach((s,i)=>{const a=drag===i||hov===i||foc===i;s.O.t=a?.8:.15;s.S.t=a?1:.7;});Engine.wake(comp);}
+  function setH(i,x){let n=rnd(x);if(i===0){if(v[1]!=null)n=Math.min(n,v[1]);v[0]=n<=min?null:n;}else{if(v[0]!=null)n=Math.max(n,v[0]);v[1]=n>=max?null:n;}draw();onChange&&onChange();}
+  const xVal=cx=>{const r=track.getBoundingClientRect();return min+clamp((cx-r.left-6)/(r.width-12),0,1)*(max-min);};
+  const near=x=>{const a=v[0]==null?min:clamp(v[0],min,max),b=v[1]==null?max:clamp(v[1],min,max),da=Math.abs(x-a),db=Math.abs(x-b);return da<db?0:db<da?1:(x<a?0:1);};
+  track.addEventListener('pointerdown',e=>{e.preventDefault();const x=xVal(e.clientX);drag=near(x);track.setPointerCapture(e.pointerId);act();setH(drag,x);ths[drag].focus({preventScroll:true});});
+  track.addEventListener('pointermove',e=>{if(drag<0){if(hoverDev.matches){const h=near(xVal(e.clientX));if(h!==hov){hov=h;act();}}return;}root.classList.add('drag');setH(drag,xVal(e.clientX));});
+  const up=()=>{if(drag<0)return;drag=-1;root.classList.remove('drag');act();};
+  track.addEventListener('pointerup',up);track.addEventListener('pointercancel',up);track.addEventListener('pointerleave',()=>{if(hov>=0){hov=-1;act();}});
+  ths.forEach((t,i)=>{t.addEventListener('focus',()=>{foc=i;act();});t.addEventListener('blur',()=>{foc=-1;act();});
+    t.addEventListener('keydown',e=>{const cur=v[i]==null?(i?max:min):v[i],m={ArrowRight:step,ArrowUp:step,ArrowLeft:-step,ArrowDown:-step,PageUp:step*10,PageDown:-step*10};let n;
+      if(e.key in m)n=cur+m[e.key];else if(e.key==='Home')n=min;else if(e.key==='End')n=max;else return;e.preventDefault();setH(i,n);});});
+  ins.forEach((n,i)=>{let t=0;n.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{const s=n.value.trim();v[i]=s===''||!isFinite(+s)?null:+s;draw(true);onChange&&onChange();},200);});
+    n.addEventListener('keydown',e=>{if(e.key==='Enter'){clearTimeout(t);const s=n.value.trim();v[i]=s===''||!isFinite(+s)?null:+s;draw(true);onChange&&onChange();}});
+    n.addEventListener('blur',()=>draw());});
+  draw();
+  return{get lo(){return v[0];},get hi(){return v[1];},set(a,b){v=[a,b];draw();},pass(x){return(v[0]==null||x>=v[0])&&(v[1]==null||x<=v[1]);}};
+}
+
+/* ---------- Defect 분석 공통: 예시 자료 · 필터 ---------- */
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const RCP=['Recipe 1 · x20','Recipe 2 · x5'],ZON=['1 · Bump','2 · Pad','3 · Street','4 · Edge'],CLS=['Particle','Scratch','Residue','Bump'];
+const FLT_DEF=[['c','Contrast(실제)','',0,60,.1,1],['a','Area','µm²',0,400,1,0],['w','Width','µm',0,60,.5,1],['l','Length','',0,80,.5,1]];
+const SORTS=[['','기본 순서'],['c-d','Contrast(실제) 큰 순'],['c-a','Contrast(실제) 작은 순'],['a-d','Area 큰 순'],['a-a','Area 작은 순'],['w-d','Width 큰 순'],['w-a','Width 작은 순'],['l-d','Length 큰 순'],['l-a','Length 작은 순'],['r-a','Recipe 순']];
+const fv=(x,d=2)=>x==null||x!==x?'-':(+x).toFixed(d);
+function mkDef(R,i,x,y){const a=Math.exp(.6+R()*5.1),w=clamp(Math.sqrt(a)*(.55+R()*.9),.8,60),u=R();
+  return{id:1001+i,x,y,c:Math.pow(R(),1.25)*60,a,w,l:w*(1+R()*1.6),k:u<.5?'Particle':u<.75?'Residue':u<.9?'Bump':'Scratch',r:RCP[R()<.72?0:1],z:ZON[(R()*4)|0]};}
+const DIE=10,DIES=[];for(let ix=-15;ix<15;ix++)for(let iy=-15;iy<15;iy++){const x0=ix*DIE,y0=iy*DIE;if([[x0,y0],[x0+DIE,y0],[x0,y0+DIE],[x0+DIE,y0+DIE]].every(([x,y])=>x*x+y*y<=147*147))DIES.push([ix,iy]);}
+const dieOf=d=>[Math.floor(d.x/DIE)+15,14-Math.floor(d.y/DIE)];
+function fillSel(sel,list,key,first='전체'){const n=new Map();list.forEach(d=>n.set(d[key],(n.get(d[key])||0)+1));const v=sel.value;
+  sel.innerHTML=`<option value="">${first}</option>`+[...n.keys()].sort((a,b)=>String(a).localeCompare(String(b),'ko',{numeric:true})).map(k=>`<option value="${k}">${k} (${n.get(k).toLocaleString('ko-KR')})</option>`).join('');sel.value=v;}
+function FilterPanel({ranges,rcp,zn,sort,clear},list,onChange){
+  const r={};FLT_DEF.forEach(([k,l,u,mn,mx,st,dc])=>{const d=document.createElement('div');ranges.appendChild(d);r[k]=RangeScrub(d,{label:l,unit:u,min:mn,max:mx,step:st,decimals:dc,onChange});});
+  sort.innerHTML=SORTS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');fillSel(rcp,list,'r');fillSel(zn,list,'z');
+  [rcp,zn,sort].forEach(s=>s.addEventListener('change',onChange));
+  clear.onclick=()=>{Object.values(r).forEach(x=>x.set(null,null));rcp.value='';zn.value='';onChange();};
+  return{pass:d=>r.c.pass(d.c)&&r.a.pass(d.a)&&r.w.pass(d.w)&&r.l.pass(d.l)&&(!rcp.value||d.r===rcp.value)&&(!zn.value||d.z===zn.value),
+    sort(arr){const s=sort.value;if(!s)return arr;const[k,dir]=s.split('-'),g=dir==='d'?-1:1;return arr.slice().sort((p,q)=>k==='r'?g*p.r.localeCompare(q.r):g*(p[k]-q[k]));},
+    set(k,a,b){r[k].set(a,b);}};
+}
+function drawPhoto(cv,d,kind){const r=cv.getBoundingClientRect();if(!r.width)return;const dpr=Math.min(2,devicePixelRatio||1);cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.width*.75*dpr);
+  const g=cv.getContext('2d'),W=cv.width,H=cv.height,R=rng(d.id*7+(kind==='g'?3:1));
+  g.fillStyle=kind==='g'?'#8d9399':'#9c8f7c';g.fillRect(0,0,W,H);
+  g.strokeStyle=kind==='g'?'rgba(255,255,255,.18)':'rgba(255,240,210,.22)';g.lineWidth=W*.05;for(let i=-1;i<4;i++){g.beginPath();g.moveTo(i*W*.34+W*.1,0);g.lineTo(i*W*.34+W*.1,H);g.stroke();}
+  for(let i=0;i<260;i++){g.fillStyle=`rgba(0,0,0,${(R()*.08).toFixed(3)})`;g.fillRect(R()*W,R()*H,W*.01,W*.01);}
+  const bw=W*(.08+Math.min(d.w,30)/200),bh=bw*(.7+R()*.8),cx=W*.5,cy=H*.5;g.fillStyle=kind==='g'?'#2c3135':'#3a2c22';g.beginPath();g.ellipse(cx,cy,bw/2,bh/2,R()*3,0,Math.PI*2);g.fill();
+  if(kind==='g'){g.strokeStyle='#c2410c';g.lineWidth=Math.max(1.5,W*.008);g.strokeRect(cx-bw*.8,cy-bh*.8,bw*1.6,bh*1.6);}
+  g.fillStyle='rgba(255,255,255,.85)';g.font=`700 ${Math.round(W*.05)}px sans-serif`;g.fillText('예시 사진',W*.04,H*.1);}
+
+/* ---------- Defect 분석(기본): Step 1 ~ 4, Wafer Map 으로 고르기 ---------- */
+const DEFB=[];(()=>{const R=rng(7);for(let i=0;i<1250;i++){const r=143*Math.sqrt(R()),t=R()*Math.PI*2,d=mkDef(R,i,r*Math.cos(t),r*Math.sin(t)),u=R();d.s=u<.42?'AB':u<.74?'A':'B';DEFB.push(d);}
+  for(let i=0;i<160;i++){const u=R(),d=mkDef(R,1250+i,-95+u*160+R()*3,-45+u*100+R()*3);d.k='Scratch';d.c=18+R()*30;d.l=d.w*(2+R()*3);d.s=R()<.7?'A':'AB';DEFB.push(d);}})();
+const SETL={AB:'A ∩ B',A:'A 만',B:'B 만'},SETN={A:'CA20',B:'CA27'};
+let baseInit=false,baseSP=null,baseStep=2,bfp=null,bCur=null,bPair='A',bView=[],bAll=[],bmRect=null,bmDown=null,bRaf=0,bLT=0;const bSets=new Set(['A','B']),bPick=new Map();
+const bOn=d=>bPick.has(d.id)?bPick.get(d.id):true;
+function baseItems(){return baseStep===3?DEFB.filter(d=>d.s===bPair):DEFB.filter(d=>[...bSets].some(s=>d.s.includes(s)));}
+let bAp=0;const baseApplyR=()=>{if(!bAp)bAp=requestAnimationFrame(()=>{bAp=0;baseApply(false);});};
+function baseApply(anim){bAll=baseItems();bView=bfp.sort(bAll.filter(bfp.pass));if(bCur&&!bView.includes(bCur))bCur=null;baseRefresh(anim);}
+function baseRefresh(anim){if(!bRaf)bRaf=requestAnimationFrame(()=>{bRaf=0;drawBase();});
+  $('#bmCount').textContent=bView.length.toLocaleString('ko-KR');$('#bmTotal').textContent=bAll.length.toLocaleString('ko-KR');$('#bmPick').textContent=bView.filter(bOn).length.toLocaleString('ko-KR');
+  clearTimeout(bLT);if(anim)baseList(true);else bLT=setTimeout(()=>baseList(false),160);baseCur();}
+function baseCur(){const d=bCur,el=$('#bCur');if(!d){el.innerHTML='<span class="hint">지도에서 점을 누르거나 목록 줄을 누르면 그 Defect 가 여기에 나옵니다.</span>';return;}const[X,Y]=dieOf(d);
+  el.innerHTML=`<b>ID ${d.id}</b><span>Die (${X}, ${Y})</span><span>Contrast <b>${fv(d.c)}</b></span><span>Area <b>${fv(d.a,1)}</b> µm²</span><span>Width <b>${fv(d.w,1)}</b> µm</span><span>${d.k}</span><span>${d.r}</span><button class="btn ghost s" type="button" id="bPhoto" style="margin-left:auto">사진 새 창</button>`;
+  $('#bPhoto').onclick=()=>toast(`ID ${d.id} 사진을 새 창으로 엽니다 (예시)`,'info');}
+function baseList(anim){const rows=bView.slice(0,200);
+  $('#bList').innerHTML=rows.length?rows.map((d,k)=>{const[X,Y]=dieOf(d),on=bOn(d);return`<tr class="click${anim?' in':''}${d===bCur?' cur':''}${on?'':' off'}" style="--i:${Math.min(k,14)}" data-id="${d.id}"><td><input type="checkbox"${on?' checked':''} aria-label="ID ${d.id} ☑"></td><td>${baseStep===3?'Escape':SETL[d.s]}</td><td class="r">${d.id}</td><td>(${X}, ${Y})</td><td class="r">${fv(d.c)}</td><td class="r">${fv(d.a,1)}</td><td class="r">${fv(d.w,1)}</td><td class="r">${fv(d.l,1)}</td><td>${d.k}</td><td>${d.r}</td></tr>`;}).join('')
+    :`<tr class="empty-row"><td colspan="10">필터에 맞는 Defect 가 없습니다. 값 범위를 넓혀 보세요.</td></tr>`;
+  $('#bListNote').textContent=bView.length>200?`앞 200줄 · 필터에 맞는 ${bView.length.toLocaleString('ko-KR')}줄 전체는 CSV`:`${bView.length.toLocaleString('ko-KR')}줄`;}
+function drawBase(){const cv=$('#bmap'),r=cv.getBoundingClientRect();if(!r.width)return;const dpr=Math.min(2,devicePixelRatio||1),px=Math.round(r.width*dpr);if(cv.width!==px){cv.width=px;cv.height=px;}
+  const g=cv.getContext('2d'),S=r.width/320,o=r.width/2,css=getComputedStyle(cv),col=n=>css.getPropertyValue(n).trim();
+  g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,cv.width,cv.height);g.setTransform(dpr*S,0,0,dpr*S,dpr*o,dpr*o);
+  g.beginPath();g.arc(0,0,150,Math.PI/2+.035,Math.PI/2-.035+Math.PI*2);g.lineTo(0,144);g.closePath();g.fillStyle=col('--bg-sunken');g.fill();g.lineWidth=1/S;g.strokeStyle=col('--line-strong');g.stroke();
+  const on=bView.filter(bOn),hit=new Set(on.map(d=>Math.floor(d.x/DIE)+','+Math.floor(d.y/DIE))),dA=col('--map-die'),dB=col('--map-die-hit');
+  DIES.forEach(([ix,iy])=>{g.fillStyle=hit.has(ix+','+iy)?dB:dA;g.fillRect(ix*DIE+.6,iy*DIE+.6,DIE-1.2,DIE-1.2);});
+  if($('#bmBg').checked){const vs=new Set(bView);g.strokeStyle=col('--grey-300');g.lineWidth=.9/S;bAll.forEach(d=>{if(!vs.has(d)){g.beginPath();g.arc(d.x,d.y,1.5,0,Math.PI*2);g.stroke();}});}
+  g.strokeStyle=col('--grey-500');g.lineWidth=1.3/S;bView.forEach(d=>{if(!bOn(d)){g.beginPath();g.arc(d.x,d.y,2.1,0,Math.PI*2);g.stroke();}});
+  g.fillStyle=col('--map-dot');on.forEach(d=>{g.beginPath();g.arc(d.x,d.y,1.8,0,Math.PI*2);g.fill();});
+  if(bCur){g.strokeStyle=col('--emerald-600');g.lineWidth=2.2/S;g.beginPath();g.arc(bCur.x,bCur.y,5.5,0,Math.PI*2);g.stroke();}
+}
+const toMap=e=>{const r=$('#bmap').getBoundingClientRect(),S=r.width/320;return{x:(e.clientX-r.left-r.width/2)/S,y:(e.clientY-r.top-r.width/2)/S,S,px:e.clientX-r.left,py:e.clientY-r.top,w:r.width};};
+function hitDot(m){let best=null,bd=(7/m.S)**2;for(const d of bView){const dx=d.x-m.x,dy=d.y-m.y,q=dx*dx+dy*dy;if(q<bd){bd=q;best=d;}}return best;}
+function showTip(d,m){const t=$('#bmTip');if(!d){t.hidden=true;return;}const[X,Y]=dieOf(d);t.textContent=`ID ${d.id} · Die (${X}, ${Y}) · C ${fv(d.c)} · Area ${fv(d.a,1)} µm² · ${d.k}`;t.hidden=false;
+  const tw=t.offsetWidth;t.style.left=clamp(m.px+12,0,Math.max(0,m.w-tw))+'px';t.style.top=(m.py+14)+'px';}
+function scrollToCur(){const row=$(`#bList tr[data-id="${bCur&&bCur.id}"]`);if(row)row.scrollIntoView({block:'nearest',behavior:RM?'auto':'smooth'});}
+function bindBaseMap(){const cv=$('#bmap');
+  /* 점 누르기 = 그 Defect 보기(지금 프로그램과 같음 — 지도로 ☑ 를 고르는 기능은 없음) */
+  cv.addEventListener('click',e=>{const d=hitDot(toMap(e));if(d){bCur=d;baseRefresh(false);clearTimeout(bLT);baseList(false);scrollToCur();}});
+  cv.addEventListener('pointermove',e=>{const m=toMap(e),d=hitDot(m);cv.style.cursor=d?'pointer':'default';showTip(d,m);});
+  cv.addEventListener('pointerleave',()=>{$('#bmTip').hidden=true;});
+  new ResizeObserver(()=>{if(!bRaf)bRaf=requestAnimationFrame(()=>{bRaf=0;drawBase();});}).observe(cv);
+  $('#bmAll').onclick=()=>{bView.forEach(d=>bPick.set(d.id,true));baseRefresh(false);};$('#bmNone').onclick=()=>{bView.forEach(d=>bPick.set(d.id,false));baseRefresh(false);};
+  $('#bmBg').onchange=()=>drawBase();
+  $('#bList').addEventListener('click',e=>{const tr=e.target.closest('tr[data-id]');if(!tr)return;const d=DEFB.find(x=>x.id===+tr.dataset.id);
+    if(e.target.matches('input[type=checkbox]')){bPick.set(d.id,e.target.checked);tr.classList.toggle('off',!e.target.checked);$('#bmPick').textContent=bView.filter(bOn).length.toLocaleString('ko-KR');drawBase();return;}
+    bCur=d;$$('#bList tr.cur').forEach(x=>x.classList.remove('cur'));tr.classList.add('cur');baseCur();drawBase();});
+  $('#bCsv').onclick=()=>toast(`CSV 로 저장했습니다 · ☑ ${bView.filter(bOn).length.toLocaleString('ko-KR')}줄 (예시)`,'ok');}
+function baseHead(){const h=$('#bHead');const cA=DEFB.filter(d=>d.s.includes('A')).length,cB=DEFB.filter(d=>d.s.includes('B')).length;
+  if(baseStep===2){h.innerHTML=`<div class="card-h" style="margin:0"><div><h3>Step 3 · Wafer Map 분석</h3><p>보고 싶은 스캔 결과(집합)를 고르세요. 둘 다 고르면 합친 결과를 봅니다.</p></div><div class="row" id="bSetChips">${['A','B'].map(s=>`<button class="chip${bSets.has(s)?' on':''}" type="button" data-set="${s}">${SETN[s]} <em>${(s==='A'?cA:cB).toLocaleString('ko-KR')}</em></button>`).join('')}</div></div>`;
+    $$('#bSetChips .chip').forEach(c=>c.onclick=()=>{const s=c.dataset.set;if(bSets.has(s)&&bSets.size===1){toast('집합은 하나 이상 골라야 합니다','info');return;}bSets.has(s)?bSets.delete(s):bSets.add(s);c.classList.toggle('on',bSets.has(s));baseApply(true);});
+    $('#bmTitle').textContent='Wafer Map · '+[...bSets].map(s=>SETN[s]).join(' ∪ ');}
+  else{const nA=DEFB.filter(d=>d.s==='A').length,nB=DEFB.filter(d=>d.s==='B').length;
+    h.innerHTML=`<div class="card-h" style="margin:0"><div><h3>Step 4 · Escape Defect 리뷰</h3><p>A → B 에서 B 에 없는(Escape 된) Defect 만 봅니다. 필터는 Step 3 과 같습니다.</p></div><div class="seg" id="bPairSeg"><button class="${bPair==='A'?'on':''}" data-p="A">CA20 → CA27 · ${nA.toLocaleString('ko-KR')}</button><button class="${bPair==='B'?'on':''}" data-p="B">CA27 → CA20 · ${nB.toLocaleString('ko-KR')}</button></div></div>`;
+    segBind($('#bPairSeg'),b=>{bPair=b.dataset.p;baseApply(true);$('#bmTitle').textContent='Wafer Map · '+b.textContent.split(' · ')[0];});
+    $('#bmTitle').textContent='Wafer Map · '+(bPair==='A'?'CA20 → CA27':'CA27 → CA20');}}
+const BASE_NAMES=['스캔 결과 등록','비교 조건','Wafer Map 분석','Escape 리뷰'],BASE_NEXT=['다음: 비교 조건','비교 실행','다음: Escape 리뷰','처음부터'];
+function baseGo(i,first){baseStep=i;baseSP.go(i);
+  $$('[data-bs]').forEach(p=>{const on=+p.dataset.bs===Math.min(i,2);const was=!p.hidden;p.hidden=!on;if(on&&!first&&(!was||i>=2))p.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],{duration:280,easing:'cubic-bezier(.16,1,.3,1)'});});
+  if(i>=2){baseHead();baseApply(true);requestAnimationFrame(()=>{snapAll();drawBase();});}
+  $('#bBack').disabled=i===0;$('#bNext').firstChild.nodeValue=BASE_NEXT[i];$('#bCount').textContent=`${i+1} / 4 단계`;}
+function baseSetup(){if(baseInit)return;baseInit=true;
+  baseSP=StepProgress($('#baseSteps'),BASE_NAMES,{onJump:i=>baseGo(i)});
+  const cA=DEFB.filter(d=>d.s.includes('A')).length,cB=DEFB.filter(d=>d.s.includes('B')).length,ab=DEFB.filter(d=>d.s==='AB').length;
+  const LOTR=[['CA20',20,'AOI-16','Y:\\AOI-16\\Scanresult\\2D@RE-GA285\\6324\\AHS-CA20',25,cA],['CA27',27,'AOI-16','Y:\\AOI-16\\Scanresult\\2D@RE-GA285\\6324\\AHS-CA27',25,cB]];
+  $('#bLots').innerHTML=LOTR.map((r,i)=>`<tr><td><b>${r[0]}</b></td><td><input class="input" type="number" value="${r[1]}" style="width:90px;height:32px" aria-label="${r[0]} Contrast AVG"></td><td>${r[2]}</td><td><span class="path"><code>${r[3]}</code><span data-cp="${i}"></span></span></td><td class="r">${r[4]}</td><td class="r">${r[5].toLocaleString('ko-KR')}</td><td>Recipe 1 · x20 / Recipe 2 · x5</td><td><span class="badge ok"><i></i>파일 모두 있음</span></td></tr>`).join('');
+  $$('#bLots [data-cp]').forEach(s=>{const i=+s.dataset.cp;s.replaceWith(CopyBtn(()=>LOTR[i][3]));});
+  $('#bAdd').onclick=()=>toast('Windows 폴더 고르기 창이 열립니다 (예시)','info');
+  const pct=(a,b)=>(a/b*100).toFixed(1)+'%';
+  $('#bPairs').innerHTML=`<tr><td><b>CA20 → CA27</b></td><td class="r">${cA.toLocaleString('ko-KR')}</td><td class="r">${cB.toLocaleString('ko-KR')}</td><td class="r">${ab.toLocaleString('ko-KR')}</td><td class="r"><b>${(cA-ab).toLocaleString('ko-KR')}</b></td><td class="r">${(cB-ab).toLocaleString('ko-KR')}</td><td class="r">${pct(cA-ab,cA)}</td></tr><tr><td><b>CA27 → CA20</b></td><td class="r">${cB.toLocaleString('ko-KR')}</td><td class="r">${cA.toLocaleString('ko-KR')}</td><td class="r">${ab.toLocaleString('ko-KR')}</td><td class="r"><b>${(cB-ab).toLocaleString('ko-KR')}</b></td><td class="r">${(cA-ab).toLocaleString('ko-KR')}</td><td class="r">${pct(cB-ab,cB)}</td></tr>`;
+  bfp=FilterPanel({ranges:$('#bfRanges'),rcp:$('#bfRcp'),zn:$('#bfZn'),sort:$('#bfSort'),clear:$('#bfClear')},DEFB,baseApplyR);
+  bfp.set('c',8,null);bindBaseMap();
+  $('#bBack').onclick=()=>baseGo(baseStep-1);
+  $('#bNext').onclick=()=>{const b=$('#bNext');if(baseStep===3){baseGo(0);return;}if(baseStep===1){b.classList.add('busy');setTimeout(()=>{b.classList.remove('busy');baseGo(2);toast('비교를 마쳤습니다 · 쌍 2개','ok');},800);return;}baseGo(baseStep+1);};
+  baseGo(2,true);}
+
+/* ---------- Defect 분석(대규모): 5-1 ~ 5-3, 목록으로 걸러내기(지도 없음) ---------- */
+const LOTS_BIG=['SC93F','GX570','SA78K'];
+const DEFL=[];(()=>{const R=rng(23),PH=['ok','ok','ok','ok','ok','ok','ok','color','color','gray','none'];
+  for(let i=0;i<4800;i++){const d=mkDef(R,i,0,0);d.id=10001+i;d.lot=LOTS_BIG[(R()*3)|0];d.slot=1+((R()*25)|0);d.ph=PH[(R()*PH.length)|0];d.gl=Math.round(30+Math.pow(R(),.8)*210);DEFL.push(d);}})();
+const PHL={ok:['ok','Color·Gray 매칭 완료'],color:['warn','Color 만'],gray:['mut','Gray 만'],none:['bad','둘 다 없음']};
+let bigInit=false,bigSP=null,bigStep=0,gfp=null,gView=[],g2=[],g2View=[],g3=[],g3View=[],g3Cur=0,gl3=null,gRaf=0,gLT=0,g3Mode='list';const gCls=new Set(CLS),gPick=new Map(),g2Pick=new Map(),g3Pick=new Map();
+const onIn=(m,d)=>m.has(d.id)?m.get(d.id):true;
+function gBase(){const lot=$('#gLot').value,slot=$('#gSlot').value;return DEFL.filter(d=>(!lot||d.lot===lot)&&(!slot||d.slot===+slot));}
+function bigApply(anim){if(gRaf)return;gRaf=requestAnimationFrame(()=>{gRaf=0;const base=gBase(),T=$('#gq').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const pre=base.filter(d=>gfp.pass(d)&&(!T.length||T.every(w=>`${d.id} ${d.lot} ${d.k} ${d.r} ${d.z}`.toLowerCase().includes(w))));
+  gView=gfp.sort(pre.filter(d=>gCls.has(d.k)));
+  $$('#gCls .chip').forEach(c=>{c.querySelector('em').textContent=pre.filter(d=>d.k===c.dataset.k).length.toLocaleString('ko-KR');});
+  const n=gView.filter(d=>onIn(gPick,d)).length;
+  $('#gCount').innerHTML=`필터 · 검색에 맞는 Defect <b>${gView.length.toLocaleString('ko-KR')}</b> / ${base.length.toLocaleString('ko-KR')} · ☑ <b>${n.toLocaleString('ko-KR')}</b>`;
+  clearTimeout(gLT);if(anim)gRows(true);else gLT=setTimeout(()=>gRows(false),160);$('#toG2').disabled=!n;});}
+function gRows(anim){const rows=gView.slice(0,100);
+  $('#gList').innerHTML=rows.length?rows.map((d,k)=>`<tr class="${anim?'in':''}${onIn(gPick,d)?'':' off'}" style="--i:${Math.min(k,14)}" data-id="${d.id}"><td><input type="checkbox"${onIn(gPick,d)?' checked':''} aria-label="ID ${d.id} ☑"></td><td><b>${d.lot}</b></td><td class="r">${d.slot}</td><td class="r">${d.id}</td><td class="r">${fv(d.c)}</td><td class="r">${fv(d.a,1)}</td><td class="r">${fv(d.w,1)}</td><td class="r">${fv(d.l,1)}</td><td>${d.k}</td><td>${d.r}</td><td>${d.z}</td></tr>`).join('')
+    :`<tr class="empty-row"><td colspan="11">필터에 맞는 Defect 가 없습니다. 값 범위를 넓혀 보세요.</td></tr>`;
+  $('#gListNote').textContent=`${gView.length>100?'앞 100줄 (실제는 끝까지 스크롤) · ':''}필터 · 검색에 맞고 ☑ 한 Defect 만 5-2 로 갑니다`;}
+function g2Draw(anim){const c={ok:0,color:0,gray:0,none:0};g2.forEach(d=>c[d.ph]++);
+  $('#g2Tiles').innerHTML=Object.entries(PHL).map(([k,[cl,l]])=>`<div class="ktile"><span><i class="badge ${cl}" style="width:8px;height:8px;padding:0;border-radius:50%"></i>${l}</span><strong>${c[k].toLocaleString('ko-KR')}</strong></div>`).join('');
+  const sh=$('#g2Show').value;g2View=g2.filter(d=>!sh||d.ph===sh);
+  $('#g2List').innerHTML=g2View.slice(0,100).map((d,k)=>`<tr class="${anim?'in':''}${onIn(g2Pick,d)?'':' off'}" style="--i:${Math.min(k,14)}" data-id="${d.id}"><td><input type="checkbox"${onIn(g2Pick,d)?' checked':''} aria-label="ID ${d.id} ☑"></td><td><b>${d.lot}</b></td><td class="r">${d.slot}</td><td class="r">${d.id}</td><td><span class="badge ${PHL[d.ph][0]}"><i></i>${PHL[d.ph][1]}</span></td><td><code>${d.ph==='ok'||d.ph==='color'?`C_${d.id}.jpg`:'—'}</code></td><td><code>${d.ph==='ok'||d.ph==='gray'?`F${(d.id*13)%400}.t.1.png`:'—'}</code></td></tr>`).join('');
+  const n=g2View.filter(d=>onIn(g2Pick,d)&&d.ph!=='none').length;$('#g2Note').textContent=`5-3 으로 갈 Defect ${n.toLocaleString('ko-KR')}개 (둘 다 없음 줄은 빼고)`;$('#toG3').disabled=!n;}
+function g3Apply(anim){g3View=g3.filter(d=>gl3.pass(d.gl));if(g3Cur>=g3View.length)g3Cur=0;const n=g3View.filter(d=>onIn(g3Pick,d)).length;
+  $('#g3PickN').innerHTML=`<i></i>☑ ${n.toLocaleString('ko-KR')}개`;$('#g3GlNote').textContent=`GL 범위에 맞는 ${g3View.length.toLocaleString('ko-KR')} / ${g3.length.toLocaleString('ko-KR')}개`;
+  if(g3Mode==='list'){$('#g3List').innerHTML=g3View.slice(0,100).map((d,k)=>`<tr class="click${anim?' in':''}${k===g3Cur?' cur':''}${onIn(g3Pick,d)?'':' off'}" style="--i:${Math.min(k,14)}" data-k="${k}"><td><input type="checkbox"${onIn(g3Pick,d)?' checked':''} aria-label="ID ${d.id} ☑"></td><td>${d.lot}</td><td class="r">${d.id}</td><td><span class="badge ${PHL[d.ph][0]}"><i></i>${PHL[d.ph][1]}</span></td><td class="r">${d.gl}</td></tr>`).join('')||`<tr class="empty-row"><td colspan="5">GL 범위에 맞는 Defect 가 없습니다.</td></tr>`;g3Show();}
+  else{$('#g3Grid').innerHTML=g3View.slice(0,24).map((d,k)=>`<div class="g5${k===g3Cur?' cur':''}" style="--i:${k}" data-k="${k}"><canvas></canvas><div class="row"><b>ID ${d.id}</b><label class="ck"><input type="checkbox"${onIn(g3Pick,d)?' checked':''} aria-label="ID ${d.id} ☑">☑</label></div><div class="row"><span class="hint">${d.lot} · Slot ${d.slot}</span><span class="hint">GL ${d.gl}</span></div></div>`).join('');
+    requestAnimationFrame(()=>$$('#g3Grid .g5').forEach(el=>drawPhoto(el.querySelector('canvas'),g3View[+el.dataset.k],'c')));$('#g3GridNote').textContent=`${g3View.length.toLocaleString('ko-KR')}개 중`;}}
+function g3Show(){const d=g3View[g3Cur];$('#g3Pos').textContent=d?`${g3Cur+1} / ${g3View.length}`:'';if(!d){$('#g3Info').textContent='';return;}
+  drawPhoto($('#g3C'),d,'c');drawPhoto($('#g3G'),d,'g');
+  $('#g3Info').innerHTML=`<b>ID ${d.id}</b><span>${d.lot} · Slot ${d.slot}</span><span>Contrast <b>${fv(d.c)}</b></span><span>Area <b>${fv(d.a,1)}</b> µm²</span><span>GL <b>${d.gl}</b></span><span class="badge ${PHL[d.ph][0]}"><i></i>${PHL[d.ph][1]}</span>`;}
+function g3Move(k){if(!g3View.length)return;g3Cur=clamp(k,0,Math.min(g3View.length,100)-1);$$('#g3List tr').forEach(tr=>tr.classList.toggle('cur',+tr.dataset.k===g3Cur));g3Show();
+  const row=$(`#g3List tr[data-k="${g3Cur}"]`);if(row)row.scrollIntoView({block:'nearest',behavior:RM?'auto':'smooth'});}
+function bigGo(i,first){bigStep=i;bigSP.go(i);
+  $$('[data-gs]').forEach(p=>{const on=+p.dataset.gs===i;p.hidden=!on;if(on&&!first)p.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],{duration:280,easing:'cubic-bezier(.16,1,.3,1)'});});
+  if(i===0)bigApply(true);if(i===1)g2Draw(true);if(i===2){g3Apply(true);}requestAnimationFrame(snapAll);}
+function bigSetup(){if(bigInit)return;bigInit=true;
+  bigSP=StepProgress($('#bigSteps'),['5-1 걸러내기','5-2 결과 목록 · 사진 확인','5-3 사진 정밀 조사'],{onJump:i=>bigGo(i)});
+  $('#gLot').innerHTML='<option value="">전체</option>'+LOTS_BIG.map(l=>`<option>${l}</option>`).join('');
+  const slots=()=>{const L=$('#gLot').value,v=$('#gSlot').value;const n=new Map();DEFL.forEach(d=>{if(!L||d.lot===L)n.set(d.slot,(n.get(d.slot)||0)+1);});
+    $('#gSlot').innerHTML='<option value="">전체</option>'+[...n.keys()].sort((a,b)=>a-b).map(s=>`<option value="${s}">${String(s).padStart(2,'0')} (${n.get(s)})</option>`).join('');$('#gSlot').value=n.has(+v)?v:'';};slots();
+  $('#gLot').onchange=()=>{slots();bigApply(true);};$('#gSlot').onchange=()=>bigApply(true);
+  $('#gCls').innerHTML=CLS.map(k=>`<button class="chip on" type="button" data-k="${k}">${k} <em>0</em></button>`).join('');
+  $$('#gCls .chip').forEach(c=>c.onclick=()=>{const k=c.dataset.k;gCls.has(k)?gCls.delete(k):gCls.add(k);c.classList.toggle('on',gCls.has(k));bigApply(true);});
+  gfp=FilterPanel({ranges:$('#gfRanges'),rcp:$('#gfRcp'),zn:$('#gfZn'),sort:$('#gfSort'),clear:$('#gfClear')},DEFL,()=>bigApply(false));gfp.set('c',25,null);gfp.set('a',10,null);
+  let qt=0;$('#gq').addEventListener('input',()=>{clearTimeout(qt);qt=setTimeout(()=>bigApply(true),300);});
+  $('#gList').addEventListener('change',e=>{const tr=e.target.closest('tr[data-id]');if(!tr)return;gPick.set(+tr.dataset.id,e.target.checked);tr.classList.toggle('off',!e.target.checked);bigApply(false);});
+  $('#gCsv').onclick=()=>toast(`목록 CSV 로 저장했습니다 · ${gView.length.toLocaleString('ko-KR')}줄 (예시)`,'ok');
+  $('#toG2').onclick=()=>{g2=gView.filter(d=>onIn(gPick,d));bigGo(1);};
+  $('#g2Show').onchange=()=>g2Draw(true);
+  $('#g2List').addEventListener('change',e=>{const tr=e.target.closest('tr[data-id]');if(!tr)return;g2Pick.set(+tr.dataset.id,e.target.checked);tr.classList.toggle('off',!e.target.checked);g2Draw(false);});
+  $('#toG1').onclick=()=>bigGo(0);$('#g2Csv').onclick=()=>toast('결과 목록 CSV 를 저장했습니다 (예시)','ok');
+  $('#toG3').onclick=()=>{g3=g2View.filter(d=>onIn(g2Pick,d)&&d.ph!=='none');g3Cur=0;bigGo(2);};
+  gl3=RangeScrub($('#g3Gl'),{label:'GL 범위',min:0,max:255,step:1,decimals:0,ticks:15,onChange:()=>g3Apply(false)});
+  segBind($('#g3View'),b=>{g3Mode=b.dataset.v;$('#g3ListView').hidden=g3Mode!=='list';$('#g3GridView').hidden=g3Mode!=='grid';g3Apply(true);});
+  $('#g3List').addEventListener('click',e=>{const tr=e.target.closest('tr[data-k]');if(!tr)return;const d=g3View[+tr.dataset.k];
+    if(e.target.matches('input[type=checkbox]')){g3Pick.set(d.id,e.target.checked);tr.classList.toggle('off',!e.target.checked);$('#g3PickN').innerHTML=`<i></i>☑ ${g3View.filter(x=>onIn(g3Pick,x)).length.toLocaleString('ko-KR')}개`;return;}g3Move(+tr.dataset.k);});
+  $('#g3Grid').addEventListener('click',e=>{const c=e.target.closest('.g5');if(!c)return;const d=g3View[+c.dataset.k];if(e.target.matches('input[type=checkbox]')){g3Pick.set(d.id,e.target.checked);$('#g3PickN').innerHTML=`<i></i>☑ ${g3View.filter(x=>onIn(g3Pick,x)).length.toLocaleString('ko-KR')}개`;return;}
+    $$('#g3Grid .g5').forEach(x=>x.classList.toggle('cur',x===c));g3Cur=+c.dataset.k;});
+  $('#g3Up').onclick=()=>g3Move(g3Cur-1);$('#g3Down').onclick=()=>g3Move(g3Cur+1);
+  $('#g3All').onclick=()=>{g3View.forEach(d=>g3Pick.set(d.id,true));g3Apply(false);};$('#g3None').onclick=()=>{g3View.forEach(d=>g3Pick.set(d.id,false));g3Apply(false);};
+  $('#g3Measure').onclick=()=>{const b=$('#g3Measure');b.classList.add('busy');setTimeout(()=>{b.classList.remove('busy');toast(`흑백 GL 을 쟀습니다 · ☑ ${g3View.filter(d=>onIn(g3Pick,d)&&d.ph!=='color').length.toLocaleString('ko-KR')}개`,'ok');},900);};
+  $('#g3Csv').onclick=()=>toast('최종 목록 CSV 를 저장했습니다 (예시)','ok');$('#g3Xl').onclick=()=>toast('최종 목록 엑셀을 저장했습니다 · 사진 포함 (예시)','ok');
+  bigGo(0,true);}
+
+let defSub='base';
+const defInd=Indicator($('#defTabs'),'line');
+function defShow(sub,silent){defSub=sub;$$('#defTabs button').forEach(b=>b.classList.toggle('on',b.dataset.d===sub));defInd.move(silent);
+  $('#defBase').hidden=sub!=='base';$('#defBig').hidden=sub!=='big';$('#defCg').hidden=sub!=='cg';
+  if(sub==='base'){baseSetup();requestAnimationFrame(()=>{snapAll();drawBase();});}if(sub==='big')bigSetup();
+  if(!silent){const el=sub==='base'?$('#defBase'):sub==='big'?$('#defBig'):$('#defCg');if(sub!=='cg')enterAnim(el);setHash(sub==='big'?'defect-big':'defect');syncPageSeg(sub==='big'?'defect-big':'defect');requestAnimationFrame(snapAll);}}
+$$('#defTabs button').forEach(b=>b.onclick=()=>defShow(b.dataset.d));
+$$('[data-defgo]').forEach(b=>b.onclick=()=>defShow(b.dataset.defgo));
+function defectInit(){defShow(defSub,true);}
+
+/* ---------- 자동 분석 및 취합 (돌림 선택) ---------- */
+let autoInit=false,wPer=null,wTime=null;
+const PER=[['1','1시간'],['2','2시간'],['4','4시간'],['6','6시간'],['8','8시간'],['12','12시간'],['24','매일'],['48','2일마다'],['168','매주']].map(([v,l])=>({value:v,label:l}));
+const pad=n=>String(n).padStart(2,'0'),WD='일월화수목금토';
+function nextRun(){const p=+wPer.value.per,h=+wTime.value.h,m=+wTime.value.m,now=new Date(2026,10,24,15,20);let d;
+  if(p<24){d=new Date(now.getTime()+p*3600e3);}else{d=new Date(now);d.setHours(h,m,0,0);if(d<=now)d.setDate(d.getDate()+1);d.setDate(d.getDate()+(p/24-1));}
+  const on=$('#autoOn').checked,s=$('#nextRun');s.style.opacity=0;
+  setTimeout(()=>{s.innerHTML=on?`다음 실행 · <b>${pad(d.getMonth()+1)}-${pad(d.getDate())} (${WD[d.getDay()]}) ${pad(d.getHours())}:${pad(d.getMinutes())}</b> · 지난 [조사 시작] 조건으로`:'자동 분석이 꺼져 있습니다 · [즉시 실행]은 켜짐과 상관없이 한 번 돕니다';s.style.opacity=1;},120);
+  wTime.off(p<24);$('#wpTimeNote').textContent=p<24?'· 시간 단위 주기는 시각을 정하지 않습니다':'';}
+function autoPage(){if(autoInit)return;autoInit=true;
+  wPer=Wheel($('#wpPeriod'),[{id:'per',label:'주기',options:PER,value:'24',w:120}],{label:'주기',onChange:nextRun});
+  wTime=Wheel($('#wpTime'),[{id:'h',label:'시',loop:true,options:Array.from({length:24},(_,i)=>({value:String(i),label:pad(i)})),value:'7',w:64},
+    {id:'m',label:'분',loop:true,options:Array.from({length:12},(_,i)=>({value:String(i*5),label:pad(i*5)})),value:'40',w:64}],{label:'실행 시각',onChange:nextRun});
+  segBind($('#autoKind'));$('#autoOn').onchange=nextRun;nextRun();
+  $('#autoSave').onclick=()=>toast(`저장했습니다 · ${PER.find(o=>o.value===wPer.value.per).label}${+wPer.value.per>=24?` ${pad(wTime.value.h)}:${pad(wTime.value.m)}`:''}`,'ok');
+  $('#runNow').onclick=()=>toast('지난 조사 조건으로 한 번 돌립니다 · 진행은 오른쪽 아래에서 볼 수 있습니다','info');}
+
+/* ---------- TB500 Review 조회 (작업 단계 + 복사) ---------- */
+let tbInit=false,tbAgent=null,tbDrv=null;
+const TB_STEPS=[{label:'Lot 목록 읽기',detail:['Lot 4개 · 중복 없음']},{label:'Conder Scan 폴더 찾기',detail:['SF14G · Layer 2개','SC93F · Layer 1개','SA78K · ★ 폴더 · Skip','GX570 · Layer 2개']},
+ {label:'Layer 마다 재리뷰 판정',detail:['재리뷰 필요 2 · 완료 3 · Skip 1']},{label:'Camtek 캐시에서 호기 찾기',detail:['배치분석/누적 · 호기 25대','SF14G@RDL1 → AOI-16','GX570@PI2 → AOI-21']},
+ {label:'KLA 색인에서 찾기',detail:['KLA색인.json · 같은 서명이라 다시 읽지 않음','SC93F@RDL2 → KLA-3']}];
+const TB=[['SF14G','RDL1','ok','완료','cam','AOI-16','11-21 22:14'],['SF14G','PI2','bad','재리뷰 필요','cam','AOI-9','11-20 09:41'],['SC93F','RDL2','ok','완료','kla','KLA-3','11-19 15:02'],
+ ['SA78K','PI1','warn','Skip','','—','—'],['GX570','RDL1','bad','재리뷰 필요','kla','KLA-1','11-18 03:27'],['GX570','PI2','ok','완료','cam','AOI-21','11-17 18:55']];
+function tbPage(){if(tbInit)return;tbInit=true;$('#cpConder').replaceWith(CopyBtn(()=>$('#conderPath').textContent));
+  $('#tbGo').onclick=()=>{if(tbDrv)return;const c=$('#tbRunCard');c.hidden=false;c.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],{duration:320,easing:'cubic-bezier(.16,1,.3,1)'});$('#tbResult').hidden=true;$('#tbGo').classList.add('busy');
+    if(!tbAgent)tbAgent=AgentSteps($('#agentTb'),TB_STEPS,{doneTitle:'조회를 마쳤습니다'});else tbAgent.reset();
+    tbDrv=drive(tbAgent,{tick:480,onDone(){tbDrv=null;$('#tbGo').classList.remove('busy');showTb();toast('조회를 마쳤습니다 · Lot 4개 · Layer 6개','ok');}});};}
+function showTb(){$('#tbBody').innerHTML=TB.map((r,i)=>{const p=`\\\\10.20.30.40\\ConderScan\\${r[0]}\\${r[1]}`;
+  return`<tr class="in" style="--i:${i}"><td><b>${r[0]}</b></td><td>${r[1]}</td><td><span class="badge ${r[2]}"><i></i>${r[3]}</span></td><td>${r[4]?`<span class="eqchip ${r[4]}">${r[4]==='cam'?'Camtek':'KLA'}</span>`:'—'}</td><td>${r[5]}</td><td>${r[6]}</td><td><span class="path"><code>${p}</code><span data-cp="${i}"></span></span></td></tr>`;}).join('');
+  $$('#tbBody [data-cp]').forEach(s=>{const code=s.previousElementSibling;s.replaceWith(CopyBtn(()=>code.textContent));});
+  const r=$('#tbResult');r.hidden=false;r.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],{duration:320,easing:'cubic-bezier(.16,1,.3,1)'});}
+
+/* ---------- KLA 자재 찾기 (복사) ---------- */
+let klaInit=false;
+const KLA=[['KLA-3','2026-11-19','SC93F',25,'\\\\10.20.31.13\\Data\\2026-11-19\\SC93F',false],['KLA-1','2026-11-18','SC93F',24,'\\\\10.20.31.11\\Data\\2026-11-18\\SC93F',false],['KLA-3','2026-10-02','SC93F',25,'\\\\nas01\\KLA_backup\\KLA-3\\2026-10-02\\SC93F',true]];
+function drawKla(){$('#kBody').innerHTML=KLA.map((r,i)=>`<tr class="in" style="--i:${i}"><td><b>${r[0]}</b>${r[5]?' <span class="badge mut">백업본</span>':''}</td><td>${r[1]}</td><td>${r[2]}</td><td class="r">${r[3]}</td><td><span class="path"><code>${r[4]}</code></span></td><td class="r"><span class="row" style="justify-content:flex-end;flex-wrap:nowrap"><span data-cp="${i}"></span><button class="btn ghost s" type="button">${ic('folder')}폴더 열기</button></span></td></tr>`).join('');
+  $$('#kBody [data-cp]').forEach(s=>{const i=+s.dataset.cp;s.replaceWith(CopyBtn(()=>KLA[i][4]));});}
+function klaPage(){if(klaInit)return;klaInit=true;drawKla();
+  $('#kGo').onclick=()=>{const b=$('#kGo');b.classList.add('busy');setTimeout(()=>{b.classList.remove('busy');drawKla();$('#kSum').textContent=`${$('#kCache').checked?'KLA 캐시':'장비 폴더'}에서 찾았습니다 · '${$('#kq').value}' · 3곳`;toast('찾았습니다 · 3곳','ok');},700);};}
+
+function pageEnter(id){if(id==='batch'){if($('#big1').hidden)drawChart();else findInit();}if(id==='defect')defectInit();if(id==='auto')autoPage();if(id==='tb500')tbPage();if(id==='kla')klaPage();}
+
+/* ---------- 컴포넌트 · 모션 ---------- */
+let compDone=false;
+function compInit(){if(compDone)return;compDone=true;
+  const SW=[['구조 · 슬레이트',[['slate-900','#263238','토스트 · 로그 바탕'],['slate-800','#37474f','머리 막대 · 강조 글자'],['slate-700','#455a64','보조 구조 · 정보'],['slate-500','#607d8b','정보 표시'],['slate-100','#cfd8dc','어두운 바탕 위 글자 · Defect Die'],['slate-50','#eceff1','정보 상자 바탕']]],
+   ['강조 · 에메랄드',[['emerald-500','#10b981','주 단추 · 밑줄 · 완료'],['emerald-600','#0d9668','눌림 · 초점 · 체크'],['emerald-700','#047857','작은 강조 글자'],['emerald-800','#0b5e46','민트 위 글자'],['emerald-200','#a7e0cb','완료 연결선'],['emerald-50','#eafaf3','선택 바탕'],['on-emerald','#04231a','에메랄드 위 글자']]],
+   ['중립 · 회청색',[['grey-900','#1f2937','본문 글자'],['grey-700','#425872','표 머리 글자'],['grey-600','#5f6b7a','보조 글자'],['grey-400','#94a3b8','흐린 글자 · 비활성'],['grey-300','#cfd8e3','입력 칸 · 강한 선'],['grey-200','#e6ebf0','기본 선'],['grey-100','#eef2f4','화면 바탕 · 보조 단추'],['grey-50','#f7f9fb','표 머리 · 입력 칸 바탕']]],
+   ['상태',[['red-600','#c2410c','오류 · 위험 단추'],['red-700','#a33820','오류 글자'],['red-50','#fdecea','오류 바탕'],['amber-500','#e0a526','재스캔 표시'],['amber-800','#79471c','주의 글자'],['amber-50','#fff4e7','주의 바탕'],['orange-500','#e0704b','Pass 못 한 wafer 표시']]]];
+  $('#swatches').innerHTML=SW.map(([g,l])=>`<div class="sw-group"><h4>${g}</h4><div class="sw-row">${l.map(([n,h,d])=>`<div class="sw"><i style="background:var(--${n})"></i><b>${n} ${h}</b><span>${d}</span></div>`).join('')}</div></div>`).join('');
+  const ds=StepProgress($('#demoSteps'),['검색','파일 고르기','Lot 고르기','취합 결과']);ds.go(0);let dsUser=-1e9,dsT=0;
+  const dsAuto=()=>{if(performance.now()-dsUser>8000)ds.go(ds.cur===3?0:ds.cur+1);dsT=setTimeout(dsAuto,ds.cur===3?2400:1400);};
+  whenVisible($('#demoSteps'),v=>{clearTimeout(dsT);if(v)dsT=setTimeout(dsAuto,1400);});
+  $('#dsNext').onclick=()=>{dsUser=performance.now();ds.go(ds.cur===3?0:ds.cur+1);};$('#dsBack').onclick=()=>{dsUser=performance.now();ds.go(ds.cur-1);};
+  const DEMO=[{label:'호기 Reports 폴더 찾기',detail:['AOI-3 · Reports','AOI-16 · Reports','AOI-21 · Reports · 끊김 → 캐시로','AOI-25 · Reports']},{label:'Batch Report 4개 읽기',detail:['Job · Setup · S/M 나누기','wafer 표 100줄','Pass/Fail 원문 그대로']},{label:'Lot 으로 묶기',detail:['같은 호기 12시간 안','같은 Recipe(s) · 같은 Job','호기 이동 48시간']},{label:'결과 쓰기',detail:['Lot 추적 HTML']}];
+  const ag=AgentSteps($('#agentDemo'),DEMO,{doneTitle:'다 했습니다'});let agT=0,agOn=false,agStop=()=>{};
+  const loop=()=>{if(!agOn)return;ag.reset();const d=drive(ag,{tick:750,onDone(){agT=setTimeout(loop,3200);}});agStop=()=>d.stop();};
+  whenVisible($('#agentDemo'),v=>{agOn=v;clearTimeout(agT);if(v)loop();else agStop();});
+  Wheel($('#wpDemo'),[{id:'h',label:'시',loop:true,options:Array.from({length:24},(_,i)=>({value:String(i),label:pad(i)})),value:'8',w:64},{id:'m',label:'분',loop:true,options:Array.from({length:60},(_,i)=>({value:String(i),label:pad(i)})),value:'41',w:64}],{label:'시각'});
+  [['Contrast',0,1,.01,2,.62,9],['유효 Lot 매수',1,25,1,0,25,23]].forEach(([l,mn,mx,st,dc,v,tk])=>{const d=document.createElement('div');$('#scrDemo').appendChild(d);Scrubber(d,{label:l,min:mn,max:mx,step:st,decimals:dc,value:v,ticks:tk});});
+  {const d=document.createElement('div');$('#scrDemo').appendChild(d);RangeScrub(d,{label:'Area 범위',unit:'µm²',min:0,max:400,step:1,decimals:0,lo:40,hi:260});}
+  $('#cpDemo').replaceWith(CopyBtn(()=>$('#demoPath').textContent,{auto:true}));
+  ['#miniFt','#miniSt','#miniSeg'].forEach(s=>segBind($(s)));
+  $('#miniVt').addEventListener('click',e=>{const b=e.target.closest('button');if(b)$$('#miniVt button').forEach(x=>x.classList.toggle('on',x===b));});
+  $('#busyDemo').onclick=e=>{const b=e.currentTarget;b.classList.add('busy');setTimeout(()=>b.classList.remove('busy'),1600);};
+  $$('[data-toast]').forEach(b=>b.onclick=()=>{const k=b.dataset.toast;toast(k==='ok'?'캐시를 받았습니다 · 호기 12대':k==='bad'?'AOI-21 에 연결하지 못했습니다':'다른 작업이 끝나면 시작합니다',k);});
+  $('#dlgDemo').onclick=()=>openLot(1);$$('#chipDemo .chip').forEach(c=>c.onclick=()=>c.classList.toggle('on'));
+  let pn=0,pT=0;whenVisible($('#progDemo'),v=>{clearInterval(pT);if(v)pT=setInterval(()=>{pn=pn>=420?0:pn+14;$('#progDemo').style.transform=`scaleX(${pn/420})`;$('#progDemoN').textContent=`${pn} / 420`;},200);});
+}
+
+/* ---------- 시작 ---------- */
+$('#cpLocal').replaceWith(CopyBtn(()=>$('#localPath').textContent));
+setDesign('new');
+route('components');   // 디자인 시안 = 부품 모음만
+})();
+</script>
+
+</body>
+</html>
