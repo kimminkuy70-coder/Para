@@ -6,7 +6,9 @@
   이어서 하기 · 진행 = `docs/design/이어서_하기.md`. **예시 파일과 실제 프로그램 화면이 다르면 프로그램이 우선**(예시에서는 겉모습 · 움직임만 가져온다, 차이 표 = 이어서_하기.md).
   디자인 작업은 기능 · 글 · 클래스 이름 · DOM · `data-tour` 를 바꾸지 않는다. 소유자 결정(2026-11-24): `design_rebuild` 에서 모두 고친 뒤 `version_v14` 다음 판으로 옮김(소유자가 말할 때만) ·
   결과 HTML(`report_theme`)도 새 디자인 · Defect 지도 영역 ☑ 고르기는 **넣지 않음**(요청은 필터) · **Defect 필터 = 양방향 막대(`para-skin.js`) + 숫자 칸, 대규모는 5-1 · 5-2 · 5-3 모두 같은 필터(단계를 바꿔도 유지)** ·
-  확인 = 전 · 후 스크린샷(`tools/design_screens.mjs`) + 마지막에 설치 zip.
+  확인 = 전 · 후 스크린샷(`tools/design_screens.mjs`) + 마지막에 설치 zip. 구현 = `styles.css` 맨 위 토큰(옛 이름 별칭) + 파일 끝 '새 디자인 부품' · '모션 부품' 층,
+  `motion.ts`(탭 밑줄 · `select[data-wheel]` 돌림 선택 — select 는 남김) · `CopyButton.tsx` · `Activity.tsx`, `para-skin.css/js`(범위 막대 `mountRange`), `report_theme.THEME_CSS` 끝 층.
+  rev6 HTML: 대규모 필터 카드 `#bigFlt` 가 5-1 · 5-2 · 5-3 의 `[data-b5flt]` 자리로 옮겨 다님(`b5go`), 5-2 · 5-3 = `bigRankOf`(bigBuild 같은 계산)로 거름 · `fltSpan`(막대 끝값).
 
 - **v14.4.3(#90, 2026-11-24)**: 프로그램 화면에 GitHub 글자를 쓰지 않는다(소유자: GitHub 을 쓰는 것을 밝히지 말 것). 설정 > 정보에 업데이트 구역 없음 — 업데이트는 시작 알림 창만. 새 화면 글 · 오류 글에도 GitHub · github.com 을 넣지 말 것.
 
