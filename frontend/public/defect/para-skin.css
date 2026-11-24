@@ -1,11 +1,13 @@
 /* Para v14 Defect 분석: AOI Contrast Wizard(HTML rev6)를 프로그램 화면 테마로 — 겉모습만.
    HTML 파일은 손대지 않는다(실자료로 검증한 동작 그대로). 프로그램(DefectAnalysis.tsx)이 iframe 에 이 파일과 para-skin.js 를 넣는다.
    토큰은 body 에만 덮어쓴다: 지도 · 벤다이어그램 캔버스는 :root 값을 읽으므로 종전 색 그대로. 어두운 화면(화면 테마)은 HTML 의 어두운 색을 쓴다. */
-:root:not([data-theme="dark"]) body.pskin{--bg:#eef2f4;--panel:#fff;--ink:#1f2937;--sub:#5f6b7a;--line:#e6ebf0;--navy:#37474f;--acc:#10b981;--chip:#edf2f7;
-  --okbg:#ecfdf5;--ok:#0b5e46;--warnbg:#fff4e7;--warn:#79471c;--errbg:#fdecea;--err:#a33820;
-  --pri:#10b981;--pri2:#0d9668;--onpri:#04231a;--hov:#edf2f6;--th:#edf2f7;--thk:#425872;--hl:#f2fbf7;--sel:#e3f6ee;--chipon:#ecf8f2;--dot:#e7ecf0;--faint:#94a3b8;--band:#f7f9fb;--lbl:#52647d;--bd2:#bac7d6}
+/* DESIGN.md 토큰(2026-11-24): 프로그램 styles.css :root 와 같은 값 — HTML 의 변수 이름(--panel · --sub · --pri …)으로 넣는다 */
+:root:not([data-theme="dark"]) body.pskin{--bg:#eef2f4;--panel:#fff;--ink:#1f2937;--sub:#5f6b7a;--line:#e6ebf0;--navy:#37474f;--acc:#10b981;--chip:#eef2f4;
+  --okbg:#eafaf3;--ok:#0b5e46;--warnbg:#fff4e7;--warn:#79471c;--errbg:#fdecea;--err:#a33820;
+  --pri:#10b981;--pri2:#0d9668;--onpri:#04231a;--hov:rgba(55,71,79,.12);--th:#f7f9fb;--thk:#425872;--hl:#f7f9fb;--sel:#eafaf3;--chipon:#eafaf3;--dot:#eef2f4;--faint:#94a3b8;--band:#f7f9fb;--lbl:#5f6b7a;--bd2:#cfd8e3;
+  --btn2:rgba(55,71,79,.07);--slate50:#eceff1;--emerald700:#047857;--slate900:#263238}
 :root[data-theme="dark"] body.pskin{--pri:#10b981;--pri2:#34d399;--onpri:#04231a;--hov:#222c40;--th:#222c40;--thk:#c9d4e6;--hl:#1b2a2a;--sel:#173328;--chipon:#173328;--dot:#2c3850;--faint:#5d6b84;--band:#1b2433;--lbl:#9fabc2;--bd2:#3a4762}
-body.pskin{--sh1:0 1px 3px rgba(30,40,80,.08),0 1px 2px rgba(30,40,80,.06);--sh2:0 8px 24px rgba(30,40,80,.13),0 2px 6px rgba(30,40,80,.07);
+body.pskin{--sh1:0 1px 2px rgba(38,50,56,.07),0 1px 1px rgba(38,50,56,.04);--sh2:0 6px 16px rgba(38,50,56,.10),0 1px 3px rgba(38,50,56,.06);--sh3:0 16px 40px rgba(38,50,56,.18),0 2px 8px rgba(38,50,56,.08);
   font:14px/1.55 'Malgun Gothic','맑은 고딕',system-ui,sans-serif;background:var(--bg);margin:0;position:relative;display:flow-root}
 
 /* ── 틀: HTML 머리 · 왼쪽 막대 없앰, 본문이 프로그램 칸 너비 그대로 ── */
@@ -13,8 +15,8 @@ body.pskin .wrap{display:block;min-height:0}
 body.pskin main{padding:0}
 body.pskin header{position:absolute;top:0;right:0;z-index:6;height:40px;padding:0;gap:8px;flex-wrap:nowrap;background:transparent;color:var(--ink)}
 body.pskin header h1,body.pskin header .lim,body.pskin header .sp,body.pskin header>span.muted{display:none}
-body.pskin header label.muted,body.pskin .ptg{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--navy);font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1}
-body.pskin header button{min-height:34px;padding:6px 12px;font-size:12.5px}
+body.pskin header label.muted,body.pskin .ptg{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--navy);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1}
+body.pskin header button{min-height:34px;padding:6px 12px;font-size:13px}
 /* v14.1.6(소유자): [화면 테마] · [사진을 같은 창에서 보기] 없앰 — 머리에는 [? 설명 보기] 만 */
 body.pskin #themeBtn,body.pskin header label:has(#inWin){display:none!important}
 body.pskin .ptg .q{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;font-size:11px;font-weight:800}
@@ -29,7 +31,7 @@ body.pskin:not(.pskin-help) :is(
   #c5one p.muted, .card.pflt>span.muted, .review p.muted, [id$="Lg"]>span.muted, .pguide, .pinit){display:none}
 body.pskin section.step>h2>.muted{display:none}
 body.pskin:not(.pskin-help) .row:has(> .pinit:only-child){display:none}
-body.pskin .pguide{background:#f5f9ff;border-color:#c9d9ea;box-shadow:none;font-size:12.5px;line-height:1.75;color:var(--sub)}
+body.pskin .pguide{background:#f5f9ff;border-color:#c9d9ea;box-shadow:none;font-size:13px;line-height:1.75;color:var(--sub)}
 :root[data-theme="dark"] body.pskin .pguide{background:var(--band);border-color:var(--line)}
 body.pskin .pguide h3{margin:0 0 6px}
 body.pskin .pguide code{display:block;background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:6px 9px;border-radius:6px;margin:4px 0;font-size:12px;white-space:normal}
@@ -65,7 +67,7 @@ body.pskin .b5tabs button:disabled{opacity:1;color:var(--faint)}
 /* ── 칸 · 글 ── */
 body.pskin .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin-bottom:16px;box-shadow:var(--sh1)}
 body.pskin h3{font-size:15px;color:var(--navy);letter-spacing:-.2px}
-body.pskin .muted{color:var(--sub);font-size:12.5px;line-height:1.7}
+body.pskin .muted{color:var(--sub);font-size:13px;line-height:1.7}
 body.pskin .card>p.muted:first-child,body.pskin .drop>p:first-child{margin-top:0}
 body.pskin .row{gap:10px;margin:10px 0}
 body.pskin details>summary{color:var(--navy);font-weight:700}
@@ -81,9 +83,9 @@ body.pskin input:not([type=checkbox]):not([type=radio]):not([type=range]),body.p
 body.pskin input[type=checkbox],body.pskin input[type=radio]{width:16px;height:16px;margin:0;accent-color:#31517c;cursor:pointer}
 body.pskin .row label,body.pskin .pflt label{gap:6px}
 body.pskin .pflt{gap:10px 18px}
-body.pskin .pflt label>b,body.pskin .row>b,body.pskin .row label>b{font-size:12.5px;color:var(--lbl)}
+body.pskin .pflt label>b,body.pskin .row>b,body.pskin .row label>b{font-size:13px;color:var(--lbl)}
 
-body.pskin .pbadge{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--pri);color:var(--onpri);font-size:11.5px;font-weight:800}
+body.pskin .pbadge{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--pri);color:var(--onpri);font-size:12px;font-weight:800}
 
 /* 단계 아래 이전 · 다음 줄 = 프로그램 이전/다음(왼쪽 = 이전, 오른쪽 = 다음) */
 body.pskin #b5p1>.row:last-child{flex-direction:row-reverse;justify-content:space-between;margin-top:14px}
@@ -93,7 +95,7 @@ body.pskin #step1 .card>.row:last-child,body.pskin #step2 .card .row:has(#runBtn
 /* 표 · 목록 */
 body.pskin .tblwrap{border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 body.pskin th{background:var(--th);color:var(--thk);font-size:12px;font-weight:700;padding:9px 12px;border-bottom:1px solid var(--line)}
-body.pskin td{padding:8px 12px;font-size:12.5px;border-bottom:1px solid var(--line)}
+body.pskin td{padding:8px 12px;font-size:13px;border-bottom:1px solid var(--line)}
 body.pskin tbody tr:hover td{background:var(--hl)}
 body.pskin .biglist,body.pskin .rvlist{border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 body.pskin .biglist:focus,body.pskin .rvlist:focus{border-color:#8fd9bd;box-shadow:0 0 0 3px #10b98122}
@@ -114,10 +116,10 @@ body.pskin .kpi b{font-size:24px;letter-spacing:-.5px;color:var(--navy)}
 body.pskin .kpi.keep b{color:var(--keep)}body.pskin .kpi.gone b{color:var(--gone)}body.pskin .kpi.new b{color:var(--new)}
 
 /* 고르기 칩(분류 · Lot 제외 · 시뮬레이션 집합) */
-body.pskin .clsck,body.pskin .lotbox>summary,body.pskin #setPick label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:var(--panel);color:var(--ink);font-weight:600;font-size:12.5px}
+body.pskin .clsck,body.pskin .lotbox>summary,body.pskin #setPick label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:var(--panel);color:var(--ink);font-weight:600;font-size:13px}
 body.pskin .clsck:has(input:checked),body.pskin #setPick label:has(input:checked){border-color:var(--pri);background:var(--chipon)}
 body.pskin .lotbox.has>summary{border-color:var(--warn);color:var(--warn)}
-body.pskin .clsg>b{font-size:12.5px;color:var(--lbl);margin-right:4px}
+body.pskin .clsg>b{font-size:13px;color:var(--lbl);margin-right:4px}
 
 /* 5-1 필터(v14.1.5, 소유자 "필터 제목 · 행 간격 구분 · 값 범위 일렬 · 분류 하위 목록은 간격에 맞춰 · Lot 제외는 다른 줄"):
    줄마다 왼쪽 제목 · 오른쪽 내용, 줄 사이 가는 선. 분류 · Lot 칸 = 같은 너비 격자(이름 왼쪽 · 개수 오른쪽) */
@@ -125,13 +127,13 @@ body.pskin .fgrid{padding:6px 22px 4px}
 body.pskin .fgrid .frow{grid-template-columns:140px minmax(0,1fr);gap:8px 18px;padding:13px 0}
 body.pskin .fgrid .fh{font-size:13px;font-weight:800;color:var(--navy);padding-top:7px;letter-spacing:-.2px}
 body.pskin .fgrid .fb{gap:10px 22px}
-body.pskin .fgrid .fb label>b{font-size:12.5px;color:var(--lbl)}
+body.pskin .fgrid .fb label>b{font-size:13px;color:var(--lbl)}
 body.pskin .fgrid .frng label.rng{gap:5px}body.pskin .fgrid .frng input[type=number]{width:72px}
 body.pskin .fgrid .chipgrid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
 body.pskin .fgrid .chipgrid .clsck{display:flex;border-radius:8px;padding:6px 12px;min-height:34px;gap:8px}
 body.pskin .fgrid .chipgrid .clsck>.muted{font-size:12px;font-weight:700;line-height:1}
 body.pskin .fgrid .lotbox>summary{list-style:none}body.pskin .fgrid .lotbox>summary::-webkit-details-marker{display:none}
-body.pskin .fgrid .fx button{min-height:30px;padding:4px 12px;font-size:12.5px}
+body.pskin .fgrid .fx button{min-height:30px;padding:4px 12px;font-size:13px}
 body.pskin .fgrid .fact{padding:12px 0 10px}
 
 /* 목록 위 검색 · ☑ 줄(v14.1.8): 돋보기 + 가로 칸, ☑ 개수 배지 = 5-3 최종 목록 배지와 같은 모양 */
@@ -142,7 +144,7 @@ body.pskin .lsq:focus-within{border-color:var(--pri);box-shadow:0 0 0 3px #10b98
 body.pskin .lsq.on{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy)}
 body.pskin .lsn{min-height:30px;padding:3px 14px;font-size:13px;background:var(--dot);border-color:var(--bd2);color:var(--sub)}
 body.pskin .lsn.on{background:var(--navy);border-color:var(--navy);color:#fff}
-body.pskin .lsdef,body.pskin .xlorig{font-size:12.5px;font-weight:600;color:var(--lbl)}
+body.pskin .lsdef,body.pskin .xlorig{font-size:13px;font-weight:600;color:var(--lbl)}
 /* 5-3 흑백 GL 측정 = 테두리 박스(v14.1.5) */
 /* 색(v14.1.7, 소유자 "테마에 맞게 색 다시 배치 — 너무 알록달록"): 프로그램 남색 · 초록 + 회색만. 박스 왼쪽 띠 = 남색, 켜짐 = 연한 초록,
    5-1 분류 · Lot 칸은 켜진 칸을 흰 바탕(체크 표시로 구분), 끈 칸만 회색 */
@@ -154,7 +156,7 @@ body.pskin .gldlg #glCv{width:min(528px,calc(var(--vh,100vh) - 300px),calc(100vw
 body.pskin .glnav{min-height:0;height:84px;width:40px;padding:0;font-size:30px;font-weight:400;color:var(--navy)}
 /* 5-3 보기 박스 · 사진 모두 불러오기 · 최종 목록 개수 배지(v14.1.6, 소유자 "보기는 줄바꿈 · 박스로 구분, 불러오기는 다른 색, 최종 목록 개수는 구분이 가게") */
 body.pskin .c5stbox{border-color:var(--line);border-left-color:var(--navy);border-radius:10px;background:var(--band);padding:10px 16px}
-body.pskin .c5stbox .c5bh{color:var(--navy)}body.pskin .c5stbox label{font-size:12.5px;font-weight:600}
+body.pskin .c5stbox .c5bh{color:var(--navy)}body.pskin .c5stbox label{font-size:13px;font-weight:600}
 body.pskin button.c5load{background:var(--sel);border-color:var(--pri);color:var(--ok);box-shadow:var(--sh1)}
 body.pskin button.c5load:hover:not(:disabled){background:#cdeedf;border-color:var(--pri2)}
 body.pskin .c5pickrow>b{font-size:14px;color:var(--navy)}
@@ -162,7 +164,7 @@ body.pskin .c5pick{min-height:30px;padding:3px 14px;font-size:14px;background:va
 body.pskin .c5pick.on{background:var(--navy);border-color:var(--navy);color:#fff}
 body.pskin .glbox{border-color:var(--line);border-left-color:var(--navy);border-radius:10px;background:var(--band);padding:10px 16px 12px}
 body.pskin .glbox .glhd>b{color:var(--navy);font-size:14px}
-body.pskin .glbox .glshow{padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12.5px}
+body.pskin .glbox .glshow{padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px}
 body.pskin .glbox .glshow:has(input:checked){border-color:var(--pri);background:var(--sel)}
 
 /* 보기 고르기(리스트 · 격자 구조) = 프로그램 세그먼트, 쌍 고르기 = 알약 */
@@ -201,7 +203,7 @@ body.pskin label.rng.on>b{color:var(--ink)}
 body.pskin label.rng.on>b::before{content:'';flex:none;width:6px;height:6px;border-radius:50%;background:var(--pri)}
 body.pskin label.rng input[type=number]{width:86px;font-variant-numeric:tabular-nums}
 body.pskin label.rng [data-umu],body.pskin label.rng .prs-u{flex:0 0 28px}
-body.pskin .prs{position:relative;flex:1 1 220px;min-width:140px;height:32px;border-radius:8px;background:var(--th);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+body.pskin .prs{position:relative;flex:1 1 220px;min-width:140px;height:32px;border-radius:8px;background:var(--chip);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
 body.pskin .prs.off{opacity:.4;cursor:default}
 body.pskin .prs-fill{position:absolute;top:0;bottom:0;left:0;right:0;background:color-mix(in srgb,var(--navy) 8%,transparent);pointer-events:none;
   transition:left .15s cubic-bezier(.23,1,.32,1),right .15s cubic-bezier(.23,1,.32,1),background-color .2s cubic-bezier(.22,.61,.36,1)}
@@ -216,3 +218,30 @@ body.pskin .prs.drag .prs-fill,body.pskin .prs.drag .prs-th{transition:none}body
 body.pskin .glrng input::-webkit-slider-thumb{width:20px;height:22px;border:0;border-radius:0;background:linear-gradient(var(--navy),var(--navy)) center/4px 22px no-repeat;opacity:.8;cursor:grab}
 body.pskin .glrng input::-moz-range-thumb{width:20px;height:22px;border:0;border-radius:0;background:linear-gradient(var(--navy),var(--navy)) center/4px 22px no-repeat;opacity:.8;cursor:grab}
 @media (prefers-reduced-motion:reduce){body.pskin .prs-fill,body.pskin .prs-th,body.pskin .prs-th>i,body.pskin label.rng>b{transition:none}}
+
+/* ── 새 디자인 부품(DESIGN.md 10절, 2026-11-24) — 위 규칙을 덮어쓴다(겉모습만) ── */
+body.pskin .card{border-radius:14px;box-shadow:none;padding:20px 24px}
+body.pskin .muted{font-size:13px}
+body.pskin .drop{border:1px dashed var(--bd2);border-radius:14px}
+body.pskin button{background:var(--btn2);border:1px solid transparent;border-radius:10px;transition:background-color .2s cubic-bezier(.22,.61,.36,1),color .2s cubic-bezier(.22,.61,.36,1),transform .12s cubic-bezier(.22,.61,.36,1)}
+body.pskin button:hover:not(:disabled){background:var(--hov);border-color:transparent}
+body.pskin button:active:not(:disabled){transform:scale(.98)}
+body.pskin button:disabled{opacity:.4}
+body.pskin button.pri{border-radius:12px;box-shadow:none;border-color:transparent}
+body.pskin input:not([type=checkbox]):not([type=radio]):not([type=range]),body.pskin select{border-radius:10px;background:var(--band);border-color:var(--bd2);min-height:36px}
+body.pskin input:not([type=checkbox]):not([type=radio]):not([type=range]):focus,body.pskin select:focus{background:#fff;border-color:var(--pri2);box-shadow:0 0 0 .5px var(--pri2);outline:none}
+body.pskin :focus-visible{outline:2px solid var(--pri2);outline-offset:2px}
+body.pskin input[type=checkbox],body.pskin input[type=radio]{accent-color:var(--pri2)}
+body.pskin .pflt label>b,body.pskin .row>b,body.pskin .row label>b,body.pskin .clsg>b,body.pskin .fgrid .fb label>b{font-size:13px}
+body.pskin td,body.pskin .clsck,body.pskin .lotbox>summary,body.pskin #setPick label,body.pskin header label.muted,body.pskin .ptg,body.pskin header button{font-size:13px}
+body.pskin .pbadge{font-size:12px;font-weight:700}
+body.pskin .tblwrap,body.pskin .biglist,body.pskin .rvlist{border-radius:10px}
+body.pskin .biglist:focus,body.pskin .rvlist:focus{border-color:var(--pri2);box-shadow:0 0 0 .5px var(--pri2)}
+body.pskin .biglist .br.sel{background:var(--sel);box-shadow:none}
+body.pskin .msg{border:0;border-radius:10px}
+body.pskin .kpi{border-radius:14px;box-shadow:none}
+body.pskin .clsck,body.pskin .lotbox>summary,body.pskin #setPick label{border-color:var(--bd2)}
+body.pskin .fgrid .fh{font-weight:700}
+body.pskin nav button .n,body.pskin .b5tabs button b{font-weight:700}
+body.pskin .pguide{background:var(--slate50);border:0}
+body.pskin .ptg{border-color:var(--bd2)}
