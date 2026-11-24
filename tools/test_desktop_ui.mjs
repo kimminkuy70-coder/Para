@@ -1283,6 +1283,12 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   await mini.getByRole('tab',{name:'AOI 장비 호기 루트',exact:true}).click();
   await mini.locator('[data-tour="settings:aoi-table"]').waitFor();
   assert.equal(await mini.locator('[data-tour="settings:aoi-table"] th',{hasText:'Job 폴더'}).count(),0);
+  // v14.4.3(#90): Mini 도 정보 탭에 업데이트 구역 · GitHub 글자가 없다(시작 알림 창만).
+  await mini.getByRole('tab',{name:'정보'}).click();
+  await mini.getByLabel('오류 로그 폴더').waitFor();
+  assert.equal(await mini.getByRole('button',{name:'업데이트 확인',exact:true}).count(),0);
+  assert.equal(await mini.getByText(/GitHub|OneDrive 에 새 버전 게시|게시 폴더 열기|오류 로그 폴더의 파일을 담당자/).count(),0);
+  assert.equal(await mini.locator('body').evaluate(b=>/github/i.test(b.innerText)),false);
   // 기능 둘러보기 = Mini 탭만, 끝까지 오류 없이.
   await mini.getByRole('button',{name:'기능 둘러보기',exact:true}).click();
   const mb=mini.locator('.tour-bubble');

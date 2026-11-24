@@ -9,11 +9,12 @@
 - 시험: `tests/test_appupdate.py`(오류 글에 GitHub 없음) · `tools/test_desktop_ui.mjs`(설정에 '업데이트 확인' 단추 · GitHub 글자 없음) 통과, `PYTHONPATH=vendor python3 tools/check_project.py` Failed files: none. Windows 실기 확인 못 함.
 - 해석(확인 전): ① '위의 문구 삭제' = 설정의 업데이트 구역 전체(머리 · 단추 2개 · 안내 · 개발자 게시 · 오류 로그 안내). 업데이트는 시작할 때 알림 창(AppUpdate.tsx)으로 그대로 됨 → 설정에서 수동 확인 · OneDrive 게시(보조 통로) 화면은 이제 없음(엔진 IPC `appupdate_publish` · `appupdate_open_dir` 는 남김).
   ② 삭제 대상 = 사용자가 보는 글자만. 코드 안 주소(`github.com` 릴리스 피드) · 주석 · 개발 문서는 그대로(업데이트가 계속 돼야 하므로). ③ 소스 폴더 실행 때의 '(git 으로 받으십시오)' 는 GitHub 이 아니라 그대로 둠.
-- 릴리스: push 하면 `v14.yml` 이 Release v14.4.3(`AOI_Manager_v14.4.3_install.zip`) 생성.
+- 릴리스: v14.4.3 Release 생성됨(`AOI_Manager_v14.4.3_install.zip`, run 45334342315 성공). Mini(AOI Manager Mini)도 같은 판 · 같은 화면 코드라 같이 적용(소유자 후속 확인 요청 → 화면 시험으로 확인).
 
 | 요청 | 결과 |
 |---|---|
 | #90 설정 업데이트 문구 · GitHub 문구 삭제, 노트 "버그 수정", 릴리스 | 구현 · 시험 통과 · v14.4.3 릴리스(push → v14.yml) |
+| #90 후속(소유자 세션): "Mini 에도 동일하게" | Mini 는 같은 `Settings.tsx` · 같은 dist · 같은 설치 zip 이라 v14.4.3 에 이미 적용됨 — 화면 시험 Mini 단계에 정보 탭 업데이트 구역 · GitHub 글자 없음 단언 추가, 통과. 코드 무변경 · 새 릴리스 없음 |
 
 ## 최신 재개 — v14.4.2 릴리스: 맨 위 탭 `TB500 Review 조회`(KLA 와 설정 사이, Mini 포함) (2026-11-24 KST, `version_v14`, 소유자 세션)
 
