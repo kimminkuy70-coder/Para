@@ -107,7 +107,7 @@ def _opener():
 def _get(url: str, timeout: float, limit: int, sink=None) -> bytes:
     host = urllib.parse.urlsplit(url).hostname or ""
     if not url.startswith("https://") or host not in ALLOWED_HOSTS:
-        raise ValueError(f"허용하지 않은 주소: {host}")
+        raise ValueError("허용하지 않은 주소입니다")
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with _opener().open(req, timeout=timeout) as r:
         if sink is None:
@@ -350,7 +350,7 @@ class DesktopAppUpdate:
         try:
             found = latest_github(self.fetch_feed)
         except Exception as exc:  # noqa: BLE001 - offline / blocked: fall back quietly
-            error = f"GitHub 확인 실패: {type(exc).__name__}"
+            error = f"온라인 확인 실패: {type(exc).__name__}"
         if found is None:
             try:
                 found = latest_onedrive(save_dir)

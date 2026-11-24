@@ -1,5 +1,20 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.4.3 릴리스: 설정 업데이트 구역 · 화면의 GitHub 글자 삭제 (2026-11-24 KST, `version_v14`, 이슈 #90, 자동 이슈 처리)
+
+- 마지막 갱신 2026-11-24 · 기준 커밋 `b83e962`(v14.4.2) · 이슈 #90 · 소유자: 설정 > 정보의 '업데이트 · 업데이트 확인 · 게시 폴더 열기 · 안내 글 · 개발자: OneDrive 에 새 버전 게시 · 오류 로그 안내' 문구를 지우고,
+  "프로그램에서 GitHub 과 관련된 문구 전부 삭제 — GitHub 를 쓰는 것을 프로그램에서 밝히지 마", 업데이트 사항은 "버그 수정" 으로 간단히, 릴리스까지.
+- 한 일: `Settings.tsx` 업데이트 구역 전체 삭제(관련 상태 · 함수 · import 도) · `desktop_appupdate.py` 오류 글 'GitHub 확인 실패' → '온라인 확인 실패', '허용하지 않은 주소: {host}' → 호스트 이름 없이 ·
+  `desktop_ipc.py` 업데이트 실패 글에서 '(github.com)' 삭제 · `__version__` 14.4.3 · `docs/release_notes/v14.4.3.md`(한 줄 "버그 수정") · `frontend/dist` 다시 빌드(dist JS 에 github 글자 없음 확인).
+- 시험: `tests/test_appupdate.py`(오류 글에 GitHub 없음) · `tools/test_desktop_ui.mjs`(설정에 '업데이트 확인' 단추 · GitHub 글자 없음) 통과, `PYTHONPATH=vendor python3 tools/check_project.py` Failed files: none. Windows 실기 확인 못 함.
+- 해석(확인 전): ① '위의 문구 삭제' = 설정의 업데이트 구역 전체(머리 · 단추 2개 · 안내 · 개발자 게시 · 오류 로그 안내). 업데이트는 시작할 때 알림 창(AppUpdate.tsx)으로 그대로 됨 → 설정에서 수동 확인 · OneDrive 게시(보조 통로) 화면은 이제 없음(엔진 IPC `appupdate_publish` · `appupdate_open_dir` 는 남김).
+  ② 삭제 대상 = 사용자가 보는 글자만. 코드 안 주소(`github.com` 릴리스 피드) · 주석 · 개발 문서는 그대로(업데이트가 계속 돼야 하므로). ③ 소스 폴더 실행 때의 '(git 으로 받으십시오)' 는 GitHub 이 아니라 그대로 둠.
+- 릴리스: push 하면 `v14.yml` 이 Release v14.4.3(`AOI_Manager_v14.4.3_install.zip`) 생성.
+
+| 요청 | 결과 |
+|---|---|
+| #90 설정 업데이트 문구 · GitHub 문구 삭제, 노트 "버그 수정", 릴리스 | 구현 · 시험 통과 · v14.4.3 릴리스(push → v14.yml) |
+
 ## 최신 재개 — v14.4.2 릴리스: 맨 위 탭 `TB500 Review 조회`(KLA 와 설정 사이, Mini 포함) (2026-11-24 KST, `version_v14`, 소유자 세션)
 
 - 마지막 갱신 2026-11-24 · 기준 커밋 `0014a09`(v14.4.1) · 소유자: "TB500_review 도 AOI manager UX 테마에 맞게 Camtek, KLA, 설정 탭에 대해 KLA 와 설정 사이에 새 탭 … 이름은 TB500 Review 조회,

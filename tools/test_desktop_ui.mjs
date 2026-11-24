@@ -582,9 +582,9 @@ try{
   await page.waitForFunction(()=>/C:\\Job \(기본\)/.test(document.querySelector('[data-testid="jobdir-AOI-08"]')?.textContent||''));
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('오류 로그 폴더').waitFor();
-  await page.getByRole('button',{name:'업데이트 확인',exact:true}).click();
-  await page.getByText('새 버전 14.9.0이 있습니다.').waitFor();
-  await page.getByText(/최신 14.9.0 \(OneDrive\)/).waitFor();
+  // v14.4.3(#90 소유자): 설정에는 업데이트 구역이 없다(업데이트는 시작 알림 창만) · 프로그램 화면에 GitHub 글자 없음.
+  assert.equal(await page.getByRole('button',{name:'업데이트 확인',exact:true}).count(),0);
+  assert.equal(await page.getByText(/GitHub|OneDrive 에 새 버전 게시|게시 폴더 열기/).count(),0);
   await page.getByRole('tab',{name:'로컬 작업 폴더'}).click();
   await page.getByLabel('현재 위치').waitFor();
   await page.getByRole('button',{name:'오래된 임시 폴더 정리',exact:true}).click();

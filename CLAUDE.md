@@ -2,6 +2,8 @@
 
 ## v14 (브랜치 `version_v14` = `version_v13` 복사, 2026-11-15~) — Defect 분석 탭
 
+- **v14.4.3(#90, 2026-11-24)**: 프로그램 화면에 GitHub 글자를 쓰지 않는다(소유자: GitHub 을 쓰는 것을 밝히지 말 것). 설정 > 정보에 업데이트 구역 없음 — 업데이트는 시작 알림 창만. 새 화면 글 · 오류 글에도 GitHub · github.com 을 넣지 말 것.
+
 - 계획 · 소유자 결정 = `docs/V14_Defect분석_계획.md`(맨 아래 '구현 결과'가 최신). 릴리스 = `version_v14` push → `.github/workflows/v14.yml`(종전 v13.yml, 판 = 14.x.y).
 - **v14.4.2(소유자 2026-11-23) — 맨 위 탭 `TB500 Review 조회`(KLA 와 설정 사이, Mini 포함)**: 리뷰 전용 HTML(`TB500_Review.html`, 브랜치 `version_TB500_review`
   — **앱이 없는 PC 용으로 유지**, 소유자 결정)의 조회를 앱 안으로. 엔진 `param_manager/desktop_tb500.py` · 화면 `frontend/src/Tb500.tsx`(CSS = `styles.css` 끝 `.tb5` · `.tb5-win`) · 시험 `tests/test_tb500.py` · `tools/test_desktop_ui.mjs`.

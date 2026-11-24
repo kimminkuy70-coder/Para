@@ -178,7 +178,7 @@ class ApplyTest(unittest.TestCase):
         a.fetch_feed = lambda: (_ for _ in ()).throw(OSError("offline"))
         r = a.check()
         self.assertEqual((r["source"], r["available"], r["changelog"]), ("onedrive", "14.9.9", "1. 노트"))
-        self.assertIn("GitHub", r["error"])
+        self.assertIn("온라인 확인 실패", r["error"]); self.assertNotIn("GitHub", r["error"])   # v14.4.3(#90): 화면에 GitHub 글자 없음
         a.apply()
         self.assertTrue((self.home / "app.new" / "param_manager" / "launcher.py").is_file())
         # a half-synced file (size/SHA mismatch) is refused

@@ -1,11 +1,9 @@
 import {useEffect,useState} from 'react';
-import {desktop,pickFolder,pickFile} from './desktop';
+import {desktop,pickFolder} from './desktop';
 import {notify,fail,LoadFailed} from './ui';
 import {errorText} from './desktop';
 import {takeSettingsIntent} from './nav';
 import {OpenPath,openPath} from './OpenPath';
-import {installUpdate,openProgramDir} from './AppUpdate';
-import type {AppUpdate} from './desktop';
 import {useDev,setDevOn,saveDrafts,dropDrafts} from './devmode';
 import {DevHelp,DevOff} from './DevHelp';
 import {ScanBackupBar,useScanBackup} from './ScanBackup';
@@ -45,18 +43,6 @@ export function Settings(){
   const [xMachine,setXMachine]=useState(''),[xKind,setXKind]=useState<ExtraKind>('report'),[xPath,setXPath]=useState('');
   type Local={root:string;summary:string;onedrive:boolean;default:string;removed?:number};
   type About={version:string;user:string;config:string;local_root:string;logs:string;diag_log?:string};
-  const [upd,setUpd]=useState<AppUpdate>(),[pubPath,setPubPath]=useState(''),[pubNotes,setPubNotes]=useState('');
-  async function checkUpdate(){
-    try{const r=(await desktop.request('appupdate_check').promise).appupdate as AppUpdate;setUpd(r);
-      notify(r.newer?`새 버전 ${r.available}이 있습니다.`:r.available?`최신 버전입니다(${r.current}).`:`확인할 수 있는 릴리스가 없습니다${r.error?` (${r.error})`:''}.`,'info');}
-    catch(e){fail(e);}
-  }
-  async function publishPackage(){
-    setBusy(true);
-    try{const r=(await desktop.request('appupdate_publish',{path:pubPath.trim(),notes:pubNotes}).promise).appupdate as {version:string;file:string};
-      notify(`${r.version} 게시 완료 (${r.file}). GitHub 에 연결되지 않는 PC는 다음 실행 때 알림을 받습니다.`,'ok');setPubNotes('');setPubPath('');}
-    catch(e){fail(e);}finally{setBusy(false);}
-  }
   const [diagZip,setDiagZip]=useState('');
   // 개발자 기능(Batch Report 중복 Pass 직접 선택): 저장 안 한 선택이 있으면 끄기 전에 묻고, 조사 중에는 잠근다.
   const dev=useDev();
@@ -314,24 +300,7 @@ export function Settings(){
         catch(e){notify(errorText(e),'error');}}}>진단 로그 묶기 (zip)</button></div>
       {diagZip&&<OpenPath label="진단 로그 zip" path={diagZip}/>}
       {about?.diag_log&&<OpenPath label="상세 진단 로그" path={about.diag_log}/>}
-      <h3 style={{marginTop:24}}>업데이트</h3>
-      <div className="toolbar"><button onClick={checkUpdate}>업데이트 확인</button><button onClick={openProgramDir}>게시 폴더 열기</button>
-        {upd?.newer&&!upd.pending_ready&&<button className="primary" disabled={busy||!upd.installed} onClick={()=>void installUpdate()}>지금 {upd.available}(으)로 업데이트</button>}</div>
-      {upd?.pending_ready&&<p className="hint"><b>새 버전 {upd.pending}을 받아 두었습니다.</b> 프로그램을 종료하고 다시 실행하면 적용됩니다.</p>}
-      {upd&&<p className="hint">현재 {upd.current} · 최신 {upd.available||'없음'}{upd.source?` (${upd.source==='github'?'GitHub':'OneDrive'})`:''}{upd.changelog?` — ${upd.changelog}`:''}</p>}
-      <p className="hint">새 버전은 <b>GitHub 의 이 프로그램 릴리스</b>에서 확인하고 받습니다(인터넷은 이때만 씁니다). GitHub 에 연결되지 않으면 OneDrive 게시 폴더를 봅니다.
-        받은 파일은 프로그램 글 파일(.py · .js)뿐이며 실행 파일이 들어 있으면 적용하지 않습니다.</p>
-      <details style={{marginTop:16}}><summary>개발자: OneDrive 에 새 버전 게시(보조 통로)</summary>
-        <p className="hint">GitHub 릴리스 페이지의 <b>Source code (zip)</b>(v13 태그)을 받아 그대로 고르세요. 이 PC의 로컬 임시 폴더에서만 풀어
-          실행 파일이 없는지 · 버전이 맞는지 확인한 뒤, OneDrive 프로그램 폴더에 zip 1개와 버전 정보 1개를 씁니다.
-          GitHub 에 연결되지 않는 PC는 이 파일로 업데이트합니다.</p>
-        <div className="form-filter"><label className="field" style={{flex:1,minWidth:260}}>소스 zip<input value={pubPath} maxLength={4096}
-          placeholder="예: C:\Users\이름\Downloads\Para-13.0.1.zip" onChange={e=>setPubPath(e.target.value)}/></label>
-          <button onClick={async()=>{const p=await pickFile('zip');if(p)setPubPath(p);else notify('파일 선택이 취소되었거나 프로그램 창이 아닙니다. 경로를 직접 붙여넣어 주세요.','info');}}>📦 zip 찾기</button></div>
-        <label className="field">변경 내용<textarea rows={3} maxLength={4000} value={pubNotes} onChange={e=>setPubNotes(e.target.value)}/></label>
-        <div className="toolbar"><button className="primary" disabled={busy||!pubPath.trim()} onClick={publishPackage}>게시</button></div>
-      </details>
-      <p className="hint">문제가 생기면 오류 로그 폴더의 파일을 담당자에게 전달하세요.</p>
+      {/* v14.4.3(#90 소유자): 업데이트 구역(확인 · 게시 폴더 · 안내 · OneDrive 게시)은 뺐다 — 업데이트는 시작할 때 알림 창(AppUpdate.tsx)으로만 */}
     </>}
 
     </div>
