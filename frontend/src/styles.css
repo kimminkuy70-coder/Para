@@ -1150,3 +1150,81 @@ kbd{border-color:var(--line-strong);border-radius:var(--r-s);font-family:var(--f
 .bv .mbox{border-radius:var(--r-m);background:#fff}.bv .mbox.on{border-color:var(--accent);box-shadow:0 0 0 .5px var(--accent)}
 .bv .lotlist{border-top:0;box-shadow:none;border:1px solid var(--line);border-radius:var(--r-l)}
 .bv .ll-head{background:var(--bg-surface)}
+
+/* ===== 모션 부품(DESIGN.md 8절) — 움직이는 것은 transform · opacity 만. motion.ts 가 붙이는 요소(.tab-ink · .wp) 와 CopyButton · 작업 단계 ===== */
+/* 탭 밑줄 · 분절 고른 칸(앞쪽 끝 620 · 36, 뒤쪽 끝 190 · 19) — 붙으면 단추 자체의 밑줄 · 흰 칸은 끈다 */
+.tab-ink{position:absolute;left:0;pointer-events:none;will-change:transform,width;opacity:0;transition:opacity var(--dur-base) var(--ease-std)}
+.tab-ink.show{opacity:1}
+.tab-ink.line{bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--accent)}
+.tab-ink.thumb{top:3px;bottom:3px;border-radius:var(--btn-s);background:#fff;box-shadow:var(--sh-1);z-index:0}
+.has-ink.ink-line>button,.has-ink.ink-line>button.active,.has-ink.ink-line>button.active:hover,.has-ink.ink-line>button[aria-selected=true]{border-bottom-color:transparent}
+.has-ink.ink-thumb>button{position:relative;z-index:1}
+.has-ink.ink-thumb>button.active,.has-ink.ink-thumb>button.on,.has-ink.ink-thumb>button.active:hover,.has-ink.ink-thumb>button.on:hover{background:transparent;box-shadow:none}
+/* 단계 표시(designbookmark step-progress): 선 채움 · 지금 단계 튀어 오름(0.7배 → 1) · 끝난 단계 채움 */
+.stepper .dot{transition:background-color 300ms var(--ease-soft),color 300ms var(--ease-soft)}
+.stepper .st.now .dot{animation:step-pop 520ms cubic-bezier(.34,1.56,.64,1)}
+.stepper .st.done .dot{animation:step-fill 320ms var(--ease-soft)}
+.stepper .bar{position:relative;overflow:hidden}.stepper .bar::after{content:'';position:absolute;inset:0;background:var(--accent-line);transform:scaleX(0);transform-origin:left;transition:transform 420ms var(--ease-soft)}
+.stepper .st.done .bar::after{transform:scaleX(1)}.stepper .st.done .bar{background:var(--grey-200)}
+@keyframes step-pop{0%{transform:scale(.7)}100%{transform:none}}
+@keyframes step-fill{0%{transform:scale(.85);opacity:.6}100%{transform:none;opacity:1}}
+/* 돌림 선택(Kokonut UI wheel-picker) — select 는 그대로 두고(키보드 · 화면 읽기) 보이는 것은 원통 */
+select.wp-src{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;border:0!important;opacity:0;pointer-events:none}
+.field:has(>select.wp-src){position:relative}
+.wp{position:relative;display:flex;justify-content:center;width:100%;margin-top:2px;border:1px solid var(--line);border-radius:var(--r-l);background:var(--bg-surface);user-select:none;-webkit-user-select:none;transition:opacity var(--dur-base) var(--ease-std),box-shadow var(--dur-base) var(--ease-std)}
+.wp.off{opacity:.4;pointer-events:none}.wp.focus{box-shadow:0 0 0 2px var(--focus)}
+.wp-band{position:absolute;left:8px;right:8px;top:50%;height:36px;transform:translateY(-50%);border-radius:var(--btn-s);background:var(--grey-100);pointer-events:none}
+.wp-tick{position:absolute;top:50%;width:4px;height:1px;background:var(--grey-400);transform:translateY(-50%);pointer-events:none}.wp-tick.l{left:2px}.wp-tick.r{right:2px}
+.wp-col{position:relative;width:100%;height:180px;cursor:grab;touch-action:none}.wp-col:active{cursor:grabbing}
+.wp-fade{position:absolute;inset:0;-webkit-mask-image:linear-gradient(to bottom,transparent,#000 34%,#000 66%,transparent);mask-image:linear-gradient(to bottom,transparent,#000 34%,#000 66%,transparent)}
+.wp-drum{position:absolute;inset:0;perspective:1000px;pointer-events:none}.wp-drum.clip{clip-path:inset(calc(50% - 18px) 0 calc(50% - 18px) 0)}
+.wp-rot{position:absolute;left:0;right:0;top:50%;transform-style:preserve-3d;will-change:transform}
+.wp-row{position:absolute;left:0;right:0;top:-18px;height:36px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:400;font-variant-numeric:tabular-nums;backface-visibility:hidden;color:var(--text-3);white-space:nowrap}
+.wp-drum.clip .wp-row{color:var(--text-1);font-weight:700}
+/* 복사(designbookmark copy-button) */
+.cpb{display:inline-flex;align-items:center;gap:6px;height:28px;min-height:28px;padding:0 10px 0 8px;border-radius:var(--btn-s);background:var(--grey-100);color:var(--brand);font-size:12px;font-weight:700;overflow:hidden;flex:none;align-self:center}
+.cpb:hover:not(:disabled){background:var(--grey-200)}
+.cpb-ic{position:relative;width:16px;height:16px;flex:none}
+.cpb-ic svg{position:absolute;inset:0;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;will-change:transform,opacity}
+.cpb .i-ok{color:var(--emerald-600);stroke-width:2.4;opacity:0;transform:scale(.4)}
+.cpb-roll{position:relative;height:16px;overflow:hidden;display:block}
+.cpb-w{display:flex;flex-direction:column;align-items:flex-start;will-change:transform}
+.cpb-w b{display:block;height:16px;line-height:16px;white-space:nowrap}.cpb-w b+b{color:var(--emerald-700)}
+.open-actions{align-items:center}
+/* 작업 단계(Kokonut UI ai-loading) = 진행 패널 */
+.activity{border:0;border-radius:var(--r-l);box-shadow:var(--sh-2);padding:12px 14px 10px;width:380px}
+.activity-head .x{display:grid;place-items:center;width:24px;height:24px;padding:0;background:transparent;color:var(--text-3)}
+.as-chev{width:8px;height:8px;border-right:1.8px solid currentColor;border-bottom:1.8px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform 200ms var(--ease-out)}
+.activity-head .x[aria-expanded=false] .as-chev{transform:translateY(2px) rotate(-135deg)}
+.as-spin{width:14px;height:14px;flex:none;border-radius:50%;border:1.5px solid var(--grey-200);border-top-color:var(--emerald-600);animation:spin .8s linear infinite}
+.as-spin.ok{animation:none;border-color:var(--emerald-600)}
+.as-wrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows 250ms var(--ease-out),opacity 250ms var(--ease-out)}
+.as-wrap[data-open=false]{grid-template-rows:0fr;opacity:0}.as-wrap>*{min-height:0;overflow:hidden}
+.as-wrap>.activity-hint{overflow:visible}
+.as-list{list-style:none;margin:6px 0 0;padding:0;max-height:300px;overflow:auto}
+.as-step{display:flex;gap:10px;padding:8px 0 2px;border-top:0;animation:as-in 200ms var(--ease-out)}
+.as-ic{width:16px;height:16px;flex:none;margin-top:2px}
+.as-ic svg{width:16px;height:16px;fill:none;stroke-width:1.5;stroke-linecap:round}
+.as-step[data-s=running] .as-ic circle{stroke:var(--grey-200)}.as-step[data-s=running] .as-ic path{stroke:var(--emerald-600)}
+.as-step[data-s=running] .as-ic svg{animation:spin .8s linear infinite}
+.as-step[data-s=done] .as-ic path{stroke:var(--emerald-600);stroke-width:1.8;stroke-dasharray:1;stroke-dashoffset:1;animation:as-check 300ms var(--ease-out) 50ms forwards}
+.as-main{flex:1;min-width:0}
+.as-row{display:flex;align-items:baseline;gap:8px}
+.as-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.as-step[data-s=running] .as-label{color:var(--text-1);font-weight:700}.as-step[data-s=done] .as-label{color:var(--text-2)}
+.as-step[data-s=running] .as-label>span{white-space:pre;animation:as-wave 1.6s ease-in-out infinite both}
+.as-time{margin-left:auto;flex:none;font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums;font-weight:400}
+.as-log{position:relative;overflow:hidden;margin-top:2px;font:12px/24px var(--font-mono);transition:height 240ms var(--ease-out)}
+.as-log.mask{-webkit-mask-image:linear-gradient(to bottom,rgb(0 0 0/.25),#000 70%);mask-image:linear-gradient(to bottom,rgb(0 0 0/.25),#000 70%)}
+.as-lines{transition:transform 300ms var(--ease-out)}
+.as-line{display:flex;align-items:center;gap:8px;height:24px;color:var(--text-2);animation:as-in 200ms var(--ease-out)}
+.as-line b{width:16px;text-align:right;color:var(--text-3);font-weight:400;font-variant-numeric:tabular-nums;flex:none}
+.as-line span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes as-wave{50%{opacity:.3}}@keyframes as-check{to{stroke-dashoffset:0}}@keyframes as-in{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* 페이지 · 카드 들어올 때: 8px 위에서 떠오름 320ms(탭을 바꿔 화면이 보일 때마다) · 큰 숫자 카드는 45ms 차례 */
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+main .panel,.kpis article,.bv .kpib button{animation:rise var(--dur-slow) var(--ease-out) both}
+.kpis article:nth-child(2),.bv .kpib button:nth-child(2){animation-delay:45ms}.kpis article:nth-child(3),.bv .kpib button:nth-child(3){animation-delay:90ms}
+.kpis article:nth-child(4),.bv .kpib button:nth-child(4){animation-delay:135ms}.kpis article:nth-child(5),.bv .kpib button:nth-child(5){animation-delay:180ms}
+@media(prefers-reduced-motion:reduce){.tab-ink,.stepper .dot,.stepper .bar::after,.as-step,.as-line,.as-lines,.as-log,.as-wrap,main .panel,.kpis article,.bv .kpib button{animation:none!important;transition:none!important}}

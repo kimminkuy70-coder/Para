@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {desktop, errorText, setBackground, mergeNotice, type WatchNotice, type Configuration} from './desktop';
 import './styles.css';
+import {startMotion} from './motion';
 import {Settings} from './Settings';
 import {Memo} from './Memo';
 import {Commonality} from './Commonality';
@@ -156,3 +157,4 @@ function App(){
   </div>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);
+startMotion();   // DESIGN.md 8절: 탭 밑줄 미끄러짐 · 돌림 선택(select[data-wheel])

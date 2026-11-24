@@ -30,10 +30,10 @@ async function ask<T>(method:string,params:object,key:'pwatch'|'cmwatch'|'watch'
 function Schedule({interval,intervals,start,end,onChange,disabled}:{interval:number;intervals:Interval[];start:number;end:number;
   onChange:(k:'interval_hours'|'window_start'|'window_end',v:number)=>void;disabled?:boolean}){
   return <div className="form-filter">
-    <label className="field">주기<select value={interval} disabled={disabled} onChange={e=>onChange('interval_hours',Number(e.target.value))}>
+    <label className="field">주기<select data-wheel value={interval} disabled={disabled} onChange={e=>onChange('interval_hours',Number(e.target.value))}>
       {intervals.map(i=><option key={i.hours} value={i.hours}>{i.label}</option>)}</select></label>
-    <label className="field">실행 시간대 시작<select value={start} disabled={disabled} onChange={e=>onChange('window_start',Number(e.target.value))}>{HOURS.map(h=><option key={h} value={h}>{h}시</option>)}</select></label>
-    <label className="field">끝<select value={end} disabled={disabled} onChange={e=>onChange('window_end',Number(e.target.value))}>{HOURS.map(h=><option key={h} value={h}>{h}시</option>)}</select></label>
+    <label className="field">실행 시간대 시작<select data-wheel value={start} disabled={disabled} onChange={e=>onChange('window_start',Number(e.target.value))}>{HOURS.map(h=><option key={h} value={h}>{h}시</option>)}</select></label>
+    <label className="field">끝<select data-wheel value={end} disabled={disabled} onChange={e=>onChange('window_end',Number(e.target.value))}>{HOURS.map(h=><option key={h} value={h}>{h}시</option>)}</select></label>
     <p className="hint">{start===end?(start===0?'시간 제한 없음':`매일 ${start}시에 시작해 주기마다 반복`):`${start}시~${end}시 사이에만 실행`}</p>
   </div>;
 }

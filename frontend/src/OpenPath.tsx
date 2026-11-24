@@ -1,5 +1,6 @@
 import {desktop} from './desktop';
 import {fail} from './ui';
+import {CopyButton} from './CopyButton';
 
 /** Ask the engine to open a produced file (or reveal it in Explorer). */
 export async function openPath(path:string,reveal=false){
@@ -12,6 +13,7 @@ export function OpenPath({label,path,folder=false}:{label:string;path:string;fol
   return <div className="open-path">
     <label className="field">{label}<input readOnly value={path} onFocus={e=>e.target.select()}/></label>
     <div className="open-actions">
+      <CopyButton text={path}/>
       <button type="button" disabled={!path} onClick={()=>openPath(path)}>{folder?'폴더 열기':'열기'}</button>
       {!folder&&<button type="button" disabled={!path} onClick={()=>openPath(path,true)}>폴더에서 보기</button>}
     </div>

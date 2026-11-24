@@ -774,13 +774,17 @@ try{
     ['파라미터 자동 분석 및 취합','Commonality 자동 분석 및 취합 (여러 호기 무인)','Batch Report 자동 분석']);
   await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합',exact:true}).click();
   await page.mouse.move(0,0);   // hover 색이 아니라 선택 색을 본다(아래 색 확인)
-  await page.waitForFunction(()=>getComputedStyle([...document.querySelectorAll('[role=tab]')].find(t=>t.textContent==='파라미터 자동 분석 및 취합')).borderBottomColor==='rgb(16, 185, 129)');   // DESIGN 14절 3: 고른 탭 = 에메랄드 밑줄만
+  // DESIGN 14절 3: 고른 탭 = 에메랄드 밑줄만(민트 바탕 없음) — 밑줄은 탭 사이를 미끄러지는 한 줄(motion.ts .tab-ink), 멈추면 고른 탭 바로 아래
+  const tabInk=()=>page.evaluate(()=>{const t=[...document.querySelectorAll('[role=tab]')].find(x=>x.textContent==='파라미터 자동 분석 및 취합'),i=t.parentElement.querySelector(':scope>.tab-ink.show');
+    if(!i)return null;const a=t.getBoundingClientRect(),b=i.getBoundingClientRect();return [Math.round(b.left-a.left)|0,Math.round(b.width-a.width)|0,Math.round(a.bottom-b.bottom)|0,getComputedStyle(i).backgroundColor,getComputedStyle(t).backgroundColor]});
+  await page.waitForFunction(()=>{const t=[...document.querySelectorAll('[role=tab]')].find(x=>x.textContent==='파라미터 자동 분석 및 취합'),i=t&&t.parentElement.querySelector(':scope>.tab-ink.show');
+    return i&&Math.abs(i.getBoundingClientRect().left-t.getBoundingClientRect().left)<1&&Math.abs(i.getBoundingClientRect().width-t.getBoundingClientRect().width)<1});
   const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 분석 및 취합'})});
   // 최근 알림 first, then one tab per watch; status table above the wizard.
   await page.getByRole('heading',{name:'최근 알림'}).waitFor();
   await pw.getByLabel('파라미터 자동 분석 및 취합 현황').waitFor();
   // Selected sub-tab = green underline like the top tabs (DESIGN.md 14절 3 — 민트 바탕 없음).
-  assert.deepEqual(await page.getByRole('tab',{name:'파라미터 자동 분석 및 취합'}).evaluate(el=>{const c=getComputedStyle(el);return [c.borderBottomColor,c.backgroundColor]}),['rgb(16, 185, 129)','rgba(0, 0, 0, 0)']);
+  assert.deepEqual(await tabInk(),[0,0,0,'rgb(16, 185, 129)','rgba(0, 0, 0, 0)']);
   await pw.getByRole('button',{name:'다음 ▶',exact:true}).click();          // ① 주기·시간대 → ② 장비 연결 확인
   const conn=pw.locator('[role=group][aria-label="연결 확인 호기"]');
   await conn.getByLabel('AOI-01 선택').check();

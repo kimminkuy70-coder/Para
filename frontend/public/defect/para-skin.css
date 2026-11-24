@@ -245,3 +245,10 @@ body.pskin .fgrid .fh{font-weight:700}
 body.pskin nav button .n,body.pskin .b5tabs button b{font-weight:700}
 body.pskin .pguide{background:var(--slate50);border:0}
 body.pskin .ptg{border-color:var(--bd2)}
+/* 단계 표시 움직임(DESIGN.md 8-2 ①): 지금 단계 튀어 오름(0.7배 → 1) · 색 바뀜 0.3초 */
+body.pskin .b5tabs button b,body.pskin nav button .n{transition:background-color .3s cubic-bezier(.23,1,.32,1),color .3s cubic-bezier(.23,1,.32,1)}
+body.pskin .b5tabs button[aria-pressed="true"] b,body.pskin nav button[aria-current] .n{animation:pskin-pop .52s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pskin-pop{0%{transform:scale(.7)}100%{transform:none}}
+body.pskin .card{animation:pskin-rise .32s cubic-bezier(.16,1,.3,1) both}
+@keyframes pskin-rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){body.pskin .b5tabs button b,body.pskin nav button .n,body.pskin .card{animation:none;transition:none}}

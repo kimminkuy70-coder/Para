@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {desktop,type Activity} from './desktop';
 
 /* Friendly names for what the engine is doing (unlisted methods get a generic label). */
@@ -28,26 +28,51 @@ const QUIET=new Set(['watch_status','document_close','recipe_close','document_pa
   'commonality_page','cmrun_page','cmwatch_page','formnew_page','table_page','release','cancel','contract','open_path','diag_client','cgm_read','cgm_put','cgm_fail','cgm_state','cgm_reset']);
 const SHOW_AFTER_MS=700, SLOW_MS=15000;
 
-/** Bottom-right card: what the engine is doing now and for how long. */
+const fmtSec=(sec:number)=>sec<60?`${sec}초`:`${Math.floor(sec/60)}분 ${String(sec%60).padStart(2,'0')}초`;
+const MAX_LINES=20,DONE_MS=1200;
+type Done={id:number;label:string;sec:number};
+
+/** Bottom-right card: what the engine is doing now and for how long.
+ *  모양 = DESIGN.md 8-2 ② 작업 단계(Kokonut UI ai-loading, MIT): 진행 = 회전 고리, 끝 = 그려지는 체크(잠깐 남았다 사라짐),
+ *  진행 중 이름에 물결, 엔진 진행 글은 기록 줄로 3줄까지(새 줄이 오면 밀려 올라감). */
 export function ActivityPanel(){
-  const [items,setItems]=useState<Activity[]>([]),[now,setNow]=useState(Date.now()),[folded,setFolded]=useState(false);
+  const [items,setItems]=useState<Activity[]>([]),[now,setNow]=useState(Date.now()),[folded,setFolded]=useState(false),[done,setDone]=useState<Done[]>([]);
+  const logs=useRef(new Map<number,string[]>()),shown=useRef(new Map<number,Done>());
   useEffect(()=>desktop.onActivity(setItems),[]);
   const visible=items.filter(a=>!QUIET.has(a.method)&&now-a.started>=SHOW_AFTER_MS);
+  for(const a of items){if(!a.message)continue;const L=logs.current.get(a.id)||[];if(L[L.length-1]!==a.message){L.push(a.message);if(L.length>MAX_LINES)L.shift();logs.current.set(a.id,L);}}
+  useEffect(()=>{   // 끝난 작업 = 체크로 잠깐 남김
+    const live=new Set(items.map(a=>a.id)),gone:Done[]=[];
+    for(const [id,d] of shown.current)if(!live.has(id)){gone.push(d);shown.current.delete(id);logs.current.delete(id);}
+    for(const id of [...logs.current.keys()])if(!live.has(id))logs.current.delete(id);
+    if(!gone.length)return;
+    setDone(d=>[...d,...gone]);window.setTimeout(()=>setDone(d=>d.filter(x=>!gone.includes(x))),DONE_MS);   // 다음 변경이 와도 지우기는 취소하지 않는다
+  },[items]);
+  for(const a of visible)shown.current.set(a.id,{id:a.id,label:LABEL[a.method]||a.method,sec:Math.floor((now-a.started)/1000)});
   useEffect(()=>{
     if(!items.length)return;
     const t=window.setInterval(()=>setNow(Date.now()),500);
     return()=>window.clearInterval(t);
   },[items.length]);
-  useEffect(()=>{if(!visible.length)setFolded(false);},[visible.length]);
-  if(!visible.length)return null;
+  useEffect(()=>{if(!visible.length&&!done.length)setFolded(false);},[visible.length,done.length]);
+  if(!visible.length&&!done.length)return null;
   const slow=visible.some(a=>now-a.started>=SLOW_MS);
   return <div className={'activity'+(folded?' folded':'')} role="status" aria-live="polite" aria-label="진행 상황">
-    <div className="activity-head"><span className="spinner" aria-hidden="true"/><b>처리 중 {visible.length}건</b>
-      <button className="x" aria-label={folded?'진행 상황 펼치기':'진행 상황 접기'} onClick={()=>setFolded(f=>!f)}>{folded?'▴':'▾'}</button></div>
-    {!folded&&<><ul>{visible.map(a=>{const sec=Math.floor((now-a.started)/1000);return <li key={a.id}>
-      <div className="activity-row"><span>{LABEL[a.method]||a.method}</span><span className="elapsed">{sec}초</span></div>
-      {a.message&&<p>{a.message}</p>}</li>;})}</ul>
-      {slow&&<p className="activity-hint">OneDrive 파일을 내려받거나 장비 폴더 응답을 기다리는 중일 수 있습니다. 창을 닫지 말고 기다려 주세요.
-        단계별 소요시간은 자동 기록되며, [설정 › 정보 › 진단 로그 묶기]로 zip 하나를 만들어 전달하면 원인을 분석할 수 있습니다.</p>}</>}
+    <div className="activity-head"><span className={'as-spin'+(visible.length?'':' ok')} aria-hidden="true"/><b>{visible.length?`처리 중 ${visible.length}건`:'끝났습니다'}</b>
+      <button className="x" aria-label={folded?'진행 상황 펼치기':'진행 상황 접기'} aria-expanded={!folded} onClick={()=>setFolded(f=>!f)}><span className="as-chev" aria-hidden="true"/></button></div>
+    <div className="as-wrap" data-open={!folded}><ol className="as-list">
+      {visible.map(a=>{const sec=Math.floor((now-a.started)/1000),label=LABEL[a.method]||a.method,L=logs.current.get(a.id)||[],n=L.length;
+        return <li key={a.id} className="as-step" data-s="running">
+          <span className="as-ic" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M8 1.75a6.25 6.25 0 0 1 6.25 6.25"/></svg></span>
+          <div className="as-main"><div className="as-row"><span className="as-label">{[...label].map((ch,k)=><span key={k} style={{animationDelay:`${(k*.05).toFixed(2)}s`}}>{ch}</span>)}</span>
+            <span className="elapsed as-time">{fmtSec(sec)}</span></div>
+            {n>0&&<div className={'as-log'+(n>2?' mask':'')} style={{height:24*Math.min(n,3)}}><div className="as-lines" style={{transform:`translateY(${-Math.max(0,n-3)*24}px)`}}>
+              {L.map((l,k)=><div key={k} className="as-line"><b>{k+1}</b><span>{l}</span></div>)}</div></div>}</div></li>;})}
+      {done.map(d=><li key={'d'+d.id} className="as-step" data-s="done">
+        <span className="as-ic" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" pathLength="1"/></svg></span>
+        <div className="as-main"><div className="as-row"><span className="as-label">{d.label}</span><span className="as-time">{fmtSec(d.sec)}</span></div></div></li>)}
+    </ol>
+    {slow&&<p className="activity-hint">OneDrive 파일을 내려받거나 장비 폴더 응답을 기다리는 중일 수 있습니다. 창을 닫지 말고 기다려 주세요.
+      단계별 소요시간은 자동 기록되며, [설정 › 정보 › 진단 로그 묶기]로 zip 하나를 만들어 전달하면 원인을 분석할 수 있습니다.</p>}</div>
   </div>;
 }

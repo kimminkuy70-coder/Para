@@ -70,14 +70,14 @@ export function BatchAutoPanel(){
     <label className="field checkbox" style={{marginTop:10}}><input type="checkbox" disabled={busy||!st} checked={!!st?.batch_auto}
       onChange={e=>save({enabled:e.target.checked},e.target.checked?'자동 분석을 켰습니다':'자동 분석을 껐습니다')}/>자동 분석 사용 (기본 꺼짐)</label>
     <div className="form-filter" style={{marginTop:12}}>
-      <label className="field" style={{width:220}}>분석 주기<select disabled={busy||!st} value={hours}
+      <label className="field" style={{width:220}}>분석 주기<select data-wheel disabled={busy||!st} value={hours}
         onChange={e=>save({interval_hours:Number(e.target.value)},'분석 주기를 저장했습니다')}>
         {(st?.batch_intervals||[24]).map(h=><option key={h} value={h}>{periodLabel(h)}</option>)}</select></label>
       {hours%24===0&&<>
-        <label className="field" style={{width:150}}>실행 시각 (시)<select disabled={busy||!st} value={autoTime?autoTime.slice(0,2):''}
+        <label className="field" style={{width:150}}>실행 시각 (시)<select data-wheel disabled={busy||!st} value={autoTime?autoTime.slice(0,2):''}
           onChange={e=>saveTime(e.target.value?`${e.target.value}:${autoTime?autoTime.slice(3):'00'}`:'')}>
           <option value="">지정 안 함</option>{HOURS.map(h=><option key={h} value={h}>{h}시</option>)}</select></label>
-        <label className="field" style={{width:130}}>분 (5분 단위)<select disabled={busy||!st||!autoTime} value={autoTime?autoTime.slice(3):'00'}
+        <label className="field" style={{width:130}}>분 (5분 단위)<select data-wheel disabled={busy||!st||!autoTime} value={autoTime?autoTime.slice(3):'00'}
           onChange={e=>saveTime(`${autoTime.slice(0,2)}:${e.target.value}`)}>
           {MINUTES.map(m=><option key={m} value={m}>{m}분</option>)}</select></label></>}
       <button type="button" disabled={busy||!st} style={{alignSelf:'flex-end'}} title="자동 분석이 꺼져 있어도 지난 조사 조건으로 바로 한 번 실행합니다"
