@@ -3,6 +3,15 @@
 ## v14 (브랜치 `version_v14` = `version_v13` 복사, 2026-11-15~) — Defect 분석 탭
 
 - 계획 · 소유자 결정 = `docs/V14_Defect분석_계획.md`(맨 아래 '구현 결과'가 최신). 릴리스 = `version_v14` push → `.github/workflows/v14.yml`(종전 v13.yml, 판 = 14.x.y).
+- **v14.4.2(소유자 2026-11-23) — 맨 위 탭 `TB500 Review 조회`(KLA 와 설정 사이, Mini 포함)**: 리뷰 전용 HTML(`TB500_Review.html`, 브랜치 `version_TB500_review`
+  — **앱이 없는 PC 용으로 유지**, 소유자 결정)의 조회를 앱 안으로. 엔진 `param_manager/desktop_tb500.py` · 화면 `frontend/src/Tb500.tsx`(CSS = `styles.css` 끝 `.tb5` · `.tb5-win`) · 시험 `tests/test_tb500.py` · `tools/test_desktop_ui.mjs`.
+  판정 규칙은 HTML 과 같다(Para #40 ~ #85: Lot 폴더 찾기 · ★ 폴더 · 재리뷰/Skip/재스캔 · 장비 = 이미지 파일 이름 · 재리뷰 필요 · 완료 Layer 에만 호기 · Camtek = S/M Lot 코드 + Job 의 Layer 표기 ·
+  KLA = `{Lot}@{공정번호}`). **HTML 판정 규칙을 바꾸면 `desktop_tb500.py` 도 같이(반대도)** — 두 곳이 같은 결과를 내야 한다(시험 자료 같음). wafer 판정은 `lotmodel.attempt`(HTML 의 waferCells 는 그 JS 복사본).
+  HTML 과 다른 점(권한 · 폴더 접근 버그 #76 · #77 · '허용 창이 안 뜸'을 구조로 없앰): 파일은 브라우저가 아니라 엔진이 Windows 파일 기능으로 읽는다(허용 창 · IndexedDB 폴더 연결 · 내 PC 캐시 폴더 없음).
+  Camtek · KLA = 앱의 로컬 캐시(배치분석/누적 · KLA캐시/KLA색인.json, 색인은 파일 서명이 같으면 메모리 재사용) — zip 을 따로 풀지 않는다. [OneDrive 에서 최신 캐시 받기] = `tb500_cache_update`
+  (기존 `batch_cache_share_import` · `kla_cache_share_import` 를 차례로, 슬롯 tb500 + batch + kla, 받은 zip 과 같고 로컬 캐시가 있으면 건너뜀, 둘 다 받았을 때만 `tb500_imported.at`).
+  Conder Scan 폴더 = 설정 `tb500_conder`(없으면 기본 `DEFAULT_CONDER` = 소유자 UNC), 글자로만 확인. **Conder Scan · OneDrive 에 쓰지 않는다**(쓰기 = 이 PC 설정 `tb500_conder` · `tb500_imported` 뿐).
+  IPC `tb500_state` · `tb500_set_conder` · `tb500_lookup`(작업 스레드, 읽기 전용, [중단] = `tb500_stop`) · `tb500_history` · `tb500_report`. [폴더 열기] = Conder Scan 폴더 안만(`DesktopTb500.allows`, desktop_open).
 - **v14.4.0(소유자 2026-11-23) — 프로그램 이름 = `AOI Manager`(종전 Camtek AOI Manager) + 간단판 `AOI Manager Mini`**. 같은 설치 · 같은 `app/` · 같은 업데이트, 실행 단추만 둘:
   설치 zip 맨 위 `AOI_Manager.bat` · `AOI_Manager_Mini.bat`(= 같은 시작 파일 + `--mini`, `tools/build_install.py STARTERS`). 소유자는 zip 을 풀어 `AOI_Manager.bat` 만 지우고 다시 압축해 다른 부서에 준다.
   **Mini 에 보이는 기능(소유자 선택) = Batch Report 분석의 [Batch Report 찾기 · 취합]만(탭 글 'Batch Report 찾기 · 취합', 가동률 조사 및 분석 · 지난 결과 복원 · 자동 분석 없음) · Defect 분석(하위 3개) · Wafer Map 수정하기 · KLA 자재 찾기 · 설정**(메모 · Recipe 관리 · 자동 분석 및 취합 · Commonality 없음).
@@ -1365,6 +1374,7 @@ python3 tests/test_lotmodel.py     # 21 (작업자 중단·스캔 안 한 슬롯
 python3 tests/test_wph_html.py     # 5  (WPH .html: 요약·호기/레시피별 WPH·에러 ①②③·Wafer scan 상태(정상/error/확인불가)·섹션 on/off·편집 제목·미리보기=HTML 동일 소스·파일 저장)
 python3 tests/test_commonality.py  # 27 (디바이스별 그룹핑·폴더생성일시 포함) (Lot계획·폴더해석(느슨매칭·변형후보전부·Scan일자)·슬롯 다중선택·폴더/SM변형·다중레시피/중간폴더·접두불일치사전감지·Scanresult백업다중·fail색칠·안전복사·구조diff·취합·이탈색칠·Zone정렬)
 python3 tests/test_kla.py         # 9  (KLA 자재 찾기: 폴더 이름만 · 상위 폴더 등록 · 열기 범위 · Defect 이미지 백업본 등록/켜고 끄기 · IPC)
+python3 tests/test_tb500.py       # 8  (TB500 Review 조회: 이름 규칙 · 조회 = HTML 시험과 같은 결과 · Lot History · Batch Report 보기 · 중단 · 읽기 전용 · 설정 · 폴더 열기 범위 · OneDrive 캐시 받기 · IPC)
 python3 tests/test_kla_cache.py   # 6  (KLA 캐시: 갱신 · 다시 읽기 규칙 · 끊긴 장비 유지 · 캐시 찾기 · 게시/목록/불러오기 · Camtek 캐시 무변경 · 최근 3개 · 합치기 · IPC)
 python3 tests/test_coefstore.py    # 6  (변환계수.xlsx (호기+변형) I/O·lookup 읽기전용/공통폴백·OpticPreset MAG·양식 확정만 저장·값업데이트 무기록)
 python3 tests/test_namestore.py    # 6  (체크 기억 Zone 일치 필수 포함)  (장비화면이름.xlsx: 이름 기억·새 양식 자동채움·그대로 열기 유지·정규화·**체크박스(사용) 기억·base_keys보다 우선**)

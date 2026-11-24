@@ -40,7 +40,8 @@ const FEATURES:Step[]=[
   {target:nav('Defect 분석'),go:'Defect 분석',title:'Defect 분석',body:'하위 탭 3개: Color·Gray 매칭(폴더 또는 최종 목록 CSV → 사진 · Excel) · Defect 분석(대규모)(Contrast · 분류로 걸러 사진 조사, 최종 목록 저장) · Defect 분석(기본)(스캔 결과 비교 · Wafer Map · Escape 리뷰). 설명글은 [? 설명 보기] 를 켜면 보입니다.'},
   {target:nav('Wafer Map 수정하기'),go:'Wafer Map 수정하기',title:'Wafer Map 수정하기',body:'Wafer Map 파일을 열어 값을 고치고 이미지로 확인한 뒤 저장합니다.'},
   {full:true,target:nav('메모'),go:'메모',title:'메모',body:'팀이 함께 보는 메모와 공유 문서(장비 IP · 특이사항)를 엽니다.'},
-  {target:nav('KLA 자재 찾기'),go:'KLA 자재 찾기',title:'KLA 자재 찾기',body:<>맨 위 <b>{isMini?'CAMTEK · KLA · 설정':'CAMTEK · KLA · 설정 · 메모'}</b> 탭 중 CAMTEK / KLA 로 장비 회사를 바꿉니다. KLA 탭에서는 Lot 이름 키워드로 스캔 결과 폴더를 찾아 바로 엽니다. KLA 장비 폴더 · Defect 이미지 백업본 등록은 [설정] › AOI 장비 호기 루트 › KLA 에서 합니다.</>},
+  {target:nav('KLA 자재 찾기'),go:'KLA 자재 찾기',title:'KLA 자재 찾기',body:<>맨 위 <b>{isMini?'CAMTEK · KLA · TB500 Review 조회 · 설정':'CAMTEK · KLA · TB500 Review 조회 · 설정 · 메모'}</b> 탭 중 CAMTEK / KLA 로 장비 회사를 바꿉니다. KLA 탭에서는 Lot 이름 키워드로 스캔 결과 폴더를 찾아 바로 엽니다. KLA 장비 폴더 · Defect 이미지 백업본 등록은 [설정] › AOI 장비 호기 루트 › KLA 에서 합니다.</>},
+  {target:nav('TB500 Review 조회'),go:'TB500 Review 조회',title:'TB500 Review 조회',body:<>Lot 목록을 붙여 넣고 [조회]를 누르면 Conder Scan 폴더에서 Layer 마다 <b>재리뷰 필요 · 완료 · Skip</b> 을 판정하고, Camtek · KLA 캐시에서 스캔한 장비 · 호기 · 시각을 찾습니다. 처음에 [OneDrive 에서 최신 캐시 받기]를 한 번 누르세요.</>},
   {target:nav('설정'),go:'설정',title:'끝!',body:'튜토리얼은 언제든 [설정] › [튜토리얼]에서 다시 볼 수 있습니다.'},
 ];
 const forEdition=(steps:Step[])=>steps.filter(st=>isMini?!st.full:!st.mini);

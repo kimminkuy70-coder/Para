@@ -32,7 +32,7 @@ export type Configuration = {machines: {id: string; folder: string; extra?: stri
 export type Reply = {version: number; id: number|null; event: string; code?: string; message?: string;
   job?: number; tables?: Table[]; summary?: Record<string, number>; rows?: (string|number|null)[][];
   artifacts?: Record<string,string>; collection?: {parsed: number; reused: number; errors: number; cached_only: number}; reports?: unknown;
-  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown; watch?: unknown; pwatch?: unknown; cmwatch?: unknown; diag?: unknown; colorgray?: unknown; wafermap?: unknown; kla?: unknown; batch?: unknown; view?: unknown; notice?: WatchNotice} & Partial<Configuration>;
+  current?: number; total?: number; recipe?: unknown; document?: unknown; commonality?: unknown; form?: unknown; cmsurvey?: unknown; history?: unknown; config?: unknown; update?: unknown; opened?: unknown; cmrun?: unknown; formnew?: unknown; appupdate?: unknown; watch?: unknown; pwatch?: unknown; cmwatch?: unknown; diag?: unknown; colorgray?: unknown; wafermap?: unknown; kla?: unknown; tb500?: unknown; batch?: unknown; view?: unknown; notice?: WatchNotice} & Partial<Configuration>;
 
 // Native folder chooser (the engine opens the Windows dialog). Returns the user-selected
 // absolute path, or null if cancelled / not in the app window (then the user types the path).

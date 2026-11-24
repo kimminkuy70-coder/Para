@@ -7,7 +7,8 @@ known document type or a folder, contain no link/junction, and sit under the
 configured save folder or the local result folder (or, for equipment shares, is a
 Batch Report file right in a registered Reports folder (or, v14.1.9, a cache folder a
 [캐시에서만 찾기] search used) / a folder inside a registered Scanresult folder / a folder
-inside a registered KLA equipment folder or one listed in the local KLA cache). Nothing is executed except
+inside a registered KLA equipment folder or one listed in the local KLA cache / a folder inside
+the TB500 Review 조회 Conder Scan folder). Nothing is executed except
 the OS default handler (`os.startfile`) or Explorer's select switch.
 """
 import os
@@ -113,6 +114,9 @@ class DesktopOpen:
             return path
         if path.is_dir() and DesktopKla(self.config_path).allows(path):
             return path      # KLA 자재 찾기 결과 폴더(등록한 KLA 장비 폴더 안, #30)
+        from .desktop_tb500 import DesktopTb500
+        if path.is_dir() and DesktopTb500(self.config_path).allows(path):
+            return path      # TB500 Review 조회 결과 폴더(설정한 Conder Scan 폴더 안, v14.4.2)
         real = path.resolve()
         if not any(real == root.resolve() or real.is_relative_to(root.resolve()) for root in self._roots()):
             raise ValueError("저장폴더 또는 로컬 결과 폴더 안의 파일만 열 수 있습니다")

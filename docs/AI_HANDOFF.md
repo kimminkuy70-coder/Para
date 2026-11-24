@@ -1,5 +1,24 @@
 # AI 공통 인수인계
 
+## 최신 재개 — v14.4.2 릴리스: 맨 위 탭 `TB500 Review 조회`(KLA 와 설정 사이, Mini 포함) (2026-11-24 KST, `version_v14`, 소유자 세션)
+
+- 마지막 갱신 2026-11-24 · 기준 커밋 `0014a09`(v14.4.1) · 소유자: "TB500_review 도 AOI manager UX 테마에 맞게 Camtek, KLA, 설정 탭에 대해 KLA 와 설정 사이에 새 탭 … 이름은 TB500 Review 조회,
+  Mini 포함, v14 에서 진행, HTML 파일은 유지, V14.4.2 로 릴리즈까지" + "기존 HTML 의 권한 · 폴더 접근 버그도 개선 가능한지 검토".
+- 판단(검토): HTML 의 권한 버그(#76 NotReadableError · #77 3번 모두 못 읽음 · 2026-11-23 특정 PC 에서 허용 창이 안 뜸 · 기록 0개로 멈춤)는 브라우저 File System Access(열 때마다 허용 · 사용자 동작 시간 제한 ·
+  브라우저 설정/정책 · OneDrive 온라인 전용 파일을 브라우저가 못 받음)에서 생긴다. 앱(v14 = Edge 앱 창 + 내장 Python 엔진)은 엔진이 Windows 파일 기능으로 읽으므로 구조적으로 없다.
+- 한 일: 엔진 `param_manager/desktop_tb500.py`(HTML 조회 로직 이식 — STAGES · stage_of · kind_of · ★ · find_lot · ko_key(이름 순 = localeCompare ko numeric) · 장비 판정 · .txt 세기 ·
+  Camtek 색인(로컬 배치분석/누적, Lot 코드별, 같은 (호기, 파일) 중복 제거, 서명 같으면 재사용) · KLA 색인(로컬 KLA색인.json) · verdict_groups · Lot History · Batch Report 보기 · cache_update · allows),
+  IPC 7개(`desktop_ipc.py`), `desktop_open` 에 Conder 폴더 열기 허용, 화면 `Tb500.tsx` + `styles.css` 끝 `.tb5`, `main.tsx`(COMMON 맨 앞 · KEEP · SUBTITLE), `edition.ts` MINI_TABS,
+  `Tour.tsx` 기능 둘러보기 한 단계, `desktop.ts` Reply.tb500, 시험 fixture(`tests/desktop_browser_fixture.py` FixtureSession.tb500).
+- 시험: `tests/test_tb500.py`(새, 8 — HTML 시험과 같은 합성 자료로 같은 결과 · 중단 · Conder · 설정 무쓰기 · OneDrive 캐시공유 무쓰기 · 캐시 받기(개발자 게시 → 장비 미등록 PC) · IPC) ·
+  `tools/test_desktop_ui.mjs`(맨 위 탭 목록 3곳 · TB500 단계: 폴더 고르기 · 조회 · 표 5줄 · Lot History · wafer 표 · Batch Report 보기 · 캐시 받기 토스트 · Mini 탭).
+  결과: `PYTHONPATH=vendor python3 tools/check_project.py` Failed files: none · `test_tb500.py` 8 OK · 화면 시험 마지막 판 통과(그 전 실패 = 내 단언 띄어쓰기 · KLA 단계 중간에 끼운 순서 — 고침,
+  한 번은 835줄 Color·Gray '2개 선택' 대기 시간 초과 — TB500 과 무관한 앞 단계, 다시 돌려 통과). dist 는 변경 전 코드로 다시 빌드해도 커밋본과 같음(결정적) 확인. 실제 Windows · Edge · 회사 Conder Scan 미검증.
+- 내 해석(확인 전): ⓐ Camtek · KLA 는 앱의 기존 로컬 캐시를 그대로 쓴다(TB500 전용 색인 파일을 따로 만들지 않음) ⓑ Conder 기본 경로 = HTML 기본 UNC(`DEFAULT_CONDER`) — 대부분 PC 는 설정 없이 바로 조회
+  ⓒ [경로 복사]는 설정한 Conder 경로 그대로(드라이브 문자로 골랐으면 드라이브 문자) ⓓ 캐시 받기는 둘 다 받았을 때만 받은 시각을 적는다(HTML #76 과 같음).
+- HTML(`version_TB500_review`)은 그대로 유지(소유자). 세션 브랜치 `ccr-c88e8cbd-kbcrtn` 의 HTML 커밋 3개(환경 점검 · GitHub 문구 삭제 · zip 직접 고르기)는 `version_TB500_review` 의 `e003f50`(#88)과 갈라져 있어 아직 안 합침.
+- 다음: 회사 PC(Edge 앱 창 · 실제 Conder Scan UNC · 실제 캐시 크기)에서 조회 속도 · 결과를 HTML 과 대조.
+
 ## 최신 재개 — v14.4.1 릴리스: µm 표시 · [µm 로 보기] · Defect 박스 · 사진 크기 측정 (+ 아래 Gray 위치) (2026-11-23 KST, `version_v14`, #89 후속 소유자 세션)
 
 - 마지막 갱신 2026-11-23 · 기준 커밋 `748d0f0`(Gray 위치, 미릴리스였음) · 소유자: "진행해 릴리즈까지해 14.4.1 버전" → `__version__` 14.4.1 · `docs/release_notes/v14.4.1.md`(한 줄 목록).

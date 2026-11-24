@@ -28,7 +28,7 @@ let appUrl;const urlReady=new Promise(res=>{lines.on('line',line=>{const m=JSON.
   else if(m.native==='set_background')background=m.args;   // tray residency request
 });});
 // Recipe 관리 holds the recipe workflows as tabs (값 확인 · 업데이트 · 신규 · 양식 편집 · 날짜별 비교).
-// 맨 위 탭(#32) = CAMTEK · KLA · 설정 · 메모 — 설정 · 메모에서는 기능 탭 줄이 없으므로 CAMTEK 을 먼저 누른다.
+// 맨 위 탭(#32, v14.4.2) = CAMTEK · KLA · TB500 Review 조회 · 설정 · 메모 — 회사 탭이 아니면 기능 탭 줄이 없으므로 CAMTEK 을 먼저 누른다.
 async function feature(name){
   if(!(await page.locator('.navigation button').allInnerTexts()).includes(name))await page.getByRole('button',{name:'CAMTEK',exact:true}).click();
   await page.locator('.navigation').getByRole('button',{name,exact:true}).click();
@@ -1075,8 +1075,8 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   const klaRoot=join(fixture,'J','2.K2');
   for(const d of ['2025-05-21/RINT63@6324/2025-05-21-09-08_16','2025-05-21/RINT63@6324/2025-05-21-09-30_2','2025-05-22/ABC11@1111/2025-05-22-02-00_1'])
     await mkdir(join(klaRoot,...d.split('/')),{recursive:true});
-  // #32: 맨 위 탭 = CAMTEK · KLA · 설정 · 메모. KLA 장비 폴더는 설정 › AOI 장비 호기 루트 › KLA 에서 등록.
-  assert.deepEqual(await page.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','설정','메모']);
+  // #32: 맨 위 탭 = CAMTEK · KLA · TB500 Review 조회(v14.4.2) · 설정 · 메모. KLA 장비 폴더는 설정 › AOI 장비 호기 루트 › KLA 에서 등록.
+  assert.deepEqual(await page.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','TB500 Review 조회','설정','메모']);
   await page.getByRole('button',{name:'KLA',exact:true}).click();
   assert.deepEqual(await page.locator('.navigation button').allInnerTexts(),['KLA 자재 찾기']);
   const kla=page.locator('section.kla');
@@ -1108,6 +1108,64 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   // Para #43: 찾기 화면 = Batch Report 찾기 · 취합과 같은 모양(장비 상자 격자 · 모든 장비 · 캐시에서만 찾기 체크).
   await kla.getByRole('checkbox',{name:'2.K2 찾기'}).waitFor();
   assert.equal(await kla.getByRole('checkbox',{name:'찾기 모든 장비'}).isChecked(),true);
+  // v14.4.2 TB500 Review 조회: 맨 위 탭(KLA 와 설정 사이). Conder Scan 폴더는 이름만 읽고(쓰기 없음), 호기 · 시각은 로컬 Batch Report · KLA 캐시에서.
+  // 브라우저 허용 창 없음 — 폴더는 Windows 고르기 창(시험 = pick_folder.txt)이나 경로 입력으로 정한다.
+  const conder=join(fixture,'conder','129. 4DT-TB500-H-M1'),t5lot=join(conder,'976. TB500.INT1041 (CMS)');
+  for(const [d,f] of [['1. RDL4','TB500_a.jpg'],['1-1. RDL4_재리뷰','m1.txt'],['7. RDL1','TB500_RDL1 - Multi_x.jpg'],['★ 메모','x.txt']]){
+    await mkdir(join(t5lot,d),{recursive:true});await writeFile(join(t5lot,d,f),'x');}
+  const t5cache=join(fixture,'local','배치분석','누적');await mkdir(t5cache,{recursive:true});
+  const t5file='TB500_RDL1-Multi_Setup1_CMS-RDL1_26-Oct-20_(09.10.00)_BatchReport.htm';
+  const t5wafers=Array.from({length:25},(_,i)=>({'Lot':'CMS-RDL1','Wafer ID':'W'+String(i).padStart(2,'0'),'Pass/Fail':i<3?'Scan 2D Error. Aborted.':'Pass','Recipe(s)':'TB500_RDL1-Multi'}));
+  await writeFile(join(t5cache,'AOI-21_tb500ui0.json'),JSON.stringify({schema:1,machine:'AOI-21',folder:join(fixture,'AOI-21','Reports'),
+    entries:{[t5file]:{signature:[1,1],digest:'x'.repeat(64),report:{file_name:t5file,metadata:[['Batch Start','20-Oct-26 09:10:00 AM'],['Job/Setup','TB500_RDL1-Multi/Setup1']],wafers:t5wafers}}}}));
+  await page.getByRole('button',{name:'TB500 Review 조회',exact:true}).click();
+  assert.equal(await page.locator('.navigation').count(),0);                      // 회사 묶음 밖의 탭(아래 기능 탭 줄 없음)
+  assert.equal(await page.locator('main h1').innerText(),'TB500 Review 조회');
+  const t5=page.locator('section.tb5');
+  await t5.getByText(/기본 경로입니다/).waitFor();
+  assert.equal(await t5.getByLabel('Conder Scan 폴더').inputValue(),'\\\\k5cifsn2\\k5tsvdata$\\1. Conder Scan\\531. NVIDIA INT\\129. 4DT-TB500-H-M1');
+  await t5.getByText(/OneDrive 에서 캐시를 아직 받지 않았습니다/).waitFor();
+  await writeFile(join(fixture,'pick_folder.txt'),conder);
+  await t5.getByRole('button',{name:'폴더 고르기',exact:true}).click();
+  await page.locator('.toast').filter({hasText:'Conder Scan 폴더를 바꿨습니다'}).waitFor();
+  assert.equal(await t5.getByLabel('Conder Scan 폴더').inputValue(),conder);
+  await rm(join(fixture,'pick_folder.txt'));
+  await t5.getByLabel('Lot 목록').fill('TB500.INT1041\nTB500.INT948\ntb500.int1041');
+  await t5.getByRole('button',{name:'조회 (2)',exact:true}).click();               // 같은 Lot 은 한 번만(대소문자 무시)
+  await page.locator('.toast').filter({hasText:'조회 완료: Lot 2개 · 재리뷰 필요 Layer 1개'}).waitFor();
+  const t5rows=(await t5.locator('table.tb5-table tbody tr').allInnerTexts()).map(x=>x.replace(/\s+/g,' ').trim());
+  assert.equal(t5rows.length,5,t5rows.join('\n'));
+  assert.match(t5rows[0],/^TB500\.INT1041 976\. TB500\.INT1041 \(CMS\) S\/M CMS Lot History ★ 메모$/);   // ★ 폴더 = 이름만(경로 버튼도 없음), 맨 위(이름 순)
+  assert.match(t5rows[1],/^1-1\. RDL4_재리뷰 재리뷰 RDL4 6305 AOI 6412 2D\/RE 재리뷰 결과 맵\(\.txt\) 1개 경로 복사/);
+  assert.match(t5rows[2],/^1\. RDL4 RDL4 .* 재리뷰 완료 Camtek 캐시에 없음 경로 복사/);
+  assert.match(t5rows[3],/^7\. RDL1 RDL1 6316 AOI7 6326 2D\/R7 재리뷰 필요 Camtek Pass하지 못한 wafer 존재 wafer 25 · 한 번에 Pass 22 · Pass 없음 3 AOI-21 · 2026-10-20 09:10:00 Error Pass 22 · Error 3 Lot History/);
+  assert.match(t5rows[4],/^TB500\.INT948 Conder Scan 에서 Lot 폴더를 찾지 못했습니다$/);
+  assert.equal(await t5.locator('tr.tb5-rowneed').count(),1);
+  await t5.locator('tr',{hasText:'7. RDL1'}).getByRole('button',{name:'Lot History',exact:true}).click();
+  const t5h=page.locator('dialog.tb5-win[open]');
+  await t5h.getByRole('heading',{name:'TB500.INT1041 · Lot History'}).waitFor();
+  assert.equal(await t5h.locator('.tb5-chip.on').innerText(),'RDL1 1');
+  assert.equal(await t5h.locator('li.tb5-hrow').count(),1);
+  assert.match(await t5h.locator('.tb5-kpi').innerText(),/1\s*스캔\s*1\s*호기 · AOI-21\s*0\s*호기 이동/);
+  await t5h.locator('details.tb5-vgrp > summary').click();
+  const t5v=await t5h.locator('table.tb5-vtab tbody tr').allInnerTexts();
+  assert.equal(t5v.length,25);
+  assert.deepEqual(t5v[0].split('\t').map(x=>x.trim()),['25','W00','Scan 2D Error. Aborted.','Pass 없음']);
+  await t5h.getByRole('button',{name:t5file,exact:true}).click();                // Batch Report 보기(캐시의 원문 표)
+  const t5r=page.locator('dialog.tb5-win[open]').last();
+  await t5r.getByRole('heading',{name:t5file}).waitFor();
+  assert.equal(await t5r.locator('.tb5-wafers tbody tr').count(),25);
+  assert.equal(await t5r.locator('.tb5-wafers td.ve').count(),3);
+  await t5r.getByRole('button',{name:'닫기',exact:true}).click();
+  await t5h.getByRole('button',{name:'닫기',exact:true}).click();
+  assert.equal(await page.locator('dialog.tb5-win[open]').count(),0);
+  // OneDrive 에서 최신 캐시 받기 = Batch Report · KLA [OneDrive 에서 불러오기]를 한 번에(위에서 Camtek 만 게시함)
+  await t5.getByRole('button',{name:'OneDrive 에서 최신 캐시 받기',exact:true}).click();
+  const t5toast=page.locator('.toast').filter({hasText:'KLA: OneDrive 에 게시된 캐시가 없습니다'});
+  await t5toast.waitFor();
+  assert.match(await t5toast.innerText(),/Camtek: BatchReport_캐시_\d{8}_\d{6}\.zip 받음/);
+  await t5.getByText(/OneDrive 에서 캐시를 아직 받지 않았습니다/).waitFor();       // 하나라도 못 받으면 받은 시각을 적지 않는다
+  await page.getByRole('button',{name:'KLA',exact:true}).click();                   // 아래 KLA 자재 찾기 단계로 돌아감(TB500 결과는 탭을 옮겨도 남음)
   assert.equal(await kla.getByRole('checkbox',{name:'KLA 캐시에서만 찾기'}).isChecked(),false);   // 장비 폴더를 등록했으므로 장비에서 찾기
   await kla.getByLabel(/Lot 키워드/).fill('rint63');
   await kla.getByRole('button',{name:'검색 →',exact:true}).click();
@@ -1183,9 +1241,9 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   assert.equal(await page.title(),'AOI Manager');
   assert.equal(await page.locator('.topbar .brand-name b').innerText(),'AOI Manager');
   assert.equal(await page.locator('.edition-pill').count(),0);
-  assert.deepEqual(await page.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','설정','메모']);
+  assert.deepEqual(await page.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','TB500 Review 조회','설정','메모']);
   // v14.4 AOI Manager Mini: 같은 엔진 · 같은 화면 파일, 주소의 e=mini(AOI_Manager_Mini.bat = 시작 파일 + --mini)만 다르다.
-  // 보이는 기능 = Batch Report 찾기 · 취합 · Defect 분석 · Wafer Map 수정하기 · KLA 자재 찾기 · 설정(소유자 2026-11-23).
+  // 보이는 기능 = Batch Report 찾기 · 취합 · Defect 분석 · Wafer Map 수정하기 · KLA 자재 찾기 · TB500 Review 조회(v14.4.2) · 설정(소유자 2026-11-23).
   const mini=await browser.newPage({viewport:{width:1440,height:1000}});
   const miniErrors=[];mini.on('pageerror',e=>miniErrors.push(e.message));
   await mini.route('**/*',async route=>{assert.equal(new URL(route.request().url()).origin,appOrigin,'External request must never occur');await route.continue();});
@@ -1198,7 +1256,7 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   assert.equal(await mini.locator('.app').getAttribute('data-edition'),'mini');
   assert.equal(await mini.locator('.edition-pill').innerText(),'Mini');
   assert.match(await mini.locator('footer').innerText(),/^AOI Manager Mini/);
-  assert.deepEqual(await mini.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','설정']);
+  assert.deepEqual(await mini.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','TB500 Review 조회','설정']);   // v14.4.2: Mini 에도
   await mini.getByRole('button',{name:'CAMTEK',exact:true}).click();
   assert.deepEqual(await mini.locator('.navigation button').allInnerTexts(),['Batch Report 찾기 · 취합','Defect 분석','Wafer Map 수정하기']);
   assert.equal(await mini.locator('main h1').innerText(),'Batch Report 찾기 · 취합');
@@ -1216,6 +1274,8 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   // 다른 화면이 Mini 에 없는 탭으로 가라고 해도 그대로 있다.
   await mini.evaluate(()=>window.dispatchEvent(new CustomEvent('para:navigate',{detail:'Recipe 관리'})));
   assert.equal(await mini.locator('main h1').innerText(),'KLA 자재 찾기');
+  await mini.getByRole('button',{name:'TB500 Review 조회',exact:true}).click();       // v14.4.2: Mini 에도 같은 화면
+  await mini.locator('section.tb5').getByLabel('Lot 목록').waitFor();
   // 설정: 자동 분석 줄 · Job 폴더 열이 없다(Mini 에 없는 기능).
   await mini.getByRole('button',{name:'설정',exact:true}).click();
   await mini.locator('.current-settings summary').click();

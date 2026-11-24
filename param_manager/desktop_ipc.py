@@ -30,6 +30,7 @@ from .desktop_appupdate import DesktopAppUpdate
 from .desktop_colorgray import DesktopColorGray
 from .desktop_wafermap import DesktopWaferMap
 from .desktop_kla import DesktopKla
+from .desktop_tb500 import DesktopTb500
 from .desktop_watch import CmWatch, ParamWatch
 
 VERSION = 1
@@ -42,8 +43,8 @@ BUSY_LABEL = {'batch': 'Batch Report 분석', 'recipe': 'Recipe 값 확인', 'do
               'pwatch': '파라미터 분석 및 취합 설정', 'cmwatch': 'Commonality 분석 및 취합', 'equipment': '장비(원본 폴더) 읽기',
               'watch': '자동 분석 및 취합 회차', 'colorgray': 'Color·Gray 매칭', 'wafermap': 'Wafer Map 수정하기',
               'batchexport': 'Batch Report Excel 저장', 'batchshare': 'OneDrive 캐시 목록 읽기', 'kla': 'KLA 자재 찾기', 'klashare': 'OneDrive KLA 캐시 목록 읽기',
-              'batchcache': 'Batch Report 캐시 호기 목록 읽기'}
-METHODS = {"contract", "configuration", "batch_reports", "investigate", "batch_restore", "batch_view", "batch_lot", "batch_raw", "batch_choices", "batch_find", "batch_find_load", "batch_cache_machines", "batch_aggregate", "batch_export", "batch_compare_recipes", "batch_compare", "batch_compare_export", "batch_cache_publish", "batch_cache_share_list", "batch_cache_share_import", "batch_cache_import", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_scan_aoi_drive", "config_add_aoi_roots", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_aoi_job_dir", "config_set_hide_kla", "config_set_scan_backup", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_connections", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "kla_state", "kla_set_roots", "kla_set_backup", "kla_search", "kla_cache_build", "kla_cache_publish", "kla_cache_share_list", "kla_cache_share_import", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_csv", "cgm_final", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
+              'batchcache': 'Batch Report 캐시 호기 목록 읽기', 'tb500': 'TB500 Review 조회'}
+METHODS = {"contract", "configuration", "batch_reports", "investigate", "batch_restore", "batch_view", "batch_lot", "batch_raw", "batch_choices", "batch_find", "batch_find_load", "batch_cache_machines", "batch_aggregate", "batch_export", "batch_compare_recipes", "batch_compare", "batch_compare_export", "batch_cache_publish", "batch_cache_share_list", "batch_cache_share_import", "batch_cache_import", "analyze", "table_page", "cancel", "release", "shutdown", "recipe_open", "recipe_page", "recipe_edit", "recipe_export", "recipe_delete_preview", "recipe_delete", "recipe_paint", "recipe_close", "form_catalog", "form_versions", "form_open", "form_page", "form_edit", "form_scales", "form_confirm", "form_bulk", "cmrun_bulk", "cmwatch_bulk", "formnew_page", "formnew_edit", "formnew_bulk", "formnew_scales", "formnew_confirm", "document_open", "document_page", "document_edit", "document_append", "document_delete", "document_close", "commonality_catalog", "commonality_compare", "commonality_page", "commonality_export", "cmsurvey_config", "cmsurvey_preflight", "cmsurvey_plan_template", "cmsurvey_read_plan", "history_files", "history_diff", "history_page", "history_export", "config_state", "config_set_save_dir", "config_set_report_path", "config_set_scanresult_root", "config_remove", "config_edit_root", "config_set_batch_auto", "config_set_extra_paths", "config_set_aoi_root", "config_scan_aoi_drive", "config_add_aoi_roots", "config_edit_aoi_root", "config_remove_aoi", "config_set_aoi_extra", "config_set_aoi_job_dir", "config_set_hide_kla", "config_set_scan_backup", "config_local_state", "config_set_local_dir", "config_purge_temp", "config_about", "update_prepare", "update_set_local_source", "update_connections", "update_collect", "update_preview", "update_commit", "update_cancel", "cmrun_plan", "cmrun_copy", "cmrun_units", "cmrun_detect", "cmrun_parse", "cmrun_page", "cmrun_edit", "cmrun_confirm", "cmrun_collate", "cmrun_reset", "formnew_prepare", "formnew_collect", "formnew_parse", "formnew_cancel", "appupdate_check", "appupdate_apply", "appupdate_publish", "appupdate_open_dir", "open_path", "kla_state", "kla_set_roots", "kla_set_backup", "kla_search", "kla_cache_build", "kla_cache_publish", "kla_cache_share_list", "kla_cache_share_import", "tb500_state", "tb500_set_conder", "tb500_lookup", "tb500_stop", "tb500_history", "tb500_report", "tb500_cache_update", "watch_status", "pwatch_state", "pwatch_save", "pwatch_set_path", "pwatch_copy_paths", "pwatch_jobs", "pwatch_connections", "pwatch_run", "diag_client", "diag_bundle", "cgm_scan", "cgm_csv", "cgm_final", "cgm_start", "cgm_state", "cgm_read", "cgm_put", "cgm_fail", "cgm_finish", "cgm_reset", "wm_scan", "wm_start", "wm_state", "wm_convert", "wm_image", "wm_reset", "cmwatch_state", "cmwatch_save", "cmwatch_run", "cmwatch_candidates", "cmwatch_begin", "cmwatch_recipes", "cmwatch_page", "cmwatch_edit", "cmwatch_confirm", "cmwatch_cancel"}
 method_of = {}           # request id -> method name (for the slow-request log)
 # Background jobs that only read (local or OneDrive/equipment). Closing the app does not
 # wait for them — waiting for a slow read kept the old engine alive after the window
@@ -53,7 +54,7 @@ READ_ONLY = {"recipe_open", "recipe_delete_preview", "document_open", "form_cata
              "commonality_catalog", "commonality_compare", "cmsurvey_preflight", "cmsurvey_read_plan",
              "update_prepare", "appupdate_check", "pwatch_state", "pwatch_jobs", "cmwatch_state",
              "cmwatch_candidates", "batch_reports", "batch_restore", "watch_status", "cmrun_plan", "cgm_scan", "cgm_read", "wm_scan", "kla_search", "kla_cache_share_list",
-             "batch_cache_machines"}
+             "batch_cache_machines", "tb500_lookup"}
 # Frequent page/scroll requests: only logged in the detailed log when slow.
 DIAG_QUIET = {"table_page", "batch_view", "batch_lot", "batch_raw", "recipe_page", "form_page", "document_page", "history_page", "commonality_page",
               "cmrun_page", "cmwatch_page", "formnew_page", "diag_client", "open_path", "cgm_read", "cgm_put", "wm_image"}
@@ -177,6 +178,7 @@ class Session:
         self.colorgray = DesktopColorGray(self.config)
         self.wafermap = DesktopWaferMap(self.config)
         self.kla = DesktopKla()
+        self.tb500 = DesktopTb500(batch=self.batch, kla=self.kla)   # TB500 Review 조회(v14.4.2)
         self.busy = {}                  # domain slot -> request id (see claim())
         self.busy_kind = {}
         self.workers = set()
@@ -300,6 +302,8 @@ class Session:
                        config_purge_temp=set(), config_about=set())
         allowed.update(kla_state=set(), kla_set_roots={'roots'}, kla_set_backup={'enabled'}, kla_search={'query', 'machines', 'start', 'end', 'source'},
                        kla_cache_build={'record'}, kla_cache_publish=set(), kla_cache_share_list=set(), kla_cache_share_import={'name'})
+        allowed.update(tb500_state=set(), tb500_set_conder={'path'}, tb500_lookup={'lots'}, tb500_stop=set(), tb500_history={'lot'},
+                       tb500_report={'id'}, tb500_cache_update=set())
         allowed.update(update_prepare=set(), update_set_local_source={'path'}, update_connections={'machines'},
                        update_collect={'recipes','machines','source','answers'}, update_preview={'mapping'},
                        update_commit={'include'}, update_cancel=set())
@@ -674,6 +678,26 @@ class Session:
                 self.emit(rid, 'completed', kla=self.kla.set_backup(params))
             else:
                 self.emit(rid, 'completed', kla=self.kla.state())
+        elif method.startswith('tb500_'):
+            # TB500 Review 조회(v14.4.2, desktop_tb500): Conder Scan 폴더는 이름만 읽고, Camtek · KLA 는 로컬 캐시.
+            t = self.tb500
+            if method == 'tb500_lookup':
+                # 네트워크 폴더(Conder Scan)를 읽으므로 작업 스레드. 장비가 아니라 'equipment' 는 잡지 않는다.
+                bg(rid, 'tb500', lambda: t.lookup(params),
+                   'TB500 Review 조회를 하지 못했습니다. Conder Scan 폴더 연결과 로컬 작업 폴더를 확인하세요.')
+            elif method == 'tb500_cache_update':
+                # 기존 [OneDrive 에서 불러오기] 둘(Camtek · KLA)을 차례로 — 그 둘과 같은 슬롯도 잡는다(조사 · KLA 갱신과 겹치지 않게).
+                bg(rid, 'tb500', lambda: t.cache_update(params),
+                   'OneDrive 의 캐시를 불러오지 못했습니다. 동기화가 끝났는지와 로컬 작업 폴더를 확인하세요.', ('tb500', 'batch', 'kla'))
+            elif method == 'tb500_stop':
+                # 조회 중에도 받는다: 다음 폴더를 읽기 전에 멈춘다(하던 Lot 은 버림).
+                self.emit(rid, 'completed', tb500=t.stop())
+            elif method == 'tb500_state':
+                self.emit(rid, 'completed', tb500=t.state())
+            else:
+                self.idle('tb500')
+                action = {'tb500_set_conder': t.set_conder, 'tb500_history': t.history, 'tb500_report': t.report}[method]
+                self.emit(rid, 'completed', tb500=action(params))
         elif method == 'open_path':
             # Allowed while a job runs: opening a finished output never touches the job.
             self.emit(rid, 'completed', opened=self.opener.open(params))

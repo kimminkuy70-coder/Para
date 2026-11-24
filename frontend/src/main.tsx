@@ -15,6 +15,7 @@ import {WaferMap} from './WaferMap';
 import {Batch} from './Batch';
 import {useDev} from './devmode';
 import {Kla} from './Kla';
+import {Tb500} from './Tb500';
 import {APP_NAME,isMini,hasTab,tabLabel} from './edition';
 
 const SUBTITLE: Record<string,string> = {
@@ -22,7 +23,8 @@ const SUBTITLE: Record<string,string> = {
   'Defect 분석':'Color · Gray 매칭으로 사진 · Excel 을 만들고, 대규모 Defect 는 Contrast · 분류로 걸러 사진으로 조사하고, 스캔 결과끼리 Wafer Map 으로 비교하세요. 원본 폴더는 읽기만 합니다.',
   'Wafer Map 수정하기':'Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리세요.',
   '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.',
-  'KLA 자재 찾기':'KLA 장비 스캔 결과 폴더에서 Lot 이름으로 자재를 찾아 경로를 알려 주고, 바로 폴더를 엽니다.'
+  'KLA 자재 찾기':'KLA 장비 스캔 결과 폴더에서 Lot 이름으로 자재를 찾아 경로를 알려 주고, 바로 폴더를 엽니다.',
+  'TB500 Review 조회':'Lot 목록을 붙여 넣으면 Conder Scan 폴더에서 Layer 마다 재리뷰 여부를 판정하고, Camtek · KLA 캐시에서 스캔한 장비 · 호기 · 시각을 찾습니다.'
 };
 // AOI Manager Mini(v14.4): Batch Report 분석 탭 = [Batch Report 찾기 · 취합]만.
 if(isMini)SUBTITLE['Batch Report 분석']='Batch Report 를 파일 이름으로 찾아 고르고, Lot 별 Dice 를 취합해 Excel 로 저장합니다.';
@@ -30,15 +32,15 @@ document.title=APP_NAME;
 // Batch Report 분석 stays mounted too: its results, Lot window and unsaved developer choices
 // survive a visit to 설정 (where the developer toggle lives).
 import {TourLayer} from './Tour';
-const KEEP = ['Recipe 관리','Commonality 조사','자동 분석 및 취합','Batch Report 분석','Defect 분석','Wafer Map 수정하기','KLA 자재 찾기'];
-// 맨 위 탭(#32): CAMTEK · KLA · 설정 · 메모. CAMTEK / KLA = 장비 회사별 기능 묶음(#30, 아래 기능 탭 줄),
-// 설정 · 메모 = 회사와 관계없는 공통 탭이라 회사 묶음 밖에 따로 둔다(아래 기능 탭 줄 없음).
+const KEEP = ['Recipe 관리','Commonality 조사','자동 분석 및 취합','Batch Report 분석','Defect 분석','Wafer Map 수정하기','KLA 자재 찾기','TB500 Review 조회'];
+// 맨 위 탭(#32): CAMTEK · KLA · TB500 Review 조회 · 설정 · 메모. CAMTEK / KLA = 장비 회사별 기능 묶음(#30, 아래 기능 탭 줄),
+// TB500 Review 조회(v14.4.2 — Camtek · KLA 둘 다 보는 리뷰용 조회) · 설정 · 메모 = 회사 묶음 밖의 탭(아래 기능 탭 줄 없음).
 // AOI Manager Mini(v14.4)는 edition.ts MINI_TABS 에 있는 탭만 보인다(없는 탭 = 줄에서 빠짐, 탭이 하나도 없는 회사 · 공통 탭도 빠짐).
 const ALL_VENDORS = {CAMTEK:['Recipe 관리','자동 분석 및 취합','Commonality 조사','Batch Report 분석','Defect 분석','Wafer Map 수정하기'],
   KLA:['KLA 자재 찾기']} as const;
 type Vendor = keyof typeof ALL_VENDORS;
 const VENDORS:Record<Vendor,readonly string[]> = {CAMTEK:ALL_VENDORS.CAMTEK.filter(hasTab),KLA:ALL_VENDORS.KLA.filter(hasTab)};
-const COMMON = ['설정','메모'] as const;
+const COMMON = ['TB500 Review 조회','설정','메모'] as const;
 type Top = Vendor | typeof COMMON[number];
 const TOPS:Top[] = [...(['CAMTEK','KLA'] as Vendor[]).filter(v=>VENDORS[v].length>0),...COMMON.filter(hasTab)];
 const topOf = (tab:string):Top => (COMMON as readonly string[]).includes(tab)?tab as Top
@@ -146,6 +148,7 @@ function App(){
         :name==='Defect 분석'?<DefectAnalysis/>
         :name==='Wafer Map 수정하기'?<WaferMap/>
         :name==='KLA 자재 찾기'?<Kla/>
+        :name==='TB500 Review 조회'?<Tb500/>
         :<Watch notices={notices} onChanged={()=>void syncWatch()}/>}</div>)}
       {KEEP.includes(tab)?null:tab==='설정'?<Settings/>:<Memo/>}
       </div>

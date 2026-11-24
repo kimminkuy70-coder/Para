@@ -128,6 +128,8 @@ else:
             self.cmwatch.config_path = config
             self.cmwatch.form.config_path = config
             self.kla.config_path = config
+            from param_manager.desktop_tb500 import DesktopTb500
+            self.tb500 = DesktopTb500(config, batch=self.batch, kla=self.kla)   # v14.4.2 TB500 Review 조회
             self.appupdate.fetch_feed = lambda: (_ for _ in ()).throw(OSError('offline test'))   # no internet in tests
     desktop_ipc.Session = FixtureSession
     if sys.argv[1] == 'web':
