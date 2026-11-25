@@ -1228,3 +1228,24 @@ main .panel,.kpis article,.bv .kpib button{animation:rise var(--dur-slow) var(--
 .kpis article:nth-child(2),.bv .kpib button:nth-child(2){animation-delay:45ms}.kpis article:nth-child(3),.bv .kpib button:nth-child(3){animation-delay:90ms}
 .kpis article:nth-child(4),.bv .kpib button:nth-child(4){animation-delay:135ms}.kpis article:nth-child(5),.bv .kpib button:nth-child(5){animation-delay:180ms}
 @media(prefers-reduced-motion:reduce){.tab-ink,.stepper .dot,.stepper .bar::after,.as-step,.as-line,.as-lines,.as-log,.as-wrap,main .panel,.kpis article,.bv .kpib button{animation:none!important;transition:none!important}}
+
+/* ===== 소유자 피드백(2026-11-25) ===== */
+/* 탭 머리 제목 · 설명 없앰 → 엔진 연결 표시는 머리 막대 오른쪽 */
+.topbar-right{display:flex;align-items:center;gap:14px;min-width:0}
+.topbar .connection{background:rgba(255,255,255,.1);color:var(--on-brand-2)}
+.topbar .connection.connected{background:rgba(16,185,129,.18);color:#a7f3d0}.topbar .connection.connected::before{background:var(--accent)}
+.topbar .connection-box button{min-height:28px;padding:4px 10px;font-size:12px;background:rgba(255,255,255,.12);color:#fff}
+main{padding-top:24px}
+@media(max-width:760px){.topbar .connection-box{display:none}}
+/* 진행 패널 접기: 접으면 머리 줄만(종전 = 목록이 남아 폭이 넓은 직사각형으로 커지던 버그) */
+.activity.folded{width:auto;max-width:min(380px,calc(100vw - 36px))}
+.activity.folded .as-wrap{display:none}
+/* 호기 칸: '새로 n · 캐시 n' 같은 상태 줄은 숨김(마우스를 올리면 보임) */
+.bv .mbox .ms{display:none}.bv .mbox{height:44px}
+.hint.warn-text{color:var(--amber-800);font-weight:700}
+/* Wafer Map 수정하기 — Defect 코드 표(소유자 2026-11-25: defect mode 추가) */
+.wm-codes{margin:0 0 16px;border:1px solid var(--line);border-radius:var(--r-l);background:var(--bg-surface);padding:10px 14px}
+.wm-codes>summary{cursor:pointer;font-weight:700;color:var(--text-1)}
+.wm-codes .hint{margin:8px 0}
+.wm-codes .wm-code{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.wm-sw{display:inline-block;width:22px;height:14px;border-radius:4px;border:1px solid var(--line-strong);vertical-align:middle}

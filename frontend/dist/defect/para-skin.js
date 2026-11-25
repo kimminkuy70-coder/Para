@@ -5,10 +5,13 @@
    - 설명글 · Contrast 도움말 → [? 설명 보기] 체크로 켜고 끔
    - (v14.3.12 에서 Wafer Map 샘플 강조 칸은 없앰)
    - 브라우저 시절 문구 → 프로그램 문구
-   - 스크롤 한 겹: 내용 높이를 프로그램에 알림(프로그램이 iframe 높이를 맞춤). 로딩창 · 같은 창 사진 칸은 프로그램이 알려 주는 '보이는 부분'에 맞춤 */
+   - 스크롤 한 겹: 내용 높이를 프로그램에 알림(프로그램이 iframe 높이를 맞춤). 로딩창 · 같은 창 사진 칸은 프로그램이 알려 주는 '보이는 부분'에 맞춤
+   2026-11-25(소유자 "프로그램에 제대로 이식"): 프로그램이 iframe 없이 화면 안(Shadow DOM, frontend/src/DefectHost.ts)에서 돌리면 paraHost 가 있다 —
+   그때는 알림을 paraHost 로 바로 주고, 높이 · 보이는 부분 · focus 바꾸기는 프로그램(DefectHost)이 맡는다. */
 (() => {
   const d = document, B = d.body, mode = new URLSearchParams(location.search).get('mode') || 'big';
-  const post = m => { try { parent.postMessage(Object.assign({paraDefect: mode}, m), location.origin); } catch (e) { /* 프로그램 밖 */ } };
+  const host = typeof paraHost === 'function' ? paraHost : null;   // eslint-disable-line no-undef
+  const post = m => { if (host) { host(m); return; } try { parent.postMessage(Object.assign({paraDefect: mode}, m), location.origin); } catch (e) { /* 프로그램 밖 */ } };
   B.classList.add('pskin', mode === 'diagram' ? 'pskin-diagram' : 'pskin-big');
   d.documentElement.dataset.theme = 'light';
   // v14.1.6(소유자 "화면 테마, 사진을 같은 창에서 보기 삭제"): 단추 · 체크를 숨기고, 예전에 켜 둔 '같은 창에서 보기'도 끈다(새 창 우선, 막히면 같은 창 칸).
@@ -118,14 +121,16 @@
 
   // 페이지 한 겹 스크롤에서는 HTML 이 단계를 옮길 때 목록에 주는 포커스가 프로그램 페이지까지 끌어내린다 →
   // 포커스는 그대로 주되 화면은 움직이지 않고, 단계(스텝퍼)가 바뀌면 프로그램이 이 칸의 맨 위를 보여 준다.
-  const focus0 = HTMLElement.prototype.focus;
-  HTMLElement.prototype.focus = function (o) { return focus0.call(this, Object.assign({preventScroll: true}, o || {})); };
+  if (!host) {   // 화면 안(DefectHost)일 때는 DefectHost 가 이 칸 요소만 바꾼다(프로그램의 다른 focus 는 그대로)
+    const focus0 = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (o) { return focus0.call(this, Object.assign({preventScroll: true}, o || {})); };
+  }
   const steps = d.querySelectorAll('.b5tabs, nav');
   steps.forEach(n => new MutationObserver(() => post({stage: true})).observe(n, {subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'aria-current']}));
 
   let last = -1, ov = false;
-  const size = () => { const h = Math.ceil(B.getBoundingClientRect().height); if (h !== last) { last = h; post({height: h}); } };
-  new ResizeObserver(size).observe(B);
+  const size = () => { if (host) return; const h = Math.ceil(B.getBoundingClientRect().height); if (h !== last) { last = h; post({height: h}); } };
+  if (!host) new ResizeObserver(size).observe(B);
   new MutationObserver(() => { const on = !!d.querySelector('body > .ovw'); if (on !== ov) { ov = on; post({overlay: on}); } }).observe(B, {childList: true});
   addEventListener('message', e => {
     if (e.origin !== location.origin || !e.data || !e.data.paraView) return;

@@ -19,16 +19,7 @@ import {Kla} from './Kla';
 import {Tb500} from './Tb500';
 import {APP_NAME,isMini,hasTab,tabLabel} from './edition';
 
-const SUBTITLE: Record<string,string> = {
-  'Batch Report 분석':'장비 Report 폴더의 Batch Report를 Lot 단위로 모아 가동률 · Lot 추적 · WPH를 보고, 필요한 Batch Report를 찾아 취합합니다.',
-  'Defect 분석':'Color · Gray 매칭으로 사진 · Excel 을 만들고, 대규모 Defect 는 Contrast · 분류로 걸러 사진으로 조사하고, 스캔 결과끼리 Wafer Map 으로 비교하세요. 원본 폴더는 읽기만 합니다.',
-  'Wafer Map 수정하기':'Wafer Map TXT 를 Excel 로 펼쳐 Bin Code 를 고치고, 원본 그대로 다시 TXT 로 되돌리세요.',
-  '메모':'특이사항 · 참고자료 · 장비 IP 공유 문서를 함께 보고 고치세요.',
-  'KLA 자재 찾기':'KLA 장비 스캔 결과 폴더에서 Lot 이름으로 자재를 찾아 경로를 알려 주고, 바로 폴더를 엽니다.',
-  'TB500 Review 조회':'Lot 목록을 붙여 넣으면 Conder Scan 폴더에서 Layer 마다 재리뷰 여부를 판정하고, Camtek · KLA 캐시에서 스캔한 장비 · 호기 · 시각을 찾습니다.'
-};
-// AOI Manager Mini(v14.4): Batch Report 분석 탭 = [Batch Report 찾기 · 취합]만.
-if(isMini)SUBTITLE['Batch Report 분석']='Batch Report 를 파일 이름으로 찾아 고르고, Lot 별 Dice 를 취합해 Excel 로 저장합니다.';
+// 탭 머리 제목 · 설명(eyebrow · h1 · 설명 글)은 없앰(소유자 2026-11-25 '가독성') — 화면 읽기 프로그램용 h1 만 남김(sr-only).
 document.title=APP_NAME;
 // Batch Report 분석 stays mounted too: its results, Lot window and unsaved developer choices
 // survive a visit to 설정 (where the developer toggle lives).
@@ -134,14 +125,14 @@ function App(){
     <Toaster/>
     <TourLayer/>
     <ActivityPanel/>
-    <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">A</span><span className="brand-name"><b>AOI Manager</b>{isMini&&<em className="edition-pill" title="AOI Manager 의 간단판 — 고른 기능만 보입니다">Mini</em>}<small>장비 데이터 작업공간</small></span></a><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span></header>
+    <header className="topbar"><a className="brand" href="#main"><span className="brand-icon" aria-hidden="true">A</span><span className="brand-name"><b>AOI Manager</b>{isMini&&<em className="edition-pill" title="AOI Manager 의 간단판 — 고른 기능만 보입니다">Mini</em>}<small>장비 데이터 작업공간</small></span></a><span className="topbar-right"><span className="environment"><span aria-hidden="true">●</span> 오프라인 · 원본 읽기 전용</span><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
+        {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></span></header>
     <UpdateBanner busy={batchRunning}/>
     <nav className="vendor-tabs" aria-label="장비 회사 · 공통">{TOPS.map(t=><button key={t} data-tour={(t in VENDORS?'vendor:':'nav:')+t}
       className={(top===t?'active':'')+(t in VENDORS?'':' common')} aria-current={top===t?'page':undefined}
       onClick={()=>setTab(t==='CAMTEK'||t==='KLA'?lastTab.current[t]:t)}>{t}</button>)}</nav>
     {navigation.length>0&&<nav className="navigation" aria-label="주요 기능">{navigation.map(name=><button key={name} data-tour={'nav:'+name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>setTab(name)}>{tabLabel(name)}</button>)}</nav>}
-    <main id="main"><div className="page-heading"><div><p className="eyebrow">PROCESS INTELLIGENCE</p><h1>{tabLabel(tab)}</h1><p>{SUBTITLE[tab]||'장비의 기록을 모아, 처리량과 오류 흐름을 한눈에 확인하세요.'}</p></div><span className="connection-box"><span className={'connection '+(config&&!engineDown?'connected':'')}>{engineDown?'엔진 연결 끊김':connection}</span>
-        {engineDown&&<button onClick={reconnect}>다시 연결</button>}</span></div>
+    <main id="main"><h1 className="sr-only">{tabLabel(tab)}</h1>
       <div key={screenKey} style={{display:'contents'}}>
       {visited.map(name=><div key={name} hidden={tab!==name} className="kept-screen">{
         name==='Commonality 조사'?<Commonality/>:name==='Recipe 관리'?<RecipeHub active={tab==='Recipe 관리'}/>

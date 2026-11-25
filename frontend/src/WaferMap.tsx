@@ -1,4 +1,4 @@
-import {useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {desktop,errorText,pickFolder} from './desktop';
 import {notify,fail,Stepper,StepNav} from './ui';
 import {RowPick} from './RowPick';
@@ -14,6 +14,7 @@ type Scan={root:string;mode:string;items:Item[];valid:number;total:number};
 type ImgSpec={kind:string;mode:'code'|'meaning';path:string};
 type MapData={wafer:string;row_count:number;col_count:number;rows:string[][];counts:Record<string,number>;
   present:string[];colors:Record<string,string>;unknown_color:string;mean:Record<string,string>;mean_ko:Record<string,string>;images:ImgSpec[]};
+type Code={code:string;name:string;ko:string;color:string};
 type JobItem={src:string;relative:string;wafer:string;lot:string;device:string;output:string;result:unknown};
 type Job={mode:string;source_root:string;output_root:string;items:JobItem[]};
 type Result={wafer:string;output:string;output_name:string;output_type:string;folder:string;
@@ -28,6 +29,8 @@ async function pngB64(canvas:OffscreenCanvas){
   let s='';for(let i=0;i<buf.length;i+=0x8000)s+=String.fromCharCode(...buf.subarray(i,i+0x8000));
   return btoa(s);
 }
+/** 맵 그림 글자 = 프로그램 서체(맑은 고딕). 'sans-serif' 만 쓰면 Windows 에서 Arial + 한글 대체 서체로 섞여 보였다(소유자 2026-11-25). */
+const MAP_FONT="'Malgun Gothic','맑은 고딕',sans-serif";
 const hex=(m:MapData,code:string)=>'#'+(m.colors[code]||m.unknown_color);
 
 /** 맵 한 장(Bin Code 또는 Bin Meaning). rows[0] = 맵 위쪽, 아래가 Notch 6시 방향.
@@ -38,13 +41,13 @@ function renderMap(m:MapData,mode:'code'|'meaning'):OffscreenCanvas{
   const padL=54,padT=78,padB=108,legendGap=30;
   const entries=m.present.map(code=>({color:hex(m,code),count:m.counts[code]||0,
     label:mode==='code'?`Bin ${code}`:(m.mean[code]||('Unknown Bin '+code))}));
-  const probe=new OffscreenCanvas(8,8).getContext('2d')!;probe.font='14px sans-serif';
+  const probe=new OffscreenCanvas(8,8).getContext('2d')!;probe.font=`14px ${MAP_FONT}`;
   let legendW=160;for(const e of entries)legendW=Math.max(legendW,Math.ceil(probe.measureText(`${e.label} (${e.count})`).width)+66);
   const gridW=cc*cell,gridH=rc*cell;
   const W=padL+gridW+legendGap+legendW+16,H=Math.max(padT+gridH+padB,padT+(entries.length+2)*26+40);
   const c=new OffscreenCanvas(W,H),g=c.getContext('2d')!;
   g.fillStyle='#fff';g.fillRect(0,0,W,H);
-  g.fillStyle='#1F2A37';g.font='bold 20px sans-serif';g.textAlign='left';g.textBaseline='alphabetic';
+  g.fillStyle='#1F2A37';g.font=`bold 20px ${MAP_FONT}`;g.textAlign='left';g.textBaseline='alphabetic';
   g.fillText(`${m.wafer}  ${mode==='code'?'Bin Code Map':'Bin Meaning Map'} | Notch 6 o'clock`,padL,36);
   const ox=padL,oy=padT;
   for(let r=0;r<rc;r++)for(let col=0;col<cc;col++){g.fillStyle=hex(m,m.rows[r][col]);g.fillRect(ox+col*cell,oy+r*cell,cell,cell);}
@@ -53,7 +56,7 @@ function renderMap(m:MapData,mode:'code'|'meaning'):OffscreenCanvas{
   for(let r=0;r<=rc;r++){g.moveTo(ox,oy+r*cell);g.lineTo(ox+gridW,oy+r*cell);}
   g.stroke();
   g.strokeStyle='#8AA0A8';g.lineWidth=1;g.strokeRect(ox+0.5,oy+0.5,gridW,gridH);
-  g.fillStyle='#556070';g.font='11px sans-serif';g.textBaseline='middle';
+  g.fillStyle='#556070';g.font=`11px ${MAP_FONT}`;g.textBaseline='middle';
   g.textAlign='center';for(let col=0;col<cc;col+=10)g.fillText(String(col),ox+col*cell+cell/2,oy+gridH+16);
   g.textAlign='right';for(let r=0;r<rc;r+=10)g.fillText(String(rc-1-r),ox-6,oy+r*cell+cell/2);
   g.textAlign='center';g.fillText('Col (0-based, left to right)',ox+gridW/2,oy+gridH+42);
@@ -61,10 +64,10 @@ function renderMap(m:MapData,mode:'code'|'meaning'):OffscreenCanvas{
   const nx=ox+gridW/2,ny=oy+gridH;
   g.beginPath();g.moveTo(nx-10,ny+24);g.lineTo(nx+10,ny+24);g.lineTo(nx,ny+4);g.closePath();
   g.fillStyle='#fff';g.fill();g.strokeStyle='#263238';g.lineWidth=1.4;g.stroke();
-  g.fillStyle='#263238';g.font='bold 12px sans-serif';g.fillText("Notch 6'",nx,ny+42);
+  g.fillStyle='#263238';g.font=`bold 12px ${MAP_FONT}`;g.fillText("Notch 6'",nx,ny+42);
   const lx=ox+gridW+legendGap,ly=oy+8;
-  g.textAlign='left';g.fillStyle='#1F4E78';g.font='bold 15px sans-serif';g.fillText('범례',lx,ly);
-  g.font='14px sans-serif';
+  g.textAlign='left';g.fillStyle='#1F4E78';g.font=`bold 15px ${MAP_FONT}`;g.fillText('범례',lx,ly);
+  g.font=`14px ${MAP_FONT}`;
   entries.forEach((e,i)=>{const y=ly+28+i*26;g.fillStyle=e.color;g.fillRect(lx,y-9,18,18);
     g.strokeStyle='#999';g.lineWidth=1;g.strokeRect(lx+0.5,y-8.5,18,18);
     g.fillStyle='#222';g.fillText(`${e.label} (${e.count})`,lx+26,y);});
@@ -80,6 +83,8 @@ export function WaferMap(){
   const [results,setResults]=useState<Result[]>([]),[errors,setErrors]=useState<{wafer:string;error:string}[]>([]);
   const [state,setState]=useState<'idle'|'running'|'complete'|'cancelled'|'error'>('idle');
   const [viewer,setViewer]=useState<{src:string;title:string}>();
+  const [codes,setCodes]=useState<Code[]>([]);   // Defect 코드(Bin Code) 표 — 엔진 wafermap.DEFECT_CODES(엑셀 범례와 같음)
+  useEffect(()=>{void desktop.request('wm_state').promise.then(r=>{const c=(r.wafermap as {codes?:Code[]}|undefined)?.codes;if(c)setCodes(c);}).catch(()=>undefined);},[]);
   const stop=useRef(false);
   const byId=new Map((scan?.items||[]).map(i=>[String(i.id),i]));
   const addLog=(m:string)=>setLog(l=>[...l.slice(-249),`[${new Date().toLocaleTimeString('ko-KR',{hour12:false})}] ${m}`]);
@@ -152,6 +157,12 @@ export function WaferMap(){
       원본 TXT 는 건드리지 않고 <code>_Map_Edit.xlsx</code> · <code>_Converted.txt</code> 와 맵 이미지(PNG) 를 새로 만듭니다.
       손대지 않은 맵은 TXT→Excel→TXT 를 거쳐도 (헤더·빈 줄·줄바꿈·BOM 까지) 바이트가 동일합니다.
       헤더(머리말)는 Excel 의 <code>Header_Edit</code> 시트에서 <b>수정 값</b> 칸을 채울 때만 바뀝니다(맵 크기 ROWCT·COLCT 제외).</p>
+    {codes.length>0&&<details className="wm-codes">
+      <summary>Defect 코드 표 (Bin Code {codes.length}개)</summary>
+      <p className="hint">TXT → Excel 로 만든 <code>_Map_Edit.xlsx</code> 오른쪽 범례에 이 코드가 모두 들어 있습니다. 범례의 코드 칸을 복사해 맵 die 에 붙여 넣으면 그 Defect 로 바뀝니다.</p>
+      <div className="table-scroll" style={{maxHeight:320}}><table className="t-compact"><thead><tr><th>Bin Code</th><th>색</th><th>Defect 종류</th><th>설명</th></tr></thead>
+        <tbody>{codes.map(c=><tr key={c.code}><td className="wm-code">{c.code}</td><td><i className="wm-sw" style={{background:'#'+c.color}} aria-hidden="true"/></td><td>{c.name}</td><td>{c.ko}</td></tr>)}</tbody></table></div>
+    </details>}
     <Stepper labels={STEPS} current={step} onJump={i=>{if(!busy&&i<=3&&(i===0||validCount))setStep(i);}}/>
     <div className="step-body">
     {step===0&&<>

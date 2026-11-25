@@ -84,14 +84,62 @@ def _load_heavy():
     return Workbook, load_workbook, PatternFill, Font, Border, Side, Alignment, get_column_letter
 
 
-COLORS = {'___': 'FFFFFF', '000': 'DDF3DF', '003': 'D62728', '007': 'D08C00', '014': 'E53935',
-          '022': '7B1FA2', '031': '1565C0', '090': '666666'}
-MEAN = {'000': 'Accept / Good', '003': 'Metal Residue', '007': 'Irregular Bump', '014': 'RDL Defect',
-        '022': 'Scratch', '031': 'Foreign Material', '090': 'Customer Map Reject Die', '___': 'Outside Wafer'}
-MEAN_KO = {'000': '양품', '003': '금속 잔류물', '007': '범프 불량', '014': 'RDL 불량', '022': '스크래치',
-           '031': '이물', '090': '고객 맵 Reject Die', '___': '웨이퍼 외곽 (Die 없음)'}
-COLOR_NAME = {'FFFFFF': '흰색', 'DDF3DF': '연두색', 'D62728': '빨강', 'D08C00': '주황', 'E53935': '선홍',
-              '7B1FA2': '보라', '1565C0': '파랑', '666666': '회색', 'F4B183': '살구색'}
+# Defect 코드(Bin Code) 표 — 소유자 2026-11-25 'defect code 표'(0 = Good, 나머지 = Defect). Defect 분석 HTML(rev6 DEFECT_DESC)과 같은 표
+# (tests/test_defect_codes.py). 종전 표와 뜻이 달라진 코드: 014 RDL Defect → Damaged Bump, 090 Customer Map Reject Die → Coplanarity.
+DEFECT_CODES = [(0, 'Accept'), (1, 'Undersized Bump'), (2, 'Missing Bump'), (3, 'Metal Residue'),
+                (4, 'Bridged Bumps'), (7, 'Irregular Bump'), (9, 'Over Sized Bump'), (14, 'Damaged Bump'),
+                (22, 'Passivation Scratch'), (23, 'Passivation Damage'), (31, 'Foreign Material'), (94, 'Others'),
+                (91, 'Incoming Passivation Damaged - Metal Defect'), (92, 'Passivation Defect'), (41, 'Discolored'),
+                (13, 'Unfocused'), (90, 'Coplanarity'), (93, 'Incoming FM'), (42, 'Height'), (40, 'Crack'),
+                (28, 'B R Other'), (29, 'B R Surface Dark'), (30, 'B R Bump Missing'), (60, 'B R Big Bump'),
+                (50, 'B R Bump Small'), (51, 'B R Height LSL'), (52, 'B R Height USL'), (53, 'B R Cop'),
+                (54, 'B R Surface Bright'), (55, 'B R Damage Bump'), (71, 'CMP TSV breaking'),
+                (72, 'CMP FM under passivation'), (73, 'CMP FM on passivation'), (74, 'CMP TSV original defect'),
+                (75, 'CMP Bent Via defect'), (76, 'CMP Scratch'), (77, 'CMP Passivation peeled off'),
+                (78, 'CMP Crack'), (79, 'CMP Discolor TSV'), (80, 'CMP Unreveal TSV'), (81, 'CMP Other'),
+                (82, 'Cu missing'), (83, 'PTN reveal'), (84, 'Cu short'), (85, 'Cu shape'), (86, 'Cu Smear'),
+                (87, 'FM on Cu'), (88, 'Other')]
+COLORS = {'___': 'FFFFFF', '000': 'DDF3DF', '001': 'EF6C00', '002': 'B71C1C', '003': 'D62728', '004': 'F06292',
+          '007': 'D08C00', '009': 'FFB300', '014': 'E53935', '022': '7B1FA2', '023': 'AB47BC', '031': '1565C0',
+          '094': '9E9E9E', '091': '6A1B9A', '092': 'CE93D8', '041': '8D6E63', '013': 'B0BEC5', '090': '666666',
+          '093': '42A5F5', '042': 'FDD835', '040': '212121', '028': '00897B', '029': '004D40', '030': '26A69A',
+          '060': '80CBC4', '050': '00ACC1', '051': '0097A7', '052': '006064', '053': '4DD0E1', '054': 'B2EBF2',
+          '055': '00796B', '071': '5D4037', '072': '795548', '073': 'A1887F', '074': '827717', '075': '9E9D24',
+          '076': 'C0CA33', '077': 'AFB42B', '078': '3E2723', '079': 'BCAAA4', '080': 'D7CCC8', '081': '6D4C41',
+          '082': '2E7D32', '083': '43A047', '084': '1B5E20', '085': '66BB6A', '086': '9CCC65', '087': '558B2F',
+          '088': 'BDBDBD'}
+MEAN = {'000': 'Accept / Good', '001': 'Undersized Bump', '002': 'Missing Bump', '003': 'Metal Residue',
+        '004': 'Bridged Bumps', '007': 'Irregular Bump', '009': 'Over Sized Bump', '014': 'Damaged Bump',
+        '022': 'Passivation Scratch', '023': 'Passivation Damage', '031': 'Foreign Material', '094': 'Others',
+        '091': 'Incoming Passivation Damaged - Metal Defect', '092': 'Passivation Defect', '041': 'Discolored',
+        '013': 'Unfocused', '090': 'Coplanarity', '093': 'Incoming FM', '042': 'Height', '040': 'Crack',
+        '028': 'B R Other', '029': 'B R Surface Dark', '030': 'B R Bump Missing', '060': 'B R Big Bump',
+        '050': 'B R Bump Small', '051': 'B R Height LSL', '052': 'B R Height USL', '053': 'B R Cop',
+        '054': 'B R Surface Bright', '055': 'B R Damage Bump', '071': 'CMP TSV breaking',
+        '072': 'CMP FM under passivation', '073': 'CMP FM on passivation', '074': 'CMP TSV original defect',
+        '075': 'CMP Bent Via defect', '076': 'CMP Scratch', '077': 'CMP Passivation peeled off', '078': 'CMP Crack',
+        '079': 'CMP Discolor TSV', '080': 'CMP Unreveal TSV', '081': 'CMP Other', '082': 'Cu missing',
+        '083': 'PTN reveal', '084': 'Cu short', '085': 'Cu shape', '086': 'Cu Smear', '087': 'FM on Cu',
+        '088': 'Other', '___': 'Outside Wafer'}
+MEAN_KO = {'000': '양품', '001': '작은 범프', '002': '범프 없음', '003': '금속 잔류물', '004': '범프 붙음(브리지)', '007': '범프 모양 불량',
+           '009': '큰 범프', '014': '범프 손상', '022': 'Passivation 스크래치', '023': 'Passivation 손상', '031': '이물',
+           '094': '기타', '091': '입고 Passivation 손상 - 금속 불량', '092': 'Passivation 불량', '041': '변색', '013': '초점 안 맞음',
+           '090': '평탄도(Coplanarity)', '093': '입고 이물', '042': '높이', '040': '크랙', '028': 'B R 기타', '029': 'B R 표면 어두움',
+           '030': 'B R 범프 없음', '060': 'B R 큰 범프', '050': 'B R 작은 범프', '051': 'B R 높이 하한 미만', '052': 'B R 높이 상한 초과',
+           '053': 'B R Coplanarity', '054': 'B R 표면 밝음', '055': 'B R 범프 손상', '071': 'CMP TSV 깨짐',
+           '072': 'CMP Passivation 아래 이물', '073': 'CMP Passivation 위 이물', '074': 'CMP TSV 원래 불량', '075': 'CMP Via 휨',
+           '076': 'CMP 스크래치', '077': 'CMP Passivation 벗겨짐', '078': 'CMP 크랙', '079': 'CMP TSV 변색',
+           '080': 'CMP TSV 안 드러남', '081': 'CMP 기타', '082': 'Cu 없음', '083': 'PTN 드러남', '084': 'Cu 붙음(Short)',
+           '085': 'Cu 모양 불량', '086': 'Cu 번짐', '087': 'Cu 위 이물', '088': '기타', '___': '웨이퍼 외곽 (Die 없음)'}
+COLOR_NAME = {'FFFFFF': '흰색', 'DDF3DF': '연두색', 'EF6C00': '진한 주황', 'B71C1C': '검붉은색', 'D62728': '빨강', 'F06292': '분홍',
+              'D08C00': '주황', 'FFB300': '황금색', 'E53935': '선홍', '7B1FA2': '보라', 'AB47BC': '연보라', '1565C0': '파랑',
+              '9E9E9E': '중간 회색', '6A1B9A': '진보라', 'CE93D8': '라벤더', '8D6E63': '갈색', 'B0BEC5': '청회색', '666666': '회색',
+              '42A5F5': '하늘색', 'FDD835': '노랑', '212121': '검정', '00897B': '청록', '004D40': '진청록', '26A69A': '옥색',
+              '80CBC4': '연옥색', '00ACC1': '시안', '0097A7': '진시안', '006064': '암청색', '4DD0E1': '연시안',
+              'B2EBF2': '아주 연한 시안', '00796B': '짙은 옥색', '5D4037': '고동색', '795548': '밤색', 'A1887F': '연갈색',
+              '827717': '올리브', '9E9D24': '황록색', 'C0CA33': '라임', 'AFB42B': '진라임', '3E2723': '흑갈색', 'BCAAA4': '베이지',
+              'D7CCC8': '연베이지', '6D4C41': '진갈색', '2E7D32': '초록', '43A047': '중간 초록', '1B5E20': '진초록', '66BB6A': '연초록',
+              '9CCC65': '풀색', '558B2F': '국방색', 'BDBDBD': '연회색', 'F4B183': '살구색'}
 UNKNOWN_COLOR = 'F4B183'
 IMAGE_KINDS = [('code', 'BinCode_Map', 'Bin Code Map'), ('meaning', 'BinMeaning_Map', 'Bin Meaning Map')]
 # 맵 격자 크기는 Map_Edit 셀 수로 정해지므로 헤더에서 바꾸면 TXT 가 깨진다 → 편집 금지.
@@ -186,8 +234,8 @@ def write_legend(ws, rows, rc, cc, cache, styles, get_column_letter):
     col = cc + 3
     L = lambda i: get_column_letter(col + i)  # noqa: E731
     present = sorted({x for r in rows for x in r})
-    codes = [x for x in ['000', '003', '007', '014', '022', '031', '090', '___'] if x in COLORS] + \
-            [x for x in present if x not in COLORS]
+    # 범례 = 표의 모든 Defect 코드(표 순서) + 외곽 + 이 맵에만 있는 코드 — 어느 코드든 범례에서 복사해 붙여 넣을 수 있다.
+    codes = [f'{c:03d}' for c, _ in DEFECT_CODES] + ['___'] + [x for x in present if x not in COLORS]
     first, last = '$B$5', f'${get_column_letter(cc + 1)}${4 + rc}'
     head_fill = PatternFill('solid', fgColor='1F4E78')
     head_font = Font(bold=True, color='FFFFFF', size=9)

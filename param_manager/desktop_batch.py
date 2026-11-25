@@ -20,10 +20,11 @@ def read_json(path):
 
 
 def options(raw):
-    if not isinstance(raw, dict) or set(raw) - {"metrics", "valid_wafers", "min_baseline", "yield_drop", "by_recipe", "reuse"}:
+    if not isinstance(raw, dict) or set(raw) - {"metrics", "valid_wafers", "min_baseline", "yield_drop", "by_recipe", "reuse", "cache_only"}:
         raise ValueError("분석 설정을 확인하세요")
-    # reuse = '이미 읽은 Batch Report는 다시 읽지 않기'(기본 켜짐). 끄면 고른 범위를 전부 다시 연다.
-    result = dict(metrics=list(batchreport.METRICS), valid_wafers=25, by_recipe=True, reuse=True)
+    # reuse = '이미 읽은 Batch Report는 다시 읽지 않기' — 화면 스위치는 없앰(소유자 2026-11-25, 늘 켬). 예전 설정 · 자동 분석 호환으로 키만 받는다.
+    # cache_only = [캐시에서만 찾기](소유자 2026-11-25): 장비 폴더에 접속하지 않고 이 PC 로컬 캐시만으로 조사한다.
+    result = dict(metrics=list(batchreport.METRICS), valid_wafers=25, by_recipe=True, reuse=True, cache_only=False)
     # M09 was retired; its thresholds may still arrive from older saved settings. Ignore them.
     result.update({k: v for k, v in raw.items() if k not in ("min_baseline", "yield_drop")})
     metrics = result["metrics"]
@@ -39,7 +40,7 @@ def options(raw):
         raise ValueError("WPH 유효 매수를 확인하세요")
     if type(result["by_recipe"]) is not bool:
         raise ValueError("Recipe 설정을 확인하세요")
-    if type(result["reuse"]) is not bool:
+    if type(result["reuse"]) is not bool or type(result["cache_only"]) is not bool:
         raise ValueError("캐시 사용 설정을 확인하세요")
     return result
 

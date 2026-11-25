@@ -6,7 +6,7 @@ import {takeSettingsIntent} from './nav';
 import {OpenPath,openPath} from './OpenPath';
 import {useDev,setDevOn,saveDrafts,dropDrafts} from './devmode';
 import {DevHelp,DevOff} from './DevHelp';
-import {ScanBackupBar,useScanBackup} from './ScanBackup';
+import {useScanBackup} from './ScanBackup';
 import {startTour} from './Tour';
 import {openBatchAutoSettings} from './batchAuto';
 import {periodLabel} from './BatchAutoPanel';
@@ -228,9 +228,8 @@ export function Settings(){
     {sub==='aoi'&&aoiVendor==='CAMTEK'&&<>
       <h3>AOI 장비 호기 루트 등록</h3>
       <p className="hint">호기 폴더(예: <code>W:\AOI-9</code>) 하나만 등록하면 그 아래 <b>Reports</b> 폴더는 Batch Report 분석이,
-        <b> Scanresult</b> 폴더(설정에 따라 <code>Scanresult_260402</code> 같은 백업본 포함)는 {isMini?'Batch Report 찾기':'Commonality 조사 · 분석 및 취합 · Batch Report 찾기'}가 읽습니다. 장비 폴더는 읽기만 합니다.{!isMini&&<><br/>
+        <b> Scanresult</b> 폴더(<code>Scanresult_260402</code> 같은 백업본 포함)는 {isMini?'Batch Report 찾기':'Commonality 조사 · 분석 및 취합 · Batch Report 찾기'}가 읽습니다. 장비 폴더는 읽기만 합니다.{!isMini&&<><br/>
         <b>Job 폴더</b> 열은 장비 PC 의 Recipe(Job) 폴더 위치입니다. 기본은 <code>C:\Job</code>(<code>\\장비IP\c$\Job</code>)이고, 장비의 Job 폴더가 다른 드라이브로 옮겨졌으면 [변경]으로 고치세요(예: <code>D:\Job</code>).</>}</p>
-      <ScanBackupBar note="Scanresult 를 찾는 모든 기능에 같이 적용됩니다."/>
       {aois.length>0&&<table className="tbl" data-tour="settings:aoi-table" style={{marginTop:12}}><thead><tr><th>호기</th><th>호기 루트</th><th>인식된 폴더</th>{!isMini&&<th title="장비 PC 의 Job 폴더 — Recipe 업데이트 · 분석 및 취합 · 장비 연결 확인이 읽는 곳">Job 폴더</th>}<th/></tr></thead>
         <tbody>{aois.map(aoiRow)}</tbody></table>}
       <div className="form-filter" data-tour="settings:aoi-form" style={{marginTop:12}}>

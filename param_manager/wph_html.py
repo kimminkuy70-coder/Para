@@ -286,7 +286,7 @@ _CSS = """
 --badbg:#fee2e2;--warn:#b45309;--warnbg:#fef3c7;--bar:#2f6fdb}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
-font:14px/1.5 "Segoe UI","Malgun Gothic",system-ui,sans-serif}
+font:14px/1.5 "Malgun Gothic","Segoe UI",system-ui,sans-serif}
 .wrap{max-width:1120px;margin:0 auto;padding:20px 18px 60px}
 h1{font-size:22px;margin:6px 0 2px}.sub{color:var(--muted);font-size:13px;margin-bottom:16px}
 .meta{display:flex;flex-wrap:wrap;gap:8px 20px;background:var(--card);border:1px solid var(--line);

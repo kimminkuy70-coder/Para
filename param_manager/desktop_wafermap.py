@@ -136,9 +136,12 @@ class DesktopWaferMap:
 
     def view(self, params=None):
         job = self.job
+        # codes = Defect 코드(Bin Code) 표(소유자 2026-11-25) — 화면 [Defect 코드 표] 가 그린다(엑셀 범례와 같은 표).
+        codes = [dict(code=f'{c:03d}', name=wafermap.MEAN.get(f'{c:03d}', d), ko=wafermap.MEAN_KO.get(f'{c:03d}', ''),
+                      color=wafermap.COLORS.get(f'{c:03d}', wafermap.UNKNOWN_COLOR)) for c, d in wafermap.DEFECT_CODES]
         if not job:
-            return dict(job=None)
-        return dict(job=dict(
+            return dict(job=None, codes=codes)
+        return dict(codes=codes, job=dict(
             mode=job['mode'], source_root=job['source_root'], output_root=job['output_root'],
             items=[dict(src=it['src'], relative=it['relative'], wafer=it['wafer'], lot=it['lot'],
                         device=it['device'], output=it['output'], result=it['result']) for it in job['items']]))

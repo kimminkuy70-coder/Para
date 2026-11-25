@@ -61,7 +61,7 @@
 :root[data-theme="dark"]{--bg:#0f1523;--panel:#18202f;--ink:#e6ebf5;--sub:#9fabc2;--line:#2c3850;--navy:#2a4a80;--acc:#7aa5ff;
   --keep:#34d1d1;--gone:#ff6b6e;--new:#ffd23f;--warn:#ffc46b;--warnbg:#3a2c10;--errbg:#3e1a1a;--err:#ff9a92;--okbg:#123222;--ok:#7be0a6;--chip:#222c40}
 *{box-sizing:border-box}[hidden]{display:none!important}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Segoe UI","Malgun Gothic",system-ui,sans-serif}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Malgun Gothic","Segoe UI",system-ui,sans-serif}
 header{background:var(--navy);color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 header h1{font-size:17px;margin:0}
 header .lim{background:#ffd23f;color:#3a2c00;border-radius:6px;padding:2px 8px;font-weight:600;font-size:13px}
@@ -1658,7 +1658,7 @@ function popMap(P){
   if(P.pop&&!P.pop.w.closed){P.pop.w.focus();return}
   const w=winOpen('cw_map_'+P.pre,'width=1100,height=1000');
   const css=getComputedStyle(document.documentElement),cl=n=>css.getPropertyValue(n).trim(),doc=w.document;doc.title='Wafer map · '+P.title;
-  doc.head.innerHTML=`<meta charset="utf-8"><style>html,body{height:100%;margin:0}body{background:${cl('--bg')};color:${cl('--ink')};font:13px "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
+  doc.head.innerHTML=`<meta charset="utf-8"><style>html,body{height:100%;margin:0}body{background:${cl('--bg')};color:${cl('--ink')};font:13px "Malgun Gothic","Segoe UI",sans-serif;display:flex;flex-direction:column}
     .hd{padding:6px 10px;flex:none}canvas{flex:1;min-height:0;width:100%;display:block;background:${cl('--panel')}}</style>`;
   // Para #56: 새 창 = 왼쪽 벤다이어그램(Step 3) 또는 A → B 간략 지도 2개(Step 4) + 오른쪽 wafer map. 둘 다 이 화면과 실시간 연동.
   doc.head.insertAdjacentHTML('beforeend','<style>.bd{flex:1;min-height:0;display:flex;gap:8px;padding:0 8px 8px}.sd{flex:0 0 38%;min-width:0;display:flex;flex-direction:column;gap:6px}.sd canvas{flex:1;min-height:0;border:1px solid '+cl('--line')+';border-radius:8px}.sd .cap{flex:none;font-size:12px;color:'+cl('--sub')+'}.mp{flex:1;min-width:0;display:flex}.mp canvas{border:1px solid '+cl('--line')+';border-radius:8px}</style>');
@@ -1732,10 +1732,10 @@ function rcpName(d){const k=d.recipe,r=d.scan&&d.scan.rv,n=r&&r.recipe;if(k==nul
 function typeName(d){const t=d.Type>>>0;if(d.Type==null||!t)return '';const r=d.scan&&d.scan.rv,out=[];
   if(r&&r.types)for(const [b,n] of r.types)if((b&(b-1))===0&&(t&b)>>>0===b)out.push(n);return out.join(', ')}
 const withName=(v,n)=>v==null||v!==v?'-':n?`${v} (${n})`:String(v);
-function rvInfo(d){const s=d.scan||{},r=s.rv||{},die=d.X!=null&&s.product?mapDie(d.X,d.Y,s):null,cl=r.cls&&r.cls.get(d.reclassify),zn=r.zones&&r.zones.get(d.zone);
+function rvInfo(d){const s=d.scan||{},r=s.rv||{},die=d.X!=null&&s.product?mapDie(d.X,d.Y,s):null,cl=codeName(d.reclassify,r.cls),zn=r.zones&&r.zones.get(d.zone);
   return {alg:(r.algs&&r.algs.get(d.zone))||'Surface',area:d.area,width:d.BlobBreadth,length:d.BlobLength,bw:d.BoxWidth,bh:d.BoxHeight,
     recipe:rcpName(d),recipeNo:d.recipe,col:die?die.col:null,row:die?die.row:null,mx:die?die.x:null,my:die?die.y:null,
-    clsNo:d.reclassify,clsName:cl?cl.name:'',cls:withName(d.reclassify,cl&&cl.name),typeNo:d.Type==null?null:d.Type>>>0,typeName:typeName(d),type:withName(d.Type==null?null:d.Type>>>0,typeName(d)),
+    clsNo:d.reclassify,clsName:cl||'',cls:withName(d.reclassify,cl),typeNo:d.Type==null?null:d.Type>>>0,typeName:typeName(d),type:withName(d.Type==null?null:d.Type>>>0,typeName(d)),
     zoneNo:d.zone,zoneName:zn||'',zone:withName(d.zone,zn),region:d.waferRegion==null?'-':String(d.waferRegion)}}
 /** 리뷰PC 와 같은 순서로 Surface.flt 값을 그대로(단위 환산 없음). */
 function rvText(d){const v=rvInfo(d),sp=sizePix(d.scan);   // v14.4.1: Area · Width 뒤 괄호 = µm(소유자), 한 줄 띄우고 µm 환산 픽셀
@@ -1975,7 +1975,11 @@ const rcp5=(s,i)=>{const k=s.cols.rec[i],n=s.rv&&s.rv.recipe;return k===0&&n?`0 
 /** #73: CSV 끝 열(Step 3 CSV 와 같은 순서): Recipe · Zone · Region · 판정비트 · 분류코드 · Zone이름 · 판정종류. */
 const RV5_HEAD=['Recipe','Zone','Region','판정비트','분류코드','Zone이름','판정종류'];
 const rv5Cells=(s,i)=>{const v=rvInfo(bigDef(s,i));return [v.recipe,rawNum(v.zoneNo),v.region,rawNum(v.typeNo),rawNum(v.clsNo),v.zoneName,v.typeName]};
-const clsOf=(s,code)=>{const m=s.cls&&s.cls.names.get(code);return m?m.name:`#${code}`};
+/** 소유자 2026-11-25: Defect 코드 → 이름(Desc) 표(0 = Good, 나머지 = Defect). 화면 · 목록 · CSV · 엑셀 · 필터의 분류 이름은 이 표가 먼저,
+    표에 없는 코드는 종전대로(Slot 의 ManReClassify.ini 이름 → 없으면 #코드). Para param_manager/wafermap.py DEFECT_CODES 와 같은 표(tests/test_defect_codes.py). */
+const DEFECT_DESC=new Map([[0,'Accept'],[1,'Undersized Bump'],[2,'Missing Bump'],[3,'Metal Residue'],[4,'Bridged Bumps'],[7,'Irregular Bump'],[9,'Over Sized Bump'],[14,'Damaged Bump'],[22,'Passivation Scratch'],[23,'Passivation Damage'],[31,'Foreign Material'],[94,'Others'],[91,'Incoming Passivation Damaged - Metal Defect'],[92,'Passivation Defect'],[41,'Discolored'],[13,'Unfocused'],[90,'Coplanarity'],[93,'Incoming FM'],[42,'Height'],[40,'Crack'],[28,'B R Other'],[29,'B R Surface Dark'],[30,'B R Bump Missing'],[60,'B R Big Bump'],[50,'B R Bump Small'],[51,'B R Height LSL'],[52,'B R Height USL'],[53,'B R Cop'],[54,'B R Surface Bright'],[55,'B R Damage Bump'],[71,'CMP TSV breaking'],[72,'CMP FM under passivation'],[73,'CMP FM on passivation'],[74,'CMP TSV original defect'],[75,'CMP Bent Via defect'],[76,'CMP Scratch'],[77,'CMP Passivation peeled off'],[78,'CMP Crack'],[79,'CMP Discolor TSV'],[80,'CMP Unreveal TSV'],[81,'CMP Other'],[82,'Cu missing'],[83,'PTN reveal'],[84,'Cu short'],[85,'Cu shape'],[86,'Cu Smear'],[87,'FM on Cu'],[88,'Other']]);
+const codeName=(code,m)=>{if(code==null||code!==code)return null;const t=DEFECT_DESC.get(+code);if(t)return t;const x=m&&m.get(code);return x?x.name:null};
+const clsOf=(s,code)=>codeName(code,s.cls&&s.cls.names)||`#${code}`;
 /** 소유자 "분류 2열 — 각각 AND 필터": 장비 스캔 분류(종전 '첫번째 분류') = 리뷰 전 코드(orgReclassify, 0 = 리뷰에서 안 바뀜 → 지금 코드),
  *  리뷰 결과(종전 '재분류') = 지금 코드(reclassify). Para v14.1.5 소유자 "첫번째 분류 → 장비 스캔 분류, 재분류 → 리뷰 결과 — 모든 곳에서".
  *  실제 자료: 리뷰에서 안 바뀐 Defect 는 org 0(두 열이 같음), 29126432EWE3 은 장비 스캔 B R Other · Surface Dark → 리뷰 결과 Accept. */
@@ -2272,11 +2276,11 @@ function addMade(made,units,head){
   if(noCi.length)msg.push(['warn',`${CG.CI} 가 없는 Slot ${noCi.length}개 — Color 는 Color 사진 이름(X.Y.c.….jpeg)의 좌표로 연결, Gray 는 Defect 좌표로 찾음: `+noCi.slice(0,6).join(', ')+(noCi.length>6?' …':'')]);
   if(ng.length)msg.push(['warn',`Gray 사진이 없는 Slot ${ng.length}개(Color 사진만 저장됨 — Color 는 보여 주고 Gray 는 '없음'): `+ng.slice(0,6).join(', ')+(ng.length>6?' …':'')]);
   if(alt.length)msg.push(['warn',`프로그램 파일 대신 계산한 Slot ${alt.length}개(ScanResultImageList.txt 없음 → Gray 사진 이름 · 변환 파일 번호 여러 개 → 큰 번호 · 변환 파일 없음 → 가운데 모델): `+alt.slice(0,4).join(' / ')+(alt.length>4?' …':'')]);
-  if(cs.n)msg.push([cs.miss.length?'warn':'ok',`Color · Gray 매칭(Para 프로그램과 같은 계산, 사진은 아직 안 읽음): Color 항목 ${cs.col.toLocaleString()}개 중 Gray 위치 ${cs.hit.toLocaleString()}개 · Defect ${cs.def.toLocaleString()}개 중 Color 연결 ${cs.link.toLocaleString()}개`
+  if(cs.n)msg.push([cs.miss.length?'warn':'ok',`Color · Gray 매칭(사진은 아직 안 읽음): Color 항목 ${cs.col.toLocaleString()}개 중 Gray 위치 ${cs.hit.toLocaleString()}개 · Defect ${cs.def.toLocaleString()}개 중 Color 연결 ${cs.link.toLocaleString()}개`
     +(cs.modes.length?` · 좌표 기준이 '그대로'가 아닌 Slot: ${cs.modes.slice(0,4).join(', ')}${cs.modes.length>4?' …':''}`:'')
     +(cs.miss.length?` — 매칭 파일이 없는 Slot ${cs.miss.length}개: ${cs.miss.slice(0,4).join(' / ')}${cs.miss.length>4?' …':''}`:'')]);
   BIG.pairs=null;THUMB.clear();bigLots();bigRefresh();b5tabs();return msg}
-const STEPS_A=['① 폴더 훑기 — Slot 폴더(= Surface.flt 가 있는 폴더) 찾기, Slot 안 사진 목록은 만들지 않음','② Slot 마다 Surface.flt + 매칭 파일 읽기 · Color · Gray 매칭 계산(Para 프로그램과 같음, 사진은 안 읽음)','③ 목록 · 필터 만들기'];
+const STEPS_A=['① 폴더 훑기 — Slot 폴더(= Surface.flt 가 있는 폴더) 찾기, Slot 안 사진 목록은 만들지 않음','② Slot 마다 Surface.flt + 매칭 파일 읽기 · Color · Gray 매칭 계산(사진은 안 읽음)','③ 목록 · 필터 만들기'];
 /** 5-1: 폴더 핸들로(빠른 길). */
 async function bigPickHandle(root){
   BIG.stop=false;S.o=opts();MDSUB=0;const par=+$('#bigPar').value||4,t0=performance.now(),cancel=()=>{BIG.stop=true};
@@ -2472,7 +2476,7 @@ const stamp=()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');return `${d.g
 
 // ── 5-2: 사진 짝짓기 · CSV ──────────────────────────────────────────────
 const ST5={ok:'Color·Gray 매칭 완료',color:'Color 만 (Gray 없음)',gray:'Gray 만 (Color 없음)',none:'둘 다 없음',skip:'확인 안 함 (중지)'};
-const STEPS_B=['① Slot 마다 매칭 폴더의 파일 이름 목록 (사진 내용 · 다른 파일은 열지 않음)','② Defect 마다 Color · Gray 사진 파일이 있는지 이름으로 확인 (Color·Gray 매칭은 5-1 에서 Para 프로그램 계산으로 끝남)','③ 결과 목록 · CSV 만들기'];
+const STEPS_B=['① Slot 마다 매칭 폴더의 파일 이름 목록 (사진 내용 · 다른 파일은 열지 않음)','② Defect 마다 Color · Gray 사진 파일이 있는지 이름으로 확인','③ 결과 목록 · CSV 만들기'];
 /** [다음] · [짝짓기 다시 하기]: (자동 저장이면) 저장 위치를 먼저 고르고 — 고르기 창은 누른 직후에만 열린다 — 짝짓기를 돌린 뒤 그 파일에 쓴다. */
 async function b5Start(go2){const V=BIG.view;if(!V||!V.np)return;
   if(V.np>50000&&!confirm(`Defect ${V.np.toLocaleString()}개를 매칭합니다. 오래 걸릴 수 있습니다. 5-1 에서 필터로 더 줄이면 빠릅니다. 계속할까요?`))return;
@@ -2514,7 +2518,7 @@ async function b5Pair(save){
     BIG.pairs=items;b5SlotTbl(slots);
     const sec=((performance.now()-t0)/1000).toFixed(1),skip=N-di;
     $('#b5pairSt').innerHTML=`<div class="msg ${skip?'warn':'ok'}">${esc(`Defect ${N.toLocaleString()}개 확인 끝 (${sec}초): Color·Gray 매칭 완료 ${cnt.ok} · Color 만 ${cnt.color} · Gray 만 ${cnt.gray} · 둘 다 없음 ${cnt.none}`+(skip?` · 중지로 확인 안 함 ${skip}`:''))}</div>`;
-    if(hows.size)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg ok">${esc('Color 연결: '+[...hows].map(([k,v])=>`${k} ${v.toLocaleString()}`).join(' · ')+' · Gray = Para 프로그램 Color · Gray 매칭 계산(frameToChuckPlane)')}</div>`);
+    if(hows.size)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg ok">${esc('Color 연결: '+[...hows].map(([k,v])=>`${k} ${v.toLocaleString()}`).join(' · ')+' · Gray = frameToChuckPlane 변환')}</div>`);
     const modes=slots.filter(s=>s.cg&&s.cg.plan&&s.cg.plan.mode).map(s=>`${s.slotName||s.name}: ${CG.MODES[s.cg.plan.mode]}`);
     if(modes.length)$('#b5pairSt').insertAdjacentHTML('beforeend',`<div class="msg warn">${esc("좌표 기준이 '그대로'가 아닌 Slot(프로그램과 같이 가장 많이 맞는 기준을 씀): "+modes.slice(0,6).join(' / ')+(modes.length>6?' …':''))}</div>`);
     const miss=slots.filter(s=>!s.cg||!s.cg.plan).map(s=>`${s.slotName||s.name}(${cgMiss(s.cg)})`);
@@ -2703,7 +2707,7 @@ function baseView(q,k,n,on){if(!q||!q.d)return null;const d=q.d,s=d.scan,x=info(
     g:g.frame?{hit:g,name:gn,path:pth(gn),bmp:()=>grayBmp(s,g.frame),crop:cs,d}:null,gwhy:`Gray: ${g.reason||'위치 없음'}`}}
 /** 새 창 화면 · 키(소유자 "큰 화면으로 볼 때 방향키로 다음 목록" — ↑↓ ←→ · PageUp/PageDown · Home/End · J/K, 꾹 누르면 계속 넘어감). 사진을 눌러 원래 크기로 봐도 키는 그대로. */
 function photoWinInit(w){const doc=w.document;doc.title='사진 · Color / Gray';MZ.on=false;   // 새 창은 늘 사진 3칸으로 시작
-  doc.head.insertAdjacentHTML('beforeend',`<meta charset="utf-8"><style>html,body{height:100%;margin:0}body{background:#0b0b0b;color:#ccc;font:12px "Segoe UI","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
+  doc.head.insertAdjacentHTML('beforeend',`<meta charset="utf-8"><style>html,body{height:100%;margin:0}body{background:#0b0b0b;color:#ccc;font:12px "Malgun Gothic","Segoe UI",sans-serif;display:flex;flex-direction:column}
     .hd{flex:none;padding:3px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hd i{color:#888;font-style:normal}
     .pv{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,2.2fr) minmax(0,1fr);gap:6px;padding:0 6px 6px}
     figure{margin:0;min-width:0;min-height:0;background:#000;border-radius:6px;display:flex;flex-direction:column;overflow:hidden}
@@ -2749,7 +2753,7 @@ const MZ_CSS=`.pv[hidden],.mz[hidden]{display:none}.mzon #lkL,.mzon #bxL{display
   .mz{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:6px;padding:0 6px 6px}
   .mzl{min-width:0;min-height:0;display:flex;flex-direction:column;background:#000;border-radius:6px;overflow:hidden}
   .mzbar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px;background:#161a22;border-bottom:1px solid #2a2f3a}
-  .mzbar button{font:12px "Segoe UI","Malgun Gothic",sans-serif;padding:3px 10px;border-radius:4px;border:1px solid #2f3746;background:#222a36;color:#eee;cursor:pointer}
+  .mzbar button{font:12px "Malgun Gothic","Segoe UI",sans-serif;padding:3px 10px;border-radius:4px;border:1px solid #2f3746;background:#222a36;color:#eee;cursor:pointer}
   .mzbar button.on{background:#10b981;border-color:#10b981;color:#04231a;font-weight:700}.mzbar button:disabled{opacity:.4;cursor:default}
   .mzbar .sep{width:1px;height:18px;background:#2f3746}.mzbar .zl{margin-left:auto;color:#ffe08a}
   .mzcv{flex:1;min-height:0;position:relative}.mzcv canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}.mzcv.pan canvas{cursor:grab}
@@ -2804,7 +2808,7 @@ function mzDraw(doc){const box=doc.getElementById('mzCv'),cv=box.querySelector('
     if(sh.t==='line'){c.moveTo(ax,ay);c.lineTo(bx,by)}else if(sh.t==='circle')c.arc(ax,ay,Math.hypot(bx-ax,by-ay),0,Math.PI*2);else c.rect(Math.min(ax,bx),Math.min(ay,by),Math.abs(bx-ax),Math.abs(by-ay));c.stroke();
     if(sh.t==='circle'){c.setLineDash([4*u,3*u]);c.beginPath();c.moveTo(ax,ay);c.lineTo(bx,by);c.stroke();c.setLineDash([])}
     for(const [x,y] of [sh.a,sh.b])c.fillRect(x-3*u,y-3*u,6*u,6*u)}
-  c.setTransform(1,0,0,1,0,0);c.font=`600 ${12*dpr}px "Segoe UI","Malgun Gothic",sans-serif`;c.textBaseline='middle';
+  c.setTransform(1,0,0,1,0,0);c.font=`600 ${12*dpr}px "Malgun Gothic","Segoe UI",sans-serif`;c.textBaseline='middle';
   const put=[];   // 글 상자끼리 겹치면 아래로 비킨다
   L.forEach((sh,i)=>{const [ax,ay]=sh.a,[bx,by]=sh.b,r=Math.hypot(bx-ax,by-ay),[x,y]=sh.t==='line'?[Math.max(ax,bx),ax>bx?ay:by]:sh.t==='circle'?[ax+r*0.72,ay-r*0.72]:[Math.max(ax,bx),Math.min(ay,by)],
       t=`${MZ_N[i]||i+1} ${mzVal(sh).lab}`,tw=c.measureText(t).width,sx=(x-V.ox)*k+8*dpr;let sy=(y-V.oy)*k-10*dpr;
@@ -3324,7 +3328,7 @@ if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대�
   if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
   else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={PARA,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgMap,cgCropSize,geoLoad,geoLoadFd,geoHit,geoChoose,geoPlan,geoRect,geoSize,geoPix,geoWhy,geoModel,tfSize,tfPix,parseRecipesInfo,cgFrameData,geoFramesFromNames,cgColorsFromNames,dirFromFiles,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRankOf,b5Refresh,B5,fltSpan,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,grayOf,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,DEFECT_DESC,codeName,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgMap,cgCropSize,geoLoad,geoLoadFd,geoHit,geoChoose,geoPlan,geoRect,geoSize,geoPix,geoWhy,geoModel,tfSize,tfPix,parseRecipesInfo,cgFrameData,geoFramesFromNames,cgColorsFromNames,dirFromFiles,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRankOf,b5Refresh,B5,fltSpan,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,grayOf,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

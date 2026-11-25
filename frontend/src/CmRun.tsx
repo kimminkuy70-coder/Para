@@ -4,7 +4,7 @@ import {Stepper,StepNav,notify,fail} from './ui';
 import {OpenPath,openPath} from './OpenPath';
 import {FormEditor} from './FormEditor';
 import {goToSettings} from './nav';
-import {ScanBackupBar,ScanRoots,type RootInfo} from './ScanBackup';
+import {ScanRoots,type RootInfo} from './ScanBackup';
 
 type SurveyMachine={id:string;root:string};
 // '이슈 Lot' (구 'fail여부'): 이슈가 있었던 Lot — 비교표·뷰어에서 노란색으로 표시.
@@ -151,7 +151,6 @@ export function CmRun({onFinished}:{onFinished:()=>void}){
     <div className="step-body">
     {step===0&&<>
       <p className="hint">조사할 Lot 계획을 입력하거나 엑셀로 불러오면, 고른 호기의 Scanresult 에서 S/M 폴더를 찾습니다. 원본은 읽기만 합니다.</p>
-      <ScanBackupBar note="[다음]을 누를 때의 설정으로 찾습니다." disabled={busy}/>
       <div className="form-filter" style={{marginTop:12}}><label className="field">조사 호기<select value={machine} onChange={e=>setMachine(e.target.value)}>
         {machines.map(m=><option key={m.id} value={m.id}>{m.id}</option>)}</select></label>
         <button onClick={()=>goToSettings({sub:'aoi'})} title="목록에 없는 호기의 장비 폴더를 등록합니다">＋ 다른 호기 장비 폴더 등록…</button></div>

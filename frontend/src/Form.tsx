@@ -158,7 +158,6 @@ export function Form({mode}:{mode:'edit'|'new'}){
               onClick={()=>void openPath(excelOriginal)}>{listing&&recipe?'버전 확인 중…':'📊 엑셀 원본 열기'}</button>
           </div>}
       </>:<>
-      <p className="hint">장비(또는 로컬 복사본)의 설정 파일을 읽어 새 레시피 양식을 만듭니다. 원본은 읽기만 하고, 복사본은 로컬 작업 폴더에만 둡니다.</p>
       {!newPrep?(newPrepError?<LoadFailed message={newPrepError} onRetry={()=>setNewPrepTry(n=>n+1)}/>:<p className="hint">불러오는 중…</p>):<>
         <div className="form-filter" style={{marginTop:12}}>
           <label className="field" style={{width:200}}>레시피(레벨) 이름<input list="form-existing" aria-label="새 레시피 이름" value={newName} maxLength={64} placeholder="예: PI3" onChange={e=>{setNewName(e.target.value);setNewScales(undefined);}}/></label>

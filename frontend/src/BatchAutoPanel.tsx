@@ -59,8 +59,15 @@ export function BatchAutoPanel(){
   }
   // Batch Report 자동 분석 실행 시각(#33) — "HH:MM" 5분 단위, 빈 문자열 = 지정 안 함.
   const autoTime=st?.batch?.time||'';
-  const saveTime=(time:string)=>save({time},time?`실행 시각을 ${time} 으로 저장했습니다`:'실행 시각 지정을 껐습니다');
-  const hours=st?.batch?.interval_hours??24;
+  // 주기 · 실행 시각은 고르기만 하고 [설정 저장]으로 한 번에 저장(소유자 2026-11-25 — 돌림 선택을 돌릴 때마다 저장되던 것이 불편)
+  const savedHours=st?.batch?.interval_hours??24;
+  const [draft,setDraft]=useState<{hours:number;time:string}|null>(null);
+  useEffect(()=>{setDraft(null);},[savedHours,autoTime]);
+  const hours=draft?draft.hours:savedHours,dTime=draft?draft.time:autoTime;
+  const setD=(o:Partial<{hours:number;time:string}>)=>setDraft({hours,time:dTime,...o});
+  const dirty=!!draft&&(draft.hours!==savedHours||(draft.hours%24===0?draft.time:'')!==(savedHours%24===0?autoTime:''));
+  const saveSchedule=()=>{if(!draft)return;const t=hours%24===0?dTime:autoTime;
+    void save({interval_hours:hours,time:t},`자동 분석 주기를 저장했습니다: ${periodLabel(hours)}${hours%24===0?(t?` · ${t}`:' · 실행 시각 지정 안 함'):''}`);};
   return <section className="panel">
     <div className="section-heading"><div><span className="step">BATCH REPORT</span><h2>Batch Report 자동 분석</h2></div>
       <button disabled={busy} onClick={()=>void load()}>새로고침</button></div>
@@ -71,19 +78,22 @@ export function BatchAutoPanel(){
       onChange={e=>save({enabled:e.target.checked},e.target.checked?'자동 분석을 켰습니다':'자동 분석을 껐습니다')}/>자동 분석 사용 (기본 꺼짐)</label>
     <div className="form-filter" style={{marginTop:12}}>
       <label className="field" style={{width:220}}>분석 주기<select data-wheel disabled={busy||!st} value={hours}
-        onChange={e=>save({interval_hours:Number(e.target.value)},'분석 주기를 저장했습니다')}>
+        onChange={e=>setD({hours:Number(e.target.value)})}>
         {(st?.batch_intervals||[24]).map(h=><option key={h} value={h}>{periodLabel(h)}</option>)}</select></label>
       {hours%24===0&&<>
-        <label className="field" style={{width:150}}>실행 시각 (시)<select data-wheel disabled={busy||!st} value={autoTime?autoTime.slice(0,2):''}
-          onChange={e=>saveTime(e.target.value?`${e.target.value}:${autoTime?autoTime.slice(3):'00'}`:'')}>
+        <label className="field" style={{width:150}}>실행 시각 (시)<select data-wheel disabled={busy||!st} value={dTime?dTime.slice(0,2):''}
+          onChange={e=>setD({time:e.target.value?`${e.target.value}:${dTime?dTime.slice(3):'00'}`:''})}>
           <option value="">지정 안 함</option>{HOURS.map(h=><option key={h} value={h}>{h}시</option>)}</select></label>
-        <label className="field" style={{width:130}}>분 (5분 단위)<select data-wheel disabled={busy||!st||!autoTime} value={autoTime?autoTime.slice(3):'00'}
-          onChange={e=>saveTime(`${autoTime.slice(0,2)}:${e.target.value}`)}>
+        <label className="field" style={{width:130}}>분 (5분 단위)<select data-wheel disabled={busy||!st||!dTime} value={dTime?dTime.slice(3):'00'}
+          onChange={e=>setD({time:`${dTime.slice(0,2)}:${e.target.value}`})}>
           {MINUTES.map(m=><option key={m} value={m}>{m}분</option>)}</select></label></>}
+      <button type="button" className="primary" disabled={busy||!st||!dirty} style={{alignSelf:'flex-end'}} onClick={saveSchedule}>설정 저장</button>
+      {dirty&&<button type="button" disabled={busy} style={{alignSelf:'flex-end'}} onClick={()=>setDraft(null)}>되돌리기</button>}
       <button type="button" disabled={busy||!st} style={{alignSelf:'flex-end'}} title="자동 분석이 꺼져 있어도 지난 조사 조건으로 바로 한 번 실행합니다"
         onClick={requestBatchRunNow}>▶ 즉시 실행</button></div>
-    {hours%24===0&&<p className="hint">{autoTime
-      ?`${periodLabel(hours)} · ${autoTime} 에 실행합니다(그 시각에 앱이 꺼져 있었으면 앱을 켠 뒤 곧 실행).`
+    {dirty&&<p className="hint warn-text">바꾼 주기 · 시각은 [설정 저장]을 눌러야 적용됩니다.</p>}
+    {savedHours%24===0&&<p className="hint">{autoTime
+      ?`${periodLabel(savedHours)} · ${autoTime} 에 실행합니다(그 시각에 앱이 꺼져 있었으면 앱을 켠 뒤 곧 실행).`
       :'실행 시각을 지정하지 않으면 마지막 실행(또는 마지막 조사) 시각부터 주기가 지나면 실행합니다.'} 켜거나 주기 · 시각을 바꾸면 그때부터 다시 셉니다.</p>}
     <p className="hint">[▶ 즉시 실행]은 자동 분석을 꺼 둔 채로도 지난 조사 조건으로 지금 한 번 분석합니다(Batch Report 분석 화면으로 이동).</p>
     <div className="subtabs auto-tabs" role="tablist" aria-label="자동 분석에 넣을 회사" style={{marginTop:14}}>

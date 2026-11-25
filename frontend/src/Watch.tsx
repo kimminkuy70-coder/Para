@@ -4,7 +4,7 @@ import {notify,fail,LoadFailed,Stepper,StepNav} from './ui';
 import {RowPick} from './RowPick';
 import {OpenPath} from './OpenPath';
 import {FormEditor} from './FormEditor';
-import {ScanBackupBar,ScanRoots,type RootInfo} from './ScanBackup';
+import {ScanRoots,type RootInfo} from './ScanBackup';
 import {BatchAutoPanel} from './BatchAutoPanel';
 import {takeWatchTab} from './batchAuto';
 
@@ -339,7 +339,6 @@ function CmWatch({onChanged}:{onChanged:()=>void}){
     </>}
     {step===1&&<>
       <p className="hint">새 S/M 폴더를 찾을 호기를 고릅니다. 목록은 [설정 › AOI 장비 호기 루트]에 등록된 호기입니다.</p>
-      <ScanBackupBar note="분석 및 취합 회차마다 그때의 설정으로 찾습니다." disabled={busy}/>
       <RowPick label="분석 및 취합 호기" columns={['호기']} value={draft.machines} onChange={v=>setDraft(d=>d&&{...d,machines:v})}
         rows={st.available.map(m=>({id:m,cells:[<b key="m">{m}</b>]}))}
         empty={<p className="table-empty">[설정 › AOI 장비 호기 루트]에서 호기 폴더를 먼저 등록하세요.</p>}/>

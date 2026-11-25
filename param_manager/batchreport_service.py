@@ -56,7 +56,13 @@ def run(root, targets, options, progress=None, host_gap=2.0, cancel=None, overri
     try:
         base = store.local_root(root, [t['folder'] for t in targets]) / '배치분석'
         base.mkdir(parents=True, exist_ok=True)
-        collection = store.collect(root, targets, progress, host_gap, cancel=cancel, reuse=options.get('reuse', True))
+        if options.get('cache_only'):
+            # [캐시에서만 찾기](소유자 2026-11-25): 장비 폴더에 접속하지 않고 로컬 캐시만(화면을 열 때 지난 결과 복원과 같은 읽기)
+            if progress:
+                progress('이 PC 로컬 캐시에서 Batch Report 를 읽는 중…(장비 접속 없음)')
+            collection = store.load_cached(root, targets)
+        else:
+            collection = store.collect(root, targets, progress, host_gap, cancel=cancel, reuse=options.get('reuse', True))
         collection['scope'] = ' / '.join(f"{t['machine']} · {t.get('query') or '(전체 검색어)'} · {t.get('start') or '처음'}~{t.get('end') or '끝'} · "
                                        + (f"선택 {len(t['names'])}개" if t.get('names') is not None else '전체/신규 포함') for t in targets)
         if progress:

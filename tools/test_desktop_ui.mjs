@@ -124,15 +124,8 @@ try{
   await page.getByText(/AOI-05 호기 루트를 수정했습니다/).waitFor();
   await page.getByRole('button',{name:'AOI-05 수정'}).waitFor();
   assert(/AOI-05/.test(await summary.innerText())&&!/AOI-04/.test(await summary.innerText()));
-  // 이슈 #8: Scanresult 백업본 포함 조사 스위치(모든 Scanresult 조사 기능 공통 설정) — 기본 켬, 끄면 원본만.
-  const scanSwitch=page.locator('.sbk:visible').getByRole('switch',{name:'백업본 포함해서 조사'});
-  await page.locator('.sbk:visible').filter({hasText:'원본 + 백업본'}).waitFor();
-  assert(await scanSwitch.isChecked());
-  await scanSwitch.click();
-  await page.locator('.sbk.off:visible').filter({hasText:'원본만'}).waitFor();
-  assert(!(await scanSwitch.isChecked()));
-  await scanSwitch.click();
-  await page.locator('.sbk.on:visible').filter({hasText:'원본 + 백업본'}).waitFor();
+  // 소유자 2026-11-25: Scanresult 는 늘 백업본까지 찾는다 — [백업본 포함해서 조사] 스위치 없음(이슈 #8 의 원본만 보기 삭제).
+  assert.equal(await page.getByRole('switch',{name:'백업본 포함해서 조사'}).count(),0);
   await feature('Batch Report 분석');
   await page.getByLabel('AOI-05 선택').waitFor();
   // Batch Report 분석 (가동률 조사 및 분석 · 찾기 · 취합): fixed machine grid, no page overflow.
@@ -146,27 +139,14 @@ try{
   await page.getByRole('button',{name:'조사 시작 →'}).click();
   await page.locator('.toast').filter({hasText:'조사를 완료했습니다.'}).waitFor({timeout:60000});
   await page.locator('.scope-status').filter({hasText:'Batch Report 205개'}).waitFor();
-  // 이슈 #39: [🛠 개발자 기능] → [OneDrive 에 게시](저장 폴더 옆 캐시공유/) → [OneDrive 에서 불러오기] 목록에서 골라 받기.
-  // 이슈 #29: 그 zip 을 창에 끌어 넣어도 이 PC 캐시로 가져옴(이미 있던 것은 그대로).
-  assert.equal(await page.getByRole('button',{name:'Batch Report 캐시 압축 파일 만들기 (zip)'}).count(),0);
-  await page.getByRole('button',{name:'🛠 개발자 기능'}).click();
-  await page.getByRole('button',{name:'OneDrive 에 게시',exact:true}).click();
-  const made=page.locator('.cache-export [role=status]').filter({hasText:'게시함:'});
-  await made.waitFor();
-  const cacheZip=await made.locator('code').innerText();
-  assert.match(cacheZip,/캐시공유[\\/]BatchReport_캐시_\d{8}_\d{6}\.zip$/);
-  await page.getByRole('button',{name:'OneDrive 에서 불러오기',exact:true}).click();
-  await page.getByLabel('OneDrive 캐시 목록').locator('tbody tr').first().waitFor();
-  await page.getByRole('button',{name:'고른 캐시 받아서 불러오기',exact:true}).click();
-  await page.locator('.cache-drop [role=status]').filter({hasText:/새 Batch Report 0개 · 이미 있던 \d+개는 그대로/}).waitFor();
-  // A browser drop gives the file contents: the page uploads them to the engine (local Temp).
-  await page.evaluate(({name,b64})=>{const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],name));
-    window.dispatchEvent(new DragEvent('dragenter',{dataTransfer:dt,bubbles:true,cancelable:true}));
-    window.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}));},
-    {name:cacheZip.split(/[\\/]/).pop(),b64:(await readFile(cacheZip)).toString('base64')});
-  await page.locator('.toast').filter({hasText:'Batch Report 캐시를 가져왔습니다'}).waitFor();
-  await page.locator('.cache-drop [role=status]').filter({hasText:/새 Batch Report 0개 · 이미 있던 \d+개는 그대로/}).waitFor();
-  assert(!(await page.locator('.cache-drop').getAttribute('class')).includes('over'));
+  // 소유자 2026-11-25: 가동률 탭의 [Batch Report 캐시 가져오기] 상자 · '다시 읽지 않기' 스위치 없음(늘 캐시 재사용),
+  // 날짜 옆 [캐시에서만 찾기] = 장비 접속 없이 이 PC 캐시만으로 조사.
+  assert.equal(await page.getByLabel('Batch Report 캐시 가져오기').count(),0);
+  assert.equal(await page.getByText('이미 읽은 Batch Report는 다시 읽지 않기').count(),0);
+  await page.getByLabel('조사: 캐시에서만 찾기').check();
+  await page.getByRole('button',{name:'조사 시작 →'}).click();
+  await page.locator('.scope-status').filter({hasText:/Batch Report 205개.*캐시 사용 205/}).waitFor({timeout:60000});
+  await page.getByLabel('조사: 캐시에서만 찾기').uncheck();
   // Every investigation also writes the Lot 추적 HTML; ? next to 조사 explains the Lot criteria.
   await page.getByText(/저장된 결과 파일/).click();
   assert((await page.getByLabel('Lot 추적 HTML',{exact:true}).inputValue()).endsWith('BatchReport_Lot추적.html'));
@@ -319,11 +299,16 @@ try{
   await page.getByLabel('개발자 기능',{exact:true}).check();
   await feature('Batch Report 분석');
   await page.locator('.devbar').getByText('개발자 기능 켜짐').waitFor();
+  // 이슈 #39: 개발자 기능이 켜져 있을 때만 [OneDrive 에 게시](저장 폴더 옆 캐시공유/) — 받기는 [찾기 · 취합]의 [OneDrive 에서 최신 캐시 받기]
+  await page.getByRole('button',{name:'OneDrive 에 게시',exact:true}).click();
+  const made=page.locator('.cache-export [role=status]').filter({hasText:'게시함:'});await made.waitFor();
+  assert.match(await made.locator('code').innerText(),/캐시공유[\\/]BatchReport_캐시_\d{8}_\d{6}\.zip$/);
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('tab',{name:'정보'}).click();
   await page.getByLabel('개발자 기능',{exact:true}).uncheck();
   await feature('Batch Report 분석');
   await page.locator('.devbar').waitFor({state:'detached'});
+  assert.equal(await page.getByRole('button',{name:'OneDrive 에 게시',exact:true}).count(),0);
   // 찾기 · 취합: file-name search → Lot groups → aggregate → Excel.
   await page.getByRole('tab',{name:/Batch Report 찾기/}).click();
   // v14.1.9 [캐시에서만 찾기]: 호기 격자 = 로컬 캐시에 든 호기(이 PC 에 등록하지 않은 호기도) — 장비 없이 찾는다.
@@ -332,7 +317,8 @@ try{
   await page.getByRole('checkbox',{name:'AOI-01 찾기'}).waitFor();
   assert.match(await page.getByRole('group',{name:'찾을 호기'}).locator('label.mbox').first().getAttribute('data-tip'),/^AOI-01\n캐시 Batch Report \d+개\n/);
   assert.equal(await page.getByRole('checkbox',{name:'AOI-05 찾기'}).count(),0);           // 캐시에 없는 등록 호기는 안 보임
-  await page.getByRole('button',{name:'OneDrive 에서 최신 캐시 받기',exact:true}).waitFor();
+  await page.getByRole('button',{name:'OneDrive 에서 최신 캐시 받기',exact:true}).click();
+  await page.locator('.toast').filter({hasText:/Batch Report 캐시를 가져왔습니다 — 호기 \d+대 · 새 Batch Report 0개 \(이미 있던 \d+개는 그대로\)/}).waitFor();
   await page.getByLabel('Batch Report 키워드').fill('BatchReport_00');
   await page.getByRole('button',{name:'검색 →'}).click();
   await page.getByRole('table',{name:'찾은 Batch Report 목록'}).waitFor({timeout:60000});
@@ -499,15 +485,20 @@ try{
   await page.waitForFunction(()=>true);
   for(let i=0;i<50&&!background.enabled;i++)await page.waitForTimeout(100);
   assert(background.enabled&&background.tooltip.includes('Batch Report ✓'),'batch auto must keep the app resident: '+background.tooltip);
+  // 소유자 2026-11-25: 주기 · 시각 = 돌림 선택으로 고르기만 하고 [설정 저장]으로 저장(종전 = 고르면 바로 저장)
+  const saveBtn=page.getByRole('button',{name:'설정 저장',exact:true});
+  assert.equal(await saveBtn.isDisabled(),true);
+  {const wheel=page.locator('label.field',{hasText:'분석 주기'}).locator('.wp-col'),before=await page.getByLabel('분석 주기').inputValue();   // 휠로 한 칸
+    await wheel.hover();await page.mouse.wheel(0,120);await page.waitForFunction(b=>document.querySelector('select[data-wheel]:not([disabled])')&&[...document.querySelectorAll('label.field')].find(l=>l.textContent.startsWith('분석 주기')).querySelector('select').value!==b,before);
+    assert.equal(await saveBtn.isDisabled(),false);await page.getByRole('button',{name:'되돌리기',exact:true}).click();assert.equal(await page.getByLabel('분석 주기').inputValue(),before)}
   await page.getByLabel('분석 주기').selectOption('12');
-  await page.getByText('분석 주기를 저장했습니다').waitFor();
   await page.getByLabel('실행 시각 (시)').waitFor({state:'detached'});   // 시간 단위 주기에는 시각 칸 없음
+  await saveBtn.click();await page.getByText(/자동 분석 주기를 저장했습니다: 12시간마다/).waitFor();
   // #33: 하루 단위 주기 = 실행 시각(5분 단위) + 즉시 실행
   await page.getByLabel('분석 주기').selectOption('24');
   await page.getByLabel('실행 시각 (시)').selectOption('07');
-  await page.getByText('실행 시각을 07:00 으로 저장했습니다').waitFor();
   await page.getByLabel('분 (5분 단위)').selectOption('35');
-  await page.getByText('실행 시각을 07:35 으로 저장했습니다').waitFor();
+  await saveBtn.click();await page.getByText('자동 분석 주기를 저장했습니다: 하루 1회 (24시간) · 07:35').waitFor();
   await page.getByText('하루 1회 (24시간) · 07:35 에 실행합니다',{exact:false}).waitFor();
   // Para #43: 켜거나 시각을 바꾸면 그때부터 센다 — 다음 실행 = 오늘 또는 내일 07:35(예전 마지막 실행 + 주기 · backoff 아님).
   {const p=n=>String(n).padStart(2,'0'),day=d=>`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} 07:35`;
@@ -540,7 +531,7 @@ try{
     await page.getByRole('heading',{name:'어느 호기의 어느 기간을 조사할까요?'}).waitFor();
     assert.equal(await page.getByRole('tab',{name:/가동률 조사 및 분석/}).getAttribute('aria-selected'),'true');
     await feature('자동 분석 및 취합');await page.getByRole('tab',{name:'Batch Report 자동 분석'}).click();}
-  await page.getByLabel('분석 주기').selectOption('12');
+  await page.getByLabel('분석 주기').selectOption('12');await page.getByRole('button',{name:'설정 저장',exact:true}).click();await page.getByText(/자동 분석 주기를 저장했습니다: 12시간마다/).last().waitFor();
   await page.getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('tab',{name:'AOI 장비 호기 루트'}).click();
   const memoPick=page.getByLabel('CAMTEK 메모 장비 IP 에서 호기 고르기');
@@ -824,13 +815,14 @@ try{
   // Para #54: 앞에서 켠 Batch Report 자동 분석이 남아 있으므로 파라미터 감시를 꺼도 트레이 상주는 유지된다.
   await page.waitForFunction(()=>true);assert.equal(background.enabled,true);
   assert(background.tooltip.includes('장비 ✗')&&background.tooltip.includes('Batch Report ✓'),'batch auto keeps the app resident: '+background.tooltip);
-  // v14.1 Defect 분석: 하위 탭 3개 = Color·Gray 매칭 · Defect 분석(대규모) · Defect 분석(기본) — 다이어그램 체크 없음, 처음 = Color·Gray 매칭
+  // v14.1 Defect 분석: 하위 탭 3개 = Color·Gray 매칭 · Defect 분류 · Defect Map — 다이어그램 체크 없음, 처음 = Color·Gray 매칭
   await feature('Defect 분석');
   await page.locator('.defect-tabs [role=tab]').first().waitFor();   // allInnerTexts 는 기다리지 않음 — 화면이 그려진 뒤
-  assert.deepEqual(await page.locator('.defect-tabs [role=tab]').allInnerTexts(),['Color·Gray 매칭','Defect 분석(대규모)','Defect 분석(기본)']);
+  assert.deepEqual(await page.locator('.defect-tabs [role=tab]').allInnerTexts(),['Color·Gray 매칭','Defect 분류','Defect Map']);
   assert.equal(await page.locator('.defect-tabs [role=tab][aria-selected=true]').innerText(),'Color·Gray 매칭');
   assert.equal(await page.locator('.defect-opt').count(),0);
-  await page.getByText('Color · Gray 매칭으로 사진 · Excel 을 만들고').waitFor();
+  // 소유자 2026-11-25: 탭마다 맨 위 제목 · 설명글(PROCESS INTELLIGENCE …)은 없앰 — 제목은 화면 읽기용(sr-only)으로만
+  assert.equal(await page.locator('.page-heading').count(),0);assert.equal(await page.locator('main h1').innerText(),'Defect 분석');
   // Color·Gray 매칭: scan a Lot folder, process both wafers (canvas crop/thumbnails), Excel per wafer.
   await page.getByRole('tab',{name:'Color·Gray 매칭',exact:true}).click();
   const cg=page.locator('section.panel',{has:page.getByRole('heading',{name:'Color · Gray 매칭'})});
@@ -853,12 +845,12 @@ try{
   const cgRows=await cg.getByLabel('Wafer별 결과').getByRole('row').allInnerTexts();
   assert(cgRows.slice(1).every(t=>/\t1\t2\t/.test(t)),'each wafer: 1 matched, 2 failed — '+JSON.stringify(cgRows));
   await page.screenshot({path:join(root,'docs/screenshots/rev1-colorgray.png'),fullPage:true});
-  // v14 Defect 분석(대규모) = AOI Contrast Wizard(HTML rev6) iframe. 폴더 고르기 · 읽기는 엔진(브라우저 '업로드' 없음 · .ini 그대로 · 읽기 전용)
+  // v14 Defect 분류 = AOI Contrast Wizard(HTML rev6) iframe. 폴더 고르기 · 읽기는 엔진(브라우저 '업로드' 없음 · .ini 그대로 · 읽기 전용)
   // v14.1: HTML 파일은 그대로, 프로그램이 para-skin.css · js 를 넣어 프로그램 테마(머리 · 왼쪽 막대 없음, 스텝퍼, 설명글 = [? 설명 보기])
-  await page.getByRole('tab',{name:'Defect 분석(대규모)',exact:true}).click();
-  const wz=page.frameLocator('iframe.defect-frame[title="Defect 분석(대규모)"]');
+  await page.getByRole('tab',{name:'Defect 분류',exact:true}).click();
+  const wz=page.frameLocator('iframe.defect-frame[title="Defect 분류"]');
   await wz.locator('#step5.on').waitFor();
-  await page.locator('iframe.defect-frame.ready[title="Defect 분석(대규모)"]').waitFor();
+  await page.locator('iframe.defect-frame.ready[title="Defect 분류"]').waitFor();
   const wzf=page.frames().find(f=>/\/defect\/.*mode=big/.test(f.url()));
   assert.equal(await wz.locator('body.pskin.pskin-big').count(),1);
   assert.equal(await wz.locator('header h1').isVisible(),false);
@@ -913,7 +905,7 @@ try{
   await wz.locator('#bigLs [data-ls="none"]').click();assert.equal(await wz.locator('#toB2').isDisabled(),true);
   await wz.locator('#bigLs [data-ls="all"]').click();assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 2 / 2개');
   // 스크롤 한 겹: iframe 높이 = 내용 높이(페이지만 스크롤)
-  await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Defect 분석(대규모)"]'),h=f.contentDocument.body.getBoundingClientRect().height;return h>400&&Math.abs(f.getBoundingClientRect().height-Math.ceil(h))<=1});
+  await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Defect 분류"]'),h=f.contentDocument.body.getBoundingClientRect().height;return h>400&&Math.abs(f.getBoundingClientRect().height-Math.ceil(h))<=1});
   await wz.locator('[data-b5="2"]').click();
   await wz.locator('#b5list .br',{hasText:'Color·Gray 매칭 완료'}).first().waitFor();                                // 종전 '짝 완료'
   // 소유자 2026-11-24: 대규모 필터 = 5-1 · 5-2 · 5-3 모두 — 필터 카드 한 벌이 지금 단계 목록 위로 따라가고 값은 그대로, 5-2 · 5-3 목록 = 넘어온 Defect 중 필터에 맞는 것
@@ -1035,11 +1027,11 @@ ws=openpyxl.load_workbook(p).active;rows=[[c.value for c in r] for r in ws.iter_
 z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state':rows[1][11],'calc':rows[1][27],'media':len([x for x in z.namelist() if x.startswith('xl/media/')])}))`,join(fixture,'local')],{encoding:'utf-8',env:{...process.env,PYTHONPATH:join(root,'vendor')}}));
   assert.deepEqual([xl.n,xl.state,xl.calc,xl.media],[2,'추출 완료','Para 프로그램',3],JSON.stringify(xl)+finalBook);
   assert.equal(xl.head[0],'Color');
-  // Defect 분석(기본) = Step 1 ~ 4(종전 체크로 켜던 다이어그램 분석), Step 1 도 엔진 목록(이름 · 크기)으로
-  await page.getByRole('tab',{name:'Defect 분석(기본)',exact:true}).click();
-  const dg=page.frameLocator('iframe.defect-frame[title="Defect 분석(기본)"]');
+  // Defect Map = Step 1 ~ 4(종전 체크로 켜던 다이어그램 분석), Step 1 도 엔진 목록(이름 · 크기)으로
+  await page.getByRole('tab',{name:'Defect Map',exact:true}).click();
+  const dg=page.frameLocator('iframe.defect-frame[title="Defect Map"]');
   await dg.locator('#step1.on').waitFor();
-  await page.locator('iframe.defect-frame.ready[title="Defect 분석(기본)"]').waitFor();   // 겉모습(para-skin)을 넣은 뒤
+  await page.locator('iframe.defect-frame.ready[title="Defect Map"]').waitFor();   // 겉모습(para-skin)을 넣은 뒤
   assert.equal(await dg.locator('body.pskin.pskin-diagram').count(),1);
   assert.deepEqual(await dg.locator('nav button[data-step]').evaluateAll(b=>b.filter(x=>!x.hidden).map(x=>x.dataset.step)),['1','2','3','4']);
   await writeFile(join(fixture,'pick_folder.txt'),join(recipe,'SETUP1','LOT_A'));

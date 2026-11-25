@@ -2,7 +2,6 @@ import {Fragment,useEffect,useRef,useState} from 'react';
 import {Stepper,notify} from './ui';
 import {StPill} from './BatchLot';
 import {OpenPath,openPath} from './OpenPath';
-import {ScanBackupBar} from './ScanBackup';
 import {YieldTab} from './BatchYield';
 import {isMini} from './edition';
 import {grpLabel,bunchLabel,num,isRealId,aggState,STATES,ST,type View,type AggGroup} from './batchData';
@@ -146,7 +145,6 @@ export function FindTab(p:Props){
           onChange={e=>p.setCond({...cond,cacheOnly:e.target.checked})}/> 캐시에서만 찾기</label>
         <div className="go"><button className="primary" disabled={p.busy||!cond.query.trim()||!chosen.length} onClick={p.onFind}>{p.busy?'찾는 중…':'검색 →'}</button>
           <button type="button" className="help-btn lg" aria-label="Lot 판정 기준" title="어떤 기준으로 Lot을 묶는지 보기" onClick={p.onCrit}>?</button></div></div>
-      <ScanBackupBar note="찾은 Lot 의 Scanresult 경로를 보여 줄 때 적용됩니다." disabled={p.busy}/>
       {p.busy&&<p className="scope-status" role="status">{p.progress||'Reports 폴더를 확인하는 중…'}</p>}
       <details className="logic"><summary>로직 · 검색</summary><ol>
         <li><b>파일 이름만</b> 봅니다(원본을 열지 않음). 키워드는 대소문자 무시, 여러 단어는 모두 포함, 기간은 파일 이름 안 날짜.</li>

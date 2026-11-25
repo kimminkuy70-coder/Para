@@ -57,16 +57,16 @@ class ScanBackupTests(unittest.TestCase):
         self.assertEqual(kinds, {"Scanresult": "원본", "Scanresult_260402": "백업본",
                                  "SCANRESULT_BACKUP_260805": "백업본", "Scanresult_2025": "추가 폴더"})
 
-    def test_setting_off_limits_every_root_list(self):
+    def test_old_setting_off_is_ignored(self):
+        """소유자 2026-11-25: 무조건 백업본 포함 — 예전에 꺼 둔 설정(scanresult_backup=False)이 남아 있어도 모든 목록에 백업본까지."""
         state = DesktopConfig(config_path=self.cfg_path).set_scan_backup({"enabled": False})
-        self.assertFalse(state["scan_backup"])
-        self.assertIs(self._cfg()["scanresult_backup"], False)
+        self.assertTrue(state["scan_backup"])
         cfg = self._cfg()
-        self.assertEqual([p.name for p in scanresult_roots_for(cfg, "AOI-9")], ["Scanresult"])
-        self.assertEqual([r["kind"] for r in scanresult_roots_info(cfg, "AOI-9")], ["원본"])
+        self.assertTrue(scan_backup(cfg))
+        self.assertEqual(len(scanresult_roots_for(cfg, "AOI-9")), 4)
+        self.assertEqual(sorted({r["kind"] for r in scanresult_roots_info(cfg, "AOI-9")}), ["백업본", "원본", "추가 폴더"])
         with self.assertRaises(ValueError):
             DesktopConfig(config_path=self.cfg_path).set_scan_backup({"enabled": "no"})
-        self.assertTrue(DesktopConfig(config_path=self.cfg_path).set_scan_backup({"enabled": True})["scan_backup"])
 
     def test_survey_preflight_follows_setting(self):
         plan = [{"디바이스명": "DEV1-0001", "공정번호": "6412", "S/M": "BQC", "AOI호기": "AOI-9"}]
@@ -75,11 +75,10 @@ class ScanBackupTests(unittest.TestCase):
         self.assertTrue(on["scan_backup"])
         self.assertEqual(on["found"], 1)        # BQC 는 추가 보관 폴더에만 있다
         self.assertIn("추가 폴더", [r["kind"] for r in on["root_info"]])
-        DesktopConfig(config_path=self.cfg_path).set_scan_backup({"enabled": False})
+        DesktopConfig(config_path=self.cfg_path).set_scan_backup({"enabled": False})   # 예전 설정이 꺼져 있어도 백업본까지(2026-11-25)
         off = survey.preflight({"machine": "AOI-9", "plan": plan})
-        self.assertFalse(off["scan_backup"])
-        self.assertEqual(off["found"], 0)
-        self.assertEqual([r["kind"] for r in off["root_info"]], ["원본"])
+        self.assertTrue(off["scan_backup"])
+        self.assertEqual(off["found"], 1)
 
     def test_watch_cycle_roots_follow_backup_flag(self):
         seen = []

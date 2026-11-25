@@ -103,9 +103,14 @@ function mountWheel(sel:HTMLSelectElement):Wheel{
     if(reduced()||oob||Math.abs(vel)<2){goTo(clampI(Math.round(p)));return;}
     tune(pos,140,24);pos.v=vel;pos.t=clampI(Math.round(p+vel*COAST));Engine.wake(comp);};
   col.addEventListener('pointerup',up);col.addEventListener('pointercancel',up);col.addEventListener('lostpointercapture',up);
-  let wt=0;col.addEventListener('wheel',e=>{if(sel.disabled)return;e.preventDefault();Engine.stop(comp);pos.v=0;const raw=pos.x+e.deltaY/IH*.4;pos.x=pos.t=clamp(raw,-.4,count()-1+.4);comp.render();
-    clearTimeout(wt);wt=window.setTimeout(()=>goTo(clampI(Math.round(pos.x))),120);},{passive:false});
-  const sync=()=>{readOpts();root.classList.toggle('off',sel.disabled);if(drag||live.has(comp))return;const i=idxOf(sel.value);if(Math.round(pos.x)!==i||center===null){pos.x=pos.t=i;pos.v=0;comp.render();}};
+  let wt=0;col.addEventListener('wheel',e=>{if(sel.disabled)return;e.preventDefault();Engine.stop(comp);pos.v=0;
+    const d=e.deltaMode===1?e.deltaY*IH:e.deltaMode===2?e.deltaY*IH*5:e.deltaY,raw=pos.x+clamp(d/IH*.4,-1,1);   // 한 번 굴림 = 최대 한 칸
+    pos.x=pos.t=clamp(raw,-.4,count()-1+.4);comp.render();
+    clearTimeout(wt);wt=window.setTimeout(()=>{wt=0;goTo(clampI(Math.round(pos.x)));},120);},{passive:false});
+  // 원통을 눌러도 label 이 select 를 열지 않게(소유자 2026-11-25 '누르면 전체 시간 목록이 뜸')
+  root.addEventListener('click',e=>e.preventDefault());root.addEventListener('mousedown',e=>e.preventDefault());
+  // 굴리는 중 · 미끄러지는 중에는 select 값으로 되돌리지 않음(종전 = 0.4초마다 되돌아가 휠이 안 먹음)
+  const sync=()=>{readOpts();root.classList.toggle('off',sel.disabled);if(drag||wt||live.has(comp))return;const i=idxOf(sel.value);if(Math.round(pos.x)!==i||center===null){pos.x=pos.t=i;pos.v=0;comp.render();}};
   sel.addEventListener('change',sync);sel.addEventListener('focus',()=>root.classList.add('focus'));sel.addEventListener('blur',()=>root.classList.remove('focus'));
   comp.render();sync();
   return {sel,root,sync};

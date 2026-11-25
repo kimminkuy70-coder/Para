@@ -183,13 +183,14 @@ body.pskin .rvbox{background:var(--band);border-color:var(--line);border-radius:
 body.pskin .g5{border-radius:10px}
 body.pskin .bigmap,body.pskin canvas.mini{border-radius:12px}
 
-/* 로딩창 · 측정 원 창 · 같은 창 사진 칸: iframe 이 내용 높이만큼 길어서, 지금 보이는 부분(--vt · --vh, 프로그램이 알려 줌)에 맞춘다 */
-body.pskin .busy{position:absolute;inset:auto 0 auto 0;top:var(--vt,0px);height:var(--vh,100vh);background:rgba(31,41,55,.35)}
+/* 로딩창 · 측정 원 창 · 같은 창 사진 칸 = 화면에 고정, 자리 = 이 칸의 지금 보이는 부분(--vt · --vl · --vw · --vh, 프로그램 DefectHost 가 스크롤 · 크기 바뀔 때 적음).
+   2026-11-25: 종전(iframe) = 내용 높이만큼 긴 iframe 안 absolute 라 늦게 알려지면 아래가 잘렸다 */
+body.pskin .busy{position:fixed;inset:auto;top:var(--vt,0px);left:var(--vl,0px);width:var(--vw,100vw);height:var(--vh,100vh);background:rgba(31,41,55,.35)}
 body.pskin .busy .bx{border-radius:16px;box-shadow:var(--sh2);padding:22px 26px}
 body.pskin .busy .bar{height:10px;border-radius:999px;background:var(--dot)}
 body.pskin .busy .bar>i{background:var(--pri)}
-body.pskin .ovw{position:absolute;inset:auto 0 auto 0;top:var(--vt,0px);height:var(--vh,100vh)}
-body.pskin .ovw:fullscreen{inset:0;height:auto}
+body.pskin .ovw{position:fixed;inset:auto;top:var(--vt,0px);left:var(--vl,0px);width:var(--vw,100vw);height:var(--vh,100vh)}
+body.pskin .ovw:fullscreen{inset:0;width:auto;height:auto}
 body.pskin .ovwb button{min-height:0;padding:2px 10px;border:1px solid #3a4250;border-radius:6px;background:#222a36;color:#eee;font-weight:400;box-shadow:none}
 body.pskin .ovwb button:hover:not(:disabled){background:#2c3646;border-color:#4a5468}
 

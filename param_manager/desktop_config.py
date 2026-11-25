@@ -96,9 +96,10 @@ def valid_job_dir(path):
 
 
 def scan_backup(cfg):
-    """설정 'Scanresult 백업본 포함 조사'(`scanresult_backup`, 기본 켬 = 종전 동작). 끄면 Scanresult 를
-    찾는 모든 기능(Commonality 조사 · 감시 · Batch Report 찾기의 Scanresult 경로)이 원본 'Scanresult' 만 본다."""
-    return cfg.get("scanresult_backup", True) is not False
+    """Scanresult 를 찾는 모든 기능(Commonality 조사 · 감시 · Batch Report 찾기의 Scanresult 경로)은 **늘 백업본까지** 본다
+    (소유자 2026-11-25 '무조건 백업본 포함'). 종전 설정 'Scanresult 백업본 포함 조사'(`scanresult_backup`, 이슈 #8 — 원본만 빨리 찾기용)는
+    화면 스위치를 없앴고, 예전에 꺼 둔 값이 남아 있어도 무시한다. 함수 자리는 호출하는 곳이 많아 그대로 둔다."""
+    return True
 
 
 def scanresult_roots_info(cfg, machine, backup=None):

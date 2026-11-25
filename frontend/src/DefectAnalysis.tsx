@@ -12,8 +12,8 @@ const WIZARD = '/defect/AOI_Contrast_Wizard_rev6.html', SKIN = '/defect/para-ski
 type Sub = 'cg' | 'big' | 'basic';
 const TABS: [Sub, string, string][] = [
   ['cg', 'Color·Gray 매칭', 'Lot · Wafer 폴더 또는 최종 목록 CSV → 사진 · Excel'],
-  ['big', 'Defect 분석(대규모)', 'Contrast · 분류로 걸러 사진 조사 · 최종 목록'],
-  ['basic', 'Defect 분석(기본)', '스캔 결과 비교 · Wafer Map · Escape 리뷰'],
+  ['big', 'Defect 분류', 'Contrast · 분류로 걸러 사진 조사 · 최종 목록'],
+  ['basic', 'Defect Map', '스캔 결과 비교 · Wafer Map · Escape 리뷰'],
 ];
 
 function Wizard({mode, title, hidden}: {mode: 'big' | 'diagram'; title: string; hidden: boolean}) {
@@ -72,7 +72,7 @@ export function DefectAnalysis() {
       <button key={id} role="tab" aria-selected={sub === id} className={sub === id ? 'active' : ''} title={note} onClick={() => go(id)}>{label}</button>)}
     </div>
     {opened.includes('cg') && <div hidden={sub !== 'cg'}><ColorGray/></div>}
-    {opened.includes('big') && <Wizard mode="big" title="Defect 분석(대규모)" hidden={sub !== 'big'}/>}
-    {opened.includes('basic') && <Wizard mode="diagram" title="Defect 분석(기본)" hidden={sub !== 'basic'}/>}
+    {opened.includes('big') && <Wizard mode="big" title="Defect 분류" hidden={sub !== 'big'}/>}
+    {opened.includes('basic') && <Wizard mode="diagram" title="Defect Map" hidden={sub !== 'basic'}/>}
   </>;
 }
