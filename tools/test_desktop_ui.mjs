@@ -33,6 +33,17 @@ async function feature(name){
   if(!(await page.locator('.navigation button').allInnerTexts()).includes(name))await page.getByRole('button',{name:'CAMTEK',exact:true}).click();
   await page.locator('.navigation').getByRole('button',{name,exact:true}).click();
 }
+/** Defect 분석 칸(.dfx-host) 안에서 함수를 부른다 — 함수 안 window · document = 그 칸의 것(DefectHost.ts 의 host.__dfx). 종전 iframe Frame 과 같은 모양. */
+function defectIn(title){
+  const sel=`.dfx-host[data-title="${title}"]`;
+  // 화면 보안 정책(script-src 'self')이 페이지 안 문자열 실행을 막으므로, 함수를 감싼 식 하나를 Playwright 가 바로 보낸다(페이지 안 eval 없음)
+  const expr=(fn,arg)=>`(()=>{const h=document.querySelector(${JSON.stringify(sel)}),H=h&&h.__dfx;if(!H)return false;`+
+    `return ((window,document,arg)=>(${fn.toString()})(arg))(H.win,H.doc,${JSON.stringify(arg===undefined?null:arg)})})()`;
+  // waitForFunction = 여기서 되풀이(Playwright 의 문자열 waitForFunction 은 페이지 안에서 eval 을 써 막힘)
+  const evaluate=(fn,arg)=>page.evaluate(expr(fn,arg));
+  return {evaluate,async waitForFunction(fn,arg,opt){const end=Date.now()+((opt&&opt.timeout)||30000);
+    for(;;){const v=await evaluate(fn,arg);if(v)return v;if(Date.now()>end)throw new Error('defectIn.waitForFunction timeout: '+fn.toString().slice(0,120));await new Promise(r=>setTimeout(r,60))}}};
+}
 async function recipeTab(name){await feature('Recipe 관리');await page.getByRole('tab',{name,exact:true}).click();}
 let stderr='',background={enabled:false,tooltip:''};engine.stderr.on('data',d=>stderr+=d);
 try{
@@ -712,7 +723,9 @@ try{
   await ask.getByLabel('Job 폴더 이름 찾기').fill('');
   await ask.getByRole('button',{name:'확인하고 계속',exact:true}).click();
   await page.getByText('결과 확인',{exact:true}).waitFor();
-  await page.waitForFunction(()=>[...document.querySelectorAll('.stepper:not([hidden] *) .st')].findIndex(e=>e.classList.contains('now'))>=3);
+  try{await page.waitForFunction(()=>[...document.querySelectorAll('.stepper:not([hidden] *) .st')].findIndex(e=>e.classList.contains('now'))>=3)}
+  catch(e){console.log('DEBUG726',JSON.stringify(await page.evaluate(()=>({dlg:[...document.querySelectorAll('dialog[open]')].map(d=>d.innerText.slice(0,400)),toasts:[...document.querySelectorAll('.toast')].map(t=>t.innerText),
+    act:document.querySelector('.activity')?.innerText.slice(0,300),st:[...document.querySelectorAll('.stepper:not([hidden] *) .st')].map(s=>s.className),main:document.querySelector('main').innerText.slice(0,1200)}))));throw e}
   if(await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).isVisible())await page.getByRole('button',{name:'매칭 확인 ▶',exact:true}).click();
   await page.getByRole('button',{name:'취합 저장 ▶',exact:true}).waitFor();
   const keep=page.getByLabel('그래도 포함');
@@ -767,7 +780,7 @@ try{
   await page.mouse.move(0,0);   // hover 색이 아니라 선택 색을 본다(아래 색 확인)
   // DESIGN 14절 3: 고른 탭 = 에메랄드 밑줄만(민트 바탕 없음) — 밑줄은 탭 사이를 미끄러지는 한 줄(motion.ts .tab-ink), 멈추면 고른 탭 바로 아래
   const tabInk=()=>page.evaluate(()=>{const t=[...document.querySelectorAll('[role=tab]')].find(x=>x.textContent==='파라미터 자동 분석 및 취합'),i=t.parentElement.querySelector(':scope>.tab-ink.show');
-    if(!i)return null;const a=t.getBoundingClientRect(),b=i.getBoundingClientRect();return [Math.round(b.left-a.left)|0,Math.round(b.width-a.width)|0,Math.round(a.bottom-b.bottom)|0,getComputedStyle(i).backgroundColor,getComputedStyle(t).backgroundColor]});
+    if(!i)return null;const a=t.getBoundingClientRect(),b=i.getBoundingClientRect(),px=v=>Math.abs(v)<=1?0:Math.round(v);return [px(b.left-a.left),px(b.width-a.width),px(a.bottom-b.bottom),getComputedStyle(i).backgroundColor,getComputedStyle(t).backgroundColor]});
   await page.waitForFunction(()=>{const t=[...document.querySelectorAll('[role=tab]')].find(x=>x.textContent==='파라미터 자동 분석 및 취합'),i=t&&t.parentElement.querySelector(':scope>.tab-ink.show');
     return i&&Math.abs(i.getBoundingClientRect().left-t.getBoundingClientRect().left)<1&&Math.abs(i.getBoundingClientRect().width-t.getBoundingClientRect().width)<1});
   const pw=page.locator('section.panel',{has:page.getByRole('heading',{name:'파라미터 자동 분석 및 취합'})});
@@ -822,7 +835,7 @@ try{
   assert.equal(await page.locator('.defect-tabs [role=tab][aria-selected=true]').innerText(),'Color·Gray 매칭');
   assert.equal(await page.locator('.defect-opt').count(),0);
   // 소유자 2026-11-25: 탭마다 맨 위 제목 · 설명글(PROCESS INTELLIGENCE …)은 없앰 — 제목은 화면 읽기용(sr-only)으로만
-  assert.equal(await page.locator('.page-heading').count(),0);assert.equal(await page.locator('main h1').innerText(),'Defect 분석');
+  assert.equal(await page.locator('.page-heading').count(),0);assert.equal(await page.locator('#main > h1').innerText(),'Defect 분석');
   // Color·Gray 매칭: scan a Lot folder, process both wafers (canvas crop/thumbnails), Excel per wafer.
   await page.getByRole('tab',{name:'Color·Gray 매칭',exact:true}).click();
   const cg=page.locator('section.panel',{has:page.getByRole('heading',{name:'Color · Gray 매칭'})});
@@ -845,14 +858,20 @@ try{
   const cgRows=await cg.getByLabel('Wafer별 결과').getByRole('row').allInnerTexts();
   assert(cgRows.slice(1).every(t=>/\t1\t2\t/.test(t)),'each wafer: 1 matched, 2 failed — '+JSON.stringify(cgRows));
   await page.screenshot({path:join(root,'docs/screenshots/rev1-colorgray.png'),fullPage:true});
-  // v14 Defect 분류 = AOI Contrast Wizard(HTML rev6) iframe. 폴더 고르기 · 읽기는 엔진(브라우저 '업로드' 없음 · .ini 그대로 · 읽기 전용)
+  // v14 Defect 분류 = AOI Contrast Wizard(HTML rev6) — 2026-11-25 부터 화면 안 칸(종전 iframe). 폴더 고르기 · 읽기는 엔진(브라우저 '업로드' 없음 · .ini 그대로 · 읽기 전용)
   // v14.1: HTML 파일은 그대로, 프로그램이 para-skin.css · js 를 넣어 프로그램 테마(머리 · 왼쪽 막대 없음, 스텝퍼, 설명글 = [? 설명 보기])
   await page.getByRole('tab',{name:'Defect 분류',exact:true}).click();
-  const wz=page.frameLocator('iframe.defect-frame[title="Defect 분류"]');
+  // 2026-11-25(소유자 "프로그램에 제대로 이식"): iframe 없이 화면 안 칸(.dfx-host, Shadow DOM — DefectHost.ts). 칸 안 = locator 가 그대로 들어감,
+  // 칸 안 함수 · document = defectIn(제목).evaluate · waitForFunction(종전 iframe frame 과 같은 모양)
+  assert.equal(await page.locator('iframe').count(),0);
+  const wz=page.locator('.dfx-host[data-title="Defect 분류"]');
   await wz.locator('#step5.on').waitFor();
-  await page.locator('iframe.defect-frame.ready[title="Defect 분류"]').waitFor();
-  const wzf=page.frames().find(f=>/\/defect\/.*mode=big/.test(f.url()));
-  assert.equal(await wz.locator('body.pskin.pskin-big').count(),1);
+  await page.locator('.dfx-host.ready[data-title="Defect 분류"]').waitFor();
+  const wzf=defectIn('Defect 분류');
+  assert.equal(await wz.locator('.dfx-body.pskin.pskin-big').count(),1);
+  // 로딩창 = 화면에 고정, 자리 = 이 칸의 보이는 부분(스크롤해도 아래가 잘리지 않음)
+  {const v=await wz.evaluate(h=>{const s=getComputedStyle(h),b=h.shadowRoot.querySelector('#busy')||h.shadowRoot.querySelector('.busy');return {pos:b&&getComputedStyle(b).position,vh:s.getPropertyValue('--vh'),inner:innerHeight,top:h.getBoundingClientRect().top}});
+    assert.equal(v.pos,'fixed',JSON.stringify(v));assert(parseInt(v.vh)>0&&parseInt(v.vh)<=v.inner,JSON.stringify(v))}
   assert.equal(await wz.locator('header h1').isVisible(),false);
   assert.equal(await wz.locator('nav').isVisible(),false);
   assert.equal(await wz.locator('#b5p1 .card>p.muted').isVisible(),false);          // 설명글은 숨김(기본)
@@ -904,8 +923,8 @@ try{
   await q('bigLs','bigList','zzz');await q('bigLs','bigList','');assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 1 / 2개');
   await wz.locator('#bigLs [data-ls="none"]').click();assert.equal(await wz.locator('#toB2').isDisabled(),true);
   await wz.locator('#bigLs [data-ls="all"]').click();assert.equal(await wz.locator('#bigLs .lsn').innerText(),'☑ 2 / 2개');
-  // 스크롤 한 겹: iframe 높이 = 내용 높이(페이지만 스크롤)
-  await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Defect 분류"]'),h=f.contentDocument.body.getBoundingClientRect().height;return h>400&&Math.abs(f.getBoundingClientRect().height-Math.ceil(h))<=1});
+  // 스크롤 한 겹: 칸 높이 = 내용 높이(칸 안 스크롤 없음 — 페이지만 스크롤)
+  assert(await wz.evaluate(h=>{const b=h.shadowRoot.querySelector('.dfx-body').getBoundingClientRect().height,r=h.getBoundingClientRect().height;return b>400&&Math.abs(r-b)<=1&&h.scrollHeight<=h.clientHeight+1}),'host grows with content');
   await wz.locator('[data-b5="2"]').click();
   await wz.locator('#b5list .br',{hasText:'Color·Gray 매칭 완료'}).first().waitFor();                                // 종전 '짝 완료'
   // 소유자 2026-11-24: 대규모 필터 = 5-1 · 5-2 · 5-3 모두 — 필터 카드 한 벌이 지금 단계 목록 위로 따라가고 값은 그대로, 5-2 · 5-3 목록 = 넘어온 Defect 중 필터에 맞는 것
@@ -1029,14 +1048,14 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   assert.equal(xl.head[0],'Color');
   // Defect Map = Step 1 ~ 4(종전 체크로 켜던 다이어그램 분석), Step 1 도 엔진 목록(이름 · 크기)으로
   await page.getByRole('tab',{name:'Defect Map',exact:true}).click();
-  const dg=page.frameLocator('iframe.defect-frame[title="Defect Map"]');
+  const dg=page.locator('.dfx-host[data-title="Defect Map"]');
   await dg.locator('#step1.on').waitFor();
-  await page.locator('iframe.defect-frame.ready[title="Defect Map"]').waitFor();   // 겉모습(para-skin)을 넣은 뒤
-  assert.equal(await dg.locator('body.pskin.pskin-diagram').count(),1);
+  await page.locator('.dfx-host.ready[data-title="Defect Map"]').waitFor();   // 겉모습(para-skin)을 넣은 뒤
+  assert.equal(await dg.locator('.dfx-body.pskin.pskin-diagram').count(),1);
   assert.deepEqual(await dg.locator('nav button[data-step]').evaluateAll(b=>b.filter(x=>!x.hidden).map(x=>x.dataset.step)),['1','2','3','4']);
   await writeFile(join(fixture,'pick_folder.txt'),join(recipe,'SETUP1','LOT_A'));
   await dg.locator('#addBtn').click();
-  const dgf=page.frames().find(f=>/\/defect\/.*mode=diagram/.test(f.url()));
+  const dgf=defectIn('Defect Map');
   await dgf.waitForFunction(()=>window.__cw.state.scans.length===1,null,{timeout:30000});
   assert.deepEqual(await dgf.evaluate(()=>window.__cw.state.scans.map(s=>[s.defects.length,s.colors.length,s.frames.length])),[[2,3,2]]);
   // v14.3.12: Wafer Map = 웨이퍼 맵 기준(샘플 올리기 · Notch 고르기 · 지름/Edge 입력 없음), 안내 = X 왼쪽부터 0 · Y 아래부터 0
@@ -1044,20 +1063,30 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   // v14.1.8 Step 3 목록 · 쌍별 상세 표: 검색 · ☑(☐ = 흐리게 · ↑↓ 건너뜀 · CSV 에서 뺌)
   await dg.locator('#to2').click();await dg.locator('#runBtn').click();await dgf.waitForFunction(()=>window.__cw.state.cmp,null,{timeout:30000});
   await dg.locator('nav button[data-step="3"]').click();await dg.locator('#setPick input').first().check();await dg.locator('#vennBtn').click();
-  await dg.locator('#p3List .it').nth(1).waitFor();
+  await dg.locator('#p3List .br').nth(1).waitFor();
   assert.equal(await dg.locator('#p3Ls .lsn').innerText(),'☑ 2 / 2개');
-  await dg.locator('#p3List .it').first().locator('span.pk').click();
-  assert.deepEqual([await dg.locator('#p3Ls .lsn').innerText(),await dg.locator('#p3Ls [data-ls="csv"]').innerText(),await dg.locator('#p3List .it.off').count()],['☑ 1 / 2개','CSV 저장 (☑ 1개)',1]);
+  await dg.locator('#p3List .br').first().locator('span.pk').click();
+  assert.deepEqual([await dg.locator('#p3Ls .lsn').innerText(),await dg.locator('#p3Ls [data-ls="csv"]').innerText(),await dg.locator('#p3List .br.off').count()],['☑ 1 / 2개','CSV 저장 (☑ 1개)',1]);
   await dg.locator('#p3Ls input[type=search]').fill('c1.jpg');await dg.locator('#p3Ls input[type=search]').press('Enter');
-  assert.equal(await dg.locator('#p3List .it').count(),1);
+  assert.equal(await dg.locator('#p3List .br').count(),1);
   await dg.locator('#p3Ls input[type=search]').fill('');await dg.locator('#p3Ls input[type=search]').press('Enter');
+  // 2026-11-25(소유자 "기본 · 대규모 차이는 wafer map 유무만, 이미지 관련 필터와 리스트 모두 동일"): 목록 = 대규모와 같은 표 · 열, 필터 = 같은 줄(사진 · 분류 칩)
+  await dg.locator('#p3List .br').nth(1).waitFor();
+  assert.deepEqual((await dg.locator('#p3List .bh span').allInnerTexts()).slice(0,12),['☑','#','구분','사진','Lot','Slot','ID','장비 스캔 분류','리뷰 결과','Recipe','Contrast(실제)','Area (µm²)']);
+  assert.deepEqual(await dg.locator('#p3Flt .fh').allInnerTexts(),['사진','장비 스캔 분류','리뷰 결과','값 범위','Recipe','Zone','정렬']);
+  assert.match(await dg.locator('#p3Flt [data-pclsbox]').innerText(),/Accept/);   // Defect 코드 표 이름(0 = Accept)
+  {const st=await dgf.evaluate(()=>window.__cw.PANELS.p3.items.map(it=>window.__cw.panelPh(it).st));
+    await dg.locator('#p3Flt [data-pst="ok"]').uncheck();await dgf.waitForFunction(n=>document.querySelectorAll('#p3List .br').length===n,st.filter(x=>x!=='ok').length);
+    await dg.locator('#p3Flt [data-pst="ok"]').check();await dgf.waitForFunction(()=>document.querySelectorAll('#p3List .br').length===2);
+    await dg.locator('#p3List .bh span[data-sort="c"]').click();assert.equal(await dg.locator('#p3Flt [data-f="sort"]').inputValue(),'c-d');   // 열 제목 = 정렬 칸
+    await dg.locator('#p3Flt [data-f="sort"]').selectOption('');await dgf.waitForFunction(()=>window.__cw.PANELS.p3.el('Flt').querySelector('[data-f="sort"]').value==='')}
   // v14.4.1 µm 환산 픽셀(Slot 기준) · [µm 로 보기](처음 = 켬, 한 곳을 바꾸면 모든 목록 · 필터 · 열 제목이 같이)
   assert.match(await dg.locator('#p3Pix').innerText(),/^µm 환산 픽셀 : [\d.]+$/);
   // 소유자 2026-11-24: 기본 모드 필터도 같은 양방향 막대(막대 끝 = 이 목록 자료의 최소 · 최대, End = 최대 값을 최소 칸에, Home = 비움)
   {const th=dg.locator('#p3Flt label.rng').first().locator('.prs-th').first(),c0=dg.locator('#p3Flt [data-f="c0"]');
     assert.equal(await dg.locator('#p3Flt label.rng .prs').count(),4);
-    await th.focus();await th.press('End');assert.notEqual(await c0.inputValue(),'');await dgf.waitForFunction(()=>document.querySelectorAll('#p3List .it').length===1);
-    await th.press('Home');assert.equal(await c0.inputValue(),'');await dgf.waitForFunction(()=>document.querySelectorAll('#p3List .it').length===2)}
+    await th.focus();await th.press('End');assert.notEqual(await c0.inputValue(),'');await dgf.waitForFunction(()=>document.querySelectorAll('#p3List .br').length===1);
+    await th.press('Home');assert.equal(await c0.inputValue(),'');await dgf.waitForFunction(()=>document.querySelectorAll('#p3List .br').length===2)}
   assert.deepEqual(await dg.locator('#p3Flt [data-umu]').allInnerTexts(),['µm²','µm']);
   await dg.locator('#p3Flt input[data-um]').uncheck();assert.deepEqual(await dg.locator('#p3Flt [data-umu]').allInnerTexts(),['','']);
   assert.deepEqual(await dgf.evaluate(()=>[...document.querySelectorAll('#detTbl th[data-umh]')].map(x=>x.textContent)),['Area','Width']);
@@ -1065,7 +1094,7 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   assert.deepEqual(await dgf.evaluate(()=>[...document.querySelectorAll('#detTbl th[data-umh]')].map(x=>x.textContent)),['Area (µm²)','Width (µm)']);
   assert.match(await dg.locator('#p3Rv').innerText(),/µm 환산 픽셀: /);
   // v14.4.1(#89): 기본 모드 새 창 = 대규모와 같은 창(한 창 · Color · Gray Crop · Gray 프레임 · 🔒 고정 · Defect 박스 B · ↑↓ = ☑ 줄만 · Space ☑), 측정 원 없음(소유자)
-  const [bp]=await Promise.all([page.waitForEvent('popup'),dg.locator('#p3List .it').nth(0).dblclick()]);   // 첫 줄 = C1(Color · Gray 있음, ☐)
+  const [bp]=await Promise.all([page.waitForEvent('popup'),dg.locator('#p3List .br').nth(0).dblclick()]);   // 첫 줄 = C1(Color · Gray 있음, ☐)
   await bp.locator('#ff canvas').waitFor();await bp.locator('#fx canvas').waitFor();await bp.locator('#fc canvas').waitFor();
   assert.deepEqual(await bp.evaluate(()=>['pwBox','pwLock'].map(i=>!!document.getElementById(i))),[true,true]);
   assert.match(await bp.locator('#hd').innerText(),/^1 \/ 2 · /);
@@ -1144,7 +1173,7 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
     entries:{[t5file]:{signature:[1,1],digest:'x'.repeat(64),report:{file_name:t5file,metadata:[['Batch Start','20-Oct-26 09:10:00 AM'],['Job/Setup','TB500_RDL1-Multi/Setup1']],wafers:t5wafers}}}}));
   await page.getByRole('button',{name:'TB500 Review 조회',exact:true}).click();
   assert.equal(await page.locator('.navigation').count(),0);                      // 회사 묶음 밖의 탭(아래 기능 탭 줄 없음)
-  assert.equal(await page.locator('main h1').innerText(),'TB500 Review 조회');
+  assert.equal(await page.locator('#main > h1').innerText(),'TB500 Review 조회');
   const t5=page.locator('section.tb5');
   await t5.getByText(/기본 경로입니다/).waitFor();
   assert.equal(await t5.getByLabel('Conder Scan 폴더').inputValue(),'\\\\k5cifsn2\\k5tsvdata$\\1. Conder Scan\\531. NVIDIA INT\\129. 4DT-TB500-H-M1');
@@ -1283,7 +1312,7 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   assert.deepEqual(await mini.locator('.vendor-tabs button').allInnerTexts(),['CAMTEK','KLA','TB500 Review 조회','설정']);   // v14.4.2: Mini 에도
   await mini.getByRole('button',{name:'CAMTEK',exact:true}).click();
   assert.deepEqual(await mini.locator('.navigation button').allInnerTexts(),['Batch Report 찾기 · 취합','Defect 분석','Wafer Map 수정하기']);
-  assert.equal(await mini.locator('main h1').innerText(),'Batch Report 찾기 · 취합');
+  assert.equal(await mini.locator('#main > h1').innerText(),'Batch Report 찾기 · 취합');
   // Batch Report = 찾기 · 취합만: 가동률 조사 및 분석 탭 · 조사 범위 · 즉시 실행이 없다.
   await mini.getByLabel('캐시에서만 찾기').waitFor();
   assert.equal(await mini.getByRole('tab',{name:/가동률 조사 및 분석/}).count(),0);
@@ -1292,12 +1321,12 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   await mini.locator('.navigation').getByRole('button',{name:'Defect 분석',exact:true}).click();
   await mini.getByRole('tab',{name:/Color·Gray 매칭/}).waitFor();
   await mini.locator('.navigation').getByRole('button',{name:'Wafer Map 수정하기',exact:true}).click();
-  assert.equal(await mini.locator('main h1').innerText(),'Wafer Map 수정하기');
+  assert.equal(await mini.locator('#main > h1').innerText(),'Wafer Map 수정하기');
   await mini.getByRole('button',{name:'KLA',exact:true}).click();
   assert.deepEqual(await mini.locator('.navigation button').allInnerTexts(),['KLA 자재 찾기']);
   // 다른 화면이 Mini 에 없는 탭으로 가라고 해도 그대로 있다.
   await mini.evaluate(()=>window.dispatchEvent(new CustomEvent('para:navigate',{detail:'Recipe 관리'})));
-  assert.equal(await mini.locator('main h1').innerText(),'KLA 자재 찾기');
+  assert.equal(await mini.locator('#main > h1').innerText(),'KLA 자재 찾기');
   await mini.getByRole('button',{name:'TB500 Review 조회',exact:true}).click();       // v14.4.2: Mini 에도 같은 화면
   await mini.locator('section.tb5').getByLabel('Lot 목록').waitFor();
   // 설정: 자동 분석 줄 · Job 폴더 열이 없다(Mini 에 없는 기능).

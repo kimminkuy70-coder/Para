@@ -68,21 +68,19 @@ try{
   await clickFeature(page,'Defect 분석');
   await page.getByRole('tab',{name:'Color·Gray 매칭',exact:true}).click();await shot(page,'Defect 분석 - Color·Gray 매칭');
   await page.getByRole('tab',{name:'Defect 분류',exact:true}).click();
-  await page.locator('iframe.defect-frame.ready[title="Defect 분류"]').waitFor({timeout:30000});
+  await page.locator('.dfx-host.ready[data-title="Defect 분류"]').waitFor({timeout:30000});
   await shot(page,'Defect 분류 - 5-1 빈 화면');
   try{
-    const wz=page.frameLocator('iframe.defect-frame[title="Defect 분류"]');
+    const wz=page.locator('.dfx-host[data-title="Defect 분류"]');
     await writeFile(join(fixture,'pick_folder.txt'),join(fixture,'defect','RCP'));
     await wz.locator('#bigAdd').click();await wz.locator('#bigMsg',{hasText:/Slot 1개/}).waitFor({timeout:30000});
     await shot(page,'Defect 분류 - 5-1 목록');
-    const wzf=page.frames().find(f=>/\/defect\/.*mode=big/.test(f.url()));
     await wz.locator('#toB2').click();await wz.locator('#b5p2:not([hidden])').waitFor();
     await wz.locator('#b5pairSt .msg').first().waitFor({timeout:30000});await shot(page,'Defect 분류 - 5-2 결과 목록');
     await wz.locator('#toB3').click();await wz.locator('#b5p3:not([hidden])').waitFor();await shot(page,'Defect 분류 - 5-3 사진 정밀 조사');
-    void wzf;
   }catch(e){process.stdout.write('defect big: '+e.message+'\n')}
   await page.getByRole('tab',{name:'Defect Map',exact:true}).click();
-  await page.locator('iframe.defect-frame.ready[title="Defect Map"]').waitFor({timeout:30000}).catch(()=>{});
+  await page.locator('.dfx-host.ready[data-title="Defect Map"]').waitFor({timeout:30000}).catch(()=>{});
   await shot(page,'Defect Map - Step 1');
   await clickFeature(page,'Wafer Map 수정하기');await shot(page,'Wafer Map 수정하기');
   // KLA · TB500 · 설정 · 메모

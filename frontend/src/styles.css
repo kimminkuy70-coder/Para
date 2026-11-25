@@ -925,9 +925,6 @@ dialog::backdrop{overscroll-behavior:contain}
 .defect-tabs button{border:0;border-radius:10px 10px 0 0;border-bottom:3px solid transparent;background:transparent;color:var(--text-2);font-size:15px;font-weight:800;padding:12px 24px;min-height:0;text-align:left;white-space:nowrap}
 .defect-tabs button:hover:not(:disabled){background:var(--band);border-color:transparent}
 .defect-tabs button.active,.defect-tabs button.active:hover{color:var(--navy);border-bottom-color:var(--lime);background:var(--accent-weak)}
-.defect-frame{display:block;width:100%;border:0;background:transparent;overflow:hidden}
-.defect-frame:not(.ready){visibility:hidden}
-.defect-frame[hidden]{display:none}
 .cg-final{margin-top:18px;padding-top:12px;border-top:1px dashed var(--line)}
 
 /* v14.3.18: 자동 분석 탭 호기 현황 — 빠진 호기는 흐리게 */
@@ -1249,3 +1246,7 @@ main{padding-top:24px}
 .wm-codes .hint{margin:8px 0}
 .wm-codes .wm-code{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .wm-sw{display:inline-block;width:22px;height:14px;border-radius:4px;border:1px solid var(--line-strong);vertical-align:middle}
+/* Defect 분석 칸(DefectHost.ts — iframe 대신 Shadow DOM, 2026-11-25) */
+.dfx-host{display:block;width:100%;min-width:0}
+.dfx-host:not(.ready){visibility:hidden;min-height:60vh}
+.dfx-host[hidden]{display:none!important}
