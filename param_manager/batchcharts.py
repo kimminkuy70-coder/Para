@@ -26,7 +26,7 @@ CHART_CSS = """
 .bv-tip.rich .tg .tu{color:#cbd5e1}.bv-tip.rich .tf{margin-top:5px;color:#cbd5e1;font-size:11px;white-space:nowrap}
 .bvapp .chart{min-width:0;max-width:100%}.bvapp .chartscroll{overflow-x:auto;overflow-y:hidden;max-width:100%;padding-bottom:2px}
 .bvapp .chart svg{display:block}
-.bvapp .chart svg text{font:11px 'Malgun Gothic','맑은 고딕',sans-serif;fill:#52647d}
+.bvapp .chart svg text{font:11px 'Pretendard','Malgun Gothic','맑은 고딕',sans-serif;fill:#52647d}
 .bvapp .chart svg tspan.sub2{font-size:10.5px;fill:#6b7c90}
 .bvapp .chart .hit{fill:transparent;cursor:pointer}.bvapp .chart .hit:hover{fill:#31517c12}
 .bvapp .chart .selbox{fill:#0d966810;stroke:#0d9668;stroke-width:2}

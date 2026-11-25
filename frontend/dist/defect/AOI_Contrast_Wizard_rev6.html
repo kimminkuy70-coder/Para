@@ -1572,7 +1572,7 @@ const RH=30,PANELS={};let blinkOn=true;
 /** 2026-11-25 기본 모드 목록 열 = 대규모 5-1 · 5-2 목록 열(+ 구분 = 벤다이어그램 영역 · A → B 쌍 · O/X). Area · Width 제목 = [µm 로 보기](umHeads). */
 const PCOLS=[['☑',46,'pk',null],['#',56,'num',null],['구분',150,'',null],['사진',150,'s',null],['Lot',140,'',null],['Slot',110,'',null],['ID',62,'num',null],
   ['장비 스캔 분류',140,'',null],['리뷰 결과',140,'',null],['Recipe',120,'','r'],['Contrast(실제)',112,'num','c'],['Area (µm²)',92,'num','a','a'],['Width (µm)',72,'num','w','w'],['Length',68,'num','l'],
-  ['Box W×H',96,'',null],['Wafer X',96,'num',null],['Wafer Y',96,'num',null],['Die (맵 X, Y)',120,'',null],['Color 이미지',220,'',null],['Gray 프레임 (픽셀)',260,'',null]];
+  ['Box W×H',96,'',null],['Wafer X',96,'num',null],['Wafer Y',96,'num',null],['Die (맵 X, Y)',120,'',null],['흑백 GL (원)',100,'num','g'],['Color 이미지',220,'',null],['Gray 프레임 (픽셀)',260,'',null]];
 /** 사진 상태(대규모 5-2 · 5-3 의 '보기'와 같은 4가지) = Color 이미지 연결 · Gray 프레임 유무. 한 번 구해 둔다. */
 function panelPh(it){if(it.ph)return it.ph;const d=it.d,c=S.cmp?linkColor(d,d.scan,S.cmp.o.ctol):null,g=grayOf(d),gf=g&&g.frame;
   return it.ph={c,g,st:c&&gf?'ok':c?'color':gf?'gray':'none'}}
@@ -1599,9 +1599,117 @@ function panelFacet(P){const box=P.el('Flt'),c1=new Map(),c2=new Map(),n={ok:0,c
 /** 표 한 줄(대규모 VA · VB 와 같은 값 · 글). */
 function panelRow(P,k){const it=P.items[k];if(!it)return [];const d=it.d,s=d.scan,ph=panelPh(it),[uA,uW]=umK(s),ov=S.overlay[key(d)],g=ph.g,gf=g&&g.frame;
   return [pOn(P,it)?'☑':'☐',k+1,(it.tag||it.label||'')+(ov?' · '+ov:''),PH_LAB[ph.st],s.lotName||s.name||'',s.slotName||'',d.no??d.id,panelCls(d,1),panelCls(d,2),rcpName(d),fv(d.Contrast),fv(d.area*uA),fv(d.BlobBreadth*uW),fv(d.BlobLength),
-    `${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,f1(it.X),f1(it.Y),dieTxt(mapDie(d.X,d.Y,s)),ph.c&&ph.c.c?ph.c.c.file:'-',gf?`${gf.file} (${f1(g.px)}, ${f1(g.py)})`:(g&&g.reason)||'-']}
+    `${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,f1(it.X),f1(it.Y),dieTxt(mapDie(d.X,d.Y,s)),d.glv!=null?d.glv.toFixed(1):d.glErr?'못 잼':'',ph.c&&ph.c.c?ph.c.c.file:'-',gf?`${gf.file} (${f1(g.px)}, ${f1(g.py)})`:(g&&g.reason)||'-']}
 /** 열 제목 정렬 = 정렬 칸(data-f="sort")과 같은 값 — 같은 열을 다시 누르면 반대로(대규모 sortClick 과 같음). */
-function panelSort(P,k){const sel=P.el('Flt').querySelector('[data-f="sort"]'),[sk,sd]=(sel.value||'').split('-');sel.value=k+'-'+(k===sk?(sd==='d'?'a':'d'):(/^[cawl]$/.test(k)?'d':'a'));applyPanel(P,true)}
+function panelSort(P,k){const sel=P.el('Flt').querySelector('[data-f="sort"]');
+  if(k==='g'){P.gsort=P.gsort==='d'?'a':'d';sel.value='';applyPanel(P,true);return}   // 흑백 GL 열(5-3 과 같이 큰 순 먼저)
+  P.gsort='';const [sk,sd]=(sel.value||'').split('-');sel.value=k+'-'+(k===sk?(sd==='d'?'a':'d'):(/^[cawl]$/.test(k)?'d':'a'));applyPanel(P,true)}
+// ── 2026-11-25(소유자 "Defect Map 에도 5-3 기능 넣어"): 최종 목록 · 흑백 GL — 대규모 5-3 과 같은 규칙 · 같은 파일 형식 ─────────────────
+//   최종 목록 = 이 목록(필터 · 검색 · GL 범위)에 보이고 ☑ 인 줄. 엑셀 = XL_COLS(+ [원본 이미지로 저장] = xlCols(true)), CSV = FL_HEAD(Para [Color·Gray 매칭] 이 읽는 최종 목록 CSV),
+//   zip = color/ · gray/ · gray crop/(원본 바이트 · Crop PNG). 흑백 GL = 최종 목록(☑) 중 흑백 사진이 있는 Defect, 반지름 = 5-3 과 같은 값(GLC.r). 값은 Defect(d.glp · d.glv)에 둔다.
+const pFin=P=>P.items.filter(it=>pOn(P,it));
+function panelFinHtml(pre){
+  return `<div class="card c5stbox pfin" id="${pre}Fin" style="margin:12px 0 0" role="group" aria-label="최종 목록 · 흑백 GL">
+    <div class="row c5pickrow"><b>최종 목록</b><span class="c5pick" id="${pre}FinN">☑ 0개</span>
+      <button class="pri" id="${pre}Xlsx" disabled>💾 최종 목록 엑셀 저장 (사진 포함)</button><button id="${pre}FlCsv" disabled>📄 최종 목록 CSV 저장</button><button id="${pre}Zip" disabled>🗂 최종 목록 사진 파일.zip 저장</button>
+      <label title="켜면 Color 열 = Color 원본 파일, Gray 프레임 뒤에 흑백 원본 2열(5-3 과 같음)"><input type="checkbox" data-xlorig> 원본 이미지로 저장</label></div>
+    <div class="row"><b>흑백 GL (원) 측정</b><label>반지름 <input type="number" data-glr min="0.5" step="0.5" style="width:76px" aria-label="흑백 GL 반지름 px"> px</label>
+      <button id="${pre}Gl" disabled>흑백 GL 측정 (☑ 만)</button>
+      <label>GL 범위 <input type="number" data-glo min="0" max="255" step="any" placeholder="0" style="width:70px" aria-label="GL 최소"> ~ <input type="number" data-ghi min="0" max="255" step="any" placeholder="255" style="width:70px" aria-label="GL 최대"></label>
+      <span class="muted" id="${pre}GlSt"></span></div>
+    <div class="muted" id="${pre}FinSt"></div></div>`}
+/** GL 범위 칸 → [lo, hi] 또는 null(비었으면 · 0 ~ 255 면 걸지 않음). 범위를 걸면 아직 안 잰 Defect 는 목록에서 빠진다(5-3 과 같음). */
+function panelGlRange(P){const b=P.el('Fin');if(!b)return null;const v=k=>{const t=b.querySelector(`[data-${k}]`).value.trim();return t===''||!isFinite(+t)?null:+t};
+  let lo=v('glo'),hi=v('ghi');if(lo==null&&hi==null)return null;lo=lo??0;hi=hi??255;if(lo>hi)[lo,hi]=[hi,lo];return lo<=0&&hi>=255?null:[lo,hi]}
+function pFinInfo(P){const n=pFin(P).length,ng=pFin(P).filter(it=>panelPh(it).g&&panelPh(it).g.frame).length,b=k=>P.el(k);if(!b('Fin'))return;
+  b('FinN').textContent=`☑ ${n.toLocaleString()} / ${P.items.length.toLocaleString()}개`;b('FinN').classList.toggle('on',n>0);
+  for(const k of ['Xlsx','FlCsv','Zip'])b(k).disabled=!n;b('Gl').disabled=!ng;
+  b('Xlsx').textContent=n?`💾 최종 목록 엑셀 저장 (☑ ${n.toLocaleString()}개 · 사진 포함)`:'💾 최종 목록 엑셀 저장 (사진 포함)';b('Gl').textContent=`흑백 GL 측정 (☑ 만${ng?` · ${ng.toLocaleString()}개`:''})`;
+  const o=b('Fin').querySelector('[data-xlorig]');if(o)o.checked=XLO.on;const r=b('Fin').querySelector('[data-glr]');if(r&&document.activeElement!==r)r.value=GLC.r}
+/** 파일 → 원본 사진(xlOrig 와 같은 규칙: JPEG · PNG 는 바이트 그대로, 그 밖은 같은 픽셀 PNG). */
+async function fileOrig(f){if(!f)return null;try{const data=new Uint8Array(await f.arrayBuffer()),bm=await createImageBitmap(f),w=bm.width,h=bm.height;
+    const ext=data[0]===0xff&&data[1]===0xd8?'jpeg':data[0]===0x89&&data[1]===0x50&&data[2]===0x4e&&data[3]===0x47?'png':'';
+    if(ext){bm.close&&bm.close();return {data,w,h,ext,orig:true}}
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(bm,0,0);bm.close&&bm.close();
+    const pb=await new Promise(r=>cv.toBlob(r,'image/png'));return {data:new Uint8Array(await pb.arrayBuffer()),w,h,ext:'png',orig:true}}catch(e){return null}}
+const baseFile=async(s,name)=>{try{return await fileGet(s,name)}catch(e){return null}};
+/** 한 줄의 사진(xlPhotos 와 같은 그림 — 칸 자료 = baseView, 새 창과 같음). */
+async function baseXlPhotos(it,orig){const d=it.d,s=d.scan,v=baseView(it,0,0,null),o={c:null,g:null,f:null,gl:null,err:[]};
+  if(v.c){const b=await v.c.bmp();if(b)o.c=await xlJpeg(b,960,720);else o.err.push(`Color 파일 없음: ${v.c.name}`)}else o.err.push(v.cwhy||'Color 없음');
+  if(v.g){const b=await v.g.bmp();
+    if(b){const k=cgCropCanvas(b,v.g.hit,v.g.crop,null,d);o.gl=cgGL(k,b,d);if(!d.glp){d.glp=glProfile(b,v.g.hit);d.glv=glMean(d)}o.g=await xlJpeg(k.canvas,960,720);o.f=await xlJpeg(cgFrameCanvas(b,v.g.hit,v.g.crop,null,d),1800,600);
+      if(orig)o.go=await cropPng(k.raw)}
+    else o.err.push(`Gray 파일 없음: ${v.g.name}`)}
+  else o.err.push(v.gwhy);
+  if(orig){if(v.c){o.co=await fileOrig(await baseFile(s,v.c.name));if(o.co)o.c=o.co;else o.err.push('Color 원본 못 읽음 — 줄인 사진')}if(v.g)o.fo=await fileOrig(await baseFile(s,v.g.name))}
+  return o}
+/** 엑셀 · CSV 한 줄(xlRow0 · flRow 와 같은 열 차례). '5-1 #' 칸 = 이 목록의 순서 번호. */
+function baseFinCells(P,it){const d=it.d,s=d.scan,x=info({d,label:it.label||it.tag||''}),v=baseView(it,0,0,null),ph=panelPh(it),die=dieOf(d.X,d.Y,s.product),m=mapDie(d.X,d.Y,s),n=v=>Number.isFinite(v)?+v.toFixed(3):'',
+    cn=v.c?v.c.name:'',gn=v.g?v.g.name:'',rv=(r=>[rawNum(r.zoneNo),r.region,rawNum(r.typeNo),rawNum(r.clsNo),r.zoneName,r.typeName])(rvInfo(d));
+  return {no:P.items.indexOf(it)+1,lot:s.lotName||s.name||'',slot:s.slotName||'',id:d.no??d.id,k1:panelCls(d,1),k2:panelCls(d,2),rcp:rcpName(d),c:n(+d.Contrast),st:ST5[ph.st]||ph.st,area:n(x.area),w:n(+d.BlobBreadth),l:n(+d.BlobLength),
+    bw:n(+d.BoxWidth),bh:n(+d.BoxHeight),X:n(d.X),Y:n(d.Y),die:die?`${die.col}, ${die.row}`:'-',map:m&&m.x!=null?`${m.x}, ${m.y}`:'-',cn,cp:cn?pcPath(v.c.path):'',gn,gp:gn?pcPath(v.g.path):'',g:v.g,dir:s.name||'',rv}}
+function baseXlRow(P,it,o,orig){const c=baseFinCells(P,it),d=it.d,n=v=>Number.isFinite(v)?+v.toFixed(3):'';
+  const R=[c.no,c.lot,c.slot,c.id,c.k1,c.k2,c.rcp,c.c,o.c?null:'(Color 사진 없음)',o.g?null:'(Gray 사진 없음)',o.f?null:'(Gray 사진 없음)',c.st,c.area,c.w,c.l,`${f1(d.BoxWidth)}×${f1(d.BoxHeight)}`,c.X,c.Y,c.die,c.map,
+    o.gl?n(o.gl.delta):'',o.gl?n(o.gl.mean):'',c.cn,c.cp,c.gn,c.gp,o.err.join(' · '),c.dir,d.glv!=null?+d.glv.toFixed(2):'',d.glp?`${GLC.r} px · ${glCount(d)}픽셀`:'',...c.rv];
+  if(orig)R.splice(XL_OI,0,o.go?null:'(원본 없음)',o.fo?null:'(원본 없음)');return R}
+function baseFlRow(P,it){const c=baseFinCells(P,it),d=it.d,n=v=>Number.isFinite(v)?+v.toFixed(3):'',cs=c.g?c.g.crop:null;
+  return [c.no,c.lot,c.slot,c.id,c.k1,c.k2,c.rcp,c.c,c.st,c.area,c.w,c.l,c.bw,c.bh,c.X,c.Y,c.die,c.map,d.glv!=null?+d.glv.toFixed(2):'',c.cn,c.cp,c.gn,c.gp,
+    c.g?n(c.g.hit.px):'',c.g?n(c.g.hit.py):'',cs?cs.cw:'',cs?cs.ch:'',c.dir?pcPath(c.dir):'',c.dir,c.dir,...c.rv]}
+async function baseSaveCsv(P){const L=pFin(P);if(!L.length)return;
+  const parts=['\ufeff'+FL_HEAD.map(csvQ).join(',')+'\r\n',...L.map(it=>baseFlRow(P,it).map(csvQ).join(',')+'\r\n')];
+  const msg=await saveCsv(parts,`최종목록_DefectMap_${stamp()}.csv`,true);P.el('FinSt').textContent=msg?`${msg} (Defect ${L.length}개)`:'저장 취소';return msg}
+async function baseSaveXlsx(P){const L=pFin(P);if(!L.length)return;
+  const name=`최종목록_DefectMap_${stamp()}.xlsx`,h=await pickSave(name,[{description:'Excel',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]);if(h===false)return;
+  BIG.stop=false;const orig=XLO.on,COLS=xlCols(orig),cancel=()=>{BIG.stop=true},total=L.length,rows=[],pics=[],STEPS=['① Defect 마다 사진 읽기 · 그리기(Color · Gray Crop · Gray 프레임)','② 엑셀 파일 만들기 · 저장'];let done=0,cur='',msg;
+  const pr=throttle(()=>busy({title:'최종 목록 엑셀 저장',steps:STEPS,step:0,done,total,unit:'Defect',files:`사진 ${pics.length}장`,detail:cur,cancel}),80);
+  busy({title:'최종 목록 엑셀 저장',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});
+  try{for(const it of L){if(BIG.stop)break;cur=`${stepName(it.d.scan)} · ID ${it.d.no??it.d.id}`;pr();
+      const o=await baseXlPhotos(it,orig),ri=rows.length+1;rows.push(baseXlRow(P,it,o,orig));COLS.forEach(([,,k],ci)=>{if(k&&o[k])pics.push({row:ri,col:ci,...o[k]})});done++;pr()}
+    if(BIG.stop){msg=`중지 — 저장하지 않았습니다 (${done} / ${total} 개 준비)`;return msg}
+    busy({title:'최종 목록 엑셀 저장',steps:STEPS,step:1,done:total,total,unit:'Defect',files:`사진 ${pics.length}장`,detail:'xlsx 묶는 중',cancel});await nextPaint();
+    const blob=xlsxBlob('최종 목록',COLS,rows,pics);
+    if(h){const w=await h.createWritable();await w.write(blob);await w.close();msg=`저장: ${h.name} (Defect ${rows.length}개 · 사진 ${pics.length}장 · ${(blob.size/1048576).toFixed(1)} MB)`}
+    else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);msg=`다운로드 폴더에 저장: ${name} (Defect ${rows.length}개 · 사진 ${pics.length}장)`}
+  }catch(e){msg=`저장 실패: ${(e&&e.message)||e}`}
+  finally{busy(null);P.el('FinSt').textContent=msg||'';applyPanel(P,true)}
+  return msg}
+async function baseSaveZip(P){const L=pFin(P);if(!L.length)return;
+  const name=`최종목록_DefectMap_사진_${stamp()}.zip`,h=await pickSave(name,[{description:'ZIP',accept:{'application/zip':['.zip']}}]);if(h===false)return;
+  BIG.stop=false;const cancel=()=>{BIG.stop=true},total=L.length,files=[],U={keys:new Set(),names:new Set()},cnt={color:0,gray:0,crop:0},miss=[],STEPS=['① Defect 마다 원본 사진 읽기(color · gray 복사, gray crop 자르기)','② zip 파일 만들기 · 저장'];let done=0,msg;
+  busy({title:'최종 목록 사진 파일.zip 저장',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});
+  const pr=throttle(()=>busy({title:'최종 목록 사진 파일.zip 저장',steps:STEPS,step:0,done,total,unit:'Defect',files:`파일 ${files.length}개`,detail:'',cancel}),80);
+  try{for(const it of L){if(BIG.stop)break;const d=it.d,s=d.scan,v=baseView(it,0,0,null),sk=s.id;pr();
+      if(v.c){const key=sk+'|'+lower(v.c.name);if(!U.keys.has('color/\u0000'+key)){const f=await baseFile(s,v.c.name);if(f){files.push([zipName(U,'color/',f.name||v.c.name,key),new Uint8Array(await f.arrayBuffer())]);cnt.color++}else miss.push(`Color ${v.c.name}`)}}
+      if(v.g){const key=sk+'|'+lower(v.g.name);
+        if(!U.keys.has('gray/\u0000'+key)){const f=await baseFile(s,v.g.name);if(f){files.push([zipName(U,'gray/',f.name||v.g.name,key),new Uint8Array(await f.arrayBuffer())]);cnt.gray++}else miss.push(`Gray ${v.g.name}`)}
+        const bm=await v.g.bmp();
+        if(bm){const k=cgCropCanvas(bm,v.g.hit,v.g.crop,null,null),c=await cropPng(k.raw),dot=v.g.name.lastIndexOf('.'),nm=(dot>0?v.g.name.slice(0,dot):v.g.name)+'.png',zn=zipName(U,'gray crop/',nm,key+'|'+v.g.hit.px+','+v.g.hit.py);
+          if(zn){files.push([zn,c.data]);cnt.crop++}}}
+      done++;pr()}
+    if(BIG.stop){msg=`중지 — 저장하지 않았습니다 (${done} / ${total} 개 준비)`;return msg}
+    if(!files.length){msg='저장할 사진 파일이 없습니다 (☑ Defect 의 원본 사진을 읽지 못함)';return msg}
+    busy({title:'최종 목록 사진 파일.zip 저장',steps:STEPS,step:1,done:total,total,unit:'Defect',files:`파일 ${files.length}개`,detail:'zip 묶는 중',cancel});await nextPaint();
+    const blob=zipStore(files,'application/zip'),sum=`Defect ${total}개 · color ${cnt.color} · gray ${cnt.gray} · gray crop ${cnt.crop}개 · ${(blob.size/1048576).toFixed(1)} MB${miss.length?` · 못 읽음 ${miss.length}개`:''}`;
+    if(h){const w=await h.createWritable();await w.write(blob);await w.close();msg=`저장: ${h.name} (${sum})`}
+    else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);msg=`다운로드 폴더에 저장: ${name} (${sum})`}
+  }catch(e){msg=`저장 실패: ${(e&&e.message)||e}`}
+  finally{busy(null);P.el('FinSt').textContent=msg||''}
+  return msg}
+/** 흑백 GL 측정(glRun 과 같은 계산): ☑ 중 흑백 사진이 있고 아직 안 잰 Defect, 같은 Gray 프레임은 한 번만 읽는다. */
+async function baseGlRun(P){const T=pFin(P).filter(it=>{const g=panelPh(it).g;return g&&g.frame}),L=T.filter(it=>!it.d.glp);
+  if(!L.length){P.el('GlSt').textContent=T.length?'새로 잴 Defect 가 없습니다(☑ 의 흑백 사진은 모두 잼).':'☑ 에 흑백 사진이 있는 Defect 가 없습니다.';return}
+  const G=new Map();for(const it of L){const g=panelPh(it).g,k=it.d.scan.id+'|'+lower(cleanName(g.frame.file));let e=G.get(k);if(!e)G.set(k,e={s:it.d.scan,frame:g.frame,ps:[]});e.ps.push({d:it.d,hit:g})}
+  const F=[...G.values()],total=L.length,t0=performance.now(),STEPS=['① Gray 프레임 읽기 · 디코딩(같은 프레임은 한 번)','② 원 안 픽셀 평균(반지름 0.5 px 단계마다 기억)'];
+  BIG.stop=false;let done=0,bad=0;const cancel=()=>{BIG.stop=true};
+  const pr=throttle(()=>busy({title:'흑백 GL 측정',steps:STEPS,step:0,done,total,unit:'Defect',files:`Gray 프레임 ${F.length.toLocaleString()}장 · 못 잰 것 ${bad}`,detail:'',cancel}),80);
+  busy({title:'흑백 GL 측정',steps:STEPS,step:0,done:0,total,unit:'Defect',files:'',detail:'',cancel,reset:true});
+  try{for(let j=0;j<F.length;j++){if(BIG.stop)break;const f=F[j];pr();if(F[j+1])grayBmp(F[j+1].s,F[j+1].frame);
+      const b=await grayBmp(f.s,f.frame);
+      for(const {d,hit} of f.ps){if(b){d.glp=glProfile(b,hit);d.glv=glMean(d);d.glErr=null}else{d.glErr='흑백 사진 못 읽음';bad++}done++}
+      pr();if(j%8===7)await nextPaint()}}
+  finally{busy(null)}
+  P.el('GlSt').textContent=`${BIG.stop?'중지 — ':''}☑ 측정 ${done.toLocaleString()}/${total.toLocaleString()}개 · 못 잰 것 ${bad} · ${((performance.now()-t0)/1000).toFixed(1)}초`;
+  if(!P.gsort&&!P.el('Flt').querySelector('[data-f="sort"]').value)P.gsort='d';applyPanel(P,true)}
 /** Step 3 새 창 왼쪽 = 벤다이어그램(클릭 = 영역 더하기/빼기, 빈 곳 = 고른 집합 전체). */
 function mountVennSide(P,box){const doc=box.ownerDocument;box.innerHTML='<div class="cap">벤다이어그램 · 영역 클릭 = 더하기 · 다시 클릭 = 빼기 · 빈 곳 = 고른 집합 전체</div><canvas aria-label="벤다이어그램" style="cursor:pointer"></canvas>';
   const cv=box.querySelector('canvas');P.pop.vcv=cv;const at=e=>{const r=cv.getBoundingClientRect(),G=S.venn&&S.venn.popGeo;return G?vennMaskAt((e.clientX-r.left)*G.dpr,(e.clientY-r.top)*G.dpr,G):0};
@@ -1616,7 +1724,7 @@ function makePanel(pre,mapHost,lowHost,o){
     <label><input type="checkbox" id="${pre}All" checked> ${esc(o.allLabel)}</label>
     <button id="${pre}Pop" title="다른 모니터에 크게 띄웁니다. 이 화면과 실시간으로 같이 움직입니다">⧉ 새 창으로 크게 보기</button></div>
     <canvas id="${pre}Map" class="bigmap" aria-label="Wafer map (깜빡이는 점 = 보고 있는 Defect)"></canvas><div class="row legend" id="${pre}Lg"></div></div>`;
-  lowHost.innerHTML=`${panelFltHtml(pre)}<div class="review"><div>${lsHtml(pre+'Ls','검색 — 모든 열 값 · 사진 파일 이름 (여러 단어 = 모두 포함)',true,true)}<div class="muted" id="${pre}Cnt"></div><div class="pixln" id="${pre}Pix" hidden></div><div id="${pre}List" class="biglist pvt" tabindex="0" aria-label="Defect 목록 (열 제목 = 정렬, ↑↓ 또는 J/K 이동, Space = ☑, Enter · 더블 클릭 = 새 창)"></div>
+  lowHost.innerHTML=`${panelFltHtml(pre)}${panelFinHtml(pre)}<div class="review"><div>${lsHtml(pre+'Ls','검색 — 모든 열 값 · 사진 파일 이름 (여러 단어 = 모두 포함)',true,true)}<div class="muted" id="${pre}Cnt"></div><div class="pixln" id="${pre}Pix" hidden></div><div id="${pre}List" class="biglist pvt" tabindex="0" aria-label="Defect 목록 (열 제목 = 정렬, ↑↓ 또는 J/K 이동, Space = ☑, Enter · 더블 클릭 = 새 창)"></div>
     <p class="muted">목록 열 = 대규모 5-1 · 5-2 목록과 같음(+ 구분 = 영역 · 쌍). 열 제목을 누르면 그 값으로 정렬합니다. ↑ ↓ 또는 J K 로 이동합니다. 더블 클릭 또는 Enter 로 새 창(큰 화면)을 엽니다.${o.mark?' O = 위치 맞음, X = 벗어남.':''}</p></div>
     <div><div class="rvimgs"><figure id="${pre}Color"><figcaption>Color</figcaption></figure><figure id="${pre}Gray"><figcaption>Gray Crop</figcaption></figure></div>
     <div class="card" style="margin:8px 0 0"><div class="row memb" id="${pre}Mem"></div>
@@ -1629,10 +1737,14 @@ function makePanel(pre,mapHost,lowHost,o){
     onCsv:async()=>{const L=P.items.filter(it=>pOn(P,it));if(!L.length||!S.cmp)return;await saveCsv([csvText(L.map(it=>({d:it.d,label:it.label||it.tag||'',st:it.st})))],`Defect_목록_Step${o.step}_${stamp()}.csv`,true)}});
   // 2026-11-25(소유자 "기본 · 대규모 차이는 wafer map 유무만, 이미지 관련 필터와 리스트 모두 동일"): 목록 = 대규모와 같은 표(makeVT · 같은 열),
   // 필터 = 같은 줄(사진 · 장비 스캔 분류 · 리뷰 결과 · 값 범위 · Recipe · Zone · 정렬). ☑ 칸 누르기 = ☑/☐, 줄 누르기 = 보기, 더블 클릭 · Enter = 새 창.
-  const L=P.el('List');P.clsOff1=new Set();P.clsOff2=new Set();
+  const L=P.el('List');P.clsOff1=new Set();P.clsOff2=new Set();P.gsort='';
   P.V=makeVT(L,PCOLS.map(c=>c.slice()),{row:k=>panelRow(P,k),cls:k=>{const it=P.items[k];return it?'st-'+panelPh(it).st+(pOn(P,it)?'':' off'):''},
     onSel:k=>{P.sel=k;showPanel(P)},onEnter:k=>{if(k!=null)P.sel=k;const q=P.items[P.sel];if(q)photoWinOpen(baseSrc(P))},onSpace:k=>panelTog(P,k),
-    sort:()=>P.el('Flt').querySelector('[data-f="sort"]').value,onSort:k=>panelSort(P,k)});
+    sort:()=>P.gsort?'g-'+P.gsort:P.el('Flt').querySelector('[data-f="sort"]').value,onSort:k=>panelSort(P,k)});
+  {const FN=P.el('Fin');P.el('Xlsx').onclick=()=>baseSaveXlsx(P);P.el('FlCsv').onclick=()=>baseSaveCsv(P);P.el('Zip').onclick=()=>baseSaveZip(P);P.el('Gl').onclick=()=>baseGlRun(P);
+    FN.querySelector('[data-xlorig]').addEventListener('change',e=>xlOrigSet(e.target.checked));
+    FN.querySelector('[data-glr]').addEventListener('change',e=>{glSetR(e.target.value);for(const Q of Object.values(PANELS))for(const it of Q.raw||[])if(it.d.glp)it.d.glv=glMean(it.d);Object.values(PANELS).forEach(Q=>Q.raw&&applyPanel(Q,true))});
+    let gt=0;FN.addEventListener('input',e=>{if(e.target.matches('[data-glo],[data-ghi]')){clearTimeout(gt);gt=setTimeout(()=>applyPanel(P,true),250)}})}
   L.addEventListener('click',e=>{const c=e.target.closest('.br>span.pk');if(!c)return;e.stopPropagation();panelTog(P,+c.parentNode.dataset.k)},true);
   const FB=P.el('Flt');
   FB.addEventListener('change',e=>{const d=e.target.dataset||{},g=d.pcls1!=null?1:d.pcls2!=null?2:0;if(!g)return;const off=P['clsOff'+g],k=d['pcls'+g];if(e.target.checked)off.delete(k);else off.add(k)});
@@ -1667,20 +1779,22 @@ function applyPanel(P,keep){
   const f=readFlt(P.el('Flt')),cur=keep?P.items[P.sel]:null,T=P.q||[];let items=P.raw,bg=P.rawBg;   // v14.4.1: Area · Width = [µm 로 보기] 단위
   panelFacet(P);const pst=new Set([...P.el('Flt').querySelectorAll('[data-pst]')].filter(x=>x.checked).map(x=>x.dataset.pst)),off1=P.clsOff1,off2=P.clsOff2;
   if(pst.size<4||off1.size||off2.size)f.on=true;   // 2026-11-25: 사진 상태 · 분류도 필터(대규모와 같음)
-  const fp=it=>{const [a,w]=umK(it.d.scan);return fltPass(f,it.d.Contrast,it.d.area*a,it.d.BlobBreadth*w,it.d.BlobLength)&&pst.has(panelPh(it).st)&&!off1.has(panelCls(it.d,1))&&!off2.has(panelCls(it.d,2))};
+  const glr=panelGlRange(P);if(glr)f.on=true;   // 흑백 GL 범위(5-3 과 같음 — 안 잰 Defect 는 빠짐)
+  const fp=it=>{const [a,w]=umK(it.d.scan);return fltPass(f,it.d.Contrast,it.d.area*a,it.d.BlobBreadth*w,it.d.BlobLength)&&pst.has(panelPh(it).st)&&!off1.has(panelCls(it.d,1))&&!off2.has(panelCls(it.d,2))&&(!glr||(it.d.glv!=null&&it.d.glv>=glr[0]&&it.d.glv<=glr[1]))};
   if(f.on||T.length){const out=[];items=[];for(const it of P.raw)((!f.on||fp(it)&&(!f.rcp||rcpName(it.d)===f.rcp)&&(!f.zn||zoneLbl(it.d.zone,it.d.scan)===f.zn))&&(!T.length||qAll(T,panelText(it)))?items:out).push(it);
     bg=bg.concat(out.map(it=>({X:it.X,Y:it.Y,c:'#9aa3b2',r:2.4,ring:true,q:it})))}
   if(f.sort&&f.sort[0]==='r'){const sg=f.sort==='r-d'?-1:1;items=items.map((it,i)=>[rcpName(it.d),i,it]).sort((a,b)=>sg*a[0].localeCompare(b[0],'ko',{numeric:true})||a[1]-b[1]).map(x=>x[2])}
   else if(f.sort){const [sk,sd]=f.sort.split('-'),sg=sd==='d'?-1:1,bad=sd==='d'?-Infinity:Infinity,val=it=>{const d=it.d,v=sk==='c'?d.Contrast:sk==='a'?d.area*umK(d.scan)[0]:sk==='w'?d.BlobBreadth*umK(d.scan)[1]:d.BlobLength;return v===v&&v!=null?v:bad};
     items=items.map((it,i)=>[val(it),i,it]).sort((a,b)=>sg*(a[0]-b[0])||a[1]-b[1]).map(x=>x[2])}
+  if(P.gsort){const sg=P.gsort==='d'?-1:1,bad=P.gsort==='d'?-Infinity:Infinity;items=items.map((it,i)=>[it.d.glv!=null?it.d.glv:bad,i,it]).sort((a,b)=>sg*(a[0]-b[0])||a[1]-b[1]).map(x=>x[2])}
   P.items=items;P.bg=bg;const k=cur?items.indexOf(cur):-1;P.sel=k>=0?k:0;
   const cnt=P.cntBase+(f.on||T.length?` · ${f.on?'필터':''}${f.on&&T.length?' · ':''}${T.length?`검색 '${T.join(' ')}'`:''}에 맞는 것 ${items.length} / ${P.raw.length}개${f.rcp?` (Recipe ${f.rcp})`:''}${f.zn?` (Zone ${f.zn})`:''}`:'')+(f.sort?` · 정렬: ${SORTS.find(x=>x[0]===f.sort)[1]}`:'');
   P.el('Cnt').textContent=cnt;pixLineSet(P.el('Pix'),P.raw.map(it=>it.d.scan));P.V.sel=P.sel;vtSet(P.V,items.length,k>=0);
-  P.ls.set(items.reduce((a,it)=>a+(pOn(P,it)?1:0),0),items.length);paintPanelList(P);showPanel(P)}
+  P.ls.set(items.reduce((a,it)=>a+(pOn(P,it)?1:0),0),items.length);pFinInfo(P);paintPanelList(P);showPanel(P)}
 /** v14.1.8 Step 3 · 4 ☑(처음 = [처음엔 모두 ☑]): ☐ = 목록에서 흐리게 · 지도에 회색 원 · ↑↓ 로 건너뜀 · CSV 에서 뺌. 기억 = Defect 마다(필터 · 검색 · 영역을 바꿔도). */
 const pOn=(P,it)=>{const v=P.pk.get(key(it.d));return v===undefined?LS.def:v};
 function panelTog(P,k){const it=P.items[k];if(!it)return;P.pk.set(key(it.d),!pOn(P,it));panelPkPaint(P)}
-function panelPkPaint(P){paintPanelList(P);paintPanel(P);P.ls.set(P.items.reduce((a,it)=>a+(pOn(P,it)?1:0),0),P.items.length)}
+function panelPkPaint(P){paintPanelList(P);paintPanel(P);P.ls.set(P.items.reduce((a,it)=>a+(pOn(P,it)?1:0),0),P.items.length);pFinInfo(P)}
 /** ↑↓: ☑ 줄만 차례로(☐ 는 건너뜀). 더 없으면 그대로. */
 function panelStep(P,dir){for(let k=P.sel+dir;k>=0&&k<P.items.length;k+=dir)if(pOn(P,P.items[k]))return k;return P.sel}
 function paintPanelList(P){P.V.sel=P.sel;vtPaint(P.V)}
@@ -3366,7 +3480,7 @@ if(PARA){document.body.classList.add('para');   // v14 Defect 분석 탭: [대�
   if(PARA.mode==='big'){$$('nav button[data-step]').forEach(b=>{if(b.dataset.step!=='5')b.hidden=true});go(5)}
   else if(PARA.mode==='diagram')$('nav button[data-step="5"]').hidden=true}
 // 시험용(Playwright): 순수 함수와 파일 주입
-window.__cw={PARA,DEFECT_DESC,codeName,PCOLS,panelPh,panelCls,panelRow,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgMap,cgCropSize,geoLoad,geoLoadFd,geoHit,geoChoose,geoPlan,geoRect,geoSize,geoPix,geoWhy,geoModel,tfSize,tfPix,parseRecipesInfo,cgFrameData,geoFramesFromNames,cgColorsFromNames,dirFromFiles,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRankOf,b5Refresh,B5,fltSpan,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,grayOf,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
+window.__cw={PARA,DEFECT_DESC,codeName,PCOLS,panelPh,panelCls,panelRow,pFin,baseSaveCsv,baseSaveXlsx,baseSaveZip,baseGlRun,baseFlRow,baseXlRow,panelGlRange,winOpen,ovWin,OVW,FL_HEAD,flRow,c5SaveCsv,isEdge,rcp5,rcpSum,rv5Cells,nextPaint,yieldMC,retryRead,transientErr,BUSY,rvInfo,rvText,rcpName,typeName,parseEqCls,parseZones,mapFrame,mapDie,mapGeom,flatTag,parseW2T,paintMap,ptDieKeys,glApply,GLC,GLD,glProfile,glMean,glCount,glRun,glTargets,glSetR,glDlgOpen,glDlgClose,glDlgShow,glDlgStep,PWL,pwCenter,pickToggle,pickList,c5SaveXlsx,c5SaveZip,origBytes,zipName,cropPng,xlsxBlob,XLO,xlOrigSet,xlOrig,xlCols,xlRow,zipStore,crc32,bigDef,dirList,dirFind,cgMiss,parseManRe,clsFirst,clsName,clsText,pcPath,CG,cgColors,cgFault,cgRecipe,cgIndex,cgFrames,cgTfKey,cgTfFor,cgMap,cgCropSize,geoLoad,geoLoadFd,geoHit,geoChoose,geoPlan,geoRect,geoSize,geoPix,geoWhy,geoModel,tfSize,tfPix,parseRecipesInfo,cgFrameData,geoFramesFromNames,cgColorsFromNames,dirFromFiles,cgPlan,cgLink,cgOf,cgShort,cgLoad,cgDirH,cgDirsFromList,cgCropCanvas,cgFrameCanvas,cgDefBox,cgDefHalf,pwSet,pwFit,PZ_MAX,cgBitmap,pyRound,pyFloat,photoWin,PW,opts,colsDiff,colsFromDefs,findLikeStep1,fullLoad,b5SlotTbl,readText,colorsFromNames,colorModel,colorWhy,b5Start,saveCsv,planUnits,unitOfPath,BIG,C5,VA,VB,VC,THUMB,addBigEntries,bigPickHandle,walkFast,bigRefresh,bigBuild,bigRankOf,b5Refresh,B5,fltSpan,bigRcpFill,bigFacetFill,bigCsv,pairCsv,b5Pair,b5go,c5PrepAll,parseFltCols,applyPanel,busy,lotsOf,setUnit,matchBySlot,renderScans,setPanel,buildVenn,regLabel,refresh3,refresh4,pickRegion,popMap,PANELS,vennMaskAt,selectPair,stLabel,viewLabel,parseDieLoc,parseMd,fltLayout,fltRec,fltRecErr,parseFlt,parseIni,parseColors,parseFrames,parseTransform,parseProduct,dieOf,surfaceCount,matchSets,grayOf,linkColor,measureGL,addEntries,csvText,state:S,go,REC};
 </script>
 </body>
 </html>

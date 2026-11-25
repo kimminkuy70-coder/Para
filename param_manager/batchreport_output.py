@@ -75,7 +75,7 @@ PAGE_CSS = """
 --bg:#eceff3;--paper:#fff;--navy:#1f3a5f;--teal:#0e5f5c;--amber:#b7791f;--rust:#c0392b;--slate:#64748b;
 --navy-bg:#eef2f8;--teal-bg:#e6f1f0;--amber-bg:#f7efdd;--rust-bg:#fbeae8;--slate-bg:#eef1f5;}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:"Malgun Gothic","맑은 고딕",-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.65}
+body{font-family:"Pretendard","Malgun Gothic","맑은 고딕",-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg);font-size:14px;line-height:1.65}
 .doc{max-width:1040px;margin:26px auto;background:var(--paper);box-shadow:0 2px 10px rgba(0,0,0,.10)}
 .pad{padding:8px 42px 54px}
 .head{border-top:6px solid var(--navy);padding:30px 42px 20px;border-bottom:2px solid var(--ink)}

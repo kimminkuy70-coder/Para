@@ -29,8 +29,10 @@ async function pngB64(canvas:OffscreenCanvas){
   let s='';for(let i=0;i<buf.length;i+=0x8000)s+=String.fromCharCode(...buf.subarray(i,i+0x8000));
   return btoa(s);
 }
-/** 맵 그림 글자 = 프로그램 서체(맑은 고딕). 'sans-serif' 만 쓰면 Windows 에서 Arial + 한글 대체 서체로 섞여 보였다(소유자 2026-11-25). */
-const MAP_FONT="'Malgun Gothic','맑은 고딕',sans-serif";
+/** 맵 그림 글자 = 프로그램 서체(Pretendard → 맑은 고딕). 'sans-serif' 만 쓰면 Windows 에서 Arial + 한글 대체 서체로 섞여 보였다(소유자 2026-11-25).
+ *  canvas 는 글꼴을 스스로 불러오지 않으므로 그리기 전에 document.fonts.load(fontsReady). */
+const MAP_FONT="'Pretendard','Malgun Gothic','맑은 고딕',sans-serif";
+const fontsReady=()=>Promise.all(['400','700'].map(w=>document.fonts.load(`${w} 14px Pretendard`))).catch(()=>undefined);
 const hex=(m:MapData,code:string)=>'#'+(m.colors[code]||m.unknown_color);
 
 /** 맵 한 장(Bin Code 또는 Bin Meaning). rows[0] = 맵 위쪽, 아래가 Notch 6시 방향.
@@ -121,6 +123,7 @@ export function WaferMap(){
           const r=(await desktop.request('wm_convert',{index:i}).promise).wafermap as
             {output:string;output_name:string;folder:string;map:MapData};
           const preview:Record<string,string>={};
+          await fontsReady();
           for(const img of r.map.images){
             if(stop.current)break;
             const b64=await pngB64(renderMap(r.map,img.mode));

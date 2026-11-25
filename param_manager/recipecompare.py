@@ -340,7 +340,7 @@ CMP_CSS = """
 .app-rpt .linklike{background:none;border:0;padding:0;color:#31517c;text-decoration:underline;cursor:pointer;font:inherit;font-weight:700;font-size:12px}
 .app-rpt .chartcard{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:#fff;margin:0 0 16px}
 .app-rpt .chartcard h3{margin:0 0 8px;font-size:15px}
-.app-rpt svg text{font:11.5px 'Malgun Gothic','맑은 고딕',sans-serif;fill:#52647d}
+.app-rpt svg text{font:11.5px 'Pretendard','Malgun Gothic','맑은 고딕',sans-serif;fill:#52647d}
 .app-rpt .bv-tip{position:fixed;z-index:2147483000;pointer-events:none;background:#1f2937;color:#fff;font-size:12px;line-height:1.6;padding:8px 11px;border-radius:8px;white-space:pre;box-shadow:var(--sh2)}
 @media(max-width:760px){.app-rpt .defs2{grid-template-columns:1fr}}
 """

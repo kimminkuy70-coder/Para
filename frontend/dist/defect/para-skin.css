@@ -8,7 +8,7 @@
   --btn2:rgba(55,71,79,.07);--slate50:#eceff1;--emerald700:#047857;--slate900:#263238}
 :root[data-theme="dark"] body.pskin{--pri:#10b981;--pri2:#34d399;--onpri:#04231a;--hov:#222c40;--th:#222c40;--thk:#c9d4e6;--hl:#1b2a2a;--sel:#173328;--chipon:#173328;--dot:#2c3850;--faint:#5d6b84;--band:#1b2433;--lbl:#9fabc2;--bd2:#3a4762}
 body.pskin{--sh1:0 1px 2px rgba(38,50,56,.07),0 1px 1px rgba(38,50,56,.04);--sh2:0 6px 16px rgba(38,50,56,.10),0 1px 3px rgba(38,50,56,.06);--sh3:0 16px 40px rgba(38,50,56,.18),0 2px 8px rgba(38,50,56,.08);
-  font:14px/1.55 'Malgun Gothic','맑은 고딕',system-ui,sans-serif;background:var(--bg);margin:0;position:relative;display:flow-root}
+  font:14px/1.55 'Pretendard','Pretendard Variable','Malgun Gothic','맑은 고딕',system-ui,sans-serif;background:var(--bg);margin:0;position:relative;display:flow-root}
 
 /* ── 틀: HTML 머리 · 왼쪽 막대 없앰, 본문이 프로그램 칸 너비 그대로 ── */
 body.pskin .wrap{display:block;min-height:0}

@@ -70,9 +70,9 @@ colors:
   st-rescan:    "{colors.amber-500}"   # 재스캔으로 완료
   st-open:      "{colors.orange-500}"  # Pass하지 못한 wafer 존재
 typography:
-  font-family: "'Malgun Gothic','맑은 고딕',system-ui,sans-serif"   # 설치 보장, 웹 폰트 금지(오프라인)
+  font-family: "'Pretendard','Pretendard Variable','Malgun Gothic','맑은 고딕',system-ui,sans-serif"   # 2026-11-25 소유자: Pretendard(OFL) 를 프로그램 안에 넣음(인터넷 아님), 못 읽으면 맑은 고딕
   font-mono:   "Consolas,'D2Coding',monospace"
-  weights:     [400, 700]                                           # 맑은 고딕은 이 둘뿐
+  weights:     [400, 700]                                           # 기본은 이 둘(가변 글꼴이라 500 · 600 · 800 도 나오지만 새 화면은 400 · 700 위주)
   display:   { size: 28px, weight: 700, line: 1.3,  tracking: -0.02em }   # 페이지 제목 h1
   h2:        { size: 20px, weight: 700, line: 1.35 }                      # 창 제목 · 기다림 카드 제목
   h3:        { size: 16px, weight: 700, line: 1.4 }                       # 카드 제목
@@ -179,7 +179,7 @@ AOI Manager 는 Camtek · KLA AOI 장비의 파라미터 · Batch Report · Defe
 4. **숫자는 줄 맞춤.** 표 · 큰 숫자 · 진행 수는 `font-variant-numeric: tabular-nums`.
 5. **움직임은 부드럽게, 가볍게.** 화면 전체가 스프링 · ease-out 으로 미끄러지듯 움직인다. 단, transform · opacity 만 움직이고, 멈춰 있으면 계산도 멈춘다(렉이 생기면 그 움직임은 뺀다).
 
-토스에서 빌리지 않은 것: 파란 강조색, Pretendard · 토스 서체, 모바일 패턴(바텀시트 · 화면 아래 고정 단추 · 플로팅 탭바), 해요체 말투, 금융 화면 흐름.
+토스에서 빌리지 않은 것: 파란 강조색, 토스 서체(공개 사용 허락 없음 — 대신 Pretendard, 소유자 2026-11-25), 모바일 패턴(바텀시트 · 화면 아래 고정 단추 · 플로팅 탭바), 해요체 말투, 금융 화면 흐름.
 
 ## 3. 색
 
@@ -239,7 +239,9 @@ AOI Manager 는 Camtek · KLA AOI 장비의 파라미터 · Batch Report · Defe
 
 ## 4. 글자
 
-- **서체 = 맑은 고딕**(Windows 설치 보장). 웹 폰트를 넣지 않는다. 맑은 고딕은 **400 · 700 두 굵기뿐**이라 500 · 600 을 쓰지 않는다(`font-synthesis:none`).
+- **서체 = Pretendard**(소유자 2026-11-25, SIL OFL 1.1) — `frontend/public/fonts/PretendardVariable.woff2`(가변 1개, 2 MB) + `Pretendard-LICENSE.txt`, `styles.css` 맨 위 `@font-face`.
+  **인터넷에서 받지 않는다**(프로그램 안 파일, CSP font = 'self'). 못 읽으면 맑은 고딕. Defect 칸(Shadow DOM)은 문서의 @font-face 를 그대로 쓰고, Wafer Map 그림은 `document.fonts.load` 뒤에 그린다.
+  결과 HTML(따로 여는 파일)은 글꼴 파일을 넣지 않아 그 PC 에 Pretendard 가 설치돼 있을 때만 Pretendard, 아니면 맑은 고딕(파일마다 2 MB 를 넣지 않으려고).
 - 크기는 머리말 `typography` 9단만 쓴다: 28 · 20 · 16 · 15 · 14 · 13 · 12 · 11 · 큰 숫자 30. **반 픽셀(12.5 · 11.5 · 10.5 · 13.5)과 10px 은 쓰지 않는다.**
   옮길 때: 13.5 → 14, 12.5 → 13, 11.5 → 12, 10.5 · 10 → 11.
 - 최소 11px. 11px 은 굵게(700) 쓰고, 대문자 라벨(eyebrow)은 자간 +0.14em.
@@ -460,7 +462,7 @@ AOI Manager 는 Camtek · KLA AOI 장비의 파라미터 · Batch Report · Defe
 
 - 입력 칸 테두리 `grey-300` / 흰 바탕 = 1.4:1 로 낮다(지금 화면도 비슷). 칸 바탕(`bg-sunken`)으로 구분하지만, 더 진하게 할지는 미리보기에서 본다.
 - 주 단추 눌림(`emerald-600`) 위 글자 대비 4.4:1 — 순간 상태라 그대로 두었다.
-- 맑은 고딕이 없는 PC(맥 · 리눅스 미리보기)에서는 대체 서체로 보여 글자 폭이 조금 다르다. 실제 확인은 Windows 에서.
+- 프로그램 화면은 어느 PC 에서나 Pretendard(내장). 결과 HTML 은 Pretendard 가 설치되지 않은 PC 에서 맑은 고딕(Windows) · 대체 서체(맥 · 리눅스)로 보인다.
 - 모션 부품의 실제 React 구현은 아직 없다(미리보기 HTML 이 기준 구현). 느린 회사 PC 에서 끊김이 없는지는 Windows 실기에서 확인한다.
 
 ## 16. 참고

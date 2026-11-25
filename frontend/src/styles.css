@@ -1,6 +1,9 @@
+/* 서체 = Pretendard(소유자 2026-11-25 "그 글꼴 사용해" — SIL OFL 1.1, 파일 = public/fonts/PretendardVariable.woff2 · Pretendard-LICENSE.txt, 인터넷에서 받지 않음).
+   가변 글꼴 1개(굵기 45 ~ 920)라 500 · 600 · 800 도 그대로 나온다. 파일을 못 읽으면 맑은 고딕. Defect 칸(Shadow DOM)도 이 @font-face 를 쓴다. */
+@font-face{font-family:'Pretendard';src:url('/fonts/PretendardVariable.woff2') format('woff2-variations'),url('/fonts/PretendardVariable.woff2') format('woff2');font-weight:45 920;font-style:normal;font-display:swap}
 /* ===== 디자인 토큰 = DESIGN.md 머리말(2026-11-24 소유자 결정). 화면 코드는 역할 이름(--accent · --line · --text-2 …)으로 부른다.
    옛 이름(--navy --lime --acc2 --onacc --ok --bad --ink --mut --muted --faint --band --brand2 --sh1 --sh2 --ease --spring)은 새 토큰을 가리키는 별칭 ===== */
-:root{font-family:'Malgun Gothic','맑은 고딕',system-ui,sans-serif;color:var(--text-1);background:var(--bg-page);font-synthesis:none;font-size:14px;
+:root{font-family:'Pretendard','Pretendard Variable','Malgun Gothic','맑은 고딕',system-ui,sans-serif;color:var(--text-1);background:var(--bg-page);font-synthesis:none;font-size:14px;
   --slate-900:#263238;--slate-800:#37474f;--slate-700:#455a64;--slate-600:#546e7a;--slate-500:#607d8b;--slate-100:#cfd8dc;--slate-50:#eceff1;
   --emerald-800:#0b5e46;--emerald-700:#047857;--emerald-600:#0d9668;--emerald-500:#10b981;--emerald-200:#a7e0cb;--emerald-100:#d6f2e6;--emerald-50:#eafaf3;--on-emerald:#04231a;
   --grey-900:#1f2937;--grey-700:#425872;--grey-600:#5f6b7a;--grey-500:#7a8798;--grey-400:#94a3b8;--grey-300:#cfd8e3;--grey-200:#e6ebf0;--grey-100:#eef2f4;--grey-50:#f7f9fb;
@@ -381,7 +384,7 @@ input.out-path{padding:9px 12px;border:1px solid var(--line);border-radius:8px}
 .bv .ch .hint{margin:0}
 .bv .chartscroll{overflow-x:auto;overflow-y:hidden}
 .bv .chart svg{display:block}
-.bv .chart svg text{font:11px 'Malgun Gothic','맑은 고딕',sans-serif;fill:var(--text-2)}
+.bv .chart svg text{font:11px 'Pretendard','Malgun Gothic','맑은 고딕',sans-serif;fill:var(--text-2)}
 .bv .chart .hit{fill:transparent;cursor:pointer}
 .bv .chart .hit:hover{fill:#31517c12}
 .bv .chart .selbox{fill:#0d966810;stroke:var(--accent-press);stroke-width:2}

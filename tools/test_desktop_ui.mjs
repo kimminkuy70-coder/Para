@@ -64,6 +64,8 @@ try{
     await page.evaluate(()=>document.fonts.ready);
   }
   await page.getByText('로컬 엔진 연결됨',{exact:true}).waitFor();
+  // 서체 = Pretendard(소유자 2026-11-25) — 프로그램 안 파일을 읽음(외부 요청이면 위 route 가 막는다)
+  assert(await page.evaluate(()=>document.fonts.load("700 14px Pretendard").then(f=>f.length>0&&document.fonts.check("700 14px Pretendard"))),'Pretendard bundled font loads');
   // v13 start-up pop-up: GitHub is off in the fixture, so the OneDrive backup release is found;
   // a source copy (not installed) cannot install it. [나중에] closes it.
   const banner=page.locator('dialog.update-banner');
@@ -1120,6 +1122,25 @@ z=zipfile.ZipFile(p);print(json.dumps({'n':len(rows),'head':rows[0][8:11],'state
   const nPages=page.context().pages().length;await dg.locator('#p3List').press('Enter');await bp.waitForTimeout(300);
   assert.equal(page.context().pages().length,nPages);                             // Enter 를 다시 눌러도 같은 창
   await bp.close();
+  // 2026-11-25(소유자 "Defect Map 에도 5-3 기능 넣어"): 최종 목록(☑) CSV · 엑셀 · 사진 zip + 흑백 GL 측정(☑ 중 흑백 있는 것) — 대규모 5-3 과 같은 형식
+  assert.match(await dg.locator('#p3FinN').innerText(),/^☑ 1 \/ 2개$/);
+  await dg.locator('#p3List .br').first().locator('span.pk').click();await dg.locator('#p3FinN',{hasText:'☑ 2 / 2개'}).waitFor();
+  assert.match(await dg.locator('#p3Gl').innerText(),/☑ 만 · 1개/);                                             // C1 만 흑백 사진 있음
+  await dg.locator('#p3Gl').click();await dg.locator('#p3GlSt',{hasText:/측정 1\/1개/}).waitFor();
+  assert.notEqual(await dgf.evaluate(()=>{const P=window.__cw.PANELS.p3;return P.items.find(it=>it.d.glv!=null)?.d.glv??null}),null);
+  assert.match(await dg.locator('#p3List .bh').innerText(),/흑백 GL \(원\)/);
+  await dgf.evaluate(()=>{window.__flc=null;window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__flc=await b.text()},close:async()=>{}})})});
+  await dg.locator('#p3FlCsv').click();await dgf.waitForFunction(()=>typeof window.__flc==='string');
+  {const L=(await dgf.evaluate(()=>window.__flc)).replace(/^\ufeff/,'').trim().split(/\r\n/);
+    assert.equal(L.length,3,'header + ☑ 2 rows');assert(L[0].startsWith('5-1 #,Lot,Slot,ID,장비 스캔 분류,리뷰 결과,Recipe,Contrast(실제),상태'),L[0]);
+    assert(L[0].includes('매칭폴더'),'Para Color·Gray 매칭이 읽는 최종 목록 CSV 열')}
+  await dgf.evaluate(()=>{window.__bin=null;window.showSaveFilePicker=async o=>({name:o.suggestedName,createWritable:async()=>({write:async b=>{window.__bin=Array.from(new Uint8Array(await b.arrayBuffer()))},close:async()=>{}})})});
+  await dg.locator('#p3Xlsx').click();await dgf.waitForFunction(()=>Array.isArray(window.__bin),null,{timeout:30000});
+  {const b=Buffer.from(await dgf.evaluate(()=>window.__bin));assert.equal(b.subarray(0,2).toString(),'PK');const xp=join(fixture,'defectmap_final.xlsx');await writeFile(xp,b);
+    const out=execFileSync(process.env.CODEX_PRIMARY_RUNTIME_PYTHON||'python',['-c',"import sys,openpyxl;ws=openpyxl.load_workbook(sys.argv[1]).active;print(ws.max_row,ws.max_column,len(ws._images),ws.cell(1,1).value,ws.cell(1,9).value)",xp],{env:{...process.env,PYTHONPATH:join(root,'vendor')}}).toString().trim();
+    assert.match(out,/^3 36 \d+ 5-1 # Color$/,out);assert(+out.split(' ')[2]>=3,'C1 = Color · Gray Crop · Gray 프레임 사진: '+out)}
+  await dgf.evaluate(()=>{window.__bin=null});await dg.locator('#p3Zip').click();await dgf.waitForFunction(()=>Array.isArray(window.__bin),null,{timeout:30000});
+  assert.equal(Buffer.from(await dgf.evaluate(()=>window.__bin)).subarray(0,2).toString(),'PK');
   await dg.locator('#step3 details.card summary').click();
   assert.equal(await dg.locator('#detLs .lsn').innerText(),'☑ 2 / 2개');
   await dg.locator('#detTbl tbody tr td.pk').first().click();assert.equal(await dg.locator('#csvBtn').innerText(),'CSV 내보내기 (☑ 1개)');

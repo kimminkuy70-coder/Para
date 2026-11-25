@@ -26,7 +26,7 @@ body.app-rpt{--ink:#1f2937;--soft:#5f6b7a;--faint:#94a3b8;--line:#e6ebf0;--line2
 --navy:#37474f;--teal:#0b5e46;--amber:#79471c;--rust:#a33820;--slate:#5f6b7a;--lime:#10b981;--acc2:#0d9668;--blue:#455a64;--band:#f7f9fb;
 --navy-bg:#eceff1;--teal-bg:#eafaf3;--amber-bg:#fff4e7;--rust-bg:#fdecea;--slate-bg:#f7f9fb;
 --sh1:0 1px 2px rgba(38,50,56,.07),0 1px 1px rgba(38,50,56,.04);--sh2:0 6px 16px rgba(38,50,56,.10),0 1px 3px rgba(38,50,56,.06);--sh3:0 16px 40px rgba(38,50,56,.18),0 2px 8px rgba(38,50,56,.08);
-margin:0;background:var(--bg);color:var(--ink);font-family:'Malgun Gothic','맑은 고딕',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;word-break:keep-all}
+margin:0;background:var(--bg);color:var(--ink);font-family:'Pretendard','Malgun Gothic','맑은 고딕',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;word-break:keep-all}
 .app-rpt *{box-sizing:border-box}
 .app-rpt .topbar{background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 32px}
 .app-rpt .brand{display:flex;align-items:center;gap:12px;color:#fff;font-size:19px;letter-spacing:-.4px;text-decoration:none}
