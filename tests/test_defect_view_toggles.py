@@ -56,7 +56,7 @@ class DefectViewToggles(unittest.TestCase):
         for n, line in enumerate(self.t.splitlines(), 1):
             if "첫번째" in line or "재분류" in line:
                 self.assertIn("종전", line, f"{n}: {line[:120]}")
-        for name in ("FL_HEAD", "XL_COLS", "VA=makeVT", "VB=makeVT", "VC=makeVT"):
+        for name in ("FL_HEAD=[", "XL_COLS=[", "VA=makeVT", "VB=makeVT", "VC=makeVT"):   # 정의 줄(다른 곳의 설명 · 사용은 빼고)
             i = self.t.index(name)
             seg = self.t[i:self.t.index("\n", i)]
             self.assertIn("장비 스캔 분류", seg, name)
