@@ -85,9 +85,9 @@ def _load_heavy():
 
 
 # Defect 코드(Bin Code) 표 — 소유자 2026-11-25 'defect code 표'(0 = Good, 나머지 = Defect). Defect 분석 HTML(rev6 DEFECT_DESC)과 같은 표
-# (tests/test_defect_codes.py). 종전 표와 뜻이 달라진 코드: 014 RDL Defect → Damaged Bump, 090 Customer Map Reject Die → Coplanarity.
+# (tests/test_defect_codes.py). 014 = RDL Defect(소유자 확인 2026-11-25 — 받은 표의 'Damaged Bump' 대신), 종전 표와 뜻이 달라진 코드: 090 Customer Map Reject Die → Coplanarity.
 DEFECT_CODES = [(0, 'Accept'), (1, 'Undersized Bump'), (2, 'Missing Bump'), (3, 'Metal Residue'),
-                (4, 'Bridged Bumps'), (7, 'Irregular Bump'), (9, 'Over Sized Bump'), (14, 'Damaged Bump'),
+                (4, 'Bridged Bumps'), (7, 'Irregular Bump'), (9, 'Over Sized Bump'), (14, 'RDL Defect'),
                 (22, 'Passivation Scratch'), (23, 'Passivation Damage'), (31, 'Foreign Material'), (94, 'Others'),
                 (91, 'Incoming Passivation Damaged - Metal Defect'), (92, 'Passivation Defect'), (41, 'Discolored'),
                 (13, 'Unfocused'), (90, 'Coplanarity'), (93, 'Incoming FM'), (42, 'Height'), (40, 'Crack'),
@@ -109,7 +109,7 @@ COLORS = {'___': 'FFFFFF', '000': 'DDF3DF', '001': 'EF6C00', '002': 'B71C1C', '0
           '082': '2E7D32', '083': '43A047', '084': '1B5E20', '085': '66BB6A', '086': '9CCC65', '087': '558B2F',
           '088': 'BDBDBD'}
 MEAN = {'000': 'Accept / Good', '001': 'Undersized Bump', '002': 'Missing Bump', '003': 'Metal Residue',
-        '004': 'Bridged Bumps', '007': 'Irregular Bump', '009': 'Over Sized Bump', '014': 'Damaged Bump',
+        '004': 'Bridged Bumps', '007': 'Irregular Bump', '009': 'Over Sized Bump', '014': 'RDL Defect',
         '022': 'Passivation Scratch', '023': 'Passivation Damage', '031': 'Foreign Material', '094': 'Others',
         '091': 'Incoming Passivation Damaged - Metal Defect', '092': 'Passivation Defect', '041': 'Discolored',
         '013': 'Unfocused', '090': 'Coplanarity', '093': 'Incoming FM', '042': 'Height', '040': 'Crack',
@@ -122,7 +122,7 @@ MEAN = {'000': 'Accept / Good', '001': 'Undersized Bump', '002': 'Missing Bump',
         '083': 'PTN reveal', '084': 'Cu short', '085': 'Cu shape', '086': 'Cu Smear', '087': 'FM on Cu',
         '088': 'Other', '___': 'Outside Wafer'}
 MEAN_KO = {'000': '양품', '001': '작은 범프', '002': '범프 없음', '003': '금속 잔류물', '004': '범프 붙음(브리지)', '007': '범프 모양 불량',
-           '009': '큰 범프', '014': '범프 손상', '022': 'Passivation 스크래치', '023': 'Passivation 손상', '031': '이물',
+           '009': '큰 범프', '014': 'RDL 불량', '022': 'Passivation 스크래치', '023': 'Passivation 손상', '031': '이물',
            '094': '기타', '091': '입고 Passivation 손상 - 금속 불량', '092': 'Passivation 불량', '041': '변색', '013': '초점 안 맞음',
            '090': '평탄도(Coplanarity)', '093': '입고 이물', '042': '높이', '040': '크랙', '028': 'B R 기타', '029': 'B R 표면 어두움',
            '030': 'B R 범프 없음', '060': 'B R 큰 범프', '050': 'B R 작은 범프', '051': 'B R 높이 하한 미만', '052': 'B R 높이 상한 초과',
