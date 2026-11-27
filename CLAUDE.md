@@ -16,6 +16,14 @@
   Defect 로딩창 · 같은 창 칸 = **프로그램 화면 전체**(para-skin.css `.busy` · `.ovw` inset:0).
   후속(같은 날): **서체 = Pretendard 내장**(`frontend/public/fonts`, OFL, 인터넷 아님 — 결과 HTML 은 파일 없이 글꼴 순서만) · **Defect Map 에도 최종 목록 엑셀 · CSV · zip + 흑백 GL 측정**(`panelFinHtml` · `baseSave*` · `baseGlRun`, 대규모 5-3 과 같은 형식).
 
+- **Wafer Map 수정하기 = 맵 편집기(#91, 2026-11-27, `design_rebuild`)**: 화면이 TXT RowData 를 직접 그리고 고친다(종전 TXT↔Excel 6단계 마법사 화면 삭제 — 엔진 `txt_to_excel` · `excel_to_txt` · IPC `wm_start`/`wm_convert`/`wm_image` 는 남김, 화면은 안 씀).
+  화면 `frontend/src/WaferMap.tsx` = 폴더 → 맵 목록([새로 시작하기] = 폴더 화면) → 편집 → 비교([처음 화면으로] = 목록 · [저장 폴더 열기]). 그리기 = 소유자가 고른 **후보 A + C**: Die 1개 = 픽셀 1개 비트맵을 배율로 늘려 그림(`MapModel.pix`, 번짐 없음),
+  6 px/Die 이상 = 보이는 영역 격자선, 26 px/Die 이상 = Bin Code 글자. 편집 = (나) Die 를 고른 뒤 오른쪽 리스트의 코드 누름(클릭 · 끌기 = 지나간 Die · 사각형, Ctrl/Shift = 더함, Esc = 해제), `___` 못 고름,
+  리스트 = 전체 `DEFECT_CODES`(이름만, 한글 뜻 없음) + 맵에만 있는 코드 + 새 코드 입력, 코드 옆 개수, 되돌리기 Ctrl+Z · 다시 하기 Ctrl+Y, 휠 확대 = 두 모드, 이동 모드 = 끌어 이동 · 클릭 안 됨, 아래 = Col(왼쪽 0) · Row(아래 0) · Bin.
+  저장 = 그림 범례 [Bin Code 만 | Bin Code + Defect 이름] · 이름(기본 `<원본>_Edited`) · 위치(기본 원본 폴더) → `<이름>.txt` + `<이름>_BinCode_Map.png` / `_BinMeaning_Map.png`.
+  주고받기 = `wafermap.encode_grid`(코드 표 + Die 번호 1~2 바이트 base64, 100만 Die ≈ 1.3 MB, 4 MB IPC 안 = 약 150만 Die 까지), 저장 = `write_edited`(**원본에서 바뀐 토큰만 바꿈** — 안 고친 맵 = 바이트 같음, 원본 이름 덮어쓰기 금지, `___` 잠금은 엔진도 검사).
+  IPC `wm_open` · `wm_edit_save` · `wm_edit_image`. 시험 `tests/test_wafermap.py` EditorTests + `tools/test_wafermap_editor.mjs`(화면 · 4만/100만 Die 시간).
+
 - **v14.4.3(#90, 2026-11-24)**: 프로그램 화면에 GitHub 글자를 쓰지 않는다(소유자: GitHub 을 쓰는 것을 밝히지 말 것). 설정 > 정보에 업데이트 구역 없음 — 업데이트는 시작 알림 창만. 새 화면 글 · 오류 글에도 GitHub · github.com 을 넣지 말 것.
 
 - 계획 · 소유자 결정 = `docs/V14_Defect분석_계획.md`(맨 아래 '구현 결과'가 최신). 릴리스 = `version_v14` push → `.github/workflows/v14.yml`(종전 v13.yml, 판 = 14.x.y).

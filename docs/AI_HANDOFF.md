@@ -1,27 +1,30 @@
 # AI 공통 인수인계
 
 
-## 최신 재개 — #91 Wafer Map 편집기 일원화: 후보 · 질문만 올림 (2026-11-27 KST, `design_rebuild`, 자동 이슈 처리)
+## 최신 재개 — #91 Wafer Map 수정하기 = 맵 편집기(TXT 안에서 바로 편집 · 비교 · 저장) (2026-11-27 KST, `design_rebuild`, 소유자 세션 + 자동 이슈 처리)
 
-- 마지막 갱신 2026-11-27 · 기준 커밋 `fb67651`(design_rebuild) · 이슈 #91 · 소유자: "Design_rebuild 에서 기존 Wafer map 기능 수정 — TXT→Excel 수정→TXT 를 프로그램 안에서 일원화.
-  ① 4만 Die(더 많을 수도) 렉 없이 — 작동 방식 후보 여러 개 + 장단점 → 컨펌 ② TXT 넣으면 맵 그림, Die 클릭으로 Bin Code 변경, 저장 = 수정 사진 + 수정 TXT, 최종 화면 = 원래 · 수정 맵 비교 + [처음 화면으로] · [저장 폴더 열기]
-  ③ 편집 모드 · 이동 모드 아이콘, 왼쪽 맵 · 오른쪽 BIN CODE 리스트 · 하단 = 마우스 올린 Die 좌표 · Bin Code ④ 편집 모드 = 좌클릭 Die → 리스트의 코드로 바꿈(색 · 실제 코드) ⑤ 이동 모드 = 클릭 안 됨, 좌클릭 드래그 이동 · 휠 확대". "애매한 부분은 질문하고 나서 수정".
-- 한 일: 코드 무변경. 이슈 댓글로 그리기 방식 후보 4개(A 비트맵 canvas · B WebGL · C 보이는 영역만 · D Die 마다 요소)와 장단점, **추천 A + C**, 저장 방식(바뀐 Die 목록만 엔진에 → 원본 다시 읽어 칸만 바꿈, 바이트 보존 규칙 그대로),
-  질문 13개(기존 변환 화면 유지 · 파일 1개씩 · '맵 파일' 뜻 · 저장 이름 · 붓/선택 방식 · 드래그 · 리스트 범위 · `___` · 되돌리기 · 좌표 기준 · 편집 중 휠 · 비교 화면 연동 · 헤더 수정 · Mini)를 올림.
-- 현재 코드(참고): `frontend/src/WaferMap.tsx`(6단계 마법사, `renderMap` = OffscreenCanvas PNG) · `param_manager/wafermap.py`(`parse_txt` · `txt_to_excel` · `excel_to_txt` · `map_payload`) · `param_manager/desktop_wafermap.py`(IPC `wm_*`).
-- 시험: 코드 무변경이라 돌리지 않음. 릴리스 없음(design_rebuild 는 릴리스 안 함 — 소유자 결정 2026-11-24).
-- **소유자 답(2026-11-27 07:26, #91 댓글)**: 0 canvas 라이선스 · 보안 검토(→ 답 댓글: 브라우저 내장 기능 · 새 패키지 0 · 스크립트/exe/net use/인터넷 없음) · 1 새 편집기로 바꿈 ·
-  2 여러 장 목록에서 하나씩 편집 · 저장, [처음 화면으로] = 목록, 목록 화면 [새로 시작하기] = 폴더 고르기 처음 · 3 TXT RowData 로 그림 · 4 저장 옵션 = 그림 범례 Bin Code 만 / Bin Code + Defect 이름, 이름 · 위치 설정(기본 = 원본 폴더 `<이름>_Edited`) ·
-  5 (나) Die 를 고른 뒤 리스트의 코드 누름 + 드래그로 여러 Die · 사각형 선택 · 6 전체 Defect 코드 표(설명 없이) + 새 코드 직접 입력 + 코드 옆 개수 · 7 `___` 편집 금지 · 8 되돌리기 필요 ·
-  9 하단 좌표 표시 · 10 편집 모드에서도 휠 확대 · 11 비교 화면(바뀐 Die 강조 · 요약 · 확대 연동) 좋음 · 12 헤더 수정 필요 없음 · 13 Mini 같이.
-- **진행 중(이 커밋까지)**: 엔진만 — `wafermap.encode_grid`/`decode_grid`(코드 표 + Die 번호 1~2 바이트 base64, 100만 Die ≈ 1.3 MB) · `check_edit`(`___` 잠금 · 코드 = 영문/숫자 1~8 자) ·
-  `write_edited`(원본 TXT 에서 바뀐 토큰만 바꿈 — 안 고친 맵은 바이트 같음, `.part` → replace) · 어댑터 `open_map` · `edit_save`(이름 검사 `clean_name`, 원본 덮어쓰기 금지, 있으면 `exists` 돌려 물어봄) · `edit_image` ·
-  IPC `wm_open` · `wm_edit_save`(작업 스레드) · `wm_edit_image`. 시험 `tests/test_wafermap.py` EditorTests 8개(전체 29 통과).
-- 남은 일: 화면 `WaferMap.tsx` 새 편집기(목록 → 편집 → 비교) · `npm run build` dist · 화면 시험 · 4만/100만 Die 속도 측정 · 완료 댓글 · `claude-processed`.
+- 마지막 갱신 2026-11-27 · 기준 커밋 `849ceea`(엔진) → 이번 커밋(화면) · 남은 일에 추가: test_desktop_ui 1144줄 기존 실패 원인 조사 · 이슈 #91 · 판 그대로(`design_rebuild` 는 릴리스 안 함 — 소유자 결정 2026-11-24, `version_v14` 로 옮길 때만).
+- 소유자 요청: "TXT → Excel 수정 → TXT 를 프로그램 안에서 일원화, 4만 Die 이상 렉 없이(후보 + 장단점 → 컨펌), Die 클릭으로 Bin Code 변경, 저장 = 수정 사진 + 수정 TXT, 최종 = 원래 · 수정 맵 비교 + [처음 화면으로] · [저장 폴더 열기],
+  편집 모드 · 이동 모드 아이콘, 왼쪽 맵 · 오른쪽 BIN CODE 리스트 · 하단 Die 좌표 · Bin Code".
+- 첫 실행: 후보 4개(A 비트맵 canvas · B WebGL · C 보이는 영역만 · D Die 마다 요소, 추천 A + C) + 질문 13개 댓글.
+- **소유자 답(07:26)**: 0 canvas 라이선스 · 보안 검토 · 1 새 편집기로 바꿈 · 2 여러 장 목록에서 하나씩 편집 · 저장, [처음 화면으로] = 목록, 목록 [새로 시작하기] = 진짜 처음 · 3 RowData 로 그림 ·
+  4 저장 옵션 = 범례 Bin Code 만 / Bin Code + Defect 이름 + 이름 · 위치 설정(기본 = 내 제안) · 5 (나) 고른 뒤 코드 누름 + 끌기 · 사각형 · 6 전체 코드 표(설명 없이) + 새 코드 입력 + 개수 · 7 `___` 편집 금지 ·
+  8 되돌리기 · 9 좌표 표시 · 10 편집 모드에서도 휠 확대 · 11 비교 화면 좋음 · 12 헤더 수정 필요 없음 · 13 Mini 같이. 이어서 "후보 답변부터" → 0번 답 댓글, "C 도 동일하게 검토" → C 검토 댓글
+  (둘 다: 브라우저 내장 Canvas 2D · 새 패키지 0 · 라이선스 조건 없음 · 파일/프로세스/스크립트/장비/인터넷 없음 → #31 · #58 · exe 평판 · net use · OneDrive 대량 쓰기와 무관. C 만 쓰면 축소 때 느려서 확대 때만).
+- 한 일: 위 CLAUDE.md 'Wafer Map 수정하기 = 맵 편집기' 절 그대로 — 엔진 `wafermap.encode_grid`/`decode_grid`/`check_edit`/`write_edited` · `desktop_wafermap.open_map`/`edit_save`/`edit_image`/`clean_name` · `view()` 에 색 2개,
+  IPC 3개, 화면 `WaferMap.tsx` 새로(`MapModel` · `MapCanvas` · `Editor` · `Compare` · `renderPng`), `styles.css` 끝 `.wme*`, `frontend/dist` 다시 빌드.
+- 시험: `tests/test_wafermap.py` 29 OK(EditorTests 8 — 그대로 저장 = 바이트 같음 · 바뀐 토큰만 · 새 코드 · `___` 잠금 · 이름/덮어쓰기 · 다른 폴더 · PNG) · `tools/test_wafermap_editor.mjs` 통과 ·
+  `PYTHONPATH=vendor python3 tools/check_project.py` Failed files: none · `tools/test_desktop_ui.mjs` = 1144줄(Defect Map 최종 목록 엑셀 그림 수 `ws._images` 0)에서 실패 — **이번 변경 전 커밋 `22506ed` 에서도 같은 자리 같은 값으로 실패**(Wafer Map 과 무관, 원인 확인 전), 그 뒤 단계(Mini 의 Wafer Map 탭 이동 포함)는 이 실행에서 못 봄.
+- 속도(이 리눅스 headless Chromium, 회사 PC 실측 아님): 4만 Die 열기 0.12초 · 휠 확대 한 번 ≈ 33 ms(2 프레임 대기 포함) · 사각형 선택 + 코드 변경 0.17초 / 100만 Die 열기 0.37초 · 확대 ≈ 33 ms · 사각형 0.21초.
+- 해석(확인 전): ① '업로드' = 폴더를 고르면 하위 폴더까지 TXT 를 모두 찾음(파일 하나씩 고르는 창 · 끌어 놓기는 안 만듦) ② 끌기 · 사각형 = Ctrl 없으면 새 선택, Ctrl/Shift = 더함 ③ 새 코드 = 영문 · 숫자 1~8 자, 숫자 1~2 자리는 앞에 0(95 → 095), 색 = 모르는 코드 색(살구색)
+  ④ 저장 그림은 수정 맵 1장(범례 고른 것), 원래 맵 그림은 안 만듦 ⑤ 같은 이름 파일이 있으면 덮어쓸지 물음 ⑥ 목록으로 갈 때 저장 안 한 수정이 있으면 물음 ⑦ 비교 화면 빨간 테두리 = 바뀐 Die, 두 맵 확대 · 이동 같이
+  ⑧ 맵이 약 150만 Die 넘으면 열지 않음(4 MB IPC) ⑨ Excel 변환 엔진 · IPC 는 지우지 않고 남김(화면만 없앰).
+- Windows 실기(Edge 창 · 실제 회사 TXT · 마우스 휠 감도) 확인 못 함. 다음: 소유자 실기 피드백 → `version_v14` 로 옮길 때 같이 릴리스.
 
 | 요청 | 결과 |
 |---|---|
-| #91 Wafer Map 편집기(TXT 안에서 바로 편집 · 비교 · 저장) — 후보 · 질문 먼저 | 후보 4개 + 질문 13개 댓글, 코드 무변경, 답 기다림 |
+| #91 Wafer Map 편집기 — 후보 · 질문 먼저 | 후보 4개 + 질문 13개 댓글 |
+| #91 소유자 답 0~13 + 0번 · C 검토 | 검토 댓글 2개 · 편집기 구현 · 시험 통과 · 릴리스 없음(design_rebuild) |
 
 ## 최신 재개 — v14.4.3 릴리스: 설정 업데이트 구역 · 화면의 GitHub 글자 삭제 (2026-11-24 KST, `version_v14`, 이슈 #90, 자동 이슈 처리)
 

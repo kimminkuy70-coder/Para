@@ -1,256 +1,408 @@
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {desktop,errorText,pickFolder} from './desktop';
-import {notify,fail,Stepper,StepNav} from './ui';
-import {RowPick} from './RowPick';
-import {OpenPath} from './OpenPath';
+import {notify,fail} from './ui';
+import {openPath} from './OpenPath';
 
-/* Wafer Map 수정하기 (Wafer Map Converter WebView2 v6 이식).
-   엔진(param_manager/wafermap.py) = TXT↔Excel 변환(원본 로직 그대로, openpyxl 전용) · 파일 탐색.
-   이 화면 = 맵 이미지(BinCode_Map · BinMeaning_Map PNG) 를 canvas 로 그린다
-   (추가 패키지 금지라 numpy/matplotlib 대신 — Color·Gray 매칭과 같은 방식). */
+/* Wafer Map 수정하기 — 맵 편집기(#91, 2026-11-27).
+   TXT(RowData) 를 프로그램 안에서 바로 그리고 Die 의 Bin Code 를 고쳐 새 TXT + 맵 그림(PNG)으로 저장한다(Excel 을 거치지 않음).
+   화면 = ① 폴더 고르기 → ② 맵 목록 → ③ 편집(왼쪽 맵 · 오른쪽 Bin Code 리스트 · 아래 좌표) → ④ 비교(원래 · 수정 맵).
+   그리기(소유자가 고른 후보 A + C): 맵 = Die 1개가 픽셀 1개인 비트맵을 확대 · 이동 배율로 늘려 그림(번짐 없이),
+   많이 확대하면 보이는 영역에만 격자선 · Bin Code 글자. 4만 ~ 100만 Die 도 한 프레임에 한 번만 다시 그린다.
+   엔진(param_manager/wafermap.py) = TXT 읽기 · 바뀐 Die 토큰만 바꿔 저장(원본 바이트 그대로) · `___`(웨이퍼 밖) 잠금. */
 
 type Item={id:number;valid:boolean;path:string;relative:string;wafer:string;device:string;lot:string;size:string;bins:Record<string,number>;error:string};
 type Scan={root:string;mode:string;items:Item[];valid:number;total:number};
-type ImgSpec={kind:string;mode:'code'|'meaning';path:string};
-type MapData={wafer:string;row_count:number;col_count:number;rows:string[][];counts:Record<string,number>;
-  present:string[];colors:Record<string,string>;unknown_color:string;mean:Record<string,string>;mean_ko:Record<string,string>;images:ImgSpec[]};
 type Code={code:string;name:string;ko:string;color:string};
-type JobItem={src:string;relative:string;wafer:string;lot:string;device:string;output:string;result:unknown};
-type Job={mode:string;source_root:string;output_root:string;items:JobItem[]};
-type Result={wafer:string;output:string;output_name:string;output_type:string;folder:string;
-  images:{kind:string;path:string}[];preview:Record<string,string>};
+type Table={codes:Code[];unknown:string;outside:string};
+type Opened={id:number;path:string;name:string;folder:string;default_name:string;wafer:string;device:string;lot:string;
+  row_count:number;col_count:number;codes:string[];width:number;grid:string};
+type Saved={txt:string;png:string;folder:string;changed:number};
+type Label='code'|'meaning';
+const OUT='___';
 
-const STEPS=['변환 방향·폴더','파일 선택','저장 위치','실행 검토','처리 진행','완료'];
-const MODE_LABEL:Record<string,string>={txt:'TXT → Excel (맵을 열어 수정)',excel:'Excel → TXT (수정한 맵을 되돌림)'};
-
-/** OffscreenCanvas → base64 PNG (one IPC message, ≤ 4 MB). */
-async function pngB64(canvas:OffscreenCanvas){
-  const buf=new Uint8Array(await (await canvas.convertToBlob({type:'image/png'})).arrayBuffer());
-  let s='';for(let i=0;i<buf.length;i+=0x8000)s+=String.fromCharCode(...buf.subarray(i,i+0x8000));
-  return btoa(s);
+/* ------------------------------------------------------------------ 맵 자료 */
+class MapModel{
+  rc:number;cc:number;palette:string[];grid:Uint16Array;orig:Uint16Array;outside:number;
+  rgb:number[][]=[];pix:Uint8ClampedArray<ArrayBuffer>;counts:number[]=[];changed=0;
+  constructor(o:Opened,private table:Table){
+    this.rc=o.row_count;this.cc=o.col_count;this.palette=[...o.codes];
+    const raw=Uint8Array.from(atob(o.grid),ch=>ch.charCodeAt(0)),n=this.rc*this.cc;
+    this.grid=new Uint16Array(n);
+    if(o.width===2)for(let i=0;i<n;i++)this.grid[i]=raw[2*i]|(raw[2*i+1]<<8);else this.grid.set(raw.subarray(0,n));
+    this.orig=this.grid.slice();this.outside=this.palette.indexOf(OUT);
+    this.palette.forEach((_,k)=>this.rgb.push(this.colorRgb(k)));
+    this.pix=new Uint8ClampedArray(n*4);
+    this.counts=new Array(this.palette.length).fill(0);
+    for(let i=0;i<n;i++){this.counts[this.grid[i]]++;this.paint(i);}
+  }
+  colorHex(code:string){if(code===OUT)return this.table.outside;return (this.table.codes.find(c=>c.code===code)?.color)||this.table.unknown;}
+  private colorRgb(k:number){const h=this.colorHex(this.palette[k]);return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+  paint(i:number){const c=this.rgb[this.grid[i]],j=i*4;this.pix[j]=c[0];this.pix[j+1]=c[1];this.pix[j+2]=c[2];this.pix[j+3]=255;}
+  index(code:string){let k=this.palette.indexOf(code);
+    if(k<0){k=this.palette.length;this.palette.push(code);this.rgb.push(this.colorRgb(k));this.counts.push(0);}return k;}
+  code(i:number){return this.palette[this.grid[i]];}
+  locked(i:number){return this.grid[i]===this.outside;}
+  set(i:number,k:number){const was=this.grid[i];if(was===k)return;
+    if(was===this.orig[i])this.changed++;else if(k===this.orig[i])this.changed--;
+    this.counts[was]--;this.counts[k]++;this.grid[i]=k;this.paint(i);}
+  count(code:string){const k=this.palette.indexOf(code);return k<0?0:this.counts[k];}
+  /** 엔진에 보낼 모양(wafermap.decode_grid): 코드 표 + Die 번호 base64. */
+  encode(){const n=this.grid.length,w=this.palette.length>256?2:1,b=new Uint8Array(n*w);
+    if(w===1)for(let i=0;i<n;i++)b[i]=this.grid[i];else for(let i=0;i<n;i++){b[2*i]=this.grid[i]&255;b[2*i+1]=this.grid[i]>>8;}
+    let s='';for(let i=0;i<b.length;i+=0x8000)s+=String.fromCharCode(...b.subarray(i,i+0x8000));
+    return {codes:[...this.palette],width:w,grid:btoa(s)};}
+  /** 원래 맵(비교 화면 왼쪽) — 같은 코드 표, 원래 번호. */
+  original():MapModel{const m=Object.create(MapModel.prototype) as MapModel;
+    Object.assign(m,this,{grid:this.orig.slice(),orig:this.orig,pix:new Uint8ClampedArray(this.pix.length),counts:new Array(this.palette.length).fill(0),changed:0});
+    for(let i=0;i<m.grid.length;i++){m.counts[m.grid[i]]++;m.paint(i);}return m;}
 }
-/** 맵 그림 글자 = 프로그램 서체(Pretendard → 맑은 고딕). 'sans-serif' 만 쓰면 Windows 에서 Arial + 한글 대체 서체로 섞여 보였다(소유자 2026-11-25).
- *  canvas 는 글꼴을 스스로 불러오지 않으므로 그리기 전에 document.fonts.load(fontsReady). */
+const name=(t:Table,code:string)=>code===OUT?'Outside Wafer':(t.codes.find(c=>c.code===code)?.name||'목록에 없는 코드');
+
+/* ------------------------------------------------------------------ 맵 그리기 · 조작 */
+type View={s:number;x:number;y:number};          // 화면 픽셀 = x + col·s, y + row·s
+type Hover={i:number;col:number;row:number}|null;
+type Tool='brush'|'rect';
+type CanvasProps={model:MapModel;version:number;view:View|null;onView:(v:View)=>void;mode:'edit'|'move'|'view';tool?:Tool;
+  sel?:Uint8Array;selVersion?:number;onPick?:(ids:number[],add:boolean)=>void;onHover?:(h:Hover)=>void;mark?:Int32Array;label:string};
+
+function fitView(m:MapModel,w:number,h:number):View{const pad=34,s=Math.max(0.02,Math.min((w-pad)/m.cc,(h-pad-22)/m.rc));
+  return {s,x:(w-m.cc*s)/2,y:(h-22-m.rc*s)/2};}
+
+function MapCanvas({model,version,view,onView,mode,tool='brush',sel,selVersion=0,onPick,onHover,mark,label}:CanvasProps){
+  const box=useRef<HTMLDivElement>(null),cv=useRef<HTMLCanvasElement>(null);
+  const bmp=useRef<HTMLCanvasElement|undefined>(undefined),selBmp=useRef<HTMLCanvasElement|undefined>(undefined);
+  const [size,setSize]=useState({w:0,h:0});
+  const hover=useRef<Hover>(null),drag=useRef<{kind:'pan'|'brush'|'rect';x0:number;y0:number;v0:View;last:number;ids:Set<number>;add:boolean}|null>(null);
+  const rect=useRef<{c0:number;r0:number;c1:number;r1:number}|null>(null);
+  const raf=useRef(0),viewRef=useRef(view);viewRef.current=view;
+  // 비트맵(Die = 픽셀 1개): 자료가 바뀌면 통째로 한 번 putImageData(100만 Die ≈ 수 ms).
+  useEffect(()=>{const c=bmp.current||(bmp.current=document.createElement('canvas'));c.width=model.cc;c.height=model.rc;
+    c.getContext('2d')!.putImageData(new ImageData(model.pix,model.cc,model.rc),0,0);draw();},[model,version]);// eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(!sel)return;const c=selBmp.current||(selBmp.current=document.createElement('canvas'));c.width=model.cc;c.height=model.rc;
+    const px=new Uint8ClampedArray(sel.length*4);for(let i=0;i<sel.length;i++)if(sel[i]){px[i*4]=37;px[i*4+1]=99;px[i*4+2]=235;px[i*4+3]=150;}
+    c.getContext('2d')!.putImageData(new ImageData(px,model.cc,model.rc),0,0);draw();},[model,sel,selVersion]);// eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{const el=box.current;if(!el)return;const ro=new ResizeObserver(()=>setSize({w:el.clientWidth,h:el.clientHeight}));ro.observe(el);return()=>ro.disconnect();},[]);
+  useEffect(()=>{if(size.w&&!view)onView(fitView(model,size.w,size.h));draw();},[size,view]);// eslint-disable-line react-hooks/exhaustive-deps
+
+  function draw(){cancelAnimationFrame(raf.current);raf.current=requestAnimationFrame(paint);}
+  function paint(){
+    const c=cv.current,v=viewRef.current;if(!c||!v||!bmp.current)return;
+    const dpr=window.devicePixelRatio||1,W=size.w,H=size.h;if(!W||!H)return;
+    if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);}
+    const g=c.getContext('2d')!;g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+    g.fillStyle='#F3F5F8';g.fillRect(0,0,W,H);
+    const {s,x,y}=v,mw=model.cc*s,mh=model.rc*s;
+    g.imageSmoothingEnabled=false;g.drawImage(bmp.current,x,y,mw,mh);
+    if(sel&&selBmp.current)g.drawImage(selBmp.current,x,y,mw,mh);
+    // 보이는 영역(후보 C): 격자선 · 글자 · 표시는 화면 안 Die 만.
+    const c0=Math.max(0,Math.floor(-x/s)),c1=Math.min(model.cc,Math.ceil((W-x)/s)),r0=Math.max(0,Math.floor(-y/s)),r1=Math.min(model.rc,Math.ceil((H-y)/s));
+    if(s>=6&&c1>c0&&r1>r0){g.strokeStyle='rgba(30,41,59,.22)';g.lineWidth=1;g.beginPath();
+      for(let col=c0;col<=c1;col++){const px=Math.round(x+col*s)+.5;g.moveTo(px,y+r0*s);g.lineTo(px,y+r1*s);}
+      for(let r=r0;r<=r1;r++){const py=Math.round(y+r*s)+.5;g.moveTo(x+c0*s,py);g.lineTo(x+c1*s,py);}g.stroke();}
+    if(s>=26){g.font=`${Math.min(14,Math.floor(s*.36))}px 'Pretendard','Malgun Gothic',sans-serif`;g.textAlign='center';g.textBaseline='middle';
+      for(let r=r0;r<r1;r++)for(let col=c0;col<c1;col++){const i=r*model.cc+col;if(model.locked(i))continue;
+        const k=model.grid[i],rgb=model.rgb[k];g.fillStyle=(rgb[0]*299+rgb[1]*587+rgb[2]*114)/1000<140?'#fff':'#1F2A37';
+        g.fillText(model.palette[k],x+col*s+s/2,y+r*s+s/2+.5);}}
+    if(mark&&mark.length){g.strokeStyle='#E11D48';g.lineWidth=Math.max(1.5,Math.min(3,s*.12));
+      for(let n=0;n<mark.length;n++){const i=mark[n],col=i%model.cc,r=(i-col)/model.cc;if(col<c0-1||col>c1||r<r0-1||r>r1)continue;
+        const q=Math.max(s,4),off=(q-s)/2;g.strokeRect(x+col*s-off+.75,y+r*s-off+.75,q-1.5,q-1.5);}}
+    const h=hover.current;if(h){g.strokeStyle='#111827';g.lineWidth=2;const q=Math.max(s,5),off=(q-s)/2;g.strokeRect(x+h.col*s-off,y+h.row*s-off,q,q);}
+    const rr=rect.current;if(rr){const a=Math.min(rr.c0,rr.c1),b=Math.min(rr.r0,rr.r1);g.strokeStyle='#2563EB';g.setLineDash([5,4]);g.lineWidth=1.5;
+      g.strokeRect(x+a*s,y+b*s,(Math.abs(rr.c1-rr.c0)+1)*s,(Math.abs(rr.r1-rr.r0)+1)*s);g.setLineDash([]);}
+    g.strokeStyle='#94A3B8';g.lineWidth=1;g.strokeRect(x-.5,y-.5,mw+1,mh+1);
+    const nx=x+mw/2,ny=y+mh+4;g.beginPath();g.moveTo(nx-7,ny+12);g.lineTo(nx+7,ny+12);g.lineTo(nx,ny);g.closePath();g.fillStyle='#fff';g.fill();g.strokeStyle='#334155';g.stroke();
+    g.fillStyle='#334155';g.font="11px 'Pretendard','Malgun Gothic',sans-serif";g.textAlign='center';g.textBaseline='top';g.fillText("Notch 6'",nx,ny+14);
+    c.dataset.s=String(s);c.dataset.x=String(x);c.dataset.y=String(y);
+  }
+  useEffect(()=>{draw();},[mark]);// eslint-disable-line react-hooks/exhaustive-deps
+
+  const at=(e:{clientX:number;clientY:number})=>{const r=cv.current!.getBoundingClientRect(),v=viewRef.current!;
+    return {px:e.clientX-r.left,py:e.clientY-r.top,col:Math.floor((e.clientX-r.left-v.x)/v.s),row:Math.floor((e.clientY-r.top-v.y)/v.s)};};
+  const inside=(col:number,row:number)=>col>=0&&row>=0&&col<model.cc&&row<model.rc;
+  // 휠 = 확대 · 축소(편집 · 이동 모드 모두, 소유자 #91 10번) — 마우스 자리를 중심으로.
+  useEffect(()=>{const c=cv.current;if(!c)return;const wheel=(e:WheelEvent)=>{e.preventDefault();const v=viewRef.current;if(!v)return;
+    const {px,py}=at(e),fit=fitView(model,size.w,size.h).s,k=Math.exp(-e.deltaY*0.0015);
+    const s=Math.max(fit*0.5,Math.min(80,v.s*k));onView({s,x:px-(px-v.x)*s/v.s,y:py-(py-v.y)*s/v.s});};
+    c.addEventListener('wheel',wheel,{passive:false});return()=>c.removeEventListener('wheel',wheel);},[model,size,onView]);// eslint-disable-line react-hooks/exhaustive-deps
+
+  function line(a:number,b:number,ids:Set<number>){   // 끌기 사이 Die 를 빠짐없이(빠르게 움직여도)
+    let x0=a%model.cc,y0=(a-x0)/model.cc;const x1=b%model.cc,y1=(b-x1)/model.cc,dx=Math.abs(x1-x0),dy=-Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;let err=dx+dy;
+    for(;;){const i=y0*model.cc+x0;if(!model.locked(i))ids.add(i);if(x0===x1&&y0===y1)break;const e2=2*err;if(e2>=dy){err+=dy;x0+=sx;}if(e2<=dx){err+=dx;y0+=sy;}}}
+  function down(e:React.PointerEvent){
+    if(!viewRef.current)return;const p=at(e);cv.current!.setPointerCapture(e.pointerId);
+    const pan=mode!=='edit'||e.button===1;
+    if(pan){drag.current={kind:'pan',x0:p.px,y0:p.py,v0:viewRef.current,last:-1,ids:new Set(),add:false};return;}
+    if(e.button!==0)return;
+    const add=e.ctrlKey||e.metaKey||e.shiftKey;
+    if(tool==='rect'){const c=Math.max(0,Math.min(model.cc-1,p.col)),r=Math.max(0,Math.min(model.rc-1,p.row));
+      rect.current={c0:c,r0:r,c1:c,r1:r};drag.current={kind:'rect',x0:p.px,y0:p.py,v0:viewRef.current,last:-1,ids:new Set(),add};draw();return;}
+    const ids=new Set<number>();let last=-1;
+    if(inside(p.col,p.row)){last=p.row*model.cc+p.col;if(!model.locked(last))ids.add(last);}
+    drag.current={kind:'brush',x0:p.px,y0:p.py,v0:viewRef.current,last,ids,add};onPick?.([...ids],add);
+  }
+  function move(e:React.PointerEvent){
+    const p=at(e),d=drag.current;
+    if(d?.kind==='pan'){onView({...d.v0,x:d.v0.x+p.px-d.x0,y:d.v0.y+p.py-d.y0});return;}
+    if(d?.kind==='rect'&&rect.current){rect.current.c1=Math.max(0,Math.min(model.cc-1,p.col));rect.current.r1=Math.max(0,Math.min(model.rc-1,p.row));draw();}
+    if(d?.kind==='brush'&&inside(p.col,p.row)){const i=p.row*model.cc+p.col;if(i!==d.last){if(d.last>=0)line(d.last,i,d.ids);else if(!model.locked(i))d.ids.add(i);d.last=i;onPick?.([...d.ids],d.add);}}
+    const h=inside(p.col,p.row)?{i:p.row*model.cc+p.col,col:p.col,row:p.row}:null;
+    if(h?.i!==hover.current?.i){hover.current=h;onHover?.(h);draw();}
+  }
+  function up(){const d=drag.current;drag.current=null;
+    if(d?.kind==='rect'&&rect.current){const rr=rect.current,ids:number[]=[];rect.current=null;
+      for(let r=Math.min(rr.r0,rr.r1);r<=Math.max(rr.r0,rr.r1);r++)for(let c=Math.min(rr.c0,rr.c1);c<=Math.max(rr.c0,rr.c1);c++){const i=r*model.cc+c;if(!model.locked(i))ids.push(i);}
+      onPick?.(ids,d.add);draw();}}
+  function leave(){if(hover.current){hover.current=null;onHover?.(null);draw();}}
+  const cursor=mode==='edit'?(tool==='rect'?'crosshair':'cell'):drag.current?.kind==='pan'?'grabbing':'grab';
+  return <div className="wme-canvas" ref={box}>
+    <canvas ref={cv} aria-label={label} style={{cursor}} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onPointerLeave={leave}
+      onAuxClick={e=>e.preventDefault()} onContextMenu={e=>e.preventDefault()}/>
+  </div>;
+}
+
+/* ------------------------------------------------------------------ 저장 그림(PNG) — 종전 renderMap 과 같은 모양 */
 const MAP_FONT="'Pretendard','Malgun Gothic','맑은 고딕',sans-serif";
 const fontsReady=()=>Promise.all(['400','700'].map(w=>document.fonts.load(`${w} 14px Pretendard`))).catch(()=>undefined);
-const hex=(m:MapData,code:string)=>'#'+(m.colors[code]||m.unknown_color);
-
-/** 맵 한 장(Bin Code 또는 Bin Meaning). rows[0] = 맵 위쪽, 아래가 Notch 6시 방향.
-    원본 create_images(matplotlib) 와 같은 그림을 canvas 로 그린다. */
-function renderMap(m:MapData,mode:'code'|'meaning'):OffscreenCanvas{
-  const cc=Math.max(1,m.col_count),rc=Math.max(1,m.row_count);
-  const cell=Math.max(4,Math.min(22,Math.round(1100/Math.max(cc,rc))));
-  const padL=54,padT=78,padB=108,legendGap=30;
-  const entries=m.present.map(code=>({color:hex(m,code),count:m.counts[code]||0,
-    label:mode==='code'?`Bin ${code}`:(m.mean[code]||('Unknown Bin '+code))}));
-  const probe=new OffscreenCanvas(8,8).getContext('2d')!;probe.font=`14px ${MAP_FONT}`;
-  let legendW=160;for(const e of entries)legendW=Math.max(legendW,Math.ceil(probe.measureText(`${e.label} (${e.count})`).width)+66);
-  const gridW=cc*cell,gridH=rc*cell;
-  const W=padL+gridW+legendGap+legendW+16,H=Math.max(padT+gridH+padB,padT+(entries.length+2)*26+40);
-  const c=new OffscreenCanvas(W,H),g=c.getContext('2d')!;
+function renderPng(m:MapModel,t:Table,wafer:string,label:Label){
+  const cc=m.cc,rc=m.rc,cell=Math.max(1,Math.min(22,Math.round(1100/Math.max(cc,rc))));
+  const padL=54,padT=78,padB=108,gap=30;
+  const present=m.palette.map((c,k)=>({c,k})).filter(e=>e.c!==OUT&&m.counts[e.k]>0).sort((a,b)=>a.c==='000'?-1:b.c==='000'?1:a.c<b.c?-1:1);
+  const entries=present.map(e=>({color:'#'+m.colorHex(e.c),count:m.counts[e.k],text:label==='code'?`Bin ${e.c}`:`Bin ${e.c} · ${name(t,e.c)}`}));
+  const probe=document.createElement('canvas').getContext('2d')!;probe.font=`14px ${MAP_FONT}`;
+  let lw=160;for(const e of entries)lw=Math.max(lw,Math.ceil(probe.measureText(`${e.text} (${e.count})`).width)+66);
+  const gw=cc*cell,gh=rc*cell,W=padL+gw+gap+lw+16,H=Math.max(padT+gh+padB,padT+(entries.length+2)*26+40);
+  const c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d')!;
   g.fillStyle='#fff';g.fillRect(0,0,W,H);
-  g.fillStyle='#1F2A37';g.font=`bold 20px ${MAP_FONT}`;g.textAlign='left';g.textBaseline='alphabetic';
-  g.fillText(`${m.wafer}  ${mode==='code'?'Bin Code Map':'Bin Meaning Map'} | Notch 6 o'clock`,padL,36);
-  const ox=padL,oy=padT;
-  for(let r=0;r<rc;r++)for(let col=0;col<cc;col++){g.fillStyle=hex(m,m.rows[r][col]);g.fillRect(ox+col*cell,oy+r*cell,cell,cell);}
-  g.strokeStyle='#BCD0C0';g.lineWidth=cell>=8?0.5:0.3;g.beginPath();
-  for(let col=0;col<=cc;col++){g.moveTo(ox+col*cell,oy);g.lineTo(ox+col*cell,oy+gridH);}
-  for(let r=0;r<=rc;r++){g.moveTo(ox,oy+r*cell);g.lineTo(ox+gridW,oy+r*cell);}
-  g.stroke();
-  g.strokeStyle='#8AA0A8';g.lineWidth=1;g.strokeRect(ox+0.5,oy+0.5,gridW,gridH);
+  g.fillStyle='#1F2A37';g.font=`bold 20px ${MAP_FONT}`;g.fillText(`${wafer}  ${label==='code'?'Bin Code Map':'Bin Code + Defect Map'} | Notch 6 o'clock`,padL,36);
+  const b=document.createElement('canvas');b.width=cc;b.height=rc;b.getContext('2d')!.putImageData(new ImageData(m.pix,cc,rc),0,0);
+  g.imageSmoothingEnabled=false;g.drawImage(b,padL,padT,gw,gh);
+  if(cell>=4){g.strokeStyle='#BCD0C0';g.lineWidth=cell>=8?.5:.3;g.beginPath();
+    for(let col=0;col<=cc;col++){g.moveTo(padL+col*cell,padT);g.lineTo(padL+col*cell,padT+gh);}
+    for(let r=0;r<=rc;r++){g.moveTo(padL,padT+r*cell);g.lineTo(padL+gw,padT+r*cell);}g.stroke();}
+  g.strokeStyle='#8AA0A8';g.lineWidth=1;g.strokeRect(padL+.5,padT+.5,gw,gh);
+  const step=Math.max(10,Math.ceil(Math.max(cc,rc)/40/10)*10);
   g.fillStyle='#556070';g.font=`11px ${MAP_FONT}`;g.textBaseline='middle';
-  g.textAlign='center';for(let col=0;col<cc;col+=10)g.fillText(String(col),ox+col*cell+cell/2,oy+gridH+16);
-  g.textAlign='right';for(let r=0;r<rc;r+=10)g.fillText(String(rc-1-r),ox-6,oy+r*cell+cell/2);
-  g.textAlign='center';g.fillText('Col (0-based, left to right)',ox+gridW/2,oy+gridH+42);
-  g.save();g.translate(16,oy+gridH/2);g.rotate(-Math.PI/2);g.fillText('Row (0-based, bottom to top)',0,0);g.restore();
-  const nx=ox+gridW/2,ny=oy+gridH;
-  g.beginPath();g.moveTo(nx-10,ny+24);g.lineTo(nx+10,ny+24);g.lineTo(nx,ny+4);g.closePath();
-  g.fillStyle='#fff';g.fill();g.strokeStyle='#263238';g.lineWidth=1.4;g.stroke();
-  g.fillStyle='#263238';g.font=`bold 12px ${MAP_FONT}`;g.fillText("Notch 6'",nx,ny+42);
-  const lx=ox+gridW+legendGap,ly=oy+8;
-  g.textAlign='left';g.fillStyle='#1F4E78';g.font=`bold 15px ${MAP_FONT}`;g.fillText('범례',lx,ly);
-  g.font=`14px ${MAP_FONT}`;
-  entries.forEach((e,i)=>{const y=ly+28+i*26;g.fillStyle=e.color;g.fillRect(lx,y-9,18,18);
-    g.strokeStyle='#999';g.lineWidth=1;g.strokeRect(lx+0.5,y-8.5,18,18);
-    g.fillStyle='#222';g.fillText(`${e.label} (${e.count})`,lx+26,y);});
+  g.textAlign='center';for(let col=0;col<cc;col+=step)g.fillText(String(col),padL+col*cell+cell/2,padT+gh+16);
+  g.textAlign='right';for(let r=0;r<rc;r+=step)g.fillText(String(rc-1-r),padL-6,padT+r*cell+cell/2);
+  g.textAlign='center';g.fillText('Col (0-based, left to right)',padL+gw/2,padT+gh+42);
+  g.save();g.translate(16,padT+gh/2);g.rotate(-Math.PI/2);g.fillText('Row (0-based, bottom to top)',0,0);g.restore();
+  const nx=padL+gw/2,ny=padT+gh;g.beginPath();g.moveTo(nx-10,ny+24);g.lineTo(nx+10,ny+24);g.lineTo(nx,ny+4);g.closePath();
+  g.fillStyle='#fff';g.fill();g.strokeStyle='#263238';g.lineWidth=1.4;g.stroke();g.fillStyle='#263238';g.font=`bold 12px ${MAP_FONT}`;g.fillText("Notch 6'",nx,ny+42);
+  const lx=padL+gw+gap,ly=padT+8;g.textAlign='left';g.fillStyle='#1F4E78';g.font=`bold 15px ${MAP_FONT}`;g.fillText('범례',lx,ly);g.font=`14px ${MAP_FONT}`;
+  entries.forEach((e,i)=>{const yy=ly+28+i*26;g.fillStyle=e.color;g.fillRect(lx,yy-9,18,18);g.strokeStyle='#999';g.lineWidth=1;g.strokeRect(lx+.5,yy-8.5,18,18);
+    g.fillStyle='#222';g.fillText(`${e.text} (${e.count})`,lx+26,yy);});
   return c;
 }
+async function pngB64(c:HTMLCanvasElement){const buf=new Uint8Array(await (await new Promise<Blob>((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error('PNG 를 만들지 못했습니다')),'image/png'))).arrayBuffer());
+  let s='';for(let i=0;i<buf.length;i+=0x8000)s+=String.fromCharCode(...buf.subarray(i,i+0x8000));return btoa(s);}
 
+/* ------------------------------------------------------------------ 편집 화면 */
+type Step={idx:Int32Array;from:Uint16Array;to:Uint16Array};
+function Editor({opened,table,onBack,onSaved}:{opened:Opened;table:Table;onBack:()=>void;onSaved:(m:MapModel,s:Saved,label:Label)=>void}){
+  const model=useMemo(()=>new MapModel(opened,table),[opened,table]);
+  const [version,setVersion]=useState(0),[view,setView]=useState<View|null>(null);
+  const [mode,setMode]=useState<'edit'|'move'>('edit'),[tool,setTool]=useState<Tool>('brush');
+  const sel=useMemo(()=>new Uint8Array(model.grid.length),[model]);
+  const [selN,setSelN]=useState(0),[selV,setSelV]=useState(0),[hover,setHover]=useState<Hover>(null);
+  const undo=useRef<Step[]>([]),redo=useRef<Step[]>([]),[,bump]=useState(0);
+  const base=useRef<number[]>([]);                 // Ctrl 없이 끌기 시작 = 새 선택, Ctrl/Shift = 더함
+  const [extra,setExtra]=useState<string[]>([]),[newCode,setNewCode]=useState(''),[filter,setFilter]=useState('');
+  const [saving,setSaving]=useState(false),[showSave,setShowSave]=useState(false);
+  const [label,setLabel]=useState<Label>('code'),[fname,setFname]=useState(opened.default_name),[where,setWhere]=useState<'source'|'custom'>('source'),[folder,setFolder]=useState('');
+
+  const pick=useCallback((ids:number[],add:boolean)=>{
+    sel.fill(0);for(const i of (add?base.current:[]))sel[i]=1;for(const i of ids)sel[i]=1;
+    let n=0;for(let i=0;i<sel.length;i++)n+=sel[i];setSelN(n);setSelV(v=>v+1);
+  },[sel]);
+  // 끌기가 끝나면 지금 선택을 '기준'으로(다음 Ctrl 끌기가 더함).
+  useEffect(()=>{const up=()=>{const a:number[]=[];for(let i=0;i<sel.length;i++)if(sel[i])a.push(i);base.current=a;};
+    window.addEventListener('pointerup',up);return()=>window.removeEventListener('pointerup',up);},[sel]);
+  const clearSel=()=>{sel.fill(0);base.current=[];setSelN(0);setSelV(v=>v+1);};
+  function apply(code:string){
+    if(!selN)return notify('먼저 맵에서 Die 를 고르세요 (편집 모드 · 클릭 / 끌기 / 사각형).','info');
+    const k=model.index(code),ids:number[]=[];for(let i=0;i<sel.length;i++)if(sel[i]&&model.grid[i]!==k&&!model.locked(i))ids.push(i);
+    if(ids.length){const st:Step={idx:Int32Array.from(ids),from:Uint16Array.from(ids,i=>model.grid[i]),to:new Uint16Array(ids.length).fill(k)};
+      for(const i of ids)model.set(i,k);undo.current.push(st);if(undo.current.length>300)undo.current.shift();redo.current=[];setVersion(v=>v+1);}
+    notify(`Die ${selN}개를 Bin ${code} 로 바꿨습니다.`,'ok');clearSel();
+  }
+  function stepBack(from:Step[],to:Step[],back:boolean){const st=from.pop();if(!st)return;
+    for(let n=0;n<st.idx.length;n++)model.set(st.idx[n],back?st.from[n]:st.to[n]);to.push(st);setVersion(v=>v+1);bump(x=>x+1);}
+  const doUndo=()=>stepBack(undo.current,redo.current,true),doRedo=()=>stepBack(redo.current,undo.current,false);
+  useEffect(()=>{const key=(e:KeyboardEvent)=>{const t=e.target as HTMLElement;if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;
+    const k=e.key.toLowerCase();
+    if((e.ctrlKey||e.metaKey)&&k==='z'&&!e.shiftKey){e.preventDefault();doUndo();}
+    else if((e.ctrlKey||e.metaKey)&&(k==='y'||(k==='z'&&e.shiftKey))){e.preventDefault();doRedo();}
+    else if(k==='escape')clearSel();};
+    window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);});
+  function addCode(){let c=newCode.trim().toUpperCase();if(/^\d{1,2}$/.test(c))c=c.padStart(3,'0');
+    if(!/^[0-9A-Z]{1,8}$/.test(c))return notify('새 코드는 영문 · 숫자 1 ~ 8 자로 쓰세요 (숫자 1 ~ 2 자리는 앞에 0 을 붙입니다).','error');
+    if(c===OUT)return notify('___ 는 웨이퍼 밖 표시라 쓸 수 없습니다.','error');
+    if(!list.some(x=>x.code===c))setExtra(x=>[...x,c]);setNewCode('');notify(`Bin ${c} 를 리스트에 넣었습니다.`,'ok');}
+  const list=useMemo(()=>{const known=table.codes.map(c=>({code:c.code,name:c.name,color:c.color}));
+    const more=[...model.palette.filter(c=>c!==OUT),...extra].filter((c,i,a)=>a.indexOf(c)===i&&!known.some(k=>k.code===c))
+      .map(c=>({code:c,name:'목록에 없는 코드',color:table.unknown}));return [...known,...more];},[table,model,extra,version]);// eslint-disable-line react-hooks/exhaustive-deps
+  const shown=list.filter(c=>!filter.trim()||(c.code+' '+c.name).toLowerCase().includes(filter.trim().toLowerCase()));
+  const hcode=hover?model.code(hover.i):'';
+  const selCode=useMemo(()=>{if(selN!==1)return '';for(let i=0;i<sel.length;i++)if(sel[i])return model.code(i);return '';},[selN,selV]);// eslint-disable-line react-hooks/exhaustive-deps
+
+  async function save(overwrite=false){
+    if(where==='custom'&&!folder.trim())return notify('저장 폴더를 고르세요.','error');
+    setSaving(true);
+    try{const g=model.encode();
+      const r=(await desktop.request('wm_edit_save',{id:opened.id,...g,folder:where==='custom'?folder.trim():'',name:fname,label,overwrite}).promise).wafermap as Saved&{exists?:string};
+      if(r.exists){setSaving(false);if(window.confirm(`같은 이름의 파일이 있습니다.\n${r.exists}\n\n덮어쓸까요?`))return save(true);return;}
+      await fontsReady();
+      await desktop.request('wm_edit_image',{id:opened.id,data:await pngB64(renderPng(model,table,opened.wafer,label))}).promise;
+      notify(`저장했습니다: ${r.txt}`,'ok');onSaved(model,r,label);
+    }catch(e){fail(e);}finally{setSaving(false);}
+  }
+  const leave=()=>{if(model.changed&&!window.confirm(`저장하지 않은 수정(Die ${model.changed}개)이 있습니다. 버리고 목록으로 갈까요?`))return;onBack();};
+
+  return <div className="wme">
+    <div className="wme-top">
+      <div className="wme-title"><b>{opened.wafer}</b><span>{opened.name} · {opened.col_count} × {opened.row_count} · Die {(model.grid.length-model.count(OUT)).toLocaleString()}개</span></div>
+      <div className="wme-tools" role="toolbar" aria-label="맵 도구">
+        <div className="wme-seg" role="radiogroup" aria-label="모드">
+          <button type="button" role="radio" aria-checked={mode==='edit'} className={mode==='edit'?'on':''} title="편집 모드: Die 를 골라 Bin Code 를 바꿉니다" onClick={()=>setMode('edit')}>✏️ 편집</button>
+          <button type="button" role="radio" aria-checked={mode==='move'} className={mode==='move'?'on':''} title="이동 모드: 끌어서 이동, 휠로 확대 (Die 는 안 눌림)" onClick={()=>setMode('move')}>✋ 이동</button>
+        </div>
+        {mode==='edit'&&<div className="wme-seg" role="radiogroup" aria-label="고르기 방식">
+          <button type="button" role="radio" aria-checked={tool==='brush'} className={tool==='brush'?'on':''} title="클릭 = Die 하나, 끌기 = 지나간 Die 모두" onClick={()=>setTool('brush')}>🖌 클릭 · 끌기</button>
+          <button type="button" role="radio" aria-checked={tool==='rect'} className={tool==='rect'?'on':''} title="끌어서 사각형 안 Die 모두" onClick={()=>setTool('rect')}>⬚ 사각형</button>
+        </div>}
+        <button type="button" disabled={!selN} onClick={clearSel} title="Esc">선택 해제</button>
+        <button type="button" disabled={!undo.current.length} onClick={doUndo} title="Ctrl+Z">↶ 되돌리기</button>
+        <button type="button" disabled={!redo.current.length} onClick={doRedo} title="Ctrl+Y">↷ 다시 하기</button>
+        <button type="button" onClick={()=>setView(null)} title="맵 전체가 보이게">⤢ 전체 보기</button>
+        <span className="wme-gap"/>
+        <button type="button" onClick={leave}>◀ 목록으로</button>
+        <button type="button" className="primary" disabled={saving} onClick={()=>setShowSave(true)}>💾 저장</button>
+      </div>
+    </div>
+    <div className="wme-body">
+      <MapCanvas model={model} version={version} view={view} onView={setView} mode={mode} tool={tool} sel={sel} selVersion={selV}
+        onPick={pick} onHover={setHover} label="Wafer Map 편집"/>
+      <aside className="wme-side" aria-label="Bin Code 리스트">
+        <div className="wme-side-head"><b>Bin Code</b><span>{selN?`선택 Die ${selN.toLocaleString()}개${selCode?` (지금 ${selCode})`:''} → 코드를 누르세요`:'맵에서 Die 를 고르세요'}</span></div>
+        <input className="wme-find" aria-label="코드 찾기" placeholder="🔍 코드 · 이름 찾기" value={filter} onChange={e=>setFilter(e.target.value)}/>
+        <ul className="wme-codes">{shown.map(c=><li key={c.code}>
+          <button type="button" className={(c.code===selCode||c.code===hcode)?'cur':''} disabled={!selN} onClick={()=>apply(c.code)} title={`선택한 Die 를 Bin ${c.code} 로`}>
+            <i className="wm-sw" style={{background:'#'+c.color}} aria-hidden="true"/><b>{c.code}</b><span>{c.name}</span><em>{model.count(c.code).toLocaleString()}</em></button></li>)}</ul>
+        <div className="wme-add"><input aria-label="새 코드" placeholder="새 코드 (예: 095)" value={newCode} onChange={e=>setNewCode(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')addCode();}}/>
+          <button type="button" onClick={addCode}>＋ 추가</button></div>
+      </aside>
+    </div>
+    <div className="wme-status" role="status" aria-label="Die 정보">
+      <span className="wme-hover">{hover?<>Col <b>{hover.col}</b> · Row <b>{model.rc-1-hover.row}</b> · Bin <b>{hcode}</b> ({name(table,hcode)}){model.locked(hover.i)?' — 편집 안 됨':''}</>:'맵 위에 마우스를 올리면 Die 좌표 · Bin Code 가 보입니다.'}</span>
+      <span>선택 {selN.toLocaleString()} · 바뀐 Die <b>{model.changed.toLocaleString()}</b> · 확대 {view?Math.round(view.s*100)/100:'-'} px/Die</span>
+    </div>
+    {showSave&&<div className="wm-viewer" role="dialog" aria-label="저장" onClick={()=>!saving&&setShowSave(false)}>
+      <div className="wm-viewer-box wme-save" onClick={e=>e.stopPropagation()}>
+        <div className="wm-viewer-top"><b>수정한 맵 저장</b><button disabled={saving} onClick={()=>setShowSave(false)}>닫기 ✕</button></div>
+        <div className="wme-save-body">
+          <p className="hint">고친 TXT 와 맵 그림(PNG)을 저장합니다. 원본 TXT 는 바뀌지 않습니다. 바뀐 Die: <b>{model.changed.toLocaleString()}</b>개</p>
+          <fieldset><legend>맵 그림 범례</legend>
+            <label><input type="radio" name="wme-label" checked={label==='code'} onChange={()=>setLabel('code')}/> Bin Code 만 (예: Bin 003)</label>
+            <label><input type="radio" name="wme-label" checked={label==='meaning'} onChange={()=>setLabel('meaning')}/> Bin Code + Defect 이름 (예: Bin 003 · Metal Residue)</label></fieldset>
+          <label className="field">저장 이름 (.txt 없이)<input aria-label="저장 이름" value={fname} onChange={e=>setFname(e.target.value)}/></label>
+          <fieldset><legend>저장 위치</legend>
+            <label><input type="radio" name="wme-where" checked={where==='source'} onChange={()=>setWhere('source')}/> 원본 TXT 와 같은 폴더 <code>{opened.folder}</code></label>
+            <label><input type="radio" name="wme-where" checked={where==='custom'} onChange={()=>setWhere('custom')}/> 다른 폴더</label>
+            {where==='custom'&&<div className="form-filter"><input aria-label="저장 폴더" style={{flex:1}} placeholder="폴더 경로" value={folder} onChange={e=>setFolder(e.target.value)}/>
+              <button type="button" onClick={()=>void pickFolder().then(p=>{if(p)setFolder(p);})}>📁 찾아보기…</button></div>}</fieldset>
+          <p className="hint">만들 파일: <code>{fname.trim()||'(이름)'}.txt</code> · <code>{fname.trim()||'(이름)'}_{label==='code'?'BinCode_Map':'BinMeaning_Map'}.png</code></p>
+          <div className="toolbar"><button className="primary" disabled={saving||!fname.trim()} onClick={()=>void save()}>{saving?'저장 중…':'💾 저장'}</button></div>
+        </div></div></div>}
+  </div>;
+}
+
+/* ------------------------------------------------------------------ 비교 화면 */
+function Compare({edited,opened,saved,table,onHome}:{edited:MapModel;opened:Opened;saved:Saved;table:Table;onHome:()=>void}){
+  const orig=useMemo(()=>edited.original(),[edited]);
+  const [view,setView]=useState<View|null>(null),[hover,setHover]=useState<Hover>(null);
+  const mark=useMemo(()=>{const a:number[]=[];for(let i=0;i<edited.grid.length;i++)if(edited.grid[i]!==edited.orig[i])a.push(i);return Int32Array.from(a);},[edited]);
+  const pairs=useMemo(()=>{const m=new Map<string,number>();for(const i of mark){const k=`${edited.palette[edited.orig[i]]} → ${edited.palette[edited.grid[i]]}`;m.set(k,(m.get(k)||0)+1);}
+    return [...m.entries()].sort((a,b)=>b[1]-a[1]);},[edited,mark]);
+  const info=(m:MapModel)=>hover?<>Col <b>{hover.col}</b> · Row <b>{m.rc-1-hover.row}</b> · Bin <b>{m.code(hover.i)}</b> ({name(table,m.code(hover.i))})</>:'\u00a0';
+  return <div className="wme">
+    <div className="wme-top"><div className="wme-title"><b>{opened.wafer} — 저장 완료</b><span>바뀐 Die {mark.length.toLocaleString()}개 · 두 맵은 확대 · 이동이 같이 움직입니다</span></div>
+      <div className="wme-tools"><button type="button" onClick={()=>setView(null)}>⤢ 전체 보기</button><span className="wme-gap"/>
+        <button type="button" onClick={()=>void openPath(saved.folder)}>📂 저장 폴더 열기</button>
+        <button type="button" className="primary" onClick={onHome}>처음 화면으로</button></div></div>
+    <div className="wme-compare">
+      <figure><figcaption>원래 맵 <code>{opened.name}</code></figcaption>
+        <MapCanvas model={orig} version={0} view={view} onView={setView} mode="view" onHover={setHover} mark={mark} label="원래 맵"/><p className="wme-mini">{info(orig)}</p></figure>
+      <figure><figcaption>수정 맵 <code>{saved.txt.split(/[\\/]/).pop()}</code> <span className="wme-red">□ 바뀐 Die</span></figcaption>
+        <MapCanvas model={edited} version={0} view={view} onView={setView} mode="view" onHover={setHover} mark={mark} label="수정 맵"/><p className="wme-mini">{info(edited)}</p></figure>
+    </div>
+    <div className="wme-sum">
+      <table className="tbl t-compact" aria-label="바뀐 Die 요약"><thead><tr><th>바뀐 코드 (원래 → 수정)</th><th>Die 수</th></tr></thead>
+        <tbody>{pairs.length?pairs.map(([k,v])=><tr key={k}><td><code>{k}</code></td><td>{v.toLocaleString()}</td></tr>):<tr><td colSpan={2}>바뀐 Die 가 없습니다 (원본과 같은 내용으로 저장).</td></tr>}</tbody></table>
+      <table className="tbl t-compact" aria-label="저장 파일"><tbody>
+        <tr><th>TXT</th><td><code>{saved.txt}</code> <button type="button" onClick={()=>void openPath(saved.txt,true)}>폴더에서 보기</button></td></tr>
+        <tr><th>맵 그림</th><td><code>{saved.png}</code> <button type="button" onClick={()=>void openPath(saved.png)}>열기</button></td></tr></tbody></table>
+    </div>
+  </div>;
+}
+
+/* ------------------------------------------------------------------ 탭 */
 export function WaferMap(){
-  const [step,setStep]=useState(0),[busy,setBusy]=useState(false);
-  const [mode,setMode]=useState<'txt'|'excel'>('txt');
-  const [root,setRoot]=useState(''),[scan,setScan]=useState<Scan>(),[picked,setPicked]=useState<string[]>([]);
-  const [out,setOut]=useState<'source'|'custom'>('source'),[custom,setCustom]=useState('');
-  const [job,setJob]=useState<Job>(),[progress,setProgress]=useState({done:0,total:0,text:''}),[log,setLog]=useState<string[]>([]);
-  const [results,setResults]=useState<Result[]>([]),[errors,setErrors]=useState<{wafer:string;error:string}[]>([]);
-  const [state,setState]=useState<'idle'|'running'|'complete'|'cancelled'|'error'>('idle');
-  const [viewer,setViewer]=useState<{src:string;title:string}>();
-  const [codes,setCodes]=useState<Code[]>([]);   // Defect 코드(Bin Code) 표 — 엔진 wafermap.DEFECT_CODES(엑셀 범례와 같음)
-  useEffect(()=>{void desktop.request('wm_state').promise.then(r=>{const c=(r.wafermap as {codes?:Code[]}|undefined)?.codes;if(c)setCodes(c);}).catch(()=>undefined);},[]);
-  const stop=useRef(false);
-  const byId=new Map((scan?.items||[]).map(i=>[String(i.id),i]));
-  const addLog=(m:string)=>setLog(l=>[...l.slice(-249),`[${new Date().toLocaleTimeString('ko-KR',{hour12:false})}] ${m}`]);
+  const [screen,setScreen]=useState<'pick'|'list'|'edit'|'done'>('pick');
+  const [root,setRoot]=useState(''),[scan,setScan]=useState<Scan>(),[busy,setBusy]=useState(false),[find,setFind]=useState('');
+  const [table,setTable]=useState<Table>({codes:[],unknown:'F4B183',outside:'FFFFFF'});
+  const [opened,setOpened]=useState<Opened>(),[done,setDone]=useState<{model:MapModel;saved:Saved}>();
+  const [saved,setSaved]=useState<Record<number,Saved>>({});
+  useEffect(()=>{void desktop.request('wm_state').promise.then(r=>{const w=r.wafermap as {codes?:Code[];unknown_color?:string;outside_color?:string}|undefined;
+    if(w?.codes)setTable({codes:w.codes,unknown:w.unknown_color||'F4B183',outside:w.outside_color||'FFFFFF'});}).catch(()=>undefined);},[]);
 
   async function doScan(){
     if(!root.trim())return notify('폴더 경로를 입력하세요.','error');
-    setBusy(true);setScan(undefined);setPicked([]);
-    try{
-      const r=(await desktop.request('wm_scan',{root:root.trim(),mode}).promise).wafermap as Scan;
-      setScan(r);setPicked(r.items.filter(i=>i.valid).map(i=>String(i.id)));
-      if(r.valid)notify(`${mode==='txt'?'TXT':'Excel'} 파일 ${r.valid}개를 찾았습니다.${r.total>r.valid?` (읽기 오류 ${r.total-r.valid}개 제외)`:''}`,'ok');
-      else notify(mode==='txt'?'변환할 TXT 를 찾지 못했습니다. (_Converted.txt 는 제외합니다)':'변환할 Excel(_Map_Edit.xlsx) 을 찾지 못했습니다.','error');
-      if(r.items.length)setStep(1);
+    setBusy(true);
+    try{const r=(await desktop.request('wm_scan',{root:root.trim(),mode:'txt'}).promise).wafermap as Scan;
+      setScan(r);setSaved({});
+      if(r.valid){notify(`Wafer Map TXT ${r.valid}개를 찾았습니다.${r.total>r.valid?` (읽기 오류 ${r.total-r.valid}개)`:''}`,'ok');setScreen('list');}
+      else notify('Wafer Map TXT 를 찾지 못했습니다. (_Converted.txt 는 제외합니다)','error');
     }catch(e){fail(e);}finally{setBusy(false);}
   }
-  async function browse(set:(p:string)=>void){const p=await pickFolder();if(p)set(p);}
-
-  async function run(){
-    const ids=picked.map(id=>byId.get(id)?.id).filter((n):n is number=>n!=null);
-    if(out==='custom'&&!custom.trim())return notify('저장 위치를 고르세요.','error');
-    setBusy(true);stop.current=false;setResults([]);setErrors([]);setLog([]);setState('running');
-    let plan:Job;
-    try{plan=((await desktop.request('wm_start',{ids,output:out==='custom'?custom.trim():''}).promise).wafermap as {job:Job}).job;}
-    catch(e){setBusy(false);setState('idle');return fail(e);}
-    setJob(plan);setStep(4);
-    const total=plan.items.length;let done=0;
-    setProgress({done:0,total,text:'준비'});addLog(`결과 위치: ${plan.output_root||'원본 파일과 같은 폴더'}`);
-    try{
-      for(let i=0;i<plan.items.length;i++){
-        if(stop.current)break;
-        const it=plan.items[i];
-        setProgress({done,total,text:`[${i+1}/${total}] ${it.wafer} 변환 중…`});
-        try{
-          const r=(await desktop.request('wm_convert',{index:i}).promise).wafermap as
-            {output:string;output_name:string;folder:string;map:MapData};
-          const preview:Record<string,string>={};
-          await fontsReady();
-          for(const img of r.map.images){
-            if(stop.current)break;
-            const b64=await pngB64(renderMap(r.map,img.mode));
-            await desktop.request('wm_image',{index:i,kind:img.mode,data:b64}).promise;
-            preview[img.mode]='data:image/png;base64,'+b64;
-          }
-          setResults(x=>[...x,{wafer:it.wafer,output:r.output,output_name:r.output_name,folder:r.folder,
-            output_type:plan.mode==='txt'?'Excel':'TXT',images:r.map.images.map(im=>({kind:im.kind,path:im.path})),preview}]);
-          addLog(`${it.wafer} 완료 → ${r.output_name}`);
-        }catch(e){addLog(`실패 ${it.wafer}: ${errorText(e)}`);setErrors(x=>[...x,{wafer:it.wafer,error:errorText(e)}]);}
-        done++;setProgress(p=>({...p,done}));
-      }
-      setProgress(p=>({...p,done:stop.current?p.done:total,text:stop.current?'취소됨':'완료'}));
-      setState(stop.current?'cancelled':'complete');setStep(5);
-      notify(stop.current?'작업을 멈췄습니다. 변환한 파일까지 저장했습니다.':'Wafer Map 변환을 마쳤습니다.',stop.current?'info':'ok');
-    }catch(e){setState('error');addLog('오류 '+errorText(e));fail(e);setStep(5);}
-    finally{setBusy(false);}
+  async function open(it:Item){
+    if(!it.valid)return notify(`읽을 수 없는 파일입니다: ${it.error}`,'error');
+    setBusy(true);
+    try{setOpened((await desktop.request('wm_open',{id:it.id}).promise).wafermap as Opened);setScreen('edit');}
+    catch(e){notify(errorText(e),'error');}finally{setBusy(false);}
   }
-  async function restart(){
-    await desktop.request('wm_reset').promise.catch(()=>undefined);
-    setStep(0);setScan(undefined);setPicked([]);setJob(undefined);setResults([]);setErrors([]);setLog([]);
-    setState('idle');setOut('source');setCustom('');setViewer(undefined);
-  }
+  function restart(){setScan(undefined);setSaved({});setOpened(undefined);setDone(undefined);setFind('');setScreen('pick');
+    void desktop.request('wm_reset').promise.catch(()=>undefined);}
 
-  const validCount=scan?.valid||0;
-  const outText=out==='custom'?(custom||'(선택하지 않음)'):'원본 파일과 같은 폴더';
-  const pct=progress.total?Math.round(progress.done/progress.total*1000)/10:0;
-  const canNext=step===0?validCount>0:step===1?picked.length>0:step===2?(out==='source'||!!custom.trim()):true;
-
-  return <section className="panel">
+  const items=(scan?.items||[]).filter(i=>!find.trim()||find.trim().toLowerCase().split(/\s+/).every(w=>(i.wafer+' '+i.relative+' '+i.lot+' '+i.device).toLowerCase().includes(w)));
+  return <section className="panel wm-panel">
     <div className="section-heading"><div><span className="step">WAFER MAP</span><h2>Wafer Map 수정하기</h2></div>
-      <span className="count">{scan?`파일 ${picked.length} / ${validCount}`:'원본 읽기 전용'}</span></div>
-    <p className="hint">Wafer Map TXT 를 Excel 로 펼쳐 Bin Code die 를 고치고, <b>원본 그대로</b> 다시 TXT 로 되돌립니다.
-      원본 TXT 는 건드리지 않고 <code>_Map_Edit.xlsx</code> · <code>_Converted.txt</code> 와 맵 이미지(PNG) 를 새로 만듭니다.
-      손대지 않은 맵은 TXT→Excel→TXT 를 거쳐도 (헤더·빈 줄·줄바꿈·BOM 까지) 바이트가 동일합니다.
-      헤더(머리말)는 Excel 의 <code>Header_Edit</code> 시트에서 <b>수정 값</b> 칸을 채울 때만 바뀝니다(맵 크기 ROWCT·COLCT 제외).</p>
-    {codes.length>0&&<details className="wm-codes">
-      <summary>Defect 코드 표 (Bin Code {codes.length}개)</summary>
-      <p className="hint">TXT → Excel 로 만든 <code>_Map_Edit.xlsx</code> 오른쪽 범례에 이 코드가 모두 들어 있습니다. 범례의 코드 칸을 복사해 맵 die 에 붙여 넣으면 그 Defect 로 바뀝니다.</p>
-      <div className="table-scroll" style={{maxHeight:320}}><table className="t-compact"><thead><tr><th>Bin Code</th><th>색</th><th>Defect 종류</th><th>설명</th></tr></thead>
-        <tbody>{codes.map(c=><tr key={c.code}><td className="wm-code">{c.code}</td><td><i className="wm-sw" style={{background:'#'+c.color}} aria-hidden="true"/></td><td>{c.name}</td><td>{c.ko}</td></tr>)}</tbody></table></div>
-    </details>}
-    <Stepper labels={STEPS} current={step} onJump={i=>{if(!busy&&i<=3&&(i===0||validCount))setStep(i);}}/>
-    <div className="step-body">
-    {step===0&&<>
-      <div className="out-choice wm-mode" role="radiogroup" aria-label="변환 방향">
-        {(['txt','excel'] as const).map(mo=>
-          <div key={mo} className={'out-row'+(mode===mo?' on':'')}>
-            <button type="button" role="radio" aria-checked={mode===mo} className={'out-pick'+(mode===mo?' on':'')}
-              onClick={()=>{setMode(mo);setScan(undefined);setPicked([]);}}>{MODE_LABEL[mo]}</button>
-            <span className="out-path">{mo==='txt'?'TXT 를 열어 색칠된 맵으로 → 수정 가이드 포함 Excel':'수정한 Excel(_Map_Edit.xlsx) → 원본 인코딩·줄바꿈 그대로 TXT'}</span>
-          </div>)}
-      </div>
-      <p className="hint">Lot/폴더를 고르면 하위 폴더까지 재귀로 {mode==='txt'?'TXT':'수정한 Excel(_Map_Edit.xlsx)'} 을 모두 찾습니다.
-        장비 공유 폴더는 탐색기(Win+R → <code>\\IP\c$</code>)로 먼저 연결해야 보입니다.</p>
+      <span className="count">{screen==='pick'?'원본 읽기 전용':screen==='list'?`맵 ${scan?.valid||0}개`:opened?.wafer}</span></div>
+    {screen==='pick'&&<>
+      <p className="hint">Wafer Map TXT 가 있는 폴더를 고르면 하위 폴더까지 모두 찾습니다. 맵을 하나씩 열어 Die 의 Bin Code 를 고치고 새 TXT + 맵 그림으로 저장합니다.
+        원본 TXT 는 읽기만 합니다. 장비 공유 폴더는 탐색기(Win+R → <code>\\IP\c$</code>)로 먼저 연결해야 보입니다.</p>
       <div className="form-filter">
-        <label className="field" style={{flex:1}}>폴더 경로<input aria-label="폴더 경로" value={root} onChange={e=>setRoot(e.target.value)} placeholder="예: D:\WaferMaps\LOT01"/></label>
-        <button disabled={busy} onClick={()=>void browse(setRoot)}>📁 찾아보기…</button>
-        <button className="primary" disabled={busy||!root.trim()} onClick={()=>void doScan()}>{busy?'찾는 중…':'파일 찾기'}</button>
+        <label className="field" style={{flex:1}}>폴더 경로<input aria-label="폴더 경로" value={root} onChange={e=>setRoot(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void doScan();}} placeholder="예: D:\WaferMaps\LOT01"/></label>
+        <button disabled={busy} onClick={()=>void pickFolder().then(p=>{if(p)setRoot(p);})}>📁 찾아보기…</button>
+        <button className="primary" disabled={busy||!root.trim()} onClick={()=>void doScan()}>{busy?'찾는 중…':'맵 찾기'}</button>
       </div>
-      {busy&&<p className="hint" role="status"><span className="spinner" aria-hidden="true"/> 하위 폴더에서 파일을 찾는 중입니다.
+      {busy&&<p className="hint" role="status"><span className="spinner" aria-hidden="true"/> 하위 폴더에서 TXT 를 찾는 중입니다.
         <button onClick={()=>void desktop.request('wm_reset').promise.catch(()=>undefined)}>검색 취소</button></p>}
     </>}
-    {step===1&&scan&&<>
-      <p className="hint">변환할 파일을 고르세요. 기본은 정상 파일 전체 선택입니다. 읽기 오류가 난 파일은 회색으로 표시되며 고를 수 없습니다.</p>
-      <RowPick label="변환할 파일" columns={mode==='txt'?['Wafer','크기','Bin(수량)','위치']:['파일','종류','위치']} value={picked} onChange={setPicked}
-        rows={scan.items.map(i=>({id:String(i.id),disabled:!i.valid,title:i.error||i.path,
-          cells:mode==='txt'
-            ?[<b key="w">{i.wafer}</b>,i.valid?i.size:<span className="warn">오류</span>,
-              i.valid?<span key="b">{Object.keys(i.bins).length?Object.entries(i.bins).map(([k,v])=>`${k}:${v}`).join('  '):'불량 없음'}</span>:<span className="hint">{i.error}</span>,
-              <code key="p">{i.relative}</code>]
-            :[<b key="w">{i.wafer}</b>,i.valid?'Excel':<span className="warn">오류</span>,<code key="p">{i.relative}</code>]}))}/>
-    </>}
-    {step===2&&<>
-      <p className="hint">결과(Excel/TXT 와 맵 이미지 PNG 2장)를 어디에 저장할지 고르세요. 원본 TXT 는 어느 경우에도 바뀌지 않습니다.</p>
-      <div className="out-choice" role="radiogroup" aria-label="결과 저장 위치">
-        <div className={'out-row'+(out==='source'?' on':'')}>
-          <button type="button" role="radio" aria-checked={out==='source'} className={'out-pick'+(out==='source'?' on':'')} onClick={()=>setOut('source')}>원본 파일과 같은 폴더 (기본)</button>
-          <code className="out-path">각 파일 옆에 <b>{mode==='txt'?'_Map_Edit.xlsx':'_Converted.txt'}</b> 로 저장</code>
-        </div>
-        <div className={'out-row'+(out==='custom'?' on':'')}>
-          <button type="button" role="radio" aria-checked={out==='custom'} className={'out-pick'+(out==='custom'?' on':'')} onClick={()=>setOut('custom')}>다른 폴더</button>
-          <input className="out-path" aria-label="다른 폴더 경로" placeholder="폴더 경로를 입력하거나 [찾아보기] (원본 하위 구조 유지)" value={custom}
-            onFocus={()=>setOut('custom')} onChange={e=>{setCustom(e.target.value);setOut('custom');}}/>
-          <button type="button" onClick={()=>void browse(p=>{setCustom(p);setOut('custom');})}>📁 찾아보기…</button>
-        </div>
+    {screen==='list'&&scan&&<>
+      <div className="form-filter">
+        <p className="hint" style={{flex:1,margin:0}}>폴더 <code>{scan.root}</code> — 고칠 맵의 [열기] 를 누르세요. 저장한 맵은 ✓ 로 표시됩니다.</p>
+        <input aria-label="맵 찾기" placeholder="🔍 Wafer · 위치 찾기" value={find} onChange={e=>setFind(e.target.value)}/>
+        <button onClick={restart}>⟲ 새로 시작하기</button>
       </div>
+      <div className="table-scroll" style={{maxHeight:'calc(100vh - 300px)'}}><table className="tbl" aria-label="맵 목록"><thead><tr><th>Wafer</th><th>크기</th><th>Bin (수량)</th><th>위치</th><th>저장</th><th/></tr></thead>
+        <tbody>{items.map(i=><tr key={i.id} className={i.valid?'':'dim'} onDoubleClick={()=>void open(i)}>
+          <td><b>{i.wafer}</b></td><td>{i.valid?i.size:<span className="warn">오류</span>}</td>
+          <td>{i.valid?(Object.keys(i.bins).length?Object.entries(i.bins).map(([k,v])=>`${k}:${v}`).join('  '):'불량 없음'):<span className="hint">{i.error}</span>}</td>
+          <td><code>{i.relative}</code></td><td>{saved[i.id]?<span className="st-on" title={saved[i.id].txt}>✓ {saved[i.id].txt.split(/[\\/]/).pop()}</span>:''}</td>
+          <td><button type="button" disabled={!i.valid||busy} onClick={()=>void open(i)}>{busy?'…':'열기'}</button></td></tr>)}</tbody></table></div>
     </>}
-    {step===3&&<>
-      <table className="tbl watch-status" aria-label="실행 전 검토"><tbody>
-        <tr><th>변환 방향</th><td>{MODE_LABEL[mode]}</td></tr>
-        <tr><th>선택 폴더</th><td><code>{root}</code></td></tr>
-        <tr><th>변환 파일</th><td>{picked.length}개</td></tr>
-        <tr><th>결과 위치</th><td><code>{outText}</code></td></tr>
-        <tr><th>맵 이미지</th><td>BinCode_Map · BinMeaning_Map (PNG, 결과와 같은 폴더)</td></tr>
-        <tr><th>원본 보존</th><td>원본 {mode==='txt'?'TXT':'Excel'} 은 읽기만 하며 변경되지 않습니다.</td></tr></tbody></table>
-      <div className="toolbar"><button className="primary" disabled={busy} onClick={()=>void run()}>▶ 변환 시작</button></div>
-    </>}
-    {step===4&&<>
-      <p role="status" aria-live="polite"><b>{progress.text}</b></p>
-      <div className="progress-bar" aria-label="처리 진행률" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{width:`${pct}%`}}/></div>
-      <p className="hint">{progress.done} / {progress.total} 파일 · {pct}% — 이 화면을 벗어나도 계속 처리합니다(다른 탭 이동 가능).</p>
-      <pre className="log-box" aria-label="처리 기록">{log.join('\n')}</pre>
-      <div className="toolbar"><button className="danger" disabled={!busy} onClick={()=>{stop.current=true;notify('현재 파일까지 처리하고 멈춥니다.','info');}}>작업 취소</button></div>
-    </>}
-    {step===5&&<>
-      <p><b className={state==='complete'?'st-on':'st-off'}>{state==='complete'?'완료':state==='cancelled'?'취소됨':'오류'}</b>
-        {job&&<> · 성공 {results.length}{errors.length?` · 실패 ${errors.length}`:''}</>}</p>
-      {job&&<OpenPath label="결과 폴더" path={job.output_root||job.source_root} folder/>}
-      <table className="tbl" aria-label="파일별 결과"><thead><tr><th>Wafer</th><th>결과 파일</th><th>맵 이미지</th></tr></thead>
-        <tbody>{results.map(r=><tr key={r.output}><td><b>{r.wafer}</b></td>
-          <td><OpenPath label={r.output_name} path={r.output}/></td>
-          <td className="wm-imgcell">{r.images.map(im=><span key={im.path}>
-            {r.preview[im.kind]&&<button type="button" className="wm-thumbbtn" onClick={()=>setViewer({src:r.preview[im.kind],title:`${r.wafer} · ${im.kind==='code'?'Bin Code Map':'Bin Meaning Map'}`})}>
-              <img src={r.preview[im.kind]} alt={im.kind} loading="lazy"/></button>}
-            <OpenPath label={im.kind==='code'?'Bin Code':'Bin Meaning'} path={im.path}/></span>)}</td></tr>)}</tbody></table>
-      {errors.length>0&&<table className="tbl" aria-label="변환 실패"><thead><tr><th>Wafer</th><th>오류</th></tr></thead>
-        <tbody>{errors.map((e,i)=><tr key={i}><td>{e.wafer}</td><td className="warn">{e.error}</td></tr>)}</tbody></table>}
-      {log.length>0&&<details><summary>처리 기록</summary><pre className="log-box">{log.join('\n')}</pre></details>}
-      <div className="toolbar"><button className="primary" onClick={()=>void restart()}>새 작업</button></div>
-    </>}
-    </div>
-    {step<3&&<StepNav step={step} total={4} busy={busy} nextDisabled={!canNext} nextLabel="다음"
-      onBack={()=>setStep(s=>Math.max(0,s-1))} onNext={()=>setStep(s=>s+1)}/>}
-    {step===3&&<div className="stepnav"><button className="btn" disabled={busy} onClick={()=>setStep(2)}>◀ 이전</button><span className="stepcount">4 / {STEPS.length}</span><span/></div>}
-    {viewer&&<div className="wm-viewer" role="dialog" aria-label={viewer.title} onClick={()=>setViewer(undefined)}>
-      <div className="wm-viewer-box" onClick={e=>e.stopPropagation()}><div className="wm-viewer-top"><b>{viewer.title}</b><button onClick={()=>setViewer(undefined)}>닫기 ✕</button></div>
-        <img src={viewer.src} alt={viewer.title}/></div></div>}
+    {screen==='edit'&&opened&&<Editor key={opened.id+':'+opened.path} opened={opened} table={table} onBack={()=>setScreen('list')}
+      onSaved={(model,s)=>{setSaved(x=>({...x,[opened.id]:s}));setDone({model,saved:s});setScreen('done');}}/>}
+    {screen==='done'&&opened&&done&&<Compare edited={done.model} opened={opened} saved={done.saved} table={table} onHome={()=>{setDone(undefined);setScreen('list');}}/>}
   </section>;
 }
