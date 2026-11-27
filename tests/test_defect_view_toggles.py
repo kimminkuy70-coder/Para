@@ -176,9 +176,9 @@ class GlDialogAndColors(unittest.TestCase):
         self.assertIn("$('#glPrev').onclick=()=>glDlgStep(-1);$('#glNext').onclick=()=>glDlgStep(1);", self.t)
         self.assertIn("e.key==='ArrowLeft'||e.key==='ArrowRight'", self.t)
         self.assertIn(".gldlg .bx{width:min(660px,100%);max-height:100%;overflow:auto}", self.t)
-        # 프로그램 안: iframe 의 100vh 는 내용 전체 높이 → 보이는 높이(--vh)로
-        self.assertIn("body.pskin .gldlg .bx{max-height:calc(var(--vh,100vh) - 24px)", self.css)
-        self.assertIn("body.pskin .gldlg #glCv{width:min(528px,calc(var(--vh,100vh) - 300px)", self.css)
+        # 프로그램 화면 안(2026-11-25 ~): 100vh = 진짜 화면 높이(종전 iframe 때는 --vh)
+        self.assertIn("body.pskin .gldlg .bx{max-height:calc(100vh - 24px)", self.css)
+        self.assertIn("body.pskin .gldlg #glCv{width:min(528px,calc(100vh - 300px)", self.css)
 
     def test_theme_colors(self):
         for loud in ("#4f46e5", "#a3e635", "📥", "🟥", "⭕ 측정 원"):

@@ -51,10 +51,12 @@ class DefectHostTest(unittest.TestCase):
             self.assertEqual(d['connect-src'], "'self'", p)
             self.assertNotIn('unsafe-eval', csp)
 
-    def test_overlays_fixed_to_visible_part(self):
+    def test_overlays_cover_whole_screen(self):
         css = (PUB / 'para-skin.css').read_text(encoding='utf-8')
-        self.assertIn('body.pskin .busy{position:fixed;inset:auto;top:var(--vt,0px);left:var(--vl,0px);width:var(--vw,100vw);height:var(--vh,100vh)', css)
-        self.assertIn('body.pskin .ovw{position:fixed;inset:auto;top:var(--vt,0px);left:var(--vl,0px);width:var(--vw,100vw);height:var(--vh,100vh)}', css)
+        # 소유자 2026-11-27: 로딩창 · 같은 창 칸 = 프로그램 화면 전체(머리 · 탭까지 어둡게)
+        self.assertIn('body.pskin .busy{position:fixed;inset:0;width:auto;height:auto;z-index:2147481000;', css)
+        self.assertIn('body.pskin .ovw{position:fixed;inset:0;width:auto;height:auto;z-index:2147481000}', css)
+        self.assertNotIn('var(--vh', css)
         for v in ("'--vt'", "'--vh'", "'--vl'", "'--vw'"):
             self.assertIn(f"s.setProperty({v}", self.host)
         skin = (PUB / 'para-skin.js').read_text(encoding='utf-8')

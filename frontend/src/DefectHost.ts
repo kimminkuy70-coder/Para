@@ -8,7 +8,7 @@
      location.search = ?t=토큰&mode=big|diagram(PARA 연결부가 켜짐), window.__cw = 이 칸의 시험 · 확인용 함수 묶음(host.__cw).
    - 키보드(↑↓ · Space · B …) = 이 칸이 보이고, 누른 곳이 이 칸 안(또는 마지막으로 누른 곳이 이 칸)일 때만 HTML 에 넘긴다(대상 = 실제 누른 칸).
    - localStorage 'storage' 알림 = 같은 문서 안 두 칸끼리도 전한다(µm 로 보기 · 설명 보기를 두 탭이 같이 — iframe 때는 브라우저가 해 줌).
-   - 로딩창 · 같은 창 사진 칸 · 측정 원 창 = 화면에 고정(position:fixed), 자리 = 이 칸의 보이는 부분(--vt · --vl · --vw · --vh) — 스크롤해도 잘리지 않음. */
+   - 로딩창 · 같은 창 사진 칸 · 측정 원 창 = 프로그램 화면 전체(para-skin.css, 소유자 2026-11-27). --vt · --vl · --vw · --vh(이 칸의 보이는 부분)는 계속 적어 둔다(HTML 의 다른 자리 계산용). */
 
 const WIZARD = '/defect/AOI_Contrast_Wizard_rev6.html', SKIN = '/defect/para-skin';
 export type DefectMode = 'big' | 'diagram';

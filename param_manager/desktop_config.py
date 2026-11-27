@@ -224,6 +224,14 @@ def share_paths(save_dir):
     return dict(share_root=os.path.dirname(program), program_dir=program, cache_share_dir=cache_share_dir(save_dir))
 
 
+def build_label() -> str:
+    """시험판 표시(설치 zip 의 app/build_label.txt, tools/build_install.py --label — 소유자 2026-11-27). 정식 판 · 소스 폴더 = ''."""
+    try:
+        return (Path(__file__).resolve().parent.parent / "build_label.txt").read_text(encoding="utf-8").strip()[:60]
+    except OSError:
+        return ""
+
+
 class DesktopConfig:
     def __init__(self, config_path=None):
         # Only tests inject config_path; IPC never accepts it.
@@ -321,7 +329,7 @@ class DesktopConfig:
             root, logs = "", ""
         from . import desktop_diag
         return dict(version=__version__, user=engine.current_user(), config=str(self.config_path),
-                    local_root=root, logs=logs, diag_log=desktop_diag.path())
+                    local_root=root, logs=logs, diag_log=desktop_diag.path(), build_label=build_label())
 
     def set_hide_kla(self, params):
         if set(params) != {"enabled"} or type(params["enabled"]) is not bool:

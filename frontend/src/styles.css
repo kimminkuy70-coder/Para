@@ -1253,3 +1253,5 @@ main{padding-top:24px}
 .dfx-host{display:block;width:100%;min-width:0}
 .dfx-host:not(.ready){visibility:hidden;min-height:60vh}
 .dfx-host[hidden]{display:none!important}
+/* 설정 > 정보: 시험판 표시(설치 zip 의 app/build_label.txt — 소유자 2026-11-27) */
+.build-label{color:var(--amber-800);font-weight:700}

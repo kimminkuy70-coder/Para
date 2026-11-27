@@ -53,6 +53,30 @@ class BuildInstallTest(unittest.TestCase):
         self.assertNotIn("Camtek AOI Manager", guide)
         self.assertNotIn("Win + R", guide)
 
+    def test_trial_label(self):
+        """소유자 2026-11-27: 디자인 브랜치 zip = 이름 · 설정 > 정보에 시험판 표시, 버전 번호 · 정식 zip 은 그대로."""
+        with tempfile.TemporaryDirectory() as d:
+            py = Path(d) / "pyembed"
+            py.mkdir()
+            for name in ("python.exe", "pythonw.exe", "python311.dll"):
+                (py / name).write_bytes(b"x")
+            plain = build_install.build(py, Path(d) / "a")
+            with zipfile.ZipFile(plain) as z:
+                self.assertNotIn("app/" + build_install.LABEL_FILE, z.namelist())
+            path = build_install.build(py, Path(d) / "b", "디자인시험판_1127")
+            self.assertEqual(path.name, f"AOI_Manager_v{__version__}_디자인시험판_1127_install.zip")
+            with zipfile.ZipFile(path) as z:
+                self.assertEqual(z.read("app/build_label.txt").decode("utf-8").strip(), "디자인 시험판 · 11-27")
+                self.assertIn("정식 판이 아닙니다", z.read("설치_안내.txt").decode("utf-8-sig"))
+            with self.assertRaises(SystemExit):
+                build_install.build(py, Path(d) / "c", "../x")
+        self.assertNotIn(build_install.LABEL_FILE, deploy.files(ROOT))          # 저장소 · 업데이트에는 없음
+        wf = (ROOT / ".github/workflows/v14.yml").read_text(encoding="utf-8")
+        self.assertIn('if ("${{ github.ref_name }}" -ne "version_v14")', wf)
+        self.assertIn("if: steps.ver.outputs.label == ''", wf)                  # 시험판으로는 릴리스를 만들지 않음
+        cfg = (ROOT / "param_manager/desktop_config.py").read_text(encoding="utf-8")
+        self.assertIn('"build_label.txt"', cfg)
+
     def test_bat_not_in_repository(self):
         # The starter is generated into the zip only; the repository and updates carry no .bat.
         bats = [os.path.join(dp, f) for dp, _, fs in os.walk(ROOT) if ".git" not in dp

@@ -150,9 +150,9 @@ body.pskin .lsdef,body.pskin .xlorig{font-size:13px;font-weight:600;color:var(--
    5-1 분류 · Lot 칸은 켜진 칸을 흰 바탕(체크 표시로 구분), 끈 칸만 회색 */
 body.pskin .fgrid .chipgrid .clsck:has(input:checked){border-color:var(--bd2);background:var(--panel)}
 body.pskin .fgrid .chipgrid .clsck.off{background:var(--band);border-color:var(--line)}
-/* 측정 원 그리기 창: 사진 칸 = 프로그램이 알려 준 보이는 높이(--vh)에 맞춤(iframe 의 100vh 는 내용 전체 높이라 쓰지 않음) */
-body.pskin .gldlg .bx{max-height:calc(var(--vh,100vh) - 24px);padding:16px 20px}
-body.pskin .gldlg #glCv{width:min(528px,calc(var(--vh,100vh) - 300px),calc(100vw - 150px))}
+/* 측정 원 그리기 창: 사진 칸 = 화면 높이에 맞춤(2026-11-25 부터 화면 안 — 100vh = 진짜 화면 높이, 종전 iframe 은 내용 전체 높이라 --vh 를 썼다) */
+body.pskin .gldlg .bx{max-height:calc(100vh - 24px);padding:16px 20px}
+body.pskin .gldlg #glCv{width:min(528px,calc(100vh - 300px),calc(100vw - 150px))}
 body.pskin .glnav{min-height:0;height:84px;width:40px;padding:0;font-size:30px;font-weight:400;color:var(--navy)}
 /* 5-3 보기 박스 · 사진 모두 불러오기 · 최종 목록 개수 배지(v14.1.6, 소유자 "보기는 줄바꿈 · 박스로 구분, 불러오기는 다른 색, 최종 목록 개수는 구분이 가게") */
 body.pskin .c5stbox{border-color:var(--line);border-left-color:var(--navy);border-radius:10px;background:var(--band);padding:10px 16px}
@@ -183,13 +183,13 @@ body.pskin .rvbox{background:var(--band);border-color:var(--line);border-radius:
 body.pskin .g5{border-radius:10px}
 body.pskin .bigmap,body.pskin canvas.mini{border-radius:12px}
 
-/* 로딩창 · 측정 원 창 · 같은 창 사진 칸 = 화면에 고정, 자리 = 이 칸의 지금 보이는 부분(--vt · --vl · --vw · --vh, 프로그램 DefectHost 가 스크롤 · 크기 바뀔 때 적음).
-   2026-11-25: 종전(iframe) = 내용 높이만큼 긴 iframe 안 absolute 라 늦게 알려지면 아래가 잘렸다 */
-body.pskin .busy{position:fixed;inset:auto;top:var(--vt,0px);left:var(--vl,0px);width:var(--vw,100vw);height:var(--vh,100vh);background:rgba(31,41,55,.35)}
+/* 로딩창 · 측정 원 창 · 같은 창 사진 칸 = 프로그램 화면 전체를 덮는다(소유자 2026-11-27 — 머리 · 탭까지 어둡게, 프로그램의 다른 창과 같은 막 · 흐림).
+   2026-11-25 판은 Defect 칸의 보이는 부분(--vt · --vh)만 덮어 'HTML 안에서 도는 것'처럼 보였다. z-index = 둘러보기(.tour) 바로 아래 */
+body.pskin .busy{position:fixed;inset:0;width:auto;height:auto;z-index:2147481000;background:rgba(31,41,55,.34);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 body.pskin .busy .bx{border-radius:16px;box-shadow:var(--sh2);padding:22px 26px}
 body.pskin .busy .bar{height:10px;border-radius:999px;background:var(--dot)}
 body.pskin .busy .bar>i{background:var(--pri)}
-body.pskin .ovw{position:fixed;inset:auto;top:var(--vt,0px);left:var(--vl,0px);width:var(--vw,100vw);height:var(--vh,100vh)}
+body.pskin .ovw{position:fixed;inset:0;width:auto;height:auto;z-index:2147481000}
 body.pskin .ovw:fullscreen{inset:0;width:auto;height:auto}
 body.pskin .ovwb button{min-height:0;padding:2px 10px;border:1px solid #3a4250;border-radius:6px;background:#222a36;color:#eee;font-weight:400;box-shadow:none}
 body.pskin .ovwb button:hover:not(:disabled){background:#2c3646;border-color:#4a5468}

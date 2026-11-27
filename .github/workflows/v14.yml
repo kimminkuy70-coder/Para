@@ -66,6 +66,17 @@ jobs:
           $v = python -c "import sys; sys.path.insert(0, '.'); import param_manager; print(param_manager.__version__)"
           if ($v -notmatch '^14\.\d+\.\d+$') { Write-Error "version must be 14.x.y (got $v)"; exit 1 }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          # 시험판 표시(소유자 2026-11-27): version_v14 가 아닌 브랜치(디자인 작업 등)에서 만든 zip = 이름 · 설정 > 정보에 '디자인시험판_월일'(한국 날짜).
+          # 버전 번호는 그대로라 다른 사람 업데이트에는 나오지 않고, 이 판으로는 릴리스를 만들지 않는다(아래 Release 단계 if).
+          if ("${{ github.ref_name }}" -ne "version_v14") {
+            $kst = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date).ToUniversalTime(), "Korea Standard Time")
+            $label = "디자인시험판_" + $kst.ToString("MMdd")
+            "label=$label" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "artifact=AOI_Manager_v${v}_${label}_install" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            "label=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "artifact=AOI_Manager_v${v}_install" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
 
       - name: python.org embeddable package (signature checked)
         shell: pwsh
@@ -86,7 +97,9 @@ jobs:
           pyembed/python.exe -c "import sys; sys.dont_write_bytecode=True; sys.path[:0]=['.', 'vendor']; import param_manager.desktop_ipc, param_manager.webserver, param_manager.winnative, param_manager.launcher, openpyxl, ssl, ctypes; print('engine imports ok', sys.version)"
 
       - name: Build install zip
-        run: python tools/build_install.py --python-dir pyembed --out out
+        env:
+          PARA_LABEL: ${{ steps.ver.outputs.label }}
+        run: python tools/build_install.py --python-dir pyembed --out out --label "$env:PARA_LABEL"
 
       - name: Windows Defender scan (fail on any threat)
         shell: pwsh
@@ -109,11 +122,12 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AOI_Manager_v${{ steps.ver.outputs.version }}_install
+          name: ${{ steps.ver.outputs.artifact }}
           path: out/*.zip
           retention-days: 30
 
       - name: GitHub Release (only when release notes exist and the release does not)
+        if: steps.ver.outputs.label == ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

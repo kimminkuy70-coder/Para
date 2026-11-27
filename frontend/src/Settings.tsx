@@ -42,7 +42,7 @@ export function Settings(){
   const [aMachine,setAMachine]=useState(subOf(intent?.sub)==='aoi'?intent?.machine||'':''),[aPath,setAPath]=useState('');
   const [xMachine,setXMachine]=useState(''),[xKind,setXKind]=useState<ExtraKind>('report'),[xPath,setXPath]=useState('');
   type Local={root:string;summary:string;onedrive:boolean;default:string;removed?:number};
-  type About={version:string;user:string;config:string;local_root:string;logs:string;diag_log?:string};
+  type About={version:string;user:string;config:string;local_root:string;logs:string;diag_log?:string;build_label?:string};
   const [diagZip,setDiagZip]=useState('');
   // 개발자 기능(Batch Report 중복 Pass 직접 선택): 저장 안 한 선택이 있으면 끄기 전에 묻고, 조사 중에는 잠근다.
   const dev=useDev();
@@ -273,7 +273,7 @@ export function Settings(){
     {sub==='about'&&<>
       <h3>프로그램 정보</h3>
       {about?<table className="tbl" style={{marginTop:12}}><tbody>
-        <tr><td style={{width:140,fontWeight:700}}>엔진 버전</td><td>{about.version}</td></tr>
+        <tr><td style={{width:140,fontWeight:700}}>엔진 버전</td><td>{about.version}{about.build_label&&<b className="build-label"> · {about.build_label}</b>}</td></tr>
         <tr><td style={{fontWeight:700}}>사용자</td><td>{about.user}</td></tr>
         <tr><td style={{fontWeight:700}}>설정 파일</td><td><code>{about.config}</code></td></tr></tbody></table>:subError?<LoadFailed message={subError} onRetry={()=>setSubTry(n=>n+1)}/>:<p className="hint">불러오는 중…</p>}
       {about?.logs&&<OpenPath label="오류 로그 폴더" path={about.logs} folder/>}

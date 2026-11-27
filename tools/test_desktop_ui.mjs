@@ -871,9 +871,12 @@ try{
   await page.locator('.dfx-host.ready[data-title="Defect 분류"]').waitFor();
   const wzf=defectIn('Defect 분류');
   assert.equal(await wz.locator('.dfx-body.pskin.pskin-big').count(),1);
-  // 로딩창 = 화면에 고정, 자리 = 이 칸의 보이는 부분(스크롤해도 아래가 잘리지 않음)
-  {const v=await wz.evaluate(h=>{const s=getComputedStyle(h),b=h.shadowRoot.querySelector('#busy')||h.shadowRoot.querySelector('.busy');return {pos:b&&getComputedStyle(b).position,vh:s.getPropertyValue('--vh'),inner:innerHeight,top:h.getBoundingClientRect().top}});
-    assert.equal(v.pos,'fixed',JSON.stringify(v));assert(parseInt(v.vh)>0&&parseInt(v.vh)<=v.inner,JSON.stringify(v))}
+  // 소유자 2026-11-27: 로딩창 = 프로그램 화면 전체를 어둡게(맨 위 머리 · 탭까지 — 종전 = Defect 칸의 보이는 부분만)
+  {const r=await wzf.evaluate(()=>{window.__cw.busy({title:'시험',steps:['a'],step:0,done:0,total:1,unit:'x',files:'',detail:'',reset:true});
+      const b=document.getElementById('busy').getBoundingClientRect();return {b:[b.left,b.top,b.width,b.height].map(Math.round),w:innerWidth,h:innerHeight}});
+    const cover=await page.evaluate(()=>{const e=document.elementFromPoint(20,10);return !!(e&&e.closest('.dfx-host'))});   // 맨 위 머리 자리 = 로딩 막
+    await wzf.evaluate(()=>window.__cw.busy(null));
+    assert.deepEqual(r.b,[0,0,r.w,r.h],JSON.stringify(r));assert(cover,'busy overlay covers the app header')}
   assert.equal(await wz.locator('header h1').isVisible(),false);
   assert.equal(await wz.locator('nav').isVisible(),false);
   assert.equal(await wz.locator('#b5p1 .card>p.muted').isVisible(),false);          // 설명글은 숨김(기본)

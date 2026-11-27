@@ -12,6 +12,8 @@
   **피드백 1차(소유자 2026-11-25, 같은 브랜치)**: Defect 분석 = **iframe 없이 화면 안**(`frontend/src/DefectHost.ts`, Shadow DOM, 스크립트 = 빌드가 만든 `dist/defect/*.run.js` — 화면 CSP 그대로, img-src 에 blob: 만) ·
   하위 탭 이름 **Defect 분류 · Defect Map** · **기본 목록 · 필터 = 대규모와 같게(지도만 다름)** · Defect 코드 → 이름 표(rev6 `DEFECT_DESC` = `wafermap.DEFECT_CODES`, 고치면 둘 다) ·
   가동률 조사 [캐시에서만 찾기](`cache_only`) · 캐시 가져오기 칸 · '다시 읽지 않기' 체크 삭제 · Scanresult 백업본 늘 포함 · 탭 맨 위 제목 · 설명글 삭제. 자세히 = `docs/design/이어서_하기.md` '피드백 1차'.
+  11-27: 설치 zip **시험판 표시**(`version_v14` 아닌 브랜치 = zip 이름 · 설정 > 정보 '디자인 시험판 · 월일', `build_install.py --label` · `app/build_label.txt`, 릴리스 안 만듦) ·
+  Defect 로딩창 · 같은 창 칸 = **프로그램 화면 전체**(para-skin.css `.busy` · `.ovw` inset:0).
   후속(같은 날): **서체 = Pretendard 내장**(`frontend/public/fonts`, OFL, 인터넷 아님 — 결과 HTML 은 파일 없이 글꼴 순서만) · **Defect Map 에도 최종 목록 엑셀 · CSV · zip + 흑백 GL 측정**(`panelFinHtml` · `baseSave*` · `baseGlRun`, 대규모 5-3 과 같은 형식).
 
 - **v14.4.3(#90, 2026-11-24)**: 프로그램 화면에 GitHub 글자를 쓰지 않는다(소유자: GitHub 을 쓰는 것을 밝히지 말 것). 설정 > 정보에 업데이트 구역 없음 — 업데이트는 시작 알림 창만. 새 화면 글 · 오류 글에도 GitHub · github.com 을 넣지 말 것.
