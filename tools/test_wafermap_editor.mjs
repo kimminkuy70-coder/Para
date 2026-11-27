@@ -43,6 +43,12 @@ async function diePos(label,col,row){
   return {x:b.x+d.x+(col+.5)*d.s,y:b.y+d.y+(row+.5)*d.s};
 }
 const status=()=>page.getByLabel('Die 정보').innerText();
+// PARA_WM_SHOTS=폴더 이면 화면마다 스크린샷(디자인 전 · 후 비교용, 1440 · 1100 폭)
+const shotDir=process.env.PARA_WM_SHOTS;
+async function shot(name){if(!shotDir)return;await mkdir(shotDir,{recursive:true});
+  for(const w of [1440,1100]){await page.setViewportSize({width:w,height:1000});await page.waitForTimeout(150);
+    await page.screenshot({path:join(shotDir,`${name}_${w}.png`),fullPage:true});}
+  await page.setViewportSize({width:1440,height:1000});await page.waitForTimeout(150);}
 try{
   await Promise.race([urlReady,new Promise((_,rej)=>setTimeout(()=>rej(new Error('web server did not start: '+stderr)),30000))]);
   const origin=new URL(appUrl).origin;
@@ -55,11 +61,13 @@ try{
   await page.locator('.navigation').getByRole('button',{name:'Wafer Map 수정하기',exact:true}).click();
 
   // ① 폴더 → ② 목록
+  await shot('1_folder');
   await page.getByLabel('폴더 경로').fill(maps);
   await page.getByRole('button',{name:'맵 찾기',exact:true}).click();
   const list=page.getByRole('table',{name:'맵 목록'});
   await list.waitFor();
   assert.equal(await list.locator('tbody tr').count(),3);
+  await shot('2_list');
   // 화면에 Excel 변환 단계가 없다(#91 1번: 새 편집기로 바꿈)
   assert.equal(await page.getByText(/Excel → TXT|_Map_Edit\.xlsx/).count(),0);
 
@@ -67,6 +75,7 @@ try{
   await list.locator('tr',{hasText:'W01'}).getByRole('button',{name:'열기'}).click();
   await canvas('Wafer Map 편집').waitFor();
   await page.waitForFunction(()=>+document.querySelector('canvas[aria-label="Wafer Map 편집"]').dataset.s>0);
+  await shot('3_editor');
   const side=page.getByLabel('Bin Code 리스트');
   // 전체 Defect 코드 표(설명 없이) + 개수
   const c001=side.getByRole('button',{name:/^001/});
@@ -125,25 +134,34 @@ try{
   // 저장: 범례 = Bin Code + Defect 이름, 이름 · 다른 폴더
   await page.getByRole('button',{name:'💾 저장'}).first().click();
   const dlg=page.getByRole('dialog',{name:'저장'});
+  await dlg.waitFor();await shot('4_save');
   assert.equal(await dlg.getByLabel('저장 이름').inputValue(),'W01_Edited');
-  await dlg.getByLabel(/Bin Code \+ Defect 이름/).check();
+  // 범례 = 두 가지를 함께 고를 수 있음(소유자 08:15) — 둘 다 끄면 [저장] 잠김
+  const cCode=dlg.getByLabel(/^Bin Code 만/),cMean=dlg.getByLabel(/Bin Code \+ Defect 이름/);
+  assert(await cCode.isChecked());await cCode.uncheck();
+  assert(await dlg.getByRole('button',{name:'💾 저장'}).isDisabled(),'범례 0개 = 저장 잠김');
+  await cCode.check();await cMean.check();
+  assert(await cCode.isChecked()&&await cMean.isChecked());
+  assert.match(await dlg.innerText(),/_BinCode_Map\.png[\s\S]*_BinMeaning_Map\.png/);
   await dlg.getByLabel('다른 폴더').check();
   const out=join(fixture,'out');await dlg.getByLabel('저장 폴더').fill(out);
   await dlg.getByLabel('저장 이름').fill('W01_fixed');
   await dlg.getByRole('button',{name:'💾 저장'}).click();
   // ④ 비교
   await canvas('원래 맵').waitFor();await canvas('수정 맵').waitFor();
+  await shot('5_compare');
   const sum=page.getByRole('table',{name:'바뀐 Die 요약'});
   assert.match(await sum.innerText(),/000 → 095\s+6/);
   assert.match(await sum.innerText(),/000 → 001\s+1/);
-  assert.deepEqual((await readdir(out)).sort(),['W01_fixed.txt','W01_fixed_BinMeaning_Map.png']);
+  assert.deepEqual((await readdir(out)).sort(),['W01_fixed.txt','W01_fixed_BinCode_Map.png','W01_fixed_BinMeaning_Map.png']);
   const txt=await readFile(join(out,'W01_fixed.txt'),'utf8');
   const rows=txt.split('\r\n').filter(l=>l.startsWith('RowData:')).map(l=>l.slice(8).split(' '));
   assert.equal(rows[2][5],'001');assert.deepEqual(rows[5].slice(3,9),['095','095','095','095','095','095']);
   assert.equal(rows[7][4],'000','되돌린 사각형은 저장 안 됨');
   assert.equal(txt.split('\r\n').length,small.split('\r\n').length,'줄 배치 그대로');
   assert.equal(await readFile(join(maps,'W01.txt'),'utf8'),small,'원본 보존');
-  const png=await readFile(join(out,'W01_fixed_BinMeaning_Map.png'));assert.equal(png.subarray(1,4).toString(),'PNG');
+  for(const f of ['W01_fixed_BinCode_Map.png','W01_fixed_BinMeaning_Map.png'])assert.equal((await readFile(join(out,f))).subarray(1,4).toString(),'PNG');
+  assert.equal(await page.getByRole('table',{name:'저장 파일'}).locator('tr').count(),3,'TXT + 그림 2장');
   // 확대 · 이동 연동
   const ox=await canvas('수정 맵').getAttribute('data-s');
   p=await diePos('원래 맵',6,6);await page.mouse.move(p.x,p.y);await page.mouse.wheel(0,-300);await page.waitForTimeout(100);
@@ -173,7 +191,7 @@ try{
     await side.getByRole('button',{name:/^002/}).click();
     await page.waitForFunction(()=>/바뀐 Die [1-9]/.test(document.querySelector('[aria-label="Die 정보"]').innerText));
     const edit=Date.now()-t1;
-    const dies=(await page.locator('.wme-title span').innerText()).match(/Die ([\d,]+)/)[1];
+    const dies=(await page.locator('.wme-title p').innerText()).match(/Die ([\d,]+)/)[1];
     perf[w]={dies,open_ms:open,wheel_frame_median_ms:frame.median,wheel_frame_max_ms:frame.max,rect_edit_ms:edit,changed:(await status()).match(/바뀐 Die ([\d,]+)/)[1]};
     page.once('dialog',d=>d.accept());
     await page.getByRole('button',{name:'◀ 목록으로'}).click();

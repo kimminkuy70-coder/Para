@@ -313,7 +313,7 @@ class EditorTests(unittest.TestCase):
     def _save(self, rows, **kw):
         m = self.wm.open_map({'id': 0})
         codes, grid = self._grid(m, rows)
-        p = dict(id=0, codes=codes, grid=grid, width=1, folder='', name='W01_Edited', label='code', overwrite=False)
+        p = dict(id=0, codes=codes, grid=grid, width=1, folder='', name='W01_Edited', labels=['code'], overwrite=False)
         p.update(kw)
         return self.wm.edit_save(p)
 
@@ -336,14 +336,15 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(r['changed'], 0)
         self.assertEqual(Path(r['txt']).read_bytes(), before)
         self.assertEqual((self.dir / 'W01.txt').read_bytes(), before, '원본 보존')
-        self.assertTrue(r['png'].endswith('W01_Edited_BinCode_Map.png'))
+        self.assertEqual(list(r['pngs']), ['code'])
+        self.assertTrue(r['pngs']['code'].endswith('W01_Edited_BinCode_Map.png'))
         self.assertIn(str(self.dir), DesktopWaferMap.extra_roots)
 
     def test_edit_changes_only_those_tokens_and_new_code(self):
         rows = sample_rows()
         rows[1][3] = '000'      # 003 → 000
         rows[2][2] = '777'      # 목록에 없는 새 코드(소유자 #91 6번)
-        r = self._save(rows, label='meaning')
+        r = self._save(rows, labels=['meaning'])
         self.assertEqual(r['changed'], 2)
         out = Path(r['txt']).read_bytes()
         exp_rows = sample_rows()
@@ -352,7 +353,8 @@ class EditorTests(unittest.TestCase):
         headers = ['WAFER:W01', 'DEVICE:DEV-A', 'LOT:LOT01', 'ROWCT:8', 'COLCT:8']
         text = '\r\n'.join(headers + ['RowData:' + ' '.join(x) for x in exp_rows]) + '\r\n'
         self.assertEqual(out, b'\xef\xbb\xbf' + text.encode('utf-8'))
-        self.assertTrue(r['png'].endswith('W01_Edited_BinMeaning_Map.png'))
+        self.assertEqual(list(r['pngs']), ['meaning'])
+        self.assertTrue(r['pngs']['meaning'].endswith('W01_Edited_BinMeaning_Map.png'))
 
     def test_outside_wafer_is_locked(self):
         rows = sample_rows()
@@ -376,14 +378,22 @@ class EditorTests(unittest.TestCase):
 
     def test_custom_folder_and_image(self):
         out = self.dir / 'out'
-        r = self._save(sample_rows(), folder=str(out), name='Edited A')
+        r = self._save(sample_rows(), folder=str(out), name='Edited A', labels=['code', 'meaning'])
         self.assertEqual(Path(r['txt']), out / 'Edited A.txt')
         with self.assertRaises(ValueError):
-            self.wm.edit_image({'id': 0, 'data': self.b64.b64encode(b'nope').decode()})
+            self.wm.edit_image({'id': 0, 'kind': 'code', 'data': self.b64.b64encode(b'nope').decode()})
         png = (b'\x89PNG\r\n\x1a\n' + b'\x00\x00\x00\rIHDR' + (4).to_bytes(4, 'big') + (4).to_bytes(4, 'big')
                + b'\x00' * 20)
-        p = self.wm.edit_image({'id': 0, 'data': self.b64.b64encode(png).decode()})['path']
-        self.assertEqual(Path(p), out / 'Edited A_BinCode_Map.png')
+        data = self.b64.b64encode(png).decode()
+        self.assertEqual(Path(self.wm.edit_image({'id': 0, 'kind': 'code', 'data': data})['path']), out / 'Edited A_BinCode_Map.png')
+        self.assertEqual(Path(self.wm.edit_image({'id': 0, 'kind': 'meaning', 'data': data})['path']), out / 'Edited A_BinMeaning_Map.png')
+        # 범례 둘 다 고를 수 있음(소유자 08:15) · 하나도 안 고르거나 같은 것 두 번 = 거부 · 고르지 않은 범례 그림 = 거부
+        for bad in ([], ['code', 'code'], ['other']):
+            with self.assertRaises(ValueError):
+                self._save(sample_rows(), folder=str(out), name='Edited B', labels=bad)
+        self._save(sample_rows(), folder=str(out), name='Edited C', labels=['meaning'])
+        with self.assertRaises(ValueError):
+            self.wm.edit_image({'id': 0, 'kind': 'code', 'data': data})
         self.assertIn(str(out), DesktopWaferMap.extra_roots)
 
     def test_ipc_methods_registered(self):

@@ -16,9 +16,11 @@ type Code={code:string;name:string;ko:string;color:string};
 type Table={codes:Code[];unknown:string;outside:string};
 type Opened={id:number;path:string;name:string;folder:string;default_name:string;wafer:string;device:string;lot:string;
   row_count:number;col_count:number;codes:string[];width:number;grid:string};
-type Saved={txt:string;png:string;folder:string;changed:number};
+type Saved={txt:string;pngs:Record<string,string>;folder:string;changed:number};
 type Label='code'|'meaning';
 const OUT='___';
+const LABEL_TEXT:Record<Label,string>={code:'Bin Code 만',meaning:'Bin Code + Defect 이름'};
+const LABEL_FILE:Record<Label,string>={code:'BinCode_Map',meaning:'BinMeaning_Map'};
 
 /* ------------------------------------------------------------------ 맵 자료 */
 class MapModel{
@@ -75,6 +77,8 @@ function MapCanvas({model,version,view,onView,mode,tool='brush',sel,selVersion=0
   const hover=useRef<Hover>(null),drag=useRef<{kind:'pan'|'brush'|'rect';x0:number;y0:number;v0:View;last:number;ids:Set<number>;add:boolean}|null>(null);
   const rect=useRef<{c0:number;r0:number;c1:number;r1:number}|null>(null);
   const raf=useRef(0),viewRef=useRef(view);viewRef.current=view;
+  const auto=useRef(true);   // 사람이 확대 · 이동하기 전에는 창 크기가 바뀌면 다시 맞춤(좁은 창에서 맵이 잘리던 것)
+  if(!view)auto.current=true;
   // 비트맵(Die = 픽셀 1개): 자료가 바뀌면 통째로 한 번 putImageData(100만 Die ≈ 수 ms).
   useEffect(()=>{const c=bmp.current||(bmp.current=document.createElement('canvas'));c.width=model.cc;c.height=model.rc;
     c.getContext('2d')!.putImageData(new ImageData(model.pix,model.cc,model.rc),0,0);draw();},[model,version]);// eslint-disable-line react-hooks/exhaustive-deps
@@ -82,7 +86,9 @@ function MapCanvas({model,version,view,onView,mode,tool='brush',sel,selVersion=0
     const px=new Uint8ClampedArray(sel.length*4);for(let i=0;i<sel.length;i++)if(sel[i]){px[i*4]=37;px[i*4+1]=99;px[i*4+2]=235;px[i*4+3]=150;}
     c.getContext('2d')!.putImageData(new ImageData(px,model.cc,model.rc),0,0);draw();},[model,sel,selVersion]);// eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>{const el=box.current;if(!el)return;const ro=new ResizeObserver(()=>setSize({w:el.clientWidth,h:el.clientHeight}));ro.observe(el);return()=>ro.disconnect();},[]);
-  useEffect(()=>{if(size.w&&!view)onView(fitView(model,size.w,size.h));draw();},[size,view]);// eslint-disable-line react-hooks/exhaustive-deps
+  // 창 크기가 바뀌면(사람이 확대 · 이동하기 전) 다시 맞춤 · 보기가 바뀌면 그리기만(두 맵이 같은 보기를 쓰는 비교 화면에서 되돌리지 않게)
+  useEffect(()=>{if(size.w&&(!viewRef.current||auto.current))onView(fitView(model,size.w,size.h));},[size]);// eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(size.w&&!view)onView(fitView(model,size.w,size.h));draw();},[view]);// eslint-disable-line react-hooks/exhaustive-deps// eslint-disable-line react-hooks/exhaustive-deps
 
   function draw(){cancelAnimationFrame(raf.current);raf.current=requestAnimationFrame(paint);}
   function paint(){
@@ -122,7 +128,7 @@ function MapCanvas({model,version,view,onView,mode,tool='brush',sel,selVersion=0
   // 휠 = 확대 · 축소(편집 · 이동 모드 모두, 소유자 #91 10번) — 마우스 자리를 중심으로.
   useEffect(()=>{const c=cv.current;if(!c)return;const wheel=(e:WheelEvent)=>{e.preventDefault();const v=viewRef.current;if(!v)return;
     const {px,py}=at(e),fit=fitView(model,size.w,size.h).s,k=Math.exp(-e.deltaY*0.0015);
-    const s=Math.max(fit*0.5,Math.min(80,v.s*k));onView({s,x:px-(px-v.x)*s/v.s,y:py-(py-v.y)*s/v.s});};
+    const s=Math.max(fit*0.5,Math.min(80,v.s*k));auto.current=false;onView({s,x:px-(px-v.x)*s/v.s,y:py-(py-v.y)*s/v.s});};
     c.addEventListener('wheel',wheel,{passive:false});return()=>c.removeEventListener('wheel',wheel);},[model,size,onView]);// eslint-disable-line react-hooks/exhaustive-deps
 
   function line(a:number,b:number,ids:Set<number>){   // 끌기 사이 Die 를 빠짐없이(빠르게 움직여도)
@@ -142,7 +148,7 @@ function MapCanvas({model,version,view,onView,mode,tool='brush',sel,selVersion=0
   }
   function move(e:React.PointerEvent){
     const p=at(e),d=drag.current;
-    if(d?.kind==='pan'){onView({...d.v0,x:d.v0.x+p.px-d.x0,y:d.v0.y+p.py-d.y0});return;}
+    if(d?.kind==='pan'){auto.current=false;onView({...d.v0,x:d.v0.x+p.px-d.x0,y:d.v0.y+p.py-d.y0});return;}
     if(d?.kind==='rect'&&rect.current){rect.current.c1=Math.max(0,Math.min(model.cc-1,p.col));rect.current.r1=Math.max(0,Math.min(model.rc-1,p.row));draw();}
     if(d?.kind==='brush'&&inside(p.col,p.row)){const i=p.row*model.cc+p.col;if(i!==d.last){if(d.last>=0)line(d.last,i,d.ids);else if(!model.locked(i))d.ids.add(i);d.last=i;onPick?.([...d.ids],d.add);}}
     const h=inside(p.col,p.row)?{i:p.row*model.cc+p.col,col:p.col,row:p.row}:null;
@@ -198,7 +204,7 @@ async function pngB64(c:HTMLCanvasElement){const buf=new Uint8Array(await (await
 
 /* ------------------------------------------------------------------ 편집 화면 */
 type Step={idx:Int32Array;from:Uint16Array;to:Uint16Array};
-function Editor({opened,table,onBack,onSaved}:{opened:Opened;table:Table;onBack:()=>void;onSaved:(m:MapModel,s:Saved,label:Label)=>void}){
+function Editor({opened,table,onBack,onSaved}:{opened:Opened;table:Table;onBack:()=>void;onSaved:(m:MapModel,s:Saved)=>void}){
   const model=useMemo(()=>new MapModel(opened,table),[opened,table]);
   const [version,setVersion]=useState(0),[view,setView]=useState<View|null>(null);
   const [mode,setMode]=useState<'edit'|'move'>('edit'),[tool,setTool]=useState<Tool>('brush');
@@ -208,7 +214,7 @@ function Editor({opened,table,onBack,onSaved}:{opened:Opened;table:Table;onBack:
   const base=useRef<number[]>([]);                 // Ctrl 없이 끌기 시작 = 새 선택, Ctrl/Shift = 더함
   const [extra,setExtra]=useState<string[]>([]),[newCode,setNewCode]=useState(''),[filter,setFilter]=useState('');
   const [saving,setSaving]=useState(false),[showSave,setShowSave]=useState(false);
-  const [label,setLabel]=useState<Label>('code'),[fname,setFname]=useState(opened.default_name),[where,setWhere]=useState<'source'|'custom'>('source'),[folder,setFolder]=useState('');
+  const [labels,setLabels]=useState<Label[]>(['code']),[last,setLast]=useState(''),[fname,setFname]=useState(opened.default_name),[where,setWhere]=useState<'source'|'custom'>('source'),[folder,setFolder]=useState('');
 
   const pick=useCallback((ids:number[],add:boolean)=>{
     sel.fill(0);for(const i of (add?base.current:[]))sel[i]=1;for(const i of ids)sel[i]=1;
@@ -223,7 +229,7 @@ function Editor({opened,table,onBack,onSaved}:{opened:Opened;table:Table;onBack:
     const k=model.index(code),ids:number[]=[];for(let i=0;i<sel.length;i++)if(sel[i]&&model.grid[i]!==k&&!model.locked(i))ids.push(i);
     if(ids.length){const st:Step={idx:Int32Array.from(ids),from:Uint16Array.from(ids,i=>model.grid[i]),to:new Uint16Array(ids.length).fill(k)};
       for(const i of ids)model.set(i,k);undo.current.push(st);if(undo.current.length>300)undo.current.shift();redo.current=[];setVersion(v=>v+1);}
-    notify(`Die ${selN}개를 Bin ${code} 로 바꿨습니다.`,'ok');clearSel();
+    setLast(`Die ${ids.length.toLocaleString()}개 → Bin ${code}`);clearSel();   // 알림 대신 아래 줄(바꿀 때마다 알림이 쌓였다)
   }
   function stepBack(from:Step[],to:Step[],back:boolean){const st=from.pop();if(!st)return;
     for(let n=0;n<st.idx.length;n++)model.set(st.idx[n],back?st.from[n]:st.to[n]);to.push(st);setVersion(v=>v+1);bump(x=>x+1);}
@@ -237,7 +243,7 @@ function Editor({opened,table,onBack,onSaved}:{opened:Opened;table:Table;onBack:
   function addCode(){let c=newCode.trim().toUpperCase();if(/^\d{1,2}$/.test(c))c=c.padStart(3,'0');
     if(!/^[0-9A-Z]{1,8}$/.test(c))return notify('새 코드는 영문 · 숫자 1 ~ 8 자로 쓰세요 (숫자 1 ~ 2 자리는 앞에 0 을 붙입니다).','error');
     if(c===OUT)return notify('___ 는 웨이퍼 밖 표시라 쓸 수 없습니다.','error');
-    if(!list.some(x=>x.code===c))setExtra(x=>[...x,c]);setNewCode('');notify(`Bin ${c} 를 리스트에 넣었습니다.`,'ok');}
+    if(!list.some(x=>x.code===c))setExtra(x=>[...x,c]);setNewCode('');setFilter('');setLast(`Bin ${c} 를 리스트에 넣음`);}
   const list=useMemo(()=>{const known=table.codes.map(c=>({code:c.code,name:c.name,color:c.color}));
     const more=[...model.palette.filter(c=>c!==OUT),...extra].filter((c,i,a)=>a.indexOf(c)===i&&!known.some(k=>k.code===c))
       .map(c=>({code:c,name:'목록에 없는 코드',color:table.unknown}));return [...known,...more];},[table,model,extra,version]);// eslint-disable-line react-hooks/exhaustive-deps
@@ -247,37 +253,41 @@ function Editor({opened,table,onBack,onSaved}:{opened:Opened;table:Table;onBack:
 
   async function save(overwrite=false){
     if(where==='custom'&&!folder.trim())return notify('저장 폴더를 고르세요.','error');
+    if(!labels.length)return notify('맵 그림 범례를 하나 이상 고르세요.','error');
     setSaving(true);
     try{const g=model.encode();
-      const r=(await desktop.request('wm_edit_save',{id:opened.id,...g,folder:where==='custom'?folder.trim():'',name:fname,label,overwrite}).promise).wafermap as Saved&{exists?:string};
+      const r=(await desktop.request('wm_edit_save',{id:opened.id,...g,folder:where==='custom'?folder.trim():'',name:fname,labels,overwrite}).promise).wafermap as Saved&{exists?:string};
       if(r.exists){setSaving(false);if(window.confirm(`같은 이름의 파일이 있습니다.\n${r.exists}\n\n덮어쓸까요?`))return save(true);return;}
       await fontsReady();
-      await desktop.request('wm_edit_image',{id:opened.id,data:await pngB64(renderPng(model,table,opened.wafer,label))}).promise;
-      notify(`저장했습니다: ${r.txt}`,'ok');onSaved(model,r,label);
+      for(const k of labels)await desktop.request('wm_edit_image',{id:opened.id,kind:k,data:await pngB64(renderPng(model,table,opened.wafer,k))}).promise;
+      notify(`저장했습니다: ${r.txt}`,'ok');onSaved(model,r);
     }catch(e){fail(e);}finally{setSaving(false);}
   }
   const leave=()=>{if(model.changed&&!window.confirm(`저장하지 않은 수정(Die ${model.changed}개)이 있습니다. 버리고 목록으로 갈까요?`))return;onBack();};
 
   return <div className="wme">
-    <div className="wme-top">
-      <div className="wme-title"><b>{opened.wafer}</b><span>{opened.name} · {opened.col_count} × {opened.row_count} · Die {(model.grid.length-model.count(OUT)).toLocaleString()}개</span></div>
-      <div className="wme-tools" role="toolbar" aria-label="맵 도구">
-        <div className="wme-seg" role="radiogroup" aria-label="모드">
-          <button type="button" role="radio" aria-checked={mode==='edit'} className={mode==='edit'?'on':''} title="편집 모드: Die 를 골라 Bin Code 를 바꿉니다" onClick={()=>setMode('edit')}>✏️ 편집</button>
-          <button type="button" role="radio" aria-checked={mode==='move'} className={mode==='move'?'on':''} title="이동 모드: 끌어서 이동, 휠로 확대 (Die 는 안 눌림)" onClick={()=>setMode('move')}>✋ 이동</button>
-        </div>
-        {mode==='edit'&&<div className="wme-seg" role="radiogroup" aria-label="고르기 방식">
-          <button type="button" role="radio" aria-checked={tool==='brush'} className={tool==='brush'?'on':''} title="클릭 = Die 하나, 끌기 = 지나간 Die 모두" onClick={()=>setTool('brush')}>🖌 클릭 · 끌기</button>
-          <button type="button" role="radio" aria-checked={tool==='rect'} className={tool==='rect'?'on':''} title="끌어서 사각형 안 Die 모두" onClick={()=>setTool('rect')}>⬚ 사각형</button>
-        </div>}
-        <button type="button" disabled={!selN} onClick={clearSel} title="Esc">선택 해제</button>
-        <button type="button" disabled={!undo.current.length} onClick={doUndo} title="Ctrl+Z">↶ 되돌리기</button>
-        <button type="button" disabled={!redo.current.length} onClick={doRedo} title="Ctrl+Y">↷ 다시 하기</button>
-        <button type="button" onClick={()=>setView(null)} title="맵 전체가 보이게">⤢ 전체 보기</button>
-        <span className="wme-gap"/>
+    <header className="wme-head">
+      <div className="wme-title"><h3>{opened.wafer}</h3><p>{opened.name} · {opened.col_count} × {opened.row_count} · Die {(model.grid.length-model.count(OUT)).toLocaleString()}개</p></div>
+      <div className="wme-actions">
         <button type="button" onClick={leave}>◀ 목록으로</button>
         <button type="button" className="primary" disabled={saving} onClick={()=>setShowSave(true)}>💾 저장</button>
       </div>
+    </header>
+    <div className="wme-bar" role="toolbar" aria-label="맵 도구">
+      <div className="wme-seg" role="radiogroup" aria-label="모드">
+        <button type="button" role="radio" aria-checked={mode==='edit'} className={mode==='edit'?'on':''} title="편집 모드: Die 를 골라 Bin Code 를 바꿉니다" onClick={()=>setMode('edit')}>✏️ 편집</button>
+        <button type="button" role="radio" aria-checked={mode==='move'} className={mode==='move'?'on':''} title="이동 모드: 끌어서 이동, 휠로 확대 (Die 는 안 눌림)" onClick={()=>setMode('move')}>✋ 이동</button>
+      </div>
+      <div className="wme-seg" role="radiogroup" aria-label="고르기 방식">
+        <button type="button" role="radio" aria-checked={tool==='brush'} className={tool==='brush'?'on':''} disabled={mode!=='edit'} title="클릭 = Die 하나, 끌기 = 지나간 Die 모두" onClick={()=>setTool('brush')}>🖌 클릭 · 끌기</button>
+        <button type="button" role="radio" aria-checked={tool==='rect'} className={tool==='rect'?'on':''} disabled={mode!=='edit'} title="끌어서 사각형 안 Die 모두" onClick={()=>setTool('rect')}>⬚ 사각형</button>
+      </div>
+      <span className="wme-sep" aria-hidden="true"/>
+      <button type="button" className="wme-tb" disabled={!selN} onClick={clearSel} title="Esc">선택 해제</button>
+      <button type="button" className="wme-tb" disabled={!undo.current.length} onClick={doUndo} title="Ctrl+Z">↶ 되돌리기</button>
+      <button type="button" className="wme-tb" disabled={!redo.current.length} onClick={doRedo} title="Ctrl+Y">↷ 다시 하기</button>
+      <button type="button" className="wme-tb" onClick={()=>setView(null)} title="맵 전체가 보이게">⤢ 전체 보기</button>
+      <span className="wme-zoom">확대 {view?Math.round(view.s*100)/100:'-'} px/Die</span>
     </div>
     <div className="wme-body">
       <MapCanvas model={model} version={version} view={view} onView={setView} mode={mode} tool={tool} sel={sel} selVersion={selV}
@@ -294,25 +304,31 @@ function Editor({opened,table,onBack,onSaved}:{opened:Opened;table:Table;onBack:
     </div>
     <div className="wme-status" role="status" aria-label="Die 정보">
       <span className="wme-hover">{hover?<>Col <b>{hover.col}</b> · Row <b>{model.rc-1-hover.row}</b> · Bin <b>{hcode}</b> ({name(table,hcode)}){model.locked(hover.i)?' — 편집 안 됨':''}</>:'맵 위에 마우스를 올리면 Die 좌표 · Bin Code 가 보입니다.'}</span>
-      <span>선택 {selN.toLocaleString()} · 바뀐 Die <b>{model.changed.toLocaleString()}</b> · 확대 {view?Math.round(view.s*100)/100:'-'} px/Die</span>
+      <span className="wme-counts">{last&&<em>{last}</em>}선택 {selN.toLocaleString()} · 바뀐 Die <b>{model.changed.toLocaleString()}</b></span>
     </div>
     {showSave&&<div className="wm-viewer" role="dialog" aria-label="저장" onClick={()=>!saving&&setShowSave(false)}>
       <div className="wm-viewer-box wme-save" onClick={e=>e.stopPropagation()}>
-        <div className="wm-viewer-top"><b>수정한 맵 저장</b><button disabled={saving} onClick={()=>setShowSave(false)}>닫기 ✕</button></div>
-        <div className="wme-save-body">
-          <p className="hint">고친 TXT 와 맵 그림(PNG)을 저장합니다. 원본 TXT 는 바뀌지 않습니다. 바뀐 Die: <b>{model.changed.toLocaleString()}</b>개</p>
-          <fieldset><legend>맵 그림 범례</legend>
-            <label><input type="radio" name="wme-label" checked={label==='code'} onChange={()=>setLabel('code')}/> Bin Code 만 (예: Bin 003)</label>
-            <label><input type="radio" name="wme-label" checked={label==='meaning'} onChange={()=>setLabel('meaning')}/> Bin Code + Defect 이름 (예: Bin 003 · Metal Residue)</label></fieldset>
-          <label className="field">저장 이름 (.txt 없이)<input aria-label="저장 이름" value={fname} onChange={e=>setFname(e.target.value)}/></label>
-          <fieldset><legend>저장 위치</legend>
-            <label><input type="radio" name="wme-where" checked={where==='source'} onChange={()=>setWhere('source')}/> 원본 TXT 와 같은 폴더 <code>{opened.folder}</code></label>
-            <label><input type="radio" name="wme-where" checked={where==='custom'} onChange={()=>setWhere('custom')}/> 다른 폴더</label>
-            {where==='custom'&&<div className="form-filter"><input aria-label="저장 폴더" style={{flex:1}} placeholder="폴더 경로" value={folder} onChange={e=>setFolder(e.target.value)}/>
-              <button type="button" onClick={()=>void pickFolder().then(p=>{if(p)setFolder(p);})}>📁 찾아보기…</button></div>}</fieldset>
-          <p className="hint">만들 파일: <code>{fname.trim()||'(이름)'}.txt</code> · <code>{fname.trim()||'(이름)'}_{label==='code'?'BinCode_Map':'BinMeaning_Map'}.png</code></p>
-          <div className="toolbar"><button className="primary" disabled={saving||!fname.trim()} onClick={()=>void save()}>{saving?'저장 중…':'💾 저장'}</button></div>
-        </div></div></div>}
+        <div className="wme-dlg-h"><div><h3>수정한 맵 저장</h3><p>원본 TXT 는 바뀌지 않습니다 · 바뀐 Die <b>{model.changed.toLocaleString()}</b>개</p></div>
+          <button type="button" className="wme-x" aria-label="닫기" disabled={saving} onClick={()=>setShowSave(false)}>✕</button></div>
+        <div className="wme-dlg-b">
+          <div className="wme-group"><span className="wme-label">맵 그림 범례 <small>(하나 이상 · 둘 다 고르면 그림 2장)</small></span>
+            {(['code','meaning'] as Label[]).map(k=><label key={k} className={'wme-opt'+(labels.includes(k)?' on':'')}>
+              <input type="checkbox" checked={labels.includes(k)} onChange={e=>setLabels(x=>e.target.checked?(['code','meaning'] as Label[]).filter(y=>y===k||x.includes(y)):x.filter(y=>y!==k))}/>
+              <span><b>{LABEL_TEXT[k]}</b><small>{k==='code'?'예: Bin 003':'예: Bin 003 · Metal Residue'}</small></span></label>)}</div>
+          <label className="field wme-group"><span className="wme-label">저장 이름 <small>(.txt 없이)</small></span><input aria-label="저장 이름" value={fname} onChange={e=>setFname(e.target.value)}/></label>
+          <div className="wme-group"><span className="wme-label">저장 위치</span>
+            <label className={'wme-opt'+(where==='source'?' on':'')}><input type="radio" name="wme-where" checked={where==='source'} onChange={()=>setWhere('source')}/>
+              <span><b>원본 TXT 와 같은 폴더</b><small className="wme-path" title={opened.folder}>{opened.folder}</small></span></label>
+            <label className={'wme-opt'+(where==='custom'?' on':'')}><input type="radio" name="wme-where" checked={where==='custom'} onChange={()=>setWhere('custom')}/>
+              <span><b>다른 폴더</b></span></label>
+            {where==='custom'&&<div className="wme-row"><input aria-label="저장 폴더" placeholder="폴더 경로" value={folder} onChange={e=>setFolder(e.target.value)}/>
+              <button type="button" onClick={()=>void pickFolder().then(p=>{if(p)setFolder(p);})}>📁 찾아보기…</button></div>}</div>
+          <div className="wme-files"><span className="wme-label">만들 파일</span>
+            {[`${fname.trim()||'(이름)'}.txt`,...labels.map(k=>`${fname.trim()||'(이름)'}_${LABEL_FILE[k]}.png`)].map(f=><code key={f}>{f}</code>)}</div>
+        </div>
+        <div className="wme-dlg-f"><button type="button" disabled={saving} onClick={()=>setShowSave(false)}>취소</button>
+          <button type="button" className="primary" disabled={saving||!fname.trim()||!labels.length} onClick={()=>void save()}>{saving?'저장 중…':'💾 저장'}</button></div>
+      </div></div>}
   </div>;
 }
 
@@ -325,10 +341,12 @@ function Compare({edited,opened,saved,table,onHome}:{edited:MapModel;opened:Open
     return [...m.entries()].sort((a,b)=>b[1]-a[1]);},[edited,mark]);
   const info=(m:MapModel)=>hover?<>Col <b>{hover.col}</b> · Row <b>{m.rc-1-hover.row}</b> · Bin <b>{m.code(hover.i)}</b> ({name(table,m.code(hover.i))})</>:'\u00a0';
   return <div className="wme">
-    <div className="wme-top"><div className="wme-title"><b>{opened.wafer} — 저장 완료</b><span>바뀐 Die {mark.length.toLocaleString()}개 · 두 맵은 확대 · 이동이 같이 움직입니다</span></div>
-      <div className="wme-tools"><button type="button" onClick={()=>setView(null)}>⤢ 전체 보기</button><span className="wme-gap"/>
+    <header className="wme-head">
+      <div className="wme-title"><h3>{opened.wafer} — 저장 완료</h3><p>바뀐 Die {mark.length.toLocaleString()}개 · 두 맵은 확대 · 이동이 같이 움직입니다</p></div>
+      <div className="wme-actions"><button type="button" className="wme-tb" onClick={()=>setView(null)}>⤢ 전체 보기</button>
         <button type="button" onClick={()=>void openPath(saved.folder)}>📂 저장 폴더 열기</button>
-        <button type="button" className="primary" onClick={onHome}>처음 화면으로</button></div></div>
+        <button type="button" className="primary" onClick={onHome}>처음 화면으로</button></div>
+    </header>
     <div className="wme-compare">
       <figure><figcaption>원래 맵 <code>{opened.name}</code></figcaption>
         <MapCanvas model={orig} version={0} view={view} onView={setView} mode="view" onHover={setHover} mark={mark} label="원래 맵"/><p className="wme-mini">{info(orig)}</p></figure>
@@ -338,9 +356,10 @@ function Compare({edited,opened,saved,table,onHome}:{edited:MapModel;opened:Open
     <div className="wme-sum">
       <table className="tbl t-compact" aria-label="바뀐 Die 요약"><thead><tr><th>바뀐 코드 (원래 → 수정)</th><th>Die 수</th></tr></thead>
         <tbody>{pairs.length?pairs.map(([k,v])=><tr key={k}><td><code>{k}</code></td><td>{v.toLocaleString()}</td></tr>):<tr><td colSpan={2}>바뀐 Die 가 없습니다 (원본과 같은 내용으로 저장).</td></tr>}</tbody></table>
-      <table className="tbl t-compact" aria-label="저장 파일"><tbody>
-        <tr><th>TXT</th><td><code>{saved.txt}</code> <button type="button" onClick={()=>void openPath(saved.txt,true)}>폴더에서 보기</button></td></tr>
-        <tr><th>맵 그림</th><td><code>{saved.png}</code> <button type="button" onClick={()=>void openPath(saved.png)}>열기</button></td></tr></tbody></table>
+      <table className="tbl t-compact wme-saved" aria-label="저장 파일"><tbody>
+        <tr><th>TXT</th><td><code title={saved.txt}>{saved.txt}</code></td><td><button type="button" className="wme-tb" onClick={()=>void openPath(saved.txt,true)}>폴더에서 보기</button></td></tr>
+        {Object.entries(saved.pngs).map(([k,p])=><tr key={k}><th>맵 그림 <small>{LABEL_TEXT[k as Label]}</small></th><td><code title={p}>{p}</code></td>
+          <td><button type="button" className="wme-tb" onClick={()=>void openPath(p)}>열기</button></td></tr>)}</tbody></table>
     </div>
   </div>;
 }
@@ -375,13 +394,13 @@ export function WaferMap(){
 
   const items=(scan?.items||[]).filter(i=>!find.trim()||find.trim().toLowerCase().split(/\s+/).every(w=>(i.wafer+' '+i.relative+' '+i.lot+' '+i.device).toLowerCase().includes(w)));
   return <section className="panel wm-panel">
-    <div className="section-heading"><div><span className="step">WAFER MAP</span><h2>Wafer Map 수정하기</h2></div>
-      <span className="count">{screen==='pick'?'원본 읽기 전용':screen==='list'?`맵 ${scan?.valid||0}개`:opened?.wafer}</span></div>
+    {(screen==='pick'||screen==='list')&&<div className="section-heading"><div><span className="step">WAFER MAP</span><h2>Wafer Map 수정하기</h2></div>
+      <span className="count">{screen==='pick'?'원본 읽기 전용':`맵 ${scan?.valid||0}개`}</span></div>}
     {screen==='pick'&&<>
       <p className="hint">Wafer Map TXT 가 있는 폴더를 고르면 하위 폴더까지 모두 찾습니다. 맵을 하나씩 열어 Die 의 Bin Code 를 고치고 새 TXT + 맵 그림으로 저장합니다.
         원본 TXT 는 읽기만 합니다. 장비 공유 폴더는 탐색기(Win+R → <code>\\IP\c$</code>)로 먼저 연결해야 보입니다.</p>
-      <div className="form-filter">
-        <label className="field" style={{flex:1}}>폴더 경로<input aria-label="폴더 경로" value={root} onChange={e=>setRoot(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void doScan();}} placeholder="예: D:\WaferMaps\LOT01"/></label>
+      <div className="wme-pickrow">
+        <label className="field">폴더 경로<input aria-label="폴더 경로" value={root} onChange={e=>setRoot(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void doScan();}} placeholder="예: D:\WaferMaps\LOT01"/></label>
         <button disabled={busy} onClick={()=>void pickFolder().then(p=>{if(p)setRoot(p);})}>📁 찾아보기…</button>
         <button className="primary" disabled={busy||!root.trim()} onClick={()=>void doScan()}>{busy?'찾는 중…':'맵 찾기'}</button>
       </div>
@@ -389,17 +408,18 @@ export function WaferMap(){
         <button onClick={()=>void desktop.request('wm_reset').promise.catch(()=>undefined)}>검색 취소</button></p>}
     </>}
     {screen==='list'&&scan&&<>
-      <div className="form-filter">
-        <p className="hint" style={{flex:1,margin:0}}>폴더 <code>{scan.root}</code> — 고칠 맵의 [열기] 를 누르세요. 저장한 맵은 ✓ 로 표시됩니다.</p>
-        <input aria-label="맵 찾기" placeholder="🔍 Wafer · 위치 찾기" value={find} onChange={e=>setFind(e.target.value)}/>
-        <button onClick={restart}>⟲ 새로 시작하기</button>
+      <div className="wme-listbar">
+        <p className="hint" title={scan.root}>폴더 <code>{scan.root}</code></p>
+        <input className="wme-search" aria-label="맵 찾기" placeholder="🔍 Wafer · 위치 찾기" value={find} onChange={e=>setFind(e.target.value)}/>
+        <button type="button" onClick={restart}>⟲ 새로 시작하기</button>
       </div>
-      <div className="table-scroll" style={{maxHeight:'calc(100vh - 300px)'}}><table className="tbl" aria-label="맵 목록"><thead><tr><th>Wafer</th><th>크기</th><th>Bin (수량)</th><th>위치</th><th>저장</th><th/></tr></thead>
+      <p className="hint wme-listhint">고칠 맵의 [열기] 를 누르거나 줄을 두 번 누르세요. 저장한 맵은 ✓ 로 표시됩니다.</p>
+      <div className="table-scroll wme-list" style={{maxHeight:'calc(100vh - 330px)'}}><table className="tbl" aria-label="맵 목록"><thead><tr><th>Wafer</th><th>크기</th><th>Bin (수량)</th><th>위치</th><th>저장</th><th/></tr></thead>
         <tbody>{items.map(i=><tr key={i.id} className={i.valid?'':'dim'} onDoubleClick={()=>void open(i)}>
           <td><b>{i.wafer}</b></td><td>{i.valid?i.size:<span className="warn">오류</span>}</td>
-          <td>{i.valid?(Object.keys(i.bins).length?Object.entries(i.bins).map(([k,v])=>`${k}:${v}`).join('  '):'불량 없음'):<span className="hint">{i.error}</span>}</td>
+          <td className="wme-bins">{i.valid?(Object.keys(i.bins).length?Object.entries(i.bins).map(([k,v])=><span key={k}><b>{k}</b> {v.toLocaleString()}</span>):'불량 없음'):<span className="hint">{i.error}</span>}</td>
           <td><code>{i.relative}</code></td><td>{saved[i.id]?<span className="st-on" title={saved[i.id].txt}>✓ {saved[i.id].txt.split(/[\\/]/).pop()}</span>:''}</td>
-          <td><button type="button" disabled={!i.valid||busy} onClick={()=>void open(i)}>{busy?'…':'열기'}</button></td></tr>)}</tbody></table></div>
+          <td className="wme-open"><button type="button" className="wme-tb" disabled={!i.valid||busy} onClick={()=>void open(i)}>{busy?'…':'열기'}</button></td></tr>)}</tbody></table></div>
     </>}
     {screen==='edit'&&opened&&<Editor key={opened.id+':'+opened.path} opened={opened} table={table} onBack={()=>setScreen('list')}
       onSaved={(model,s)=>{setSaved(x=>({...x,[opened.id]:s}));setDone({model,saved:s});setScreen('done');}}/>}

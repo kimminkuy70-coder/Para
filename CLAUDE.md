@@ -22,7 +22,11 @@
   리스트 = 전체 `DEFECT_CODES`(이름만, 한글 뜻 없음) + 맵에만 있는 코드 + 새 코드 입력, 코드 옆 개수, 되돌리기 Ctrl+Z · 다시 하기 Ctrl+Y, 휠 확대 = 두 모드, 이동 모드 = 끌어 이동 · 클릭 안 됨, 아래 = Col(왼쪽 0) · Row(아래 0) · Bin.
   저장 = 그림 범례 [Bin Code 만 | Bin Code + Defect 이름] · 이름(기본 `<원본>_Edited`) · 위치(기본 원본 폴더) → `<이름>.txt` + `<이름>_BinCode_Map.png` / `_BinMeaning_Map.png`.
   주고받기 = `wafermap.encode_grid`(코드 표 + Die 번호 1~2 바이트 base64, 100만 Die ≈ 1.3 MB, 4 MB IPC 안 = 약 150만 Die 까지), 저장 = `write_edited`(**원본에서 바뀐 토큰만 바꿈** — 안 고친 맵 = 바이트 같음, 원본 이름 덮어쓰기 금지, `___` 잠금은 엔진도 검사).
-  IPC `wm_open` · `wm_edit_save` · `wm_edit_image`. 시험 `tests/test_wafermap.py` EditorTests + `tools/test_wafermap_editor.mjs`(화면 · 4만/100만 Die 시간).
+  IPC `wm_open` · `wm_edit_save`(`labels` = ['code'] · ['meaning'] · 둘 다) · `wm_edit_image`(`kind`). 시험 `tests/test_wafermap.py` EditorTests + `tools/test_wafermap_editor.mjs`(화면 · 4만/100만 Die 시간, `PARA_WM_SHOTS=폴더` = 화면마다 1440 · 1100 스크린샷).
+  **후속(소유자 08:15)**: 저장 그림 범례 = **체크 2개 — 둘 다 고를 수 있음**(그림 2장, 하나 이상). 디자인 = `docs/design/AOI_Manager_디자인_시안.html` 기준 정리(`styles.css` 끝 `.wme*` 층):
+  편집 · 비교 화면은 카드 머리(`.wme-head` = 제목 · 설명 + 주 동작) 한 줄 + 도구 줄(`.wme-bar`, 줄바꿈 없음 · 좁으면 가로 밀림) · 묶음 선택 = 시안 `.seg` · 작은 단추 32px(`.wme-tb`) · 주 단추 38px,
+  저장 창 = 시안 `.dlg`(머리 · 몸 · 오른쪽 아래 [취소][저장]), 선택지 = 칸(`.wme-opt`), 목록 = 한 줄 도구(경로 … · 찾기 300px · 새로 시작하기) · 칸 가운데 맞춤, 코드를 바꿀 때 알림 대신 아래 줄 표시,
+  창 크기가 바뀌면 사람이 확대 · 이동하기 전까지 맵을 다시 맞춤. 전 · 후 스크린샷 = `docs/design/wafermap_91/`.
 
 - **v14.4.3(#90, 2026-11-24)**: 프로그램 화면에 GitHub 글자를 쓰지 않는다(소유자: GitHub 을 쓰는 것을 밝히지 말 것). 설정 > 정보에 업데이트 구역 없음 — 업데이트는 시작 알림 창만. 새 화면 글 · 오류 글에도 GitHub · github.com 을 넣지 말 것.
 
