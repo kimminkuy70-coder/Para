@@ -501,3 +501,114 @@ def png_size(data: bytes):
     if data[:8] != b'\x89PNG\r\n\x1a\n' or data[12:16] != b'IHDR':
         return None
     return int.from_bytes(data[16:20], 'big'), int.from_bytes(data[20:24], 'big')
+
+
+# ---------------------------------------------------------------- 맵 편집기(#91, 2026-11-27)
+# 화면(WaferMap.tsx 편집기)이 TXT 의 RowData 를 직접 그리고 고친다(Excel 을 거치지 않음). 4만 ~ 100만 Die 를
+# 4 MB IPC 한 번에 보내도록 맵은 '코드 표 + Die 마다 코드 번호(1 또는 2 바이트) base64' 로 주고받는다.
+# 저장은 원본 TXT 를 다시 읽어 **바뀐 Die 토큰만** 바꾼다 — 헤더 · 빈 줄 · 줄바꿈 · BOM · 토큰 사이 공백이 그대로라
+# 손대지 않은 맵은 원본과 바이트가 같다. 웨이퍼 밖(`___`)은 편집 금지(소유자 #91 7번): 바꾸거나 새로 만들 수 없다.
+OUTSIDE = '___'
+EDIT_CODE_MAX = 8
+MAX_GRID_TEXT = 3_900_000       # base64 길이 한도(4 MB IPC 프레임 안)
+
+
+def valid_code(code):
+    """편집기에서 쓸 수 있는 Bin Code: 영문 · 숫자 1 ~ 8 자(`___` 아님)."""
+    return isinstance(code, str) and 0 < len(code) <= EDIT_CODE_MAX and code.isascii() and code.isalnum()
+
+
+def encode_grid(rows):
+    """rows → {codes, width, grid}. grid = Die 마다 codes 의 번호(행 순서, width 바이트, little endian) base64."""
+    import base64
+    codes, index = [], {}
+    for r in rows:
+        for x in r:
+            if x not in index:
+                index[x] = len(codes)
+                codes.append(x)
+    width = 1 if len(codes) <= 256 else 2
+    if len(codes) > 65536:
+        raise ValueError('Bin Code 종류가 너무 많습니다(65536 개 초과)')
+    buf = bytearray(sum(len(r) for r in rows) * width)
+    i = 0
+    if width == 1:
+        for r in rows:
+            for x in r:
+                buf[i] = index[x]
+                i += 1
+    else:
+        for r in rows:
+            for x in r:
+                n = index[x]
+                buf[i] = n & 0xFF
+                buf[i + 1] = n >> 8
+                i += 2
+    return {'codes': codes, 'width': width, 'grid': base64.b64encode(bytes(buf)).decode('ascii')}
+
+
+def decode_grid(codes, grid, width, row_count, col_count):
+    """encode_grid 의 반대(화면이 보낸 편집 결과). 모양 · 번호 범위를 확인한다."""
+    import base64
+    import binascii
+    if width not in (1, 2) or not isinstance(codes, list) or not codes or len(codes) > 65536:
+        raise ValueError('맵 데이터 형식을 확인하세요')
+    if not isinstance(grid, str) or len(grid) > MAX_GRID_TEXT:
+        raise ValueError('맵 데이터가 너무 큽니다')
+    try:
+        raw = base64.b64decode(grid, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError('맵 데이터 형식을 확인하세요') from exc
+    if len(raw) != row_count * col_count * width:
+        raise ValueError('맵 크기가 원본과 다릅니다')
+    if width == 2:
+        nums = [raw[i] | (raw[i + 1] << 8) for i in range(0, len(raw), 2)]
+    else:
+        nums = raw
+    if max(nums, default=0) >= len(codes):
+        raise ValueError('맵 데이터의 Bin Code 번호를 확인하세요')
+    return [[codes[n] for n in nums[r * col_count:(r + 1) * col_count]] for r in range(row_count)]
+
+
+def check_edit(orig_rows, new_rows):
+    """편집 규칙: 모양 같음 · `___` 칸은 그대로 · 새 `___` 없음 · 바뀐 코드는 valid_code. → 바뀐 Die 수."""
+    if len(orig_rows) != len(new_rows) or any(len(a) != len(b) for a, b in zip(orig_rows, new_rows)):
+        raise ValueError('맵 크기가 원본과 다릅니다')
+    changed = 0
+    for r, (a, b) in enumerate(zip(orig_rows, new_rows)):
+        for c, (x, y) in enumerate(zip(a, b)):
+            if x == y:
+                continue
+            if x == OUTSIDE or y == OUTSIDE:
+                raise ValueError(f'웨이퍼 밖(___) 칸은 바꿀 수 없습니다 (Row {len(orig_rows) - 1 - r}, Col {c})')
+            if not valid_code(y):
+                raise ValueError(f'Bin Code 를 확인하세요: {y!r} (영문 · 숫자 1 ~ {EDIT_CODE_MAX} 자)')
+            changed += 1
+    return changed
+
+
+def write_edited(src, out, rows):
+    """원본 TXT 에서 RowData 토큰만 rows 로 바꿔 out 에 쓴다(원본 인코딩 · 줄바꿈 · 공백 그대로). → 바뀐 Die 수."""
+    import re
+    d = parse_txt(src)
+    changed = check_edit(d['rows'], rows)
+    text, enc, nl = decode(src)
+    parts, ri = [], 0
+    for line in text.split(nl):
+        if line.startswith('RowData:'):
+            new = rows[ri]
+            if new != d['rows'][ri]:
+                toks = iter(new)
+                line = 'RowData:' + re.sub(r'\S+', lambda m: next(toks), line[8:])
+            ri += 1
+        parts.append(line)
+    data = nl.join(parts)
+    if enc == 'utf-8-sig':
+        payload = b'\xef\xbb\xbf' + data.encode('utf-8')
+    else:
+        payload = data.encode(enc)
+    out = Path(out)
+    tmp = out.with_name(out.name + '.part')
+    tmp.write_bytes(payload)
+    tmp.replace(out)
+    return changed

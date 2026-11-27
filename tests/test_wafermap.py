@@ -285,5 +285,112 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(Path(out['output']).read_bytes(), sample_txt('\r\n'))
 
 
+class EditorTests(unittest.TestCase):
+    """맵 편집기(#91): TXT 를 열어 Die 코드를 바꾸고 저장 — 바뀐 토큰만 바뀌고 나머지 바이트는 그대로."""
+
+    def setUp(self):
+        import base64
+        self.b64 = base64
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        (self.dir / 'W01.txt').write_bytes(sample_txt('\r\n', bom=True))
+        DesktopWaferMap.extra_roots = []
+        self.wm = DesktopWaferMap(None)
+        self.wm.scan({'root': str(self.dir), 'mode': 'txt'})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _grid(self, m, rows):
+        codes = list(m['codes'])
+        for r in rows:
+            for x in r:
+                if x not in codes:
+                    codes.append(x)
+        raw = bytes(codes.index(x) for r in rows for x in r)
+        return codes, self.b64.b64encode(raw).decode()
+
+    def _save(self, rows, **kw):
+        m = self.wm.open_map({'id': 0})
+        codes, grid = self._grid(m, rows)
+        p = dict(id=0, codes=codes, grid=grid, width=1, folder='', name='W01_Edited', label='code', overwrite=False)
+        p.update(kw)
+        return self.wm.edit_save(p)
+
+    def test_open_returns_compact_grid(self):
+        m = self.wm.open_map({'id': 0})
+        self.assertEqual((m['row_count'], m['col_count'], m['width']), (8, 8, 1))
+        self.assertEqual(m['default_name'], 'W01_Edited')
+        rows = wm.decode_grid(m['codes'], m['grid'], m['width'], 8, 8)
+        self.assertEqual(rows, sample_rows())
+
+    def test_grid_two_byte_roundtrip(self):
+        rows = [[f'{i:03d}' for i in range(300)]]
+        e = wm.encode_grid(rows)
+        self.assertEqual(e['width'], 2)
+        self.assertEqual(wm.decode_grid(e['codes'], e['grid'], 2, 1, 300), rows)
+
+    def test_unchanged_save_is_byte_identical(self):
+        before = (self.dir / 'W01.txt').read_bytes()
+        r = self._save(sample_rows())
+        self.assertEqual(r['changed'], 0)
+        self.assertEqual(Path(r['txt']).read_bytes(), before)
+        self.assertEqual((self.dir / 'W01.txt').read_bytes(), before, '원본 보존')
+        self.assertTrue(r['png'].endswith('W01_Edited_BinCode_Map.png'))
+        self.assertIn(str(self.dir), DesktopWaferMap.extra_roots)
+
+    def test_edit_changes_only_those_tokens_and_new_code(self):
+        rows = sample_rows()
+        rows[1][3] = '000'      # 003 → 000
+        rows[2][2] = '777'      # 목록에 없는 새 코드(소유자 #91 6번)
+        r = self._save(rows, label='meaning')
+        self.assertEqual(r['changed'], 2)
+        out = Path(r['txt']).read_bytes()
+        exp_rows = sample_rows()
+        exp_rows[1][3] = '000'
+        exp_rows[2][2] = '777'
+        headers = ['WAFER:W01', 'DEVICE:DEV-A', 'LOT:LOT01', 'ROWCT:8', 'COLCT:8']
+        text = '\r\n'.join(headers + ['RowData:' + ' '.join(x) for x in exp_rows]) + '\r\n'
+        self.assertEqual(out, b'\xef\xbb\xbf' + text.encode('utf-8'))
+        self.assertTrue(r['png'].endswith('W01_Edited_BinMeaning_Map.png'))
+
+    def test_outside_wafer_is_locked(self):
+        rows = sample_rows()
+        rows[0][0] = '000'
+        with self.assertRaises(ValueError):
+            self._save(rows)
+        rows = sample_rows()
+        rows[0][2] = '___'
+        with self.assertRaises(ValueError):
+            self._save(rows)
+
+    def test_name_and_overwrite_rules(self):
+        for bad in ('a/b', 'x:y', '..', 'CON', ''):
+            with self.assertRaises(ValueError):
+                self._save(sample_rows(), name=bad)
+        with self.assertRaises(ValueError):
+            self._save(sample_rows(), name='W01')          # 원본 덮어쓰기 금지
+        self._save(sample_rows())
+        self.assertIn('exists', self._save(sample_rows()))  # 이미 있으면 물어봄
+        self.assertIn('txt', self._save(sample_rows(), overwrite=True))
+
+    def test_custom_folder_and_image(self):
+        out = self.dir / 'out'
+        r = self._save(sample_rows(), folder=str(out), name='Edited A')
+        self.assertEqual(Path(r['txt']), out / 'Edited A.txt')
+        with self.assertRaises(ValueError):
+            self.wm.edit_image({'id': 0, 'data': self.b64.b64encode(b'nope').decode()})
+        png = (b'\x89PNG\r\n\x1a\n' + b'\x00\x00\x00\rIHDR' + (4).to_bytes(4, 'big') + (4).to_bytes(4, 'big')
+               + b'\x00' * 20)
+        p = self.wm.edit_image({'id': 0, 'data': self.b64.b64encode(png).decode()})['path']
+        self.assertEqual(Path(p), out / 'Edited A_BinCode_Map.png')
+        self.assertIn(str(out), DesktopWaferMap.extra_roots)
+
+    def test_ipc_methods_registered(self):
+        from param_manager import desktop_ipc
+        for m in ('wm_open', 'wm_edit_save', 'wm_edit_image'):
+            self.assertIn(m, desktop_ipc.METHODS)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

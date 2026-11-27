@@ -10,7 +10,14 @@
   질문 13개(기존 변환 화면 유지 · 파일 1개씩 · '맵 파일' 뜻 · 저장 이름 · 붓/선택 방식 · 드래그 · 리스트 범위 · `___` · 되돌리기 · 좌표 기준 · 편집 중 휠 · 비교 화면 연동 · 헤더 수정 · Mini)를 올림.
 - 현재 코드(참고): `frontend/src/WaferMap.tsx`(6단계 마법사, `renderMap` = OffscreenCanvas PNG) · `param_manager/wafermap.py`(`parse_txt` · `txt_to_excel` · `excel_to_txt` · `map_payload`) · `param_manager/desktop_wafermap.py`(IPC `wm_*`).
 - 시험: 코드 무변경이라 돌리지 않음. 릴리스 없음(design_rebuild 는 릴리스 안 함 — 소유자 결정 2026-11-24).
-- 남은 일: 소유자 답(#91 댓글) → 구현 · 4만 · 25만 · 100만 Die 가짜 맵 성능 시험 · 화면 시험. `claude-processed` 라벨 안 붙임(답 오면 다시 처리).
+- **소유자 답(2026-11-27 07:26, #91 댓글)**: 0 canvas 라이선스 · 보안 검토(→ 답 댓글: 브라우저 내장 기능 · 새 패키지 0 · 스크립트/exe/net use/인터넷 없음) · 1 새 편집기로 바꿈 ·
+  2 여러 장 목록에서 하나씩 편집 · 저장, [처음 화면으로] = 목록, 목록 화면 [새로 시작하기] = 폴더 고르기 처음 · 3 TXT RowData 로 그림 · 4 저장 옵션 = 그림 범례 Bin Code 만 / Bin Code + Defect 이름, 이름 · 위치 설정(기본 = 원본 폴더 `<이름>_Edited`) ·
+  5 (나) Die 를 고른 뒤 리스트의 코드 누름 + 드래그로 여러 Die · 사각형 선택 · 6 전체 Defect 코드 표(설명 없이) + 새 코드 직접 입력 + 코드 옆 개수 · 7 `___` 편집 금지 · 8 되돌리기 필요 ·
+  9 하단 좌표 표시 · 10 편집 모드에서도 휠 확대 · 11 비교 화면(바뀐 Die 강조 · 요약 · 확대 연동) 좋음 · 12 헤더 수정 필요 없음 · 13 Mini 같이.
+- **진행 중(이 커밋까지)**: 엔진만 — `wafermap.encode_grid`/`decode_grid`(코드 표 + Die 번호 1~2 바이트 base64, 100만 Die ≈ 1.3 MB) · `check_edit`(`___` 잠금 · 코드 = 영문/숫자 1~8 자) ·
+  `write_edited`(원본 TXT 에서 바뀐 토큰만 바꿈 — 안 고친 맵은 바이트 같음, `.part` → replace) · 어댑터 `open_map` · `edit_save`(이름 검사 `clean_name`, 원본 덮어쓰기 금지, 있으면 `exists` 돌려 물어봄) · `edit_image` ·
+  IPC `wm_open` · `wm_edit_save`(작업 스레드) · `wm_edit_image`. 시험 `tests/test_wafermap.py` EditorTests 8개(전체 29 통과).
+- 남은 일: 화면 `WaferMap.tsx` 새 편집기(목록 → 편집 → 비교) · `npm run build` dist · 화면 시험 · 4만/100만 Die 속도 측정 · 완료 댓글 · `claude-processed`.
 
 | 요청 | 결과 |
 |---|---|

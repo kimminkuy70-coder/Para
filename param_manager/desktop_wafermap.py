@@ -7,6 +7,13 @@ Flow (one file at a time, so a long folder never blocks the engine):
   wm_image(index, kind, data)→ 화면이 canvas 로 그린 맵 PNG 를 엔진이 정한 경로에 저장
   wm_reset()                 → 작업 취소·초기화
 
+맵 편집기(#91 — 화면은 이것만 쓴다, 위 Excel 변환 단계는 엔진에 남김):
+  wm_scan(root, 'txt')       → TXT 목록(위와 같음)
+  wm_open(id)                → 그 TXT 의 맵(코드 표 + Die 번호 base64, wafermap.encode_grid) · 기본 저장 이름 · 폴더
+  wm_edit_save(id, codes, grid, width, folder, name, label, overwrite)
+                             → 고친 TXT 저장(원본 토큰만 바꿈, wafermap.write_edited) · PNG 경로를 정해 둠
+  wm_edit_image(id, data)    → 화면이 그린 수정 맵 PNG 를 그 경로에 저장
+
 안전: 원본은 **읽기만** 한다(변환은 늘 새 파일 `_Map_Edit.xlsx` / `_Converted.txt`). 결과 PNG 경로는
 엔진이 만들며 UI 는 경로를 주지 못한다. 기본 저장 위치는 원본과 같은 폴더(원본 도구 v6 동작 그대로),
 또는 사용자가 고른 폴더(하위 구조 유지). 둘 다 `extra_roots` 로 등록해 `open_path` 로 열 수 있게 한다.
@@ -25,6 +32,25 @@ MAX_OUTPUT = 3_900_000          # map PNG the UI produced; must fit the 4 MB IPC
 SUFFIXES = {'txt': ('.txt',), 'excel': ('.xlsx', '.xlsm')}
 
 
+NAME_BAD = set('\\/:*?"<>|')
+LABELS = {'code': 'BinCode_Map', 'meaning': 'BinMeaning_Map'}   # 저장 그림 범례: Bin Code 만 / Bin Code + Defect 이름
+
+
+def clean_name(name):
+    """저장 이름(확장자 없이). 경로 · Windows 금지 글자 · 끝 점/공백 · 예약 이름 거부."""
+    if not isinstance(name, str):
+        raise ValueError('저장 이름을 확인하세요')
+    name = name.strip()
+    if name.lower().endswith('.txt'):
+        name = name[:-4].rstrip()
+    if not name or len(name) > 150 or any(ch in NAME_BAD or ord(ch) < 32 for ch in name) \
+            or name.endswith('.') or name in ('.', '..') \
+            or name.split('.')[0].upper() in {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)),
+                                               *(f'LPT{i}' for i in range(1, 10))}:
+        raise ValueError('저장 이름에 쓸 수 없는 글자가 있습니다 (\\ / : * ? " < > |)')
+    return name
+
+
 class DesktopWaferMap:
     extra_roots: list = []      # output folders DesktopOpen may open (source folder or a chosen folder)
 
@@ -35,6 +61,7 @@ class DesktopWaferMap:
         self.items = []
         self.job = None
         self.cancel = threading.Event()
+        self.edits = {}         # 편집기: 목록 id → {'png': 저장할 PNG 경로, 'txt': 저장한 TXT}
 
     # ------------------------------------------------------------ helpers
     def _item(self, params, key='index'):
@@ -140,7 +167,8 @@ class DesktopWaferMap:
         codes = [dict(code=f'{c:03d}', name=wafermap.MEAN.get(f'{c:03d}', d), ko=wafermap.MEAN_KO.get(f'{c:03d}', ''),
                       color=wafermap.COLORS.get(f'{c:03d}', wafermap.UNKNOWN_COLOR)) for c, d in wafermap.DEFECT_CODES]
         if not job:
-            return dict(job=None, codes=codes)
+            return dict(job=None, codes=codes, unknown_color=wafermap.UNKNOWN_COLOR,
+                        outside_color=wafermap.COLORS[wafermap.OUTSIDE])
         return dict(codes=codes, job=dict(
             mode=job['mode'], source_root=job['source_root'], output_root=job['output_root'],
             items=[dict(src=it['src'], relative=it['relative'], wafer=it['wafer'], lot=it['lot'],
@@ -181,6 +209,78 @@ class DesktopWaferMap:
         target.write_bytes(raw)
         it['images_done'].add(params['kind'])
         return dict(saved=params['kind'], path=str(target))
+
+    # ------------------------------------------------------------ 맵 편집기(#91)
+    def _scanned(self, params):
+        i = params.get('id')
+        if type(i) is not int or not 0 <= i < len(self.items) or self.mode != 'txt':
+            raise ValueError('목록에서 맵을 고르세요')
+        it = self.items[i]
+        if not it['valid']:
+            raise ValueError(f"읽을 수 없는 TXT 입니다: {it['error']}")
+        return it
+
+    def open_map(self, params):
+        if set(params) != {'id'}:
+            raise ValueError('맵을 확인하세요')
+        it = self._scanned(params)
+        src = Path(it['path'])
+        d = wafermap.parse_txt(src)
+        enc = wafermap.encode_grid(d['rows'])
+        if len(enc['grid']) > wafermap.MAX_GRID_TEXT:
+            raise ValueError('맵이 너무 커서 열 수 없습니다(약 150만 Die 까지)')
+        return dict(id=params['id'], path=str(src), name=src.name, folder=str(src.parent),
+                    default_name=src.stem + '_Edited', wafer=it['wafer'], device=it['device'], lot=it['lot'],
+                    row_count=d['row_count'], col_count=d['col_count'], **enc)
+
+    def edit_save(self, params):
+        keys = {'id', 'codes', 'grid', 'width', 'folder', 'name', 'label', 'overwrite'}
+        if set(params) != keys or params.get('label') not in LABELS or type(params.get('overwrite')) is not bool:
+            raise ValueError('저장 설정을 확인하세요')
+        it = self._scanned(params)
+        src = Path(it['path'])
+        d = wafermap.parse_txt(src)
+        codes = params['codes']
+        if not isinstance(codes, list) or any(not (c == wafermap.OUTSIDE or wafermap.valid_code(c)) for c in codes):
+            raise ValueError('Bin Code 를 확인하세요')
+        rows = wafermap.decode_grid(codes, params['grid'], params['width'], d['row_count'], d['col_count'])
+        raw = params['folder']
+        if not isinstance(raw, str) or len(raw) > 1024:
+            raise ValueError('저장 폴더를 확인하세요')
+        folder = Path(raw.strip()).absolute() if raw.strip() else src.parent
+        name = clean_name(params['name'])
+        target = folder / (name + '.txt')
+        png = folder / f'{name}_{LABELS[params["label"]]}.png'
+        if target.absolute() == src.absolute():
+            raise ValueError('원본 TXT 에는 덮어쓸 수 없습니다. 다른 이름을 쓰세요.')
+        if target.exists() and not params['overwrite']:
+            return dict(exists=str(target))
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ValueError(f'저장 폴더를 만들 수 없습니다: {exc}') from exc
+        changed = wafermap.write_edited(src, target, rows)
+        self._register_root(folder)
+        self.edits[params['id']] = dict(png=str(png), txt=str(target))
+        return dict(txt=str(target), png=str(png), folder=str(folder), changed=changed)
+
+    def edit_image(self, params):
+        if set(params) != {'id', 'data'}:
+            raise ValueError('저장할 맵 이미지를 확인하세요')
+        ed = self.edits.get(params.get('id'))
+        if not ed:
+            raise ValueError('먼저 TXT 를 저장하세요')
+        data = params.get('data')
+        if not isinstance(data, str) or len(data) > MAX_OUTPUT * 4 // 3 + 8:
+            raise ValueError('이미지가 너무 큽니다')
+        try:
+            raw = base64.b64decode(data, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError('이미지 데이터를 확인하세요') from exc
+        if not wafermap.png_size(raw):
+            raise ValueError('PNG 이미지가 아닙니다')
+        Path(ed['png']).write_bytes(raw)
+        return dict(path=ed['png'])
 
     def reset(self, params):
         if params:
